@@ -481,8 +481,8 @@ export function deriveViewerPresentation(
       state.connection === "reconnecting" || state.connection === "failed";
     return {
       ...presentation(
-        signalRecovering || mediaRecovering ? "recovering" : "playing",
-        signalRecovering || mediaRecovering ? "viewer.msg.recovering" : "viewer.msg.playing",
+        mediaRecovering ? "recovering" : "playing",
+        mediaRecovering ? "viewer.msg.recovering" : "viewer.msg.playing",
         "none",
         state,
       ),
@@ -490,14 +490,14 @@ export function deriveViewerPresentation(
         ? "viewer.notice.hostOffline"
         : signalRecovering
           ? "viewer.notice.signalRecovering"
-        : mediaRecovering
-          ? "viewer.notice.mediaRecovering"
           : null,
       failureCode: state.host === "offline" ? "HOST_OFFLINE" : null,
     };
   }
 
-  if (state.routeStatus?.state === "failed") {
+  // A failed route explains missing media only while the Host can publish.
+  // Keep the fact: Host reconnection alone does not repair that route.
+  if (state.host === "online" && state.routeStatus?.state === "failed") {
     return presentation(
       "route-failed",
       "viewer.msg.routeFailed",

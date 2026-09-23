@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-22
+Last reviewed: 2026-09-23
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
@@ -20,9 +20,9 @@ history. A parked idea is not implementation authority.
 - [ ] **Refine the isolated room-interaction prototype.** Review chat, optional
   danmaku and participant-targeted reactions for usability, placement and intended
   cross-view synchronization. Preserve room authorization and media-route owners.
-  Accept its combined layout: sharing settings with the picture, wide-screen chat
-  beside participants, stacked chat on narrow screens and room actions before
-  diagnostics. Check its theater chat entry and participant menu on real devices;
+  Accept its combined layout: sharing settings with the picture, floating chat
+  without page reflow and room actions before diagnostics. Check narrow-screen
+  keyboard avoidance, its theater entry and participant menu on real devices;
   keep chat available independently of sharing.
   Retain current room creation: the first share creates a room, an existing room
   can resume, and stopping media keeps the opted-in interaction session. Do not
@@ -31,7 +31,9 @@ history. A parked idea is not implementation authority.
 
 ## Awaiting Device Or Reporter Evidence
 
-- [ ] **No available media route.** Obtain matched Host/Viewer diagnostics from
+- [ ] **No available media route.** A decline is reported since around v1.4;
+  establish comparable attempts on the same endpoints/network before attributing
+  a version regression. Obtain matched Host/Viewer diagnostics from
   a failed attempt, with version and mode. Inspect candidate exchange, selected
   paths, first-frame admission and route rejection separately. The Browser
   candidate-queue rejection defect is repaired and regression-tested; current
@@ -49,7 +51,8 @@ history. A parked idea is not implementation authority.
   [#396 timeout](https://github.com/TNTcraftHIM/Piik/issues/396#issuecomment-5691465700)
   with the updated App. A controlled UDP-blocked/TCP-available reproduction confirms
   a dependency configuration defect; the existing tunnel now uses cloudflared's
-  bounded protocol fallback. [Runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup)
+  bounded protocol fallback and pre-readiness retries within one startup deadline.
+  [Runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup)
   separates this fix from DNS, provider and remote access failures. The reporting
   environments still need version and diagnostic evidence before assigning a cause.
   Demo access failures and public-link HTTP 1033 also remain unconfirmed: current
@@ -164,8 +167,9 @@ not establish better connection success or speed; this note adds no retry policy
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.
-10. **4K in advanced sharing settings.** Deferred until after the current capture
-    maintenance phase. Add 3840x2160 without changing the default or recommended
+10. **4K in advanced sharing settings.** Hold the isolated candidate for joint
+    review with the next room-interaction release; its compatibility and release
+    boundary are not yet accepted. Add 3840x2160 without changing the default or recommended
     presets. Extend the existing capture, decode and relay bounds together; verify
     H.264 level negotiation for 4K at 60 fps. Current strict quality messages reject
     `2160p`, so preserve published Browser/App/Server compatibility through explicit

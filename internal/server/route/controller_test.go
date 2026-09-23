@@ -2802,17 +2802,16 @@ func TestDoesNotPromoteWhenSynchronousAdmissionCommitFails(t *testing.T) {
 
 // --- describe("bounded NAT candidate acquisition") -------------------------
 
-// TS 5033: runs three real generations on %s, then exhausts until a new session
-func TestRunsThreeRealGenerationsThenExhaustsUntilNewSession(t *testing.T) {
+func TestRunsFourRealGenerationsThenExhaustsUntilNewSession(t *testing.T) {
 	for _, failure := range []string{"failed", "timeout"} {
 		t.Run(failure, func(t *testing.T) {
 			routes := newController(2, Options{NatPredictionEnabled: true, OperationTimeoutMs: 20_000})
 			addViewer(routes, A, 0, nil)
 			nowMs := int64(0)
 			var previous *CandidateGuard
-			for attempt := 1; attempt <= 3; attempt++ {
+			for attempt := 1; attempt <= 4; attempt++ {
 				operation, prepared, guard := preparePeer(t, routes, nowMs, fmt.Sprintf("nat_%d", attempt))
-				eqDeep(t, prepared.Current.ConnectionAttempt, &ConnectionAttemptProgress{Current: attempt, Total: 3})
+				eqDeep(t, prepared.Current.ConnectionAttempt, &ConnectionAttemptProgress{Current: attempt, Total: 4})
 				eq(t, operation.DeadlineAtMs-nowMs, 20_000)
 				eq(t, prepared.WakeAtMs, operation.DeadlineAtMs)
 				if previous != nil {
@@ -2827,7 +2826,7 @@ func TestRunsThreeRealGenerationsThenExhaustsUntilNewSession(t *testing.T) {
 					nowMs++
 					result = routes.CandidateFailed(guard, nowMs)
 				}
-				if attempt == 3 {
+				if attempt == 4 {
 					eqSlice(t, result.FailedPeerIDs, []string{A})
 				} else {
 					eqSlice(t, result.FailedPeerIDs, []string{})
@@ -2850,7 +2849,7 @@ func TestGivesWaitingViewersFirstOpportunityBeforeAnotherViewerRetries(t *testin
 	routes := newController(2, Options{NatPredictionEnabled: true})
 	addViewer(routes, A, 0, nil)
 	addViewer(routes, B, 0, nil)
-	for index, childPeerID := range []string{A, B, A, B, A, B} {
+	for index, childPeerID := range []string{A, B, A, B, A, B, A, B} {
 		_, prepared, guard := preparePeer(t, routes, int64(index*2), fmt.Sprintf("fair_%d", index))
 		eq(t, prepared.ChildPeerID, childPeerID)
 		eq(t, attemptCurrent(t, prepared), index/2+1)
@@ -2911,11 +2910,11 @@ func TestKeepsSfuForegroundTimingAndSharesAttemptBudgetWithDirectContinuations(t
 		}, nowMs, nil, CandidateProof{})
 		nowMs++
 	}
-	for index, childPeerID := range []string{A, B, A, B} {
+	for index, childPeerID := range []string{A, B, A, B, A, B} {
 		_, retry, guard := preparePeer(t, routes, nowMs, fmt.Sprintf("background_%d", index))
 		eq(t, retry.ChildPeerID, childPeerID)
 		eq(t, retry.Reason, DemandDirectConvergence)
-		eqDeep(t, retry.Current.ConnectionAttempt, &ConnectionAttemptProgress{Current: index/2 + 2, Total: 3})
+		eqDeep(t, retry.Current.ConnectionAttempt, &ConnectionAttemptProgress{Current: index/2 + 2, Total: 4})
 		eq(t, retry.WakeAtMs-nowMs, 20_000)
 		nowMs++
 		eqSlice(t, routes.CandidateFailed(guard, nowMs).FailedPeerIDs, []string{})

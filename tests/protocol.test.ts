@@ -35,6 +35,17 @@ const qualitySettings = {
 } as const;
 
 describe("runtime capabilities", () => {
+  it("keeps progress opt-in optional and strict for either signaling role", () => {
+    for (const role of ["host", "viewer"] as const) {
+      const identity = { type: "authenticate", protocol: SIGNALING_PROTOCOL, roomId,
+        clientId: "client_12345678", role, ...(role === "host" ? { token } : {}) };
+      expect(clientMessageSchema.safeParse(identity).success).toBe(true);
+      for (const connectionAttemptProgress4 of [true, false, null, 4, "true"]) {
+        expect(clientMessageSchema.safeParse({ ...identity, connectionAttemptProgress4 }).success)
+          .toBe(connectionAttemptProgress4 === true);
+      }
+    }
+  });
   it("defaults missing capabilities off and ignores unknown descriptors", () => {
     expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, extra: { enabled: true } }))
@@ -43,11 +54,14 @@ describe("runtime capabilities", () => {
       .toEqual({ sfu: false, natPrediction: true });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, natPrediction: true }))
       .toEqual({ sfu: true, natPrediction: true });
+    expect(runtimeCapabilitiesSchema.parse({ connectionAttemptProgress4: true }))
+      .toEqual({ sfu: false, natPrediction: false, connectionAttemptProgress4: true });
   });
 
   it("rejects malformed known capabilities and non-object responses", () => {
     for (const value of [null, [], true, { sfu: null }, { sfu: "true" },
-      { natPrediction: null }, { natPrediction: 1 }]) {
+      { natPrediction: null }, { natPrediction: 1 },
+      { connectionAttemptProgress4: null }, { connectionAttemptProgress4: 4 }]) {
       expect(runtimeCapabilitiesSchema.safeParse(value).success).toBe(false);
     }
   });
@@ -1492,14 +1506,16 @@ describe("server signaling protocol", () => {
       childPeerId: "child_12345678", connectionId: "connection_12345678",
       transport: "direct", qualityProbe: false,
     };
-    for (const current of [1, 2, 3]) {
-      expect(preparedRouteCandidateSchema.safeParse({
-        ...candidate, connectionAttempt: { current, total: 3 },
-      }).success).toBe(true);
+    for (const total of [3, 4]) {
+      for (let current = 1; current <= total; current++) {
+        expect(preparedRouteCandidateSchema.safeParse({
+          ...candidate, connectionAttempt: { current, total },
+        }).success).toBe(true);
+      }
     }
     for (const connectionAttempt of [
       { current: 0, total: 3 }, { current: 4, total: 3 },
-      { current: 1, total: 4 }, { current: 1.5, total: 3 },
+      { current: 5, total: 4 }, { current: 1, total: 5 }, { current: 1.5, total: 3 },
     ]) {
       expect(preparedRouteCandidateSchema.safeParse({
         ...candidate, connectionAttempt,

@@ -50,7 +50,7 @@ connection acquisition reuses the route controller's existing opportunity ledger
    whether a signaled candidate was ordinary, predicted, or end-of-candidates,
    and whether the selected remote foundation was ordinary, predicted, or
    unknown.
-5. The same per-share gate also enables the three-attempt Peer acquisition
+5. The same per-share gate also enables the four-attempt Peer acquisition
    budget in [ADR-0005](0005-automatic-hybrid-media-routing.md). Browser and
    Native candidates use the ordinary server-owned prepare/rollback lifecycle;
    no Viewer-owned ICE-restart loop is added. Local public-link and Hosted
@@ -86,7 +86,7 @@ Negative:
   may add connectivity checks for up to eight adjacent UDP ports;
 - two endpoint-dependent NATs remain sensitive to candidate scheduling and
   intervening mappings, so room-wide coverage is not a success guarantee; and
-- enabled acquisition can occupy up to three ordinary operation windows when
+- enabled acquisition can occupy up to four ordinary operation windows when
   one parent remains, yielding between operations to other waiting Viewers.
 
 Predicted connectivity checks originate from participant ICE agents and target

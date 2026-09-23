@@ -41,7 +41,9 @@ share generation:
   Native uses one media socket for IPv4 and, where available, IPv6
   direct connections; its STUN survey and best-effort gateway mapping use IPv4.
   Availability and background direct acquisition share a bounded budget of
-  three actual connection attempts per eligible parent/session opportunity.
+  four actual connection attempts per eligible parent/session opportunity:
+  the initial attempt plus three retries. The first has no retry label; subsequent
+  attempts show retry 1/3, 2/3 and 3/3 on pages supporting that progress format.
   Retries use the same serial controller and normal operation deadlines;
   waiting Viewers and untried parents receive their opportunities first.
   It is not a participant capability, route score, or SFU preference. Candidate

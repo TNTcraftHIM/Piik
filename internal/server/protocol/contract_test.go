@@ -14,6 +14,7 @@ func TestRuntimeCapabilities(t *testing.T) {
 		want RuntimeCapabilities
 	}{
 		{`{}`, RuntimeCapabilities{}},
+		{`{"connectionAttemptProgress4":true}`, RuntimeCapabilities{ConnectionAttemptProgress4: true}},
 		{`{"sfu":true,"extra":{"enabled":true}}`, RuntimeCapabilities{Sfu: true}},
 		{`{"natPrediction":true,"SFU":true}`, RuntimeCapabilities{NatPrediction: true}},
 		{`{"sfu":true,"natPrediction":true}`, RuntimeCapabilities{Sfu: true, NatPrediction: true}},
@@ -27,6 +28,7 @@ func TestRuntimeCapabilities(t *testing.T) {
 	for _, data := range []string{
 		`null`, `[]`, `true`, `{"sfu":null}`, `{"sfu":"true"}`,
 		`{"natPrediction":null}`, `{"natPrediction":1}`,
+		`{"connectionAttemptProgress4":null}`, `{"connectionAttemptProgress4":4}`,
 	} {
 		var got RuntimeCapabilities
 		if err := json.Unmarshal([]byte(data), &got); err == nil {
@@ -473,7 +475,10 @@ func TestPreparedRouteCandidate(t *testing.T) {
 		{`{"current":3,"total":3}`, true},
 		{`{"current":0,"total":3}`, false},
 		{`{"current":4,"total":3}`, false},
-		{`{"current":1,"total":4}`, false},
+		{`{"current":1,"total":4}`, true},
+		{`{"current":4,"total":4}`, true},
+		{`{"current":5,"total":4}`, false},
+		{`{"current":1,"total":5}`, false},
 		{`{"current":1.5,"total":3}`, false},
 	} {
 		assertServerMessage(t, "connectionAttempt "+sample.attempt,
@@ -664,6 +669,19 @@ func TestOptionalAndNullableAreExact(t *testing.T) {
 }
 
 // A host authenticate without routePolicy takes DEFAULT_ROUTE_POLICY.
+func TestAuthenticateConnectionProgressOptIn(t *testing.T) {
+	for _, role := range []string{"host", "viewer"} {
+		base := `"type":"authenticate","protocol":"` + SignalingProtocol + `","roomId":"1234","clientId":"client_12345678","role":"` + role + `"`
+		if role == "host" {
+			base += `,"token":"` + repeat("a", 43) + `"`
+		}
+		for _, value := range []string{"true", "false", "null", "4", `"true"`} {
+			assertClientMessage(t, role+value, []byte(`{`+base+`,"connectionAttemptProgress4":`+value+`}`), value == "true")
+		}
+		assertClientMessage(t, role+" baseline", []byte(`{`+base+`}`), true)
+	}
+}
+
 func TestAuthenticateAppliesTheRoutePolicyDefault(t *testing.T) {
 	message, err := DecodeClientMessage([]byte(
 		`{"type":"authenticate","protocol":"piik-v23","roomId":"1234","role":"host",` +

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,38 @@ import (
 
 func TestMain(tests *testing.M) {
 	if mode := os.Getenv("PIIK_TUNNEL_FIXTURE"); mode != "" {
+		if record := os.Getenv("PIIK_TUNNEL_FIXTURE_ATTEMPTS"); record != "" {
+			previous, _ := os.ReadFile(record)
+			var paths []string
+			if len(previous) > 0 {
+				paths = strings.Split(strings.TrimSpace(string(previous)), "\n")
+			}
+			for _, path := range paths {
+				if _, err := os.Stat(strings.TrimSpace(path)); !os.IsNotExist(err) {
+					fmt.Fprintln(os.Stderr, "previous attempt was not retired")
+					os.Exit(9)
+				}
+			}
+			configIndex := slices.Index(os.Args, "--config")
+			if configIndex < 0 || configIndex+1 >= len(os.Args) {
+				os.Exit(9)
+			}
+			file, err := os.OpenFile(record, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+			if err != nil {
+				os.Exit(9)
+			}
+			_, writeErr := fmt.Fprintln(file, os.Args[configIndex+1])
+			closeErr := file.Close()
+			if writeErr != nil || closeErr != nil {
+				os.Exit(9)
+			}
+			failures, _ := strconv.Atoi(os.Getenv("PIIK_TUNNEL_FIXTURE_FAILURES"))
+			if len(paths) < failures {
+				fmt.Fprintln(os.Stderr, "fixture allocation unavailable")
+				code, _ := strconv.Atoi(os.Getenv("PIIK_TUNNEL_FIXTURE_EXIT_CODE"))
+				os.Exit(code)
+			}
+		}
 		if mode == "tcp-only" {
 			// Model the pinned Quick Tunnel's opt-in protocol fallback. Without
 			// both flags, an unavailable UDP edge consumes Piik's startup budget.
@@ -47,6 +80,109 @@ func TestMain(tests *testing.M) {
 		}
 	}
 	os.Exit(tests.Run())
+}
+
+func TestStartupRetriesOnlyRetiredPreReadyChildren(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sample := range []struct {
+		name               string
+		failures, exitCode int
+		ready              bool
+	}{
+		{"fourth attempt succeeds", 3, 7, true},
+		{"four failures stop", 9, 7, false},
+		{"clean exit is not readiness", 9, 0, false},
+	} {
+		t.Run(sample.name, func(t *testing.T) {
+			record := filepath.Join(t.TempDir(), "attempts")
+			t.Setenv("PIIK_TUNNEL_FIXTURE", "ready")
+			t.Setenv("PIIK_TUNNEL_FIXTURE_ATTEMPTS", record)
+			t.Setenv("PIIK_TUNNEL_FIXTURE_FAILURES", strconv.Itoa(sample.failures))
+			t.Setenv("PIIK_TUNNEL_FIXTURE_EXIT_CODE", strconv.Itoa(sample.exitCode))
+			process, err := Start(t.Context(), executable, "http://127.0.0.1:8787")
+			if sample.ready {
+				if err != nil || process == nil {
+					t.Fatalf("fourth attempt: %v, %v", process, err)
+				}
+				if err := process.Close(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if process != nil || !errors.Is(err, errStartupExited) {
+					t.Fatalf("exhausted startup: %v, %v", process, err)
+				}
+				if sample.exitCode != 0 {
+					var failure *exec.ExitError
+					if !errors.As(err, &failure) || failure.ExitCode() != sample.exitCode {
+						t.Fatalf("latest dependency exit was lost: %v", err)
+					}
+				}
+			}
+			assertRetiredAttempts(t, record, 4)
+		})
+	}
+}
+
+func TestStartupRetriesShareCancellationAndDeadline(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sample := range []struct {
+		name       string
+		timeout    time.Duration
+		attempts   int
+		cancelOnly bool
+	}{
+		{"during retry delay", 500 * time.Millisecond, 1, false},
+		{"during second child", 2 * time.Second, 2, false},
+		{"clean cancellation during retry delay", 500 * time.Millisecond, 1, true},
+	} {
+		t.Run(sample.name, func(t *testing.T) {
+			record := filepath.Join(t.TempDir(), "attempts")
+			t.Setenv("PIIK_TUNNEL_FIXTURE", "starting")
+			t.Setenv("PIIK_TUNNEL_FIXTURE_ATTEMPTS", record)
+			t.Setenv("PIIK_TUNNEL_FIXTURE_FAILURES", "1")
+			t.Setenv("PIIK_TUNNEL_FIXTURE_EXIT_CODE", "7")
+			ctx, cancel := context.WithTimeout(t.Context(), sample.timeout)
+			defer cancel()
+			if sample.cancelOnly {
+				ctx, cancel = context.WithCancel(t.Context())
+				defer cancel()
+				defer time.AfterFunc(sample.timeout, cancel).Stop()
+			}
+			started := time.Now()
+			process, err := Start(ctx, executable, "http://127.0.0.1:8787")
+			if process != nil || (!sample.cancelOnly && !errors.Is(err, context.DeadlineExceeded)) ||
+				(sample.cancelOnly && err != context.Canceled) {
+				t.Fatalf("startup deadline: %v, %v", process, err)
+			}
+			if time.Since(started) > sample.timeout+2*time.Second {
+				t.Fatal("retry renewed the startup deadline")
+			}
+			assertRetiredAttempts(t, record, sample.attempts)
+		})
+	}
+}
+
+func assertRetiredAttempts(t *testing.T, record string, count int) {
+	t.Helper()
+	payload, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := strings.Split(strings.TrimSpace(string(payload)), "\n")
+	if len(paths) != count {
+		t.Fatalf("started %d children, want %d", len(paths), count)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(strings.TrimSpace(path)); !os.IsNotExist(err) {
+			t.Fatalf("attempt config was not removed: %v", err)
+		}
+	}
 }
 
 func TestStartupEnablesCloudflaredProtocolFallback(t *testing.T) {

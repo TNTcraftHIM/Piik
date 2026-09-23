@@ -218,6 +218,7 @@ export const DEFAULT_ROUTE_POLICY = {
 } as const satisfies RoutePolicy;
 
 export const runtimeCapabilitiesSchema = z.object({
+  connectionAttemptProgress4: z.boolean().optional(),
   sfu: z.boolean().default(false),
   natPrediction: z.boolean().default(false),
 });
@@ -372,9 +373,9 @@ export const preparedRouteCandidateSchema = z
     transport: z.enum(["direct", "sfu"]),
     qualityProbe: z.boolean(),
     connectionAttempt: z.object({
-      current: z.number().int().min(1).max(3),
-      total: z.literal(3),
-    }).strict().optional(),
+      current: z.number().int().min(1).max(4),
+      total: z.union([z.literal(3), z.literal(4)]),
+    }).strict().refine(({ current, total }) => current <= total).optional(),
   })
   .strict();
 export type PreparedRouteCandidate = z.infer<
@@ -816,6 +817,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       qualitySettings: qualitySettingsSchema.optional(),
       routePolicy: routePolicySchema.default(DEFAULT_ROUTE_POLICY),
       viewerPresence: z.literal(true).optional(),
+      connectionAttemptProgress4: z.literal(true).optional(),
       displayName: displayNameSchema.optional(),
     })
     .strict(),
@@ -830,6 +832,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       viewerPassword: viewerPasswordSchema.optional(),
       displayName: displayNameSchema.optional(),
       viewerPresence: z.literal(true).optional(),
+      connectionAttemptProgress4: z.literal(true).optional(),
     })
     .strict(),
 ]);

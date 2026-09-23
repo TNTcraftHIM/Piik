@@ -62,6 +62,16 @@ export const STATUS_SCENARIOS: readonly StatusScenario[] = [
   scenario("signal-recovering", "信令断开，画面仍在播放", "控制连接正在恢复；媒体仍有当前画面，标题保留观看状态。", [
     ...playing, { type: "signal", signal: "reconnecting" },
   ]),
+  scenario("signal-media-recovering", "信令与媒体同时恢复", "服务器提示与媒体状态各自描述自己的事实；服务器提醒不把恢复中的媒体显示成正常播放。", [
+    ...playing,
+    { type: "signal", signal: "reconnecting" },
+    { type: "connection", revision: 1, connection: "reconnecting" },
+  ]),
+  scenario("host-offline-media-recovering", "房主离线，媒体正在恢复", "保留已证明的画面；电视说明媒体正在恢复，旁边的提醒说明房主连接中断。", [
+    ...playing,
+    { type: "host", host: "offline" },
+    { type: "connection", revision: 1, connection: "reconnecting" },
+  ]),
   scenario("host-offline-playing", "房主离线，仍有当前画面", "房主在线状态和正在接收的媒体不是同一件事；先给提示，不直接覆盖画面。", [
     ...playing, { type: "host", host: "offline" },
   ]),
@@ -95,10 +105,28 @@ export const STATUS_SCENARIOS: readonly StatusScenario[] = [
     ...receiving, { type: "playback-failed", generation: 1, revision: 1 },
   ]),
   scenario("waiting-host", "等待房主开始分享", "房间存在，当前没有共享源。", [{ type: "access", access: "ready" }]),
+  scenario("host-absence-snapshot", "重连后只确认房主不在线", "快照没有说明房主为何不在线；用中性等待，不推断主动停播或连接中断。", [
+    ...ready, { type: "host", host: "unknown" },
+  ]),
   scenario("host-offline", "房主离线，没有画面", "没有当前或留存画面，说明房主离线。", [
     ...ready, { type: "host", host: "offline" },
   ]),
+  scenario("host-offline-route-failed", "房主离线，线路也已失败", "没有可播放画面时先说明房主离线；线路失败证据仍保留，房主回来不代表线路已经恢复。", [
+    ...receiving,
+    { type: "host", host: "offline" },
+    { type: "route-status", revision: 1, state: "failed" },
+  ]),
+  scenario("host-offline-retained", "房主离线，只剩最后画面", "线路失败使当前播放证明失效；保留最后画面，以轻量覆盖层提示房主离线。", [
+    ...playing,
+    { type: "route-status", revision: 1, state: "failed" },
+    { type: "host", host: "offline" },
+  ]),
   scenario("stopped", "分享已经停止", "正常结束，不伪装为正在恢复或播放失败。", [...playing, { type: "sharing-stopped" }]),
+  scenario("stopped-route-failed", "停止分享后收到线路失败", "停止分享清理画面；随后到达的线路失败不把正常停播变成媒体故障。", [
+    ...playing,
+    { type: "sharing-stopped" },
+    { type: "route-status", revision: 1, state: "failed" },
+  ]),
   ...denied.map(([failure, name]) => scenario(failure.toLowerCase(), name,
     "服务端准入或会话终止事实优先；旧画面和旧质量样本不能重新覆盖这个状态。",
     [{ type: "access", access: "denied", failure }])),

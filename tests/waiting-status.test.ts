@@ -48,8 +48,9 @@ it.each(["host-paused", "preview-paused", "route-failed", "source-failed", "room
 it.each(STATUS_SCENARIOS)("composes feedback from the actual $id state", scenario => {
   const presentation = deriveViewerPresentation(scenario.state);
   const { overlay } = deriveViewerStatus(presentation, scenario.state.signal);
-  const waiting = ["joining", "preparing-p2p", "preparing-sfu", "waiting-sfu", "allocating",
-    "receiving", "recovering", "waiting-host", "stopped"].includes(scenario.id);
+  const waiting = presentation.overlay !== "none" &&
+    ["joining", "preparing-p2p", "preparing-sfu", "waiting-sfu", "allocating",
+      "receiving", "recovering", "waiting-host"].includes(presentation.stage);
   expect(overlay?.waiting ?? false).toBe(waiting);
   if (!overlay) return;
   const html = renderToStaticMarkup(createElement(StageOverlay, {

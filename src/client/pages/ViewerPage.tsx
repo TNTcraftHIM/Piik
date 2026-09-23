@@ -128,6 +128,7 @@ interface ViewerPageProps {
   viewerGrant?: string;
   invalidGrant?: boolean;
   launchedByClient?: boolean;
+  connectionAttemptProgress4?: boolean;
 }
 
 type ViewerQualityEvidence = Extract<
@@ -167,6 +168,7 @@ export function ViewerPage({
   viewerGrant,
   invalidGrant = false,
   launchedByClient = false,
+  connectionAttemptProgress4 = false,
 }: ViewerPageProps) {
   const { lang, t, vis, titleFrames } = useCopy();
   const viewerClientId = useMemo(
@@ -594,6 +596,7 @@ export function ViewerPage({
           : {}),
         displayName: displayNameRef.current,
         viewerPresence: true,
+        ...(connectionAttemptProgress4 ? { connectionAttemptProgress4: true } : {}),
       },
       {
         onStatus: (status) => {
@@ -1583,7 +1586,7 @@ export function ViewerPage({
             ? "paused"
             : message.hostOnline
               ? "online"
-              : "stopped",
+              : "unknown",
         });
         currentQualitySettings = message.qualitySettings;
         currentShareGeneration = message.shareGeneration;
@@ -1936,7 +1939,7 @@ export function ViewerPage({
       viewerRelaySourceKey = null;
       void nativeClientPromise?.then((client) => client?.close());
     };
-  }, [roomId, viewerGrant, viewerPasswordAttempt, launchedByClient]);
+  }, [roomId, viewerGrant, viewerPasswordAttempt, launchedByClient, connectionAttemptProgress4]);
 
   useEffect(() => {
     const video = videoRef.current;

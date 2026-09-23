@@ -11,6 +11,7 @@ import {
   ApiError,
   authenticateSiteAccess,
   getRuntimeCapabilities,
+  getOptionalRuntimeCapabilities,
   getSiteAccess,
   type SiteAccessStatus,
 } from "./lib/api";
@@ -163,10 +164,9 @@ function AppRoute() {
   }
   if (appRoute.kind === "viewer" && viewerRoute) {
     return viewerRoute.viewerGrant ? (
-      <ViewerPage
+      <ViewerEntry
         key={viewerRoute.viewerGrant}
-        {...viewerRoute}
-        launchedByClient={clientLaunchBootstrap?.launchedByClient}
+        route={viewerRoute}
       />
     ) : (
       <SiteAccessGate key={viewerRoute.invalidGrant ? "invalid" : "code"}
@@ -199,6 +199,24 @@ function RouteLoader() {
         <LoadingStatus label="common.loading" />
       </main>
     </div>
+  );
+}
+
+// Invitation and room-code entry share discovery without making an invitation
+// pass through site authentication. Resolve before mounting media: changing the
+// negotiated flag later would restart an already healthy Viewer session.
+function ViewerEntry({ route }: { route: ViewerRoute }) {
+  const [progressSupported, setProgressSupported] = useState<boolean | null>(null);
+  useEffect(() => {
+    let active = true;
+    void getOptionalRuntimeCapabilities().then(capabilities => {
+      if (active) setProgressSupported(capabilities?.connectionAttemptProgress4 === true);
+    });
+    return () => { active = false; };
+  }, []);
+  return progressSupported === null ? <RouteLoader /> : (
+    <ViewerPage {...route} connectionAttemptProgress4={progressSupported}
+      launchedByClient={clientLaunchBootstrap?.launchedByClient} />
   );
 }
 
@@ -371,10 +389,7 @@ function SiteAccessGate({
   if (access.kind === "ready") {
     if (surface === "viewer" && viewerRoute) {
       return (
-        <ViewerPage
-          {...viewerRoute}
-          launchedByClient={clientLaunchBootstrap?.launchedByClient}
-        />
+        <ViewerEntry route={viewerRoute} />
       );
     }
     if (surface === "join") {
@@ -385,6 +400,7 @@ function SiteAccessGate({
         launchedByClient={clientLaunchBootstrap?.launchedByClient}
         sfuAvailable={capabilities?.sfu === true}
         natPredictionAvailable={capabilities?.natPrediction === true}
+        connectionAttemptProgress4={capabilities?.connectionAttemptProgress4 === true}
         onAuthorizationRequired={() =>
           setAccess({ kind: "required", error: t("gate.expired") })
         }

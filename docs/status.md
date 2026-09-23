@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-21
+Last updated: 2026-09-22
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -47,8 +47,10 @@ HTTPS; external LiveKit/coturn services remain disabled. Participants, routes an
 media remain process-only. This private service is not a public demonstration.
 
 The separate US [public demo](https://demo.piik.tv) is deployed with open site
-entry, persistent room authority and P2P-only media. Caddy owns HTTPS, and the
-standard systemd service runs the published Server package. Public DNS,
+entry, persistent room authority and P2P-only media. Cloudflare fronts HTTP/WSS
+and caches static bundles; STUN uses a separate DNS-only hostname. Caddy owns
+origin HTTPS, and the standard systemd service runs the published Server package.
+Public DNS,
 HTTPS, runtime assets, all three STUN listeners and a bounded browser P2P
 sharing/stop check passed; the browser check used synthetic video on one network.
 The operator record owns exact identity and postflight evidence.

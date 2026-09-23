@@ -51,7 +51,7 @@ describe("media status projection", () => {
   it.each(["reconnecting", "failed"] as const)("shows media recovery only on the television: %s", (connection) => {
     const result = deriveViewerStatus(presentation({ type: "connection", revision: 1, connection }), "connected");
     expect(result.television).toMatchObject({
-      tone: "warn", icon: "refresh", labelKey: "viewer.notice.mediaRecovering",
+      tone: "warn", icon: "refresh", labelKey: "viewer.msg.recovering",
     });
     expect(result.notice).toBeNull();
     expect(result.overlay).toBeNull();
@@ -66,6 +66,59 @@ describe("media status projection", () => {
     expect(result.television.labelKey).toBe("viewer.msg.playing");
     expect(result.notice?.labelKey).toBe("viewer.notice.hostOffline");
     expect(result.overlay).toBeNull();
+  });
+
+  it.each(["reconnecting", "failed"] as const)("does not let coexisting notices hide media %s", connection => {
+    for (const host of ["online", "offline"] as const) {
+      for (const signal of ["connected", "reconnecting"] as const) {
+        const state = [
+          ...playingActions,
+          { type: "host", host } as const,
+          { type: "signal", signal } as const,
+          { type: "connection", revision: 1, connection } as const,
+        ].reduce(reduceViewerPresentation, INITIAL_VIEWER_PRESENTATION_STATE);
+        const status = deriveViewerStatus(deriveViewerPresentation(state), signal);
+        expect(status.television).toMatchObject({ tone: "warn", comic: "recovering" });
+        expect(status.overlay).toBeNull();
+        expect(status.notice?.labelKey ?? null).toBe(host === "offline"
+          ? "viewer.notice.hostOffline" : signal === "reconnecting" ? "viewer.notice.signalRecovering" : null);
+        const recovered = reduceViewerPresentation(state, { type: "frame-presented", generation: 1, revision: 1, proofEpoch: 0 });
+        const healthy = deriveViewerStatus(deriveViewerPresentation(recovered), signal);
+        expect(healthy.television).toMatchObject({ tone: "live", labelKey: "viewer.msg.playing" });
+        expect(healthy.notice).toEqual(status.notice);
+      }
+    }
+  });
+
+  it.each([
+    ["unknown", "viewer.msg.waitingHost", "waiting-for-host", "viewerWaiting"],
+    ["stopped", "viewer.msg.waitingHost", "waiting-for-host", "viewerWaiting"],
+    ["offline", "viewer.msg.hostOffline", "host-offline", "viewerUnavailable"],
+    ["paused", "viewer.msg.hostPaused", "host-paused", "paused"],
+  ] as const)("explains absent Host %s instead of exhausted routes in either event order", (host, labelKey, comic, titleFrameKey) => {
+    const absence: ViewerPresentationAction = { type: "host", host };
+    const failure: ViewerPresentationAction = { type: "route-status", revision: 1, state: "failed" };
+    for (const hadPicture of [false, true]) {
+      for (const kind of ["p2p", "sfu"] as const) {
+        for (const order of [[absence, failure], [failure, absence]]) {
+          const state = [
+            ...(hadPicture ? playingActions : playingActions.slice(0, 4)),
+            { type: "route", revision: 1, phase: "active", kind } as const,
+            ...order,
+          ].reduce(reduceViewerPresentation, INITIAL_VIEWER_PRESENTATION_STATE);
+          const status = deriveViewerStatus(deriveViewerPresentation(state), "connected", kind);
+          expect(status).toMatchObject({
+            television: { labelKey, comic },
+            overlay: { mode: hadPicture ? "status" : "blocking", status: { labelKey, comic } },
+            titleFrameKey,
+          });
+          // Host return cannot by itself turn an exhausted route into a healthy one.
+          expect(state.routeStatus).toEqual({ revision: 1, state: "failed" });
+          const returned = reduceViewerPresentation(state, { type: "host", host: "online" });
+          expect(deriveViewerPresentation(returned).stage).toBe("route-failed");
+        }
+      }
+    }
   });
 
   it("keeps Host source activity separate from signaling and ignores a previous share's pause", () => {

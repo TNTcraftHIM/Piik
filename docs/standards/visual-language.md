@@ -144,7 +144,10 @@ The microphone comic depicts Host commentary gain;
 the Viewer's listening-volume comic remains a different action.
 
 Visual source choices (windows, screens and cameras) share named thumbnail cards,
-including their focus, hover and refresh treatment. Microphone selection uses
+including their focus, hover and refresh treatment. Thumbnails fit the whole frame
+at its original aspect ratio within the card; constrain the media box itself so
+portrait and wide sources cannot enlarge its layout or be cropped. Keep both
+orientations represented in the source-picker preview. Microphone selection uses
 device names in a compact selector. Shared enumeration does not make these two
 selection tasks visually interchangeable.
 

@@ -52,7 +52,9 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   show a Browser and server, not a failed video path. A media-route failure can
   coexist with a healthy server connection, and vice versa.
 - Connection notice: signaling recovery may coexist with healthy media. It
-  cannot convert proved playback into waiting.
+  cannot convert proved playback into waiting or hide media recovery. The
+  presentation stage owns the primary media status; a coexisting notice never
+  selects that status or asserts another connection's health.
 - Notices: necessary coexisting issues and operation feedback use the existing
   pills near the stage; they are not another primary media status. Raw
   PeerConnection errors remain diagnostic observations, not persistent red
@@ -61,6 +63,19 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   The operation supplies its outcome tone and matching scene together. Neither
   the presence of an illustration nor a default checkmark proves success;
   partial application retains a limitation instead of claiming completion.
+- Source sound: every capture source with confirmed absent source audio keeps
+  the same neutral notice and detail, including camera capture. This describes
+  the captured input, not a failure or the mixed output's sound. The microphone
+  control owns voice state separately; do not hide facts by source category or
+  infer missing audio while capture details are unknown.
+- Host absence: without a proved current picture, a stopped/unknown Host means
+  waiting for sharing, and an offline Host means waiting for return. A failed
+  route does not override those facts. Retain route evidence so reconnection
+  alone cannot claim media recovery; independent playback/server errors retain
+  their meaning. An authenticated snapshot with an absent Host does not identify
+  why the Host is absent: use neutral waiting. Only the explicit sharing-stop
+  event establishes an intentional stop; do not reconstruct it from a retained
+  share generation or remembered messages.
 - Topology: unready edges use the blue pending treatment. Readiness alone cannot
   distinguish initial connection from recovery, so this view does not invent a
   warning. Confirmed interruption remains owned by the status projection.

@@ -127,14 +127,10 @@ export function deriveViewerStatus(
   signal: SignalConnectionState,
   route: "p2p" | "sfu" | null = null,
 ) {
-  // Control recovery does not interrupt a picture that remains proved.
-  const mediaRecovering = presentation.noticeKey === "viewer.notice.mediaRecovering";
-  const playable = presentation.overlay === "none" && !mediaRecovering;
-  const stage = playable ? "playing" : presentation.stage;
+  const stage = presentation.stage;
   const activity: StatusDescriptor = {
     ...STAGE_VISUALS[stage],
-    labelKey: mediaRecovering ? "viewer.notice.mediaRecovering"
-      : playable ? "viewer.msg.playing" : presentation.messageKey,
+    labelKey: presentation.messageKey,
     ...(stage === "receiving" ? { comic: route === "sfu" ? "connecting-sfu" as const : "connecting-p2p" as const } : {}),
   };
   let notice: (StatusDescriptor & { comic: ComicKind }) | null = null;

@@ -16,12 +16,13 @@ import (
 // authentication replaced between dispatch and use. Empty shareGeneration
 // means no share; nil displayName means the participant has no display name.
 type authenticatedSession struct {
-	roomID          string
-	role            protocol.Role
-	peerID          string
-	shareGeneration string
-	displayName     *string
-	viewerPresence  bool
+	roomID                     string
+	role                       protocol.Role
+	peerID                     string
+	shareGeneration            string
+	displayName                *string
+	viewerPresence             bool
+	connectionAttemptProgress4 bool
 }
 
 // outbound is one queue item: a text frame or the close frame that ends the
@@ -257,6 +258,13 @@ func (s *Server) heartbeat() []*session {
 // send drops unless open, terminates above the buffer bound,
 // and otherwise queues the encoded message.
 func (s *Server) send(sess *session, message protocol.ServerMessage) {
+	// Progress is optional feedback, not route authority. Older pages reject
+	// totals above three; omit it for that recipient without changing the route.
+	if prepare, ok := message.(protocol.RouteUpdatePrepareMessage); ok &&
+		(sess.authenticated == nil || !sess.authenticated.connectionAttemptProgress4) {
+		prepare.Candidate.ConnectionAttempt = nil
+		message = prepare
+	}
 	encoded, err := protocol.EncodeServerMessage(message)
 	if err != nil {
 		// JSON.stringify of a server literal cannot fail; neither can this.

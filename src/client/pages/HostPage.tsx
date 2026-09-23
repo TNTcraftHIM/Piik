@@ -332,6 +332,7 @@ function hostTerminationKey(reason: SignalingTerminationReason): CopyKey {
 interface HostPageProps {
   sfuAvailable?: boolean;
   natPredictionAvailable?: boolean;
+  connectionAttemptProgress4?: boolean;
   launchedByClient?: boolean;
   onAuthorizationRequired?: () => void;
 }
@@ -350,6 +351,7 @@ type ShareSourceSelection =
 export function HostPage({
   sfuAvailable = false,
   natPredictionAvailable = false,
+  connectionAttemptProgress4 = false,
   launchedByClient = false,
   onAuthorizationRequired,
 }: HostPageProps = {}) {
@@ -2552,6 +2554,7 @@ export function HostPage({
             qualitySettings: qualitySettingsRef.current,
             routePolicy: routePolicyRef.current,
             viewerPresence: true,
+            ...(connectionAttemptProgress4 ? { connectionAttemptProgress4: true } : {}),
             displayName: initialDisplayName,
           },
           {
@@ -3608,7 +3611,7 @@ export function HostPage({
             ) : null}
           </div>
           <div className="lr-stage-notices" role="status" aria-live="polite">
-            {!details?.hasSourceAudio && stream ? (
+            {details?.hasSourceAudio === false && stream ? (
               <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" tone="off" />
             ) : null}
             {hostSfuWarningText ? (

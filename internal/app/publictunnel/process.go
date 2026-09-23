@@ -24,14 +24,18 @@ import (
 )
 
 const (
-	startupTimeout  = 30 * time.Second
-	shutdownTimeout = 5 * time.Second
-	maxLogLineBytes = 64 * 1024
+	startupTimeout    = 30 * time.Second
+	startupAttempts   = 4
+	startupRetryDelay = time.Second
+	shutdownTimeout   = 5 * time.Second
+	maxLogLineBytes   = 64 * 1024
 )
 
 var quickOriginPattern = regexp.MustCompile(
 	`https://[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.trycloudflare\.com`,
 )
+
+var errStartupExited = errors.New("public invitation service exited before connecting; reopen Piik to try again")
 
 type Process struct {
 	origin string
@@ -70,6 +74,48 @@ func Start(
 		return nil, err
 	}
 	if err := validateLocalOrigin(localOrigin); err != nil {
+		return nil, err
+	}
+	startup, cancel := context.WithTimeout(parent, startupTimeout)
+	defer cancel()
+	var err error
+	for attempt := 1; attempt <= startupAttempts; attempt++ {
+		var process *Process
+		process, err = startAttempt(startup, executable, localOrigin)
+		if err == nil {
+			return process, nil
+		}
+		if startup.Err() != nil || !errors.Is(err, errStartupExited) || attempt == startupAttempts {
+			break
+		}
+		// Only a retired, pre-ready child is retried. Ready tunnel recovery
+		// remains cloudflared's job; all startup attempts share one deadline.
+		slog.Debug("public-tunnel", "event", "startup-retry", "attempt", attempt+1, "total", startupAttempts)
+		timer := time.NewTimer(startupRetryDelay)
+		select {
+		case <-startup.Done():
+			timer.Stop()
+		case <-timer.C:
+		}
+		if startup.Err() != nil {
+			// No child is live during the retry pause; stopping here is clean.
+			err = startup.Err()
+			break
+		}
+	}
+	if startup.Err() != nil {
+		if err != startup.Err() {
+			err = errors.Join(startup.Err(), err)
+		}
+		if parent.Err() == nil {
+			err = errors.Join(errors.New("public invitation service did not connect within 30 seconds; check your Internet connection and reopen Piik to try again"), err)
+		}
+	}
+	return nil, err
+}
+
+func startAttempt(parent context.Context, executable, localOrigin string) (*Process, error) {
+	if err := parent.Err(); err != nil {
 		return nil, err
 	}
 	configPath, err := writeTemporaryConfig()
@@ -167,8 +213,6 @@ func Start(
 		close(process.done)
 	}()
 
-	timer := time.NewTimer(startupTimeout)
-	defer timer.Stop()
 	registered := false
 	for process.origin == "" || !registered {
 		select {
@@ -177,15 +221,24 @@ func Start(
 			registered = true
 		case <-process.done:
 			cancel()
-			return nil, errors.Join(errors.New("public invitation service exited before connecting; reopen Piik to try again"), process.Err())
-		case <-timer.C:
-			return nil, errors.Join(errors.New("public invitation service did not connect within 30 seconds; check your Internet connection and reopen Piik to try again"), process.Close())
+			return nil, errors.Join(errStartupExited, process.Err())
 		case <-parent.Done():
 			if err := process.Close(); err != nil {
 				return nil, errors.Join(parent.Err(), err)
 			}
 			return nil, parent.Err()
 		}
+	}
+	select {
+	case <-parent.Done():
+		if err := process.Close(); err != nil {
+			return nil, errors.Join(parent.Err(), err)
+		}
+		return nil, parent.Err()
+	case <-process.done:
+		cancel()
+		return nil, errors.Join(errStartupExited, process.Err())
+	default:
 	}
 	return process, nil
 }

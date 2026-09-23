@@ -13,31 +13,33 @@ type ClientMessage interface {
 
 // AuthenticateHostMessage is the host member of authenticateMessageSchema.
 type AuthenticateHostMessage struct {
-	Type            string           `json:"type"`
-	Protocol        string           `json:"protocol"`
-	RoomID          string           `json:"roomId"`
-	Role            Role             `json:"role"`
-	Token           string           `json:"token"`
-	ClientID        string           `json:"clientId"`
-	ShareGeneration string           `json:"shareGeneration,omitempty"`
-	SharingPaused   *bool            `json:"sharingPaused,omitempty"`
-	QualitySettings *QualitySettings `json:"qualitySettings,omitempty"`
-	RoutePolicy     RoutePolicy      `json:"routePolicy"`
-	ViewerPresence  bool             `json:"viewerPresence,omitempty"`
-	DisplayName     *DisplayName     `json:"displayName,omitempty"`
+	Type                       string           `json:"type"`
+	Protocol                   string           `json:"protocol"`
+	RoomID                     string           `json:"roomId"`
+	Role                       Role             `json:"role"`
+	Token                      string           `json:"token"`
+	ClientID                   string           `json:"clientId"`
+	ShareGeneration            string           `json:"shareGeneration,omitempty"`
+	SharingPaused              *bool            `json:"sharingPaused,omitempty"`
+	QualitySettings            *QualitySettings `json:"qualitySettings,omitempty"`
+	RoutePolicy                RoutePolicy      `json:"routePolicy"`
+	ViewerPresence             bool             `json:"viewerPresence,omitempty"`
+	ConnectionAttemptProgress4 bool             `json:"connectionAttemptProgress4,omitempty"`
+	DisplayName                *DisplayName     `json:"displayName,omitempty"`
 }
 
 // AuthenticateViewerMessage is the viewer member of authenticateMessageSchema.
 type AuthenticateViewerMessage struct {
-	Type           string       `json:"type"`
-	Protocol       string       `json:"protocol"`
-	RoomID         string       `json:"roomId"`
-	Role           Role         `json:"role"`
-	ClientID       string       `json:"clientId"`
-	ViewerGrant    string       `json:"viewerGrant,omitempty"`
-	ViewerPassword string       `json:"viewerPassword,omitempty"`
-	DisplayName    *DisplayName `json:"displayName,omitempty"`
-	ViewerPresence bool         `json:"viewerPresence,omitempty"`
+	Type                       string       `json:"type"`
+	Protocol                   string       `json:"protocol"`
+	RoomID                     string       `json:"roomId"`
+	Role                       Role         `json:"role"`
+	ClientID                   string       `json:"clientId"`
+	ViewerGrant                string       `json:"viewerGrant,omitempty"`
+	ViewerPassword             string       `json:"viewerPassword,omitempty"`
+	DisplayName                *DisplayName `json:"displayName,omitempty"`
+	ViewerPresence             bool         `json:"viewerPresence,omitempty"`
+	ConnectionAttemptProgress4 bool         `json:"connectionAttemptProgress4,omitempty"`
 }
 
 // SignalingChallengeMessage is { type: "signaling-challenge", sequence }.
@@ -281,7 +283,7 @@ func decodeAuthenticate(data []byte) (ClientMessage, error) {
 			return nil, err
 		}
 		if err := present.optional("shareGeneration", "sharingPaused", "qualitySettings",
-			"routePolicy", "viewerPresence", "displayName"); err != nil {
+			"routePolicy", "viewerPresence", "displayName", "connectionAttemptProgress4"); err != nil {
 			return nil, err
 		}
 		if message.Protocol != SignalingProtocol {
@@ -302,6 +304,9 @@ func decodeAuthenticate(data []byte) (ClientMessage, error) {
 		if present.has("viewerPresence") && !message.ViewerPresence {
 			return nil, errors.New("viewerPresence must be true when present")
 		}
+		if present.has("connectionAttemptProgress4") && !message.ConnectionAttemptProgress4 {
+			return nil, errors.New("connectionAttemptProgress4 must be true when present")
+		}
 		if !present.has("routePolicy") {
 			message.RoutePolicy = DefaultRoutePolicy
 		}
@@ -316,7 +321,7 @@ func decodeAuthenticate(data []byte) (ClientMessage, error) {
 			return nil, err
 		}
 		if err := present.optional(
-			"viewerGrant", "viewerPassword", "displayName", "viewerPresence"); err != nil {
+			"viewerGrant", "viewerPassword", "displayName", "viewerPresence", "connectionAttemptProgress4"); err != nil {
 			return nil, err
 		}
 		if message.Protocol != SignalingProtocol {
@@ -336,6 +341,9 @@ func decodeAuthenticate(data []byte) (ClientMessage, error) {
 		}
 		if present.has("viewerPresence") && !message.ViewerPresence {
 			return nil, errors.New("viewerPresence must be true when present")
+		}
+		if present.has("connectionAttemptProgress4") && !message.ConnectionAttemptProgress4 {
+			return nil, errors.New("connectionAttemptProgress4 must be true when present")
 		}
 		return message, nil
 	}

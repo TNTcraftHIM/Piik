@@ -795,13 +795,14 @@ func isMediaReady(entry presenceEntry) bool {
 // ---------------------------------------------------------------------------
 
 type presenceOptions struct {
-	displayName     string
-	viewerPresence  bool
-	viewerPassword  string
-	codeOnly        bool
-	sharingPaused   *bool
-	qualitySettings map[string]any
-	routePolicy     *protocol.RoutePolicy
+	connectionAttemptProgress4 bool
+	displayName                string
+	viewerPresence             bool
+	viewerPassword             string
+	codeOnly                   bool
+	sharingPaused              *bool
+	qualitySettings            map[string]any
+	routePolicy                *protocol.RoutePolicy
 }
 
 // authenticate ports the authenticate() helper. relayCapacity -1 is the TS
@@ -823,6 +824,9 @@ func authenticate(
 		"roomId":   rm.RoomID,
 		"role":     role,
 		"clientId": clientID,
+	}
+	if presence.connectionAttemptProgress4 {
+		message["connectionAttemptProgress4"] = true
 	}
 	if role == protocol.RoleHost {
 		message["token"] = rm.HostToken
@@ -1147,6 +1151,54 @@ func TestSignalDeliversOnlySelfHostedAuxiliaryNatStunEndpoints(t *testing.T) {
 // ---------------------------------------------------------------------------
 // lifecycle and restart
 // ---------------------------------------------------------------------------
+
+func TestConnectionAttemptProgressIsNegotiatedForEachRecipient(t *testing.T) {
+	for _, hostSupport := range []bool{false, true} {
+		for _, viewerSupport := range []bool{false, true} {
+			t.Run(fmt.Sprintf("host=%t/viewer=%t", hostSupport, viewerSupport), func(t *testing.T) {
+				h := startHarness(t, harnessOptions{
+					natPredictionEnabled: true,
+					stunURLs:             []string{"stun:share.example.test:3478"},
+				})
+				host, viewer := openClient(t, h), openClient(t, h)
+				policy := protocol.RoutePolicy{PeerOnly: true, NatPrediction: true}
+				authenticate(t, host, h.room, protocol.RoleHost, "progress-host", 1, "progress_share_generation_12345678",
+					presenceOptions{routePolicy: &policy, connectionAttemptProgress4: hostSupport})
+				authenticate(t, viewer, h.room, protocol.RoleViewer, "progress-viewer", 0, "",
+					presenceOptions{connectionAttemptProgress4: viewerSupport})
+				for current := 1; current <= 4; current++ {
+					hostPrepare, viewerPrepare := nextPreparedRoute(t, host), nextPreparedRoute(t, viewer)
+					for _, recipient := range []struct {
+						update  routeUpdate
+						support bool
+					}{
+						{hostPrepare, hostSupport}, {viewerPrepare, viewerSupport},
+					} {
+						decoded, err := protocol.DecodeServerMessage(recipient.update.raw)
+						if err != nil {
+							t.Fatal(err)
+						}
+						progress := decoded.(protocol.RouteUpdatePrepareMessage).Candidate.ConnectionAttempt
+						if recipient.support {
+							if progress == nil || *progress != (protocol.ConnectionAttempt{Current: protocol.Int(current), Total: 4}) {
+								t.Fatalf("new reader progress = %+v", progress)
+							}
+						} else if progress != nil {
+							t.Fatalf("old reader received unsupported progress: %+v", progress)
+						}
+					}
+					if hostPrepare.Candidate.ConnectionID != viewerPrepare.Candidate.ConnectionID {
+						t.Fatal("reader capability changed the actual candidate")
+					}
+					viewer.sendJSON(map[string]any{
+						"type": "route-failed", "phase": "prepare",
+						"revision": viewerPrepare.Revision, "connectionId": viewerPrepare.Candidate.ConnectionID,
+					})
+				}
+			})
+		}
+	}
+}
 
 func TestSignalRebuildsRouteWhenViewerReconnectsBeforeHostAfterRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rooms.sqlite")

@@ -166,6 +166,15 @@ its HTTP/2 fallback. Piik requests `--protocol auto` and
 the existing 30-second startup budget. This affects HTTP/WebSocket control only;
 media routes, tunnel identity and ordered shutdown keep their existing owners.
 DNS failures, API rejection and networks blocking both transports can still fail.
+The preceding Quick Tunnel allocation is a single HTTPS request with a 15-second
+dependency timeout; failure exits before transport fallback applies. The App's
+pre-readiness exit message and exit code do not identify that cause. Match the
+same run's `public-tunnel` dependency diagnostics before classifying a report.
+Piik retries a child that exits before readiness, up to four starts with a
+one-second pause between starts, all within the same 30-second acquisition
+deadline. The previous child, output readers and temporary config retire before
+the next start. Cancellation and local setup errors stop acquisition; a ready
+tunnel retains its original identity and explicit ordered-close owner.
 
 A 2026-09-21 Windows check used the packaged binary with an isolated UDP sink and
 TCP forwarder. The previous arguments timed out at 30 seconds without trying TCP.
@@ -177,7 +186,9 @@ establish regional reachability, uninterrupted connector availability or the
 cause of reports without matching diagnostics. Upstream
 [Quick Tunnel setup](https://github.com/cloudflare/cloudflared/blob/2026.8.3/cmd/cloudflared/tunnel/quick_tunnel.go)
 and [protocol fallback](https://github.com/cloudflare/cloudflared/blob/2026.8.3/supervisor/tunnel.go)
-own the dependency behavior; Piik adds no separate retry loop.
+own the dependency behavior. An early-exit fixture confirms fourth-start recovery
+and bounded exhaustion; these checks do not identify a reporter's API or network
+failure or guarantee four starts when earlier attempts consume the deadline.
 
 [HTTP 1033](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1033/)
 means Cloudflare cannot find a healthy tunnel connector. App readiness requires

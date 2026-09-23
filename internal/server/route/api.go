@@ -240,7 +240,7 @@ type HostPublication struct {
 }
 
 // ConnectionAttemptProgress is the NAT-prediction attempt counter
-// (Total is always 3). TS: ConnectionAttemptProgress.
+// (initial attempt plus retries; the controller owns Total).
 type ConnectionAttemptProgress struct {
 	Current int
 	Total   int

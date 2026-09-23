@@ -336,7 +336,7 @@ describe("Viewer presentation reducer", () => {
       { type: "signal", signal: "reconnecting" },
     );
     expect(deriveViewerPresentation(state)).toMatchObject({
-      stage: "recovering",
+      stage: "playing",
       overlay: "none",
       noticeKey: "viewer.notice.signalRecovering",
     });
@@ -599,8 +599,8 @@ describe("Viewer presentation reducer", () => {
     );
 
     expect(deriveViewerPresentation(reconnecting)).toMatchObject({
-      stage: "recovering",
-      messageKey: "viewer.msg.recovering",
+      stage: "playing",
+      messageKey: "viewer.msg.playing",
       overlay: "none",
       noticeKey: "viewer.notice.signalRecovering",
     });

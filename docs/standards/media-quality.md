@@ -43,7 +43,7 @@ production behavior and remaining acceptance.
   unsupported, pending, denied or failed access must leave ordinary capture and
   stop controls usable. Other capture sessions can keep the border visible.
   Browser indicators remain browser-owned.
-- Share and source-switch requests ask the Browser for available audio by
+- Display/window/tab capture requests ask the Browser for available audio by
   default. Missing audio is reported clearly but does not block video-only
   sharing. Native screen capture can include system playback audio and native
   window capture can include selected-process audio when the platform exposes it.

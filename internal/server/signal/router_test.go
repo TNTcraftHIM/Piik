@@ -1305,10 +1305,10 @@ func TestRouterCreatesNatRetriesThroughRealPrepareMessages(t *testing.T) {
 			})
 			connectionIDs := map[string]struct{}{}
 			var staleFailure *protocol.RouteFailedMessage
-			for current := 1; current <= 3; current++ {
+			for current := 1; current <= 4; current++ {
 				prepared := h.waitPreparedMatching(viewer.sessionID, "connection attempt", func(prepared protocol.RouteUpdatePrepareMessage) bool {
 					return prepared.Candidate.ConnectionAttempt != nil &&
-						*prepared.Candidate.ConnectionAttempt == protocol.ConnectionAttempt{Current: protocol.Int(current), Total: 3}
+						*prepared.Candidate.ConnectionAttempt == protocol.ConnectionAttempt{Current: protocol.Int(current), Total: 4}
 				})
 				connectionIDs[prepared.Candidate.ConnectionID] = struct{}{}
 				h.locked(func() {
@@ -1321,7 +1321,7 @@ func TestRouterCreatesNatRetriesThroughRealPrepareMessages(t *testing.T) {
 					if again, _ := lastPrepare(h.sent[viewer.sessionID], ""); again.Candidate.ConnectionID != prepared.Candidate.ConnectionID {
 						t.Fatal("a stale failure must not disturb the current candidate")
 					}
-					if current == 3 {
+					if current == 4 {
 						h.doReady(viewer, int64(prepared.Revision))
 						if active := h.doMustEdge(created.RoomID, viewer.peerID); active.connectionID != prepared.Candidate.ConnectionID {
 							t.Fatalf("active edge = %+v", active)
@@ -1334,8 +1334,8 @@ func TestRouterCreatesNatRetriesThroughRealPrepareMessages(t *testing.T) {
 					}
 				})
 			}
-			if len(connectionIDs) != 3 {
-				t.Fatalf("distinct connection ids = %d, want 3", len(connectionIDs))
+			if len(connectionIDs) != 4 {
+				t.Fatalf("distinct connection ids = %d, want 4", len(connectionIDs))
 			}
 			for _, message := range h.allMessages() {
 				switch typed := message.(type) {

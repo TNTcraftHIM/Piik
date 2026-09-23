@@ -168,8 +168,9 @@ func (v *RoutePolicy) UnmarshalJSON(data []byte) error {
 
 // RuntimeCapabilities mirrors runtimeCapabilitiesSchema.
 type RuntimeCapabilities struct {
-	Sfu           bool `json:"sfu"`
-	NatPrediction bool `json:"natPrediction"`
+	ConnectionAttemptProgress4 bool `json:"connectionAttemptProgress4,omitempty"`
+	Sfu                        bool `json:"sfu"`
+	NatPrediction              bool `json:"natPrediction"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -182,11 +183,12 @@ func (v *RuntimeCapabilities) UnmarshalJSON(data []byte) error {
 	if present == nil {
 		return errors.New("runtime capabilities must be an object")
 	}
-	if err := present.optional("sfu", "natPrediction"); err != nil {
+	if err := present.optional("sfu", "natPrediction", "connectionAttemptProgress4"); err != nil {
 		return err
 	}
 	for key, target := range map[string]*bool{
 		"sfu": &v.Sfu, "natPrediction": &v.NatPrediction,
+		"connectionAttemptProgress4": &v.ConnectionAttemptProgress4,
 	} {
 		if value, ok := present[key]; ok {
 			if err := json.Unmarshal(value, target); err != nil {
@@ -482,11 +484,11 @@ func (v *ConnectionAttempt) UnmarshalJSON(data []byte) error {
 	if err := present.require("current", "total"); err != nil {
 		return err
 	}
-	if !inRangeInt(v.Current, 1, 3) {
+	if !inRangeInt(v.Current, 1, int64(v.Total)) {
 		return errors.New("connectionAttempt.current is out of range")
 	}
-	if v.Total != 3 {
-		return errors.New("connectionAttempt.total must be 3")
+	if v.Total != 3 && v.Total != 4 {
+		return errors.New("connectionAttempt.total must be 3 or 4")
 	}
 	return nil
 }

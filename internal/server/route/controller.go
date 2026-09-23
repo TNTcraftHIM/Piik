@@ -13,7 +13,7 @@ import (
 
 const (
 	maxDirectHeadStartMs      int64 = 5_000
-	maxNatConnectionAttempts        = 3
+	maxNatConnectionAttempts        = 4
 	sfuOpportunityPrefix            = "sfu\x00"
 	maxSafeInteger            int64 = protocol.MaxSafeInteger
 	qualityEvidenceExpiryMs   int64 = protocol.ViewerQualityEvidenceExpiryMs

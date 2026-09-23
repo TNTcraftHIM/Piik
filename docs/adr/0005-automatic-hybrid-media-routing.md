@@ -102,7 +102,7 @@ continuous rebalance or general load score is introduced.
 A Peer opportunity is fenced by its exact parent and endpoint sessions plus
 endpoint-transition strength. With NAT traversal disabled, one failed attempt
 consumes it. With traversal enabled, availability acquisition and direct
-continuation may create at most three candidate connections for that opportunity.
+continuation may create at most four candidate connections for that opportunity.
 Only an admitted candidate creation spends an attempt; duplicate failure and
 timeout messages cannot spend it again. A preparation rejection that cannot
 create a connection remains terminal. A new session or strictly stronger
@@ -168,7 +168,10 @@ remaining Peer budget into the existing round-robin direct continuations, not
 another retry ledger. No usable SFU route is interrupted by these attempts.
 This permits longer total acquisition while keeping every operation bounded and
 requiring no polling or independent retry timer. The prepare message reports
-the actual candidate's connection attempt, not inferred UI progress.
+the actual candidate's connection attempt, not inferred UI progress. Four-attempt
+progress is sent only to recipients opting in after HTTP capability discovery;
+older pages receive the same candidate without the optional progress field.
+This reader support does not change routing authority or its attempt budget.
 
 The five-second no-transport-progress window advances a silent Peer only while
 another bounded candidate or SFU fallback remains. It is a route scheduling
