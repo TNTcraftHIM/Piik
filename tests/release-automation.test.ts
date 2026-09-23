@@ -90,7 +90,7 @@ describe("release automation", () => {
       expect(plan()).toMatchObject({ version: "v1.0.0", publish: true });
       for (const path of ["site/film/art.js", "site/docs/package.json", "site/docs/package-lock.json",
         "site/docs/.vitepress/config.mjs", "docs/guide/troubleshooting.md", "docs/deployment.md", "README.zh-CN.md",
-        "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/markdown-slug.mjs", "scripts/release-notes.mjs",
+        "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/check-container.mjs", "scripts/markdown-slug.mjs", "scripts/release-notes.mjs",
         "scripts/publish-container.mjs",
         "scripts/app-gate-endpoint.ts", "scripts/client-gate-endpoint.ts",
         "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml"]) {

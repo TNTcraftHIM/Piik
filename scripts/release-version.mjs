@@ -20,7 +20,7 @@ const nonProductPaths = [
   "cmd/**/*.md", "internal/**/*.md", "native/**/*.md", "src/**/*.md",
   ".github/ISSUE_TEMPLATE/**", ".github/pull_request_template.md", ".github/workflows/website.yml",
   "scripts/build-website.mjs", "scripts/update-website-hero.mjs", "scripts/check-website-film.js",
-  "scripts/check-docs.mjs", "scripts/markdown-slug.mjs", "scripts/check-project-state.*", "scripts/install-hooks.*",
+  "scripts/check-docs.mjs", "scripts/check-container.mjs", "scripts/markdown-slug.mjs", "scripts/check-project-state.*", "scripts/install-hooks.*",
   "scripts/required-project-paths.txt", "scripts/tsconfig.json",
   "scripts/release-*.mjs", "scripts/publish-release.mjs", "scripts/publish-container.mjs", "scripts/mirror-release.mjs",
   "scripts/*-gate.*", "scripts/*-probe.*", "scripts/browser-*", "scripts/encoded-*",

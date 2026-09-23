@@ -43,6 +43,13 @@ async function request(path, options) {
   assert.ok(response.ok, `${path}: HTTP ${response.status}`);
   return response;
 }
+async function expectServices(sfu, natPrediction) {
+  const capabilities = await (await request("/api/capabilities")).json();
+  // Capability metadata is extensible. This gate checks configured services,
+  // not the absence of other compatible capabilities.
+  assert.equal(capabilities.sfu, sfu);
+  assert.equal(capabilities.natPrediction, natPrediction);
+}
 async function binding(port) {
   const socket = createSocket("udp4");
   const packet = Buffer.alloc(20);
@@ -79,7 +86,7 @@ try {
   assert.match(compose("run", "--rm", "--no-deps", "piik", "--check-config"), /config=ok/);
   compose("up", "-d", "--pull", "never");
   await until(async () => assert.deepEqual(await (await request("/healthz")).json(), { status: "ok" }), "ready");
-  assert.deepEqual(await (await request("/api/capabilities")).json(), { sfu: false, natPrediction: false });
+  await expectServices(false, false);
   assert.equal((await (await request("/api/site-access")).json()).required, false);
   const html = await (await request("/")).text();
   const asset = html.match(/src="(\/assets\/index-[A-Za-z0-9_-]+\.js)"/)?.[1];
@@ -101,7 +108,7 @@ try {
   // Recreate with optional services on the same persistent room volume.
   writeFileSync(join(workspace, ".env"), `${sample}\nSFU_UDP_PORT=7882\nSFU_PUBLIC_IP=127.0.0.1\nNAT_PREDICTION_ENABLED=true\nPIIK_DEBUG=server\n`);
   compose("up", "-d", "--force-recreate", "--pull", "never");
-  await until(async () => assert.deepEqual(await (await request("/api/capabilities")).json(), { sfu: true, natPrediction: true }), "optional services");
+  await until(() => expectServices(true, true), "optional services");
   await request(`/api/rooms/${room.roomId}/access`, {
     method: "POST",
     headers: { Origin: "https://share.example.com", Authorization: `Bearer ${room.hostToken}`, "Content-Type": "application/json" },
