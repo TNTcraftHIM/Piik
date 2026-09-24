@@ -3,6 +3,7 @@ import { createOpaqueId } from "../lib/opaque-id";
 import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
 import { observeDebugConnection } from "../lib/debug-webrtc";
 import type { ConnectionMetrics } from "../types";
+import { addRemoteIceCandidate, type SignalCandidate } from "../webrtc/nat-prediction";
 import {
   collectConnectionMetrics,
   decodedVideoFrames,
@@ -35,7 +36,7 @@ export class NativeMediaBridge {
   readonly connectionId = createOpaqueId();
 
   private readonly peer = new RTCPeerConnection();
-  private readonly pendingCandidates: Array<RTCIceCandidateInit | null> = [];
+  private readonly pendingCandidates: SignalCandidate[] = [];
   private unsubscribe: (() => void) | null = null;
   private remoteDescriptionSet = false;
   private ready = false;
@@ -110,6 +111,7 @@ export class NativeMediaBridge {
       debugEvent("native-bridge", "ice-gathering-state", { state: this.peer.iceGatheringState });
     });
     this.peer.addEventListener("icecandidate", (event) => {
+      if (this.disposed) return;
       void this.control.acceptSignal(
         this.shareId,
         this.connectionId,
@@ -148,8 +150,7 @@ export class NativeMediaBridge {
           }
           return;
         }
-        void this.peer
-          .addIceCandidate(event.candidate)
+        void addRemoteIceCandidate(this.peer, event.candidate)
           .catch(() => this.fail("candidate-apply"));
       } else if (
         event.type === "edge-state" &&
@@ -165,16 +166,18 @@ export class NativeMediaBridge {
         this.connectionId,
         this.sourceConnectionId,
       );
+      if (this.disposed) return await started;
       await this.peer.setRemoteDescription(offer);
       this.remoteDescriptionSet = true;
       for (const candidate of this.pendingCandidates.splice(0)) {
-        await this.peer.addIceCandidate(candidate);
+        await addRemoteIceCandidate(this.peer, candidate);
       }
       const answer = await this.peer.createAnswer();
       if (!answer.sdp) {
         throw new Error("Native media bridge produced no SDP answer");
       }
       await this.peer.setLocalDescription(answer);
+      if (this.disposed) return await started;
       await this.control.acceptSignal(
         this.shareId,
         this.connectionId,

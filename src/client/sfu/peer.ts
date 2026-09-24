@@ -1,4 +1,5 @@
 import { observeDebugConnection } from "../lib/debug-webrtc";
+import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import type {
   ServerMessage,
   SfuMedia,
@@ -20,7 +21,7 @@ interface SfuPeerEvents {
 export class SfuPeer {
   readonly pc = new RTCPeerConnection({ iceServers: [] });
   private localCandidates: NonNullable<SfuSignalMessage["candidate"]>[] = [];
-  private remoteCandidates: RTCIceCandidateInit[] = [];
+  private remoteCandidates: NonNullable<SfuSignalMessage["candidate"]>[] = [];
   private descriptionSent = false;
   private pendingDescription: Pick<
     SfuSignalMessage,
@@ -132,10 +133,10 @@ export class SfuPeer {
       } else if (message.kind === "description" && message.description) {
         await onDescription(message.description);
         for (const candidate of this.remoteCandidates.splice(0))
-          await this.pc.addIceCandidate(candidate);
+          await addRemoteIceCandidate(this.pc, candidate);
       } else if (message.kind === "candidate" && message.candidate) {
         if (this.pc.remoteDescription)
-          await this.pc.addIceCandidate(message.candidate);
+          await addRemoteIceCandidate(this.pc, message.candidate);
         else if (this.remoteCandidates.length < 64)
           this.remoteCandidates.push(message.candidate);
         else throw new Error("Too many SFU ICE candidates");

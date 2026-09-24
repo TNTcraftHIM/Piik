@@ -8,6 +8,7 @@ import {
   applyH264ProbeCodec,
   type BrowserVideoCodec,
 } from "./video-codec";
+import { addRemoteIceCandidate } from "./nat-prediction";
 
 const PREFLIGHT_DEADLINE_MS = 4_000;
 const PREFLIGHT_POLL_MS = 100;
@@ -304,7 +305,7 @@ async function runH264Probe(
     candidate: RTCIceCandidate,
   ): Promise<void> => {
     try {
-      await target.addIceCandidate(candidate);
+      await addRemoteIceCandidate(target, candidate);
     } catch {
       iceFailed = true;
     }

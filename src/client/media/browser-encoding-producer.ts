@@ -2,6 +2,7 @@ import { createOpaqueId } from "../lib/opaque-id";
 import { debugError, debugEvent } from "../lib/debug";
 import { debugRtcFailure, debugRtcStats, debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
 import { maxEncodedVideoFrames } from "../webrtc/stats";
+import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import { encodedStreams } from "./browser-encoding-output";
 import {
   applyVideoCaptureProfile, cloneSenderVideoTrack, configureVideoSender,
@@ -95,12 +96,12 @@ export class BrowserEncodingProducer {
         from.onicecandidate = ({ candidate }) => {
           if (!candidate || this.disposed) return;
           if (!to.remoteDescription) pending.push(candidate);
-          else void to.addIceCandidate(candidate).catch(this.fail);
+          else void addRemoteIceCandidate(to, candidate).catch(this.fail);
         };
         return async () => {
           for (const candidate of pending.splice(0)) {
             this.checkAlive();
-            await to.addIceCandidate(candidate);
+            await addRemoteIceCandidate(to, candidate);
           }
         };
       };

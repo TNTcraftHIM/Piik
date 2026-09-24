@@ -146,6 +146,8 @@ An individually rejected ICE candidate is disposable input. Browser
 remaining queue or SDP answer; missing-description/lifecycle errors remain
 visible. Native input follows the same boundary. Actual transport state and the
 route operation's deadline own failure, not one rejected candidate.
+This includes SFU and local Browser/App media connections and codec probes;
+their different consumers do not change candidate rejection semantics.
 
 ## SFU Fallback
 

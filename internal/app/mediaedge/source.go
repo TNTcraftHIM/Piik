@@ -133,7 +133,10 @@ func (source *Source) beginFrame(timestamp time.Duration, at time.Time) (OutputP
 			continue
 		}
 		if err := edge.transport.SetConnected(); err != nil {
-			return OutputPlan{}, err
+			// Retirement can race the connected snapshot. An attachment failure
+			// belongs to this consumer, not the shared capture and its siblings.
+			unavailable = append(unavailable, edge)
+			continue
 		}
 		if source.unavailableDemand(edge) {
 			unavailable = append(unavailable, edge)

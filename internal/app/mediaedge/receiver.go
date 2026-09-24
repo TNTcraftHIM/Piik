@@ -222,6 +222,25 @@ func (receiver *Receiver) createAnswer() (webrtc.SessionDescription, error) {
 		return webrtc.SessionDescription{}, errors.New("native media receiver is closed")
 	}
 	receiver.mu.Unlock()
+	// Opus stereo is a local receive preference, not a property inherited from
+	// the offer. Apply it on every answer, including same-source renegotiation.
+	for _, transceiver := range receiver.connection.GetTransceivers() {
+		if transceiver.Kind() != webrtc.RTPCodecTypeAudio || transceiver.Receiver() == nil ||
+			(transceiver.Direction() != webrtc.RTPTransceiverDirectionRecvonly &&
+				transceiver.Direction() != webrtc.RTPTransceiverDirectionSendrecv) {
+			continue
+		}
+		for _, codec := range transceiver.Receiver().GetParameters().Codecs {
+			if !strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
+				continue
+			}
+			codec.SDPFmtpLine = opusSDPFmtpLine + ";stereo=1;maxaveragebitrate=192000"
+			if err := transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{codec}); err != nil {
+				return webrtc.SessionDescription{}, err
+			}
+			break
+		}
+	}
 	answer, err := receiver.connection.CreateAnswer(nil)
 	if err != nil {
 		return webrtc.SessionDescription{}, err

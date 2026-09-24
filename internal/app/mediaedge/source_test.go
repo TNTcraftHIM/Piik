@@ -2,15 +2,80 @@ package mediaedge
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/streamtracker"
+	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
 )
+
+func TestSourceFrameSurvivesRetiringEdge(t *testing.T) {
+	for _, layers := range []int{1, 2} {
+		t.Run(fmt.Sprint(layers), func(t *testing.T) {
+			engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = engine.Close() })
+			source, err := engine.NewSource("vp8", 2, layers, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = source.Close() })
+			if err = source.ConfigureOutputs([]uint32{300_000, 1_200_000}[:layers]); err != nil {
+				t.Fatal(err)
+			}
+			healthy, _, packets := connectedReceiver(t, engine, source, "healthy")
+			observed, _, _ := connectedReceiver(t, engine, source, "retiring-observation")
+			retired, err := forwarding.NewTransport(forwarding.TransportOptions{
+				Source: source.media.Source, ConnectionID: "retiring", InitialBitrate: 1_200_000,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = retired.Close(); err != nil {
+				t.Fatal(err)
+			}
+			// Model the interleaving after observing connected but before attachment:
+			// the transport has closed, while the source still holds the edge snapshot.
+			// Borrow an independently live PC for that observation; no running edge is mutated.
+			stale := &Edge{engine: engine, source: source, connection: observed.connection, transport: retired}
+			source.mu.Lock()
+			delete(source.edges, observed)
+			source.edges[stale] = false
+			source.mu.Unlock()
+			for i := 0; i < 3; i++ {
+				pts := time.Duration(i) * time.Second / 30
+				if _, err = source.BeginFrame(pts); err != nil {
+					t.Fatalf("edge close stopped source: %v", err)
+				}
+				if err = source.WriteVideo(layers-1, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 30, Recovery: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !stale.closed || healthy.State() != webrtc.PeerConnectionStateConnected {
+				t.Fatal("retirement did not isolate the failed edge")
+			}
+			select {
+			case <-packets:
+			case <-time.After(5 * time.Second):
+				t.Fatal("healthy sibling lost media")
+			}
+			if err = source.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = source.BeginFrame(time.Second); !errors.Is(err, io.ErrClosedPipe) {
+				t.Fatalf("actual source closure was hidden: %v", err)
+			}
+		})
+	}
+}
 
 func TestSourceFormatAdaptationPreservesLiveLayers(t *testing.T) {
 	// A source needs no socket or codec process to exercise its RTP state.

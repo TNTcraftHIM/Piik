@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-23
+Last reviewed: 2026-09-24
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
@@ -28,6 +28,17 @@ history. A parked idea is not implementation authority.
   can resume, and stopping media keeps the opted-in interaction session. Do not
   add visit-triggered creation or a separate pre-share room-creation entry.
   This experiment does not authorize integration or publication.
+- [ ] **Assess room voice and media fidelity alongside interaction.** Compare
+  mature room-audio designs before selecting a small first scope: explicit mic
+  consent, mute/device/output controls, speaker authority and disconnect cleanup.
+  Keep room membership, voice publication and the Host's shared picture distinct;
+  do not send audio through chat signaling or reverse the current screen tree.
+  Verify actual left/right separation through Browser, Native and SFU paths;
+  receive-side stereo negotiation alone does not establish audible fidelity.
+  Assess HDR capture to correct SDR output for ordinary viewers before full HDR,
+  with issue [#420](https://github.com/TNTcraftHIM/Piik/issues/420) as the reported
+  case. Multi-speaker routing, full HDR and surround sound remain design decisions,
+  not additions authorized for this maintenance release.
 
 ## Awaiting Device Or Reporter Evidence
 
@@ -86,6 +97,19 @@ history. A parked idea is not implementation authority.
   local permission and recovery checks do not establish the reporters' causes.
   Manual H264 returning immediately to idle also needs reporter diagnostics;
   bounded selection past an unusable hardware encoder is locally verified.
+  A separate v1.6.1 App/Chrome report lists Window/Screen sources, then waits
+  and returns to idle with a share-start error after selection. Its codec is
+  unknown; similarity to the H264 symptom does not establish the same cause.
+  Candidate rejection no longer aborts the local media bridge; validate on the
+  affected machine before attributing its startup failure to that defect.
+- [ ] **Share ends after entering a game.** Screen sharing reportedly works
+  until entering a game freezes the picture, followed seconds later by share
+  termination. Version, capture path, codec and matched diagnostics are unknown.
+  Locate the first capture/output, preview-bridge, control or authority failure;
+  distinguish ordinary source silence/resize from target replacement, exclusive
+  fullscreen, display-mode change and device loss. A reproduced downstream
+  retirement race no longer stops the shared source. Controlled-window checks
+  do not reproduce the reporting game/device environment.
 - [ ] **Windows 32-bit candidate acceptance.** Verify the isolated
   `spike/windows-x86-capture` candidate's launch, capture/audio, memory pressure,
   source replacement and update links on a 32-bit Windows device. WOW64
@@ -148,6 +172,11 @@ not establish better connection success or speed; this note adds no retry policy
    When related behavior changes, compare the Browser/Native recovery budget;
    preserve Native bridge versus network failure distinctions when sharing code.
    No new revision namespace, failure-state mirror or topology queue by default.
+   Native Host loopback media failure currently ends the share, although Native
+   publication has its own source. The loopback stream also supplies Browser
+   quality candidates and gates quality/SFU updates; simply ignoring its failure
+   leaves dead consumers. Review those owners and the track-ended handler before
+   changing recovery. This is not an established cause of the game-entry report.
 5. **Storage fault recovery.** Choose and verify a damaged-disk/COMMIT/ROLLBACK
    recovery policy before adding catch-and-continue or retries. This failure
    boundary remains unestablished after ordinary persistence checks.

@@ -241,6 +241,27 @@ function feedVideoStats(
 }
 
 describe("embedded SFU browser transport", () => {
+  it.each(["queued", "active"])("preserves publication after a %s candidate rejection", async (phase) => {
+    const { publisher: host, pc, onDisconnected, video } = await publisher();
+    const rejected = signal({ kind: "candidate", candidate: { candidate: "candidate:1 1 UDP 1 127.0.0.1 4100 typ host" } });
+    const valid = signal({ kind: "candidate", candidate: { candidate: "candidate:2 1 UDP 1 127.0.0.1 4101 typ host" } });
+    pc.addIceCandidate.mockRejectedValueOnce(new DOMException("Rejected candidate", "OperationError"));
+    if (phase === "queued") {
+      await host.acceptSignal(rejected);
+      await host.acceptSignal(valid);
+    }
+    await host.acceptSignal(signal({ description: { type: "answer", sdp: "answer" } }));
+    pc.state("connected");
+    if (phase === "active") {
+      await host.acceptSignal(rejected);
+      await host.acceptSignal(valid);
+    }
+    expect(pc.addIceCandidate).toHaveBeenCalledWith(valid.candidate);
+    expect(onDisconnected).not.toHaveBeenCalled();
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(video.clones[0]!.readyState).toBe("live");
+  });
+
   it("publishes one bounded simulcast PC, offers before ICE and admits only the selected codec", async () => {
     const { publisher: host, pc, send, video } = await publisher();
     expect(pc.configuration).toEqual({ iceServers: [] });

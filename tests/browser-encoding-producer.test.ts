@@ -20,6 +20,8 @@ class Connection {
   static instances: Connection[] = [];
   connectionState = "connecting";
   onconnectionstatechange: (() => void) | null = null;
+  onicecandidate: ((event: { candidate: RTCIceCandidate }) => void) | null = null;
+  readonly addIceCandidate = vi.fn(async (_candidate: RTCIceCandidateInit) => undefined);
   localDescription: RTCSessionDescriptionInit | null = null;
   remoteDescription: RTCSessionDescriptionInit | null = null;
   readonly close = vi.fn(() => { this.connectionState = "closed"; });
@@ -64,6 +66,25 @@ afterEach(async () => {
 });
 
 describe("Browser encoding producer startup", () => {
+  it.each(["queued", "active"])("keeps the producer after a %s candidate rejection", async (phase) => {
+    const { producer, failed } = createProducer();
+    const starting = producer.start();
+    const [send, receive] = Connection.instances;
+    const candidate = { candidate: "candidate:1 1 udp 1 127.0.0.1 9000 typ host" } as RTCIceCandidate;
+    receive!.addIceCandidate.mockRejectedValueOnce(new DOMException("Rejected candidate", "OperationError"));
+    if (phase === "queued") send!.onicecandidate?.({ candidate });
+    await starting;
+    for (const connection of Connection.instances) connection.state("connected");
+    if (phase === "active") send!.onicecandidate?.({ candidate });
+    const valid = { candidate: "candidate:2 1 udp 1 127.0.0.1 9001 typ host" } as RTCIceCandidate;
+    send!.onicecandidate?.({ candidate: valid });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(receive!.addIceCandidate).toHaveBeenCalledWith(valid);
+    expect(failed).not.toHaveBeenCalled();
+    expect(Connection.instances.every(connection => connection.close.mock.calls.length === 0)).toBe(true);
+    expect(producer.track?.readyState).toBe("live");
+  });
+
   it.each([false, true])("retires a stuck local transport once (one side connected: %s)", async (oneSide) => {
     const { producer, source, failed } = createProducer();
     await producer.start();

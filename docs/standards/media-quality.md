@@ -186,6 +186,8 @@ starts one shared decode/scale/encode group, while healthy forwarding retains
 the original input without starting a decoder. The group produces the highest
 needed output and its lower fallbacks and stops unused upper outputs. Each child
 receives only its selected output. The forwarding SFU adds no server transcoder.
+Downstream attachment failure or retirement ends only that edge, never its
+shared source or healthy siblings.
 
 Native capture uses the same screen-share output construction within Host
 ceilings. Its source, source clock and higher outputs remain independent of
@@ -234,8 +236,10 @@ application-defined whole-room lowest-common-denominator target.
 ## Screen Audio
 
 Display audio uses `contentHint = "music"`. The live sender ceilings are 64,
-128, and 192 kbps with 128 kbps default. Peer answers request Opus stereo and a
-192 kbps receive ceiling. The SFU publication uses stereo, DTX disabled, and RED
+128, and 192 kbps with 128 kbps default. Browser and Native Peer answers request
+Opus stereo and a 192 kbps receive ceiling, including renegotiation. These are
+local receive preferences, independent of the offer's receive preferences.
+The SFU publication uses stereo, DTX disabled, and RED
 disabled; this accepts less burst-loss resilience in exchange for bounded
 publisher traffic. The Browser and source still decide whether an audio track
 exists and what is actually delivered.

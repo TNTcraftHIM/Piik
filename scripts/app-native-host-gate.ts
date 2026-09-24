@@ -186,11 +186,20 @@ async function selectNativeSource(
   kind: "window" | "display",
   title?: string,
 ): Promise<void> {
-  await evaluate<void>(
-    cdp,
-    page,
-    `document.querySelector('button[data-source-tab="${kind}"]')?.click()`,
-    Date.now() + 5_000,
+  await waitForValue(
+    (deadline) => evaluate<boolean>(
+      cdp,
+      page,
+      `(() => {
+        const tab = document.querySelector('button[data-source-tab="${kind}"]');
+        if (!tab || tab.disabled) return false;
+        tab.click();
+        return true;
+      })()`,
+      deadline,
+    ),
+    Boolean,
+    15_000,
   );
   const selector = kind === "display"
     ? "button[data-native-source^='display:']"

@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-09-21
+Last updated: 2026-09-24
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -28,7 +28,8 @@ Native parents reuse suitable encoded outputs and derive a missing lower output
 only for direct-child demand. Source-owned groups retain the highest needed
 output and lower fallbacks, while each child receives its selected output.
 Native Host SFU publication reuses the encoded source directly; its loopback
-Browser edge owns preview only. Eligible Browser capture and relay now share
+Browser stream supplies local preview and Browser quality candidates. Eligible
+Browser capture and relay now share
 independent local WebRTC producers for compatible direct children under ADR-0014;
 unsupported APIs and failed pooling retain ordinary senders. Windows, macOS and
 Linux producers share one encoded-frame

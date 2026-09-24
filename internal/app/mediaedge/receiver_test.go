@@ -8,8 +8,92 @@ import (
 
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/rtp"
+	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 )
+
+func TestReceiverAdvertisesLocalStereoPreference(t *testing.T) {
+	for _, remotePreference := range []string{"", ";stereo=0", ";stereo=1"} {
+		t.Run(remotePreference, func(t *testing.T) {
+			engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = engine.Close() })
+			// Independent upstream capabilities: local registration must not make
+			// the fixture advertise the receive preference we are checking.
+			upstream, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = upstream.Close() })
+			for _, kind := range []webrtc.RTPCodecType{webrtc.RTPCodecTypeVideo, webrtc.RTPCodecTypeAudio} {
+				transceiver, addErr := upstream.AddTransceiverFromKind(kind, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
+				if addErr != nil {
+					t.Fatal(addErr)
+				}
+				if kind == webrtc.RTPCodecTypeAudio {
+					for _, codec := range transceiver.Sender().GetParameters().Codecs {
+						if codec.MimeType != webrtc.MimeTypeOpus {
+							continue
+						}
+						codec.SDPFmtpLine = "minptime=10;useinbandfec=1" + remotePreference
+						err = transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{codec})
+						break
+					}
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			var receiver *Receiver
+			for attempt := 0; attempt < 2; attempt++ {
+				offer, err := upstream.CreateOffer(nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = upstream.SetLocalDescription(offer); err != nil {
+					t.Fatal(err)
+				}
+				var answer webrtc.SessionDescription
+				if receiver == nil {
+					receiver, answer, err = engine.NewReceiver(ReceiverOptions{Offer: offer, EdgeCapacity: 1})
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { _ = receiver.Close() })
+				} else {
+					var reused bool
+					answer, reused, err = receiver.Renegotiate(offer, nil)
+					if err != nil || !reused {
+						t.Fatalf("renegotiate: reused=%v, error=%v", reused, err)
+					}
+				}
+				var parsed sdp.SessionDescription
+				if err = parsed.UnmarshalString(answer.SDP); err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, media := range parsed.MediaDescriptions {
+					if media.MediaName.Media != "audio" {
+						continue
+					}
+					for _, attribute := range media.Attributes {
+						if attribute.Key == "fmtp" && strings.Contains(attribute.Value, "stereo=1") && strings.Contains(attribute.Value, "maxaveragebitrate=192000") {
+							found = true
+						}
+					}
+				}
+				if !found {
+					t.Fatalf("answer %d lost local stereo preference", attempt)
+				}
+				if err = upstream.SetRemoteDescription(answer); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
 
 func TestReceiverCodecMatchesTheSingleNegotiatedAnswer(t *testing.T) {
 	for _, preferVP8 := range []bool{false, true} {
