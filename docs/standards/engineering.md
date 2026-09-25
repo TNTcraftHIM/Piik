@@ -148,6 +148,9 @@ above rather than searching the tree.
   Later cancellation must not erase a failure already observed before cleanup.
   A caller deadline does not cancel a dependency that ignores it. Keep late
   work bounded and serialize its cleanup; verify the dependency's actual lifetime.
+  Construction is part of acquisition: if it throws, release resources created
+  before the failure and report through the existing operation owner. A failed
+  allocation does not erase the operation's authoritative identity.
   Ordered shutdown may require a ready auxiliary transport to outlive the stop
   request; its owner closes it after dependants retire. External convenience
   actions must not block lifecycle handling, and repeated attempts stay bounded.

@@ -99,6 +99,7 @@ class FakePeerConnection {
   static activeCount = 0;
   static peakActiveCount = 0;
   static offersFailing = 0;
+  static constructorsFailing = 0;
   static omitCodecPreferenceSetter = false;
   static codecPreferenceCallsFailing = 0;
 
@@ -128,6 +129,10 @@ class FakePeerConnection {
   >();
 
   constructor(configuration?: RTCConfiguration) {
+    if (FakePeerConnection.constructorsFailing > 0) {
+      FakePeerConnection.constructorsFailing--;
+      throw new DOMException("Allocation failed", "UnknownError");
+    }
     FakePeerConnection.latest = this;
     FakePeerConnection.instances.push(this);
     FakePeerConnection.activeCount += 1;
@@ -490,6 +495,7 @@ beforeEach(() => {
   FakePeerConnection.activeCount = 0;
   FakePeerConnection.peakActiveCount = 0;
   FakePeerConnection.offersFailing = 0;
+  FakePeerConnection.constructorsFailing = 0;
   FakePeerConnection.omitCodecPreferenceSetter = false;
   FakePeerConnection.codecPreferenceCallsFailing = 0;
   statsCallbacks.length = 0;
@@ -1844,6 +1850,26 @@ function hostProvisionalInput(
 }
 
 describe("Host provisional child runtime ownership", () => {
+  it("rejects failed construction, releases the clone and permits the next preparation", async () => {
+    const source = createTrack("video", "construction-source");
+    const sendSignal = vi.fn(() => true);
+    const owner = new HostProvisionalChild({ sendSignal });
+    const input = hostProvisionalInput(7, ["child"], createStream(source, null));
+    FakePeerConnection.constructorsFailing = 2;
+    expect(owner.prepare(input)).toBe(false);
+    expect(owner.prepare(input)).toBe(false);
+    expect(sendSignal).not.toHaveBeenCalled();
+    for (const result of vi.mocked(source.clone).mock.results) {
+      expect((result.value as MediaStreamTrack).stop).toHaveBeenCalledOnce();
+    }
+    expect(source.stop).not.toHaveBeenCalled();
+    expect(FakePeerConnection.activeCount).toBe(0);
+    expect(owner.prepare({ ...input, revision: 8 })).toBe(true);
+    await vi.waitFor(() => expect(sendSignal).toHaveBeenCalledOnce());
+    owner.discard();
+    expect(FakePeerConnection.activeCount).toBe(0);
+  });
+
   it("reports connected preparation once, retries unsent progress and fences replacement", async () => {
     const progress = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
     const owner = new HostProvisionalChild({ sendSignal: () => true, onPreparedChildConnected: progress });
@@ -2444,6 +2470,49 @@ describe("ViewerRelay downstream ownership", () => {
     relay.dispose();
     second.dispatchEvent(new Event("connectionstatechange"));
     expect(progress).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([false, true])("bounds ordinary relay construction retries; retired=%s", async (retired) => {
+    vi.useFakeTimers();
+    const relay = new ViewerRelay({ iceServers: [] }, QUALITY_PROFILES["720p30"], { sendSignal: () => true });
+    const source = createTrack("video", "relay-retry");
+    try {
+      relay.setStream(createStream(source, null));
+      await vi.advanceTimersByTimeAsync(0);
+      FakePeerConnection.constructorsFailing = 3;
+      relay.activateChildren(1, ["child"]);
+      expect(source.clone).toHaveBeenCalledTimes(1);
+      if (retired) relay.dispose();
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(source.clone).toHaveBeenCalledTimes(retired ? 1 : 2);
+      for (const result of vi.mocked(source.clone).mock.results) {
+        expect((result.value as MediaStreamTrack).stop).toHaveBeenCalledOnce();
+      }
+      expect(source.stop).not.toHaveBeenCalled();
+      expect(FakePeerConnection.activeCount).toBe(0);
+    } finally {
+      relay.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports deferred prepared construction failure and accepts the next candidate", async () => {
+    const onPreparedChildFailed = vi.fn();
+    const sendSignal = vi.fn(() => true);
+    const relay = new ViewerRelay({ iceServers: [] }, QUALITY_PROFILES["720p30"],
+      { sendSignal, onPreparedChildFailed });
+    const source = createTrack("video", "relay-construction");
+    relay.setStream(createStream(source, null));
+    FakePeerConnection.constructorsFailing = 1;
+    expect(relay.prepareChild(1, routeCandidate(1, "child"), ["child"])).toBe(true);
+    await vi.waitFor(() => expect(onPreparedChildFailed).toHaveBeenCalledExactlyOnceWith(1, "relay-candidate-1"));
+    expect(sendSignal).not.toHaveBeenCalled();
+    expect(vi.mocked(source.clone).mock.results[0]!.value.stop).toHaveBeenCalledOnce();
+    expect(source.stop).not.toHaveBeenCalled();
+    expect(relay.prepareChild(2, routeCandidate(2, "child"), ["child"])).toBe(true);
+    await vi.waitFor(() => expect(sendSignal).toHaveBeenCalledOnce());
+    relay.dispose();
+    expect(FakePeerConnection.activeCount).toBe(0);
   });
 
   it("reports a failed prepared transport once without blaming retained children", async () => {

@@ -60,8 +60,12 @@ history. A parked idea is not implementation authority.
   candidate-queue rejection defect is repaired and regression-tested; current
   STUN reachability and route-lifecycle checks do not establish these reporters'
   causes. HTTP 1033 belongs to the public-link item below, before media routing.
-  A v1.6.3 App report confirms four candidate timeouts without Native share-start;
-  Browser diagnostics are needed to locate capture, negotiation or ICE failure.
+  A complete v1.6.3 App report confirms four candidate timeouts without Native
+  share-start or any SDP/ICE signaling. Browser diagnostics are needed to
+  locate prepare delivery, peer initialization or the first offer send; these
+  attempts do not establish an ICE/NAT failure. Locally reproduced Browser
+  construction failures now release owned tracks and reach the existing
+  preparation/recovery owner, but are not proved to be this reporter's cause.
 - [ ] **Camera and Host microphone device coverage.** The owner accepted the
   sharing layout and authorized release with these physical limits recorded.
   Verify real audio levels/echo, multiple-device replacement and native mixing on
@@ -108,10 +112,12 @@ history. A parked idea is not implementation authority.
   Auto/Window/1080p30 balanced startup: hardware MFT event timeout, then software
   probing, then cancellation because capture readiness did not arrive. The stall
   within probing, teardown or WGC initialization remains unknown; one initial
-  VP8 statistics sample cannot establish its complete output history. Software
-  probing passes locally. Obtain same-source Auto versus explicit VP8 evidence
-  on the affected machine before changing selection or deadlines. Existing
-  H264-retention/ICE-candidate repairs do not establish this cause; other
+  VP8 statistics sample cannot establish its complete output history. Auto now
+  skips the redundant comparison when only VP8 remains. Injected unavailable
+  hardware and exhausted-probe-budget cases both capture and decode locally;
+  the affected machine still needs same-source Auto versus explicit VP8
+  acceptance. Do not extend deadlines without identifying the blocked stage.
+  Existing H264-retention/ICE-candidate repairs do not establish this cause; other
   discovery/manual-H264 reports still need paired App/Browser diagnostics.
 - [ ] **Share ends after entering a game.** Screen sharing reportedly works
   until entering a game freezes the picture, followed seconds later by share

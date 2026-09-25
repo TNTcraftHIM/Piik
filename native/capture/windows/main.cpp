@@ -1268,13 +1268,13 @@ struct VideoEncoderSelection final {
 template <typename Measure>
 VideoEncoderSelection CompareSoftwareEncoder(std::unique_ptr<VideoEncoder> hardware,
     std::optional<double> hardware_work, EncoderClock::time_point deadline, Measure measure) {
+  // No comparison is needed when only the ordinary VP8 path remains.
+  if (!hardware_work) return {};
   try {
     RequireEncoderTime(deadline);
     const double software_work = measure();
-    if (!hardware_work || software_work <= *hardware_work) return {};
-  } catch (const std::exception&) {
-    if (!hardware_work) throw;
-  }
+    if (software_work <= *hardware_work) return {};
+  } catch (const std::exception&) {}
   // The deadline bounds new probing, not reuse of an already-proved encoder.
   return {OutputKind::h264, std::move(hardware)};
 }
@@ -1368,7 +1368,6 @@ VideoEncoderSelection SelectVideoEncoder(
     device = DeviceContext{};
   }
   if (!device.device) {
-    RequireEncoderTime(deadline);
     device = CreateDevice(SelectAdapter(adapters, arguments.adapter_index));
   }
   return CompareSoftwareEncoder(std::move(hardware), hardware_work, deadline, [&] {

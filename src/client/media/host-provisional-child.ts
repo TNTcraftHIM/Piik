@@ -5,6 +5,7 @@ import type {
   SignalPayload,
 } from "../../shared/protocol";
 import { countEndpointMediaCopies } from "../../shared/media-copy-accounting";
+import { debugError } from "../lib/debug";
 import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import type { BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import type { PeerSnapshot } from "../types";
@@ -99,7 +100,15 @@ export class HostProvisionalChild {
       return false;
     }
     if (input.candidate.transport === "direct") {
-      this.startPrepared(input.revision, input.candidate, input);
+      try {
+        this.startPrepared(input.revision, input.candidate, input);
+      } catch (error) {
+        debugError("webrtc", "sender-prepare-failed", error, {
+          connectionId: input.candidate.connectionId,
+        });
+        this.discard();
+        return false;
+      }
     }
     return true;
   }

@@ -4,7 +4,7 @@ import type {
   SignalPayload,
 } from "../../shared/protocol";
 import type { QualityProfile } from "../media/quality";
-import { debugEvent } from "../lib/debug";
+import { debugError, debugEvent } from "../lib/debug";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
 import type { PeerSnapshot } from "../types";
 import {
@@ -366,12 +366,20 @@ export class ViewerRelay {
     candidate: PreparedRouteCandidate,
     stream: MediaStream | null,
   ): void {
-    const peer = this.createPeer(
-      candidate.childPeerId,
-      stream,
-      candidate.connectionId,
-      candidate,
-    );
+    let peer: HostMediaPeer;
+    try {
+      peer = this.createPeer(
+        candidate.childPeerId,
+        stream,
+        candidate.connectionId,
+        candidate,
+      );
+    } catch (error) {
+      debugError("webrtc", "relay-prepare-failed", error, { connectionId: candidate.connectionId });
+      this.discardPreparedChild();
+      this.events.onPreparedChildFailed?.(revision, candidate.connectionId);
+      return;
+    }
     this.preparedChild = {
       revision,
       childPeerId: candidate.childPeerId,
@@ -488,11 +496,11 @@ export class ViewerRelay {
     }
   }
 
-  private startPeer(
+  private async startPeer(
     childPeerId: string,
     stream: MediaStream | null,
     attempt = 0,
-  ): void {
+  ): Promise<void> {
     if (
       this.disposed ||
       this.peers.has(childPeerId) ||
@@ -502,27 +510,26 @@ export class ViewerRelay {
       return;
     }
 
-    const peer = this.createPeer(childPeerId, stream);
-    this.peers.set(childPeerId, peer);
-    void peer
-      .start()
-      .catch(() => false)
-      .then((started) => {
-        if (started || this.peers.get(childPeerId) !== peer) {
-          return;
-        }
-        this.disposePeer(childPeerId);
-        if (
-          attempt < 1 &&
-          !this.disposed &&
-          this.stream === stream &&
-          this.childPeerIds.includes(childPeerId)
-        ) {
-          window.setTimeout(() => {
-            this.startPeer(childPeerId, stream, attempt + 1);
-          }, 500);
-        }
-      });
+    let peer: HostMediaPeer | undefined;
+    try {
+      peer = this.createPeer(childPeerId, stream);
+      this.peers.set(childPeerId, peer);
+      if (await peer.start()) return;
+    } catch (error) {
+      debugError("webrtc", "relay-start-failed", error, { connectionId: peer?.connectionId });
+    }
+    if (this.peers.get(childPeerId) !== peer) return;
+    if (peer) this.disposePeer(childPeerId);
+    if (
+      attempt < 1 &&
+      !this.disposed &&
+      this.stream === stream &&
+      this.childPeerIds.includes(childPeerId)
+    ) {
+      window.setTimeout(() => {
+        void this.startPeer(childPeerId, stream, attempt + 1);
+      }, 500);
+    }
   }
 
   private createPeer(

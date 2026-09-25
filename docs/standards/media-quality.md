@@ -134,10 +134,13 @@ choice for quality/source replacement. Native relay encoding uses the same
 selection owner. Auto measures encoding work
 for synthetic NV12 frames at the selected dimensions and frame rate, with a
 bounded warmup and sample. If H264 sustains the target it is selected; otherwise
-VP8 is measured within the remaining four-second budget. An unsuccessful or
-timed-out comparison retains an already-proved H264 encoder; without a proved
-encoder, startup still fails. This is a throughput check, not a perceptual-quality
-score or a promise under future GPU load.
+a usable H264 candidate is compared with VP8 within the four-second budget.
+An unsuccessful or timed-out comparison retains the proved H264 encoder. With
+no usable H264 candidate, Auto starts the ordinary VP8 path directly, as manual
+VP8 does; a benchmark with no alternative to compare must not gate capture.
+Actual encoding and failure reporting remain owned by the capture worker. This
+is a throughput comparison, not a perceptual-quality score or a promise under
+future GPU load.
 The returned actual codec owns the shared source, preview, and relay; live
 quality/source changes retain it. Other native platform encoders remain H264.
 

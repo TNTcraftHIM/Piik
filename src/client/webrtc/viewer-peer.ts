@@ -124,7 +124,12 @@ export class ViewerPeer implements ViewerMediaPeer {
         this.connectionId !== payload.connectionId ||
         this.parentPeerId !== parentPeerId
       ) {
-        this.replaceConnection(parentPeerId, payload.connectionId);
+        try {
+          this.replaceConnection(parentPeerId, payload.connectionId);
+        } catch (error) {
+          this.failOffer(error, parentPeerId, payload.connectionId);
+          return;
+        }
       }
       const connection = this.connection;
       if (!connection) {
@@ -196,7 +201,7 @@ export class ViewerPeer implements ViewerMediaPeer {
   }
 
   hasConnectionId(connectionId: string): boolean {
-    return this.connection !== null && this.connectionId === connectionId;
+    return this.connectionId === connectionId;
   }
 
   getConnectionIdentity(): {
@@ -394,17 +399,22 @@ export class ViewerPeer implements ViewerMediaPeer {
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
-      this.setError(error, "host.fail.connection");
-      if (
-        this.offerRecoveryAttempts < 1 &&
-        this.events.sendRestartRequest(parentPeerId, connectionId, true)
-      ) {
-        this.offerRecoveryAttempts += 1;
-        this.automaticRecoveryRequests = VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS;
-        this.scheduleRecoveryDeadline();
-      } else {
-        this.reportRecoveryExhausted();
-      }
+      this.failOffer(error, parentPeerId, connectionId);
+    }
+  }
+
+  private failOffer(error: unknown, parentPeerId: string, connectionId: string): void {
+    this.setError(error, "host.fail.connection");
+    if (
+      this.recoveryOwner === "viewer" &&
+      this.offerRecoveryAttempts < 1 &&
+      this.events.sendRestartRequest(parentPeerId, connectionId, true)
+    ) {
+      this.offerRecoveryAttempts += 1;
+      this.automaticRecoveryRequests = VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS;
+      this.scheduleRecoveryDeadline();
+    } else {
+      this.reportRecoveryExhausted();
     }
   }
 

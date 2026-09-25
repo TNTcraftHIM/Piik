@@ -171,19 +171,14 @@ void CheckAutoEncoderFallback() {
     assert((selected.kind == OutputKind::vp8) == (software_work <= .04));
     assert(static_cast<bool>(selected.initial) == (software_work > .04));
   }
-  const auto software_only = CompareSoftwareEncoder(nullptr, std::nullopt, deadline, [] { return .03; });
-  assert(software_only.kind == OutputKind::vp8 && !software_only.initial);
   for (const auto probe_deadline : {deadline, expired}) {
-    bool failed = false;
-    try {
-      CompareSoftwareEncoder(nullptr, std::nullopt, probe_deadline, [&]() -> double {
-        RequireEncoderTime(expired);
-        return 0;
-      });
-    } catch (const GateFailure& error) {
-      failed = error.stage() == "codec-probe-timeout";
-    }
-    assert(failed);  // No proved encoder must remain a startup failure.
+    bool probed = false;
+    const auto software_only = CompareSoftwareEncoder(nullptr, std::nullopt, probe_deadline, [&]() -> double {
+      probed = true;
+      throw GateFailure("codec-probe-timeout", "Optional comparison is unavailable");
+    });
+    // With no hardware candidate to compare, use the same VP8 path as manual selection.
+    assert(software_only.kind == OutputKind::vp8 && !software_only.initial && !probed);
   }
 }
 

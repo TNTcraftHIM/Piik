@@ -129,14 +129,19 @@ export class HostPeer {
       : null;
     this.startupVideoProfilePending = needsStartupVideoProfile(desiredProfile);
     this.encodedStreamsEnabled = !!videoPool && supportsBrowserEncoding();
-    this.connection = new RTCPeerConnection({
-      ...(this.encodedStreamsEnabled ? { encodedInsertableStreams: true } : {}),
-      iceServers: iceServersWithNatPrediction(
-        iceConfig.iceServers,
-        this.natPredictionEnabled,
-        iceConfig.natPredictionStunUrls,
-      ),
-    });
+    try {
+      this.connection = new RTCPeerConnection({
+        ...(this.encodedStreamsEnabled ? { encodedInsertableStreams: true } : {}),
+        iceServers: iceServersWithNatPrediction(
+          iceConfig.iceServers,
+          this.natPredictionEnabled,
+          iceConfig.natPredictionStunUrls,
+        ),
+      });
+    } catch (error) {
+      this.senderVideoTrack?.stop();
+      throw error;
+    }
     observeDebugConnection(this.connection, { connectionId, peerId, role: "send" });
     this.localIceCandidates = new NatPredictionCandidateEmitter(
       this.natPredictionEnabled,

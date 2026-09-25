@@ -66,8 +66,14 @@ export class BrowserEncodingOutput {
     // This synthetic clock needs WebRTC's screen-content ALR probing when the
     // real producer sends little data. The producer owns picture adaptation.
     this.track.contentHint = "detail";
-    const streams = encodedStreams(sender);
-    this.writer = streams.writable.getWriter();
+    let streams: ReturnType<typeof encodedStreams<RTCEncodedVideoFrame>>;
+    try {
+      streams = encodedStreams(sender);
+      this.writer = streams.writable.getWriter();
+    } catch (error) {
+      this.track.stop();
+      throw error;
+    }
     void streams.readable.pipeTo(new WritableStream({ write: (frame) => this.receive(frame) }),
       { signal: this.abort.signal }).then(() => this.fail(), (error) => this.fail(error)).finally(() => {
         try { this.writer.releaseLock(); } catch { /* Owner abort retired the writer. */ }

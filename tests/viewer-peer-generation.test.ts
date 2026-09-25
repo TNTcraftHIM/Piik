@@ -31,6 +31,7 @@ const ANSWER_SDP = [
 ].join("\r\n");
 
 interface ConnectionPlan {
+  constructorError?: Error;
   answerError?: Error;
   candidateGates?: Promise<void>[];
   localDescriptionGate?: Promise<void>;
@@ -100,6 +101,7 @@ class FakePeerConnection extends EventTarget {
       this.configurations.push(configuration);
     }
     const plan = FakePeerConnection.plans.shift() ?? {};
+    if (plan.constructorError) throw plan.constructorError;
     this.candidateGates = [...(plan.candidateGates ?? [])];
     this.localDescriptionGate = plan.localDescriptionGate ?? null;
     this.answerError = plan.answerError ?? null;
@@ -241,6 +243,52 @@ afterEach(() => {
 });
 
 describe("ViewerPeer connection generations", () => {
+  it.each(["route", "viewer"] as const)("handles construction failure with the %s recovery owner and exact identity", async (recoveryOwner) => {
+    const sendSignal = vi.fn(() => true);
+    const sendRestartRequest = vi.fn(() => true);
+    const exhausted = vi.fn((_parent: string, id: string) => {
+      expect(peer.hasConnectionId(id)).toBe(true);
+      return true;
+    });
+    const peer = new ViewerPeer({ iceServers: [] }, { sendSignal, sendRestartRequest,
+      onStream: () => undefined, onUpdate: () => undefined, onRecoveryExhausted: exhausted },
+      { recoveryOwner });
+    FakePeerConnection.plans.push({ constructorError: new DOMException("Allocation failed", "UnknownError") });
+    await expect(peer.acceptSignal("host", offer("first"))).resolves.toBeUndefined();
+    expect(peer.hasConnection()).toBe(false);
+    expect(peer.getConnectionIdentity()).toEqual({ parentPeerId: "host", connectionId: "first" });
+    if (recoveryOwner === "route") {
+      expect(sendRestartRequest).not.toHaveBeenCalled();
+      expect(exhausted).toHaveBeenCalledExactlyOnceWith("host", "first");
+    } else {
+      expect(sendRestartRequest).toHaveBeenCalledExactlyOnceWith("host", "first", true);
+      FakePeerConnection.plans.push({ constructorError: new DOMException("Allocation failed", "UnknownError") });
+      await peer.acceptSignal("host", offer("second"));
+      expect(sendRestartRequest).toHaveBeenCalledOnce();
+      expect(exhausted).toHaveBeenCalledExactlyOnceWith("host", "second");
+    }
+    expect(timeoutCallbacks.size).toBe(0);
+    await peer.acceptSignal("host", offer("working"));
+    expect(sendSignal).toHaveBeenCalledOnce();
+    expect(peer.hasConnectionId("working")).toBe(true);
+    expect(peer.hasConnectionId("first")).toBe(false);
+    peer.dispose();
+    expect(peer.hasConnectionId("working")).toBe(false);
+  });
+
+  it("returns failed prepared SDP to its route owner without requesting a rebuild", async () => {
+    const restart = vi.fn(() => true), exhausted = vi.fn(() => true);
+    const peer = new ViewerPeer({ iceServers: [] }, { sendSignal: () => true, sendRestartRequest: restart,
+      onStream: () => undefined, onUpdate: () => undefined, onRecoveryExhausted: exhausted },
+      { recoveryOwner: "route" });
+    FakePeerConnection.plans.push({ answerError: new Error("answer failed") });
+    await peer.acceptSignal("host", offer("prepared"));
+    expect(restart).not.toHaveBeenCalled();
+    expect(exhausted).toHaveBeenCalledExactlyOnceWith("host", "prepared");
+    expect(timeoutCallbacks.size).toBe(0);
+    peer.dispose();
+  });
+
   it("answers after a rejected queued candidate and still applies later candidates", async () => {
     const signals: SignalPayload[] = [];
     const snapshots: PeerSnapshot[] = [];
