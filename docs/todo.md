@@ -7,12 +7,6 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **T0: accept and integrate the sharing-stability candidate before feature work.**
-  Present the repaired candidate for phase acceptance. Confirmed failures of
-  share startup, continuous media, source replacement or audio/video continuity
-  block release. Unknown field reports remain evidence gaps listed below;
-  bounded local acceptance does not establish their causes. The owner authorized
-  publication after these repairs and acceptance; keep interaction work separate.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not
@@ -131,11 +125,9 @@ history. A parked idea is not implementation authority.
   do not reproduce the reporting game/device environment.
 - [ ] **Brief blur followed by immediate recovery.** Compare the same source,
   codec, peers and network with ordinary WebRTC before attributing the report
-  to pooling. A reproduced Browser pool defect unnecessarily recreated an
-  encoder on transient output-rate overshoot or a shared budget decrease;
-  it now updates the existing owner. Producer keyframe failures also use
-  ordinary recovery without closing healthy outgoing connections. Neither
-  defect establishes the unknown reporter's capture path or perceptual result;
+  to pooling. The [pool checks](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
+  cover rate-owner retention, publication startup, native recovery probing and
+  ordinary fallback. They do not establish this reporter's capture path or result;
   correlate actual receiver dimensions, QP, resource adaptation and packet loss.
 - [ ] **Windows 32-bit candidate acceptance.** Verify the isolated
   `spike/windows-x86-capture` candidate's launch, capture/audio, memory pressure,

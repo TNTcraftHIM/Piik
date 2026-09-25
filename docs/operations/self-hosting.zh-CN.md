@@ -93,6 +93,10 @@ share.example.com {
 重新加载 Caddy。域名解析正确且 TCP 80/443 可访问时，它会自动申请和续期证书。
 具体操作见 [Caddy 的 HTTPS 代理说明](https://caddyserver.com/docs/quick-starts/reverse-proxy#https)。
 
+nginx 可参考[配置示例](../../deploy/nginx/piik.conf.example)。如果沿用了旧示例，请将
+`Permissions-Policy` 改为 `camera=(self), microphone=(self), geolocation=()`，然后重新加载 nginx。
+摄像头和麦克风的空白允许列表会阻止浏览器采集，即使用户已授权；`self` 允许本站请求访问。
+
 ### 3. 放行端口并检查
 
 在服务器防火墙和云平台安全组中放行 **TCP 80/443**（HTTPS）和 **UDP 3478**（STUN）。

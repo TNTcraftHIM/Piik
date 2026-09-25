@@ -101,6 +101,12 @@ share.example.com {
 Reload Caddy. It obtains and renews the certificate automatically when DNS points
 to the server and TCP 80/443 are reachable. See [Caddy's HTTPS proxy guide](https://caddyserver.com/docs/quick-starts/reverse-proxy#https).
 
+For nginx, see the [configuration example](../../deploy/nginx/piik.conf.example).
+If you copied an older example, change its `Permissions-Policy` to
+`camera=(self), microphone=(self), geolocation=()` and reload nginx. Empty
+camera/microphone allowlists prevent Browser capture even when the user grants
+permission; `self` allows this site to request access.
+
 ### 3. Open the ports and verify
 
 Allow **TCP 80/443** for HTTPS and **UDP 3478** for STUN in the server firewall
