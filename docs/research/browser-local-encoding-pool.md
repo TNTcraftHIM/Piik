@@ -117,6 +117,16 @@ The prior-code control rules out this repair as the origin of the gap, not
 all run-to-run differences. The [TODO ledger](../todo.md) retains this acceptance
 boundary; these results do not identify the cause of an unknown field report.
 
+A subsequent short-pulse comparison let both viewers reach 1080p over a
+45-second warmup, limited A to 400 kbps for only one second, then observed
+40 seconds of recovery. Both outgoing targets fell to approximately 100 kbps.
+Ordinary A fell to 720p about five seconds after the pulse began and returned
+to 1080p at about 25 seconds. Pooled A fell to 180p at about three seconds and
+ended at 360p; B retained 1080p in both runs. Pooling created one lower producer,
+without repeated churn. This supports investigating deeper and longer adaptation
+in the composition, not assuming that slowing budget updates is safe or that
+ordinary WebRTC never reduces quality after a brief congestion event.
+
 ## Cost And Accounting
 
 Before the CPU-carrier refinement, a matched actual-product VP8 1080p30 comparison's ordinary pair made

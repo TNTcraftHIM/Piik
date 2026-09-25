@@ -21,6 +21,10 @@ history. A parked idea is not implementation authority.
   five-frame protection executes; do not replace it with a guessed delay, bitrate
   floor or compensation multiplier. This synthetic result is distinct from the
   untraced game and brief-blur reports below.
+- [ ] **Investigate self-hosted room creation returning HTTP 403.** Multiple
+  reports lack configuration, version or response details. Trace site entry,
+  Host authorization, room creation and reverse-proxy Origin handling; reproduce
+  the rejection before changing access policy or treating it as media failure.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not
