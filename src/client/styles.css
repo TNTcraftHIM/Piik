@@ -116,6 +116,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .lr-brand {
   display: grid;
+  flex: none;
   width: 44px; height: 44px;
   place-items: center;
   border: 0;
@@ -128,6 +129,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-brand:active { transform: scale(.92); }
 
 .lr-top-right { display: inline-flex; gap: 10px; align-items: center; }
+.lr-top > .lr-top-right { min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
 
 /* LED state strip */
 .lr-leds {
@@ -915,8 +917,10 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
    and the zoom never returns. Pointer devices keep the dense line. */
 @media (pointer: coarse) { .lr-invite-url { font-size: 16px; } }
 /* LCD room code */
+.lr-room-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
 .lr-lcd {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
@@ -1532,7 +1536,7 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 .lr-client-lan legend { padding: 0; font-size: 14px; font-weight: 750; }
 .lr-client-lan-hint { margin: 5px 0 10px; color: var(--muted); font-size: 12px; }
 .lr-client-lan-options { display: grid; gap: 8px; max-height: 192px; overflow-y: auto; padding: 3px; }
-.lr-client-lan-option { width: 100%; min-width: 0; justify-content: flex-start; border-radius: var(--control-radius); cursor: pointer; }
+.lr-client-lan-option { width: 100%; min-width: 0; height: auto; min-height: 52px; grid-template-columns: auto minmax(0, 1fr); justify-content: stretch; white-space: normal; border-radius: var(--control-radius); cursor: pointer; }
 .lr-client-lan-option input { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; accent-color: var(--action); }
 .lr-client-lan-option span { display: grid; min-width: 0; gap: 3px; text-align: left; }
 .lr-client-lan-option strong { font-size: 13px; overflow-wrap: anywhere; }
@@ -1750,7 +1754,9 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   }
   .lr-group-actions .lr-btn { flex: 1 1 0; min-width: 0; min-height: 52px; padding: 4px 5px; gap: 6px; }
   .lr-group-actions .lr-btn .lr-cap { white-space: normal; text-align: center; line-height: 1.25; font-size: 11px; }
-  .lr-lcd { flex: 1; justify-content: center; }
+  .lr-lcd { gap: 6px; padding-inline: 8px; font-size: 22px; letter-spacing: .2em; }
+  .lr-room-chip .lr-btn { min-width: 44px; width: 44px; height: 44px; padding: 0; }
+  .lr-room-chip .lr-cap { display: none; }
   .lr-tiles { display: flex; width: 100%; gap: 8px; }
   .lr-tiles .lr-tile { flex: 1 1 0; min-width: 0; padding: 10px 6px 8px; }
   .lr-meter { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
@@ -1773,6 +1779,9 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-source-option { min-height: 78px; padding: 6px 8px; }
   .lr-source-option-icon { width: 34px; height: 34px; }
   .lr-leds-label { display: none; }
+  .lr-top-right { gap: 8px; }
+  .lr-leds { gap: 4px; padding: 6px; }
+  .lr-header-controls .lr-btn { width: 40px; min-width: 40px; padding: 0; }
   .lr-header-controls .lr-btn .lr-cap { display: none; }
 }
 
@@ -1879,11 +1888,10 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   }
 }
 @media (max-width: 360px) {
+  .lr-lcd { gap: 4px; padding-inline: 6px; font-size: 18px; }
+  .lr-room-chip .lr-btn { min-width: 36px; width: 36px; }
   .lr-top { gap: 6px; padding-inline: 10px; }
-  .lr-brand { flex-shrink: 0; }
   .lr-top-right { gap: 6px; }
-  .lr-top > .lr-top-right { min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-  .lr-leds { gap: 4px; padding: 6px; }
   .lr-leds i { width: 8px; height: 8px; }
   .lr-lang { padding: 2px; border-width: 2px; }
   .lr-lang::before { top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / var(--lang-count)); }
@@ -1946,7 +1954,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   overflow: visible;
   transform: translate(var(--tooltip-offset-x, 0px), var(--tooltip-offset, 4px));
   width: max-content;
-  max-width: 320px;
+  max-width: min(320px, var(--tooltip-max-width, calc(100vw - 16px)));
   z-index: 30;
   background: var(--paper);
   border: 2.5px solid var(--comic-tone, var(--ink));
@@ -1960,7 +1968,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 .lr-comic-tip * { animation-play-state: paused !important; }
 .lr-comic-tip.is-text {
   padding: 10px 14px;
-  max-width: min(320px, calc(100vw - 16px));
+  max-width: min(320px, var(--tooltip-max-width, calc(100vw - 16px)));
   color: var(--ink);
   font: 600 14px/1.6 var(--font);
   text-align: start;
@@ -1969,7 +1977,14 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
   text-wrap: pretty;
 }
 .lr-comic-tip.has-comic.is-text { width: 252px; }
-.lr-comic-tip > svg {
+.lr-comic-tip-content {
+  display: block;
+  max-height: max(0px, calc(var(--tooltip-max-height, 100dvh - 16px) - 25px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.lr-comic-tip-content > svg {
   display: block;
   max-width: 100%;
   height: auto;
@@ -2071,13 +2086,13 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 @media (max-width: 640px) {
   .lr-group-actions .lr-comic-tip-wrap { flex: 1 1 0; min-width: 0; }
   .lr-group-actions .lr-comic-tip-wrap .lr-btn { width: 100%; }
-  .lr-comic-tip { max-width: min(320px, 78vw); }
+  .lr-comic-tip { max-width: min(320px, 78vw, var(--tooltip-max-width, calc(100vw - 16px))); }
 }
 
 .lr-comic-tip-caption {
   display: block;
 }
-.lr-comic-tip > svg + .lr-comic-tip-caption { margin-top: 8px; }
+.lr-comic-tip-content > svg + .lr-comic-tip-caption { margin-top: 8px; }
 
 /* ---------- reduced motion: everything collapses to instant ---------- */
 
@@ -2129,7 +2144,7 @@ html[data-theme="dark"] .lr-tile:not(.is-selected) small { color: #8ba0b4; }
 
 
 @media (max-width: 640px) {
-  .lr-tv-screen .lr-comic-tip { max-width: 62vw; }
+  .lr-tv-screen .lr-comic-tip { max-width: min(62vw, var(--tooltip-max-width, calc(100vw - 16px))); }
 }
 
 /* ---------- glyph draw-in (一笔一划) ---------- */

@@ -50,6 +50,11 @@ Hover, keyboard focus and touch receive equivalent guidance. Keep information
 order and interaction ownership consistent across languages, themes and viewport
 sizes. Reflow or bounded scrolling must not hide a primary action, truncate an
 essential value, overlap controls or change meaning.
+Keep a compact value and its direct actions together when rows wrap, including
+the room code and its replacement confirmation. Let independent groups reflow;
+do not stretch short values to fill a phone row. Check actual control bounds
+around breakpoints, in both orientations and all presentation modes; page-level
+overflow clipping is not evidence that the content fits.
 
 Keep the application language control's segmented Chinese, English and visual
 shortcuts. When additional catalogs exist, insert one language menu
@@ -80,6 +85,8 @@ the whole playback bar. A wrapped option row is also one area to avoid. Status,
 headers and bottom-of-picker controls prefer below; other controls prefer above.
 Flip to fit the viewport and keep the caret aimed at the trigger. Placement and
 hover timing belong to the shared component.
+Constrain oversized hints to the visible viewport and let their content scroll
+without dismissing the panel or clipping its caret.
 
 Add a tooltip when it explains an action, a limitation or a status that needs
 context. Plain names, decorative participants and self-explanatory text do not

@@ -44,6 +44,7 @@ export function ControlsPreview() {
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
   const [launchSite, setLaunchSite] = useState("");
   const [launchPassword, setLaunchPassword] = useState("");
+  const [launchLan, setLaunchLan] = useState("192.0.2.10");
   const [preset, setPreset] = useState<QualityProfileId>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
@@ -208,6 +209,10 @@ export function ControlsPreview() {
       <div className="lr-client-launch">
         <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
           site={launchSite} onSiteChange={setLaunchSite}
+          lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
+            { address: "192.0.2.10", name: "Wi-Fi" },
+            { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },
+          ] }}
           localAccessPassword={launchPassword} onLocalAccessPasswordChange={setLaunchPassword}
           onSubmit={event => event.preventDefault()} />
       </div>

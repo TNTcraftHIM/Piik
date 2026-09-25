@@ -162,8 +162,14 @@ export function Tooltip({
   const pickAlign = () => {
     const wrap = wrapRef.current;
     if (!wrap) return;
-    const vw = window.innerWidth;
+    const viewport = window.visualViewport;
+    const vw = viewport?.width ?? window.innerWidth;
     if (!vw) return; // no layout (SSR/test): keep the prop alignment
+    const vh = viewport?.height ?? window.innerHeight;
+    const x = viewport?.offsetLeft ?? 0, y = viewport?.offsetTop ?? 0;
+    const right = x + vw, bottom = y + vh;
+    tipRef.current?.style.setProperty("--tooltip-max-width", `${Math.max(0, vw - EDGE_MARGIN * 2)}px`);
+    tipRef.current?.style.setProperty("--tooltip-max-height", `${Math.max(0, vh - EDGE_MARGIN * 2)}px`);
     const rect = wrap.getBoundingClientRect();
     // A wrapped control row remains one working area, including on narrow screens.
     const controlBar = wrap.closest<HTMLElement>(".lr-playback, .lr-source-picker-options, .lr-host-share-controls");
@@ -177,11 +183,10 @@ export function Tooltip({
     const width = Math.max(0, Math.min(measured || 320, vw - EDGE_MARGIN * 2));
     // Same idea vertically: a control scrolled near the top has no room above,
     // and the panel would be cut off by the viewport edge.
-    const vh = window.innerHeight;
     const panelHeight =
       (panelMounted ? tipRef.current?.offsetHeight : 0) || FALLBACK_PANEL_HEIGHT;
-    const fitsAbove = avoid.top - panelHeight - EDGE_MARGIN >= EDGE_MARGIN;
-    const fitsBelow = !vh || below + panelHeight + EDGE_MARGIN <= vh - EDGE_MARGIN;
+    const fitsAbove = avoid.top - panelHeight - EDGE_MARGIN >= y + EDGE_MARGIN;
+    const fitsBelow = !vh || below + panelHeight + EDGE_MARGIN <= bottom - EDGE_MARGIN;
     const preferredPlace = wrap.closest(".lr-tv-chin, .lr-host-share-controls") ? "below" : place;
     let livePlace: Placement =
       preferredPlace === "above"
@@ -192,8 +197,8 @@ export function Tooltip({
           ? "below"
           : "above";
     const centerY = rect.top + rect.height / 2;
-    const sideTop = Math.max(EDGE_MARGIN, Math.min(centerY - panelHeight / 2, vh - panelHeight - EDGE_MARGIN));
-    const fitsSideVertically = sideTop >= EDGE_MARGIN && sideTop + panelHeight <= (vh || Infinity) - EDGE_MARGIN;
+    const sideTop = Math.max(y + EDGE_MARGIN, Math.min(centerY - panelHeight / 2, bottom - panelHeight - EDGE_MARGIN));
+    const fitsSideVertically = sideTop >= y + EDGE_MARGIN && sideTop + panelHeight <= (bottom || Infinity) - EDGE_MARGIN;
     // Use empty side space only when the whole panel fits close to its control.
     // Otherwise clear the entire playback bar, including its narrow second row.
     if (playback) {
@@ -202,8 +207,8 @@ export function Tooltip({
       const sideAvoid = player ?? avoid;
       const nearLeft = rect.left - sideAvoid.left <= rect.width;
       const nearRight = sideAvoid.right - rect.right <= rect.width;
-      const fitsLeft = nearLeft && sideAvoid.left - width - EDGE_MARGIN >= EDGE_MARGIN;
-      const fitsRight = nearRight && sideAvoid.right + width + EDGE_MARGIN <= vw - EDGE_MARGIN;
+      const fitsLeft = nearLeft && sideAvoid.left - width - EDGE_MARGIN >= x + EDGE_MARGIN;
+      const fitsRight = nearRight && sideAvoid.right + width + EDGE_MARGIN <= right - EDGE_MARGIN;
       // Prefer space below the television (including its status strip) to
       // covering the picture. Fullscreen falls back above the entire bar.
       livePlace = fitsSideVertically && (fitsLeft || fitsRight) ? fitsLeft ? "left" : "right"
@@ -216,16 +221,17 @@ export function Tooltip({
       end: { left: rect.right - width, right: rect.right },
     };
     const clipped = (box: { left: number; right: number }): number =>
-      Math.max(0, EDGE_MARGIN - box.left) +
-      Math.max(0, box.right - (vw - EDGE_MARGIN));
+      Math.max(0, x + EDGE_MARGIN - box.left) +
+      Math.max(0, box.right - (right - EDGE_MARGIN));
     const order: Align[] = [
       align,
       ...(["center", "start", "end"] as Align[]).filter((a) => a !== align),
     ];
     const fits = order.find((a) => clipped(boxes[a]) === 0);
     const selected = fits ?? order.reduce((a, b) => (clipped(boxes[a]) <= clipped(boxes[b]) ? a : b));
-    let left = Math.max(EDGE_MARGIN, Math.min(boxes[selected].left, vw - width - EDGE_MARGIN));
+    let left = Math.max(x + EDGE_MARGIN, Math.min(boxes[selected].left, right - width - EDGE_MARGIN));
     let top = livePlace === "below" ? below + EDGE_MARGIN : avoid.top - panelHeight - EDGE_MARGIN;
+    top = Math.max(y + EDGE_MARGIN, Math.min(top, bottom - panelHeight - EDGE_MARGIN));
     let caret = Math.max(14, Math.min(center - left, width - 14));
     if (livePlace === "left") {
       left = (player ?? avoid).left - width - EDGE_MARGIN;
@@ -270,10 +276,15 @@ export function Tooltip({
       frame = window.requestAnimationFrame(() => pickAlignRef.current());
     };
     schedulePick();
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", schedulePick);
+    viewport?.addEventListener("scroll", schedulePick);
     window.addEventListener("resize", schedulePick);
     window.addEventListener("scroll", schedulePick, true);
     return () => {
       window.cancelAnimationFrame(frame);
+      viewport?.removeEventListener("resize", schedulePick);
+      viewport?.removeEventListener("scroll", schedulePick);
       window.removeEventListener("resize", schedulePick);
       window.removeEventListener("scroll", schedulePick, true);
     };
@@ -413,6 +424,13 @@ export function Tooltip({
         // completed long-press. A later touch starts a new, actionable gesture.
         longPressed.current = false;
         cancelPress();
+        if (tipRef.current?.contains(event.target as Node)) {
+          // Reading/scrolling the panel is not another trigger long-press.
+          if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+          hideTimer.current = null;
+          pressPoint.current = null;
+          return;
+        }
         touchGesture.current = event.pointerType === "touch";
         if (!enabled || event.pointerType !== "touch") return;
         pressPoint.current = { x: event.clientX, y: event.clientY };
@@ -436,7 +454,7 @@ export function Tooltip({
           }, TOUCH_HIDE_MS);
         }
       }}
-      onPointerCancel={() => {
+      onPointerCancel={(event) => {
         cancelPress();
         pressPoint.current = null;
         longPressed.current = false;
@@ -444,7 +462,7 @@ export function Tooltip({
           window.clearTimeout(hideTimer.current);
           hideTimer.current = null;
         }
-        setPressOpen(false);
+        if (!tipRef.current?.contains(event.target as Node)) setPressOpen(false);
       }}
       onPointerMove={(event) => {
         // Only a real drag (scroll intent) cancels the hold — Chrome emits
@@ -514,12 +532,12 @@ export function Tooltip({
         data-tone={resolvedTone}
         style={{ ...comicStyle(resolvedTone, resolvedMotion), "--comic-repeat": "infinite", left: position.left, top: position.top, "--tooltip-caret": `${position.caret}px` } as CSSProperties}
         className={`lr-comic-tip${kind ? " has-comic" : ""}${caption !== undefined ? " is-text" : ""}${placeClass}`} role="tooltip" aria-hidden={!interactionOpen}>
-        {panelMounted ? <>
+        {panelMounted ? <span className="lr-comic-tip-content">
           {kind ? isHintKind(kind)
               ? <HintComic kind={kind} size={200} tone={resolvedTone} motion={resolvedMotion} />
               : <Comic kind={kind} theme="paper" size={200} tone={resolvedTone} motion={resolvedMotion} /> : null}
           {caption !== undefined ? <span className="lr-comic-tip-caption">{caption}</span> : null}
-        </> : null}
+        </span> : null}
       </span>
     </span>
   );

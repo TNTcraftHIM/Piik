@@ -130,7 +130,7 @@ export function RoomChip({
   }
 
   return (
-    <>
+    <span className="lr-room-chip">
       <Lcd code={roomId} />
       {onReplace ? (
         confirming ? (
@@ -161,7 +161,7 @@ export function RoomChip({
           />
         )
       ) : null}
-    </>
+    </span>
   );
 }
 

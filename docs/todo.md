@@ -7,6 +7,10 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Accept the responsive UI repair before integration.** Review compact room
+  identity/actions, narrow headers, long adapter names and bounded hints in the
+  shared catalogue. Check real-phone zoom/keyboard and touch scrolling alongside
+  the verified browser viewport matrix; this phase does not authorize publication.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not

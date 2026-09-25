@@ -86,6 +86,9 @@ h1 { font-size: clamp(49px, 5.7vw, 76px); line-height: 1.06; margin-block: 22px 
 .film-preview > summary::after { content:none; }
 .film-collapse { margin-left:auto; font-size:12px; color:var(--muted); }
 .film-preview iframe { display:block; width:100%; height:calc(56.25cqw + 144px); border:0; }
+@container (max-width:740px) {
+  .film-preview iframe { height:calc(56.25cqw + 196px); }
+}
 .download-help { margin-top:22px; text-align:center; }
 .download-links { display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:12px 24px; margin-bottom:14px; }
 .download-help p { max-width:760px; margin:6px auto 0; color:var(--muted); font-size:13px; }
@@ -214,7 +217,6 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
   .footer-identity p { display: none; }
 }
 @media (max-width: 740px) {
-  .film-preview iframe { height:calc(56.25cqw + 196px); }
   .wrap { width: calc(100% - 40px); }
   .site-header { min-height: 83px; gap: 0 14px; flex-wrap:wrap; padding-top:12px; }
   .site-header nav { order:3; flex-basis:100%; justify-content:space-between; gap:0 12px; }
