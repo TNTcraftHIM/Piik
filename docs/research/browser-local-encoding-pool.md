@@ -127,6 +127,25 @@ without repeated churn. This supports investigating deeper and longer adaptation
 in the composition, not assuming that slowing budget updates is safe or that
 ordinary WebRTC never reduces quality after a brief congestion event.
 
+The same pulse with `--single` retained the pool's original producer throughout:
+both ordinary and pooled receivers fell only to 720p and recovered to 1080p,
+at about 20 and 27 seconds from pulse start respectively. Their pulse-end targets
+were 94 and 109 kbps. This strengthens the new weak-group producer's startup
+history as a lead; the 500 ms budget loop alone does not inevitably reproduce
+the deeper drop. Removing a Viewer also reduces processing and connection load,
+so it does not isolate cold start as the sole cause or justify suppressing the
+split that protects the unaffected child.
+
+Budget attribution matters: `targetBitrate` is the encoder's allocated target,
+not raw link bandwidth ([upstream stats correction](https://webrtc.googlesource.com/src/+/fe25b0e928ea4e64aa134f5dc8012343320deec5%5E%21/)).
+In pooling it belongs to the tiny carrier, whose allocation then caps a separate
+real producer. At the pulse endpoint, ordinary target/available outgoing bitrate
+was 93/403 kbps versus pooled 98/370 kbps; after recovery those pairs were
+2,316/2,433 and 429/450 kbps. The deficit therefore includes the outgoing native
+estimate, not only local resolution adaptation. These observations do not justify
+substituting raw available bandwidth for the allocated video budget; that would
+bypass allocation and protection already present in the ordinary path.
+
 ## Cost And Accounting
 
 Before the CPU-carrier refinement, a matched actual-product VP8 1080p30 comparison's ordinary pair made

@@ -16,8 +16,9 @@ history. A parked idea is not implementation authority.
 - [ ] **Resolve the Browser pool's balanced startup/recovery gap before acceptance.**
   The [paired comparison](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
   reproduces slower resolution recovery than ordinary WebRTC in both the prior
-  and repaired pool. Trace the low initial child budget, producer configuration
-  and two native adaptation histories before changing composition. The existing
+  and repaired pool. Trace the weak-group producer's cold start and two native
+  adaptation histories: the single-consumer short-pulse control recovers without
+  the deeper drop, while keeping its original producer. The existing
   five-frame protection executes; do not replace it with a guessed delay, bitrate
   floor or compensation multiplier. This synthetic result is distinct from the
   untraced game and brief-blur reports below.
