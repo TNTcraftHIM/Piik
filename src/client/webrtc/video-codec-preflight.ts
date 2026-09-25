@@ -268,114 +268,111 @@ function hasProbeWindow(
   return current.timestamp - baseline.timestamp >= PREFLIGHT_WARMUP_MS;
 }
 
-function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const onAbort = () => {
-      window.clearTimeout(timer);
-      reject(signal?.reason);
-    };
-    const timer = window.setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, milliseconds);
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
 async function runH264Probe(
   track: MediaStreamTrack,
   profile: QualityProfile,
   signal?: AbortSignal,
 ): Promise<boolean> {
   const senderConnection = new RTCPeerConnection({ iceServers: [] });
-  const receiverConnection = new RTCPeerConnection({ iceServers: [] });
-  // This in-process probe can start encoding as soon as one local pair works;
-  // gathering every candidate must not extend the codec decision.
-  const senderCandidates: RTCIceCandidate[] = [];
-  const receiverCandidates: RTCIceCandidate[] = [];
-  let senderRemoteReady = false;
-  let receiverRemoteReady = false;
-  let iceFailed = false;
-  const addCandidate = async (
-    target: RTCPeerConnection,
-    candidate: RTCIceCandidate,
-  ): Promise<void> => {
-    try {
-      await addRemoteIceCandidate(target, candidate);
-    } catch {
-      iceFailed = true;
-    }
-  };
-  senderConnection.addEventListener("icecandidate", (event) => {
-    if (!event.candidate) return;
-    if (receiverRemoteReady) {
-      void addCandidate(receiverConnection, event.candidate);
-    } else {
-      senderCandidates.push(event.candidate);
-    }
+  let receiver: RTCPeerConnection | undefined;
+  let pollTimer: number | undefined;
+  let stopReason: Error | undefined;
+  let stop!: (reason: Error) => void;
+  const stopped = new Promise<never>((_, reject) => {
+    stop = (reason) => {
+      stopReason ??= reason;
+      reject(stopReason);
+    };
   });
-  receiverConnection.addEventListener("icecandidate", (event) => {
-    if (!event.candidate) return;
-    if (senderRemoteReady) {
-      void addCandidate(senderConnection, event.candidate);
-    } else {
-      receiverCandidates.push(event.candidate);
-    }
-  });
-  const abort = () => {
-    senderConnection.close();
-    receiverConnection.close();
+  // Closing a PeerConnection need not settle its pending SDP operations.
+  // Every await belongs to this one budget, including setup and statistics.
+  const wait = async <T>(operation: () => Promise<T>): Promise<T> => {
+    if (stopReason) throw stopReason;
+    const value = await Promise.race([operation(), stopped]);
+    if (stopReason) throw stopReason;
+    return value;
   };
+  const abort = () => stop(new DOMException("Codec probe cancelled", "AbortError"));
+  const timer = window.setTimeout(
+    () => stop(new Error("Codec probe timed out")), PREFLIGHT_DEADLINE_MS,
+  );
   signal?.addEventListener("abort", abort, { once: true });
   try {
+    const receiverConnection = receiver = new RTCPeerConnection({ iceServers: [] });
+    // This in-process probe can start encoding as soon as one local pair works;
+    // gathering every candidate must not extend the codec decision.
+    const senderCandidates: RTCIceCandidate[] = [];
+    const receiverCandidates: RTCIceCandidate[] = [];
+    let senderRemoteReady = false;
+    let receiverRemoteReady = false;
+    let iceFailed = false;
+    const addCandidate = async (
+      target: RTCPeerConnection,
+      candidate: RTCIceCandidate,
+    ): Promise<void> => {
+      try {
+        await addRemoteIceCandidate(target, candidate);
+      } catch {
+        iceFailed = true;
+      }
+    };
+    senderConnection.addEventListener("icecandidate", (event) => {
+      if (!event.candidate) return;
+      if (receiverRemoteReady) {
+        void addCandidate(receiverConnection, event.candidate);
+      } else {
+        senderCandidates.push(event.candidate);
+      }
+    });
+    receiverConnection.addEventListener("icecandidate", (event) => {
+      if (!event.candidate) return;
+      if (senderRemoteReady) {
+        void addCandidate(senderConnection, event.candidate);
+      } else {
+        receiverCandidates.push(event.candidate);
+      }
+    });
     const transceiver = senderConnection.addTransceiver(track, {
       direction: "sendonly",
     });
     if (!applyH264ProbeCodec(transceiver)) {
       return false;
     }
-    await configureVideoSender(
+    await wait(() => configureVideoSender(
       transceiver.sender,
       startupVideoProfile(profile),
-    );
-    const deadline = Date.now() + PREFLIGHT_DEADLINE_MS;
-    await senderConnection.setLocalDescription(
-      await senderConnection.createOffer(),
-    );
-    await receiverConnection.setRemoteDescription(
+    ));
+    const offer = await wait(() => senderConnection.createOffer());
+    await wait(() => senderConnection.setLocalDescription(offer));
+    await wait(() => receiverConnection.setRemoteDescription(
       senderConnection.localDescription!,
-    );
+    ));
     receiverRemoteReady = true;
-    await Promise.all(
+    await wait(() => Promise.all(
       senderCandidates.splice(0).map((candidate) =>
         addCandidate(receiverConnection, candidate),
       ),
-    );
-    await receiverConnection.setLocalDescription(
-      await receiverConnection.createAnswer(),
-    );
-    await senderConnection.setRemoteDescription(
+    ));
+    const answer = await wait(() => receiverConnection.createAnswer());
+    await wait(() => receiverConnection.setLocalDescription(answer));
+    await wait(() => senderConnection.setRemoteDescription(
       receiverConnection.localDescription!,
-    );
+    ));
     senderRemoteReady = true;
-    await Promise.all(
+    await wait(() => Promise.all(
       receiverCandidates.splice(0).map((candidate) =>
         addCandidate(senderConnection, candidate),
       ),
-    );
+    ));
 
     let warmupBaseline: H264ProbeSample | null = null;
     let measurementBaseline: H264ProbeSample | null = null;
-    while (Date.now() < deadline) {
+    for (;;) {
       if (signal?.aborted || track.readyState === "ended" || iceFailed) {
         return false;
       }
       const sample = readH264ProbeSample(
-        await transceiver.sender.getStats(),
+        await wait(() => transceiver.sender.getStats()),
       );
       if (sample) {
         warmupBaseline ??= sample;
@@ -396,13 +393,16 @@ async function runH264Probe(
           }
         }
       }
-      await delay(PREFLIGHT_POLL_MS, signal);
+      await wait(() => new Promise<void>((resolve) => {
+        pollTimer = window.setTimeout(resolve, PREFLIGHT_POLL_MS);
+      }));
     }
-    return false;
   } finally {
+    window.clearTimeout(timer);
+    window.clearTimeout(pollTimer);
     signal?.removeEventListener("abort", abort);
     senderConnection.close();
-    receiverConnection.close();
+    receiver?.close();
   }
 }
 
@@ -411,7 +411,7 @@ export async function preferredVideoCodecForTrack(
   profile: QualityProfile,
   signal?: AbortSignal,
 ): Promise<BrowserVideoCodec> {
-  if (track.kind !== "video" || track.readyState === "ended") {
+  if (signal?.aborted || track.kind !== "video" || track.readyState === "ended") {
     return "vp8";
   }
   let probe: H264ProbeTrack | null = null;

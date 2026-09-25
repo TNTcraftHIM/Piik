@@ -1,5 +1,6 @@
 import { observeDebugConnection } from "../lib/debug-webrtc";
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
+import { waitForConnectionOperation } from "../webrtc/connection-operation";
 import type {
   ServerMessage,
   SfuMedia,
@@ -27,7 +28,8 @@ export class SfuPeer {
     SfuSignalMessage,
     "kind" | "description" | "media"
   > | null = null;
-  private closed = false;
+  private readonly lifetime = new AbortController();
+  private get closed(): boolean { return this.lifetime.signal.aborted; }
   private signalTail: Promise<void> = Promise.resolve();
 
   constructor(
@@ -86,7 +88,7 @@ export class SfuPeer {
     media?: SfuMedia,
   ): Promise<void> {
     this.descriptionSent = false;
-    await this.pc.setLocalDescription(description);
+    await this.waitForOperation(() => this.pc.setLocalDescription(description));
     if (this.closed) return;
     const local = this.pc.localDescription;
     if (!local || (local.type !== "offer" && local.type !== "answer")) {
@@ -129,14 +131,14 @@ export class SfuPeer {
     const work = async (): Promise<void> => {
       if (this.closed) return;
       if (message.kind === "layers" && message.activeCount !== undefined) {
-        await onLayers?.(message.activeCount);
+        await this.waitForOperation(() => onLayers?.(message.activeCount!) ?? Promise.resolve());
       } else if (message.kind === "description" && message.description) {
-        await onDescription(message.description);
+        await this.waitForOperation(() => onDescription(message.description!));
         for (const candidate of this.remoteCandidates.splice(0))
-          await addRemoteIceCandidate(this.pc, candidate);
+          await this.waitForOperation(() => addRemoteIceCandidate(this.pc, candidate));
       } else if (message.kind === "candidate" && message.candidate) {
         if (this.pc.remoteDescription)
-          await addRemoteIceCandidate(this.pc, message.candidate);
+          await this.waitForOperation(() => addRemoteIceCandidate(this.pc, message.candidate!));
         else if (this.remoteCandidates.length < 64)
           this.remoteCandidates.push(message.candidate);
         else throw new Error("Too many SFU ICE candidates");
@@ -147,9 +149,13 @@ export class SfuPeer {
     return next;
   }
 
+  waitForOperation<T>(operation: () => Promise<T>): Promise<T> {
+    return waitForConnectionOperation(this.lifetime.signal, operation);
+  }
+
   close(): void {
     if (this.closed) return;
-    this.closed = true;
+    this.lifetime.abort();
     this.pc.onicecandidate = null;
     this.pc.onconnectionstatechange = null;
     this.pc.ontrack = null;

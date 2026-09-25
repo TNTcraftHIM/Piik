@@ -64,7 +64,9 @@ production behavior and remaining acceptance.
   the selected source produces no frames. Setup and encoding failures remain
   bounded; quiet-source waiting must not block pause, stop or connection control.
   Applied settings change only after the replacement is ready and installed;
-  failure preserves the previous capture and profile. Platform quality preference uses the hardware
+  required-output failure preserves the previous capture and profile. Failed lower
+  outputs stay unavailable across preparation and installation without rejecting
+  a healthy original output. Platform quality preference uses the hardware
   encoder's standard quality-versus-speed hint. Pion owns Native WebRTC
   transport; the shared media adapter uses LiveKit media components for bandwidth
   estimation, forwarding allocation, pacing and recovery.
@@ -113,7 +115,9 @@ room quality setting.
 Auto uses one bounded actual-sender probe rather than a capability or device
 allowlist. A proved sender prefers H.264 with VP8 fallback; unsupported, failed,
 or inconclusive probes use VP8. Manual VP8 or H264 strictly selects that codec.
-The result stays fixed for the current share and is reconsidered for a new share.
+The probe deadline covers setup, negotiation and statistics; cancellation retires
+its resources even when a Browser operation remains pending. The result stays
+fixed for the current share and is reconsidered for a new share.
 ADR-0007 owns probe and negotiation mechanics.
 
 The Browser chooses the concrete encoder implementation. A reported H.264 codec
@@ -130,8 +134,10 @@ choice for quality/source replacement. Native relay encoding uses the same
 selection owner. Auto measures encoding work
 for synthetic NV12 frames at the selected dimensions and frame rate, with a
 bounded warmup and sample. If H264 sustains the target it is selected; otherwise
-VP8 is measured within the remaining four-second budget. This is a throughput
-check, not a perceptual-quality score or a promise under future GPU load.
+VP8 is measured within the remaining four-second budget. An unsuccessful or
+timed-out comparison retains an already-proved H264 encoder; without a proved
+encoder, startup still fails. This is a throughput check, not a perceptual-quality
+score or a promise under future GPU load.
 The returned actual codec owns the shared source, preview, and relay; live
 quality/source changes retain it. Other native platform encoders remain H264.
 
@@ -143,6 +149,10 @@ it is never attached directly to an outbound sender. Replacing or retiring a
 sender also stops its clone, so native adaptation state cannot survive by being
 inherited through the original track. Host pause and live capture constraints
 are propagated to current Host-owned clones.
+Connection retirement also settles its pending sender and negotiation waits;
+closing a Browser PeerConnection alone does not guarantee that its promises
+settle. Cancellation starts before joining work that depends on it, while a
+replacement still waits for the retired owner's cleanup.
 
 Eligible Browser P2P parents use the source-owned pool in
 [ADR-0014](../adr/0014-browser-node-local-encoding-pool.md). Compatible direct
@@ -186,8 +196,8 @@ starts one shared decode/scale/encode group, while healthy forwarding retains
 the original input without starting a decoder. The group produces the highest
 needed output and its lower fallbacks and stops unused upper outputs. Each child
 receives only its selected output. The forwarding SFU adds no server transcoder.
-Downstream attachment failure or retirement ends only that edge, never its
-shared source or healthy siblings.
+Downstream attachment or sending failure and retirement belong to that edge,
+never its shared video/audio source or healthy siblings.
 
 Native capture uses the same screen-share output construction within Host
 ceilings. Its source, source clock and higher outputs remain independent of

@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   h264ProbeTarget,
   h264ProbeSustainsTarget,
+  preferredVideoCodecForTrack,
   type H264ProbeSample,
 } from "../src/client/webrtc/video-codec-preflight.ts";
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
@@ -156,5 +157,134 @@ describe("H264 sender preflight", () => {
         30,
       ),
     ).toBe(false);
+  });
+});
+
+describe("codec probe lifetime", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  function fixture(blocked = "", failReceiver = false) {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", globalThis);
+    let resolve!: () => void;
+    const pending = { promise: new Promise<void>((ready) => { resolve = ready; }), resolve: () => resolve() };
+    const wait = (stage: string) => blocked === stage ? pending.promise : Promise.resolve();
+    const source = { kind: "video", readyState: "live", getSettings: () => ({}), stop: vi.fn() };
+    const track = { ...source, stop: vi.fn() };
+    const createElement = vi.fn(() => ({
+      getContext: () => ({ fillRect() {} }),
+      captureStream: () => ({ getVideoTracks: () => [track] }),
+    }));
+    vi.stubGlobal("document", { createElement });
+    vi.stubGlobal("RTCRtpSender", {
+      getCapabilities: () => ({ codecs: [{ mimeType: "video/H264", clockRate: 90_000 }] }),
+    });
+    const connections: Connection[] = [];
+    class Connection {
+      constructor() {
+        if (failReceiver && connections.length === 1) throw new Error("no receiver");
+        connections.push(this);
+      }
+      close = vi.fn();
+      addEventListener() {}
+      localDescription = { type: "offer", sdp: "fixture" };
+      setLocalDescription = vi.fn(async () => {});
+      async setRemoteDescription() {}
+      async createOffer() { await wait("offer"); return this.localDescription; }
+      async createAnswer() { return { type: "answer", sdp: "fixture" }; }
+      addTransceiver() {
+        return {
+          setCodecPreferences() {},
+          sender: {
+            track,
+            getParameters: () => ({ encodings: [{}] }),
+            setParameters: () => wait("configure"),
+            getStats: async () => {
+              await wait("stats");
+              const timestamp = Date.now();
+              const frames = timestamp * 30 / 1_000;
+              return new Map([
+                ["out", { id: "out", type: "outbound-rtp", kind: "video", timestamp,
+                  codecId: "codec", mediaSourceId: "source", framesEncoded: frames }],
+                ["codec", { type: "codec", mimeType: "video/H264" }],
+                ["source", { id: "source", type: "media-source", frames }],
+              ]);
+            },
+          },
+        };
+      }
+    }
+    vi.stubGlobal("RTCPeerConnection", Connection);
+    return {
+      source: source as unknown as MediaStreamTrack,
+      track, connections, createElement, pending,
+    };
+  }
+
+  it.each(["configure", "offer", "stats"])("bounds a pending %s operation and cleans up", async (stage) => {
+    const f = fixture(stage);
+    let result: string | undefined;
+    const run = preferredVideoCodecForTrack(f.source, QUALITY_PROFILES["1080p30"])
+      .then((codec) => { result = codec; });
+    await vi.advanceTimersByTimeAsync(3_999);
+    expect(result).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(result).toBe("vp8");
+    await run;
+    expect(f.track.stop).toHaveBeenCalledOnce();
+    expect(f.source.stop).not.toHaveBeenCalled();
+    expect(f.connections.every((connection) => connection.close.mock.calls.length === 1)).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    f.pending.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    if (stage !== "stats") expect(f.connections[0]!.setLocalDescription).not.toHaveBeenCalled();
+  });
+
+  it("cancels pending SDP without waiting for the browser promise", async () => {
+    const f = fixture("offer");
+    const controller = new AbortController();
+    let result: string | undefined;
+    const run = preferredVideoCodecForTrack(f.source, QUALITY_PROFILES["1080p30"], controller.signal)
+      .then((codec) => { result = codec; });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(result).toBe("vp8");
+    await run;
+    expect(f.track.stop).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+    f.pending.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.connections[0]!.setLocalDescription).not.toHaveBeenCalled();
+  });
+
+  it("does not allocate an already-cancelled probe", async () => {
+    const f = fixture();
+    await expect(preferredVideoCodecForTrack(f.source, QUALITY_PROFILES["1080p30"], AbortSignal.abort()))
+      .resolves.toBe("vp8");
+    expect(f.createElement).not.toHaveBeenCalled();
+    expect(f.connections).toHaveLength(0);
+  });
+
+  it("closes the sender if receiver construction fails", async () => {
+    const f = fixture("", true);
+    await expect(preferredVideoCodecForTrack(f.source, QUALITY_PROFILES["1080p30"]))
+      .resolves.toBe("vp8");
+    expect(f.connections[0]!.close).toHaveBeenCalledOnce();
+    expect(f.track.stop).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps a proved H264 result and retires the budget", async () => {
+    const f = fixture();
+    const run = preferredVideoCodecForTrack(f.source, QUALITY_PROFILES["1080p30"]);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(run).resolves.toBe("h264");
+    expect(f.track.stop).toHaveBeenCalledOnce();
+    expect(f.source.stop).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

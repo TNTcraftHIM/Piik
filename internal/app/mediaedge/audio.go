@@ -114,7 +114,10 @@ func (source *AudioSource) WritePCMWithDropped(pcm []byte, duration time.Duratio
 		return err
 	}
 	source.bytes.Add(uint64(len(packet)))
-	return source.samples.WriteSample(media.Sample{Data: packet, Duration: duration, PrevDroppedPackets: dropped})
+	// Pion still delivers to healthy bindings when one connection cannot write.
+	// Connection lifecycle owns those failures; they do not end the PCM source.
+	_ = source.samples.WriteSample(media.Sample{Data: packet, Duration: duration, PrevDroppedPackets: dropped})
+	return nil
 }
 
 func (source *AudioSource) WriteRTP(packet *rtp.Packet) error {

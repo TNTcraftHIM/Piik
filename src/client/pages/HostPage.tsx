@@ -2485,19 +2485,20 @@ export function HostPage({
         );
       } else {
         setDetails(captureDetails(captured));
-        videoCodecRef.current = await resolveStreamVideoCodec(captured);
+        const codec = await resolveStreamVideoCodec(captured);
         if (isCurrentShare(generation, shareGeneration)) {
+          videoCodecRef.current = codec;
           await startBrowserNativeIngress(generation, shareGeneration, captured);
           nativeStarted = nativeMediaIngressRef.current !== null;
         }
       }
-      setResolvedVideoCodec(videoCodecRef.current.primary);
     }
     if (!isCurrentShare(generation, shareGeneration)) {
       captured?.getTracks().forEach((track) => track.stop());
       if (nativeStarted) disposeNativeShare(shareGeneration);
       return;
     }
+    if (captured) setResolvedVideoCodec(videoCodecRef.current.primary);
 
     let createdRoom: HostRoomState | null = null;
     let claimedRoom = false;

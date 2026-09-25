@@ -1265,6 +1265,20 @@ struct VideoEncoderSelection final {
   std::unique_ptr<VideoEncoder> initial;
 };
 
+template <typename Measure>
+VideoEncoderSelection CompareSoftwareEncoder(std::unique_ptr<VideoEncoder> hardware,
+    std::optional<double> hardware_work, EncoderClock::time_point deadline, Measure measure) {
+  try {
+    RequireEncoderTime(deadline);
+    const double software_work = measure();
+    if (!hardware_work || software_work <= *hardware_work) return {};
+  } catch (const std::exception&) {
+    if (!hardware_work) throw;
+  }
+  // The deadline bounds new probing, not reuse of an already-proved encoder.
+  return {OutputKind::h264, std::move(hardware)};
+}
+
 using EncoderCandidate = std::pair<UINT, UINT>;
 
 void LogEncoderRejection(EncoderCandidate candidate, const GateFailure& error) {
@@ -1353,17 +1367,13 @@ VideoEncoderSelection SelectVideoEncoder(
     hardware.reset();
     device = DeviceContext{};
   }
-  RequireEncoderTime(deadline);
-  if (!device.device) device = CreateDevice(SelectAdapter(adapters, arguments.adapter_index));
-  try {
-    const double software_work = MeasureEncoderWork(nullptr, device.device.Get(),
-                                                    arguments.profile, deadline);
-    if (!hardware_work || software_work <= *hardware_work) return {};
-  } catch (const std::exception&) {
-    if (!hardware_work) throw;
+  if (!device.device) {
+    RequireEncoderTime(deadline);
+    device = CreateDevice(SelectAdapter(adapters, arguments.adapter_index));
   }
-  RequireEncoderTime(deadline);
-  return {OutputKind::h264, std::move(hardware)};
+  return CompareSoftwareEncoder(std::move(hardware), hardware_work, deadline, [&] {
+    return MeasureEncoderWork(nullptr, device.device.Get(), arguments.profile, deadline);
+  });
 }
 
 struct CaptureInput final {

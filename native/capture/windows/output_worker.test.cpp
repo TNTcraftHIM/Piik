@@ -149,8 +149,47 @@ void CheckEncoderCandidates() {
   assert(tried.empty());
 }
 
+void CheckAutoEncoderFallback() {
+  const auto deadline = EncoderClock::time_point::max();
+  const auto expired = EncoderClock::time_point::min();
+  auto hardware = [] { return std::make_unique<FixtureEncoder>(nullptr, std::shared_future<void>{}); };
+  for (const auto probe_deadline : {deadline, expired}) {
+    auto initial = hardware();
+    const auto* proven = initial.get();
+    bool probed = false;
+    const auto selected = CompareSoftwareEncoder(std::move(initial), .04, probe_deadline, [&]() -> double {
+      probed = true;
+      // A slow software comparison exhausts its budget after H264 succeeded.
+      RequireEncoderTime(expired);
+      return 0;
+    });
+    assert(selected.kind == OutputKind::h264 && selected.initial.get() == proven);
+    assert(probed == (probe_deadline == deadline));
+  }
+  for (const double software_work : {.02, .04, .06}) {
+    const auto selected = CompareSoftwareEncoder(hardware(), .04, deadline, [&] { return software_work; });
+    assert((selected.kind == OutputKind::vp8) == (software_work <= .04));
+    assert(static_cast<bool>(selected.initial) == (software_work > .04));
+  }
+  const auto software_only = CompareSoftwareEncoder(nullptr, std::nullopt, deadline, [] { return .03; });
+  assert(software_only.kind == OutputKind::vp8 && !software_only.initial);
+  for (const auto probe_deadline : {deadline, expired}) {
+    bool failed = false;
+    try {
+      CompareSoftwareEncoder(nullptr, std::nullopt, probe_deadline, [&]() -> double {
+        RequireEncoderTime(expired);
+        return 0;
+      });
+    } catch (const GateFailure& error) {
+      failed = error.stage() == "codec-probe-timeout";
+    }
+    assert(failed);  // No proved encoder must remain a startup failure.
+  }
+}
+
 int main() {
   CheckEncoderCandidates();
+  CheckAutoEncoderFallback();
   CheckPrimaryFailureDetails();
   ComPtr<ID3D11Device> device;
   Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,

@@ -73,10 +73,10 @@ export class SfuSubscriber {
       await peer.acceptSignal(message, async (description) => {
         if (description.type !== "offer")
           throw new Error("SFU subscriber expected an offer");
-        await peer.pc.setRemoteDescription(description);
+        await peer.waitForOperation(() => peer.pc.setRemoteDescription(description));
         if (this.peer !== peer) return;
         await peer.sendDescription(
-          preferScreenAudioStereo(await peer.pc.createAnswer()),
+          preferScreenAudioStereo(await peer.waitForOperation(() => peer.pc.createAnswer())),
         );
         this.restartPending = false;
       });

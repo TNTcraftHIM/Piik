@@ -107,7 +107,7 @@ export class SfuPublisher {
         async (description) => {
           if (description.type !== "answer")
             throw new Error("SFU publisher expected an answer");
-          await peer.pc.setRemoteDescription(description);
+          await peer.waitForOperation(() => peer.pc.setRemoteDescription(description));
         },
         async (activeCount) => {
           await this.enqueue(async () => {
@@ -120,7 +120,7 @@ export class SfuPublisher {
             parameters.encodings.forEach((encoding, index) => {
               encoding.active = index < activeCount;
             });
-            await sender.setParameters(parameters);
+            await peer.waitForOperation(() => sender.setParameters(parameters));
             return this.peer === peer;
           });
         },
@@ -147,7 +147,7 @@ export class SfuPublisher {
         this.failureStage = "source";
         const sourceVideo = requiredVideo(stream);
         video = this.ownTrack(cloneSenderVideoTrack(sourceVideo));
-        await applyVideoCaptureProfile(video, profile);
+        await peer.waitForOperation(() => applyVideoCaptureProfile(video!, profile));
         if (this.peer !== peer) {
           this.releaseTrack(video);
           return false;
@@ -193,7 +193,7 @@ export class SfuPublisher {
         await this.configure(profile);
         if (this.peer !== peer) return false;
         await peer.sendDescription(
-          await peer.pc.createOffer(),
+          await peer.waitForOperation(() => peer.pc.createOffer()),
           this.media(profile),
         );
         if (this.peer !== peer) return false;
@@ -201,11 +201,12 @@ export class SfuPublisher {
         this.startStats();
         return true;
       } catch (error) {
+        if (video && this.video !== video) this.releaseTrack(video);
+        if (this.peer !== peer) return false;
         debugError("webrtc", "sfu-activate-failed", error, {
           stage: this.failureStage ?? "connect",
         });
-        if (video && this.video !== video) this.releaseTrack(video);
-        if (this.peer === peer) this.fail(this.failureStage ?? "connect");
+        this.fail(this.failureStage ?? "connect");
         throw error;
       }
     });
@@ -238,15 +239,15 @@ export class SfuPublisher {
       const previousBaseline = this.startupFramesBaseline;
       if (videoChanged) this.resetStats();
       try {
-        if (videoChanged) await applyVideoCaptureProfile(nextVideo, profile);
+        if (videoChanged) await peer.waitForOperation(() => applyVideoCaptureProfile(nextVideo, profile));
         if (this.peer !== peer) return false;
         nextVideo.enabled = !this.paused;
         if (nextAudio) {
           nextAudio.enabled = !this.paused;
           nextAudio.contentHint = "music";
         }
-        if (videoChanged) await videoSender.replaceTrack(nextVideo);
-        await audioSender.replaceTrack(nextAudio);
+        if (videoChanged) await peer.waitForOperation(() => videoSender.replaceTrack(nextVideo));
+        await peer.waitForOperation(() => audioSender.replaceTrack(nextAudio));
         if (this.peer !== peer) return false;
         this.video = nextVideo;
         this.audio = nextAudio;
@@ -265,8 +266,8 @@ export class SfuPublisher {
         this.setPaused(this.paused);
         return true;
       } catch (error) {
-        debugError("webrtc", "sfu-source-failed", error);
         if (this.peer !== peer) return false;
+        debugError("webrtc", "sfu-source-failed", error);
         this.video = previousVideo;
         this.audio = previousAudio;
         if (videoChanged) {
@@ -274,9 +275,10 @@ export class SfuPublisher {
           this.startupFramesBaseline = previousBaseline;
         }
         try {
-          if (videoChanged) await videoSender.replaceTrack(previousVideo);
-          await audioSender.replaceTrack(previousAudio);
+          if (videoChanged) await peer.waitForOperation(() => videoSender.replaceTrack(previousVideo));
+          await peer.waitForOperation(() => audioSender.replaceTrack(previousAudio));
           await this.configure(profile, videoChanged);
+          if (this.peer !== peer) return false;
           this.videoWarning = { key: "host.fail.sfuSwitch" };
           return false;
         } catch {
@@ -310,7 +312,7 @@ export class SfuPublisher {
           .degradationPreference;
     if (configureVideo) this.resetStats();
     try {
-      if (videoChanged) await applyVideoCaptureProfile(video, profile);
+      if (videoChanged) await peer.waitForOperation(() => applyVideoCaptureProfile(video, profile));
       const result = await this.configure(profile, configureVideo);
       if (this.peer !== peer) return false;
       if (!peer.send({ kind: "media", media: this.media(profile) }))
@@ -318,11 +320,12 @@ export class SfuPublisher {
       this.profile = profile;
       return result;
     } catch (error) {
-      debugError("webrtc", "sfu-profile-failed", error, { requested: profile });
       if (this.peer !== peer) return false;
+      debugError("webrtc", "sfu-profile-failed", error, { requested: profile });
       try {
-        if (videoChanged) await applyVideoCaptureProfile(video, previous);
+        if (videoChanged) await peer.waitForOperation(() => applyVideoCaptureProfile(video, previous));
         await this.configure(previous, configureVideo);
+        if (this.peer !== peer) return false;
         this.videoWarning = { key: "host.fail.sfuParams" };
         return false;
       } catch {
@@ -390,7 +393,7 @@ export class SfuPublisher {
         return false;
       try {
         await peer.sendDescription(
-          await peer.pc.createOffer({ iceRestart: true }),
+          await peer.waitForOperation(() => peer.pc.createOffer({ iceRestart: true })),
           this.media(this.profile),
         );
         return true;
@@ -478,29 +481,31 @@ export class SfuPublisher {
       parameters.encodings.forEach((encoding, index) =>
         Object.assign(encoding, encodings[index]),
       );
-      await sender.setParameters(parameters);
+      await peer.waitForOperation(() => sender.setParameters(parameters));
       if (this.peer !== peer) return false;
-      const readback = await configureVideoSender(
+      const readback = await peer.waitForOperation(() => configureVideoSender(
         sender,
         this.startupPending ? startupVideoProfile(profile) : profile,
-      );
+      ));
       if (this.peer !== peer) return false;
       this.senderParameters = readback;
       this.videoWarning = senderParameterWarning(readback);
     }
-    if (!this.audio || !this.audioSender) {
+    const audioSender = this.audioSender;
+    if (!this.audio || !audioSender) {
       this.audioWarning = null;
       return true;
     }
     try {
-      const audio = await configureScreenAudioSender(
-        this.audioSender,
+      const audio = await peer.waitForOperation(() => configureScreenAudioSender(
+        audioSender,
         profile.screenAudioQuality,
-      );
+      ));
       if (this.peer !== peer) return false;
       this.audioWarning = audioSenderParameterWarning(audio);
       return true;
     } catch {
+      if (this.peer !== peer) return false;
       this.audioWarning = { key: "host.fail.sfuAudioParams" };
       return false;
     }
@@ -527,7 +532,7 @@ export class SfuPublisher {
     if (!peer || !video || !sender || this.statsInFlight === stats) return;
     this.statsInFlight = stats;
     try {
-      const report = await peer.pc.getStats();
+      const report = await peer.waitForOperation(() => peer.pc.getStats());
       debugRtcStats(peer.pc, report);
       debugTrack(video, { event: "sfu-sample" });
       if (this.peer !== peer || this.video !== video || this.stats !== stats)

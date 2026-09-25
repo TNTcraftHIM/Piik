@@ -97,6 +97,47 @@ func TestPublicationOwnsOneReservationAndSourceLifetime(t *testing.T) {
 	}
 }
 
+func TestPublicationAdmissionIgnoresUnrelatedFailedOutputs(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	source, err := engine.NewSource("vp8", 2, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	publication, err := engine.NewPublication(source, EdgeOptions{ConnectionID: "initial"})
+	if err != nil {
+		t.Fatalf("unconfigured outputs prevented initial publication: %v", err)
+	}
+	defer publication.Close()
+	if err = source.ConfigureOutputs([]uint32{90_000, 300_000, 90_000, 90_000}); err != nil {
+		t.Fatal(err)
+	}
+	for _, slot := range []int{2, 3, 0, 1} {
+		if err = source.DisableLayer(slot); err != nil {
+			t.Fatal(err)
+		}
+		candidate, createErr := engine.NewPublication(source, EdgeOptions{ConnectionID: "replacement"})
+		if slot >= 2 {
+			if createErr != nil {
+				t.Fatalf("unrelated failed output %d prevented publication: %v", slot, createErr)
+			}
+			if len(candidate.Media().Layers) != 2 || len(source.publications) != 2 {
+				t.Fatal("independent output failure changed the base publication")
+			}
+			if err = candidate.Close(); err != nil {
+				t.Fatal(err)
+			}
+		} else if createErr == nil {
+			_ = candidate.Close()
+			t.Fatalf("failed base output %d was admitted", slot)
+		}
+	}
+}
+
 func TestPublicationQualityUsesHighestSentLayerCadence(t *testing.T) {
 	check := func(err error) {
 		t.Helper()

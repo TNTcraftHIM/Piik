@@ -208,6 +208,10 @@ async function main(): Promise<void> {
     await click(host, 'button[aria-label^="H264"]');
     stage = "share-picker";
     await click(host, 'button.lr-tv-big.is-action');
+    // This arm measures Native ingress. Browser capture can start without App
+    // discovery, so first establish the control connection this gate requires.
+    await waitForSample(() => read(host),
+      (sample) => sample.controlOpen && sample.requests.includes("list-sources"), 10000);
     stage = "share-browser-capture";
     await click(host, 'button[data-source-tab="browser"]');
     await click(host, '.lr-source-option.is-browser');
@@ -263,6 +267,8 @@ async function main(): Promise<void> {
     stage = "source-audio-change";
     await evaluate(cdp, host, `fanoutGate.audio(${!initialAudio})`, Date.now()+5000);
     await click(host, 'button[aria-label="Switch source"]');
+    await click(host, 'button[data-source-tab="browser"]');
+    await click(host, '.lr-source-option.is-browser');
     await waitForSample(() => read(host), (s) => s.receiveRequests === 2 && s.captures === 2 && s.sharing, 15000);
     const beforeSource = await read(viewers[1]!);
     await waitForSample(() => read(viewers[1]!), (s) => s.width > 0 && s.frames >= beforeSource.frames+20 && s.audio===Number(!initialAudio), 25000);

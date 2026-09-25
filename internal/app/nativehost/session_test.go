@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +22,10 @@ func TestMain(tests *testing.M) {
 	if os.Getenv("PIIK_NATIVEHOST_PIPE_FIXTURE") == "backend" {
 		for _, key := range []string{"PIIK_CAPTURE_STARTING", "PIIK_CAPTURE_ACTIVE"} {
 			writeCaptureFixtureFrame(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: []byte(os.Getenv(key))})
+			if layer := os.Getenv("PIIK_CAPTURE_UNAVAILABLE"); key == "PIIK_CAPTURE_STARTING" && layer != "" {
+				value, _ := strconv.Atoi(layer)
+				writeCaptureFixtureFrame(nativecapture.Frame{Kind: nativecapture.FrameLayerUnavailable, Layer: value, Data: []byte("fixture")})
+			}
 		}
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
@@ -83,7 +89,7 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 			go func() {
 				session.updateMu.Lock()
 				err := session.commitCapture(options, QualityProfile{Video: options.Profile, AudioBitrate: 64_000}, replacement,
-					CaptureState{AdapterIndex: &adapter, EncoderIndex: &encoder}, nil, false)
+					CaptureState{AdapterIndex: &adapter, EncoderIndex: &encoder, unavailableLayers: []int{0}}, nil, false)
 				session.updateMu.Unlock()
 				committed <- err
 			}()
@@ -115,6 +121,35 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 				}
 				if media.Layers[1].Width != 854 || media.Layers[1].Height != 480 || media.Layers[1].Bitrate != 2_000_000 {
 					t.Fatalf("acknowledged stale metadata: %+v", media)
+				}
+				plan, err := source.BeginFrame(time.Second)
+				check(err)
+				if plan.Bitrates[0] != 0 || plan.Bitrates[1] == 0 || session.captureUnavailable != nil {
+					t.Fatalf("replacement lost or retained pending failures: %+v", plan)
+				}
+				// The next healthy generation must not inherit the failed layer.
+				healthy, err := nativecapture.StartVideo(ctx, executable, options)
+				check(err)
+				defer healthy.Close()
+				go func() {
+					committed <- session.commitCapture(options, session.profile, healthy, CaptureState{}, nil, false)
+				}()
+				select {
+				case <-replacement.Done():
+				case <-time.After(5 * time.Second):
+					t.Fatal("replacement fixture did not exit")
+				}
+				check(session.installCapture(healthy))
+				select {
+				case err = <-committed:
+					check(err)
+				case <-time.After(time.Second):
+					t.Fatal("healthy replacement remained pending")
+				}
+				plan, err = source.BeginFrame(time.Second)
+				check(err)
+				if plan.Bitrates[0] == 0 || plan.Bitrates[1] == 0 {
+					t.Fatalf("healthy generation inherited a failed layer: %+v", plan)
 				}
 				return
 			}
@@ -165,19 +200,38 @@ func TestCaptureProfileRetainsSelectedBackendFromStarting(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"}
-	stream, err := nativecapture.StartVideo(t.Context(), executable, nativecapture.VideoOptions{
-		Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "h264", Profile: profile, OutputGroups: 4,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stream.Close()
-	state, err := waitForCaptureProfile(t.Context(), stream, profile, "h264", false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.AdapterIndex == nil || *state.AdapterIndex != 1 || state.EncoderIndex == nil || *state.EncoderIndex != 2 {
-		t.Fatalf("active profile lost the actual hardware selection: %+v", state)
+	for _, failed := range []string{"", "0", "1", "5", "6"} {
+		t.Run("unavailable-"+failed, func(t *testing.T) {
+			t.Setenv("PIIK_CAPTURE_UNAVAILABLE", failed)
+			stream, err := nativecapture.StartVideo(t.Context(), executable, nativecapture.VideoOptions{
+				Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "h264", Profile: profile, OutputGroups: 4,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+			state, err := waitForCaptureProfile(t.Context(), stream, profile, "h264", false, false)
+			if failed == "1" || failed == "6" {
+				if err == nil {
+					t.Fatal("original or invalid output failure was accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if state.AdapterIndex == nil || *state.AdapterIndex != 1 || state.EncoderIndex == nil || *state.EncoderIndex != 2 {
+				t.Fatalf("active profile lost the actual hardware selection: %+v", state)
+			}
+			var unavailable []int
+			if failed != "" {
+				layer, _ := strconv.Atoi(failed)
+				unavailable = []int{layer}
+			}
+			if !slices.Equal(state.unavailableLayers, unavailable) {
+				t.Fatalf("preparation lost optional output failures: %+v", state.unavailableLayers)
+			}
+		})
 	}
 }
 

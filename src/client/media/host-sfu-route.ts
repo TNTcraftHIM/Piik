@@ -161,30 +161,11 @@ export class HostSfuRoute {
     this.resyncing = true;
     this.route.reset();
     this.recovery = null;
-    const pending = this.pending;
-    const active = this.active;
-    this.pending = null;
-    this.active = null;
-    if (pending) {
-      pending.failed = true;
-    }
-    if (active) {
-      active.failed = true;
-    }
+    const closing = this.retirePublishers();
     const accepted = this.route.accept(update);
     this.events.reconcileChildren([]);
 
-    await this.queueTransition(async () => {
-      if (active?.active) {
-        await active.publisher.deactivate().catch(() => false);
-      }
-      if (active) {
-        await disconnectPublisher(active.publisher);
-      }
-      if (pending && pending !== active) {
-        await disconnectPublisher(pending.publisher);
-      }
-    });
+    await this.queueTransition(() => closing);
 
     if (this.closed || this.resyncGeneration !== resyncGeneration) {
       return "stale";
@@ -403,27 +384,23 @@ export class HostSfuRoute {
     this.resyncing = false;
     this.route.reset();
     this.recovery = null;
-    await this.queueTransition(async () => {
-      const pending = this.pending;
-      const active = this.active;
-      this.pending = null;
-      this.active = null;
-      if (pending) {
-        pending.failed = true;
-      }
-      if (active) {
-        active.failed = true;
-      }
-      if (active?.active) {
-        await active.publisher.deactivate().catch(() => false);
-      }
-      await Promise.all([
-        pending ? disconnectPublisher(pending.publisher) : undefined,
-        active && active !== pending
-          ? disconnectPublisher(active.publisher)
-          : undefined,
-      ]);
-    });
+    const closing = this.retirePublishers();
+    await this.queueTransition(() => closing);
+  }
+
+  private async retirePublishers(): Promise<void> {
+    const pending = this.pending;
+    const active = this.active;
+    this.pending = null;
+    this.active = null;
+    if (pending) pending.failed = true;
+    if (active) active.failed = true;
+    // Cancel before joining the transition queue: its current operation may
+    // itself be waiting for one of these publishers to finish preparation.
+    await Promise.all([
+      pending ? disconnectPublisher(pending.publisher) : undefined,
+      active && active !== pending ? this.disconnectRetiredPublisher(active) : undefined,
+    ]);
   }
 
   private queueActivation(

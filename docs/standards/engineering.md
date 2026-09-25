@@ -245,6 +245,15 @@ hits from tests and previews, are leads rather than proof of product use or
 absence. Follow the actual producer-to-consumer path and check the changed
 boundary; isolated helper tests can miss a mismatch between the two ends.
 
+For a shared-resource failure, review both the failing child and a healthy
+sibling through the real producer/consumer boundary. Compare preparation with
+live operation, and current implementations with supported compatibility paths.
+Exercise optional failure after success and a dependency that remains pending
+after cancellation; a timeout constant or a close call alone proves no deadline.
+Keep the regression at the owning boundary and verify it rejects the old
+behavior. Report which failure sequences were exercised, rather than treating
+test counts, file coverage or an earlier audit as proof of lifecycle coverage.
+
 Trace acquisition, use, commit and retirement, including replacement and failure.
 For async ownership, check A starting, B replacing it, then A completing or
 cleaning up. Where compatibility is promised or being established for public

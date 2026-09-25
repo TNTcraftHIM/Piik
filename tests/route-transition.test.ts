@@ -906,6 +906,34 @@ describe("minimal route transition contracts", () => {
     expect(publishers[1]?.disconnect).toHaveBeenCalled();
   });
 
+  it.each(["disconnect", "resync"])("cancels pending Host preparation before joining its queue during %s", async (reason) => {
+    let cancel!: (result: boolean) => void;
+    const activating = new Promise<boolean>(resolve => { cancel = resolve; });
+    const publisher = createFakePublisher([], "pending");
+    publisher.activate.mockImplementation(() => activating);
+    publisher.disconnect.mockImplementation(async () => { cancel(false); });
+    const route = new HostSfuRoute({
+      getStream: () => ({}) as MediaStream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "vp8",
+      reconcileChildren: () => undefined,
+      send: () => true,
+      createPublisher: () => publisher,
+    });
+    await route.acceptAndWait({
+      revision: 2, phase: "active", assignment: hostAssignment("pending"),
+    });
+    const preparing = route.acceptConfig(sfuConfig(2, "pending"));
+    await vi.waitFor(() => expect(publisher.activate).toHaveBeenCalledOnce());
+    const retiring = reason === "disconnect" ? route.disconnect() : route.resyncAuthoritative({
+      revision: 1, phase: "active", assignment: hostAssignment(null),
+    });
+    expect(publisher.disconnect).toHaveBeenCalled();
+    await Promise.all([preparing, retiring]);
+    expect(publisher.setPaused).not.toHaveBeenCalled();
+    await route.disconnect();
+  });
+
   it("ignores a retired publisher failure after same-generation resync", async () => {
     let releaseOldConnect!: () => void;
     const oldConnectGate = new Promise<void>((resolve) => {

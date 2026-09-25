@@ -1,6 +1,7 @@
 import type { CopyKey } from "../ui/copy";
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
+import { waitForConnectionOperation } from "./connection-operation";
 import type { BrowserEncodingPool, BrowserPooledSender } from "../media/browser-encoding-pool";
 import { BrowserEncodingOutput, encodedStreams, supportsBrowserEncoding } from "../media/browser-encoding-output";
 import { debugError, debugEvent } from "../lib/debug";
@@ -91,7 +92,8 @@ export class HostPeer {
   private appliedAudioSenderParameters:
     | AudioSenderParameterReadback
     | null = null;
-  private disposed = false;
+  private readonly lifetime = new AbortController();
+  private get disposed(): boolean { return this.lifetime.signal.aborted; }
   private profileRevision = 0;
   private negotiationEpoch = 0;
   private ordinaryAnswerEpoch: number | null = null;
@@ -252,16 +254,18 @@ export class HostPeer {
 
       try {
         try {
-          if (videoChanged) await videoSender.replaceTrack(nextVideoTrack);
-          await audioSender.replaceTrack(nextAudioTrack);
+          if (videoChanged) await this.waitForOperation(() => videoSender.replaceTrack(nextVideoTrack));
+          await this.waitForOperation(() => audioSender.replaceTrack(nextAudioTrack));
           if (audioDirectionChanged) {
             audioTransceiver.direction = nextAudioDirection;
           }
         } catch (error) {
+          if (this.disposed) return false;
           const [videoRollback] = await Promise.allSettled([
-            videoChanged ? videoSender.replaceTrack(previousVideoTrack) : Promise.resolve(),
-            audioSender.replaceTrack(previousAudioTrack),
+            videoChanged ? this.waitForOperation(() => videoSender.replaceTrack(previousVideoTrack)) : Promise.resolve(),
+            this.waitForOperation(() => audioSender.replaceTrack(previousAudioTrack)),
           ]);
+          if (this.disposed) return false;
           if (audioDirectionChanged) {
             audioTransceiver.direction = previousAudioDirection;
           }
@@ -294,6 +298,7 @@ export class HostPeer {
           video: videoChanged && this.connection.connectionState === "connected",
           audio: true,
         });
+        if (this.disposed) return false;
         this.snapshot = { ...this.snapshot, error: null };
         this.emit();
         return !audioDirectionChanged || (await this.createOffer(false));
@@ -369,7 +374,12 @@ export class HostPeer {
         return false;
       }
       if (updateCaptureConstraints) {
-        await applyVideoCaptureProfile(videoTrack, profile);
+        try {
+          await this.waitForOperation(() => applyVideoCaptureProfile(videoTrack, profile));
+        } catch (error) {
+          if (this.disposed) return false;
+          throw error;
+        }
         if (
           this.disposed ||
           this.senderVideoTrack !== videoTrack ||
@@ -434,7 +444,7 @@ export class HostPeer {
               this.pendingCandidates.push(payload.candidate);
             }
           } else {
-            await addRemoteIceCandidate(this.connection, payload.candidate);
+            await this.waitForOperation(() => addRemoteIceCandidate(this.connection, payload.candidate));
           }
         });
       }
@@ -490,7 +500,7 @@ export class HostPeer {
     if (this.disposed) {
       return;
     }
-    this.disposed = true;
+    this.lifetime.abort();
     this.nextNegotiationEpoch();
     this.ordinaryAnswerEpoch = null;
     if (this.statsTimer !== null) {
@@ -552,7 +562,7 @@ export class HostPeer {
       if (!owns()) return;
       const request = sender.setParameters as (parameters: RTCRtpSendParameters,
         options: { encodingOptions: Array<{ keyFrame: boolean }> }) => Promise<void>;
-      await request.call(sender, sender.getParameters(), { encodingOptions: [{ keyFrame: true }] });
+      await this.waitForOperation(() => request.call(sender, sender.getParameters(), { encodingOptions: [{ keyFrame: true }] }));
     });
     binding = this.videoPool.create(source, sender, this.connection, this.desiredProfile, this.encodedOutput,
       () => this.enqueueSenderMutation(async () => {
@@ -561,12 +571,12 @@ export class HostPeer {
         const next = binding?.carrierScale() === undefined ? cloneSenderVideoTrack(source) : this.encodedOutput!.track;
         try {
           this.applyPausedState(next, null);
-          await applyVideoCaptureProfile(next, this.desiredProfile);
+          await this.waitForOperation(() => applyVideoCaptureProfile(next, this.desiredProfile));
           if (!owns()) { if (next !== this.encodedOutput?.track) next.stop(); return false; }
-          if (next !== previous) await sender.replaceTrack(next);
-          await configureVideoSender(sender,
+          if (next !== previous) await this.waitForOperation(() => sender.replaceTrack(next));
+          await this.waitForOperation(() => configureVideoSender(sender,
             this.startupVideoProfilePending ? startupVideoProfile(this.desiredProfile) : this.desiredProfile,
-            binding?.carrierScale());
+            binding?.carrierScale()));
           if (!owns()) throw new DOMException("Retired Browser pool binding", "AbortError");
           this.senderVideoTrack = next;
           if (previous !== next && previous !== this.encodedOutput?.track) previous.stop();
@@ -574,9 +584,10 @@ export class HostPeer {
           return true;
         } catch (error) {
           if (!this.disposed && sender.track !== previous) {
-            try { await sender.replaceTrack(previous); } catch { this.dispose(); }
+            try { await this.waitForOperation(() => sender.replaceTrack(previous)); } catch { this.dispose(); }
           }
           if (next !== previous && next !== this.encodedOutput?.track) next.stop();
+          if (this.disposed) return false;
           debugError("encoding-pool", "carrier-attachment-failed", error, { connectionId: this.connectionId });
           return false;
         }
@@ -594,6 +605,10 @@ export class HostPeer {
       connectionId: this.connectionId,
       candidate,
     });
+  }
+
+  private waitForOperation<T>(operation: () => Promise<T>): Promise<T> {
+    return waitForConnectionOperation(this.lifetime.signal, operation);
   }
 
   private enqueueSenderMutation<T>(operation: () => Promise<T>): Promise<T> {
@@ -634,11 +649,11 @@ export class HostPeer {
       if (restart) {
         this.connection.restartIce();
       }
-      const offer = await this.connection.createOffer();
+      const offer = await this.waitForOperation(() => this.connection.createOffer());
       if (!this.ownsLocalOffer(epoch)) {
         return false;
       }
-      await this.connection.setLocalDescription(offer);
+      await this.waitForOperation(() => this.connection.setLocalDescription(offer));
       if (
         !this.ownsLocalOffer(epoch) ||
         !this.connection.localDescription
@@ -676,7 +691,7 @@ export class HostPeer {
   private async flushCandidates(): Promise<void> {
     const candidates = this.pendingCandidates.splice(0);
     for (const candidate of candidates) {
-      await addRemoteIceCandidate(this.connection, candidate);
+      await this.waitForOperation(() => addRemoteIceCandidate(this.connection, candidate));
     }
   }
 
@@ -688,7 +703,7 @@ export class HostPeer {
       return;
     }
     try {
-      await this.connection.setRemoteDescription(payload.description);
+      await this.waitForOperation(() => this.connection.setRemoteDescription(payload.description));
       if (!this.ownsAnswer(epoch)) {
         return;
       }
@@ -744,7 +759,7 @@ export class HostPeer {
     this.statsInFlight = true;
     const statsAccumulator = this.statsAccumulator;
     try {
-      const metricsPromise = collectConnectionMetrics(
+      const metricsPromise = this.waitForOperation(() => collectConnectionMetrics(
         this.connection,
         "send",
         statsAccumulator,
@@ -752,7 +767,7 @@ export class HostPeer {
           trackIdentifier: captureTrack.id,
           audioTrackIdentifier: captureAudioTrack?.id ?? null,
         },
-      );
+      ));
       const capture = captureMetrics(captureTrack);
       debugTrack(captureTrack, { connectionId: this.connectionId, event: "sample" });
       const metrics = { ...(await metricsPromise), ...capture };
@@ -792,6 +807,7 @@ export class HostPeer {
   }
 
   private setError(error: unknown, key: CopyKey): void {
+    if (this.disposed) return;
     debugError("webrtc", "sender-failed", error, { connectionId: this.connectionId, reason: key });
     this.snapshot = { ...this.snapshot, error: { key } };
     this.emit();
@@ -820,8 +836,9 @@ export class HostPeer {
 
     if (mutation.video) {
       try {
-        senderParameters = await configureVideoSender(sender, profile, this.pooledVideo?.carrierScale());
+        senderParameters = await this.waitForOperation(() => configureVideoSender(sender, profile, this.pooledVideo?.carrierScale()));
       } catch (error) {
+        if (this.disposed) return false;
         videoSucceeded = false;
         debugError("webrtc", "sender-parameters-failed", error, { connectionId: this.connectionId, profileRevision, requested: profile });
       }
@@ -835,19 +852,21 @@ export class HostPeer {
       return false;
     }
 
-    if (mutation.video && videoSucceeded && this.pooledVideo) {
-      try { await this.pooledVideo.updateProfile(this.desiredProfile); }
+    const pooledVideo = this.pooledVideo;
+    if (mutation.video && videoSucceeded && pooledVideo) {
+      try { await this.waitForOperation(() => pooledVideo.updateProfile(this.desiredProfile)); }
       catch { videoSucceeded = false; }
     }
 
     if (mutation.audio && audioSender) {
       if (audioSender.track) {
         try {
-          audioSenderParameters = await configureScreenAudioSender(
+          audioSenderParameters = await this.waitForOperation(() => configureScreenAudioSender(
             audioSender,
             profile.screenAudioQuality,
-          );
+          ));
         } catch (error) {
+          if (this.disposed) return false;
           audioSucceeded = false;
           debugError("webrtc", "audio-parameters-failed", error, { connectionId: this.connectionId, profileRevision });
         }

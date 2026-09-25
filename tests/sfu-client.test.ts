@@ -612,13 +612,13 @@ describe("embedded SFU browser transport", () => {
     expect(pc.transceivers[1]!.sender.parameters.encodings[0]!.maxBitrate).toBe(64_000);
   });
 
-  it("closes every owned clone during in-flight replacement without stopping the sources", async () => {
+  it.each(["replaceTrack", "setParameters"] as const)("closes every owned clone while %s remains pending without stopping the sources", async (operation) => {
     const { publisher: host, pc, video, sound } = await publisher();
     let release!: () => void;
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
     });
-    pc.transceivers[0]!.sender.setParameters.mockImplementationOnce(
+    pc.transceivers[0]!.sender[operation].mockImplementationOnce(
       async () => blocked,
     );
     const replacement = new FakeTrack("video");
@@ -627,7 +627,6 @@ describe("embedded SFU browser transport", () => {
     host.setPaused(true);
     expect(replacement.clones[0]!.enabled).toBe(false);
     await host.disconnect();
-    release();
     expect(await replacing).toBe(false);
     for (const track of [
       video.clones[0]!,
@@ -638,6 +637,10 @@ describe("embedded SFU browser transport", () => {
     for (const source of [video, sound, replacement])
       expect(source.stop).not.toHaveBeenCalled();
     expect(pc.close).toHaveBeenCalledOnce();
+    const audioCalls = pc.transceivers[1]!.sender.replaceTrack.mock.calls.length;
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pc.transceivers[1]!.sender.replaceTrack).toHaveBeenCalledTimes(audioCalls);
   });
 
   it("fails closed when restoring a replaced sender fails", async () => {

@@ -721,6 +721,44 @@ describe("Host quality ownership", () => {
     expect(replacement.close).toHaveBeenCalledOnce();
   });
 
+  it.each(["probe", "ingress"])("does not commit Browser codec state after sharing ends during %s", async (stage) => {
+    const current = fixture(false);
+    current.activeGenerationRef.current = null;
+    current.nativeShareGenerationRef.current = null;
+    const probe = deferred<{ primary: string }>();
+    const ingress = deferred<void>();
+    const captured = { getTracks: () => [current.track] };
+    const resolveStreamVideoCodec = vi.fn(() => probe.promise);
+    const startBrowserNativeIngress = vi.fn(() => ingress.promise);
+    const setResolvedVideoCodec = vi.fn();
+    Object.assign(current.context, {
+      phase: "idle", captureBrowserSource: async () => captured,
+      HostAudio: class {}, setStream: vi.fn(), watchCaptureEnd: vi.fn(),
+      resolveStreamVideoCodec, startBrowserNativeIngress, setResolvedVideoCodec,
+    });
+    current.disposeResources.mockImplementation(() => {
+      current.videoCodecRef.current = { primary: "vp8" };
+      setResolvedVideoCodec(null);
+    });
+    const starting = current.startBrowser();
+    await vi.waitFor(() => expect(resolveStreamVideoCodec).toHaveBeenCalledOnce());
+    if (stage === "ingress") {
+      probe.resolve({ primary: "h264" });
+      await vi.waitFor(() => expect(startBrowserNativeIngress).toHaveBeenCalledOnce());
+    }
+    current.context.endSharing({ key: "host.notice.stopped" });
+    setResolvedVideoCodec.mockClear();
+    probe.resolve({ primary: "h264" });
+    ingress.resolve();
+    await starting;
+    expect(current.videoCodecRef.current.primary).toBe("vp8");
+    expect(setResolvedVideoCodec).not.toHaveBeenCalled();
+    expect(startBrowserNativeIngress).toHaveBeenCalledTimes(stage === "ingress" ? 1 : 0);
+    expect(current.track.stop).toHaveBeenCalled();
+    expect(current.createRoom).not.toHaveBeenCalled();
+    expect(current.roomMutationRef.current).toBeNull();
+  });
+
   it("retires a cancelled start ACK before publishing audio, codec or bridge state", async () => {
     const current = fixture();
     current.nativeShareGenerationRef.current = null;

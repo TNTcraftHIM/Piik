@@ -862,6 +862,41 @@ describe("HostPeer source replacement", () => {
     expect(nextSenderVideo?.stop).toHaveBeenCalledOnce();
   });
 
+  it.each(["video", "audio", "rollback"])("retires a replacement blocked in %s without waiting for the browser", async (stage) => {
+    const video = createTrack("video", "old-video");
+    const audio = createTrack("audio", "old-audio");
+    const peer = createPeer(createStream(video, audio));
+    await peer.start();
+    const connection = FakePeerConnection.latest!;
+    const videoSender = connection.senders[0]!;
+    const audioSender = connection.senders[1]!;
+    const previousClone = videoSender.track!;
+    videoSender.deferReplaceCall = stage === "video" ? 1 : stage === "rollback" ? 2 : null;
+    audioSender.deferReplaceCall = stage === "audio" ? 1 : null;
+    audioSender.failNextReplace = stage === "rollback";
+    const nextVideo = createTrack("video", "next-video");
+    const nextAudio = createTrack("audio", "next-audio");
+    const replacing = peer.replaceStream(createStream(nextVideo, nextAudio));
+    await vi.waitFor(() => expect(
+      stage === "audio" ? audioSender.replaceTrack : videoSender.replaceTrack,
+    ).toHaveBeenCalledTimes(stage === "rollback" ? 2 : 1));
+    const replacementClone = vi.mocked(nextVideo.clone).mock.results[0]!.value;
+    const queuedProfile = peer.updateProfile(QUALITY_PROFILES["1080p30"]);
+    peer.dispose();
+    await expect(replacing).resolves.toBe(false);
+    await expect(queuedProfile).resolves.toBe(false);
+    expect(previousClone.stop).toHaveBeenCalledOnce();
+    expect(replacementClone.stop).toHaveBeenCalledOnce();
+    for (const source of [video, audio, nextVideo, nextAudio]) expect(source.stop).not.toHaveBeenCalled();
+    const audioCalls = audioSender.replaceTrack.mock.calls.length;
+    const offers = connection.createOfferCallCount;
+    videoSender.releaseDeferredReplaceTrack();
+    audioSender.releaseDeferredReplaceTrack();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(audioSender.replaceTrack).toHaveBeenCalledTimes(audioCalls);
+    expect(connection.createOfferCallCount).toBe(offers);
+  });
+
   it.each([false, true])("keeps the video sender and quality when only audio changes (failure=%s)", async (fail) => {
     const video = createTrack("video", "same-video");
     const peer = createPeer(createStream(video, null));

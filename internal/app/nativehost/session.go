@@ -39,6 +39,8 @@ type CaptureState struct {
 	FPS             uint32                        `json:"fps,omitempty"`
 	RestoreToken    string                        `json:"restoreToken,omitempty"`
 	Outputs         []nativecapture.OutputProfile `json:"outputs"`
+
+	unavailableLayers []int
 }
 
 type Event struct {
@@ -91,14 +93,17 @@ type Session struct {
 	done   chan error
 	ready  chan error
 
-	mu             sync.Mutex
-	updateMu       sync.Mutex
-	edges          map[string]*mediaedge.Edge
-	publications   map[publicationKey]*mediaedge.Publication
-	captureApplied chan struct{}
-	audioChanged   chan struct{}
-	paused         bool
-	closed         bool
+	mu           sync.Mutex
+	updateMu     sync.Mutex
+	edges        map[string]*mediaedge.Edge
+	publications map[publicationKey]*mediaedge.Publication
+
+	captureApplied     chan struct{}
+	captureUnavailable []int
+
+	audioChanged chan struct{}
+	paused       bool
+	closed       bool
 }
 
 func Start(parent context.Context, options Options) (*Session, error) {
@@ -512,6 +517,7 @@ func (session *Session) commitCapture(
 	session.stream = replacement
 	applied := make(chan struct{})
 	session.captureApplied = applied
+	session.captureUnavailable = state.unavailableLayers
 	if replaceAudio {
 		session.audioStream = replacementAudio
 		select {
@@ -545,14 +551,25 @@ func (session *Session) commitCapture(
 // Only the video reader installs source metadata, after leaving the old input.
 // The update response waits for this exact stream's installation, not its process.
 func (session *Session) installCapture(next *nativecapture.Stream) error {
+	session.mu.Lock()
+	unavailable := session.captureUnavailable
+	session.mu.Unlock()
 	session.source.BeginGeneration()
 	if err := configureCaptureOutputs(session.source, next.Outputs()); err != nil {
 		return err
+	}
+	// Preparation has consumed these events. Apply them to the new generation
+	// before acknowledging it, just as the live reader handles unavailable layers.
+	for _, layer := range unavailable {
+		if err := session.source.DisableLayer(layer); err != nil {
+			return err
+		}
 	}
 	session.mu.Lock()
 	if session.stream == next && session.captureApplied != nil {
 		close(session.captureApplied)
 		session.captureApplied = nil
+		session.captureUnavailable = nil
 	}
 	session.mu.Unlock()
 	session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: "active"})
@@ -915,6 +932,9 @@ func waitForCaptureProfile(
 		}
 		inputSeen := false
 		var starting CaptureState
+		var unavailable []int
+		outputs := stream.Outputs()
+		original := min(1, len(outputs)-1)
 		for {
 			frame, err := stream.Read()
 			if err != nil {
@@ -922,8 +942,14 @@ func waitForCaptureProfile(
 				return
 			}
 			if frame.Kind == nativecapture.FrameLayerUnavailable {
-				send(result{stage: "output-unavailable", err: errors.New("native capture profile has an unavailable output")})
-				return
+				if starting.State != "starting" || frame.Layer < 0 || frame.Layer >= len(outputs) || frame.Layer == original {
+					send(result{stage: "output-unavailable", err: errors.New("native capture profile has an invalid or unavailable original output")})
+					return
+				}
+				if !slices.Contains(unavailable, frame.Layer) {
+					unavailable = append(unavailable, frame.Layer)
+				}
+				continue
 			}
 			if frame.Kind == nativecapture.FrameBegin && !inputSeen {
 				inputSeen = true
@@ -958,6 +984,7 @@ func waitForCaptureProfile(
 					return
 				}
 				state.AdapterIndex, state.EncoderIndex = starting.AdapterIndex, starting.EncoderIndex
+				state.unavailableLayers = unavailable
 				send(result{state: state})
 				return
 			}

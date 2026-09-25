@@ -42,8 +42,13 @@ func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publ
 		len(options.ConnectionID) > 256 || options.Audio != nil && options.Audio.engine != engine {
 		return nil, errors.New("native publication input is invalid")
 	}
+	// A new publication starts on the base source. Independent lower-output
+	// groups are not part of its descriptor and own their failures separately.
+	outputsUnavailable := func() bool {
+		return slices.Contains(source.outputBitrates[:min(len(source.outputBitrates), len(source.formats))], uint32(0))
+	}
 	source.mu.Lock()
-	unavailable := slices.Contains(source.outputBitrates, uint32(0))
+	unavailable := outputsUnavailable()
 	source.mu.Unlock()
 	if unavailable {
 		return nil, errors.New("native publication output is unavailable")
@@ -89,7 +94,7 @@ func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publ
 	})
 	engine.mu.Lock()
 	source.mu.Lock()
-	if engine.closed || source.closed || len(source.publications) >= 2 || slices.Contains(source.outputBitrates, uint32(0)) {
+	if engine.closed || source.closed || len(source.publications) >= 2 || outputsUnavailable() {
 		source.mu.Unlock()
 		engine.mu.Unlock()
 		_ = publication.Close()
