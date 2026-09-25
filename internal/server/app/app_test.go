@@ -634,7 +634,7 @@ func TestLocalPasswordUsesConfiguredDestinationCookieAcrossLANAndPublicLink(t *t
 
 func TestSiteAccessRequiresAnAllowedOriginAndAValidLoginBody(t *testing.T) {
 	server := start(t, Options{Config: testConfig(t)})
-	forbidden := `{"error":"Forbidden"}`
+	forbidden := `{"error":"Origin not allowed"}`
 
 	server.do(http.MethodPost, "/api/site-access", withBearer(testAccessPassword)).
 		expect(http.StatusForbidden, forbidden)
@@ -1085,7 +1085,7 @@ func TestRoomAccessRequiresSameOriginSiteAccessAndTheExactHostToken(t *testing.T
 	server.updateRoomAccess(accessRequest{
 		roomID: first.RoomID, hostToken: first.HostToken, body: rotate,
 		cookie: cookie, origin: "https://foreign.test",
-	}).expect(http.StatusForbidden, `{"error":"Forbidden"}`)
+	}).expect(http.StatusForbidden, `{"error":"Origin not allowed"}`)
 
 	server.updateRoomAccess(accessRequest{
 		roomID: first.RoomID, body: rotate, cookie: cookie,
@@ -1122,7 +1122,7 @@ func TestRoomCreationRejectsMalformedRequestsAndForeignBrowserOrigins(t *testing
 
 	server.do(http.MethodPost, "/api/rooms",
 		withOrigin("https://foreign.test"), withJSON(`{"codeEntryPolicy":"open"}`)).
-		expect(http.StatusForbidden, `{"error":"Forbidden"}`)
+		expect(http.StatusForbidden, `{"error":"Origin not allowed"}`)
 
 	// An oversized or non-JSON body is the same 400.
 	server.do(http.MethodPost, "/api/rooms", withOrigin(allowedOrigin),
@@ -1135,6 +1135,46 @@ func TestRoomCreationRejectsMalformedRequestsAndForeignBrowserOrigins(t *testing
 	server.do(http.MethodGet, "/api/rooms", withOrigin(allowedOrigin)).
 		expect(http.StatusMethodNotAllowed, `{"error":"Method not allowed"}`).
 		expectHeader("Allow", "POST")
+}
+
+func TestRoomCreationBehindProxyUsesConfiguredBrowserOrigin(t *testing.T) {
+	for _, test := range []struct {
+		name, publicURL, origins, browserOrigin string
+		status                                  int
+	}{
+		{"public default", "https://share.example.test", "", "https://share.example.test", http.StatusCreated},
+		{"normalized default port", "https://share.example.test:443", "", "https://share.example.test", http.StatusCreated},
+		{"stale localhost override", "https://share.example.test", "http://localhost:8787", "https://share.example.test", http.StatusForbidden},
+		{"explicit alternate origin", "https://share.example.test", "https://alternate.test", "https://alternate.test", http.StatusCreated},
+		{"different public port", "https://share.example.test:8443", "", "https://share.example.test", http.StatusForbidden},
+		{"missing origin", "https://share.example.test", "", "", http.StatusForbidden},
+		{"foreign origin", "https://share.example.test", "", "https://foreign.test", http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			configuration, err := config.Load(map[string]string{
+				"PUBLIC_BASE_URL": test.publicURL, "ALLOWED_ORIGINS": test.origins,
+				"ROOM_DATABASE_PATH": ":memory:", "LISTEN_HOST": "127.0.0.1",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			configuration.Port = 0
+			server := start(t, Options{Config: configuration})
+			proxy := func(request *http.Request) {
+				request.Host = "127.0.0.1:8787"
+				request.Header.Set("X-Forwarded-Host", "share.example.test")
+				request.Header.Set("X-Forwarded-Proto", "https")
+			}
+			server.do(http.MethodGet, "/api/site-access", proxy).
+				expect(http.StatusOK, `{"required":false,"authenticated":true}`)
+			result := server.do(http.MethodPost, "/api/rooms", proxy,
+				withOrigin(test.browserOrigin), withJSON(`{"codeEntryPolicy":"open"}`))
+			result.expectStatus(test.status)
+			if test.status == http.StatusForbidden {
+				result.expect(test.status, `{"error":"Origin not allowed"}`)
+			}
+		})
+	}
 }
 
 func TestRoomCreationReturnsServiceUnavailableAtTheGlobalRoomBound(t *testing.T) {

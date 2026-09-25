@@ -76,6 +76,11 @@ working directory. A blank `SITE_ACCESS_PASSWORD` allows
 entry without a site passphrase; enter a passphrase to require one.
 Room invitations and access settings still apply.
 
+`PUBLIC_BASE_URL` must match the address opened in the browser, including HTTPS
+and any non-default port. Leave `ALLOWED_ORIGINS` unset or empty for this single
+address. An existing non-empty value overrides that default; a stale value can
+cause [403 when creating a room](../guide/troubleshooting.md#room-creation-returns-403).
+
 `MAX_VIEWERS_PER_ROOM` sets the room's Viewer limit, excluding the Host. Choose
 `1..20` and restart to apply it. More Viewers can require more network and relay
 resources. See [room capacity](../standards/configuration.md#room-capacity)

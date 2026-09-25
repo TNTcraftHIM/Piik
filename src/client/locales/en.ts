@@ -385,6 +385,7 @@ export const en: Record<CopyKey, string> = {
   "gate.connectFailed": "Cannot reach the site access service; try again",
   "gate.expired": "Site access expired; verify again",
   "gate.serviceUnavailable": "Site access service unavailable ({status})",
+  "api.originNotAllowed": "This address is not allowed by the server (403). Ask the site administrator to check PUBLIC_BASE_URL and ALLOWED_ORIGINS.",
 
   "host.notStarted": "Not started",
   "host.startCancelled": "Start cancelled",

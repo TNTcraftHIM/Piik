@@ -26,11 +26,19 @@ export class ApiError extends Error {
 }
 
 async function responseBody(response: Response): Promise<unknown> {
+  let body: unknown;
   try {
-    return await response.json();
+    body = await response.json();
   } catch {
     throw new ApiError(say("host.err.serverError"), response.status);
   }
+  if (
+    response.status === 403 && body && typeof body === "object" &&
+    "error" in body && body.error === "Origin not allowed"
+  ) {
+    throw new ApiError(say("api.originNotAllowed"), response.status);
+  }
+  return body;
 }
 
 function parseSiteAccessStatus(value: unknown): SiteAccessStatus {

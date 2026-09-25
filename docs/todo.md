@@ -21,10 +21,6 @@ history. A parked idea is not implementation authority.
   five-frame protection executes; do not replace it with a guessed delay, bitrate
   floor or compensation multiplier. This synthetic result is distinct from the
   untraced game and brief-blur reports below.
-- [ ] **Investigate self-hosted room creation returning HTTP 403.** Multiple
-  reports lack configuration, version or response details. Trace site entry,
-  Host authorization, room creation and reverse-proxy Origin handling; reproduce
-  the rejection before changing access policy or treating it as media failure.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not
@@ -64,6 +60,12 @@ history. A parked idea is not implementation authority.
 
 ## Awaiting Device Or Reporter Evidence
 
+- [ ] **Self-hosted room creation HTTP 403.** Retest affected deployments using
+  the [address checks](./guide/troubleshooting.md#room-creation-returns-403).
+  A stale explicit `ALLOWED_ORIGINS` overrides `PUBLIC_BASE_URL`; the sample now
+  follows the public address and Piik identifies its Origin rejection. Reporter
+  configuration and response details are still absent; distinguish Piik's
+  rejection from a proxy/WAF 403 before assigning their cause.
 - [ ] **No available media route.** A decline is reported since around v1.4;
   establish comparable attempts on the same endpoints/network before attributing
   a version regression. Obtain matched Host/Viewer diagnostics from

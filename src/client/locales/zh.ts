@@ -385,6 +385,7 @@ export const zh = {
   "gate.connectFailed": "无法连接站点访问服务，请重试",
   "gate.expired": "站点访问已失效，请重新验证",
   "gate.serviceUnavailable": "站点验证服务暂时不可用 ({status})",
+  "api.originNotAllowed": "服务器未允许当前网址 (403)。请联系站点管理员检查 PUBLIC_BASE_URL 和 ALLOWED_ORIGINS。",
 
   "host.notStarted": "尚未开始",
   "host.startCancelled": "启动已取消",

@@ -14,6 +14,7 @@ import {
   getSiteAccess,
   getOptionalRuntimeCapabilities,
   replaceOwnedRoom,
+  updateRoomAccess,
 } from "../src/client/lib/api.ts";
 import {
   defaultHostDisplayName,
@@ -739,6 +740,34 @@ describe("client session identity", () => {
 });
 
 describe("site access API", () => {
+  it.each(["zh", "en"] as const)("explains rejected origins across write APIs in %s", async (lang) => {
+    setCopy({ lang, vis: false });
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(async () =>
+      new Response(JSON.stringify({ error: "Origin not allowed" }), { status: 403 }),
+    ));
+    const message = lang === "zh"
+      ? "服务器未允许当前网址 (403)。请联系站点管理员检查 PUBLIC_BASE_URL 和 ALLOWED_ORIGINS。"
+      : "This address is not allowed by the server (403). Ask the site administrator to check PUBLIC_BASE_URL and ALLOWED_ORIGINS.";
+    for (const request of [
+      () => authenticateSiteAccess("password"),
+      () => createRoom("open", null),
+      () => replaceOwnedRoom("4321", "host-token", "open", null),
+      () => updateRoomAccess("4321", "host-token", { action: "rotate-viewer-grant" }),
+    ]) {
+      await expect(request()).rejects.toMatchObject({ status: 403, message });
+    }
+  });
+
+  it("does not diagnose arbitrary proxy rejection bodies as an origin mismatch", async () => {
+    for (const body of [JSON.stringify({ error: "Forbidden" }), "<html>Forbidden</html>"]) {
+      vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 403 })));
+      await expect(createRoom("open", null)).rejects.toMatchObject({
+        status: 403,
+        message: expect.not.stringContaining("ALLOWED_ORIGINS"),
+      });
+    }
+  });
+
   it("checks site access and sends the exact password in a Unicode-capable JSON body", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

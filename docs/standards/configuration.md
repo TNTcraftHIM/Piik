@@ -24,7 +24,7 @@ service secret store or an untracked access-restricted environment file.
 | `LISTEN_HOST` | Defaults to `0.0.0.0`; bare-metal production normally uses `127.0.0.1`. |
 | `PORT` | Positive TCP port, default `8787`; the tracked release wrapper supports only that default. |
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |
-| `ALLOWED_ORIGINS` | Comma-separated exact HTTP(S) origins; wildcard is invalid. |
+| `ALLOWED_ORIGINS` | Unset or empty follows `PUBLIC_BASE_URL`. A non-empty comma-separated list replaces that default; include every trusted browser origin (scheme, host and port). Wildcard is invalid. |
 | `SITE_ACCESS_PASSWORD` | Optional in every environment. Unset or empty allows entry without a site password. A configured value is matched exactly, including spaces and Unicode; there are no password length or character rules. General HTTP request limits still apply. Room ownership and Viewer admission remain independent. |
 | `ROOM_DATABASE_PATH` | Hosted defaults to `rooms.sqlite` in its working directory when unset or blank. An explicit absolute file path selects another SQLite file; `:memory:` opts into process-memory room authority. App Local remains in memory. |
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `20`; excludes the Host. |

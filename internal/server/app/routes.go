@@ -166,7 +166,7 @@ func (s *Server) handleSiteAccess(writer http.ResponseWriter, request *http.Requ
 	}
 
 	if !s.allowedRequestOrigin(request) {
-		sendJSON(writer, http.StatusForbidden, errorBody{"Forbidden"})
+		sendJSON(writer, http.StatusForbidden, errorBody{"Origin not allowed"})
 		return
 	}
 	// Released clients send a bodyless Bearer request. JSON preserves passwords
@@ -289,7 +289,7 @@ func (s *Server) handleRoomCreation(
 		return
 	}
 	if !s.allowedRequestOrigin(request) {
-		sendJSON(writer, http.StatusForbidden, errorBody{"Forbidden"})
+		sendJSON(writer, http.StatusForbidden, errorBody{"Origin not allowed"})
 		return
 	}
 	// When site access requires a password, room creation uses its cookie;
@@ -337,7 +337,7 @@ func (s *Server) authorizedRoomHostToken(
 	request *http.Request,
 ) (string, bool) {
 	if !s.allowedRequestOrigin(request) {
-		sendJSON(writer, http.StatusForbidden, errorBody{"Forbidden"})
+		sendJSON(writer, http.StatusForbidden, errorBody{"Origin not allowed"})
 		return "", false
 	}
 	if !s.roomCreationAuthorized(request) {

@@ -16,12 +16,31 @@ collect a diagnostic report if the problem persists.
 | Yellow outline around the shared window or screen | This is Windows' capture indicator. See [capture borders](#yellow-capture-border-on-windows) for Windows 11 controls and an optional Windows 10 workaround. |
 | App startup fails | Read the reason on the page and in the terminal. Reopen the App and enable the chip-shaped **Debug launch** control after the theme button before trying again. A failed startup then exports a report; its path appears in the terminal. |
 | Local invitation will not open | Check that both devices are on the same network and can reach each other. Guest Wi-Fi or firewall rules can block local access. |
+| Cannot create a room (403) | On a self-hosted site, ask the administrator to check the [allowed site address](#room-creation-returns-403). |
 | Page opens but video will not connect | Use **Reconnect** if available, or refresh the viewing page. See [connection troubleshooting](#when-video-will-not-connect) if it still fails. |
 | Sharing stops after sleep or suspension | Wake the device and return to the sharing tab; start sharing again if needed. Browser and OS suspension can interrupt capture or playback. |
 
 For a bug report, include the version, OS/browser, what you expected, and how
 to reproduce it. [Diagnostics and export](../../cmd/piik-app/README.md#diagnostics)
 explains how to collect a local report and what to review before sharing it.
+
+## Room creation returns 403
+
+Piik rejects room creation from a browser address that the server has not allowed,
+even when the page opens normally. The site administrator should:
+
+1. Set `PUBLIC_BASE_URL` to the browser's site address, including the scheme and
+   any non-default port, without a path.
+2. Unset or empty `ALLOWED_ORIGINS` to use that address. If several addresses are
+   needed, list every trusted origin explicitly, separated by commas. Check for
+   an old `http://localhost:8787` override after copying a configuration example.
+3. Restart Piik (recreate the container with `docker compose up -d` for Compose),
+   reload the page and retry.
+
+If the response says `Origin not allowed` with correct settings, check that the
+reverse proxy preserves the browser's `Origin` header. A 403 from the proxy or
+WAF itself needs its own logs; do not disable origin validation to bypass it.
+See [Server deployment](../operations/self-hosting.md) for the configuration.
 
 ## App windows or screens are missing
 
