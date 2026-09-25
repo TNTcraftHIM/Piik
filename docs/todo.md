@@ -1,12 +1,18 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-24
+Last reviewed: 2026-09-25
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **T0: accept and integrate the sharing-stability candidate before feature work.**
+  Present the repaired candidate for phase acceptance. Confirmed failures of
+  share startup, continuous media, source replacement or audio/video continuity
+  block release. Unknown field reports remain evidence gaps listed below;
+  bounded local acceptance does not establish their causes. This work does not
+  authorize a release.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not
@@ -28,17 +34,21 @@ history. A parked idea is not implementation authority.
   can resume, and stopping media keeps the opted-in interaction session. Do not
   add visit-triggered creation or a separate pre-share room-creation entry.
   This experiment does not authorize integration or publication.
-- [ ] **Assess room voice and media fidelity alongside interaction.** Compare
-  mature room-audio designs before selecting a small first scope: explicit mic
-  consent, mute/device/output controls, speaker authority and disconnect cleanup.
-  Keep room membership, voice publication and the Host's shared picture distinct;
-  do not send audio through chat signaling or reverse the current screen tree.
+- [ ] **Room voice: design before implementation.** The
+  [voice assessment](./research/room-voice.md) maps current owners, mature options
+  and a staged verification plan. Resolve total voice membership/topology,
+  P2P-only deployment coverage, speaking authority and the Host-commentary
+  compatibility boundary before implementation. Validate source-audio isolation
+  from received speech before exposing simultaneous sharing and voice. Keep
+  room authority, microphone and screen lifetimes distinct; no new room store,
+  screen-tree reversal or automatic mesh/SFU controller is approved.
+- [ ] **Verify media fidelity independently of voice.**
   Verify actual left/right separation through Browser, Native and SFU paths;
   receive-side stereo negotiation alone does not establish audible fidelity.
   Assess HDR capture to correct SDR output for ordinary viewers before full HDR,
   with issue [#420](https://github.com/TNTcraftHIM/Piik/issues/420) as the reported
-  case. Multi-speaker routing, full HDR and surround sound remain design decisions,
-  not additions authorized for this maintenance release.
+  case. Full HDR and surround sound remain design decisions. These findings do
+  not establish physical device acceptance or authorize a new release.
 
 ## Awaiting Device Or Reporter Evidence
 
@@ -97,6 +107,9 @@ history. A parked idea is not implementation authority.
   local permission and recovery checks do not establish the reporters' causes.
   Manual H264 returning immediately to idle also needs reporter diagnostics;
   bounded selection past an unusable hardware encoder is locally verified.
+  Startup failure is reported again on the latest release without a known codec.
+  Auto selection now retains proved H264 if the optional VP8 comparison times
+  out; this confirmed selection defect does not establish the reporter's cause.
   A separate v1.6.1 App/Chrome report lists Window/Screen sources, then waits
   and returns to idle with a share-start error after selection. Its codec is
   unknown; similarity to the H264 symptom does not establish the same cause.

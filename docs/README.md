@@ -98,7 +98,8 @@ and [website preview and publishing](./operations/website.md).
 | Host and viewer behavior | [Presentation and lifecycle](./standards/presentation-lifecycle.md) |
 | Why a design was chosen | [Architecture decisions](./adr/) |
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
-| Camera and Host microphone candidate | [Capture scope and limits](./research/camera-and-microphone.md) |
+| Camera and Host microphone | [Capture scope and limits](./research/camera-and-microphone.md) |
+| Room voice proposal and media-fidelity boundaries | [Design assessment](./research/room-voice.md) |
 
 ## Shared conventions
 
