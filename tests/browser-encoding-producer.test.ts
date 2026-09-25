@@ -26,6 +26,8 @@ class Connection {
   remoteDescription: RTCSessionDescriptionInit | null = null;
   readonly close = vi.fn(() => { this.connectionState = "closed"; });
   readonly sender = {
+    getParameters: () => ({ encodings: [{}] }),
+    setParameters: vi.fn(async () => undefined),
     createEncodedStreams: () => ({
       readable: new ReadableStream<RTCEncodedVideoFrame>(),
       writable: new WritableStream<RTCEncodedVideoFrame>(),
@@ -122,5 +124,27 @@ describe("Browser encoding producer startup", () => {
     expect(old.failed).not.toHaveBeenCalled();
     expect(next.failed).not.toHaveBeenCalled();
     expect(next.producer.track?.readyState).toBe("live");
+  });
+
+  it("routes keyframe request failure through the producer owner, not the outgoing connection", async () => {
+    const { producer, source, failed } = createProducer();
+    await producer.start();
+    for (const connection of Connection.instances) connection.state("connected");
+    Connection.instances[0].sender.setParameters.mockRejectedValueOnce(new Error("Encoder failed"));
+
+    await expect(producer.requestKey()).resolves.toBeUndefined();
+    expect(failed).toHaveBeenCalledOnce();
+    expect(producer.track).toBeNull();
+    expect(source.stop).not.toHaveBeenCalled();
+  });
+
+  it("ignores a keyframe request during ordinary recovery after the producer has retired", async () => {
+    const { producer, failed } = createProducer();
+    await producer.start();
+    Connection.instances[0].state("failed");
+    expect(failed).toHaveBeenCalledOnce();
+
+    await expect(producer.requestKey()).resolves.toBeUndefined();
+    expect(failed).toHaveBeenCalledOnce();
   });
 });

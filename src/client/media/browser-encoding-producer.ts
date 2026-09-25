@@ -142,7 +142,9 @@ export class BrowserEncodingProducer {
       const request = sender.setParameters as (parameters: RTCRtpSendParameters,
         options: { encodingOptions: Array<{ keyFrame: boolean }> }) => Promise<void>;
       await request.call(sender, sender.getParameters(), { encodingOptions: [{ keyFrame: true }] });
-    });
+    // Producer failure falls back to ordinary encoding on the same connection.
+    // Its retired keyframe requests must not fail that outgoing connection.
+    }).catch(this.fail);
   }
 
   async report(): Promise<RTCStatsReport> {

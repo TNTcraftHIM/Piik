@@ -78,6 +78,7 @@ interface GateResult {
   liveQualityChanged: boolean;
   pausedQualityChanged: boolean;
   backgroundProfileRecovery: boolean | null;
+  sourceWindowRecovery: boolean | null;
   mediaObjectPreserved: boolean;
   nativeSourceChanged: boolean;
   nativeQualityEvidence: boolean;
@@ -641,6 +642,7 @@ async function main(): Promise<void> {
     liveQualityChanged: false,
     pausedQualityChanged: false,
     backgroundProfileRecovery: mode === "local" && sourceKind === "window" ? false : null,
+    sourceWindowRecovery: mode === "local" && sourceKind === "window" ? false : null,
     mediaObjectPreserved: false,
     nativeSourceChanged: false,
     nativeQualityEvidence: false,
@@ -1242,6 +1244,36 @@ async function main(): Promise<void> {
           ), Boolean, 5_000);
         }
         result.backgroundProfileRecovery = true;
+        // WGC must keep the share through size changes and a temporarily quiet
+        // minimized window. This is a window-transition check, not a game test.
+        for (const bounds of [
+          { width: 960, height: 650 },
+          { windowState: "fullscreen" },
+          { windowState: "normal" },
+          { windowState: "minimized" },
+        ]) {
+          stage = "native-window-" + (bounds.windowState ?? "resize");
+          await sourceCdp!.call("Browser.setWindowBounds", {
+            windowId, bounds,
+          }, undefined, Date.now() + 5_000);
+          if (bounds.windowState === "minimized") {
+            await new Promise((resolveWait) => setTimeout(resolveWait, 5_000));
+            await sourceCdp!.call("Browser.setWindowBounds", {
+              windowId, bounds: { windowState: "normal" },
+            }, undefined, Date.now() + 5_000);
+          }
+          const before = await evaluate<number>(cdp, viewer,
+            "document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0", Date.now() + 5_000);
+          await waitForValue((deadline) => evaluate<boolean>(cdp!, viewer,
+            `(() => {
+              const video = document.querySelector('video');
+              return Boolean(video && video.srcObject === window.__piikGateMedia &&
+                video.getVideoPlaybackQuality().totalVideoFrames >= ${before + 30});
+            })()`, deadline,
+          ), Boolean, 20_000);
+          await assertVideoCodec(cdp, viewer, actualCodec);
+        }
+        result.sourceWindowRecovery = true;
       }
       stage = "native-source-picker";
       await waitForValue(
@@ -1481,6 +1513,7 @@ async function main(): Promise<void> {
         : result.viewerConnected && result.viewerFrames >= 30 &&
         result.qualityControlsEnabled && result.liveQualityChanged &&
         result.backgroundProfileRecovery !== false &&
+        result.sourceWindowRecovery !== false &&
         result.livePresetChanges === 2 &&
         result.codecPreserved &&
         result.pausedQualityChanged && result.mediaObjectPreserved &&

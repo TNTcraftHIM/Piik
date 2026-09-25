@@ -123,6 +123,14 @@ history. A parked idea is not implementation authority.
   fullscreen, display-mode change and device loss. A reproduced downstream
   retirement race no longer stops the shared source. Controlled-window checks
   do not reproduce the reporting game/device environment.
+- [ ] **Brief blur followed by immediate recovery.** Compare the same source,
+  codec, peers and network with ordinary WebRTC before attributing the report
+  to pooling. A reproduced Browser pool defect unnecessarily recreated an
+  encoder on transient output-rate overshoot or a shared budget decrease;
+  it now updates the existing owner. Producer keyframe failures also use
+  ordinary recovery without closing healthy outgoing connections. Neither
+  defect establishes the unknown reporter's capture path or perceptual result;
+  correlate actual receiver dimensions, QP, resource adaptation and packet loss.
 - [ ] **Windows 32-bit candidate acceptance.** Verify the isolated
   `spike/windows-x86-capture` candidate's launch, capture/audio, memory pressure,
   source replacement and update links on a 32-bit Windows device. WOW64
