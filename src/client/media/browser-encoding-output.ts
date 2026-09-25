@@ -63,7 +63,9 @@ export class BrowserEncodingOutput {
     if (!context) throw new Error("Browser carrier canvas unavailable");
     this.clockContext = context;
     this.track = this.clock.captureStream(0).getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
-    this.track.contentHint = "motion";
+    // This synthetic clock needs WebRTC's screen-content ALR probing when the
+    // real producer sends little data. The producer owns picture adaptation.
+    this.track.contentHint = "detail";
     const streams = encodedStreams(sender);
     this.writer = streams.writable.getWriter();
     void streams.readable.pipeTo(new WritableStream({ write: (frame) => this.receive(frame) }),

@@ -11,17 +11,8 @@ history. A parked idea is not implementation authority.
   Present the repaired candidate for phase acceptance. Confirmed failures of
   share startup, continuous media, source replacement or audio/video continuity
   block release. Unknown field reports remain evidence gaps listed below;
-  bounded local acceptance does not establish their causes. This work does not
-  authorize a release.
-- [ ] **Resolve the Browser pool's balanced startup/recovery gap before acceptance.**
-  The [paired comparison](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
-  reproduces slower resolution recovery than ordinary WebRTC in both the prior
-  and repaired pool. Trace the weak-group producer's cold start and two native
-  adaptation histories: the single-consumer short-pulse control recovers without
-  the deeper drop, while keeping its original producer. The existing
-  five-frame protection executes; do not replace it with a guessed delay, bitrate
-  floor or compensation multiplier. This synthetic result is distinct from the
-  untraced game and brief-blur reports below.
+  bounded local acceptance does not establish their causes. The owner authorized
+  publication after these repairs and acceptance; keep interaction work separate.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not

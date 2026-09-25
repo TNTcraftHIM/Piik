@@ -1,7 +1,6 @@
 import { createOpaqueId } from "../lib/opaque-id";
 import { debugError, debugEvent } from "../lib/debug";
 import { debugRtcFailure, debugRtcStats, debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
-import { maxEncodedVideoFrames } from "../webrtc/stats";
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import { encodedStreams } from "./browser-encoding-output";
 import {
@@ -28,6 +27,7 @@ export class BrowserEncodingProducer {
   private paused: boolean;
   private budget: number;
   private startupPending: boolean;
+  private startupFrames: number | undefined;
   private startupTimer: ReturnType<typeof setTimeout> | undefined;
   private applied: { capture: QualityProfile; sender: QualityProfile } | null = null;
 
@@ -67,6 +67,9 @@ export class BrowserEncodingProducer {
       this.streamWriter = writer;
       void streams.readable.pipeTo(new WritableStream({ write: async (frame) => {
         if (this.disposed) return;
+        if (this.startupPending && this.startupFrames !== undefined && !this.paused && frame.data.byteLength > 0) {
+          this.startupFrames = Math.min(STARTUP_VIDEO_ENCODED_FRAMES, this.startupFrames + 1);
+        }
         // Outputs clone synchronously before the local decoder consumes the original.
         this.onFrame(frame);
         await writer.write(frame);
@@ -147,13 +150,19 @@ export class BrowserEncodingProducer {
     }).catch(this.fail);
   }
 
+  beginOutput(): void {
+    // Local warmup cannot train an outgoing connection's allocation. Start the
+    // existing protection only after a child actually writes this producer.
+    this.startupFrames ??= 0;
+  }
+
   async report(): Promise<RTCStatsReport> {
     this.requireSender();
     const connection = this.send!;
     const report = await connection.getStats().catch((error) => { debugRtcFailure(connection, error); throw error; });
     debugRtcStats(connection, report);
     if (!this.disposed && this.startupPending &&
-      (maxEncodedVideoFrames(report, this.input!.id) ?? 0) >= STARTUP_VIDEO_ENCODED_FRAMES) {
+      (this.startupFrames ?? 0) >= STARTUP_VIDEO_ENCODED_FRAMES) {
       this.startupPending = false;
       void this.serialize(() => this.applyCurrent()).catch(this.fail);
     }

@@ -5,7 +5,7 @@ for (const filename of process.argv.slice(2)) {
         result.cleanup && Object.values(result.cleanup).every(Boolean);
     const configuration = { file: filename, probeSha256: result.probeSha256, mode: result.mode, codec: result.codec,
         product: result.product, high: result.high, single: result.single, late: result.late, network: result.network,
-        automatic: result.automatic, av: result.av, background: result.background, nativeSource: result.nativeSource,
+        automatic: result.automatic, shortPulse: result.shortPulse, av: result.av, background: result.background, nativeSource: result.nativeSource,
         lifecycle: result.lifecycle, relay: result.relay, shapedRate: result.shapedRate, profile: result.profile,
         completed: !!completed, error: result.error, errors: result.errors, cleanup: result.cleanup };
     if (!completed) process.exitCode = 1;

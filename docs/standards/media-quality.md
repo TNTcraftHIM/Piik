@@ -161,6 +161,9 @@ remain separate. Each outgoing connection keeps native transport, allocation
 and recovery, with a tiny carrier supplying its RTP clock. Producers use
 the existing native video target under Host ceilings. Actual forwarded-frame
 and producer observations remain distinct from the tiny carrier's statistics.
+Producer startup protection begins at actual outgoing publication, excluding
+local warmup and paused frames. The synthetic carrier uses screen-content
+transport probing; the real producer keeps the Host's picture adaptation.
 The first eligible consumer follows the same path; unsupported APIs or failed
 pooling use ordinary senders. Prepared ordinary quality candidates, Native
 ingress and Browser SFU remain independent compositions.

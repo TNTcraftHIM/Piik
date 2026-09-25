@@ -217,6 +217,7 @@ export class BrowserEncodingPool {
             member.encoded.select(pending.group.producer.id, () => pending.group.producer.requestKey(), () => {
               if (member.disposed || member.pending !== pending) return;
               member.current = pending.group;
+              pending.group.producer.beginOutput();
               member.pending = undefined;
               member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
               member.carrier = true;

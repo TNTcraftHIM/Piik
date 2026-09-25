@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserEncodingProducer } from "../src/client/media/browser-encoding-producer";
-import { QUALITY_PROFILES } from "../src/client/media/quality";
+import { configureVideoSender, QUALITY_PROFILES } from "../src/client/media/quality";
 
 vi.mock("../src/client/media/quality", async (original) => ({
   ...await original<typeof import("../src/client/media/quality")>(),
@@ -9,6 +9,7 @@ vi.mock("../src/client/media/quality", async (original) => ({
 }));
 
 class Track extends EventTarget {
+  readonly id = "capture";
   enabled = true;
   readyState = "live";
   contentHint = "motion";
@@ -25,11 +26,16 @@ class Connection {
   localDescription: RTCSessionDescriptionInit | null = null;
   remoteDescription: RTCSessionDescriptionInit | null = null;
   readonly close = vi.fn(() => { this.connectionState = "closed"; });
+  private frames!: ReadableStreamDefaultController<RTCEncodedVideoFrame>;
+  readonly getStats = vi.fn(async () => new Map<string, object>([
+    ["video", { type: "outbound-rtp", kind: "video", mediaSourceId: "source", framesEncoded: 100 }],
+    ["source", { type: "media-source", trackIdentifier: "capture" }],
+  ]) as unknown as RTCStatsReport);
   readonly sender = {
     getParameters: () => ({ encodings: [{}] }),
     setParameters: vi.fn(async () => undefined),
     createEncodedStreams: () => ({
-      readable: new ReadableStream<RTCEncodedVideoFrame>(),
+      readable: new ReadableStream<RTCEncodedVideoFrame>({ start: controller => { this.frames = controller; } }),
       writable: new WritableStream<RTCEncodedVideoFrame>(),
     }),
   };
@@ -40,6 +46,10 @@ class Connection {
   async setLocalDescription(value: RTCSessionDescriptionInit) { this.localDescription = value; }
   async setRemoteDescription(value: RTCSessionDescriptionInit) { this.remoteDescription = value; }
   state(value: string) { this.connectionState = value; this.onconnectionstatechange?.(); }
+  async frame(bytes = 1) {
+    this.frames.enqueue({ data: new ArrayBuffer(bytes) } as RTCEncodedVideoFrame);
+    await vi.advanceTimersByTimeAsync(0);
+  }
 }
 
 const producers: BrowserEncodingProducer[] = [];
@@ -53,6 +63,7 @@ function createProducer() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.useFakeTimers();
   Connection.instances = [];
   vi.stubGlobal("RTCPeerConnection", Connection);
@@ -68,6 +79,37 @@ afterEach(async () => {
 });
 
 describe("Browser encoding producer startup", () => {
+  it("protects first publication instead of spending the startup frames on local warmup", async () => {
+    const { producer } = createProducer();
+    await producer.start();
+    for (const connection of Connection.instances) connection.state("connected");
+    const send = Connection.instances[0];
+    const preference = () => vi.mocked(configureVideoSender).mock.lastCall![1].degradationPreference;
+    const report = async () => { await producer.report(); await vi.advanceTimersByTimeAsync(0); };
+
+    for (let i = 0; i < 10; i++) await send.frame();
+    await report();
+    expect(preference()).toBe("maintain-resolution");
+
+    producer.beginOutput();
+    producer.setPaused(true);
+    for (let i = 0; i < 5; i++) await send.frame();
+    producer.setPaused(false);
+    await send.frame(0);
+    for (let i = 0; i < 4; i++) await send.frame();
+    await report();
+    expect(preference()).toBe("maintain-resolution");
+
+    // Another child's attachment must not restart this producer's protection.
+    producer.beginOutput();
+    await send.frame();
+    await report();
+    expect(preference()).toBe("balanced");
+    producer.beginOutput();
+    await report();
+    expect(preference()).toBe("balanced");
+  });
+
   it.each(["queued", "active"])("keeps the producer after a %s candidate rejection", async (phase) => {
     const { producer, failed } = createProducer();
     const starting = producer.start();

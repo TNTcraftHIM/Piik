@@ -95,56 +95,61 @@ and temporary stalls under real constraints remain possible.
 
 ### Balanced Startup And Recovery
 
-A serial Chrome 152 comparison on 2026-09-25 used the actual product, VP8,
-1080p30, `motion + balanced`, a 5 Mbps ceiling, and the same 400 kbps A-only
-constraint for 14 seconds followed by 40 seconds without shaping. B remained
-unshaped. Values below are decoded width × height at the end of each phase;
-these single runs do not establish perceptual quality or device-wide performance.
+Serial Chrome 152 checks on 2026-09-25 reproduced two composition defects in
+VP8, 1080p30, motion + balanced, with a 5 Mbps ceiling. A forward-only UDP
+shaper limited A to 400 kbps; B remained unshaped. These synthetic-source runs
+establish delivered dimensions and recovery, not game perceptual quality or the
+cause of reports without diagnostics.
 
-| Implementation | Initial healthy A / B | Constrained A / B | Recovered A / B |
+- A group's local warmup spent its five-frame startup protection before any
+  child published its frames. Restoring balanced then allowed native initial
+  downscaling against an untrained allocation. Protection now begins at the
+  first committed outgoing frame; paused/empty frames cannot spend it and later
+  children cannot reset it. The frame threshold and polling cadence are unchanged.
+- The synthetic carrier used motion content intent. Chromium classifies that
+  as realtime video, without the default screen-content ALR probing. After a
+  producer adapted downward, low real output could leave the outgoing native
+  bandwidth estimate slow to recover. The carrier now uses detail once at
+  construction, selecting the framework's screen-content behavior. The real
+  producer retains motion and the Host's degradation preference.
+
+Pinned WebRTC explains both boundaries: starting the quality scaler
+[restarts initial frame dropping](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/adaptation/video_stream_encoder_resource_manager.cc#230);
+[content hints select the screencast option](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/pc/rtp_sender.cc#1423),
+which selects [ALR probing configuration](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/video_send_stream_impl.cc#183).
+The [screen probing default is enabled](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/rtc_base/experiments/alr_experiment.cc#51).
+Detail also changes the tiny encoder's content type; it is not an independent
+public probing switch or a request to change the real picture's quality.
+
+| VP8, 14-second constraint / 40-second recovery | Initial A / B | Constrained A / B | Recovered A / B |
 | --- | --- | --- | --- |
-| Ordinary | 1920×1080 / 1920×1080 | 960×540 / 1920×1080 | 1920×1080 / 1920×1080 |
-| Pool before the rate-owner repair | 480×270 / 480×270 | 480×270 / 960×540 | 1280×720 / 1920×1080 |
-| Pool after the repair | 480×270 / 480×270 | 480×270 / 960×540 | 960×540 / 1920×1080 |
+| Ordinary | 1080p / 1080p | 540p / 1080p | 1080p / 1080p |
+| Previous pool | 270p / 270p | 270p / 540p | 720p / 1080p |
+| Publication-start correction alone | 1080p / 1080p | 270p / 1080p | 540p / 1080p |
+| Publication start + screen-content carrier | 1080p / 1080p | 270p / 1080p | 1080p / 1080p |
 
-Debug was off in these comparisons. A separate Debug run reproduced the gap:
-the producer started at the child's 282 kbps budget, encoded 12 full-size
-frames, then restored balanced while its actual encoder target remained
-235 kbps. Resolution fell before the child's budget increased. The five-frame
-protection executed; producer churn was absent. Each implementation retained
-continuous delivery, but pooling did not match ordinary resolution recovery.
-The prior-code control rules out this repair as the origin of the gap, not
-all run-to-run differences. The [TODO ledger](../todo.md) retains this acceptance
-boundary; these results do not identify the cause of an unknown field report.
+The combined VP8 run returned to 1080p about 17 seconds after shaping ended.
+H264 with played audio also returned to 1080p; its unconstrained child retained
+1080p throughout. A separate one-second pulse after 45 healthy seconds still
+caused native downscaling: the repaired VP8/audio path briefly reached 180p,
+then regained 1080p about 13 seconds after pulse start. The previous pool's
+no-audio pulse ended the 40-second recovery at 360p. Audio changes the bandwidth
+composition, so these pulse runs do not establish an exact speedup. Normal
+WebRTC can also temporarily reduce resolution after a pulse; this repair does
+not promise blur-free delivery under changing network or device load.
 
-A subsequent short-pulse comparison let both viewers reach 1080p over a
-45-second warmup, limited A to 400 kbps for only one second, then observed
-40 seconds of recovery. Both outgoing targets fell to approximately 100 kbps.
-Ordinary A fell to 720p about five seconds after the pulse began and returned
-to 1080p at about 25 seconds. Pooled A fell to 180p at about three seconds and
-ended at 360p; B retained 1080p in both runs. Pooling created one lower producer,
-without repeated churn. This supports investigating deeper and longer adaptation
-in the composition, not assuming that slowing budget updates is safe or that
-ordinary WebRTC never reduces quality after a brief congestion event.
+A single-consumer control, retaining its mature producer, recovered without
+the deeper dual-consumer drop. Together with the publication-start control,
+this distinguishes cold producer adaptation from repeated producer churn.
+The rate-owner repair separately retains existing encoders through output-rate
+spikes and shared budget changes; a genuinely weaker child can still need its
+own producer. No delayed-budget policy, bitrate floor or manual recovery probe
+was added. Probe padding remains framework-owned traffic under native limits.
 
-The same pulse with `--single` retained the pool's original producer throughout:
-both ordinary and pooled receivers fell only to 720p and recovered to 1080p,
-at about 20 and 27 seconds from pulse start respectively. Their pulse-end targets
-were 94 and 109 kbps. This strengthens the new weak-group producer's startup
-history as a lead; the 500 ms budget loop alone does not inevitably reproduce
-the deeper drop. Removing a Viewer also reduces processing and connection load,
-so it does not isolate cold start as the sole cause or justify suppressing the
-split that protects the unaffected child.
-
-Budget attribution matters: `targetBitrate` is the encoder's allocated target,
-not raw link bandwidth ([upstream stats correction](https://webrtc.googlesource.com/src/+/fe25b0e928ea4e64aa134f5dc8012343320deec5%5E%21/)).
-In pooling it belongs to the tiny carrier, whose allocation then caps a separate
-real producer. At the pulse endpoint, ordinary target/available outgoing bitrate
-was 93/403 kbps versus pooled 98/370 kbps; after recovery those pairs were
-2,316/2,433 and 429/450 kbps. The deficit therefore includes the outgoing native
-estimate, not only local resolution adaptation. These observations do not justify
-substituting raw available bandwidth for the allocated video budget; that would
-bypass allocation and protection already present in the ordinary path.
+Budget attribution remains unchanged: targetBitrate is the encoder's allocated
+target, not raw link bandwidth ([upstream stats correction](https://webrtc.googlesource.com/src/+/fe25b0e928ea4e64aa134f5dc8012343320deec5%5E%21/)).
+Replacing it with availableOutgoingBitrate would bypass native allocation and
+protection. Keep producer, carrier, egress and decoded observations separate.
 
 ## Cost And Accounting
 
@@ -186,6 +191,8 @@ npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --background
 ```
 
 Add `--h264`, `--single` or `--late` for the corresponding case. Set
+`--network --auto --short-pulse` for a 45-second warmup, one-second constraint
+and 40-second recovery instead of the ordinary 14-second constraint. Set
 `CHROME_PATH` for another installed Chromium binary. `--auto` extends the
 recovery observation; product code owns all adaptation. Results go to ignored
 `build/browser-local-pool`; summarize with

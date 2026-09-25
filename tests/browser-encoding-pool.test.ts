@@ -122,4 +122,25 @@ describe("Browser encoding pool ownership", () => {
     expect(strong.fatal).not.toHaveBeenCalled();
     expect(weak.fatal).not.toHaveBeenCalled();
   });
+
+  it("starts protection at committed output, ignoring retired selection callbacks", async () => {
+    const begin = vi.spyOn(BrowserEncodingProducer.prototype, "beginOutput");
+    const first = member();
+    let selected: (() => void) | undefined;
+    first.select.mockImplementation((_id, _requestKey, commit) => { selected = commit; });
+    await sample(3);
+    expect(selected).toBeDefined();
+    expect(begin).not.toHaveBeenCalled();
+    selected!();
+    expect(begin).toHaveBeenCalledOnce();
+
+    const late = member();
+    let retired: (() => void) | undefined;
+    late.select.mockImplementation((_id, _requestKey, commit) => { retired = commit; });
+    await sample(2);
+    expect(retired).toBeDefined();
+    late.handle.dispose();
+    retired!();
+    expect(begin).toHaveBeenCalledOnce();
+  });
 });

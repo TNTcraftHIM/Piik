@@ -12,6 +12,7 @@ const single = settings.get('single') === '1', late = settings.get('late') === '
 const nativeSource = settings.get('nativeSource') === '1', background = settings.get('background') === '1';
 const lifecycle = settings.get('lifecycle') === '1', shapedRate = Number(settings.get('rate') || 120000);
 const relay = settings.get('relay') === '1';
+const shortPulse = settings.get('shortPulse') === '1';
 const selectedProfile = () => ({ resolution: high ? '1080p' : '480p', maxFramerate: 30,
     maxBitrate: high ? 5000000 : 1700000,
     degradationPreference: settings.get('preference') || (high ? 'maintain-resolution' : 'balanced'),
@@ -282,7 +283,7 @@ async function run() {
         extensions: e.send.localDescription?.sdp.match(/^a=extmap:.*$/gm),
         parameters: e.sender.getParameters().encodings }));
     const snapshots = [await snapshot()];
-    phase = 'healthy'; await wait(6000); snapshots.push(await snapshot());
+    phase = 'healthy'; await wait(shortPulse ? 45000 : 6000); snapshots.push(await snapshot());
     if (lifecycle) {
         let appliedProfile = selectedProfile();
         const apply = async profile => {
@@ -341,7 +342,7 @@ async function run() {
     }
     if (network) {
         await fetch('/shaper?rate=' + shapedRate);
-        phase = 'limited'; await wait(14000); snapshots.push(await snapshot());
+        phase = 'limited'; await wait(shortPulse ? 1000 : 14000); snapshots.push(await snapshot());
         await fetch('/shaper?rate=0');
         // --auto extends recovery observation; adaptation always belongs to the product.
         phase = 'released'; await wait(automatic ? 40000 : 10000); snapshots.push(await snapshot());
@@ -350,7 +351,7 @@ async function run() {
         audioMonitors: audioMonitors.map(({ role, pulses, attached }) => ({ role, pulses, attached })),
         monitors: monitors.map(({ role, samples }) => ({ role, samples })) };
 }
-const configuration = { mode, codec, product: true, network, automatic, av, high, single, late,
+const configuration = { mode, codec, product: true, network, automatic, av, high, single, late, shortPulse,
     background, nativeSource, lifecycle, relay, shapedRate, profile: selectedProfile() };
 try {
     window.probeResult = { ...configuration, ...await run(), controls, visibility, productTrace, errors };
