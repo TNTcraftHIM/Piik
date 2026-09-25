@@ -93,6 +93,30 @@ maximum queued service; reverse feedback is unshaped. They are not a model of
 public NAT, geographic RTT or every congestion/loss pattern. Reduced quality
 and temporary stalls under real constraints remain possible.
 
+### Balanced Startup And Recovery
+
+A serial Chrome 152 comparison on 2026-09-25 used the actual product, VP8,
+1080p30, `motion + balanced`, a 5 Mbps ceiling, and the same 400 kbps A-only
+constraint for 14 seconds followed by 40 seconds without shaping. B remained
+unshaped. Values below are decoded width × height at the end of each phase;
+these single runs do not establish perceptual quality or device-wide performance.
+
+| Implementation | Initial healthy A / B | Constrained A / B | Recovered A / B |
+| --- | --- | --- | --- |
+| Ordinary | 1920×1080 / 1920×1080 | 960×540 / 1920×1080 | 1920×1080 / 1920×1080 |
+| Pool before the rate-owner repair | 480×270 / 480×270 | 480×270 / 960×540 | 1280×720 / 1920×1080 |
+| Pool after the repair | 480×270 / 480×270 | 480×270 / 960×540 | 960×540 / 1920×1080 |
+
+Debug was off in these comparisons. A separate Debug run reproduced the gap:
+the producer started at the child's 282 kbps budget, encoded 12 full-size
+frames, then restored balanced while its actual encoder target remained
+235 kbps. Resolution fell before the child's budget increased. The five-frame
+protection executed; producer churn was absent. Each implementation retained
+continuous delivery, but pooling did not match ordinary resolution recovery.
+The prior-code control rules out this repair as the origin of the gap, not
+all run-to-run differences. The [TODO ledger](../todo.md) retains this acceptance
+boundary; these results do not identify the cause of an unknown field report.
+
 ## Cost And Accounting
 
 Before the CPU-carrier refinement, a matched actual-product VP8 1080p30 comparison's ordinary pair made
