@@ -717,7 +717,7 @@ MediaEventType LiveEncoder::NextEvent(std::chrono::steady_clock::time_point dead
     if (type == MEError) Fail("mft-error-event", "hardware MFT emitted MEError");
     return type;
   }
-  Fail("mft-event-timeout", "hardware MFT did not request input in time");
+  Fail("mft-event-timeout", "hardware MFT event wait timed out");
 }
 
 void LiveEncoder::WaitForInput(EncoderClock::time_point probe_deadline) {
