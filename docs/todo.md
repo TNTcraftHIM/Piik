@@ -113,14 +113,16 @@ history. A parked idea is not implementation authority.
   report, an unreachable App despite its process running, and generic share-start
   failure. Distinguish site authorization, browser permission, control capacity,
   enumeration and capture startup. The latest v1.6.5 report reaches successful
-  Auto-to-VP8 startup after a hardware MFT timeout, then receives `stop-share`
-  about 1.5 ms later, before local-edge preparation. Zero dimensions/FPS in
-  `starting` are valid. Browser preview-construction fault injection reproduces
-  that request sequence; ordinary cancellation/unmount instead closes control,
-  and a normal VP8 control fixture reaches decoded video. The reporter's actual
-  exception and VP8 frame output remain unverified. Current source retains
-  preview initialization/negotiation causes in Browser diagnostics and separates
-  MFT input/output waits in App logs. Obtain matched diagnostics before changing
+  Auto-to-VP8 startup after a hardware MFT timeout. App request-handler completion
+  and the subsequent `stop-share` handler are about 1.5 ms apart; this is not a
+  Browser-measured ACK interval or a no-frame deadline. Neither local-edge
+  preparation nor edge cleanup appears. Preview-construction exceptions reproduce
+  this sequence; cancellation around the ACK, source-end events and malformed
+  responses instead close control. Zero dimensions/FPS in `starting` are valid;
+  ordinary capture/audio state changes still reach decoded preview. The actual
+  Browser exception, loaded asset identity and reporter VP8 output remain unknown.
+  Current diagnostics retain preview initialization/negotiation causes and
+  distinguish MFT input/output waits. Obtain matched diagnostics before changing
   recovery or deadlines. Injected unavailable-hardware and exhausted-probe-budget
   cases also capture and decode locally; those checks do not establish this
   reporter's cause. Other discovery/manual-H264 reports still need paired evidence.
