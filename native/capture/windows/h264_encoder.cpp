@@ -657,7 +657,7 @@ EncodedAccessUnit LiveEncoder::Encode(
   const auto deadline = std::min(probe_deadline,
       EncoderClock::now() + std::chrono::seconds(2));
   while (std::chrono::steady_clock::now() < deadline) {
-    MediaEventType type = NextEvent(deadline);
+    MediaEventType type = NextEvent(deadline, "mft-output-timeout");
     if (type == METransformNeedInput) {
       ++input_requests_;
       continue;
@@ -699,7 +699,8 @@ EncodedAccessUnit LiveEncoder::Encode(
   Fail("mft-output-timeout", "hardware MFT did not produce live output in time");
 }
 
-MediaEventType LiveEncoder::NextEvent(std::chrono::steady_clock::time_point deadline) {
+MediaEventType LiveEncoder::NextEvent(
+    EncoderClock::time_point deadline, const char* timeout_stage) {
   while (std::chrono::steady_clock::now() < deadline) {
     ComPtr<IMFMediaEvent> event;
     HRESULT result = selected_.events->GetEvent(MF_EVENT_FLAG_NO_WAIT,
@@ -717,14 +718,14 @@ MediaEventType LiveEncoder::NextEvent(std::chrono::steady_clock::time_point dead
     if (type == MEError) Fail("mft-error-event", "hardware MFT emitted MEError");
     return type;
   }
-  Fail("mft-event-timeout", "hardware MFT event wait timed out");
+  Fail(timeout_stage, "hardware MFT event wait timed out");
 }
 
 void LiveEncoder::WaitForInput(EncoderClock::time_point probe_deadline) {
   const auto deadline = std::min(probe_deadline,
       EncoderClock::now() + std::chrono::seconds(2));
   while (input_requests_ == 0) {
-    MediaEventType type = NextEvent(deadline);
+    MediaEventType type = NextEvent(deadline, "mft-input-timeout");
     if (type == METransformNeedInput) {
       ++input_requests_;
     } else if (type == METransformHaveOutput) {

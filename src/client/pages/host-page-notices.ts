@@ -44,7 +44,7 @@ export function hostActionErrorNotice(
   error: unknown,
   action: HostAction,
 ): string {
-  if (error instanceof NativeMediaBridgeError) return say(HOST_ACTION_FALLBACK.connection);
+  if (error instanceof NativeMediaBridgeError) return say("native.fail.edge");
   if (isCapturePermissionFailure(error, action)) return say("host.capture.cancelled");
   if (
     error instanceof DOMException &&

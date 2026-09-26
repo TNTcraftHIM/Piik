@@ -131,6 +131,58 @@ afterEach(() => {
 });
 
 describe("native media bridge", () => {
+  it.each(["MediaStream", "RTCPeerConnection"])("preserves %s initialization failure without preparing an edge", (api) => {
+    const current = fixture();
+    current.bridge.dispose();
+    vi.clearAllMocks();
+    const cause = new DOMException("Browser media initialization rejected", "NotAllowedError");
+    vi.stubGlobal(api, class { constructor() { throw cause; } });
+    let failure: unknown;
+    try { new NativeMediaBridge("share_123456", current.control, current.onFailed); }
+    catch (error) { failure = error; }
+
+    expect(failure).toBeInstanceOf(NativeMediaBridgeError);
+    expect((failure as Error).cause).toBe(cause);
+    expect(debugError).toHaveBeenCalledWith("native-bridge", "initialization-failed", cause);
+    expect(current.control.prepareLocalEdge).not.toHaveBeenCalled();
+    expect(current.control.closeEdge).not.toHaveBeenCalled();
+    expect(current.onFailed).not.toHaveBeenCalled();
+  });
+
+  it("records the negotiation cause before retiring a failed bridge", async () => {
+    const current = fixture();
+    const cause = new DOMException("Remote offer rejected", "OperationError");
+    current.peer().setRemoteDescription.mockRejectedValueOnce(cause);
+    await expect(current.bridge.start()).rejects.toMatchObject({ cause });
+    expect(debugError).toHaveBeenCalledWith("native-bridge", "failed", cause,
+      { type: "negotiation", state: "starting" });
+    expect(current.peer().close).toHaveBeenCalledOnce();
+    expect(current.control.closeEdge).toHaveBeenCalledOnce();
+    expect(current.onFailed).not.toHaveBeenCalled();
+  });
+
+  it.each(["candidate-signal", "candidate-apply"])("preserves the active %s failure and retires once", async (stage) => {
+    const current = fixture();
+    const starting = current.bridge.start();
+    await vi.waitFor(() => expect(current.peer().setLocalDescription).toHaveBeenCalledOnce());
+    current.peer().emitTrack({ kind: "video", stop: vi.fn() } as unknown as MediaStreamTrack);
+    current.peer().setState("connected");
+    await starting;
+    const cause = new DOMException("Connection is unavailable", "InvalidStateError");
+    if (stage === "candidate-signal") {
+      vi.mocked(current.control.acceptSignal).mockRejectedValueOnce(cause);
+      current.peer().dispatchEvent(Object.assign(new Event("icecandidate"), { candidate: null }));
+    } else {
+      current.peer().addIceCandidate.mockRejectedValueOnce(cause);
+      current.emit({ version: 9, type: "edge-candidate", shareId: "share_123456",
+        connectionId: current.bridge.connectionId, candidate: null });
+    }
+    await vi.waitFor(() => expect(current.onFailed).toHaveBeenCalledOnce());
+    expect(debugError).toHaveBeenCalledWith("native-bridge", "failed", cause, { type: stage, state: "active" });
+    expect(current.peer().close).toHaveBeenCalledOnce();
+    expect(current.control.closeEdge).toHaveBeenCalledOnce();
+  });
+
   it.each(["queued", "active"])("keeps media alive after a %s candidate is rejected", async (phase) => {
     const current = fixture();
     const peer = current.peer();
@@ -347,6 +399,7 @@ describe("native media bridge", () => {
     expect(current.onFailed).not.toHaveBeenCalled();
     expect(current.peer().close).toHaveBeenCalledOnce();
     expect(current.control.closeEdge).toHaveBeenCalledOnce();
+    expect(debugError).not.toHaveBeenCalled();
   });
 
   it.each(["prepare", "answer"])("does not signal after disposal during %s", async (stage) => {

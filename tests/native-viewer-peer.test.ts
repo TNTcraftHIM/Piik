@@ -384,10 +384,16 @@ it("still disables native on a genuine failure after a signaling failure", async
   }
 });
 
-it.each(["route", "viewer"] as const)("keeps %s bridge failure unavailable across replacement peers", async (recoveryOwner) => {
+it.each([
+  ["route", "initialize"], ["route", "start"],
+  ["viewer", "initialize"], ["viewer", "start"],
+] as const)("keeps %s bridge %s failure unavailable across replacement peers", async (recoveryOwner, failureStage) => {
   vi.stubGlobal("window", globalThis);
   vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
-  vi.stubGlobal("RTCPeerConnection", class { close() {} });
+  vi.stubGlobal("RTCPeerConnection", class {
+    constructor() { if (failureStage === "initialize") throw new DOMException("Peer unavailable", "NotSupportedError"); }
+    close() {}
+  });
   const browserSignal = vi.spyOn(ViewerPeer.prototype, "acceptSignal").mockResolvedValue();
   const bridgeStart = vi.spyOn(NativeMediaBridge.prototype, "start").mockRejectedValue(new Error("bridge failed"));
   const receiveOffer = vi.fn(async () => ({
@@ -440,7 +446,7 @@ it.each(["route", "viewer"] as const)("keeps %s bridge failure unavailable acros
       await replacement.acceptSignal("parent", offer("replacement"));
       expect(browserSignal).toHaveBeenCalledTimes(2);
       expect(receiveOffer).toHaveBeenCalledOnce();
-      expect(bridgeStart).toHaveBeenCalledOnce();
+      expect(bridgeStart).toHaveBeenCalledTimes(failureStage === "initialize" ? 0 : 1);
       expect(acquire).toHaveBeenCalledTimes(3);
     } finally {
       replacement.dispose();

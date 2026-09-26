@@ -9,6 +9,7 @@ import {
 } from "../src/client/media/quality";
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
 import { NativeCompatibilityError } from "../src/client/native/client";
+import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
 import { reconcileBoundedMediaChildren } from "../src/client/webrtc/media-assignment";
 import { debugError, debugEvent, debugOperation } from "../src/client/lib/debug";
 import { hostActionErrorNotice, isCapturePermissionFailure } from "../src/client/pages/host-page-notices";
@@ -66,7 +67,7 @@ function fixture(launchedByClient = true) {
     stopReceive: vi.fn(async () => undefined), stopShare: vi.fn(async () => undefined) };
   const route = { updateProfile: vi.fn(async () => true), resyncAuthoritative: vi.fn(async (): Promise<void> => undefined) };
   const state = {
-    debugError, debugEvent, debugOperation, NativeCompatibilityError, isCapturePermissionFailure, DOMException,
+    debugError, debugEvent, debugOperation, NativeCompatibilityError, NativeMediaBridgeError, isCapturePermissionFailure, DOMException,
     launchedByClient, NativeClient: { connect: vi.fn(async (): Promise<typeof client | null> => null) },
     nativeClientConnectRef: ref<Promise<typeof client | null> | null>(null),
     ownNativeClient: vi.fn(), setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
@@ -434,6 +435,38 @@ describe("Host quality ownership", () => {
     expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({ target: "operation", tone: "warn" }));
     expect(current.setPhase).not.toHaveBeenCalled();
     expect(current.track.stop).not.toHaveBeenCalled();
+  });
+
+  it("records preview initialization failure and retires the accepted native share once", async () => {
+    const current = fixture();
+    const failure = new NativeMediaBridgeError("Preview unavailable", {
+      cause: new DOMException("Peer connection rejected", "NotAllowedError"),
+    });
+    const report = vi.fn();
+    Object.assign(current.context, { phase: "idle", debugError: report });
+    current.activeGenerationRef.current = null;
+    current.nativeShareGenerationRef.current = null;
+    current.NativeMediaBridge.mockImplementationOnce(function () { throw failure; });
+    await current.start();
+
+    expect(current.client.stopShare).toHaveBeenCalledExactlyOnceWith("share");
+    expect(current.client.close).toHaveBeenCalledOnce();
+    expect(current.createRoom).not.toHaveBeenCalled();
+    expect(current.roomMutationRef.current).toBeNull();
+    expect(current.setPhase).toHaveBeenLastCalledWith("error");
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({
+      target: "television", comic: "route-failed", tone: "bad",
+    }));
+    expect(report).toHaveBeenCalledWith("capture", "failed", failure, { action: "capture", source: undefined });
+  });
+
+  it.each(["camera", "browser"])("retains the %s capture cause when presenting its notice", (source) => {
+    const current = fixture();
+    const report = vi.fn();
+    current.context.debugError = report;
+    const cause = new DOMException("Device unavailable", "NotReadableError");
+    current.context.setCaptureError(cause, source, "capture");
+    expect(report).toHaveBeenCalledWith("capture", "failed", cause, { action: "capture", source });
   });
 
   it.each(["success", "replace-failed", "stopped"])("retires the whole microphone operation after stream replacement: %s", async outcome => {

@@ -225,7 +225,7 @@ class LiveEncoder final : public VideoEncoder {
       EncoderClock::time_point deadline = EncoderClock::time_point::max()) override;
 
  private:
-  MediaEventType NextEvent(EncoderClock::time_point deadline);
+  MediaEventType NextEvent(EncoderClock::time_point deadline, const char* timeout_stage);
   void WaitForInput(EncoderClock::time_point deadline);
 
   SelectedTransform selected_;

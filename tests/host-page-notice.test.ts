@@ -14,7 +14,7 @@ setCopy({ lang: "zh" });
 describe("host error notices", () => {
   it("classifies the native preview bridge as a connection failure", () => {
     expect(hostActionErrorNotice(new NativeMediaBridgeError("private detail"), "capture"))
-      .toBe(hostActionErrorNotice(new Error("private detail"), "connection"));
+      .toBe("Piik App 媒体连接失败");
   });
 
   it("maps every server error code without exposing server text", () => {

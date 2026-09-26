@@ -164,7 +164,7 @@ import {
 } from "../native/native-sender-peer";
 import { NativeSfuPublisher } from "../native/native-sfu-publisher";
 import { SfuPublisher } from "../sfu/publisher";
-import { NativeMediaBridge } from "../native/media-bridge";
+import { NativeMediaBridge, NativeMediaBridgeError } from "../native/media-bridge";
 import { NativeMediaIngress } from "../native/media-ingress";
 import {
   defaultNativeCapturePath,
@@ -492,6 +492,7 @@ export function HostPage({
     action: HostAction,
     target: NoticeValue["target"] = "operation",
   ): void {
+    if (error instanceof NativeMediaBridgeError) action = "connection";
     const permissionMissing = isCapturePermissionFailure(error, action);
     setNoticeValue({ kind: "text", text: readableError(error, action), target, tone: permissionMissing ? "warn" : "bad",
       comic: permissionMissing ? "hint-capture-browser" : action === "connection" ? "route-failed" : action === "capture" || action === "source"
@@ -2858,6 +2859,7 @@ export function HostPage({
   }
 
   function setCaptureError(error: unknown, source: BrowserCaptureSource | undefined, action: "source" | "capture") {
+    debugError("capture", "failed", error, { action, source });
     const target = action === "source" ? "operation" : "television";
     if (source !== "camera") {
       setNoticeError(error, action, target);

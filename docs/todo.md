@@ -112,17 +112,18 @@ history. A parked idea is not implementation authority.
 - [ ] **App discovery and share-start field acceptance.** Retest the missing-window
   report, an unreachable App despite its process running, and generic share-start
   failure. Distinguish site authorization, browser permission, control capacity,
-  enumeration and capture startup. A complete v1.6.3 Windows report confirms
-  Auto/Window/1080p30 balanced startup: hardware MFT event timeout, then software
-  probing, then cancellation because capture readiness did not arrive. The stall
-  within probing, teardown or WGC initialization remains unknown; one initial
-  VP8 statistics sample cannot establish its complete output history. Auto now
-  skips the redundant comparison when only VP8 remains. Injected unavailable
-  hardware and exhausted-probe-budget cases both capture and decode locally;
-  the affected machine still needs same-source Auto versus explicit VP8
-  acceptance. Do not extend deadlines without identifying the blocked stage.
-  Existing H264-retention/ICE-candidate repairs do not establish this cause; other
-  discovery/manual-H264 reports still need paired App/Browser diagnostics.
+  enumeration and capture startup. The latest v1.6.5 report reaches successful
+  Auto-to-VP8 startup after a hardware MFT timeout, then receives `stop-share`
+  about 1.5 ms later, before local-edge preparation. Zero dimensions/FPS in
+  `starting` are valid. Browser preview-construction fault injection reproduces
+  that request sequence; ordinary cancellation/unmount instead closes control,
+  and a normal VP8 control fixture reaches decoded video. The reporter's actual
+  exception and VP8 frame output remain unverified. Current source retains
+  preview initialization/negotiation causes in Browser diagnostics and separates
+  MFT input/output waits in App logs. Obtain matched diagnostics before changing
+  recovery or deadlines. Injected unavailable-hardware and exhausted-probe-budget
+  cases also capture and decode locally; those checks do not establish this
+  reporter's cause. Other discovery/manual-H264 reports still need paired evidence.
 - [ ] **Share ends after entering a game.** Screen sharing reportedly works
   until entering a game freezes the picture, followed seconds later by share
   termination. Version, capture path, codec and matched diagnostics are unknown.
