@@ -207,9 +207,12 @@ black screen, ICE-connected state, or unproved `playing` event.
 - An actionable overlay may appear while fullscreen remains active; application
   state never forces the user out of fullscreen.
 
-Visibility, page freeze, and pagehide suppress application decoded-stall
-authority and invalidate quality observations, not already-proved playback.
-Returning to the page rebaselines time and re-arms frame observation; an existing
+Decoded-frame silence is not a route-failure signal. A live source can stop
+repainting; media-framework failures, not an application silence timer, own
+recovery. First-frame admission and candidate-relative proof still require
+decoded progress. Visibility, page freeze, and pagehide invalidate quality
+observations, not already-proved playback.
+Returning to the page re-arms frame observation; an existing
 recovery state still requires a fresh current frame to clear. SFU media is
 retained independently of transient room-signaling loss, but Browser or OS
 suspension and page reclamation remain outside Web guarantees.

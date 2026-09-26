@@ -63,7 +63,6 @@ import {
   P2pQualityProbe,
   type CandidateQualityProbeResult,
 } from "../media/candidate-quality-probe";
-import { DecodedFrameStallDetector } from "../media/decoded-frame-stall";
 import type { QualitySettings } from "../media/quality";
 import { relayCapacityMessageForBrowser } from "../media/relay-capability";
 import {
@@ -491,7 +490,6 @@ export function ViewerPage({
       Extract<ServerMessage, { type: "signal" }>
     > = [];
     let pendingPeer: PendingPeerRoute | null = null;
-    const decodedFrameStall = new DecodedFrameStallDetector();
     const messageAuthority = new ViewerMessageAuthority();
     const relayChildEvidenceStore = new ViewerQualityEvidenceStore((values) => {
       if (active) setRelayChildEvidence(values);
@@ -543,9 +541,6 @@ export function ViewerPage({
     }
 
     let pageSuspended = document.visibilityState !== "visible";
-    const syncDecodedFrameStallPause = (): void => {
-      decodedFrameStall.setPaused(currentHostPaused || pageSuspended);
-    };
     const suspendForPageLifecycle = (): void => {
       // Losing observation does not invalidate media already proved playable.
       invalidateQualityPresentation();
@@ -555,7 +550,6 @@ export function ViewerPage({
       viewerSfuRoute?.resetQualityProbe();
       pendingPeer?.qualityProbe?.reset();
       if (pendingPeer) pendingPeer.qualityResult = "pending";
-      syncDecodedFrameStallPause();
       if (newlySuspended) {
         invalidateSenderQualityEvidence();
         if (currentRoutePolicy.topologyOptimization) {
@@ -567,9 +561,6 @@ export function ViewerPage({
       invalidateQualityPresentation();
       rearmCurrentFrameProof();
       pageSuspended = document.visibilityState !== "visible";
-      syncDecodedFrameStallPause();
-      if (pageSuspended) return;
-      decodedFrameStall.rebaseline();
     };
     const handleVisibilityChange = (): void => {
       if (document.visibilityState === "visible") {
@@ -578,7 +569,6 @@ export function ViewerPage({
         suspendForPageLifecycle();
       }
     };
-    syncDecodedFrameStallPause();
     document.addEventListener("freeze", suspendForPageLifecycle);
     document.addEventListener("resume", recoverFromPageLifecycle);
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -601,7 +591,6 @@ export function ViewerPage({
       {
         onStatus: (status) => {
           if (active) {
-            if (status !== "connected") decodedFrameStall.allowReportRetry();
             dispatchPresentation({ type: "signal", signal: status });
           }
         },
@@ -922,32 +911,6 @@ export function ViewerPage({
       );
     }
 
-    function observeActiveDecodedFrames(
-      route: "peer" | "sfu",
-      identity: string,
-      framesDecodedDelta: number | null,
-      authorityRevision: number,
-      connectionId: string,
-    ): void {
-      if (
-        currentHostPaused ||
-        !decodedFrameStall.observe(`${route}:${identity}`, framesDecodedDelta)
-      ) {
-        return;
-      }
-      if (authorityRevision !== currentRouteRevision) {
-        decodedFrameStall.allowReportRetry();
-        return;
-      }
-      const sent = signal.send({
-        type: "route-failed",
-        revision: authorityRevision,
-        phase: "active",
-        connectionId,
-      });
-      if (!sent) decodedFrameStall.allowReportRetry();
-    }
-
     function pendingPeerHasDecodedFrame(
       probe: PendingPeerRoute,
     ): probe is PendingPeerRoute & { peer: ViewerMediaPeer; snapshot: PeerSnapshot } {
@@ -1117,22 +1080,6 @@ export function ViewerPage({
             endpointMediaCopyCapacity,
           );
           reconcileRelayChildren(previousChildPeerIds, revision);
-        },
-        onSfuDecodedFrameSample: (
-          framesDecodedDelta,
-          revision,
-          mediaIdentity,
-          connectionId,
-        ) => {
-          if (active && viewerSfuRoute === route) {
-            observeActiveDecodedFrames(
-              "sfu",
-              mediaIdentity,
-              framesDecodedDelta,
-              revision,
-              connectionId,
-            );
-          }
         },
         onSfuUpdate: (metrics, revision) => {
           if (active && viewerSfuRoute === route) {
@@ -1386,13 +1333,6 @@ export function ViewerPage({
               provePendingPeer();
             } else if (active && peerRef.current === peer) {
               activePeerMetrics = snapshot.metrics;
-              observeActiveDecodedFrames(
-                "peer",
-                `${probe.parentPeerId}:${snapshot.connectionId}`,
-                snapshot.metrics.intervalFramesDecoded,
-                currentRouteRevision,
-                snapshot.connectionId,
-              );
               offerPeerQualityEvidence(snapshot, peer);
               setPeerSnapshot(snapshot);
               dispatchPresentation({
@@ -1481,13 +1421,6 @@ export function ViewerPage({
           onUpdate: (snapshot) => {
             if (active) {
               activePeerMetrics = snapshot.metrics;
-              observeActiveDecodedFrames(
-                "peer",
-                `${snapshot.peerId}:${snapshot.connectionId}`,
-                snapshot.metrics.intervalFramesDecoded,
-                currentRouteRevision,
-                snapshot.connectionId,
-              );
               offerPeerQualityEvidence(snapshot, peer);
               if (
                 !currentHostOnline &&
@@ -1579,7 +1512,6 @@ export function ViewerPage({
           invalidatePresentedMedia();
         }
         currentHostPaused = sharingPaused;
-        syncDecodedFrameStallPause();
         dispatchPresentation({
           type: "host",
           host: sharingPaused
@@ -1800,7 +1732,6 @@ export function ViewerPage({
           invalidatePresentedMedia();
         }
         currentHostPaused = message.paused;
-        syncDecodedFrameStallPause();
         dispatchPresentation({
           type: "host",
           host: message.paused
@@ -1830,8 +1761,6 @@ export function ViewerPage({
         setAssignedRoute(null);
         currentHostOnline = false;
         currentHostPaused = false;
-        decodedFrameStall.reset();
-        syncDecodedFrameStallPause();
         clearViewerSfuRoute();
         clearPeerState(true);
         clearHostPresence();

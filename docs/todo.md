@@ -130,8 +130,12 @@ history. A parked idea is not implementation authority.
   Locate the first capture/output, preview-bridge, control or authority failure;
   distinguish ordinary source silence/resize from target replacement, exclusive
   fullscreen, display-mode change and device loss. A reproduced downstream
-  retirement race no longer stops the shared source. Controlled-window checks
-  do not reproduce the reporting game/device environment.
+  retirement race no longer stops the shared source. Actual CS2 checks found
+  and removed a separate decoded-silence rule that retired a connected Viewer
+  route while the Host stayed live; [capture research](./research/native-client-lifecycle.md#quiet-sources-and-viewer-recovery)
+  distinguishes that repair and successful restoration from the unknown cause
+  of the reported Host termination. Do not conflate source silence, receiver
+  decode interruption and capture-process failure.
 - [ ] **Brief blur followed by immediate recovery.** Compare the same source,
   codec, peers and network with ordinary WebRTC before attributing the report
   to pooling. The [pool checks](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)

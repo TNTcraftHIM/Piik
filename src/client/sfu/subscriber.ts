@@ -15,7 +15,6 @@ interface SubscriberEvents {
   onStream: (stream: MediaStream | null) => void;
   onVideoAvailability?: (available: boolean) => void;
   onStats?: (metrics: ConnectionMetrics) => void;
-  onDecodedFrameSample?: (framesDecodedDelta: number | null) => void;
   onFirstDecodedFrame?: () => boolean;
   onState?: (state: "connected" | "reconnecting") => void;
   onDisconnected?: () => void;
@@ -228,10 +227,7 @@ export class SfuSubscriber {
     const video = this.video;
     const stats = this.stats;
     if (!peer || !this.active) return;
-    if (!video || this.statsInFlight === stats) {
-      this.events.onDecodedFrameSample?.(null);
-      return;
-    }
+    if (!video || this.statsInFlight === stats) return;
     this.statsInFlight = stats;
     try {
       const report = await peer.pc.getStats();
@@ -243,12 +239,9 @@ export class SfuSubscriber {
         "receive",
         stats,
       );
-      this.events.onDecodedFrameSample?.(metrics.intervalFramesDecoded);
       this.events.onStats?.(metrics);
     } catch (error) {
       debugRtcFailure(peer.pc, error);
-      if (this.peer === peer && this.stats === stats)
-        this.events.onDecodedFrameSample?.(null);
     } finally {
       if (this.statsInFlight === stats) this.statsInFlight = null;
     }

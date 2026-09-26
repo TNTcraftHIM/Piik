@@ -34,7 +34,6 @@ interface ViewerSubscriberTransport {
 }
 
 interface ViewerSubscriberSlot {
-  mediaIdentity: string;
   connectionId: string;
   revision: number;
   phase: MediaRoutePhase;
@@ -82,12 +81,6 @@ interface ViewerSfuRouteEvents {
   onSfuUpdate?: (metrics: ConnectionMetrics | null, revision: number) => void;
   currentPeerMetrics?: () => ConnectionMetrics | null;
   qualityProbeEligible?: () => boolean;
-  onSfuDecodedFrameSample?: (
-    framesDecodedDelta: number | null,
-    revision: number,
-    mediaIdentity: string,
-    connectionId: string,
-  ) => void;
   onSfuState?: (
     state: "connected" | "reconnecting",
     revision: number,
@@ -98,7 +91,6 @@ interface ViewerSfuRouteEvents {
       onStream: (stream: MediaStream | null) => void;
       onVideoAvailability: (available: boolean) => void;
       onStats: (metrics: ConnectionMetrics) => void;
-      onDecodedFrameSample: (framesDecodedDelta: number | null) => void;
       onFirstDecodedFrame: () => boolean;
       onState: (state: "connected" | "reconnecting") => void;
       onDisconnected: () => void;
@@ -115,7 +107,6 @@ export class ViewerSfuRoute {
   private transitionTail: Promise<void> = Promise.resolve();
   private resyncGeneration = 0;
   private resyncing = false;
-  private subscriberGeneration = 0;
   private paused = false;
   private closed = false;
 
@@ -469,16 +460,6 @@ export class ViewerSfuRoute {
           }
         }
       },
-      onDecodedFrameSample: (framesDecodedDelta: number | null) => {
-        if (this.active === slot && !slot.failed) {
-          this.events.onSfuDecodedFrameSample?.(
-            framesDecodedDelta,
-            slot.revision,
-            slot.mediaIdentity,
-            slot.connectionId,
-          );
-        }
-      },
       onFirstDecodedFrame: () => this.handlePendingDecodedFrame(slot),
       onState: (state: "connected" | "reconnecting") => {
         if (this.active === slot && !slot.failed) {
@@ -492,7 +473,6 @@ export class ViewerSfuRoute {
       new SfuSubscriber(subscriberEvents);
     const preparedCandidate = this.route.getPreparedCandidate();
     slot = {
-      mediaIdentity: `${publicationGeneration}:${++this.subscriberGeneration}`,
       connectionId: message.connectionId,
       revision: message.revision,
       phase,

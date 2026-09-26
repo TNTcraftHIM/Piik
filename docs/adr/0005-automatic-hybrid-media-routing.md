@@ -246,9 +246,11 @@ as another application route candidate.
 ### Recovery, Pause, And Quality
 
 WebRTC and LiveKit first own ICE/consent and transient reconnect on the current
-route. Only framework recovery exhaustion, hard failure, a non-paused decoded-
-frame stall, confirmed departure, or capacity invalidation enters route
-reconciliation. Manual reconnect remains on the exact current route.
+route. Only framework recovery exhaustion, hard failure, confirmed departure,
+or capacity invalidation enters route reconciliation. Decoded-frame silence
+alone cannot locate a route failure: a live source can stop repainting, and
+missing decoded frames do not distinguish source, decoder and transport faults.
+Manual reconnect remains on the exact current route.
 The retained connection and a same-parent candidate keep separate signaling
 authority. A replacement offer from the retained parent supersedes optional
 preparation for that child at adoption, including an SFU bootstrap carrier's
@@ -256,9 +258,9 @@ trial. This retires its reservation and fences late candidate signaling;
 required availability work keeps priority and candidate budgets do not reopen.
 
 Authoritative Host pause aborts the pending operation and reservations, preserves
-the committed graph, suppresses decoded-stall authority, and leaves new Viewers
-waiting. Resume starts reconciliation from the current graph. Page-hidden wall
-time is rebaselined before it can contribute to a stall decision.
+the committed graph, and leaves new Viewers waiting. Resume starts
+reconciliation from the current graph. Missing or suspended observations do
+not create route-failure authority.
 
 Native-edge convergence runs inside the same graph, reconcile loop, and
 room-serial child operation when its per-share gate is enabled. Availability

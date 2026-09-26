@@ -246,6 +246,32 @@ Aspect references: [active display paths](https://learn.microsoft.com/en-us/wind
 [active signal size](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_video_signal_info),
 and [independent panel fitting/MPO](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/for-best-performance--use-dxgi-flip-model).
 
+## Quiet Sources And Viewer Recovery
+
+A later Windows 11/Chrome recheck used the installed CS2 in an offline map,
+with H264 and VP8 window capture and H264 display capture. A minimized VP8
+source started with zero decoded frames for over ten seconds without ending
+the share. H264 and VP8 profile changes remained pending beyond the old
+five-second timeout, then delivered after restoration. This confirms that the
+native quiet-source preparation repair remains in place.
+
+The 1920x1440 fullscreen window case exposed a separate Viewer rule: fifteen
+seconds without a decoded frame sent an active `route-failed` despite connected
+transport. This retired the Viewer route and its unproved quality candidate;
+the Host source remained alive. That sample also recorded packet loss, so it
+does not establish whether its original decode interruption came from source
+silence, forwarding or decoding. The decoded-only failure rule is removed for
+both P2P and SFU: silence cannot establish which owner failed. Framework
+failure/recovery, first-frame admission and candidate proof remain unchanged.
+The repeated fullscreen case retained the connection and resumed decoded
+720p output after restoration. A controlled production-path check then held
+Native output for 35 seconds without announcing Host pause: the visible Viewer
+decoded no new frames, kept the same connected media, and decoded again when
+output resumed. This is bounded device evidence, not proof of
+all game/driver recovery or the separate immediate share-start failure report.
+Some focus changes did not remain foreground throughout a sampling window;
+only recorded window states and receiver progress establish those transitions.
+
 ## Windows Capture Borders
 
 The accepted scope keeps WGC for Windows capture and previews. Piik does not
