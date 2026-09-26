@@ -59,6 +59,11 @@ borrowed, never reopened or stopped by preview. Optional native ingress uses an 
 available connection without another scan. If it is not ready at Browser
 startup, that share keeps Browser senders.
 
+Native Host startup acquires its required Browser media connection before
+starting capture. Cancellation owns that connection immediately, while native
+share ownership and required audio tracks come from the accepted App response.
+Browser initialization failure remains distinct from capture permission failure.
+
 A reachable Piik App with an incompatible control protocol is distinct from an
 absent App. Discovery continues looking for a compatible process before reporting
 the mismatch; the source selector retains Browser operation and offers update/

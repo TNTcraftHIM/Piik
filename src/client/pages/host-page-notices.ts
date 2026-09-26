@@ -1,5 +1,5 @@
 import type { ServerMessage } from "../../shared/protocol";
-import { NativeMediaBridgeError } from "../native/media-bridge";
+import { NativeMediaBridgeError, NativeMediaBridgeInitializationError } from "../native/media-bridge";
 import { currentLang, joinSentences, say, type CopyKey } from "../ui/copy";
 
 export type HostAction =
@@ -44,6 +44,7 @@ export function hostActionErrorNotice(
   error: unknown,
   action: HostAction,
 ): string {
+  if (error instanceof NativeMediaBridgeInitializationError) return say("native.fail.browserMedia");
   if (error instanceof NativeMediaBridgeError) return say("native.fail.edge");
   if (isCapturePermissionFailure(error, action)) return say("host.capture.cancelled");
   if (

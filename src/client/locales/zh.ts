@@ -141,6 +141,7 @@ export const zh = {
   "host.sourcePicker.failed": "未能读取 App 的窗口和屏幕列表。请刷新重试；若持续失败，请导出诊断报告。",
   "native.incompatible": "Piik App 与当前页面不兼容。请更新 Piik App 并刷新页面，或使用浏览器。",
   "native.fail.edge": "Piik App 媒体连接失败",
+  "native.fail.browserMedia": "浏览器无法建立媒体连接。请刷新页面，或换一个浏览器重试。",
   "native.fail.signaling": "Piik App 信令失败",
   "native.fail.receiver": "Piik App 媒体接收失败",
   "host.sourcePicker.window": "分享窗口：{title}",

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   NativeMediaBridge,
   NativeMediaBridgeError,
+  NativeMediaBridgeInitializationError,
   type NativeMediaBridgeControl,
 } from "../src/client/native/media-bridge";
 import type { NativeClientEvent } from "../src/client/native/wire";
@@ -64,7 +65,6 @@ class FakePeerConnection extends EventTarget {
 
 function fixture(options: {
   hangPreparation?: boolean;
-  expectedAudio?: boolean;
 } = {}) {
   let listener: ((event: NativeClientEvent) => void) | null = null;
   let peer: FakePeerConnection | null = null;
@@ -109,7 +109,6 @@ function fixture(options: {
     "share_123456",
     control,
     onFailed,
-    options.expectedAudio,
   );
   return {
     bridge,
@@ -131,6 +130,17 @@ afterEach(() => {
 });
 
 describe("native media bridge", () => {
+  it("releases an unstarted Browser reservation without sending an edge command", async () => {
+    const current = fixture();
+    current.bridge.dispose();
+    current.bridge.dispose();
+    await expect(current.bridge.start()).rejects.toBeInstanceOf(NativeMediaBridgeError);
+    expect(current.peer().close).toHaveBeenCalledOnce();
+    expect(current.control.prepareLocalEdge).not.toHaveBeenCalled();
+    expect(current.control.closeEdge).not.toHaveBeenCalled();
+    expect(current.onFailed).not.toHaveBeenCalled();
+  });
+
   it.each(["MediaStream", "RTCPeerConnection"])("preserves %s initialization failure without preparing an edge", (api) => {
     const current = fixture();
     current.bridge.dispose();
@@ -142,6 +152,7 @@ describe("native media bridge", () => {
     catch (error) { failure = error; }
 
     expect(failure).toBeInstanceOf(NativeMediaBridgeError);
+    expect(failure).toBeInstanceOf(NativeMediaBridgeInitializationError);
     expect((failure as Error).cause).toBe(cause);
     expect(debugError).toHaveBeenCalledWith("native-bridge", "initialization-failed", cause);
     expect(current.control.prepareLocalEdge).not.toHaveBeenCalled();
@@ -276,8 +287,8 @@ describe("native media bridge", () => {
   });
 
   it("does not publish a declared audio share before its audio track arrives", async () => {
-    const current = fixture({ expectedAudio: true });
-    const starting = current.bridge.start();
+    const current = fixture();
+    const starting = current.bridge.start(true);
     let resolved = false;
     void starting.then(() => {
       resolved = true;

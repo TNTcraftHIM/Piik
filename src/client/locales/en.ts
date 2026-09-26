@@ -141,6 +141,7 @@ export const en: Record<CopyKey, string> = {
   "host.sourcePicker.failed": "Could not read the App's screen and window list. Refresh to try again; if it keeps failing, collect a Debug report.",
   "native.incompatible": "Piik App and this page are incompatible. Update Piik App and reload this page, or use Browser.",
   "native.fail.edge": "Piik App media connection failed",
+  "native.fail.browserMedia": "The browser could not create a media connection. Refresh the page or try another browser.",
   "native.fail.signaling": "Piik App signaling failed",
   "native.fail.receiver": "Piik App media receive failed",
   "host.sourcePicker.window": "Share window: {title}",

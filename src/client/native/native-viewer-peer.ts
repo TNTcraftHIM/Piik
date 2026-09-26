@@ -487,11 +487,10 @@ class NativeViewerPeer implements ViewerMediaPeer {
       this.sessionId,
       this.client,
       () => this.handlePlaybackFailure(bridge, connectionId),
-      result.audio,
       connectionId,
     );
     this.bridge = bridge;
-    void bridge.start().then((stream) => {
+    void bridge.start(result.audio).then((stream) => {
       if (this.disposed || this.bridge !== bridge || this.connectionId !== connectionId) {
         bridge.dispose();
         return;

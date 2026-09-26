@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { setCopy } from "../src/client/ui/copy.ts";
-import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
+import { NativeMediaBridgeError, NativeMediaBridgeInitializationError } from "../src/client/native/media-bridge";
 import {
   hostActionErrorNotice,
   hostServerErrorNotice,
@@ -12,6 +12,21 @@ import {
 setCopy({ lang: "zh" });
 
 describe("host error notices", () => {
+  it.each([
+    ["zh", "浏览器无法建立媒体连接。请刷新页面，或换一个浏览器重试。"],
+    ["en", "The browser could not create a media connection. Refresh the page or try another browser."],
+  ] as const)("identifies Browser initialization failure in %s without blaming capture permission", (lang, notice) => {
+    setCopy({ lang });
+    try {
+      const failure = new NativeMediaBridgeInitializationError("private detail", {
+        cause: new DOMException("private cause", "NotAllowedError"),
+      });
+      expect(hostActionErrorNotice(failure, "capture")).toBe(notice);
+    } finally {
+      setCopy({ lang: "zh" });
+    }
+  });
+
   it("classifies the native preview bridge as a connection failure", () => {
     expect(hostActionErrorNotice(new NativeMediaBridgeError("private detail"), "capture"))
       .toBe("Piik App 媒体连接失败");
