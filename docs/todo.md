@@ -11,13 +11,7 @@ history. A parked idea is not implementation authority.
   startup, audio/source changes, sustained viewing, recovery and retirement,
   admission, and narrow/touch UI. Verify confirmed fixes through the existing
   owners before resuming feature polish. Keep field reports without matched
-  evidence separate from locally reproduced defects; this phase does not
-  authorize publication.
-- [ ] **Integrate the Native recovery follow-up after release acceptance.** The
-  [keyframe comparison](./research/native-client-lifecycle.md#keyframe-request-ownership)
-  supports the request-owner correction. Focused regressions, Windows App VP8
-  playback/quiet-source restoration/replacement and real Native relay checks pass;
-  this follow-up remains outside the published maintenance release.
+  evidence separate from locally reproduced defects.
 - [ ] **Complete manual accessible-name review.** Verify the empty video's
   screen-reader output: Chromium exposes an unavailable-media
   description despite the literal shared-picture label and no media error. Also
