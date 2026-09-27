@@ -152,7 +152,7 @@ func TestOutputProfilesAndControlFramesShareOneBoundedContract(t *testing.T) {
 	reader, writer := io.Pipe()
 	done := make(chan error)
 	close(done)
-	stream := &Stream{key: writer, done: done, outputs: outputs, cancel: func() {}}
+	stream := &Stream{input: io.NopCloser(bytes.NewReader(nil)), key: writer, done: done, outputs: outputs, cancel: func() {}}
 	control := make(chan []byte, 1)
 	go func() {
 		payload, _ := io.ReadAll(reader)

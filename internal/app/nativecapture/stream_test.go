@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -25,6 +26,13 @@ func TestCaptureStopHelper(t *testing.T) {
 	if mode == "unresponsive" {
 		time.Sleep(10 * time.Second)
 		os.Exit(3)
+	}
+	if strings.HasPrefix(mode, "blocked-output-") {
+		// A producer can fill stdout before returning to its control reader.
+		if err := writeFrame(os.Stdout, Frame{Kind: FrameVP8, Width: 1280, Height: 720,
+			Duration: time.Second / 30, Data: make([]byte, 1024*1024)}); err != nil {
+			os.Exit(6)
+		}
 	}
 	frame, err := readFrame(os.Stdin)
 	if err != nil || frame.Kind != FrameControl || string(frame.Data) != "Q" {
@@ -43,7 +51,8 @@ func TestCaptureStopUsesOneBoundedRetirementPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []string{"explicit", "parent", "both", "unresponsive"} {
+	for _, mode := range []string{"explicit", "parent", "both", "unresponsive",
+		"blocked-output-explicit", "blocked-output-parent", "blocked-output-both"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -58,10 +67,11 @@ func TestCaptureStopUsesOneBoundedRetirementPath(t *testing.T) {
 			if _, err := stream.Read(); err != nil {
 				t.Fatal(err)
 			}
-			if mode != "explicit" {
+			stop := strings.TrimPrefix(mode, "blocked-output-")
+			if stop != "explicit" {
 				cancel()
 			}
-			if mode == "explicit" || mode == "both" {
+			if stop == "explicit" || stop == "both" {
 				go stream.Close()
 			}
 			select {
@@ -79,6 +89,55 @@ func TestCaptureStopUsesOneBoundedRetirementPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCaptureStopPreservesAnInFlightFrame(t *testing.T) {
+	input, output := io.Pipe()
+	control, commands := io.Pipe()
+	done := make(chan error)
+	var finishOnce sync.Once
+	finish := func() {
+		finishOnce.Do(func() {
+			_ = output.Close()
+			_ = input.Close()
+			_ = control.Close()
+			close(done)
+		})
+	}
+	stream := &Stream{input: input, key: commands, done: done, cancel: finish}
+	t.Cleanup(func() { finish(); _ = stream.Close() })
+	expected := Frame{Kind: FrameVP8, Width: 1280, Height: 720,
+		Duration: time.Second / 30, Data: bytes.Repeat([]byte{0x12}, 1024*1024)}
+	var encoded bytes.Buffer
+	if err := writeFrame(&encoded, expected); err != nil {
+		t.Fatal(err)
+	}
+	read := make(chan error, 1)
+	go func() {
+		frame, err := stream.Read()
+		if err == nil && (frame.Kind != expected.Kind || !bytes.Equal(frame.Data, expected.Data)) {
+			err = errors.New("retirement discarded part of the in-flight frame")
+		}
+		read <- err
+	}()
+	// Pipe.Write returns after Read has entered the frame, before its header is complete.
+	if _, err := output.Write(encoded.Bytes()[:1]); err != nil {
+		t.Fatal(err)
+	}
+	closed := make(chan struct{})
+	go func() { _ = stream.Close(); close(closed) }()
+	frame, err := readFrame(control)
+	if err != nil || frame.Kind != FrameControl || string(frame.Data) != "Q" {
+		t.Fatalf("stop command = %+v, %v", frame, err)
+	}
+	if _, err := output.Write(encoded.Bytes()[1:]); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-read; err != nil {
+		t.Fatal(err)
+	}
+	finish()
+	<-closed
 }
 
 func TestDiagnosticStderrOverflowDoesNotStopTheChildReader(t *testing.T) {

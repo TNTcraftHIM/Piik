@@ -320,9 +320,14 @@ The stream owner previously connected parent cancellation directly to
 `exec.CommandContext`, killing the child before its existing bounded stop
 sequence could release the platform session. Parent cancellation now enters
 that same `Stream.Close` sequence; an unresponsive process still has the existing
-one-second kill deadline. Subprocess regression checks cover explicit stop,
-parent cancellation, concurrent stop and an unresponsive child. A real WGC
-capture cancelled through this Go owner exited normally and cleared the border.
+one-second kill deadline. Retirement also drains stdout after any in-flight
+frame finishes: a full output pipe must not prevent the producer from reading
+its stop command. A controlled pipe check reproduced a responsive child being
+killed without this drain. The stream joins the drain before closing completes;
+[`exec.Cmd.Wait`](https://pkg.go.dev/os/exec#Cmd.StdoutPipe) closes the output
+pipe when the process ends. Subprocess regression checks cover explicit stop,
+parent cancellation, concurrent stop, blocked output and an unresponsive child.
+The earlier real WGC cancellation check exited normally and cleared the border.
 This establishes a retirement defect and its local repair, not the cause of
 every reported Windows 11 border: denied consent and other active captures
 remain distinct Windows-owned limits.

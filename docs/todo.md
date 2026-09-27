@@ -13,10 +13,6 @@ history. A parked idea is not implementation authority.
   owners before resuming feature polish. Keep field reports without matched
   evidence separate from locally reproduced defects; this phase does not
   authorize publication.
-  Measure committed relay sender failure recovery before changing its reporting
-  owner: prepared sender failure is reported immediately, while an active relay
-  currently relies on its child's receiver recovery. No indefinite stall has
-  been established.
 - [ ] **Investigate Browser short-pulse quality cost.** Matched ordinary/pool
   checks with two 1080p30 children, audio and a one-second bandwidth constraint
   reproduce a deeper VP8 dip in the pool (270p versus 720p), with faster recovery.

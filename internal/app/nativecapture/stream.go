@@ -128,6 +128,7 @@ type Stream struct {
 	controlMu sync.Mutex
 	closed    bool
 	closeOnce sync.Once
+	readMu    sync.Mutex
 	readEnd   sync.Once
 	logger    *slog.Logger
 	ctx       context.Context
@@ -504,7 +505,9 @@ func logCaptureFailure(ctx context.Context, err error, exitCode int, stderr []by
 }
 
 func (stream *Stream) Read() (Frame, error) {
+	stream.readMu.Lock()
 	frame, err := readFrame(stream.input)
+	stream.readMu.Unlock()
 	if err != nil && stream.logger != nil {
 		stream.readEnd.Do(func() {
 			stream.logger.DebugContext(stream.ctx, "piik-client", "event", "capture-stream-ended",
@@ -599,17 +602,27 @@ func (stream *Stream) Done() <-chan error {
 }
 
 func (stream *Stream) Close() error {
-	// Start the existing stop budget before waiting for a possibly blocked control write.
-	timer := time.AfterFunc(captureStopTimeout, stream.cancel)
-	defer timer.Stop()
 	stream.closeOnce.Do(func() {
+		// Start the stop budget before waiting for a possibly blocked control write.
+		timer := time.AfterFunc(captureStopTimeout, stream.cancel)
+		defer timer.Stop()
+		// A retired consumer must not leave the producer blocked on stdout before
+		// it can read Q. Finish any in-flight frame before discarding the rest.
+		drained := make(chan struct{})
+		go func() {
+			stream.readMu.Lock()
+			_, _ = io.Copy(io.Discard, stream.input)
+			stream.readMu.Unlock()
+			close(drained)
+		}()
 		stream.controlMu.Lock()
-		defer stream.controlMu.Unlock()
 		stream.closed = true
 		_ = writeFrame(stream.key, Frame{Kind: FrameControl, Data: []byte("Q")})
 		_ = stream.key.Close()
+		stream.controlMu.Unlock()
+		<-stream.done
+		stream.cancel()
+		<-drained
 	})
-	<-stream.done
-	stream.cancel()
 	return nil
 }
