@@ -14,8 +14,15 @@ history. A parked idea is not implementation authority.
   [pool evidence](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
   distinguishes one cold producer handoff from repeated churn. Assess a smaller
   adaptation cost without a custom bitrate floor, delay policy or weakening
-  healthy-child isolation. These bounded Browser results do not identify the
-  unknown reporters' capture paths or establish their causes.
+  healthy-child isolation. A two-producer control retaining encoder identity
+  reached 720p, supporting the cold-producer cost; it does not justify removing
+  sharing or moving a healthy child onto a new encoder. These bounded Browser
+  results do not identify the unknown reporters' paths or establish their causes.
+- [ ] **Integrate the Native recovery follow-up after release acceptance.** The
+  [keyframe comparison](./research/native-client-lifecycle.md#keyframe-request-ownership)
+  supports the request-owner correction. Focused regressions, Windows App VP8
+  playback/quiet-source restoration/replacement and real Native relay checks pass;
+  this follow-up remains outside the published maintenance release.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not

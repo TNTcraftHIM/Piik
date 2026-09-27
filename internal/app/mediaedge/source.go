@@ -608,7 +608,12 @@ func (source *Source) detach(edge *Edge) {
 }
 
 func (source *Source) requestLayerKeyFrame(layer int) {
-	source.groupRecovery.Or(uint32(1) << layer)
+	// Direct capture receives this request through its callback, including while
+	// quiet. A relay's callback only wakes upstream; its local encoders still
+	// need recovery in the next frame's plan, as do callback-free producers.
+	if source.relay != nil || source.requestKeyFrame == nil {
+		source.groupRecovery.Or(uint32(1) << layer)
+	}
 	source.requestRecovery(layer)
 }
 

@@ -44,13 +44,38 @@ func TestSourceRecoveryCoalescesTargetsWithoutWakingUnrelatedOutputs(t *testing.
 			case <-time.After(time.Second):
 				t.Fatal("lost output recovery request")
 			}
-			if source.groupRecovery.Load() != 5 {
-				t.Fatal("wake callback consumed the frame-boundary recovery plan")
+			if source.groupRecovery.Load() != 0 {
+				t.Fatal("direct capture queued a second recovery through the frame plan")
 			}
 			select {
 			case layers := <-requested:
 				t.Fatalf("unexpected extra callback: %v", layers)
 			default:
+			}
+		})
+	}
+}
+
+func TestSourceRecoveryRetainsLocalPlanWithoutDirectCaptureCallback(t *testing.T) {
+	for _, relay := range []bool{false, true} {
+		t.Run(fmt.Sprint(relay), func(t *testing.T) {
+			source := &Source{}
+			if relay {
+				source.relay = &relayDerivation{source: source}
+				source.requestKeyFrame = func([]int) {}
+				source.recoveryRequests = make(chan struct{}, 1)
+			}
+			source.requestLayerKeyFrame(0)
+			source.requestLayerKeyFrame(2)
+			if source.groupRecovery.Load() != 5 {
+				t.Fatal("local recovery was lost when the callback cannot reach its encoders")
+			}
+			if relay && source.pendingRecovery.Load() != 5 {
+				t.Fatal("relay recovery did not also request its upstream input")
+			}
+			source.RequestRecoveryFrame()
+			if source.groupRecovery.Load() != 5 || relay && source.pendingRecovery.Load() != allRecoveryLayers {
+				t.Fatal("upstream wake widened or lost the local recovery targets")
 			}
 		})
 	}
@@ -98,6 +123,9 @@ func TestSourcePLIUsesPhysicalOutputIdentity(t *testing.T) {
 			}
 		case <-time.After(time.Second):
 			t.Fatal("PLI did not wake its output")
+		}
+		if source.groupRecovery.Load() != 0 {
+			t.Fatal("forwarded PLI would request the direct capture output twice")
 		}
 	}
 }

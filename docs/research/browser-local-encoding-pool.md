@@ -167,6 +167,15 @@ establish the cause of an unknown reporter's blur or stream loss, nor test Nativ
 capture's separate keyframe-request path. Any further change must preserve
 healthy-child isolation and framework-owned adaptation.
 
+A further control retained two separate producers from startup, disallowing
+cross-member group compatibility only in an ignored copy of the same probe.
+With the same VP8 source, audio and pulse schedule, A reached 720p at 4.7 seconds
+and regained 1080p at 24.8 seconds; B stayed at 1080p and both producers retained
+their identity. No connection error was recorded. This supports a cold-producer
+cost alongside ordinary adaptation, without establishing a population average.
+Keeping every producer separate sacrifices sharing; reversing the handoff would
+instead move a healthy child onto a cold encoder. Neither is an accepted fix.
+
 Budget attribution remains unchanged: targetBitrate is the encoder's allocated
 target, not raw link bandwidth ([upstream stats correction](https://webrtc.googlesource.com/src/+/fe25b0e928ea4e64aa134f5dc8012343320deec5%5E%21/)).
 Replacing it with availableOutgoingBitrate would bypass native allocation and

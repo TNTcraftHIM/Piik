@@ -272,6 +272,29 @@ all game/driver recovery or the separate immediate share-start failure report.
 Some focus changes did not remain foreground throughout a sampling window;
 only recorded window states and receiver progress establish those transitions.
 
+## Keyframe Request Ownership
+
+A direct Native source delivers a requested physical output through its
+coalescing callback, which can also wake a quiet capture. Repeating that PLI in
+the next input's output plan duplicates delivery. A relay differs: its callback
+requests upstream input, while its local derived encoder still needs the frame
+plan. Callback-free producers also retain that plan; group activation and
+handoff keep their separate recovery requests.
+
+A bounded Windows VP8 control-delivery comparison used the actual capture
+helper's decoder, output worker and WebRTC encoder with 640x360 encoded input.
+Three requests produced three recovery frames. Sending each request again
+immediately after reading the next `FrameBegin`, without an inserted delay,
+produced three pairs of consecutive recovery frames in both repetitions.
+The direct-source duplicate is removed at request ownership; relay and manual
+frame-plan delivery remain. This demonstrates duplicate encoded output, not
+its network cost or the cause of reported blur/disconnection. Full App/relay
+behavior was checked separately: the Windows App VP8 gate passed playback,
+quiet-source restoration, profile changes and source replacement. The real
+Native relay fixture retained shared/split/rejoined lower outputs and independent
+retirement with one decoder. These bounded checks do not establish public-network
+or other hardware acceptance.
+
 ## Windows Capture Borders
 
 The accepted scope keeps WGC for Windows capture and previews. Piik does not
