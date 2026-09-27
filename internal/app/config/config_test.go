@@ -58,13 +58,15 @@ func TestSavePersistsOneNormalizedSiteChoice(t *testing.T) {
 
 func TestNormalizeSiteAcceptsOnlyAPlainWebOrigin(t *testing.T) {
 	for value, want := range map[string]string{
-		"https://share.example":      "https://share.example",
-		"https://Share.Example:443/": "https://share.example",
-		"http://Share.Example:80":    "http://share.example",
-		"https://share.example:0443": "https://share.example",
-		"http://192.168.1.4:8787/":   "http://192.168.1.4:8787",
-		"http://share.example:443":   "http://share.example:443",
-		"https://[::1]:443":          "https://[::1]",
+		"https://share.example":         "https://share.example",
+		"https://Share.Example:443/":    "https://share.example",
+		"http://Share.Example:80":       "http://share.example",
+		"https://share.example:0443":    "https://share.example",
+		"http://192.168.1.4:8787/":      "http://192.168.1.4:8787",
+		"http://share.example:443":      "http://share.example:443",
+		"https://[::1]:443":             "https://[::1]",
+		"https://bücher.example:443":    "https://xn--bcher-kva.example",
+		"http://[0:0:0:0:0:0:0:1]:8787": "http://[::1]:8787",
 	} {
 		if got, err := NormalizeSite(value); err != nil || got != want {
 			t.Fatalf("NormalizeSite(%q) = %q, %v; want %q", value, got, err, want)
@@ -75,6 +77,11 @@ func TestNormalizeSiteAcceptsOnlyAPlainWebOrigin(t *testing.T) {
 		"https://user:pass@share.example",
 		"https://share.example/room",
 		"https://share.example?mode=host",
+		"https://example.com:65536",
+		"https://[fe80::1%25eth0]",
+		"https://example：443",
+		"https://example／evil",
+		"https://\u00ad",
 	} {
 		if _, err := NormalizeSite(value); err == nil {
 			t.Fatalf("NormalizeSite accepted %q", value)

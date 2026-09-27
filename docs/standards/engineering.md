@@ -145,6 +145,9 @@ above rather than searching the tree.
   Queued events retain physical-owner validity until the final serialized write;
   reused logical IDs do not identify a replacement instance. New subscriptions
   follow the old owner's retirement, including repeated cleanup callers.
+  Closing a Browser connection may leave its API promises pending. Its owner
+  cancels the corresponding waits so a serialized successor never depends on
+  completion from a retired connection; late results still need identity checks.
   Later cancellation must not erase a failure already observed before cleanup.
   A caller deadline does not cancel a dependency that ignores it. Keep late
   work bounded and serialize its cleanup; verify the dependency's actual lifetime.

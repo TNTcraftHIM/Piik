@@ -13,6 +13,10 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/net/idna"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
@@ -358,7 +362,11 @@ func toOrigin(value string) (string, error) {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return "", errors.New("Allowed origins must use http or https")
 	}
-	return Origin(parsed), nil
+	origin := Origin(parsed)
+	if origin == "" {
+		return "", errors.New("Allowed origins must have a valid host and port")
+	}
+	return origin, nil
 }
 
 // parseOriginURL validates an origin and returns the WHATWG-normalised URL
@@ -379,7 +387,11 @@ func parseOriginURL(value, name, scheme, alternative string) (*url.URL, error) {
 		return nil, fmt.Errorf(
 			"%s must be an origin without credentials, path, query, or fragment", name)
 	}
-	return &url.URL{Scheme: parsed.Scheme, Host: normalizedHost(parsed), Path: "/"}, nil
+	host := normalizedHost(parsed)
+	if host == "" {
+		return nil, fmt.Errorf("%s must have a valid host and port", name)
+	}
+	return &url.URL{Scheme: parsed.Scheme, Host: host, Path: "/"}, nil
 }
 
 // hasUserinfo ports `url.username || url.password`: WHATWG reports empty
@@ -396,21 +408,55 @@ func hasUserinfo(parsed *url.URL) bool {
 // Origin ports the WHATWG URL `origin` getter for the http/https/ws/wss schemes
 // this package accepts: new URL("https://Example.com:443/").origin is
 // "https://example.com". It is exported so app and cmd can compare request
-// origins without a second copy of the rule.
+// origins without a second copy of the rule. Invalid hosts/ports return empty.
 func Origin(parsed *url.URL) string {
-	return parsed.Scheme + "://" + normalizedHost(parsed)
+	host := normalizedHost(parsed)
+	if host == "" {
+		return ""
+	}
+	return parsed.Scheme + "://" + host
 }
 
-// normalizedHost lowercases the host, keeps an IPv6 literal bracketed and drops
-// a port equal to the scheme default. Non-ASCII hosts are not IDNA-encoded, so
-// they keep the form they were configured with.
+// Match browser domain-to-ASCII rules; default Lookup also rejects underscores
+// and hyphen positions that web origins permit. See WHATWG URL host parsing.
+var originIDNA = idna.New(idna.MapForLookup(), idna.StrictDomainName(false),
+	idna.Transitional(false), idna.CheckHyphens(false), idna.BidiRule())
+
+// normalizedHost owns configured host spelling for HTTP and local App trust.
+// Request consumers still require the header to equal its canonical origin.
 func normalizedHost(parsed *url.URL) string {
-	host := strings.ToLower(parsed.Hostname())
-	if strings.Contains(host, ":") {
+	host := parsed.Hostname()
+	if strings.HasPrefix(parsed.Host, "[") {
+		address, err := netip.ParseAddr(host)
+		if err != nil || !address.Is6() || address.Zone() != "" {
+			return ""
+		}
+		host = address.String()
+		if address.Is4In6() {
+			// Go prints a dotted tail; browsers serialize all IPv6 pieces as hex.
+			bytes := address.As16()
+			host = fmt.Sprintf("::ffff:%x:%x", uint16(bytes[12])<<8|uint16(bytes[13]),
+				uint16(bytes[14])<<8|uint16(bytes[15]))
+		}
 		host = "[" + host + "]"
+	} else {
+		var err error
+		// Use full IDNA casing: strings.ToLower loses the dot in İ; the
+		// installed IDNA mapping table still maps capital ẞ to the domain ss.
+		// Final sigma handling is disabled as required for IDNA, not prose.
+		host = cases.Lower(language.Und, cases.HandleFinalSigma(false)).String(host)
+		host, err = originIDNA.ToASCII(host)
+		if err != nil || host == "" || strings.ContainsAny(host, "#/:<>?@[\\]^|%*") ||
+			strings.IndexFunc(host, func(r rune) bool { return r <= 0x20 || r == 0x7f }) >= 0 {
+			return ""
+		}
 	}
 	// WHATWG parses the port as a number, so "0443" and "443" are both default.
-	if number, err := strconv.Atoi(parsed.Port()); err == nil {
+	if parsed.Port() != "" {
+		number, err := strconv.Atoi(parsed.Port())
+		if err != nil || number < 0 || number > 65535 {
+			return ""
+		}
 		if port := strconv.Itoa(number); port != defaultSchemePort(parsed.Scheme) {
 			host += ":" + port
 		}

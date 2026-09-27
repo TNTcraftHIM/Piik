@@ -125,7 +125,11 @@ func publicHTTPSOrigin(value string) (*url.URL, error) {
 		parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("Local public origin must be an HTTPS origin")
 	}
-	return &url.URL{Scheme: "https", Host: normalizedHost(parsed), Path: "/"}, nil
+	host := normalizedHost(parsed)
+	if host == "" {
+		return nil, errors.New("Local public origin must be an HTTPS origin")
+	}
+	return &url.URL{Scheme: "https", Host: host, Path: "/"}, nil
 }
 
 // Node's isIP(value) === 4 accepts only a dotted

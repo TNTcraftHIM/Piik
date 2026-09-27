@@ -632,6 +632,53 @@ func TestLocalPasswordUsesConfiguredDestinationCookieAcrossLANAndPublicLink(t *t
 	}
 }
 
+func TestConfiguredOriginMatchesBrowserSerialization(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"https://bücher.example:443", "https://xn--bcher-kva.example"},
+		{"http://[0:0:0:0:0:0:0:1]:8787", "http://[::1]:8787"},
+	} {
+		for _, explicit := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/explicit=%t", pair[0], explicit), func(t *testing.T) {
+				env := map[string]string{"PUBLIC_BASE_URL": pair[0], "ROOM_DATABASE_PATH": ":memory:", "STUN_URLS": ""}
+				if explicit {
+					env["ALLOWED_ORIGINS"] = pair[0]
+				}
+				configuration, err := config.Load(env)
+				if err != nil {
+					t.Fatal(err)
+				}
+				configuration.Port = 0
+				configuration.ListenHost = "127.0.0.1"
+				server := start(t, Options{Config: configuration})
+				for _, origin := range []string{pair[1], "https://foreign.test", pair[1] + "/path"} {
+					for _, path := range []string{"/api/rooms", "/signal"} {
+						request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"codeEntryPolicy":"open"}`))
+						request.Header.Set("Content-Type", "application/json")
+						request.Header.Set("Origin", origin)
+						if path == "/signal" {
+							request.Method = http.MethodGet
+							request.Header.Set("Connection", "Upgrade")
+							request.Header.Set("Upgrade", "websocket")
+						}
+						recorder := httptest.NewRecorder()
+						server.ServeHTTP(recorder, request)
+						want := http.StatusForbidden
+						if origin == pair[1] {
+							want = http.StatusCreated
+							if path == "/signal" {
+								want = http.StatusBadRequest
+							} // Missing WebSocket version, past origin admission.
+						}
+						if recorder.Code != want {
+							t.Errorf("%s origin=%q: %d, want %d (%s)", path, origin, recorder.Code, want, recorder.Body.String())
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestSiteAccessRequiresAnAllowedOriginAndAValidLoginBody(t *testing.T) {
 	server := start(t, Options{Config: testConfig(t)})
 	forbidden := `{"error":"Origin not allowed"}`

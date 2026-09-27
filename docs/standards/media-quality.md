@@ -31,6 +31,9 @@ production behavior and remaining acceptance.
 - An audio-only update with the same capture video preserves the Browser video
   sender, encoding state and startup evidence on both direct and SFU paths.
   A new video source owns a new startup baseline; audio changes do not.
+  On Browser direct edges, source/audio renegotiation waits for the current
+  answer and coalesces newer intent into the next offer. A local operation queue
+  alone does not serialize the remote offer/answer exchange.
 - Windows native capture follows an explicitly stretched active display path
   for an entire display or a window covering that display, when the captured
   frame matches its desktop source dimensions. Other frames retain their own

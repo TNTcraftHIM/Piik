@@ -1128,7 +1128,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-tile:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-selected) { background: var(--wall-2); transform: translateY(-2px); }
 .lr-tile:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(2px) scale(.97); box-shadow: none; }
 .lr-tile.is-selected { background: var(--ink); color: var(--paper); animation: lr-pop .2s var(--spring); }
-.lr-tile small { font-family: var(--mono); font-size: 11px; letter-spacing: .02em; color: #5d7086; white-space: nowrap; }
+.lr-tile small { max-width: 100%; font-family: var(--mono); font-size: 11px; letter-spacing: .02em; color: #5d7086; text-wrap: balance; overflow-wrap: anywhere; }
 .lr-tile.is-selected small { color: var(--paper); opacity: .75; }
 
 /* text inputs */

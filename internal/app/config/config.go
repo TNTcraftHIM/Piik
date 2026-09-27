@@ -96,7 +96,11 @@ func NormalizeSite(value string) (string, error) {
 		parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", errors.New("Piik Site must be an HTTP or HTTPS origin")
 	}
-	return serverconfig.Origin(parsed), nil
+	origin := serverconfig.Origin(parsed)
+	if origin == "" {
+		return "", errors.New("Piik Site must have a valid host and port")
+	}
+	return origin, nil
 }
 
 func load(path string) (Config, error) {

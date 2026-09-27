@@ -7,6 +7,16 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Published-product bug and experience acceptance.** Prioritize share
+  startup, audio/source changes, sustained viewing, recovery and retirement,
+  admission, and narrow/touch UI. Verify confirmed fixes through the existing
+  owners before resuming feature polish. Keep field reports without matched
+  evidence separate from locally reproduced defects; this phase does not
+  authorize publication.
+  Measure committed relay sender failure recovery before changing its reporting
+  owner: prepared sender failure is reported immediately, while an active relay
+  currently relies on its child's receiver recovery. No indefinite stall has
+  been established.
 - [ ] **Investigate Browser short-pulse quality cost.** Matched ordinary/pool
   checks with two 1080p30 children, audio and a one-second bandwidth constraint
   reproduce a deeper VP8 dip in the pool (270p versus 720p), with faster recovery.
@@ -23,16 +33,22 @@ history. A parked idea is not implementation authority.
   supports the request-owner correction. Focused regressions, Windows App VP8
   playback/quiet-source restoration/replacement and real Native relay checks pass;
   this follow-up remains outside the published maintenance release.
-- [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
-  origin and supplies native media without starting a local room server. A
-  passive replacement needs an accepted site-consent/discovery flow; it must not
-  admit arbitrary sites or add another runtime owner. Keep Site mode until that
-  decision; removal of the Demo prefill does not authorize changing site trust.
 - [ ] **Complete manual accessible-name review.** Verify the empty video's
   screen-reader output: Chromium exposes an unavailable-media
   description despite the literal shared-picture label and no media error. Also
   review accessible naming on disabled tooltip wrappers and the UI catalogue's
   paired-character example; automated checks leave those for manual review.
+
+## Deferred Feature Work
+
+Feature design and interaction polish are paused while the bug/experience phase
+is active. Retain these decisions for resumption, not as parallel work.
+
+- [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
+  origin and supplies native media without starting a local room server. A
+  passive replacement needs an accepted site-consent/discovery flow; it must not
+  admit arbitrary sites or add another runtime owner. Keep Site mode until that
+  decision; removal of the Demo prefill does not authorize changing site trust.
 - [ ] **Refine the isolated room-interaction prototype.** Review chat, optional
   danmaku and participant-targeted reactions for usability, placement and intended
   cross-view synchronization. Preserve room authorization and media-route owners.

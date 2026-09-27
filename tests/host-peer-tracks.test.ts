@@ -212,6 +212,7 @@ class FakePeerConnection {
       return;
     }
     this.localDescription = description as RTCSessionDescription;
+    this.signalingState = "have-local-offer";
   }
 
   async setRemoteDescription(
@@ -225,6 +226,7 @@ class FakePeerConnection {
       });
     }
     this.remoteDescription = description as RTCSessionDescription;
+    this.signalingState = "stable";
   }
 
   releaseDeferredRemoteDescription(): void {
@@ -1082,6 +1084,7 @@ describe("HostPeer source replacement", () => {
     );
 
     await expect(peer.start()).resolves.toBe(true);
+    await acceptPeerAnswer(peer);
     const connection = FakePeerConnection.latest!;
     expect(connection.transceiverInputs[1]?.trackOrKind).toBe("audio");
     expect(connection.senders[1]?.track).toBeNull();
@@ -1109,6 +1112,7 @@ describe("HostPeer source replacement", () => {
     );
 
     await expect(peer.start()).resolves.toBe(true);
+    await acceptPeerAnswer(peer);
     const connection = FakePeerConnection.latest!;
     await expect(
       peer.replaceStream(
@@ -1227,6 +1231,57 @@ describe("HostPeer source replacement", () => {
     expect(peer.getSnapshot().audioSenderParameters?.appliedMaxBitrate).toBe(
       192_000,
     );
+  });
+
+  it.each([false, true])("defers audio renegotiation until the current answer (restart=%s)", async (restart) => {
+    const video = createTrack("video", "shared-video");
+    const peer = createPeer(createStream(video, null));
+    const connection = FakePeerConnection.latest!;
+    const answer = (sdp: string) => peer.acceptSignal({ kind: "description", connectionId: peer.connectionId,
+      description: { type: "answer", sdp } });
+    try {
+      await expect(peer.start()).resolves.toBe(true);
+      if (restart) {
+        await answer("initial-answer");
+        await expect(peer.restartIce()).resolves.toBe(true);
+      }
+      const offers = connection.createOfferCallCount;
+      // Rapid microphone toggles coalesce, rather than superseding the offer.
+      for (const enabled of [true, false, true]) {
+        await expect(peer.replaceStream(createStream(video,
+          enabled ? createTrack("audio", "microphone") : null))).resolves.toBe(true);
+      }
+      expect(connection.createOfferCallCount).toBe(offers);
+      await expect(peer.restartIce()).resolves.toBe(false);
+      await answer("previous-answer-audio-inactive");
+      expect(connection.createOfferCallCount).toBe(offers + 1);
+      expect(connection.transceivers[1]?.direction).toBe("sendonly");
+      await answer("latest-answer-audio-recvonly");
+      expect(connection.remoteDescription?.sdp).toBe("latest-answer-audio-recvonly");
+      expect(connection.signalingState).toBe("stable");
+      expect(connection.createOfferCallCount).toBe(offers + 1);
+    } finally { peer.dispose(); }
+  });
+
+  it.each(["dispose", "offer-failure", "signal-failure"] as const)("retires deferred renegotiation on %s", async (ending) => {
+    const video = createTrack("video", "shared-video");
+    const sendSignal = vi.fn(() => true);
+    const onUpdate = vi.fn();
+    const peer = new HostPeer("viewer", { iceServers: [] }, createStream(video, null),
+      QUALITY_PROFILES["720p30"], { sendSignal, onUpdate });
+    const connection = FakePeerConnection.latest!;
+    await peer.start();
+    await peer.replaceStream(createStream(video, createTrack("audio", "microphone")));
+    if (ending === "dispose") peer.dispose();
+    if (ending === "offer-failure") FakePeerConnection.offersFailing = 1;
+    if (ending === "signal-failure") sendSignal.mockReturnValue(false);
+    await peer.acceptSignal({ kind: "description", connectionId: peer.connectionId,
+      description: { type: "answer", sdp: "previous-answer" } });
+    const failures = onUpdate.mock.calls.filter(([snapshot]) => snapshot.connectionState === "failed");
+    expect(failures).toHaveLength(ending === "dispose" ? 0 : 1);
+    expect(connection.connectionState).toBe("closed");
+    expect(connection.createOfferCallCount).toBe(ending === "dispose" ? 1 : 2);
+    peer.dispose();
   });
 
   it("retains restart candidates that arrive before the new answer", async () => {

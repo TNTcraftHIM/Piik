@@ -538,6 +538,15 @@ func TestOrigin(t *testing.T) {
 		{"http://localhost:9123", "http", "https", "http://localhost:9123"},
 		{"https://[2001:DB8::1]:8443", "http", "https", "https://[2001:db8::1]:8443"},
 		{"http://[::1]:7880", "http", "https", "http://[::1]:7880"},
+		{"https://bücher.example:443", "http", "https", "https://xn--bcher-kva.example"},
+		{"https://faß.de", "http", "https", "https://xn--fa-hia.de"},
+		{"https://İ.example", "http", "https", "https://xn--i-9bb.example"},
+		{"https://ẞ.example", "http", "https", "https://xn--zca.example"},
+		{"https://example.ΟΣ", "http", "https", "https://example.xn--0xai"},
+		{"https://EXAMPLE。com./", "http", "https", "https://example.com."},
+		{"https://foo_bar.ab--cd.test", "http", "https", "https://foo_bar.ab--cd.test"},
+		{"http://[0:0:0:0:0:0:0:1]:8787", "http", "https", "http://[::1]:8787"},
+		{"http://[::ffff:192.0.2.1]:80", "http", "https", "http://[::ffff:c000:201]"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.raw, func(t *testing.T) {
@@ -550,6 +559,25 @@ func TestOrigin(t *testing.T) {
 			}
 			if got := parsed.String(); got != testCase.want+"/" {
 				t.Errorf("String = %q, want %q", got, testCase.want+"/")
+			}
+		})
+	}
+}
+
+func TestOriginConfigurationRejectsInvalidHostAndPort(t *testing.T) {
+	for _, raw := range []string{
+		"https://example.com:65536", "https://[fe80::1%25eth0]", "https://[not-an-ip]",
+		"https://example／evil", "https://example：443", "https://example＠evil",
+		"https://a％2eb", "https://＊.example", "https://\u00ad", "https://a\u200db.test",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			for _, key := range []string{"PUBLIC_BASE_URL", "ALLOWED_ORIGINS"} {
+				if _, err := Load(map[string]string{key: raw}); err == nil {
+					t.Errorf("%s accepted %q", key, raw)
+				}
+			}
+			if _, err := publicHTTPSOrigin(raw); err == nil {
+				t.Errorf("Local public origin accepted %q", raw)
 			}
 		})
 	}

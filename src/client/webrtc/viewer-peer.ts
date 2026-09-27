@@ -2,6 +2,7 @@ import type { CopyKey } from "../ui/copy";
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { debugError } from "../lib/debug";
 import { observeDebugConnection } from "../lib/debug-webrtc";
+import { waitForConnectionOperation } from "./connection-operation";
 import {
   EMPTY_METRICS,
   type PeerSnapshot,
@@ -73,6 +74,7 @@ export interface ViewerMediaPeer {
 
 export class ViewerPeer implements ViewerMediaPeer {
   private connection: RTCPeerConnection | null = null;
+  private connectionLifetime: AbortController | null = null;
   private connectionId: string | null = null;
   private parentPeerId: string | null = null;
   private remoteStream = new MediaStream();
@@ -281,6 +283,7 @@ export class ViewerPeer implements ViewerMediaPeer {
       ),
     );
     this.connection = connection;
+    this.connectionLifetime = new AbortController();
     this.localIceCandidates = localIceCandidates;
     this.snapshot = {
       peerId: parentPeerId,
@@ -338,7 +341,7 @@ export class ViewerPeer implements ViewerMediaPeer {
         readFramesDecoded: async () => {
           const track = this.remoteStream.getVideoTracks()[0];
           return decodedVideoFrames(
-            await connection.getStats(),
+            await this.waitForOperation(connection, () => connection.getStats()),
             track ? { trackIdentifier: track.id } : null,
           );
         },
@@ -363,7 +366,7 @@ export class ViewerPeer implements ViewerMediaPeer {
   ): Promise<void> {
     const connectionId = payload.connectionId;
     try {
-      await connection.setRemoteDescription(payload.description);
+      await this.waitForOperation(connection, () => connection.setRemoteDescription(payload.description));
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
@@ -371,11 +374,11 @@ export class ViewerPeer implements ViewerMediaPeer {
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
-      const answer = preferScreenAudioStereo(await connection.createAnswer());
+      const answer = preferScreenAudioStereo(await this.waitForOperation(connection, () => connection.createAnswer()));
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
-      await connection.setLocalDescription(answer);
+      await this.waitForOperation(connection, () => connection.setLocalDescription(answer));
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
@@ -434,7 +437,7 @@ export class ViewerPeer implements ViewerMediaPeer {
     const connection = this.connection;
     const connectionId = payload.connectionId;
     try {
-      await addRemoteIceCandidate(connection, payload.candidate);
+      await this.waitForOperation(connection, () => addRemoteIceCandidate(connection, payload.candidate));
     } catch (error) {
       if (this.isCurrentConnection(connection, connectionId)) {
         this.setError(error, "host.fail.connection");
@@ -601,7 +604,7 @@ export class ViewerPeer implements ViewerMediaPeer {
     const candidates = this.pendingByConnection.get(connectionId) ?? [];
     this.pendingByConnection.delete(connectionId);
     for (const candidate of candidates) {
-      await addRemoteIceCandidate(connection, candidate);
+      await this.waitForOperation(connection, () => addRemoteIceCandidate(connection, candidate));
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
@@ -621,11 +624,11 @@ export class ViewerPeer implements ViewerMediaPeer {
     this.statsInFlightConnection = connection;
     const statsAccumulator = this.statsAccumulator;
     try {
-      const metrics = await collectConnectionMetrics(
+      const metrics = await this.waitForOperation(connection, () => collectConnectionMetrics(
         connection,
         "receive",
         statsAccumulator,
-      );
+      ));
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
@@ -640,6 +643,14 @@ export class ViewerPeer implements ViewerMediaPeer {
         this.statsInFlightConnection = null;
       }
     }
+  }
+
+  private waitForOperation<T>(connection: RTCPeerConnection, operation: () => Promise<T>): Promise<T> {
+    const lifetime = this.connectionLifetime;
+    if (this.connection !== connection || !lifetime) {
+      return Promise.reject(new DOMException("Retired Viewer connection", "AbortError"));
+    }
+    return waitForConnectionOperation(lifetime.signal, operation);
   }
 
   private isCurrentConnection(
@@ -709,6 +720,8 @@ export class ViewerPeer implements ViewerMediaPeer {
     }
     this.localIceCandidates?.discard();
     this.localIceCandidates = null;
+    this.connectionLifetime?.abort();
+    this.connectionLifetime = null;
     this.connection?.close();
     this.connection = null;
     this.connectionId = null;
