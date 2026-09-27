@@ -13,21 +13,20 @@ history. A parked idea is not implementation authority.
   owners before resuming feature polish. Keep field reports without matched
   evidence separate from locally reproduced defects; this phase does not
   authorize publication.
-- [ ] **Investigate Browser short-pulse quality cost.** Matched ordinary/pool
-  checks with two 1080p30 children, audio and a one-second bandwidth constraint
-  reproduce a deeper VP8 dip in the pool (270p versus 720p), with faster recovery.
-  H264 reaches 720p on both paths; unaffected children stay at 1080p. The
+- [ ] **Assess the remaining Browser cold-producer quality cost.** Matched
+  two-child short-pulse checks reproduce a deeper VP8 dip in the pool (270p
+  versus 720p), with faster recovery. H264 reaches 720p on both paths;
+  unaffected children stay at 1080p. The
   [pool evidence](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
-  distinguishes one cold producer handoff from repeated churn. Assess a smaller
-  adaptation cost without a custom bitrate floor, delay policy or weakening
-  healthy-child isolation. A two-producer control retaining encoder identity
-  reached 720p, supporting the cold-producer cost; it does not justify removing
-  sharing or moving a healthy child onto a new encoder. These bounded Browser
-  results do not identify the unknown reporters' paths or establish their causes.
+  distinguishes a cold handoff from repeated churn. Applied-budget and preparation
+  completions now re-evaluate membership immediately; the short-pulse dip remains.
   The [carrier-constraint correction](./research/browser-local-encoding-pool.md#carrier-capture-constraints)
-  reduces redundant queue recovery without relaxing real capture or sender limits.
-  Residual carrier loss/recovery at 60 fps and the cold-producer quality dip still
-  need investigation; the correction does not establish their full resolution.
+  removes duplicate FPS filtering without relaxing real-picture limits. A control
+  retaining two mature producers reached 720p; no verified API transfers that
+  adaptation history to a new encoder. Do not add a bitrate multiplier, delay
+  policy, longer startup protection or sacrifice sharing/healthy-child isolation
+  without a justified design decision. These bounded Browser results do not
+  establish the unknown reporters' causes or lossless delivery under every load.
 - [ ] **Integrate the Native recovery follow-up after release acceptance.** The
   [keyframe comparison](./research/native-client-lifecycle.md#keyframe-request-ownership)
   supports the request-owner correction. Focused regressions, Windows App VP8

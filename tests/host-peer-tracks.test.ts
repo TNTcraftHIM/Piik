@@ -569,7 +569,7 @@ describe("HostPeer encoded output ownership", () => {
     expect(sender.track).toBe(fixture.output.track);
     for (const id of ["1080p60", "720p30"] as const) {
       expect(await peer.updateCaptureProfile(QUALITY_PROFILES[id])).toBe(true);
-      expect(sender.getParameters().encodings[0]!.maxFramerate).toBe(QUALITY_PROFILES[id].maxFramerate);
+      expect(sender.getParameters().encodings[0]).not.toHaveProperty("maxFramerate");
     }
     expect(fixture.output.track.applyConstraints).not.toHaveBeenCalled();
     fixture.binding.carrierScale.mockReturnValue(undefined);

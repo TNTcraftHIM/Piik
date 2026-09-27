@@ -253,6 +253,22 @@ describe("realtime quality controls", () => {
     ]);
   });
 
+  it("removes only the carrier's duplicate FPS ceiling and restores ordinary sender limits", async () => {
+    let applied = { encodings: [{ maxFramerate: 30 }] } as RTCRtpSendParameters;
+    const sender = {
+      getParameters: () => applied,
+      setParameters: async (parameters: RTCRtpSendParameters) => { applied = parameters; },
+    } as unknown as RTCRtpSender;
+    const carrier = await configureVideoSender(sender, QUALITY_PROFILES["1080p60"], 1);
+    expect(applied.encodings[0]).not.toHaveProperty("maxFramerate");
+    expect(carrier).toMatchObject({ requested: { maxFramerate: null, maxBitrate: 8_000_000 }, mismatches: [] });
+    for (const id of ["720p30", "1080p60"] as const) {
+      const readback = await configureVideoSender(sender, QUALITY_PROFILES[id]);
+      expect(applied.encodings[0]!.maxFramerate).toBe(QUALITY_PROFILES[id].maxFramerate);
+      expect(readback.mismatches).toEqual([]);
+    }
+  });
+
   it("does not scale a remote source that already owns the room profile", async () => {
     let applied = { encodings: [{}] } as unknown as RTCRtpSendParameters;
     const sender = {

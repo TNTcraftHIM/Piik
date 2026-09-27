@@ -39,6 +39,16 @@ async function sample(count = 1) {
   await vi.advanceTimersByTimeAsync(500 * count);
 }
 
+function holdNextProducerStart(): () => void {
+  let ready!: () => void;
+  const start = vi.mocked(BrowserEncodingProducer.prototype.start).getMockImplementation()!;
+  vi.mocked(BrowserEncodingProducer.prototype.start).mockImplementationOnce(async function (this: BrowserEncodingProducer, budget) {
+    await start.call(this, budget);
+    await new Promise<void>((resolve) => { ready = resolve; });
+  });
+  return () => ready();
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [codec] }) });
@@ -69,6 +79,16 @@ afterEach(() => {
 });
 
 describe("Browser encoding pool ownership", () => {
+  it("selects a prepared producer without waiting for another budget sample", async () => {
+    const ready = holdNextProducerStart();
+    const first = member();
+    await sample();
+    expect(first.select).not.toHaveBeenCalled();
+    ready();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(first.producerId()).toBe([...producers.keys()][0]!.id);
+  });
+
   it("keeps a shared encoder through a bitrate spike with unchanged native demand", async () => {
     const first = member(), second = member();
     await sample(4);
@@ -142,5 +162,53 @@ describe("Browser encoding pool ownership", () => {
     late.handle.dispose();
     retired!();
     expect(begin).toHaveBeenCalledOnce();
+  });
+
+  it("rechecks a ready handoff after applying a falling budget, without another stats tick", async () => {
+    const strong = member(), weak = member();
+    await sample(4);
+    const original = [...producers.keys()][0]!;
+    const ready = holdNextProducerStart();
+    weak.demand.budget = 500_000;
+    await sample();
+    const candidate = [...producers.keys()][1]!;
+    let complete!: () => void;
+    vi.mocked(candidate.update).mockImplementationOnce(async (_profile, budget) => {
+      await new Promise<void>((resolve) => { complete = resolve; });
+      producers.get(candidate)!.budget = budget;
+    });
+    weak.demand.budget = 100_000;
+    await sample();
+    ready();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(candidate.update).toHaveBeenCalledWith(profile, 100_000);
+    expect(weak.producerId()).toBe(original.id);
+    complete();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(weak.producerId()).toBe(candidate.id);
+    expect(strong.producerId()).toBe(original.id);
+    expect(producers.get(original)!.budget).toBe(2_000_000);
+  });
+
+  it.each(["failed", "retired"])("does not install a %s budget update's candidate", async (outcome) => {
+    member();
+    const weak = member();
+    await sample(4);
+    const ready = holdNextProducerStart();
+    weak.demand.budget = 500_000;
+    await sample();
+    const candidate = [...producers.keys()][1]!;
+    let resolve!: () => void, reject!: (error: Error) => void;
+    vi.mocked(candidate.update).mockImplementationOnce(() => new Promise<void>((yes, no) => { resolve = yes; reject = no; }));
+    weak.demand.budget = 100_000;
+    await sample();
+    ready();
+    await vi.advanceTimersByTimeAsync(0);
+    const selections = weak.select.mock.calls.length;
+    if (outcome === "retired") { weak.handle.dispose(); resolve(); }
+    else reject(new Error("encoder settings failed"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(weak.select).toHaveBeenCalledTimes(selections);
+    expect(weak.fatal).not.toHaveBeenCalled();
   });
 });

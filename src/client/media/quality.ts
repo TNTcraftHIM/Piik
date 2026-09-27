@@ -373,7 +373,7 @@ function sameParameter(
 export async function configureVideoSender(
   sender: RTCRtpSender,
   profile: QualityProfile,
-  scaleResolutionDownBy?: number,
+  carrierScale?: number,
 ): Promise<VideoSenderParameterReadback> {
   const parameters = sender.getParameters();
   if (parameters.encodings.length === 0) {
@@ -381,11 +381,14 @@ export async function configureVideoSender(
   }
   // Pinned LiveKit orders simulcast encodings by increasing spatial resolution.
   const encodingIndex = parameters.encodings.length - 1;
-  parameters.encodings[encodingIndex]!.maxBitrate = profile.maxBitrate;
-  parameters.encodings[encodingIndex]!.maxFramerate = profile.maxFramerate;
+  const encoding = parameters.encodings[encodingIndex]!;
+  encoding.maxBitrate = profile.maxBitrate;
+  // The producer owns picture cadence. A second limit on its synthetic clock
+  // can discard ticks and strand already-encoded frames when delivery is uneven.
+  if (carrierScale === undefined) encoding.maxFramerate = profile.maxFramerate;
+  else delete encoding.maxFramerate;
   if (parameters.encodings.length === 1) {
-    parameters.encodings[encodingIndex]!.scaleResolutionDownBy =
-      scaleResolutionDownBy ?? requestedScaleResolutionDownBy(sender, profile);
+    encoding.scaleResolutionDownBy = carrierScale ?? requestedScaleResolutionDownBy(sender, profile);
   }
   parameters.degradationPreference = profile.degradationPreference;
 

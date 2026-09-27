@@ -271,7 +271,12 @@ export class BrowserEncodingPool {
           group.updating = group.producer.update(group.profile, budget).catch(() => {
             if (this.groups.has(group)) this.failSource(group.source);
           })
-            .finally(() => { group.updating = undefined; });
+            .finally(() => {
+              group.updating = undefined;
+              // A ready downgrade can use this applied budget now. Waiting for
+              // another sample compares the previous limit to falling demand again.
+              if (!this.disposed && this.groups.has(group)) this.reconcile();
+            });
         }
       }
     }
@@ -290,7 +295,11 @@ export class BrowserEncodingPool {
     const group: Group = { producer, source: member.source, profile, codecKey: member.codecKey!, budget, ready: false, failed: false };
     this.groups.add(group);
     debugEvent("encoding-pool", "producer-preparing", { producerId: producer.id, trackId: member.source.id, codec: member.codecKey, budget, profile });
-    void producer.start(budget).then(() => { if (this.groups.has(group)) group.ready = true; }, (error) => {
+    void producer.start(budget).then(() => {
+      if (!this.groups.has(group)) return;
+      group.ready = true;
+      this.reconcile();
+    }, (error) => {
       debugError("encoding-pool", "producer-start-failed", error, { producerId: producer.id });
       if (this.groups.has(group)) { group.failed = true; this.failSource(group.source); }
     });
