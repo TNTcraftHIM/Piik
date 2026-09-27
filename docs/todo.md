@@ -16,10 +16,6 @@ history. A parked idea is not implementation authority.
   adaptation cost without a custom bitrate floor, delay policy or weakening
   healthy-child isolation. These bounded Browser results do not identify the
   unknown reporters' capture paths or establish their causes.
-- [ ] **Accept the responsive UI repair before integration.** Review compact room
-  identity/actions, narrow headers, long adapter names and bounded hints in the
-  shared catalogue. Check real-phone zoom/keyboard and touch scrolling alongside
-  the verified browser viewport matrix; this phase does not authorize publication.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not
