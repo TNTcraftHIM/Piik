@@ -72,7 +72,7 @@ export function PeoplePreview() {
       <SwitchItem checked={longNames} onChange={setLongNames} label={en ? "Long names" : "换成长名字"} />
     </div>
     <div className="cp-people-room">
-      <div className="cp-sync" aria-label={en ? "The same Host in two places" : "同一位房主，两个位置"}>
+      <div className="cp-sync" role="group" aria-label={en ? "The same Host in two places" : "同一位房主，两个位置"}>
         <span><PawnSvg color={participantColor(HOST_ID)} identity={HOST_ID} host /><small>{en ? "Host view" : "房主这边"}</small></span>
         <span className="cp-sync-caption">{en ? "One person, the same gesture" : "同一个人，同一个小动作"}</span>
         <span><PawnSvg color={participantColor(HOST_ID)} identity={HOST_ID} host /><small>{en ? "Viewer view" : "朋友那边"}</small></span>

@@ -12,17 +12,6 @@ history. A parked idea is not implementation authority.
   admission, and narrow/touch UI. Verify confirmed fixes through the existing
   owners before resuming feature polish. Keep field reports without matched
   evidence separate from locally reproduced defects.
-- [ ] **Whole-repository audit and repair acceptance.** Trace App and Server
-  startup, room authority, capture, media routes, playback, retirement and their
-  UI/documentation consumers; include build and release tooling. Reproduce
-  actionable defects, check sibling paths and validate fixes in their existing
-  owners. Keep unsupported device/network claims in the evidence section below.
-  No feature integration or publication is included in this audit.
-- [ ] **Complete manual accessible-name review.** Verify the empty video's
-  screen-reader output: Chromium exposes an unavailable-media
-  description despite the literal shared-picture label and no media error. Also
-  review accessible naming on disabled tooltip wrappers and the UI catalogue's
-  paired-character example; automated checks leave those for manual review.
 
 ## Deferred Feature Work
 

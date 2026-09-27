@@ -198,7 +198,7 @@ export function ControlsPreview() {
     <section id="playback-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">07</span><div><h2>{en ? "The playback bar" : "播放时，顺手就能找到。"}</h2>
         <p>{en ? "This bar shows its waiting state. The playback test page includes a moving picture, volume and picture in picture." : "这里展示等待画面时的播放栏；动态画面、音量和小窗可进入完整播放预览试用。"}</p></div></header>
-      <div className="cp-stage"><StageTv label={t("playback.controls")}><video ref={video} poster={POSTER} playsInline />
+      <div className="cp-stage"><StageTv label={t("playback.controls")}><video ref={video} poster={POSTER} playsInline inert />
         <PlaybackControls videoRef={video} stream={null} canPlay={false} theaterMode={theater} onPlay={notify}
           onToggleTheater={() => setTheater(!theater)} onReconnect={notify} reconnectAvailable />
       </StageTv></div>
