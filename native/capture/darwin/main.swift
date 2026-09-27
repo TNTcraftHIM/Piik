@@ -266,7 +266,7 @@ private func listSources() async throws {
     let windows = shareableWindows(content).map { $0.1 }.sorted {
         $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
     }
-    try writeJSON(displays + windows)
+    try writeJSON(Array((displays + windows).prefix(1024)))
 }
 
 private final class StopSignal {
@@ -1746,8 +1746,7 @@ private func microphoneDevices() throws -> [(id: AudioDeviceID, uid: String, nam
 }
 
 private func listMicrophones() throws {
-    let devices = try microphoneDevices().map { ["id": $0.uid, "label": $0.name] }
-    guard devices.count <= 64 else { throw CaptureFailure(description: "too many microphones") }
+    let devices = try microphoneDevices().prefix(64).map { ["id": $0.uid, "label": $0.name] }
     FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: devices))
 }
 
