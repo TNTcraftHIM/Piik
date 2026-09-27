@@ -156,6 +156,81 @@ function receiveMetrics(
 }
 
 describe("minimal route transition contracts", () => {
+  it("reports active failure when a prepared Peer disappears before commit delivery", async () => {
+    const messages: ClientMessage[] = [];
+    const onSfuStream = vi.fn();
+    let subscriber!: ReturnType<typeof createFakeSubscriber>;
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer: () => false,
+      onSfuStream,
+      send: (message) => { messages.push(message); return true; },
+      createSubscriber: (events) => {
+        subscriber = createFakeSubscriber(events, [], "current");
+        return subscriber;
+      },
+    });
+    route.accept({ revision: 1, phase: "active", assignment: viewerSfuAssignment() });
+    await route.acceptConfig(sfuConfig(1));
+    subscriber.events.onStream({} as MediaStream);
+    subscriber.events.onFirstDecodedFrame();
+    await vi.waitFor(() => expect(onSfuStream).toHaveBeenCalledOnce());
+    messages.length = 0;
+
+    const assignment = peerAssignment("host_12345678");
+    route.accept({ revision: 2, phase: "prepare", assignment, candidate: candidate(2) });
+    // First-frame readiness reached the server, then the local candidate failed.
+    // Its prepare failure can arrive after the server committed this revision.
+    route.accept({ revision: 2, phase: "active", assignment });
+    await vi.waitFor(() => expect(messages).toContainEqual({
+      type: "route-failed", revision: 2, phase: "active", connectionId: candidate(2).connectionId,
+    }));
+    expect(messages).not.toContainEqual({ type: "route-ready", revision: 2, phase: "active" });
+    expect(subscriber.disconnect).not.toHaveBeenCalled();
+    await route.disconnect();
+  });
+
+  it.each([false, true])("ignores a superseded Peer promotion resolving to %s", async (promoted) => {
+    const messages: ClientMessage[] = [];
+    const onSfuStream = vi.fn();
+    let finishPromotion!: (value: boolean) => void;
+    const promotion = new Promise<boolean>((resolve) => { finishPromotion = resolve; });
+    const activatePeer = vi.fn((_assignment: ParticipantRouteAssignment, revision?: number) =>
+      revision === 2 ? promotion : true,
+    );
+    let subscriber!: ReturnType<typeof createFakeSubscriber>;
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer,
+      onSfuStream,
+      send: (message) => { messages.push(message); return true; },
+      createSubscriber: (events) => {
+        subscriber = createFakeSubscriber(events, [], "current");
+        return subscriber;
+      },
+    });
+    route.accept({ revision: 1, phase: "active", assignment: viewerSfuAssignment() });
+    await route.acceptConfig(sfuConfig(1));
+    subscriber.events.onStream({} as MediaStream);
+    subscriber.events.onFirstDecodedFrame();
+    await vi.waitFor(() => expect(onSfuStream).toHaveBeenCalledOnce());
+    messages.length = 0;
+
+    const first = peerAssignment("first_parent");
+    route.accept({ revision: 2, phase: "prepare", assignment: first, candidate: candidate(2) });
+    route.accept({ revision: 2, phase: "active", assignment: first });
+    await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(first, 2));
+    const next = peerAssignment("next_parent");
+    route.accept({ revision: 3, phase: "prepare", assignment: next, candidate: candidate(3) });
+    finishPromotion(promoted);
+    await promotion;
+    await Promise.resolve();
+    expect(messages).toEqual([]);
+    expect(subscriber.disconnect).not.toHaveBeenCalled();
+
+    route.accept({ revision: 3, phase: "active", assignment: next });
+    await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(next, 3));
+    await route.disconnect();
+  });
+
   it("rebinds Viewer route ownership before a post-restart prepare", async () => {
     const prepared: Array<{ parentPeerId: string | null; revision?: number }> = [];
     const route = new ViewerSfuRoute("viewer_old_12345678", {

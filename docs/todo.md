@@ -97,7 +97,9 @@ is active. Retain these decisions for resumption, not as parallel work.
   Demo health/assets and an external-host public-link HTTP/WebSocket gate pass.
   Check connector reachability separately from WebRTC media availability.
 - [ ] **Interruption during established viewing.** A Viewer reportedly returns
-  to P2P connecting after watching for a while. Native receiver renegotiation,
+  to P2P connecting after watching for a while. Include
+  [#429](https://github.com/TNTcraftHIM/Piik/issues/429)'s reported SFU-to-P2P
+  dropout in field acceptance of candidate-commit recovery. Native receiver renegotiation,
   retired event delivery and SFU replacement have locally reproduced defects
   and regression checks, but paired diagnostics and device/network details are
   still needed to establish this reporter's cause. Include an upstream relay's
@@ -135,8 +137,11 @@ is active. Retain these decisions for resumption, not as parallel work.
   loaded asset identity and reporter VP8 output remain unknown. Zero dimensions/
   FPS in `starting` are valid. Diagnostics preserve preview initialization/
   negotiation causes and distinguish MFT input/output waits; obtain matched
-  evidence before changing recovery or deadlines. Other discovery/manual-H264
-  reports still need paired evidence.
+  evidence before changing recovery or deadlines. Other discovery reports and
+  [#419](https://github.com/TNTcraftHIM/Piik/issues/419)'s AMD manual-H264 failure
+  still need paired evidence. Local AMD activation failure before capture does
+  not establish the reporting GPU's cause; distinguish activation, codec
+  configuration and actual output before changing the encoder contract.
 - [ ] **Share ends after entering a game.** Screen sharing reportedly works
   until entering a game freezes the picture, followed seconds later by share
   termination. Version, capture path, codec and matched diagnostics are unknown.

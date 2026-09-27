@@ -103,7 +103,7 @@ export class ViewerSfuRoute {
   private pending: ViewerSubscriberSlot | null = null;
   private active: ViewerSubscriberSlot | null = null;
   private recovery: { revision: number; refreshed: boolean } | null = null;
-  private pendingPeerRevision: number | null = null;
+  private pendingPeer: { revision: number; connectionId: string } | null = null;
   private transitionTail: Promise<void> = Promise.resolve();
   private resyncGeneration = 0;
   private resyncing = false;
@@ -172,10 +172,10 @@ export class ViewerSfuRoute {
       this.recovery = null;
       if (
         update.phase !== "prepare" &&
-        this.pendingPeerRevision !== null
+        this.pendingPeer !== null
       ) {
         this.events.preparePeer?.(null);
-        this.pendingPeerRevision = null;
+        this.pendingPeer = null;
       }
     }
     if (update.phase === "prepare") {
@@ -194,13 +194,16 @@ export class ViewerSfuRoute {
         candidate.transport !== "sfu" &&
         update.assignment.upstream.kind === "peer" &&
         candidate.connectionId.length > 0;
-      const replacedPeerCandidate = this.pendingPeerRevision !== null;
+      const replacedPeerCandidate = this.pendingPeer !== null;
       if (replacedPeerCandidate) {
-        this.pendingPeerRevision = null;
+        this.pendingPeer = null;
         this.events.preparePeer?.(null);
       }
       if (needsPeerCandidate && update.assignment.upstream.kind === "peer") {
-        this.pendingPeerRevision = update.revision;
+        this.pendingPeer = {
+          revision: update.revision,
+          connectionId: candidate.connectionId,
+        };
         this.events.preparePeer?.(update.assignment, update.revision, candidate);
       } else if (
         update.assignment.upstream.kind !== "peer" &&
@@ -225,7 +228,7 @@ export class ViewerSfuRoute {
     if (!token) {
       return result;
     }
-    if (this.pendingPeerRevision !== update.revision) {
+    if (this.pendingPeer?.revision !== update.revision) {
       this.preparePeer(update.assignment);
     }
     if (this.resyncing) {
@@ -286,7 +289,7 @@ export class ViewerSfuRoute {
   }
 
   private discardPending(): void {
-    this.pendingPeerRevision = null;
+    this.pendingPeer = null;
     this.events.preparePeer?.(null);
     this.events.prepareChild?.(null);
     this.clearPending();
@@ -303,7 +306,7 @@ export class ViewerSfuRoute {
     if (identityChanged) {
       this.viewerPeerId = viewerPeerId;
     }
-    this.pendingPeerRevision = null;
+    this.pendingPeer = null;
     const currentMediaAssignment = this.route.getMediaAssignment();
     const preservesActiveMedia = Boolean(
       !identityChanged &&
@@ -565,7 +568,7 @@ export class ViewerSfuRoute {
     this.resyncing = false;
     this.route.reset();
     this.recovery = null;
-    this.pendingPeerRevision = null;
+    this.pendingPeer = null;
     this.events.preparePeer?.(null);
     this.events.prepareChild?.(null);
     await this.queueTransition(async () => {
@@ -651,15 +654,21 @@ export class ViewerSfuRoute {
         return;
       }
 
-      const pendingPeerRevision = this.pendingPeerRevision;
+      const pendingPeer = this.pendingPeer;
       const promoted =
-        pendingPeerRevision === token.revision
+        pendingPeer?.revision === token.revision
           ? await this.events.activatePeer(assignment, token.revision)
           : false;
-      if (pendingPeerRevision === token.revision && promoted !== true) {
+      if (!this.route.owns(token, "active")) {
         return;
       }
-      this.pendingPeerRevision = null;
+      if (pendingPeer?.revision === token.revision && promoted !== true) {
+        // Readiness may reach the server before a candidate's local failure.
+        // Once committed, report against the exact active connection for recovery.
+        this.routeFailed(token.revision, "active", pendingPeer.connectionId);
+        return;
+      }
+      this.pendingPeer = null;
       this.clearPending();
       if (this.active) {
         await this.retireActive();
