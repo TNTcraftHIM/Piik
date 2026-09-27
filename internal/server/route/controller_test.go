@@ -2060,8 +2060,7 @@ func TestKeepsActiveCandidateWhenUnrelatedSessionIsReplaced(t *testing.T) {
 	eq(t, current.ConnectionID, "a_active_candidate")
 }
 
-// TS 3920: uses a freed Host slot for new demand without moving healthy descendants
-func TestUsesFreedHostSlotForNewDemandWithoutMovingHealthyDescendants(t *testing.T) {
+func TestUsesDepartedRelaysFreedHostSlotWithoutMovingHealthyDescendants(t *testing.T) {
 	routes := newController(2, Options{})
 	addViewer(routes, A, 2, nil)
 	addViewer(routes, B, 2, nil)
@@ -2075,26 +2074,26 @@ func TestUsesFreedHostSlotForNewDemandWithoutMovingHealthyDescendants(t *testing
 	eq(t, routes.ConfirmDeparture(B, nil), true)
 	repair := must(t, routes.Reconcile(0).Operation)
 	eq(t, repair.ChildPeerID, D)
-	eq(t, repair.Candidates[0].Tuple, peerTuple(A))
-	commitCurrent(t, routes, 1, "d_from_a")
+	eq(t, repair.Candidates[0].Tuple, peerTuple(HOST))
+	commitCurrent(t, routes, 1, "d_from_host")
 	noOperation(t, routes.Reconcile(2).Operation)
 	eq(t, hasEdge(routes, B), false)
 
 	addViewer(routes, E, 0, nil)
 	join := must(t, routes.Reconcile(3).Operation)
 	eq(t, join.ChildPeerID, E)
-	eq(t, join.Candidates[0].Tuple, peerTuple(HOST))
-	commitCurrent(t, routes, 4, "e_from_host")
+	eq(t, join.Candidates[0].Tuple, peerTuple(A))
+	commitCurrent(t, routes, 4, "e_from_a")
 
 	cEdge := edgeOf(t, routes, C)
 	eq(t, cEdge.ParentPeerID, A)
 	eq(t, cEdge.ConnectionID, "c_from_a")
 	dEdge := edgeOf(t, routes, D)
-	eq(t, dEdge.ParentPeerID, A)
-	eq(t, dEdge.ConnectionID, "d_from_a")
+	eq(t, dEdge.ParentPeerID, HOST)
+	eq(t, dEdge.ConnectionID, "d_from_host")
 	eEdge := edgeOf(t, routes, E)
-	eq(t, eEdge.ParentPeerID, HOST)
-	eq(t, eEdge.ConnectionID, "e_from_host")
+	eq(t, eEdge.ParentPeerID, A)
+	eq(t, eEdge.ConnectionID, "e_from_a")
 }
 
 // TS 3967: keeps grace media, then reparents a confirmed relay departure

@@ -262,6 +262,12 @@ the committed graph, and leaves new Viewers waiting. Resume starts
 reconciliation from the current graph. Missing or suspended observations do
 not create route-failure authority.
 
+Confirmed departure ends the participant's physical media authority before
+descendants finish recovery, including during Host pause. A departed relay may
+remain as an inactive graph anchor only. Publishing that retirement supersedes
+any pending candidate through the same operation owner and revision sequence;
+its late readiness cannot restore the retired route.
+
 Native-edge convergence runs inside the same graph, reconcile loop, and
 room-serial child operation when its per-share gate is enabled. Availability
 first gets every Viewer usable media; quality work runs only while no join,

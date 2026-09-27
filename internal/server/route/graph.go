@@ -6,6 +6,45 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
+// A confirmed departure ends media authority even while acquisition is paused
+// or descendants still need the old graph anchor to find a replacement.
+func (c *Controller) retireDepartedEdges(nowMs int64) []*Resource {
+	released := []*Resource{}
+	changed := false
+	for peerID, edge := range c.upstreamByViewer.All() {
+		current, _ := c.participants.Get(peerID)
+		if current == nil || !current.departureConfirmed || !edge.PhysicalActive {
+			continue
+		}
+		if !changed {
+			// Active and prepared assignments share one revision sequence. Retire
+			// the candidate before publishing a newer active graph; its late ACK
+			// must not commit an older revision or restore the departed route.
+			released = append(released, c.abortOperation(&nowMs, RejectionAborted)...)
+		}
+		changed = true
+		if edge.Kind == UpstreamSfu {
+			c.retireSfuEdge(peerID, edge, &released, c.retainsAnchor(peerID))
+		} else {
+			edge.PhysicalActive = false
+			edge.Usable = false
+		}
+	}
+	if changed {
+		if !c.hasSfuSubscribers() && c.hostPublication != nil {
+			c.clearSfuQuality()
+			if c.hostPublication.PhysicalActive {
+				released = append(released, c.hostPublication.Resource)
+			}
+			c.hostPublication = nil
+		}
+		c.pruneRetiringSfuAnchors()
+		c.revision = c.allocateRevision()
+		c.touchFacts()
+	}
+	return released
+}
+
 // pruneDepartedLeaves removes departed viewers without
 // children to a fixpoint, in participants order, and drops an
 // orphaned publication.
