@@ -75,11 +75,25 @@ func Save(path string, config Config) error {
 	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create App configuration directory: %w", err)
 	}
-	if err = os.WriteFile(path, payload, 0o600); err != nil {
+	// Keep the last readable configuration until the replacement is complete.
+	// CreateTemp uses 0600 and the same directory keeps the rename on one volume.
+	file, err := os.CreateTemp(filepath.Dir(path), ".piik-config-*")
+	if err != nil {
+		return fmt.Errorf("create App configuration replacement: %w", err)
+	}
+	defer os.Remove(file.Name())
+	if _, err = file.Write(payload); err == nil {
+		err = file.Sync()
+	}
+	closeErr := file.Close()
+	if err != nil {
 		return fmt.Errorf("write App configuration: %w", err)
 	}
-	if err = os.Chmod(path, 0o600); err != nil {
-		return fmt.Errorf("protect App configuration: %w", err)
+	if closeErr != nil {
+		return fmt.Errorf("close App configuration replacement: %w", closeErr)
+	}
+	if err = os.Rename(file.Name(), path); err != nil {
+		return fmt.Errorf("replace App configuration: %w", err)
 	}
 	return nil
 }
