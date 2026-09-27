@@ -19,6 +19,8 @@ import {
   type ViewerRelayPeerFactory,
 } from "../src/client/webrtc/viewer-relay.ts";
 import { setCopy } from "../src/client/ui/copy.ts";
+import * as encodingOutput from "../src/client/media/browser-encoding-output";
+import type { BrowserEncodingPool } from "../src/client/media/browser-encoding-pool";
 import type {
   IceConfig,
   ParticipantRouteAssignment,
@@ -525,6 +527,84 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+function encodedPeerFixture() {
+  let failVideo!: () => void;
+  let audio!: ReadableStreamDefaultController<RTCEncodedAudioFrame>;
+  const output = { track: createTrack("video", "carrier"), dispose: vi.fn(), passthrough: vi.fn(), setPaused: vi.fn() };
+  const binding = { dispose: vi.fn(), carrierScale: vi.fn<() => number | undefined>(() => undefined),
+    setPaused: vi.fn(), updateProfile: vi.fn(async () => undefined), metrics: (value: unknown) => value };
+  const create = vi.fn<BrowserEncodingPool["create"]>(() => binding as never);
+  const pool = { create } as unknown as BrowserEncodingPool;
+  vi.spyOn(encodingOutput, "supportsBrowserEncoding").mockReturnValue(true);
+  vi.spyOn(encodingOutput, "BrowserEncodingOutput").mockImplementation(function (_sender, onFailure) {
+    failVideo = onFailure;
+    return output as unknown as encodingOutput.BrowserEncodingOutput;
+  });
+  vi.spyOn(encodingOutput, "encodedStreams").mockReturnValue({
+    readable: new ReadableStream({ start(controller) { audio = controller; } }),
+    writable: new WritableStream(),
+  } as never);
+  return { pool, create, binding, output, failVideo: () => failVideo(),
+    failAudio: () => audio.error(new Error("audio transform failed")) };
+}
+
+describe("HostPeer terminal media failure", () => {
+  it.each(["video", "audio", "fallback", "rollback"])("reports %s failure once and keeps borrowed source tracks alive", async (kind) => {
+    const fixture = encodedPeerFixture();
+    const source = createTrack("video", "source"), audio = createTrack("audio", "audio");
+    const onUpdate = vi.fn();
+    const peer = new HostPeer("child", { iceServers: [] }, createStream(source, audio), QUALITY_PROFILES["720p30"],
+      { sendSignal: () => true, onUpdate }, VP8_ONLY_VIDEO_CODEC, "exact-connection", false, fixture.pool);
+    await peer.start();
+    const connection = FakePeerConnection.latest!, owned = connection.senders[0]!.track!;
+    onUpdate.mockClear();
+    if (kind === "video") fixture.failVideo();
+    else if (kind === "audio") fixture.failAudio();
+    else if (kind === "fallback") fixture.create.mock.calls[0]![7]();
+    else {
+      fixture.binding.carrierScale.mockReturnValue(1);
+      connection.senders[0]!.failNextSetParameters = true;
+      connection.senders[0]!.replaceTrack.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("rollback failed"));
+      // Reflect that the first attachment succeeded before configuration failed.
+      connection.senders[0]!.track = fixture.output.track;
+      await fixture.create.mock.calls[0]![5]();
+    }
+    await vi.waitFor(() => expect(onUpdate).toHaveBeenCalledOnce());
+    expect(onUpdate.mock.calls[0]![0]).toMatchObject({ peerId: "child", connectionId: "exact-connection", connectionState: "failed" });
+    expect(peer.getSnapshot().connectionState).toBe("failed");
+    expect(connection.connectionState).toBe("closed");
+    expect(owned.stop).toHaveBeenCalledOnce();
+    expect(source.stop).not.toHaveBeenCalled();
+    expect(audio.stop).not.toHaveBeenCalled();
+    fixture.failVideo();
+    fixture.create.mock.calls[0]![7]();
+    expect(onUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("keeps expected disposal and late failures silent", async () => {
+    const fixture = encodedPeerFixture(), onUpdate = vi.fn();
+    const peer = new HostPeer("child", { iceServers: [] }, createStream(createTrack("video", "source"), null),
+      QUALITY_PROFILES["720p30"], { sendSignal: () => true, onUpdate }, VP8_ONLY_VIDEO_CODEC, undefined, false, fixture.pool);
+    await peer.start();
+    onUpdate.mockClear();
+    peer.dispose();
+    fixture.failVideo();
+    fixture.failAudio();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("reports the exact prepared child immediately instead of waiting for the route deadline", async () => {
+    const fixture = encodedPeerFixture(), onPreparedChildFailed = vi.fn();
+    const owner = new HostProvisionalChild({ sendSignal: () => true, onPreparedChildFailed });
+    owner.prepare({ ...hostProvisionalInput(7, ["candidate-child"], createStream(createTrack("video", "source"), null)), videoPool: fixture.pool });
+    await vi.waitFor(() => expect(FakePeerConnection.latest!.localDescription).not.toBeNull());
+    fixture.failVideo();
+    expect(onPreparedChildFailed).toHaveBeenCalledExactlyOnceWith(7, "candidate-connection-7");
+    owner.discard();
+  });
 });
 
 describe("HostPeer source replacement", () => {

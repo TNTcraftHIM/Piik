@@ -82,7 +82,10 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (*Receiver, webrtc.Se
 	if _, supported := relayBackend(videoCodec, options.Relay); supported {
 		layers = 2
 	}
-	receiver.source, err = engine.NewSource(videoCodec, options.EdgeCapacity, layers, receiver.RequestKeyFrame)
+	receiver.source, err = engine.NewSource(videoCodec, options.EdgeCapacity, layers, func([]int) {
+		// Local output slots all derive from this one upstream encoded stream.
+		receiver.RequestKeyFrame()
+	})
 	if err != nil {
 		_ = connection.Close()
 		return nil, webrtc.SessionDescription{}, err

@@ -748,9 +748,11 @@ func (session *Session) runVideo() error {
 					session.mu.Unlock()
 					return fail(errors.New("native capture codec was not applied"))
 				}
-				source, sourceErr := session.engine.NewSource(status.Codec, session.edgeCapacity, min(2, len(status.Outputs)), func() {
+				source, sourceErr := session.engine.NewSource(status.Codec, session.edgeCapacity, min(2, len(status.Outputs)), func(layers []int) {
 					if stream := session.currentStream(); stream != nil {
-						_ = stream.RequestKeyFrame(-1)
+						for _, layer := range layers {
+							_ = stream.RequestKeyFrame(layer)
+						}
 					}
 				})
 				if sourceErr != nil {

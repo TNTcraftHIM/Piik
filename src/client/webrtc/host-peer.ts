@@ -182,7 +182,7 @@ export class HostPeer {
     this.videoSender = videoTransceiver.sender;
     if (this.encodedStreamsEnabled) {
       this.encodedOutput = new BrowserEncodingOutput(this.videoSender, () => {
-        if (!this.disposed) { this.dispose(); this.emit(); }
+        this.fail();
       }, { connectionId: this.connectionId, peerId: this.peerId });
     }
     this.attachVideoPool(this.stream.getVideoTracks()[0]!);
@@ -194,9 +194,7 @@ export class HostPeer {
     if (this.encodedStreamsEnabled) {
       // The connection flag also owns audio, including a later source with audio.
       const audio = encodedStreams(this.audioSender);
-      void audio.readable.pipeTo(audio.writable).catch(() => {
-        if (!this.disposed) { this.dispose(); this.emit(); }
-      });
+      void audio.readable.pipeTo(audio.writable).catch((error) => this.fail(error));
     }
     await this.enqueueSenderMutation(async () => {
       if (this.disposed || !this.videoSender || !this.audioSender) {
@@ -275,7 +273,7 @@ export class HostPeer {
             audioTransceiver.direction = previousAudioDirection;
           }
           if (videoRollback.status === "rejected") {
-            this.dispose();
+            this.fail(videoRollback.reason);
           }
           this.setError(error, "host.fail.source");
           return false;
@@ -589,7 +587,7 @@ export class HostPeer {
           return true;
         } catch (error) {
           if (!this.disposed && sender.track !== previous) {
-            try { await this.waitForOperation(() => sender.replaceTrack(previous)); } catch { this.dispose(); }
+            try { await this.waitForOperation(() => sender.replaceTrack(previous)); } catch (rollbackError) { this.fail(rollbackError); }
           }
           if (next !== previous && next !== this.encodedOutput?.track) next.stop();
           if (this.disposed) return false;
@@ -598,7 +596,7 @@ export class HostPeer {
         }
       }),
       requestKey,
-      () => { if (owns()) { this.dispose(); this.emit(); } });
+      () => { if (owns()) this.fail(); });
     this.pooledVideo = binding;
     if (!binding) this.encodedOutput.passthrough(requestKey);
     binding?.setPaused(this.paused);
@@ -816,6 +814,16 @@ export class HostPeer {
     debugError("webrtc", "sender-failed", error, { connectionId: this.connectionId, reason: key });
     this.snapshot = { ...this.snapshot, error: { key } };
     this.emit();
+  }
+
+  private fail(error?: unknown): void {
+    if (this.disposed) return;
+    debugError("webrtc", "sender-media-failed", error, { connectionId: this.connectionId });
+    this.snapshot = { ...this.snapshot, connectionState: "failed", error: { key: "host.fail.connection" } };
+    this.dispose();
+    // Expected disposal is silent; terminal media failure must still reach
+    // its preparation/recovery owner after owned resources have retired.
+    this.events.onUpdate(this.getSnapshot());
   }
 
   private async configureSender(

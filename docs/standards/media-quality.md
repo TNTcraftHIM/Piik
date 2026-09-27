@@ -204,6 +204,9 @@ needed output and its lower fallbacks and stops unused upper outputs. Each child
 receives only its selected output. The forwarding SFU adds no server transcoder.
 Downstream attachment or sending failure and retirement belong to that edge,
 never its shared video/audio source or healthy siblings.
+Native keyframe requests retain their output scope through coalescing; a relay
+requests its single upstream stream once per batch while keeping local output
+recovery separate.
 
 Native capture uses the same screen-share output construction within Host
 ceilings. Its source, source clock and higher outputs remain independent of

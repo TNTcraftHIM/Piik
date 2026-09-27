@@ -267,7 +267,9 @@ func (engine *Engine) ListenAddress() string {
 	return engine.listenAddress
 }
 
-func (engine *Engine) NewSource(codec string, capacity, layers int, requestKeyFrame func()) (*Source, error) {
+// NewSource coalesces recovery requests by physical output slot; [-1] requests
+// all outputs. The callback runs outside the source lock and forwarding path.
+func (engine *Engine) NewSource(codec string, capacity, layers int, requestKeyFrame func([]int)) (*Source, error) {
 	_, supported := videoCodecs[codec]
 	if !supported {
 		return nil, errors.New("native video codec is unsupported")

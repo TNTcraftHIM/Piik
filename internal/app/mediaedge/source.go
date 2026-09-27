@@ -20,6 +20,7 @@ const videoClockRate = 90_000
 const videoPacketMTU = 1200
 const h264PayloadType = 102
 const vp8PayloadType = 96
+const allRecoveryLayers = ^uint32(0)
 
 var ErrSourceCapacity = errors.New("native media source capacity is exhausted")
 
@@ -38,12 +39,13 @@ type Source struct {
 	formats          []atomic.Uint64
 	outputBitrates   []uint32
 	capacity         int
-	requestKeyFrame  func()
+	requestKeyFrame  func([]int)
 	relayProfile     *nativecapture.VideoProfile
 	relay            *relayDerivation
 	groups           map[int]*outputGroup
 	memberships      map[groupConsumer]*outputGroup
 	groupRecovery    atomic.Uint32
+	pendingRecovery  atomic.Uint32
 	recoveryRequests chan struct{}
 	recoveryStopped  chan struct{}
 	inputPTS         time.Duration
@@ -607,11 +609,22 @@ func (source *Source) detach(edge *Edge) {
 
 func (source *Source) requestLayerKeyFrame(layer int) {
 	source.groupRecovery.Or(uint32(1) << layer)
-	source.RequestRecoveryFrame()
+	source.requestRecovery(layer)
 }
 
 func (source *Source) RequestRecoveryFrame() {
+	source.requestRecovery(-1)
+}
+
+func (source *Source) requestRecovery(layer int) {
 	if source.requestKeyFrame != nil {
+		mask := allRecoveryLayers
+		if layer >= 0 {
+			mask = uint32(1) << layer
+		}
+		// Coalesce notifications without dropping another output's request.
+		// groupRecovery separately belongs to the next input's output plan.
+		source.pendingRecovery.Or(mask)
 		select {
 		case source.recoveryRequests <- struct{}{}:
 		default:
@@ -637,7 +650,20 @@ func (source *Source) runRecovery() {
 			closed := source.closed
 			source.mu.Unlock()
 			if !closed {
-				source.requestKeyFrame()
+				mask := source.pendingRecovery.Swap(0)
+				if mask == 0 {
+					continue
+				}
+				layers := []int{-1}
+				if mask != allRecoveryLayers {
+					layers = nil
+					for layer := 0; mask != 0; mask, layer = mask>>1, layer+1 {
+						if mask&1 != 0 {
+							layers = append(layers, layer)
+						}
+					}
+				}
+				source.requestKeyFrame(layers)
 			}
 		}
 	}

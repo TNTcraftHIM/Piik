@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
@@ -14,6 +15,92 @@ import (
 	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
 )
+
+func TestSourceRecoveryCoalescesTargetsWithoutWakingUnrelatedOutputs(t *testing.T) {
+	for _, all := range []bool{false, true} {
+		t.Run(fmt.Sprint(all), func(t *testing.T) {
+			requested := make(chan []int, 8)
+			// Queue several requests before starting the existing notification worker.
+			source := &Source{engine: &Engine{}, requestKeyFrame: func(layers []int) { requested <- layers },
+				recoveryRequests: make(chan struct{}, 1), recoveryStopped: make(chan struct{})}
+			source.requestLayerKeyFrame(0)
+			source.requestLayerKeyFrame(2)
+			source.requestLayerKeyFrame(0)
+			if all {
+				source.RequestRecoveryFrame()
+			}
+			done := make(chan struct{})
+			go func() { defer close(done); source.runRecovery() }()
+			defer func() { close(source.recoveryStopped); <-done }()
+			want := []int{0, 2}
+			if all {
+				want = []int{-1}
+			}
+			select {
+			case layers := <-requested:
+				if !slices.Equal(layers, want) {
+					t.Fatalf("requested outputs %v instead of %v", layers, want)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("lost output recovery request")
+			}
+			if source.groupRecovery.Load() != 5 {
+				t.Fatal("wake callback consumed the frame-boundary recovery plan")
+			}
+			select {
+			case layers := <-requested:
+				t.Fatalf("unexpected extra callback: %v", layers)
+			default:
+			}
+		})
+	}
+}
+
+func TestSourcePLIUsesPhysicalOutputIdentity(t *testing.T) {
+	requested := make(chan []int, 16)
+	source, err := (&Engine{}).NewSource("vp8", 2, 2, func(layers []int) { requested <- layers })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if err = source.ConfigureOutputs([]uint32{300_000, 1_200_000, 300_000}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = source.planGroups(nil); err != nil {
+		t.Fatal(err)
+	}
+	group, err := source.newGroup(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, media := range []*forwarding.EncodedSource{source.media, group.media} {
+		if err = media.BeginFrame(time.Second, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		for layer := range 2 {
+			if err = media.WriteFrame(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: time.Second,
+				Duration: time.Second / 30, Recovery: true}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for _, request := range []struct {
+		media           *forwarding.EncodedSource
+		layer, physical int
+	}{
+		{source.media, 0, 0}, {source.media, 1, 1}, {group.media, 0, 2}, {group.media, 1, 1},
+	} {
+		request.media.SendPLI(int32(request.layer), true)
+		select {
+		case layers := <-requested:
+			if !slices.Equal(layers, []int{request.physical}) {
+				t.Fatalf("logical %d requested physical %v, want %d", request.layer, layers, request.physical)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("PLI did not wake its output")
+		}
+	}
+}
 
 func TestSourceFrameSurvivesRetiringEdge(t *testing.T) {
 	for _, layers := range []int{1, 2} {

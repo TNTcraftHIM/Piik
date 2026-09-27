@@ -146,6 +146,27 @@ spikes and shared budget changes; a genuinely weaker child can still need its
 own producer. No delayed-budget policy, bitrate floor or manual recovery probe
 was added. Probe padding remains framework-owned traffic under native limits.
 
+Matched short-pulse checks on Windows Chrome 152 used the same synthetic
+1080p30 source, two children, played audio and `balanced` preference in both
+paths: 45 healthy seconds, A constrained to 400 kbps for one second, then 40
+seconds of recovery. B was unconstrained. Each codec's ordinary/pool pair used
+the same probe bundle; these are single-run observations, not averages.
+
+| Codec / path | A's lowest decoded size | A regained 1080p after pulse start |
+| --- | --- | --- |
+| VP8 / ordinary | 1280x720 | 20.2 s |
+| VP8 / pool | 480x270 | 12.7 s |
+| H264 / ordinary | 1280x720 | 23.3 s |
+| H264 / pool | 1280x720 | 7.7 s |
+
+B retained 1080p throughout all four runs, with no reported connection failure.
+The pooled traces created one separate producer for constrained A, then rejoined
+the retained healthy producer; they did not show repeated producer churn.
+The deeper VP8 dip remains a quality cost to investigate. These results do not
+establish the cause of an unknown reporter's blur or stream loss, nor test Native
+capture's separate keyframe-request path. Any further change must preserve
+healthy-child isolation and framework-owned adaptation.
+
 Budget attribution remains unchanged: targetBitrate is the encoder's allocated
 target, not raw link bandwidth ([upstream stats correction](https://webrtc.googlesource.com/src/+/fe25b0e928ea4e64aa134f5dc8012343320deec5%5E%21/)).
 Replacing it with availableOutgoingBitrate would bypass native allocation and

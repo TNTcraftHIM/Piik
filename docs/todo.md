@@ -1,12 +1,21 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-25
+Last reviewed: 2026-09-27
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Investigate Browser short-pulse quality cost.** Matched ordinary/pool
+  checks with two 1080p30 children, audio and a one-second bandwidth constraint
+  reproduce a deeper VP8 dip in the pool (270p versus 720p), with faster recovery.
+  H264 reaches 720p on both paths; unaffected children stay at 1080p. The
+  [pool evidence](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
+  distinguishes one cold producer handoff from repeated churn. Assess a smaller
+  adaptation cost without a custom bitrate floor, delay policy or weakening
+  healthy-child isolation. These bounded Browser results do not identify the
+  unknown reporters' capture paths or establish their causes.
 - [ ] **Accept the responsive UI repair before integration.** Review compact room
   identity/actions, narrow headers, long adapter names and bounded hints in the
   shared catalogue. Check real-phone zoom/keyboard and touch scrolling alongside
@@ -94,7 +103,11 @@ history. A parked idea is not implementation authority.
   retired event delivery and SFU replacement have locally reproduced defects
   and regression checks, but paired diagnostics and device/network details are
   still needed to establish this reporter's cause. Include an upstream relay's
-  report when present. The existing five-second Viewer membership grace during
+  report when present. Terminal Browser sender failures now notify their existing
+  preparation owner instead of silently disposing; expected retirement stays
+  silent. Native per-output keyframe requests no longer wake unrelated outputs.
+  These are confirmed local defects, not matched causes of the field reports.
+  The existing five-second Viewer membership grace during
   signaling loss is unchanged. This is distinct from the first-frame report below.
 - [ ] **Windows 11 capture border remains visible.** Identify the App/Browser
   capture path, Windows build and capture-border permission result. Local checks
@@ -138,12 +151,6 @@ history. A parked idea is not implementation authority.
   distinguishes that repair and successful restoration from the unknown cause
   of the reported Host termination. Do not conflate source silence, receiver
   decode interruption and capture-process failure.
-- [ ] **Brief blur followed by immediate recovery.** Compare the same source,
-  codec, peers and network with ordinary WebRTC before attributing the report
-  to pooling. The [pool checks](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
-  cover rate-owner retention, publication startup, native recovery probing and
-  ordinary fallback. They do not establish this reporter's capture path or result;
-  correlate actual receiver dimensions, QP, resource adaptation and packet loss.
 - [ ] **Windows 32-bit candidate acceptance.** Verify the isolated
   `spike/windows-x86-capture` candidate's launch, capture/audio, memory pressure,
   source replacement and update links on a 32-bit Windows device. WOW64

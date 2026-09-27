@@ -37,7 +37,7 @@ func TestOutputPlanRetiresOnlyFailedLayerConsumers(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = engine.Close() })
 	wake := make(chan struct{}, 8)
-	source, err := engine.NewSource("vp8", 2, 2, func() { wake <- struct{}{} })
+	source, err := engine.NewSource("vp8", 2, 2, func([]int) { wake <- struct{}{} })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func testEncodedSourceFanout(t *testing.T, codec string) {
 	}
 	t.Cleanup(func() { _ = engine.Close() })
 	keyFrames := make(chan struct{}, 1)
-	source, err := engine.NewSource(codec, 2, 1, func() {
+	source, err := engine.NewSource(codec, 2, 1, func([]int) {
 		select {
 		case keyFrames <- struct{}{}:
 		default:

@@ -237,11 +237,10 @@ func (source *Source) newGroup(slot int) (*outputGroup, error) {
 				switch packet.(type) {
 				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
 					if layer == 0 {
-						source.groupRecovery.Or(uint32(1) << slot)
+						source.requestLayerKeyFrame(slot)
 					} else {
-						source.groupRecovery.Or(2)
+						source.requestLayerKeyFrame(1)
 					}
-					source.RequestRecoveryFrame()
 				}
 			}
 		},
