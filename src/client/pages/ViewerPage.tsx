@@ -1873,6 +1873,7 @@ export function ViewerPage({
         video,
         remoteMedia.stream,
         presentationState.host === "paused",
+        hostPlaybackPauseRef.current,
       )
     ) {
       attemptPlayback(video, remoteMedia);

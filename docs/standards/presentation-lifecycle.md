@@ -113,7 +113,9 @@ Identity, connection details and topology stay in the deck.
 
 Replacement video bindings do not consult Viewer-local pause: when the Host is
 playing, they attempt playback subject to browser autoplay permission. There is
-no separate remembered playback intent for source changes or reconnects.
+no separate remembered playback intent for source changes or reconnects. A new
+binding received while the Host is paused waits for the Host to resume; it does
+not inherit the previous binding's Viewer-local pause.
 Adding, replacing or removing audio on the same video binding updates only its
 audio consumer; it preserves current-frame proof and Viewer-local playback.
 A pending `play()` canceled by pause or rebinding is not a media failure;

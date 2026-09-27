@@ -35,7 +35,11 @@ export function prepareViewerPlayback(
   video: ViewerPlaybackElement,
   stream: MediaStream,
   paused: boolean,
+  hostPause: { active: boolean; resume: boolean },
 ): boolean {
+  // A new picture must resume with the Host, not inherit the old local pause.
+  hostPause.active = paused;
+  hostPause.resume = paused;
   if (video.srcObject !== stream) {
     video.srcObject = stream;
   }

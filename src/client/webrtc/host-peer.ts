@@ -185,6 +185,7 @@ export class HostPeer {
       this.encodedOutput = new BrowserEncodingOutput(this.videoSender, () => {
         this.fail();
       }, { connectionId: this.connectionId, peerId: this.peerId });
+      this.encodedOutput.setPaused(this.paused);
     }
     this.attachVideoPool(this.stream.getVideoTracks()[0]!);
     this.audioTransceiver = this.connection.addTransceiver(audioTrack ?? "audio", {
@@ -332,6 +333,7 @@ export class HostPeer {
 
   setPaused(paused: boolean): void {
     this.paused = paused;
+    this.encodedOutput?.setPaused(paused);
     this.pooledVideo?.setPaused(paused);
     this.applyPausedState(this.senderVideoTrack, this.audioSender?.track ?? null);
     this.applyPausedState(this.replacementVideoTrack, this.replacementAudioTrack);

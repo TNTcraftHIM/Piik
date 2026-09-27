@@ -59,7 +59,6 @@ export class BrowserEncodingPool {
     // A fresh connection has no useful raw output to preserve. Start its
     // tiny clock immediately, rather than warming two full encoders first.
     if (!member.carrier) encoded.passthrough(requestKey);
-    encoded.setPaused(member.paused);
     if (!this.timer) this.timer = setInterval(() => void this.poll(), BUDGET_SAMPLE_MS);
     return {
       carrierScale: () => {
@@ -77,7 +76,6 @@ export class BrowserEncodingPool {
         if (member.disposed || member.paused === paused) return;
         member.paused = paused;
         member.previousOutput = undefined;
-        member.encoded.setPaused(paused);
         this.updatePauses();
       },
       metrics: (transport) => this.metrics(member, transport),

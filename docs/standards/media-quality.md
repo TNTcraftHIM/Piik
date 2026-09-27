@@ -51,7 +51,9 @@ production behavior and remaining acceptance.
   sharing. Native screen capture can include system playback audio and native
   window capture can include selected-process audio when the platform exposes it.
 - Authoritative Browser pause disables the current source and sender-owned tracks
-  while retaining the room and established routes. Native pause keeps capture
+  while retaining the room and established routes. The connection owns its
+  encoded-output pause even when shared encoding is unavailable; the pool pauses
+  a shared producer only when all its members pause. Native pause keeps capture
   alive but stops session output through the same owner. Black frames, track
   mute, or network failure are not interpreted as a user pause.
 - The Host preview displays the capture stream directly and creates no Viewer or

@@ -79,6 +79,22 @@ afterEach(() => {
 });
 
 describe("Browser encoding pool ownership", () => {
+  it("pauses a shared producer only when all of its members pause", async () => {
+    const first = member(), second = member();
+    await sample(4);
+    expect(producers.size).toBe(1);
+    const producer = [...producers.keys()][0]!;
+
+    first.handle.setPaused(true);
+    expect(producer.setPaused).toHaveBeenLastCalledWith(false);
+    second.handle.setPaused(true);
+    expect(producer.setPaused).toHaveBeenLastCalledWith(true);
+    first.handle.setPaused(false);
+    expect(producer.setPaused).toHaveBeenLastCalledWith(false);
+    expect(first.producerId()).toBe(second.producerId());
+    expect(producer.dispose).not.toHaveBeenCalled();
+  });
+
   it("selects a prepared producer without waiting for another budget sample", async () => {
     const ready = holdNextProducerStart();
     const first = member();

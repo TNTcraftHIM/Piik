@@ -553,6 +553,37 @@ function encodedPeerFixture() {
 }
 
 describe("HostPeer encoded output ownership", () => {
+  it.each(["initial", "replacement"])("owns output pause when the pool declines the %s source", async (phase) => {
+    const fixture = encodedPeerFixture();
+    const source = createTrack("video", "source");
+    const peer = new HostPeer("child", { iceServers: [] }, createStream(source, null),
+      QUALITY_PROFILES["720p30"], { sendSignal: () => true, onUpdate() {} },
+      VP8_ONLY_VIDEO_CODEC, undefined, false, fixture.pool);
+    try {
+      if (phase === "initial") {
+        peer.setPaused(true);
+        fixture.create.mockReturnValueOnce(null);
+      }
+      await peer.start();
+      if (phase === "replacement") {
+        peer.setPaused(true);
+        fixture.create.mockReturnValueOnce(null);
+        expect(await peer.replaceStream(createStream(createTrack("video", "declined-source"), null))).toBe(true);
+      }
+      const sender = FakePeerConnection.latest!.senders[0]!;
+      expect(sender.track!.enabled).toBe(false);
+      expect(fixture.output.passthrough).toHaveBeenCalled();
+      expect.soft(fixture.output.setPaused).toHaveBeenLastCalledWith(true);
+
+      peer.setPaused(false);
+      expect(sender.track!.enabled).toBe(true);
+      expect(fixture.output.setPaused).toHaveBeenLastCalledWith(false);
+      expect(source.stop).not.toHaveBeenCalled();
+    } finally {
+      peer.dispose();
+    }
+  });
+
   it("keeps capture constraints on real tracks across pool attachment, profile changes and fallback", async () => {
     const fixture = encodedPeerFixture();
     const source = createTrack("video", "source");

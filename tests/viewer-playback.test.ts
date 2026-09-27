@@ -43,13 +43,29 @@ describe("Viewer playback binding", () => {
       srcObject: null as MediaProvider | null,
       pause: vi.fn(),
     };
+    const pauseState = { active: false, resume: false };
 
-    expect(prepareViewerPlayback(video, stream, false)).toBe(true);
+    expect(prepareViewerPlayback(video, stream, false, pauseState)).toBe(true);
     expect(video.srcObject).toBe(stream);
-    expect(prepareViewerPlayback(video, stream, false)).toBe(true);
+    expect(prepareViewerPlayback(video, stream, false, pauseState)).toBe(true);
     expect(video.pause).not.toHaveBeenCalled();
 
-    expect(prepareViewerPlayback(video, stream, true)).toBe(false);
+    expect(prepareViewerPlayback(video, stream, true, pauseState)).toBe(false);
     expect(video.pause).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, true])("arms Host resume on a new binding regardless of the old local pause (%s)", (resume) => {
+    const stream = {} as MediaStream;
+    const video = { srcObject: stream, pause: vi.fn() };
+    const pauseState = { active: true, resume };
+
+    // A new video generation can reuse the same MediaStream object.
+    expect(prepareViewerPlayback(video, stream, true, pauseState)).toBe(false);
+    expect(video.pause).toHaveBeenCalledOnce();
+    expect(pauseState).toEqual({ active: true, resume: true });
+
+    // If the Host has already resumed, the new binding starts immediately.
+    expect(prepareViewerPlayback(video, stream, false, pauseState)).toBe(true);
+    expect(pauseState).toEqual({ active: false, resume: false });
   });
 });
