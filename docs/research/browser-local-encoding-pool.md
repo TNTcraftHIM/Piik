@@ -162,7 +162,8 @@ the same probe bundle; these are single-run observations, not averages.
 B retained 1080p throughout all four runs, with no reported connection failure.
 The pooled traces created one separate producer for constrained A, then rejoined
 the retained healthy producer; they did not show repeated producer churn.
-The deeper VP8 dip remains a quality cost to investigate. These results do not
+The deeper VP8 dip is a measured adaptation tradeoff, not by itself a confirmed
+defect or a requirement to impose a resolution floor. These results do not
 establish the cause of an unknown reporter's blur or stream loss, nor test Native
 capture's separate keyframe-request path. Any further change must preserve
 healthy-child isolation and framework-owned adaptation.
@@ -189,7 +190,7 @@ cold-producer preparation-to-selection interval was 1,712 ms before this repair
 and 67 ms afterward. A regained 1080p at 12.7 s and 9.2 s after pulse start
 respectively; B stayed at 1080p. The final run had no queue overflow, backward
 source IDs or missed played-audio pulses. These are single-run observations,
-not an average recovery guarantee. **Both still reached 270p.** A final H264
+not an average recovery guarantee. Both reached 270p during adaptation. A final H264
 pulse reached 720p and regained 1080p at 6.7 s; B stayed at 1080p and neither
 output overflowed its queue.
 

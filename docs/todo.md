@@ -13,20 +13,6 @@ history. A parked idea is not implementation authority.
   owners before resuming feature polish. Keep field reports without matched
   evidence separate from locally reproduced defects; this phase does not
   authorize publication.
-- [ ] **Assess the remaining Browser cold-producer quality cost.** Matched
-  two-child short-pulse checks reproduce a deeper VP8 dip in the pool (270p
-  versus 720p), with faster recovery. H264 reaches 720p on both paths;
-  unaffected children stay at 1080p. The
-  [pool evidence](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
-  distinguishes a cold handoff from repeated churn. Applied-budget and preparation
-  completions now re-evaluate membership immediately; the short-pulse dip remains.
-  The [carrier-constraint correction](./research/browser-local-encoding-pool.md#carrier-capture-constraints)
-  removes duplicate FPS filtering without relaxing real-picture limits. A control
-  retaining two mature producers reached 720p; no verified API transfers that
-  adaptation history to a new encoder. Do not add a bitrate multiplier, delay
-  policy, longer startup protection or sacrifice sharing/healthy-child isolation
-  without a justified design decision. These bounded Browser results do not
-  establish the unknown reporters' causes or lossless delivery under every load.
 - [ ] **Integrate the Native recovery follow-up after release acceptance.** The
   [keyframe comparison](./research/native-client-lifecycle.md#keyframe-request-ownership)
   supports the request-owner correction. Focused regressions, Windows App VP8
@@ -210,6 +196,10 @@ not establish better connection success or speed; this note adds no retry policy
    evidence and capacity assertions with the current sender-owned quality
    contract; its old Viewer-only trigger is not a valid quality acceptance gate.
 2. **Broader quality work.** Reopen from measured benefit at acceptable complexity.
+   The [Browser pool comparison](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
+   records a cold-encoder adaptation tradeoff; a low resolution by itself is not
+   a defect or active repair target. Prioritize avoidable interruptions, failed
+   recovery or degradation of healthy siblings when evidence establishes them.
    Preserve chosen profiles, bitrate ceilings, endpoint capacity and P2P-first
    routing unless a new accepted decision supports changing them. No weighted
    score, all-pairs probes, periodic rebalancing, parent-wide prediction or

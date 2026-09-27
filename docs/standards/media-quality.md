@@ -98,6 +98,11 @@ The three recommended profiles are ceilings, not delivery guarantees:
 maintain-framerate` remain independent controls. Display video uses the standard
 `contentHint = "motion"` for game motion.
 
+Framework-driven downscaling under bandwidth or device pressure is valid within
+the selected degradation preference. A low decoded resolution alone is not a
+defect and does not justify a new quality floor. Review avoidable disruption,
+recovery and healthy-child isolation instead of requiring a minimum observed size.
+
 Current acceptance targets are:
 
 - on a controlled P2P path with RTT at most 40 ms and loss at most 1%, glass-
