@@ -24,6 +24,10 @@ history. A parked idea is not implementation authority.
   reached 720p, supporting the cold-producer cost; it does not justify removing
   sharing or moving a healthy child onto a new encoder. These bounded Browser
   results do not identify the unknown reporters' paths or establish their causes.
+  The [carrier-constraint correction](./research/browser-local-encoding-pool.md#carrier-capture-constraints)
+  reduces redundant queue recovery without relaxing real capture or sender limits.
+  Residual carrier loss/recovery at 60 fps and the cold-producer quality dip still
+  need investigation; the correction does not establish their full resolution.
 - [ ] **Integrate the Native recovery follow-up after release acceptance.** The
   [keyframe comparison](./research/native-client-lifecycle.md#keyframe-request-ownership)
   supports the request-owner correction. Focused regressions, Windows App VP8

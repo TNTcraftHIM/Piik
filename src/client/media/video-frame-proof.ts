@@ -9,15 +9,6 @@ type VideoWithFrameCallback = HTMLVideoElement & {
   webkitDecodedFrameCount?: number;
 };
 
-export function isAutoplayPolicyRejection(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "name" in error &&
-    error.name === "NotAllowedError"
-  );
-}
-
 export function observeCompositedVideoFrame(
   video: HTMLVideoElement,
   expectedStream: MediaStream,

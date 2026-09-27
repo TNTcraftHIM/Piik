@@ -170,6 +170,8 @@ and producer observations remain distinct from the tiny carrier's statistics.
 Producer startup protection begins at actual outgoing publication, excluding
 local warmup and paused frames. The synthetic carrier uses screen-content
 transport probing; the real producer keeps the Host's picture adaptation.
+Capture constraints belong to real source tracks, not the producer-driven
+carrier canvas; outgoing sender ceilings still follow the Host profile.
 The first eligible consumer follows the same path; unsupported APIs or failed
 pooling use ordinary senders. Prepared ordinary quality candidates, Native
 ingress and Browser SFU remain independent compositions.

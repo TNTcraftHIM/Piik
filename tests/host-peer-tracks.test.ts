@@ -552,7 +552,36 @@ function encodedPeerFixture() {
     failAudio: () => audio.error(new Error("audio transform failed")) };
 }
 
-describe("HostPeer terminal media failure", () => {
+describe("HostPeer encoded output ownership", () => {
+  it("keeps capture constraints on real tracks across pool attachment, profile changes and fallback", async () => {
+    const fixture = encodedPeerFixture();
+    const source = createTrack("video", "source");
+    const peer = new HostPeer("child", { iceServers: [] }, createStream(source, null),
+      QUALITY_PROFILES["720p30"], { sendSignal: () => true, onUpdate() {} },
+      VP8_ONLY_VIDEO_CODEC, undefined, false, fixture.pool);
+    await peer.start();
+    await acceptPeerAnswer(peer);
+    const sender = FakePeerConnection.latest!.senders[0]!;
+    await peer.updateCaptureProfile(QUALITY_PROFILES["720p30"]);
+    expect(sender.track!.applyConstraints).toHaveBeenCalled();
+    fixture.binding.carrierScale.mockReturnValue(1);
+    expect(await fixture.create.mock.calls[0]![5]()).toBe(true);
+    expect(sender.track).toBe(fixture.output.track);
+    for (const id of ["1080p60", "720p30"] as const) {
+      expect(await peer.updateCaptureProfile(QUALITY_PROFILES[id])).toBe(true);
+      expect(sender.getParameters().encodings[0]!.maxFramerate).toBe(QUALITY_PROFILES[id].maxFramerate);
+    }
+    expect(fixture.output.track.applyConstraints).not.toHaveBeenCalled();
+    fixture.binding.carrierScale.mockReturnValue(undefined);
+    expect(await fixture.create.mock.calls[0]![5]()).toBe(true);
+    expect(sender.track).not.toBe(source);
+    expect(sender.track).not.toBe(fixture.output.track);
+    expect(sender.track!.applyConstraints).toHaveBeenCalledWith(expect.objectContaining({ frameRate: { ideal: 30, max: 30 } }));
+    expect(sender.getParameters().encodings[0]!.maxFramerate).toBe(30);
+    peer.dispose();
+    expect(source.stop).not.toHaveBeenCalled();
+  });
+
   it.each(["video", "audio", "fallback", "rollback"])("reports %s failure once and keeps borrowed source tracks alive", async (kind) => {
     const fixture = encodedPeerFixture();
     const source = createTrack("video", "source"), audio = createTrack("audio", "audio");

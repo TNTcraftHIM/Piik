@@ -88,11 +88,8 @@ import {
   type ViewerPresentationAction,
   type ViewerRouteKind,
 } from "../media/viewer-presentation";
-import { nextViewerMediaBinding, prepareViewerPlayback, type RemoteMediaBinding } from "../media/viewer-playback";
-import {
-  isAutoplayPolicyRejection,
-  observeCompositedVideoFrame,
-} from "../media/video-frame-proof";
+import { nextViewerMediaBinding, playbackFailure, prepareViewerPlayback, type RemoteMediaBinding } from "../media/viewer-playback";
+import { observeCompositedVideoFrame } from "../media/video-frame-proof";
 import { exactPeerSignalOwner } from "../media/route-transition";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
 import type {
@@ -417,23 +414,16 @@ export function ViewerPage({
         });
       },
       (error: unknown) => {
-        if (!mediaBindingIsCurrent(binding)) {
+        const failure = playbackFailure(error);
+        if (!mediaBindingIsCurrent(binding) || !failure) {
           return;
         }
         invalidatePresentedMedia();
-        if (isAutoplayPolicyRejection(error)) {
-          dispatchPresentation({
-            type: "autoplay-blocked",
-            generation: binding.generation,
-            revision: binding.boundAtRevision,
-          });
-        } else {
-          dispatchPresentation({
-            type: "playback-failed",
-            generation: binding.generation,
-            revision: binding.boundAtRevision,
-          });
-        }
+        dispatchPresentation({
+          type: failure,
+          generation: binding.generation,
+          revision: binding.boundAtRevision,
+        });
       },
     );
   }

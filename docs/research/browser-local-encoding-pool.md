@@ -181,6 +181,38 @@ target, not raw link bandwidth ([upstream stats correction](https://webrtc.googl
 Replacing it with availableOutgoingBitrate would bypass native allocation and
 protection. Keep producer, carrier, egress and decoded observations separate.
 
+### Carrier Capture Constraints
+
+Serial Chrome 152 pulse checks on 2026-09-27 found that `HostPeer` applied real
+capture constraints to the producer-driven canvas. Filtering those clock frames
+can leave encoded data queued; reaching the four-frame bound then discards the
+dependency chain and requests recovery. Track identity now excludes only that
+canvas during attachment and profile updates. Real capture, producer and outgoing
+sender ceilings remain unchanged; ordinary fallback restores real-track constraints.
+
+With the same two-child VP8/audio fixture and 5 Mbps ceiling, queue-overflow
+recovery counts across each complete run were:
+
+| Source ceiling | Before, A / B | Without canvas capture constraints, A / B |
+| --- | --- | --- |
+| 30 fps | 36 / 31 | 6 / 1 |
+| 60 fps | 84 / 75 | 52 / 38 |
+
+Removing only the sender FPS ceiling left 29 / 27 at 30 fps. Removing both
+ceilings yielded 1 / 0, but the selected narrow repair keeps the sender ceiling.
+These single-run ablations establish a redundant filtering cost, not its removal
+from every frame path. Both 30 fps runs still reached 270p under the pulse; the
+60 fps pair reached 270p and 360p respectively. B stayed at 1080p. Residual clock
+loss/queue recovery, especially at 60 fps, and cold-producer adaptation remain
+separate investigation items. No route failure was recorded. VP8/H264 lifecycle
+checks preserve profile changes, quiet-source recovery, pause, source replacement
+and ordinary fallback; they do not establish sustained 60 fps or game quality.
+
+The [canvas capture draft](https://w3c.github.io/mediacapture-fromelement/#html-canvas-element-media-capture-extensions)
+models `requestFrame()` as a pending request, not a counted queue of clock ticks.
+Do not infer one delivered carrier frame per call or enlarge the encoded queue
+to hide lost timing. Raw traces and ablation fixtures remain ignored artifacts.
+
 ## Cost And Accounting
 
 Before the CPU-carrier refinement, a matched actual-product VP8 1080p30 comparison's ordinary pair made

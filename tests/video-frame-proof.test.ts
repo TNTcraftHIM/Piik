@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  isAutoplayPolicyRejection,
-  observeCompositedVideoFrame,
-} from "../src/client/media/video-frame-proof.ts";
+import { observeCompositedVideoFrame } from "../src/client/media/video-frame-proof.ts";
 
 interface FakeVideo extends EventTarget {
   srcObject: MediaStream | null;
@@ -28,12 +25,6 @@ function fakeVideo(stream: MediaStream): FakeVideo {
 }
 
 describe("composited video frame proof", () => {
-  it("recognizes only browser autoplay policy rejection", () => {
-    expect(isAutoplayPolicyRejection({ name: "NotAllowedError" })).toBe(true);
-    expect(isAutoplayPolicyRejection({ name: "AbortError" })).toBe(false);
-    expect(isAutoplayPolicyRejection(new Error("not allowed"))).toBe(false);
-  });
-
   it("binds requestVideoFrameCallback proof to the expected srcObject", () => {
     const stream = {} as MediaStream;
     const replacement = {} as MediaStream;

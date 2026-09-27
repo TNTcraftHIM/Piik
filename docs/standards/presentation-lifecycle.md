@@ -116,6 +116,8 @@ playing, they attempt playback subject to browser autoplay permission. There is
 no separate remembered playback intent for source changes or reconnects.
 Adding, replacing or removing audio on the same video binding updates only its
 audio consumer; it preserves current-frame proof and Viewer-local playback.
+A pending `play()` canceled by pause or rebinding is not a media failure;
+cancellation alone must not invalidate frame proof or disable local playback.
 
 The bar spans the screen's lower edge, preferring one row. Narrow screens shorten
 the volume slider and compact horizontal spacing and button widths, retaining

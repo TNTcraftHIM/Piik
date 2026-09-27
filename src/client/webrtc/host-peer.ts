@@ -377,7 +377,7 @@ export class HostPeer {
       ) {
         return false;
       }
-      if (updateCaptureConstraints) {
+      if (updateCaptureConstraints && videoTrack !== this.encodedOutput?.track) {
         try {
           await this.waitForOperation(() => applyVideoCaptureProfile(videoTrack, profile));
         } catch (error) {
@@ -577,7 +577,11 @@ export class HostPeer {
         const next = binding?.carrierScale() === undefined ? cloneSenderVideoTrack(source) : this.encodedOutput!.track;
         try {
           this.applyPausedState(next, null);
-          await this.waitForOperation(() => applyVideoCaptureProfile(next, this.desiredProfile));
+          // The producer already limits real frames. Filtering its requested
+          // canvas clock frames again leaves encoded frames waiting for a tick.
+          if (next !== this.encodedOutput?.track) {
+            await this.waitForOperation(() => applyVideoCaptureProfile(next, this.desiredProfile));
+          }
           if (!owns()) { if (next !== this.encodedOutput?.track) next.stop(); return false; }
           if (next !== previous) await this.waitForOperation(() => sender.replaceTrack(next));
           await this.waitForOperation(() => configureVideoSender(sender,
