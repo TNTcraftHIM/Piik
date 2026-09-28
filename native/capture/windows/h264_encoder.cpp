@@ -8,7 +8,6 @@
 #include <propvarutil.h>
 
 #include <algorithm>
-#include <thread>
 
 namespace piik::capture::windows {
 
@@ -608,7 +607,7 @@ LiveEncoder::LiveEncoder(
     SelectedTransform selected,
     VideoProfile profile)
     : VideoEncoder(OutputKind::h264, selected.name, selected.clsid),
-      selected_(std::move(selected)), profile_(profile) {
+      selected_(std::move(selected)), events_(selected_.events.Get()), profile_(profile) {
   ConfigureCodec(selected_.codec.Get(), profile_);
   ComPtr<IMFMediaType> output_type = CreateOutputType(profile_);
   Check(selected_.transform->SetOutputType(0, output_type.Get(), 0),
@@ -701,24 +700,14 @@ EncodedAccessUnit LiveEncoder::Encode(
 
 MediaEventType LiveEncoder::NextEvent(
     EncoderClock::time_point deadline, const char* timeout_stage) {
-  while (std::chrono::steady_clock::now() < deadline) {
-    ComPtr<IMFMediaEvent> event;
-    HRESULT result = selected_.events->GetEvent(MF_EVENT_FLAG_NO_WAIT,
-                                                 &event);
-    if (result == MF_E_NO_EVENTS_AVAILABLE) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      continue;
-    }
-    Check(result, "mft-get-event");
-    HRESULT status = S_OK;
-    Check(event->GetStatus(&status), "mft-event-status-read");
-    Check(status, "mft-event-status");
-    MediaEventType type = MEUnknown;
-    Check(event->GetType(&type), "mft-event-type");
-    if (type == MEError) Fail("mft-error-event", "hardware MFT emitted MEError");
-    return type;
-  }
-  Fail(timeout_stage, "hardware MFT event wait timed out");
+  ComPtr<IMFMediaEvent> event = events_.Read(deadline, timeout_stage);
+  HRESULT status = S_OK;
+  Check(event->GetStatus(&status), "mft-event-status-read");
+  Check(status, "mft-event-status");
+  MediaEventType type = MEUnknown;
+  Check(event->GetType(&type), "mft-event-type");
+  if (type == MEError) Fail("mft-error-event", "hardware MFT emitted MEError");
+  return type;
 }
 
 void LiveEncoder::WaitForInput(EncoderClock::time_point probe_deadline) {

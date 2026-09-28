@@ -56,7 +56,7 @@ Invoke-CaptureBuild ('{0} /out:"{1}" {2} "{3}" {4}' -f $linkCommand,$executableP
 if ($Check) {
     $vp8Object = Join-Path $outputPath 'vp8_encoder.obj'
     Invoke-CaptureBuild ('cl.exe {0} /DNDEBUG "{1}" /Fo:"{2}"' -f $compileFlags,(Join-Path $helperDirectory 'vp8_encoder.cpp'),$vp8Object)
-    foreach ($name in @('capture_geometry', 'capture_control', 'capture_target', 'output_worker')) {
+    foreach ($name in @('capture_geometry', 'capture_control', 'capture_target', 'output_worker', 'mft_event_reader')) {
         $source = Join-Path $helperDirectory ($name + '.test.cpp')
         $object = Join-Path $outputPath ($name + '.test.obj')
         $executable = Join-Path $outputPath ($name + '.test.exe')
