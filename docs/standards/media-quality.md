@@ -141,16 +141,20 @@ adapter/encoder candidates within the shared selection budget. Manual H264
 requires actual H264 output and never changes codec on failure. The selected
 device owns capture and output workers; its identity is retained as the first
 choice for quality/source replacement. Native relay encoding uses the same
-selection owner. Auto measures encoding work
-for synthetic NV12 frames at the selected dimensions and frame rate, with a
-bounded warmup and sample. If H264 sustains the target it is selected; otherwise
-a usable H264 candidate is compared with VP8 within the four-second budget.
-An unsuccessful or timed-out comparison retains the proved H264 encoder. With
-no usable H264 candidate, Auto starts the ordinary VP8 path directly, as manual
-VP8 does; a benchmark with no alternative to compare must not gate capture.
+selection owner. Auto paces synthetic NV12 frames at the selected dimensions and
+frame rate through the live encoder pipeline, including its rate control and frame
+dropper, with the Browser probe's warmup, one-second sample and 100 ms lag
+allowance. Cold-start lag is excluded from the measured window; the selection
+deadline still bounds warmup and hardware input/output waits. A candidate whose
+measured delivery falls outside that allowance is rejected and the next candidate
+is tried within the four-second budget. The probe retires before the live encoder
+is prepared and proved, so selection requires only one hardware session at a time.
+Without a sustaining candidate, Auto starts the ordinary VP8 path directly, as manual VP8 does. A
+faster software encode never replaces a sustaining H264 encoder. Encoder readiness
+uses Media Foundation events rather than timer-based polling.
 Actual encoding and failure reporting remain owned by the capture worker. This
-is a throughput comparison, not a perceptual-quality score or a promise under
-future GPU load.
+is a cadence check, not a perceptual-quality score or a promise under future
+GPU load.
 The returned actual codec owns the shared source, preview, and relay; live
 quality/source changes retain it. Other native platform encoders remain H264.
 

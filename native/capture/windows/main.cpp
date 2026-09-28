@@ -1212,72 +1212,59 @@ void WriteCapabilityProbe() {
   }
 }
 
-double MeasureEncoderWork(VideoEncoder* hardware, ID3D11Device* device,
-                          const VideoProfile& profile,
-                          EncoderClock::time_point deadline) {
+// Some drivers emit valid H264 at a fraction of the source rate, while the
+// encoder reports no limitation (realtime-quality-adaptation.md). Pace synthetic
+// frames through the same WebRTC pipeline as a live output, including its rate
+// control and frame dropper, with the Browser probe's warmup, one-second sample
+// and 100 ms lag allowance (video-codec-preflight.ts).
+UINT32 CadenceLagFrames(UINT32 frame_rate) {
+  return std::max<UINT32>(1, (frame_rate + 9) / 10);
+}
+
+bool SustainsEncodedCadence(const AdaptiveEncoder::Factory& create, ID3D11Device* device,
+                            const VideoProfile& profile, EncoderClock::time_point deadline) {
+  RequireEncoderTime(deadline);
   const UINT32 warmup_frames = (profile.frame_rate + 1) / 2;
   const UINT32 sample_frames = profile.frame_rate;
-  std::unique_ptr<AdaptiveEncoder> adaptive;
-  if (!hardware) {
-    adaptive = std::make_unique<AdaptiveEncoder>(OutputKind::vp8, profile, device,
-                                               AdaptiveEncoder::Factory{});
+  const UINT32 lag = CadenceLagFrames(profile.frame_rate);
+  // Synthesis is CPU work of the probe, not the encoder; prepare it before pacing.
+  std::array<ComPtr<ID3D11Texture2D>, 8> textures;
+  for (UINT32 index = 0; index < textures.size(); ++index) {
+    textures[index] = CreateSyntheticTexture(device, index * 7, profile);
   }
-  const auto cadence_start = EncoderClock::now();
-  std::chrono::duration<double> measured{};
+  AdaptiveEncoder encoder(OutputKind::h264, profile, device, create);
+  const auto interval = std::chrono::nanoseconds(
+      static_cast<INT64>(profile.frame_duration_100ns()) * 100);
+  auto start = EncoderClock::now();
+  UINT32 delivered = 0;
   for (UINT32 frame = 0; frame < warmup_frames + sample_frames; ++frame) {
+    // Cold activation and the first IDR belong to warmup, not steady cadence.
+    // Start the measured schedule afresh; do not carry warmup lag into it.
+    if (frame == warmup_frames) start = EncoderClock::now() - interval * frame;
+    const auto due = start + interval * frame;
+    std::this_thread::sleep_until(std::min(due, deadline));
     RequireEncoderTime(deadline);
-    auto texture = CreateSyntheticTexture(device, frame, profile);
-    if (adaptive) {
-      // VSE observes real input cadence; pacing is not encoder work.
-      std::this_thread::sleep_until(cadence_start + std::chrono::nanoseconds(
-          static_cast<INT64>(frame) * profile.frame_duration_100ns() * 100));
-      RequireEncoderTime(deadline);
-    }
-    const auto start = EncoderClock::now();
-    const auto timestamp = (static_cast<UINT64>(frame) + 1) * profile.frame_duration_100ns();
-    EncodedAccessUnit encoded;
-    if (adaptive) {
-      auto output = adaptive->Encode([&](UINT32 width, UINT32 height) {
-        if (width != profile.width || height != profile.height)
-          Fail("codec-probe-output", "encoder reduced the probe resolution");
-        return texture;
-      }, profile.width, profile.height, timestamp, frame == 0, profile.bit_rate);
-      RequireEncoderTime(deadline);
-      if (!output || output->width != profile.width || output->height != profile.height ||
-          output->duration100ns != static_cast<UINT64>(profile.frame_duration_100ns())) {
-        Fail("codec-probe-output", "encoder reduced the probe profile or dropped a frame");
-      }
-      encoded = std::move(output->access_unit);
-    } else {
-      encoded = hardware->Encode(texture.Get(), timestamp, frame == 0, deadline);
-    }
-    // A dropped input cannot count as a throughput-probe output frame.
-    if (encoded.bytes.empty() || encoded.bytes.size() > kMaxProductAccessUnitBytes) {
-      Fail("codec-probe-output", "encoder produced an invalid probe frame");
-    }
-    if (frame >= warmup_frames) measured += EncoderClock::now() - start;
+    // One encode is in flight, so a slow encoder delays every later source frame.
+    if (frame >= warmup_frames && EncoderClock::now() > due + interval * lag) return false;
+    const auto& texture = textures[frame % textures.size()];
+    auto output = encoder.Encode([&](UINT32 width, UINT32 height) {
+      if (width != profile.width || height != profile.height)
+        Fail("codec-probe-output", "encoder reduced the probe resolution");
+      return texture;
+    }, profile.width, profile.height,
+        (static_cast<UINT64>(frame) + 1) * profile.frame_duration_100ns(), frame == 0,
+        profile.bit_rate, deadline);
+    RequireEncoderTime(deadline);
+    if (frame >= warmup_frames && EncoderClock::now() > due + interval * lag) return false;
+    if (frame >= warmup_frames && output && !output->access_unit.bytes.empty()) ++delivered;
   }
-  return measured.count() / sample_frames;
+  return delivered + lag >= sample_frames;
 }
 
 struct VideoEncoderSelection final {
   OutputKind kind = OutputKind::vp8;
   std::unique_ptr<VideoEncoder> initial;
 };
-
-template <typename Measure>
-VideoEncoderSelection CompareSoftwareEncoder(std::unique_ptr<VideoEncoder> hardware,
-    std::optional<double> hardware_work, EncoderClock::time_point deadline, Measure measure) {
-  // No comparison is needed when only the ordinary VP8 path remains.
-  if (!hardware_work) return {};
-  try {
-    RequireEncoderTime(deadline);
-    const double software_work = measure();
-    if (software_work <= *hardware_work) return {};
-  } catch (const std::exception&) {}
-  // The deadline bounds new probing, not reuse of an already-proved encoder.
-  return {OutputKind::h264, std::move(hardware)};
-}
 
 using EncoderCandidate = std::pair<UINT, UINT>;
 
@@ -1319,16 +1306,12 @@ VideoEncoderSelection SelectVideoEncoder(
     device = CreateDevice(SelectAdapter(adapters, arguments.adapter_index));
     return {};
   }
-  const auto began = EncoderClock::now();
-  const auto budget = std::chrono::seconds(4);
-  const auto deadline = began + budget;
-  const auto hardware_deadline = arguments.codec == "auto" ? began + budget / 2 : deadline;
-  std::optional<double> hardware_work;
+  const auto deadline = EncoderClock::now() + std::chrono::seconds(4);
   std::unique_ptr<VideoEncoder> hardware;
   try {
     std::vector<EncoderCandidate> candidates;
     for (const auto& adapter : adapters) {
-      RequireEncoderTime(hardware_deadline);
+      RequireEncoderTime(deadline);
       try {
         const auto encoders = EnumerateHardwareEncoders(adapter, false);
         for (UINT index = 0; index < encoders.count; ++index)
@@ -1338,41 +1321,42 @@ VideoEncoderSelection SelectVideoEncoder(
       }
     }
     const auto chosen = SelectEncoderCandidate(candidates,
-        {arguments.adapter_index, arguments.mft_index}, hardware_deadline,
+        {arguments.adapter_index, arguments.mft_index}, deadline,
         [&](EncoderCandidate candidate) {
           const auto& adapter = SelectAdapter(adapters, candidate.first);
           auto next_device = CreateDevice(adapter);
           const auto encoders = EnumerateHardwareEncoders(adapter);
+          // Retire the Auto probe before preparing the live encoder, so selection
+          // does not require two simultaneous hardware sessions on this device.
+          if (arguments.codec == "auto" && !SustainsEncodedCadence(
+                  [&](const VideoProfile& profile) -> std::unique_ptr<VideoEncoder> {
+                    auto activations = EnumerateHardwareEncoders(adapter);
+                    return std::make_unique<LiveEncoder>(ActivateTransform(
+                        activations, candidate.second, next_device.manager.Get()), profile);
+                  },
+                  next_device.device.Get(), arguments.profile, deadline)) {
+            Fail("codec-probe-cadence", "hardware H264 did not sustain the target frame rate");
+          }
+          RequireEncoderTime(deadline);
           auto selected = ActivateTransform(encoders, candidate.second, next_device.manager.Get());
           auto next = std::make_unique<LiveEncoder>(std::move(selected), arguments.profile);
-          if (arguments.codec == "auto") {
-            hardware_work = MeasureEncoderWork(next.get(), next_device.device.Get(),
-                                               arguments.profile, hardware_deadline);
-          } else {
-            // Enumeration and activation alone do not prove usable H264 output.
-            const auto texture = CreateSyntheticTexture(next_device.device.Get(), 0, arguments.profile);
-            next->Encode(texture.Get(), 0, true, hardware_deadline);
-          }
-          RequireEncoderTime(hardware_deadline);
+          // Enumeration and activation alone do not prove usable H264 output.
+          const auto texture = CreateSyntheticTexture(next_device.device.Get(), 0, arguments.profile);
+          next->Encode(texture.Get(), 0, true, deadline);
+          RequireEncoderTime(deadline);
           device = std::move(next_device);
           hardware = std::move(next);
         });
     arguments.adapter_index = chosen.first;
     arguments.mft_index = chosen.second;
-    if (arguments.codec == "h264" || *hardware_work <= 1.0 / arguments.profile.frame_rate)
-      return {OutputKind::h264, std::move(hardware)};
+    return {OutputKind::h264, std::move(hardware)};
   } catch (const GateFailure&) {
     if (arguments.codec == "h264") throw;
-    hardware_work.reset();
     hardware.reset();
-    device = DeviceContext{};
   }
-  if (!device.device) {
-    device = CreateDevice(SelectAdapter(adapters, arguments.adapter_index));
-  }
-  return CompareSoftwareEncoder(std::move(hardware), hardware_work, deadline, [&] {
-    return MeasureEncoderWork(nullptr, device.device.Get(), arguments.profile, deadline);
-  });
+  // Without a sustaining hardware candidate, Auto starts the ordinary VP8 path.
+  device = CreateDevice(SelectAdapter(adapters, arguments.adapter_index));
+  return {};
 }
 
 struct CaptureInput final {

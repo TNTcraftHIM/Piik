@@ -29,7 +29,8 @@ class AdaptiveEncoder final {
 
   std::optional<AdaptiveAccessUnit> Encode(
       FrameProducer produce, UINT32 source_width, UINT32 source_height,
-      UINT64 timestamp100ns, bool key_frame, UINT32 bitrate);
+      UINT64 timestamp100ns, bool key_frame, UINT32 bitrate,
+      EncoderClock::time_point deadline = EncoderClock::time_point::max());
 
  private:
   class Impl;

@@ -140,9 +140,10 @@ class Readback final {
 class NativeVideoFrameBuffer : public webrtc::VideoFrameBuffer {
  public:
   NativeVideoFrameBuffer(ComPtr<ID3D11Texture2D> texture, UINT32 width, UINT32 height,
-                        UINT64 timestamp100ns, Readback& readback)
+                        UINT64 timestamp100ns, Readback& readback,
+                        EncoderClock::time_point deadline)
       : texture_(std::move(texture)), width_(width), height_(height),
-        timestamp100ns_(timestamp100ns), readback_(readback) {}
+        timestamp100ns_(timestamp100ns), readback_(readback), deadline_(deadline) {}
   Type type() const override { return Type::kNative; }
   int width() const override { return static_cast<int>(width_); }
   int height() const override { return static_cast<int>(height_); }
@@ -151,12 +152,14 @@ class NativeVideoFrameBuffer : public webrtc::VideoFrameBuffer {
   }
   ID3D11Texture2D* texture() const { return texture_.Get(); }
   UINT64 timestamp100ns() const { return timestamp100ns_; }
+  EncoderClock::time_point deadline() const { return deadline_; }
 
  private:
   ComPtr<ID3D11Texture2D> texture_;
   const UINT32 width_, height_;
   const UINT64 timestamp100ns_;
   Readback& readback_;
+  const EncoderClock::time_point deadline_;
 };
 
 class HardwareEncoder final : public webrtc::VideoEncoder {
@@ -269,7 +272,7 @@ class HardwareEncoder final : public webrtc::VideoEncoder {
         Fail("adaptive-h264-input", "H264 requires the selected native NV12 surface");
       const auto began = env_.clock().TimeInMilliseconds();
       const auto access_unit = encoder_->Encode(native->texture(), native->timestamp100ns(),
-                                                key_frame_pending_);
+                                                key_frame_pending_, native->deadline());
       key_frame_pending_ = false;
       webrtc::EncodedImage image;
       image.SetEncodedData(webrtc::EncodedImageBuffer::Create(
@@ -426,7 +429,8 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
   }
 
   std::optional<AdaptiveAccessUnit> Encode(FrameProducer produce, UINT32 source_width,
-      UINT32 source_height, UINT64 timestamp100ns, bool key_frame, UINT32 bitrate) {
+      UINT32 source_height, UINT64 timestamp100ns, bool key_frame, UINT32 bitrate,
+      EncoderClock::time_point deadline) {
     if (!produce || source_width == 0 || source_height == 0 ||
         source_width > ceiling_.width || source_height > ceiling_.height ||
         timestamp100ns > static_cast<UINT64>(std::numeric_limits<INT64>::max()))
@@ -476,7 +480,7 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
       }
       auto buffer = webrtc::make_ref_counted<NativeVideoFrameBuffer>(
           std::move(texture), static_cast<UINT32>(width), static_cast<UINT32>(height),
-          timestamp100ns, readback_);
+          timestamp100ns, readback_, deadline);
       source_sink_->OnFrame(webrtc::VideoFrame::Builder().set_video_frame_buffer(buffer)
           .set_timestamp_us(capture_us).set_ntp_time_ms(ntp_ms).build());
     });
@@ -643,9 +647,9 @@ AdaptiveEncoder::~AdaptiveEncoder() = default;
 
 std::optional<AdaptiveAccessUnit> AdaptiveEncoder::Encode(FrameProducer produce,
     UINT32 source_width, UINT32 source_height, UINT64 timestamp100ns,
-    bool key_frame, UINT32 bitrate) {
+    bool key_frame, UINT32 bitrate, EncoderClock::time_point deadline) {
   return impl_->Encode(std::move(produce), source_width, source_height, timestamp100ns,
-                       key_frame, bitrate);
+                       key_frame, bitrate, deadline);
 }
 
 }  // namespace piik::capture::windows
