@@ -12,6 +12,51 @@ history. A parked idea is not implementation authority.
   admission, and narrow/touch UI. Verify confirmed fixes through the existing
   owners before resuming feature polish. Keep field reports without matched
   evidence separate from locally reproduced defects.
+- [ ] **App control containment.** Server/page limits count relayed SDP and ICE
+  text in UTF-16 units, while Native control counts bytes. A multibyte remote
+  payload accepted upstream can therefore close the Host's entire control
+  session. Align the boundary and keep relayed-content failures scoped to their
+  request. Separately, synchronous start/source replacement blocks the control
+  loop; a full 64-message queue cancels it. Verify bounded backpressure and
+  cancellation without removing resource limits or adding a parallel owner.
+- [ ] **Committed SFU Viewer recovery.** Active subscription failure replaces
+  the Browser peer via `refresh-sfu`, but the returned configuration alone does
+  not start a new offer exchange. Repair recovery through the existing route
+  and subscription owners, including an interrupted `subscribe` request. The
+  prepared-P2P activation repair does not cover this committed SFU path.
+- [ ] **Host edge failure ownership.** Active Browser sender failure can leave
+  a disposed peer in the Host map until Viewer recovery acts, blocking local
+  replacement. Prepared children already report to their operation owner.
+  Review active-edge removal/reporting and Native SFU publication's treatment
+  of transient `disconnected` without changing the room graph or inventing a
+  second recovery owner. Server-issued edge IDs are an unaccepted proposal,
+  not a prerequisite for this fix.
+- [ ] **Per-edge signaling across session changes.** Target absence and session
+  replacement can discard descriptions or SFU replies. Audio renegotiation now
+  retires a stalled transaction after its deadline; that is not message replay.
+  Verify initial acquisition, established renegotiation and SFU subscriptions
+  through reconnect. Choose bounded recovery at the existing owner; any replay
+  must prove ordering, idempotence and generation fencing for both descriptions
+  and trickle candidates before changing the public delivery contract.
+- [ ] **Windows native helper cost.** Measure GPU texture/view allocation,
+  WGC update cadence, source-wide keyframe demand and frame-rate bitrate
+  compensation under game load before changing them. VP8 CPU cost and these
+  candidate costs do not establish the reported system-wide lag's cause.
+- [ ] **Access boundary review.** Keep the accepted room-code admission policy,
+  non-expiring rooms and 9,000-code bound. Verify application-owned frame
+  protection and site-cookie key derivation. Password derivation already has
+  bounded active/waiting work; measure cross-room fairness before changing it.
+- [ ] **Pre-merge release validation.** Damaged release-note text is detected
+  and transient mirror reads are retried, but validation still runs after
+  merge. Prepare a minimal pre-merge check consistent with the delivery owner.
+  Protected release environments, immutability and changing mirror failure
+  policy remain design decisions; do not enable them from this audit alone.
+- [ ] **Failure-sequence verification.** Existing WebRTC fakes cover constructor
+  throws and rejected candidates. Add missing owner-level combinations when
+  repairing the defects above: healthy media with lost signaling, pending work
+  after close, and failed consumers beside healthy siblings. Use real browser
+  gates where a fake cannot establish behavior; a universal shared fake is not
+  an accepted requirement.
 
 ## Deferred Feature Work
 
@@ -86,6 +131,8 @@ is active. Retain these decisions for resumption, not as parallel work.
   diagnostics, device/network details and any upstream relay's report; confirmed
   local repairs are not matched causes of these reports. Distinguish established
   viewing from the first-frame report below and signaling membership grace.
+  The per-edge signaling and committed SFU recovery items under Now are locally
+  established candidate causes, not matched evidence for these reporters.
 - [ ] **Windows 11 capture border remains visible.** Identify the App/Browser
   capture path, Windows build and capture-border permission result. Local checks
   reproduced a border surviving forced process termination; parent cancellation
@@ -110,7 +157,7 @@ is active. Retain these decisions for resumption, not as parallel work.
   [#419](https://github.com/TNTcraftHIM/Piik/issues/419)'s AMD manual-H264 failure
   also needs paired evidence; distinguish activation, codec configuration and
   actual output before changing the encoder contract. Local NVIDIA success
-  does not settle AMD activation or reported system-wide performance problems.
+  does not settle AMD activation.
 - [ ] **Share ends after entering a game.** Screen sharing reportedly works
   until entering a game freezes the picture, followed seconds later by share
   termination. Version, capture path, codec and matched diagnostics are unknown.
@@ -120,6 +167,10 @@ is active. Retain these decisions for resumption, not as parallel work.
   [capture research](./research/native-client-lifecycle.md#quiet-sources-and-viewer-recovery);
   do not conflate source silence, receiver decode interruption and capture-process
   failure, or assign the reported Host termination to a repaired Viewer defect.
+  An input accepted by hardware without matching output within its two-second
+  deadline fails the original output and can end a native Windows share. This
+  is a candidate mechanism, not evidence that ordinary source silence or this
+  reporter's game caused an encoder failure.
 - [ ] **Windows 32-bit candidate acceptance.** Verify the isolated
   `spike/windows-x86-capture` candidate's launch, capture/audio, memory pressure,
   source replacement and update links on a 32-bit Windows device. WOW64
@@ -132,6 +183,11 @@ is active. Retain these decisions for resumption, not as parallel work.
   Recheck on the reporting machine after the browser-handoff repair. The Windows
   URL-handler crash itself still needs the affected build and process/dump
   evidence; local checks cannot establish its underlying cause.
+- [ ] **System becomes very laggy after starting a share.** Obtain mode, actual
+  codec, profile, display refresh rate and CPU/GPU use, distinguishing startup
+  from sustained lag. Auto's local selection checks and NVIDIA success do not
+  establish this reporter's cause; software encoding and the helper costs under
+  Now remain candidate explanations.
 
 ## Next: P2P Connection And Feedback Evidence
 
@@ -170,18 +226,19 @@ not establish better connection success or speed; this note adds no retry policy
    score, all-pairs probes, periodic rebalancing, parent-wide prediction or
    room-wide minimum. Check whether a quality move merely shifts pressure to
    another parent's siblings before widening policy.
-3. **Control/resource fairness and input review.** Reassess the authenticated
-   WebSocket/SFU owner, HTTP/body/resource bounds, authorization and error/log
-   handling before adding a queue or limiter. No parallel security framework,
-   accounts, risk score or speculative policy layer.
-   Measure signaling-lock contention and synchronous diagnostic I/O before
+3. **Signaling execution model.** The concrete control/access boundary review
+   belongs to Now. Measure signaling-lock contention, synchronous persistence,
+   presence fan-out and diagnostic I/O before
    changing the lock or execution model; their cost remains a tradeoff.
+   No parallel security framework, accounts, risk score or speculative policy layer.
 4. **Reachable ownership/refactor work.** Retain Host/Viewer page media-session
    extraction as a candidate alongside related behavior changes. Evaluate clear
    resource owners, fewer shared writers and a smaller change surface under
    [engineering review](./standards/engineering.md#ablation-and-review); file
    size alone does not justify a split. The completed audits do not close this
-   candidate. Reopen C=3 structural-intent retention and multi-child evidence
+   candidate. Evaluate a per-share Host resource owner and a Viewer route owner
+   only with related behavior changes; fewer page-local refs alone do not prove
+   a simpler lifecycle. Reopen C=3 structural-intent retention and multi-child evidence
    ownership only with current-contract reproductions.
    When related behavior changes, compare the Browser/Native recovery budget;
    preserve Native bridge versus network failure distinctions when sharing code.
