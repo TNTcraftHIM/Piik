@@ -1435,19 +1435,22 @@ export function ViewerPage({
             parentPeerId,
             connectionId,
           ): boolean => {
-            if (viewerSfuRoute) {
-              return reportActivePeerFailure(
-                parentPeerId,
+            // Report P2P failure to trigger server-side SFU fallback
+            if (
+              currentRouteAssignment?.upstream.kind === "peer" &&
+              currentRouteAssignment.upstream.peerId === parentPeerId &&
+              currentRouteRevision !== null
+            ) {
+              // Send route-failed directly to server
+              signal.send({
+                type: "route-failed",
+                revision: currentRouteRevision,
+                phase: "active",
                 connectionId,
-                peer,
-              );
+              });
             }
-            invalidateQualityPresentation();
-            dispatchPresentation({
-              type: "route-status",
-              revision: currentRouteRevision,
-              state: "failed",
-            });
+            // Also ensure SFU route is ready for incoming SFU config
+            ensureViewerSfuRoute();
             return true;
           },
         },
