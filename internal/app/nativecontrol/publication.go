@@ -34,12 +34,18 @@ func (session *Session) handlePublication(envelope requestEnvelope, payload []by
 			return nil, err
 		}
 	case "publication-answer":
-		if err := decodeStrict(payload, &answer); err != nil || len(answer.SDP) == 0 || len(answer.SDP) > maxSDPBytes {
+		if err := decodeStrict(payload, &answer); err != nil {
 			return nil, protocolViolation("native publication answer is invalid")
 		}
+		if !validSDP(answer.SDP) {
+			return nil, errors.New("relayed publication answer is invalid")
+		}
 	case "publication-candidate":
-		if err := decodeStrict(payload, &candidate); err != nil || !validCandidate(candidate.Candidate) {
+		if err := decodeStrict(payload, &candidate); err != nil {
 			return nil, protocolViolation("native publication candidate is invalid")
+		}
+		if !validCandidate(candidate.Candidate) {
+			return nil, errors.New("relayed publication candidate is invalid")
 		}
 	case "publication-layers":
 		if err := decodeStrict(payload, &layers); err != nil || layers.ActiveCount == nil || *layers.ActiveCount < 0 || *layers.ActiveCount > 3 {

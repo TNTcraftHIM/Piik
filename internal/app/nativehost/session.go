@@ -399,7 +399,6 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 }
 
 func (session *Session) ReplaceSource(
-	ctx context.Context,
 	options nativecapture.VideoOptions,
 	audioEnabled bool,
 ) error {
@@ -423,14 +422,14 @@ func (session *Session) ReplaceSource(
 	}
 	options.Profile = profile.Video
 	options.RestoreToken = ""
-	replacement, state, err := session.prepareVideo(ctx, options, options.Target.Kind == "picker", false)
+	replacement, state, err := session.prepareVideo(session.ctx, options, options.Target.Kind == "picker", false)
 	if err != nil {
 		return err
 	}
 	var replacementAudio *nativecapture.Stream
 	if audioEnabled {
 		replacementAudio, err = startAudioCapture(
-			ctx,
+			session.ctx,
 			session.captureProcess,
 			options.Target,
 		)

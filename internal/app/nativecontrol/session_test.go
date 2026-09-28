@@ -21,6 +21,35 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+// Production responses may arrive through Events while the command loop keeps
+// processing ICE, ping and stop. Tests wait only for this exact request ID.
+func awaitControlResponse(t *testing.T, session *Session, payload []byte) (any, error) {
+	t.Helper()
+	value, err := session.Handle(t.Context(), payload)
+	if value != nil || err != nil {
+		return value, err
+	}
+	var request requestEnvelope
+	if err := json.Unmarshal(payload, &request); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case value := <-session.Events():
+			encoded, _ := json.Marshal(value)
+			var envelope responseEnvelope
+			_ = json.Unmarshal(encoded, &envelope)
+			if envelope.ID == request.ID {
+				return value, nil
+			}
+		case <-deadline.C:
+			t.Fatalf("request %s lost its response", request.ID)
+		}
+	}
+}
+
 func TestReceiveOfferReusePreservesLegacyResponseShape(t *testing.T) {
 	peer, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -78,6 +107,11 @@ func runQuietCaptureFixture(directory string) {
 	arguments, _ := json.Marshal(os.Args[1:])
 	if err := os.WriteFile(filepath.Join(directory, "arguments.json"), arguments, 0600); err != nil {
 		os.Exit(1)
+	}
+	if os.Getenv("PIIK_PENDING_CAPTURE_FIXTURE") == "true" {
+		_ = os.WriteFile(filepath.Join(directory, "prepared"), nil, 0600)
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		return
 	}
 	var state nativehost.CaptureState
 	state.State, state.Codec = "starting", "vp8"
@@ -164,7 +198,7 @@ func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing
 				MicrophoneMixing: optIn, EdgeCapacity: 1, Codec: "vp8",
 				Profile: qualitySettings{Resolution: "1080p", MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
 			payload, _ := json.Marshal(request)
-			result, err := session.Handle(t.Context(), payload)
+			result, err := awaitControlResponse(t, session, payload)
 			started, ok := result.(shareStartedResponse)
 			if err != nil || !ok {
 				t.Fatalf("start failed: %v %#v", err, result)
@@ -225,7 +259,7 @@ func TestCaptureBorderPreferenceFollowsSourceAndProfile(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				value, err := session.Handle(t.Context(), payload)
+				value, err := awaitControlResponse(t, session, payload)
 				if _, failed := value.(requestFailedResponse); err != nil || failed {
 					t.Fatalf("capture request failed: %v, %#v", err, value)
 				}
@@ -290,7 +324,13 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 			t.Cleanup(func() { _ = session.Close() })
 			handle := func(payload string) any {
 				t.Helper()
-				value, err := session.Handle(t.Context(), []byte(payload))
+				var value any
+				var err error
+				if strings.Contains(payload, `"type":"start-share"`) {
+					value, err = awaitControlResponse(t, session, []byte(payload))
+				} else {
+					value, err = session.Handle(t.Context(), []byte(payload))
+				}
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -361,9 +401,6 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 				}
 			case "stop":
 				handle(`{"version":9,"id":"request_stop","type":"stop-share","shareId":"share_123456"}`)
-				if _, ok := handle(strings.ReplaceAll(start, "share_123456", "share_restart")).(shareStartedResponse); !ok {
-					t.Fatal("stopped update blocked a new share")
-				}
 			case "disconnect":
 				if err = session.Close(); err != nil {
 					t.Fatal(err)
@@ -417,6 +454,11 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 			_, success := responseFor("request_update").(shareUpdatedResponse)
 			if success != (outcome == "complete") {
 				t.Fatal("deferred response did not match capture outcome")
+			}
+			if outcome == "stop" {
+				if _, ok := handle(strings.ReplaceAll(start, "share_123456", "share_restart")).(shareStartedResponse); !ok {
+					t.Fatal("stopped update blocked a new share")
+				}
 			}
 			if outcome == "complete" {
 				if value := handle(strings.Replace(update, "request_update", "request_followup", 1)); value != nil {

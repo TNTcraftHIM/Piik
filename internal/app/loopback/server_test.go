@@ -363,7 +363,7 @@ func TestControlSessionProcessesARequestBurstInOrder(t *testing.T) {
 	writeControl(t, connection, requestJSON("request_hello", "hello"))
 	var ready controlMessage
 	readControl(t, connection, &ready)
-	const burst = 32
+	const burst = controlQueueSize * 2
 	for index := 0; index < burst; index++ {
 		writeControl(t, connection, requestJSON(
 			fmt.Sprintf("request_extension_%d", index), "extension",
