@@ -453,11 +453,17 @@ func (c *Controller) settleCandidateQuality(op *operation, att *attempt, state S
 	persistentQualityPeerDegradation := op.reason == DemandQualityConvergence &&
 		att.tuple.Kind == UpstreamPeer &&
 		consecutiveDegradedWindows >= persistentDegradedWindows
+	persistentQualitySfuDegradation := op.reason == DemandQualityConvergence &&
+	att.tuple.Kind == UpstreamSfu &&
+	consecutiveDegradedWindows >= persistentDegradedWindows
 	var settled *SettleResult
 	if state == SenderQualityDegraded &&
 		(att.tuple.Kind != UpstreamPeer ||
 			op.reason != DemandQualityConvergence ||
-			persistentQualityPeerDegradation) {
+			persistentQualityPeerDegradation) &&
+		(att.tuple.Kind != UpstreamSfu ||
+			op.reason != DemandQualityConvergence ||
+			persistentQualitySfuDegradation) {
 		result := c.CandidateFailed(guard, acceptedAtMs)
 		settled = &result
 	} else if att.mediaReady &&
