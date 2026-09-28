@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-22
+Last updated: 2026-09-29
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -14,7 +14,8 @@ and Git/PRs own completed history.
 - Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
   expiry; explicit replacement/deletion or grant rotation/revocation ends the
   corresponding authority. Explicit memory mode and App Local end rooms at
-  process exit. Site access retains its separate 24-hour idle lifetime.
+  process exit. Site access retains its separate 24-hour idle lifetime within
+  one service run; service restart requires site-password entry again.
 - Browser/App entry lifecycle and current-edge reconnect ownership repairs
   are implemented. Browser node-local pooling and detailed local Debug export
   remain part of the accepted media surface. Product modules own their behavior;

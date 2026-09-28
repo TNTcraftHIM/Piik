@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-28
+Last reviewed: 2026-09-29
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
@@ -12,51 +12,10 @@ history. A parked idea is not implementation authority.
   admission, and narrow/touch UI. Verify confirmed fixes through the existing
   owners before resuming feature polish. Keep field reports without matched
   evidence separate from locally reproduced defects.
-- [ ] **App control containment.** Server/page limits count relayed SDP and ICE
-  text in UTF-16 units, while Native control counts bytes. A multibyte remote
-  payload accepted upstream can therefore close the Host's entire control
-  session. Align the boundary and keep relayed-content failures scoped to their
-  request. Separately, synchronous start/source replacement blocks the control
-  loop; a full 64-message queue cancels it. Verify bounded backpressure and
-  cancellation without removing resource limits or adding a parallel owner.
-- [ ] **Committed SFU Viewer recovery.** Active subscription failure replaces
-  the Browser peer via `refresh-sfu`, but the returned configuration alone does
-  not start a new offer exchange. Repair recovery through the existing route
-  and subscription owners, including an interrupted `subscribe` request. The
-  prepared-P2P activation repair does not cover this committed SFU path.
-- [ ] **Host edge failure ownership.** Active Browser sender failure can leave
-  a disposed peer in the Host map until Viewer recovery acts, blocking local
-  replacement. Prepared children already report to their operation owner.
-  Review active-edge removal/reporting and Native SFU publication's treatment
-  of transient `disconnected` without changing the room graph or inventing a
-  second recovery owner. Server-issued edge IDs are an unaccepted proposal,
-  not a prerequisite for this fix.
-- [ ] **Per-edge signaling across session changes.** Target absence and session
-  replacement can discard descriptions or SFU replies. Audio renegotiation now
-  retires a stalled transaction after its deadline; that is not message replay.
-  Verify initial acquisition, established renegotiation and SFU subscriptions
-  through reconnect. Choose bounded recovery at the existing owner; any replay
-  must prove ordering, idempotence and generation fencing for both descriptions
-  and trickle candidates before changing the public delivery contract.
 - [ ] **Windows native helper cost.** Measure GPU texture/view allocation,
   WGC update cadence, source-wide keyframe demand and frame-rate bitrate
   compensation under game load before changing them. VP8 CPU cost and these
   candidate costs do not establish the reported system-wide lag's cause.
-- [ ] **Access boundary review.** Keep the accepted room-code admission policy,
-  non-expiring rooms and 9,000-code bound. Verify application-owned frame
-  protection and site-cookie key derivation. Password derivation already has
-  bounded active/waiting work; measure cross-room fairness before changing it.
-- [ ] **Pre-merge release validation.** Damaged release-note text is detected
-  and transient mirror reads are retried, but validation still runs after
-  merge. Prepare a minimal pre-merge check consistent with the delivery owner.
-  Protected release environments, immutability and changing mirror failure
-  policy remain design decisions; do not enable them from this audit alone.
-- [ ] **Failure-sequence verification.** Existing WebRTC fakes cover constructor
-  throws and rejected candidates. Add missing owner-level combinations when
-  repairing the defects above: healthy media with lost signaling, pending work
-  after close, and failed consumers beside healthy siblings. Use real browser
-  gates where a fake cannot establish behavior; a universal shared fake is not
-  an accepted requirement.
 
 ## Deferred Feature Work
 
@@ -131,8 +90,8 @@ is active. Retain these decisions for resumption, not as parallel work.
   diagnostics, device/network details and any upstream relay's report; confirmed
   local repairs are not matched causes of these reports. Distinguish established
   viewing from the first-frame report below and signaling membership grace.
-  The per-edge signaling and committed SFU recovery items under Now are locally
-  established candidate causes, not matched evidence for these reporters.
+  Locally verified per-edge signaling and committed SFU recovery repairs do not
+  establish a matched cause for these reporters.
 - [ ] **Windows 11 capture border remains visible.** Identify the App/Browser
   capture path, Windows build and capture-border permission result. Local checks
   reproduced a border surviving forced process termination; parent cancellation
@@ -226,10 +185,9 @@ not establish better connection success or speed; this note adds no retry policy
    score, all-pairs probes, periodic rebalancing, parent-wide prediction or
    room-wide minimum. Check whether a quality move merely shifts pressure to
    another parent's siblings before widening policy.
-3. **Signaling execution model.** The concrete control/access boundary review
-   belongs to Now. Measure signaling-lock contention, synchronous persistence,
-   presence fan-out and diagnostic I/O before
-   changing the lock or execution model; their cost remains a tradeoff.
+3. **Signaling execution model.** Measure signaling-lock contention, synchronous
+   persistence, presence fan-out, diagnostic I/O and cross-room password-work
+   fairness before changing the lock or execution model; their cost remains a tradeoff.
    No parallel security framework, accounts, risk score or speculative policy layer.
 4. **Reachable ownership/refactor work.** Retain Host/Viewer page media-session
    extraction as a candidate alongside related behavior changes. Evaluate clear
@@ -275,3 +233,6 @@ not establish better connection success or speed; this note adds no retry policy
     `2160p`, so preserve published Browser/App/Server compatibility through explicit
     receiving-end support before exposing or sending the new setting. Include
     source replacement, lower outputs and resource limits in acceptance.
+11. **Release-operation policy.** Protected release environments, immutable
+    draft assets and changing mirror-failure policy remain unaccepted proposals;
+    evaluate their benefit before adding release machinery.

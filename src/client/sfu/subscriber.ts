@@ -65,6 +65,12 @@ export class SfuSubscriber {
     this.peer?.updateConfig(config);
   }
 
+  // Reauthentication cannot establish whether a lost offer/answer was applied.
+  // Retire that exact subscription through the route owner; do not replay SDP.
+  resync(): void {
+    if (this.restartPending) this.fail();
+  }
+
   async acceptSignal(message: SfuSignalMessage): Promise<void> {
     const peer = this.peer;
     if (!peer) return;
@@ -77,7 +83,7 @@ export class SfuSubscriber {
         await peer.sendDescription(
           preferScreenAudioStereo(await peer.waitForOperation(() => peer.pc.createAnswer())),
         );
-        this.restartPending = false;
+        if (peer.pc.connectionState === "connected") this.restartPending = false;
       });
     } catch {
       if (this.peer === peer) this.fail();
@@ -102,13 +108,12 @@ export class SfuSubscriber {
   reconnect(): boolean {
     if (
       !this.active ||
-      this.restartPending ||
-      !this.peer?.send({ kind: "subscribe" })
+      this.restartPending || !this.peer
     )
       return false;
     this.restartPending = true;
     this.events.onState?.("reconnecting");
-    return true;
+    return this.peer.send({ kind: "subscribe" });
   }
 
   armDecodedFrameProof(requireProgress = false): void {

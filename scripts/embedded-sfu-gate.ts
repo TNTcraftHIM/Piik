@@ -89,11 +89,11 @@ async function main(): Promise<void> {
     startedAt: new Date().toISOString(), finishedAt: "", processes: [] as Array<{ role: string; pid: number | null }>,
     high: null as { frames: number; width: number; height: number } | null,
     low: null as { frames: number; width: number; height: number } | null,
-    audioEnergy: { high: 0, low: 0 },
+    audioEnergy: { high: 0, low: 0, recovered: 0 },
     audioDiagnostics: null as unknown,
     secondRoom: twoRooms ? { connected: false, framesAfterFirstStopped: 0, audioBefore: 0, audioAfter: 0, stopped: false } : null,
     host: null as Snapshot | null, viewer: null as Snapshot | null,
-    publicationRetired: false, nativeShareStopped: !nativeArm, udpReleased: false, cleanup: false, error: null as string | null };
+    publicationRetired: false, subscriptionRecovered: false, nativeShareStopped: !nativeArm, udpReleased: false, cleanup: false, error: null as string | null };
   let server: ChildProcessWithoutNullStreams | null = null;
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let vite: ViteDevServer | null = null;
@@ -132,13 +132,14 @@ async function main(): Promise<void> {
   try {
     server = spawn(binary, [], { cwd: ROOT, stdio: "pipe", windowsHide: true,
       env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot,
-        PIIK_ENV: "development", LISTEN_HOST: "127.0.0.1", PORT: String(serverPort),
+        PIIK_ENV: "development", PIIK_DEBUG: "route", LISTEN_HOST: "127.0.0.1", PORT: String(serverPort),
+        PIIK_LOG_DIR: join(BUILD_ROOT, "logs"),
         PUBLIC_BASE_URL: origin, ALLOWED_ORIGINS: origin,
         SFU_LISTEN_HOST: "127.0.0.1", SFU_UDP_PORT: String(mediaPort), SFU_PUBLIC_IP: "127.0.0.1" },
     });
     processStarted("server", server);
     server.stdout.resume();
-    server.stderr.on("data", (data: Buffer) => { serverError = (serverError + data.toString()).slice(-2000); });
+    server.stderr.on("data", (data: Buffer) => { serverError = (serverError + data.toString()).slice(-16000); });
     await waitForSample((deadline) => fetchJsonBefore<{ status: string }>(`${backend}/healthz`, deadline),
       () => true, 15_000);
     vite = await createViteServer({ root: ROOT, configFile: false, appType: "custom", logLevel: "silent",
@@ -241,6 +242,18 @@ async function main(): Promise<void> {
     result.low = await call(viewer, "gate.waitForFrames(854, 480)");
     await waitForSample(() => call<number>(viewer!, "gate.audioEnergy()", 3_000),
       (energy) => { result.audioEnergy.low = energy; return energy > result.audioEnergy.high; }, 5_000);
+    result.stage = "committed-subscription-recovery";
+    const previousSubscription = await call<string>(viewer, "gate.failSubscription()");
+    // Terminal failure consumes this exact opportunity. A new authenticated
+    // session reopens acquisition; configuration refresh alone cannot do so.
+    await until(viewer, value => value.routeStatus === "failed");
+    await call(viewer, `gate.reconnectViewer(${JSON.stringify(room)})`);
+    await until(viewer, value => value.committed && value.connectionId !== previousSubscription && value.audioKbps > 0);
+    await call(viewer, "gate.waitForFrames(854, 480)");
+    await waitForSample(() => call<number>(viewer!, "gate.audioEnergy()", 3_000),
+      energy => { result.audioEnergy.recovered = energy; return energy > 0; }, 5_000);
+    result.viewer = await call(viewer, "gate.snapshot()");
+    result.subscriptionRecovered = true;
     result.stage = "publication-retirement";
     await call(host, "gate.stopSharing()");
     await until(host, (value) => value.publicationRetired);
@@ -265,9 +278,10 @@ async function main(): Promise<void> {
     }
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error);
+    if (viewer && cdp) result.viewer = await call<Snapshot>(viewer, "gate.snapshot()", 3_000).catch(() => null);
     if (viewer && cdp && result.stage === "decoded-audio-energy") result.audioDiagnostics = await evaluate(
       cdp, viewer, "window.__piikGateAudioStats ?? null", Date.now() + 3_000).catch(() => null);
-    if (server?.exitCode !== null && serverError) result.error += `; server: ${serverError}`;
+    if (serverError) result.error += `; server: ${serverError}`;
   } finally {
     const pagesStopped = await Promise.all([host, viewer, secondHost, secondViewer].map((page) =>
       page && cdp ? call<boolean>(page, "gate.stop()", 5_000).catch(() => false) : true));
@@ -291,8 +305,8 @@ async function main(): Promise<void> {
   result.passed = !result.error && result.host?.published === true && result.host.simulcast &&
     result.viewer?.decoded === true && result.viewer.committed && result.viewer.peerFailures > 0 &&
     result.viewer.audioKbps > 0 && result.audioEnergy.high > 0 && result.audioEnergy.low > result.audioEnergy.high &&
-    result.high !== null && result.low !== null &&
-    result.publicationRetired && result.cleanup && result.nativeShareStopped &&
+    result.high !== null && result.low !== null && result.audioEnergy.recovered > 0 &&
+    result.publicationRetired && result.subscriptionRecovered && result.cleanup && result.nativeShareStopped &&
     (!result.secondRoom || result.secondRoom.connected && result.secondRoom.framesAfterFirstStopped >= 30 &&
       result.secondRoom.audioBefore > 0 && result.secondRoom.audioAfter > result.secondRoom.audioBefore && result.secondRoom.stopped) &&
     (!nativeArm || result.host.nativeShareStarted && result.host.nativeFramesPerSecond > 0 && result.host.nativeBitrateKbps > 0 && result.host.nativeEncodingCount === 2);

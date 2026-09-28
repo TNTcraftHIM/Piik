@@ -189,7 +189,13 @@ retain after those resources close. ADR-0005's graph and operation rules remain;
 
 Transient room-signaling loss does not close healthy SFU media. The current
 physical connection can restart ICE; actual terminal media failure returns to
-the same bounded route recovery. Source capture remains Host-owned throughout.
+the same bounded route recovery, identifying the failed physical connection.
+An active configuration describes that connection; it cannot create a replacement
+Browser subscriber. Replacement needs the controller's prepared subscription and
+first-frame proof. Reauthentication during an unfinished restart also returns
+that subscription to its route owner; sending an answer is not connection proof.
+An exhausted opportunity remains an explicit failure until an eligible new fact
+reopens acquisition. Source capture remains Host-owned throughout.
 
 ## Quality And Privacy Boundaries
 

@@ -26,6 +26,7 @@ interface ViewerSubscriberTransport {
   updateConfig(config: SfuConnectionConfig): void;
   acceptSignal(message: SfuSignalMessage): Promise<void>;
   reconnect(): boolean;
+  resync(): void;
   activate(): boolean;
   deactivate(): boolean;
   armDecodedFrameProof(requireProgress?: boolean): void;
@@ -36,7 +37,6 @@ interface ViewerSubscriberTransport {
 interface ViewerSubscriberSlot {
   connectionId: string;
   revision: number;
-  phase: MediaRoutePhase;
   publicationGeneration: string;
   subscriber: ViewerSubscriberTransport;
   connected: boolean;
@@ -102,7 +102,6 @@ export class ViewerSfuRoute {
   private readonly route = new MediaRouteTransition();
   private pending: ViewerSubscriberSlot | null = null;
   private active: ViewerSubscriberSlot | null = null;
-  private recovery: { revision: number; refreshed: boolean } | null = null;
   private pendingPeer: { revision: number; connectionId: string } | null = null;
   private transitionTail: Promise<void> = Promise.resolve();
   private resyncGeneration = 0;
@@ -125,28 +124,12 @@ export class ViewerSfuRoute {
       previousMediaAssignment,
       update.assignment,
     );
-    const continuingRecovery = previousRevision !== update.revision &&
-      sameCommittedMedia && this.recovery !== null;
     const result = this.route.accept(update);
     if (result === "stale") {
       return result;
     }
     if (this.active) {
       this.active.subscriber.updateConfig({ ...this.active, revision: update.revision });
-    }
-    if (continuingRecovery) {
-      if (this.active) {
-        this.active.revision = update.revision;
-      }
-      if (this.pending?.phase === "active") {
-        this.pending.revision = update.revision;
-      }
-      if (this.recovery) {
-        this.recovery.revision = update.revision;
-        if (this.pending === null) {
-          this.recovery.refreshed = false;
-        }
-      }
     }
     const pausedActiveReconciliation =
       this.paused && update.phase === "active" && result !== "duplicate";
@@ -169,7 +152,6 @@ export class ViewerSfuRoute {
       );
     }
     if (previousRevision !== update.revision && !sameCommittedMedia) {
-      this.recovery = null;
       if (
         update.phase !== "prepare" &&
         this.pendingPeer !== null
@@ -314,7 +296,6 @@ export class ViewerSfuRoute {
         sameUpstream(currentMediaAssignment, update.assignment) &&
         (update.assignment.upstream.kind !== "sfu" ||
           (this.active?.activated &&
-            !this.active.failed &&
             this.active.publicationGeneration ===
               update.assignment.sfuPublicationGeneration)),
     );
@@ -324,7 +305,17 @@ export class ViewerSfuRoute {
     ) {
       const result = this.accept(update, false);
       if (result !== "stale") {
+        const active = this.active;
+        const token = this.route.token();
         await this.transitionTail;
+        if (!this.closed && token && this.route.owns(token) &&
+            preservesActiveMedia && active && this.active === active) {
+          if (active.failed) {
+            this.routeFailed(update.revision, "active", active.connectionId);
+          } else {
+            active.subscriber.resync();
+          }
+        }
         return result;
       }
     }
@@ -332,7 +323,6 @@ export class ViewerSfuRoute {
     const resyncGeneration = ++this.resyncGeneration;
     this.resyncing = true;
     this.route.reset();
-    this.recovery = null;
     this.events.prepareChild?.(null);
     const pending = this.pending;
     const active = this.active;
@@ -408,10 +398,12 @@ export class ViewerSfuRoute {
       this.active.activated &&
       this.active.connectionId === message.connectionId
     ) {
-      this.active.subscriber.updateConfig(message);
-      if (phase === "active") {
-        await this.queueActiveRoute(token, true, this.paused);
+      if (this.active.failed) {
+        this.routeFailed(message.revision, "active", message.connectionId);
+        return;
       }
+      this.active.subscriber.updateConfig(message);
+      await this.queueActiveRoute(token, true, this.paused);
       return;
     }
     if (
@@ -421,6 +413,13 @@ export class ViewerSfuRoute {
       !this.pending.failed
     ) {
       this.pending.subscriber.updateConfig(message);
+      return;
+    }
+
+    // Active config only describes an existing server-side connection. A new
+    // local peer would have no offer; ask the graph owner to replace that edge.
+    if (phase === "active") {
+      this.routeFailed(message.revision, "active", message.connectionId);
       return;
     }
 
@@ -478,7 +477,6 @@ export class ViewerSfuRoute {
     slot = {
       connectionId: message.connectionId,
       revision: message.revision,
-      phase,
       publicationGeneration,
       subscriber,
       connected: false,
@@ -499,7 +497,7 @@ export class ViewerSfuRoute {
     try {
       const connected = await subscriber.connect(message);
       if (!connected) {
-        const currentToken = this.currentPendingToken(slot, token);
+        const currentToken = (this.route.owns(token) ? token : null);
         if (this.pending === slot && currentToken) {
           slot.revision = currentToken.revision;
           this.handleFailure(slot);
@@ -512,7 +510,7 @@ export class ViewerSfuRoute {
         await disconnectSubscriber(subscriber);
         return;
       }
-      const currentToken = this.currentPendingToken(slot, token);
+      const currentToken = (this.route.owns(token) ? token : null);
       if (this.pending !== slot || !currentToken) {
         if (this.pending === slot) {
           this.pending = null;
@@ -531,9 +529,6 @@ export class ViewerSfuRoute {
       slot.activated = true;
       if (!this.paused) {
         subscriber.armDecodedFrameProof();
-      }
-      if (slot.phase === "active" && !this.resyncing) {
-        await this.queueActiveRoute(currentToken, true);
       }
     } catch {
       this.failSubscriberSlot(slot);
@@ -567,7 +562,6 @@ export class ViewerSfuRoute {
     this.resyncGeneration += 1;
     this.resyncing = false;
     this.route.reset();
-    this.recovery = null;
     this.pendingPeer = null;
     this.events.preparePeer?.(null);
     this.events.prepareChild?.(null);
@@ -642,6 +636,7 @@ export class ViewerSfuRoute {
           this.active?.publicationGeneration ===
             assignment.sfuPublicationGeneration &&
           this.active?.activated &&
+          !this.active.failed &&
           this.pending?.publicationGeneration !== assignment.sfuPublicationGeneration
         ) {
           this.clearPending();
@@ -707,6 +702,10 @@ export class ViewerSfuRoute {
   ): Promise<void> {
     const assignment = this.route.getActiveAssignment();
     const publicationGeneration = assignment?.sfuPublicationGeneration;
+    if (this.active?.failed && this.active.publicationGeneration === publicationGeneration && !this.pending) {
+      this.routeFailed(token.revision, "active", this.active.connectionId);
+      return;
+    }
     if (
       this.active?.revision === token.revision &&
       this.active.publicationGeneration === publicationGeneration &&
@@ -726,7 +725,7 @@ export class ViewerSfuRoute {
         this.route.owns(token, "active") &&
         pending === null
       ) {
-        this.requestRecovery(token.revision);
+        this.events.send({ type: "refresh-sfu", revision: token.revision });
       }
       return;
     }
@@ -819,7 +818,6 @@ export class ViewerSfuRoute {
       await disconnectSubscriber(slot.subscriber);
       return;
     }
-    this.recovery = null;
     this.events.onSfuStream(slot.stream, assignment, true, slot.revision);
     if (previous && previous !== slot) {
       previous.failed = true;
@@ -852,7 +850,6 @@ export class ViewerSfuRoute {
     if (!this.route.markMediaActive(token)) {
       return;
     }
-    this.recovery = null;
   }
 
   private clearPending(): void {
@@ -925,7 +922,6 @@ export class ViewerSfuRoute {
       this.pending = null;
     }
     if (wasActive) {
-      this.active = null;
       this.events.onSfuUpdate?.(null, slot.revision);
     }
 
@@ -939,33 +935,19 @@ export class ViewerSfuRoute {
     if (revision === null || phase === null) {
       return;
     }
-    if (phase === "prepare") {
+    if (wasActive) {
       const activeRevision = this.route.getActiveRevision();
       const activeAssignment = this.route.getActiveAssignment();
-      if (wasActive) {
-        if (
-          activeRevision !== null &&
-          activeAssignment?.upstream.kind === "sfu" &&
-          activeAssignment.sfuPublicationGeneration === slot.publicationGeneration
-        ) {
-          this.routeFailed(activeRevision, "active", slot.connectionId);
-        }
-      } else if (matchesPlannedRoute) {
-        this.routeFailed(revision, "prepare");
+      if (
+        activeRevision !== null &&
+        activeAssignment?.upstream.kind === "sfu" &&
+        activeAssignment.sfuPublicationGeneration === slot.publicationGeneration
+      ) {
+        this.routeFailed(activeRevision, "active", slot.connectionId);
       }
-      return;
+    } else if (matchesPlannedRoute) {
+      this.routeFailed(revision, phase, phase === "active" ? slot.connectionId : null);
     }
-    if (!matchesPlannedRoute) {
-      return;
-    }
-    if (
-      this.recovery?.revision === revision &&
-      this.recovery.refreshed
-    ) {
-      this.routeFailed(revision, "active", slot.connectionId);
-      return;
-    }
-    this.requestRecovery(revision);
   }
 
   private failSubscriberSlot(slot: ViewerSubscriberSlot): void {
@@ -974,38 +956,6 @@ export class ViewerSfuRoute {
       return;
     }
     this.handleFailure(slot);
-  }
-
-  private requestRecovery(revision: number): void {
-    if (!this.recovery || this.recovery.revision !== revision) {
-      this.recovery = { revision, refreshed: false };
-    }
-    if (!this.recovery.refreshed) {
-      if (this.events.send({ type: "refresh-sfu", revision })) {
-        this.recovery.refreshed = true;
-        return;
-      }
-    }
-  }
-
-  private currentPendingToken(
-    slot: ViewerSubscriberSlot,
-    original: RouteOperationToken,
-  ): RouteOperationToken | null {
-    if (this.route.owns(original)) {
-      return original;
-    }
-    if (slot.phase !== "active") {
-      return null;
-    }
-    const current = this.route.token();
-    const assignment = this.route.getActiveAssignment();
-    return current &&
-      this.route.owns(current, "active") &&
-      assignment?.upstream.kind === "sfu" &&
-      assignment.sfuPublicationGeneration === slot.publicationGeneration
-      ? current
-      : null;
   }
 
   private routeFailed(
