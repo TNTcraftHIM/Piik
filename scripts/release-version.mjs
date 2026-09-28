@@ -28,6 +28,13 @@ const nonProductPaths = [
   "cmd/piik-peer-gate/**",
 ].map((path) => `:(top,glob,exclude)${path}`);
 
+export function hasProductChanges(root, base, head) {
+  if (![base, head].every(value => /^[a-f0-9]{40}$/.test(value))) {
+    throw new Error("Product comparison requires full commit SHAs");
+  }
+  return git(root, "diff", "--name-only", "--no-renames", `${base}...${head}`, "--", ".", ...nonProductPaths) !== "";
+}
+
 // Both version selection and public notes use this same set of product commits.
 // Git handles deletions and moves across the boundary; no workflow path filter
 // can hide an earlier product change whose publication needs to be retried.

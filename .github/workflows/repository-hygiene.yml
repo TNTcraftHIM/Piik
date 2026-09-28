@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches:
       - main
@@ -25,7 +27,25 @@ concurrency:
   queue: max
 
 jobs:
+  release-notes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Validate PR release notes
+        run: node scripts/release-notes.mjs --pull-request
+
   validate:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.release.outputs.version }}
