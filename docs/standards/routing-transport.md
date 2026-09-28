@@ -139,6 +139,11 @@ without admitted overlap.
 Framework reconnect runs before route reassignment. Manual media reconnect also
 recovers only the current P2P parent or current SFU subscription; it does not
 perform quality selection or choose another route.
+A Viewer that loses room signaling keeps its membership and committed edges for
+20 seconds, covering the nominal backoff for the Browser's first five reconnect
+attempts; connection and authentication time can extend those attempts.
+Reconnecting with the same client rebinds retained edges. Signaling absence alone does not
+retire a media edge before then; its route failure or that window's expiry does.
 Current-edge P2P signaling remains valid during candidate overlap. Accepting a
 replacement from that parent cancels conflicting optional preparation so the
 replacement can complete; a retired candidate cannot take its place afterward.

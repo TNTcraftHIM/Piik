@@ -52,7 +52,9 @@ const (
 	serviceRestartCloseGrace = 1_000 * time.Millisecond
 
 	defaultAuthenticationTimeoutMs = 5_000
-	defaultViewerDisconnectGraceMs = 5_000
+	// Covers the Browser's nominal first five reconnect backoffs (about
+	// 0.5-15.5 s); connection/authentication time can extend those attempts.
+	defaultViewerDisconnectGraceMs = 20_000
 	defaultHeartbeatIntervalMs     = 30_000
 )
 
