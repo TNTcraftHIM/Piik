@@ -121,6 +121,14 @@ It does not require NAT prediction or reopen the route candidate. A prepared
 candidate instead follows its current route operation's failure path, without
 an independent restart loop.
 
+A Browser sender's subsequent audio-direction SDP transaction has a 15-second
+completion deadline. A lost offer/answer must not leave later microphone/source
+changes queued forever behind otherwise connected media. Timeout retires that
+exact edge through its existing preparation/recovery owner; coalesced changes
+do not renew the deadline. This also applies if audio changes during preparation.
+Initial acquisition and ICE restart retain their existing route/recovery deadlines;
+ordinary signaling loss without a pending media transaction preserves healthy media.
+
 When a newly committed Host-root Viewer exposes unused downstream capacity while
 another Host root has at least two direct children, the same background operation may
 move one of those children to the new root. The candidate must prove a healthy
