@@ -60,6 +60,11 @@ describe("release automation", () => {
         const invalid = commit(`chore: maintenance\n\n${section}`);
         expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("one nonempty");
       }
+      for (const damaged of ["????????????", "Updated \uFFFD capture"]) {
+        git("checkout", "--quiet", "--detach", next);
+        const invalid = commit(`fix: capture\n\n## Release notes\n${damaged}`);
+        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("damaged Release notes");
+      }
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 15_000); // Real Git subprocesses share the runner with the rest of the suite.
 

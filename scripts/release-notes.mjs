@@ -22,6 +22,9 @@ export function releaseNotes(root, version, revision, repository, { allowEmpty =
     if (!body || !body.split("\n").some((line) => line.trim() && !/^#{1,6}(\s|$)/.test(line))) {
       throw new Error(`Commit ${commit.revision} needs one nonempty ## Release notes section`);
     }
+    if (/\uFFFD|\?{3,}/u.test(body)) {
+      throw new Error(`Commit ${commit.revision} has damaged Release notes text; restore the UTF-8 source`);
+    }
     bodies.push(body);
   }
   if (!bodies.length) {

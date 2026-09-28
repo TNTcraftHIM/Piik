@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { openAsBlob } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { readReleaseArtifacts } from "./release-artifacts.mjs";
 
 const [directory, version, revision, option] = process.argv.slice(2);
@@ -14,14 +15,30 @@ const api = `https://gitee.com/api/v5/repos/${repository}`;
 const marker = `<!-- piik-source: ${revision} -->`;
 const token = process.env.GITEE_TOKEN?.trim();
 
+async function fetchResponse(url, options, timeout) {
+  const attempts = (options.method ?? "GET") === "GET" ? 3 : 1;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const response = await fetch(url, { ...options, signal: AbortSignal.timeout(timeout) });
+      if (attempt === attempts || ![408, 429, 500, 502, 503, 504].includes(response.status)) return response;
+      await response.body?.cancel();
+    } catch (error) {
+      if (attempt === attempts || !(error instanceof TypeError || error?.name === "TimeoutError")) throw error;
+    }
+    await delay(attempt * 1_000);
+  }
+}
+
 async function request(path, method = "GET", body) {
   const multipart = body instanceof FormData;
-  const response = await fetch(api + path, {
-    method, redirect: "error", signal: AbortSignal.timeout(multipart ? 180_000 : 20_000),
+  // A timed-out upload may already exist. Retry only reads; a script rerun
+  // reconciles attachment identities before any subsequent write.
+  const response = await fetchResponse(api + path, {
+    method, redirect: "error",
     headers: { Accept: "application/json", Authorization: `Bearer ${token}`,
       ...(!body || multipart ? {} : { "Content-Type": "application/json" }) },
     body: body ? multipart ? body : JSON.stringify(body) : undefined,
-  });
+  }, multipart ? 180_000 : 20_000);
   if (response.status === 404 && method === "GET") return null;
   if (!response.ok) throw new Error(`Gitee ${method} ${path}: HTTP ${response.status}`);
   return response.json();
@@ -33,7 +50,7 @@ async function verifyDownload(uploaded, file) {
   if (uploaded?.size !== file.size || uploaded.browser_download_url !== expectedURL) {
     throw new Error(`Mirror attachment metadata mismatch: ${file.name}`);
   }
-  const response = await fetch(expectedURL, { signal: AbortSignal.timeout(180_000) });
+  const response = await fetchResponse(expectedURL, {}, 180_000);
   if (!response.ok || !response.body) throw new Error(`Mirror attachment is not anonymously downloadable: ${file.name}`);
   const hash = createHash("sha256");
   let size = 0;
