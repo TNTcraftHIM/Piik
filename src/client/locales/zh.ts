@@ -236,9 +236,9 @@ export const zh = {
   "host.viewerOverview": "全员连接数据",
 
   "host.quality": "视频预设",
-  "host.quality.720p30": "720p · 30 帧",
-  "host.quality.1080p30": "1080p · 30 帧",
-  "host.quality.1080p60": "1080p · 60 帧",
+  "host.quality.720p30": "720p\u00a0· 30\u00a0帧",
+  "host.quality.1080p30": "1080p\u00a0· 30\u00a0帧",
+  "host.quality.1080p60": "1080p\u00a0· 60\u00a0帧",
   "host.advanced": "分享设置",
   "host.settings.button": "设置",
   "host.settings.picture": "画面",

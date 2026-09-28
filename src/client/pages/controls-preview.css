@@ -7,7 +7,7 @@
 .cp-number { font: 600 11px var(--mono); color: var(--ink); }
 .cp-card p, .cp-section-head p { margin: 12px 0 20px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .cp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
-.cp-tools > [role="group"]:not(.lr-lcd) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cp-tools > [role="group"]:not(.lr-lcd, .lr-toggle) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cp-tools .lr-input { max-width: 100%; }
 .cp-tools .lr-input input { width: 160px; }
 .cp-tools .lr-pill { max-width: 100%; }

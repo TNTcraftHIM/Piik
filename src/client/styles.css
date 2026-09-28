@@ -319,6 +319,16 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   height: 26px;
 }
 
+/* Keep playback controls reachable on a short landscape viewport. Entry and
+   source-picker panels retain their content-driven size; theater is explicit. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .lr-room { --tv-viewport-reserve: 128px; }
+  .lr-room:has(.lr-host-share-controls) { --tv-viewport-reserve: 200px; }
+  .lr-room:not(.is-theater) .lr-tv:has(.lr-playback):not(:has(.has-entry)) {
+    width: min(960px, 100%, calc(max(168px, 100svh - var(--tv-viewport-reserve)) * 16 / 9 + 30px));
+  }
+}
+
 @keyframes lr-crt {
   0% { filter: brightness(3); transform: scaleY(.012); }
   55% { filter: brightness(1.6); transform: scaleY(1.02); }
@@ -900,6 +910,7 @@ html[data-theme="dark"] .lr-viewer-host-slot svg { color: #9bb0c5; }
   max-width: 340px;
   flex: 1 1 240px;
   overflow: hidden;
+  text-overflow: ellipsis;
   padding: 7px 10px;
   border: 1.5px dashed var(--wall-2);
   border-radius: 8px;
@@ -1810,7 +1821,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-sharing-section .lr-door-glyph .lr-cap { white-space: normal; }
 .lr-sharing-limits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .lr-sharing-panel .lr-slider { width: 100%; }
-.lr-sharing-panel .lr-slider output { min-width: 5ch; }
+.lr-sharing-panel .lr-slider output { min-width: 9ch; }
 .lr-sharing-section .lr-tiles { gap: 8px; }
 .lr-sharing-section .lr-tiles > .lr-comic-tip-wrap { flex: 1; min-width: 0; }
 .lr-sharing-section .lr-tile { width: 100%; min-width: 0; padding: 8px 5px; gap: 2px; border-radius: 14px; }

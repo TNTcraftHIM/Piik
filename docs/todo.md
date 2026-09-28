@@ -54,24 +54,17 @@ is active. Retain these decisions for resumption, not as parallel work.
 
 - [ ] **Self-hosted room creation HTTP 403.** Retest affected deployments using
   the [address checks](./guide/troubleshooting.md#room-creation-returns-403).
-  A stale explicit `ALLOWED_ORIGINS` overrides `PUBLIC_BASE_URL`; the sample now
-  follows the public address and Piik identifies its Origin rejection. Reporter
-  configuration and response details are still absent; distinguish Piik's
-  rejection from a proxy/WAF 403 before assigning their cause.
+  Obtain the configured public address/origin and response details; distinguish
+  Piik's rejection from a proxy/WAF 403 before assigning their cause.
 - [ ] **No available media route.** A decline is reported since around v1.4;
   establish comparable attempts on the same endpoints/network before attributing
   a version regression. Obtain matched Host/Viewer diagnostics from
   a failed attempt, with version and mode. Inspect candidate exchange, selected
-  paths, first-frame admission and route rejection separately. The Browser
-  candidate-queue rejection defect is repaired and regression-tested; current
-  STUN reachability and route-lifecycle checks do not establish these reporters'
-  causes. HTTP 1033 belongs to the public-link item below, before media routing.
-  A complete v1.6.3 App report confirms four candidate timeouts without Native
-  share-start or any SDP/ICE signaling. Browser diagnostics are needed to
-  locate prepare delivery, peer initialization or the first offer send; these
-  attempts do not establish an ICE/NAT failure. Locally reproduced Browser
-  construction failures now release owned tracks and reach the existing
-  preparation/recovery owner, but are not proved to be this reporter's cause.
+  paths, first-frame admission and route rejection separately. A v1.6.3 App
+  report has candidate timeouts without share-start or SDP/ICE; obtain Browser
+  evidence before calling that an ICE/NAT failure. HTTP 1033 belongs to the
+  public-link item below, before media routing. Local fixes and STUN checks do
+  not establish these reporters' causes.
 - [ ] **Camera and Host microphone device coverage.** The owner accepted the
   sharing layout and authorized release with these physical limits recorded.
   Verify real audio levels/echo, multiple-device replacement and native mixing on
@@ -82,28 +75,17 @@ is active. Retain these decisions for resumption, not as parallel work.
 - [ ] **App public-invitation startup field acceptance.** Retest the frequent
   creation-failure report and the earlier
   [#396 timeout](https://github.com/TNTcraftHIM/Piik/issues/396#issuecomment-5691465700)
-  with the updated App. A controlled UDP-blocked/TCP-available reproduction confirms
-  a dependency configuration defect; the existing tunnel now uses cloudflared's
-  bounded protocol fallback and pre-readiness retries within one startup deadline.
-  [Runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup)
-  separates this fix from DNS, provider and remote access failures. The reporting
-  environments still need version and diagnostic evidence before assigning a cause.
-  Demo access failures and public-link HTTP 1033 also remain unconfirmed: current
-  Demo health/assets and an external-host public-link HTTP/WebSocket gate pass.
-  Check connector reachability separately from WebRTC media availability.
+  with version and matched diagnostics. Compare against the bounded checks in
+  [runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup).
+  Demo access failures and public-link HTTP 1033 also remain unconfirmed; check
+  connector, DNS/provider and remote access separately from WebRTC availability.
 - [ ] **Interruption during established viewing.** A Viewer reportedly returns
   to P2P connecting after watching for a while. Include
   [#429](https://github.com/TNTcraftHIM/Piik/issues/429)'s reported SFU-to-P2P
-  dropout in field acceptance of candidate-commit recovery. Native receiver renegotiation,
-  retired event delivery and SFU replacement have locally reproduced defects
-  and regression checks, but paired diagnostics and device/network details are
-  still needed to establish this reporter's cause. Include an upstream relay's
-  report when present. Terminal Browser sender failures now notify their existing
-  preparation owner instead of silently disposing; expected retirement stays
-  silent. Native per-output keyframe requests no longer wake unrelated outputs.
-  These are confirmed local defects, not matched causes of the field reports.
-  The existing five-second Viewer membership grace during
-  signaling loss is unchanged. This is distinct from the first-frame report below.
+  dropout in field acceptance of candidate-commit recovery. Obtain paired
+  diagnostics, device/network details and any upstream relay's report; confirmed
+  local repairs are not matched causes of these reports. Distinguish established
+  viewing from the first-frame report below and signaling membership grace.
 - [ ] **Windows 11 capture border remains visible.** Identify the App/Browser
   capture path, Windows build and capture-border permission result. Local checks
   reproduced a border surviving forced process termination; parent cancellation
@@ -121,34 +103,23 @@ is active. Retain these decisions for resumption, not as parallel work.
   report, an unreachable App despite its process running, and generic share-start
   failure. Distinguish site authorization, browser permission, control capacity,
   enumeration and capture startup. The v1.6.5 report reaches Auto-to-VP8 startup
-  after a hardware MFT timeout, then receives Browser `stop-share` before any
-  local-edge request. App handler timestamps are about 1.5 ms apart; this is not
-  a Browser-measured ACK interval or a no-frame deadline. Deliberately exhausting
-  real Chrome connection objects reproduces that sequence with physical capture;
-  bounded normal restarts showed no retained connections. Startup now acquires
-  the Browser connection first: the same exhaustion rejects before capture, and
-  releasing fixture-held objects permits sharing again. This establishes neither
-  a Piik resource leak nor the reporter's cause. The actual Browser exception,
-  loaded asset identity and reporter VP8 output remain unknown. Zero dimensions/
-  FPS in `starting` are valid. Diagnostics preserve preview initialization/
-  negotiation causes and distinguish MFT input/output waits; obtain matched
-  evidence before changing recovery or deadlines. Other discovery reports and
+  after an MFT timeout, then Browser `stop-share` before any local-edge request;
+  it does not prove a no-frame timeout. Obtain the Browser exception, loaded
+  assets and actual VP8 output. Controlled connection exhaustion reproduces the
+  sequence but does not establish a Piik leak or this reporter's cause.
   [#419](https://github.com/TNTcraftHIM/Piik/issues/419)'s AMD manual-H264 failure
-  still need paired evidence. Local AMD activation failure before capture does
-  not establish the reporting GPU's cause; distinguish activation, codec
-  configuration and actual output before changing the encoder contract.
+  also needs paired evidence; distinguish activation, codec configuration and
+  actual output before changing the encoder contract. Local NVIDIA success
+  does not settle AMD activation or reported system-wide performance problems.
 - [ ] **Share ends after entering a game.** Screen sharing reportedly works
   until entering a game freezes the picture, followed seconds later by share
   termination. Version, capture path, codec and matched diagnostics are unknown.
   Locate the first capture/output, preview-bridge, control or authority failure;
   distinguish ordinary source silence/resize from target replacement, exclusive
-  fullscreen, display-mode change and device loss. A reproduced downstream
-  retirement race no longer stops the shared source. Actual CS2 checks found
-  and removed a separate decoded-silence rule that retired a connected Viewer
-  route while the Host stayed live; [capture research](./research/native-client-lifecycle.md#quiet-sources-and-viewer-recovery)
-  distinguishes that repair and successful restoration from the unknown cause
-  of the reported Host termination. Do not conflate source silence, receiver
-  decode interruption and capture-process failure.
+  fullscreen, display-mode change and device loss. Compare with
+  [capture research](./research/native-client-lifecycle.md#quiet-sources-and-viewer-recovery);
+  do not conflate source silence, receiver decode interruption and capture-process
+  failure, or assign the reported Host termination to a repaired Viewer defect.
 - [ ] **Windows 32-bit candidate acceptance.** Verify the isolated
   `spike/windows-x86-capture` candidate's launch, capture/audio, memory pressure,
   source replacement and update links on a 32-bit Windows device. WOW64
