@@ -856,7 +856,6 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 		}
 		sfuBootstrap := op.reason == DemandSfuBootstrap
 		backgroundConvergence := isBackgroundConvergence(op.reason)
-		qualityConvergence := op.reason == DemandQualityConvergence
 		factsChanged := op.builtAtFactVersion != c.factVersion
 		rejectionBucket := RejectionCandidateFailed
 		if factsChanged {
@@ -877,12 +876,6 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 			exhausted = failedBootstrapDemand != ""
 		} else {
 			exhausted = !backgroundConvergence && !bootstrapAvailable && !c.hasRemainingNatOpportunity(op)
-		}
-		// When quality convergence exhausts all candidates without trying SFU
-		// (because SFU opportunity was consumed in a previous cycle), reset
-		// the SFU opportunity so the next operation can attempt SFU relay.
-		if qualityConvergence && exhausted {
-			c.resetSfuOpportunity(op.childPeerID)
 		}
 		if bootstrapAvailable {
 			c.stageSfuBootstrap(op)

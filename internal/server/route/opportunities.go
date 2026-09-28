@@ -163,22 +163,6 @@ func (c *Controller) consumeQualityOperationCandidates(op *operation) {
 	}
 }
 
-// resetSfuOpportunity clears the SFU opportunity for a child so the next
-// quality convergence operation can attempt SFU relay. This is called when
-// a quality convergence operation exhausts all candidates without trying SFU
-// (because the SFU opportunity was consumed in a previous cycle).
-func (c *Controller) resetSfuOpportunity(childPeerID string) {
-	child, _ := c.participants.Get(childPeerID)
-	if child == nil {
-		return
-	}
-	sfuKey := c.candidateOpportunityBase(childPeerID, CandidatePlan{
-		Tuple:              CandidateTuple{Kind: UpstreamSfu, Publication: PublicationReuse},
-		EndpointTransition: EndpointTransition{Kind: TransitionNone},
-	})
-	child.consumedCandidateOpportunities.Delete(sfuKey)
-}
-
 // consumeActiveEdgeOpportunity exhausts the invalidated edge's exact tuple at rank 0.
 func (c *Controller) consumeActiveEdgeOpportunity(child *participant, edge *CommittedEdge) {
 	if edge.Kind == UpstreamPeer {
