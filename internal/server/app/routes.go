@@ -24,6 +24,8 @@ var (
 
 // ServeHTTP dispatches requests and contains handler panics at the HTTP boundary.
 func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+	writer.Header().Set("X-Frame-Options", "DENY")
 	recorder := &responseRecorder{ResponseWriter: writer}
 	defer func() {
 		recovered := recover()

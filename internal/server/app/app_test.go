@@ -83,6 +83,20 @@ func newServer(t *testing.T, options Options) *Server {
 	return server
 }
 
+func TestApplicationPagesCannotBeEmbeddedWithoutAProxy(t *testing.T) {
+	server := newServer(t, Options{})
+	for _, accepting := range []bool{false, true} {
+		server.acceptingTraffic.Store(accepting)
+		for _, path := range []string{"/", "/api/missing", "/healthz"} {
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Header().Get("Content-Security-Policy") != "frame-ancestors 'none'" || response.Header().Get("X-Frame-Options") != "DENY" {
+				t.Fatalf("unprotected response: accepting=%v path=%s", accepting, path)
+			}
+		}
+	}
+}
+
 type harness struct {
 	*Server
 	t       *testing.T
