@@ -9,14 +9,25 @@ import (
 )
 
 // buildCandidates filters the full plan list by the
-// availability opportunity ledger.
+// availability opportunity ledger. When all P2P candidates are
+// exhausted, the SFU candidate is kept as a fallback even if its
+// opportunity was previously consumed.
 func (c *Controller) buildCandidates(childPeerID string, sfuOnly bool) []CandidatePlan {
 	plans := c.buildCandidatePlans(childPeerID, sfuOnly, true)
 	out := make([]CandidatePlan, 0, len(plans))
+	var sfuPlan *CandidatePlan
 	for _, plan := range plans {
+		if plan.Tuple.Kind == UpstreamSfu {
+			sfuPlan = &plan
+		}
 		if c.candidateOpportunityAvailable(childPeerID, plan) {
 			out = append(out, plan)
 		}
+	}
+	// When all P2P candidates are filtered out, keep SFU as fallback
+	// to prevent route exhaustion without attempting SFU relay.
+	if len(out) == 0 && sfuPlan != nil {
+		out = append(out, *sfuPlan)
 	}
 	return out
 }
