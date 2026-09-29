@@ -1,0 +1,185 @@
+name: Build Multi-Architecture
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0 or development)'
+        required: false
+        default: 'development'
+      push_image:
+        description: 'Push Docker image to GHCR'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web assets
+        run: npm run build:web
+        env:
+          VITE_PIIK_VERSION: ${{ inputs.version || 'development' }}
+          VITE_PIIK_REVISION: ${{ github.sha }}
+
+      - name: Upload web assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-assets
+          path: internal/server/webassets/dist/
+          retention-days: 1
+
+  build-server:
+    needs: build-web
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Download web assets
+        uses: actions/download-artifact@v4
+        with:
+          name: web-assets
+          path: internal/server/webassets/dist/
+
+      - name: Build server binary
+        run: |
+          go build -trimpath \
+            -ldflags "-s -w -X main.BuildRevision=${{ github.sha }} -X main.BuildVersion=${{ inputs.version || 'development' }}" \
+            -o piik-server-${{ matrix.arch }} \
+            ./cmd/piik-server
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: '0'
+
+      - name: Setup Node.js for license generation
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Generate license notices
+        run: node scripts/generate-server-licenses.mjs THIRD-PARTY-NOTICES.txt ${{ matrix.arch }}
+        continue-on-error: true
+
+      - name: Create release files
+        run: |
+          echo "${{ github.sha }}" > REVISION
+          cp LICENSE . 2>/dev/null || true
+
+      - name: Upload server artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ matrix.arch }}
+          path: |
+            piik-server-${{ matrix.arch }}
+            LICENSE
+            THIRD-PARTY-NOTICES.txt
+            REVISION
+          retention-days: 1
+
+  build-docker:
+    needs: build-server
+    runs-on: ubuntu-latest
+    if: ${{ inputs.push_image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download amd64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: server-amd64
+          path: artifacts/amd64/
+
+      - name: Download arm64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: server-arm64
+          path: artifacts/arm64/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Log in to Container Registry
+        if: ${{ inputs.push_image }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ inputs.version || 'development' }}
+            type=raw,value=latest,enable=${{ inputs.version && startsWith(inputs.version, 'v') }}
+
+      - name: Prepare build context
+        run: |
+          mkdir -p build-context
+          cp artifacts/amd64/piik-server-amd64 build-context/
+          cp artifacts/arm64/piik-server-arm64 build-context/
+          cp artifacts/amd64/LICENSE build-context/
+          cp artifacts/amd64/THIRD-PARTY-NOTICES.txt build-context/
+          cp artifacts/amd64/REVISION build-context/
+
+      - name: Build and push Docker image
+        id: docker_build
+        uses: docker/build-push-action@v5
+        with:
+          context: build-context
+          file: deploy/container/Dockerfile.multiarch
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push_image }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            PIIK_VERSION=${{ inputs.version || 'development' }}
+            PIIK_REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image digest
+        if: ${{ inputs.push_image }}
+        run: echo "Image pushed with digest ${{ steps.docker_build.outputs.digest }}"
