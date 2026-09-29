@@ -1,8 +1,8 @@
 # Browser Node-Local Encoding Pool
 
-Reviewed and executed 2026-09-09 on Windows, Chrome 152.0.7977.82.
+Initial baseline: 2026-09-09 on Windows, Chrome 152.0.7977.82.
 [ADR-0014](../adr/0014-browser-node-local-encoding-pool.md) owns the selected
-design. The observations below belong to that measured baseline;
+design. Dated follow-ups identify their own Browser and workload boundaries;
 [status](../status.md) owns current adoption and release state, and
 [verification status](../verification-status.md) owns remaining physical limits.
 
@@ -262,6 +262,67 @@ The [canvas capture draft](https://w3c.github.io/mediacapture-fromelement/#html-
 models `requestFrame()` as a pending request, not a counted queue of clock ticks.
 Do not infer one delivered carrier frame per call or enlarge the encoded queue
 to hide lost timing.
+
+### Sustained H264 Recovery
+
+A v1.6.8 field observation on 2026-09-29 confirmed minutes of 180p / low FPS
+under 1080p30, balanced and a 5 Mbps ceiling. Server summaries and receiver
+RTCStats agree. A new Viewer briefly restored the incumbent to 1080p without
+changing its parent; reconnecting the observer did not restore quality. An SFU
+candidate initially decoded well, then stalled; replay through the production
+quality probe correctly withheld approval. These observations establish the
+symptom, not its network or encoder cause. Host producer/carrier histories were
+unavailable; server summaries cannot reconstruct those local owners.
+
+Serial synthetic-source comparisons used the actual `HostPeer` and pool, H264,
+played audio, the same profile and a test-only UDP bridge. A had 4% forward RTP
+loss for 50 seconds; B joined halfway through that interval. Loss and any rate
+cap were then removed for 60 seconds; configured RTT remained. Each condition
+had one matched pair, not an average or a public-network reproduction.
+
+| Browser / source / A's constraint | Ordinary sender | Pooled sender |
+| --- | --- | --- |
+| Edge 154.0.4258.37 / moving bars / loss only, local or 200 ms RTT | Stayed at 1080p | Stayed at 1080p |
+| Same Browser/source / 400 kbps, 200 ms RTT | Reached 360p; stable 1080p about 21 s after release | Reached 360p; stable 1080p about 17 s after release |
+| Chrome 153.0.8010.53 / panning textured scene / 120 kbps, 300 ms RTT | Reached 180p; still 540p at the end of recovery despite restored BWE | Reached 180p; stable 1080p about 13 s after release |
+
+The last pooled case was also run with v1.6.5 (`04cbb2c9`)'s pool, `HostPeer`
+and quality owners in the current fixture. It recovered to 1080p in about 13
+seconds too.
+This isolates those pre-v1.6.7 owners, not the entire older release or Browser;
+it neither establishes a recent regression nor rules out other field failures.
+Actual encoded payload counters tracked producer RTCStats byte deltas in the
+measured runs; persistent local byte-accounting inflation was not reproduced.
+
+A separate textured-scene case kept A alone through 45 constrained seconds and
+25 seconds after release. Its outgoing allocation recovered while its producer
+remained at 270p. When B then joined, A reused B's fresh healthy producer and
+decoded 1080p about 1.5 seconds later on the same connection. Without that join,
+both the current-owner and old-owner controls retained their producer and
+reached only 540p after 65 recovery seconds. This demonstrates a mechanism for
+join-assisted recovery, not proof that the field event had that cause.
+Slow recovery also occurred without pooling;
+rebuilding encoders periodically or forcing a resolution floor is not justified.
+
+After Chrome updated to 154.0.8037.58, a fresh ordinary/pool pair extended solo
+recovery to 145 seconds with the same textured scene and 45-second constraint.
+Both ended at 540p / about 30 fps with restored 5 Mbps allocation; the pool
+retained one producer. This establishes sustained reduced output after transport
+recovery in both paths under this synthetic workload, not the field event's
+prolonged 180p or perceptual quality. It is separate from the Chrome 153 pairs.
+
+Upstream's [quality scaler](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/utility/quality_scaler.cc)
+uses separate high/low QP thresholds, sample windows and a changed check interval
+after downscaling. This supports a recovery-hysteresis hypothesis; BWE recovery
+alone does not imply immediate picture recovery. These traces do not identify
+the field Browser's encoder implementation or effective experiment thresholds.
+
+Evidence uses two-second decoded-frame counters/dimensions and half-second pool
+membership samples. Some headless runs stopped delivering presentation callbacks
+while decoded counters kept advancing; missing callbacks alone are not stream
+loss or valid glass-to-glass timing. Raw field data and fixture variants remain
+ignored. The remaining field boundary is matched Host producer/carrier budgets,
+membership, source progress and Viewer reception during degradation and recovery.
 
 ## Cost And Accounting
 

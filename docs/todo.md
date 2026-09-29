@@ -12,16 +12,13 @@ history. A parked idea is not implementation authority.
   admission, and narrow/touch UI. Verify confirmed fixes through the existing
   owners before resuming feature polish. Keep field reports without matched
   evidence separate from locally reproduced defects.
-- [ ] **Sustained Browser H264 degradation.** A v1.6.8 live observation with
-  1080p30 / balanced / 5 Mbps settings confirms minutes of 180p and low FPS.
-  A new Viewer briefly restored the incumbent to 1080p without changing its
-  parent, followed by renewed degradation. Viewer reconnection did not restore
-  quality. Paired server summaries and receiver stats show bandwidth limitation,
-  loss and freezes; an SFU candidate also stalled and failed non-regression.
-  Capture the Host's producer/carrier budget and membership history, then compare
-  ordinary versus pooled sending under matched sustained loss and recovery.
-  The symptom is established; network versus encoder/pool causation is not.
-  Preserve framework adaptation and candidate proof while investigating.
+- [ ] **Sustained Browser H264 degradation.** The field symptom is confirmed;
+  its cause remains open. [Matched comparisons](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
+  reproduce slow recovery in ordinary and pooled sending, and a new Viewer
+  helping an incumbent by supplying a fresh compatible producer. They do not
+  establish the field cause or a recent regression. Capture matched Host
+  producer/carrier budgets, membership and source progress alongside Viewer
+  reception. Preserve framework adaptation and candidate proof.
 
 ## Deferred Feature Work
 
