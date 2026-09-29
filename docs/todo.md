@@ -15,14 +15,13 @@ history. A parked idea is not implementation authority.
 - [ ] **Sustained Browser degradation.** The H264 field cause remains open.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
   distinguish encoder recovery hysteresis from a tab-capture feedback/size-step
-  lock, also reproduced without Piik and with VP8. Non-Browser window capture
-  behaved differently. Existing clone/startup protections and same-parent
-  recovery remain; a recent Piik regression is not established. A manual
-  clarity/balanced preference change recovered the reproduced lock in bare
-  WebRTC and the actual pool. Verify a narrow repair against actual source
-  frames and candidate behavior, retaining source resize and chosen quality
-  intent. Match field producer/carrier and Viewer evidence before assigning the
-  cause; no periodic reset, floor or weaker proof.
+  lock reproduced in bare WebRTC. Verify the upstream soft-target/hard-maximum
+  repair candidate against actual frames, source resize and chosen quality
+  intent; a patched Browser remains unbuilt. Raw-frame isolation is an
+  experiment, not an accepted product pipeline. Match field Host/Viewer evidence
+  before assigning the field cause or declaring repeated brief blur fixed.
+  Retain existing clone/startup protections and candidate proof; no periodic
+  reset or quality floor. A recent Piik regression is not established.
 
 ## Deferred Feature Work
 

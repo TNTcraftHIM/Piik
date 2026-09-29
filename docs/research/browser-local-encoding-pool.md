@@ -295,12 +295,30 @@ without Piik's pool, startup guard, quality controller or repeated parameter
 writes. It also reproduced the tab restriction with VP8. Keeping the original
 preview playing and using `resizeMode:none` did not remove it.
 
+**Short disturbances can enter the persistent state.** Two one-second rate/loss
+pulses, each followed by 40 unconstrained seconds, took the bare tab sender from
+778p to 418p and then 238p; the actual Piik pool comparison ended at 148p.
+Targets recovered to about 5 Mbps and actual captured frames remained reduced.
+These single runs establish reachability in both paths, not that the pool is
+worse or that every brief blur has this cause. The fixture retained 300 ms RTT.
+
+A standalone HTML reproduction removed Piik, audio and the network shaper
+entirely. It connected two local PeerConnections, captured its own moving tab,
+selected H264 / balanced, reduced only `maxBitrate` from 5 Mbps to 400 kbps for
+45 seconds, then restored it for 65 seconds. Source frames stayed 270x148 and
+encoded output stayed at 148p / 10 fps, despite a 5 Mbps target, an approximately
+13 Mbps outgoing estimate and 0–1 ms measured RTT. A preceding latency-only comparison
+retained 238p. Network loss is therefore not necessary for this local lock;
+these are synthetic Chrome 154 results, not the field room's diagnosed cause.
+
 **Two mechanisms remain distinct.** Canvas recovery could follow content
 complexity: changing to simple bars restored 1080p, retained after restoring
-the textured scene. WebRTC's [quality scaler](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/utility/quality_scaler.cc)
+the textured scene. WebRTC's [quality scaler](https://webrtc.googlesource.com/src/+/3a8b0c76e6b7bf0e72141047f82eb2c3f4862c8d/modules/video_coding/utility/quality_scaler.cc)
 uses QP thresholds and sampling history as well as bandwidth-related adaptation.
-That supports recovery hysteresis, not a rule that restored BWE must immediately
-restore full output.
+Its default two-second checks and longer sampling after down-adaptation can
+outlast a short disturbance. That supports recovery hysteresis, not a rule that
+restored BWE must immediately restore full output. These observations do not
+yet establish the reported repeated brief blur/recovery sequence's cause.
 
 The tab case exposed a more specific capture-feedback problem. A Chromium trace
 kept the source geometry at 1904x1049 while capture supplied a 268x148 content
@@ -313,16 +331,40 @@ then chooses a size below that limit using
 For this geometry the next step above 270x149 (40,230 pixels) is 433x239
 (103,487 pixels), so 66,600 cannot advance it.
 
-This matches WebRTC's [up-adaptation distinction](https://raw.githubusercontent.com/webrtc-mirror/webrtc/main/call/adaptation/video_stream_adapter.cc)
+This matches WebRTC's [up-adaptation distinction](https://webrtc.googlesource.com/src/+/3a8b0c76e6b7bf0e72141047f82eb2c3f4862c8d/call/adaptation/video_stream_adapter.cc)
 between a soft target and a larger hard maximum intended to accommodate source
-sizes. It strongly supports a feedback/size-quantization lock. The exact
-Chromium capture sources and runtime trace were checked; the libwebrtc formula
-was checked against upstream main, not a rebuilt patched Chrome binary.
-Direct `VideoFrame` observations confirmed the reduced tab capture independently
-of stale `getSettings()` values. Reapplying exact dimensions to the original
-track and restoring its constraints did not unblock the existing sender.
-This mechanism must not be assigned to arbitrary desktop capture: the separate
-native-window test retained full-sized input and recovered gradually.
+sizes. The inspected libwebrtc revision is the exact revision pinned by
+[Chrome 154's DEPS](https://raw.githubusercontent.com/chromium/chromium/154.0.8037.58/DEPS),
+retrieved through Gerrit revision content. At 270x148, the soft recovery target
+is 66,600 pixels; its intended hard maximum is 159,840. Forwarding only the soft
+target prevents the next capture step. Without larger input, the next recovery
+request cannot exceed the already installed maximum and is rejected. This
+strongly supports a feedback/size-quantization lock. Actual `VideoFrame`
+dimensions confirm reduced capture independently of stale `getSettings()`.
+Reapplying exact dimensions to the original track did not unblock it.
+
+An experimental raw-frame passthrough separated capture from sender feedback
+without resizing or generated cadence. All but the first observed source frame
+stayed 1904x1048; output recovered from 192p through 262/390p to 524p within
+65 seconds. This supports the capture-feedback boundary while leaving slower
+encoder recovery distinct. The extra raw-frame pipeline is not a product fix:
+full recovery, cost, device support and lifecycle coverage are not established.
+The separate non-Browser window case also retained full input and recovered
+gradually; do not generalize the tab mechanism to arbitrary desktop capture.
+
+**Upstream repair boundary.** Chromium's
+[feedback forwarding change](https://chromium-review.googlesource.com/c/chromium/src/+/2386743)
+dates to 2020; the relevant logic remained in inspected upstream main on
+2026-09-30. Reviewed historical fixes for
+[scale-boundary equality](https://codereview.webrtc.org/2713683002),
+[preference-switch waits](https://webrtc-review.googlesource.com/c/src/+/174805)
+and [requested-resolution reconfiguration](https://webrtc-review.googlesource.com/c/src/+/360200)
+do not supply a matching unshipped fix for this reproduction. Preserving the
+hard maximum separately from the soft target lets a numerical reduction escape
+the observed 148p, 180p and 238p fixed points. This is a narrow upstream repair
+candidate, not a compiled or accepted Chromium patch; full capture/adapter
+tests are still required. Updating a Piik package does not replace the user's
+Browser implementation.
 
 **The existing preference control can recover this reproduction.** After 65
 seconds stuck at 148p / 10 fps despite restored allocation, changing from
@@ -334,6 +376,8 @@ profile update through the pool. Both kept their connection and source; the
 pool retained one producer. Actual source frames recovered too. This provides
 a locally verified manual recovery through the existing clarity preference,
 not a field guarantee or justification for automatic preference toggling.
+The pinned `VideoStreamAdapter` clears adaptation restrictions when switching
+to or from balanced, explaining why this control escapes the reproduced state.
 
 **A new Viewer can help, but need not.** In a Canvas comparison, a degraded
 incumbent adopted a newcomer's fresh healthy producer and returned to 1080p in
