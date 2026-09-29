@@ -9,6 +9,7 @@ const { command, notes } = vi.hoisted(() => ({
 }));
 vi.mock("node:child_process", () => ({ execFileSync: command }));
 vi.mock("../scripts/release-notes.mjs", () => ({ releaseNotes: notes }));
+vi.mock("node:timers/promises", () => ({ setTimeout: async () => undefined }));
 
 const directory = mkdtempSync(join(tmpdir(), "piik-publisher-"));
 const version = "v1.0.1", revision = "a".repeat(40);
@@ -42,7 +43,8 @@ describe("Gitee mirror publication", () => {
     return { name, size: bytes.length, digest: `sha256:${hash(bytes)}`, state: "uploaded" };
   });
   async function mirror(options: { existing?: "pending" | "published" | "unknown"; corrupt?: boolean;
-    wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean } = {}) {
+    wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean;
+    fault?: { method: string; remaining: number; status: number | "timeout" } } = {}) {
     const mutations: string[] = [];
     const attachments = sourceAssets.map(({ name, size }) => ({ name, size, browser_download_url: download + name }));
     const present = options.existing === "pending" ? attachments.slice(0, 1) : options.missing ? [] : attachments;
@@ -64,6 +66,11 @@ describe("Gitee mirror publication", () => {
       const path = url.slice(api.length);
       const method = init?.method ?? "GET";
       if (method !== "GET") mutations.push(`${method} ${path}`);
+      if (options.fault?.method === method && options.fault.remaining > 0) {
+        options.fault.remaining--;
+        if (options.fault.status === "timeout") throw new DOMException("Timed out", "TimeoutError");
+        return new Response(null, { status: options.fault.status });
+      }
       if (path.startsWith("/releases/tags/")) return options.existing
         ? Response.json({ id: 42, tag_name: version, body: options.existing === "unknown" ? "unknown" : marker,
           prerelease: options.existing !== "published" }) : new Response(null, { status: 404 });
@@ -119,6 +126,26 @@ describe("Gitee mirror publication", () => {
     expect(pending.failure).toBeUndefined();
     expect(pending.mutations.filter((value) => value.endsWith("/attach_files"))).toHaveLength(sourceAssets.length - 1);
     expect(await mirror({ existing: "published" })).toEqual({ mutations: [], failure: undefined });
+  });
+
+  it.each([503, "timeout"] as const)("retries transient read failures (%s) within a fixed bound", async (status) => {
+    const fault = { method: "GET", remaining: 2, status };
+    expect((await mirror({ existing: "published", fault })).failure).toBeUndefined();
+    expect(fault.remaining).toBe(0);
+    fault.remaining = 4;
+    expect((await mirror({ fault })).failure).toBeDefined();
+    expect(fault.remaining).toBe(1);
+  });
+
+  it("does not repeat forbidden reads or ambiguous writes", async () => {
+    const denied = { method: "GET", remaining: 2, status: 403 };
+    expect((await mirror({ fault: denied })).failure).toContain("HTTP 403");
+    expect(denied.remaining).toBe(1);
+    const write = { method: "POST", remaining: 2, status: "timeout" as const };
+    const result = await mirror({ fault: write });
+    expect(result.failure).toBeDefined();
+    expect(result.mutations).toEqual(["POST /releases"]);
+    expect(write.remaining).toBe(1);
   });
 
   it.each([{ wrongSource: true }, { wrongDigest: true }, { existing: "unknown" as const }])

@@ -54,7 +54,7 @@ func (c *Controller) directHeadStartMs() int64 {
 // (sfu-bootstrap carrier, next child, direct continuation, quality child,
 // root convergence).
 func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
-	released := []*Resource{}
+	released := c.retireDepartedEdges(nowMs)
 	validation := c.validateOrAdvance(nowMs, nil)
 	released = append(released, validation.released...)
 	failedPeerIDs := failedPeerIDsFrom(validation)
@@ -64,15 +64,18 @@ func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
 		c.debug(string(c.operation.reason)+"-preempted", "child", c.debugPeer(c.operation.childPeerID))
 		released = append(released, c.abortOperation(&nowMs, RejectionAborted)...)
 	}
+	removedPeerIDs := []string{}
+	if c.operation == nil {
+		removedPeerIDs = c.pruneDepartedLeaves(&released)
+	}
 	if c.paused || c.operation != nil {
 		return ReconcileResult{
 			Operation:      c.operationSnapshot(),
-			RemovedPeerIDs: []string{},
+			RemovedPeerIDs: removedPeerIDs,
 			FailedPeerIDs:  failedPeerIDs,
 			Released:       released,
 		}
 	}
-	removedPeerIDs := c.pruneDepartedLeaves(&released)
 
 	// The loop bound is a count, not an order.
 	for remaining := c.participants.Len(); remaining > 0; remaining-- {

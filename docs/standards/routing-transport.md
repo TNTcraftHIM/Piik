@@ -121,6 +121,14 @@ It does not require NAT prediction or reopen the route candidate. A prepared
 candidate instead follows its current route operation's failure path, without
 an independent restart loop.
 
+A Browser sender's subsequent audio-direction SDP transaction has a 15-second
+completion deadline. A lost offer/answer must not leave later microphone/source
+changes queued forever behind otherwise connected media. Timeout retires that
+exact edge through its existing preparation/recovery owner; coalesced changes
+do not renew the deadline. This also applies if audio changes during preparation.
+Initial acquisition and ICE restart retain their existing route/recovery deadlines;
+ordinary signaling loss without a pending media transaction preserves healthy media.
+
 When a newly committed Host-root Viewer exposes unused downstream capacity while
 another Host root has at least two direct children, the same background operation may
 move one of those children to the new root. The candidate must prove a healthy
@@ -131,6 +139,11 @@ without admitted overlap.
 Framework reconnect runs before route reassignment. Manual media reconnect also
 recovers only the current P2P parent or current SFU subscription; it does not
 perform quality selection or choose another route.
+A Viewer that loses room signaling keeps its membership and committed edges for
+20 seconds, covering the nominal backoff for the Browser's first five reconnect
+attempts; connection and authentication time can extend those attempts.
+Reconnecting with the same client rebinds retained edges. Signaling absence alone does not
+retire a media edge before then; its route failure or that window's expiry does.
 Current-edge P2P signaling remains valid during candidate overlap. Accepting a
 replacement from that parent cancels conflicting optional preparation so the
 replacement can complete; a retired candidate cannot take its place afterward.
@@ -176,7 +189,13 @@ retain after those resources close. ADR-0005's graph and operation rules remain;
 
 Transient room-signaling loss does not close healthy SFU media. The current
 physical connection can restart ICE; actual terminal media failure returns to
-the same bounded route recovery. Source capture remains Host-owned throughout.
+the same bounded route recovery, identifying the failed physical connection.
+An active configuration describes that connection; it cannot create a replacement
+Browser subscriber. Replacement needs the controller's prepared subscription and
+first-frame proof. Reauthentication during an unfinished restart also returns
+that subscription to its route owner; sending an answer is not connection proof.
+An exhausted opportunity remains an explicit failure until an eligible new fact
+reopens acquisition. Source capture remains Host-owned throughout.
 
 ## Quality And Privacy Boundaries
 

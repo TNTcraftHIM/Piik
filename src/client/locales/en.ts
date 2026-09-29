@@ -236,9 +236,9 @@ export const en: Record<CopyKey, string> = {
   "host.viewerOverview": "All viewer connections",
 
   "host.quality": "Video preset",
-  "host.quality.720p30": "720p · 30 fps",
-  "host.quality.1080p30": "1080p · 30 fps",
-  "host.quality.1080p60": "1080p · 60 fps",
+  "host.quality.720p30": "720p\u00a0· 30\u00a0fps",
+  "host.quality.1080p30": "1080p\u00a0· 30\u00a0fps",
+  "host.quality.1080p60": "1080p\u00a0· 60\u00a0fps",
   "host.advanced": "Sharing settings",
   "host.settings.button": "Settings",
   "host.settings.picture": "Picture",

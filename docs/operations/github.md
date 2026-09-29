@@ -13,8 +13,9 @@ cleanup step checks local worktrees and remaining references first.
 
 Protect `main` with PRs required, zero mandatory peer approvals for the solo
 maintainer, administrator enforcement, linear history, and no force pushes or
-deletions. Do not require cloud PR checks while branch/PR CI is intentionally
-quiet; local validation and acceptance precede the squash merge. PR/issue
+deletions. PRs run the read-only release-note check; ordinary branch pushes stay
+quiet. Local validation and acceptance precede the squash merge, and required
+check settings remain a repository-owner decision. PR/issue
 templates live in `.github/`; [naming](../../CONTRIBUTING.md#commit-pr-and-branch-names)
 is shared with automatic version selection.
 
@@ -34,8 +35,9 @@ Subsequent accepted PRs merged to main use the existing CI workflow. Product
 changes calculate one version, validate, package Server and all App targets,
 and publish the same artifacts. Standalone website/docs changes validate without
 packaging or releasing; [versioning](../standards/versioning.md#automatic-publication)
-owns that boundary. Runs queue rather than overlap or cancel one another. Branches/PRs
-stay quiet; manual `app_checks` dispatch remains available for candidates.
+owns that boundary. Runs queue rather than overlap or cancel one another. PRs
+validate release notes without packaging or publication; manual `app_checks`
+dispatch remains available for candidates.
 Writing a new version back to main is unnecessary and prohibited.
 
 For a complete publisher rehearsal, dispatch with `app_checks: true` and an

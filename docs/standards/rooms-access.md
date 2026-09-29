@@ -48,6 +48,10 @@ Three independent authorities exist:
    destination: public HTTPS retains the Secure host-prefixed cookie, while a
    separately configured HTTP LAN origin can use its HTTP cookie. Login,
    renewal, room creation and WebSocket admission use that same selection.
+   Cookie signatures use a random process key independent of the password;
+   restarting the Server/App requires site-password entry again. This does not
+   revoke persisted room ownership or Viewer invitations. The application
+   rejects framing through its own HTTP headers, including without a proxy.
 2. **Host ownership.** The exact Host token authorizes that room's Host and
    access-management operations. It cannot authorize another room.
 3. **Viewer invitation.** Every room creates a 128-bit, 22-character base64url

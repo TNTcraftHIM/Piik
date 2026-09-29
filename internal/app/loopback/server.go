@@ -383,9 +383,6 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 			case reads <- payload:
 			case <-controlContext.Done():
 				return
-			default:
-				cancelControl()
-				return
 			}
 		}
 	}()

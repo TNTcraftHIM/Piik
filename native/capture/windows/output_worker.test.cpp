@@ -20,9 +20,10 @@ AdaptiveEncoder::AdaptiveEncoder(OutputKind, VideoProfile profile, ID3D11Device*
 AdaptiveEncoder::~AdaptiveEncoder() = default;
 
 std::optional<AdaptiveAccessUnit> AdaptiveEncoder::Encode(FrameProducer,
-    UINT32 width, UINT32 height, UINT64 timestamp, bool key, UINT32 bitrate) {
+    UINT32 width, UINT32 height, UINT64 timestamp, bool key, UINT32 bitrate,
+    EncoderClock::time_point deadline) {
   impl_->encoder->SetBitrate(bitrate);
-  return AdaptiveAccessUnit{impl_->encoder->Encode(nullptr, timestamp, key),
+  return AdaptiveAccessUnit{impl_->encoder->Encode(nullptr, timestamp, key, deadline),
                             width, height, 333'333};
 }
 }  // namespace piik::capture::windows
@@ -149,46 +150,65 @@ void CheckEncoderCandidates() {
   assert(tried.empty());
 }
 
-void CheckAutoEncoderFallback() {
-  const auto deadline = EncoderClock::time_point::max();
-  const auto expired = EncoderClock::time_point::min();
-  auto hardware = [] { return std::make_unique<FixtureEncoder>(nullptr, std::shared_future<void>{}); };
-  for (const auto probe_deadline : {deadline, expired}) {
-    auto initial = hardware();
-    const auto* proven = initial.get();
-    bool probed = false;
-    const auto selected = CompareSoftwareEncoder(std::move(initial), .04, probe_deadline, [&]() -> double {
-      probed = true;
-      // A slow software comparison exhausts its budget after H264 succeeded.
-      RequireEncoderTime(expired);
-      return 0;
-    });
-    assert(selected.kind == OutputKind::h264 && selected.initial.get() == proven);
-    assert(probed == (probe_deadline == deadline));
+class CadenceFixtureEncoder final : public VideoEncoder {
+ public:
+  CadenceFixtureEncoder(std::chrono::milliseconds latency, bool dropped, bool cold_only)
+      : VideoEncoder(OutputKind::h264, "cadence-fixture", "cadence-fixture"),
+        latency_(latency), dropped_(dropped), cold_only_(cold_only) {}
+
+  EncodedAccessUnit Encode(ID3D11Texture2D*, UINT64 timestamp, bool key,
+      EncoderClock::time_point deadline) override {
+    if (!cold_only_ || calls_ == 0) std::this_thread::sleep_for(latency_);
+    ++calls_;
+    RequireEncoderTime(deadline);
+    // An empty unit stands for an input the pipeline did not encode.
+    return dropped_ ? EncodedAccessUnit{timestamp, key, {}} : EncodedAccessUnit{timestamp, key, {1, 2, 3}};
   }
-  for (const double software_work : {.02, .04, .06}) {
-    const auto selected = CompareSoftwareEncoder(hardware(), .04, deadline, [&] { return software_work; });
-    assert((selected.kind == OutputKind::vp8) == (software_work <= .04));
-    assert(static_cast<bool>(selected.initial) == (software_work > .04));
+  void SetBitrate(UINT32) override {}
+
+ private:
+  std::chrono::milliseconds latency_;
+  bool dropped_;
+  bool cold_only_;
+  unsigned calls_ = 0;
+};
+
+void CheckAutoCadenceProbe(ID3D11Device* device) {
+  // The Browser probe allows one 100 ms poll of lag at each target rate.
+  assert(CadenceLagFrames(5) == 1 && CadenceLagFrames(15) == 2 &&
+         CadenceLagFrames(30) == 3 && CadenceLagFrames(60) == 6);
+  VideoProfile profile;
+  profile.width = 64;
+  profile.height = 64;
+  auto probe = [&](std::chrono::milliseconds latency, bool dropped,
+                   EncoderClock::time_point deadline, bool cold_only = false) {
+    return SustainsEncodedCadence([=](const VideoProfile&) -> std::unique_ptr<VideoEncoder> {
+      return std::make_unique<CadenceFixtureEncoder>(latency, dropped, cold_only);
+    }, device, profile, deadline);
+  };
+  const auto deadline = EncoderClock::now() + std::chrono::seconds(30);
+  // Valid output at a fraction of the source rate is the driver defect Auto rejects.
+  assert(!probe(std::chrono::milliseconds(0), true, deadline));
+  // Cold startup must not reject an encoder that sustains the measured cadence.
+  assert(probe(std::chrono::milliseconds(220), false, deadline, true));
+  // Sustained slow encoding still fails after warmup.
+  assert(!probe(std::chrono::milliseconds(300), false, deadline));
+  bool expired = false;
+  try {
+    probe(std::chrono::milliseconds(0), false, EncoderClock::time_point::min());
+  } catch (const GateFailure& error) {
+    expired = error.stage() == "codec-probe-timeout";
   }
-  for (const auto probe_deadline : {deadline, expired}) {
-    bool probed = false;
-    const auto software_only = CompareSoftwareEncoder(nullptr, std::nullopt, probe_deadline, [&]() -> double {
-      probed = true;
-      throw GateFailure("codec-probe-timeout", "Optional comparison is unavailable");
-    });
-    // With no hardware candidate to compare, use the same VP8 path as manual selection.
-    assert(software_only.kind == OutputKind::vp8 && !software_only.initial && !probed);
-  }
+  assert(expired);
 }
 
 int main() {
   CheckEncoderCandidates();
-  CheckAutoEncoderFallback();
   CheckPrimaryFailureDetails();
   ComPtr<ID3D11Device> device;
   Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,
                          D3D11_SDK_VERSION, &device, nullptr, nullptr), "fixture-warp");
+  CheckAutoCadenceProbe(device.Get());
   CheckWorkerFailureGeneration(device.Get(), false);
   CheckWorkerFailureGeneration(device.Get(), true);
 }

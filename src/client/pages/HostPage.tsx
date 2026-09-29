@@ -1896,6 +1896,17 @@ export function HostPage({
     }
   }
 
+  function acceptHostPeerUpdate(peer: HostMediaPeer, snapshot: PeerSnapshot, generation: number): void {
+    if (!isCurrentGeneration(generation) || peersRef.current.get(peer.peerId) !== peer) return;
+    if (snapshot.connectionState === "failed" || snapshot.connectionState === "closed") {
+      reportHostChildFailure(peer.peerId, peer.connectionId, generation);
+      removePeer(peer.peerId);
+      return;
+    }
+    updatePeerSnapshot(snapshot);
+    reportSenderQuality(snapshot, activeRouteRevisionRef.current);
+  }
+
   function prepareHostChild(
     revision: number,
     assignment: HostRouteAssignment,
@@ -1928,17 +1939,12 @@ export function HostPage({
           isCurrentGeneration(generation) &&
           peersRef.current.get(peer.peerId) === peer
         ) {
+          reportHostChildFailure(peer.peerId, peer.connectionId, generation);
           removePeer(peer.peerId);
         }
       },
       onPromotedUpdate: (peer, snapshot) => {
-        if (
-          isCurrentGeneration(generation) &&
-          peersRef.current.get(peer.peerId) === peer
-        ) {
-          updatePeerSnapshot(snapshot);
-          reportSenderQuality(snapshot, activeRouteRevisionRef.current);
-        }
+        acceptHostPeerUpdate(peer, snapshot, generation);
       },
       onPreparedUpdate: (_peer, snapshot, revision) => {
         if (isCurrentGeneration(generation)) {
@@ -2064,13 +2070,7 @@ export function HostPage({
           ? signal.send({ type: "signal", targetPeerId, payload })
           : false,
       onUpdate: (snapshot) => {
-        if (
-          isCurrentGeneration(generation) &&
-          peersRef.current.get(peerId) === peer
-        ) {
-          updatePeerSnapshot(snapshot);
-          reportSenderQuality(snapshot, activeRouteRevisionRef.current);
-        }
+        acceptHostPeerUpdate(peer, snapshot, generation);
       },
     };
     peer = useNative

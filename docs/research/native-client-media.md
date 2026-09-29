@@ -81,8 +81,26 @@ CPU-only 720p30 trial its mean encoding work was 6.112 ms per frame; this exclud
 GPU readback and is not game-quality evidence. Separate real Browser gates
 proved manual VP8 and Auto-selected H264, including live presets, pause/resume,
 source replacement and exact RTP codec preservation. Auto uses a bounded
-synthetic target-profile throughput check, not a score or a runtime codec switch.
+synthetic target-profile cadence check, not a score or a runtime codec switch.
 GPU-heavy selection and cross-device startup remain open acceptance work.
+
+A 2026-09-28 check on Ryzen 7 9700X / RTX 4070 SUPER / Windows 11 26200
+used the animated Browser gate source at a 1080p, 8 Mbps ceiling. With asynchronous
+MFT readiness and no `timeBeginPeriod(1)` request, Auto selected NVIDIA H264 at
+30 and 60 fps, reaching active in 1.851 and 1.855 s respectively. Over roughly
+6.8-second steady windows, source and output both averaged 27.9 fps at 30 and
+54.1 fps at 60; helper CPU averaged 3.7% and 6.9% of one logical core. The source
+did not supply 60 fps, so this is not proof of 60-fps game capture or a measured
+speedup over the previous implementation. Separate full Browser gates passed
+Auto, manual H264 and VP8 with source/profile replacement and retirement.
+
+Native Auto now observes the live pipeline's output, including the frame dropper
+implicated by the [Browser AMD evidence](./realtime-quality-adaptation.md#h264-root-cause-and-gate).
+Cold-start work is excluded from steady cadence, while the selection deadline
+reaches MFT input/output waits. Synchronous driver activation/configuration and
+shutdown cannot be preempted by that deadline. Slow-output rejection has fixture
+coverage; native AMD/Intel physical acceptance and game-load behavior remain
+open. This evidence does not establish the cause of reported system-wide lag.
 
 The Windows Browser gate now also keeps two native PeerConnections alive while
 the source changes from 720p30 to 1440p60, then changes to 480p15 while paused

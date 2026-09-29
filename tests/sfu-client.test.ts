@@ -577,6 +577,32 @@ describe("embedded SFU browser transport", () => {
     expect(onStream).toHaveBeenLastCalledWith(null);
   });
 
+  it.each([
+    [false, false], [true, false], [false, true], [true, true],
+  ])("retires an unfinished ICE restart on reauthentication (send=%s, answer=%s)", async (sent, answered) => {
+    const send = vi.fn(() => sent);
+    const onDisconnected = vi.fn();
+    const subscriber = new SfuSubscriber({ send, onStream: vi.fn(), onDisconnected });
+    cleanups.push(() => subscriber.disconnect());
+    await subscriber.connect(config);
+    subscriber.activate();
+    const pc = FakePc.instances[0]!;
+    pc.state("connected");
+    subscriber.resync();
+    expect(pc.close).not.toHaveBeenCalled();
+    pc.state("disconnected");
+    subscriber.updateConfig({ ...config, revision: 9 });
+    expect(send).toHaveBeenCalledOnce();
+    if (answered) await subscriber.acceptSignal(
+      signal({ description: { type: "offer", sdp: "restart offer" } }),
+    );
+    expect(pc.close).not.toHaveBeenCalled();
+    subscriber.resync();
+    subscriber.resync();
+    expect(pc.close).toHaveBeenCalledOnce();
+    expect(onDisconnected).toHaveBeenCalledOnce();
+  });
+
   it("bounds pending ICE and reports one terminal failure", async () => {
     const { publisher: host, pc, onDisconnected } = await publisher();
     for (let index = 0; index < 65; index++) {

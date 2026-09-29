@@ -179,7 +179,7 @@ func TestAudioEOFWaitsForExplicitSourceReplacement(t *testing.T) {
 	waitPackets(&videoPackets, videoPackets.Load()+10, "video after audio EOF")
 	before := audioPackets.Load()
 	options.Target.SourceID = "2"
-	check(session.ReplaceSource(ctx, options, true))
+	check(session.ReplaceSource(options, true))
 	if session.currentStream() == previousVideo || session.currentAudioStream() == previousAudio ||
 		session.edge("audio-edge") != edge || session.audioSource != audioSource {
 		t.Fatal("explicit replacement did not preserve the media owners")

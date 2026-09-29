@@ -168,6 +168,11 @@ above rather than searching the tree.
   Dispatch separates protocol rejection, per-request operation failure and an
   already-satisfied teardown. Late teardown is idempotent and cannot retire a
   replacement resource; retain strict validation before looking up its target.
+  Relayed content uses the same units and limits at each boundary; its failure
+  cannot invalidate an otherwise valid local control session. Slow capture
+  mutations share one cancellable operation slot while control remains
+  responsive. Bounded queues apply backpressure rather than turning a valid
+  burst into session failure.
   Retained media state carries failure facts; the presentation layer resolves
   localized copy during render. Keep raw exceptions in diagnostics. Transient
   event notices may resolve once when the event occurs.

@@ -2206,6 +2206,7 @@ export function ViewerPage({
               ref={videoRef}
               autoPlay
               tabIndex={0}
+              inert={!remoteMedia}
               aria-label={t("viewer.stageAria")}
               playsInline
               onPlay={() => {

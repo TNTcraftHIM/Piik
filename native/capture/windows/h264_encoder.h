@@ -15,6 +15,7 @@
 #include <wrl/client.h>
 
 #include "capture_error.h"
+#include "mft_event_reader.h"
 
 #include <chrono>
 #include <iomanip>
@@ -229,6 +230,7 @@ class LiveEncoder final : public VideoEncoder {
   void WaitForInput(EncoderClock::time_point deadline);
 
   SelectedTransform selected_;
+  MftEventReader events_;
   VideoProfile profile_;
   MFT_OUTPUT_STREAM_INFO output_info_ = {};
   UINT32 input_requests_ = 0;

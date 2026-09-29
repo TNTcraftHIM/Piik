@@ -124,7 +124,8 @@ does not establish coverage.
   path. Keep browser profiles isolated and consider the active firewall when
   diagnosing connection failures rather than changing global firewall rules.
 - CI, versioning and release automation belong to complete, accepted squash
-  merges into `main`; ordinary branch pushes and PRs stay quiet. The
+  merges into `main`; ordinary branch pushes stay quiet. PRs run only the
+  lightweight public release-note check before merge. The
   [versioning policy](./docs/standards/versioning.md) owns version selection,
   publication and activation state. Package the merged SHA without writing
   version-record commits back to `main`.

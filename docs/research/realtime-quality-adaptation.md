@@ -146,6 +146,18 @@ This isolates the observed AMD failure to outer bitrate-control/frame-drop
 interaction, not a fixed MFT throughput ceiling. The page cannot enable the
 process feature, override Chromium's AMD workaround, or select a different MFT.
 
+Upstream status checked on 2026-09-28: Chromium main's
+[driver bug list](https://raw.githubusercontent.com/chromium/chromium/main/gpu/config/gpu_driver_bug_list.json)
+entry 449 still disables H.264 software bitrate control on AMD Windows without
+a driver-version exception
+([crbug 417752242](https://issues.chromium.org/issues/417752242)).
+This source establishes the Browser workaround, not the state of every AMD
+driver or native device. The earlier measured low-cadence output supports keeping
+an actual-output gate rather than inferring compatibility from a device name.
+Windows native Auto likewise measures through its live pipeline, including the
+untrusted rate controller and frame dropper. Matching native AMD physical
+evidence remains pending.
+
 Later exact Browser cohorts demonstrated why runtime evidence is useful:
 
 | Path | Actual encoder | Source / encoded / decoded | Result |

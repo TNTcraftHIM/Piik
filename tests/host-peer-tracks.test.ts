@@ -6,7 +6,7 @@ import {
 } from "../src/client/media/quality.ts";
 import { HostProvisionalChild } from "../src/client/media/host-provisional-child.ts";
 import { EMPTY_METRICS, type PeerSnapshot } from "../src/client/types.ts";
-import { HostPeer, type HostMediaPeer } from "../src/client/webrtc/host-peer.ts";
+import { HostPeer, RENEGOTIATION_ANSWER_TIMEOUT_MS, type HostMediaPeer } from "../src/client/webrtc/host-peer.ts";
 import {
   automaticVideoCodecPreference,
   manualVideoCodecPreference,
@@ -36,6 +36,7 @@ vi.mock("../src/client/webrtc/video-codec-preflight.ts", () => ({
 }));
 
 const statsCallbacks: Array<() => void> = [];
+const timeouts: Array<ReturnType<typeof setTimeout>> = [];
 
 class FakeSender {
   failNextReplace = false;
@@ -519,14 +520,19 @@ beforeEach(() => {
       return statsCallbacks.length;
     }),
     clearInterval: vi.fn(),
-    setTimeout: (callback: () => void, delay: number) =>
-      globalThis.setTimeout(callback, delay),
+    setTimeout: (callback: () => void, delay: number) => {
+      const timer = globalThis.setTimeout(callback, delay);
+      timeouts.push(timer);
+      return timer;
+    },
     clearTimeout: (timer: ReturnType<typeof setTimeout>) =>
       globalThis.clearTimeout(timer),
   });
 });
 
 afterEach(() => {
+  for (const timer of timeouts.splice(0)) globalThis.clearTimeout(timer);
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -1293,6 +1299,109 @@ describe("HostPeer source replacement", () => {
     );
   });
 
+  it("retires a stalled audio transaction, not the initial candidate", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const onUpdate = vi.fn();
+    const video = createTrack("video", "video");
+    const peer = createPeer(createStream(video, null), onUpdate);
+    try {
+      await peer.start();
+      const connection = FakePeerConnection.latest!;
+      await vi.advanceTimersByTimeAsync(RENEGOTIATION_ANSWER_TIMEOUT_MS * 2);
+      expect(connection.connectionState).not.toBe("closed");
+      await acceptPeerAnswer(peer);
+      await peer.replaceStream(createStream(video, createTrack("audio", "microphone")));
+      await vi.advanceTimersByTimeAsync(RENEGOTIATION_ANSWER_TIMEOUT_MS - 1);
+      expect(peer.isConnected()).toBe(true);
+      // Another microphone change coalesces without extending the first wait.
+      await peer.replaceStream(createStream(video, null));
+      await vi.advanceTimersByTimeAsync(1);
+      expect(connection.connectionState).toBe("closed");
+      expect(onUpdate.mock.calls.at(-1)?.[0]).toMatchObject({ connectionState: "failed" });
+      const updates = onUpdate.mock.calls.length;
+      await peer.acceptSignal({ kind: "description", connectionId: peer.connectionId,
+        description: { type: "answer", sdp: "late-answer" } });
+      expect(onUpdate).toHaveBeenCalledTimes(updates);
+    } finally { peer.dispose(); }
+  });
+
+  it.each(["answer", "dispose"])("cancels the renegotiation deadline on %s", async (completion) => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const onUpdate = vi.fn();
+    const video = createTrack("video", "video");
+    const peer = createPeer(createStream(video, null), onUpdate);
+    try {
+      await peer.start();
+      await acceptPeerAnswer(peer);
+      await peer.replaceStream(createStream(video, createTrack("audio", "microphone")));
+      if (completion === "answer") await acceptPeerAnswer(peer);
+      else peer.dispose();
+      const updates = onUpdate.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(RENEGOTIATION_ANSWER_TIMEOUT_MS * 2);
+      expect(onUpdate).toHaveBeenCalledTimes(updates);
+      if (completion === "answer") expect(peer.isConnected()).toBe(true);
+    } finally { peer.dispose(); }
+  });
+
+  it("releases a hung local-description operation at the renegotiation deadline", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const video = createTrack("video", "video");
+    const peer = createPeer(createStream(video, null));
+    let finish!: () => void;
+    try {
+      await peer.start();
+      await acceptPeerAnswer(peer);
+      const connection = FakePeerConnection.latest!;
+      const local = vi.spyOn(connection, "setLocalDescription").mockImplementationOnce(() =>
+        new Promise<void>((resolve) => { finish = resolve; }));
+      const replaced = peer.replaceStream(createStream(video, createTrack("audio", "microphone")));
+      await vi.waitFor(() => expect(local).toHaveBeenCalledOnce());
+      await vi.advanceTimersByTimeAsync(RENEGOTIATION_ANSWER_TIMEOUT_MS);
+      await expect(replaced).resolves.toBe(false);
+      expect(connection.connectionState).toBe("closed");
+      finish();
+      await Promise.resolve();
+      expect(connection.createOfferCallCount).toBe(2);
+    } finally { peer.dispose(); }
+  });
+
+  it("retires a connected sender whose renegotiation answer cannot be applied", async () => {
+    const onUpdate = vi.fn();
+    const video = createTrack("video", "video");
+    const peer = createPeer(createStream(video, null), onUpdate);
+    try {
+      await peer.start();
+      await acceptPeerAnswer(peer);
+      await peer.replaceStream(createStream(video, createTrack("audio", "microphone")));
+      const connection = FakePeerConnection.latest!;
+      vi.spyOn(connection, "setRemoteDescription").mockRejectedValueOnce(new DOMException("Rejected SDP", "OperationError"));
+      await peer.acceptSignal({ kind: "description", connectionId: peer.connectionId,
+        description: { type: "answer", sdp: "invalid-answer" } });
+      expect(connection.connectionState).toBe("closed");
+      expect(onUpdate.mock.calls.at(-1)?.[0]).toMatchObject({ connectionState: "failed" });
+    } finally { peer.dispose(); }
+  });
+
+  it("gives a coalesced transaction its own deadline after the previous answer", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const video = createTrack("video", "video");
+    const peer = createPeer(createStream(video, null));
+    try {
+      await peer.start();
+      await acceptPeerAnswer(peer);
+      await peer.replaceStream(createStream(video, createTrack("audio", "microphone")));
+      await peer.replaceStream(createStream(video, null));
+      await vi.advanceTimersByTimeAsync(10_000);
+      await peer.acceptSignal({ kind: "description", connectionId: peer.connectionId,
+        description: { type: "answer", sdp: "audio-answer" } });
+      expect(FakePeerConnection.latest!.createOfferCallCount).toBe(3);
+      await vi.advanceTimersByTimeAsync(RENEGOTIATION_ANSWER_TIMEOUT_MS - 1);
+      expect(peer.isConnected()).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(FakePeerConnection.latest!.connectionState).toBe("closed");
+    } finally { peer.dispose(); }
+  });
+
   it.each([false, true])("defers audio renegotiation until the current answer (restart=%s)", async (restart) => {
     const video = createTrack("video", "shared-video");
     const peer = createPeer(createStream(video, null));
@@ -2045,6 +2154,25 @@ function hostProvisionalInput(
 }
 
 describe("Host provisional child runtime ownership", () => {
+  it("reports a lost prepared audio answer to its existing route owner", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const failed = vi.fn();
+    const sendSignal = vi.fn(() => true);
+    const video = createTrack("video", "video");
+    const owner = new HostProvisionalChild({ sendSignal, onPreparedChildFailed: failed });
+    const input = hostProvisionalInput(7, ["child"], createStream(video, null));
+    try {
+      expect(owner.prepare(input)).toBe(true);
+      await vi.waitFor(() => expect(sendSignal).toHaveBeenCalledOnce());
+      await owner.acceptSignal("child", { kind: "description", connectionId: input.candidate.connectionId,
+        description: { type: "answer", sdp: "initial-answer" } });
+      await owner.replaceStream(createStream(video, createTrack("audio", "microphone")));
+      await vi.advanceTimersByTimeAsync(RENEGOTIATION_ANSWER_TIMEOUT_MS);
+      expect(failed).toHaveBeenCalledExactlyOnceWith(7, input.candidate.connectionId);
+      expect(FakePeerConnection.latest!.connectionState).toBe("closed");
+    } finally { owner.discard(); }
+  });
+
   it("rejects failed construction, releases the clone and permits the next preparation", async () => {
     const source = createTrack("video", "construction-source");
     const sendSignal = vi.fn(() => true);

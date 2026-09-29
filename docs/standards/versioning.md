@@ -155,7 +155,10 @@ An older draft retried after a newer release cannot take over `latest`.
 `PIIK_RELEASES_ENABLED` is a GitHub repository activation variable, not a product
 setting. Until the first release is explicitly enabled,
 main runs validation and manual `app_checks` dispatches create candidates only.
-Ordinary branches and PRs do not run cloud CI. [GitHub operations](../operations/github.md)
+Ordinary branches do not run cloud CI. PRs run only a read-only release-note
+check, including after edits to their body; product scope uses the same path
+owner as publication and the PR's net diff. Packaging and publication remain
+post-merge. [GitHub operations](../operations/github.md)
 owns activation and main protection; no workflow changes repository visibility.
 
 Updates remain explicit, outside an active share, using complete matching
@@ -190,12 +193,17 @@ work logs, audit handoffs and unverified claims outside this public section.
 first-parent commits since the previous stable tag. Standalone website and
 documentation phases need no product release notes. The first release uses
 only its launch commit's product introduction; private development history is
-not a launch changelog. Missing, empty or duplicate sections fail validation
-before packaging/publication. GitHub Actions shows the generated text in its
+not a launch changelog. Missing, empty, duplicate or visibly encoding-damaged
+sections fail validation before packaging/publication. GitHub Actions shows the generated text in its
 run summary. A manual candidate with an explicit version also previews it, so
 prepare its commit text before dispatching a release rehearsal. A manual
 candidate with no product changes may still be built; its summary reports that
 there are no product release notes, and publication remains disabled.
+
+Supply multiline PR/release copy through a UTF-8 file and read back the stored
+body before integration. A terminal preview alone does not prove that Chinese
+text survived the shell/API boundary. Do not repair published history by
+rewriting main.
 
 The publisher appends generated build identity and package checksums to the
 reviewed text, passes it through a temporary notes file to GitHub, then removes

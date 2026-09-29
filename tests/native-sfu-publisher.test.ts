@@ -170,6 +170,10 @@ describe("Native SFU publication", () => {
         frameHeight: 360,
       }),
     );
+    emit({ version: 9, type: "publication-state", shareId: "native_share", ...config, state: "disconnected" });
+    expect(control.closePublication).not.toHaveBeenCalled();
+    expect(onDisconnected).not.toHaveBeenCalled();
+    emit({ version: 9, type: "publication-state", shareId: "native_share", ...config, state: "connected" });
     emit({
       version: 9,
       type: "publication-state",

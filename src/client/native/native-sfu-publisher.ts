@@ -194,8 +194,7 @@ export class NativeSfuPublisher implements HostPublisherTransport {
       this.flush();
     } else if (
       event.type === "publication-state" &&
-      (event.state === "disconnected" ||
-        event.state === "failed" ||
+      (event.state === "failed" ||
         event.state === "closed")
     ) {
       void this.fail("transport");

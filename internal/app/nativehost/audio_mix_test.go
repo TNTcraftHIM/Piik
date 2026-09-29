@@ -130,7 +130,7 @@ func TestNativeMicrophonePreservesMediaOwnersAcrossInputChanges(t *testing.T) {
 	}
 	microphone = replaced
 	options.Target.SourceID = "2"
-	check(session.ReplaceSource(t.Context(), options, true))
+	check(session.ReplaceSource(options, true))
 	session.mixer.mu.Lock()
 	sameMicrophone := session.mixer.microphone == microphone
 	session.mixer.mu.Unlock()

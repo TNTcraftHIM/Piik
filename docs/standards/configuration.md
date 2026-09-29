@@ -72,7 +72,8 @@ sets `/var/lib/piik/rooms.sqlite` under its managed state directory; the
 container image sets `/home/nonroot/rooms.sqlite` under its writable data
 directory. Keep the existing database path and data across application updates.
 Room authority has no idle expiry; the separate site-access cookie keeps its
-24-hour idle lifetime.
+24-hour idle lifetime within one service run. Restarting the App or Server
+requires site-password entry again; saved rooms and invitation grants are unaffected.
 
 Removed access, room TTL/lease, endpoint-tier, room-rollout, and TURN variables fail
 startup even when blank. A present `NODE_ENV` fails the same way, so a stale

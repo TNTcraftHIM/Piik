@@ -41,6 +41,9 @@ import {
 } from "./nat-prediction";
 
 const MAX_PENDING_CANDIDATES = 64;
+// An audio-direction change must not wait forever for a lost SDP answer.
+// Initial acquisition and ICE restart keep their existing route/recovery owners.
+export const RENEGOTIATION_ANSWER_TIMEOUT_MS = 15_000;
 type PeerIceConfig = Pick<RTCConfiguration, "iceServers"> & {
   natPredictionStunUrls?: readonly string[];
 };
@@ -97,6 +100,7 @@ export class HostPeer {
   private profileRevision = 0;
   private negotiationEpoch = 0;
   private ordinaryAnswerEpoch: number | null = null;
+  private answerTimer: number | null = null;
   private pendingNegotiation = false;
   private senderMutationTail: Promise<void> = Promise.resolve();
   private negotiationTail: Promise<void> = Promise.resolve();
@@ -209,7 +213,7 @@ export class HostPeer {
         audio: true,
       });
     });
-    if (!(await this.createOffer(false)) || this.disposed) {
+    if (!(await this.createOffer()) || this.disposed) {
       return false;
     }
     this.statsTimer = window.setInterval(() => {
@@ -306,7 +310,7 @@ export class HostPeer {
         if (this.disposed) return false;
         this.snapshot = { ...this.snapshot, error: null };
         this.emit();
-        return !audioDirectionChanged || (await this.createOffer(false));
+        return !audioDirectionChanged || (await this.createOffer());
       } finally {
         if (videoChanged && !retainedNextVideoTrack) {
           nextVideoTrack.stop();
@@ -641,7 +645,7 @@ export class HostPeer {
     return result;
   }
 
-  private createOffer(restart: boolean): Promise<boolean> {
+  private createOffer(): Promise<boolean> {
     return this.enqueueNegotiation(async () => {
       if (this.disposed) {
         return false;
@@ -653,7 +657,7 @@ export class HostPeer {
         this.pendingNegotiation = true;
         return true;
       }
-      return this.createOwnedOffer(restart, this.nextNegotiationEpoch());
+      return this.createOwnedOffer(false, this.nextNegotiationEpoch());
     });
   }
 
@@ -663,6 +667,11 @@ export class HostPeer {
   ): Promise<boolean> {
     if (!this.ownsLocalOffer(epoch)) {
       return false;
+    }
+    if (!restart && this.connection.remoteDescription) {
+      this.answerTimer = window.setTimeout(() => {
+        if (this.ownsLocalOffer(epoch)) this.fail(new Error("SDP renegotiation answer timed out"));
+      }, RENEGOTIATION_ANSWER_TIMEOUT_MS);
     }
     try {
       if (restart) {
@@ -702,6 +711,7 @@ export class HostPeer {
       if (this.ordinaryAnswerEpoch === epoch) {
         this.ordinaryAnswerEpoch = null;
       }
+      this.clearAnswerTimer();
       this.setError(error, "host.err.createConnection");
       return false;
     }
@@ -728,6 +738,7 @@ export class HostPeer {
       }
       await this.flushCandidates();
       if (this.ownsAnswer(epoch)) {
+        this.clearAnswerTimer();
         this.ordinaryAnswerEpoch = null;
         if (this.pendingNegotiation) {
           this.pendingNegotiation = false;
@@ -741,9 +752,7 @@ export class HostPeer {
       if (!this.ownsAnswer(epoch)) {
         return;
       }
-      this.ordinaryAnswerEpoch = null;
-      this.pendingNegotiation = false;
-      throw error;
+      this.fail(error);
     }
   }
 
@@ -760,9 +769,15 @@ export class HostPeer {
   }
 
   private nextNegotiationEpoch(): number {
+    this.clearAnswerTimer();
     this.ordinaryAnswerEpoch = null;
     this.negotiationEpoch += 1;
     return this.negotiationEpoch;
+  }
+
+  private clearAnswerTimer(): void {
+    if (this.answerTimer !== null) window.clearTimeout(this.answerTimer);
+    this.answerTimer = null;
   }
 
   private async updateStats(): Promise<void> {

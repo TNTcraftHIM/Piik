@@ -23,12 +23,13 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeviewer"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
 
 const (
-	maxSDPBytes       = 48 * 1024
-	maxCandidateBytes = 4096
+	maxSDPUnits       = 48 * 1024
+	maxCandidateUnits = 4096
 	maxSTUNURLBytes   = 512
 	maxICEServers     = 8
 	maxURLsPerServer  = 8
@@ -46,11 +47,13 @@ type Session struct {
 	events         chan any
 	viewerEvents   chan nativeviewer.Event
 
-	mu         sync.Mutex
-	host       *nativehost.Session
-	viewer     *nativeviewer.Session
-	closed     bool
-	updateDone chan struct{}
+	mu          sync.Mutex
+	host        *nativehost.Session
+	viewer      *nativeviewer.Session
+	closed      bool
+	updateDone  chan struct{}
+	startID     string
+	startCancel context.CancelFunc
 }
 
 type outboundMediaSession interface {
@@ -182,7 +185,9 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		slog.Debug("piik-client", "event", "native-profile-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "profile", nativeQualityProfile(request.Profile), "codec", request.Codec, "audio", request.Audio,
 			"sourceKind", request.Source.Kind, "adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
-		return session.startShare(ctx, envelope, request)
+		result = session.beginShare(ctx, envelope, request, complete)
+		asynchronous = result == nil
+		return result, nil
 	case "set-microphone":
 		var request microphoneRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||
@@ -244,33 +249,30 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if host == nil {
 			return nil, errors.New("native share does not exist")
 		}
-		session.mu.Lock()
-		updating := session.updateDone != nil
-		session.mu.Unlock()
-		if updating {
-			return operationFailure(envelope, errors.New("native quality update is still active")), nil
-		}
 		audio := request.Audio && session.capabilities.Summary().AudioFor(
 			request.Source.Kind,
 		)
 		slog.Debug("piik-client", "event", "native-source-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio,
 			"adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
-		err := host.ReplaceSource(ctx, nativecapture.VideoOptions{
-			Target:            request.Source,
-			ShowCaptureBorder: request.ShowCaptureBorder && session.capabilities.CaptureBorderControl,
-			AdapterIndex:      request.AdapterIndex,
-			EncoderIndex:      request.EncoderIndex,
-		}, audio)
-		if err != nil {
-			return operationFailure(envelope, err), nil
-		}
-		slog.Debug("piik-client", "event", "native-source-applied", "requestId", envelope.ID,
-			"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio)
-		return shareSourceReplacedResponse{
-			responseEnvelope: response(envelope, "share-source-replaced"),
-			ShareID:          request.ShareID,
-		}, nil
+		result = session.runHostOperation(host, envelope, func() (any, error) {
+			err := host.ReplaceSource(nativecapture.VideoOptions{
+				Target:            request.Source,
+				ShowCaptureBorder: request.ShowCaptureBorder && session.capabilities.CaptureBorderControl,
+				AdapterIndex:      request.AdapterIndex,
+				EncoderIndex:      request.EncoderIndex,
+			}, audio)
+			if err != nil {
+				return nil, err
+			}
+			slog.Debug("piik-client", "event", "native-source-applied", "requestId", envelope.ID,
+				"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio)
+			return shareSourceReplacedResponse{
+				responseEnvelope: response(envelope, "share-source-replaced"), ShareID: request.ShareID,
+			}, nil
+		}, complete)
+		asynchronous = result == nil
+		return result, nil
 	case "prepare-edge":
 		var request prepareEdgeRequest
 		if err := decodeStrict(payload, &request); err != nil ||
@@ -292,18 +294,22 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
 			!validIdentities(request.ShareID, request.ConnectionID) ||
-			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity ||
-			len(request.SDP) == 0 || len(request.SDP) > maxSDPBytes {
+			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity {
 			return nil, protocolViolation("native receive-offer request is invalid")
+		}
+		if !validSDP(request.SDP) {
+			return nil, errors.New("relayed offer is invalid")
 		}
 		return session.receiveOffer(envelope, request)
 	case "receive-candidate":
 		var request receiveCandidateRequest
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
-			!validIdentities(request.ShareID, request.ConnectionID) ||
-			!validCandidate(request.Candidate) {
+			!validIdentities(request.ShareID, request.ConnectionID) {
 			return nil, protocolViolation("native receive-candidate request is invalid")
+		}
+		if !validCandidate(request.Candidate) {
+			return nil, errors.New("relayed candidate is invalid")
 		}
 		viewer := session.currentViewer(request.ShareID)
 		if viewer == nil {
@@ -336,9 +342,11 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		var request edgeAnswerRequest
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
-			!validIdentities(request.ShareID, request.ConnectionID) ||
-			len(request.SDP) == 0 || len(request.SDP) > maxSDPBytes {
+			!validIdentities(request.ShareID, request.ConnectionID) {
 			return nil, protocolViolation("native edge-answer request is invalid")
+		}
+		if !validSDP(request.SDP) {
+			return nil, errors.New("relayed answer is invalid")
 		}
 		media := session.currentMedia(request.ShareID)
 		if media == nil {
@@ -355,9 +363,11 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		var request edgeCandidateRequest
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
-			!validIdentities(request.ShareID, request.ConnectionID) ||
-			!validCandidate(request.Candidate) {
+			!validIdentities(request.ShareID, request.ConnectionID) {
 			return nil, protocolViolation("native edge-candidate request is invalid")
+		}
+		if !validCandidate(request.Candidate) {
+			return nil, errors.New("relayed candidate is invalid")
 		}
 		media := session.currentMedia(request.ShareID)
 		if media == nil {
@@ -417,6 +427,9 @@ func (session *Session) Close() error {
 		return nil
 	}
 	session.closed = true
+	if session.startCancel != nil {
+		session.startCancel()
+	}
 	updateDone := session.updateDone
 	host := session.host
 	viewer := session.viewer
@@ -443,11 +456,11 @@ func (session *Session) updateHost(host *nativehost.Session, request requestEnve
 	}, complete)
 }
 
-// Quality and microphone setup share one bounded operation slot. Stop remains
+// Capture mutations share one bounded operation slot. Stop remains
 // synchronous and cancels the owning share before joining this completion.
 func (session *Session) runHostOperation(host *nativehost.Session, request requestEnvelope, operation func() (any, error), complete func(any, error)) any {
 	session.mu.Lock()
-	if session.closed || session.host != host || session.updateDone != nil {
+	if session.closed || session.host != host || session.updateDone != nil || session.startCancel != nil {
 		session.mu.Unlock()
 		return operationFailure(request, errors.New("native share operation is unavailable or already active"))
 	}
@@ -465,30 +478,60 @@ func (session *Session) runHostOperation(host *nativehost.Session, request reque
 			result = operationFailure(request, err)
 		}
 		complete(result, err)
-		close(done)
-		if session.closed {
-			session.updateDone = nil
-			session.mu.Unlock()
-			return
-		}
-		// Release admission before an enqueued ACK can trigger the next update.
-		select {
-		case session.events <- result:
-			session.updateDone = nil
-			session.mu.Unlock()
-			return
-		default:
-			session.mu.Unlock()
-		}
-		// Backpressure retains one completion but never holds the stop mutex.
-		session.emit(result)
-		session.mu.Lock()
-		if session.updateDone == done {
-			session.updateDone = nil
-		}
-		session.mu.Unlock()
+		session.finishHostOperation(done, result)
 	}()
 	return nil
+}
+
+// Startup has no Host yet to cancel. Reserve that same mutation slot, and
+// transfer its context to watchHost only after the new Host has been installed.
+func (session *Session) beginShare(ctx context.Context, envelope requestEnvelope, request startShareRequest, complete func(any, error)) any {
+	session.mu.Lock()
+	if session.closed || session.host != nil || session.viewer != nil || session.updateDone != nil || session.startCancel != nil {
+		session.mu.Unlock()
+		return operationFailure(envelope, errors.New("native share is unavailable or already active"))
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	session.updateDone, session.startID, session.startCancel = done, request.ShareID, cancel
+	session.mu.Unlock()
+	go func() {
+		result, err := session.startShare(ctx, envelope, request, cancel)
+		if err != nil {
+			cancel()
+			result = operationFailure(envelope, err)
+		}
+		complete(result, err)
+		session.mu.Lock()
+		session.startID, session.startCancel = "", nil
+		session.finishHostOperation(done, result)
+	}()
+	return nil
+}
+
+// Caller holds mu. Release admission before an ACK can trigger the next
+// mutation; a backed-up event writer must never hold the stop mutex.
+func (session *Session) finishHostOperation(done chan struct{}, result any) {
+	close(done)
+	if session.closed {
+		session.updateDone = nil
+		session.mu.Unlock()
+		return
+	}
+	select {
+	case session.events <- result:
+		session.updateDone = nil
+		session.mu.Unlock()
+		return
+	default:
+		session.mu.Unlock()
+	}
+	session.emit(result)
+	session.mu.Lock()
+	if session.updateDone == done {
+		session.updateDone = nil
+	}
+	session.mu.Unlock()
 }
 
 func (session *Session) shareUpdateResult(request requestEnvelope, shareID string, profile nativehost.QualityProfile, err error) any {
@@ -504,17 +547,14 @@ func (session *Session) startShare(
 	ctx context.Context,
 	envelope requestEnvelope,
 	request startShareRequest,
+	cancel context.CancelFunc,
 ) (any, error) {
 	profile := nativeQualityProfile(request.Profile)
 	if request.Codec == "vp8" && !session.capabilities.SoftwareVP8 {
 		return nil, errors.New("native VP8 encoding is unavailable")
 	}
 	session.mu.Lock()
-	if session.updateDone != nil {
-		session.mu.Unlock()
-		return operationFailure(envelope, errors.New("native quality update is still active")), nil
-	}
-	if session.closed || session.host != nil || session.viewer != nil {
+	if session.closed || ctx.Err() != nil || session.host != nil || session.viewer != nil {
 		session.mu.Unlock()
 		return nil, errors.New("native share is already active")
 	}
@@ -553,7 +593,7 @@ func (session *Session) startShare(
 		return nil, err
 	}
 	session.mu.Lock()
-	if session.closed || session.host != nil || session.viewer != nil {
+	if session.closed || ctx.Err() != nil || session.host != nil || session.viewer != nil {
 		session.mu.Unlock()
 		_ = host.Close()
 		return nil, errors.New("native share is unavailable")
@@ -563,7 +603,7 @@ func (session *Session) startShare(
 	codec := host.Codec()
 	slog.Debug("piik-client", "event", "native-profile-applied", "requestId", envelope.ID,
 		"share", diagnostics.ID(request.ShareID), "profile", profile, "codec", codec, "audio", host.HasAudio())
-	go session.watchHost(host)
+	go func() { defer cancel(); session.watchHost(host) }()
 	return shareStartedResponse{
 		responseEnvelope: response(envelope, "share-started"),
 		ShareID:          request.ShareID,
@@ -707,6 +747,13 @@ func (session *Session) receiveOffer(
 
 func (session *Session) stopShare(shareID string) error {
 	session.mu.Lock()
+	if session.startID == shareID && session.startCancel != nil {
+		session.startCancel()
+		done := session.updateDone
+		session.mu.Unlock()
+		<-done
+		return session.stopShare(shareID)
+	}
 	host := session.host
 	if host == nil || host.ShareID() != shareID {
 		session.mu.Unlock()
@@ -736,7 +783,7 @@ func (session *Session) ensureViewer(
 	edgeCapacity int,
 ) (*nativeviewer.Session, error) {
 	session.mu.Lock()
-	if session.closed || session.host != nil {
+	if session.closed || session.host != nil || session.startCancel != nil {
 		session.mu.Unlock()
 		return nil, errors.New("native media role is unavailable")
 	}
@@ -758,7 +805,7 @@ func (session *Session) ensureViewer(
 		return nil, err
 	}
 	session.mu.Lock()
-	if session.closed || session.host != nil || session.viewer != nil {
+	if session.closed || session.host != nil || session.viewer != nil || session.startCancel != nil {
 		session.mu.Unlock()
 		_ = viewer.Close()
 		return nil, errors.New("native media role is unavailable")
@@ -972,13 +1019,20 @@ func validSTUNURL(value string) bool {
 	return err == nil && number > 0 && number <= 65_535
 }
 
+// Relayed media text keeps the Browser/server's UTF-16 limits. Its rejection
+// fails one request, not the authenticated Browser's entire native session.
+func validSDP(sdp string) bool {
+	return sdp != "" && protocol.UTF16Length(sdp) <= maxSDPUnits
+}
+
 func validCandidate(candidate *webrtc.ICECandidateInit) bool {
 	if candidate == nil {
 		return true
 	}
-	return len(candidate.Candidate) <= maxCandidateBytes &&
-		(candidate.SDPMid == nil || len(*candidate.SDPMid) <= 128) &&
-		(candidate.UsernameFragment == nil || len(*candidate.UsernameFragment) <= 256)
+	return protocol.UTF16Length(candidate.Candidate) <= maxCandidateUnits &&
+		(candidate.SDPMid == nil || protocol.UTF16Length(*candidate.SDPMid) <= 128) &&
+		(candidate.SDPMLineIndex == nil || *candidate.SDPMLineIndex <= 255) &&
+		(candidate.UsernameFragment == nil || protocol.UTF16Length(*candidate.UsernameFragment) <= 256)
 }
 
 func validIdentities(values ...string) bool {

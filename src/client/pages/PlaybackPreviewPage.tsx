@@ -116,7 +116,8 @@ export function PlaybackPreviewPage() {
       </header> : null}
       <div className="lr-scene">
         <StageTv live={Boolean(stream)} label={english ? "Local test picture" : "本机测试画面"}>
-          <video ref={videoRef} playsInline tabIndex={0} aria-label={english ? "Local test video" : "本机测试视频"} />
+          <video ref={videoRef} playsInline tabIndex={0} inert={!stream}
+            aria-label={english ? "Local test video" : "本机测试视频"} />
           <PlaybackControls videoRef={videoRef} stream={stream}
             audioTrackKey={stream?.getAudioTracks().map((track) => track.id).join(",")}
             canPlay={Boolean(stream)} theaterMode={theaterMode} onPlay={play}

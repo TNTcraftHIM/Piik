@@ -13,6 +13,7 @@ import (
 
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -180,7 +181,7 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 	session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false)
 	defer session.Close()
 	const start = `{"version":9,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
-	if value, err := session.Handle(t.Context(), []byte(start)); err != nil {
+	if value, err := awaitControlResponse(t, session, []byte(start)); err != nil {
 		t.Fatal(err)
 	} else if _, ok := value.(shareStartedResponse); !ok {
 		t.Fatalf("start failed: %#v", value)
@@ -197,6 +198,25 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 	}
 	assertOperationFailure(t, session, edge)
 	assertOperationFailure(t, session, `{"version":9,"id":"request_edge","type":"prepare-edge","shareId":"stale_share","connectionId":"edge_123456","iceServers":[]}`)
+	for _, text := range []string{strings.Repeat("界", 4096), strings.Repeat("界", 4097)} {
+		candidate, _ := json.Marshal(map[string]any{"candidate": text})
+		var upstream protocol.IceCandidate
+		if err := json.Unmarshal(candidate, &upstream); (err == nil) != (len([]rune(text)) == 4096) {
+			t.Fatalf("unexpected upstream admission: %v", err)
+		}
+		for _, kind := range []string{"edge-candidate", "receive-candidate", "publication-candidate"} {
+			fields := ""
+			if kind == "publication-candidate" {
+				fields = `,"publicationGeneration":"publication_123"`
+			}
+			payload := fmt.Sprintf(`{"version":9,"id":"request_remote","type":%q,"shareId":"share_123456","connectionId":"edge_123456","candidate":%s%s}`, kind, candidate, fields)
+			if len([]rune(text)) > 4096 {
+				assertOperationFailure(t, session, payload)
+			} else if _, err := session.Handle(t.Context(), []byte(payload)); err != nil {
+				t.Fatalf("upstream-admitted content closed native control: %v", err)
+			}
+		}
+	}
 	if session.current("share_123456") != host {
 		t.Fatal("failed edge retired the current share")
 	}
@@ -209,7 +229,7 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if _, err := session.Handle(t.Context(), []byte(strings.ReplaceAll(start, "share_123456", "share_654321"))); err != nil {
+	if _, err := awaitControlResponse(t, session, []byte(strings.ReplaceAll(start, "share_123456", "share_654321"))); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
@@ -220,5 +240,85 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 	}
 	if session.current("share_654321") == nil {
 		t.Fatal("late stop retired the replacement share")
+	}
+}
+
+func TestRelayedTextKeepsUpstreamLimits(t *testing.T) {
+	for _, character := range []string{"a", "界", "😀"} {
+		units := protocol.UTF16Length(character)
+		sdp := strings.Repeat(character, maxSDPUnits/units)
+		if !validSDP(sdp) || validSDP(sdp+character) || validSDP("") {
+			t.Fatal("native SDP limit differs from the room protocol")
+		}
+		payload := fmt.Sprintf(`{"candidate":%q,"sdpMid":%q,"usernameFragment":%q,"sdpMLineIndex":255}`,
+			strings.Repeat(character, maxCandidateUnits/units), strings.Repeat(character, 128/units), strings.Repeat(character, 256/units))
+		var request edgeCandidateRequest
+		if err := json.Unmarshal([]byte(`{"candidate":`+payload+`}`), &request); err != nil || !validCandidate(request.Candidate) {
+			t.Fatalf("native candidate limit differs from the room protocol: %v", err)
+		}
+		request.Candidate.Candidate += character
+		if validCandidate(request.Candidate) {
+			t.Fatal("oversized candidate admitted")
+		}
+	}
+}
+
+func TestCaptureStartupAndReplacementRemainCancellable(t *testing.T) {
+	for _, kind := range []string{"start-share", "replace-share-source"} {
+		t.Run(kind, func(t *testing.T) {
+			directory := t.TempDir()
+			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", directory)
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false)
+			defer session.Close()
+			start := `{"version":9,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
+			payload := strings.Replace(start, "1080p", "720p", 1)
+			if kind == "replace-share-source" {
+				if value, err := awaitControlResponse(t, session, []byte(start)); err != nil {
+					t.Fatal(err)
+				} else if _, ok := value.(shareStartedResponse); !ok {
+					t.Fatalf("start: %#v", value)
+				}
+				payload = `{"version":9,"id":"request_replace","type":"replace-share-source","shareId":"share_123456","source":{"kind":"display","sourceId":"2","title":"Fixture"},"audio":false}`
+			}
+			t.Setenv("PIIK_PENDING_CAPTURE_FIXTURE", "true")
+			if value, err := session.Handle(t.Context(), []byte(payload)); value != nil || err != nil {
+				t.Fatalf("capture command blocked instead of deferring: %#v %v", value, err)
+			}
+			deadline := time.Now().Add(2 * time.Second)
+			for {
+				if _, err := os.Stat(filepath.Join(directory, "prepared")); err == nil {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("capture fixture did not start")
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			// No unbounded parallel initialization while the first is still waiting.
+			assertOperationFailure(t, session, payload)
+			if _, err := session.Handle(t.Context(), []byte(`{"version":9,"id":"request_ice","type":"edge-candidate","shareId":"share_123456","connectionId":"missing_edge","candidate":null}`)); err != nil {
+				t.Fatalf("capture initialization blocked independent control: %v", err)
+			}
+			stopped := make(chan error, 1)
+			go func() {
+				_, err := session.Handle(t.Context(), []byte(`{"version":9,"id":"request_stop","type":"stop-share","shareId":"share_123456"}`))
+				stopped <- err
+			}()
+			select {
+			case err := <-stopped:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("stop could not cancel pending capture")
+			}
+			if session.current("share_123456") != nil {
+				t.Fatal("late startup installed a cancelled Host")
+			}
+		})
 	}
 }

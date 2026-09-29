@@ -371,6 +371,7 @@ export function Tooltip({
       ref={wrapRef}
       className={`lr-comic-tip-wrap${className ? ` ${className}` : ""}${toggleOnClick ? " is-help-only" : ""}${disabledTrigger ? " is-disabled-trigger" : ""}${hoverOpen ? " is-hover-open" : ""}${focusOpen ? " is-focus-open" : ""}${pressOpen ? " is-tip-open" : ""}`}
       tabIndex={focusableWrap ? 0 : undefined}
+      role={focusableWrap ? "group" : undefined}
       aria-label={disabledTriggerLabel ?? (focusableWrap ? trigger?.props["aria-label"] ?? overflow?.text : undefined)}
       aria-describedby={disabledTrigger && caption && interactionOpen ? tooltipId : undefined}
       onPointerEnter={(event) => {

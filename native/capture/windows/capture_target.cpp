@@ -166,7 +166,8 @@ std::string JsonString(const std::string& value) {
 
 BOOL CALLBACK CollectWindow(HWND window, LPARAM parameter) {
   auto* targets = reinterpret_cast<std::vector<SourceTarget>*>(parameter);
-  if (targets->size() >= kMaxSources) return FALSE;
+  // FALSE makes EnumWindows report failure; a full list is still usable.
+  if (targets->size() >= kMaxSources) return TRUE;
   if (!IsWindowVisible(window) || GetWindow(window, GW_OWNER) != nullptr) {
     return TRUE;
   }
@@ -209,7 +210,7 @@ BOOL CALLBACK CollectWindow(HWND window, LPARAM parameter) {
 
 BOOL CALLBACK CollectDisplay(HMONITOR monitor, HDC, LPRECT, LPARAM parameter) {
   auto* targets = reinterpret_cast<std::vector<SourceTarget>*>(parameter);
-  if (targets->size() >= kMaxSources) return FALSE;
+  if (targets->size() >= kMaxSources) return TRUE;
   MONITORINFOEXW info{};
   info.cbSize = sizeof(info);
   if (!GetMonitorInfoW(monitor, &info)) return TRUE;
@@ -931,10 +932,10 @@ int WriteMicrophoneList() {
     if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&enumerator))) ||
         FAILED(enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, &devices))) return 2;
     UINT count = 0;
-    if (FAILED(devices->GetCount(&count)) || count > 64) return 2;
+    if (FAILED(devices->GetCount(&count))) return 2;
     std::cout << '[';
     bool first = true;
-    for (UINT index = 0; index < count; ++index) {
+    for (UINT index = 0; index < count && index < 64; ++index) {
       ComPtr<IMMDevice> device;
       ComPtr<IPropertyStore> properties;
       if (FAILED(devices->Item(index, &device)) || FAILED(device->OpenPropertyStore(STGM_READ, &properties))) continue;

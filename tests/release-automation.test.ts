@@ -5,13 +5,57 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { releaseNotes } from "../scripts/release-notes.mjs";
+import { pullRequestNotes, releaseNotes } from "../scripts/release-notes.mjs";
 
 const planner = fileURLToPath(new URL("../scripts/release-version.mjs", import.meta.url));
 const publisher = fileURLToPath(new URL("../scripts/publish-release.mjs", import.meta.url));
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 
 describe("release automation", () => {
+  it("validates the PR body against its net product diff before the squash", () => {
+    const root = mkdtempSync(join(tmpdir(), "piik-pr-notes-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    const commit = () => { git("add", "."); git("commit", "-m", "checkpoint without release notes"); return git("rev-parse", "HEAD"); };
+    try {
+      git("init", "--quiet", "--initial-branch=main");
+      git("config", "user.name", "Piik fixture");
+      git("config", "user.email", "fixture@example.invalid");
+      git("config", "commit.gpgSign", "false");
+      mkdirSync(join(root, "public"));
+      mkdirSync(join(root, "site"));
+      writeFileSync(join(root, "public/asset.svg"), "art");
+      const base = commit();
+      writeFileSync(join(root, "README.md"), "guide");
+      const docs = commit();
+      const event = { pull_request: { number: 1, base: { sha: base }, head: { sha: docs }, body: "" } };
+      expect(pullRequestNotes(root, event)).toBe("");
+      // Moving a product file out is still a deletion from the shipped surface.
+      git("mv", "public/asset.svg", "site/asset.svg");
+      event.pull_request.head.sha = commit();
+      expect(() => pullRequestNotes(root, event)).toThrow("one nonempty");
+      for (const body of ["## Release notes\n???", "## Release notes\n\uFFFD"]) {
+        event.pull_request.body = body;
+        expect(() => pullRequestNotes(root, event)).toThrow("damaged");
+      }
+      event.pull_request.body = "## Release notes\nOne\n## Release notes\nTwo";
+      expect(() => pullRequestNotes(root, event)).toThrow("one nonempty");
+      event.pull_request.body = "## Implementation\nprivate detail\n## Release notes\n修复分享 / Sharing fixes.\nLiteral `code` and $(text).";
+      expect(pullRequestNotes(root, event)).toBe("修复分享 / Sharing fixes.\nLiteral `code` and $(text).");
+      const eventFile = join(root, "event.json");
+      writeFileSync(join(root, ".git/info/exclude"), "event.json\n");
+      writeFileSync(eventFile, JSON.stringify(event));
+      const script = fileURLToPath(new URL("../scripts/release-notes.mjs", import.meta.url));
+      expect(execFileSync(process.execPath, [script, "--pull-request"], {
+        cwd: root, encoding: "utf8", env: { ...process.env, GITHUB_EVENT_PATH: eventFile },
+      })).toContain("validated");
+      // Reverting the product change leaves a documentation-only PR.
+      git("mv", "site/asset.svg", "public/asset.svg");
+      event.pull_request.head.sha = commit();
+      event.pull_request.body = "";
+      expect(pullRequestNotes(root, event)).toBe("");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 15_000);
+
   it("publishes reviewed notes, excludes private history and retains every unreleased phase on retries", () => {
     const root = mkdtempSync(join(tmpdir(), "piik-release-notes-"));
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -59,6 +103,11 @@ describe("release automation", () => {
         git("checkout", "--quiet", "--detach", next);
         const invalid = commit(`chore: maintenance\n\n${section}`);
         expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("one nonempty");
+      }
+      for (const damaged of ["????????????", "Updated \uFFFD capture"]) {
+        git("checkout", "--quiet", "--detach", next);
+        const invalid = commit(`fix: capture\n\n## Release notes\n${damaged}`);
+        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("damaged Release notes");
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 15_000); // Real Git subprocesses share the runner with the rest of the suite.

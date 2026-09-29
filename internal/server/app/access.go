@@ -2,6 +2,7 @@ package app
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -42,6 +43,7 @@ type siteAccessOptions struct {
 // siteAccessGate issues and verifies the stateless site-access cookie.
 type siteAccessGate struct {
 	password   string
+	signingKey [32]byte
 	secure     bool
 	now        func() int64
 	ttlSeconds int
@@ -79,12 +81,18 @@ func newSiteAccess(options siteAccessOptions) (*siteAccessGate, error) {
 	if now == nil {
 		now = func() int64 { return time.Now().UnixMilli() }
 	}
-	return &siteAccessGate{
+	access := &siteAccessGate{
 		password:   options.Password,
 		secure:     options.Secure,
 		now:        now,
 		ttlSeconds: ttlSeconds,
-	}, nil
+	}
+	// A user-chosen password is not a signing key: a cookie must not permit
+	// offline password guessing. Site authentication is scoped to this process.
+	if _, err := rand.Read(access.signingKey[:]); err != nil {
+		return nil, err
+	}
+	return access, nil
 }
 
 // required reports whether a password is configured.
@@ -157,7 +165,7 @@ func (a *siteAccessGate) cookieName() string {
 }
 
 func (a *siteAccessGate) sign(payload string) string {
-	mac := hmac.New(sha256.New, []byte(a.password))
+	mac := hmac.New(sha256.New, a.signingKey[:])
 	mac.Write([]byte(payload))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }

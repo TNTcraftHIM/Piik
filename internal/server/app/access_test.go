@@ -78,12 +78,8 @@ func TestSiteAccessCookieAttributeOrder(t *testing.T) {
 		Now:        func() int64 { return 1_000 },
 		TTLSeconds: 12,
 	})
-	secure := newTestAccess(t, siteAccessOptions{
-		Password:   testAccessPassword,
-		Secure:     true,
-		Now:        func() int64 { return 1_000 },
-		TTLSeconds: 12,
-	})
+	secure := *insecure
+	secure.secure = true
 
 	signature := strings.Split(cookiePair(t, insecure.createCookie()), ".")[2]
 	if len(signature) != 43 {
@@ -101,6 +97,20 @@ func TestSiteAccessCookieAttributeOrder(t *testing.T) {
 		"; Path=/; Max-Age=12; HttpOnly; SameSite=Strict; Secure"
 	if got := secure.createCookie(); got != wantSecure {
 		t.Fatalf("secure CreateCookie() = %q, want %q", got, wantSecure)
+	}
+}
+
+func TestSiteCookieUsesAnIndependentProcessKey(t *testing.T) {
+	first := newTestAccess(t, siteAccessOptions{Password: "1"})
+	second := newTestAccess(t, siteAccessOptions{Password: "1"})
+	cookie := cookiePair(t, first.createCookie())
+	if !first.isAuthenticated(cookie) || second.isAuthenticated(cookie) {
+		t.Fatal("site cookies must authenticate only their issuing process")
+	}
+	// LAN/HTTPS adapters copy the same gate; they do not allocate another key.
+	copy := *first
+	if !copy.isAuthenticated(cookie) {
+		t.Fatal("a request adapter lost the process key")
 	}
 }
 
