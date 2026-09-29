@@ -366,7 +366,8 @@ func TestCapabilitiesReportServicesDisabledByDefault(t *testing.T) {
 	server := start(t, Options{Config: testConfig(t)})
 
 	server.do(http.MethodGet, "/api/capabilities").
-		expect(http.StatusOK, `{"connectionAttemptProgress4":true,"sfu":false,"natPrediction":false}`)
+		expect(http.StatusOK, `{"connectionAttemptProgress4":true,"sfu":false,"natPrediction":false,"roomInteractions":true,"hostRoomSession":true}`)
+
 }
 
 func TestCapabilitiesReportOptionalNATPredictionWithoutExposingConfiguration(t *testing.T) {
@@ -377,7 +378,7 @@ func TestCapabilitiesReportOptionalNATPredictionWithoutExposingConfiguration(t *
 	server := start(t, Options{Config: configuration})
 
 	server.do(http.MethodGet, "/api/capabilities").
-		expect(http.StatusOK, `{"connectionAttemptProgress4":true,"sfu":false,"natPrediction":true}`).
+		expect(http.StatusOK, `{"connectionAttemptProgress4":true,"sfu":false,"natPrediction":true,"roomInteractions":true,"hostRoomSession":true}`).
 		expectHeader("Cache-Control", "no-store").
 		expectHeader("X-Content-Type-Options", "nosniff")
 
@@ -420,7 +421,8 @@ func TestSFUListenerFollowsApplicationCloseAndEnd(t *testing.T) {
 				t.Fatal("missing runtime owner")
 			}
 			server.do(http.MethodGet, "/api/capabilities").
-				expect(http.StatusOK, `{"connectionAttemptProgress4":true,"sfu":true,"natPrediction":false}`)
+				expect(http.StatusOK, `{"connectionAttemptProgress4":true,"sfu":true,"natPrediction":false,"roomInteractions":true,"hostRoomSession":true}`)
+
 			var err error
 			if ending {
 				err = server.End(context.Background())

@@ -1,8 +1,8 @@
+import { identityHash } from "../../lib/identity-hash";
+
 /** UUID selects a quiet cadence; wall time keeps independently mounted views in phase. */
 export function participantMotion(identity: string) {
-  let seed = 2166136261;
-  for (const char of identity) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
-  seed >>>= 0;
+  const seed = identityHash(identity);
   return {
     duration: 42_000 + (seed % 17_003),
     offset: (seed >>> 8) % 59_003,

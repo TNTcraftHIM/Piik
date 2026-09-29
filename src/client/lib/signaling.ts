@@ -5,11 +5,13 @@ import {
   type ClientMessage,
   type DisplayName,
   type QualitySettings,
+  type RoutePolicy,
   type ServerMessage,
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
 import { qualitySettingsEqual } from "../media/quality";
 import { debugEvent } from "./debug";
+import { RoomInteractionSession } from "./room-interactions";
 
 type WithoutProtocolEnvelope<T> = T extends {
   type: string;
@@ -74,9 +76,10 @@ function signalUrl(): string {
 }
 
 export class SignalingClient {
+  interactions: RoomInteractionSession | null = null;
   private socket: WebSocket | null = null;
   private stopped = false;
-  private authenticated = false;
+  private authenticatedPeerId: string | null = null;
   private reconnectAttempt = 0;
   private reconnectTimer: number | null = null;
   private authenticationTimer: number | null = null;
@@ -90,12 +93,27 @@ export class SignalingClient {
   private previousChallenge: PendingSignalingChallenge | null = null;
   private visibilityListenerAttached = false;
   private hostQualityIntent: HostQualityIntent | null = null;
+  private pendingShareGeneration: string | null = null;
 
   constructor(
     private readonly identity: SignalingIdentity,
     private readonly events: SignalingEvents,
     private readonly now: () => number = Date.now,
-  ) {}
+    capabilities: { roomInteractions?: boolean } = {},
+  ) {
+    if (capabilities.roomInteractions) this.enableRoomInteractions();
+  }
+
+  // Capability discovery may finish after media authentication. Enabling room
+  // data must not replace the signaling connection or its healthy media.
+  enableRoomInteractions(): RoomInteractionSession | null {
+    if (this.stopped) return null;
+    if (!this.interactions) {
+      this.interactions = new RoomInteractionSession(message => this.send(message), this.now);
+      if (this.authenticatedPeerId) this.interactions.authenticated(this.authenticatedPeerId);
+    }
+    return this.interactions;
+  }
 
   start(): void {
     if (this.socket || this.stopped) {
@@ -108,12 +126,14 @@ export class SignalingClient {
   }
 
   stop(): void {
+    this.interactions?.close();
     this.stopped = true;
-    this.authenticated = false;
+    this.authenticatedPeerId = null;
     this.clearTimers();
     this.detachVisibilityListener();
     this.terminalMessage = null;
     this.hostQualityIntent = null;
+    this.pendingShareGeneration = null;
     const socket = this.socket;
     this.socket = null;
     if (socket && socket.readyState < WebSocket.CLOSING) {
@@ -125,12 +145,14 @@ export class SignalingClient {
 
   send(message: ClientMessage): boolean {
     if (
-      !this.authenticated ||
+      !this.authenticatedPeerId ||
       !this.socket ||
       this.socket.readyState !== WebSocket.OPEN
     ) {
       return false;
     }
+    if (message.type === "send-room-interaction" &&
+      this.socket.bufferedAmount > 16 * 1024) return false;
     this.socket.send(JSON.stringify(message));
     debugEvent("signal", "sent", { generation: this.socketGeneration, message });
     return true;
@@ -164,6 +186,50 @@ export class SignalingClient {
     } catch {
       return false;
     }
+  }
+
+  ownsHostRoom(roomId: string, hostToken: string): boolean {
+    return this.identity.role === "host" && this.identity.roomId === roomId && this.identity.token === hostToken;
+  }
+
+  wantsHostPublication(shareGeneration: string): boolean {
+    return this.identity.role === "host" && this.identity.roomOnly !== true &&
+      this.identity.shareGeneration === shareGeneration;
+  }
+
+  /** Keep the authenticated room session and claim a fresh media generation. */
+  startSharing(
+    shareGeneration: string,
+    qualitySettings: QualitySettings,
+    routePolicy: RoutePolicy,
+    sharingPaused = false,
+  ): boolean {
+    if (this.identity.role !== "host" || this.stopped || !shareGeneration) {
+      return false;
+    }
+    this.identity.roomOnly = undefined;
+    this.identity.shareGeneration = shareGeneration;
+    this.identity.sharingPaused = sharingPaused;
+    this.identity.qualitySettings = { ...qualitySettings };
+    this.identity.routePolicy = { ...routePolicy };
+    this.pendingShareGeneration = shareGeneration;
+    const sent = this.flushHostShareIntent();
+    return sent || this.authenticatedPeerId === null;
+  }
+
+  /** Stop only the media publication; the room and interaction session stay alive. */
+  stopSharing(shareGeneration: string): boolean {
+    if (this.identity.role !== "host" || this.stopped || !shareGeneration ||
+      this.identity.shareGeneration !== shareGeneration) {
+      return false;
+    }
+    const sent = this.send({ type: "stop-sharing", shareGeneration });
+    this.identity.shareGeneration = undefined;
+    this.identity.sharingPaused = false;
+    this.identity.roomOnly = true;
+    this.pendingShareGeneration = null;
+    this.hostQualityIntent = null;
+    return sent;
   }
 
   confirmSharingPaused(): void {
@@ -237,7 +303,7 @@ export class SignalingClient {
       };
       socket.send(JSON.stringify(authenticate));
       this.authenticationTimer = window.setTimeout(() => {
-        if (!this.authenticated && this.socket === socket) {
+        if (!this.authenticatedPeerId && this.socket === socket) {
           socket.close(4000, "authentication timeout");
         }
       }, 8_000);
@@ -275,7 +341,7 @@ export class SignalingClient {
       if (
         message.type === "error" &&
         message.code === "INVALID_MESSAGE" &&
-        !this.authenticated
+        !this.authenticatedPeerId
       ) {
         this.terminateForProtocolMismatch();
         return;
@@ -291,7 +357,7 @@ export class SignalingClient {
       }
 
       if (message.type === "authenticated") {
-        this.authenticated = true;
+        this.authenticatedPeerId = message.peerId;
         this.reconnectAttempt = 0;
         this.clearAuthenticationTimer();
         if (this.terminalMessage) {
@@ -305,7 +371,21 @@ export class SignalingClient {
         this.events.onStatus("connected");
         debugEvent("signal", "authenticated", { role: this.identity.role, generation });
         this.refreshSignalingWatchdog();
+        this.interactions?.authenticated(message.peerId);
+        this.reconcileHostShareState(message);
       }
+      if ((message.type === "sharing-started" || message.type === "sharing-start-failed") &&
+        this.pendingShareGeneration === message.shareGeneration) {
+        this.pendingShareGeneration = null;
+      }
+      if (message.type === "sharing-start-failed" && this.identity.role === "host" &&
+        this.identity.shareGeneration === message.shareGeneration) {
+        this.identity.shareGeneration = undefined;
+        this.identity.sharingPaused = false;
+        this.identity.roomOnly = true;
+        this.hostQualityIntent = null;
+      }
+      if (this.interactions?.receive(message)) return;
       if (
         message.type === "host-status" &&
         this.identity.role === "host" &&
@@ -328,7 +408,8 @@ export class SignalingClient {
         return;
       }
       this.socket = null;
-      this.authenticated = false;
+      this.authenticatedPeerId = null;
+      this.interactions?.disconnected();
       debugEvent("signal", "closed", { role: this.identity.role, code: event.code,
         reconnecting: !this.stopped && shouldReconnectSignaling(event.code) });
       this.clearSignalingWatchdog();
@@ -390,6 +471,84 @@ export class SignalingClient {
       return false;
     }
     return true;
+  }
+
+  private flushHostShareIntent(): boolean {
+    const shareGeneration = this.pendingShareGeneration;
+    if (
+      !shareGeneration ||
+      this.identity.role !== "host" ||
+      this.identity.shareGeneration !== shareGeneration
+    ) {
+      return false;
+    }
+    try {
+      if (!this.send({
+        type: "start-sharing",
+        shareGeneration,
+        sharingPaused: this.identity.sharingPaused,
+        qualitySettings: this.identity.qualitySettings,
+        routePolicy: this.identity.routePolicy,
+      })) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private reconcileHostShareState(
+    message: Extract<ServerMessage, { type: "authenticated" }>,
+  ): void {
+    if (this.identity.role !== "host" || this.identity.roomSession !== true) {
+      return;
+    }
+    const desiredGeneration = this.identity.shareGeneration;
+    if (this.identity.roomOnly === true) {
+      this.pendingShareGeneration = null;
+      if (message.shareGeneration !== null) {
+        // stopSharing may have been requested while authentication was still
+        // in flight. The authenticated reply is the first point where the
+        // server can accept the idempotent stop for that session.
+        this.send({
+          type: "stop-sharing",
+          shareGeneration: message.shareGeneration,
+        });
+      }
+      return;
+    }
+    if (!desiredGeneration) {
+      this.pendingShareGeneration = null;
+      return;
+    }
+    if (message.shareGeneration === desiredGeneration) {
+      // Authentication already claimed this generation; sending a second
+      // start-sharing would be rejected as a duplicate publication.
+      this.pendingShareGeneration = null;
+      return;
+    }
+    if (message.shareGeneration === null) {
+      this.flushHostShareIntent();
+      return;
+    }
+    if (this.pendingShareGeneration === desiredGeneration) {
+      // A stop/start can cross the authentication response: the socket was
+      // authenticated with the old generation, while the UI already owns a
+      // fresh one. WebSocket ordering makes this pair one serialized server
+      // transition; keep the new intent and retire the stale publication.
+      if (this.send({
+        type: "stop-sharing",
+        shareGeneration: message.shareGeneration,
+      })) {
+        this.flushHostShareIntent();
+      }
+      return;
+    }
+    // Without a pending local intent, the server's active generation is
+    // authoritative. Do not retry an intent that no longer describes this
+    // authenticated session.
+    this.pendingShareGeneration = null;
   }
 
   private reconcileHostQualityIntent(
@@ -521,7 +680,8 @@ export class SignalingClient {
       return;
     }
     this.socket = null;
-    this.authenticated = false;
+    this.authenticatedPeerId = null;
+    this.interactions?.disconnected();
     this.clearAuthenticationTimer();
     this.clearSignalingWatchdog();
     this.events.onStatus("reconnecting");
@@ -573,7 +733,7 @@ export class SignalingClient {
 
   private isWatchdogEligible(): boolean {
     return (
-      this.authenticated &&
+      this.authenticatedPeerId !== null &&
       this.isDocumentVisible() &&
       this.socket?.readyState === WebSocket.OPEN
     );

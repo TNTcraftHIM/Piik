@@ -26,6 +26,8 @@ type AuthenticateHostMessage struct {
 	ViewerPresence             bool             `json:"viewerPresence,omitempty"`
 	ConnectionAttemptProgress4 bool             `json:"connectionAttemptProgress4,omitempty"`
 	DisplayName                *DisplayName     `json:"displayName,omitempty"`
+	RoomOnly                   bool             `json:"roomOnly,omitempty"`
+	RoomSession                bool             `json:"roomSession,omitempty"`
 }
 
 // AuthenticateViewerMessage is the viewer member of authenticateMessageSchema.
@@ -172,6 +174,15 @@ type StopSharingMessage struct {
 	ShareGeneration string `json:"shareGeneration,omitempty"`
 }
 
+// StartSharingMessage begins a new media publication on an existing Host room session.
+type StartSharingMessage struct {
+	Type            string           `json:"type"`
+	ShareGeneration string           `json:"shareGeneration"`
+	SharingPaused   bool             `json:"sharingPaused,omitempty"`
+	QualitySettings *QualitySettings `json:"qualitySettings,omitempty"`
+	RoutePolicy     RoutePolicy      `json:"routePolicy"`
+}
+
 // AbandonRoomMessage is { type: "abandon-room" }.
 type AbandonRoomMessage struct {
 	Type string `json:"type"`
@@ -197,6 +208,7 @@ func (ResetSenderQualityMessage) isClientMessage()          {}
 func (SetDisplayNameMessage) isClientMessage()              {}
 func (SetSharingPausedMessage) isClientMessage()            {}
 func (StopSharingMessage) isClientMessage()                 {}
+func (StartSharingMessage) isClientMessage()                {}
 func (AbandonRoomMessage) isClientMessage()                 {}
 
 // DecodeClientMessage parses JSON and validates the message schema.
@@ -207,6 +219,10 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		return nil, err
 	}
 	switch messageType {
+	case "subscribe-room-interactions":
+		return decodeEmptyClientMessage(data, SubscribeRoomInteractionsMessage{Type: messageType})
+	case "send-room-interaction":
+		return decodeSendRoomInteraction(data)
 	case "authenticate":
 		return decodeAuthenticate(data)
 	case "signaling-challenge":
@@ -247,6 +263,8 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		return decodeSetSharingPaused(data)
 	case "stop-sharing":
 		return decodeStopSharing(data)
+	case "start-sharing":
+		return decodeStartSharing(data)
 	case "abandon-room":
 		return decodeEmptyClientMessage(data, AbandonRoomMessage{Type: messageType})
 	}
@@ -282,8 +300,9 @@ func decodeAuthenticate(data []byte) (ClientMessage, error) {
 		if err := present.require("type", "protocol", "roomId", "role", "token", "clientId"); err != nil {
 			return nil, err
 		}
-		if err := present.optional("shareGeneration", "sharingPaused", "qualitySettings",
+		if err := present.optional("shareGeneration", "roomOnly", "roomSession", "sharingPaused", "qualitySettings",
 			"routePolicy", "viewerPresence", "displayName", "connectionAttemptProgress4"); err != nil {
+
 			return nil, err
 		}
 		if message.Protocol != SignalingProtocol {
@@ -300,6 +319,15 @@ func decodeAuthenticate(data []byte) (ClientMessage, error) {
 		}
 		if present.has("shareGeneration") && !ValidOpaqueID(message.ShareGeneration) {
 			return nil, errors.New("shareGeneration is not an opaque id")
+		}
+		if present.has("roomOnly") && !message.RoomOnly {
+			return nil, errors.New("roomOnly must be true when present")
+		}
+		if present.has("roomSession") && !message.RoomSession {
+			return nil, errors.New("roomSession must be true when present")
+		}
+		if message.RoomOnly && !message.RoomSession {
+			return nil, errors.New("roomOnly requires roomSession")
 		}
 		if present.has("viewerPresence") && !message.ViewerPresence {
 			return nil, errors.New("viewerPresence must be true when present")
@@ -701,6 +729,24 @@ func decodeStopSharing(data []byte) (ClientMessage, error) {
 		return nil, err
 	}
 	if present.has("shareGeneration") && !ValidOpaqueID(message.ShareGeneration) {
+		return nil, errors.New("shareGeneration is not an opaque id")
+	}
+	return message, nil
+}
+
+func decodeStartSharing(data []byte) (ClientMessage, error) {
+	var message StartSharingMessage
+	present, err := decodeObject(data, &message)
+	if err != nil {
+		return nil, err
+	}
+	if err := present.require("type", "shareGeneration", "routePolicy"); err != nil {
+		return nil, err
+	}
+	if err := present.optional("sharingPaused", "qualitySettings"); err != nil {
+		return nil, err
+	}
+	if !ValidOpaqueID(message.ShareGeneration) {
 		return nil, errors.New("shareGeneration is not an opaque id")
 	}
 	return message, nil

@@ -23,6 +23,7 @@ type authenticatedSession struct {
 	displayName                *string
 	viewerPresence             bool
 	connectionAttemptProgress4 bool
+	roomSession                bool
 }
 
 // outbound is one queue item: a text frame or the close frame that ends the
@@ -54,6 +55,8 @@ type session struct {
 	challenged                 bool
 	lastSignalingChallengeAtMs int64
 	authenticated              *authenticatedSession
+	roomInteractions           bool
+	nextInteractionAtMs        int64
 
 	// authStop stops the authentication deadline; authGeneration is
 	// bumped whenever the TS cleared the timer so a callback that lost the

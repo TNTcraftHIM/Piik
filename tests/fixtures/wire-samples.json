@@ -35,7 +35,9 @@
       "peerOnly": false,
       "topologyOptimization": true,
       "natPrediction": false
-    }
+    },
+    "maxChatCodePoints": 280,
+    "interactionIntervalMs": 800
   },
   "clientMessages": [
     {
@@ -925,6 +927,126 @@
       "schema": "client",
       "json": "{\"type\":\"set-display-name\",\"displayName\":\"\\\\\\ud83d\\ude00\"}",
       "valid": true
+    },
+    {
+      "name": "room-interaction-subscribe",
+      "schema": "client",
+      "json": "{\"type\":\"subscribe-room-interactions\"}",
+      "valid": true
+    },
+    {
+      "name": "room-chat",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\"来，看点好康的。 <b>Hello</b> 👋\"}}",
+      "valid": true
+    },
+    {
+      "name": "room-reaction",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"tomato\",\"targetPeerId\":\"viewer_12345678\"}}",
+      "valid": true
+    },
+    {
+      "name": "room-interaction-invalid-blank",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\" \"}}",
+      "valid": false
+    },
+    {
+      "name": "room-interaction-invalid-long",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\"你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你你\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-interaction-invalid-control",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\"hello\\nworld\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-interaction-invalid-unknown",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"unknown\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-interaction-invalid-chat-target",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\"hello\",\"targetPeerId\":\"viewer_12345678\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-interaction-invalid-reaction-text",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"poop\",\"text\":\"hello\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-interaction-invalid-null-target",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"poop\",\"targetPeerId\":null}}",
+      "valid": false
+    },
+    {
+      "name": "room-interaction-spoofed-sender",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\"来，看点好康的。 <b>Hello</b> 👋\"},\"sender\":{\"peerId\":\"host_12345678\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-interaction-extra-room",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\"来，看点好康的。 <b>Hello</b> 👋\"},\"roomId\":\"1234\"}",
+      "valid": false
+    },
+    {
+      "name": "room-chat-surrogate",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\"\\ud800\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-chat-emoji-limit",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\"👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋\"}}",
+      "valid": true
+    },
+    {
+      "name": "room-chat-emoji-over-limit",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\"👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋👋\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-chat-non-canonical",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"chat\",\"text\":\"Café\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-reaction-tomato-untargeted",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"tomato\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-reaction-poop-untargeted",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"poop\"}}",
+      "valid": false
+    },
+    {
+      "name": "room-reaction-poop-targeted",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"poop\",\"targetPeerId\":\"viewer_12345678\"}}",
+      "valid": true
+    },
+    {
+      "name": "room-reaction-wave-untargeted",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"wave\"}}",
+      "valid": true
     }
   ],
   "serverMessages": [
@@ -1059,6 +1181,18 @@
     {
       "name": "sfu-layer-demand",
       "json": "{\"type\":\"sfu-signal\",\"revision\":9,\"publicationGeneration\":\"publication_12345678\",\"connectionId\":\"connection_12345678\",\"kind\":\"layers\",\"activeCount\":0}"
+    },
+    {
+      "name": "room-interactions-ready",
+      "json": "{\"type\":\"room-interactions-ready\",\"serverTime\":1700000000000}"
+    },
+    {
+      "name": "room-interaction-rejected",
+      "json": "{\"type\":\"room-interaction-rejected\",\"requestId\":\"request_12345678\",\"reason\":\"rate-limited\"}"
+    },
+    {
+      "name": "room-interaction",
+      "json": "{\"type\":\"room-interaction\",\"id\":\"event_12345678\",\"requestId\":\"request_12345678\",\"occurredAt\":1700000000010,\"sender\":{\"peerId\":\"peer_12345678\",\"role\":\"host\",\"displayName\":\"Piik friend\"},\"payload\":{\"kind\":\"chat\",\"text\":\"来，看点好康的。 <b>Hello</b> 👋\"}}"
     }
   ]
 }

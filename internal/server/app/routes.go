@@ -81,6 +81,8 @@ func (s *Server) route(
 			ConnectionAttemptProgress4: true,
 			Sfu:                        s.config.SFU != nil,
 			NatPrediction:              s.config.NATPredictionEnabled,
+			RoomInteractions:           true,
+			HostRoomSession:            true,
 		})
 		return
 	}

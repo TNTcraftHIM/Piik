@@ -1109,6 +1109,271 @@ describe("room codes", () => {
 });
 
 describe("client signaling recovery policy", () => {
+  it("reconciles a stop requested before Host authentication", () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn();
+      constructor() { super(); sockets.push(this); }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/"),
+      setTimeout,
+      clearTimeout,
+    });
+    const signal = new SignalingClient(
+      {
+        roomId: "1234",
+        role: "host",
+        token: "h".repeat(43),
+        clientId: "host-client",
+        roomSession: true,
+        shareGeneration: "share_generation_12345678",
+        routePolicy: DEFAULT_ROUTE_POLICY,
+      },
+      {
+        onMessage: () => undefined,
+        onStatus: () => undefined,
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+    );
+    const receive = (value: object) => {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", { value: JSON.stringify(value) });
+      sockets[0]!.dispatchEvent(event);
+    };
+
+    signal.start();
+    sockets[0]!.dispatchEvent(new Event("open"));
+    expect(signal.stopSharing("share_generation_12345678")).toBe(false);
+    receive({
+      type: "authenticated",
+      protocol: SIGNALING_PROTOCOL,
+      role: "host",
+      peerId: "host_12345678",
+      maxViewers: 20,
+      endpointMediaCopyCapacity: 2,
+      hostOnline: true,
+      connectionId: null,
+      ...routeAuthenticated("share_generation_12345678"),
+      iceConfig: { iceServers: [], natPredictionStunUrls: [] },
+      codeEntryPolicy: "open",
+      viewerPasswordEnabled: false,
+      viewerAuthorizationGeneration: "viewer_generation_12345678",
+    });
+    expect(
+      sockets[0]!.send.mock.calls.map(([value]) => JSON.parse(String(value))),
+    ).toEqual([
+      expect.objectContaining({ type: "authenticate", roomSession: true }),
+      { type: "stop-sharing", shareGeneration: "share_generation_12345678" },
+    ]);
+    signal.stop();
+  });
+
+  it("does not resend a start already claimed by Host authentication", () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn();
+      constructor() { super(); sockets.push(this); }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/"),
+      setTimeout,
+      clearTimeout,
+    });
+    const signal = new SignalingClient(
+      {
+        roomId: "1234",
+        role: "host",
+        token: "h".repeat(43),
+        clientId: "host-client",
+        roomSession: true,
+        routePolicy: DEFAULT_ROUTE_POLICY,
+      },
+      {
+        onMessage: () => undefined,
+        onStatus: () => undefined,
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+    );
+    const receive = (value: object) => {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", { value: JSON.stringify(value) });
+      sockets[0]!.dispatchEvent(event);
+    };
+    const generation = "share_generation_12345678";
+    signal.startSharing(generation, DEFAULT_QUALITY_SETTINGS, DEFAULT_ROUTE_POLICY);
+    signal.start();
+    sockets[0]!.dispatchEvent(new Event("open"));
+    receive({
+      type: "authenticated",
+      protocol: SIGNALING_PROTOCOL,
+      role: "host",
+      peerId: "host_12345678",
+      maxViewers: 20,
+      endpointMediaCopyCapacity: 2,
+      hostOnline: true,
+      connectionId: null,
+      ...routeAuthenticated(generation),
+      iceConfig: { iceServers: [], natPredictionStunUrls: [] },
+      codeEntryPolicy: "open",
+      viewerPasswordEnabled: false,
+      viewerAuthorizationGeneration: "viewer_generation_12345678",
+    });
+    expect(
+      sockets[0]!.send.mock.calls.map(([value]) => JSON.parse(String(value))),
+    ).toHaveLength(1);
+    expect(JSON.parse(String(sockets[0]!.send.mock.calls[0]![0]))).toMatchObject({
+      type: "authenticate",
+      shareGeneration: generation,
+      roomSession: true,
+    });
+    signal.stop();
+  });
+
+  it.each([false, true])("serializes a stop/start when an old Host authentication reply arrives late (rejected=%s)", (rejected) => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = FakeWebSocket.OPEN;
+      readonly send = vi.fn();
+      readonly close = vi.fn();
+      constructor() { super(); sockets.push(this); }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", {
+      location: new URL("https://share.test/"),
+      setTimeout,
+      clearTimeout,
+    });
+    const signal = new SignalingClient(
+      {
+        roomId: "1234",
+        role: "host",
+        token: "h".repeat(43),
+        clientId: "host-client",
+        roomSession: true,
+        routePolicy: DEFAULT_ROUTE_POLICY,
+      },
+      {
+        onMessage: () => undefined,
+        onStatus: () => undefined,
+        onTerminated: () => undefined,
+        onAccessRequired: () => undefined,
+      },
+    );
+    const receive = (value: object) => {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", { value: JSON.stringify(value) });
+      sockets[0]!.dispatchEvent(event);
+    };
+    const first = "first_share_generation_12345678";
+    const next = "next_share_generation_12345678";
+    signal.startSharing(first, DEFAULT_QUALITY_SETTINGS, DEFAULT_ROUTE_POLICY);
+    signal.start();
+    sockets[0]!.dispatchEvent(new Event("open"));
+    expect(signal.stopSharing(first)).toBe(false);
+    expect(signal.startSharing(next, DEFAULT_QUALITY_SETTINGS, DEFAULT_ROUTE_POLICY)).toBe(true);
+    receive({
+      type: "authenticated",
+      protocol: SIGNALING_PROTOCOL,
+      role: "host",
+      peerId: "host_12345678",
+      maxViewers: 20,
+      endpointMediaCopyCapacity: 2,
+      hostOnline: true,
+      connectionId: null,
+      ...routeAuthenticated(first),
+      iceConfig: { iceServers: [], natPredictionStunUrls: [] },
+      codeEntryPolicy: "open",
+      viewerPasswordEnabled: false,
+      viewerAuthorizationGeneration: "viewer_generation_12345678",
+    });
+    const messages = sockets[0]!.send.mock.calls.map(([value]) => JSON.parse(String(value)));
+    expect(messages).toEqual([
+      expect.objectContaining({ type: "authenticate", shareGeneration: first }),
+      { type: "stop-sharing", shareGeneration: first },
+      expect.objectContaining({ type: "start-sharing", shareGeneration: next }),
+    ]);
+    if (rejected) {
+      receive({ type: "sharing-start-failed", shareGeneration: first, code: "FORBIDDEN" });
+      expect(signal.wantsHostPublication(next)).toBe(true);
+      receive({ type: "sharing-start-failed", shareGeneration: next, code: "FORBIDDEN" });
+      expect(signal.wantsHostPublication(next)).toBe(false);
+      expect(signal.stopSharing(next)).toBe(false);
+      expect(sockets[0]!.send).toHaveBeenCalledTimes(messages.length);
+      expect(sockets[0]!.close).not.toHaveBeenCalled();
+    } else {
+      expect(signal.stopSharing(next)).toBe(true);
+      expect(JSON.parse(String(sockets[0]!.send.mock.calls.at(-1)![0]))).toEqual({
+        type: "stop-sharing", shareGeneration: next,
+      });
+    }
+    signal.stop();
+  });
+
+  it("enables negotiated room data after authentication without replacing signaling or exposing it to media handlers", () => {
+    vi.useFakeTimers();
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = 1;
+      bufferedAmount = 0;
+      send = vi.fn();
+      close = vi.fn();
+      constructor() { super(); sockets.push(this); }
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    vi.stubGlobal("window", { location: new URL("https://share.test/r/1234"), setTimeout, clearTimeout });
+    const onMessage = vi.fn();
+    const signal = new SignalingClient({ roomId: "1234", role: "viewer", clientId: "viewer-client" }, {
+      onMessage, onStatus: vi.fn(), onTerminated: vi.fn(), onAccessRequired: vi.fn(),
+    });
+    const receive = (body: object) => {
+      const event = new Event("message");
+      Object.defineProperty(event, "data", { value: JSON.stringify(body) });
+      sockets[0].dispatchEvent(event);
+    };
+    signal.start();
+    sockets[0].dispatchEvent(new Event("open"));
+    receive({ type: "authenticated", protocol: SIGNALING_PROTOCOL, role: "viewer", peerId: "viewer_12345678",
+      maxViewers: 20, endpointMediaCopyCapacity: 2, hostOnline: false, connectionId: null,
+      iceConfig: { iceServers: [], natPredictionStunUrls: [] }, codeEntryPolicy: "open",
+      viewerAuthorizationGeneration: "viewer_generation_12345678", ...routeAuthenticated(),
+    });
+    expect(signal.interactions).toBeNull();
+    expect(sockets[0].send).toHaveBeenCalledTimes(1);
+    const data = signal.enableRoomInteractions()!;
+    expect(sockets[0].send).toHaveBeenLastCalledWith(JSON.stringify({ type: "subscribe-room-interactions" }));
+    receive({ type: "room-interactions-ready", serverTime: Date.now() });
+    expect(data.getSnapshot().ready).toBe(true);
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].close).not.toHaveBeenCalled();
+    expect(onMessage).toHaveBeenCalledTimes(1); // Only authentication reaches media handling.
+    sockets[0].bufferedAmount = 20 * 1024;
+    expect(data.send({ kind: "chat", text: "hello" })).toBe(false);
+    expect(data.getSnapshot().pending).toBeNull();
+    signal.stop();
+    expect(signal.enableRoomInteractions()).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("does not reconnect a session that another tab replaced", () => {
     expect(shouldReconnectSignaling(4001)).toBe(false);
     expect(shouldReconnectSignaling(4003)).toBe(false);

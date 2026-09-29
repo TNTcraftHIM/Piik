@@ -698,6 +698,44 @@ func TestAuthenticateAppliesTheRoutePolicyDefault(t *testing.T) {
 	}
 }
 
+func TestAuthenticateAcceptsPersistentRoomSessionOptIn(t *testing.T) {
+	message, err := DecodeClientMessage([]byte(
+		`{"type":"authenticate","protocol":"piik-v23","roomId":"1234","role":"host",` +
+			`"token":"` + repeat("a", 43) + `","clientId":"client_12345678","roomSession":true,"roomOnly":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, ok := message.(AuthenticateHostMessage)
+	if !ok || !host.RoomSession || !host.RoomOnly {
+		t.Fatalf("decoded %#v, want room-session opt-in and room-only state", message)
+	}
+	if _, err := DecodeClientMessage([]byte(
+		`{"type":"authenticate","protocol":"piik-v23","roomId":"1234","role":"host",` +
+			`"token":"` + repeat("a", 43) + `","clientId":"client_12345678","roomOnly":true}`)); err == nil {
+		t.Fatal("accepted roomOnly without roomSession opt-in")
+	}
+}
+
+func TestStartSharingRequiresAnOpaqueGenerationAndRoutePolicy(t *testing.T) {
+	message, err := DecodeClientMessage([]byte(
+		`{"type":"start-sharing","shareGeneration":"share_12345678",` +
+			`"routePolicy":{"peerOnly":true,"topologyOptimization":false,"natPrediction":false}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := message.(StartSharingMessage); !ok {
+		t.Fatalf("decoded %#v, want StartSharingMessage", message)
+	}
+	for _, raw := range []string{
+		`{"type":"start-sharing","shareGeneration":"short","routePolicy":{"peerOnly":true,"topologyOptimization":false,"natPrediction":false}}`,
+		`{"type":"start-sharing","shareGeneration":"share_12345678"}`,
+	} {
+		if _, err := DecodeClientMessage([]byte(raw)); err == nil {
+			t.Errorf("accepted invalid start-sharing message %s", raw)
+		}
+	}
+}
+
 // The sealed unions accept nothing outside their own message structs.
 func TestDecodeRejectsUnknownEnvelopes(t *testing.T) {
 	for _, raw := range []string{`{}`, `[]`, `null`, `"authenticate"`, `{"type":42}`,

@@ -1,13 +1,20 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
 import { RoomChip, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
 import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
+import { RoomInteractions } from "../components/living/RoomInteractions";
+import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
+import { RoomInteractionSession } from "../lib/room-interactions";
+import { createOpaqueId } from "../lib/opaque-id";
+import type { InteractionPayload } from "../../shared/protocol";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { SharingSettings } from "../components/living/SharingSettings";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
+import { useTheaterMode } from "../components/living/use-theater-mode";
+
 import { QualityPresets } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import type { QualityProfileId } from "../media/quality";
@@ -92,6 +99,7 @@ export function ControlsPreview() {
             hint={paused ? "hint-resume" : "hint-pause"} onClick={() => setPaused(!paused)} />
           <Btn icon="switchSource" title="host.switchSource" cap="host.switchSource" hint="hint-switch-source" onClick={notify} />
           <Btn icon="sliders" cap="host.settings.button" title={sharingSettings ? "host.advanced.hide" : "host.advanced"}
+
             hint={sharingSettings ? "hint-collapse" : "hint-advanced"} tone={sharingSettings ? "on" : undefined}
             expanded={sharingSettings} controls="preview-sharing-settings" onClick={() => setSharingSettings(value => !value)} />
           <Btn id="host-stop-share" icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />
@@ -217,5 +225,64 @@ export function ControlsPreview() {
           onSubmit={event => event.preventDefault()} />
       </div>
     </section>
+    <section id="interaction-preview" className="cp-section">
+      <header className="cp-section-head"><span className="cp-number">09</span><div><h2>{en ? "A little company" : "聊两句，丢个番茄。"}</h2>
+        <p>{en ? "Click a person for reactions. Drag or resize either window." : "点小人发表情；聊天与表情窗都能拖动、缩放。"}</p></div></header>
+      <InteractionControlsPreview />
+    </section>
   </>;
+}
+
+function InteractionControlsPreview() {
+  const [session, setSession] = useState<RoomInteractionSession | null>(null);
+  const [viewer, setViewer] = useState(false);
+  const [crowded, setCrowded] = useState(false);
+  const [theater, setTheater] = useTheaterMode();
+  const video = useRef<HTMLVideoElement>(null);
+  const { t, lang } = useCopy();
+  useEffect(() => {
+    const sender = viewer
+      ? { peerId: "preview-friend", role: "viewer" as const, displayName: "Piik friend" }
+      : { peerId: "preview-host", role: "host" as const, displayName: "Piik" };
+    const model = new RoomInteractionSession(message => {
+      queueMicrotask(() => {
+        if (message.type === "subscribe-room-interactions") model.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+        if (message.type === "send-room-interaction") model.receive({ type: "room-interaction", id: createOpaqueId(),
+          requestId: message.requestId, occurredAt: Date.now(), sender, payload: message.payload });
+      });
+      return true;
+    });
+    model.authenticated(sender.peerId);
+    setSession(model);
+    return () => model.close();
+  }, [viewer]);
+  const receiveSample = (payload: InteractionPayload) => session?.receive({
+    type: "room-interaction", id: createOpaqueId(), requestId: createOpaqueId(), occurredAt: Date.now(),
+    sender: viewer ? { peerId: "preview-host", role: "host", displayName: "Piik" }
+      : { peerId: "preview-friend", role: "viewer", displayName: "Piik friend" }, payload,
+  });
+  return <><div className="cp-tools">
+    <SwitchItem checked={viewer} onChange={setViewer} label={lang === "en" ? "Viewer perspective" : "观众视角"} />
+    <SwitchItem checked={crowded} onChange={setCrowded} label={lang === "en" ? "20 viewers" : "20 位观众"} />
+    <button type="button" className="lr-btn" onClick={() => receiveSample({
+      kind: "chat", text: lang === "en" ? "I'm here. Save me a seat!" : "来了，给我留个位置！",
+    })}><Glyph name="chat" size={18} />{lang === "en" ? "Receive a sample message" : "模拟收到消息"}</button>
+    <button type="button" className="lr-btn" onClick={() => receiveSample({ kind: "reaction", reaction: "heart",
+      targetPeerId: viewer ? "preview-friend" : "preview-host",
+    })}><Glyph name="smile" size={18} />{lang === "en" ? "Receive a reaction" : "模拟收到表情"}</button>
+  </div><div className={theater ? "lr-room is-theater" : "cp-interaction-room"}><div className="lr-scene">
+  <StageTv label={t("interaction.title")}>
+    <video ref={video} poster={POSTER} playsInline />
+    <RoomChatOverlay session={session} visible />
+    <PlaybackControls videoRef={video} stream={null} canPlay={false} onPlay={() => {}}
+      theaterMode={theater} onToggleTheater={() => setTheater(value => !value)} onReconnect={() => {}} reconnectAvailable={false}
+      extraActions={<RoomChatToggle session={session} />} />
+  </StageTv><RoomInteractions session={session}
+    view={viewer ? "viewer" : "host"} host={{ key: "preview-host", name: "Piik", you: !viewer }} entries={
+      Array.from({ length: crowded ? 20 : 1 }, (_, index) => ({
+        key: index ? `preview-friend-${index}` : "preview-friend", name: index ? `Friend ${index + 1}` : "Piik friend",
+        you: viewer && index === 0,
+        status: deriveParticipantStatus({ upstream: { kind: "peer", peerId: "preview-host" }, mediaReady: true }, true),
+      }))
+    } /></div></div></>;
 }

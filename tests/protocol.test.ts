@@ -47,15 +47,16 @@ describe("runtime capabilities", () => {
     }
   });
   it("defaults missing capabilities off and ignores unknown descriptors", () => {
-    expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false });
+    expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false, roomInteractions: false, hostRoomSession: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, extra: { enabled: true } }))
-      .toEqual({ sfu: true, natPrediction: false });
+      .toEqual({ sfu: true, natPrediction: false, roomInteractions: false, hostRoomSession: false });
     expect(runtimeCapabilitiesSchema.parse({ natPrediction: true, SFU: true }))
-      .toEqual({ sfu: false, natPrediction: true });
+      .toEqual({ sfu: false, natPrediction: true, roomInteractions: false, hostRoomSession: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, natPrediction: true }))
-      .toEqual({ sfu: true, natPrediction: true });
+      .toEqual({ sfu: true, natPrediction: true, roomInteractions: false, hostRoomSession: false });
     expect(runtimeCapabilitiesSchema.parse({ connectionAttemptProgress4: true }))
-      .toEqual({ sfu: false, natPrediction: false, connectionAttemptProgress4: true });
+      .toEqual({ sfu: false, natPrediction: false, connectionAttemptProgress4: true, roomInteractions: false, hostRoomSession: false });
+
   });
 
   it("rejects malformed known capabilities and non-object responses", () => {
@@ -168,6 +169,53 @@ describe("client signaling protocol", () => {
         roomId,
       }).success,
     ).toBe(false);
+  });
+
+  it("gates persistent Host room sessions behind an explicit opt-in", () => {
+    const host = {
+      type: "authenticate" as const,
+      protocol: SIGNALING_PROTOCOL,
+      roomId,
+      role: "host" as const,
+      token,
+      clientId: "host_12345678",
+      roomSession: true as const,
+      roomOnly: true as const,
+      routePolicy: DEFAULT_ROUTE_POLICY,
+    };
+    expect(clientMessageSchema.parse(host)).toMatchObject({
+      roomSession: true,
+      roomOnly: true,
+    });
+    expect(clientMessageSchema.safeParse({ ...host, roomSession: false }).success).toBe(false);
+    expect(clientMessageSchema.safeParse({
+      ...host,
+      roomSession: undefined,
+    }).success).toBe(false);
+    expect(clientMessageSchema.safeParse({
+      type: "start-sharing",
+      shareGeneration: "share_12345678",
+      routePolicy: DEFAULT_ROUTE_POLICY,
+    }).success).toBe(true);
+    expect(serverMessageSchema.safeParse({
+      type: "sharing-started",
+      shareGeneration: "share_12345678",
+      routePolicy: DEFAULT_ROUTE_POLICY,
+      routeRevision: 0,
+      routeAssignment: {
+        upstream: { kind: "none" },
+        childPeerIds: [],
+        sfuPublicationGeneration: null,
+      },
+      qualitySettings: DEFAULT_QUALITY_SETTINGS,
+      paused: false,
+    }).success).toBe(true);
+    expect(serverMessageSchema.safeParse({
+      type: "sharing-start-failed", shareGeneration: "share_12345678", code: "SERVER_ERROR",
+    }).success).toBe(true);
+    expect(serverMessageSchema.safeParse({
+      type: "sharing-start-failed", code: "SERVER_ERROR",
+    }).success).toBe(false);
   });
 
   it("keeps Viewer route status as a strict crossed union", () => {

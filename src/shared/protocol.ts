@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_CHAT_CODE_POINTS, normalizeChatText, REACTION_IDS, isThrow } from "./room-interactions.js";
 
 import { MAX_ENDPOINT_MEDIA_COPY_CAPACITY } from "./media-copy-accounting.js";
 import { isCanonicalVideoCodecEvidence } from "./video-codec-evidence.js";
@@ -64,6 +65,15 @@ const opaqueIdSchema = z
   .min(8)
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
+
+export const interactionPayloadSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("chat"), text: z.string().min(1).max(MAX_CHAT_CODE_POINTS * 2)
+    .refine(value => normalizeChatText(value) === value) }).strict(),
+  z.object({ kind: z.literal("reaction"), reaction: z.enum(REACTION_IDS),
+    targetPeerId: opaqueIdSchema.optional() }).strict(),
+]).refine(payload => payload.kind !== "reaction" || !isThrow(payload.reaction) || !!payload.targetPeerId,
+  { message: "Throwing a prop requires a participant" });
+export type InteractionPayload = z.infer<typeof interactionPayloadSchema>;
 
 const noMediaRouteUpstreamSchema = z
   .object({ kind: z.literal("none") })
@@ -221,6 +231,8 @@ export const runtimeCapabilitiesSchema = z.object({
   connectionAttemptProgress4: z.boolean().optional(),
   sfu: z.boolean().default(false),
   natPrediction: z.boolean().default(false),
+  roomInteractions: z.boolean().default(false),
+  hostRoomSession: z.boolean().default(false),
 });
 export type RuntimeCapabilities = z.infer<typeof runtimeCapabilitiesSchema>;
 
@@ -813,6 +825,8 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       token: tokenSchema,
       clientId: opaqueIdSchema,
       shareGeneration: opaqueIdSchema.optional(),
+      roomOnly: z.literal(true).optional(),
+      roomSession: z.literal(true).optional(),
       sharingPaused: z.boolean().optional(),
       qualitySettings: qualitySettingsSchema.optional(),
       routePolicy: routePolicySchema.default(DEFAULT_ROUTE_POLICY),
@@ -820,7 +834,16 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       connectionAttemptProgress4: z.literal(true).optional(),
       displayName: displayNameSchema.optional(),
     })
-    .strict(),
+    .strict()
+    .superRefine((message, context) => {
+      if (message.roomOnly === true && message.roomSession !== true) {
+        context.addIssue({
+          code: "custom",
+          message: "roomOnly requires roomSession",
+          path: ["roomOnly"],
+        });
+      }
+    }),
   z
     .object({
       type: z.literal("authenticate"),
@@ -844,6 +867,9 @@ const signalingChallengeSequenceSchema = z
   .max(Number.MAX_SAFE_INTEGER);
 
 export const clientMessageSchema = z.union([
+  z.object({ type: z.literal("subscribe-room-interactions") }).strict(),
+  z.object({ type: z.literal("send-room-interaction"), requestId: opaqueIdSchema,
+    payload: interactionPayloadSchema }).strict(),
   authenticateMessageSchema,
   z
     .object({
@@ -938,6 +964,15 @@ export const clientMessageSchema = z.union([
       shareGeneration: opaqueIdSchema.optional(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("start-sharing"),
+      shareGeneration: opaqueIdSchema,
+      sharingPaused: z.boolean().optional(),
+      qualitySettings: qualitySettingsSchema.optional(),
+      routePolicy: routePolicySchema,
+    })
+    .strict(),
   z.object({ type: z.literal("abandon-room") }).strict(),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -1009,7 +1044,30 @@ const authenticatedMessageSchema = z.union([
 ]);
 
 export const serverMessageSchema = z.union([
+  z.object({ type: z.literal("room-interactions-ready"), serverTime: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).strict(),
+  z.object({ type: z.literal("room-interaction-rejected"), requestId: opaqueIdSchema,
+    reason: z.enum(["rate-limited", "target-unavailable", "not-subscribed", "busy"]) }).strict(),
+  z.object({ type: z.literal("room-interaction"), id: opaqueIdSchema, requestId: opaqueIdSchema,
+    occurredAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    sender: z.object({ peerId: opaqueIdSchema, role: z.enum(["host", "viewer"]), displayName: displayNameSchema }).strict(),
+    payload: interactionPayloadSchema }).strict(),
   authenticatedMessageSchema,
+  z.object({
+    type: z.literal("sharing-start-failed"),
+    shareGeneration: opaqueIdSchema,
+    code: z.enum(["FORBIDDEN", "SERVER_ERROR"]),
+  }).strict(),
+  z
+    .object({
+      type: z.literal("sharing-started"),
+      shareGeneration: opaqueIdSchema,
+      routePolicy: routePolicySchema,
+      routeRevision: mediaRouteRevisionSchema,
+      routeAssignment: participantRouteAssignmentSchema,
+      qualitySettings: qualitySettingsSchema,
+      paused: z.boolean(),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("signaling-challenge-response"),

@@ -35,6 +35,15 @@ Website delivery includes a bilingual reader documentation center generated
 from the repository's guides alongside the homepage, with search and detailed
 troubleshooting separate from the homepage FAQ.
 
+## Active Candidate
+
+The isolated [room-interaction candidate](./research/room-interactions.md) resumes
+on the current maintenance baseline. It adds authenticated text and reactions
+over existing signaling, with optional local chat overlay and a shared floating
+panel. Its opted-in room session can outlive a publication; capture, quality and
+route owners remain unchanged. Room voice and 4K remain deferred. This candidate
+is not deployed; [TODO](./todo.md#now) owns acceptance and remaining work.
+
 ## Deployment
 
 Source, package identity, GitHub repository and local worktree paths use Piik.

@@ -10,6 +10,10 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { bindSvgReplayOnPointerEnter } from "./animation";
 
 const PATHS = {
+  danmaku: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="16" rx="4"/><path pathLength={1} d="M7 9h7M11 14h6m-3-2 3 2-3 2"/></>) },
+  chat: { body: (<><path pathLength={1} d="M5 4h14a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H9l-5 3v-4a3 3 0 0 1-2-3V7a3 3 0 0 1 3-3Z"/><path pathLength={1} d="M7 9h10M7 13h6"/></>) },
+  smile: { body: (<><circle pathLength={1} cx="12" cy="12" r="9"/><path pathLength={1} d="M8 14c1 4 7 4 8 0M8 8.5v1M16 8.5v1"/></>) },
+  send: { body: (<><path pathLength={1} d="m3 3 18 9-18 9 3-9-3-9ZM6 12h15"/></>) },
   camera: { body: (<><rect pathLength={1} x="2" y="6" width="14" height="12" rx="3"/><path pathLength={1} d="m16 10 6-3v10l-6-3"/></>) },
   microphone: { body: (<><rect pathLength={1} x="9" y="2" width="6" height="13" rx="3"/><path pathLength={1} d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></>) },
   microphoneOff: { body: (<><path pathLength={1} d="M9 5a3 3 0 0 1 6 0v5m0 4a3 3 0 0 1-6-2V9M5 10v2a7 7 0 0 0 12 5m2-5v-2M12 19v3m-4 0h8M3 3l18 18"/></>) },
@@ -37,6 +41,8 @@ const PATHS = {
   users: { body: (<><circle pathLength={1} cx="9" cy="8" r="3.5"/><path pathLength={1} d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle pathLength={1} cx="17" cy="9" r="2.5"/><path pathLength={1} d="M16.2 15.2c2.5.4 4.6 1.8 5.3 4.8"/></>) },
   network: { body: (<><rect pathLength={1} x="9" y="2" width="6" height="6" rx="1.5"/><rect pathLength={1} x="2" y="16" width="6" height="6" rx="1.5"/><rect pathLength={1} x="16" y="16" width="6" height="6" rx="1.5"/><path pathLength={1} d="M12 8v3.5M12 11.5 5.5 16M12 11.5l6.5 4.5"/></>) },
   chevron: { body: (<><path pathLength={1} d="m6 9 6 6 6-6"/></>) },
+  grip: { body: (<><path pathLength={1} d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01" strokeWidth="3"/></>) },
+  move: { body: (<><path pathLength={1} d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></>) },
   loader: { body: (<><path pathLength={1} d="M21 12a9 9 0 1 1-6.22-8.56"/></>) },
   alert: { body: (<><path pathLength={1} d="M12 3.5 2.8 19.5a1 1 0 0 0 .87 1.5h16.66a1 1 0 0 0 .87-1.5L12 3.5Z"/><path pathLength={1} d="M12 10v4.5"/><path pathLength={1} d="M12 17.8h.01"/></>) },
   wifiOff: { body: (<><path pathLength={1} d="m2 2 20 20"/><path pathLength={1} d="M8.5 16.5a5 5 0 0 1 7 0"/><path pathLength={1} d="M5 12.9a11 11 0 0 1 3.1-2.2M15.9 11.4a11 11 0 0 1 3.1 1.5"/><path pathLength={1} d="M1.5 8.8A16 16 0 0 1 8 5.4m8 .2a16 16 0 0 1 6.5 3.2"/><path pathLength={1} d="M12 20h.01"/></>) },

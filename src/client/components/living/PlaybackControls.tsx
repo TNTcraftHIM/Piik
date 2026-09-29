@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject, type ReactNode } from "react";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { useCopy } from "../../ui/copy";
 import { debugError } from "../../lib/debug";
@@ -15,6 +15,7 @@ import "./playback-controls.css";
 export function PlaybackControls({
   videoRef, stream, audioTrackKey, canPlay, theaterMode, onPlay,
   onToggleTheater, onReconnect, reconnectAvailable,
+  extraActions,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   stream: MediaStream | null;
@@ -25,6 +26,7 @@ export function PlaybackControls({
   onToggleTheater: () => void;
   onReconnect: () => void;
   reconnectAvailable: boolean;
+  extraActions?: ReactNode;
 }) {
   const { t, vis } = useCopy();
   const audioRef = useRef<ViewerAudio | null>(null);
@@ -146,6 +148,7 @@ export function PlaybackControls({
         </span>
       </span>
       <span className="lr-playback-view">
+        {extraActions}
         <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
           disabled={!reconnectAvailable} onClick={onReconnect} />
         <Btn icon={picture.active ? "pipExit" : "pip"} draw="playback-pip"

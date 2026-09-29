@@ -55,6 +55,8 @@ func TestFixtureConstants(t *testing.T) {
 		"viewerQualityEvidenceExpiryMs":       float64(ViewerQualityEvidenceExpiryMs),
 		"persistentNativeEdgeDegradedWindows": float64(PersistentNativeEdgeDegradedWindows),
 		"maxDisplayNameCodePoints":            float64(MaxDisplayNameCodePoints),
+		"maxChatCodePoints":                   float64(MaxChatCodePoints),
+		"interactionIntervalMs":               float64(InteractionIntervalMs),
 		"defaultViewerDisplayName":            DefaultViewerDisplayName,
 		"defaultHostDisplayNamePrefix":        DefaultHostDisplayNamePrefix,
 		"minViewerPasswordLength":             float64(MinViewerPasswordLength),

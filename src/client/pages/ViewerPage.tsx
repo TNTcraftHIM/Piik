@@ -23,7 +23,11 @@ import {
   viewerRouteEvidence,
 } from "../components/status-badge-model";
 import { AppHeader, LedStrip } from "../components/living/Header";
-import { Couch, type CouchEntry } from "../components/living/Couch";
+import type { CouchEntry } from "../components/living/Couch";
+import { RoomInteractions } from "../components/living/RoomInteractions";
+import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
+import type { RoomInteractionSession } from "../lib/room-interactions";
+import { getRuntimeCapabilities } from "../lib/api";
 import { participantColor } from "../components/living/participant-color";
 import { MetricCells } from "../components/living/Metrics";
 import { PawnDetail, RouteGlyph } from "../components/living/PawnDetail";
@@ -37,6 +41,7 @@ import {
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { Tooltip } from "../components/living/Tooltip";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { useTheaterMode } from "../components/living/use-theater-mode";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import {
   Btn,
@@ -195,7 +200,7 @@ export function ViewerPage({
   >(() => new Map());
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
-  const [theaterMode, setTheaterMode] = useState(false);
+  const [theaterMode, setTheaterMode] = useTheaterMode();
   const [hasCustomDisplayName, setHasCustomDisplayName] = useState(
     () => readStoredDisplayName() !== null,
   );
@@ -232,19 +237,6 @@ export function ViewerPage({
 
   const mediaProofGeneration = presentationState.media?.generation ?? null;
   const mediaProofEpoch = presentationState.media?.proofEpoch ?? null;
-  useEffect(() => {
-    if (!theaterMode) return;
-    const exitOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) setTheaterMode(false);
-    };
-    document.body.classList.add("lr-theater-open");
-    window.addEventListener("keydown", exitOnEscape);
-    return () => {
-      document.body.classList.remove("lr-theater-open");
-      window.removeEventListener("keydown", exitOnEscape);
-    };
-  }, [theaterMode]);
-
   const { host: labeledHostPresence, viewers } = useMemo(
     () => labelParticipantSnapshot(participantPresence ?? []),
     [participantPresence],
@@ -270,6 +262,7 @@ export function ViewerPage({
   const peerRef = useRef<ViewerMediaPeer | null>(null);
   const viewerSfuRouteRef = useRef<ViewerSfuRoute | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
+  const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const presentationStateRef = useRef(presentationState);
   presentationStateRef.current = presentationState;
   function dispatchPresentation(action: ViewerPresentationAction): void {
@@ -621,6 +614,10 @@ export function ViewerPage({
         },
       },
     );
+    setInteractionSession(null);
+    void getRuntimeCapabilities().then(capabilities => {
+      if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions());
+    }).catch(() => { /* Optional room data never blocks viewing. */ });
     signalRef.current = signal;
     const qualityEvidenceReporter = new ViewerQualityEvidenceReporter(
       (message) => active && signal.send(message),
@@ -2224,6 +2221,7 @@ export function ViewerPage({
               onEnded={invalidateQualityPresentation}
             />
             <PlaybackControls
+              extraActions={<RoomChatToggle session={interactionSession} />}
               videoRef={videoRef}
               stream={remoteMedia?.stream ?? null}
               audioTrackKey={remoteMedia?.audioTrackKey}
@@ -2240,6 +2238,7 @@ export function ViewerPage({
                 if (video && binding) attemptPlayback(video, binding);
               }}
             />
+            <RoomChatOverlay session={interactionSession} visible={presentation.overlay === "none" && presentation.hasCurrentFrame} />
             {presentation.overlay === "blocking" && (
               <StageOverlay
                 dim
@@ -2290,7 +2289,7 @@ export function ViewerPage({
               />
             )}
           </div>
-          <Couch
+          <RoomInteractions session={interactionSession}
             view="viewer"
             host={
               labeledHostPresence

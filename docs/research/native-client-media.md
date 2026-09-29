@@ -271,6 +271,33 @@ that result nor the allocation timings establish the reported system-wide lag's
 cause. Retain the existing implementation; reopen optimization from a matched
 bottleneck.
 
+## Native H.264 Motion Quality
+
+Issue [#432](https://github.com/TNTcraftHIM/Piik/issues/432) reports more visible
+blocking with native H.264 than VP8 on v1.6.7. Review of its attached Browser
+report confirms 720p30 in both comparison windows, roughly 11 Mbps received,
+and no reported packet loss; the 1080p60 H.264 window receives roughly 10 Mbps.
+Those samples establish delivered format and transport observations, not equal
+source content or objective picture quality. No encoded stream, reference
+frames or QP measurements accompany that report.
+
+The reporter retracted the initial CBR bitrate-ceiling diagnosis after finding
+that the experimental fixture changed bitrate during the measured interval.
+That switching belongs to `PIIK_H264_FIXTURE` in `windows/main.cpp`, not live
+capture. The corrected experiment reports CBR reaching its requested bitrate.
+Production `h264_encoder.cpp` explicitly requests and validates Baseline; the
+Browser's negotiated `profile-level-id` alone is not an inspection of emitted
+SPS. The later experimental CABAC result cannot establish the production
+Baseline bitstream's behavior. Microsoft's [encoder reference](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-encoder)
+distinguishes profile, rate control and optional quality/speed settings.
+
+The original 720p comparison remains unresolved. An equal-content comparison
+must preserve actual bitrate, frame rate, latency and production codec settings,
+inspect the resulting bitstream and retain reference/decoded pictures. Raising
+the bitrate ceiling, lowering the default frame rate or changing profile is not
+justified by these logs alone; those changes have bandwidth, motion and receiver
+compatibility consequences.
+
 ## Implementation Boundary
 
 - `nativecapture` owns the child process, source identity, and bounded frame protocol.

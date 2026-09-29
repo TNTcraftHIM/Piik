@@ -9,6 +9,7 @@ package signal
 // TS went through HTTP; the site-access cookie is a stub predicate.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -80,6 +81,7 @@ func TestStopSharingDoesNotWriteRoomAuthority(t *testing.T) {
 	h := startHarness(t, harnessOptions{store: store})
 	host := openClient(t, h)
 	authenticated := authenticate(t, host, h.room, protocol.RoleHost, "storage-free-host", 1, "", presenceOptions{})
+	host.ignore("route-update")
 	h.locked(func() {
 		if err := database.Close(); err != nil {
 			t.Fatal(err)
@@ -92,6 +94,151 @@ func TestStopSharingDoesNotWriteRoomAuthority(t *testing.T) {
 	}
 	resumed := openClient(t, h)
 	authenticate(t, resumed, h.room, protocol.RoleHost, "storage-free-host", 1, "", presenceOptions{})
+}
+
+func TestHostKeepsRoomSessionAndInteractionsAfterSharingStops(t *testing.T) {
+	h := startHarness(t, harnessOptions{maxViewersPerRoom: 2})
+	host := openClient(t, h)
+	hostAuth := authenticate(t, host, h.room, protocol.RoleHost, "persistent-host", 1,
+		"first_share_generation_12345678", presenceOptions{displayName: "Host", viewerPresence: true, roomSession: true})
+	viewer := openClient(t, h)
+	authenticate(t, viewer, h.room, protocol.RoleViewer, "persistent-viewer", 1, "",
+		presenceOptions{displayName: "Viewer", viewerPresence: true})
+	host.ignore("route-update")
+	host.ignore("viewer-presence")
+	subscribeInteractions(t, host)
+	subscribeInteractions(t, viewer)
+
+	host.sendJSON(map[string]any{"type": "stop-sharing", "shareGeneration": hostAuth.ShareGeneration})
+	viewer.next("sharing-stopped")
+	viewer.next("host-status")
+	host.expectNone(80 * time.Millisecond)
+	h.locked(func() {
+		connected, ok := h.server.store.GetConnectedHost(h.room.RoomID)
+		if !ok || connected.SessionID == "" {
+			t.Fatal("stopping media must retain the Host room session")
+		}
+	})
+
+	host.sendJSON(map[string]any{
+		"type":      "send-room-interaction",
+		"requestId": "persistent_chat_request",
+		"payload":   map[string]any{"kind": "chat", "text": "still here"},
+	})
+	host.next("room-interaction")
+	viewer.next("room-interaction")
+
+	host.sendJSON(map[string]any{
+		"type":            "start-sharing",
+		"shareGeneration": "second_share_generation_12345678",
+		"routePolicy":     map[string]any{"peerOnly": true, "topologyOptimization": true, "natPrediction": false},
+	})
+	started := host.next("sharing-started")
+	if !bytes.Contains(started.raw, []byte(`"shareGeneration":"second_share_generation_12345678"`)) {
+		t.Fatalf("unexpected sharing-started: %s", started.raw)
+	}
+	viewer.next("host-status")
+	h.closeClient(viewer)
+	h.closeClient(host)
+}
+
+func TestIdleHostChatAndPublicationAcknowledgmentOrder(t *testing.T) {
+	h := startHarness(t, harnessOptions{})
+	host := openClient(t, h)
+	authenticate(t, host, h.room, protocol.RoleHost, "room-only-host", 1, "", presenceOptions{roomSession: true, roomOnly: true, viewerPresence: true})
+	host.ignore("viewer-presence")
+	viewer := openClient(t, h)
+	authenticate(t, viewer, h.room, protocol.RoleViewer, "room-only-viewer", 1, "", presenceOptions{})
+	subscribeInteractions(t, host)
+	subscribeInteractions(t, viewer)
+	host.sendJSON(map[string]any{"type": "send-room-interaction", "requestId": "chat_before_capture",
+		"payload": map[string]any{"kind": "chat", "text": "before capture"}})
+	host.next("room-interaction")
+	viewer.next("room-interaction")
+	host.sendJSON(map[string]any{"type": "start-sharing", "shareGeneration": "new_publication_generation",
+		"routePolicy": protocol.DefaultRoutePolicy})
+	// No ignored route messages: acknowledgment must precede media effects.
+	host.sendJSON(map[string]any{"type": "signaling-challenge", "sequence": 1})
+	host.next("signaling-challenge-response")
+	host.mu.Lock()
+	first := host.messages[0].typ
+	host.mu.Unlock()
+	if first != "sharing-started" {
+		t.Fatalf("first publication message = %s", first)
+	}
+	host.next("sharing-started")
+	host.next("route-update")
+}
+
+func TestRejectedPublicationRetainsHostRoomSession(t *testing.T) {
+	h := startHarness(t, harnessOptions{})
+	host := openClient(t, h)
+	authenticate(t, host, h.room, protocol.RoleHost, "rejected-start-host", 1, "", presenceOptions{roomSession: true, roomOnly: true, viewerPresence: true})
+	host.ignore("viewer-presence")
+	subscribeInteractions(t, host)
+	// Inject the existing route-construction failure, after room admission.
+	h.locked(func() { h.server.router.capacity = 0 })
+	host.sendJSON(map[string]any{"type": "start-sharing", "shareGeneration": "rejected_publication_generation",
+		"routePolicy": protocol.DefaultRoutePolicy})
+	expectMatch(t, host.next("sharing-start-failed").raw,
+		`{"shareGeneration":"rejected_publication_generation","code":"SERVER_ERROR"}`)
+	h.locked(func() {
+		h.server.router.capacity = 2
+		if h.server.activeHostShareGeneration(h.room.RoomID) != "" {
+			t.Fatal("failed publication remained active")
+		}
+	})
+	host.sendJSON(map[string]any{"type": "send-room-interaction", "requestId": "chat_after_rejected_start",
+		"payload": map[string]any{"kind": "chat", "text": "still in room"}})
+	host.next("room-interaction")
+	host.sendJSON(map[string]any{"type": "start-sharing", "shareGeneration": "next_publication_generation",
+		"routePolicy": protocol.DefaultRoutePolicy})
+	host.next("sharing-started")
+	host.next("route-update")
+	host.ignore("route-update")
+	host.sendJSON(map[string]any{"type": "stop-sharing", "shareGeneration": "next_publication_generation"})
+	host.sendJSON(map[string]any{"type": "start-sharing", "shareGeneration": "next_publication_generation",
+		"routePolicy": protocol.DefaultRoutePolicy})
+	expectMatch(t, host.next("sharing-start-failed").raw,
+		`{"shareGeneration":"next_publication_generation","code":"FORBIDDEN"}`)
+}
+
+func TestPersistentRoomSessionReconnectStaysMediaIdle(t *testing.T) {
+	h := startHarness(t, harnessOptions{maxViewersPerRoom: 2})
+	host := openClient(t, h)
+	hostAuth := authenticate(t, host, h.room, protocol.RoleHost, "idle-reconnect-host", 1,
+		"idle_reconnect_generation_12345678", presenceOptions{roomSession: true})
+	viewer := openClient(t, h)
+	authenticate(t, viewer, h.room, protocol.RoleViewer, "idle-reconnect-viewer", 1, "", presenceOptions{})
+	host.ignore("route-update")
+	viewer.ignore("route-update")
+	host.sendJSON(map[string]any{"type": "stop-sharing", "shareGeneration": hostAuth.ShareGeneration})
+	viewer.next("sharing-stopped")
+	viewer.next("host-status")
+	h.closeClient(viewer)
+	h.closeClient(host)
+
+	resumed := openClient(t, h)
+	resumedAuth := authenticate(t, resumed, h.room, protocol.RoleHost, "idle-reconnect-host", 1, "",
+		presenceOptions{roomSession: true, roomOnly: true})
+	if resumedAuth.ShareGeneration != nil {
+		t.Fatalf("room-only Host must not receive a media generation: %v", *resumedAuth.ShareGeneration)
+	}
+	h.locked(func() {
+		if runtime, ok := h.server.router.rooms.Get(h.room.RoomID); ok && runtime.controller != nil {
+			t.Fatal("room-only Host reconnect created a media controller")
+		}
+	})
+	lateViewer := openClient(t, h)
+	lateAuth := authenticate(t, lateViewer, h.room, protocol.RoleViewer, "idle-reconnect-late-viewer", 1, "", presenceOptions{})
+	if lateAuth.HostOnline || lateAuth.HostPaused == nil || *lateAuth.HostPaused {
+		t.Fatalf("idle room advertised active Host media: online=%v paused=%v", lateAuth.HostOnline, lateAuth.HostPaused)
+	}
+	if lateAuth.ShareGeneration != nil || lateAuth.RouteAssignment.Upstream.Kind != "none" {
+		t.Fatalf("idle room advertised a media route: generation=%v assignment=%+v", lateAuth.ShareGeneration, lateAuth.RouteAssignment)
+	}
+	h.closeClient(lateViewer)
+	h.closeClient(resumed)
 }
 
 // ---------------------------------------------------------------------------
@@ -803,6 +950,8 @@ type presenceOptions struct {
 	sharingPaused              *bool
 	qualitySettings            map[string]any
 	routePolicy                *protocol.RoutePolicy
+	roomSession                bool
+	roomOnly                   bool
 }
 
 // authenticate ports the authenticate() helper. relayCapacity -1 is the TS
@@ -832,6 +981,12 @@ func authenticate(
 		message["token"] = rm.HostToken
 		if shareGeneration != "" {
 			message["shareGeneration"] = shareGeneration
+		}
+		if presence.roomSession {
+			message["roomSession"] = true
+		}
+		if presence.roomOnly {
+			message["roomOnly"] = true
 		}
 		if presence.sharingPaused != nil {
 			message["sharingPaused"] = *presence.sharingPaused

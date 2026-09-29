@@ -24,6 +24,7 @@
 .cp-disclosure { margin-top: 12px; }
 .cp-disclosure summary { padding: 12px 0; cursor: pointer; }
 .cp-stage { max-width: 780px; margin: 22px auto; }
+.cp-interaction-room .lr-tv { max-width: 780px; margin: 22px auto; }
 .cp-poster { width: 100%; height: 100%; object-fit: cover; }
 .cp-stage-action { position: absolute; inset: 0; display: grid; place-items: center; }
 @media (max-width: 850px) { .cp-grid { grid-template-columns: 1fr; } }

@@ -3,7 +3,7 @@ import type { CaptureDevice } from "../../media/capture-devices";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 
-// Shared presentation only: capture and replacement stay with the Host owner.
+// Shared presentation only: the caller owns capture and device replacement.
 export function MicrophoneDeviceSelect({ value, load, onChange, disabled, revision, browser = true }: {
   value: string; load: () => Promise<CaptureDevice[]>;
   onChange: (id: string) => void; disabled?: boolean; revision?: unknown; browser?: boolean;

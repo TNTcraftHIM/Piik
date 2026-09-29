@@ -25,19 +25,27 @@ export interface CouchHostEntry {
   onSelect?: () => void;
 }
 
+export interface CouchProps {
+  view: "host" | "viewer";
+  host?: CouchHostEntry | null;
+  entries: CouchEntry[];
+  selectedKey?: string | null;
+  onSelect?: (key: string) => void;
+  participantAction?: {
+    open: (key: string, trigger: HTMLButtonElement) => void;
+    target: string | null;
+    controls: string;
+  };
+}
+
 export function Couch({
   view,
   host,
   entries,
   selectedKey,
   onSelect,
-}: {
-  view: "host" | "viewer";
-  host?: CouchHostEntry | null;
-  entries: CouchEntry[];
-  selectedKey?: string | null;
-  onSelect?: (key: string) => void;
-}) {
+  participantAction,
+}: CouchProps) {
   const { t } = useCopy();
   const [couchRef, containerWidth] = useElementWidth();
   const count = entries.length + (host ? 1 : 0);
@@ -76,15 +84,16 @@ export function Couch({
           aria-label={`${t("common.host")} · ${t("common.viewers")}`}
         >
           {host ? (
-            <span className="lr-seat" style={seatStyle(0)}><Tooltip overflow={{ text: host.name, selector: ".lr-pawn-name" }}>
-              {host.onSelect ? (
+            <span className="lr-seat" data-room-peer={host.key} style={seatStyle(0)}><Tooltip overflow={{ text: host.name, selector: ".lr-pawn-name" }}>
+              {host.onSelect || participantAction ? (
                   <button
                     type="button"
                     className={`lr-pawn is-host${host.you ? " is-you" : ""}${host.selected ? " is-selected" : ""}`}
                     aria-label={hostLabel}
-                    aria-pressed={host.selected}
-                    aria-controls={host.controls}
-                    onClick={host.onSelect}
+                    aria-pressed={participantAction ? undefined : host.selected}
+                    aria-expanded={participantAction ? participantAction.target === host.key : undefined}
+                    aria-controls={participantAction?.controls ?? host.controls}
+                    onClick={event => participantAction ? participantAction.open(host.key, event.currentTarget) : host.onSelect?.()}
                   >
                     <PawnSvg color={participantColor(host.key)} identity={host.key} host />
                     <span className="lr-pawn-name">{host.name}</span>
@@ -115,9 +124,9 @@ export function Couch({
               </>
             );
             const className = `lr-pawn${entry.you ? " is-you" : ""}${
-              entry.selectable === false ? " is-static" : ""
+              entry.selectable === false && !participantAction ? " is-static" : ""
             }${selectedKey === entry.key ? " is-selected" : ""}${view === "viewer" && entry.status.pulse ? " is-waiting" : ""}`;
-            const pawn = entry.selectable === false ? (
+            const pawn = entry.selectable === false && !participantAction ? (
               <span
                 className={className}
                 role="img"
@@ -130,14 +139,16 @@ export function Couch({
                 type="button"
                 className={className}
                 aria-label={label}
-                aria-pressed={selectedKey === entry.key}
-                onClick={() => onSelect?.(entry.key)}
+                aria-pressed={participantAction ? undefined : selectedKey === entry.key}
+                aria-expanded={participantAction ? participantAction.target === entry.key : undefined}
+                aria-controls={participantAction?.controls}
+                onClick={event => participantAction ? participantAction.open(entry.key, event.currentTarget) : onSelect?.(entry.key)}
               >
                 {inner}
               </button>
             );
             return (
-              <span key={entry.key} className="lr-seat" style={seatStyle(index + (host ? 1 : 0))}><Tooltip overflow={{ text: entry.name, selector: ".lr-pawn-name" }}>
+              <span key={entry.key} className="lr-seat" data-room-peer={entry.key} style={seatStyle(index + (host ? 1 : 0))}><Tooltip overflow={{ text: entry.name, selector: ".lr-pawn-name" }}>
                 {pawn}
               </Tooltip></span>
             );

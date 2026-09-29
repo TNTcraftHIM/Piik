@@ -713,6 +713,8 @@ type authRequest struct {
 	viewerPresence             bool
 	connectionAttemptProgress4 bool
 	displayName                *string
+	roomOnly                   bool
+	roomSession                bool
 }
 
 func authRequestOf(message protocol.ClientMessage) (authRequest, bool) {
@@ -730,6 +732,8 @@ func authRequestOf(message protocol.ClientMessage) (authRequest, bool) {
 			viewerPresence:             m.ViewerPresence,
 			connectionAttemptProgress4: m.ConnectionAttemptProgress4,
 			displayName:                displayNameString(m.DisplayName),
+			roomOnly:                   m.RoomOnly,
+			roomSession:                m.RoomSession,
 		}, true
 	case protocol.AuthenticateViewerMessage:
 		return authRequest{
@@ -889,28 +893,32 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 		displayName:                displayName,
 		viewerPresence:             request.viewerPresence,
 		connectionAttemptProgress4: request.connectionAttemptProgress4,
+		roomSession:                request.roomSession,
 	}
 	sess.authenticated = authenticated
 	if participant.Role == protocol.RoleViewer {
 		s.clearViewerEvidence(roomID, participant.PeerID)
 	}
 	s.clearViewerGrace(roomID, participant.PeerID)
-	routeParticipant := authenticatedRouteParticipant{
-		roomID:    roomID,
-		role:      participant.Role,
-		peerID:    participant.PeerID,
-		sessionID: sess.sessionID,
+	mediaActive := participant.Role == protocol.RoleHost && shareGeneration != ""
+	if participant.Role == protocol.RoleViewer {
+		mediaActive = s.activeHostShareGeneration(roomID) != ""
 	}
-	if participant.Role == protocol.RoleHost {
+	routeParticipant := routeParticipant(sess, authenticated)
+	if participant.Role == protocol.RoleHost && mediaActive {
 		policy := s.routePolicyOf(roomID)
 		routeParticipant.routePolicy = &policy
 	}
-	hybridState, assigned := s.connectRouteParticipant(routeParticipant)
-	if !assigned {
-		s.logger.Error("Media router did not assign an authenticated participant")
-		s.sendError(sess, "SERVER_ERROR", "Media assignment failed")
-		sess.close(websocket.StatusInternalError, "Media assignment failed")
-		return
+	hybridState := hybridAuthenticationState{routeAssignment: emptyAssignment()}
+	if participant.Role == protocol.RoleViewer || mediaActive {
+		var assigned bool
+		hybridState, assigned = s.connectRouteParticipant(routeParticipant)
+		if !assigned {
+			s.logger.Error("Media router did not assign an authenticated participant")
+			s.sendError(sess, "SERVER_ERROR", "Media assignment failed")
+			sess.close(websocket.StatusInternalError, "Media assignment failed")
+			return
+		}
 	}
 	// The viewer's media identity is derived from the committed edge, never
 	// stored beside it; connectParticipant has just settled the graph.
@@ -934,8 +942,11 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 		qualitySettings = *share.qualitySettings
 	}
 	var roomShareGeneration *string
-	if share.generation != "" {
-		generation := share.generation
+	if participant.Role == protocol.RoleHost && mediaActive {
+		generation := shareGeneration
+		roomShareGeneration = &generation
+	} else if participant.Role == protocol.RoleViewer && mediaActive {
+		generation := s.activeHostShareGeneration(roomID)
 		roomShareGeneration = &generation
 	}
 	if participant.Role == protocol.RoleHost {
@@ -960,15 +971,15 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 			ViewerPasswordEnabled:         participant.ViewerPasswordEnabled,
 		})
 	} else {
-		hostPaused := participant.HostOnline &&
-			share.pausedGeneration == share.generation
+		hostOnline := participant.HostOnline && mediaActive
+		hostPaused := hostOnline && share.pausedGeneration == share.generation
 		s.send(sess, protocol.AuthenticatedViewerMessage{
 			Type:                          "authenticated",
 			Protocol:                      protocol.SignalingProtocol,
 			PeerID:                        participant.PeerID,
 			MaxViewers:                    protocol.Int(s.store.MaxViewersPerRoom()),
 			EndpointMediaCopyCapacity:     protocol.Int(s.endpointMediaCopyCapacity),
-			HostOnline:                    participant.HostOnline,
+			HostOnline:                    hostOnline,
 			HostPaused:                    &hostPaused,
 			ConnectionID:                  connectionID,
 			IceConfig:                     s.ice,
@@ -989,12 +1000,14 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 		}
 	}
 
-	if participant.Role == protocol.RoleHost {
+	if participant.Role == protocol.RoleHost && mediaActive {
 		s.router.setPaused(roomID, s.shares[roomID].pausedGeneration == shareGeneration)
 	}
-	s.router.completeAuthentication(routeParticipant, hybridState)
+	if participant.Role == protocol.RoleViewer || mediaActive {
+		s.router.completeAuthentication(routeParticipant, hybridState)
+	}
 
-	if participant.Role == protocol.RoleHost && shareGeneration != "" &&
+	if participant.Role == protocol.RoleHost && mediaActive &&
 		s.shares[roomID].pausedGeneration == shareGeneration {
 		s.sendToSession(sess.sessionID, protocol.PauseSharingSourceMessage{
 			Type:            "pause-sharing-source",
@@ -1004,7 +1017,7 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 
 	s.sendViewerPresence(roomID)
 
-	if participant.Role == protocol.RoleHost {
+	if participant.Role == protocol.RoleHost && mediaActive {
 		for _, viewer := range connectedViewers {
 			s.sendToSession(viewer.SessionID, protocol.HostStatusMessage{
 				Type:   "host-status",
@@ -1021,6 +1034,15 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 // with. It returns the settled generation and must run with mu held, before the
 // `authenticated` message is built from the record it writes.
 func (s *Server) settleHostShare(roomID, sessionID string, request authRequest) string {
+	if request.roomOnly {
+		// A room-only reconnect must not resurrect a stale publication. The
+		// stop path normally already cleared it; this guard covers a socket
+		// loss between the client cleanup and the server's stop message.
+		if s.shares[roomID].generation != "" {
+			s.stopSharing(roomID)
+		}
+		return ""
+	}
 	current := s.shares[roomID]
 	currentGeneration := current.generation
 	shareGeneration := request.shareGeneration
@@ -1111,6 +1133,28 @@ func (s *Server) routePolicyOf(roomID string) protocol.RoutePolicy {
 	return s.configuredRoutePolicy(protocol.DefaultRoutePolicy)
 }
 
+// activeHostShareGeneration is the media truth for a room. The room share
+// record intentionally keeps its generation as a stale reconnect fence after
+// stopSharing, so membership or that fence alone cannot mean "publishing".
+// Callers hold Server.mu.
+func (s *Server) activeHostShareGeneration(roomID string) string {
+	host, ok := s.store.GetConnectedHost(roomID)
+	if !ok {
+		return ""
+	}
+	hostSession := s.sessionsByID[host.SessionID]
+	if hostSession == nil || hostSession.authenticated == nil ||
+		hostSession.authenticated.role != protocol.RoleHost ||
+		hostSession.authenticated.roomID != roomID {
+		return ""
+	}
+	generation := hostSession.authenticated.shareGeneration
+	if generation == "" || s.shares[roomID].generation != generation {
+		return ""
+	}
+	return generation
+}
+
 // configuredRoutePolicy restricts share preferences to the services this runtime owns.
 func (s *Server) configuredRoutePolicy(policy protocol.RoutePolicy) protocol.RoutePolicy {
 	policy.PeerOnly = s.router.sfu == nil || policy.PeerOnly
@@ -1131,6 +1175,12 @@ func routeParticipant(sess *session, authenticated *authenticatedSession) authen
 
 func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authenticatedSession, message protocol.ClientMessage) {
 	switch m := message.(type) {
+	case protocol.SubscribeRoomInteractionsMessage:
+		// Explicit opt-in protects older v23 readers from unknown events.
+		sess.roomInteractions = true
+		s.send(sess, protocol.RoomInteractionsReadyMessage{Type: "room-interactions-ready", ServerTime: protocol.Int(s.now())})
+	case protocol.SendRoomInteractionMessage:
+		s.handleRoomInteraction(sess, authenticated, m)
 	case protocol.SignalingChallengeMessage:
 		if !s.sessions.Has(sess) || sess.authenticated != authenticated {
 			return
@@ -1163,6 +1213,10 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 	case protocol.SetQualitySettingsMessage:
 		if authenticated.role != protocol.RoleHost {
 			s.sendError(sess, "FORBIDDEN", "Only the host may set quality settings")
+			return
+		}
+		if authenticated.shareGeneration == "" ||
+			s.shares[authenticated.roomID].generation != authenticated.shareGeneration {
 			return
 		}
 		share := s.shares[authenticated.roomID]
@@ -1246,28 +1300,39 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 		s.shares[authenticated.roomID] = share
 		s.router.setPaused(authenticated.roomID, m.Paused)
 		s.broadcastHostStatus(authenticated.roomID, true, m.Paused)
+	case protocol.StartSharingMessage:
+		s.startSharing(sess, authenticated, m)
 	case protocol.StopSharingMessage:
 		if authenticated.role != protocol.RoleHost {
 			s.sendError(sess, "FORBIDDEN", "只有当前房主可以停止分享")
 			return
 		}
-		if authenticated.shareGeneration == "" ||
-			s.shares[authenticated.roomID].generation != authenticated.shareGeneration ||
+		if authenticated.shareGeneration == "" {
+			return
+		}
+		if s.shares[authenticated.roomID].generation != authenticated.shareGeneration ||
 			(m.ShareGeneration != "" && m.ShareGeneration != authenticated.shareGeneration) {
 			sess.close(websocket.StatusCode(protocol.SignalCloseSessionReplaced), "Sharing generation replaced")
 			return
 		}
-		// The participant leaves the store before stopSharing()
-		// so the sharing-stopped / host-status pair is what viewers see.
-		if s.sessions.Has(sess) && sess.authenticated == authenticated {
-			if _, err := s.store.DisconnectParticipant(authenticated.roomID, authenticated.peerID, sess.sessionID); err != nil {
-				// The TS threw out of the message handler; nothing caught it.
-				panic(fmt.Errorf("room store failed while stopping sharing: %w", err))
+		if !authenticated.roomSession {
+			// Older clients treat stopping media as leaving the Host session.
+			// Keep that contract until the client explicitly opts into the
+			// persistent room-session lifecycle.
+			if s.sessions.Has(sess) && sess.authenticated == authenticated {
+				if _, err := s.store.DisconnectParticipant(authenticated.roomID, authenticated.peerID, sess.sessionID); err != nil {
+					panic(fmt.Errorf("room store failed while stopping sharing: %w", err))
+				}
 			}
+			s.stopSharing(authenticated.roomID)
+			sess.close(websocket.StatusNormalClosure, "Sharing stopped")
+			return
 		}
 		s.stopSharing(authenticated.roomID)
+		// Room membership and its interaction stream outlive the media
+		// publication. The next start-sharing message claims a fresh generation.
+		authenticated.shareGeneration = ""
 		s.sendViewerPresence(authenticated.roomID)
-		sess.close(websocket.StatusNormalClosure, "Sharing stopped")
 	case protocol.AbandonRoomMessage:
 		if authenticated.role != protocol.RoleHost {
 			s.sendError(sess, "FORBIDDEN", "Only the host may abandon the room")
@@ -1278,6 +1343,75 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 			s.sendError(sess, "SERVER_ERROR", "Room could not be abandoned")
 		}
 	}
+}
+
+// startSharing claims a new publication generation without replacing the
+// authenticated Host participant. Room interactions therefore keep the same
+// session while the media graph is rebuilt for the new source.
+func (s *Server) startSharing(sess *session, authenticated *authenticatedSession, message protocol.StartSharingMessage) {
+	if authenticated.role != protocol.RoleHost {
+		s.sendError(sess, "FORBIDDEN", "Only the host may start sharing")
+		return
+	}
+	if !authenticated.roomSession {
+		s.sendError(sess, "FORBIDDEN", "Persistent room session is not enabled")
+		return
+	}
+	if !s.sessions.Has(sess) || sess.authenticated != authenticated ||
+		authenticated.shareGeneration != "" || message.ShareGeneration == s.shares[authenticated.roomID].generation {
+		s.send(sess, protocol.SharingStartFailedMessage{Type: "sharing-start-failed",
+			ShareGeneration: message.ShareGeneration, Code: "FORBIDDEN"})
+		return
+	}
+
+	// stop-sharing deliberately leaves the previous generation as a stale
+	// fence for reconnect validation. A fresh start supersedes that fence
+	// without emitting a second sharing-stopped event.
+	share := s.shares[authenticated.roomID]
+	share.generation = ""
+	share.pausedGeneration = ""
+	s.shares[authenticated.roomID] = share
+	request := authRequest{
+		role:            protocol.RoleHost,
+		roomID:          authenticated.roomID,
+		shareGeneration: message.ShareGeneration,
+		sharingPaused:   message.SharingPaused,
+		qualitySettings: message.QualitySettings,
+		routePolicy:     message.RoutePolicy,
+	}
+	shareGeneration := s.settleHostShare(authenticated.roomID, sess.sessionID, request)
+	authenticated.shareGeneration = shareGeneration
+	routeParticipant := routeParticipant(sess, authenticated)
+	policy := s.routePolicyOf(authenticated.roomID)
+	routeParticipant.routePolicy = &policy
+	routeState, assigned := s.connectRouteParticipant(routeParticipant)
+	if !assigned {
+		authenticated.shareGeneration = ""
+		s.stopSharing(authenticated.roomID)
+		s.send(sess, protocol.SharingStartFailedMessage{Type: "sharing-start-failed",
+			ShareGeneration: message.ShareGeneration, Code: "SERVER_ERROR"})
+		return
+	}
+
+	share = s.shares[authenticated.roomID]
+	qualitySettings := protocol.DefaultQualitySettings
+	if share.qualitySettings != nil {
+		qualitySettings = *share.qualitySettings
+	}
+	s.send(sess, protocol.SharingStartedMessage{
+		Type:            "sharing-started",
+		ShareGeneration: shareGeneration,
+		RoutePolicy:     s.routePolicyOf(authenticated.roomID),
+		RouteRevision:   protocol.Int(routeState.routeRevision),
+		RouteAssignment: routeState.routeAssignment,
+		QualitySettings: qualitySettings,
+		Paused:          share.pausedGeneration == shareGeneration,
+	})
+	// Acknowledge publication authority before any media effects use it.
+	s.router.setPaused(authenticated.roomID, share.pausedGeneration == shareGeneration)
+	s.router.completeAuthentication(routeParticipant, routeState)
+	s.sendViewerPresence(authenticated.roomID)
+	s.broadcastHostStatus(authenticated.roomID, true, share.pausedGeneration == shareGeneration)
 }
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
+import { INTERACTION_INTERVAL_MS, MAX_CHAT_CODE_POINTS } from "../src/shared/room-interactions";
 
 import {
   DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
@@ -83,6 +84,8 @@ describe("shared wire fixture", () => {
       viewerQualityEvidenceExpiryMs: VIEWER_QUALITY_EVIDENCE_EXPIRY_MS,
       persistentNativeEdgeDegradedWindows: PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS,
       maxDisplayNameCodePoints: MAX_DISPLAY_NAME_CODE_POINTS,
+      maxChatCodePoints: MAX_CHAT_CODE_POINTS,
+      interactionIntervalMs: INTERACTION_INTERVAL_MS,
       defaultViewerDisplayName: DEFAULT_VIEWER_DISPLAY_NAME,
       defaultHostDisplayNamePrefix: DEFAULT_HOST_DISPLAY_NAME_PREFIX,
       minViewerPasswordLength: MIN_VIEWER_PASSWORD_LENGTH,
@@ -127,6 +130,7 @@ describe("shared wire fixture", () => {
         "client:route-media-unavailable",
         "client:route-ready",
         "client:route-transport-connected",
+        "client:send-room-interaction",
         "client:sender-quality-evidence",
         "client:set-display-name",
         "client:set-quality-settings",
@@ -136,6 +140,7 @@ describe("shared wire fixture", () => {
         "client:signal",
         "client:signaling-challenge",
         "client:stop-sharing",
+        "client:subscribe-room-interactions",
         "client:viewer-quality-evidence",
         "createRoomRequest",
         "replaceRoomRequest",
@@ -170,6 +175,9 @@ describe("shared wire fixture", () => {
       "quality-settings",
       "restart-request",
       "room-closed",
+      "room-interaction",
+      "room-interaction-rejected",
+      "room-interactions-ready",
       "route-diagnostic-snapshot",
       "route-policy",
       "route-status",

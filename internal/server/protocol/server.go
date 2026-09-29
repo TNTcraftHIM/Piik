@@ -57,6 +57,23 @@ type AuthenticatedViewerMessage struct {
 	Role                          Role                       `json:"role"`
 }
 
+// SharingStartedMessage acknowledges a new media publication on an existing Host session.
+type SharingStartedMessage struct {
+	Type            string                     `json:"type"`
+	ShareGeneration string                     `json:"shareGeneration"`
+	RoutePolicy     RoutePolicy                `json:"routePolicy"`
+	RouteRevision   Int                        `json:"routeRevision"`
+	RouteAssignment ParticipantRouteAssignment `json:"routeAssignment"`
+	QualitySettings QualitySettings            `json:"qualitySettings"`
+	Paused          bool                       `json:"paused"`
+}
+
+type SharingStartFailedMessage struct {
+	Type            string `json:"type"`
+	ShareGeneration string `json:"shareGeneration"`
+	Code            string `json:"code"`
+}
+
 // SignalingChallengeResponseMessage is the challenge echo.
 type SignalingChallengeResponseMessage struct {
 	Type     string `json:"type"`
@@ -197,6 +214,8 @@ type ErrorMessage struct {
 
 func (AuthenticatedHostMessage) isServerMessage()           {}
 func (AuthenticatedViewerMessage) isServerMessage()         {}
+func (SharingStartedMessage) isServerMessage()              {}
+func (SharingStartFailedMessage) isServerMessage()          {}
 func (SignalingChallengeResponseMessage) isServerMessage()  {}
 func (ServerSignalMessage) isServerMessage()                {}
 func (ServerRestartRequestMessage) isServerMessage()        {}
@@ -230,8 +249,18 @@ func DecodeServerMessage(data []byte) (ServerMessage, error) {
 		return nil, err
 	}
 	switch messageType {
+	case "room-interactions-ready":
+		return decodeRoomInteractionsReady(data)
+	case "room-interaction":
+		return decodeRoomInteraction(data)
+	case "room-interaction-rejected":
+		return decodeRoomInteractionRejected(data)
 	case "authenticated":
 		return decodeAuthenticated(data)
+	case "sharing-started":
+		return decodeSharingStarted(data)
+	case "sharing-start-failed":
+		return decodeSharingStartFailed(data)
 	case "signaling-challenge-response":
 		return decodeChallengeResponse(data)
 	case "signal":
@@ -384,6 +413,40 @@ func decodeAuthenticated(data []byte) (ServerMessage, error) {
 		return message, nil
 	}
 	return nil, fmt.Errorf("unknown authenticated role %q", role)
+}
+
+func decodeSharingStarted(data []byte) (ServerMessage, error) {
+	var message SharingStartedMessage
+	present, err := decodeObject(data, &message)
+	if err != nil {
+		return nil, err
+	}
+	if err := present.require("type", "shareGeneration", "routePolicy", "routeRevision",
+		"routeAssignment", "qualitySettings", "paused"); err != nil {
+		return nil, err
+	}
+	if !ValidOpaqueID(message.ShareGeneration) {
+		return nil, errors.New("shareGeneration is not an opaque id")
+	}
+	if !validRevision(message.RouteRevision) {
+		return nil, errors.New("routeRevision is out of range")
+	}
+	return message, nil
+}
+
+func decodeSharingStartFailed(data []byte) (ServerMessage, error) {
+	var message SharingStartFailedMessage
+	present, err := decodeObject(data, &message)
+	if err != nil {
+		return nil, err
+	}
+	if err := present.require("type", "shareGeneration", "code"); err != nil {
+		return nil, err
+	}
+	if !ValidOpaqueID(message.ShareGeneration) || (message.Code != "FORBIDDEN" && message.Code != "SERVER_ERROR") {
+		return nil, errors.New("invalid sharing-start-failed response")
+	}
+	return message, nil
 }
 
 func decodeChallengeResponse(data []byte) (ServerMessage, error) {

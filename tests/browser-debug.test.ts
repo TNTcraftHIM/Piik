@@ -70,13 +70,14 @@ describe("opt-in Browser diagnostics", () => {
       connectionId: "connection-123", address: "192.0.2.1", requested: { width: 1920, fps: 60 },
       hostToken: "secret-host", nested: { icePwd: "secret-ice", cookie: "secret-cookie", sdp: "secret-sdp", remoteSdp: "secret-remote-sdp" },
       data: "secret-pixels", payload: "secret-audio",
+      roomInteraction: { payload: { kind: "chat", text: "private-chat-contents" } },
       viewerGrant: "secret-grant", passwordHash: "secret-hash",
       transportError: "piik-client-v9.secret-capability Basic secret-basic\nCookie: session=secret-session; refresh=secret-refresh",
     });
     const report = await page.__PIIK_DEBUG__!.export();
     for (const secret of ["secret-password", "secret-auth", "secret-query", "secret-fragment", "secret-bearer",
       "secret-host", "secret-ice", "secret-cookie", "secret-sdp", "secret-remote-sdp", "secret-pixels", "secret-audio", "private-grant",
-      "secret-grant", "secret-hash", "secret-capability", "secret-basic", "secret-session", "secret-refresh"])
+      "secret-grant", "secret-hash", "secret-capability", "secret-basic", "secret-session", "secret-refresh", "private-chat-contents"])
       expect(report).not.toContain(secret);
     for (const useful of ["Encoding failed", "fetch", "stack", "cause", "connection-123", "192.0.2.1", "1920"])
       expect(report).toContain(useful);

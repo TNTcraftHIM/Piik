@@ -7,11 +7,24 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Published-product bug and experience acceptance.** Prioritize share
-  startup, audio/source changes, sustained viewing, recovery and retirement,
-  admission, and narrow/touch UI. Verify confirmed fixes through the existing
-  owners before resuming feature polish. Keep field reports without matched
-  evidence separate from locally reproduced defects.
+- [ ] **Room-interaction candidate acceptance.** Resumed from current main after
+  the maintenance fixes. Review chat, optional danmaku and participant-targeted
+  reactions for usability, placement and intended cross-view synchronization.
+  Preserve room authorization and media-route owners. Accept its combined
+  layout: sharing settings with the picture, floating chat without page reflow
+  and room actions before diagnostics. Check narrow-screen keyboard avoidance,
+  theater entry and participant menus on real devices; keep chat available
+  independently of sharing.
+  Retain current room creation: the first share creates a room, an existing room
+  can resume, and stopping media keeps the opted-in interaction session. Do not
+  add visit-triggered creation or a separate pre-share room-creation entry.
+  Verify idle-room recovery, authorization retirement and mixed published-page
+  capability behavior before integration. [Candidate scope](./research/room-interactions.md)
+  owns the design and evidence limits. Merge and publication remain unapproved.
+- [ ] **Published-product regression acceptance.** Keep share startup,
+  audio/source changes, sustained viewing, recovery/retirement, admission and
+  narrow/touch UI in the interaction acceptance boundary. Field reports without
+  matched evidence remain distinct from locally reproduced defects.
 - [ ] **Sustained Browser degradation.** The H264 field cause remains open.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
   distinguish encoder recovery hysteresis from a tab-capture feedback/size-step
@@ -28,25 +41,34 @@ history. A parked idea is not implementation authority.
 
 ## Deferred Feature Work
 
-Feature design and interaction polish are paused while the bug/experience phase
-is active. Retain these decisions for resumption, not as parallel work.
+These proposals remain deferred while the text/reaction candidate is active.
+
+- [ ] **Exclude selected application audio during screen sharing.** Assess a
+  Windows App source-audio exclusion so an external voice call is not captured
+  again. Reuse the existing process-audio owner and mixed media output; keep
+  Host microphone commentary independent. The [Windows API](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
+  supports including or excluding one process tree per activation, with a
+  documented minimum build of 20348. Verify actual platform capability,
+  process replacement and privacy on failure before exposing it. Arbitrary
+  multiple unrelated applications and generic Browser capture need separate
+  feasibility evidence; do not promise complete acoustic echo cancellation or
+  add subtractive audio mixing as a shortcut. Implementation is deferred.
+- [ ] **Optional SFU-only hosted-server policy.** Assess an operator setting
+  using the existing controller, SFU admission ledger and first-frame commit
+  path. Default remains P2P-first; App Local/public-link and public Demo remain
+  P2P-only. A strict SFU-only policy must exclude peer parents, relay children
+  and background P2P convergence, validate SFU availability at startup, and
+  report capacity/failure without silently escaping to P2P. Resolve its conflict
+  with the Host's explicit Privacy mode and published-page capability behavior
+  before implementation; never silently forward a peer-only share. Record the
+  accepted routing exception in ADR-0005 and the configuration owner. This is
+  not a new routing engine or a guarantee against server/network congestion.
 
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not
   admit arbitrary sites or add another runtime owner. Keep Site mode until that
   decision; removal of the Demo prefill does not authorize changing site trust.
-- [ ] **Refine the isolated room-interaction prototype.** Review chat, optional
-  danmaku and participant-targeted reactions for usability, placement and intended
-  cross-view synchronization. Preserve room authorization and media-route owners.
-  Accept its combined layout: sharing settings with the picture, floating chat
-  without page reflow and room actions before diagnostics. Check narrow-screen
-  keyboard avoidance, its theater entry and participant menu on real devices;
-  keep chat available independently of sharing.
-  Retain current room creation: the first share creates a room, an existing room
-  can resume, and stopping media keeps the opted-in interaction session. Do not
-  add visit-triggered creation or a separate pre-share room-creation entry.
-  This experiment does not authorize integration or publication.
 - [ ] **Room voice: design before implementation.** The
   [voice assessment](./research/room-voice.md) maps current owners, mature options
   and a staged verification plan. Resolve total voice membership/topology,
@@ -65,6 +87,13 @@ is active. Retain these decisions for resumption, not as parallel work.
 
 ## Awaiting Device Or Reporter Evidence
 
+- [ ] **Native H.264 motion quality (#432).** The original 720p30 H.264/VP8
+  visual comparison remains unresolved. Browser evidence confirms similar
+  delivered bitrate/format and zero reported loss, but contains no matched
+  pictures or bitstream. The reporter withdrew the fixture-contaminated CBR
+  ceiling claim. [Evidence review](./research/native-client-media.md#native-h264-motion-quality)
+  owns that distinction. Reproduce with identical content and unchanged
+  production settings before proposing profile, default-FPS or bitrate changes.
 - [ ] **Self-hosted room creation HTTP 403.** Retest affected deployments using
   the [address checks](./guide/troubleshooting.md#room-creation-returns-403).
   Obtain the configured public address/origin and response details; distinguish

@@ -142,6 +142,12 @@ export type MetricHintKind = `hint-metric-${
   | "video-buffer" | "audio-buffer" | "concealment-rate" | "concealments"
 }`;
 
+export type InteractionHintKind =
+  | "hint-chat-open"
+  | "hint-chat-send"
+  | "hint-chat-overlay-show"
+  | "hint-chat-overlay-hide";
+
 export type HintKind =
   | Set1Kind
   | Set2Kind
@@ -150,6 +156,7 @@ export type HintKind =
   | AdmissionHintKind
   | PlaybackHintKind
   | MetricHintKind
+  | InteractionHintKind
   | ControlHintKind;
 
 export type ComicTheme = "stage" | "paper";

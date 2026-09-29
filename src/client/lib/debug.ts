@@ -30,7 +30,7 @@ const events: Array<{ record: BrowserDebugEvent; bytes: number }> = [];
 const startedAt = new Date().toISOString();
 const started = performance.now();
 let sequence = 0, retainedBytes = 0, evictedEvents = 0, truncatedEvents = 0;
-const secretKey = /(?:token|password|passwd|secret|credential|authorization|cookie|private.?key|ice.?pwd|ufrag|usernamefragment|sdp|grant)|^(?:candidate|title|displayName)$/i;
+const secretKey = /(?:token|password|passwd|secret|credential|authorization|cookie|private.?key|ice.?pwd|ufrag|usernamefragment|sdp|grant)|^(?:candidate|title|displayName|text)$/i;
 
 function safeText(value: string): string {
   return value

@@ -56,6 +56,15 @@ do not stretch short values to fill a phone row. Check actual control bounds
 around breakpoints, in both orientations and all presentation modes; page-level
 overflow clipping is not evidence that the content fits.
 
+Persistent room utilities use the shared floating panel without reflowing the
+living room. The shell owns visibility, focus return, movement, resizing and
+viewport/keyboard bounds; contents retain their domain state. Support title-bar
+dragging and keyboard placement. An interaction palette starts beside its chosen
+participant, stays open after sending and keeps its position when retargeted.
+One-shot settings and guidance retain their existing disclosures. Escape closes
+inner guidance first, then the most recently opened floating panel, then theater
+mode; an IME composition must not dismiss these surfaces.
+
 Keep the application language control's segmented Chinese, English and visual
 shortcuts. When additional catalogs exist, insert one language menu
 after the visual shortcut; all extra languages share that slot. Show the
@@ -172,6 +181,8 @@ Participant characters should leave room for that distinctive presence.
 | Browser application | Browser chrome around content; not a second design of television |
 | A captured window or display | Window title bar or display stand, with the shared media metaphor kept distinct |
 | A camera source or Host commentary | `camera` identifies the alternative picture source; `microphone` identifies the enabled Host voice input and `microphoneOff` its muted state. Neither replaces the speaker metaphor for source/playback sound. |
+| Room text and reactions | `chat` opens the conversation, `danmaku` controls its optional picture overlay, `smile` identifies reactions and `send` submits the chosen content. These do not represent media transport or voice. |
+| Floating utility placement | `grip` marks a draggable title bar; `move` opens placement controls. Closing a panel hides its presentation, not its room session. |
 | Server forwarding media | A server on the media path; opening a Site alone does not imply SFU |
 
 These are **identity/object colours**, not status. A green pawn remains green

@@ -49,6 +49,7 @@ export function Btn({
   onClick,
   type = "button",
   hint,
+  hintText,
   hintTone,
   hintMotion,
   draw,
@@ -68,6 +69,8 @@ export function Btn({
   type?: "button" | "submit";
   /** Shared hint comic; text modes add the localized caption. */
   hint?: ComicKind | HintKind;
+  /** Optional explanation beyond the control's accessible name. */
+  hintText?: CopyKey;
   hintTone?: ComicTone;
   hintMotion?: ComicMotion;
   /** Draw-in spot id for state-beat toggle icons (see Glyph). */
@@ -114,7 +117,7 @@ export function Btn({
     </button>
   );
   return hint ? (
-    <Tooltip kind={hint} tone={hintTone} motion={hintMotion} text={vis ? undefined : label}>{button}</Tooltip>
+    <Tooltip kind={hint} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText) : label}>{button}</Tooltip>
   ) : (
     button
   );
