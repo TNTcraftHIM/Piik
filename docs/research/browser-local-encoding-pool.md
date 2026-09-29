@@ -274,55 +274,88 @@ quality probe correctly withheld approval. These observations establish the
 symptom, not its network or encoder cause. Host producer/carrier histories were
 unavailable; server summaries cannot reconstruct those local owners.
 
-Serial synthetic-source comparisons used the actual `HostPeer` and pool, H264,
-played audio, the same profile and a test-only UDP bridge. A had 4% forward RTP
-loss for 50 seconds; B joined halfway through that interval. Loss and any rate
-cap were then removed for 60 seconds; configured RTT remained. Each condition
-had one matched pair, not an average or a public-network reproduction.
+Serial comparisons on 2026-09-29/30 used synthetic motion, played audio,
+1080p30 / balanced / 5 Mbps and a test-only UDP bridge. They distinguish
+Canvas input from real `getDisplayMedia` capture. Each case is bounded evidence,
+not a public-network reproduction or a population result.
 
-| Browser / source / A's constraint | Ordinary sender | Pooled sender |
-| --- | --- | --- |
-| Edge 154.0.4258.37 / moving bars / loss only, local or 200 ms RTT | Stayed at 1080p | Stayed at 1080p |
-| Same Browser/source / 400 kbps, 200 ms RTT | Reached 360p; stable 1080p about 21 s after release | Reached 360p; stable 1080p about 17 s after release |
-| Chrome 153.0.8010.53 / panning textured scene / 120 kbps, 300 ms RTT | Reached 180p; still 540p at the end of recovery despite restored BWE | Reached 180p; stable 1080p about 13 s after release |
+| Input / Browser | Constraint and recovery result |
+| --- | --- |
+| Canvas bars / Edge 154.0.4258.37 | Ordinary and pooled senders recovered from 360p to 1080p after 400 kbps, 4% forward loss and 200 ms RTT; about 21 / 17 seconds after rate/loss release |
+| Textured Canvas / Chrome 153.0.8010.53 and 154.0.8037.58 | Ordinary and pooled sending could retain 540p after allocation recovered; the longer Chrome 154 pair remained there after 145 seconds |
+| Browser tab / Chrome 154.0.8037.58 | Ordinary and bare WebRTC retained 148p / about 10 fps after 65 recovery seconds; the bare sender's outgoing estimate was 5.6 Mbps and video target 5 Mbps |
+| Chrome's own window / Chrome 154.0.8037.58 | Bare and pooled sending retained 180p / about 10 fps after 65 recovery seconds, with roughly 4.5–4.7 Mbps video targets |
+| Non-Browser Windows test window / Chrome 154.0.8037.58 | All 2,758 observed source frames remained 1866x1080; bare sending recovered from 180p through 270/360p to 540p during the 65-second window |
 
-The last pooled case was also run with v1.6.5 (`04cbb2c9`)'s pool, `HostPeer`
-and quality owners in the current fixture. It recovered to 1080p in about 13
-seconds too.
-This isolates those pre-v1.6.7 owners, not the entire older release or Browser;
-it neither establishes a recent regression nor rules out other field failures.
-Actual encoded payload counters tracked producer RTCStats byte deltas in the
-measured runs; persistent local byte-accounting inflation was not reproduced.
+The display cases used a 45-second 400 kbps / 4% loss interval followed by
+removing both constraints; 300 ms configured RTT remained. The non-Browser
+fixture captured about 21 fps and does not establish 30 fps performance. Bare
+WebRTC used one cloned track, codec selection and initial sender parameters,
+without Piik's pool, startup guard, quality controller or repeated parameter
+writes. It also reproduced the tab restriction with VP8. Keeping the original
+preview playing and using `resizeMode:none` did not remove it.
 
-A separate textured-scene case kept A alone through 45 constrained seconds and
-25 seconds after release. Its outgoing allocation recovered while its producer
-remained at 270p. When B then joined, A reused B's fresh healthy producer and
-decoded 1080p about 1.5 seconds later on the same connection. Without that join,
-both the current-owner and old-owner controls retained their producer and
-reached only 540p after 65 recovery seconds. This demonstrates a mechanism for
-join-assisted recovery, not proof that the field event had that cause.
-Slow recovery also occurred without pooling;
-rebuilding encoders periodically or forcing a resolution floor is not justified.
+**Two mechanisms remain distinct.** Canvas recovery could follow content
+complexity: changing to simple bars restored 1080p, retained after restoring
+the textured scene. WebRTC's [quality scaler](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/utility/quality_scaler.cc)
+uses QP thresholds and sampling history as well as bandwidth-related adaptation.
+That supports recovery hysteresis, not a rule that restored BWE must immediately
+restore full output.
 
-After Chrome updated to 154.0.8037.58, a fresh ordinary/pool pair extended solo
-recovery to 145 seconds with the same textured scene and 45-second constraint.
-Both ended at 540p / about 30 fps with restored 5 Mbps allocation; the pool
-retained one producer. This establishes sustained reduced output after transport
-recovery in both paths under this synthetic workload, not the field event's
-prolonged 180p or perceptual quality. It is separate from the Chrome 153 pairs.
+The tab case exposed a more specific capture-feedback problem. A Chromium trace
+kept the source geometry at 1904x1049 while capture supplied a 268x148 content
+rectangle. Feedback rose to 66,600 pixels, but capture did not grow.
+[Chrome 154's source adapter](https://raw.githubusercontent.com/chromium/chromium/154.0.8037.58/third_party/blink/renderer/platform/peerconnection/webrtc_video_track_source.cc)
+puts the adapter's target pixels into a maximum-pixel feedback field. Its
+[capture oracle](https://raw.githubusercontent.com/chromium/chromium/154.0.8037.58/media/capture/content/video_capture_oracle.cc)
+then chooses a size below that limit using
+[90-row capture steps](https://raw.githubusercontent.com/chromium/chromium/154.0.8037.58/media/capture/content/capture_resolution_chooser.cc).
+For this geometry the next step above 270x149 (40,230 pixels) is 433x239
+(103,487 pixels), so 66,600 cannot advance it.
 
-Upstream's [quality scaler](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/utility/quality_scaler.cc)
-uses separate high/low QP thresholds, sample windows and a changed check interval
-after downscaling. This supports a recovery-hysteresis hypothesis; BWE recovery
-alone does not imply immediate picture recovery. These traces do not identify
-the field Browser's encoder implementation or effective experiment thresholds.
+This matches WebRTC's [up-adaptation distinction](https://raw.githubusercontent.com/webrtc-mirror/webrtc/main/call/adaptation/video_stream_adapter.cc)
+between a soft target and a larger hard maximum intended to accommodate source
+sizes. It strongly supports a feedback/size-quantization lock. The exact
+Chromium capture sources and runtime trace were checked; the libwebrtc formula
+was checked against upstream main, not a rebuilt patched Chrome binary.
+Direct `VideoFrame` observations confirmed the reduced tab capture independently
+of stale `getSettings()` values. Reapplying exact dimensions to the original
+track and restoring its constraints did not unblock the existing sender.
+This mechanism must not be assigned to arbitrary desktop capture: the separate
+native-window test retained full-sized input and recovered gradually.
 
-Evidence uses two-second decoded-frame counters/dimensions and half-second pool
-membership samples. Some headless runs stopped delivering presentation callbacks
-while decoded counters kept advancing; missing callbacks alone are not stream
-loss or valid glass-to-glass timing. Raw field data and fixture variants remain
-ignored. The remaining field boundary is matched Host producer/carrier budgets,
-membership, source progress and Viewer reception during degradation and recovery.
+**The existing preference control can recover this reproduction.** After 65
+seconds stuck at 148p / 10 fps despite restored allocation, changing from
+balanced to `maintain-resolution` restored 1048p within the next two-second
+sample and reached about 30 fps. Switching back to balanced after 30 seconds
+retained that output for another 30 seconds. Bare WebRTC changed only the
+sender's degradation preference; a separate Piik run used `HostPeer`'s existing
+profile update through the pool. Both kept their connection and source; the
+pool retained one producer. Actual source frames recovered too. This provides
+a locally verified manual recovery through the existing clarity preference,
+not a field guarantee or justification for automatic preference toggling.
+
+**A new Viewer can help, but need not.** In a Canvas comparison, a degraded
+incumbent adopted a newcomer's fresh healthy producer and returned to 1080p in
+about 1.5 seconds on the same connection. In the tab comparison, the newcomer
+reused the existing producer and both stayed at 148p. Neither result establishes
+which local producer transition occurred in the field room.
+
+**Regression and repair boundary.** v1.6.5 (`04cbb2c9`)'s pool, `HostPeer` and
+quality owners showed the same Canvas recovery patterns in the current fixture.
+This compares those owners, not the whole older release or Browser. The
+[sender-owned clone and five-frame protections](./realtime-quality-adaptation.md)
+remain implemented; they address connection generations and startup, not every
+mid-share adaptation state. Field server evidence contains same-parent quality
+attempts that failed proof. There is no confirmed removed protection or recent
+Piik regression, and no automatic product repair is validated by these comparisons.
+Do not weaken candidate proof, impose output floors or reset encoders periodically.
+
+Use actual source frames, producer/carrier histories and receiver RTCStats
+together; settings and configured ceilings are not frame evidence. Some headless
+runs lost presentation callbacks while decoding continued. Raw traces and fixture
+variants remain ignored. Matched field Host evidence is still needed to separate
+capture feedback, encoder adaptation and a continuing transport limitation.
 
 ## Cost And Accounting
 

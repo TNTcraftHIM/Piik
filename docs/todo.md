@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-29
+Last reviewed: 2026-09-30
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
@@ -12,13 +12,17 @@ history. A parked idea is not implementation authority.
   admission, and narrow/touch UI. Verify confirmed fixes through the existing
   owners before resuming feature polish. Keep field reports without matched
   evidence separate from locally reproduced defects.
-- [ ] **Sustained Browser H264 degradation.** The field symptom is confirmed;
-  its cause remains open. [Matched comparisons](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
-  reproduce slow recovery in ordinary and pooled sending, and a new Viewer
-  helping an incumbent by supplying a fresh compatible producer. They do not
-  establish the field cause or a recent regression. Capture matched Host
-  producer/carrier budgets, membership and source progress alongside Viewer
-  reception. Preserve framework adaptation and candidate proof.
+- [ ] **Sustained Browser degradation.** The H264 field cause remains open.
+  [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
+  distinguish encoder recovery hysteresis from a tab-capture feedback/size-step
+  lock, also reproduced without Piik and with VP8. Non-Browser window capture
+  behaved differently. Existing clone/startup protections and same-parent
+  recovery remain; a recent Piik regression is not established. A manual
+  clarity/balanced preference change recovered the reproduced lock in bare
+  WebRTC and the actual pool. Verify a narrow repair against actual source
+  frames and candidate behavior, retaining source resize and chosen quality
+  intent. Match field producer/carrier and Viewer evidence before assigning the
+  cause; no periodic reset, floor or weaker proof.
 
 ## Deferred Feature Work
 
