@@ -113,8 +113,9 @@ or hashes.
 Manual `app_checks=true` dispatch packages Server and three-platform App
 candidates after validation. Once [automatic publication](./operations/github.md)
 is explicitly enabled, accepted main merges run that same pipeline and publish
-the verified artifacts. Candidate artifacts are retained for 14 days. Branches
-and PRs do not start cloud CI; no release-record commit is written back to main.
+the verified artifacts. Candidate artifacts are retained for 14 days. Ordinary
+branch pushes stay quiet; PRs run only the read-only release-note check. No
+release-record commit is written back to main.
 The workflow does not deploy into a running application service.
 
 Do not build or run the full repository check on a constrained production host.
