@@ -12,10 +12,6 @@ history. A parked idea is not implementation authority.
   admission, and narrow/touch UI. Verify confirmed fixes through the existing
   owners before resuming feature polish. Keep field reports without matched
   evidence separate from locally reproduced defects.
-- [ ] **Windows native helper cost.** Measure GPU texture/view allocation,
-  WGC update cadence, source-wide keyframe demand and frame-rate bitrate
-  compensation under game load before changing them. VP8 CPU cost and these
-  candidate costs do not establish the reported system-wide lag's cause.
 
 ## Deferred Feature Work
 
@@ -145,8 +141,12 @@ is active. Retain these decisions for resumption, not as parallel work.
 - [ ] **System becomes very laggy after starting a share.** Obtain mode, actual
   codec, profile, display refresh rate and CPU/GPU use, distinguishing startup
   from sustained lag. Auto's local selection checks and NVIDIA success do not
-  establish this reporter's cause; software encoding and the helper costs under
-  Now remain candidate explanations.
+  establish this reporter's cause. The bounded
+  [helper-cost checks](./research/native-client-media.md#windows-helper-cost-2026-09-29)
+  found no justified allocation/cadence change and no capture termination on the
+  tested NVIDIA machine. Saturated GPU/game-FPS impact, multi-output recovery
+  cost and the reporter's environment remain unmeasured; software encoding cost
+  alone is not a diagnosis.
 
 ## Next: P2P Connection And Feedback Evidence
 

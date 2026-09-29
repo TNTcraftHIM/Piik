@@ -32,9 +32,10 @@ unavailable instead of failing the whole source. Process loopback is probed by
 activation rather than inferred from a Windows build number; display sources
 use the standard render-device loopback available on Windows 10 and later.
 
-Auto compares target-profile encoding work within a four-second selection
-budget; H.264 that meets the target needs no software comparison. The selected
-codec remains fixed across profile and source changes. VP8 reads the existing
+Auto measures delivered frame cadence through the target-profile encoding
+pipeline within a four-second selection budget; H.264 that sustains the target
+needs no software comparison. The selected codec remains fixed across profile
+and source changes. VP8 reads the existing
 NV12 surface through one staging texture and uses the same encoded-frame
 boundary. The process has no network fallback. The App
 consumes the selected process or system-audio stream through its native media

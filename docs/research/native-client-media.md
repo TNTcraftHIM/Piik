@@ -1,12 +1,17 @@
 # Native App Media Evidence
 
-- Reviewed: 2026-09-05
-- Scope: platform capture, one shared H.264/Opus source, Pion transport, Browser
-  decode, and Browser-mediated SFU fallback
+- Reviewed: 2026-09-29
+- Scope: platform capture, shared encoded sources, Pion transport and Browser
+  decode; current behavior belongs to [media quality](../standards/media-quality.md)
 - Status: Windows physical native Host and Viewer gates passed; macOS and Linux adapters
   compile and package but still require physical media gates
 
-## Result
+## Initial Physical Evidence (2026-09-05)
+
+These checks established the original native media paths. The Browser-mediated
+SFU and loopback v8 observations below are historical. [ADR-0013](../adr/0013-embedded-node-local-media.md)
+owns the SFU replacement; [versioning](../standards/versioning.md) owns the current
+wire contract.
 
 Piik App can own one process-isolated Windows capture and hardware H.264
 encoder, feed its Annex-B access units into one Pion source, and deliver that
@@ -74,12 +79,11 @@ requires Go 1.25; App CI uses Go 1.26.6.
 
 ## Current Boundary
 
-Windows now supports hardware H264 and software VP8 behind the same capture,
-source and Pion transport boundary. libvpx 1.17.0 accepts the existing NV12 data
-with row pitch preserved, without another color-conversion library. In a local
-CPU-only 720p30 trial its mean encoding work was 6.112 ms per frame; this excludes
-GPU readback and is not game-quality evidence. Separate real Browser gates
-proved manual VP8 and Auto-selected H264, including live presets, pause/resume,
+Windows supports hardware H264 and software VP8 behind the same capture,
+source and Pion transport boundary. The pinned WebRTC encoder pipeline supplies
+libvpx; VP8 reads NV12 through a reusable staging texture and converts to I420.
+Separate real Browser gates proved manual VP8 and Auto-selected H264, including
+live presets, pause/resume,
 source replacement and exact RTP codec preservation. Auto uses a bounded
 synthetic target-profile cadence check, not a score or a runtime codec switch.
 GPU-heavy selection and cross-device startup remain open acceptance work.
@@ -87,12 +91,11 @@ GPU-heavy selection and cross-device startup remain open acceptance work.
 A 2026-09-28 check on Ryzen 7 9700X / RTX 4070 SUPER / Windows 11 26200
 used the animated Browser gate source at a 1080p, 8 Mbps ceiling. With asynchronous
 MFT readiness and no `timeBeginPeriod(1)` request, Auto selected NVIDIA H264 at
-30 and 60 fps, reaching active in 1.851 and 1.855 s respectively. Over roughly
-6.8-second steady windows, source and output both averaged 27.9 fps at 30 and
-54.1 fps at 60; helper CPU averaged 3.7% and 6.9% of one logical core. The source
-did not supply 60 fps, so this is not proof of 60-fps game capture or a measured
-speedup over the previous implementation. Separate full Browser gates passed
-Auto, manual H264 and VP8 with source/profile replacement and retirement.
+30 and 60 fps, reaching active in 1.851 and 1.855 s respectively. Full Browser
+gates passed Auto, manual H264 and VP8 with source/profile replacement and
+retirement. The helper-cost measurement below uses asynchronous CPU sampling:
+blocking the probe's encoded-output reader while querying process statistics
+distorts sustained cadence and must not be used for performance comparison.
 
 Native Auto now observes the live pipeline's output, including the frame dropper
 implicated by the [Browser AMD evidence](./realtime-quality-adaptation.md#h264-root-cause-and-gate).
@@ -111,14 +114,11 @@ switch. The result does not yet prove macOS/Linux physical capture or endurance.
 Native Host media is exposed only through an explicit App-launched Host
 selection; an ordinary Web Host retains Browser capture.
 
-Native code does not publish directly to LiveKit. One local Pion edge gives the
-system Browser a remote `MediaStreamTrack`; WebRTC requires that remote track to
-reject capture constraints, so native capture keeps source ownership while the
-existing SFU publisher owns sender parameters, simulcast, Dynacast, and recovery.
-The bridge adds one local decode for Host preview and a Browser encode only when
-SFU publication is active. Direct P2P children continue to reuse the one native
-H.264 encode. This preserves the accepted SFU behavior without another LiveKit
-SDK or media policy.
+Native Host publication now sends its encoded source directly to the embedded
+SFU. The local Browser bridge supplies preview and Browser quality candidates;
+it does not supply the ordinary Native SFU publication. Received tracks still
+cannot own capture constraints. [Media quality](../standards/media-quality.md#framework-owned-adaptation)
+owns the current output and adaptation contract.
 
 A shared encode cannot independently adapt one bitstream for unequal paths.
 Rather than lower every Native child, a quality operation originating from a
@@ -129,17 +129,11 @@ edge to Native. Healthy Native edges keep sharing the hardware encode. This is
 implemented without a new route reason, timer, score, or representation ladder;
 controlled weak-path physical acceptance remains open.
 
-Native P2P edges negotiate transport-wide feedback and use Pion's send-side GCC
-with its immediate no-op pacer. The pacer neither queues nor applies one edge's
-estimate to the shared encoder. Once real feedback and source frames exist, the
-edge compares GCC's target payload bitrate with the H.264 plus Opus payload
-actually produced in the same window. A lower target is `degraded/bandwidth`, a
-sufficient target is `healthy/none`, and absent feedback or source progress is
-`unknown`. The existing two-second evidence cadence and three-window route rule
-own persistence. This is a direct capacity relation, not a loss/RTT score or a
-new adaptation ladder. The known Pion no-op-pacer issue concerns separately
-negotiated RTX SSRCs; the current native H.264 contract has no RTX codec and must
-reopen that choice before adding one.
+Native edges now use the shared Pion/LiveKit forwarding adapter for transport
+feedback, allocation, pacing and recovery. The former no-op-pacer and
+source-payload-versus-GCC comparison are no longer the product implementation.
+[Observable truth](../standards/media-quality.md#observable-truth) owns current
+quality evidence, including committed allocation deficiency and unknown feedback.
 
 No-Site Internet control can use the one-link mode owned by ADR-0010. Its remote
 Pion gate proves public signaling plus direct media, but not decoded Browser
@@ -151,10 +145,11 @@ Native shares use the same Pion UDP socket for all edges. Site and one-link
 shares make one bounded, best-effort PCP, UPnP, or NAT-PMP mapping through
 NetBird's standalone Go NAT package; pure LAN Local mode does not. A physical
 router created and removed an ephemeral UPnP mapping; the Apache-2.0 dependency
-added about 0.38 MiB to the stripped Windows App. Mapping begins
-with the share, is awaited before the first PeerConnection, refreshes only when
-a later edge arrives after half the requested lease, and is removed with the
-engine. Failure is cached for that share and leaves ordinary ICE/STUN unchanged.
+added about 0.38 MiB to the stripped Windows App. Mapping and the supplemental
+STUN survey now run alongside ordinary candidate gathering; neither delays the
+offer or ordinary candidates. End-of-candidates waits for both owners. Mapping
+refresh and retirement remain engine-owned; [NAT evidence](./nat-traversal.md)
+records the current dependency and reachability limits.
 The returned port is advertised once per observed public address as a
 lower-priority candidate. Only the three explicit same-socket survey candidates
 feed NAT prediction; the mapped candidate does not. This proves lifecycle and
@@ -170,8 +165,8 @@ With the failing AMD candidate preferred, bounded product selection now reaches
 the working NVIDIA H264 encoder without changing codec. A local native Host gate
 also passes decoded Viewer output, quality changes and source replacement. This
 establishes the selection defect and repair, not the unknown reporter's cause.
-The product therefore observes GCC for routing but does not yet apply one edge's
-target globally to the shared encoder.
+This earlier fixture proves dynamic hardware rate changes, not the current
+multi-output allocation policy or cross-vendor performance.
 
 The Windows source boundary now enumerates displays and windows and returns a
 bounded best-effort preview. A display uses WGC plus default render-device
@@ -225,17 +220,68 @@ physical Linux gate. GStreamer stays a system dependency: bundling another RTC
 or an 80+ MB media runtime would defeat the thin-adapter boundary, while an
 unavailable dependency cleanly leaves Browser capture available.
 
+## Windows Helper Cost (2026-09-29)
+
+At `89a03e64` on Ryzen 7 9700X / RTX 4070 SUPER / Windows 11 26200,
+an instrumented Release helper captured a controlled animated Browser window
+and an offline CS2 scene window. Each run used one 1920x1080 output with an
+8 Mbps ceiling; CPU sampling did not block the encoded-output reader. CPU below
+is a percentage of **one logical core**, not total-machine use. The scene runs
+are sequential observations, not matched gameplay or a cross-device benchmark.
+
+| Source / codec | Target fps | WGC interval | Sample | Admitted / encoded fps | Helper CPU |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Browser / H264 | 30 | 4 ms | 15.8 s | 30.0 / 30.1 | 4.6% |
+| Browser / H264 | 60 | 4 ms | 15.8 s | 60.1 / 60.0 | 9.6% |
+| Browser / VP8 | 60 | 4 ms | 15.7 s | 60.0 / 60.0 | 75.6% |
+| CS2 / H264 | 60 | 4 ms | 45.8 s | 54.8 / 52.7 | 5.7% |
+| CS2 / H264 | 60 | 8 ms | 45.8 s | 53.0 / 51.4 | 5.3% |
+| CS2 / VP8 | 60 | 4 ms | 20.9 s | 54.9 / 53.3 | 82.9% |
+
+Across these runs, NV12 conversion API work averaged 0.060–0.226 ms per frame,
+including texture/view creation; owned-input allocation/copy submission averaged
+0.044–0.048 ms. These are CPU-side call durations, not GPU completion timings.
+They do not justify adding a texture pool. In particular, MFT input samples may
+remain referenced after submission; one mutable reused surface would discard
+the current ownership guarantee. The 8 ms trial establishes no worthwhile gain
+and does not supersede the earlier 144 Hz cadence evidence or the existing 4 ms
+setting, also used by Sunshine.
+
+At 60 fps, explicitly requesting recovery every 250 ms retained 59.9 encoded
+fps on the Browser source and 56.9 on the CS2 source, with normal capture exits.
+A separate unchanged window stayed active for over 20 seconds in each codec;
+recovery requests produced fresh H264 keyframes from its retained image. These
+are one-output stress/idle checks, not proof of multi-output recovery cost or
+endurance. Code tracing also confirms membership/demand changes use recovery to
+wake a quiet source and apply its next output plan; SFU demand emits only on
+change. Removing these requests solely as redundant keyframes is unsafe.
+
+H264 frame-rate bitrate compensation matches Chromium's MFT approach: compensate
+for the fixed configured frame rate without restarting the encoder. An adjusted
+API value above the requested bitrate is not by itself wire-rate overshoot.
+The measured aggregate H264 payload stayed below 8 Mbps, including recovery
+stress; this does not establish every short-window burst or driver behavior.
+
+No automatic capture termination was reproduced. Admitted capture input stayed
+below 60 fps during the CS2 runs; these observations do not separate game render
+cadence, WGC delivery and capture sampling. They also do not measure game FPS
+impact, exclusive fullscreen/display changes, saturated GPU behavior, end-to-end
+decoded media or other GPUs. Software encoding costs more CPU here, but neither
+that result nor the allocation timings establish the reported system-wide lag's
+cause. Retain the existing implementation; reopen optimization from a matched
+bottleneck.
+
 ## Implementation Boundary
 
 - `nativecapture` owns the child process, source identity, and bounded frame protocol.
-- `mediaedge` owns the stable Pion API, one UDP mux, shared H.264/Opus sources,
+- `mediaedge` owns the stable Pion API, one UDP mux, shared encoded sources,
   and independent PeerConnections.
 - `nativehost` owns the current capture generation and its bounded stable edges.
-- `nativeviewer` owns one native inbound H.264/Opus source and its encoded child
+- `nativeviewer` owns one native inbound media source and its encoded child
   edges; it does not own room or route state.
 - `nativecontrol` maps local source/share/receive/edge commands and exact native
   sender quality windows, live profile updates, and source replacement to the
-  loopback v8 wire.
+  current loopback wire.
 
 The deleted sender application, UI, room client, and old wire are not
 compatibility inputs. Historical measurements remain in the separately marked
@@ -250,11 +296,10 @@ compatibility inputs. Historical measurements remain in the separately marked
 - [WASAPI process loopback](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)
 - [OBS application-audio capture guide](https://obsproject.com/kb/application-audio-capture-guide/)
 - [Media Foundation hardware MFTs](https://learn.microsoft.com/en-us/windows/win32/medfound/hardware-mfts)
+- [MFT input sample ownership](https://learn.microsoft.com/en-us/windows/win32/api/mftransform/nf-mftransform-imftransform-processinput)
+- [Chromium MFT frame-rate compensation](https://chromium.googlesource.com/chromium/src/+/master/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc)
 - [Pion v4.2.18 stats implementation](https://github.com/pion/webrtc/blob/v4.2.18/stats.go)
-- [Pion Google congestion control](https://github.com/pion/interceptor/tree/v0.1.47/pkg/gcc)
-- [Pion bandwidth-estimation example](https://github.com/pion/webrtc/tree/v4.2.18/examples/bandwidth-estimation-from-disk)
 - [WebRTC Stats target bitrate and limitation semantics](https://www.w3.org/TR/webrtc-stats/)
-- [Pion no-op pacer RTX issue](https://github.com/pion/interceptor/issues/406)
 - [WebRTC remote-track constraints](https://www.w3.org/TR/webrtc/#mediastreamtrack-network-use)
 - [Pion single-port ICE](https://github.com/pion/webrtc/tree/master/examples/ice-single-port)
 - [Pion broadcast relay](https://github.com/pion/webrtc/tree/master/examples/broadcast)
