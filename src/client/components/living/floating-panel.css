@@ -3,8 +3,7 @@
 .lr-floating-panel:popover-open { display: flex; flex-direction: column; animation: lr-floating-enter 180ms var(--spring); }
 .lr-floating-panel:focus { outline: none; }
 .lr-floating-panel:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
-.lr-floating-header { display: flex; align-items: center; gap: 8px; min-height: 56px; flex-shrink: 0; margin: -16px -16px 0; padding: 6px 10px 6px 24px; border-bottom: 1px solid var(--wall-2); border-radius: 24px 24px 0 0; cursor: grab; user-select: none; }
-.lr-floating-title, .lr-floating-position > summary { touch-action: none; }
+.lr-floating-header { display: flex; align-items: center; gap: 8px; min-height: 56px; flex-shrink: 0; margin: -16px -16px 0; padding: 6px 10px 6px 24px; border-bottom: 1px solid var(--wall-2); border-radius: 24px 24px 0 0; cursor: grab; user-select: none; touch-action: none; }
 .lr-floating-header:active { cursor: grabbing; }
 .lr-floating-header:focus-visible { outline: 2px solid var(--action); outline-offset: -3px; }
 .lr-floating-title { display: flex; flex: 1; min-width: 0; align-items: center; gap: 7px; font-size: 14px; }

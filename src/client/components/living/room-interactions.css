@@ -29,7 +29,7 @@
 .lr-chat-message.is-continuation p { border-radius: 16px; }
 .lr-chat-compose { display: flex; align-items: center; gap: 4px; margin-top: 8px; padding: 4px; border: 1px solid var(--control-edge); border-radius: 20px; background: var(--wall); }
 .lr-chat-compose:has(input:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
-.lr-chat-compose > input { min-width: 0; flex: 1; width: 0; height: 44px; border: 0; outline: none; border-radius: 14px; padding: 0 10px; background: transparent; color: var(--ink); }
+.lr-chat-compose > input { min-width: 0; flex: 1; width: 0; height: 44px; border: 0; outline: none; border-radius: 14px; padding: 0 10px; background: transparent; color: var(--ink); font-size: 16px; }
 .lr-chat-compose .lr-btn { flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border-radius: 15px; }
 .lr-chat-footer { display: flex; align-items: center; gap: 10px; min-height: 40px; margin-top: 8px; padding-right: 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .lr-chat-footer .lr-chat-overlay-toggle { flex: none; }
@@ -73,6 +73,8 @@
 .is-poop .lr-reaction-glyph { animation-name: lr-reaction-plop; }
 :is(.is-clap, .is-laugh, .is-party) .lr-reaction-glyph { animation-name: lr-reaction-bounce; }
 :is(.is-heart, .is-wow, .is-fire, .is-star) .lr-reaction-glyph { animation-name: lr-reaction-pulse; }
+.is-eyes .lr-reaction-glyph { animation-name: lr-reaction-peek; }
+.is-sleep .lr-reaction-glyph { animation-name: lr-reaction-doze; }
 .lr-reaction-accents { position: absolute; left: 50%; top: 50%; translate: -50% -50%; overflow: visible; fill: #efb94e; }
 .lr-reaction-accents.is-heart { fill: #e77585; }
 .lr-reaction-accents.is-tomato { fill: #e96c55; }
@@ -87,6 +89,8 @@
 .is-throw .lr-reaction-spark { animation-name: lr-reaction-spark-impact; }
 .is-expression .lr-reaction-projectile { animation-name: lr-reaction-expression; }
 .is-gift .lr-reaction-projectile { animation-name: lr-reaction-gift; }
+.is-expression .is-sleep .lr-reaction-spark { animation-name: lr-reaction-drift; }
+.lr-reaction-impact { fill: none; stroke: #e96c55; stroke-width: 1.5; transform-box: fill-box; transform-origin: center; animation: lr-reaction-impact var(--reaction-duration) ease-out both; }
 /* Attribution follows the glyph without shifting its center off the head. */
 .lr-reaction-from { position: absolute; bottom: calc(100% + 4px); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 4px; width: max-content; padding: 4px 6px; border: 1px solid var(--control-edge); border-radius: 10px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 11px; font-weight: 600; }
 .lr-reaction-from > span { max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -125,6 +129,26 @@
 @keyframes lr-reaction-pulse {
   0%, 52%, 72%, 100% { transform: none; }
   62% { transform: scale(1.15); }
+}
+@keyframes lr-reaction-peek {
+  0%, 52%, 88%, 100% { transform: none; }
+  60%, 64% { transform: translateX(-3px) rotate(-4deg); }
+  74%, 78% { transform: translateX(3px) rotate(4deg); }
+}
+@keyframes lr-reaction-doze {
+  0%, 52%, 100% { transform: none; }
+  68% { transform: translateY(3px) rotate(-7deg); }
+  84% { transform: translateY(1px) rotate(3deg); }
+}
+@keyframes lr-reaction-drift {
+  0%, 14% { opacity: 0; transform: translateY(6px) scale(.5); }
+  30% { opacity: .7; }
+  90%, 100% { opacity: 0; transform: translate(var(--spark-x), var(--spark-y)) scale(1.1); }
+}
+@keyframes lr-reaction-impact {
+  0%, 31% { opacity: 0; transform: scale(.4); }
+  34% { opacity: .55; }
+  48%, 100% { opacity: 0; transform: scale(1.6); }
 }
 @keyframes lr-reaction-squash {
   0%, 28%, 58%, 100% { transform: none; }

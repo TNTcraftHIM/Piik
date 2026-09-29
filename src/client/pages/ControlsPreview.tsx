@@ -10,6 +10,7 @@ import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOv
 import { RoomInteractionSession } from "../lib/room-interactions";
 import { createOpaqueId } from "../lib/opaque-id";
 import type { InteractionPayload } from "../../shared/protocol";
+import { REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { SharingSettings } from "../components/living/SharingSettings";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
@@ -237,6 +238,7 @@ function InteractionControlsPreview() {
   const [session, setSession] = useState<RoomInteractionSession | null>(null);
   const [viewer, setViewer] = useState(false);
   const [crowded, setCrowded] = useState(false);
+  const [reaction, setReaction] = useState<ReactionId>("heart");
   const [theater, setTheater] = useTheaterMode();
   const video = useRef<HTMLVideoElement>(null);
   const { t, lang } = useCopy();
@@ -267,7 +269,12 @@ function InteractionControlsPreview() {
     <button type="button" className="lr-btn" onClick={() => receiveSample({
       kind: "chat", text: lang === "en" ? "I'm here. Save me a seat!" : "来了，给我留个位置！",
     })}><Glyph name="chat" size={18} />{lang === "en" ? "Receive a sample message" : "模拟收到消息"}</button>
-    <button type="button" className="lr-btn" onClick={() => receiveSample({ kind: "reaction", reaction: "heart",
+    <label className="lr-input cp-reaction-select"><span>{lang === "en" ? "Reaction" : "表情"}</span>
+      <select value={reaction} onChange={event => setReaction(event.target.value as ReactionId)}>
+        {REACTION_IDS.map(id => <option key={id} value={id}>{t(`interaction.reaction.${id}`)}</option>)}
+      </select>
+    </label>
+    <button type="button" className="lr-btn" onClick={() => receiveSample({ kind: "reaction", reaction,
       targetPeerId: viewer ? "preview-friend" : "preview-host",
     })}><Glyph name="smile" size={18} />{lang === "en" ? "Receive a reaction" : "模拟收到表情"}</button>
   </div><div className={theater ? "lr-room is-theater" : "cp-interaction-room"}><div className="lr-scene">

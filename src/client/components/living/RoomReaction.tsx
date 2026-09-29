@@ -23,6 +23,7 @@ export function ReactionIcon({ reaction }: { reaction: ReactionId }) {
 /** Fixed, event-seeded accents: no independent timer or mutable random stream. */
 function ReactionAccents({ reaction, seed }: { reaction: ReactionId; seed: number }) {
   return <svg className={`lr-reaction-accents is-${reaction}`} viewBox="-48 -48 96 96" width="96" height="96">
+    {reaction === "tomato" && <ellipse className="lr-reaction-impact" rx="18" ry="12" />}
     {Array.from({ length: reaction === "sleep" ? 3 : 5 }, (_, index) => {
       const angle = (-160 + index * 35 + (seed % 13)) * Math.PI / 180;
       const radius = 27 + ((seed >>> (index * 4)) % 12);

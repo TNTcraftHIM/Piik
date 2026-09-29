@@ -35,3 +35,4 @@
   .cp-people-room { padding-inline: 0; }
   .cp-connection-panel { padding: 4px; }
 }
+.cp-reaction-select select { min-width: 0; border: 0; color: var(--ink); background: var(--paper); font-size: 16px; }
