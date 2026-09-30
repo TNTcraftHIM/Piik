@@ -316,9 +316,24 @@ complexity: changing to simple bars restored 1080p, retained after restoring
 the textured scene. WebRTC's [quality scaler](https://webrtc.googlesource.com/src/+/3a8b0c76e6b7bf0e72141047f82eb2c3f4862c8d/modules/video_coding/utility/quality_scaler.cc)
 uses QP thresholds and sampling history as well as bandwidth-related adaptation.
 Its default two-second checks and longer sampling after down-adaptation can
-outlast a short disturbance. That supports recovery hysteresis, not a rule that
-restored BWE must immediately restore full output. These observations do not
-yet establish the reported repeated brief blur/recovery sequence's cause.
+outlast a short disturbance. Native Chrome 154 logging also confirmed a stable
+QP deadband with the NVIDIA H264 MFT: after one 1048p-to-786p reduction, smoothed
+QP stayed between the recorded 24/37 thresholds for the remaining 90-second
+observation. Capture remained full size, but no low-QP upscale was requested.
+This is not merely old samples taking time to expire; restored bandwidth alone
+does not require this scaler to restore resolution.
+
+A matched three-arm comparison used fixed 5 Mbps, alternating 5.0/4.9 Mbps
+every 500 ms, and repeated identical 5 Mbps writes. Native reconfiguration
+counts were 2/122/2; actual encoded rates were 4.914/4.114/4.907 Mbps. Changed
+budgets repeatedly returned the encoder target to the
+[bitrate adjuster's conservative startup state](https://webrtc.googlesource.com/src/+/3a8b0c76e6b7bf0e72141047f82eb2c3f4862c8d/video/encoder_bitrate_adjuster.cc),
+whereas identical writes did not. All three stayed at 786p and about 29 fps,
+without new keyframes during the experiment. These single-device runs show a
+framework reconfiguration cost, not additional resolution oscillation or a
+perceptual blur measurement. They do not justify delaying real demand, bitrate
+compensation or periodic resets; equal product updates are already deduplicated.
+The field's repeated brief blur still lacks matching Host histories.
 
 The tab case exposed a more specific capture-feedback problem. A Chromium trace
 kept the source geometry at 1904x1049 while capture supplied a 268x148 content
@@ -386,6 +401,18 @@ within the 40-second recovery observation. The healthy sibling retained full siz
 and source-frame observations confirmed no capture shrink. This simpler scene
 does not supersede the textured-scene recovery boundary above.
 
+Actual tab capture through embedded SFU exposed a separate forwarding defect:
+VP8's two spatial encodings each sent 15 fps with `L1T3`, but the subscriber
+decoded about 4 fps. Both shared forwarding owners forced temporal layer zero,
+discarding enhancement frames even with ample budget. The ordinary-clone control
+had the same failure. Removing those overrides retains
+[LiveKit's supported temporal bound](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/forwarder.go#L293-L295)
+and allocation from real incoming layers. The repaired real-tab check decoded
+15 fps with the Host hidden, including original/half-size switching, resumed
+delivery, track replacement and retirement. RTP regression tests cover both
+Transport and Publication; restoring either old cap makes its test fail.
+This does not identify the field room's H264 degradation cause.
+
 **Upstream repair boundary.** Chromium's
 [feedback forwarding change](https://chromium-review.googlesource.com/c/chromium/src/+/2386743)
 dates to 2020; the relevant logic remained in inspected upstream main on
@@ -426,7 +453,8 @@ This compares those owners, not the whole older release or Browser. The
 remain implemented; they address connection generations and startup, not every
 mid-share adaptation state. Field server evidence contains same-parent quality
 attempts that failed proof. There is no confirmed removed protection or recent
-Piik regression, and no automatic product repair is validated by these comparisons.
+Piik regression. The capture and carrier repairs above address their reproduced
+defects, not every content-dependent adaptation state.
 Do not weaken candidate proof, impose output floors or reset encoders periodically.
 
 Use actual source frames, producer/carrier histories and receiver RTCStats
@@ -490,6 +518,14 @@ sizes and checks that sender adaptation does not shrink capture; its receiver
 observations establish frame progress, not barcode-based glass-to-glass latency
 or audiovisual offset. The summary suppresses those unmeasured timing values.
 `--quiet-start` requires a decoded frame before the source animation starts.
+
+For real tab capture through the shared forwarding path, set `CHROME_PATH`,
+`PIIK_EMBEDDED_SFU_GATE=true`, `PIIK_EMBEDDED_SFU_DISPLAY=true` and
+`PIIK_EMBEDDED_SFU_CODEC=h264` or `vp8`, then run `npm run gate:embedded-sfu`.
+This separate arm verifies a hidden Host, decoded original/half-size layers,
+resumed delivery, video-track replacement, profile changes and retirement.
+Track replacement uses a clone of the same visual source; it does not establish
+different-device switching or audio/video synchronization.
 
 ## Primary References And Remaining Boundaries
 

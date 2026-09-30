@@ -167,8 +167,6 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 			transport.driveProbeLocked()
 		}
 	})
-	// Spatial selection arms acquisition; its temporal bound must already be valid.
-	transport.Output.SetMaxTemporalLayer(0)
 	transport.Output.SetMaxSpatialLayer(int32(len(options.Source.TrackInfo().Layers) - 1))
 	transceiver, err := transport.PC.AddTransceiverFromTrack(track,
 		webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})

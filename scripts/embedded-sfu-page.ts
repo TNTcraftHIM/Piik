@@ -194,7 +194,7 @@ async function connect(room: CreateRoomResponse, host: boolean): Promise<void> {
     : { ...common, role: "viewer", viewerGrant: new URLSearchParams(new URL(room.inviteUrl).hash.slice(1)).get("v")! });
 }
 
-export async function startHost(nativeSource?: { title: string; port: number }, selectedCodec: "vp8" | "h264" = "vp8"): Promise<CreateRoomResponse> {
+export async function startHost(nativeSource?: { title: string; port: number }, selectedCodec: "vp8" | "h264" = "vp8", display = false): Promise<CreateRoomResponse> {
   codec = selectedCodec;
   const response = await fetch("/api/rooms", {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -235,7 +235,9 @@ export async function startHost(nativeSource?: { title: string; port: number }, 
     context.font = "48px sans-serif";
     context.fillText(String(frame), 40, 240);
   }, 1000 / 15);
-  source = canvas.captureStream(15);
+  source = display ? await navigator.mediaDevices.getDisplayMedia({
+    video: { width: 1280, height: 720, frameRate: 15 }, audio: false,
+  }) : canvas.captureStream(15);
   audio = new AudioContext();
   const tone = audio.createOscillator();
   const gain = audio.createGain();
@@ -263,6 +265,7 @@ export async function reconnectViewer(room: CreateRoomResponse): Promise<void> {
 
 export function snapshot() {
   return { authenticated, published, simulcast, decoded, committed, peerFailures,
+    visibility: document.visibilityState, capture: source?.getVideoTracks()[0]?.getSettings(),
     routeEvents, routeStatus,
     connectionId: configuration?.connectionId,
     audioKbps, audioCodec, publicationRetired, sharingStopped, nativeShareStarted, nativeShareStopped,
@@ -319,6 +322,33 @@ export async function lowerProfile(): Promise<boolean> {
   profile = low;
   send({ type: "set-quality-settings", qualitySettings: low });
   return await hostRoute!.updateProfile(low);
+}
+
+export function pause(paused: boolean): void {
+  source?.getTracks().forEach(track => { track.enabled = !paused; });
+  hostRoute?.setPaused(paused);
+}
+
+// Exercise the existing server-to-publisher demand contract independently of
+// the local machine's unconstrained subscriber bandwidth.
+export async function demandLayers(activeCount: number): Promise<void> {
+  if (!publisher || !configuration || native) throw new Error("Browser publisher is unavailable");
+  const { revision, publicationGeneration, connectionId } = configuration;
+  await publisher.acceptSignal({ type: "sfu-signal", kind: "layers", activeCount,
+    revision, publicationGeneration, connectionId });
+}
+
+export async function replaceSource(): Promise<boolean> {
+  if (!source || !hostRoute || native) throw new Error("Browser source is unavailable");
+  const previous = source;
+  source = previous.clone();
+  if (!await hostRoute.replaceStream(source)) {
+    source.getTracks().forEach(track => track.stop());
+    source = previous;
+    return false;
+  }
+  previous.getTracks().forEach(track => track.stop());
+  return true;
 }
 
 export function stopSharing(): void {

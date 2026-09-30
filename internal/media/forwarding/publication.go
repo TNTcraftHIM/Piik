@@ -148,7 +148,6 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 			return nil, trackErr
 		}
 		publication.tracks = append(publication.tracks, track)
-		track.SetMaxTemporalLayer(0)
 		track.SetMaxSpatialLayer(int32(index))
 		local := &publicationTrack{DownTrack: track, id: options.Source.TrackID(), rid: PublicationRID(index, publication.activeCount), pacer: publication.pacer, counters: &publication.counters[index]}
 		if transceiver == nil {
