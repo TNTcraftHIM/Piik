@@ -311,7 +311,7 @@ encoded output stayed at 148p / 10 fps, despite a 5 Mbps target, an approximatel
 retained 238p. Network loss is therefore not necessary for this local lock;
 these are synthetic Chrome 154 results, not the field room's diagnosed cause.
 
-**Two mechanisms remain distinct.** Canvas recovery could follow content
+**Capture lock and encoder hysteresis remain distinct.** Canvas recovery could follow content
 complexity: changing to simple bars restored 1080p, retained after restoring
 the textured scene. WebRTC's [quality scaler](https://webrtc.googlesource.com/src/+/3a8b0c76e6b7bf0e72141047f82eb2c3f4862c8d/modules/video_coding/utility/quality_scaler.cc)
 uses QP thresholds and sampling history as well as bandwidth-related adaptation.
@@ -343,14 +343,48 @@ strongly supports a feedback/size-quantization lock. Actual `VideoFrame`
 dimensions confirm reduced capture independently of stale `getSettings()`.
 Reapplying exact dimensions to the original track did not unblock it.
 
-An experimental raw-frame passthrough separated capture from sender feedback
-without resizing or generated cadence. All but the first observed source frame
-stayed 1904x1048; output recovered from 192p through 262/390p to 524p within
-65 seconds. This supports the capture-feedback boundary while leaving slower
-encoder recovery distinct. The extra raw-frame pipeline is not a product fix:
-full recovery, cost, device support and lifecycle coverage are not established.
-The separate non-Browser window case also retained full input and recovered
-gradually; do not generalize the tab mechanism to arbitrary desktop capture.
+The Piik sender boundary now forwards bounded raw display frames using
+[Chromium's track streams](https://developer.chrome.com/docs/capabilities/web-apis/mediastreamtrack-insertable-media-processing),
+without resizing, re-encoding or generated cadence. Camera/received tracks and
+unsupported Browsers keep ordinary clones. In the textured-tab comparison,
+all but the initial source frame stayed 1904x1048; output escaped 192p through
+262/390p to 524p. It still remained 524p after 125 recovery seconds. This removes
+the reproduced capture lock, not content-dependent encoder hysteresis or every
+reported blur. The separate non-Browser window case also retained full input and
+recovered gradually; do not generalize the tab mechanism to all desktop capture.
+
+Static-source testing caught a necessary lifecycle detail: unlike an RTC sink,
+a Processor does not request idle refresh frames. A static tab delivered no first
+encoded frame without them. The input retains the RTC sink's
+[1 fps refresh requirement](https://raw.githubusercontent.com/chromium/chromium/154.0.8037.58/third_party/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.h)
+through the native
+[capture constraint handler](https://raw.githubusercontent.com/chromium/chromium/154.0.8037.58/third_party/blink/renderer/modules/mediastream/media_stream_video_track.cc).
+No frame is synthesized by Piik and no sender quality floor is added.
+H264 pooling and ordinary VP8 passed static first-frame, live/quiet/paused profile
+updates, resume, source replacement and retirement with actual tab capture.
+Fault checks cover pending replacement and active-input failure without retiring
+the shared source. A fake-device input exercising the same raw-frame path retained
+20 fps during a verified hidden-page interval; self-tab capture could not enter
+hidden state in that fixture. Physical background/device coverage remains open.
+A matched full-resolution pair consumed 12.30 versus 12.46 whole-fixture CPU-seconds
+over 15 seconds. This single-machine sample is not a low-end performance guarantee.
+
+**Carrier cadence must not adapt the picture twice.** Two one-second rate/loss
+pulses exposed a separate starvation loop: after the second pulse the producer
+delivered about 15 fps, but its synthetic carrier fell to 1-3 fps. The four-frame
+queue overflowed and repeatedly requested recovery keys. Keeping only the
+carrier's native preference at `maintain-framerate` retained about 15 decoded fps;
+the last 31 seconds had four queue-overflow recoveries instead of 69. The real
+producer remained balanced and source frames remained full size in both runs.
+This implements the existing producer/clock ownership boundary; it adds no
+queue growth, quality floor or network estimator. It does not remove ordinary
+WebRTC adaptation: output still ended at 390p in that textured two-pulse case.
+
+The bounded two-Viewer tab probe passed with both H264 and VP8: after one Viewer
+was limited to 400 kbps for 14 seconds, it returned to 1904x1048 at about 30 fps
+within the 40-second recovery observation. The healthy sibling retained full size,
+and source-frame observations confirmed no capture shrink. This simpler scene
+does not supersede the textured-scene recovery boundary above.
 
 **Upstream repair boundary.** Chromium's
 [feedback forwarding change](https://chromium-review.googlesource.com/c/chromium/src/+/2386743)
@@ -438,6 +472,9 @@ npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --av --network --auto
 npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --av --lifecycle
 npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --av --relay
 npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --background
+npx tsx scripts/browser-local-pool-probe.ts carrier --display --quiet-start --1080 --h264 --av --lifecycle
+npx tsx scripts/browser-local-pool-probe.ts ordinary --display --quiet-start --1080 --av --lifecycle
+npx tsx scripts/browser-local-pool-probe.ts carrier --display --1080 --h264 --av --network --auto --rate=400000 --preference=balanced
 ```
 
 Add `--h264`, `--single` or `--late` for the corresponding case. Set
@@ -448,6 +485,11 @@ recovery observation; product code owns all adaptation. Results go to ignored
 `build/browser-local-pool`; summarize with
 `node scripts/browser-local-pool-summary.mjs <result.json>`.
 A successful process exit does not establish visual/performance parity.
+`--display` captures only the isolated probe tab. It records actual source-frame
+sizes and checks that sender adaptation does not shrink capture; its receiver
+observations establish frame progress, not barcode-based glass-to-glass latency
+or audiovisual offset. The summary suppresses those unmeasured timing values.
+`--quiet-start` requires a decoded frame before the source animation starts.
 
 ## Primary References And Remaining Boundaries
 

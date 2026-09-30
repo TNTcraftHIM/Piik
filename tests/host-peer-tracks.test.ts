@@ -20,6 +20,7 @@ import {
 } from "../src/client/webrtc/viewer-relay.ts";
 import { setCopy } from "../src/client/ui/copy.ts";
 import * as encodingOutput from "../src/client/media/browser-encoding-output";
+import * as senderTracks from "../src/client/media/sender-video-track";
 import type { BrowserEncodingPool } from "../src/client/media/browser-encoding-pool";
 import type {
   IceConfig,
@@ -557,6 +558,44 @@ function encodedPeerFixture() {
   return { pool, create, binding, output, failVideo: () => failVideo(),
     failAudio: () => audio.error(new Error("audio transform failed")) };
 }
+
+describe("HostPeer sender-frame lifetime", () => {
+  it.each(["current", "replaced", "pending"])("handles a %s frame input ending in its owning operation", async (phase) => {
+    const endings: Array<{ track: MediaStreamTrack; end: () => void }> = [];
+    vi.spyOn(senderTracks, "cloneSenderVideoTrack").mockImplementation((source, onEnded) => {
+      const track = source.clone();
+      endings.push({ track, end() {
+        Object.defineProperty(track, "readyState", { value: "ended" });
+        onEnded(track);
+      } });
+      return track;
+    });
+    const source = createTrack("video", "source"), next = createTrack("video", "next");
+    const peer = createPeer(createStream(source, null));
+    try {
+      await peer.start();
+      const pc = FakePeerConnection.latest!, original = pc.senders[0]!.track;
+      if (phase === "current") endings[0]!.end();
+      else if (phase === "replaced") {
+        expect(await peer.replaceStream(createStream(next, null))).toBe(true);
+        endings[0]!.end();
+        expect(pc.senders[0]!.track).toBe(endings[1]!.track);
+      } else {
+        pc.senders[1]!.deferReplaceCall = 1;
+        const replacing = peer.replaceStream(createStream(next, null));
+        await vi.waitFor(() => expect(pc.senders[1]!.replaceTrack).toHaveBeenCalled());
+        endings[1]!.end();
+        pc.senders[1]!.releaseDeferredReplaceTrack();
+        expect(await replacing).toBe(false);
+        expect(pc.senders[0]!.track).toBe(original);
+        expect(endings[1]!.track.stop).toHaveBeenCalled();
+      }
+      expect(pc.connectionState === "closed").toBe(phase === "current");
+      expect(source.stop).not.toHaveBeenCalled();
+      expect(next.stop).not.toHaveBeenCalled();
+    } finally { peer.dispose(); }
+  });
+});
 
 describe("HostPeer encoded output ownership", () => {
   it.each(["initial", "replacement"])("owns output pause when the pool declines the %s source", async (phase) => {

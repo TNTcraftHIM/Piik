@@ -160,12 +160,18 @@ quality/source changes retain it. Other native platform encoders remain H264.
 
 ## Framework-Owned Adaptation
 
-Each Browser direct, relay, or SFU video sender owns one clone of its capture or received
-source track. The original track remains a source and local presentation track;
-it is never attached directly to an outbound sender. Replacing or retiring a
-sender also stops its clone, so native adaptation state cannot survive by being
-inherited through the original track. Host pause and live capture constraints
-are propagated to current Host-owned clones.
+Each Browser direct, relay, or SFU video sender owns a separate track. The original
+track remains a source and local presentation track; it is never attached directly
+to an outbound sender. Display capture with raw-frame stream support forwards a
+bounded input clone into a generated sender track, without resizing or encoding.
+This prevents encoder feedback from shrinking its own capture recovery input;
+[the Chromium capture lock](../research/browser-local-encoding-pool.md#sustained-h264-recovery)
+owns the evidence. Camera/received tracks and unsupported Browsers retain ordinary
+clones. Capture constraints and capture metadata belong to the input. Its native
+idle refresh is retained through a 1 fps capture constraint; sender adaptation has
+no new FPS or resolution floor. Pause gates the outgoing track. Replacement and
+retirement cancel the frame pipe and stop both owned ends; an unexpected input
+end belongs to the current sending operation, never the shared source or siblings.
 Connection retirement also settles its pending sender and negotiation waits;
 closing a Browser PeerConnection alone does not guarantee that its promises
 settle. Cancellation starts before joining work that depends on it, while a
@@ -182,7 +188,9 @@ Producer startup protection begins at actual outgoing publication, excluding
 local warmup and paused frames. The synthetic carrier uses screen-content
 transport probing; the real producer keeps the Host's picture adaptation.
 Capture constraints and the picture's sender FPS ceiling belong to the real
-source and producer, not the producer-driven carrier clock. Outgoing transport
+source and producer, not the producer-driven carrier clock. The carrier
+preserves its frame rate instead of adapting picture cadence a second time.
+The producer retains the Host's degradation preference. Outgoing transport
 bitrate still follows the Host ceiling; ordinary fallback restores its picture
 sender limits. Preparation and applied-budget completion re-evaluate pending
 membership immediately; accepting a recovery frame still commits the handoff.
@@ -191,9 +199,9 @@ pooling use ordinary senders. Prepared ordinary quality candidates, Native
 ingress and Browser SFU remain independent compositions.
 
 Each ordinary Browser PeerConnection owns stock WebRTC congestion control and
-sender adaptation. Clones share one underlying media source and therefore do not provide
-complete simultaneous isolation: framework source-wants aggregation may still
-partially reduce frames available to sibling clones. Sibling outputs may differ;
+sender adaptation. Ordinary clones share one underlying media source and therefore
+do not provide complete simultaneous isolation: framework source-wants aggregation
+may still partially reduce frames available to sibling clones. Sibling outputs may differ;
 Piik does not impose a room-wide minimum. The Host's one Browser SFU
 publication uses the share-generation codec and selected ceilings. Its ordinary
 simulcast outputs follow pinned LiveKit screen-share construction: original and

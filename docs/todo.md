@@ -16,9 +16,10 @@ history. A parked idea is not implementation authority.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
   distinguish encoder recovery hysteresis from a tab-capture feedback/size-step
   lock reproduced in bare WebRTC. Verify the upstream soft-target/hard-maximum
-  repair candidate against actual frames, source resize and chosen quality
-  intent; a patched Browser remains unbuilt. Raw-frame isolation is an
-  experiment, not an accepted product pipeline. Match field Host/Viewer evidence
+  repair candidate against a patched Browser, which remains unbuilt. The Piik
+  sender boundary now isolates display frames while preserving native idle refresh,
+  capture intent and operation retirement. Validate its wider device/background
+  coverage and match field Host/Viewer evidence
   before assigning the field cause or declaring repeated brief blur fixed.
   Retain existing clone/startup protections and candidate proof; no periodic
   reset or quality floor. A recent Piik regression is not established.

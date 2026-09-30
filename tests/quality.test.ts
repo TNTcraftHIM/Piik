@@ -253,7 +253,7 @@ describe("realtime quality controls", () => {
     ]);
   });
 
-  it("removes only the carrier's duplicate FPS ceiling and restores ordinary sender limits", async () => {
+  it("leaves picture cadence with the producer and restores ordinary sender adaptation", async () => {
     let applied = { encodings: [{ maxFramerate: 30 }] } as RTCRtpSendParameters;
     const sender = {
       getParameters: () => applied,
@@ -261,10 +261,12 @@ describe("realtime quality controls", () => {
     } as unknown as RTCRtpSender;
     const carrier = await configureVideoSender(sender, QUALITY_PROFILES["1080p60"], 1);
     expect(applied.encodings[0]).not.toHaveProperty("maxFramerate");
-    expect(carrier).toMatchObject({ requested: { maxFramerate: null, maxBitrate: 8_000_000 }, mismatches: [] });
+    expect(carrier).toMatchObject({ requested: { maxFramerate: null, maxBitrate: 8_000_000,
+      degradationPreference: "maintain-framerate" }, mismatches: [] });
     for (const id of ["720p30", "1080p60"] as const) {
       const readback = await configureVideoSender(sender, QUALITY_PROFILES[id]);
       expect(applied.encodings[0]!.maxFramerate).toBe(QUALITY_PROFILES[id].maxFramerate);
+      expect(applied.degradationPreference).toBe(QUALITY_PROFILES[id].degradationPreference);
       expect(readback.mismatches).toEqual([]);
     }
   });

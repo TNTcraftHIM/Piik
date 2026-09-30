@@ -6,6 +6,7 @@ for (const filename of process.argv.slice(2)) {
     const configuration = { file: filename, probeSha256: result.probeSha256, mode: result.mode, codec: result.codec,
         product: result.product, high: result.high, single: result.single, late: result.late, network: result.network,
         automatic: result.automatic, shortPulse: result.shortPulse, av: result.av, background: result.background, nativeSource: result.nativeSource,
+        displaySource: result.displaySource, quietStart: result.quietStart,
         lifecycle: result.lifecycle, relay: result.relay, shapedRate: result.shapedRate, profile: result.profile,
         completed: !!completed, error: result.error, errors: result.errors, cleanup: result.cleanup };
     if (!completed) process.exitCode = 1;
@@ -41,19 +42,23 @@ for (const filename of process.argv.slice(2)) {
                     duplicates++;
             }
             if (samples.length) maxGapMs = Math.max(maxGapMs, next.at - samples.at(-1).at);
-            row.viewers[monitor.role] = { rendered: samples.length, fresh: result.nativeSource ? null : samples.filter(s => s.age !== null && s.age < 1000).length, backwards, duplicates, maxGapMs,
+            const sourceIds = !result.nativeSource && !result.displaySource;
+            row.viewers[monitor.role] = { rendered: samples.length, fresh: sourceIds ? samples.filter(s => s.age !== null && s.age < 1000).length : null, backwards, duplicates, maxGapMs,
                 ageP50: ages[Math.floor(ages.length * .5)] ?? null, ageP95: ages[Math.floor(ages.length * .95)] ?? null };
             if (result.av) {
                 const sound = result.audioMonitors.find(m => m.role === monitor.role);
                 const offsets = [];
                 let missed = 0;
-                for (const pulse of result.sourcePulses.filter(p => p.at >= prev.at && p.at < next.at - 500)) {
+                // Native/display samples count presented frames; they do not decode
+                // source IDs and therefore cannot be paired with audio pulses.
+                for (const pulse of sourceIds ? result.sourcePulses.filter(p => p.at >= prev.at && p.at < next.at - 500) : []) {
                     const video = samples.find(s => s.id >= pulse.id && s.id < pulse.id + 6);
                     const audio = sound?.pulses.find(p => p.at >= pulse.at && p.at < pulse.at + 1500);
                     if (video && audio) offsets.push(video.at - audio.at);
                     else missed++;
                 }
-                row.viewers[monitor.role].av = { attached: sound?.attached ?? false, videoMinusAudioMs: offsets, missed };
+                row.viewers[monitor.role].av = { attached: sound?.attached ?? false,
+                    videoMinusAudioMs: sourceIds ? offsets : null, missed: sourceIds ? missed : null };
             }
         }
         phases.push(row);

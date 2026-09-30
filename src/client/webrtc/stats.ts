@@ -6,6 +6,7 @@ import { packetLossPercentFromDeltas } from "../../shared/packet-loss";
 import { deriveVideoCodecEvidence } from "../../shared/video-codec-evidence";
 import { isPredictedCandidateFoundation } from "../../shared/nat-candidate";
 import { debugRtcFailure, debugRtcStats } from "../lib/debug-webrtc";
+import { senderCaptureTrack } from "../media/sender-video-track";
 
 type StatsRecord = Record<string, unknown> & {
   id: string;
@@ -208,7 +209,7 @@ export function captureMetrics(
   "captureWidth" | "captureHeight" | "captureFramesPerSecond"
 > {
   try {
-    const settings = track.getSettings();
+    const settings = senderCaptureTrack(track).getSettings();
     const finite = (value: unknown): number | null =>
       typeof value === "number" && Number.isFinite(value) ? value : null;
     return {

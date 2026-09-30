@@ -4,10 +4,11 @@ import { debugRtcFailure, debugRtcStats, debugTrack, observeDebugConnection } fr
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import { encodedStreams } from "./browser-encoding-output";
 import {
-  applyVideoCaptureProfile, cloneSenderVideoTrack, configureVideoSender,
+  applyVideoCaptureProfile, configureVideoSender,
   needsStartupVideoProfile, startupVideoProfile, STARTUP_VIDEO_ENCODED_FRAMES,
   videoQualitySettingsEqual, type QualityProfile,
 } from "./quality";
+import { cloneSenderVideoTrack, stopSenderVideoTrack } from "./sender-video-track";
 
 // Leave time for ordinary encoding before the outer Viewer/route deadline.
 // Bound local transport setup, not frame production from a quiet source.
@@ -53,7 +54,7 @@ export class BrowserEncodingProducer {
     this.budget = initialBudget;
     try {
       if (this.source.readyState !== "live") throw new Error("Browser encoding source ended");
-      const track = this.input = cloneSenderVideoTrack(this.source);
+      const track = this.input = cloneSenderVideoTrack(this.source, () => this.fail());
       track.enabled = !this.paused;
       this.source.addEventListener("ended", this.fail);
       track.addEventListener("ended", this.fail);
@@ -181,7 +182,7 @@ export class BrowserEncodingProducer {
     debugEvent("encoding-pool", "producer-retired", { producerId: this.id });
     this.source.removeEventListener("ended", this.fail);
     this.input?.removeEventListener("ended", this.fail);
-    this.input?.stop();
+    stopSenderVideoTrack(this.input);
     this.streamAbort.abort();
     void this.streamWriter?.abort().catch(() => undefined);
     this.streamWriter = null;

@@ -11,6 +11,7 @@ import type { MediaFailure } from "../ui/media-failure";
 import { displayMediaOptions } from "./audio-capture";
 import { browserDebugEnabled, debugOperation } from "../lib/debug";
 import { debugTrack } from "../lib/debug-webrtc";
+import { applySenderCaptureConstraints, senderCaptureTrack } from "./sender-video-track";
 
 export type {
   DegradationPreference,
@@ -249,15 +250,6 @@ export async function applyCaptureProfile(
   await applyVideoCaptureProfile(videoTrack, profile);
 }
 
-export function cloneSenderVideoTrack(
-  source: MediaStreamTrack,
-): MediaStreamTrack {
-  const clone = source.clone();
-  clone.contentHint = source.contentHint || "motion";
-  clone.enabled = source.enabled;
-  return clone;
-}
-
 export async function applyVideoCaptureProfile(
   track: MediaStreamTrack,
   profile: QualityProfile,
@@ -267,7 +259,7 @@ export async function applyVideoCaptureProfile(
   }
   const complete = debugOperation("quality", "capture", { requested: profile, trackId: track.id });
   try {
-    await track.applyConstraints(captureConstraints(profile));
+    await applySenderCaptureConstraints(track, captureConstraints(profile));
     complete("applied", { trackId: track.id });
     debugTrack(track, { event: "profile-applied" });
   } catch (error) {
@@ -277,6 +269,7 @@ export async function applyVideoCaptureProfile(
 }
 
 function videoTrackOwnsCaptureConstraints(track: MediaStreamTrack): boolean {
+  track = senderCaptureTrack(track);
   const capabilities = track.getCapabilities?.();
   return !capabilities ||
     "width" in capabilities ||
@@ -305,7 +298,7 @@ function requestedScaleResolutionDownBy(
   }
   const source =
     sender.track && typeof sender.track.getSettings === "function"
-      ? sender.track.getSettings()
+      ? senderCaptureTrack(sender.track).getSettings()
       : undefined;
   const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
   if (!source?.width || !source.height) {
@@ -390,7 +383,10 @@ export async function configureVideoSender(
   if (parameters.encodings.length === 1) {
     encoding.scaleResolutionDownBy = carrierScale ?? requestedScaleResolutionDownBy(sender, profile);
   }
-  parameters.degradationPreference = profile.degradationPreference;
+  // The carrier transports already-adapted frames. Native FPS adaptation on
+  // that clock would discard them a second time and repeatedly break the queue.
+  parameters.degradationPreference = carrierScale === undefined
+    ? profile.degradationPreference : "maintain-framerate";
 
   const requested = readVideoSenderParameters(parameters, false, encodingIndex);
   await sender.setParameters(parameters);

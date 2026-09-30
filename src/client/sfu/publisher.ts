@@ -5,7 +5,6 @@ import { debugRtcFailure, debugRtcStats, debugTrack } from "../lib/debug-webrtc"
 import {
   audioSenderParameterWarning,
   applyVideoCaptureProfile,
-  cloneSenderVideoTrack,
   configureScreenAudioSender,
   configureVideoSender,
   needsStartupVideoProfile,
@@ -18,6 +17,7 @@ import {
   type QualityProfile,
   type VideoSenderParameterReadback,
 } from "../media/quality";
+import { cloneSenderVideoTrack, senderCaptureTrack, stopSenderVideoTrack } from "../media/sender-video-track";
 import type { ConnectionMetrics } from "../types";
 import {
   applyVideoCodecPreference,
@@ -146,17 +146,18 @@ export class SfuPublisher {
       try {
         this.failureStage = "source";
         const sourceVideo = requiredVideo(stream);
-        video = this.ownTrack(cloneSenderVideoTrack(sourceVideo));
+        video = this.cloneVideoTrack(sourceVideo);
         await peer.waitForOperation(() => applyVideoCaptureProfile(video!, profile));
         if (this.peer !== peer) {
           this.releaseTrack(video);
           return false;
         }
+        if (video.readyState === "ended") throw new Error("SFU video track ended");
         this.video = video;
         this.sourceVideo = sourceVideo;
         this.audio = this.ownTrack(stream.getAudioTracks()[0]?.clone() ?? null);
         this.setPaused(this.paused);
-        const dimensions = video.getSettings();
+        const dimensions = senderCaptureTrack(video).getSettings();
         this.layerCount =
           Math.max(dimensions.width ?? 0, dimensions.height ?? 0) >= 480
             ? 2
@@ -230,7 +231,7 @@ export class SfuPublisher {
       const sourceVideo = requiredVideo(stream);
       const videoChanged = sourceVideo !== this.sourceVideo;
       const nextVideo = videoChanged
-        ? this.ownTrack(cloneSenderVideoTrack(sourceVideo)) : previousVideo;
+        ? this.cloneVideoTrack(sourceVideo) : previousVideo;
       const nextAudio = this.ownTrack(
         stream.getAudioTracks()[0]?.clone() ?? null,
       );
@@ -249,6 +250,7 @@ export class SfuPublisher {
         if (videoChanged) await peer.waitForOperation(() => videoSender.replaceTrack(nextVideo));
         await peer.waitForOperation(() => audioSender.replaceTrack(nextAudio));
         if (this.peer !== peer) return false;
+        if (nextVideo.readyState !== "live") throw new Error("SFU replacement video track ended");
         this.video = nextVideo;
         this.audio = nextAudio;
         if (videoChanged) {
@@ -257,6 +259,7 @@ export class SfuPublisher {
         }
         await this.configure(profile, videoChanged);
         if (this.peer !== peer) return false;
+        if (nextVideo.readyState !== "live") throw new Error("SFU replacement video track ended");
         if (!peer.send({ kind: "media", media: this.media(profile) }))
           throw new Error("SFU signaling is unavailable");
         retained = true;
@@ -377,13 +380,21 @@ export class SfuPublisher {
     this.events.onDisconnected?.();
   }
 
+  private cloneVideoTrack(source: MediaStreamTrack): MediaStreamTrack {
+    return this.ownTrack(cloneSenderVideoTrack(source, (track) => {
+      if (this.video === track && this.sourceVideo === source) this.fail("source");
+    }));
+  }
+
   private ownTrack<T extends MediaStreamTrack | null>(track: T): T {
     if (track) this.ownedTracks.add(track);
     return track;
   }
 
   private releaseTrack(track: MediaStreamTrack | null): void {
-    if (track && this.ownedTracks.delete(track)) track.stop();
+    if (!track || !this.ownedTracks.delete(track)) return;
+    if (track.kind === "video") stopSenderVideoTrack(track);
+    else track.stop();
   }
 
   private restartIce(): Promise<boolean> {
@@ -413,7 +424,7 @@ export class SfuPublisher {
   }
 
   private encodings(profile: QualityProfile): RTCRtpEncodingParameters[] {
-    const settings = this.video?.getSettings();
+    const settings = this.video ? senderCaptureTrack(this.video).getSettings() : undefined;
     const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
     const width = settings?.width ?? ceiling.width;
     const height = settings?.height ?? ceiling.height;
@@ -442,7 +453,7 @@ export class SfuPublisher {
   }
 
   private media(profile: QualityProfile): SfuMedia {
-    const settings = this.video!.getSettings();
+    const settings = senderCaptureTrack(this.video!).getSettings();
     const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
     return {
       codec: this.codec,

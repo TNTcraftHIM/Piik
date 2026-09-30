@@ -13,16 +13,28 @@ const nativeSource = settings.get('nativeSource') === '1', background = settings
 const lifecycle = settings.get('lifecycle') === '1', shapedRate = Number(settings.get('rate') || 120000);
 const relay = settings.get('relay') === '1';
 const shortPulse = settings.get('shortPulse') === '1';
+const displaySource = settings.get('displaySource') === '1';
+const quietStart = settings.get('quietStart') === '1';
 const selectedProfile = () => ({ resolution: high ? '1080p' : '480p', maxFramerate: 30,
     maxBitrate: high ? 5000000 : 1700000,
     degradationPreference: settings.get('preference') || (high ? 'maintain-resolution' : 'balanced'),
     screenAudioQuality: 'music' });
 const productPool = mode === 'carrier' ? new ProbePool() : null;
 const productPeers = [], peers = [], tracks = [], edges = [], monitors = [], audioMonitors = [];
-const errors = [], sourcePulses = [], controls = [], visibility = [], productTrace = [];
+const errors = [], sourcePulses = [], controls = [], visibility = [], productTrace = [], sourceFrames = [];
+let sourceReader, sourceReading;
+const displayClones = [];
+if (displaySource) {
+    const clone = MediaStreamTrack.prototype.clone;
+    MediaStreamTrack.prototype.clone = function () {
+        const track = clone.call(this);
+        if (this.getSettings().displaySurface) displayClones.push(track);
+        return track;
+    };
+}
 const sourceTimes = new Map(), seenProductGroups = new Map();
 let rawSource, drawing, productTraceTimer, audioContext, audioTrack, audioGain, upstreamPeer;
-let producing = true, sourceFrame = 0, phase = 'startup';
+let producing = !quietStart, sourceFrame = 0, phase = 'startup';
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const poolState = () => productPool ? {
     members: [...productPool.members].map(m => ({ id: m.id, group: m.current?.producer.id,
@@ -44,7 +56,7 @@ function watch(video, role) {
     let stopped = false;
     const next = () => video.requestVideoFrameCallback((_time, metadata) => {
         if (stopped) return;
-        if (nativeSource) {
+        if (nativeSource || displaySource) {
             samples.push({ at: performance.now(), phase, id: metadata.presentedFrames, age: null,
                 width: video.videoWidth, height: video.videoHeight });
         } else {
@@ -222,10 +234,25 @@ async function run() {
     if (!nativeSource) document.body.prepend(source);
     const ctx = source.getContext('2d');
     if (high) ctx.scale(3, 3);
-    rawSource = nativeSource ? (await navigator.mediaDevices.getUserMedia({
+    if (displaySource) {
+        document.body.style.margin = '0';
+        source.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;z-index:10';
+    }
+    rawSource = displaySource ? await new Promise((resolve, reject) => {
+        window.acquireDisplay = () => navigator.mediaDevices.getDisplayMedia({ audio: false, preferCurrentTab: true,
+            selfBrowserSurface: 'include', video: { width: source.width, height: source.height, frameRate: 30 } })
+            .then(stream => resolve(stream.getVideoTracks()[0]), reject);
+    }) : nativeSource ? (await navigator.mediaDevices.getUserMedia({
         video: { width: source.width, height: source.height, frameRate: 30 }, audio: false
     })).getVideoTracks()[0] : source.captureStream(0).getVideoTracks()[0];
     rawSource.contentHint = 'motion'; tracks.push(rawSource);
+    if (displaySource) {
+        sourceReader = new MediaStreamTrackProcessor({ track: rawSource, maxBufferSize: 1 }).readable.getReader();
+        sourceReading = (async () => { for (;;) {
+            const { done, value } = await sourceReader.read(); if (done) break;
+            sourceFrames.push({ at: performance.now(), phase, width: value.displayWidth, height: value.displayHeight }); value.close();
+        } })().catch(error => errors.push(String(error)));
+    }
     await probeApplyProfile(rawSource, selectedProfile());
     const main = rawSource;
     const connectChildren = async () => {
@@ -247,7 +274,7 @@ async function run() {
         for (let bit = 0; bit < 12; bit++) {
             ctx.fillStyle = id & (1 << bit) ? '#fff' : '#000'; ctx.fillRect(bit * 50, 0, 50, 30);
         }
-        (relay ? main : rawSource).requestFrame();
+        (relay ? main : rawSource).requestFrame?.();
     }, 1000 / (lifecycle ? 60 : 30));
     if (productPool) productTraceTimer = setInterval(() => productTrace.push({ at: performance.now(), phase, ...poolState() }), 500);
     if (relay) {
@@ -272,7 +299,7 @@ async function run() {
             else activated = null;
             if (activated !== null && monitors.every(m => {
                 const last = m.samples.at(-1);
-                return last?.width > 16 && (nativeSource ? last.at >= activated :
+                return last?.width > 16 && (nativeSource || displaySource ? last.at >= activated :
                     last.age !== null && (sourceTimes.get(last.id) ?? -1) >= activated);
             })) break;
             if (performance.now() >= deadline) throw Error('Product shared output did not become fresh');
@@ -283,6 +310,15 @@ async function run() {
         extensions: e.send.localDescription?.sdp.match(/^a=extmap:.*$/gm),
         parameters: e.sender.getParameters().encodings }));
     const snapshots = [await snapshot()];
+    if (quietStart) {
+        const deadline = performance.now() + 10000;
+        while (!monitors.every(m => m.samples.some(s => s.width > 16))) {
+            if (performance.now() >= deadline) throw Error('Static display produced no first frame');
+            await wait(30);
+        }
+        controls.push({ action: 'static-first-frame', at: performance.now(), sourceFrame });
+        producing = true;
+    }
     phase = 'healthy'; await wait(shortPulse ? 45000 : 6000); snapshots.push(await snapshot());
     if (lifecycle) {
         let appliedProfile = selectedProfile();
@@ -299,7 +335,7 @@ async function run() {
             if (name.startsWith('quiet-') || name.startsWith('paused-')) return;
             for (const monitor of monitors) {
                 const last = monitor.samples.at(-1), ceiling = { '480p': 480, '720p': 720, '1080p': 1080 }[appliedProfile.resolution];
-                if (last?.phase !== name || last.age === null || last.age >= 1000 ||
+                if (last?.phase !== name || (!displaySource && (last.age === null || last.age >= 1000)) ||
                     performance.now() - last.at >= 1000 || last.height > ceiling)
                     throw Error(name + ': receiver did not deliver current frames within the requested ceiling');
             }
@@ -346,13 +382,19 @@ async function run() {
         await fetch('/shaper?rate=0');
         // --auto extends recovery observation; adaptation always belongs to the product.
         phase = 'released'; await wait(automatic ? 40000 : 10000); snapshots.push(await snapshot());
+        if (displaySource) {
+            const healthy = sourceFrames.findLast(frame => frame.phase === 'healthy');
+            if (!healthy || sourceFrames.some(frame => ['limited', 'released'].includes(frame.phase) &&
+                (frame.width < healthy.width - 2 || frame.height < healthy.height - 2)))
+                throw Error('Sender adaptation reduced its display-capture input');
+        }
     }
-    return { descriptions, snapshots, browser: navigator.userAgent, sourcePulses,
+    return { descriptions, snapshots, browser: navigator.userAgent, sourcePulses, sourceFrames,
         audioMonitors: audioMonitors.map(({ role, pulses, attached }) => ({ role, pulses, attached })),
         monitors: monitors.map(({ role, samples }) => ({ role, samples })) };
 }
 const configuration = { mode, codec, product: true, network, automatic, av, high, single, late, shortPulse,
-    background, nativeSource, lifecycle, relay, shapedRate, profile: selectedProfile() };
+    background, nativeSource, displaySource, quietStart, lifecycle, relay, shapedRate, profile: selectedProfile() };
 try {
     window.probeResult = { ...configuration, ...await run(), controls, visibility, productTrace, errors };
     if (browserDebugEnabled) {
@@ -370,7 +412,10 @@ try {
     monitors.forEach(m => m.stop()); audioMonitors.forEach(m => m.stop());
     productPeers.forEach(peer => peer.dispose()); productPool?.dispose();
     upstreamPeer?.dispose();
+    await sourceReader?.cancel();
+    await sourceReading;
     tracks.forEach(t => t.stop()); peers.forEach(pc => pc.close());
     await audioContext?.close();
+    if (displayClones.some(track => track.readyState !== 'ended')) errors.push('Sender retirement left a live display-capture clone');
     window.probeDone = true;
 }
