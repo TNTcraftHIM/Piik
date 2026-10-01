@@ -137,6 +137,68 @@ static void check_slot_profiles(void) {
   }
 }
 
+static void check_encoder_timestamp_segment(GstClockTime offset) {
+  // NVENC shifts both its PTS and segment by 1000 hours. Emit the source
+  // running time, including the segment base, rather than that private PTS.
+  const guint8 h264[] = {0, 0, 1, 0x67, 0x42, 0xc0, 0x1f,
+                        0, 0, 1, 0x68, 0,
+                        0, 0, 1, 0x65, 0};
+  GError *error = NULL;
+  GstElement *pipeline = gst_parse_launch(
+      "appsrc name=source format=time handle-segment-change=true ! "
+      "appsink name=output sync=false async=false", &error);
+  g_assert_no_error(error);
+  GstElement *source = gst_bin_get_by_name(GST_BIN(pipeline), "source");
+  GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), "output");
+  GstCaps *caps = gst_caps_from_string("video/x-h264,stream-format=byte-stream,alignment=au");
+  GstBuffer *buffer = gst_buffer_new_allocate(NULL, sizeof(h264), NULL);
+  gst_buffer_fill(buffer, 0, h264, sizeof(h264));
+  GST_BUFFER_PTS(buffer) = offset + GST_SECOND;
+  GstSegment segment;
+  gst_segment_init(&segment, GST_FORMAT_TIME);
+  segment.start = offset;
+  segment.base = 2 * GST_SECOND;
+  GstSample *sample = gst_sample_new(buffer, caps, &segment, NULL);
+  g_assert_cmpint(gst_element_set_state(pipeline, GST_STATE_PLAYING), !=,
+                 GST_STATE_CHANGE_FAILURE);
+  g_assert_cmpint(gst_app_src_push_sample(GST_APP_SRC(source), sample), ==, GST_FLOW_OK);
+  gst_sample_unref(sample);
+  gst_caps_unref(caps);
+  gst_buffer_unref(buffer);
+
+  CaptureRun run = {.active = TRUE};
+  g_mutex_init(&run.lock);
+  VideoOutput output = {.run = &run, .enabled = TRUE,
+      .activation_timestamp = 3 * GST_SECOND, .key_timestamp = GST_CLOCK_TIME_NONE,
+      .profile = {.width = 1280, .height = 720, .frame_rate = 30}};
+  char *frame_path = NULL;
+  int frames = g_file_open_tmp("piik-timestamp-test-XXXXXX", &frame_path, NULL);
+  int original_stdout = dup(STDOUT_FILENO);
+  g_assert_cmpint(frames, >=, 0);
+  g_assert_cmpint(original_stdout, >=, 0);
+  g_assert_cmpint(dup2(frames, STDOUT_FILENO), >=, 0);
+  g_assert_cmpint(video_sample(GST_APP_SINK(sink), &output), ==, GST_FLOW_OK);
+  g_assert_cmpint(dup2(original_stdout, STDOUT_FILENO), >=, 0);
+  close(original_stdout);
+  close(frames);
+  char *bytes = NULL;
+  gsize size = 0;
+  g_assert_true(g_file_get_contents(frame_path, &bytes, &size, NULL));
+  g_assert_cmpuint(size, ==, 32 + sizeof(h264));
+  g_assert_cmpint(bytes[5], ==, 2);
+  g_assert_cmpint(bytes[6], ==, 1);
+  g_assert_cmpuint(read_be((guint8 *)bytes + 8, 8), ==, 3 * GST_SECOND / 100);
+  g_assert_cmpmem(bytes + 32, sizeof(h264), h264, sizeof(h264));
+  g_free(bytes);
+  unlink(frame_path);
+  g_free(frame_path);
+  gst_element_set_state(pipeline, GST_STATE_NULL);
+  gst_object_unref(source);
+  gst_object_unref(sink);
+  gst_object_unref(pipeline);
+  g_mutex_clear(&run.lock);
+}
+
 static GstState branch_state(VideoOutput *output) {
   GstState state = GST_STATE_VOID_PENDING;
   g_assert_cmpint(gst_element_get_state(output->branch, &state, NULL, GST_SECOND),
@@ -340,6 +402,8 @@ int main(int argc, char **argv) {
   check_encoder_admission_and_control();
   check_bus_error_retains_primary_cause();
   check_slot_profiles();
+  check_encoder_timestamp_segment(1000ULL * 60 * 60 * GST_SECOND);
+  check_encoder_timestamp_segment(0);
   check_slot_retirement();
   check_output_failure_isolation(TRUE);
   check_output_failure_isolation(FALSE);
