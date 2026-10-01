@@ -319,6 +319,8 @@ export const en: Record<CopyKey, string> = {
   "host.advanced.audio.music": "Music",
   "host.advanced.audio.veryHigh": "Studio",
   "host.advanced.route": "Route policy",
+  "host.advanced.route.sfuOnly": "Server media",
+  "host.advanced.route.sfuOnlyHint": "This site sends all shared video and audio through its media server",
   "host.advanced.route.topo": "Auto topology tuning",
   "host.advanced.route.topoHint": "Gradually pick healthier paths while live",
   "host.advanced.route.peerOnly": "Privacy mode",

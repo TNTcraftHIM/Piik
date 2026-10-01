@@ -16,6 +16,7 @@ func TestRuntimeCapabilities(t *testing.T) {
 		{`{}`, RuntimeCapabilities{}},
 		{`{"connectionAttemptProgress4":true}`, RuntimeCapabilities{ConnectionAttemptProgress4: true}},
 		{`{"sfu":true,"extra":{"enabled":true}}`, RuntimeCapabilities{Sfu: true}},
+		{`{"sfu":true,"sfuOnly":true}`, RuntimeCapabilities{Sfu: true, SfuOnly: true}},
 		{`{"natPrediction":true,"SFU":true}`, RuntimeCapabilities{NatPrediction: true}},
 		{`{"sfu":true,"natPrediction":true}`, RuntimeCapabilities{Sfu: true, NatPrediction: true}},
 		{`{"sfu":"ignored duplicate","sfu":true}`, RuntimeCapabilities{Sfu: true}},
@@ -26,7 +27,7 @@ func TestRuntimeCapabilities(t *testing.T) {
 		}
 	}
 	for _, data := range []string{
-		`null`, `[]`, `true`, `{"sfu":null}`, `{"sfu":"true"}`,
+		`null`, `[]`, `true`, `{"sfu":null}`, `{"sfu":"true"}`, `{"sfuOnly":null}`, `{"sfuOnly":"true"}`,
 		`{"natPrediction":null}`, `{"natPrediction":1}`,
 		`{"connectionAttemptProgress4":null}`, `{"connectionAttemptProgress4":4}`,
 	} {

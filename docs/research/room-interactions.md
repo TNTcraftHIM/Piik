@@ -214,12 +214,11 @@ memory buffer before adding replay. Either design needs explicit access and
 retention boundaries. Recovered text would enter the log, never replay old
 danmaku or reaction effects. Current behavior remains the no-history contract above.
 
-## Deferred Voice
+## Audio Boundary
 
 The Host microphone remains commentary mixed into the shared source.
-Bidirectional room voice is excluded from this candidate; its prototype is
-preserved in Git. The [voice assessment](./room-voice.md) owns the reopening
-criteria. Text, reactions and danmaku introduce no microphone capture, voice
+Bidirectional room voice is not part of the product plan.
+Text, reactions and danmaku introduce no microphone capture, voice
 admission or additional media peers.
 
 ## Primary References And Rationale

@@ -35,8 +35,19 @@ history. A parked idea is not implementation authority.
   audio/source changes, sustained viewing, recovery/retirement, admission and
   narrow/touch UI in the interaction acceptance boundary. Integrate the verified
   Browser and Native encoding/lifecycle repairs together; they are not yet
-  published. Field reports without matched evidence remain distinct from
+  published. Include optional Hosted SFU-only configuration, Privacy rejection,
+  admission failure and recovery alongside the unchanged default/P2P-only modes.
+  Field reports without matched evidence remain distinct from
   locally reproduced defects.
+
+- [ ] **Native HDR-to-SDR.** The [fidelity assessment](./research/media-fidelity.md)
+  confirms an 8-bit Windows capture path without explicit HDR tone mapping.
+  Preserve HDR input and use platform conversion before the existing SDR
+  encoder; check thumbnails, mixed displays and cost on HDR hardware before
+  shipping. Issue [#420](https://github.com/TNTcraftHIM/Piik/issues/420)'s Browser
+  path still needs frame evidence. Local Browser direct/relay/SFU and Native
+  codec checks preserve stereo; remaining physical fidelity checks belong to
+  device acceptance. Full HDR and surround sound need a separate design.
 
 ## Held By Owner
 
@@ -51,37 +62,11 @@ history. A parked idea is not implementation authority.
 
 These proposals remain deferred while the text/reaction candidate is active.
 
-- [ ] **Optional SFU-only hosted-server policy.** Assess an operator setting
-  using the existing controller, SFU admission ledger and first-frame commit
-  path. Default remains P2P-first; App Local/public-link and public Demo remain
-  P2P-only. A strict SFU-only policy must exclude peer parents, relay children
-  and background P2P convergence, validate SFU availability at startup, and
-  report capacity/failure without silently escaping to P2P. Resolve its conflict
-  with the Host's explicit Privacy mode and published-page capability behavior
-  before implementation; never silently forward a peer-only share. Record the
-  accepted routing exception in ADR-0005 and the configuration owner. This is
-  not a new routing engine or a guarantee against server/network congestion.
-
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not
   admit arbitrary sites or add another runtime owner. Keep Site mode until that
   decision; removal of the Demo prefill does not authorize changing site trust.
-- [ ] **Room voice: design before implementation.** The
-  [voice assessment](./research/room-voice.md) maps current owners, mature options
-  and a staged verification plan. Resolve total voice membership/topology,
-  P2P-only deployment coverage, speaking authority and the Host-commentary
-  compatibility boundary before implementation. Validate source-audio isolation
-  from received speech before exposing simultaneous sharing and voice. Keep
-  room authority, microphone and screen lifetimes distinct; no new room store,
-  screen-tree reversal or automatic mesh/SFU controller is approved.
-- [ ] **Verify media fidelity independently of voice.**
-  Verify actual left/right separation through Browser, Native and SFU paths;
-  receive-side stereo negotiation alone does not establish audible fidelity.
-  Assess HDR capture to correct SDR output for ordinary viewers before full HDR,
-  with issue [#420](https://github.com/TNTcraftHIM/Piik/issues/420) as the reported
-  case. Full HDR and surround sound remain design decisions. These findings do
-  not establish physical device acceptance or authorize a new release.
 
 ## Awaiting Device Or Reporter Evidence
 

@@ -7,7 +7,7 @@ owns ports and [self-hosting](../operations/self-hosting.md) owns service setup.
 
 ## Topology
 
-- Media is automatic and P2P-first. Users do not select parents, route types, or
+- Media is automatic and defaults to P2P-first. Users do not select parents, route types, or
   network transports.
 - The Host is the only source. Every Viewer has at most one active upstream, and
   the committed media graph is acyclic and source-reachable.
@@ -21,9 +21,17 @@ same bounded P2P graph without its SFU fallback and fixes Privacy mode on for al
 rooms, including App Local and public-link rooms. The server enforces that policy
 for waiting and active participants; there is no separate Host-star mode.
 
+A Hosted operator may require SFU-only media through `SFU_ONLY=true`. The same
+controller then admits only SFU candidates: no Peer parents, Viewer relays or
+background P2P convergence. The Host still publishes once, and every Viewer
+uses the existing SFU subscription ledger and first-frame commit. Capacity or
+connection failure never permits a Peer route. An explicitly peer-only share
+is rejected before acquiring media authority; it is never silently forwarded.
+The page advertises this site policy and hides inapplicable P2P preferences.
+
 ## Per-Share Route Policy
 
-The Host chooses route policy before sharing and it remains fixed for that
+On a P2P-first site, the Host chooses route policy before sharing and it remains fixed for that
 share generation:
 
 - when SFU is available, default hybrid mode keeps P2P first and permits the

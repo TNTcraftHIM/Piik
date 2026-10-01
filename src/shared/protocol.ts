@@ -230,6 +230,7 @@ export const DEFAULT_ROUTE_POLICY = {
 export const runtimeCapabilitiesSchema = z.object({
   connectionAttemptProgress4: z.boolean().optional(),
   sfu: z.boolean().default(false),
+  sfuOnly: z.boolean().optional(),
   natPrediction: z.boolean().default(false),
   roomInteractions: z.boolean().default(false),
   hostRoomSession: z.boolean().default(false),

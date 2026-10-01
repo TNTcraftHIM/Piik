@@ -80,7 +80,8 @@ func (s *Server) route(
 		sendJSON(writer, http.StatusOK, protocol.RuntimeCapabilities{
 			ConnectionAttemptProgress4: true,
 			Sfu:                        s.config.SFU != nil,
-			NatPrediction:              s.config.NATPredictionEnabled,
+			SfuOnly:                    s.config.SFU != nil && s.config.SFU.Only,
+			NatPrediction:              s.config.NATPredictionEnabled && !(s.config.SFU != nil && s.config.SFU.Only),
 			RoomInteractions:           true,
 			HostRoomSession:            true,
 		})

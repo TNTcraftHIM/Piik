@@ -187,6 +187,21 @@ func TestLoadSFUOptional(t *testing.T) {
 	}
 }
 
+func TestSFUOnlyRequiresAnEnabledListener(t *testing.T) {
+	configuration := mustLoad(t, map[string]string{"SFU_UDP_PORT": "7882", "SFU_ONLY": "true"})
+	if !configuration.SFU.Only {
+		t.Fatal("SFU_ONLY was ignored")
+	}
+	for _, values := range []map[string]string{
+		{"SFU_ONLY": "true"},
+		{"SFU_ONLY": "yes", "SFU_UDP_PORT": "7882"},
+	} {
+		if _, err := Load(values); err == nil {
+			t.Fatalf("accepted invalid SFU policy: %v", values)
+		}
+	}
+}
+
 func TestLoadAccepts(t *testing.T) {
 	developmentPath, err := filepath.Abs(filepath.Join("state", "rooms.sqlite"))
 	if err != nil {

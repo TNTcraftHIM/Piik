@@ -42,8 +42,10 @@ on current main with the verified, unpublished media repairs. It adds authentica
 over existing signaling, with optional local chat overlay and a shared floating
 panel. Its opted-in room session can outlive a publication; capture, quality and
 route owners remain unchanged. Optional Windows screen-audio exclusion uses the
-existing source/mixer boundary and remains in candidate acceptance. Room voice
-and 4K remain deferred. This candidate is not deployed;
+existing source/mixer boundary and remains in candidate acceptance. Hosted Server
+also accepts an optional SFU-only policy through the same route controller.
+Room voice is outside the product plan; Host microphone commentary remains.
+4K remains deferred. This candidate is not deployed;
 [TODO](./todo.md#now) owns acceptance and remaining work.
 
 ## Deployment

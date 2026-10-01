@@ -370,6 +370,15 @@ func TestCapabilitiesReportServicesDisabledByDefault(t *testing.T) {
 
 }
 
+func TestCapabilitiesReportSFUOnlyPolicy(t *testing.T) {
+	configuration := testConfig(t)
+	configuration.SFU = &config.SFUConfig{ListenHost: "127.0.0.1", Port: 0, Only: true}
+	configuration.NATPredictionEnabled = true
+	server := start(t, Options{Config: configuration})
+	server.do(http.MethodGet, "/api/capabilities").
+		expect(http.StatusOK, `{"connectionAttemptProgress4":true,"sfu":true,"sfuOnly":true,"natPrediction":false,"roomInteractions":true,"hostRoomSession":true}`)
+}
+
 func TestCapabilitiesReportOptionalNATPredictionWithoutExposingConfiguration(t *testing.T) {
 	configuration := testConfig(t)
 	configuration.STUNURLs = []string{"stun:share.example.test:3478"}

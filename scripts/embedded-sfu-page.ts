@@ -239,16 +239,56 @@ export async function startHost(nativeSource?: { title: string; port: number }, 
     video: { width: 1280, height: 720, frameRate: 15 }, audio: false,
   }) : canvas.captureStream(15);
   audio = new AudioContext();
-  const tone = audio.createOscillator();
   const gain = audio.createGain();
   gain.gain.value = 0.05;
   const destination = audio.createMediaStreamDestination();
-  tone.connect(gain).connect(destination);
-  tone.start();
+  const channels = audio.createChannelMerger(2);
+  [500, 1500].forEach((frequency, channel) => {
+    const tone = audio!.createOscillator();
+    tone.frequency.value = frequency;
+    tone.connect(channels, 0, channel);
+    tone.start();
+  });
+  channels.connect(gain).connect(destination);
   await audio.resume();
   source.addTrack(destination.stream.getAudioTracks()[0]!);
   await connect(room, true);
   return room;
+}
+
+// Check decoded channels, not just /2 in SDP (Opus also uses that for mono).
+export async function audioSeparation(stream = video?.srcObject): Promise<number[]> {
+  if (!(stream instanceof MediaStream) || !stream.getAudioTracks().length) throw new Error("No received audio");
+  const context = new AudioContext();
+  try {
+    const input = context.createMediaStreamSource(stream);
+    const splitter = context.createChannelSplitter(2);
+    const sink = context.createGain();
+    sink.gain.value = 0;
+    sink.connect(context.destination);
+    input.connect(splitter);
+    const analyzers = [0, 1].map(channel => {
+      const analyzer = context.createAnalyser();
+      analyzer.fftSize = 8192;
+      analyzer.smoothingTimeConstant = 0;
+      splitter.connect(analyzer, channel);
+      analyzer.connect(sink);
+      return analyzer;
+    });
+    await context.resume();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return analyzers.map((analyzer, channel) => {
+      const bins = new Float32Array(analyzer.frequencyBinCount);
+      analyzer.getFloatFrequencyData(bins);
+      const level = (frequency: number) => {
+        const bin = Math.round(frequency * analyzer.fftSize / context.sampleRate);
+        return Math.max(-120, ...bins.slice(bin - 1, bin + 2));
+      };
+      return level(channel === 0 ? 500 : 1500) - level(channel === 0 ? 1500 : 500);
+    });
+  } finally {
+    await context.close();
+  }
 }
 
 export async function startViewer(room: CreateRoomResponse): Promise<void> {

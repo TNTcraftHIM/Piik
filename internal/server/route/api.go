@@ -455,6 +455,7 @@ type Options struct {
 	EndpointMediaCopyCapacity int
 	OperationTimeoutMs        int64
 	SfuEnabled                bool
+	SfuOnly                   bool
 	QualityConvergenceEnabled bool
 	NatPredictionEnabled      bool
 }
@@ -470,6 +471,7 @@ type Controller struct {
 	endpointMediaCopyCapacity int
 	operationTimeoutMs        int64
 	sfuEnabled                bool
+	sfuOnly                   bool
 	qualityConvergenceEnabled bool
 	natPredictionEnabled      bool
 

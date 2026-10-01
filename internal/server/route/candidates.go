@@ -70,7 +70,7 @@ func (c *Controller) buildCandidatePlans(childPeerID string, sfuOnly, preferUntr
 	}
 	var candidates []CandidateTuple
 	switch {
-	case sfuOnly:
+	case sfuOnly || c.sfuOnly:
 		if sfuCandidate != nil {
 			candidates = []CandidateTuple{*sfuCandidate}
 		}
@@ -166,6 +166,9 @@ func (c *Controller) candidateValid(childPeerID string, plan CandidatePlan, att 
 		return false
 	}
 	if tuple.Kind == UpstreamPeer {
+		if c.sfuOnly {
+			return false
+		}
 		parent, _ := c.participants.Get(tuple.ParentPeerID)
 		if parent == nil || parent.sessionID == "" || parent.departureConfirmed || (att != nil && parent.sessionID != att.parentSessionID) ||
 			slices.Contains(c.descendantsOf(childPeerID), parent.peerID) || !c.sourceUsable(parent.peerID) ||

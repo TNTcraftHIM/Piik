@@ -85,6 +85,58 @@ func TestEncodePreservesAudiblePCM(t *testing.T) {
 	}
 }
 
+func TestEncodePreservesStereoSeparation(t *testing.T) {
+	for _, bitrate := range []int{64_000, 128_000, 192_000} {
+		encoder, err := NewEncoder(bitrate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decoder, err := gopus.NewDecoder(gopus.DefaultDecoderConfig(SampleRate, Channels))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pcm := make([]byte, FrameBytes)
+		decoded := make([]int16, FrameSamples*Channels)
+		frequencies := [2]float64{500, 1500}
+		var tones [2][2]complex128
+		for block := 0; block < 30; block++ {
+			for frame := 0; frame < FrameSamples; frame++ {
+				for channel, frequency := range frequencies {
+					phase := 2 * math.Pi * frequency * float64(block*FrameSamples+frame) / SampleRate
+					binary.LittleEndian.PutUint16(pcm[(frame*Channels+channel)*2:], uint16(int16(8_000*math.Sin(phase))))
+				}
+			}
+			packet, err := encoder.Encode(pcm)
+			if err != nil {
+				t.Fatal(err)
+			}
+			count, err := decoder.DecodeInt16(packet, decoded)
+			if err != nil || count != FrameSamples {
+				t.Fatalf("decode: %d samples, %v", count, err)
+			}
+			if block < 5 {
+				continue // Exclude codec startup; compare frequency energy, not phase delay.
+			}
+			for frame := 0; frame < count; frame++ {
+				for tone, frequency := range frequencies {
+					phase := 2 * math.Pi * frequency * float64(block*FrameSamples+frame) / SampleRate
+					for channel := range Channels {
+						tones[channel][tone] += complex(float64(decoded[frame*Channels+channel]), 0) * complex(math.Cos(phase), math.Sin(phase))
+					}
+				}
+			}
+		}
+		for channel := range Channels {
+			wanted, other := tones[channel][channel], tones[channel][1-channel]
+			level := math.Hypot(real(wanted), imag(wanted))
+			leak := math.Hypot(real(other), imag(other))
+			if level < 1 || level < 10*leak {
+				t.Fatalf("%d bps channel %d lost separation: signal %f, leakage %f", bitrate, channel, level, leak)
+			}
+		}
+	}
+}
+
 func TestNewEncoderRejectsOutOfRangeBitrate(t *testing.T) {
 	for _, bitrate := range []int{0, 5_999, 510_001} {
 		if _, err := NewEncoder(bitrate); err == nil {

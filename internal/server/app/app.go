@@ -154,6 +154,7 @@ func New(options Options) (*Server, error) {
 	server.signalOptions = signal.Options{
 		Store:                     store,
 		EndpointMediaCopyCapacity: configuration.EndpointMediaCopyCapacity,
+		SfuOnly:                   configuration.SFU != nil && configuration.SFU.Only,
 		Ice:                       config.IceConfig(configuration),
 		// The TS signaling server read natPredictionEnabled off the same
 		// `ice` options object it forwarded; the Go IceConfig is already the

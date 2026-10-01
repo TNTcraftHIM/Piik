@@ -336,6 +336,7 @@ interface HostPageProps {
   roomInteractionsAvailable?: boolean;
   hostRoomSessionAvailable?: boolean;
   sfuAvailable?: boolean;
+  sfuOnly?: boolean;
   natPredictionAvailable?: boolean;
   connectionAttemptProgress4?: boolean;
   launchedByClient?: boolean;
@@ -358,6 +359,7 @@ export function HostPage({
   roomInteractionsAvailable = false,
   hostRoomSessionAvailable = false,
   sfuAvailable = false,
+  sfuOnly = false,
   natPredictionAvailable = false,
   connectionAttemptProgress4 = false,
   launchedByClient = false,
@@ -375,7 +377,8 @@ export function HostPage({
     () => ({
       ...DEFAULT_ROUTE_POLICY,
       peerOnly: !sfuAvailable,
-      natPrediction: natPredictionAvailable,
+      topologyOptimization: !sfuOnly,
+      natPrediction: natPredictionAvailable && !sfuOnly,
     }),
   );
   const [videoCodecMode, setVideoCodecMode] =
@@ -3946,52 +3949,59 @@ export function HostPage({
                   <Cap k="host.advanced.route" />
                 </span>
                 <div className="lr-row-group">
-                  <SwitchItem
-                    checked={routePolicy.topologyOptimization}
-                    disabled={phase === "starting" || phase === "live"}
-                    onChange={(checked) =>
-                      changeRoutePolicy({ topologyOptimization: checked })
-                    }
-                    label={t("host.advanced.route.topo")}
-                    note={t("host.advanced.route.topoHint")}
-                    hint="hint-topology"
-                  />
-                  <SwitchItem
-                    checked={routePolicy.natPrediction}
-                    disabled={
-                      !natPredictionAvailable || phase === "starting" || phase === "live"
-                    }
-                    locked={!natPredictionAvailable}
-                    onChange={(checked) =>
-                      changeRoutePolicy({ natPrediction: checked })
-                    }
-                    label={t("host.advanced.route.natPrediction")}
-                    note={t(
-                      natPredictionAvailable
-                        ? "host.advanced.route.natPredictionHint"
-                        : "host.advanced.route.natPredictionUnavailable",
-                    )}
-                    hint={
-                      natPredictionAvailable ? "hint-nat-prediction" : "hint-nat-unavailable"
-                    }
-                  />
-                  <SwitchItem
-                    checked={routePolicy.peerOnly}
-                    disabled={
-                      !sfuAvailable || phase === "starting" || phase === "live"
-                    }
-                    locked={!sfuAvailable}
-                    onChange={(checked) =>
-                      changeRoutePolicy({ peerOnly: checked })
-                    }
-                    label={t("host.advanced.route.peerOnly")}
-                    note={t(
-                      sfuAvailable
-                        ? "host.advanced.route.peerOnlyHint"
-                        : "host.advanced.route.peerOnlyRequired",
-                    )}
-                    hint={sfuAvailable ? "hint-route-p2p" : "hint-route-p2p-required"}
-                  />
+                  {sfuOnly ? <SwitchItem checked disabled locked
+                    onChange={() => {}}
+                    label={t("host.advanced.route.sfuOnly")}
+                    note={t("host.advanced.route.sfuOnlyHint")}
+                    hint="hint-route-sfu"
+                  /> : <>
+                    <SwitchItem
+                      checked={routePolicy.topologyOptimization}
+                      disabled={phase === "starting" || phase === "live"}
+                      onChange={(checked) =>
+                        changeRoutePolicy({ topologyOptimization: checked })
+                      }
+                      label={t("host.advanced.route.topo")}
+                      note={t("host.advanced.route.topoHint")}
+                      hint="hint-topology"
+                    />
+                    <SwitchItem
+                      checked={routePolicy.natPrediction}
+                      disabled={
+                        !natPredictionAvailable || phase === "starting" || phase === "live"
+                      }
+                      locked={!natPredictionAvailable}
+                      onChange={(checked) =>
+                        changeRoutePolicy({ natPrediction: checked })
+                      }
+                      label={t("host.advanced.route.natPrediction")}
+                      note={t(
+                        natPredictionAvailable
+                          ? "host.advanced.route.natPredictionHint"
+                          : "host.advanced.route.natPredictionUnavailable",
+                      )}
+                      hint={
+                        natPredictionAvailable ? "hint-nat-prediction" : "hint-nat-unavailable"
+                      }
+                    />
+                    <SwitchItem
+                      checked={routePolicy.peerOnly}
+                      disabled={
+                        !sfuAvailable || phase === "starting" || phase === "live"
+                      }
+                      locked={!sfuAvailable}
+                      onChange={(checked) =>
+                        changeRoutePolicy({ peerOnly: checked })
+                      }
+                      label={t("host.advanced.route.peerOnly")}
+                      note={t(
+                        sfuAvailable
+                          ? "host.advanced.route.peerOnlyHint"
+                          : "host.advanced.route.peerOnlyRequired",
+                      )}
+                      hint={sfuAvailable ? "hint-route-p2p" : "hint-route-p2p-required"}
+                    />
+                  </>}
                 </div>
               </div>
               <div className="lr-door-group">

@@ -260,6 +260,7 @@ type harnessOptions struct {
 	room                                *room.CreatedRoom
 	afterFunc                           func(time.Duration, func()) func() bool
 	sfu                                 *SfuFallback
+	sfuOnly                             bool
 }
 
 type harness struct {
@@ -336,6 +337,7 @@ func startHarness(t *testing.T, options harnessOptions) *harness {
 		Store:                     store,
 		EndpointMediaCopyCapacity: orValue(options.endpointMediaCopyCapacity, 2),
 		SfuFallback:               options.sfu,
+		SfuOnly:                   options.sfuOnly,
 		Ice: config.IceConfig(config.Config{
 			STUNURLs:             options.stunURLs,
 			NATPredictionEnabled: options.natPredictionEnabled,

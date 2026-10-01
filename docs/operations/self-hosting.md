@@ -125,6 +125,10 @@ to its reachable public IPv4 address. The same binary provides the fallback.
 The Host must turn off **Privacy mode** before sharing to allow this route.
 Both direct and SFU media need a usable UDP connection.
 
+To send every room through your server, also set `SFU_ONLY=true` and restart.
+The sharing settings will show **Server media**. Plan server bandwidth for every
+Viewer; this mode does not fall back to P2P if the server route fails.
+
 ## Keep it running and update
 
 For automatic startup, use the [systemd or container guide](./service-management.md).

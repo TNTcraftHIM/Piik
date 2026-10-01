@@ -319,6 +319,8 @@ export const zh = {
   "host.advanced.audio.music": "音乐",
   "host.advanced.audio.veryHigh": "保真",
   "host.advanced.route": "路由策略",
+  "host.advanced.route.sfuOnly": "服务器转发",
+  "host.advanced.route.sfuOnlyHint": "此站点的共享画面与声音统一由媒体服务器转发",
   "host.advanced.route.topo": "自动优化拓扑",
   "host.advanced.route.topoHint": "观看中逐步选择更健康的连接",
   "host.advanced.route.peerOnly": "隐私模式",

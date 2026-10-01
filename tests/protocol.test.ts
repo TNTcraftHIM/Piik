@@ -56,12 +56,13 @@ describe("runtime capabilities", () => {
       .toEqual({ sfu: true, natPrediction: true, roomInteractions: false, hostRoomSession: false });
     expect(runtimeCapabilitiesSchema.parse({ connectionAttemptProgress4: true }))
       .toEqual({ sfu: false, natPrediction: false, connectionAttemptProgress4: true, roomInteractions: false, hostRoomSession: false });
+    expect(runtimeCapabilitiesSchema.parse({ sfu: true, sfuOnly: true }).sfuOnly).toBe(true);
 
   });
 
   it("rejects malformed known capabilities and non-object responses", () => {
     for (const value of [null, [], true, { sfu: null }, { sfu: "true" },
-      { natPrediction: null }, { natPrediction: 1 },
+      { natPrediction: null }, { natPrediction: 1 }, { sfuOnly: null }, { sfuOnly: "true" },
       { connectionAttemptProgress4: null }, { connectionAttemptProgress4: 4 }]) {
       expect(runtimeCapabilitiesSchema.safeParse(value).success).toBe(false);
     }

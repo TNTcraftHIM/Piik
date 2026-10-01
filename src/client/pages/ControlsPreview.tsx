@@ -119,6 +119,8 @@ export function ControlsPreview() {
           <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.audioOn")} hint="hint-share-audio" />
           <SwitchItem checked disabled locked onChange={() => undefined} label={t("host.advanced.route.peerOnly")}
             note={t("host.advanced.route.peerOnlyRequired")} hint="hint-route-p2p-required" />
+          <SwitchItem checked disabled locked onChange={() => undefined} label={t("host.advanced.route.sfuOnly")}
+            note={t("host.advanced.route.sfuOnlyHint")} hint="hint-route-sfu" />
         </div>
         <div className="cp-tools">
           <span className="lr-toggle" role="group" aria-label={t("host.policy")} data-selected={policy}>

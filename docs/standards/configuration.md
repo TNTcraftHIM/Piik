@@ -56,6 +56,7 @@ Automatic SFU fallback runs inside the Hosted process when `SFU_UDP_PORT` is set
 | `SFU_UDP_PORT` | Optional UDP media port `1..65535`; unset or blank disables SFU and fixes Privacy mode on for every room. Set `7882` for the standard public listener and allow the Host to choose Privacy mode. |
 | `SFU_LISTEN_HOST` | IPv4 bind address, default `0.0.0.0`; independent of HTTP `LISTEN_HOST`. Read only when SFU is enabled. |
 | `SFU_PUBLIC_IP` | Optional explicit IPv4 advertised-address override for a host behind NAT. Read only when SFU is enabled. |
+| `SFU_ONLY` | `false` by default. `true` requires `SFU_UDP_PORT` and sends every room through SFU, without Peer candidates or background P2P convergence. Applies after Server restart. |
 
 SFU control uses the application's authenticated signaling connection. No
 separate control origin or infrastructure credentials are configured. Local and
@@ -66,6 +67,13 @@ For a P2P-only Server, leave `SFU_UDP_PORT` blank. Room authority, signaling,
 configured STUN and peer relays remain; no media-server fallback is possible.
 The server enforces this even if a Host requests hybrid mode. There is no
 separate `SFU_ENABLED` flag to conflict with the listener configuration.
+
+With `SFU_ONLY=true`, the page shows a locked **Server media** policy in place of
+P2P settings. An older page requesting Privacy mode is refused before sharing;
+refresh it or turn Privacy mode off. Capacity exhaustion and connection failure
+use the existing bounded SFU admission/recovery path, never a P2P escape.
+This policy needs sufficient server bandwidth and a working UDP route; it is not
+a TURN/TCP fallback. App Local/public-link and the public Demo remain P2P-only.
 
 The SQLite parent directory must exist and be writable. The systemd template
 sets `/var/lib/piik/rooms.sqlite` under its managed state directory; the

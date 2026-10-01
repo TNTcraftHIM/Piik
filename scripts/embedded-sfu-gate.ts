@@ -65,6 +65,7 @@ async function main(): Promise<void> {
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
   const nativeArm = process.env.PIIK_EMBEDDED_SFU_NATIVE === "true";
+  const sfuOnly = process.env.PIIK_EMBEDDED_SFU_ONLY === "true";
   const displayArm = process.env.PIIK_EMBEDDED_SFU_DISPLAY === "true";
   if (displayArm && nativeArm) throw new Error("Display and Native capture are separate arms");
   const twoRooms = process.env.PIIK_EMBEDDED_SFU_TWO_ROOMS === "true";
@@ -93,6 +94,7 @@ async function main(): Promise<void> {
   const sourceProfile = nativeArm ? await mkdtemp(join(tmpdir(), "piik-client-media-")) : null;
   const [sourcePort, sourceDebugPort] = nativeArm ? [await reservePort(), await reservePort()] : [0, 0];
   const result = { passed: false, arm: `${nativeArm ? "native" : displayArm ? "display" : "browser"}-${codec}-simulcast${twoRooms ? "-two-rooms" : ""}`, stage: "start",
+    sfuOnly, stereoSeparationDb: null as number[] | null,
     startedAt: new Date().toISOString(), finishedAt: "", processes: [] as Array<{ role: string; pid: number | null }>,
     high: null as { frames: number; width: number; height: number } | null,
     low: null as { frames: number; width: number; height: number } | null,
@@ -144,7 +146,8 @@ async function main(): Promise<void> {
         PIIK_ENV: "development", PIIK_DEBUG: "route", LISTEN_HOST: "127.0.0.1", PORT: String(serverPort),
         PIIK_LOG_DIR: join(BUILD_ROOT, "logs"),
         PUBLIC_BASE_URL: origin, ALLOWED_ORIGINS: origin,
-        SFU_LISTEN_HOST: "127.0.0.1", SFU_UDP_PORT: String(mediaPort), SFU_PUBLIC_IP: "127.0.0.1" },
+        SFU_LISTEN_HOST: "127.0.0.1", SFU_UDP_PORT: String(mediaPort), SFU_PUBLIC_IP: "127.0.0.1",
+        SFU_ONLY: String(sfuOnly) },
     });
     processStarted("server", server);
     server.stdout.resume();
@@ -257,6 +260,7 @@ async function main(): Promise<void> {
     result.stage = "decoded-audio-energy";
     await waitForSample(() => call<number>(viewer!, "gate.audioEnergy()", 3_000),
       (energy) => { result.audioEnergy.high = energy; return energy > 0; }, 5_000);
+    if (!nativeArm) result.stereoSeparationDb = await call(viewer, "gate.audioSeparation()", 5_000);
     result.host = await call(host, "gate.snapshot()");
     if (displayArm) {
       result.stage = "display-background";
@@ -357,7 +361,9 @@ async function main(): Promise<void> {
   }
   result.finishedAt = new Date().toISOString();
   result.passed = !result.error && result.host?.published === true && result.host.simulcast &&
-    result.viewer?.decoded === true && result.viewer.committed && result.viewer.peerFailures > 0 &&
+    result.viewer?.decoded === true && result.viewer.committed &&
+    (sfuOnly ? result.viewer.peerFailures === 0 : result.viewer.peerFailures > 0) &&
+    (nativeArm || result.stereoSeparationDb?.every(db => db > 20) === true) &&
     result.viewer.audioKbps > 0 && result.audioEnergy.high > 0 && result.audioEnergy.low > result.audioEnergy.high &&
     result.high !== null && result.low !== null && result.audioEnergy.recovered > 0 &&
     result.publicationRetired && result.subscriptionRecovered && result.cleanup && result.nativeShareStopped &&

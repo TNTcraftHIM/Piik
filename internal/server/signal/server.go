@@ -72,6 +72,8 @@ type Options struct {
 	EndpointMediaCopyCapacity int
 	// SfuFallback is nil when embedded SFU media is disabled.
 	SfuFallback *SfuFallback
+	// SfuOnly restricts the existing controller to server media candidates.
+	SfuOnly bool
 	// Ice is the derived wire ICE configuration (config.IceConfig).
 	Ice protocol.IceConfig
 	// NATPredictionEnabled is the server capability that clamps a Host's
@@ -215,6 +217,9 @@ func New(options Options) (*Server, error) {
 	if options.SfuFallback != nil && (options.SfuFallback.Media == nil || options.SfuFallback.Admission == nil) {
 		return nil, errors.New("SFU fallback requires media and resource admission")
 	}
+	if options.SfuOnly && options.SfuFallback == nil {
+		return nil, errors.New("SFU-only routing requires SFU media and resource admission")
+	}
 	s := &Server{
 		store:                         options.Store,
 		endpointMediaCopyCapacity:     options.EndpointMediaCopyCapacity,
@@ -271,6 +276,7 @@ func New(options Options) (*Server, error) {
 		store:                     s.store,
 		endpointMediaCopyCapacity: s.endpointMediaCopyCapacity,
 		sfu:                       fallback,
+		sfuOnly:                   options.SfuOnly,
 		hooks: routerHooks{
 			sendToSession:   s.sendToSession,
 			shareGeneration: func(roomID string) string { return s.shares[roomID].generation },
@@ -762,6 +768,14 @@ func displayNameString(name *protocol.DisplayName) *string {
 // section. Password checks run in a goroutine so the reader can keep reading
 // while the KDF runs.
 func (s *Server) authenticate(sess *session, request authRequest) {
+	// Reject the conflicting preference before acquiring room or media authority,
+	// including reconnects from older pages. Never turn peer-only into SFU consent.
+	if request.role == protocol.RoleHost && !request.roomOnly && s.router.sfuOnly && request.routePolicy.PeerOnly {
+		s.sendError(sess, "FORBIDDEN", "This site requires server media; turn off Privacy mode or use another site")
+		sess.close(websocket.StatusCode(protocol.SignalCloseAuthenticationFailed), "Route policy conflict")
+		s.finishAuthenticating(sess)
+		return
+	}
 	if request.role == protocol.RoleHost && !sess.siteAccessAuthenticated {
 		s.sendError(sess, "AUTH_REQUIRED", "Site access is required")
 		sess.close(websocket.StatusCode(protocol.SignalCloseAuthenticationFailed), "Authentication failed")
@@ -1158,7 +1172,8 @@ func (s *Server) activeHostShareGeneration(roomID string) string {
 // configuredRoutePolicy restricts share preferences to the services this runtime owns.
 func (s *Server) configuredRoutePolicy(policy protocol.RoutePolicy) protocol.RoutePolicy {
 	policy.PeerOnly = s.router.sfu == nil || policy.PeerOnly
-	policy.NatPrediction = s.natPredictionEnabled && policy.NatPrediction
+	policy.NatPrediction = s.natPredictionEnabled && !s.router.sfuOnly && policy.NatPrediction
+	policy.TopologyOptimization = !s.router.sfuOnly && policy.TopologyOptimization
 	return policy
 }
 
@@ -1358,7 +1373,8 @@ func (s *Server) startSharing(sess *session, authenticated *authenticatedSession
 		return
 	}
 	if !s.sessions.Has(sess) || sess.authenticated != authenticated ||
-		authenticated.shareGeneration != "" || message.ShareGeneration == s.shares[authenticated.roomID].generation {
+		authenticated.shareGeneration != "" || message.ShareGeneration == s.shares[authenticated.roomID].generation ||
+		(s.router.sfuOnly && message.RoutePolicy.PeerOnly) {
 		s.send(sess, protocol.SharingStartFailedMessage{Type: "sharing-start-failed",
 			ShareGeneration: message.ShareGeneration, Code: "FORBIDDEN"})
 		return

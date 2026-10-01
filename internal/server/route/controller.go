@@ -271,6 +271,9 @@ func New(options Options) *Controller {
 	if !isSafeInteger(options.OperationTimeoutMs) || options.OperationTimeoutMs <= 0 {
 		panic(errors.New("Route operation timeout must be a positive integer"))
 	}
+	if options.SfuOnly && !options.SfuEnabled {
+		panic(errors.New("SFU-only routing requires SFU availability"))
+	}
 	c := &Controller{
 		hostPeerID:                      options.HostPeerID,
 		debugRoomID:                     options.DebugRoomID,
@@ -278,8 +281,9 @@ func New(options Options) *Controller {
 		endpointMediaCopyCapacity:       options.EndpointMediaCopyCapacity,
 		operationTimeoutMs:              options.OperationTimeoutMs,
 		sfuEnabled:                      options.SfuEnabled,
-		qualityConvergenceEnabled:       options.QualityConvergenceEnabled,
-		natPredictionEnabled:            options.NatPredictionEnabled,
+		sfuOnly:                         options.SfuOnly,
+		qualityConvergenceEnabled:       options.QualityConvergenceEnabled && !options.SfuOnly,
+		natPredictionEnabled:            options.NatPredictionEnabled && !options.SfuOnly,
 		routeTimings:                    make(map[string]*routeTimingRecord),
 		qualityObservations:             make(map[string]*routeQualityObservation),
 		senderQualityObservations:       make(map[string]*senderQualityObservation),
@@ -291,6 +295,7 @@ func New(options Options) *Controller {
 		"endpointCapacity", options.EndpointMediaCopyCapacity,
 		"operationTimeoutMs", options.OperationTimeoutMs,
 		"sfuEnabled", options.SfuEnabled,
+		"sfuOnly", options.SfuOnly,
 		"qualityConvergenceEnabled", options.QualityConvergenceEnabled)
 	return c
 }

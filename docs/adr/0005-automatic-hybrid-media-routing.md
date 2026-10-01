@@ -28,6 +28,14 @@ Hosted and Local always use this controller. The former rollout switch and
 separate Host-star authority are removed; SFU availability is still selected by
 configuration and the room's privacy policy, not by another routing mode.
 
+The optional Hosted `SFU_ONLY` policy restricts this controller's candidate
+eligibility to SFU. It reuses the publication/subscription ledger, deadlines,
+first-frame commit and recovery. It does not create another graph or scheduler.
+It disables Peer relay and background Peer work; admission failure does not
+relax the restriction. The service rejects an explicit peer-only request instead
+of treating it as permission to forward media. Default P2P-first and App Local
+behavior are unchanged.
+
 ### One Capacity Rule
 
 Every non-server endpoint uses one server-authoritative steady outbound media-

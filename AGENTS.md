@@ -30,7 +30,7 @@
   [routing/transport](./docs/standards/routing-transport.md),
   [media quality](./docs/standards/media-quality.md), and
   [presentation/lifecycle](./docs/standards/presentation-lifecycle.md).
-- Media stays automatic and P2P-first; central services provide room authority,
+- Media stays automatic and defaults to P2P-first; central services provide room authority,
   signaling, STUN, observability, and bounded embedded SFU/UDP fallback using
   mature LiveKit media components under [ADR-0013](./docs/adr/0013-embedded-node-local-media.md). Route
   changes must preserve the single-graph, single-operation model in

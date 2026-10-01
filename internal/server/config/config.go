@@ -68,6 +68,7 @@ type SFUConfig struct {
 	ListenHost string
 	Port       int
 	PublicIP   string
+	Only       bool
 }
 
 // Config describes runtime configuration. Zero values mean open site
@@ -273,8 +274,15 @@ func parseRoomDatabasePath(value string) (string, error) {
 }
 
 func parseSFU(env map[string]string) (*SFUConfig, error) {
+	only, err := parseBoolean(env["SFU_ONLY"], "SFU_ONLY")
+	if err != nil {
+		return nil, err
+	}
 	rawPort := strings.TrimSpace(env["SFU_UDP_PORT"])
 	if rawPort == "" {
+		if only {
+			return nil, errors.New("SFU_ONLY requires SFU_UDP_PORT")
+		}
 		return nil, nil
 	}
 	port, err := parseBoundedInteger(rawPort, 0, "SFU_UDP_PORT", 1, maxPort)
@@ -298,6 +306,7 @@ func parseSFU(env map[string]string) (*SFUConfig, error) {
 		ListenHost: listenHost,
 		Port:       int(port),
 		PublicIP:   publicIP,
+		Only:       only,
 	}, nil
 }
 

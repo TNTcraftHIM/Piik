@@ -75,6 +75,7 @@ type routerOptions struct {
 	store                     *room.Store
 	endpointMediaCopyCapacity int
 	sfu                       *sfuFallback
+	sfuOnly                   bool
 	hooks                     routerHooks
 	now                       func() int64
 	afterFunc                 func(time.Duration, func()) func() bool
@@ -160,6 +161,7 @@ type router struct {
 	store     *room.Store
 	capacity  int
 	sfu       *sfuFallback
+	sfuOnly   bool
 	hooks     routerHooks
 	now       func() int64
 	afterFunc func(time.Duration, func()) func() bool
@@ -187,6 +189,7 @@ func newRouter(options routerOptions) *router {
 		store:     options.store,
 		capacity:  options.endpointMediaCopyCapacity,
 		sfu:       options.sfu,
+		sfuOnly:   options.sfuOnly,
 		hooks:     options.hooks,
 		now:       options.now,
 		afterFunc: options.afterFunc,
@@ -995,6 +998,7 @@ func (r *router) createController(roomID string, rm *roomRuntime, host authentic
 		EndpointMediaCopyCapacity: r.capacity,
 		OperationTimeoutMs:        operationTimeoutMs,
 		SfuEnabled:                r.sfu != nil && !(routePolicy != nil && routePolicy.PeerOnly),
+		SfuOnly:                   r.sfuOnly,
 		QualityConvergenceEnabled: routePolicy != nil && routePolicy.TopologyOptimization,
 		NatPredictionEnabled:      routePolicy != nil && routePolicy.NatPrediction,
 	})
