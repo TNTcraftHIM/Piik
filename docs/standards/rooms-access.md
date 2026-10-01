@@ -1,6 +1,6 @@
 # Rooms And Access
 
-This file owns the current room, admission, invitation, and persistence
+This file owns the current room, admission, invitation, interaction, and persistence
 contract. [ADR-0002](../adr/0002-memory-resident-protected-rooms.md) explains
 the storage decision; implementation detail belongs in code and tests.
 
@@ -90,6 +90,26 @@ before its egress reservation is released. Room-authenticated signaling cannot
 recreate a revoked subscription; no separate media token survives revocation.
 Changing code-entry policy or password affects later
 code-only attempts and does not silently revoke invitations.
+
+## Room Interactions
+
+Text and reactions reuse the authenticated room signaling connection. The server
+derives sender identity from that session and accepts targeted reactions only
+for participants still connected to the same room. Interaction subscriptions
+inherit existing membership, replacement and revocation checks; they grant no
+additional authority and do not modify media routes.
+
+Delivery is transient and bounded. The server keeps no message history; each
+page keeps only a bounded set of received messages and effects, without writing
+them to storage or diagnostics. Re-admission to the same room may retain that
+page's conversation, but refresh, leaving or authority loss clears it. There is
+no history replay or offline outbox. HTTPS/WSS protects transport; chat is not
+end-to-end encrypted, and the site operator can access live message contents.
+
+[Presentation and lifecycle](./presentation-lifecycle.md#product-surface) owns
+the distinction between a room session and its current media publication.
+[Interaction research](../research/room-interactions.md) records delivery bounds,
+compatibility and design rationale.
 
 ## Persistence Modes
 

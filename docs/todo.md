@@ -7,53 +7,15 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Windows HDR-to-SDR acceptance.** Automatic conversion is implemented
-  before native output fanout and in source thumbnails. Synthetic GPU and
-  H.264/VP8 Browser reception checks pass;
-  [fidelity evidence](./research/media-fidelity.md#hdr-to-sdr) owns results and
-  measured cost. Accept real HDR highlights, SDR content on HDR displays,
-  mixed-display window movement and live display-mode changes under load before
-  shipping. Issue [#420](https://github.com/TNTcraftHIM/Piik/issues/420)'s Browser
-  path still needs acquired-frame evidence; do not assign it this Native cause.
-
-- [ ] **Windows source-audio exclusion acceptance.** The candidate excludes one
-  selected process tree during App screen sharing, using the existing PCM/mixer
-  and media routes. Local parent/child tone isolation and target-exit checks passed;
-  [native-media evidence](./research/native-client-media.md#windows-audio-exclusion)
-  owns the limits. Accept the picker, source-audio off/on, replacement failure,
-  and real voice apps with their child processes and playback devices. Keep
-  single-selection scope for this phase; Browser capture and multiple unrelated
-  exclusions remain outside it. Publication remains unapproved.
-
-- [ ] **Room-interaction candidate acceptance.** Resumed on current main with
-  the verified, unpublished maintenance fixes. Review chat, optional danmaku and
-  participant-targeted reactions for usability, placement and intended cross-view
-  synchronization.
-  Preserve room authorization and media-route owners. Accept its combined
-  layout: sharing settings with the picture, floating chat without page reflow
-  and room actions before diagnostics. Check narrow-screen keyboard avoidance,
-  theater entry and participant menus on real devices; keep chat available
-  independently of sharing.
-  Retain current room creation: the first share creates a room, an existing room
-  can resume, and stopping media keeps the opted-in interaction session. Do not
-  add visit-triggered creation or a separate pre-share room-creation entry.
-  Local multi-page checks cover idle-room recovery, invitation revocation,
-  reconnect with draft retention and shared event timing; protocol checks cover
-  unsubscribed older pages. Real mobile keyboard and final owner walkthrough
-  remain before integration. [Candidate scope](./research/room-interactions.md)
-  owns the design and evidence limits. Merge and publication remain unapproved.
-- [ ] **Published-product regression acceptance.** Keep share startup,
-  audio/source changes, sustained viewing, recovery/retirement, admission and
-  narrow/touch UI in the interaction acceptance boundary. Integrate the verified
-  Browser and Native encoding/lifecycle repairs together; they are not yet
-  published. Include optional Hosted SFU-only configuration, Privacy rejection,
-  admission failure and recovery alongside the unchanged default/P2P-only modes.
-  Include Native SDR colors on direct and decode/scale/re-encode paths; local
-  [converter and WebRTC checks](./research/media-fidelity.md#sdr-conversion) pass,
-  but do not establish the cause of [#445](https://github.com/TNTcraftHIM/Piik/issues/445)
-  on its Windows 10 machine.
-  Field reports without matched evidence remain distinct from
-  locally reproduced defects.
+- [ ] **Release integration.** The owner accepted the room-interaction UI/model
+  and bounded local acceptance for phase closure. Prepare one squash PR for
+  v1.7.0, including text/reactions, Windows audio exclusion and HDR-to-SDR,
+  optional Hosted SFU-only policy, and the verified media ownership repairs.
+  Present complete Chinese/English release notes and remaining physical limits;
+  obtain explicit release authorization before merging or publishing. Follow
+  [the integration workflow](../CONTRIBUTING.md#full-integration-and-release-workflow)
+  for packaging, publication and scoped postflight. [Status](./status.md)
+  distinguishes this candidate from the deployed release.
 
 ## Held By Owner
 
@@ -76,6 +38,16 @@ These proposals remain deferred while the text/reaction candidate is active.
 
 ## Awaiting Device Or Reporter Evidence
 
+- [ ] **HDR, audio-exclusion and mobile interaction device coverage.** Complete
+  the remaining physical checks in
+  [verification status](./verification-status.md#candidate-evidence-boundary):
+  real HDR/mixed displays under load, real voice-app process trees across playback
+  devices, and phone keyboard/theater/participant-menu interaction. Local GPU,
+  decoded-video, synthetic audio and responsive-browser evidence do not cover
+  those environments. Issues [#420](https://github.com/TNTcraftHIM/Piik/issues/420)
+  (Browser HDR) and [#445](https://github.com/TNTcraftHIM/Piik/issues/445)
+  (Windows 10 colors) still need matched capture evidence; do not assign them
+  the locally reproduced Native conversion defects.
 - [ ] **Native H.264 motion quality (#432).** The original 720p30 H.264/VP8
   visual comparison remains unresolved. Browser evidence confirms similar
   delivered bitrate/format and zero reported loss, but contains no matched

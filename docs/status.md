@@ -42,15 +42,16 @@ on current main with the verified, unpublished media repairs. It adds authentica
 over existing signaling, with optional local chat overlay and a shared floating
 panel. Its opted-in room session can outlive a publication; capture, quality and
 route owners remain unchanged. Optional Windows screen-audio exclusion uses the
-existing source/mixer boundary and remains in candidate acceptance. Hosted Server
+existing source/mixer boundary. Hosted Server
 also accepts an optional SFU-only policy through the same route controller.
 Windows native capture and thumbnails now share automatic HDR-to-SDR conversion;
 synthetic GPU and Browser reception checks pass, with physical HDR display
 acceptance still pending in [verification status](./verification-status.md).
 Room voice is outside the product plan; Host microphone commentary remains.
-4K remains deferred. Local acceptance is ready for the owner's final walkthrough;
-physical device limits remain open. This candidate is not deployed;
-[TODO](./todo.md#now) owns acceptance and remaining work.
+4K remains deferred. The owner accepted the UI/model and bounded local acceptance
+for phase closure. Release preparation targets v1.7.0; explicit publication
+authorization and physical device limits remain open. This candidate is not
+deployed; [TODO](./todo.md#now) owns integration and remaining work.
 
 ## Deployment
 

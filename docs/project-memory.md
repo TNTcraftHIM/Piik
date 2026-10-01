@@ -43,7 +43,8 @@ blank keeps the self-contained site open.
 ## Product Map
 
 - [Rooms and access](./standards/rooms-access.md) owns room codes,
-  invitations, code entry, credentials, and lightweight/SQLite persistence.
+  invitations, code entry, credentials, room interactions and lightweight/SQLite
+  persistence.
 - [Routing and transport](./standards/routing-transport.md) owns P2P-first
   distribution, endpoint capacity, SFU fallback, recovery, and privacy limits.
 - [Capture and media quality](./standards/media-quality.md) owns Browser capture,

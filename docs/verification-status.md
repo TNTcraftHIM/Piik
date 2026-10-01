@@ -54,6 +54,19 @@ and sustained GPU contention still require physical acceptance. The
 [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr) owns measurements.
 These checks do not establish Browser-capture HDR behavior or end-to-end HDR.
 
+Windows source-audio exclusion has bounded parent/child tone-isolation and
+target-exit evidence. It does not establish coverage of arbitrary process trees
+or real voice applications across playback devices. The
+[audio assessment](./research/native-client-media.md#windows-audio-exclusion)
+owns that distinction.
+
+Room interactions have multi-page Browser evidence for stop/resume, idle-room
+join, Host departure/return, reconnect, invitation revocation and event timing.
+Responsive Browser checks cover narrow portrait and landscape layouts, but not
+real phone keyboards, Safari behavior or every touch/device combination. The
+owner accepted this bounded UI/model walkthrough for phase closure; these
+physical limits remain open and are not release authorization.
+
 The 2026-09-11 functional test acceptance used two genuine Windows App packages
 and matching Server source/Web builds under the same private contract. Both App/Site version
 directions delivered decoded 1080p H264 from an isolated native test window.

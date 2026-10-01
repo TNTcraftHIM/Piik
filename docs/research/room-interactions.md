@@ -1,9 +1,12 @@
-# Room Interaction Candidate
+# Room Interaction Design
 
-Status: text/reaction candidate resumed on current main with unpublished media
-repairs. Reviewed 2026-10-01.
-[TODO](../todo.md#now) owns remaining acceptance. The camera/microphone checkpoint
-remains independently usable; this candidate adds ordinary-room chat and reactions.
+The owner accepted the text/reaction UI and model with bounded local acceptance.
+Publication is pending; [status](../status.md#active-candidate) owns readiness and
+[TODO](../todo.md#now) owns remaining work. Reviewed 2026-10-01.
+This document records the implementation design and its tradeoffs;
+[rooms and access](../standards/rooms-access.md#room-interactions) owns authority
+and retention, while [presentation and lifecycle](../standards/presentation-lifecycle.md#product-surface)
+owns room/publication lifetime.
 
 ## Model And Owners
 
@@ -14,10 +17,8 @@ remains independently usable; this candidate adds ordinary-room chat and reactio
 | Text and reactions | `signal/interactions.go`, shared protocol and `RoomInteractionSession` | Current authenticated room session; bounded page-local presentation |
 | Chat panel, optional chat overlay and reaction placement | Shared `RoomInteractions` and `RoomChatOverlay`; `RoomInteractionSession` owns bounded events | Current room UI |
 
-The same authenticated WebSocket carries room events. Sender identity comes from
-the current server session, never from client-supplied names or room IDs. A
-targeted reaction must name a participant still connected to that same room.
-Grant revocation and session replacement use existing membership checks.
+The existing room authority admits interactions through the same authenticated
+WebSocket; there is no second admission or identity system.
 
 Messages do not need a media route, decoded frame, or SFU. They do not mutate the
 media graph, add a port, create an extra connection, or restart capture. Pause,
