@@ -118,6 +118,8 @@ export const zh = {
   "host.device.listFailed": "暂时无法获取设备，请刷新重试。",
   "host.device.permission.microphone": "开启麦克风并允许访问后，可以在这里选择设备。",
   "host.microphone.volume": "麦克风音量",
+  "host.microphone.voiceProcessing": "语音处理",
+  "host.microphone.voiceProcessingHint": "由浏览器消除回声、降低杂音并自动调节音量。分享音乐或虚拟音频设备的声音时可关闭。",
   "interaction.open": "聊天",
   "interaction.title": "聊天",
   "interaction.close": "收起聊天窗口",

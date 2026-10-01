@@ -155,6 +155,16 @@ then select a picture card to start sharing. Device names and previews depend on
 browser permissions; while a camera is shared, other cameras are listed by name.
 Use headphones to keep speaker sound from feeding back into the microphone.
 
+With **Browser picker** or **Camera** capture, **Voice processing** in sound
+settings is on by default, asking the browser to handle echo, noise and volume.
+Turn it off for music or a virtual audio input. Device and system effects remain
+controlled by their own settings. App native capture uses device/system audio settings.
+
+A camera with a built-in microphone still needs separate video and audio input
+selection. OBS Virtual Camera supplies video only. To include OBS audio, follow
+the [OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tutorial/),
+then select the virtual audio input in Piik's microphone list and turn on the microphone.
+
 ### Exclude a voice app from screen audio
 
 On supported Windows Apps, open the **Screens** tab and enable **System sound**.

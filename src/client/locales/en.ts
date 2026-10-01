@@ -118,6 +118,8 @@ export const en: Record<CopyKey, string> = {
   "host.device.listFailed": "Could not load devices. Try refreshing.",
   "host.device.permission.microphone": "Turn on the microphone and allow access to see the available devices here.",
   "host.microphone.volume": "Microphone volume",
+  "host.microphone.voiceProcessing": "Voice processing",
+  "host.microphone.voiceProcessingHint": "Use browser echo cancellation, noise reduction and automatic volume. Turn off for music or a virtual audio input.",
   "interaction.open": "Chat",
   "interaction.title": "Chat",
   "interaction.close": "Hide chat window",

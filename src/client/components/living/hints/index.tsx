@@ -27,6 +27,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-microphone-on",
   "hint-microphone-off",
   "hint-microphone-volume",
+  "hint-microphone-processing",
   "hint-pause",
   "hint-resume",
   "hint-switch-source",

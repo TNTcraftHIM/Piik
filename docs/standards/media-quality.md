@@ -19,8 +19,12 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
   a title. An ordinary Web Host does not probe localhost.
 - Camera is a peer source choice in the same picker, including on phones. Only
   the chosen source requests permission. Browser/camera Host microphone capture
-  is explicit and uses voice processing separately from screen audio; its mixer
-  produces one audio output for the existing media routes. Muting or losing the
+  is explicit and defaults to Browser voice processing, separately from screen audio.
+  The Host may turn that processing off for music or virtual audio inputs;
+  the input change preserves the existing mixed output and leaves the previous
+  input usable on failure. This requests Browser processing settings, not a
+  bypass of device/system effects. Native PCM capture uses device/system settings.
+  The mixer produces one audio output for the existing media routes. Muting or losing the
   microphone must not stop healthy video. Share retirement releases its devices
   and rejects late permission results. Native App capture mixes source and
   microphone PCM before its existing Opus encoder, preserving one output track

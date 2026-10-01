@@ -49,6 +49,7 @@ export function ControlsPreview() {
   const [sound, setSound] = useState(true);
   const [microphone, setMicrophone] = useState(false);
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
+  const [voiceProcessing, setVoiceProcessing] = useState(true);
   const [microphoneDevice, setMicrophoneDevice] = useState("");
   const [sharingSettings, setSharingSettings] = useState(false);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
@@ -110,7 +111,8 @@ export function ControlsPreview() {
         <SharingSettings id="preview-sharing-settings" open={sharingSettings}
           presets={<QualityPresets selected={preset} onSelect={setPreset} />}
           audio={<HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
-            native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume} />}
+            enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
+            voiceProcessing={voiceProcessing} onVoiceProcessing={setVoiceProcessing} />}
         />
       </section>
       <section id="option-preview" className="cp-card">

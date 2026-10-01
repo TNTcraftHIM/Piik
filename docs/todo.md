@@ -8,8 +8,9 @@ history. A parked idea is not implementation authority.
 ## Now
 
 - [ ] **Presentation integration.** Review the synchronized website, staged film,
-  README screenshots and browser-picker wording before integration. Shared App
-  UI changes await the next authorized product release; no new release is authorized.
+  README screenshots, browser-picker wording and Browser microphone-processing
+  switch before integration. Shared App UI changes await the next authorized
+  product release; no new release is authorized.
 
 ## Held By Owner
 
@@ -69,6 +70,8 @@ These proposals remain deferred beyond the accepted interaction phase.
   sharing layout and authorized release with these physical limits recorded.
   Verify real audio levels/echo, multiple-device replacement and native mixing on
   target systems, plus phone camera permission, orientation and background use.
+  Include OBS virtual-camera/audio-input sound quality and A/V synchronization;
+  synthetic capture does not establish that combination.
   Keep the existing capture and route owners. The
   [capture assessment](./research/camera-and-microphone.md) owns behavior and
   separates bounded Windows/browser checks from untested device combinations.

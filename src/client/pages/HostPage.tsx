@@ -394,6 +394,7 @@ export function HostPage({
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
+  const [microphoneVoiceProcessing, setMicrophoneVoiceProcessing] = useState(true);
   const [microphonePending, setMicrophonePending] = useState(false);
   const [microphoneDevices, setMicrophoneDevices] = useState({ browser: "", native: "" });
   const [cameraDevice, setCameraDevice] = useState("");
@@ -2970,7 +2971,7 @@ export function HostPage({
       ? "host.camera.denied" : "host.camera.unavailable", target, comic: "source-failed", tone: "warn" });
   }
 
-  async function changeMicrophone(enabled: boolean, deviceId: string): Promise<void> {
+  async function changeMicrophone(enabled: boolean, deviceId: string, voiceProcessing = microphoneVoiceProcessing): Promise<void> {
     const audio = hostAudioRef.current;
     const generation = activeGenerationRef.current;
     const client = nativeModeRef.current ? nativeClientRef.current : null;
@@ -2990,9 +2991,10 @@ export function HostPage({
       }
       if (!audio) return;
       audio.setMicrophoneVolume(microphoneVolume);
-      const mixed = await audio.setMicrophone(enabled, deviceId);
+      const mixed = await audio.setMicrophone(enabled, deviceId, voiceProcessing);
       if (!isCurrentGeneration(generation) || hostAudioRef.current !== audio) return;
       setMicrophoneDevices(previous => ({ ...previous, browser: deviceId }));
+      setMicrophoneVoiceProcessing(voiceProcessing);
       if (mixed) await replaceBrowserStream(mixed, generation, token);
     } catch (error) {
       if (isCurrentGeneration(generation) && sourceSwitchRef.current === token) {
@@ -3895,6 +3897,8 @@ export function HostPage({
                   native={nativeActive} loadDevices={loadMicrophones}
                   deviceId={microphoneDevices[nativeActive ? "native" : "browser"]}
                   onDevice={deviceId => void changeMicrophone(microphoneEnabled, deviceId)}
+                  voiceProcessing={microphoneVoiceProcessing}
+                  onVoiceProcessing={enabled => void changeMicrophone(microphoneEnabled, microphoneDevices.browser, enabled)}
                 />
               ) : null}
               <div className="lr-door-group">

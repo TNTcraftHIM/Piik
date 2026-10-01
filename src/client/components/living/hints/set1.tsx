@@ -322,22 +322,28 @@ ${rmBlock(["vls-capture-choice"], [[".vls-capture-choice", "opacity:1;transform:
   </>;
 }
 
-function MicrophoneHint({ theme, mode }: Parameters<HintScene>[0] & { mode: "on" | "off" | "volume" }) {
+function MicrophoneHint({ theme, mode }: Parameters<HintScene>[0] & { mode: "on" | "off" | "volume" | "processing" }) {
   return <>
     <style>{`
 .vls-mic-voice{animation:vlsMicVoice var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsMicVoice{0%,10%{opacity:0;transform:translateX(-3px)}24%,48%{opacity:1;transform:none}68%,100%{opacity:0;transform:translateX(3px)}}
 .vls-mic-gain{animation:vlsMicGain var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsMicGain{0%,12%{transform:translateX(0)}40%,100%{transform:translateX(28px)}}
+.vls-mic-noise{animation:vlsMicNoise var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsMicNoise{0%,12%{opacity:.6}40%,100%{opacity:0}}
 ${rmBlock(["vls-mic-voice"], [[".vls-mic-voice", "opacity:1;transform:none"]])}
 ${rmBlock(["vls-mic-gain"], [[".vls-mic-gain", "transform:translateX(28px)"]])}
+${rmBlock(["vls-mic-noise"], [[".vls-mic-noise", "opacity:0"]])}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     {[0, 160].map((x, index) => <g key={x} transform={`translate(${x} 0)`}>
       <Pawn x={53} yb={76} s={14} eyes host />
       <g transform="translate(78 38)"><Glyph name="microphone" size={27} /></g>
-      {mode === "volume" ? <>
+      {mode === "processing" ? <>
+        <path className={index === 1 ? "vls-mic-voice" : undefined} d="M113 44q7 8 0 16m7-21q12 13 0 26" stroke={MINT} strokeWidth={2.5} strokeLinecap="round" fill="none" />
+        <path className={index === 1 ? "vls-mic-noise" : undefined} d="m37 24 3-4 3 4 3-4m28 1 4 3 4-3 4 3m28 56 3-4 3 4 3-4" stroke={FAINT} strokeWidth={2} strokeLinecap="round" fill="none" opacity={index === 1 ? 0 : .6} />
+      </> : mode === "volume" ? <>
         <path d="M113 46q5 6 0 12" stroke={MINT} strokeWidth={2.5} strokeLinecap="round" fill="none" />
         {index === 1 && <path className="vls-mic-voice" d="M120 40q10 12 0 24m7-29q15 17 0 34" stroke={MINT} strokeWidth={2.5} strokeLinecap="round" fill="none" />}
         <path d="M89 82h40" stroke={FAINT} strokeWidth={3} strokeLinecap="round" />
@@ -353,6 +359,7 @@ export const SET1_SCENES: Record<Set1Kind, HintScene> = {
   "hint-microphone-on": (props) => <MicrophoneHint {...props} mode="on" />,
   "hint-microphone-off": (props) => <MicrophoneHint {...props} mode="off" />,
   "hint-microphone-volume": (props) => <MicrophoneHint {...props} mode="volume" />,
+  "hint-microphone-processing": (props) => <MicrophoneHint {...props} mode="processing" />,
   "hint-share-start": SceneShareStart,
   "hint-share-stop": SceneShareStop,
   "hint-pause": ScenePause,
