@@ -56,6 +56,17 @@ The checks include synthetic output-worker replacement and failure cases using
 WARP and a test codec, plus preview cleanup when WGC rejects a hidden test window.
 They do not capture a user screen or validate a physical encoder.
 
+On a Windows machine with a physical D3D11 adapter, check the shared SDR converter:
+
+```powershell
+powershell -NoProfile -File native/capture/windows/build.ps1 -OutputDirectory build/color-check -CheckColor
+```
+
+This sends synthetic RGB and full/limited-range BT.601/BT.709 NV12 color bars
+through the production converter, including scaling and input replacement. It
+checks black/white levels and the output matrix without capturing the desktop;
+decoded H.264/VP8 and Browser reception remain separate media acceptance.
+
 The implementation follows Microsoft's MIT-licensed reference samples and
 official API contracts without copying their WIL framework. The retained MF
 fixture compiles the same encoder source with `PIIK_H264_FIXTURE`; there is

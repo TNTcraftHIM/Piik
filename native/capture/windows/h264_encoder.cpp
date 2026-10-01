@@ -1,6 +1,7 @@
 #include "h264_encoder.h"
 
 #include "capture_output.h"
+#include "capture_color.h"
 
 #include <d3d10_1.h>
 #include <evr.h>
@@ -327,6 +328,7 @@ ComPtr<IMFMediaType> CreateOutputType(
         "output-type-major");
   Check(type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264),
         "output-type-subtype");
+  SetSdrVideoColor(type.Get());
   Check(type->SetUINT32(MF_MT_AVG_BITRATE, profile.bit_rate),
         "output-type-bitrate");
   Check(MFSetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, profile.width,
@@ -354,6 +356,7 @@ ComPtr<IMFMediaType> CreateInputType(
         "input-type-major");
   Check(type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12),
         "input-type-subtype");
+  SetSdrVideoColor(type.Get());
   Check(MFSetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, profile.width,
                            profile.height),
         "input-type-size");

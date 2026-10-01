@@ -39,6 +39,12 @@ production behavior and remaining acceptance.
   frame matches its desktop source dimensions. Other frames retain their own
   aspect ratio. This changes only the encoded presentation, never the game or
   display settings; vendor-private scaling is not inferred.
+- Windows SDR conversion owns one output color contract: limited-range BT.601
+  NV12 with matching H.264 metadata. RGB capture and decoded video retain their
+  input range/matrix through conversion and relay scaling; dimensions do not
+  determine color space. Unspecified SDR follows the WebRTC convention.
+  [Fidelity evidence](../research/media-fidelity.md) owns platform checks and
+  the separate HDR boundary.
 - Where Windows supports border control, the native source picker offers
   **Show capture border**, off by default. The choice stays in the Host page and
   follows native source and quality changes. Source previews request borderless

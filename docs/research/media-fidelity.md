@@ -1,8 +1,8 @@
 # Media Fidelity
 
 Reviewed 2026-10-01. [Media quality](../standards/media-quality.md) owns behavior;
-[TODO](../todo.md) owns remaining work. These checks do not establish physical
-device acceptance or full HDR support.
+[TODO](../todo.md) owns remaining work. These synthetic checks do not establish
+all-device acceptance or full HDR support.
 
 ## Stereo
 
@@ -42,15 +42,15 @@ sound support.
 capture on an SDR Windows 10 system. Its proposed explanation is not established:
 Microsoft documents full-range RGB as the
 [video processor's default input range](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_video_processor_color_space).
-The actual gap is that `FrameConverter` does not specify its input/output range
-or matrix. The same converter handles BGRA capture and decoded NV12 relay input;
-a correction must respect both formats.
+The confirmed gap was that `FrameConverter` left its input/output range and
+matrix implicit. The same converter handles BGRA capture and decoded NV12
+relay input; correcting only screen capture would leave the relay inconsistent.
 
-A local D3D11 check through the current converter produced full-range NV12 from
+A local D3D11 check through the previous converter produced full-range NV12 from
 BGRA color bars (black Y=0, white Y=255). The production `AdaptiveEncoder` VP8
 output then reproduced crushed shadows and clipped highlights in Chrome 154:
 
-| Source gray RGB | Current conversion, WebRTC playback | Explicit limited-range BT.601 experiment |
+| Source gray RGB | Previous conversion, WebRTC playback | Explicit limited-range BT.601 |
 | --- | --- | --- |
 | 0 | 0 | 0 |
 | 32 | 19 | 33 |
@@ -63,7 +63,7 @@ injected those keyframes into a local VP8 PeerConnection without the color-space
 RTP extension, and sampled the playing video into a canvas. The experimental
 conversion also restored red/green/blue bars to within one channel value of the
 source. This establishes a bounded SDR defect, not the cause of every color
-report or a validated product repair.
+report.
 
 WebCodecs and WebRTC are not interchangeable acceptance paths: explicit BT.709
 looked correct through WebCodecs but shifted primary colors through this WebRTC
@@ -73,10 +73,33 @@ can use BT.601 when color metadata is unspecified. White Y=235 is normal for
 limited-range YUV; it must become display RGB=255, not be treated as a defect by
 itself.
 
-Complete the correction at the shared conversion/encoding boundary, with explicit
-range and matrix expectations. Verify actual Native H.264 and VP8 reception,
-NV12 relay scaling without a second range conversion, and source replacement
-before integration. The experiment has not changed production color handling.
+The candidate now declares RGB capture as full range and reads decoded H.264
+color metadata from Media Foundation. Unspecified SDR and VP8 use the existing
+WebRTC BT.601 convention. The converter produces limited-range BT.601 NV12;
+the H.264 media types declare matching range, matrix, primaries and transfer.
+Setting only matrix/range did not produce matching H.264 VUI on the tested
+NVIDIA encoder. No wire field or user setting is added.
+
+Use the Windows 10
+[explicit video color-space API](https://learn.microsoft.com/en-us/windows/win32/api/d3d11_1/nf-d3d11_1-id3d11videocontext1-videoprocessorsetstreamcolorspace1).
+The legacy nominal-range API squeezed decoded NV12 a second time in local tests.
+Even with the explicit API and a positive format-conversion capability result,
+NV12 BT.709-to-BT.601 conversion changed levels on NVIDIA when scaling and left
+the matrix unchanged on AMD. Noncanonical NV12 therefore passes through RGB on
+the GPU before the shared output conversion. Ordinary RGB capture and already
+canonical NV12 keep one pass; no CPU readback, vendor branch or custom shader
+is added to the product path.
+
+The opt-in `-CheckColor` probe in the [Windows capture guide](../../native/capture/windows/README.md)
+checks full/limited-range BT.601/BT.709 input, scaling and input replacement
+through the production converter. It passed on local RTX 4070 SUPER and AMD
+Radeon adapters. RTX H.264/VP8 encoding followed by Chrome 154 WebRTC playback
+also passed direct reception, decode/scale/re-encode and explicitly tagged
+BT.709 H.264 input to both output codecs; sampled RGB errors were at most 5/255.
+AMD hardware encoding was not accepted locally: MFT activation returned
+`0x8007000e` before color configuration. These local checks do not settle the
+reporter's Windows 10 environment, all hardware encoders, HDR content or missing
+upstream color declarations.
 
 ## HDR To SDR
 

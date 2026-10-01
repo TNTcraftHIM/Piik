@@ -1,6 +1,7 @@
 #pragma once
 
 #include "capture_error.h"
+#include "capture_color.h"
 
 #include "capture_input.h"
 
@@ -55,6 +56,12 @@ class H264Decoder final {
   }
   H264Decoder(const H264Decoder&) = delete;
   H264Decoder& operator=(const H264Decoder&) = delete;
+
+  DXGI_COLOR_SPACE_TYPE ColorSpace() const {
+    Microsoft::WRL::ComPtr<IMFMediaType> type;
+    Check(decoder_->GetOutputCurrentType(0, &type), "current-output-type");
+    return windows::DecodedVideoColor(type.Get());
+  }
 
   void Decode(const InputEnvelope& input, const Consumer& consume) {
     if (input.kind != 2 || input.data.empty() || input.data.size() > 4 * 1024 * 1024)

@@ -37,15 +37,12 @@ history. A parked idea is not implementation authority.
   Browser and Native encoding/lifecycle repairs together; they are not yet
   published. Include optional Hosted SFU-only configuration, Privacy rejection,
   admission failure and recovery alongside the unchanged default/P2P-only modes.
+  Include Native SDR colors on direct and decode/scale/re-encode paths; local
+  [converter and WebRTC checks](./research/media-fidelity.md#sdr-conversion) pass,
+  but do not establish the cause of [#445](https://github.com/TNTcraftHIM/Piik/issues/445)
+  on its Windows 10 machine.
   Field reports without matched evidence remain distinct from
   locally reproduced defects.
-
-- [ ] **Native SDR conversion.** The [fidelity assessment](./research/media-fidelity.md#sdr-conversion)
-  reproduces range clipping in the current converter/VP8/WebRTC path, independently
-  of HDR. An explicit range/matrix experiment restores test colors. Complete the
-  shared conversion contract and verify H.264, VP8 and NV12 relay scaling before
-  integrating a repair; do not infer WebRTC colors from WebCodecs alone.
-  This is not yet a matched cause for issue [#445](https://github.com/TNTcraftHIM/Piik/issues/445).
 
 ## Held By Owner
 
