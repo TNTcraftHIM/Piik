@@ -73,7 +73,7 @@ can use BT.601 when color metadata is unspecified. White Y=235 is normal for
 limited-range YUV; it must become display RGB=255, not be treated as a defect by
 itself.
 
-The candidate now declares RGB capture as full range and reads decoded H.264
+The implementation declares RGB capture as full range and reads decoded H.264
 color metadata from Media Foundation. Unspecified SDR and VP8 use the existing
 WebRTC BT.601 convention. The converter produces limited-range BT.601 NV12;
 the H.264 media types declare matching range, matrix, primaries and transfer.
@@ -115,7 +115,7 @@ avoid clipping. Reducing brightness after encoding cannot restore clipped
 highlights. This is a confirmed implementation gap, not proof that every
 reported Browser failure has the same cause.
 
-The candidate uses one `CaptureSdrConverter` before native output fanout and in
+The implementation uses one `CaptureSdrConverter` before native output fanout and in
 thumbnails. HDR displays use an scRGB FP16 pool, then Windows Direct2D's
 [HDR tone-map effect](https://learn.microsoft.com/en-us/windows/win32/direct2d/hdr-tone-map-effect)
 compresses luminance, the

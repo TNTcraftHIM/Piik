@@ -291,10 +291,11 @@ ${rmBlock(["vls-capture-choice"], [[".vls-capture-choice", "opacity:1;transform:
     <Frame x={164} w={152} theme={theme} result />
     {target === "browser" ? <>
       <BrowserWindow x={29} y={20} w={100} h={58} />
-      <rect x={39} y={35} width={80} height={30} rx={3} fill="var(--wall-2)" stroke={SKY} strokeWidth={2} />
-      <path d="M44 58l10-14 7 8 5-5 8 11Z" fill={SKY} />
-      <rect x={83} y={42} width={24} height={3} rx={1.5} fill={FAINT} />
-      <rect x={83} y={50} width={18} height={3} rx={1.5} fill={FAINT} />
+      <path d="M39 35h17m6 0h17m6 0h17" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+      <g transform="translate(39 42)"><Glyph name="display" size={19} /></g>
+      <g transform="translate(68 42)"><Glyph name="window" size={19} /></g>
+      <g transform="translate(97 42)"><Glyph name="globe" size={19} /></g>
+      <rect className="vls-capture-choice" x={35} y={39} width={26} height={25} rx={4} fill="none" stroke={LIVE} strokeWidth={2} />
     </> : target === "window" ? <>
       <g opacity={.35}><SourceWindow x={38} y={24} alternate /></g>
       <SourceWindow x={60} y={41} />
@@ -307,7 +308,7 @@ ${rmBlock(["vls-capture-choice"], [[".vls-capture-choice", "opacity:1;transform:
       <SourceWindow x={64} y={31} />
       <path d="M38 31h8m-8 8h8m-8 8h8" stroke={SKY} strokeWidth={4} />
     </>}
-    <g transform={target === "window" ? "translate(-16 0)" : undefined}>
+    <g transform={target === "browser" ? "translate(-62 0)" : target === "window" ? "translate(-16 0)" : undefined}>
       <path className="vls-capture-choice" d="M113 57v17l5-5 4 8 4-2-4-8h7Z" fill={LIVE} stroke="var(--paper)" strokeWidth={1.5} strokeLinejoin="round" />
     </g>
     <MiniTv x={213} y={23} w={76} h={48} />

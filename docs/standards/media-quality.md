@@ -6,9 +6,8 @@ and [screen-audio research](../research/browser-screen-audio-quality.md).
 [ADR-0007](../adr/0007-path-isolated-representation-quality.md) owns Browser
 source intent and codec selection, [ADR-0008](../adr/0008-window-scoped-audio-capture.md)
 owns screen-audio scope, and [ADR-0013](../adr/0013-embedded-node-local-media.md)
-owns the current candidate's shared Native/SFU output model. This file describes
-that source contract. [Status](../status.md) separates it from the last known
-production behavior and remaining acceptance.
+owns the shared Native/SFU output model. This file describes that product
+contract. [Status](../status.md) indexes delivery and remaining acceptance.
 
 ## Capture And Controls
 

@@ -22,8 +22,8 @@ WebSocket; there is no second admission or identity system.
 
 Messages do not need a media route, decoded frame, or SFU. They do not mutate the
 media graph, add a port, create an extra connection, or restart capture. Pause,
-source replacement and media recovery keep the current conversation. In this
-candidate, a capable Host explicitly opts into a persistent room session.
+source replacement and media recovery keep the current conversation. A capable
+Host explicitly opts into a persistent room session.
 Restoring an existing room connects that session without requesting capture or
 starting media. The capture-ready owner requests publication; merely entering a
 capture picker or awaiting permission cannot publish. Stopping the publication
@@ -229,7 +229,7 @@ admission or additional media peers.
   signaling channel; adding the LiveKit room service solely for chat is unnecessary.
 - [LiveKit text streams](https://docs.livekit.io/transport/data/text-streams/)
   distinguishes current-participant delivery from persistent history. The
-  candidate likewise promises transient room messages, with explicit local bounds.
+  implementation likewise promises transient room messages, with explicit local bounds.
 - [WebSocket buffering](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/bufferedAmount)
   and [WebSocket API limitations](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
   motivate bounded queues and explicit send failure rather than an accumulating outbox.

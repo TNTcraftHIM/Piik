@@ -40,7 +40,7 @@ Piik 是一个免费开源的屏幕共享工具，适合游戏围观、一起看
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/room-zh-dark.png">
-    <img src="./docs/assets/room-zh-light.png" width="860" alt="Piik 房间：共享的游戏画面、播放控件和坐在沙发上的朋友，房主戴着小金冠。">
+    <img src="./docs/assets/room-zh-light.png" width="860" alt="Piik 房间：共享的游戏画面、播放控件、聊天入口和坐在沙发上的朋友，房主戴着小金冠。">
   </picture><br>
   <sub>界面预览 · 示例房间与生成的游戏画面</sub>
 </p>

@@ -25,8 +25,10 @@ friends watch in a browser. Public invitations
 need Internet access and a temporary control tunnel. The public pages use the
 [copy guide's information layers](../../docs/standards/naming.md#voice-and-terminology).
 
-`ui/main.tsx` uses the product's actual launcher form, source picker, TV, sofa and
-control primitives with sample inputs. The build also supplies the current
+`ui/main.tsx` uses the product's actual launcher, source picker, microphone,
+playback controls, TV and room interactions with sample inputs. Its interaction
+session receives local sample messages and never sends network traffic.
+The build also supplies the current
 homepage HTML and styles to `ui/website.ts`, whose scrolling follows the same
 film position; the desktop is an illustration of the unpacked Windows package.
 The website and App run in separate opaque, inert iframes with
@@ -36,6 +38,14 @@ The existing build dependency bundles these components; rebuilding the website
 picks up their styling and copy. Review scene selection and camera framing when
 the product workflow changes. Cursor targets follow component elements, not
 screenshot coordinates.
+
+The README's four room screenshots use this same fixture. Open
+`/film/ui/index.html?still=viewer&lang=en&theme=light` at **1160 × 1040** and capture
+the full page; repeat with `lang=zh` and `theme=dark` for the corresponding
+`docs/assets/room-{en,zh}-{light,dark}.png` files. The still view uses natural page
+height; the film's closing UI shot fits the entire page into its frame.
+Review both layouts when shared controls change. These are staged interface
+previews, not a live media session.
 
 Each cursor movement starts at the preceding control and has its own travel
 interval. Derive the entire pose from the requested time; do not accumulate

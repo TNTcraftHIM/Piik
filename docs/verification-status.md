@@ -45,9 +45,9 @@ Neither a statistical NAT campaign nor exhaustive Auto hardware benchmarking
 is required to close this phase. Investigate further only from a new failure
 or a measured improvement worth its implementation and maintenance cost.
 
-## Candidate Evidence Boundary
+## Device Evidence Boundary
 
-The Windows HDR-to-SDR candidate has synthetic FP16 conversion and decoded
+Windows HDR-to-SDR has synthetic FP16 conversion and decoded
 H.264/VP8 Browser reception evidence. Local displays were in SDR mode; real HDR
 content, SDR white on HDR displays, mixed-display movement, display-mode changes
 and sustained GPU contention still require physical acceptance. The

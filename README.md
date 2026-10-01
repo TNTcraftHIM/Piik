@@ -41,7 +41,7 @@ watch in their browsers.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/room-en-dark.png">
-    <img src="./docs/assets/room-en-light.png" width="860" alt="Piik room: a shared game, playback controls and friends on a sofa. The host wears a small gold crown.">
+    <img src="./docs/assets/room-en-light.png" width="860" alt="Piik room: a shared game, playback controls, chat and friends on a sofa. The host wears a small gold crown.">
   </picture><br>
   <sub>Interface preview · Sample room with a generated game scene</sub>
 </p>

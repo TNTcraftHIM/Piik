@@ -264,7 +264,7 @@ export function CaptureSourcePicker({
               <Tooltip
                 key={value}
                 kind={`hint-capture-${value}`}
-                text={vis ? undefined : t(`host.sourcePicker.tab.${value}`)}
+                text={vis ? undefined : t(value === "browser" ? "host.sourcePicker.browserHint" : `host.sourcePicker.tab.${value}`)}
                 place="below"
               >
                 {button}
@@ -299,7 +299,7 @@ export function CaptureSourcePicker({
                   </span>
                 ) : (
                   <span className="lr-source-option-copy">
-                    <strong>{t(`host.sourcePicker.tab.${activeTab}`)}</strong>
+                    <strong>{t("host.sourcePicker.browser")}</strong>
                     <small>{t("host.sourcePicker.browserHint")}</small>
                   </span>
                 )}

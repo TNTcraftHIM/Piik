@@ -99,7 +99,7 @@ and [website preview and publishing](./operations/website.md).
 | Why a design was chosen | [Architecture decisions](./adr/) |
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
 | Camera and Host microphone | [Capture scope and limits](./research/camera-and-microphone.md) |
-| Unreleased text, reactions and floating room tools | [Room-interaction candidate](./research/room-interactions.md) |
+| Text, reactions and floating room tools | [Room-interaction design](./research/room-interactions.md) |
 | Stereo verification and HDR-to-SDR assessment | [Media fidelity](./research/media-fidelity.md) |
 
 ## Shared conventions

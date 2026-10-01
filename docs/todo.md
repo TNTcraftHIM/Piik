@@ -7,13 +7,9 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Authorized release delivery.** The owner accepted the room-interaction
-  phase, complete bilingual release notes and bounded acceptance, and authorized
-  v1.7.0 publication. Follow
-  [the integration workflow](../CONTRIBUTING.md#full-integration-and-release-workflow)
-  for one squash merge, packaging, publication and scoped postflight. Release
-  artifacts and operator records own completion; do not add a release-record
-  commit. No implementation work remains open for this phase.
+- [ ] **Presentation integration.** Review the synchronized website, staged film,
+  README screenshots and browser-picker wording before integration. Shared App
+  UI changes await the next authorized product release; no new release is authorized.
 
 ## Held By Owner
 
@@ -38,7 +34,7 @@ These proposals remain deferred beyond the accepted interaction phase.
 
 - [ ] **HDR, audio-exclusion and mobile interaction device coverage.** Complete
   the remaining physical checks in
-  [verification status](./verification-status.md#candidate-evidence-boundary):
+  [verification status](./verification-status.md#device-evidence-boundary):
   real HDR/mixed displays under load, real voice-app process trees across playback
   devices, and phone keyboard/theater/participant-menu interaction. Local GPU,
   decoded-video, synthetic audio and responsive-browser evidence do not cover
@@ -236,8 +232,8 @@ not establish better connection success or speed; this note adds no retry policy
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.
-10. **4K in advanced sharing settings.** Hold the isolated candidate for joint
-    review with the next room-interaction release; its compatibility and release
+10. **4K in advanced sharing settings.** Hold the isolated candidate for a separately
+    accepted feature phase; its compatibility and release
     boundary are not yet accepted. Add 3840x2160 without changing the default or recommended
     presets. Extend the existing capture, decode and relay bounds together; verify
     H.264 level negotiation for 4K at 60 fps. Current strict quality messages reject

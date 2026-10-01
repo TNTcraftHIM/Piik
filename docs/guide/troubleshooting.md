@@ -12,7 +12,7 @@ collect a diagnostic report if the problem persists.
 | Picture but no source sound | Unmute the video. The host should choose a source with shareable audio and enable sound in the source picker. |
 | Cannot hear the host's voice | The host can enable **Microphone** below the picture, then check the selected input and its volume in **Sharing settings → Sound**. Check the device connection and microphone permission. If the control is unavailable, update the App and refresh the page. |
 | No screen picker | Allow the browser or App to record the screen when the OS asks. Browser capture needs HTTPS or `localhost`; try sharing from a desktop computer. |
-| No App windows or screens listed | Check the message in the source picker, then follow [App source troubleshooting](#app-windows-or-screens-are-missing). **Browser** → **Browser picker** also offers browser capture. |
+| No App windows or screens listed | Check the message in the source picker, then follow [App source troubleshooting](#app-windows-or-screens-are-missing). **Browser picker** → **Choose what to share** opens the browser's screen, window or tab chooser. |
 | Yellow outline around the shared window or screen | This is Windows' capture indicator. See [capture borders](#yellow-capture-border-on-windows) for Windows 11 controls and an optional Windows 10 workaround. |
 | App startup fails | Read the reason on the page and in the terminal. Reopen the App and enable the chip-shaped **Debug launch** control after the theme button before trying again. A failed startup then exports a report; its path appears in the terminal. |
 | Local invitation will not open | Check that both devices are on the same network and can reach each other. Guest Wi-Fi or firewall rules can block local access. |
