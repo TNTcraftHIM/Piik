@@ -4,7 +4,7 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import "./floating-panel.css";
 
 const PANEL_SIZES = { default: { width: 420, height: 560 }, large: { width: 560, height: 680 } };
-const COMPACT_SIZES = { default: { width: 304, height: 336 }, large: { width: 380, height: 460 } };
+const COMPACT_SIZES = { default: { width: 304, height: undefined }, large: { width: 380, height: 460 } };
 type PanelGesture = "move" | "nw" | "se";
 type PanelChange = { x: number; y: number } | { rect: DOMRect; corner: "nw" | "se"; dx: number; dy: number };
 
@@ -61,12 +61,14 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
         const availableWidth = nw ? rect.right - left : left + maxWidth - rect.left;
         const availableHeight = nw ? rect.bottom - top : top + maxHeight - rect.top;
         const w = Math.min(availableWidth, Math.max(Math.min(compact ? 264 : 320, maxWidth), rect.width + (nw ? -dx : dx)));
-        const h = Math.min(availableHeight, Math.max(Math.min(compact ? 280 : 360, maxHeight), rect.height + (nw ? -dy : dy)));
+        const h = Math.min(availableHeight, Math.max(Math.min(compact ? 240 : 360, maxHeight), rect.height + (nw ? -dy : dy)));
         preferredSize.current = { width: w, height: h };
         point = { x: nw ? rect.right - w : rect.left, y: nw ? rect.bottom - h : rect.top };
       }
       panel.style.width = `${Math.min(preferredSize.current.width, maxWidth)}px`;
-      panel.style.height = `${Math.min(preferredSize.current.height, maxHeight)}px`;
+      panel.style.maxHeight = `${maxHeight}px`;
+      const preferredHeight = preferredSize.current.height;
+      panel.style.height = preferredHeight === undefined ? "auto" : `${Math.min(preferredHeight, maxHeight)}px`;
       const freeX = Math.max(0, maxWidth - panel.offsetWidth), freeY = Math.max(0, maxHeight - panel.offsetHeight);
       // Keep the chosen relative position when the keyboard or viewport changes.
       // Only deliberate movement writes it; a narrow viewport must not erase it.
@@ -108,6 +110,9 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
     viewport?.addEventListener("resize", resize);
     viewport?.addEventListener("scroll", resize);
     window.addEventListener("resize", resize);
+    // Content-sized palettes still fit after a target, language or status change.
+    const observer = new ResizeObserver(resize);
+    observer.observe(panel);
     document.addEventListener("keydown", hideOnEscape);
     return () => {
       placePanel.current = null;
@@ -115,6 +120,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
       viewport?.removeEventListener("resize", resize);
       viewport?.removeEventListener("scroll", resize);
       window.removeEventListener("resize", resize);
+      observer.disconnect();
       document.removeEventListener("keydown", hideOnEscape);
     };
   }, [open, trigger, compact, anchorOnOpen]);

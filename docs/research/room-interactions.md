@@ -115,8 +115,9 @@ Selecting a person opens the compact reaction palette in the shared floating
 shell, initially beside the selected person (below when space permits). Each
 opening anchors there before allowing free movement. Its portrait and name identify the
 target even after moving the window. Selecting a different participant keeps its
-position and size; selecting the same person toggles it. One's own palette
-expresses a reaction above oneself and holds the local effects switch; other
+placement and any manually chosen size; selecting the same person toggles it.
+The default palette height follows its content, bounded by the visible viewport.
+One's own palette expresses a reaction above oneself and holds the local effects switch; other
 people's palettes offer targeted expressions and two labelled throwing props.
 Connection details remain secondary when that participant has inspectable data.
 Close or Escape dismisses the palette; it also closes if its participant leaves.

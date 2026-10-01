@@ -40,6 +40,7 @@ Set the register by the reader's task:
 | Surface | Register |
 | --- | --- |
 | Website | Light, everyday language in introductions and illustration captions; keep the current restraint |
+| App and Web controls | Direct feature and action names, including panel titles and settings; “聊天” / “Chat” rather than an invitation or joke |
 | README | A friendly introduction, followed by direct explanations of features, limits and first steps |
 | Documentation index | Clear topic names and short descriptions that help readers choose a guide |
 | Deployment, configuration and maintenance guides | Formal, precise instructions: prerequisites, actions, expected results and recovery steps |
@@ -102,6 +103,8 @@ in the welcome or illustration caption. Do not soften a failure into a joke,
 invent connection progress or promise guaranteed connectivity or absolute privacy.
 Screen sharing includes games, creative work and showing a useful discovery.
 
+Playfulness belongs in optional welcome/waiting lines, empty-state captions and
+illustration reactions; it does not rename the control that performs the action.
 Operational pages omit introductory sentences that repeat their controls.
 Helper text should explain a meaningful choice or prevent an error.
 

@@ -127,7 +127,7 @@ export const en: Record<CopyKey, string> = {
   "floating.resize": "Resize window",
   "floating.resizeHint": "Drag a corner or use arrow keys; preset sizes are under Position.",
   "floating.size.default": "Default size",
-  "floating.size.large": "Roomier",
+  "floating.size.large": "Large size",
   "floating.position.topLeft": "Top left",
   "floating.position.topRight": "Top right",
   "floating.position.bottomLeft": "Bottom left",
