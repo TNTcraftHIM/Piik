@@ -24,6 +24,16 @@ tree or simultaneous playback across several output devices. Those remain
 device acceptance boundaries. [ADR-0008](../adr/0008-window-scoped-audio-capture.md)
 owns the platform choice.
 
+The [Windows activation contract](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
+accepts one PID and its process tree, not a list of unrelated processes.
+The [win-capture-audio implementation](https://github.com/bozbez/win-capture-audio/releases/tag/v2.2.0-beta)
+supports broader exclusion by tracking audio sessions, capturing non-matching
+processes and mixing them. Applying that design here would require session
+discovery, process-tree deduplication and bounded multi-input mixing; Piik's
+current source-plus-microphone mixer does not own that inventory. Multiple
+exclusions therefore require a capture design change, not just a multi-select
+control. Combining exclusion streams does not itself exclude their combined set.
+
 ## Initial Physical Evidence (2026-09-05)
 
 These checks established the original native media paths. The Browser-mediated
