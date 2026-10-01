@@ -349,6 +349,7 @@ type ShareSourceSelection =
       client: NativeClient;
       target: NativeCaptureTarget;
       audio: boolean;
+      excludeAudio?: NativeCaptureTarget;
       showCaptureBorder: boolean;
       path: NativeCapturePath;
     };
@@ -602,6 +603,7 @@ export function HostPage({
   const nativeClientCloseCleanupRef = useRef<(() => void) | null>(null);
   const nativeModeRef = useRef(false);
   const nativeSourceAudioRef = useRef<boolean | undefined>(undefined);
+  const nativeAudioSelectionRef = useRef<{ enabled: boolean; exclude?: NativeCaptureTarget } | null>(null);
   const nativeSourceRequestRef = useRef<object | null>(null);
   const nativePreviewTailRef = useRef<Promise<void>>(Promise.resolve());
   const nativeSourcePathRef = useRef<NativeCapturePath | null>(null);
@@ -1185,7 +1187,7 @@ export function HostPage({
     shareGeneration: string,
     selection: Extract<ShareSourceSelection, { kind: "native" }>,
   ): Promise<MediaStream | null> {
-    const { client, target, audio, showCaptureBorder, path } = selection;
+    const { client, target, audio, excludeAudio, showCaptureBorder, path } = selection;
     let bridge: NativeMediaBridge | null = null;
     let shareStarted = false;
     let nativeEventCleanup: (() => void) | null = null;
@@ -1210,6 +1212,7 @@ export function HostPage({
       );
       nativeMediaBridgeRef.current = bridge;
       nativeSourceAudioRef.current = undefined;
+      nativeAudioSelectionRef.current = { enabled: audio, exclude: excludeAudio };
       nativeEventCleanup = client.onEvent((event) => {
         if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeClientRef.current !== client) return;
         if (event.type === "audio-state") {
@@ -1232,6 +1235,7 @@ export function HostPage({
         shareId: shareGeneration,
         source: target,
         audio,
+        excludeAudio: audio ? excludeAudio : undefined,
         showCaptureBorder,
         adapterIndex: path.adapterIndex,
         encoderIndex: path.encoderIndex,
@@ -1421,6 +1425,7 @@ export function HostPage({
         sources,
         processAudio: client.health.nativeMedia.processAudio,
         systemAudio: client.health.nativeMedia.systemAudio,
+        processAudioExclusion: client.health.nativeMedia.processAudioExclusion,
         captureBorderControl: client.health.nativeMedia.captureBorderControl,
       });
     } catch (error) {
@@ -1513,6 +1518,7 @@ export function HostPage({
     target: NativeCaptureTarget,
     audio: boolean,
     showCaptureBorder: boolean,
+    excludeAudio?: NativeCaptureTarget,
   ): void {
     if (nativeSources?.kind !== "ready") return;
     const client = nativeClientRef.current;
@@ -1520,10 +1526,10 @@ export function HostPage({
     if (!client || !path) return;
     setShowCaptureBorder(showCaptureBorder);
     if (phase === "live" && nativeModeRef.current) {
-      void switchNativeSource(client, target, audio, path, showCaptureBorder);
+      void switchNativeSource(client, target, audio, path, showCaptureBorder, excludeAudio);
       return;
     }
-    void startSharing({ kind: "native", client, target, audio, showCaptureBorder, path });
+    void startSharing({ kind: "native", client, target, audio, excludeAudio, showCaptureBorder, path });
   }
 
   function disposeNativeShare(expectedShare = nativeShareGenerationRef.current): void {
@@ -1540,6 +1546,7 @@ export function HostPage({
     nativeShareGenerationRef.current = null;
     nativeModeRef.current = false;
     nativeSourceAudioRef.current = undefined;
+    nativeAudioSelectionRef.current = null;
     setNativeActive(false);
     if (!client || !shareGeneration) {
       releaseUnusedNativeClient();
@@ -2805,6 +2812,7 @@ export function HostPage({
     audio: boolean,
     path: NativeCapturePath,
     showCaptureBorder: boolean,
+    excludeAudio?: NativeCaptureTarget,
   ): Promise<void> {
     const generation = activeGenerationRef.current;
     const shareGeneration = nativeShareGenerationRef.current;
@@ -2831,12 +2839,16 @@ export function HostPage({
         sourceSwitchRef.current !== token ||
         nativeClientRef.current !== client
       ) return;
+      // Preserve an exclusion request even on failure: the App mutes source
+      // audio before replacing it, and the next picker must not default to all.
+      if (audio && excludeAudio) nativeAudioSelectionRef.current = { enabled: audio, exclude: excludeAudio };
       await client.replaceShareSource(
         shareGeneration,
         target,
         audio,
         path,
         showCaptureBorder,
+        audio ? excludeAudio : undefined,
       );
       if (
         !isCurrentGeneration(generation) ||
@@ -2846,6 +2858,7 @@ export function HostPage({
         return;
       }
       invalidateSenderQualityEvidence();
+      nativeAudioSelectionRef.current = { enabled: audio, exclude: excludeAudio };
       if (routePolicyRef.current.topologyOptimization) {
         signalRef.current?.send({ type: "reset-sender-quality" });
       }
@@ -3543,11 +3556,14 @@ export function HostPage({
                 selectionDisabled={roomMutating || switchingSource || changingQuality}
                 initialAudio={
                   nativeActive
-                    ? nativeSourceAudioRef.current ?? false
+                    ? nativeAudioSelectionRef.current?.exclude
+                      ? nativeAudioSelectionRef.current.enabled
+                      : nativeSourceAudioRef.current ?? false
                     : true
                 }
                 audioLocked={nativeActive && !nativeClientRef.current?.health.nativeMedia.microphone}
                 initialShowCaptureBorder={showCaptureBorder}
+                initialExcludeAudio={nativeAudioSelectionRef.current?.exclude}
               />
             ) : !stream &&
               (phase === "idle" || phase === "ended" || phase === "error") ? (

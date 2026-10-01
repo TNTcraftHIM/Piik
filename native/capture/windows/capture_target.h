@@ -13,6 +13,7 @@ int WriteMicrophoneList();
 HRESULT WriteSourcePreview(TargetKind kind, UINT64 source_id, DWORD pid,
                            UINT64 expected_creation_time);
 HRESULT ValidateProcessTarget(DWORD pid, UINT64 expected_creation_time);
+HRESULT ValidateProcessTarget(HANDLE process, UINT64 expected_creation_time);
 HRESULT ValidateWindowTarget(UINT64 source_id, DWORD pid,
                              UINT64 expected_creation_time);
 HRESULT ValidateDisplayTarget(UINT64 source_id);

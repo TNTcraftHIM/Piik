@@ -621,14 +621,15 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 		captureProcess: path,
 		capture:        capabilities,
 		capabilities: loopback.NativeMediaCapabilities{
-			ReceiverReuse:        true,
-			Video:                summary.Video,
-			CaptureBorderControl: summary.CaptureBorderControl,
-			Microphone:           summary.Microphone,
-			ProcessAudio:         summary.ProcessAudio,
-			SystemAudio:          summary.SystemAudio,
-			HardwareH264:         summary.HardwareH264,
-			SoftwareVP8:          summary.SoftwareVP8,
+			ReceiverReuse:         true,
+			Video:                 summary.Video,
+			CaptureBorderControl:  summary.CaptureBorderControl,
+			Microphone:            summary.Microphone,
+			ProcessAudio:          summary.ProcessAudio,
+			ProcessAudioExclusion: summary.ProcessAudioExclusion,
+			SystemAudio:           summary.SystemAudio,
+			HardwareH264:          summary.HardwareH264,
+			SoftwareVP8:           summary.SoftwareVP8,
 		},
 	}
 }

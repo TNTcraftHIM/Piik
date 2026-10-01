@@ -41,8 +41,10 @@ The isolated [room-interaction candidate](./research/room-interactions.md) resum
 on current main with the verified, unpublished media repairs. It adds authenticated text and reactions
 over existing signaling, with optional local chat overlay and a shared floating
 panel. Its opted-in room session can outlive a publication; capture, quality and
-route owners remain unchanged. Room voice and 4K remain deferred. This candidate
-is not deployed; [TODO](./todo.md#now) owns acceptance and remaining work.
+route owners remain unchanged. Optional Windows screen-audio exclusion uses the
+existing source/mixer boundary and remains in candidate acceptance. Room voice
+and 4K remain deferred. This candidate is not deployed;
+[TODO](./todo.md#now) owns acceptance and remaining work.
 
 ## Deployment
 

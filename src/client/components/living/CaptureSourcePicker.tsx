@@ -32,6 +32,7 @@ export type NativeSourceList =
       sources: NativeCaptureTarget[];
       processAudio: boolean;
       systemAudio: boolean;
+      processAudioExclusion?: boolean;
       captureBorderControl?: boolean;
     };
 
@@ -51,6 +52,7 @@ export function CaptureSourcePicker({
   loadCameras,
   initialAudio = true,
   initialShowCaptureBorder = false,
+  initialExcludeAudio,
   audioLocked = false,
   selectionDisabled = false,
 }: {
@@ -60,7 +62,7 @@ export function CaptureSourcePicker({
   initialCamera?: string;
   activeCameraVideo?: HTMLVideoElement | null;
   loadCameras?: typeof loadCameraPreviews;
-  onNative: (target: NativeCaptureTarget, audio: boolean, showCaptureBorder: boolean) => void;
+  onNative: (target: NativeCaptureTarget, audio: boolean, showCaptureBorder: boolean, excludeAudio?: NativeCaptureTarget) => void;
   onPreview: (
     target: NativeCaptureTarget,
     signal?: AbortSignal,
@@ -72,6 +74,7 @@ export function CaptureSourcePicker({
   initialTab?: SourceTab;
   initialAudio?: boolean;
   initialShowCaptureBorder?: boolean;
+  initialExcludeAudio?: NativeCaptureTarget;
   audioLocked?: boolean;
   selectionDisabled?: boolean;
 }) {
@@ -81,6 +84,7 @@ export function CaptureSourcePicker({
   const [tab, setTab] = useState<SourceTab | null>(null);
   const [shareAudio, setShareAudio] = useState(initialAudio);
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
+  const [excludeAudio, setExcludeAudio] = useState(initialExcludeAudio);
   const appDetected = nativeSources.kind === "ready" || nativeSources.kind === "failed" ||
     nativeSources.kind === "unsupported" || nativeSources.kind === "incompatible";
   const tabs = SOURCE_TABS.filter((value) => appDetected || value === "browser" || value === "camera");
@@ -122,6 +126,14 @@ export function CaptureSourcePicker({
       ? nativeSources.processAudio
       : nativeSources.systemAudio);
   const anyNativeAudio = sources.some(supportsAudio);
+  // Source enumeration already owns process identity; do not create a second app scanner.
+  const audioApplications = nativeSources.kind === "ready"
+    ? [...new Map(nativeSources.sources.filter(target => target.kind === "window")
+      .map(target => [`${target.pid}:${target.creationTime}`, target])).values()] : [];
+  const exclusionKey = excludeAudio?.kind === "window" ? `${excludeAudio.pid}:${excludeAudio.creationTime}` : "";
+  const canExcludeAudio = activeTab === "display" && nativeSources.kind === "ready" && nativeSources.processAudioExclusion;
+  const missingExclusion = !!excludeAudio && !audioApplications.some(target => `${target.pid}:${target.creationTime}` === exclusionKey);
+  const exclusionUnavailable = activeTab === "display" && shareAudio && !!excludeAudio && (!canExcludeAudio || missingExclusion);
   const refreshing = activeTab === "camera" ? cameraSources.busy : nativeSources.kind === "loading";
   const refreshLabel = t(refreshing ? "host.sourcePicker.loading" : "host.sourcePicker.refresh");
   const audioAction = t(!anyNativeAudio ? "host.noAudio" : audioLocked
@@ -300,12 +312,12 @@ export function CaptureSourcePicker({
                     key={nativeCaptureTargetKey(target)}
                     target={target}
                     disabled={
-                      selectionDisabled || (audioLocked && shareAudio && !supportsAudio(target))
+                      selectionDisabled || exclusionUnavailable || (audioLocked && shareAudio && !supportsAudio(target))
                     }
                     onPreview={onPreview}
                     onSelect={() =>
                       onNative(target, shareAudio && supportsAudio(target),
-                        supportsCaptureBorder && showCaptureBorder)
+                        supportsCaptureBorder && showCaptureBorder, target.kind === "display" ? excludeAudio : undefined)
                     }
                   />
                 ))
@@ -351,6 +363,30 @@ export function CaptureSourcePicker({
                     {audioSwitch}
                   </Tooltip>
                 </div>
+              ) : null}
+              {canExcludeAudio && shareAudio && anyNativeAudio ? (
+                <details className="lr-source-exclusion">
+                  <summary aria-label={vis ? t("host.sourcePicker.excludeAudio") : undefined}>
+                    <Glyph name="speakerOff" size={18} />
+                    {!vis && <span>{t("host.sourcePicker.excludeAudio")}{excludeAudio ? ` · ${excludeAudio.title}` : ""}</span>}
+                    <Glyph name="chevron" size={14} />
+                  </summary>
+                  <div className="lr-capture-device">
+                    <select id={`${pickerId}-exclude-audio`} value={exclusionKey}
+                      aria-label={t("host.sourcePicker.excludeAudio")}
+                      aria-describedby={`${pickerId}-exclude-hint`} disabled={selectionDisabled}
+                      onChange={event => setExcludeAudio(audioApplications.find(target => `${target.pid}:${target.creationTime}` === event.target.value))}>
+                      <option value="">{t("host.sourcePicker.excludeNone")}</option>
+                      {missingExclusion && <option value={exclusionKey} disabled>{excludeAudio?.title} · {t("host.sourcePicker.excludeMissing")}</option>}
+                      {audioApplications.map(target => <option key={`${target.pid}:${target.creationTime}`} value={`${target.pid}:${target.creationTime}`}>
+                        {target.title}
+                      </option>)}
+                    </select>
+                    <small id={`${pickerId}-exclude-hint`} className={vis ? "visually-hidden" : undefined}>
+                      {t(excludeAudio ? "host.sourcePicker.excludeAudioHint" : "host.sourcePicker.excludeAudioChoose")}
+                    </small>
+                  </div>
+                </details>
               ) : null}
             </div>
           ) : null}

@@ -1016,9 +1016,14 @@ HRESULT ValidateProcessTarget(DWORD pid, UINT64 expected_creation_time) {
   }
   HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
   if (process == nullptr) return HRESULT_FROM_WIN32(GetLastError());
+  const HRESULT result = ValidateProcessTarget(process, expected_creation_time);
+  CloseHandle(process);
+  return result;
+}
+
+HRESULT ValidateProcessTarget(HANDLE process, UINT64 expected_creation_time) {
   UINT64 actual_creation_time = 0;
   HRESULT result = ReadProcessCreationTime(process, &actual_creation_time);
-  CloseHandle(process);
   if (SUCCEEDED(result) && actual_creation_time != expected_creation_time) {
     result = HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
   }

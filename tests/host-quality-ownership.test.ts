@@ -92,6 +92,7 @@ function fixture(launchedByClient = true) {
     qualityChangeRef: ref<object | null>(null), pendingQualityChangeRef: ref<QualitySettings | null>(null),
     activeGenerationRef: ref<number | null>(1), streamRef: ref<typeof stream | null>(stream), sourceSwitchRef: ref<object | null>(null),
     nativeSourceAudioRef: ref<boolean | undefined>(undefined), setMicrophoneEnabled: vi.fn(),
+    nativeAudioSelectionRef: ref<{ enabled: boolean; exclude?: unknown } | null>(null),
     nativeModeRef: ref(false), nativeClientRef: ref<typeof client | null>(client), nativeShareGenerationRef: ref<string | null>("share"),
     hostAudioRef: ref<{ sourceStream: MediaStream } | null>(null),
     nativeMediaIngressRef: ref<ReturnType<typeof ingress> | null>(null), nativeMediaBridgeRef: ref(null),
@@ -423,7 +424,7 @@ describe("Host quality ownership", () => {
     expect(current.setShowCaptureBorder).toHaveBeenCalledWith(true);
     if (replacing) {
       await vi.waitFor(() => expect(current.client.replaceShareSource).toHaveBeenCalledWith(
-        "share", target, false, { adapterIndex: 0, encoderIndex: 0 }, true,
+        "share", target, false, { adapterIndex: 0, encoderIndex: 0 }, true, undefined,
       ));
     } else {
       const selection = current.startSharing.mock.calls[0]![0];
@@ -432,6 +433,25 @@ describe("Host quality ownership", () => {
       await expect(current.context.startNativeShare(1, "share", selection)).rejects.toThrow("capture unavailable");
       expect(current.client.startShare).toHaveBeenCalledWith(expect.objectContaining({ showCaptureBorder: true }));
     }
+  });
+
+  it("retains exclusion intent across audio off/on and a failed replacement until share retirement", async () => {
+    const current = fixture();
+    current.nativeModeRef.current = true;
+    const target = { kind: "display", sourceId: "2", title: "Display" };
+    const excluded = { kind: "window", sourceId: "3", pid: 123, creationTime: "456", title: "Voice fixture" };
+    const path = { adapterIndex: 0, encoderIndex: 0 };
+    for (const enabled of [true, false, true]) {
+      await current.context.switchNativeSource(current.client, target, enabled, path, false, excluded);
+      expect(current.nativeAudioSelectionRef.current).toEqual({ enabled, exclude: excluded });
+      expect(current.client.replaceShareSource).toHaveBeenLastCalledWith("share", target, enabled, path, false, enabled ? excluded : undefined);
+    }
+    const next = { ...excluded, pid: 321, creationTime: "654" };
+    current.client.replaceShareSource.mockRejectedValueOnce(new Error("audio unavailable"));
+    await current.context.switchNativeSource(current.client, target, true, path, false, next);
+    expect(current.nativeAudioSelectionRef.current).toEqual({ enabled: true, exclude: next });
+    current.disposeNative();
+    expect(current.nativeAudioSelectionRef.current).toBeNull();
   });
 
   it.each(["browser", "native"] as const)("keeps the %s selection until room work permits capture", async (kind) => {

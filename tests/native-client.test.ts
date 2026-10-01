@@ -356,11 +356,11 @@ describe("native App private wire", () => {
     })).toEqual({
       ...health, nativeMedia: {
         receiverReuse: false,
-        video: true, processAudio: false, systemAudio: false, microphone: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false,
+        video: true, processAudio: false, processAudioExclusion: false, systemAudio: false, microphone: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false,
       },
     });
     expect(nativeHealthSchema.parse({ ...health, nativeMedia: undefined }).nativeMedia)
-      .toEqual({ receiverReuse: false, video: false, processAudio: false, systemAudio: false, microphone: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false });
+      .toEqual({ receiverReuse: false, video: false, processAudio: false, processAudioExclusion: false, systemAudio: false, microphone: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false });
     for (const invalid of [
       { protocol: 0 }, { protocol: 9.5 }, { protocol: Number.MAX_SAFE_INTEGER + 1 },
       { service: "other" }, { port: NATIVE_CLIENT_PORT_END + 1 }, { instanceToken: "short" },
@@ -422,6 +422,54 @@ describe("native App private wire", () => {
         });
       }
     } finally { client!.close(); }
+  });
+
+  it.each([false, true])("never silently drops requested audio exclusion (%s)", async (supported) => {
+    const requests: Record<string, unknown>[] = [];
+    class Socket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = Socket.OPEN;
+      protocol = `piik-client-v9.${health.instanceToken}`;
+      constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
+      close() { this.readyState = Socket.CLOSING; }
+      send(payload: string) {
+        const request = JSON.parse(payload) as Record<string, unknown>;
+        requests.push(request);
+        queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({
+          version: NATIVE_CLIENT_PROTOCOL, id: request.id,
+          ...(request.type === "hello" ? { type: "ready" } : {
+            type: request.type === "start-share" ? "share-started" : "share-source-replaced", shareId: request.shareId,
+            ...(request.type === "start-share" ? { audio: true, codec: "vp8", sourceAudio: true } : {}),
+          }),
+        }) })));
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...health,
+      nativeMedia: { ...health.nativeMedia, microphone: true, ...(supported ? { processAudioExclusion: true } : {}) },
+    }))));
+    const client = (await NativeClient.connect())!;
+    const input = { shareId: "share_123456", source: { kind: "display" as const, sourceId: "1", title: "Display" },
+      audio: true, adapterIndex: 0, encoderIndex: 0, edgeCapacity: 1, profile: DEFAULT_QUALITY_SETTINGS, codec: "vp8" as const };
+    const excludeAudio = { kind: "window" as const, sourceId: "2", pid: 123, creationTime: "456", title: "Voice fixture" };
+    try {
+      expect(client.health.nativeMedia.processAudioExclusion).toBe(supported);
+      await client.startShare(input);
+      expect(requests.at(-1)).not.toHaveProperty("excludeAudio");
+      if (supported) {
+        await client.startShare({ ...input, excludeAudio });
+        await client.replaceShareSource(input.shareId, input.source, true, input, false, excludeAudio);
+        expect(requests.at(-2)?.excludeAudio).toEqual(excludeAudio);
+        expect(requests.at(-1)?.excludeAudio).toEqual(excludeAudio);
+      } else {
+        const count = requests.length;
+        await expect(client.startShare({ ...input, excludeAudio })).rejects.toThrow("audio exclusion");
+        await expect(client.replaceShareSource(input.shareId, input.source, true, input, false, excludeAudio)).rejects.toThrow("audio exclusion");
+        expect(requests).toHaveLength(count);
+      }
+    } finally { client.close(); }
   });
 
   it.each([false, true])("gates microphone mixing and coalesces volume without delaying Stop (%s)", async (supported) => {

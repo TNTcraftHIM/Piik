@@ -74,6 +74,7 @@ export interface NativeShareInput {
   shareId: string;
   source: NativeCaptureTarget;
   audio: boolean;
+  excludeAudio?: NativeCaptureTarget;
   showCaptureBorder?: boolean;
   adapterIndex: number;
   encoderIndex: number;
@@ -281,11 +282,13 @@ export class NativeClient {
     input: NativeShareInput,
   ): Promise<{ audio: boolean; codec: NativeVideoCodec; sourceAudio?: boolean }> {
     // Older Apps reject unknown command fields.
-    const { showCaptureBorder = false, ...shareInput } = input;
+    const { showCaptureBorder = false, excludeAudio, ...shareInput } = input;
+    this.validateAudioExclusion(excludeAudio);
     const response = await this.request(
       "start-share",
       {
         ...shareInput,
+        ...(excludeAudio ? { excludeAudio } : {}),
         ...(this.health.nativeMedia.microphone ? { microphoneMixing: true } : {}),
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),
       },
@@ -310,19 +313,28 @@ export class NativeClient {
     }
   }
 
+  private validateAudioExclusion(target: NativeCaptureTarget | undefined): void {
+    if (target && !this.health.nativeMedia.processAudioExclusion) {
+      throw new Error("Piik App does not support audio exclusion");
+    }
+  }
+
   async replaceShareSource(
     shareId: string,
     source: NativeCaptureTarget,
     audio: boolean,
     path: NativeCapturePath,
     showCaptureBorder = false,
+    excludeAudio?: NativeCaptureTarget,
   ): Promise<void> {
+    this.validateAudioExclusion(excludeAudio);
     const response = await this.request(
       "replace-share-source",
       {
         shareId,
         source,
         audio,
+        ...(excludeAudio ? { excludeAudio } : {}),
         adapterIndex: path.adapterIndex,
         encoderIndex: path.encoderIndex,
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),

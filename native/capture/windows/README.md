@@ -5,7 +5,8 @@ enumerates local displays and visible top-level windows, binds each window to
 its PID and process creation time, and has independent modes for:
 
 - capability discovery (`--probe`);
-- process-tree or default-device loopback PCM (`--capture-audio`); or
+- process-tree inclusion/exclusion or default-device loopback PCM
+  (`--capture-audio`); or
 - WGC/D3D11 screen/window video with adapter-bound Media Foundation H.264 or
   libvpx VP8 output (`--capture-video --codec auto|h264|vp8`).
 - bounded 320x180 BMP source previews (`--preview`), delivered once per target
@@ -30,7 +31,12 @@ Video and audio run as separate bounded child processes. A source whose audio
 loopback cannot be initialized keeps video available and reports audio
 unavailable instead of failing the whole source. Process loopback is probed by
 activation rather than inferred from a Windows build number; display sources
-use the standard render-device loopback available on Windows 10 and later.
+normally use the standard render-device loopback available on Windows 10 and
+later. The optional `--capture-audio exclude <pid> <creation-time>` mode requires
+build 20348+ and a successful exclusion probe. It captures all output devices
+except the selected process tree, and retires when that process exits. The
+[screen-audio contract](../../../docs/standards/media-quality.md#screen-audio)
+owns selection and failure behavior.
 
 Auto measures delivered frame cadence through the target-profile encoding
 pipeline within a four-second selection budget; H.264 that sustains the target

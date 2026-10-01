@@ -281,13 +281,17 @@ func appendOutputArguments(arguments []string, outputs []OutputProfile) ([]strin
 	return arguments, nil
 }
 
-func StartAudio(parent context.Context, executable string, target CaptureTarget) (*Stream, error) {
-	if !target.Valid() {
+func StartAudio(parent context.Context, executable string, target CaptureTarget, exclude bool) (*Stream, error) {
+	if !target.Valid() || (exclude && target.Kind != "window") {
 		return nil, errors.New("native audio target is invalid")
+	}
+	kind := target.Kind
+	if exclude {
+		kind = "exclude"
 	}
 	return startAudioStream(parent, executable, []string{
 		"--capture-audio",
-		target.Kind,
+		kind,
 		strconv.FormatUint(uint64(target.PID), 10),
 		zeroWhenEmpty(target.CreationTime),
 	})

@@ -933,6 +933,7 @@ struct ProductArguments final {
   VideoProfile profile;
   std::vector<VideoProfile> outputs;
   bool show_capture_border = false;
+  bool exclude_audio = false;
 };
 
 DegradationPreference ParseDegradationPreference(const wchar_t* value) {
@@ -1020,7 +1021,8 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
   }
   if (count == 5 && std::wstring(values[1]) == L"--capture-audio") {
     arguments.mode = ProductArguments::Mode::audio;
-    arguments.target_kind = ParseTargetKind(values[2]);
+    arguments.exclude_audio = std::wstring(values[2]) == L"exclude";
+    arguments.target_kind = arguments.exclude_audio ? piik::capture::TargetKind::window : ParseTargetKind(values[2]);
   } else if (count >= 16 && count <= 11 + 5 * piik::capture::kMaxOutputs && (count - 11) % 5 == 0 &&
              std::wstring(values[1]) == L"--encoded-video" &&
              std::wstring(values[2]) == L"--codec" &&
@@ -1126,7 +1128,7 @@ HRESULT RunAudioCapture(const ProductArguments& arguments) {
         stop.get(), should_stop, ready, pcm);
   }
   return piik::capture::CaptureProcessAudio(
-      arguments.pid, arguments.creation_time, stop.get(),
+      arguments.pid, arguments.creation_time, arguments.exclude_audio, stop.get(),
       should_stop,
       ready, pcm);
 }
@@ -1153,6 +1155,7 @@ UINT32 WindowsBuild() {
 void WriteCapabilityProbe() {
   constexpr UINT32 kCreateForWindowMinimumBuild = 18'362;
   constexpr UINT32 kProcessLoopbackMinimumBuild = 19'041;
+  constexpr UINT32 kProcessExclusionMinimumBuild = 20'348;
   const UINT32 build = WindowsBuild();
   bool window_capture = false;
   if (build >= kCreateForWindowMinimumBuild) {
@@ -1167,6 +1170,8 @@ void WriteCapabilityProbe() {
       build >= kProcessLoopbackMinimumBuild &&
       piik::capture::ProcessAudioAvailable();
   const bool system_audio = piik::capture::SystemAudioAvailable();
+  const bool process_audio_exclusion = build >= kProcessExclusionMinimumBuild &&
+      piik::capture::ProcessAudioAvailable(true);
 
   std::vector<Adapter> adapters = EnumerateAdapters();
   std::ostringstream output;
@@ -1178,6 +1183,7 @@ void WriteCapabilityProbe() {
          << ",\"microphone\":true,\"softwareVP8\":true"
          << ",\"processAudio\":"
          << (process_audio ? "true" : "false")
+         << ",\"processAudioExclusion\":" << (process_audio_exclusion ? "true" : "false")
          << ",\"systemAudio\":" << (system_audio ? "true" : "false")
          << ",\"adapters\":[";
   for (size_t adapter_index = 0; adapter_index < adapters.size();

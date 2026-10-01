@@ -33,6 +33,22 @@ func TestDecodeProbeRejectsUnknownTrailingAndDuplicateData(t *testing.T) {
 	}
 }
 
+func TestAudioExclusionCapabilityRequiresExplicitSupportAndMixing(t *testing.T) {
+	capabilities, err := decodeProbe([]byte(validProbe))
+	if err != nil || capabilities.Summary().ProcessAudioExclusion {
+		t.Fatal("old capture probe advertised audio exclusion", err)
+	}
+	capabilities, err = decodeProbe([]byte(strings.Replace(validProbe, `"processAudio":true`,
+		`"processAudio":true,"processAudioExclusion":true,"microphone":true`, 1)))
+	if err != nil || !capabilities.Summary().ProcessAudioExclusion {
+		t.Fatal("explicit audio exclusion capability was lost", err)
+	}
+	capabilities.Microphone = false
+	if capabilities.Summary().ProcessAudioExclusion {
+		t.Fatal("audio exclusion requires the replaceable mixed source")
+	}
+}
+
 func TestSummaryDoesNotConflateVideoAudioAndEncoder(t *testing.T) {
 	capabilities, err := decodeProbe([]byte(
 		`{"protocol":7,"platform":"windows","platformBuild":"19045","videoCapture":true,"processAudio":false,"systemAudio":true,"adapters":[{"index":0,"name":"GPU","identity":"0x0:0x1","hardwareH264":[]}]}`,

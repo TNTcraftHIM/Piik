@@ -7,6 +7,15 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Windows source-audio exclusion acceptance.** The candidate excludes one
+  selected process tree during App screen sharing, using the existing PCM/mixer
+  and media routes. Local tone isolation and target-exit checks passed;
+  [native-media evidence](./research/native-client-media.md#windows-audio-exclusion)
+  owns the limits. Accept the picker, source-audio off/on, replacement failure,
+  and real voice apps with their child processes and playback devices. Browser
+  capture and multiple unrelated exclusions are outside this slice. Publication
+  remains unapproved.
+
 - [ ] **Room-interaction candidate acceptance.** Resumed on current main with
   the verified, unpublished maintenance fixes. Review chat, optional danmaku and
   participant-targeted reactions for usability, placement and intended cross-view
@@ -42,16 +51,6 @@ history. A parked idea is not implementation authority.
 
 These proposals remain deferred while the text/reaction candidate is active.
 
-- [ ] **Exclude selected application audio during screen sharing.** Assess a
-  Windows App source-audio exclusion so an external voice call is not captured
-  again. Reuse the existing process-audio owner and mixed media output; keep
-  Host microphone commentary independent. The [Windows API](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
-  supports including or excluding one process tree per activation, with a
-  documented minimum build of 20348. Verify actual platform capability,
-  process replacement and privacy on failure before exposing it. Arbitrary
-  multiple unrelated applications and generic Browser capture need separate
-  feasibility evidence; do not promise complete acoustic echo cancellation or
-  add subtractive audio mixing as a shortcut. Implementation is deferred.
 - [ ] **Optional SFU-only hosted-server policy.** Assess an operator setting
   using the existing controller, SFU admission ledger and first-frame commit
   path. Default remains P2P-first; App Local/public-link and public Demo remain

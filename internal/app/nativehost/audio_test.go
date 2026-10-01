@@ -56,6 +56,17 @@ func runAudioRecoveryCapture() {
 		}
 	}
 	audio := microphone || (len(os.Args) > 1 && os.Args[1] == "--capture-audio")
+	if !audio && os.Getenv("PIIK_VIDEO_FAIL") == "1" {
+		os.Exit(2)
+	}
+	if !microphone && audio && os.Args[2] == "exclude" {
+		if os.Getenv("PIIK_EXCLUSION_FAIL") == "1" {
+			os.Exit(2)
+		}
+		if marker := os.Getenv("PIIK_EXCLUSION_STARTED"); marker != "" {
+			_ = os.WriteFile(marker, []byte(os.Args[3]+":"+os.Args[4]), 0600)
+		}
+	}
 	period := time.Second / 30
 	status := []byte(`{"state":"active","audio":true}`)
 	if audio {
@@ -179,7 +190,7 @@ func TestAudioEOFWaitsForExplicitSourceReplacement(t *testing.T) {
 	waitPackets(&videoPackets, videoPackets.Load()+10, "video after audio EOF")
 	before := audioPackets.Load()
 	options.Target.SourceID = "2"
-	check(session.ReplaceSource(options, true))
+	check(session.ReplaceSource(options, true, nil))
 	if session.currentStream() == previousVideo || session.currentAudioStream() == previousAudio ||
 		session.edge("audio-edge") != edge || session.audioSource != audioSource {
 		t.Fatal("explicit replacement did not preserve the media owners")

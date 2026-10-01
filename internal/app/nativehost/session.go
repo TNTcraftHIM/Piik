@@ -67,6 +67,7 @@ type Options struct {
 	Video            nativecapture.VideoOptions
 	Profile          QualityProfile
 	AudioEnabled     bool
+	ExcludeAudio     *nativecapture.CaptureTarget
 	MicrophoneMixing bool
 	EdgeCapacity     int
 	BindAddress      string
@@ -138,6 +139,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 			parent,
 			options.CaptureProcess,
 			options.Video.Target,
+			options.ExcludeAudio,
 		)
 		if audioErr != nil {
 			slog.DebugContext(parent, "piik-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
@@ -401,6 +403,7 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 func (session *Session) ReplaceSource(
 	options nativecapture.VideoOptions,
 	audioEnabled bool,
+	excludeAudio *nativecapture.CaptureTarget,
 ) error {
 	session.updateMu.Lock()
 	defer session.updateMu.Unlock()
@@ -420,6 +423,21 @@ func (session *Session) ReplaceSource(
 	if session.mixer == nil && audioEnabled != hasAudio {
 		return errors.New("native source audio availability cannot change while sharing")
 	}
+	if excludeAudio != nil {
+		if session.mixer == nil {
+			return errors.New("native audio exclusion requires mixed audio")
+		}
+		// A privacy change retires the old source before preparation. Failure must
+		// leave it silent rather than retaining unfiltered audio; video/mic stay live.
+		session.mu.Lock()
+		previousAudio := session.audioStream
+		session.audioStream = nil
+		session.mu.Unlock()
+		session.mixer.setSource(nil)
+		if previousAudio != nil {
+			_ = previousAudio.Close()
+		}
+	}
 	options.Profile = profile.Video
 	options.RestoreToken = ""
 	replacement, state, err := session.prepareVideo(session.ctx, options, options.Target.Kind == "picker", false)
@@ -432,6 +450,7 @@ func (session *Session) ReplaceSource(
 			session.ctx,
 			session.captureProcess,
 			options.Target,
+			excludeAudio,
 		)
 		if err != nil {
 			_ = replacement.Close()
@@ -452,11 +471,15 @@ func startAudioCapture(
 	ctx context.Context,
 	captureProcess string,
 	target nativecapture.CaptureTarget,
+	excludeAudio *nativecapture.CaptureTarget,
 ) (*nativecapture.Stream, error) {
+	if excludeAudio != nil {
+		return nativecapture.StartAudio(ctx, captureProcess, *excludeAudio, true)
+	}
 	if target.Kind == "display" || target.Kind == "picker" {
 		return nativecapture.StartSystemAudio(ctx, captureProcess)
 	}
-	return nativecapture.StartAudio(ctx, captureProcess, target)
+	return nativecapture.StartAudio(ctx, captureProcess, target, false)
 }
 
 func (session *Session) prepareVideo(

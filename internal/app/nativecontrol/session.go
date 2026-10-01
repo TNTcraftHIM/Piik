@@ -182,6 +182,12 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			!validQualitySettings(request.Profile) {
 			return nil, protocolViolation("native start-share request is invalid")
 		}
+		if err := session.validateAudioExclusion(request.Source, request.Audio, request.ExcludeAudio); err != nil {
+			return nil, err
+		}
+		if request.ExcludeAudio != nil && !request.MicrophoneMixing {
+			return nil, errors.New("native audio exclusion requires mixed audio")
+		}
 		slog.Debug("piik-client", "event", "native-profile-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "profile", nativeQualityProfile(request.Profile), "codec", request.Codec, "audio", request.Audio,
 			"sourceKind", request.Source.Kind, "adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
@@ -245,6 +251,9 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			!validIdentities(request.ShareID) || !request.Source.Valid() {
 			return nil, protocolViolation("native replace-share-source request is invalid")
 		}
+		if err := session.validateAudioExclusion(request.Source, request.Audio, request.ExcludeAudio); err != nil {
+			return nil, err
+		}
 		host := session.current(request.ShareID)
 		if host == nil {
 			return nil, errors.New("native share does not exist")
@@ -261,7 +270,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 				ShowCaptureBorder: request.ShowCaptureBorder && session.capabilities.CaptureBorderControl,
 				AdapterIndex:      request.AdapterIndex,
 				EncoderIndex:      request.EncoderIndex,
-			}, audio)
+			}, audio, request.ExcludeAudio)
 			if err != nil {
 				return nil, err
 			}
@@ -534,6 +543,19 @@ func (session *Session) finishHostOperation(done chan struct{}, result any) {
 	session.mu.Unlock()
 }
 
+func (session *Session) validateAudioExclusion(source nativecapture.CaptureTarget, audio bool, excluded *nativecapture.CaptureTarget) error {
+	if excluded == nil {
+		return nil
+	}
+	if !audio || source.Kind != "display" || excluded.Kind != "window" || !excluded.Valid() {
+		return protocolViolation("native audio exclusion target is invalid")
+	}
+	if !session.capabilities.Summary().ProcessAudioExclusion || !session.capabilities.SystemAudio {
+		return errors.New("native audio exclusion is unavailable")
+	}
+	return nil
+}
+
 func (session *Session) shareUpdateResult(request requestEnvelope, shareID string, profile nativehost.QualityProfile, err error) any {
 	if err != nil {
 		return operationFailure(request, err)
@@ -571,6 +593,7 @@ func (session *Session) startShare(
 			Profile:           profile.Video,
 		},
 		MicrophoneMixing: request.MicrophoneMixing && session.capabilities.Microphone,
+		ExcludeAudio:     request.ExcludeAudio,
 		Profile:          profile,
 		EdgeCapacity:     request.EdgeCapacity,
 		AudioEnabled: request.Audio && session.capabilities.Summary().AudioFor(

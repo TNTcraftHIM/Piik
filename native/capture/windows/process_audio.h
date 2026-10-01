@@ -21,11 +21,11 @@ using PCMWriter =
 using ReadyWriter = std::function<HRESULT()>;
 using StopProbe = std::function<bool()>;
 
-bool ProcessAudioAvailable();
+bool ProcessAudioAvailable(bool exclude = false);
 bool SystemAudioAvailable();
 HRESULT CaptureMicrophone(const std::wstring& device_id, HANDLE stop_event, const StopProbe& stop_probe,
                          const ReadyWriter& ready_writer, const PCMWriter& writer);
-HRESULT CaptureProcessAudio(DWORD pid, UINT64 expected_creation_time,
+HRESULT CaptureProcessAudio(DWORD pid, UINT64 expected_creation_time, bool exclude,
                             HANDLE stop_event, const StopProbe& stop_probe,
                             const ReadyWriter& ready_writer,
                             const PCMWriter& writer);

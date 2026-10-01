@@ -88,6 +88,83 @@ func startMixedFixture(t *testing.T) (*Session, nativecapture.VideoOptions, <-ch
 	return session, options, events
 }
 
+func TestAudioExclusionFailureMutesOnlySourceAndNeverFallsBack(t *testing.T) {
+	session, options, events := startMixedFixture(t)
+	enabled := true
+	if err := session.SetMicrophone(&enabled, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	output := session.audioSource
+	session.mixer.mu.Lock()
+	microphone := session.mixer.microphone
+	session.mixer.mu.Unlock()
+	excluded := &nativecapture.CaptureTarget{Kind: "window", SourceID: "123", PID: 456, CreationTime: "789", Title: "Voice fixture"}
+	for _, fault := range []string{"PIIK_VIDEO_FAIL", "PIIK_EXCLUSION_FAIL"} {
+		if err := session.ReplaceSource(options, true, nil); err != nil {
+			t.Fatal(err)
+		}
+		video := session.stream
+		t.Setenv(fault, "1")
+		if err := session.ReplaceSource(options, true, excluded); err == nil {
+			t.Fatal("failed exclusion was accepted", fault)
+		}
+		if session.SourceAudio() == nil || *session.SourceAudio() || session.audioStream != nil || session.stream != video {
+			t.Fatal("failed exclusion retained unfiltered audio or retired video", fault)
+		}
+		t.Setenv(fault, "")
+	}
+	marker := filepath.Join(t.TempDir(), "excluded")
+	t.Setenv("PIIK_EXCLUSION_STARTED", marker)
+	if err := session.ReplaceSource(options, true, excluded); err != nil {
+		t.Fatal(err)
+	}
+	identity, err := os.ReadFile(marker)
+	if err != nil || string(identity) != "456:789" || !*session.SourceAudio() {
+		t.Fatal("replacement did not bind exclusion to the selected process lifetime", err)
+	}
+	sourceAudio := session.audioStream
+	profile := session.profile
+	profile.AudioBitrate = 128000
+	if err := session.UpdateProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	session.SetPaused(true)
+	session.SetPaused(false)
+	if session.audioStream != sourceAudio {
+		t.Fatal("profile/pause replaced exclusion")
+	}
+	for len(events) > 0 {
+		<-events
+	}
+	if err := sourceAudio.Close(); err != nil {
+		t.Fatal(err)
+	}
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	waiting := true
+	for waiting {
+		select {
+		case event := <-events:
+			if event.Type != "audio-state" {
+				continue
+			}
+			if event.SourceAudio || !event.Microphone || event.Failed {
+				t.Fatalf("source loss was misreported: %+v", event)
+			}
+			waiting = false
+		case <-timer.C:
+			t.Fatal("source loss was not reported")
+		}
+	}
+	session.mixer.mu.Lock()
+	sameMicrophone := session.mixer.microphone == microphone
+	sourceEnded := session.mixer.source == nil
+	session.mixer.mu.Unlock()
+	if !sourceEnded || !sameMicrophone || session.audioSource != output || !session.HasAudio() {
+		t.Fatal("exclusion loss disturbed microphone or output ownership")
+	}
+}
+
 func TestNativeMicrophonePreservesMediaOwnersAcrossInputChanges(t *testing.T) {
 	session, options, events := startMixedFixture(t)
 	check := func(err error) {
@@ -130,7 +207,7 @@ func TestNativeMicrophonePreservesMediaOwnersAcrossInputChanges(t *testing.T) {
 	}
 	microphone = replaced
 	options.Target.SourceID = "2"
-	check(session.ReplaceSource(options, true))
+	check(session.ReplaceSource(options, true, nil))
 	session.mixer.mu.Lock()
 	sameMicrophone := session.mixer.microphone == microphone
 	session.mixer.mu.Unlock()

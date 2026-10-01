@@ -154,6 +154,19 @@ then select a picture card to start sharing. Device names and previews depend on
 browser permissions; while a camera is shared, other cameras are listed by name.
 Use headphones to keep speaker sound from feeding back into the microphone.
 
+### Exclude a voice app from screen audio
+
+On supported Windows Apps, open the **Screens** tab and enable **System sound**.
+Under **Exclude application audio**, select a window belonging to the voice app,
+then choose the screen to share. Open the app's window and refresh if it is absent.
+This excludes one process and its children; other playback devices are included.
+It does not mute your Piik microphone or prevent speaker sound reaching a microphone.
+
+If the excluded app closes or restarts, source audio stops. Use **Switch source**
+and select it again. Turning source audio off retains the exclusion choice;
+select **None** to restore unfiltered system audio. This control requires an updated page and a Windows App
+whose capability probe supports process exclusion; it is not a Browser-capture filter.
+
 ## When something gets in the way
 
 For sound, capture, startup or playback issues, see [Troubleshooting](./troubleshooting.md).

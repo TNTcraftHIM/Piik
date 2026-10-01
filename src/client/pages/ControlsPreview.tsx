@@ -29,9 +29,10 @@ import { PeoplePreview } from "./PeoplePreview";
 import "./controls-preview.css";
 
 const POSTER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="#e8eee6"/><rect x="100" y="60" width="440" height="240" rx="20" fill="#fffdf6"/><path d="M100 100h440" stroke="#c9d7cf" stroke-width="2"/><circle cx="128" cy="81" r="6" fill="#ed9e65"/><circle cx="320" cy="190" r="46" fill="#65b099"/><path d="m310 191 9 9 16-22" fill="none" stroke="#fffdf6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>')}`;
-const SOURCES = { kind: "ready", processAudio: true, systemAudio: true, captureBorderControl: true, sources: [
+const SOURCES = { kind: "ready", processAudio: true, systemAudio: true, processAudioExclusion: true, captureBorderControl: true, sources: [
   { kind: "window", sourceId: "101", pid: 1, creationTime: "1", title: "Sketchbook" },
   { kind: "window", sourceId: "102", pid: 2, creationTime: "2", title: "A short film" },
+  { kind: "window", sourceId: "104", pid: 3, creationTime: "3", title: "Voice call" },
   { kind: "display", sourceId: "103", title: "Display 1" },
 ] } satisfies NativeSourceList;
 const previewSource = async () => POSTER;

@@ -314,6 +314,17 @@ A Native audio-process failure does not end healthy video. A later explicit
 source replacement resumes audio through the existing track and encoder owner;
 it does not trigger an automatic capture retry or change room audio topology.
 
+Optional Windows screen-audio exclusion binds one selected process tree to its
+PID and creation time under [ADR-0008](../adr/0008-window-scoped-audio-capture.md).
+The selection lasts for the share, survives source-audio off/on and refresh,
+and is never saved across App runs or rebound by executable name. Changing to a
+window source or explicitly selecting no exclusion clears it. A requested
+exclusion retires previous source audio before replacement preparation; failure
+or target exit leaves source audio silent while healthy video and the Host
+microphone continue. Only an explicit source selection resumes it. A missing
+capability must reject the request, never discard the exclusion. Old pages keep
+their existing audio behavior.
+
 ## Observable Truth
 
 Requested resolution, frame rate, bitrate, content intent, codec, and audio

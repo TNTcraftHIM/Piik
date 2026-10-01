@@ -641,3 +641,32 @@ func TestReplaceShareSourceKeepsOneStrictTargetShape(t *testing.T) {
 		t.Fatalf("malformed target was treated as an operational failure: %v", err)
 	}
 }
+
+func TestAudioExclusionValidatesScopeWithoutDroppingRequestedPolicy(t *testing.T) {
+	session := &Session{capabilities: nativecapture.Capabilities{Microphone: true, SystemAudio: true, ProcessAudioExclusion: true}}
+	display := nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Screen"}
+	window := nativecapture.CaptureTarget{Kind: "window", SourceID: "2", PID: 123, CreationTime: "456", Title: "Voice fixture"}
+	if err := session.validateAudioExclusion(display, true, &window); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []struct {
+		source   nativecapture.CaptureTarget
+		audio    bool
+		excluded nativecapture.CaptureTarget
+	}{
+		{display, false, window}, {window, true, window}, {display, true, display},
+		{display, true, nativecapture.CaptureTarget{Kind: "window", SourceID: "2", PID: 123, Title: "Missing lifetime"}},
+	} {
+		if _, ok := session.validateAudioExclusion(invalid.source, invalid.audio, &invalid.excluded).(protocolViolation); !ok {
+			t.Fatal("malformed audio exclusion was not rejected")
+		}
+	}
+	session.capabilities.ProcessAudioExclusion = false
+	err := session.validateAudioExclusion(display, true, &window)
+	if _, malformed := err.(protocolViolation); err == nil || malformed {
+		t.Fatal("unsupported audio exclusion must fail the operation, not silently widen capture or close control")
+	}
+	if err := session.validateAudioExclusion(display, true, nil); err != nil {
+		t.Fatal("legacy capture became dependent on exclusion support")
+	}
+}

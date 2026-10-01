@@ -31,7 +31,8 @@ namespace {
 class ActivationHandler final : public RuntimeClass<
     RuntimeClassFlags<ClassicCom>, FtmBase, IActivateAudioInterfaceCompletionHandler> {
  public:
-  explicit ActivationHandler(HANDLE completed) : completed_(completed) {}
+  ActivationHandler() : completed_(CreateEventW(nullptr, FALSE, FALSE, nullptr)) {}
+  ~ActivationHandler() { if (completed_) CloseHandle(completed_); }
 
   STDMETHODIMP ActivateCompleted(IActivateAudioInterfaceAsyncOperation* operation) override {
     ComPtr<IUnknown> activated;
@@ -45,6 +46,7 @@ class ActivationHandler final : public RuntimeClass<
 
   HRESULT Result() const { return result_; }
   ComPtr<IAudioClient> Client() const { return client_; }
+  HANDLE Completed() const { return completed_; }
 
  private:
   HANDLE completed_ = nullptr;
@@ -52,26 +54,29 @@ class ActivationHandler final : public RuntimeClass<
   ComPtr<IAudioClient> client_;
 };
 
-HRESULT ActivateProcessLoopback(DWORD pid, HANDLE completed,
+HRESULT ActivateProcessLoopback(DWORD pid, bool exclude,
                                 ComPtr<IAudioClient>* client) {
   AUDIOCLIENT_ACTIVATION_PARAMS parameters{};
   parameters.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
   parameters.ProcessLoopbackParams.TargetProcessId = pid;
   parameters.ProcessLoopbackParams.ProcessLoopbackMode =
-      PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+      exclude ? PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE
+              : PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
   PROPVARIANT variant{};
   variant.vt = VT_BLOB;
   variant.blob.cbSize = sizeof(parameters);
   variant.blob.pBlobData = reinterpret_cast<BYTE*>(&parameters);
 
-  auto handler = Make<ActivationHandler>(completed);
+  // The completion can outlive a timed-out caller; it owns its event handle.
+  auto handler = Make<ActivationHandler>();
   if (!handler) return E_OUTOFMEMORY;
+  if (!handler->Completed()) return HRESULT_FROM_WIN32(GetLastError());
   ComPtr<IActivateAudioInterfaceAsyncOperation> operation;
   HRESULT result = ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
                                                 __uuidof(IAudioClient), &variant,
                                                 handler.Get(), &operation);
   if (FAILED(result)) return result;
-  if (WaitForSingleObject(completed, 10'000) != WAIT_OBJECT_0) return HRESULT_FROM_WIN32(WAIT_TIMEOUT);
+  if (WaitForSingleObject(handler->Completed(), 10'000) != WAIT_OBJECT_0) return HRESULT_FROM_WIN32(WAIT_TIMEOUT);
   result = handler->Result();
   if (SUCCEEDED(result)) *client = handler->Client();
   return result;
@@ -114,6 +119,14 @@ HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loo
     return result;
   }
   HRESULT result = S_OK;
+  // Bind process audio to the selected lifetime, including while draining PCM.
+  // Exclusion must never become unfiltered system capture after its target dies.
+  const auto processAlive = [&]() -> HRESULT {
+    if (!process) return S_OK;
+    const DWORD wait = WaitForSingleObject(process, 0);
+    if (wait == WAIT_TIMEOUT) return S_OK;
+    return HRESULT_FROM_WIN32(wait == WAIT_OBJECT_0 ? ERROR_PROCESS_ABORTED : GetLastError());
+  };
   ComPtr<IAudioCaptureClient> capture;
   WAVEFORMATEX format{};
   format.wFormatTag = WAVE_FORMAT_PCM;
@@ -131,6 +144,7 @@ HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loo
   if (SUCCEEDED(result)) result = client->GetService(IID_PPV_ARGS(&capture));
   if (SUCCEEDED(result)) result = client->SetEventHandle(sampleReady);
   if (SUCCEEDED(result)) result = client->Start();
+  if (SUCCEEDED(result)) result = processAlive();
   if (SUCCEEDED(result)) result = ready_writer();
   if (SUCCEEDED(result)) {
     std::array<BYTE, kAudioBytesPerChunk> silence{};
@@ -171,6 +185,7 @@ HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loo
     }
     UINT32 frames = 0;
     while (SUCCEEDED(result = capture->GetNextPacketSize(&frames)) && frames > 0) {
+      if (FAILED(result = processAlive())) break;
       BYTE* data = nullptr;
       DWORD flags = 0;
       UINT64 devicePosition = 0;
@@ -198,6 +213,7 @@ HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loo
       }
       capture->ReleaseBuffer(frames);
       while (pending.size() - consumed >= kAudioBytesPerChunk) {
+        if (FAILED(result = processAlive())) break;
         result = writer(nextTimestamp, pending.data() + consumed,
                         kAudioBytesPerChunk);
         if (FAILED(result)) break;
@@ -218,13 +234,10 @@ HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loo
 
 }  // namespace
 
-bool ProcessAudioAvailable() {
-  HANDLE completed = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-  if (completed == nullptr) return false;
+bool ProcessAudioAvailable(bool exclude) {
   ComPtr<IAudioClient> client;
   const HRESULT result =
-      ActivateProcessLoopback(GetCurrentProcessId(), completed, &client);
-  CloseHandle(completed);
+      ActivateProcessLoopback(GetCurrentProcessId(), exclude, &client);
   return SUCCEEDED(result) && client != nullptr;
 }
 
@@ -233,32 +246,24 @@ bool SystemAudioAvailable() {
   return SUCCEEDED(ActivateEndpoint(&client)) && client != nullptr;
 }
 
-HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime,
+HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime, bool exclude,
                             HANDLE stop_event, const StopProbe& stop_probe,
                             const ReadyWriter& ready_writer,
                             const PCMWriter& writer) {
   HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
   if (FAILED(com_result)) return com_result;
-  HRESULT result = ValidateProcessTarget(pid, expectedCreationTime);
-  HANDLE process = nullptr;
-  HANDLE completed = nullptr;
+  // Validate and watch the same handle so PID reuse cannot change the target.
+  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
+  HRESULT result = process ? ValidateProcessTarget(process, expectedCreationTime)
+                           : HRESULT_FROM_WIN32(GetLastError());
   ComPtr<IAudioClient> client;
   if (SUCCEEDED(result)) {
-    process = OpenProcess(SYNCHRONIZE, FALSE, pid);
-    if (process == nullptr) result = HRESULT_FROM_WIN32(GetLastError());
-  }
-  if (SUCCEEDED(result)) {
-    completed = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (completed == nullptr) result = HRESULT_FROM_WIN32(GetLastError());
-  }
-  if (SUCCEEDED(result)) {
-    result = ActivateProcessLoopback(pid, completed, &client);
+    result = ActivateProcessLoopback(pid, exclude, &client);
   }
   if (SUCCEEDED(result)) {
     result = CaptureAudioFrames(client, process, true, stop_event, stop_probe,
                                   ready_writer, writer);
   }
-  if (completed != nullptr) CloseHandle(completed);
   if (process != nullptr) CloseHandle(process);
   client.Reset();
   CoUninitialize();

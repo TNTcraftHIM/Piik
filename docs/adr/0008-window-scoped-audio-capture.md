@@ -2,7 +2,7 @@
 
 - Status: accepted for Browser capture and the Windows App audio paths
 - Date: 2026-08-21
-- Last updated: 2026-08-27
+- Last updated: 2026-10-01
 
 ## Context
 
@@ -26,8 +26,8 @@ platform probe and physical gate report it.
    Track presence does not prove its source or isolation.
 3. Returned screen-audio tracks use `contentHint = "music"`. Current bounded
    sender ceilings and narrow Opus stereo answer normalization are owned by
-   [media quality](../standards/media-quality.md). There is no Web Audio mixer,
-   resampler, second representation, or independent audio clock.
+   [media quality](../standards/media-quality.md). Audio scope adds no second
+   representation or independent clock; Host commentary uses the existing mixer.
 4. Browser source switching replaces the current screen-audio track in the same
    persistent media stream. Local Viewer play, mute, and volume stay inside the
    native media element.
@@ -38,6 +38,13 @@ platform probe and physical gate report it.
    probe and physical gate pass. WGC/MF video and the App media boundary are owned by
    [ADR-0010](./0010-cross-platform-client-runtime.md); measurements are in
    [Native App media](../research/native-client-media.md).
+7. Windows App screen sharing can optionally exclude one selected process tree
+   through WASAPI's exclusion mode, on build 20348+ with a successful capability
+   probe. This mode spans all render endpoints; it is not restricted to the
+   default playback device. Reuse source enumeration and the existing PCM/mixed
+   output. Generic Browser capture and arbitrary unrelated process sets are not
+   covered. [Media quality](../standards/media-quality.md#screen-audio) owns
+   selection lifetime and failure behavior.
 
 ## Consequences
 

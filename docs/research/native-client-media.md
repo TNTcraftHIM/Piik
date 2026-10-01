@@ -1,10 +1,28 @@
 # Native App Media Evidence
 
-- Reviewed: 2026-09-29
+- Reviewed: 2026-10-01
 - Scope: platform capture, shared encoded sources, Pion transport and Browser
   decode; current behavior belongs to [media quality](../standards/media-quality.md)
 - Status: Windows physical native Host and Viewer gates passed; macOS and Linux adapters
   compile and package but still require physical media gates
+
+## Windows Audio Exclusion
+
+A Windows 11 build 26200 check used two independent WinMM processes emitting
+500 Hz and 1500 Hz tones, through the production capture helper and Go PCM
+reader. Default-device loopback captured both at approximately 1799 amplitude;
+process inclusion retained the first with under 0.3 amplitude of the other,
+and exclusion retained the second with under 0.04 of the excluded tone. Target
+exit retired capture in about 42 ms; attempting the stale identity failed.
+No raw audio was saved. The extended capability probe completed in 300 ms.
+
+The session fixture separately verifies failed exclusion replacement mutes
+source audio while preserving video, microphone and encoded audio output; pause
+and audio-profile changes retain the selected input. These checks establish a
+local Windows implementation, not coverage of every voice application's process
+tree or simultaneous playback across several output devices. Those remain
+device acceptance boundaries. [ADR-0008](../adr/0008-window-scoped-audio-capture.md)
+owns the platform choice.
 
 ## Initial Physical Evidence (2026-09-05)
 

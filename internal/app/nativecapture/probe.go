@@ -42,36 +42,39 @@ type Adapter struct {
 }
 
 type Capabilities struct {
-	Protocol             int       `json:"protocol"`
-	Platform             string    `json:"platform"`
-	PlatformBuild        string    `json:"platformBuild"`
-	VideoCapture         bool      `json:"videoCapture"`
-	CaptureBorderControl bool      `json:"captureBorderControl,omitempty"`
-	Microphone           bool      `json:"microphone,omitempty"`
-	ProcessAudio         bool      `json:"processAudio"`
-	SystemAudio          bool      `json:"systemAudio"`
-	SoftwareVP8          bool      `json:"softwareVP8"`
-	Adapters             []Adapter `json:"adapters"`
+	Protocol              int       `json:"protocol"`
+	Platform              string    `json:"platform"`
+	PlatformBuild         string    `json:"platformBuild"`
+	VideoCapture          bool      `json:"videoCapture"`
+	CaptureBorderControl  bool      `json:"captureBorderControl,omitempty"`
+	Microphone            bool      `json:"microphone,omitempty"`
+	ProcessAudio          bool      `json:"processAudio"`
+	ProcessAudioExclusion bool      `json:"processAudioExclusion,omitempty"`
+	SystemAudio           bool      `json:"systemAudio"`
+	SoftwareVP8           bool      `json:"softwareVP8"`
+	Adapters              []Adapter `json:"adapters"`
 }
 
 type Summary struct {
-	Video                bool
-	CaptureBorderControl bool
-	Microphone           bool
-	ProcessAudio         bool
-	SystemAudio          bool
-	HardwareH264         bool
-	SoftwareVP8          bool
+	Video                 bool
+	CaptureBorderControl  bool
+	Microphone            bool
+	ProcessAudio          bool
+	ProcessAudioExclusion bool
+	SystemAudio           bool
+	HardwareH264          bool
+	SoftwareVP8           bool
 }
 
 func (capabilities Capabilities) Summary() Summary {
 	summary := Summary{
-		Video:                capabilities.VideoCapture,
-		CaptureBorderControl: capabilities.VideoCapture && capabilities.CaptureBorderControl,
-		Microphone:           capabilities.Microphone,
-		ProcessAudio:         capabilities.ProcessAudio,
-		SystemAudio:          capabilities.SystemAudio,
-		SoftwareVP8:          capabilities.SoftwareVP8,
+		Video:                 capabilities.VideoCapture,
+		CaptureBorderControl:  capabilities.VideoCapture && capabilities.CaptureBorderControl,
+		Microphone:            capabilities.Microphone,
+		ProcessAudio:          capabilities.ProcessAudio,
+		ProcessAudioExclusion: capabilities.ProcessAudioExclusion && capabilities.Microphone,
+		SystemAudio:           capabilities.SystemAudio,
+		SoftwareVP8:           capabilities.SoftwareVP8,
 	}
 	for _, adapter := range capabilities.Adapters {
 		if len(adapter.HardwareH264) > 0 {

@@ -15,6 +15,8 @@ int main() {
   assert(GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user));
   const UINT64 creation_time = (static_cast<UINT64>(created.dwHighDateTime) << 32) |
                                created.dwLowDateTime;
+  assert(SUCCEEDED(piik::capture::ValidateProcessTarget(GetCurrentProcess(), creation_time)));
+  assert(FAILED(piik::capture::ValidateProcessTarget(GetCurrentProcess(), creation_time + 1)));
   HANDLE previous_output = GetStdHandle(STD_OUTPUT_HANDLE);
   HANDLE sink = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_WRITE, nullptr,
                             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
