@@ -40,14 +40,12 @@ history. A parked idea is not implementation authority.
   Field reports without matched evidence remain distinct from
   locally reproduced defects.
 
-- [ ] **Native HDR-to-SDR.** The [fidelity assessment](./research/media-fidelity.md)
-  confirms an 8-bit Windows capture path without explicit HDR tone mapping.
-  Preserve HDR input and use platform conversion before the existing SDR
-  encoder; check thumbnails, mixed displays and cost on HDR hardware before
-  shipping. Issue [#420](https://github.com/TNTcraftHIM/Piik/issues/420)'s Browser
-  path still needs frame evidence. Local Browser direct/relay/SFU and Native
-  codec checks preserve stereo; remaining physical fidelity checks belong to
-  device acceptance. Full HDR and surround sound need a separate design.
+- [ ] **Native SDR conversion.** The [fidelity assessment](./research/media-fidelity.md#sdr-conversion)
+  reproduces range clipping in the current converter/VP8/WebRTC path, independently
+  of HDR. An explicit range/matrix experiment restores test colors. Complete the
+  shared conversion contract and verify H.264, VP8 and NV12 relay scaling before
+  integrating a repair; do not infer WebRTC colors from WebCodecs alone.
+  This is not yet a matched cause for issue [#445](https://github.com/TNTcraftHIM/Piik/issues/445).
 
 ## Held By Owner
 
@@ -61,6 +59,15 @@ history. A parked idea is not implementation authority.
 ## Deferred Feature Work
 
 These proposals remain deferred while the text/reaction candidate is active.
+
+- [ ] **Native HDR-to-SDR.** The [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr)
+  confirms an 8-bit Windows capture path without explicit HDR tone mapping.
+  Preserve HDR input and use platform conversion before the existing SDR
+  encoder; check thumbnails, mixed displays and cost on HDR hardware before
+  shipping. Issue [#420](https://github.com/TNTcraftHIM/Piik/issues/420)'s Browser
+  path still needs frame evidence. Keep this out of the current phase; full HDR
+  and surround sound need a separate design. Existing stereo has decoded-signal
+  evidence; physical source/device coverage remains acceptance work.
 
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
@@ -104,6 +111,9 @@ These proposals remain deferred while the text/reaction candidate is active.
   [runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup).
   Demo access failures and public-link HTTP 1033 also remain unconfirmed; check
   connector, DNS/provider and remote access separately from WebRTC availability.
+  [#434](https://github.com/TNTcraftHIM/Piik/issues/434)'s attached log records DNS
+  refusal during Cloudflare edge discovery, before readiness; retrying media
+  cannot repair that resolver failure. Do not assign it to every startup report.
 - [ ] **Interruption during established viewing.** A Viewer reportedly returns
   to P2P connecting after watching for a while. Include
   [#429](https://github.com/TNTcraftHIM/Piik/issues/429)'s reported SFU-to-P2P
@@ -138,6 +148,10 @@ These proposals remain deferred while the text/reaction candidate is active.
   also needs paired evidence; distinguish activation, codec configuration and
   actual output before changing the encoder contract. Local NVIDIA success
   does not settle AMD activation.
+  In [#437](https://github.com/TNTcraftHIM/Piik/issues/437), both manually selected
+  codecs reportedly work; its Browser report records Auto startup returning
+  `operation-failed` after 6.85 seconds, before the request timeout. Obtain the
+  same attempt's App diagnostics to locate selection/activation failure.
 - [ ] **Share ends after entering a game.** Screen sharing reportedly works
   until entering a game freezes the picture, followed seconds later by share
   termination. Version, capture path, codec and matched diagnostics are unknown.
@@ -261,3 +275,7 @@ not establish better connection success or speed; this note adds no retry policy
 11. **Release-operation policy.** Protected release environments, immutable
     draft assets and changing mirror-failure policy remain unaccepted proposals;
     evaluate their benefit before adding release machinery.
+12. **Linux ARM64 Server distribution (#439).** Evaluate archives and container
+    publishing together with deployment names, update links and runtime checks.
+    A cross-compile alone does not establish a supported package. This is a
+    community proposal, not part of the current accepted candidate.

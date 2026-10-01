@@ -36,6 +36,48 @@ These checks support keeping the existing stereo path. They do not cover every
 physical source device, browser or acoustic setup, and do not establish surround
 sound support.
 
+## SDR Conversion
+
+[#445](https://github.com/TNTcraftHIM/Piik/issues/445) reports washed-out Native
+capture on an SDR Windows 10 system. Its proposed explanation is not established:
+Microsoft documents full-range RGB as the
+[video processor's default input range](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_video_processor_color_space).
+The actual gap is that `FrameConverter` does not specify its input/output range
+or matrix. The same converter handles BGRA capture and decoded NV12 relay input;
+a correction must respect both formats.
+
+A local D3D11 check through the current converter produced full-range NV12 from
+BGRA color bars (black Y=0, white Y=255). The production `AdaptiveEncoder` VP8
+output then reproduced crushed shadows and clipped highlights in Chrome 154:
+
+| Source gray RGB | Current conversion, WebRTC playback | Explicit limited-range BT.601 experiment |
+| --- | --- | --- |
+| 0 | 0 | 0 |
+| 32 | 19 | 33 |
+| 128 | 130 | 128 |
+| 235 | 255 | 235 |
+| 255 | 255 | 255 |
+
+The fixture encoded 256x128 color bars with the production converter/encoder,
+injected those keyframes into a local VP8 PeerConnection without the color-space
+RTP extension, and sampled the playing video into a canvas. The experimental
+conversion also restored red/green/blue bars to within one channel value of the
+source. This establishes a bounded SDR defect, not the cause of every color
+report or a validated product repair.
+
+WebCodecs and WebRTC are not interchangeable acceptance paths: explicit BT.709
+looked correct through WebCodecs but shifted primary colors through this WebRTC
+receiver. Chromium's
+[remote-frame conversion](https://chromium.googlesource.com/chromium/src/+/master/third_party/blink/renderer/modules/peerconnection/media_stream_remote_video_source.cc)
+can use BT.601 when color metadata is unspecified. White Y=235 is normal for
+limited-range YUV; it must become display RGB=255, not be treated as a defect by
+itself.
+
+Complete the correction at the shared conversion/encoding boundary, with explicit
+range and matrix expectations. Verify actual Native H.264 and VP8 reception,
+NV12 relay scaling without a second range conversion, and source replacement
+before integration. The experiment has not changed production color handling.
+
 ## HDR To SDR
 
 [#420](https://github.com/TNTcraftHIM/Piik/issues/420) reports overexposure with
@@ -51,7 +93,8 @@ avoid clipping. Reducing brightness after encoding cannot restore clipped
 highlights. This is a confirmed implementation gap, not proof that every
 reported Browser failure has the same cause.
 
-The bounded next implementation is native **HDR-to-SDR**, before the existing
+Native **HDR-to-SDR** is deferred while ordinary SDR correctness and the current
+candidate are accepted. Its smallest coherent implementation belongs before the existing
 encoder: preserve scRGB FP16 input, use platform tone/gamut mapping and correct
 SDR white level, then hand ordinary SDR frames to the current output workers.
 Use the same conversion for capture previews. Microsoft's

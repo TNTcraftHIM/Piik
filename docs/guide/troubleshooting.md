@@ -147,8 +147,9 @@ Try these in order, stopping when the picture arrives:
 6. **Invite a friend on another network.** A Viewer who can receive the picture
    and has spare forwarding capacity may give Piik another path to you. Piik
    chooses this automatically; extra people help only when those connections work.
-7. **Use a site with media fallback.** Its operator must enable SFU forwarding,
-   and the Host must turn off **Privacy mode** before sharing. The public
+7. **Use a site with media fallback.** Its operator must enable SFU forwarding.
+   If the site offers **Privacy mode**, the Host must turn it off before sharing.
+   Sites configured for **Server media** already require SFU. The public
    `demo.piik.tv` site and the App's **Public invite** mode do not provide SFU.
    [Self-hosting](../operations/self-hosting.md#optional-media-fallback) is an
    advanced option. Both P2P and SFU media currently use UDP; a network that blocks
