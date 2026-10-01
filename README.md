@@ -34,6 +34,7 @@ watch in their browsers.
 - **Share from Piik App or an existing Piik site.** Choose a screen, window, browser tab or camera; available sources and audio depend on the platform.
 - **Direct connections first.** Media travels between participants where possible (P2P). A self-hosted server can provide automatic media forwarding (SFU) as a fallback.
 - **Rooms you control.** Invitations, room codes and optional room passwords, for one host and up to 20 viewers.
+- **Chat while watching.** Send messages and reactions to friends, with optional on-screen chat.
 - **Flexible viewing.** Light and dark themes, playback controls, picture-in-picture and a connection topology view.
 - **One program to host a site.** Web UI, room management and optional media forwarding are packaged together.
 

@@ -18,7 +18,7 @@ history. A parked idea is not implementation authority.
 
 - [ ] **Windows source-audio exclusion acceptance.** The candidate excludes one
   selected process tree during App screen sharing, using the existing PCM/mixer
-  and media routes. Local tone isolation and target-exit checks passed;
+  and media routes. Local parent/child tone isolation and target-exit checks passed;
   [native-media evidence](./research/native-client-media.md#windows-audio-exclusion)
   owns the limits. Accept the picker, source-audio off/on, replacement failure,
   and real voice apps with their child processes and playback devices. Keep
@@ -37,8 +37,10 @@ history. A parked idea is not implementation authority.
   Retain current room creation: the first share creates a room, an existing room
   can resume, and stopping media keeps the opted-in interaction session. Do not
   add visit-triggered creation or a separate pre-share room-creation entry.
-  Verify idle-room recovery, authorization retirement and mixed published-page
-  capability behavior before integration. [Candidate scope](./research/room-interactions.md)
+  Local multi-page checks cover idle-room recovery, invitation revocation,
+  reconnect with draft retention and shared event timing; protocol checks cover
+  unsubscribed older pages. Real mobile keyboard and final owner walkthrough
+  remain before integration. [Candidate scope](./research/room-interactions.md)
   owns the design and evidence limits. Merge and publication remain unapproved.
 - [ ] **Published-product regression acceptance.** Keep share startup,
   audio/source changes, sustained viewing, recovery/retirement, admission and

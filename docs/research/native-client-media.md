@@ -16,11 +16,19 @@ and exclusion retained the second with under 0.04 of the excluded tone. Target
 exit retired capture in about 42 ms; attempting the stale identity failed.
 No raw audio was saved. The extended capability probe completed in 300 ms.
 
+A parent/child follow-up used a silent selected parent with a 1900 Hz child,
+plus an independent 2900 Hz process. Process-scoped reference amplitudes were
+about 1799; exclusion retained the independent tone at 1800 and reduced the
+selected child's tone to 9.3 (under 0.6%). Parent exit retired capture in 64 ms;
+its stale identity was rejected. The reference uses each signal's own process
+capture: default-device loopback also includes unrelated playback and endpoint
+processing, so its amplitude is not a process-capture gain reference.
+
 The session fixture separately verifies failed exclusion replacement mutes
 source audio while preserving video, microphone and encoded audio output; pause
 and audio-profile changes retain the selected input. These checks establish a
-local Windows implementation, not coverage of every voice application's process
-tree or simultaneous playback across several output devices. Those remain
+local Windows implementation and one direct child, not coverage of every voice
+application's process tree or simultaneous playback across several output devices. Those remain
 device acceptance boundaries. [ADR-0008](../adr/0008-window-scoped-audio-capture.md)
 owns the platform choice.
 

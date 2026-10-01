@@ -7,6 +7,7 @@ watching, using Piik online, using Piik App and sharing through an existing site
 
 [Join a room](#join-a-friends-room) · [Use online](#use-piik-online) ·
 [Piik App](#share-with-piik-app) · [Existing site](#share-from-an-existing-site) ·
+[Chat and reactions](#chat-and-reactions) ·
 [Troubleshooting](#when-something-gets-in-the-way)
 
 Viewers need a browser and an invitation. To start sharing, download Piik App
@@ -159,13 +160,30 @@ Use headphones to keep speaker sound from feeding back into the microphone.
 On supported Windows Apps, open the **Screens** tab and enable **System sound**.
 Under **Exclude application audio**, select a window belonging to the voice app,
 then choose the screen to share. Open the app's window and refresh if it is absent.
-This excludes one process and its children; other playback devices are included.
+This excludes one process and its children. Other apps remain audible, including
+those playing through other output devices.
 It does not mute your Piik microphone or prevent speaker sound reaching a microphone.
 
 If the excluded app closes or restarts, source audio stops. Use **Switch source**
 and select it again. Turning source audio off retains the exclusion choice;
 select **None** to restore unfiltered system audio. This control requires an updated page and a Windows App
 whose capability probe supports process exclusion; it is not a Browser-capture filter.
+
+## Chat and reactions
+
+Once the host starts the first share, participants can select **Chat** below the
+sofa to send messages. Select a person on the sofa to open their reaction menu:
+your own reactions appear above you; reactions sent to a friend fly towards them.
+The chat window can be moved and resized without rearranging the page.
+
+**On screen**, beside the message box or in the viewer's playback bar, shows new
+messages over the picture. It is off by default and only changes your own view.
+System video fullscreen and picture in picture cannot show these overlays.
+
+Stopping a share keeps the room's chat available. App Local and Public invite
+rooms require the App to stay open. Each page retains only its latest received
+messages: refreshing clears them, and late joiners receive no earlier history.
+Chat travels through the room's server and is **not end-to-end encrypted**.
 
 ## When something gets in the way
 
