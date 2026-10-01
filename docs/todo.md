@@ -12,12 +12,9 @@ history. A parked idea is not implementation authority.
   and media routes. Local tone isolation and target-exit checks passed;
   [native-media evidence](./research/native-client-media.md#windows-audio-exclusion)
   owns the limits. Accept the picker, source-audio off/on, replacement failure,
-  and real voice apps with their child processes and playback devices. Browser
-  capture remains outside this slice. The requested multi-application selection
-  awaits a scope decision: retain one process tree or adopt session discovery
-  and multi-input capture/mixing, as assessed in the linked evidence. Keep the
-  current single-selection implementation pending that decision. Publication
-  remains unapproved.
+  and real voice apps with their child processes and playback devices. Keep
+  single-selection scope for this phase; Browser capture and multiple unrelated
+  exclusions remain outside it. Publication remains unapproved.
 
 - [ ] **Room-interaction candidate acceptance.** Resumed on current main with
   the verified, unpublished maintenance fixes. Review chat, optional danmaku and
