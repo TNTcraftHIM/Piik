@@ -94,6 +94,9 @@ These proposals remain deferred while the text/reaction candidate is active.
   evidence before calling that an ICE/NAT failure. HTTP 1033 belongs to the
   public-link item below, before media routing. Local fixes and STUN checks do
   not establish these reporters' causes.
+  [#443](https://github.com/TNTcraftHIM/Piik/issues/443)'s Host report reaches Native
+  prepare/answer/candidate processing without a connected remote edge; obtain
+  the same attempt's Viewer and App transport reports to locate the failure.
 - [ ] **Camera and Host microphone device coverage.** The owner accepted the
   sharing layout and authorized release with these physical limits recorded.
   Verify real audio levels/echo, multiple-device replacement and native mixing on

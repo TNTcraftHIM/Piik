@@ -101,6 +101,8 @@ nginx 可参考[配置示例](../../deploy/nginx/piik.conf.example)。如果沿�
 
 在服务器防火墙和云平台安全组中放行 **TCP 80/443**（HTTPS）和 **UDP 3478**（STUN）。
 TCP 8787 仅供本机反向代理访问。STUN 域名需要直接解析到服务器，不能只经过 CDN 的 HTTP 代理。
+可选服务的端口见[完整端口表](../standards/configuration.md#public-and-private-ports)。
+内置 SFU 的媒体流复用 `SFU_UDP_PORT` 指定的单个 UDP 端口。
 
 打开 `https://share.example.com/healthz`，应返回 `{"status":"ok"}`。
 随后打开站点，分享一个画面，并用另一台设备加入验证。
@@ -111,6 +113,7 @@ TCP 8787 仅供本机反向代理访问。STUN 域名需要直接解析到服务
 在 `.env` 中添加 `SFU_UDP_PORT=7882`，放行 UDP 7882，再重启 Piik，即可启用自动 SFU 兜底。
 如果服务器处于 NAT 后方，还需将 `SFU_PUBLIC_IP` 设置为外部可达的公网 IPv4 地址。
 这项功能由同一个服务端程序提供。
+服务器需要为实际经由 SFU 观看的观众承担转发负载和出口带宽。
 房主需要在开始分享前关闭 **隐私模式**，才会允许使用这条线路。
 直连和 SFU 媒体都需要可用的 UDP 通路。
 

@@ -112,6 +112,9 @@ permission; `self` allows this site to request access.
 Allow **TCP 80/443** for HTTPS and **UDP 3478** for STUN in the server firewall
 and cloud security group. Keep TCP 8787 private. The STUN hostname must resolve
 directly to the server; a CDN HTTP proxy does not forward its UDP traffic.
+See the [complete port table](../standards/configuration.md#public-and-private-ports)
+for optional services. Embedded SFU media shares the single UDP port set by
+`SFU_UDP_PORT`.
 
 Open `https://share.example.com/healthz`; it should return `{"status":"ok"}`.
 Then open the site, share a screen and join from another device. This initial
@@ -122,6 +125,8 @@ configuration uses P2P media, so participants need a usable UDP path.
 Add `SFU_UDP_PORT=7882` to `.env`, allow UDP 7882, and restart Piik to enable
 automatic SFU fallback. When the server is behind NAT, also set `SFU_PUBLIC_IP`
 to its reachable public IPv4 address. The same binary provides the fallback.
+Allow server forwarding capacity and outbound bandwidth for Viewers actually
+using the SFU.
 The Host must turn off **Privacy mode** before sharing to allow this route.
 Both direct and SFU media need a usable UDP connection.
 
