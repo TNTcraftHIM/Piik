@@ -112,7 +112,7 @@ export function LauncherForm({
               key={choice.mode}
               type="button"
               role="radio"
-              className={`lr-client-mode${mode === choice.mode ? " is-selected" : ""}`}
+              className={`lr-tile lr-client-mode${mode === choice.mode ? " is-selected" : ""}`}
               aria-checked={mode === choice.mode}
               tabIndex={mode === choice.mode ? 0 : -1}
               aria-label={t(choice.label)}

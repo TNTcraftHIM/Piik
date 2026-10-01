@@ -45,6 +45,7 @@ const previewMicrophones = async () => [{ id: "headset", label: "USB Headset" },
 export function ControlsPreview() {
   const { t, lang, vis } = useCopy();
   const en = lang === "en";
+  const displayPreview = new URLSearchParams(window.location.search).get("source") === "display";
   const [sound, setSound] = useState(true);
   const [microphone, setMicrophone] = useState(false);
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
@@ -63,7 +64,7 @@ export function ControlsPreview() {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [name, setName] = useState("Piik friend");
   const [invalid, setInvalid] = useState(false);
-  const [sourceOpen, setSourceOpen] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(displayPreview);
   const [sourceState, setSourceState] = useState<NativeSourceList["kind"] | "empty">("ready");
   const [captureBorderAvailable, setCaptureBorderAvailable] = useState(true);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
@@ -191,12 +192,16 @@ export function ControlsPreview() {
         {en ? ["Available", "Loading", "App unavailable", "Update needed", "Capture unavailable", "Read failed", "Empty list"][index] : ["正常", "读取中", "App 未连接", "需要更新", "无法采集", "读取失败", "空列表"][index]}</Chip>)}
         <SwitchItem checked={captureBorderAvailable} onChange={setCaptureBorderAvailable}
           label={en ? "Windows border control" : "Windows 边框控制"} />
+        <a className="lr-btn" href="/__tooltip-preview?source=display#source-preview" onClick={() => setSourceOpen(true)}>
+          <Glyph name="speakerOff" size={18} />{t("host.sourcePicker.excludeAudio")}
+        </a>
       </div>
       <div className="cp-stage"><StageTv hasEntry label={t("host.sourcePicker.title")}>
         <img className="cp-poster" src={POSTER} alt="" />
         {sourceOpen ? <CaptureSourcePicker nativeSources={sourceState === "empty" ? { ...SOURCES, sources: [], captureBorderControl: captureBorderAvailable }
           : sourceState === "ready" ? { ...SOURCES, captureBorderControl: captureBorderAvailable } : { kind: sourceState }}
           initialShowCaptureBorder={showCaptureBorder}
+          initialTab={displayPreview ? "display" : "window"}
           onBrowser={() => { setSourceOpen(false); notify(); }}
           onCamera={() => { setSourceOpen(false); notify(); }}
           loadCameras={previewCameras}

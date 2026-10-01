@@ -131,7 +131,7 @@ export function AppLauncherPage() {
   const updateText = update ? `${t(updateKey)} · ${update.version}` : "";
   const updateLink = update ? (
     <a
-      className="lr-client-update"
+      className="lr-btn lr-client-update"
       href={update.url}
       target="_blank"
       rel="noopener noreferrer"

@@ -1133,7 +1133,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-slider input { flex: 1; accent-color: var(--action); height: 32px; }
 .lr-slider output { min-width: 64px; font-family: var(--mono); font-size: 12.5px; text-align: right; }
 
-/* quality tiles */
+/* Choice tiles share interaction feedback; each surface owns its layout. */
 .lr-tiles { display: flex; gap: 10px; flex-wrap: wrap; }
 .lr-tile {
   display: grid;
@@ -1151,8 +1151,8 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-tile:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-selected) { background: var(--wall-2); transform: translateY(-2px); }
 .lr-tile:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(2px) scale(.97); box-shadow: none; }
 .lr-tile.is-selected { background: var(--ink); color: var(--paper); animation: lr-pop .2s var(--spring); }
-.lr-tile small { max-width: 100%; font-family: var(--mono); font-size: 11px; letter-spacing: .02em; color: #5d7086; text-wrap: balance; overflow-wrap: anywhere; }
-.lr-tile.is-selected small { color: var(--paper); opacity: .75; }
+.lr-tiles .lr-tile small { max-width: 100%; font-family: var(--mono); font-size: 11px; letter-spacing: .02em; color: #5d7086; text-wrap: balance; overflow-wrap: anywhere; }
+.lr-tiles .lr-tile.is-selected small { color: var(--paper); opacity: .75; }
 
 /* text inputs */
 .lr-input {
@@ -1497,20 +1497,17 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 .lr-client-launch-status { color: var(--ink); font-size: 14px; font-weight: 650; }
 .lr-client-launch-detail { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font: 13px/1.6 var(--mono); }
 .lr-client-update {
-  display: inline-flex;
-  align-items: center;
   gap: 7px;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
   min-height: 34px;
   padding: 6px 11px;
-  border: 1.5px solid var(--action);
-  border-radius: 8px;
-  color: var(--ink);
   font-size: 12.5px;
   font-weight: 700;
+  white-space: normal;
   text-decoration: none;
 }
-.lr-client-update:hover { background: rgba(47, 111, 237, .1); }
-.lr-client-update:focus-visible { outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-client-modes {
   display: grid;
   width: 100%;
@@ -1523,24 +1520,14 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 }
 .lr-client-modes > .lr-comic-tip-wrap > .lr-client-mode { width: 100%; }
 .lr-client-mode {
-  display: grid;
   min-width: 0;
   min-height: 112px;
   place-items: center;
   align-content: center;
   gap: 10px;
   padding: 14px;
-  border: 2px solid var(--control-edge);
-  border-radius: var(--control-radius);
-  background: var(--paper);
-  color: var(--ink);
   text-align: center;
-  box-shadow: var(--control-shadow);
-  transition: transform 160ms var(--spring), background 120ms ease, color 120ms ease;
 }
-.lr-client-mode:is(:hover, :focus-visible):not(:disabled):not(.is-selected) { background: var(--wall-2); transform: translateY(-2px); }
-.lr-client-mode:active:not(:disabled) { transform: translateY(2px) scale(.97); box-shadow: none; }
-.lr-client-mode.is-selected { background: var(--ink); color: var(--paper); }
 .lr-client-mode > span {
   display: grid;
   min-width: 0;
@@ -1732,10 +1719,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
     text-align: left;
   }
   .lr-client-mode > span { justify-self: stretch; }
-  .lr-client-launch-panel:has(.lr-client-modes > .lr-client-mode:only-child) .lr-client-mode {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
+  .lr-client-mode:not(:has(> span)) { grid-template-columns: 1fr; justify-items: center; }
   .lr-route { padding-inline: 0; }
   .lr-row { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; }
   .lr-row > .lr-spacer,
@@ -1926,7 +1910,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
     padding: 0;
   }
   .lr-tiles .lr-tile { padding-inline: 4px; }
-  .lr-tile small { font-size: 10px; letter-spacing: 0; }
+  .lr-tiles .lr-tile small { font-size: 10px; letter-spacing: 0; }
 }
 
 /* ---------- shared text / comic tooltip ---------- */
@@ -2135,7 +2119,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
     transition-duration: 0.01ms !important;
   }
   .lr-tv-static { animation: none; opacity: .35; }
-  .lr-btn, .lr-chip, .lr-tile, .lr-client-mode, .lr-toggle button, .lr-lang > button, .lr-language-menu button, .lr-source-option, .lr-source-picker-refresh, .lr-source-picker-close { transform: none !important; }
+  .lr-btn, .lr-chip, .lr-tile, .lr-toggle button, .lr-lang > button, .lr-language-menu button, .lr-source-option, .lr-source-picker-refresh, .lr-source-picker-close { transform: none !important; }
   .lr-route-edge.is-pending { animation: none; }
 }
 
@@ -2149,7 +2133,7 @@ html[data-theme="dark"] .lr-pill { color: #e8a33d; }
 html[data-theme="dark"] .lr-pill.is-bad { color: #e88a85; }
 html[data-theme="dark"] .lr-pill.is-good { color: #63c78a; }
 /* Dark-mode preset tiles: lift the unselected caption off the tile fill. */
-html[data-theme="dark"] .lr-tile:not(.is-selected) small { color: #8ba0b4; }
+html[data-theme="dark"] .lr-tiles .lr-tile:not(.is-selected) small { color: #8ba0b4; }
 
 @media (max-width: 640px) {
   /* Pawn drill-down: the shared .lr-row column stack breaks this card —

@@ -365,7 +365,9 @@ export function CaptureSourcePicker({
                 </div>
               ) : null}
               {canExcludeAudio && shareAudio && anyNativeAudio ? (
-                <details className="lr-source-exclusion">
+                <details className="lr-source-exclusion" onToggle={event => {
+                  if (event.currentTarget.open) event.currentTarget.scrollIntoView({ block: "nearest" });
+                }}>
                   <summary aria-label={vis ? t("host.sourcePicker.excludeAudio") : undefined}>
                     <Glyph name="speakerOff" size={18} />
                     {!vis && <span>{t("host.sourcePicker.excludeAudio")}{excludeAudio ? ` · ${excludeAudio.title}` : ""}</span>}
