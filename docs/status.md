@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-01
+Last updated: 2026-10-02
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -35,10 +35,10 @@ Website delivery includes a bilingual reader documentation center generated
 from the repository's guides alongside the homepage, with search and detailed
 troubleshooting separate from the homepage FAQ.
 
-## Active Candidate
+## Accepted Interaction Phase
 
-The isolated [room-interaction candidate](./research/room-interactions.md) resumes
-on current main with the verified, unpublished media repairs. It adds authenticated text and reactions
+The accepted [room-interaction design](./research/room-interactions.md) includes
+the verified media repairs. It adds authenticated text and reactions
 over existing signaling, with optional local chat overlay and a shared floating
 panel. Its opted-in room session can outlive a publication; capture, quality and
 route owners remain unchanged. Optional Windows screen-audio exclusion uses the
@@ -49,9 +49,9 @@ synthetic GPU and Browser reception checks pass, with physical HDR display
 acceptance still pending in [verification status](./verification-status.md).
 Room voice is outside the product plan; Host microphone commentary remains.
 4K remains deferred. The owner accepted the UI/model and bounded local acceptance
-for phase closure. Release preparation targets v1.7.0; explicit publication
-authorization and physical device limits remain open. This candidate is not
-deployed; [TODO](./todo.md#now) owns integration and remaining work.
+and authorized v1.7.0 publication. Physical device limits remain open.
+Release artifacts and operator deployment records own delivery completion;
+[TODO](./todo.md#now) owns remaining work.
 
 ## Deployment
 

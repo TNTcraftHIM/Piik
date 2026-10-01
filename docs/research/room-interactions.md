@@ -1,8 +1,8 @@
 # Room Interaction Design
 
 The owner accepted the text/reaction UI and model with bounded local acceptance.
-Publication is pending; [status](../status.md#active-candidate) owns readiness and
-[TODO](../todo.md#now) owns remaining work. Reviewed 2026-10-01.
+[Status](../status.md#accepted-interaction-phase) owns release readiness and
+[TODO](../todo.md#now) owns remaining work. Reviewed 2026-10-02.
 This document records the implementation design and its tradeoffs;
 [rooms and access](../standards/rooms-access.md#room-interactions) owns authority
 and retention, while [presentation and lifecycle](../standards/presentation-lifecycle.md#product-surface)

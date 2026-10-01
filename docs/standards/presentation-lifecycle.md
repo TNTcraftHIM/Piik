@@ -31,7 +31,7 @@ alone does not create a room. Room close, lost authority and page teardown still
 retire the session. Connected Viewers may keep interacting while the Host page
 is absent, provided the room service and their admitted sessions remain available.
 [Rooms and access](./rooms-access.md#room-interactions) owns interaction authority
-and retention; [status](../status.md#active-candidate) owns release readiness.
+and retention; [status](../status.md#accepted-interaction-phase) owns release readiness.
 
 Piik App opens this same application in the system Browser. Its small
 startup surface selects Local, temporary public invitation, or a configured

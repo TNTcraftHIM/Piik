@@ -1,21 +1,19 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-01
+Last reviewed: 2026-10-02
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Release integration.** The owner accepted the room-interaction UI/model
-  and bounded local acceptance for phase closure. Prepare one squash PR for
-  v1.7.0, including text/reactions, Windows audio exclusion and HDR-to-SDR,
-  optional Hosted SFU-only policy, and the verified media ownership repairs.
-  Present complete Chinese/English release notes and remaining physical limits;
-  obtain explicit release authorization before merging or publishing. Follow
+- [ ] **Authorized release delivery.** The owner accepted the room-interaction
+  phase, complete bilingual release notes and bounded acceptance, and authorized
+  v1.7.0 publication. Follow
   [the integration workflow](../CONTRIBUTING.md#full-integration-and-release-workflow)
-  for packaging, publication and scoped postflight. [Status](./status.md)
-  distinguishes this candidate from the deployed release.
+  for one squash merge, packaging, publication and scoped postflight. Release
+  artifacts and operator records own completion; do not add a release-record
+  commit. No implementation work remains open for this phase.
 
 ## Held By Owner
 
@@ -28,7 +26,7 @@ history. A parked idea is not implementation authority.
 
 ## Deferred Feature Work
 
-These proposals remain deferred while the text/reaction candidate is active.
+These proposals remain deferred beyond the accepted interaction phase.
 
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
