@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-09-29
+Last updated: 2026-10-01
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -38,7 +38,7 @@ troubleshooting separate from the homepage FAQ.
 ## Active Candidate
 
 The isolated [room-interaction candidate](./research/room-interactions.md) resumes
-on the current maintenance baseline. It adds authenticated text and reactions
+on current main with the verified, unpublished media repairs. It adds authenticated text and reactions
 over existing signaling, with optional local chat overlay and a shared floating
 panel. Its opted-in room session can outlive a publication; capture, quality and
 route owners remain unchanged. Room voice and 4K remain deferred. This candidate

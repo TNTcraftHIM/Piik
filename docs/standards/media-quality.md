@@ -177,12 +177,32 @@ closing a Browser PeerConnection alone does not guarantee that its promises
 settle. Cancellation starts before joining work that depends on it, while a
 replacement still waits for the retired owner's cleanup.
 
+Browser and Native encoder-group admission uses current native demand, not the
+previously applied rate. A new or pending join must not displace an existing
+rate owner by raising or retaining its budget against that owner's demand.
+Revalidate pending admission before planning other memberships.
+
 Eligible Browser P2P parents use the source-owned pool in
 [ADR-0014](../adr/0014-browser-node-local-encoding-pool.md). Compatible direct
 children share one independent local WebRTC producer; incompatible demands
-remain separate. Each outgoing connection keeps native transport, allocation
-and recovery, with a tiny carrier supplying its RTP clock. Producers use
-the existing native video target under Host ceilings. Actual forwarded-frame
+remain separate. Joining another producer must fit the child's native allocation;
+a quiet scene's low byte rate does not prove that producer's rate budget fits.
+Pending separation remains necessary while another compatible member needs a
+higher native budget; quiet output alone cannot cancel it. When that demand
+leaves or the child's budget recovers, the current producer can adapt in place.
+Optional reuse also preserves the healthy current output's rate budget and
+observed quality within Host ceilings through recovery-frame commitment, using
+the actual candidate frame and current output rather than preparation alone.
+Rejected membership retains current delivery and its recovery requests.
+A recovery frame already being written retains its owner until completion,
+including across pause/resume; cancellation belongs to the output that knows
+whether writing has started.
+Each outgoing connection keeps native transport, allocation and recovery, with
+a tiny carrier supplying its RTP clock. Producers use the existing native video
+target under Host ceilings. A new producer seeds its
+local WebRTC start rate from that allocation, without a minimum or a change to
+the outgoing connection's estimate. Subsequent budgets use the existing sender
+parameters; initialization does not add a recovery controller. Actual forwarded-frame
 and producer observations remain distinct from the tiny carrier's statistics.
 Producer startup protection begins at actual outgoing publication, excluding
 local warmup and paused frames. The synthetic carrier uses screen-content

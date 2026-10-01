@@ -1,6 +1,7 @@
 package mediaedge
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -251,6 +252,64 @@ func newGroupLifecycleFixture(t *testing.T) (*Source, *groupTestConsumer, *outpu
 		t.Fatal("fixture did not prepare an independent lower group")
 	}
 	return source, b, group, demands
+}
+
+func TestOutputGroupsPreserveCurrentDemandDuringAdmission(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		for _, reverse := range []bool{false, true} {
+			t.Run(fmt.Sprintf("pending=%v/reverse=%v", pending, reverse), func(t *testing.T) {
+				source, b, gb, demands := newGroupLifecycleFixture(t)
+				a := demands[0].consumer
+				ga := source.memberships[a]
+				source.installGroup(ga, false)
+				source.installGroup(gb, false)
+				groupCount := len(source.groups)
+				demands[1].budget = 100_000
+				if pending {
+					if _, err := source.planGroups(demands); err != nil {
+						t.Fatal(err)
+					}
+					if source.memberships[b] != ga || b.CurrentSource() != gb.media.Source {
+						t.Fatal("fixture did not prepare a compatible rejoin")
+					}
+				}
+				source.groupRecovery.Store(0)
+				demands[0].budget = 60_000
+				if reverse {
+					demands[0], demands[1] = demands[1], demands[0]
+				}
+				plan, err := source.planGroups(demands)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if source.memberships[a] != ga || source.memberships[b] != gb || len(source.groups) != groupCount ||
+					plan.Bitrates[ga.slot] != 60_000 || plan.Bitrates[gb.slot] != 100_000 || source.groupRecovery.Load() != 0 {
+					t.Fatalf("admission displaced an incumbent: a=%v b=%v groups=%d/%d rates=%v recovery=%d",
+						source.memberships[a] == ga, source.memberships[b] == gb, len(source.groups), groupCount,
+						plan.Bitrates, source.groupRecovery.Load())
+				}
+			})
+		}
+	}
+}
+
+func TestOutputGroupsRetainOriginalRecoveryAfterPendingJoin(t *testing.T) {
+	source, b, gb, demands := newGroupLifecycleFixture(t)
+	source.installGroup(source.memberships[demands[0].consumer], false)
+	source.installGroup(gb, false)
+	demands[1].budget = demands[0].budget
+	if _, err := source.planGroups(demands); err != nil {
+		t.Fatal(err)
+	}
+	source.groupRecovery.Store(0)
+	demands[0].budget = 60_000
+	demands[1].lower, demands[1].original = false, true
+	if _, err := source.planGroups(demands); err != nil {
+		t.Fatal(err)
+	}
+	if source.memberships[b] != nil || source.groupRecovery.Load()&2 == 0 || b.CurrentSource() != gb.media.Source {
+		t.Fatal("return to original lost recovery or replaced the current source early")
+	}
 }
 
 func TestOutputGroupRejectsRecoveryBeforeChangingAttachment(t *testing.T) {

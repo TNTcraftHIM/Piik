@@ -98,6 +98,54 @@ export class BrowserEncodingPool {
     return [...this.members].filter((member) => member.current === group || member.pending?.group === group);
   }
 
+  private demand(group: Group, except?: Member): number | undefined {
+    const budgets = this.references(group).flatMap((member) => member !== except &&
+      this.compatible(member, group) && member.budget !== undefined ? [member.budget] : []);
+    return budgets.length ? Math.max(...budgets) : undefined;
+  }
+
+  private hasHigherDemand(member: Member, group: Group): boolean {
+    return (this.demand(group) ?? 0) > member.budget!;
+  }
+
+  private canJoin(member: Member, group: Group): boolean {
+    // A pending newcomer cannot prove compatibility with its own demand or
+    // raise the incumbent owner's allocation merely to reuse its encoder.
+    const demand = this.demand(group, member);
+    return demand === undefined || demand === member.budget;
+  }
+
+  private canReuse(member: Member, group: Group, current: Group): boolean {
+    const output = group.output, previous = current.output;
+    // A quiet scene does not make a higher rate owner compatible. Check both
+    // allocations before pending membership can raise the candidate's budget.
+    return this.compatible(member, group) && this.canJoin(member, group) &&
+      group.budget <= member.budget! && group.budget >= current.budget &&
+      fits(output, member.budget) && output?.reason === "none" && !!previous &&
+      noRegression(output, previous.width, previous.height, previous.fps, member.profile);
+  }
+
+  private acceptsFrame(member: Member, group: Group, metadata: RTCEncodedVideoFrameMetadata): boolean {
+    if (member.disabled || member.paused || !this.compatible(member, group) || group.updating ||
+      member.budget === undefined || group.budget > member.budget || !this.canJoin(member, group)) return false;
+    const current = member.current;
+    const optional = current && this.compatible(member, current) &&
+      !this.hasHigherDemand(member, current);
+    // Initial output and necessary downgrades have no healthy picture to beat.
+    if (current ? !optional : member.carrier) return true;
+    const actual = member.encoded.snapshot();
+    if (actual.lastProducerId !== (current?.producer.id ?? null)) return false;
+    if (!metadata.width || !metadata.height || actual.width === null || actual.height === null ||
+      metadata.width < actual.width || metadata.height < actual.height) {
+      // A real key can disprove the last statistics sample. Do not let another
+      // reconciliation reuse that sample before the normal poll replaces it.
+      group.output = undefined;
+      return false;
+    }
+    return current ? this.canReuse(member, group, current) : !!group.output &&
+      noRegression(group.output, actual.width, actual.height, member.raw?.framesPerSecond ?? null, member.profile);
+  }
+
   private async poll(): Promise<void> {
     if (this.polling || this.disposed) return;
     this.polling = true;
@@ -155,6 +203,12 @@ export class BrowserEncodingPool {
   }
 
   private reconcile(): void {
+    // Remove obsolete requests before they can displace a current member in
+    // this pass. Applied rates may still belong to the previous stats sample.
+    for (const member of this.members) {
+      if (member.pending && member.budget !== undefined && !this.canJoin(member, member.pending.group) &&
+        member.encoded.cancelSelection(member.pending.group.producer.id)) member.pending = undefined;
+    }
     const changing = new Set<Group>();
     for (const group of this.groups) {
       const references = this.references(group);
@@ -186,12 +240,12 @@ export class BrowserEncodingPool {
         // A shared producer can outgrow a waiting child's native allocation.
         // Replan that membership; never wait forever for its budget to catch up.
         if (!pending.selecting && pending.group.budget > member.budget &&
-          !fits(pending.group.output, member.budget) && this.references(pending.group).some((other) => other !== member)) {
+          this.references(pending.group).some((other) => other !== member)) {
           member.pending = undefined;
           continue;
         }
         if (!pending.selecting && member.current && this.compatible(member, member.current) &&
-          fits(member.current.output, member.budget) && pending.group.budget < member.current.budget) {
+          !this.hasHigherDemand(member, member.current) && !this.canReuse(member, pending.group, member.current)) {
           member.pending = undefined;
           continue;
         }
@@ -223,6 +277,12 @@ export class BrowserEncodingPool {
                 if (!member.disposed && !applied) this.failSource(member.source);
               }).catch(() => this.failSource(member.source)).finally(() => { member.replacement = undefined; });
               this.prune();
+            }, (metadata) => {
+              if (member.disposed || member.pending !== pending) return false;
+              if (this.acceptsFrame(member, pending.group, metadata)) return true;
+              member.pending = undefined;
+              this.prune();
+              return false;
             });
           }
         }
@@ -237,10 +297,10 @@ export class BrowserEncodingPool {
         let earlier = true;
         for (const group of this.groups) {
           if (group === current) { earlier = false; continue; }
-          const improves = group.output && current.output && (group.output.width > current.output.width ||
-            group.output.height > current.output.height || Math.round(group.output.fps) > Math.round(current.output.fps));
-          if ((earlier || improves) && this.compatible(member, group) && fits(group.output, member.budget) && group.output?.reason === "none" &&
-            noRegression(group.output!, current.output.width, current.output.height, current.output.fps, member.profile)) {
+          // A newer output must improve within the same Host ceilings used below.
+          const improves = group.output && current.output && !noRegression(current.output,
+            group.output.width, group.output.height, group.output.fps, member.profile);
+          if ((earlier || improves) && this.canReuse(member, group, current)) {
             member.pending = { group }; break;
           }
         }
@@ -248,22 +308,18 @@ export class BrowserEncodingPool {
       }
       // A short output-rate spike is not new demand. Keep the rate owner and
       // let its native encoder adapt unless another child needs a higher rate.
-      if (current && this.compatible(member, current) && !this.references(current).some((other) =>
-        this.compatible(other, current) && other.budget !== undefined && other.budget > member.budget!)) continue;
-      const candidates = [...this.groups].filter((group) => this.compatible(member, group));
-      let target = candidates.find((group) => group !== current && fits(group.output, member.budget) &&
-        (!current || group.budget === member.budget));
-      target ??= candidates.find((group) => group !== current && group.budget === member.budget);
+      if (current && this.compatible(member, current) && !this.hasHigherDemand(member, current)) continue;
+      const candidates = [...this.groups].filter((group) => group !== current && this.compatible(member, group) &&
+        this.demand(group) === member.budget);
+      let target = candidates.find((group) => fits(group.output, member.budget)) ?? candidates[0];
       if (!target) {
         target = this.startGroup(member, member.budget);
       }
       member.pending = { group: target };
     }
     for (const group of this.groups) {
-      const references = this.references(group);
-      const budgets = references.flatMap((member) => this.compatible(member, group) && member.budget !== undefined ? [member.budget] : []);
-      if (group.ready && budgets.length) {
-        const budget = Math.max(...budgets);
+      const budget = this.demand(group);
+      if (group.ready && budget !== undefined) {
         if (budget !== group.budget && !group.updating) {
           group.budget = budget;
           group.updating = group.producer.update(group.profile, budget).catch(() => {

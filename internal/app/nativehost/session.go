@@ -560,7 +560,7 @@ func (session *Session) installCapture(next *nativecapture.Stream) error {
 	// Preparation has consumed these events. Apply them to the new generation
 	// before acknowledging it, just as the live reader handles unavailable layers.
 	for _, layer := range unavailable {
-		if err := session.source.DisableLayer(layer); err != nil {
+		if err := session.disableCaptureLayer(next, layer); err != nil {
 			return err
 		}
 	}
@@ -573,6 +573,22 @@ func (session *Session) installCapture(next *nativecapture.Stream) error {
 	session.mu.Unlock()
 	session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: "active"})
 	return nil
+}
+
+func (session *Session) disableCaptureLayer(stream *nativecapture.Stream, layer int) error {
+	session.mu.Lock()
+	if session.stream != stream || session.closed || session.ctx.Err() != nil {
+		session.mu.Unlock()
+		return nil
+	}
+	// Accept failure atomically with capture selection. Closing transports may
+	// wait for callbacks, so only the source-state change belongs under this lock.
+	retire, err := session.source.MarkLayerUnavailable(layer)
+	session.mu.Unlock()
+	if retire != nil {
+		retire()
+	}
+	return err
 }
 
 func (session *Session) CloseEdge(connectionID string) {
@@ -831,7 +847,7 @@ func (session *Session) runVideo() error {
 			if session.source == nil {
 				return fail(errors.New("native output ended before its source state"))
 			}
-			if err = session.source.DisableLayer(frame.Layer); err != nil {
+			if err = session.disableCaptureLayer(current, frame.Layer); err != nil {
 				return fail(err)
 			}
 		case nativecapture.FramePCM:

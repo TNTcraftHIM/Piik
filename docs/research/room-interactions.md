@@ -1,6 +1,7 @@
 # Room Interaction Candidate
 
-Status: text/reaction candidate resumed on current main. Reviewed 2026-09-29.
+Status: text/reaction candidate resumed on current main with unpublished media
+repairs. Reviewed 2026-10-01.
 [TODO](../todo.md#now) owns remaining acceptance. The camera/microphone checkpoint
 remains independently usable; this candidate adds ordinary-room chat and reactions.
 

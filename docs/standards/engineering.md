@@ -148,7 +148,10 @@ above rather than searching the tree.
   Closing a Browser connection may leave its API promises pending. Its owner
   cancels the corresponding waits so a serialized successor never depends on
   completion from a retired connection; late results still need identity checks.
-  Later cancellation must not erase a failure already observed before cleanup.
+  Failure effects need the same final identity check as successful results,
+  serialized with replacement; an earlier input check alone is insufficient.
+  Later cancellation must not erase a failure already accepted by its current
+  owner. Perform blocking retirement after releasing that owner's state lock.
   A caller deadline does not cancel a dependency that ignores it. Keep late
   work bounded and serialize its cleanup; verify the dependency's actual lifetime.
   Construction is part of acquisition: if it throws, release resources created

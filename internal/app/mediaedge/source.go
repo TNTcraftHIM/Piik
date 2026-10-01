@@ -1,6 +1,7 @@
 package mediaedge
 
 import (
+	"context"
 	"errors"
 	"io"
 	"sync"
@@ -211,12 +212,10 @@ func (source *Source) ConfigureOutputs(ceilings []uint32) error {
 	return nil
 }
 
-func (source *Source) DisableLayer(layer int) error {
-	retire, err := source.markLayerUnavailable(layer, nil)
-	if retire != nil {
-		retire()
-	}
-	return err
+// MarkLayerUnavailable commits output failure without closing transports. The
+// caller must run the returned retirement after releasing its capture-owner lock.
+func (source *Source) MarkLayerUnavailable(layer int) (func(), error) {
+	return source.markLayerUnavailable(layer, nil)
 }
 
 func (source *Source) markLayerUnavailable(layer int, run *relayRun) (func(), error) {
@@ -227,8 +226,10 @@ func (source *Source) markLayerUnavailable(layer int, run *relayRun) (func(), er
 	source.writeMu.Lock()
 	defer source.writeMu.Unlock()
 	source.mu.Lock()
-	if run != nil && (run.owner.run != run || source.relayProfile != run.plan.profile ||
-		source.formats[len(source.formats)-1].Load() != run.plan.format) {
+	// Normal retirement cannot disable a later run's slots. A real cancellation
+	// cause still owns failure isolation until that run has finished retiring.
+	if run != nil && (run.owner.run != run || errors.Is(context.Cause(run.ctx), context.Canceled) ||
+		source.relayProfile != run.plan.profile || source.formats[len(source.formats)-1].Load() != run.plan.format) {
 		source.mu.Unlock()
 		return nil, nil
 	}

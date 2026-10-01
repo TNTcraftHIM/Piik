@@ -95,6 +95,23 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 			delete(source.memberships, consumer)
 		}
 	}
+	compatible := func(group *outputGroup, demand outputDemand) bool {
+		for _, other := range demands {
+			if other.active && other.lower && other.budget != demand.budget &&
+				(other.consumer.CurrentSource() == group.media.Source || source.memberships[other.consumer] == group) {
+				return false
+			}
+		}
+		return true
+	}
+	// Revalidate pending joins before they can prevent an incumbent from
+	// adjusting in place. Membership order must not give stale demand priority.
+	for _, demand := range demands {
+		group := source.memberships[demand.consumer]
+		if demand.active && demand.lower && group != nil && demand.consumer.CurrentSource() != group.media.Source && !compatible(group, demand) {
+			delete(source.memberships, demand.consumer)
+		}
+	}
 	// The previous frame's active bit alone may outlive its last handoff.
 	inUse := func(group *outputGroup) bool {
 		if group == nil || !group.active {
@@ -119,6 +136,9 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 		for slot := 0; slot < len(source.outputBitrates); slot++ {
 			group := source.groups[slot]
 			if group != nil && source.outputBitrates[slot] > 0 && group.budget == demand.budget {
+				if demand.consumer.CurrentSource() != group.media.Source && !compatible(group, demand) {
+					continue
+				}
 				if selected == nil || inUse(group) {
 					selected = group
 				}
@@ -152,15 +172,7 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 				if source.outputBitrates[group.slot] == 0 {
 					continue
 				}
-				compatible := true
-				for _, other := range demands {
-					if other.active && other.lower && other.budget != demand.budget &&
-						(other.consumer.CurrentSource() == group.media.Source || source.memberships[other.consumer] == group) {
-						compatible = false
-						break
-					}
-				}
-				if compatible {
+				if compatible(group, demand) {
 					selected = group
 					break
 				}

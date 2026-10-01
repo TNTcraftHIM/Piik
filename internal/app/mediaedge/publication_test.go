@@ -73,9 +73,11 @@ func TestPublicationOwnsOneReservationAndSourceLifetime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = source.DisableLayer(0); err != nil {
+	retire, err := source.MarkLayerUnavailable(0)
+	if err != nil {
 		t.Fatal(err)
 	}
+	retire()
 	if _, err = engine.NewPublication(source, EdgeOptions{ConnectionID: "failed-output"}); err == nil {
 		t.Fatal("failed output was admitted into publication metadata")
 	}
@@ -117,9 +119,11 @@ func TestPublicationAdmissionIgnoresUnrelatedFailedOutputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, slot := range []int{2, 3, 0, 1} {
-		if err = source.DisableLayer(slot); err != nil {
+		retire, err := source.MarkLayerUnavailable(slot)
+		if err != nil {
 			t.Fatal(err)
 		}
+		retire()
 		candidate, createErr := engine.NewPublication(source, EdgeOptions{ConnectionID: "replacement"})
 		if slot >= 2 {
 			if createErr != nil {

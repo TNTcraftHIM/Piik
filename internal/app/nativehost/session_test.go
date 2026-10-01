@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -184,6 +185,122 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 				case <-time.After(5 * time.Second):
 					t.Fatal("reader death did not end the share")
 				}
+			}
+		})
+	}
+}
+
+func TestCaptureFailureBelongsToSelectedStream(t *testing.T) {
+	for _, replace := range []bool{false, true} {
+		t.Run(strconv.FormatBool(replace), func(t *testing.T) {
+			check := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "backend")
+			t.Setenv("PIIK_CAPTURE_STARTING", string(captureStatePayload(t,
+				`{"state":"starting","codec":"vp8","adapterIndex":0,"adapterName":"Fixture","adapterIdentity":"0:0","encoderName":"VP8","encoderIdentity":"vp8"}`)))
+			t.Setenv("PIIK_CAPTURE_ACTIVE", string(captureStatePayload(t, `{"state":"active","codec":"vp8","width":1280,"height":720,"fps":30}`)))
+			t.Setenv("PIIK_CAPTURE_UNAVAILABLE", "0")
+			executable, err := os.Executable()
+			check(err)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			options := nativecapture.VideoOptions{Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "vp8",
+				Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"}, OutputGroups: 4}
+			previous, err := nativecapture.StartVideo(ctx, executable, options)
+			check(err)
+			defer previous.Close()
+			t.Setenv("PIIK_CAPTURE_UNAVAILABLE", "")
+			replacement, err := nativecapture.StartVideo(ctx, executable, options)
+			check(err)
+			defer replacement.Close()
+			engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+			check(err)
+			defer engine.Close()
+			source, err := engine.NewSource("vp8", 4, 2, nil)
+			check(err)
+			defer source.Close()
+			check(configureCaptureOutputs(source, previous.Outputs()))
+			publication, err := engine.NewPublication(source, mediaedge.EdgeOptions{ConnectionID: "capture-failure-owner"})
+			check(err)
+			active := make(chan struct{}, 1)
+			session := &Session{ctx: ctx, cancel: cancel, engine: engine, source: source, stream: previous,
+				videoOptions: options, ready: make(chan error, 1), events: func(_ context.Context, event Event) {
+					if event.State == "active" {
+						select {
+						case active <- struct{}{}:
+						default:
+						}
+					}
+				}}
+			// Delay the actual reader after its first identity check, without a
+			// production hook. Log I/O and ordinary scheduling can delay it here.
+			entered, release := make(chan struct{}), make(chan struct{})
+			unblock := sync.OnceFunc(func() { close(release) })
+			previousLog := slog.Default()
+			defer slog.SetDefault(previousLog)
+			slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
+				Level: slog.LevelDebug, ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
+					if attr.Key == "event" && attr.Value.String() == "capture-output-unavailable" {
+						close(entered)
+						<-release
+					}
+					return attr
+				},
+			})))
+			readerDone := make(chan error, 1)
+			go func() { readerDone <- session.runVideo() }()
+			defer func() {
+				unblock()
+				cancel()
+				_ = previous.Close()
+				_ = replacement.Close()
+				select {
+				case <-readerDone:
+				case <-time.After(5 * time.Second):
+					t.Error("capture reader did not retire")
+				}
+			}()
+			select {
+			case <-entered:
+			case err = <-readerDone:
+				readerDone <- err
+				t.Fatalf("reader stopped before output failure: %v", err)
+			case <-time.After(5 * time.Second):
+				t.Fatal("old output failure did not reach the reader")
+			}
+			committed := make(chan error, 1)
+			if replace {
+				go func() {
+					committed <- session.commitCapture(options, QualityProfile{Video: options.Profile}, replacement, CaptureState{}, nil, false)
+				}()
+				deadline := time.Now().Add(5 * time.Second)
+				for session.currentStream() != replacement {
+					if time.Now().After(deadline) {
+						t.Fatal("replacement was not selected")
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+			unblock()
+			select {
+			case <-active:
+			case <-time.After(5 * time.Second):
+				t.Fatal("capture reader did not finish the failure or handoff")
+			}
+			if replace {
+				select {
+				case err = <-committed:
+					check(err)
+				case <-time.After(5 * time.Second):
+					t.Fatal("replacement installation was not acknowledged")
+				}
+			}
+			if err = publication.SetActiveCount(1); (err == nil) != replace {
+				t.Fatalf("publication availability after replacement=%v: %v", replace, err)
 			}
 		})
 	}

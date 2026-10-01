@@ -53,11 +53,11 @@ class Connection {
 }
 
 const producers: BrowserEncodingProducer[] = [];
-function createProducer() {
+function createProducer(codec: RTCRtpCodec = { mimeType: "video/VP8", clockRate: 90000 }) {
   const source = new Track();
   const failed = vi.fn();
   const producer = new BrowserEncodingProducer(source as unknown as MediaStreamTrack,
-    QUALITY_PROFILES["1080p30"], { mimeType: "video/VP8", clockRate: 90000 }, vi.fn(), failed);
+    QUALITY_PROFILES["1080p30"], codec, vi.fn(), failed);
   producers.push(producer);
   return { producer, source, failed };
 }
@@ -75,10 +75,56 @@ afterEach(async () => {
   for (const producer of producers.splice(0)) producer.dispose();
   await vi.runAllTimersAsync();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
 describe("Browser encoding producer startup", () => {
+  const localAnswer = (codec: string, fmtp = "") => ({ type: "answer" as const, sdp: [
+    "v=0", "o=- 1 1 IN IP4 127.0.0.1", "s=-", "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 96", "c=IN IP4 0.0.0.0", "a=recvonly",
+    `a=rtpmap:96 ${codec}/90000`, ...(fmtp ? [`a=fmtp:96 ${fmtp}`] : []), "",
+  ].join("\r\n") });
+
+  it.each([
+    ["VP8", ""],
+    ["H264", "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f"],
+  ])("initializes only the local %s answer from its existing budget", async (name, fmtp) => {
+    const codec = Object.freeze({ mimeType: `video/${name}`, clockRate: 90000, sdpFmtpLine: fmtp });
+    vi.spyOn(Connection.prototype, "createAnswer").mockResolvedValue(localAnswer(name, fmtp));
+    const { producer } = createProducer(codec);
+    await producer.start(3_333_999);
+    const [send, receive] = Connection.instances;
+    const answer = receive.localDescription!;
+    expect(answer.sdp).toContain("x-google-start-bitrate=3333");
+    if (fmtp) expect(answer.sdp).toContain(fmtp);
+    expect(send.remoteDescription).toBe(answer);
+    expect(send.localDescription!.sdp).not.toContain("x-google-start-bitrate");
+    expect(codec.sdpFmtpLine).toBe(fmtp);
+
+    await producer.update(QUALITY_PROFILES["1080p30"], 400_000);
+    expect(vi.mocked(configureVideoSender).mock.lastCall![1].maxBitrate).toBe(400_000);
+    expect(receive.localDescription).toBe(answer);
+    expect(Connection.prototype.createAnswer).toHaveBeenCalledOnce();
+  });
+
+  it.each([0, 999, Number.NaN])("does not invent a starting rate for budget %s", async (budget) => {
+    const answer = localAnswer("VP8");
+    vi.spyOn(Connection.prototype, "createAnswer").mockResolvedValue(answer);
+    const { producer } = createProducer();
+    await producer.start(budget);
+    expect(Connection.instances[1].localDescription).toBe(answer);
+  });
+
+  it("bounds the start hint by the Host ceiling without duplicating an existing hint", async () => {
+    vi.spyOn(Connection.prototype, "createAnswer").mockResolvedValue(localAnswer("VP8", "x-google-start-bitrate=300"));
+    const { producer } = createProducer();
+    await producer.start(7_000_000);
+    const sdp = Connection.instances[1].localDescription!.sdp!;
+    expect(sdp).toContain("a=fmtp:96 x-google-start-bitrate=5000\r\n");
+    expect(sdp.match(/x-google-start-bitrate=/g)).toHaveLength(1);
+  });
+
   it("protects first publication instead of spending the startup frames on local warmup", async () => {
     const { producer } = createProducer();
     await producer.start();

@@ -26,7 +26,7 @@ export interface BrowserEncodingOutputSnapshot {
 }
 
 type Queue = { producerId: string; frames: RTCEncodedVideoFrame[]; needKey: boolean; requestKey: () => Promise<void> };
-type Selection = { queue: Queue; onSelected: () => void };
+type Selection = { queue: Queue; onSelected: () => void; accept: (metadata: RTCEncodedVideoFrameMetadata) => boolean };
 // Bound pending encoded data; a lost dependency chain resumes on a fresh key.
 const MAX_QUEUED_FRAMES = 4;
 
@@ -46,7 +46,7 @@ export class BrowserEncodingOutput {
   private readonly writer: WritableStreamDefaultWriter<RTCEncodedVideoFrame>;
   private current: Queue | undefined;
   private pending: Selection | undefined;
-  private carrier: RTCEncodedVideoFrame | undefined;
+  private carrier: { frame: RTCEncodedVideoFrame; recovery: boolean } | undefined;
   private writing: Promise<void> | undefined;
   private ownKey: (() => Promise<void>) | undefined;
   private raw: false | "key" | true = false;
@@ -80,13 +80,23 @@ export class BrowserEncodingOutput {
       });
   }
 
-  select(producerId: string, requestKey: () => Promise<void>, onSelected: () => void): void {
+  select(producerId: string, requestKey: () => Promise<void>, onSelected: () => void,
+    accept: Selection["accept"]): void {
     if (this.abort.signal.aborted) return;
     this.epoch++;
     this.carrier = undefined;
-    this.pending = { queue: { producerId, frames: [], needKey: true, requestKey }, onSelected };
+    this.pending = { queue: { producerId, frames: [], needKey: true, requestKey }, onSelected, accept };
     debugEvent("encoding-pool", "selection-requested", { ...this.identity, producerId });
     if (!this.paused) this.request(this.pending.queue);
+  }
+
+  cancelSelection(producerId: string): boolean {
+    if (this.pending?.queue.producerId !== producerId) return true;
+    // Once an accepted key starts writing, that queue owns the wire. Keep its
+    // pool reference until completion, including across pause/resume.
+    if (this.current === this.pending.queue) return false;
+    this.pending = undefined;
+    return true;
   }
 
   push(producerId: string, frame: RTCEncodedVideoFrame): void {
@@ -152,30 +162,37 @@ export class BrowserEncodingOutput {
       const epoch = this.epoch;
       await this.writing;
       if (this.abort.signal.aborted || this.paused || this.epoch !== epoch) return;
-      if (this.raw && !this.pending?.queue.frames[0]) {
-        if (this.raw === "key" && frame.type !== "key") return;
-        await this.write(frame, null);
-        return;
-      }
     }
-    // A native carrier key can be a remote PLI. Recover the selected real
-    // stream, without requiring its frame type to match this clock frame.
-    if (frame.type === "key" && this.current && this.pending?.queue.frames[0]?.type !== "key" &&
-      this.current.frames[0]?.type !== "key") this.recover(this.current);
-    this.carrier = frame;
+    // Coalescing keeps the newest clock, but must not overwrite a recovery
+    // request received while the previous output write is still pending.
+    this.carrier = { frame, recovery: frame.type === "key" || this.carrier?.recovery === true };
     const writing = this.drain();
     if (this.raw) await writing;
   }
 
   private drain(): Promise<void> | undefined {
     if (this.abort.signal.aborted || this.paused || this.writing || !this.carrier) return;
-    const selection = this.pending?.queue.frames[0]?.type === "key" ? this.pending : undefined;
-    if (this.raw && !selection) return;
-    const queue = selection?.queue ?? this.current, frame = queue?.frames.shift();
-    if (!queue || !frame) return;
-    const own = this.carrier;
-    this.carrier = undefined;
     try {
+      let selection = this.pending?.queue.frames[0]?.type === "key" ? this.pending : undefined;
+      // Preparation is not commitment: validate the actual key while the old
+      // stream is still intact, before consuming either queue or writing bytes.
+      if (selection && selection.queue !== this.current && !selection.accept(selection.queue.frames[0]!.getMetadata())) {
+        debugEvent("encoding-pool", "selection-rejected", { ...this.identity, producerId: selection.queue.producerId });
+        this.pending = undefined;
+        selection = undefined;
+      }
+      const { frame: own, recovery } = this.carrier;
+      // A carrier key can be a remote PLI. Only an accepted candidate key can
+      // replace the current stream's recovery; a rejected one proves nothing.
+      if (recovery && !selection && this.current && this.current.frames[0]?.type !== "key") this.recover(this.current);
+      if (this.raw && !selection) {
+        this.carrier = undefined;
+        if (this.raw === "key" && own.type !== "key") return;
+        return this.write(own, null);
+      }
+      const queue = selection?.queue ?? this.current, frame = queue?.frames.shift();
+      if (!queue || !frame) return;
+      this.carrier = undefined;
       const copy = copyFrame(frame, own.timestamp);
       this.current = queue;
       this.raw = false;

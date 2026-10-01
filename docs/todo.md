@@ -1,15 +1,16 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-09-30
+Last reviewed: 2026-10-01
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Room-interaction candidate acceptance.** Resumed from current main after
-  the maintenance fixes. Review chat, optional danmaku and participant-targeted
-  reactions for usability, placement and intended cross-view synchronization.
+- [ ] **Room-interaction candidate acceptance.** Resumed on current main with
+  the verified, unpublished maintenance fixes. Review chat, optional danmaku and
+  participant-targeted reactions for usability, placement and intended cross-view
+  synchronization.
   Preserve room authorization and media-route owners. Accept its combined
   layout: sharing settings with the picture, floating chat without page reflow
   and room actions before diagnostics. Check narrow-screen keyboard avoidance,
@@ -23,21 +24,19 @@ history. A parked idea is not implementation authority.
   owns the design and evidence limits. Merge and publication remain unapproved.
 - [ ] **Published-product regression acceptance.** Keep share startup,
   audio/source changes, sustained viewing, recovery/retirement, admission and
-  narrow/touch UI in the interaction acceptance boundary. Field reports without
-  matched evidence remain distinct from locally reproduced defects.
-- [ ] **Sustained Browser degradation.** The H264 field cause remains open.
+  narrow/touch UI in the interaction acceptance boundary. Integrate the verified
+  Browser and Native encoding/lifecycle repairs together; they are not yet
+  published. Field reports without matched evidence remain distinct from
+  locally reproduced defects.
+
+## Held By Owner
+
+- [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
-  distinguish encoder recovery hysteresis from a tab-capture feedback/size-step
-  lock reproduced in bare WebRTC. Verify the upstream soft-target/hard-maximum
-  repair candidate against a patched Browser, which remains unbuilt. The Piik
-  sender boundary now isolates display frames while preserving native idle refresh,
-  capture intent and operation retirement. Real hidden-tab SFU checks pass;
-  broader device/background coverage remains. Native logs confirm content-driven
-  QP hysteresis and a cost from bitrate reconfiguration, but not repeated brief
-  blur. Match field Host/Viewer evidence
-  before assigning the field cause or declaring repeated brief blur fixed.
-  Retain existing clone/startup protections and candidate proof; no periodic
-  reset or quality floor. A recent Piik regression is not established.
+  own the evidence for synchronous H264 initialization, native adaptation and
+  the unbuilt upstream repair candidate. Keep the verified Piik budget and
+  handoff repairs; do not add periodic resets, a quality floor or a Browser fork.
+  The field room's cause and all brief blur are not established as resolved.
 
 ## Deferred Feature Work
 

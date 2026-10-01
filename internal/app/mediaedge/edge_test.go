@@ -65,9 +65,11 @@ func TestOutputPlanRetiresOnlyFailedLayerConsumers(t *testing.T) {
 	lowerTracker, higherTracker := trackers.AddTracker(0), trackers.AddTracker(1)
 	lowerTracker.Observe(0, 1200, 1188, true, 90000, nil)
 	higherTracker.Observe(0, 1200, 1188, true, 90000, nil)
-	if err = source.DisableLayer(0); err != nil {
+	retire, err := source.MarkLayerUnavailable(0)
+	if err != nil {
 		t.Fatal(err)
 	}
+	retire()
 	if low.State() != webrtc.PeerConnectionStateClosed || high.State() != webrtc.PeerConnectionStateConnected {
 		t.Fatalf("failed/sibling state = %s/%s", low.State(), high.State())
 	}
@@ -171,6 +173,59 @@ func TestRelayFailureCannotRetireReconfiguredProfile(t *testing.T) {
 	retire()
 	if source.outputBitrates[0] != 0 || low.State() != webrtc.PeerConnectionStateClosed {
 		t.Fatal("current decoder failure was not retired")
+	}
+}
+
+func TestRetiredRelayFailureCannotDisableLaterDemand(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource("vp8", 2, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = source.Close() })
+	source.relay = &relayDerivation{source: source}
+	if err = source.SetFormat(1, 640, 360); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.SetRelayProfile(nativecapture.VideoProfile{
+		Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	high, _, _ := connectedReceiver(t, engine, source, "retiring-relay-high")
+	low, _, _ := connectedReceiver(t, engine, source, "retiring-relay-low")
+	if err = low.SetTargetLayer(0); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancelCause(t.Context())
+	defer cancel(nil)
+	done := make(chan struct{})
+	t.Cleanup(func() { close(done) })
+	run := &relayRun{owner: source.relay, ctx: ctx, cancel: cancel, done: done,
+		plan: relayPlan{profile: source.relayProfile, format: source.formats[1].Load()}}
+	source.relay.run = run
+	if err = low.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(context.Cause(ctx), context.Canceled) {
+		t.Fatal("last lower consumer did not retire the derivation normally")
+	}
+	// A failure already read from the old process can reach the source lock
+	// after cancellation, before the process exits and the next run starts.
+	retire, err := source.markLayerUnavailable(0, run)
+	if err != nil || retire != nil || source.outputBitrates[0] == 0 {
+		t.Fatal("normal retirement disabled a reusable output slot")
+	}
+	rejoined, _, _ := connectedReceiver(t, engine, source, "retiring-relay-rejoined")
+	if err = rejoined.SetTargetLayer(0); err != nil {
+		t.Fatalf("later lower demand was rejected: %v", err)
+	}
+	if rejoined.State() != webrtc.PeerConnectionStateConnected || high.State() != webrtc.PeerConnectionStateConnected {
+		t.Fatal("late failure retired a current consumer or healthy sibling")
 	}
 }
 
