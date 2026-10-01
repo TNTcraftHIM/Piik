@@ -164,7 +164,7 @@ describe("release automation", () => {
       expect(reused.status).not.toBe(0);
       expect(reused.stderr).toContain("two source revisions");
     } finally { rmSync(root, { recursive: true, force: true }); }
-  });
+  }, 15_000); // Real Git subprocesses share the runner with the rest of the suite.
 
   it("keeps shipped assets, build inputs and moves across the website boundary release-worthy", () => {
     const root = mkdtempSync(join(tmpdir(), "piik-release-paths-"));

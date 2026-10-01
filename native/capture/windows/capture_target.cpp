@@ -19,6 +19,7 @@
 #include "capture_target.h"
 #include "capture_border.h"
 #include "capture_geometry.h"
+#include "capture_sdr.h"
 
 #include <algorithm>
 #include <array>
@@ -497,8 +498,11 @@ HRESULT CaptureWithWgc(TargetKind kind, UINT64 source_id,
       if (size.Width <= 0 || size.Height <= 0 || frame_ready == nullptr) {
         result = HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
       } else {
+        windows::CaptureDisplayColor display_color(kind, source_id);
+        const auto color = display_color.Resolve();
+        windows::CaptureSdrConverter sdr(device.Get());
         pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
-            capture_device, DirectXPixelFormat::B8G8R8A8UIntNormalized, 1,
+            capture_device, static_cast<DirectXPixelFormat>(color.Format()), 1,
             size);
         session = pool.CreateCaptureSession(item);
         frame_token = pool.FrameArrived(
@@ -530,6 +534,7 @@ HRESULT CaptureWithWgc(TargetKind kind, UINT64 source_id,
                 ::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
             ComPtr<ID3D11Texture2D> texture;
             result = access->GetInterface(IID_PPV_ARGS(&texture));
+            if (SUCCEEDED(result)) texture = sdr.Convert(texture.Get(), color);
             D3D11_TEXTURE2D_DESC description{};
             if (SUCCEEDED(result)) texture->GetDesc(&description);
             if (SUCCEEDED(result) &&

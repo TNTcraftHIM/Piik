@@ -2,6 +2,7 @@
 #define wmain capture_main
 #include "main.cpp"
 #undef wmain
+#include <DirectXPackedVector.h>
 
 namespace {
 
@@ -87,6 +88,87 @@ void CheckColors(const DeviceContext& device, ID3D11Texture2D* texture) {
   if (!correct) throw std::runtime_error("SDR range or matrix changed");
 }
 
+ComPtr<ID3D11Texture2D> LinearBars(const DeviceContext& device, UINT width,
+                                 UINT height, const std::array<float, 8>& nits) {
+  std::vector<UINT16> pixels(static_cast<size_t>(width) * height * 4);
+  for (size_t pixel = 0; pixel < static_cast<size_t>(width) * height; ++pixel) {
+    const auto value = DirectX::PackedVector::XMConvertFloatToHalf(nits[(pixel % width) * 8 / width] / 80.0f);
+    for (size_t channel = 0; channel < 3; ++channel) pixels[pixel * 4 + channel] = value;
+    pixels[pixel * 4 + 3] = DirectX::PackedVector::XMConvertFloatToHalf(1.0f);
+  }
+  D3D11_TEXTURE2D_DESC description{};
+  description.Width = width;
+  description.Height = height;
+  description.MipLevels = description.ArraySize = description.SampleDesc.Count = 1;
+  description.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+  description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+  D3D11_SUBRESOURCE_DATA data{};
+  data.pSysMem = pixels.data();
+  data.SysMemPitch = width * 8;
+  ComPtr<ID3D11Texture2D> texture;
+  Check(device.device->CreateTexture2D(&description, &data, &texture), "hdr-source");
+  return texture;
+}
+
+std::array<int, 8> ReadGrayBars(const DeviceContext& device, ID3D11Texture2D* texture) {
+  D3D11_TEXTURE2D_DESC description{};
+  texture->GetDesc(&description);
+  description.Usage = D3D11_USAGE_STAGING;
+  description.BindFlags = 0;
+  description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  ComPtr<ID3D11Texture2D> staging;
+  Check(device.device->CreateTexture2D(&description, nullptr, &staging), "hdr-readback");
+  device.context->CopyResource(staging.Get(), texture);
+  D3D11_MAPPED_SUBRESOURCE mapped{};
+  Check(device.context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped), "hdr-map");
+  const auto* bytes = static_cast<const UINT8*>(mapped.pData);
+  std::array<int, 8> result{};
+  bool neutral = true;
+  for (size_t bar = 0; bar < result.size(); ++bar) {
+    const size_t pixel = description.Height / 2 * mapped.RowPitch +
+        description.Width * (2 * bar + 1) / 16 * 4;
+    result[bar] = bytes[pixel];
+    neutral = neutral && std::abs(result[bar] - bytes[pixel + 1]) <= 1 &&
+        std::abs(result[bar] - bytes[pixel + 2]) <= 1;
+  }
+  device.context->Unmap(staging.Get(), 0);
+  if (!neutral) throw std::runtime_error("HDR gray acquired a color cast");
+  return result;
+}
+
+void CheckHdr(const DeviceContext& device) {
+  CaptureSdrConverter capture(device.device.Get());
+  VideoProfile profile;
+  profile.width = 256;
+  profile.height = 128;
+  FrameConverter converter(device.device.Get(), profile);
+  for (const UINT width : {256u, 512u, 256u}) {
+    // SDR must retain the old pixels after an HDR frame, with the same owner.
+    auto sdr = ColorBars(device, width, width / 2, kDesktopColor);
+    auto owned = capture.Convert(sdr.Get(), {});
+    CheckColors(device, converter.Convert(owned.Get(), width, width / 2,
+        {static_cast<LONG>(width), static_cast<LONG>(width / 2)}, kDesktopColor).Get());
+    auto hdr = LinearBars(device, width, width / 2, {0, 5, 20, 80, 200, 400, 700, 1000});
+    for (const float white : {80.0f, 240.0f, 80.0f}) {
+      auto mapped = capture.Convert(hdr.Get(), {true, white, 1000.0f});
+      const auto levels = ReadGrayBars(device, mapped.Get());
+      std::cout << "HDR white=" << white << " levels=";
+      for (const auto level : levels) std::cout << level << ',';
+      std::cout << '\n';
+      if (levels.front() > 1 || levels.back() < 245)
+        throw std::runtime_error("HDR black/peak mapping is incorrect");
+      for (size_t index = 1; index < levels.size(); ++index)
+        if (levels[index] <= levels[index - 1])
+          throw std::runtime_error("HDR luminance detail was clipped before tone mapping");
+      auto next = capture.Convert(sdr.Get(), {});
+      if (ReadGrayBars(device, mapped.Get()) != levels)
+        throw std::runtime_error("Capture replacement modified a retained frame");
+      CheckColors(device, converter.Convert(next.Get(), width, width / 2,
+          {static_cast<LONG>(width), static_cast<LONG>(width / 2)}, kDesktopColor).Get());
+    }
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -123,10 +205,14 @@ int main() {
         }
       }
       std::cout << "SDR conversion passed: " << NarrowAscii(adapter.description.Description) << '\n';
+      CheckHdr(device);
+      std::cout << "HDR conversion passed: " << NarrowAscii(adapter.description.Description) << '\n';
     }
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
+    if (const auto* failure = dynamic_cast<const GateFailure*>(&error))
+      std::cerr << "stage=" << failure->stage() << " result=" << std::hex << failure->result() << '\n';
     return 1;
   }
 }

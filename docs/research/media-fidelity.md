@@ -107,31 +107,56 @@ upstream color declarations.
 both App and Browser capture on one Windows HDR machine. The report does not
 locate the failing stage.
 
-The Windows native screen path currently requests BGRA8 for the WGC frame pool
-and thumbnails, then converts to NV12 for the existing 8-bit H.264/VP8 encoder.
-It has no explicit HDR tone/gamut mapping stage. Microsoft's
+The previous native WGC frame pool and thumbnails requested BGRA8, discarding
+HDR range before the existing 8-bit H.264/VP8 encoder. Microsoft's
 [capture guidance](https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture)
 warns that HDR needs floating-point capture throughout the input pipeline to
 avoid clipping. Reducing brightness after encoding cannot restore clipped
 highlights. This is a confirmed implementation gap, not proof that every
 reported Browser failure has the same cause.
 
-Native **HDR-to-SDR** is deferred while ordinary SDR correctness and the current
-candidate are accepted. Its smallest coherent implementation belongs before the existing
-encoder: preserve scRGB FP16 input, use platform tone/gamut mapping and correct
-SDR white level, then hand ordinary SDR frames to the current output workers.
-Use the same conversion for capture previews. Microsoft's
+The candidate uses one `CaptureSdrConverter` before native output fanout and in
+thumbnails. HDR displays use an scRGB FP16 pool, then Windows Direct2D's
 [HDR tone-map effect](https://learn.microsoft.com/en-us/windows/win32/direct2d/hdr-tone-map-effect)
-and [Advanced Color guidance](https://learn.microsoft.com/en-us/windows/win32/direct3darticles/high-dynamic-range)
-describe the effect chain and luminance/white-level handling. Do not substitute
-a fixed gamma/brightness multiplier or hand-written tone curve.
+compresses luminance, the
+[white-level effect](https://learn.microsoft.com/en-us/windows/win32/direct2d/white-level-adjustment-effect)
+accounts for the source display's SDR white, and color management converts to
+sRGB BGRA8. Ordinary SDR retains its texture-copy path. No custom shader,
+CPU readback, new packaged dependency or per-output tone mapper is added.
 
-Before shipping, compare ordinary SDR, SDR content on an HDR display, HDR
-highlights, mixed displays, window movement and display-mode changes. Measure
-capture cost and check both encoders and thumbnails. Browser capture owns its
-own conversion; inspect the acquired frame before assigning a downstream bug.
+Source-monitor movement and DXGI factory invalidation refresh color metadata,
+following [GetDesc1's contract](https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_6/nf-dxgi1_6-idxgioutput6-getdesc1).
+A format change recreates the WGC pool through its existing resize boundary;
+it does not restart routes or encoders. WGC supplies no per-frame MaxCLL, so
+conversion uses the display peak (at least the configured SDR white), or the
+HDR10 10,000-nit range when usable peak metadata is absent. This stable platform
+policy avoids a second image-content adaptation loop; real-display appearance
+remains an acceptance requirement.
+
+The retained `-CheckColor` probe passed on RTX 4070 SUPER and AMD Radeon:
+0–1000-nit neutral bars preserved distinguishable highlights, source white
+80/240/80 nits and SDR/HDR size changes preserved ownership and ordinary SDR
+colors. Production H.264/VP8 output decoded over Chrome 154 WebRTC reproduced the
+converted SDR gray bars within 1/255. These are synthetic input checks, not
+observations of an HDR game or the reporter's machine.
+
+Warmed GPU timestamp measurements for conversion, including the owned input
+copy, had the following local medians. Dimensions are captured input sizes,
+not newly supported sharing presets.
+
+| Adapter | 1920x1080 | 3840x2160 |
+| --- | --- | --- |
+| RTX 4070 SUPER | 0.045 ms | 0.240 ms |
+| AMD Radeon | 2.39 ms | 11.17 ms |
+
+HDR conversion has a real GPU cost on weaker devices. These bounded measurements
+exclude encoding and do not establish gaming/endurance performance. Current
+monitors were SDR: physical HDR highlights, SDR content on HDR displays,
+thumbnails, mixed displays and mode changes under load remain unaccepted.
+Browser capture owns its own conversion; inspect the acquired frame before
+assigning a downstream bug.
 
 Full HDR requires a separate end-to-end decision for bit depth, codec support,
 color metadata, decoding and mixed Viewer capabilities. It is not a quality
 dropdown addition. Preserve ordinary SDR routing and existing compatibility
-while assessing HDR-to-SDR; no full-HDR or surround implementation is claimed.
+with HDR-to-SDR; no full-HDR or surround implementation is claimed.

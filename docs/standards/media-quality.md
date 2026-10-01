@@ -43,8 +43,13 @@ production behavior and remaining acceptance.
   NV12 with matching H.264 metadata. RGB capture and decoded video retain their
   input range/matrix through conversion and relay scaling; dimensions do not
   determine color space. Unspecified SDR follows the WebRTC convention.
-  [Fidelity evidence](../research/media-fidelity.md) owns platform checks and
-  the separate HDR boundary.
+- Windows native HDR sources retain scRGB FP16 until platform tone mapping,
+  source-display white-level adjustment and sRGB conversion produce SDR. Live
+  capture and source thumbnails share this owner; conversion precedes output
+  fanout and does not add a media route or per-encoder tone curve. Ordinary SDR
+  keeps its copy path. Source-display color changes refresh capture input,
+  not room authority or transport. [Fidelity evidence](../research/media-fidelity.md)
+  owns platform checks; this is HDR-to-SDR, not end-to-end HDR delivery.
 - Where Windows supports border control, the native source picker offers
   **Show capture border**, off by default. The choice stays in the Host page and
   follows native source and quality changes. Source previews request borderless

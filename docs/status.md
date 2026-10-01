@@ -44,6 +44,9 @@ panel. Its opted-in room session can outlive a publication; capture, quality and
 route owners remain unchanged. Optional Windows screen-audio exclusion uses the
 existing source/mixer boundary and remains in candidate acceptance. Hosted Server
 also accepts an optional SFU-only policy through the same route controller.
+Windows native capture and thumbnails now share automatic HDR-to-SDR conversion;
+synthetic GPU and Browser reception checks pass, with physical HDR display
+acceptance still pending in [verification status](./verification-status.md).
 Room voice is outside the product plan; Host microphone commentary remains.
 4K remains deferred. This candidate is not deployed;
 [TODO](./todo.md#now) owns acceptance and remaining work.

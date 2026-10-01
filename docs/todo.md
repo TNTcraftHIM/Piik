@@ -7,6 +7,15 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Windows HDR-to-SDR acceptance.** Automatic conversion is implemented
+  before native output fanout and in source thumbnails. Synthetic GPU and
+  H.264/VP8 Browser reception checks pass;
+  [fidelity evidence](./research/media-fidelity.md#hdr-to-sdr) owns results and
+  measured cost. Accept real HDR highlights, SDR content on HDR displays,
+  mixed-display window movement and live display-mode changes under load before
+  shipping. Issue [#420](https://github.com/TNTcraftHIM/Piik/issues/420)'s Browser
+  path still needs acquired-frame evidence; do not assign it this Native cause.
+
 - [ ] **Windows source-audio exclusion acceptance.** The candidate excludes one
   selected process tree during App screen sharing, using the existing PCM/mixer
   and media routes. Local tone isolation and target-exit checks passed;
@@ -56,15 +65,6 @@ history. A parked idea is not implementation authority.
 ## Deferred Feature Work
 
 These proposals remain deferred while the text/reaction candidate is active.
-
-- [ ] **Native HDR-to-SDR.** The [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr)
-  confirms an 8-bit Windows capture path without explicit HDR tone mapping.
-  Preserve HDR input and use platform conversion before the existing SDR
-  encoder; check thumbnails, mixed displays and cost on HDR hardware before
-  shipping. Issue [#420](https://github.com/TNTcraftHIM/Piik/issues/420)'s Browser
-  path still needs frame evidence. Keep this out of the current phase; full HDR
-  and surround sound need a separate design. Existing stereo has decoded-signal
-  evidence; physical source/device coverage remains acceptance work.
 
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A

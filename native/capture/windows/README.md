@@ -56,16 +56,18 @@ The checks include synthetic output-worker replacement and failure cases using
 WARP and a test codec, plus preview cleanup when WGC rejects a hidden test window.
 They do not capture a user screen or validate a physical encoder.
 
-On a Windows machine with a physical D3D11 adapter, check the shared SDR converter:
+On a Windows machine with a physical D3D11 adapter, check SDR and HDR-to-SDR conversion:
 
 ```powershell
 powershell -NoProfile -File native/capture/windows/build.ps1 -OutputDirectory build/color-check -CheckColor
 ```
 
-This sends synthetic RGB and full/limited-range BT.601/BT.709 NV12 color bars
-through the production converter, including scaling and input replacement. It
-checks black/white levels and the output matrix without capturing the desktop;
-decoded H.264/VP8 and Browser reception remain separate media acceptance.
+This sends synthetic RGB, full/limited-range BT.601/BT.709 NV12 and FP16 HDR bars
+through the production converters. It checks range/matrix, highlight detail,
+SDR/HDR replacement, white-level changes and retained-frame ownership without
+capturing the desktop. Decoded H.264/VP8, Browser reception and real HDR displays
+remain separate media acceptance; [fidelity research](../../../docs/research/media-fidelity.md)
+records current evidence and limits.
 
 The implementation follows Microsoft's MIT-licensed reference samples and
 official API contracts without copying their WIL framework. The retained MF

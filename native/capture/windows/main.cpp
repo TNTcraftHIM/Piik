@@ -33,6 +33,7 @@
 #include "capture_border.h"
 #include "capture_geometry.h"
 #include "capture_color.h"
+#include "capture_sdr.h"
 #include "process_audio.h"
 #include "h264_encoder.h"
 #ifndef PIIK_H264_FIXTURE
@@ -1836,8 +1837,11 @@ void RunVideoCapture(ProductArguments arguments) {
   if (initial_size.Width <= 0 || initial_size.Height <= 0) {
     Fail("capture-size", "selected window has no capturable content");
   }
+  CaptureDisplayColor display_color(arguments.target_kind, arguments.source_id);
+  CaptureSdrConverter sdr(device.device.Get());
+  auto pool_format = display_color.Resolve().Format();
   Direct3D11CaptureFramePool pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
-      capture_device, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2,
+      capture_device, static_cast<DirectXPixelFormat>(pool_format), 2,
       initial_size);
   GraphicsCaptureSession capture_session = pool.CreateCaptureSession(item);
   EnableFastCaptureUpdates(capture_session);
@@ -1999,15 +2003,17 @@ void RunVideoCapture(ProductArguments arguments) {
       }
       auto content_size = latest.ContentSize();
       if (content_size.Width <= 0 || content_size.Height <= 0) continue;
+      const auto color = display_color.Resolve();
       if (content_size.Width != pool_size.Width ||
-          content_size.Height != pool_size.Height) {
+          content_size.Height != pool_size.Height || color.Format() != pool_format) {
         latest.Close();
         latest = nullptr;
         latest_input.reset();
         pool.Recreate(capture_device,
-                      DirectXPixelFormat::B8G8R8A8UIntNormalized, 2,
+                      static_cast<DirectXPixelFormat>(color.Format()), 2,
                       content_size);
         pool_size = content_size;
+        pool_format = color.Format();
         continue;
       }
       ComPtr<ID3D11Texture2D> source = CaptureTexture(latest);
@@ -2018,13 +2024,7 @@ void RunVideoCapture(ProductArguments arguments) {
       UINT32 content_height = std::min<UINT32>(
           source_description.Height, static_cast<UINT32>(content_size.Height));
       auto input = std::make_shared<CaptureInput>();
-      auto owned_description = source_description;
-      owned_description.Usage = D3D11_USAGE_DEFAULT;
-      owned_description.CPUAccessFlags = 0;
-      owned_description.MiscFlags = 0;
-      owned_description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-      Check(device.device->CreateTexture2D(&owned_description, nullptr, &input->texture), "capture-owned-input");
-      device.context->CopyResource(input->texture.Get(), source.Get());
+      input->texture = sdr.Convert(source.Get(), color);
       input->width = content_width;
       input->height = content_height;
       input->timestamp = timestamp;

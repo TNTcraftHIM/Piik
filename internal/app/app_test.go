@@ -121,6 +121,12 @@ func TestPublicLinkStartupDistinguishesCancellationFromFailure(t *testing.T) {
 				}
 				cancel()
 			}
+			waitForResult := 5 * time.Second
+			if mode == "failed" {
+				// Startup includes three retry pauses and four real child launches;
+				// this is not the cancellation/ready-tunnel retirement deadline.
+				waitForResult = 15 * time.Second
+			}
 			select {
 			case err = <-done:
 				joined = true
@@ -139,7 +145,7 @@ func TestPublicLinkStartupDistinguishesCancellationFromFailure(t *testing.T) {
 				if ready != (mode == "ready" || mode == "ready-failed") {
 					t.Fatalf("startup readiness = %v for %s", ready, mode)
 				}
-			case <-time.After(5 * time.Second):
+			case <-time.After(waitForResult):
 				t.Fatal("App did not retire its local authority and tunnel")
 			}
 			content, err := os.ReadFile(filepath.Join(directory, "logs", "client.log"))
