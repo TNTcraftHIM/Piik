@@ -819,16 +819,32 @@ static gboolean control_input(gint fd, GIOCondition condition, gpointer data) {
   return G_SOURCE_CONTINUE;
 }
 
+static GstClockTime running_timestamp(const GstSegment *segment, GstBuffer *buffer) {
+  if (segment == NULL || segment->format != GST_FORMAT_TIME || buffer == NULL ||
+      !GST_BUFFER_PTS_IS_VALID(buffer)) return GST_CLOCK_TIME_NONE;
+  // Encoder PTS offsets belong to their segments, not the source clock.
+  return gst_segment_to_running_time(segment, GST_FORMAT_TIME, GST_BUFFER_PTS(buffer));
+}
+
+static GstClockTime pad_running_timestamp(GstPad *pad, GstBuffer *buffer) {
+  GstEvent *event = gst_pad_get_sticky_event(pad, GST_EVENT_SEGMENT, 0);
+  if (event == NULL) return GST_CLOCK_TIME_NONE;
+  const GstSegment *segment = NULL;
+  gst_event_parse_segment(event, &segment);
+  GstClockTime timestamp = running_timestamp(segment, buffer);
+  gst_event_unref(event);
+  return timestamp;
+}
+
 static GstPadProbeReturn begin_input_frame(GstPad *pad, GstPadProbeInfo *info,
                                            gpointer data) {
-  (void)pad;
   CaptureRun *run = data;
   GstBuffer *buffer = GST_PAD_PROBE_INFO_BUFFER(info);
-  if (buffer == NULL || !GST_BUFFER_PTS_IS_VALID(buffer)) {
+  GstClockTime timestamp = pad_running_timestamp(pad, buffer);
+  if (!GST_CLOCK_TIME_IS_VALID(timestamp)) {
     fail_run(run, "capture input has no presentation timestamp");
     return GST_PAD_PROBE_DROP;
   }
-  GstClockTime timestamp = GST_BUFFER_PTS(buffer);
   if (GST_CLOCK_TIME_IS_VALID(run->last_input_timestamp) &&
       timestamp <= run->last_input_timestamp) return GST_PAD_PROBE_DROP;
   run->last_input_timestamp = timestamp;
@@ -847,8 +863,8 @@ static GstPadProbeReturn output_input_frame(GstPad *pad, GstPadProbeInfo *info,
   VideoOutput *output = data;
   CaptureRun *run = output->run;
   GstBuffer *buffer = GST_PAD_PROBE_INFO_BUFFER(info);
-  if (buffer == NULL || !GST_BUFFER_PTS_IS_VALID(buffer)) return GST_PAD_PROBE_DROP;
-  GstClockTime timestamp = GST_BUFFER_PTS(buffer);
+  GstClockTime timestamp = pad_running_timestamp(pad, buffer);
+  if (!GST_CLOCK_TIME_IS_VALID(timestamp)) return GST_PAD_PROBE_DROP;
   g_mutex_lock(&run->lock);
   gboolean enabled = output->enabled;
   gboolean force = enabled && output->key_requested != output->key_sent;
@@ -865,7 +881,7 @@ static GstPadProbeReturn output_input_frame(GstPad *pad, GstPadProbeInfo *info,
   if (force) {
     gboolean sent = gst_pad_push_event(pad,
         gst_video_event_new_downstream_force_key_unit(
-            timestamp, GST_CLOCK_TIME_NONE, GST_CLOCK_TIME_NONE, TRUE,
+            GST_BUFFER_PTS(buffer), GST_CLOCK_TIME_NONE, timestamp, TRUE,
             (guint)request));
     if (!sent) {
       g_mutex_lock(&run->lock);
@@ -935,13 +951,13 @@ static GstFlowReturn video_sample(GstAppSink *sink, gpointer data) {
   }
   gboolean key_frame = !GST_BUFFER_FLAG_IS_SET(buffer, GST_BUFFER_FLAG_DELTA_UNIT);
   NalSummary nal = inspect_h264(mapped.data, mapped.size);
-  if (!GST_BUFFER_PTS_IS_VALID(buffer)) {
+  GstClockTime timestamp = running_timestamp(gst_sample_get_segment(sample), buffer);
+  if (!GST_CLOCK_TIME_IS_VALID(timestamp)) {
     gst_buffer_unmap(buffer, &mapped);
     gst_sample_unref(sample);
     fail_output(output, "encoded output lost the source presentation timestamp");
     return GST_FLOW_ERROR;
   }
-  GstClockTime timestamp = GST_BUFFER_PTS(buffer);
   gboolean recovery = key_frame && nal.sps && nal.pps && nal.idr &&
                       nal.profile_level_id[0] != '\0';
   g_mutex_lock(&run->lock);
@@ -1156,6 +1172,8 @@ static int capture_video(int count, char **values) {
   if (source != NULL) {
     if (encoded) run.encoded_source = source;
     else {
+      // Portal video must advance on the pipeline clock even between updates.
+      set_optional_boolean(G_OBJECT(source), "provide-clock", FALSE);
       set_optional_boolean(G_OBJECT(source), "resend-last", TRUE);
       set_numeric_property(G_OBJECT(source), "keepalive-time",
                            MAX(1, 1000 / run.profile.frame_rate));
