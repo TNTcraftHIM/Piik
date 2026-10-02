@@ -82,7 +82,8 @@ function executableMatchesTarget(path, target) {
   if (target.goos === "linux") {
     return header.length >= 20 && header.subarray(0, 4).equals(
       Buffer.from([0x7f, 0x45, 0x4c, 0x46]),
-    ) && header[4] === 2 && header[5] === 1 && header.readUInt16LE(18) === 0x3e;
+    ) && header[4] === 2 && header[5] === 1 &&
+      header.readUInt16LE(18) === (target.goarch === "arm64" ? 0xb7 : 0x3e);
   }
   return header.length >= 8 && header.subarray(0, 4).equals(
     Buffer.from([0xcf, 0xfa, 0xed, 0xfe]),

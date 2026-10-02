@@ -175,6 +175,8 @@ jobs:
             runner: windows-latest
           - target: linux-amd64
             runner: ubuntu-latest
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
           - target: darwin-arm64
             runner: macos-15
           - target: darwin-amd64
@@ -202,7 +204,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Install Linux packaging and native capture dependencies
-        if: matrix.target == 'linux-amd64'
+        if: startsWith(matrix.target, 'linux-')
         run: >-
           sudo apt-get update && sudo apt-get install -y
           zip

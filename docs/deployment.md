@@ -71,7 +71,7 @@ PIIK_GO=/path/to/go node scripts/assemble-app.mjs \
 Assembly refuses a dirty or different revision and emits one directory with the
 App executable, the Browser assets taken from that release and embedded in
 it, the selected sidecars, notices, and matching `REVISION`. Its required target
-is one of `windows-amd64`, `linux-amd64`, `darwin-arm64` or `darwin-amd64`; every supplied
+is one of `windows-amd64`, `linux-amd64`, `linux-arm64`, `darwin-arm64` or `darwin-amd64`; every supplied
 binary input must match it. It does not create an installer, auto-updater,
 release tag, or compatibility bundle.
 

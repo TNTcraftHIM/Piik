@@ -11,8 +11,8 @@ history. A parked idea is not implementation authority.
   staged film, README screenshots, browser-picker wording, Browser microphone
   processing, local chat appearance/export and entry layout, release identity
   display, signaling admission recovery, Linux native-sharing correction
-  ([#449](https://github.com/TNTcraftHIM/Piik/pull/449)), and ARM64 Server / Intel
-  Mac packages ([#439](https://github.com/TNTcraftHIM/Piik/issues/439),
+  ([#449](https://github.com/TNTcraftHIM/Piik/pull/449)), and ARM64 Server / Linux
+  ARM64 App / Intel Mac packages ([#439](https://github.com/TNTcraftHIM/Piik/issues/439),
   [#421](https://github.com/TNTcraftHIM/Piik/issues/421)).
   Formally merge #449 into the integration branch; retain the contributor's
   `Co-authored-by` identity in the final phase squash and credit the original PR
@@ -28,6 +28,11 @@ history. A parked idea is not implementation authority.
   the unbuilt upstream repair candidate. Keep the verified Piik budget and
   handoff repairs; do not add periodic resets, a quality floor or a Browser fork.
   The field room's cause and all brief blur are not established as resolved.
+- [ ] **32-bit Windows/Linux Apps.** Deferred by the owner on 2026-10-02;
+  no package or website option is planned. Browser use remains available where
+  the OS/browser supports the required media APIs. Retain the isolated
+  `spike/windows-x86-capture` experiment; revisit its native dependencies,
+  atomic alignment and real 32-bit device coverage only if this work is reopened.
 
 ## Deferred Feature Work
 
@@ -43,9 +48,10 @@ These proposals remain deferred beyond the accepted interaction phase.
 
 - [ ] **macOS and Linux physical capture.** Complete the remaining capture/audio
   checks in [verification status](./verification-status.md#device-evidence-boundary),
-  including an Intel Mac with a usable hardware H.264 encoder and Linux systems
-  beyond the PR author's Hyprland/NVIDIA result. Native-runner packaging and
-  headless timestamp tests do not establish physical capture or game endurance.
+  including an Intel Mac with a usable hardware H.264 encoder, an ARM64 Linux
+  desktop, and Linux systems beyond the PR author's Hyprland/NVIDIA result.
+  Native-runner packaging and headless timestamp tests do not establish physical
+  capture or game endurance.
 - [ ] **Signaling recovery on passwordless sites (#446).** Verify the admission
   correction against a matched Host/Server attempt. Local checks establish that
   ambiguous `AUTH_REQUIRED` no longer invents site-password denial; the event
@@ -158,12 +164,6 @@ These proposals remain deferred beyond the accepted interaction phase.
   deadline fails the original output and can end a native Windows share. This
   is a candidate mechanism, not evidence that ordinary source silence or this
   reporter's game caused an encoder failure.
-- [ ] **Windows 32-bit candidate acceptance.** Verify the isolated
-  `spike/windows-x86-capture` candidate's launch, capture/audio, memory pressure,
-  source replacement and update links on a 32-bit Windows device. WOW64
-  Host/media checks establish only that environment. Reconcile its scoped
-  SDK/toolchain and atomic-alignment changes with current main when accepted;
-  the experiment is not part of this maintenance release.
 - [ ] **Windows launcher exit after opening the page.** A user reports that the
   mode-selection page opens, then the App console reports
   `Piik App could not open its launcher: exit status 0xc0000005`.

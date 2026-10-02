@@ -81,6 +81,7 @@ Download a ZIP beginning with **`piik-app`**. The filename also identifies the p
 | `darwin-arm64` | Apple silicon; native capture requires macOS 13+ |
 | `darwin-amd64` | Intel Mac; native capture requires macOS 13+ |
 | `linux-amd64` | Linux x64 |
+| `linux-arm64` | Linux ARM64 |
 
 [**Full setup guide →**](./docs/guide/getting-started.md) · [**Open online →**](https://demo.piik.tv)
 

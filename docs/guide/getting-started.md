@@ -82,6 +82,7 @@ restrictive networks may load the page but block video.
 | `darwin-arm64` | Apple silicon; native capture requires macOS 13+ |
 | `darwin-amd64` | Intel Mac; native capture requires macOS 13+ |
 | `linux-amd64` | Linux x64 |
+| `linux-arm64` | Linux ARM64 |
 
 Windows App and browser sharing are the primary tested paths. Physical-device
 coverage for the macOS and Linux apps is still limited;

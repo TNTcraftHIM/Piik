@@ -168,7 +168,7 @@ node scripts/package-server-release.mjs /outside/repository/app-release
 node scripts/package-app-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/app-candidate
 ```
 
-支持的目标为 `windows-amd64`、`linux-amd64`、`darwin-arm64` 和 `darwin-amd64`，请替换命令中的目标名称。
+支持的目标为 `windows-amd64`、`linux-amd64`、`linux-arm64`、`darwin-arm64` 和 `darwin-amd64`，请替换命令中的目标名称。
 Darwin 组装需要原生 macOS runner 与 SDK，并启用 cgo；Windows 与 Linux 组装禁用 cgo。
 结果是 ZIP 程序包和 SHA-256 文件。手动组装辅助程序、显式 CI 打包、Release 发布与更新，
 见[部署与发布](../../docs/deployment.md)；创建候选包不会将它发布。

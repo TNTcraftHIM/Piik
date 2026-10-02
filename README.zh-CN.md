@@ -76,6 +76,7 @@ Piik App 提供本地房间、临时公网邀请和连接已有站点三种模�
 | `darwin-arm64` | Apple 芯片；原生采集需 macOS 13 及以上 |
 | `darwin-amd64` | Intel Mac；原生采集需 macOS 13 及以上 |
 | `linux-amd64` | Linux x64 |
+| `linux-arm64` | Linux ARM64 |
 
 [**完整使用教程 →**](./docs/guide/getting-started.zh-CN.md) · [**打开在线版 →**](https://demo.piik.tv)
 

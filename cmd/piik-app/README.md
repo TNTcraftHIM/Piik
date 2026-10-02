@@ -206,7 +206,7 @@ node scripts/package-server-release.mjs /outside/repository/app-release
 node scripts/package-app-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/app-candidate
 ```
 
-Supported targets are `windows-amd64`, `linux-amd64`, `darwin-arm64` and `darwin-amd64`.
+Supported targets are `windows-amd64`, `linux-amd64`, `linux-arm64`, `darwin-arm64` and `darwin-amd64`.
 Use the matching target name in the command above. Darwin assembly requires a
 native macOS runner with its SDK and enables cgo; Windows and Linux assembly keep
 cgo disabled.
