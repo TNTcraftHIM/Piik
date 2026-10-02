@@ -9,11 +9,27 @@
 #include <propvarutil.h>
 
 #include <algorithm>
+#include <charconv>
 
 namespace piik::capture::windows {
 
 namespace {
 constexpr DWORD kMaxEncodedSampleBytes = 4 * 1024 * 1024;
+}
+
+bool VideoProfile::accepts_h264_profile_level_id(const std::string& value) const {
+  if (value.size() != 6) return false;
+  UINT32 parsed = 0;
+  const auto end = value.data() + value.size();
+  const auto result = std::from_chars(value.data(), end, parsed, 16);
+  if (result.ec != std::errc{} || result.ptr != end || (parsed & 0xff) != h264_level()) return false;
+  const auto idc = parsed >> 16;
+  const auto constraints = (parsed >> 8) & 0xff;
+  // RFC 6184 Table 5: these are the same Constrained Baseline tools, not
+  // permission to emit Main/High. Extra constraint flags need not be identical.
+  return (idc == 0x42 && (constraints & 0x4f) == 0x40) ||
+         (idc == 0x4d && (constraints & 0x8f) == 0x80) ||
+         (idc == 0x58 && (constraints & 0xcf) == 0xc0);
 }
 
 std::string NarrowAscii(const std::wstring& value) {
@@ -679,7 +695,7 @@ EncodedAccessUnit LiveEncoder::Encode(
       Fail("bitstream-annexb", "live output is not Annex-B H264");
     }
     if (nal.profile_level_id) {
-      if (*nal.profile_level_id != profile_.profile_level_id()) {
+      if (!profile_.accepts_h264_profile_level_id(*nal.profile_level_id)) {
         Fail("bitstream-profile", "hardware MFT changed the requested H.264 profile level");
       }
       if (profile_level_id_ && *profile_level_id_ != *nal.profile_level_id) {

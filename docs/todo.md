@@ -7,13 +7,13 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **4K candidate acceptance.** Review 2160p in ordinary sharing settings and
-  complete cross-platform candidate packaging. Capture/decode/relay bounds,
+- [ ] **4K candidate acceptance.** Review 2160p in ordinary sharing settings.
+  Cross-platform candidate packaging passed without publishing. Capture/decode/relay bounds,
   live/paused changes, source replacement and local SFU reception are implemented
   and checked on Windows. Presets, bitrate limits and routing remain unchanged.
   [Status](./status.md#4k-candidate) owns the coordinated Web/App/Server upgrade
   boundary; the next-major release still requires authorization. Device failures
-  and H.264 profile comparison remain in the evidence items below.
+  and the original H.264 quality report remain in the evidence items below.
 
 - [ ] **Presentation, usability and platform integration.** Review the synchronized website,
   staged film, README screenshots, browser-picker wording, Browser microphone
@@ -81,8 +81,11 @@ These proposals remain deferred beyond the accepted interaction phase.
   delivered bitrate/format and zero reported loss, but contains no matched
   pictures or bitstream. The reporter withdrew the fixture-contaminated CBR
   ceiling claim. [Evidence review](./research/native-client-media.md#native-h264-motion-quality)
-  owns that distinction. Reproduce with identical content and unchanged
-  production settings before proposing profile, default-FPS or bitrate changes.
+  owns that distinction and the completed same-content Main/High comparison.
+  Synthetic gains do not establish the field cause, and Main/High are not
+  universally supported. Retain the current codec parameters; obtain matched
+  source/decoded pictures and bitstream for the original game before assigning
+  its cause. Equivalent Constrained Baseline SPS admission is corrected.
 - [ ] **Self-hosted room creation HTTP 403.** Retest affected deployments using
   the [address checks](./guide/troubleshooting.md#room-creation-returns-403).
   Obtain the configured public address/origin and response details; distinguish
@@ -164,8 +167,10 @@ These proposals remain deferred beyond the accepted interaction phase.
   The new `input-texture-create / 0x887a0005` report establishes a rejected
   candidate with a lost D3D device, not the final outcome of sharing. Capture now
   retains failure detail and queries the device-removal reason before releasing
-  that device. Obtain the same attempt's subsequent candidate/fallback result
-  and final share state before changing recovery or assigning a driver cause.
+  that device. Local repeated activation and real AMD-to-NVIDIA candidate
+  selection passed; neither reproduced this device loss. Obtain the same attempt's
+  subsequent candidate/fallback result and final share state before changing
+  recovery or assigning a driver cause.
 - [ ] **Share ends after entering a game.** Screen sharing reportedly works
   until entering a game freezes the picture, followed seconds later by share
   termination. Version, capture path, codec and matched diagnostics are unknown.

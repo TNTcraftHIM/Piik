@@ -74,6 +74,7 @@ struct VideoProfile final {
            << h264_level();
     return output.str();
   }
+  bool accepts_h264_profile_level_id(const std::string& value) const;
 };
 
 constexpr VideoProfile kDefaultVideoProfile{};

@@ -618,7 +618,7 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
     Fail("codec-runtime-bitrate-effect",
          "live bitrate update did not lower and restore encoded output");
   }
-  if (*observed_profile != "42c01f") {
+  if (!kDefaultVideoProfile.accepts_h264_profile_level_id(*observed_profile)) {
     Fail("bitstream-pinned-fmtp",
          "SPS profile-level-id differs from the native media contract");
   }
@@ -1421,7 +1421,7 @@ class OutputWorker final {
   OutputWorker(UINT8 layer, VideoProfile profile, OutputKind kind, ID3D11Device* device,
                ProtocolWriter& writer, Factory create,
                std::unique_ptr<VideoEncoder> initial, bool active,
-               std::function<void()> on_output,
+               std::function<void(const EncodedAccessUnit&)> on_output,
                std::function<void(std::exception_ptr)> on_failure)
       : layer_(layer), profile_(profile), kind_(kind), device_(device), writer_(writer),
         create_(std::move(create)), initial_(std::move(initial)),
@@ -1519,7 +1519,7 @@ class OutputWorker final {
                              access_unit.bytes.data(), static_cast<DWORD>(access_unit.bytes.size()),
                              layer_, static_cast<UINT16>(output->width),
                              static_cast<UINT16>(output->height)), "capture-video-output");
-        if (on_output_) on_output_();
+        if (on_output_) on_output_(access_unit);
       }
     } catch (...) {
       if (mailbox_.Fail()) on_failure_(std::current_exception());
@@ -1537,7 +1537,7 @@ class OutputWorker final {
   ProtocolWriter& writer_;
   Factory create_;
   std::unique_ptr<VideoEncoder> initial_;
-  std::function<void()> on_output_;
+  std::function<void(const EncodedAccessUnit&)> on_output_;
   std::function<void(std::exception_ptr)> on_failure_;
   using Mailbox = piik::capture::OutputMailbox<CaptureInput>;
   Mailbox mailbox_;
@@ -1573,11 +1573,16 @@ void WriteVideoStarting(ProtocolWriter& writer, const ProductArguments& argument
   Check(writer.WriteStatus(status.str()), "capture-status-starting");
 }
 
-void WriteVideoActive(ProtocolWriter& writer, const ProductArguments& arguments, bool hardware) {
+void WriteVideoActive(ProtocolWriter& writer, const ProductArguments& arguments,
+                      bool hardware, const EncodedAccessUnit& output) {
   std::ostringstream status;
   status << "{\"state\":\"active\",\"hardwareOnly\":" << (hardware ? "true" : "false")
          << ",\"codec\":" << JSONString(hardware ? "h264" : "vp8");
-  if (hardware) status << ",\"profileLevelId\":" << JSONString(arguments.profile.profile_level_id());
+  if (hardware) {
+    const auto profile = InspectAnnexB(output.bytes).profile_level_id;
+    if (!profile) Fail("capture-active-profile", "first H264 output did not carry an SPS profile");
+    status << ",\"profileLevelId\":" << JSONString(*profile);
+  }
   status << ",\"width\":" << arguments.profile.width << ",\"height\":" << arguments.profile.height
          << ",\"fps\":" << arguments.profile.frame_rate;
   AppendOutputProfiles(status, arguments.outputs);
@@ -1588,7 +1593,7 @@ void WriteVideoActive(ProtocolWriter& writer, const ProductArguments& arguments,
 std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
     const ProductArguments& arguments, const Adapter& adapter, const DeviceContext& device,
     ProtocolWriter& writer, VideoEncoderSelection encoder,
-    const std::function<void()>& on_active,
+    const std::function<void(const EncodedAccessUnit&)>& on_active,
     const std::function<void(size_t, std::exception_ptr)>& on_failure) {
   const bool hardware = encoder.kind == OutputKind::h264;
   const UINT encoder_index = arguments.mft_index;
@@ -1609,7 +1614,7 @@ std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
     workers.push_back(std::make_unique<OutputWorker>(
         static_cast<UINT8>(layer), profile, encoder.kind, device.device.Get(), writer,
         std::move(create), original ? std::move(encoder.initial) : nullptr, capture && layer < 2,
-        [original, on_active]() { if (original) on_active(); },
+        [original, on_active](const EncodedAccessUnit& output) { if (original) on_active(output); },
         [layer, on_failure](std::exception_ptr error) { on_failure(layer, error); }));
   }
   return workers;
@@ -1732,7 +1737,9 @@ void RunEncodedVideo(ProductArguments arguments) {
   std::atomic<bool> active{false};
   std::atomic<size_t> failed{0};
   auto workers = CreateOutputWorkers(arguments, adapter, device, writer, std::move(encoder),
-      [&]() { if (!active.exchange(true)) WriteVideoActive(writer, arguments, hardware); },
+      [&](const EncodedAccessUnit& output) {
+        if (!active.exchange(true)) WriteVideoActive(writer, arguments, hardware, output);
+      },
       [&](size_t layer, std::exception_ptr error) {
         (void)writer.WriteUnavailable(static_cast<UINT8>(layer), OutputFailureDetail(layer, error));
         if (failed.fetch_add(1) + 1 == arguments.outputs.size()) CancelSynchronousIo(input_thread.get());
@@ -1919,8 +1926,8 @@ void RunVideoCapture(ProductArguments arguments) {
     const DWORD control_wait_ms = static_cast<DWORD>((frame_duration + 9'999) / 10'000);
     WriteVideoStarting(writer, arguments, adapter, encoder);
     workers = CreateOutputWorkers(arguments, adapter, device, writer, std::move(encoder),
-      [&]() {
-        if (!active_status_written.exchange(true)) WriteVideoActive(writer, arguments, hardware);
+      [&](const EncodedAccessUnit& output) {
+        if (!active_status_written.exchange(true)) WriteVideoActive(writer, arguments, hardware, output);
       },
       [&](size_t layer, std::exception_ptr error) {
         if (layer == (arguments.outputs.size() > 1 ? 1u : 0u)) {

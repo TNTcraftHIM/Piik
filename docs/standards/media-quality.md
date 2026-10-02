@@ -116,7 +116,10 @@ maintain-framerate` remain independent controls. Display video uses the standard
 4K uses the same live/paused controls and source-replacement boundary. It does
 not change the recommended presets or bitrate ceilings. Native H264 retains
 Constrained Baseline, with level 5.2 covering the 4K60 ceiling; profile and level
-are different codec parameters. [Status](../status.md#4k-candidate) owns the
+are different codec parameters. Capture validates the coding-tool subset under
+RFC 6184, including equivalent Constrained Baseline constraint bytes, and reports
+the actual SPS profile/level; one vendor's byte spelling is not the contract.
+[Status](../status.md#4k-candidate) owns the
 coordinated update and unpublished compatibility boundary.
 
 Framework-driven downscaling under bandwidth or device pressure is valid within

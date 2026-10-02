@@ -3,6 +3,7 @@ package nativehost
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -1215,8 +1216,23 @@ func (state CaptureState) applyBackend(options *nativecapture.VideoOptions) {
 }
 
 func validH264ProfileLevelID(value string) bool {
-	switch value {
-	case "42c01e", "42c01f", "42c020", "42c028", "42c029", "42c02a", "42c032", "42c033", "42c034":
+	if len(value) != 6 {
+		return false
+	}
+	profile, err := hex.DecodeString(value)
+	if err != nil {
+		return false
+	}
+	// RFC 6184 Table 5 identifies Constrained Baseline by coding tools, not
+	// one vendor's constraint byte. Capture still reports its actual SPS.
+	constrainedBaseline := (profile[0] == 0x42 && profile[1]&0x4f == 0x40) ||
+		(profile[0] == 0x4d && profile[1]&0x8f == 0x80) ||
+		(profile[0] == 0x58 && profile[1]&0xcf == 0xc0)
+	if !constrainedBaseline {
+		return false
+	}
+	switch profile[2] {
+	case 30, 31, 32, 40, 41, 42, 50, 51, 52:
 		return true
 	default:
 		return false

@@ -141,6 +141,21 @@ shutdown cannot be preempted by that deadline. Slow-output rejection has fixture
 coverage; native AMD/Intel physical acceptance and game-load behavior remain
 open. This evidence does not establish the cause of reported system-wide lag.
 
+The `input-texture-create / 0x887a0005` report identifies a lost D3D device during
+candidate preparation, not a failed room route or proof that every candidate
+failed. Following Microsoft's [device-loss guidance](https://learn.microsoft.com/en-us/windows/uwp/gaming/handling-device-lost-scenarios),
+capture preserves the original stage/HRESULT and queries `GetDeviceRemovedReason`
+before releasing that candidate's device. Each later candidate and Auto's VP8
+fallback owns a fresh device; a live encoder does not silently change codec.
+A 2026-10-03 local check exercised all five enumerated adapter entries, including
+15 successful NVIDIA activation/encode/shutdown cycles on reused devices.
+AMD activation returned `0x8007000e` with a healthy D3D device; production Auto
+and manual H264 both moved from that preferred AMD candidate to working NVIDIA
+H264 (about 1.95 s and 0.32 s). Auto also selected H264 at 2160p60. This did not
+reproduce the reporter's device removal. No driver reset was forced, and the
+optional D3D debug layer was unavailable. The reporter's removal reason,
+subsequent candidates and final outcome remain necessary to assign its cause.
+
 On 2026-10-03 the Windows Browser gate kept two native PeerConnections alive
 while the source changed from 720p30 to 2160p60, then to 480p15 while paused,
 and resumed both Viewers. The same Pion source survives the capture/encoder
@@ -335,15 +350,55 @@ the bitrate ceiling, lowering the default frame rate or changing profile is not
 justified by these logs alone; those changes have bandwidth, motion and receiver
 compatibility consequences.
 
-Rechecked 2026-10-03: Main/High are separate from the level increase needed for
-4K. [RFC 7742](https://www.rfc-editor.org/rfc/rfc7742.html#section-6.2) requires
-Constrained Baseline support; it does not make High universal. Microsoft's
-[encoder reference](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-encoder)
-exposes CABAC and B-frame controls separately: choosing Main/High alone does not
-prove CABAC is enabled, and B frames are not required by those profiles.
-A comparison should keep latency, frame ordering and rate control fixed, inspect
-actual SPS/PPS, and check every receiving/relay path before changing the default.
-The current implementation retains its Baseline contract.
+### Profile And Parameter Comparison
+
+Measured 2026-10-03 on Windows 11 26200, RTX 4070 SUPER, driver 32.0.16.1088,
+using the production Media Foundation owner with profile-only research changes.
+Each comparison reused identical FFmpeg `testsrc2` NV12 frames, unchanged CBR,
+low-latency mode, two-second GOP and quality/speed 50. Runs covered six seconds
+at 720p30 and four seconds at 1080p60. FFmpeg decoded the retained Annex-B output;
+PSNR/SSIM comparisons aligned frames by index and checked all output frame types.
+These are synthetic codec comparisons, not a reproduction of the reported game.
+
+| Source / requested bitrate | Baseline: actual Mbps / PSNR dB | Main: actual Mbps / PSNR dB | High: actual Mbps / PSNR dB |
+| --- | --- | --- | --- |
+| 720p30 / 3 Mbps | 3.078 / 43.17 | 3.030 / 44.02 | 3.056 / 44.05 |
+| 720p30 / 11 Mbps | 10.603 / 60.66 | 10.219 / 61.81 | 10.220 / 61.74 |
+| 1080p60 / 10 Mbps | 10.104 / 42.53 | 10.046 / 43.28 | 10.167 / 43.20 |
+
+All streams retained order and had zero B frames. Main/High PPS enabled CABAC;
+explicitly requesting CABAC produced byte-identical output to the corresponding
+profile's default. Baseline PPS correctly disabled CABAC even though the NVIDIA
+property readback returned true: property readback alone is not bitstream proof.
+Median encode time was about 2–3 ms in these paced runs. Quality/speed 100 did not
+consistently improve PSNR, so it does not justify replacing the current preference
+mapping. A one-frame CBR buffer reduced 720p30 actual output to 2.319 Mbps and
+41.08 dB; four frames produced 3.003 Mbps and 43.08 dB. Neither improved on the
+default. The experiment does not establish end-to-end latency.
+
+The [Marpe/Wiegand/Sullivan paper](https://doi.org/10.1109/MCOM.2006.1678121)
+establishes benefits of CABAC and High-profile tools, but its reference-encoder
+comparison used B pictures and several references, not this low-latency MFT.
+[NVIDIA's low-latency guidance](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.1/nvenc-video-encoder-api-prog-guide/index.html#low-latency-encoding)
+supports CBR but requires evaluating buffer/quality tradeoffs; its native SDK
+presets cannot be assumed to map directly to vendor Media Foundation properties.
+
+Compatibility remains decisive: Chrome and Edge 154 on this machine advertised
+Main/High, while [Firefox's default WebRTC codec list](https://github.com/mozilla-firefox/firefox/blob/main/dom/media/webrtc/jsep/JsepCodecDescription.h)
+still declares only Baseline variants for H264. The local Firefox test lacked its
+OpenH264 plugin and is not evidence of a normal Firefox H264 failure.
+[RFC 7742](https://www.rfc-editor.org/rfc/rfc7742.html#section-6.2) guarantees
+Constrained Baseline, not Main/High. Piik's native and forwarded source contract
+also remains Constrained Baseline. Retain that default, CBR and existing GOP;
+do not add a profile knob or per-receiver transcodes for this unproven field cause.
+
+One independent compatibility defect was confirmed: capture admission compared
+against `42c0` literally, rejecting equivalent Constrained Baseline SPS such as
+`42e0`. Windows validation and the shared Go capture-state reader now follow
+[RFC 6184 Table 5](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.1), retaining
+the existing level bounds and rejecting actual Main/High. Windows active status
+reads the emitted SPS instead of synthesizing a vendor-specific value. This is
+not a profile upgrade or an explanation for `DXGI_ERROR_DEVICE_REMOVED`.
 
 ## Implementation Boundary
 

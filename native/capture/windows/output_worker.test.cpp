@@ -63,7 +63,7 @@ void CheckWorkerFailureGeneration(ID3D11Device* device, bool replace) {
   OutputWorker worker(0, VideoProfile{}, OutputKind::h264, device, writer,
       [&](const VideoProfile&) -> std::unique_ptr<VideoEncoder> {
         return std::make_unique<FixtureEncoder>(created++ == 0 ? &entered : nullptr, released);
-      }, nullptr, true, [&] { output.set_value(); },
+      }, nullptr, true, [&](const EncodedAccessUnit&) { output.set_value(); },
       [&](std::exception_ptr error) {
         try { std::rethrow_exception(error); }
         catch (const GateFailure& actual) { assert(actual.result() == E_FAIL); }
@@ -113,6 +113,31 @@ void CheckPrimaryFailureDetails() {
     rejected = error.stage() == "h264-decoder-create" && error.result() == CO_E_NOTINITIALIZED;
   }
   assert(rejected);
+}
+
+void CheckH264ProfileCompatibility() {
+  const VideoProfile profile;
+  for (const auto* value : {"42c01f", "42e01f", "42E01F", "4d801f", "58c01f"})
+    assert(profile.accepts_h264_profile_level_id(value));
+  for (const auto* value : {"42001f", "4d001f", "64001f", "42e11f", "42e01", "42e01fg",
+                           "42e0gg", "42e034", "42e01e", " 42c01"})
+    assert(!profile.accepts_h264_profile_level_id(value));
+
+  HANDLE read = nullptr, write = nullptr;
+  assert(CreatePipe(&read, &write, nullptr, 4096));
+  ProtocolWriter writer(write);
+  ProductArguments arguments;
+  arguments.outputs = {profile};
+  EncodedAccessUnit output{0, true, {0, 0, 0, 1, 0x67, 0x42, 0xe0, 0x1f}};
+  WriteVideoActive(writer, arguments, true, output);
+  std::array<char, 4096> bytes{};
+  DWORD count = 0;
+  assert(ReadFile(read, bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr));
+  const std::string status(bytes.data(), count);
+  assert(status.find("\"profileLevelId\":\"42e01f\"") != std::string::npos);
+  assert(status.find("42c01f") == std::string::npos);
+  CloseHandle(write);
+  CloseHandle(read);
 }
 
 void CheckEncoderCandidates() {
@@ -229,6 +254,7 @@ int main() {
     assert(error.stage() == "argument-profile");
   }
   CheckEncoderCandidates();
+  CheckH264ProfileCompatibility();
   CheckPrimaryFailureDetails();
   ComPtr<ID3D11Device> device;
   Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,
