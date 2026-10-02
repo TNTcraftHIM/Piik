@@ -83,8 +83,8 @@ restrictive networks may load the page but block video.
 | `darwin-amd64` | Intel Mac; native capture requires macOS 13+ |
 | `linux-amd64` | Linux x64 |
 
-Windows App and browser sharing are the primary tested paths. The macOS and
-Linux apps have not yet been tested on physical devices;
+Windows App and browser sharing are the primary tested paths. Physical-device
+coverage for the macOS and Linux apps is still limited;
 [test results and feedback are welcome](https://github.com/TNTcraftHIM/Piik/issues).
 Linux native capture also needs [system components](../../native/capture/linux/README.md).
 See the [App guide](../../cmd/piik-app/README.md) for package and runtime details.

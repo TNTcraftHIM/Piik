@@ -16,8 +16,8 @@ in the [Linux capture guide](../../native/capture/linux/README.md).
 If the page does not open automatically, open the address shown in the terminal
 or press **O** there to retry. Keep the App running while using that page.
 
-Windows App and browser sharing are the primary tested paths. The macOS and
-Linux apps have not yet been tested on physical devices; test results and
+Windows App and browser sharing are the primary tested paths. Physical-device
+coverage for the macOS and Linux apps is still limited; test results and
 [feedback](https://github.com/TNTcraftHIM/Piik/issues) are welcome. macOS native
 capture requires macOS 13 or newer on Apple silicon or Intel. Package construction and public Release
 publication are separate steps in [deployment](../../docs/deployment.md).

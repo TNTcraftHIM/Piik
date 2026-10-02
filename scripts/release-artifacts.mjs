@@ -51,7 +51,7 @@ export function readReleaseArtifacts(directory, version, revision) {
   }
   const expected = [...SERVER_PACKAGE_TARGETS, ...APP_PACKAGE_TARGETS].map(target => target.id);
   if (targets.size !== expected.length || expected.some((target) => !targets.has(target))) {
-    throw new Error("Publication requires one matching Server and every App target");
+    throw new Error("Publication requires every registered Server and App target");
   }
   // Sidecars prove the local build; only installable packages are public assets.
   return { files: packages, servers, targets: [...targets] };

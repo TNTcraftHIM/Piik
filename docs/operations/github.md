@@ -115,7 +115,7 @@ Use the release's actual version and full `target_commitish` SHA, with
 three arguments checks local identity, checksums and attachment sizes without
 publishing. The [release-source policy](../standards/versioning.md#release-sources)
 owns provenance, selection and quota limits. The first public release passed
-complete matching Server and three-platform App mirror download acceptance.
+complete matching mirror download acceptance for every Server and App package.
 
 Release postflight applies the [two-version mirror retention policy](../standards/versioning.md#release-sources).
 After verifying the latest mirror and its fallback against GitHub, inventory

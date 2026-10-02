@@ -80,7 +80,7 @@ Piik App 提供本地房间、临时公网邀请和连接已有站点三种模�
 [**完整使用教程 →**](./docs/guide/getting-started.zh-CN.md) · [**打开在线版 →**](https://demo.piik.tv)
 
 浏览器采集需要 HTTPS 或 `localhost`。目前主要测试 Windows 版 Piik App 和桌面浏览器分享。
-macOS 和 Linux 版 Piik App 尚未经过实机测试，欢迎有设备的朋友试用并[反馈问题](https://github.com/TNTcraftHIM/Piik/issues)。
+macOS 和 Linux 版 Piik App 仍需更多实机测试，欢迎有设备的朋友试用并[反馈问题](https://github.com/TNTcraftHIM/Piik/issues)。
 Piik App 的公网邀请和在线版使用纯 P2P 连接，
 在受限网络下可能无法连通。
 

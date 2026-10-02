@@ -7,24 +7,15 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Presentation and usability integration.** Review the synchronized website,
+- [ ] **Presentation, usability and platform integration.** Review the synchronized website,
   staged film, README screenshots, browser-picker wording, Browser microphone
   processing, local chat appearance/export and entry layout, release identity
-  display, and signaling admission recovery.
-  Shared App UI changes await the next authorized product release; no new
+  display, signaling admission recovery, Linux native-sharing correction
+  ([#449](https://github.com/TNTcraftHIM/Piik/pull/449)), and ARM64 Server / Intel
+  Mac packages ([#439](https://github.com/TNTcraftHIM/Piik/issues/439),
+  [#421](https://github.com/TNTcraftHIM/Piik/issues/421)).
+  Product changes await the next authorized release; no new
   release is authorized. Matched field acceptance remains listed below.
-- [ ] **Linux native sharing PR [#449](https://github.com/TNTcraftHIM/Piik/pull/449).**
-  Independently run the Linux capture build and timestamp regression before
-  integration, including input-frame and keyframe-request running time. The PR
-  workflow validates release notes only; approving its pending run does not
-  execute native capture checks. Extend physical coverage beyond the author's
-  Hyprland/NVIDIA result when matching hardware is available.
-- [ ] **Platform package acceptance (#439, #421).** Verify Linux ARM64 Server
-  archives and container startup/persistence on an ARM runner, and the Intel Mac
-  App's Swift/cgo capture, tunnel and packaged launcher on an Intel runner.
-  Keep the existing x64 Server artifact names and test the complete publication
-  set before integration. These are unpublished candidates; update the download
-  and deployment guides after the native-runner checks pass.
 
 ## Held By Owner
 
@@ -47,6 +38,11 @@ These proposals remain deferred beyond the accepted interaction phase.
 
 ## Awaiting Device Or Reporter Evidence
 
+- [ ] **macOS and Linux physical capture.** Complete the remaining capture/audio
+  checks in [verification status](./verification-status.md#device-evidence-boundary),
+  including an Intel Mac with a usable hardware H.264 encoder and Linux systems
+  beyond the PR author's Hyprland/NVIDIA result. Native-runner packaging and
+  headless timestamp tests do not establish physical capture or game endurance.
 - [ ] **Signaling recovery on passwordless sites (#446).** Verify the admission
   correction against a matched Host/Server attempt. Local checks establish that
   ambiguous `AUTH_REQUIRED` no longer invents site-password denial; the event

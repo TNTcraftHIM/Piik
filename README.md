@@ -85,8 +85,8 @@ Download a ZIP beginning with **`piik-app`**. The filename also identifies the p
 [**Full setup guide →**](./docs/guide/getting-started.md) · [**Open online →**](https://demo.piik.tv)
 
 Browser capture requires HTTPS or `localhost`. Windows App and desktop browser
-sharing are the primary tested paths. The macOS and Linux apps have not yet been
-tested on physical devices; [test results and feedback are welcome](https://github.com/TNTcraftHIM/Piik/issues).
+sharing are the primary tested paths. Physical-device coverage for the macOS and
+Linux apps is still limited; [test results and feedback are welcome](https://github.com/TNTcraftHIM/Piik/issues).
 P2P-only modes, including the App's temporary public
 link and the online version, may not connect on restrictive networks.
 

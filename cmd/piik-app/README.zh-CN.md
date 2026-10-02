@@ -14,7 +14,7 @@ Windows 运行 `piik-app.exe`，Linux 运行 `./piik-app`，macOS 打开 `Piik A
 网页没有自动打开时，可手动打开终端中显示的地址，或在终端按 **O** 重试。
 使用网页期间，请保持 App 运行。
 
-目前主要测试 Windows 版 Piik App 和浏览器分享。macOS 与 Linux 版 Piik App 尚未经过实机测试，
+目前主要测试 Windows 版 Piik App 和浏览器分享。macOS 与 Linux 版 Piik App 仍需更多实机测试，
 欢迎试用并[反馈结果](https://github.com/TNTcraftHIM/Piik/issues)。macOS 原生采集需要
 Apple 芯片或 Intel Mac，以及 macOS 13 或更新版本。构建程序包与公开发布 Release 是两个独立步骤，
 详见[部署与发布](../../docs/deployment.md)。
