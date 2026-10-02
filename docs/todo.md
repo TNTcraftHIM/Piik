@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-02
+Last reviewed: 2026-10-03
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
@@ -33,6 +33,8 @@ history. A parked idea is not implementation authority.
   the OS/browser supports the required media APIs. Retain the isolated
   `spike/windows-x86-capture` experiment; revisit its native dependencies,
   atomic alignment and real 32-bit device coverage only if this work is reopened.
+- [ ] **Windows ARM64 App.** Deferred by the owner on 2026-10-03. Keep Windows
+  App packages and website downloads x64-only until this work is reopened.
 
 ## Deferred Feature Work
 
