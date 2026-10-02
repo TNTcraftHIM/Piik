@@ -19,6 +19,16 @@ const packageAsset = (target: string, suffix = "") => {
 };
 
 describe("App release update notice", () => {
+  it("reads publication time without making optional metadata an update prerequisite", () => {
+    expect(parseReleaseMetadata({ ...release, published_at: "2026-10-01T12:34:56Z" }))
+      .toMatchObject({ version: release.tag_name, publishedAt: "2026-10-01T12:34:56.000Z" });
+    for (const published_at of [undefined, null, 0, "0", "not-a-date", "2026-99-99T00:00:00Z"]) {
+      const parsed = parseReleaseMetadata({ ...release, published_at });
+      expect(parsed?.version).toBe(release.tag_name);
+      expect(parsed?.publishedAt).toBeUndefined();
+    }
+  });
+
   it.each(["windows-amd64", "darwin-arm64", "linux-amd64"])("links the published %s ZIP without downloading it during the check", async (packageTarget) => {
     const assets = ["windows-amd64", "darwin-arm64", "linux-amd64"].map(target => packageAsset(target));
     const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ ...release, assets }));

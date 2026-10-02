@@ -49,6 +49,7 @@ export function LauncherForm({
   lan,
   onSubmit,
   children,
+  version,
 }: {
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
@@ -63,6 +64,7 @@ export function LauncherForm({
   };
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   children?: ReactNode;
+  version?: string;
 }) {
   const { vis, t } = useCopy();
   const accessHintId = useId();
@@ -87,9 +89,12 @@ export function LauncherForm({
     <form className="lr-client-launch-panel" onSubmit={onSubmit}>
       <BrandMark size={68} motion="once" />
       <WelcomeLine />
-      <h1 className={vis ? "visually-hidden" : "lr-client-launch-title"}>
-        {t("client.launch.title")}
-      </h1>
+      <div className={vis && !version ? "visually-hidden" : undefined}>
+        <h1 className={vis ? "visually-hidden" : "lr-client-launch-title"}>
+          {t("client.launch.title")}
+        </h1>
+        {version && <p className="lr-client-version">Piik App {version}</p>}
+      </div>
 
       {children}
 

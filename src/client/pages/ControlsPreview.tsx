@@ -226,7 +226,7 @@ export function ControlsPreview() {
     <section id="launcher-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">08</span><h2>{t("client.launch.title")}</h2></header>
       <div className="lr-client-launch">
-        <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
+        <LauncherForm version="development" mode={launchMode} onModeChange={setLaunchMode}
           site={launchSite} onSiteChange={setLaunchSite}
           lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
             { address: "192.0.2.10", name: "Wi-Fi" },

@@ -1,8 +1,26 @@
 import { mountBrands } from './assets/brand.js';
 import { initialLanguage, rememberLanguage } from './assets/language.js';
 import { createTextCycle, startTextRotation } from '../src/client/ui/text-rotation.ts';
+import { DEFAULT_RELEASE_API_URL, parseReleaseMetadata } from '../src/client/lib/release-update.ts';
 mountBrands();
-// Content stays HTML; scripts only add preferences and replayable illustrations.
+// Content and download links remain usable without scripts or release metadata.
+const releaseLabel = document.getElementById('download-release');
+if (releaseLabel) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  void fetch(DEFAULT_RELEASE_API_URL, {
+    credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
+    signal: controller.signal, headers: { Accept: 'application/vnd.github+json' },
+  }).then(async response => response.ok ? parseReleaseMetadata(await response.json()) : null)
+    .then(release => {
+      if (!release?.publishedAt) return;
+      releaseLabel.querySelector('b').textContent = release.version;
+      const date = releaseLabel.querySelector('time');
+      date.dateTime = release.publishedAt;
+      date.textContent = release.publishedAt.slice(0, 10);
+      releaseLabel.hidden = false;
+    }).catch(() => {}).finally(() => clearTimeout(timeout));
+}
 const root = document.documentElement;
 const language = document.getElementById('language');
 const theme = document.getElementById('theme');

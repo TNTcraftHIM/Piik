@@ -9,9 +9,16 @@ history. A parked idea is not implementation authority.
 
 - [ ] **Presentation and usability integration.** Review the synchronized website,
   staged film, README screenshots, browser-picker wording, Browser microphone
-  processing, local chat appearance/export and signaling admission recovery.
+  processing, local chat appearance/export and entry layout, release identity
+  display, and signaling admission recovery.
   Shared App UI changes await the next authorized product release; no new
   release is authorized. Matched field acceptance remains listed below.
+- [ ] **Linux native sharing PR [#449](https://github.com/TNTcraftHIM/Piik/pull/449).**
+  Independently run the Linux capture build and timestamp regression before
+  integration, including input-frame and keyframe-request running time. The PR
+  workflow validates release notes only; approving its pending run does not
+  execute native capture checks. Extend physical coverage beyond the author's
+  Hyprland/NVIDIA result when matching hardware is available.
 
 ## Held By Owner
 
@@ -90,6 +97,8 @@ These proposals remain deferred beyond the accepted interaction phase.
   [runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup).
   Demo access failures and public-link HTTP 1033 also remain unconfirmed; check
   connector, DNS/provider and remote access separately from WebRTC availability.
+  Include the report of an established stream stalling before reload returns
+  1033; distinguish a recovering connector, process exit and an obsolete link.
   [#434](https://github.com/TNTcraftHIM/Piik/issues/434)'s attached log records DNS
   refusal during Cloudflare edge discovery, before readiness; retrying media
   cannot repair that resolver failure. Do not assign it to every startup report.
@@ -260,6 +269,8 @@ not establish better connection success or speed; this note adds no retry policy
     community proposal, not part of the current accepted candidate.
 13. **Intel Mac App distribution (#421).** Verify native capture, SDK/cgo builds
     and tunnel packaging on a macOS x64 runner before adding a public target.
+    The capture build currently hardcodes an arm64 Swift target; change that
+    alongside package validation and the runner, not just the Go architecture.
     Browser use remains available; the Apple Silicon App package is not an
     Intel package. This is separate from Linux ARM64 Server distribution.
 14. **Automatic local chat history.** Explicit TXT export covers manual retention.

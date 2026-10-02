@@ -196,6 +196,11 @@ both the assigned origin and a registered connection; later reconnection belongs
 to cloudflared, while process exit ends that App's public-link runtime. This
 HTTP failure precedes WebRTC candidate exchange and is distinct from media-route
 exhaustion on an already reachable site.
+The pinned [supervisor](https://github.com/cloudflare/cloudflared/blob/2026.8.3/supervisor/supervisor.go)
+uses [indefinite retries with bounded exponential backoff](https://github.com/cloudflare/cloudflared/blob/2026.8.3/retry/backoffhandler.go)
+for recoverable edge disconnects. Piik's four-start acquisition limit is not a
+four-reconnect limit after readiness. Restarting the Quick Tunnel process would
+allocate a new public address rather than repair the old invitation.
 
 ## Remaining Gates
 

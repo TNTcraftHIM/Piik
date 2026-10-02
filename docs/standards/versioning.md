@@ -25,6 +25,11 @@ Keep those internal values at the first public release: resetting schema or
 authorization counters for visual consistency can invalidate data or stale-work
 fences. A room number is a user-facing address, not a software version.
 The private tooling-only npm package carries no independent product version.
+The App launcher displays its installed version from the existing launcher state;
+Server startup logs retain the running version and revision. The website may
+display GitHub's latest stable tag and `published_at` as optional metadata, never
+a manually maintained version or the installed App's identity. Publication time
+is distinct from build time; an unavailable check must not block downloads.
 
 ## Public Compatibility Promise
 
