@@ -112,8 +112,9 @@ growing the panel. Consecutive messages from the same sender share visual identi
 each message retains its accessible author. Hiding and reopening preserves the
 reader's position; a latest-message action resumes following. Sending waits for
 confirmation without locking draft editing or introducing a message queue.
-The conversation entry sits below the couch, separate from
-the Host's sharing controls; theater retains its compact conversation entry.
+The conversation entry shares the couch footer with its participant count,
+separate from the Host's sharing controls. Theater hides the seating and count,
+retaining the same compact conversation entry and focus target.
 Selecting a person opens the compact reaction palette in the shared floating
 shell, initially beside the selected person (below when space permits). Each
 opening anchors there before allowing free movement. Its portrait and name identify the

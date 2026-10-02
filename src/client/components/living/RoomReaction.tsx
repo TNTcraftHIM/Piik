@@ -64,7 +64,7 @@ export function RoomReaction({ reaction, area, now }: {
         return;
       }
       frame = requestAnimationFrame(place);
-      if (document.hidden || !root.getClientRects().length) {
+      if (document.hidden || !sender.getClientRects().length || !recipient.getClientRects().length) {
         element.style.visibility = "hidden";
         impact?.cancel();
         return;

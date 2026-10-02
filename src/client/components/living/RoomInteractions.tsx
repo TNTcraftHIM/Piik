@@ -173,7 +173,13 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       </footer>
     </FloatingPanel>
     <div className="lr-interaction-couch" ref={area}>
-      <Couch {...couch} participantAction={{ open: openReactions, target, controls: menuId }} />
+      <Couch {...couch} participantAction={{ open: openReactions, target, controls: menuId }}
+        footerAction={<span className="lr-interaction-chat-toggle">
+          <Btn id={`${id}-toggle`} icon="chat" title={chatOpen ? "interaction.close" : "interaction.open"} cap="interaction.open" expanded={chatOpen} controls={id}
+            hint={chatOpen ? "hint-close" : "hint-chat-open"}
+            tone={chatOpen ? "on" : undefined} popoverTarget={id} />
+          {unread > 0 && <span className="lr-interaction-unread" aria-label={t("interaction.unread", { count: String(unread) })}>{unread}</span>}
+        </span>} />
       {effects && state.reactions.map((reaction, index) => {
         const payload = reaction.payload;
         if (payload.kind !== "reaction") return null;
@@ -187,14 +193,6 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
           (!payload.targetPeerId || participants.some(person => person.peerId === payload.targetPeerId)) &&
           <RoomReaction key={reaction.id} reaction={reaction} area={area} now={session.now} />;
       })}
-    </div>
-    <div className="lr-interaction-toggle lr-media-controls">
-      <span className="lr-interaction-chat-toggle">
-        <Btn id={`${id}-toggle`} icon="chat" title={chatOpen ? "interaction.close" : "interaction.open"} cap="interaction.open" expanded={chatOpen} controls={id}
-          hint={chatOpen ? "hint-close" : "hint-chat-open"}
-          tone={chatOpen ? "on" : undefined} popoverTarget={id} />
-        {unread > 0 && <span className="lr-interaction-unread" aria-label={t("interaction.unread", { count: String(unread) })}>{unread}</span>}
-      </span>
     </div>
     <FloatingPanel id={menuId} trigger={anchor} compact anchorOnOpen icon="smile" className="lr-person-menu"
       title={t("interaction.express")} onOpenChange={open => { if (!open) setTarget(null); }}>
