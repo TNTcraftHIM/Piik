@@ -1851,6 +1851,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-microphone-settings input { width: 100%; min-width: 32px; height: 36px; padding: 0; accent-color: var(--action); cursor: pointer; }
 .lr-microphone-settings input:disabled { cursor: default; }
 .lr-microphone-settings output { min-width: 4ch; font-variant-numeric: tabular-nums; text-align: right; }
+.lr-microphone-settings .lr-switch-item .lr-cap { white-space: normal; }
 .lr-capture-device { display: grid; gap: 6px; min-width: 0; padding: 4px 10px 10px; }
 .lr-capture-device label { font-size: 12px; padding: 0; color: var(--muted); }
 .lr-capture-device-controls { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -1864,7 +1865,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-capture-device .lr-device-refresh { min-width: 40px; width: 40px; height: 40px; padding: 0; border-width: 1px; }
 .lr-capture-device select:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .lr-capture-device select:disabled { opacity: .55; cursor: default; }
-.lr-capture-device small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.lr-capture-device small, .lr-microphone-settings > small { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .lr-source-picker-body > .lr-capture-device { margin-bottom: 10px; }
 .lr-source-picker .lr-capture-device :is(label, small) { color: #9aa8bb; }
 @media (max-width: 580px) {

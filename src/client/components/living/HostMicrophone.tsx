@@ -46,11 +46,14 @@ export function HostMicrophoneSettings({ enabled, disabled, volume, onVolume, de
           aria-label={t("host.microphone.volume")} aria-valuetext={`${percent}%`}
           onChange={event => onVolume(Number(event.target.value) / 100)} />
       </Tooltip>
-      {!native && <div className="lr-row-group">
-        {vis ? <Glyph name="microphone" size={18} /> : null}
-        <SwitchItem checked={voiceProcessing} onChange={onVoiceProcessing} disabled={disabled}
-          label={t("host.microphone.voiceProcessing")} note={t("host.microphone.voiceProcessingHint")}
-          hint="hint-microphone-processing" />
-      </div>}
+      {!native && <>
+        <div className="lr-row-group">
+          {vis ? <Glyph name="microphone" size={18} /> : null}
+          <SwitchItem checked={voiceProcessing} onChange={onVoiceProcessing} disabled={disabled}
+            label={t("host.microphone.voiceProcessing")} note={t("host.microphone.voiceProcessingHint")}
+            hint="hint-microphone-processing" />
+        </div>
+        {!vis && <small>{t("host.microphone.voiceProcessingUsage")}</small>}
+      </>}
   </div>;
 }

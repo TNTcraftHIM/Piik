@@ -155,7 +155,7 @@ then select a picture card to start sharing. Device names and previews depend on
 browser permissions; while a camera is shared, other cameras are listed by name.
 Use headphones to keep speaker sound from feeding back into the microphone.
 
-With **Browser picker** or **Camera** capture, **Voice processing** in sound
+With **Browser picker** or **Camera** capture, **Noise & echo reduction** in sound
 settings is on by default, asking the browser to handle echo, noise and volume.
 Turn it off for music or a virtual audio input. Device and system effects remain
 controlled by their own settings. App native capture uses device/system audio settings.
