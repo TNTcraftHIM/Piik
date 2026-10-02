@@ -3,7 +3,6 @@ name: piik
 services:
   piik:
     image: ${PIIK_IMAGE:-ghcr.io/tntcrafthim/piik:latest}
-    platform: linux/amd64
     restart: unless-stopped
     stop_grace_period: 20s
     read_only: true

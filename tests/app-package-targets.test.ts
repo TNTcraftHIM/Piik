@@ -29,6 +29,7 @@ describe("App package targets", () => {
         ["windows-amd64", "windows", "amd64", "0"],
         ["linux-amd64", "linux", "amd64", "0"],
         ["darwin-arm64", "darwin", "arm64", "1"],
+        ["darwin-amd64", "darwin", "amd64", "1"],
       ]);
     } finally {
       if (previous === undefined) delete process.env.CGO_ENABLED;

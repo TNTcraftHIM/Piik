@@ -43,6 +43,20 @@ export const APP_PACKAGE_TARGETS = [
     tunnelSha256: "40c9144d86df8937c5b43293a1f7d2d2107029aa74725023dd46b1b27154352f",
     tunnelArchive: true,
   },
+  {
+    id: "darwin-amd64",
+    nodePlatform: "darwin",
+    nodeArch: "x64",
+    goos: "darwin",
+    goarch: "amd64",
+    cgo: true,
+    appName: "piik-app",
+    tunnelName: "cloudflared",
+    captureName: "piik-capture",
+    tunnelAsset: "cloudflared-darwin-amd64.tgz",
+    tunnelSha256: "61e1316266a00fd70ce40da011d612badc805367fb65293dd1925f938f704c99",
+    tunnelArchive: true,
+  },
 ];
 
 export function appPackageTarget(id) {

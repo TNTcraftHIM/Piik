@@ -19,6 +19,12 @@ history. A parked idea is not implementation authority.
   workflow validates release notes only; approving its pending run does not
   execute native capture checks. Extend physical coverage beyond the author's
   Hyprland/NVIDIA result when matching hardware is available.
+- [ ] **Platform package acceptance (#439, #421).** Verify Linux ARM64 Server
+  archives and container startup/persistence on an ARM runner, and the Intel Mac
+  App's Swift/cgo capture, tunnel and packaged launcher on an Intel runner.
+  Keep the existing x64 Server artifact names and test the complete publication
+  set before integration. These are unpublished candidates; update the download
+  and deployment guides after the native-runner checks pass.
 
 ## Held By Owner
 
@@ -263,21 +269,11 @@ not establish better connection success or speed; this note adds no retry policy
 11. **Release-operation policy.** Protected release environments, immutable
     draft assets and changing mirror-failure policy remain unaccepted proposals;
     evaluate their benefit before adding release machinery.
-12. **Linux ARM64 Server distribution (#439).** Evaluate archives and container
-    publishing together with deployment names, update links and runtime checks.
-    A cross-compile alone does not establish a supported package. This is a
-    community proposal, not part of the current accepted candidate.
-13. **Intel Mac App distribution (#421).** Verify native capture, SDK/cgo builds
-    and tunnel packaging on a macOS x64 runner before adding a public target.
-    The capture build currently hardcodes an arm64 Swift target; change that
-    alongside package validation and the runner, not just the Go architecture.
-    Browser use remains available; the Apple Silicon App package is not an
-    Intel package. This is separate from Linux ARM64 Server distribution.
-14. **Automatic local chat history.** Explicit TXT export covers manual retention.
+12. **Automatic local chat history.** Explicit TXT export covers manual retention.
     Reconsider automatic storage only with a stable room-incarnation identity,
     bounded retention and a clear delete control; reusable room codes must not
     combine conversations. No new history service or wire field is authorized.
-15. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
+13. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
     The [capture assessment](./research/camera-and-microphone.md) records raw-frame
     output and the WHIP boundary; virtual camera alone is not a second encode.
     Do not add an RTMP/WHIP listener without an accepted publication owner.

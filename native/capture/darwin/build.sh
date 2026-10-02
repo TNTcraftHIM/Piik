@@ -7,12 +7,17 @@ if [ "$#" -ne 1 ]; then
 fi
 
 output=$1
+architecture=$(uname -m)
+case "$architecture" in
+  arm64|x86_64) ;;
+  *) echo "unsupported macOS capture architecture: $architecture" >&2; exit 2 ;;
+esac
 mkdir -p "$output"
 xcrun swiftc \
   -O \
   -parse-as-library \
   -swift-version 5 \
-  -target arm64-apple-macos13.0 \
+  -target "$architecture-apple-macos13.0" \
   -framework AVFoundation \
   -framework AudioToolbox \
   -framework CoreAudio \

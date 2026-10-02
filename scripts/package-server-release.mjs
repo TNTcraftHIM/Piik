@@ -17,16 +17,14 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 import { writeServerLicenseNotices } from "./package-licenses.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { buildVersion } from "./release-version.mjs";
+import { SERVER_PACKAGE_TARGETS } from "./server-package-targets.mjs";
 
-// The Server deployment target. deploy/release-server.sh runs the archived binary
-// as the service user, so the release is always built for linux/amd64, and
-// CGO_ENABLED=0 keeps it self-contained.
-const SERVER_TARGET = { goos: "linux", goarch: "amd64" };
 const SERVER_NAME = "piik-server";
 
 // Everything the archive may contain. deploy/release-server.sh enforces the same
@@ -160,17 +158,21 @@ function mainAssetOf(distributionRoot) {
   return match[1];
 }
 
-if (process.argv.length !== 3 &&
-    !(process.argv.length === 5 && process.argv[3] === "--container-image")) {
-  fail("Usage: node scripts/package-server-release.mjs <new-output-directory> [--container-image <tag>]");
+const { values, positionals } = parseArgs({ allowPositionals: true, options: {
+  arch: { type: "string", default: "amd64" },
+  "container-image": { type: "string" },
+} });
+const target = SERVER_PACKAGE_TARGETS.find(target => target.goarch === values.arch);
+if (positionals.length !== 1 || !target) {
+  fail("Usage: node scripts/package-server-release.mjs <new-output-directory> [--arch amd64|arm64] [--container-image <tag>]");
 }
-const containerImage = process.argv[4];
+const containerImage = values["container-image"];
 if (containerImage && !/^[a-z0-9][a-z0-9._/:+-]*$/.test(containerImage)) {
   fail("Container image tag is invalid");
 }
 
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
-const outputRoot = resolve(process.cwd(), process.argv[2]);
+const outputRoot = resolve(process.cwd(), positionals[0]);
 const relativeOutput = relative(repositoryRoot, outputRoot);
 if (relativeOutput === "" || (relativeOutput.split(/[\\/]/)[0] !== ".." && !isAbsolute(relativeOutput))) {
   fail("Output directory must be outside the repository");
@@ -208,8 +210,8 @@ try {
     "./cmd/piik-server",
   ], repositoryRoot, {
     ...process.env,
-    GOOS: SERVER_TARGET.goos,
-    GOARCH: SERVER_TARGET.goarch,
+    GOOS: target.goos,
+    GOARCH: target.goarch,
     CGO_ENABLED: "0",
   });
   chmodSync(serverPath, 0o755);
@@ -217,15 +219,16 @@ try {
     repositoryRoot,
     join(runtimeRoot, "THIRD-PARTY-NOTICES.txt"),
     goCommand,
-    SERVER_TARGET,
+    target,
   );
   assertCleanRevision(repositoryRoot, revision);
   writeFileSync(join(runtimeRoot, "REVISION"), `${revision}\n`, "ascii");
 
   const records = recordsFor(runtimeRoot);
-  const manifestName = `piik-${releaseId}.manifest.tsv`;
-  const artifactName = `piik-${releaseId}-runtime.tar.gz`;
-  const descriptorName = `piik-${releaseId}.release.json`;
+  const stem = `piik-${releaseId}${target.suffix}`;
+  const manifestName = `${stem}.manifest.tsv`;
+  const artifactName = `${stem}-runtime.tar.gz`;
+  const descriptorName = `${stem}.release.json`;
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
   outputOwned = true;
   const manifestPath = join(outputRoot, manifestName);
@@ -249,6 +252,7 @@ try {
     version,
     revision,
     releaseId,
+    target: target.id,
     artifact: artifactName,
     artifactSha256: sha256(artifactPath),
     manifest: manifestName,
@@ -259,7 +263,7 @@ try {
   if (containerImage) {
     // Reuse the verified, extracted release: no second Server or Web build.
     run("docker", [
-      "build", "--platform", "linux/amd64",
+      "build", "--platform", `${target.goos}/${target.goarch}`,
       "--file", join(repositoryRoot, "deploy", "container", "Dockerfile"),
       "--build-arg", `PIIK_VERSION=${version}`,
       "--build-arg", `PIIK_REVISION=${revision}`,

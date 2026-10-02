@@ -1,4 +1,4 @@
-FROM gcr.io/distroless/static-debian13:nonroot-amd64@sha256:e754765ad9e167b0677b41c617fd44afb7b9818a477f48f17bda08e12cfb98cb
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
 ARG PIIK_VERSION=development
 ARG PIIK_REVISION
 ARG PIIK_SERVER_SHA256

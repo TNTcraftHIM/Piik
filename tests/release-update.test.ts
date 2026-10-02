@@ -29,8 +29,8 @@ describe("App release update notice", () => {
     }
   });
 
-  it.each(["windows-amd64", "darwin-arm64", "linux-amd64"])("links the published %s ZIP without downloading it during the check", async (packageTarget) => {
-    const assets = ["windows-amd64", "darwin-arm64", "linux-amd64"].map(target => packageAsset(target));
+  it.each(["windows-amd64", "darwin-arm64", "darwin-amd64", "linux-amd64"])("links the published %s ZIP without downloading it during the check", async (packageTarget) => {
+    const assets = ["windows-amd64", "darwin-arm64", "darwin-amd64", "linux-amd64"].map(target => packageAsset(target));
     const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ ...release, assets }));
     await expect(checkReleaseUpdate({ version: "v1.1.0", revision: currentRevision }, { fetchImpl, packageTarget }))
       .resolves.toMatchObject({ kind: "update-available", version: release.tag_name,
@@ -64,7 +64,7 @@ describe("App release update notice", () => {
     expect(parseReleaseMetadata({ ...release, assets: [asset] })?.url).toBe(release.html_url);
   });
 
-  it.each(["windows-amd64", "darwin-arm64", "linux-amd64"])("uses a listed mirror %s ZIP only after the existing primary check fails", async (packageTarget) => {
+  it.each(["windows-amd64", "darwin-arm64", "darwin-amd64", "linux-amd64"])("uses a listed mirror %s ZIP only after the existing primary check fails", async (packageTarget) => {
     const name = `piik-app-${packageTarget}.zip`;
     const mirrorAsset = { name,
       browser_download_url: `https://gitee.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
