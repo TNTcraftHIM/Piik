@@ -80,7 +80,7 @@ function fixture(options: {
     NativeMediaBridgeControl["prepareLocalEdge"]
   >(async (_shareId, connectionId) => {
       listener?.({
-        version: 9,
+        version: 10,
         type: "edge-candidate",
         shareId: "share_123456",
         connectionId,
@@ -185,7 +185,7 @@ describe("native media bridge", () => {
       current.peer().dispatchEvent(Object.assign(new Event("icecandidate"), { candidate: null }));
     } else {
       current.peer().addIceCandidate.mockRejectedValueOnce(cause);
-      current.emit({ version: 9, type: "edge-candidate", shareId: "share_123456",
+      current.emit({ version: 10, type: "edge-candidate", shareId: "share_123456",
         connectionId: current.bridge.connectionId, candidate: null });
     }
     await vi.waitFor(() => expect(current.onFailed).toHaveBeenCalledOnce());
@@ -205,7 +205,7 @@ describe("native media bridge", () => {
     const result = starting.catch((error: unknown) => error);
     if (phase === "queued") {
       current.emit({
-        version: 9, type: "edge-candidate", shareId: "share_123456",
+        version: 10, type: "edge-candidate", shareId: "share_123456",
         connectionId: current.bridge.connectionId,
         candidate: { candidate: "candidate:2 1 udp 1 127.0.0.1 10 typ host" },
       });
@@ -218,13 +218,13 @@ describe("native media bridge", () => {
     if (phase === "active") {
       peer.addIceCandidate.mockRejectedValueOnce(new DOMException("Rejected candidate", "OperationError"));
       current.emit({
-        version: 9, type: "edge-candidate", shareId: "share_123456",
+        version: 10, type: "edge-candidate", shareId: "share_123456",
         connectionId: current.bridge.connectionId,
         candidate: { candidate: "candidate:2 1 udp 1 127.0.0.1 10 typ host" },
       });
     }
     current.emit({
-      version: 9, type: "edge-candidate", shareId: "share_123456",
+      version: 10, type: "edge-candidate", shareId: "share_123456",
       connectionId: current.bridge.connectionId, candidate: null,
     });
     await vi.waitFor(() => expect(debugError).toHaveBeenCalledWith(
@@ -378,14 +378,14 @@ describe("native media bridge", () => {
     await starting;
 
     current.emit({
-      version: 9,
+      version: 10,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: current.bridge.connectionId,
       state: "failed",
     });
     current.emit({
-      version: 9,
+      version: 10,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: current.bridge.connectionId,

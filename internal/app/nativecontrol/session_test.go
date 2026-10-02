@@ -67,7 +67,7 @@ func TestReceiveOfferReusePreservesLegacyResponseShape(t *testing.T) {
 	session := New("", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
 	for _, reuse := range []bool{false, true} {
-		request := receiveOfferRequest{Version: 9, ID: "request_offer", Type: "receive-offer", ShareID: "viewer_session",
+		request := receiveOfferRequest{Version: 10, ID: "request_offer", Type: "receive-offer", ShareID: "viewer_session",
 			ConnectionID: "connection_1234", EdgeCapacity: 2, SDP: offer.SDP, ReuseReceiver: reuse}
 		payload, _ := json.Marshal(request)
 		value, err := session.Handle(t.Context(), payload)
@@ -193,7 +193,7 @@ func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing
 			}
 			session := New(executable, nativecapture.Capabilities{VideoCapture: true, SoftwareVP8: true, Microphone: true}, false)
 			defer session.Close()
-			request := startShareRequest{Version: 9, ID: "request_start", Type: "start-share", ShareID: "share_123456",
+			request := startShareRequest{Version: 10, ID: "request_start", Type: "start-share", ShareID: "share_123456",
 				Source:           nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"},
 				MicrophoneMixing: optIn, EdgeCapacity: 1, Codec: "vp8",
 				Profile: qualitySettings{Resolution: "1080p", MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
@@ -207,7 +207,7 @@ func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing
 			if started.Audio != optIn || bytes.Contains(encoded, []byte(`"sourceAudio"`)) != optIn {
 				t.Fatalf("mixed output leaked across opt-in: %s", encoded)
 			}
-			result, err = session.Handle(t.Context(), []byte(`{"version":9,"id":"request_mic","type":"set-microphone","shareId":"share_123456","enabled":true,"volume":1}`))
+			result, err = session.Handle(t.Context(), []byte(`{"version":10,"id":"request_mic","type":"set-microphone","shareId":"share_123456","enabled":true,"volume":1}`))
 			if !optIn {
 				if _, failed := result.(requestFailedResponse); err != nil || !failed {
 					t.Fatalf("non-opted share admitted mic: %v %#v", err, result)
@@ -275,7 +275,7 @@ func TestCaptureBorderPreferenceFollowsSourceAndProfile(t *testing.T) {
 					t.Fatalf("capture border intent lost: %v", arguments)
 				}
 			}
-			start := startShareRequest{Version: 9, ID: "request_start", Type: "start-share", ShareID: "share_123456",
+			start := startShareRequest{Version: 10, ID: "request_start", Type: "start-share", ShareID: "share_123456",
 				Source:            nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"},
 				ShowCaptureBorder: true, EdgeCapacity: 1, Codec: "vp8",
 				Profile: qualitySettings{Resolution: "1080p", MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
@@ -283,7 +283,7 @@ func TestCaptureBorderPreferenceFollowsSourceAndProfile(t *testing.T) {
 			assertBorder(supported)
 			profile := start.Profile
 			profile.Resolution = "480p"
-			handle(updateShareRequest{Version: 9, ID: "request_update", Type: "update-share", ShareID: start.ShareID, Profile: profile})
+			handle(updateShareRequest{Version: 10, ID: "request_update", Type: "update-share", ShareID: start.ShareID, Profile: profile})
 			session.mu.Lock()
 			done := session.updateDone
 			session.mu.Unlock()
@@ -296,11 +296,11 @@ func TestCaptureBorderPreferenceFollowsSourceAndProfile(t *testing.T) {
 			}
 			assertBorder(supported)
 			for _, show := range []bool{false, true} {
-				handle(replaceShareSourceRequest{Version: 9, ID: "request_replace", Type: "replace-share-source", ShareID: start.ShareID,
+				handle(replaceShareSourceRequest{Version: 10, ID: "request_replace", Type: "replace-share-source", ShareID: start.ShareID,
 					Source: nativecapture.CaptureTarget{Kind: "display", SourceID: "2", Title: "Other fixture"}, ShowCaptureBorder: show})
 				assertBorder(show && supported)
 			}
-			handle(stopShareRequest{Version: 9, ID: "request_stop", Type: "stop-share", ShareID: start.ShareID})
+			handle(stopShareRequest{Version: 10, ID: "request_stop", Type: "stop-share", ShareID: start.ShareID})
 		})
 	}
 }
@@ -336,9 +336,9 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 				}
 				return value
 			}
-			const start = `{"version":9,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"adapterIndex":0,"encoderIndex":0,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
+			const start = `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"adapterIndex":0,"encoderIndex":0,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
 			handle(start)
-			const update = `{"version":9,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"720p","maxFramerate":30,"maxBitrate":3000000,"degradationPreference":"balanced"}}`
+			const update = `{"version":10,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"720p","maxFramerate":30,"maxBitrate":3000000,"degradationPreference":"balanced"}}`
 			if value := handle(update); value != nil {
 				t.Fatalf("Host update did not defer: %#v", value)
 			}
@@ -357,15 +357,15 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 			}
 			for _, payload := range []string{
 				strings.Replace(update, "request_update", "request_duplicate", 1),
-				`{"version":9,"id":"request_replace","type":"replace-share-source","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"adapterIndex":0,"encoderIndex":0}`,
+				`{"version":10,"id":"request_replace","type":"replace-share-source","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"adapterIndex":0,"encoderIndex":0}`,
 			} {
 				if _, ok := handle(payload).(requestFailedResponse); !ok {
 					t.Fatal("conflicting capture mutation was not rejected")
 				}
 			}
 			for _, payload := range []string{
-				`{"version":9,"id":"request_pause","type":"pause-share","shareId":"share_123456","paused":true}`,
-				`{"version":9,"id":"request_ice","type":"edge-candidate","shareId":"share_123456","connectionId":"retired_edge","candidate":null}`,
+				`{"version":10,"id":"request_pause","type":"pause-share","shareId":"share_123456","paused":true}`,
+				`{"version":10,"id":"request_ice","type":"edge-candidate","shareId":"share_123456","connectionId":"retired_edge","candidate":null}`,
 			} {
 				started := time.Now()
 				handle(payload)
@@ -400,7 +400,7 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "stop":
-				handle(`{"version":9,"id":"request_stop","type":"stop-share","shareId":"share_123456"}`)
+				handle(`{"version":10,"id":"request_stop","type":"stop-share","shareId":"share_123456"}`)
 			case "disconnect":
 				if err = session.Close(); err != nil {
 					t.Fatal(err)
@@ -417,7 +417,7 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 			if outcome == "backpressure-stop" {
 				stopped := make(chan any, 1)
 				go func() {
-					value, err := session.Handle(t.Context(), []byte(`{"version":9,"id":"request_stop","type":"stop-share","shareId":"share_123456"}`))
+					value, err := session.Handle(t.Context(), []byte(`{"version":10,"id":"request_stop","type":"stop-share","shareId":"share_123456"}`))
 					if err != nil {
 						stopped <- err
 					} else {
@@ -520,7 +520,7 @@ func TestControlMessagesRejectUnknownFieldsAndStaleVersions(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
 	for _, payload := range []string{
-		`{"version":9,"id":"request_sources","type":"list-sources","extra":true}`,
+		`{"version":10,"id":"request_sources","type":"list-sources","extra":true}`,
 		`{"version":4,"id":"request_sources","type":"list-sources"}`,
 		`{"version":5,"id":"short","type":"stop-share","shareId":"share_123456"}`,
 	} {
@@ -552,9 +552,9 @@ func TestResponseKeepsTheRequestIdentity(t *testing.T) {
 func TestPrepareLocalEdgeOwnsOneStrictRequestShape(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
-	valid := `{"version":9,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567"}`
+	valid := `{"version":10,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567"}`
 	assertOperationFailure(t, session, valid)
-	invalid := `{"version":9,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567","iceServers":[]}`
+	invalid := `{"version":10,"id":"request_local_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_1234567","iceServers":[]}`
 	if _, err := session.Handle(t.Context(), []byte(invalid)); err == nil || err.Error() != "native prepare-local-edge request is invalid" {
 		t.Fatalf("extended local-edge request was accepted: %v", err)
 	}
@@ -564,7 +564,7 @@ func TestPreviewFailureReturnsAnAdvisoryResponse(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
 	value, err := session.Handle(t.Context(), []byte(
-		`{"version":9,"id":"request_preview","type":"source-preview","source":{"kind":"display","sourceId":"65537","title":"Display 1"}}`,
+		`{"version":10,"id":"request_preview","type":"source-preview","source":{"kind":"display","sourceId":"65537","title":"Display 1"}}`,
 	))
 	if err != nil {
 		t.Fatal(err)
@@ -579,7 +579,7 @@ func TestSourceEnumerationFailureDoesNotCloseControl(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
 	value, err := session.Handle(t.Context(), []byte(
-		`{"version":9,"id":"request_sources","type":"list-sources"}`,
+		`{"version":10,"id":"request_sources","type":"list-sources"}`,
 	))
 	if err != nil || value != operationFailure(requestEnvelope{
 		Version: loopback.ProtocolVersion, ID: "request_sources", Type: "list-sources",
@@ -587,7 +587,7 @@ func TestSourceEnumerationFailureDoesNotCloseControl(t *testing.T) {
 		t.Fatalf("source list failure ended its control session: %#v, %v", value, err)
 	}
 	if _, err := session.Handle(t.Context(), []byte(
-		`{"version":9,"id":"request_options","type":"capture-options"}`,
+		`{"version":10,"id":"request_options","type":"capture-options"}`,
 	)); err != nil {
 		t.Fatalf("control was unusable after source enumeration failed: %v", err)
 	}
@@ -608,6 +608,11 @@ func TestQualitySettingsMapOnceIntoNativeMedia(t *testing.T) {
 		t.Fatalf("native profile = %+v", profile)
 	}
 	settings.Resolution = "2160p"
+	profile = nativeQualityProfile(settings)
+	if !validQualitySettings(settings) || profile.Video.Width != 3840 || profile.Video.Height != 2160 {
+		t.Fatalf("4K profile = %+v", profile)
+	}
+	settings.Resolution = "4320p"
 	if validQualitySettings(settings) {
 		t.Fatal("unsupported resolution was accepted")
 	}
@@ -616,9 +621,9 @@ func TestQualitySettingsMapOnceIntoNativeMedia(t *testing.T) {
 func TestUpdateShareRequiresTheCurrentStrictProfile(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
-	valid := `{"version":9,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced","screenAudioQuality":"music"}}`
+	valid := `{"version":10,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced","screenAudioQuality":"music"}}`
 	assertOperationFailure(t, session, valid)
-	invalid := `{"version":9,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced","screenAudioQuality":"music","extra":true}}`
+	invalid := `{"version":10,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced","screenAudioQuality":"music","extra":true}}`
 	if _, err := session.Handle(t.Context(), []byte(invalid)); err == nil ||
 		err.Error() != "native update-share request is invalid" {
 		t.Fatalf("extended update was accepted: %v", err)
@@ -628,9 +633,9 @@ func TestUpdateShareRequiresTheCurrentStrictProfile(t *testing.T) {
 func TestReplaceShareSourceKeepsOneStrictTargetShape(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
-	valid := `{"version":9,"id":"request_source","type":"replace-share-source","shareId":"share_123456","source":{"kind":"picker","sourceId":"1","title":"Portal"},"audio":false,"adapterIndex":0,"encoderIndex":0}`
+	valid := `{"version":10,"id":"request_source","type":"replace-share-source","shareId":"share_123456","source":{"kind":"picker","sourceId":"1","title":"Portal"},"audio":false,"adapterIndex":0,"encoderIndex":0}`
 	assertOperationFailure(t, session, valid)
-	invalid := `{"version":9,"id":"request_source","type":"replace-share-source","shareId":"share_123456","source":{"kind":"picker","sourceId":"1","title":"Portal"},"audio":false,"adapterIndex":0,"encoderIndex":0,"extra":true}`
+	invalid := `{"version":10,"id":"request_source","type":"replace-share-source","shareId":"share_123456","source":{"kind":"picker","sourceId":"1","title":"Portal"},"audio":false,"adapterIndex":0,"encoderIndex":0,"extra":true}`
 	if _, err := session.Handle(t.Context(), []byte(invalid)); err == nil ||
 		err.Error() != "native replace-share-source request is invalid" {
 		t.Fatalf("extended source replacement was accepted: %v", err)

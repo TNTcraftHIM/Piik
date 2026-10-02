@@ -72,7 +72,7 @@ describe("opt-in Browser diagnostics", () => {
       data: "secret-pixels", payload: "secret-audio",
       roomInteraction: { payload: { kind: "chat", text: "private-chat-contents" } },
       viewerGrant: "secret-grant", passwordHash: "secret-hash",
-      transportError: "piik-client-v9.secret-capability Basic secret-basic\nCookie: session=secret-session; refresh=secret-refresh",
+      transportError: "piik-client-v10.secret-capability Basic secret-basic\nCookie: session=secret-session; refresh=secret-refresh",
     });
     const report = await page.__PIIK_DEBUG__!.export();
     for (const secret of ["secret-password", "secret-auth", "secret-query", "secret-fragment", "secret-bearer",
@@ -192,13 +192,13 @@ describe("opt-in Browser diagnostics", () => {
     const token = "x".repeat(43);
     class Socket extends EventTarget {
       static OPEN = 1; static CLOSING = 2;
-      readyState = 1; protocol = `piik-client-v9.${token}`;
+      readyState = 1; protocol = `piik-client-v10.${token}`;
       constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
       close() { this.readyState = 3; }
       send(raw: string) {
         const request = JSON.parse(raw);
         queueMicrotask(() => this.dispatchEvent(Object.assign(new Event("message"), {
-          data: JSON.stringify({ version: 9, id: request.id,
+          data: JSON.stringify({ version: 10, id: request.id,
             type: request.type === "hello" ? "ready" : "share-updated",
             ...(request.shareId ? { shareId: request.shareId } : {}) }),
         })));
@@ -206,7 +206,7 @@ describe("opt-in Browser diagnostics", () => {
     }
     vi.stubGlobal("WebSocket", Socket);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-      protocol: 9, service: "piik-client", port: 39721, instanceToken: token,
+      protocol: 10, service: "piik-client", port: 39721, instanceToken: token,
       nativeMedia: { video: true, processAudio: false, systemAudio: true, hardwareH264: true, softwareVP8: true },
     }), { status: 200 })));
     const debug = await import("../src/client/lib/debug");
@@ -236,7 +236,7 @@ describe("opt-in Browser diagnostics", () => {
     const { NativeClient } = await import("../src/client/native/client");
     await expect(NativeClient.connect()).rejects.toMatchObject({ name: "NativeCompatibilityError" });
     expect(page.__PIIK_DEBUG__!.events()).toContainEqual(expect.objectContaining({
-      scope: "native", event: "incompatible", details: { actualProtocol: 8, expectedProtocol: 9 },
+      scope: "native", event: "incompatible", details: { actualProtocol: 8, expectedProtocol: 10 },
     }));
     expect(await debug.exportBrowserDebug()).not.toContain(token);
   });

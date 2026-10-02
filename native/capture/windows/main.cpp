@@ -981,7 +981,8 @@ void ValidateVideoProfile(const VideoProfile& profile) {
       (profile.width == 854 && profile.height == 480) ||
       (profile.width == 1280 && profile.height == 720) ||
       (profile.width == 1920 && profile.height == 1080) ||
-      (profile.width == 2560 && profile.height == 1440);
+      (profile.width == 2560 && profile.height == 1440) ||
+      (profile.width == 3840 && profile.height == 2160);
   if (!valid_resolution || profile.frame_rate < 15 || profile.frame_rate > 60 ||
       profile.bit_rate < 2'000'000 || profile.bit_rate > 12'000'000) {
     Fail("argument-profile", "video profile is outside the product bounds");
@@ -997,7 +998,7 @@ void ParseOutputProfiles(ProductArguments& arguments, int first, int count, wcha
     output.frame_rate = ParseIndex(values[index + 3], "argument-output-fps");
     output.bit_rate = ParseIndex(values[index + 4], "argument-output-bitrate");
     if (output.width < 2 || output.height < 2 || (output.width & 1) || (output.height & 1) ||
-        output.width > 2560 || output.height > 1440 || output.frame_rate == 0 ||
+        output.width > 3840 || output.height > 2160 || output.frame_rate == 0 ||
         output.frame_rate > 60 || output.bit_rate < 1'000 || output.bit_rate > 12'000'000) {
       Fail("argument-output", "output profile exceeds codec bounds");
     }
@@ -1305,7 +1306,8 @@ using EncoderCandidate = std::pair<UINT, UINT>;
 void LogEncoderRejection(EncoderCandidate candidate, const GateFailure& error) {
   std::osyncstream output(std::cerr);
   output << "result=encoder-candidate-rejected adapter=" << candidate.first
-         << " encoder=" << candidate.second << " stage=" << error.stage();
+         << " encoder=" << candidate.second << " stage=" << error.stage()
+         << " detail=" << std::quoted(error.what());
   if (FAILED(error.result())) output << " hresult=0x" << std::hex << error.result();
   output << '\n';
 }
@@ -1359,27 +1361,38 @@ VideoEncoderSelection SelectVideoEncoder(
         [&](EncoderCandidate candidate) {
           const auto& adapter = SelectAdapter(adapters, candidate.first);
           auto next_device = CreateDevice(adapter);
-          const auto encoders = EnumerateHardwareEncoders(adapter);
-          // Retire the Auto probe before preparing the live encoder, so selection
-          // does not require two simultaneous hardware sessions on this device.
-          if (arguments.codec == "auto" && !SustainsEncodedCadence(
-                  [&](const VideoProfile& profile) -> std::unique_ptr<VideoEncoder> {
-                    auto activations = EnumerateHardwareEncoders(adapter);
-                    return std::make_unique<LiveEncoder>(ActivateTransform(
-                        activations, candidate.second, next_device.manager.Get()), profile);
-                  },
-                  next_device.device.Get(), arguments.profile, deadline)) {
-            Fail("codec-probe-cadence", "hardware H264 did not sustain the target frame rate");
+          try {
+            const auto encoders = EnumerateHardwareEncoders(adapter);
+            // Retire the Auto probe before preparing the live encoder, so selection
+            // does not require two simultaneous hardware sessions on this device.
+            if (arguments.codec == "auto" && !SustainsEncodedCadence(
+                    [&](const VideoProfile& profile) -> std::unique_ptr<VideoEncoder> {
+                      auto activations = EnumerateHardwareEncoders(adapter);
+                      return std::make_unique<LiveEncoder>(ActivateTransform(
+                          activations, candidate.second, next_device.manager.Get()), profile);
+                    },
+                    next_device.device.Get(), arguments.profile, deadline)) {
+              Fail("codec-probe-cadence", "hardware H264 did not sustain the target frame rate");
+            }
+            RequireEncoderTime(deadline);
+            auto selected = ActivateTransform(encoders, candidate.second, next_device.manager.Get());
+            auto next = std::make_unique<LiveEncoder>(std::move(selected), arguments.profile);
+            // Enumeration and activation alone do not prove usable H264 output.
+            const auto texture = CreateSyntheticTexture(next_device.device.Get(), 0, arguments.profile);
+            next->Encode(texture.Get(), 0, true, deadline);
+            RequireEncoderTime(deadline);
+            device = std::move(next_device);
+            hardware = std::move(next);
+          } catch (const GateFailure& error) {
+            // Query before destroying this candidate's device: the failing API
+            // often reports only DEVICE_REMOVED, hiding the actual driver reason.
+            const HRESULT reason = next_device.device->GetDeviceRemovedReason();
+            if (SUCCEEDED(reason)) throw;
+            std::ostringstream detail;
+            detail << error.what() << "; device-removed-reason=0x" << std::hex
+                   << std::setfill('0') << std::setw(8) << static_cast<UINT32>(reason);
+            throw GateFailure(error.stage(), detail.str(), error.result());
           }
-          RequireEncoderTime(deadline);
-          auto selected = ActivateTransform(encoders, candidate.second, next_device.manager.Get());
-          auto next = std::make_unique<LiveEncoder>(std::move(selected), arguments.profile);
-          // Enumeration and activation alone do not prove usable H264 output.
-          const auto texture = CreateSyntheticTexture(next_device.device.Get(), 0, arguments.profile);
-          next->Encode(texture.Get(), 0, true, deadline);
-          RequireEncoderTime(deadline);
-          device = std::move(next_device);
-          hardware = std::move(next);
         });
     arguments.adapter_index = chosen.first;
     arguments.mft_index = chosen.second;
@@ -1669,7 +1682,7 @@ ComPtr<ID3D11Texture2D> OwnDecodedTexture(const DeviceContext& device, IMFSample
     D3D11_TEXTURE2D_DESC description{};
     original->GetDesc(&description);
     if (description.Format != DXGI_FORMAT_NV12 || description.Width < width || description.Height < height ||
-        description.Width > 2560 || description.Height > 1440) Fail("decoded-texture-size", "decoder texture exceeds source bounds");
+        description.Width > 3840 || description.Height > 2160) Fail("decoded-texture-size", "decoder texture exceeds source bounds");
     description.ArraySize = description.MipLevels = 1;
     description.Usage = D3D11_USAGE_DEFAULT;
     description.CPUAccessFlags = description.MiscFlags = 0;

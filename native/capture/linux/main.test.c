@@ -135,6 +135,19 @@ static void check_slot_profiles(void) {
   for (guint index = 0; index < run.output_count; ++index) {
     g_assert_false(run.outputs[index].enabled);
   }
+  encoded[12] = "3840";
+  encoded[13] = "2160";
+  run = (CaptureRun){0};
+  g_assert_true(parse_profile(G_N_ELEMENTS(encoded), encoded, &run, &encoder));
+  g_assert_cmpuint(run.profile.width, ==, 3840);
+  g_assert_cmpuint(run.profile.height, ==, 2160);
+  encoded[12] = "3842";
+  run = (CaptureRun){0};
+  g_assert_false(parse_profile(G_N_ELEMENTS(encoded), encoded, &run, &encoder));
+  encoded[12] = "3840";
+  encoded[13] = "2162";
+  run = (CaptureRun){0};
+  g_assert_false(parse_profile(G_N_ELEMENTS(encoded), encoded, &run, &encoder));
 }
 
 static GstPadProbeReturn record_key_request(GstPad *pad, GstPadProbeInfo *info,

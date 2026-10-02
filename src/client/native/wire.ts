@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { sfuMediaSchema } from "../../shared/protocol";
 
-export const NATIVE_CLIENT_PROTOCOL = 9;
+export const NATIVE_CLIENT_PROTOCOL = 10;
 export const NATIVE_CLIENT_PORT_START = 39_721;
 export const NATIVE_CLIENT_PORT_END = 39_730;
-export const NATIVE_CLIENT_SUBPROTOCOL = "piik-client-v9";
+export const NATIVE_CLIENT_SUBPROTOCOL = "piik-client-v10";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);
 const opaqueIdentifierSchema = z

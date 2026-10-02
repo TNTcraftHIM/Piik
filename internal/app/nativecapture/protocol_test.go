@@ -55,6 +55,8 @@ func TestReadFrameRejectsInvalidKindsFlagsAndBounds(t *testing.T) {
 		func(value []byte) { value[6] = 2 },
 		func(value []byte) { value[7] = maxOutputs },
 		func(value []byte) { binary.BigEndian.PutUint16(value[24:26], 1279) },
+		func(value []byte) { binary.BigEndian.PutUint16(value[24:26], 3842) },
+		func(value []byte) { binary.BigEndian.PutUint16(value[26:28], 2162) },
 		func(value []byte) { binary.BigEndian.PutUint64(value[8:16], ^uint64(0)) },
 		func(value []byte) { binary.BigEndian.PutUint32(value[28:32], maxMediaBytes+1) },
 	} {
@@ -68,7 +70,7 @@ func TestReadFrameRejectsInvalidKindsFlagsAndBounds(t *testing.T) {
 
 func TestMediaEnvelopeAcceptsFourMiBAndRejectsLargerFrames(t *testing.T) {
 	const limit = 4 * 1024 * 1024
-	frame := Frame{Kind: FrameH264, KeyFrame: true, Width: 2560, Height: 1440,
+	frame := Frame{Kind: FrameH264, KeyFrame: true, Width: 3840, Height: 2160,
 		Duration: time.Second / 60, Data: make([]byte, limit)}
 	var output bytes.Buffer
 	if err := writeFrame(&output, frame); err != nil {
@@ -290,6 +292,7 @@ func TestVideoProfileUsesTheProductBounds(t *testing.T) {
 		{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 60, Bitrate: 8_000_000, Preference: "maintain-framerate"},
 		{Width: 2560, Height: 1440, Framerate: 60, Bitrate: 12_000_000, Preference: "balanced"},
+		{Width: 3840, Height: 2160, Framerate: 60, Bitrate: 12_000_000, Preference: "balanced"},
 	} {
 		if !profile.Valid() {
 			t.Fatalf("valid profile rejected: %+v", profile)
@@ -297,12 +300,35 @@ func TestVideoProfileUsesTheProductBounds(t *testing.T) {
 	}
 	for _, profile := range []VideoProfile{
 		{Width: 1920, Height: 1200, Framerate: 30, Bitrate: 5_000_000, Preference: "balanced"},
+		{Width: 7680, Height: 4320, Framerate: 30, Bitrate: 5_000_000, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 14, Bitrate: 5_000_000, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 12_000_001, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 5_000_000, Preference: "unknown"},
 	} {
 		if profile.Valid() {
 			t.Fatalf("invalid profile accepted: %+v", profile)
+		}
+	}
+}
+
+func Test4KOutputsRetainTheExistingTwoLayerConstruction(t *testing.T) {
+	profile := VideoProfile{Width: 3840, Height: 2160, Framerate: 60, Bitrate: 12_000_000, Preference: "balanced"}
+	outputs := ScreenShareOutputs(profile)
+	if !slices.Equal(outputs, []OutputProfile{
+		{Width: 1920, Height: 1080, Framerate: 60, Bitrate: 3_000_000},
+		{Width: 3840, Height: 2160, Framerate: 60, Bitrate: 12_000_000},
+	}) {
+		t.Fatalf("4K outputs = %+v", outputs)
+	}
+	if _, err := appendOutputArguments(nil, outputs); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []OutputProfile{
+		{Width: 3842, Height: 2160, Framerate: 60, Bitrate: 12_000_000},
+		{Width: 3840, Height: 2162, Framerate: 60, Bitrate: 12_000_000},
+	} {
+		if invalid.Valid() {
+			t.Fatalf("oversized output accepted: %+v", invalid)
 		}
 	}
 }

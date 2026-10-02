@@ -1191,7 +1191,7 @@ func routeParticipant(sess *session, authenticated *authenticatedSession) authen
 func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authenticatedSession, message protocol.ClientMessage) {
 	switch m := message.(type) {
 	case protocol.SubscribeRoomInteractionsMessage:
-		// Explicit opt-in protects older v23 readers from unknown events.
+		// Subscribe before receiving room-interaction events.
 		sess.roomInteractions = true
 		s.send(sess, protocol.RoomInteractionsReadyMessage{Type: "room-interactions-ready", ServerTime: protocol.Int(s.now())})
 	case protocol.SendRoomInteractionMessage:

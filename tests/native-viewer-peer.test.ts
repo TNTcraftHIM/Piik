@@ -54,7 +54,7 @@ it.each(["viewer", "route"] as const)("retires a connected Native receiver on co
       description: { type: "offer", sdp: "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 VP8/90000\r\n" },
     });
     const connected = {
-      version: 9, shareId: "session", connectionId: "current", type: "edge-state", state: "connected",
+      version: 10, shareId: "session", connectionId: "current", type: "edge-state", state: "connected",
     } as const;
     onEvent(connected);
     expect(peer.isConnected()).toBe(true);
@@ -175,7 +175,7 @@ it.each(["reused", "replaced", "answer-lost", "control-lost"])("keeps Native rec
   });
   try {
     await peer.acceptSignal("parent", offer("first"));
-    event({ version: 9, type: "edge-state", shareId: "session", connectionId: "current", state: "connected" });
+    event({ version: 10, type: "edge-state", shareId: "session", connectionId: "current", state: "connected" });
     const source = peer.nativeSource;
     receiveOffer.mockImplementationOnce(async () => {
       if (outcome === "replaced") {
@@ -482,7 +482,7 @@ it.each([false, true])("keeps committed route recovery across backend replacemen
   const offer = (connectionId: string) => ({ kind: "description" as const, connectionId,
     description: { type: "offer" as const, sdp: "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 VP8/90000\r\n" }});
   const state = (connectionId: string, value: "connected" | "failed") => onEvent({
-    version: 9, shareId: "session", connectionId, type: "edge-state", state: value,
+    version: 10, shareId: "session", connectionId, type: "edge-state", state: value,
   });
   try {
     await peer.acceptSignal("parent", offer("first"));

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-02
+Last updated: 2026-10-03
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -8,7 +8,7 @@ and Git/PRs own completed history.
 
 ## Accepted Release Contract
 
-- Browser/server v23, Native control v9 and capture v7 form the current contract.
+- The published 1.x contract is Browser/server v23, Native control v9 and capture v7.
   [Versioning](./standards/versioning.md#public-compatibility-promise) owns
   compatibility between published Web/App/Server versions.
 - Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
@@ -48,9 +48,19 @@ Windows native capture and thumbnails now share automatic HDR-to-SDR conversion;
 synthetic GPU and Browser reception checks pass, with physical HDR display
 acceptance still pending in [verification status](./verification-status.md).
 Room voice is outside the product plan; Host microphone commentary remains.
-4K remains deferred. These features are published; physical device limits remain open.
+These interaction features are published; physical device limits remain open.
 Release artifacts and operator deployment records own delivery completion;
 [TODO](./todo.md#now) owns remaining work.
+
+## 4K Candidate
+
+The owner reopened ordinary 4K sharing on 2026-10-03, retaining the coordinated
+Web/App/Server update decision. Current source uses Browser/server v24 and
+Native control v10; capture remains v7 inside a matched App bundle. The new
+strict `2160p` value and native decode bounds make this a next-major candidate,
+not a compatible 1.x release. Existing pages must reload after a Server update,
+and installed Apps must update to use a new Site's native controls. No release
+is authorized; [TODO](./todo.md#now) owns acceptance and integration.
 
 ## Deployment
 

@@ -120,14 +120,22 @@ void CheckEncoderCandidates() {
   const EncoderCandidate preferred{1, 0};
   std::vector<EncoderCandidate> tried;
   const auto deadline = EncoderClock::now() + std::chrono::seconds(1);
+  std::ostringstream diagnostic;
+  auto previous = std::cerr.rdbuf(diagnostic.rdbuf());
   const auto chosen = SelectEncoderCandidate(candidates, preferred, deadline,
       [&](EncoderCandidate candidate) {
         tried.push_back(candidate);
+        if (candidate == preferred)
+          throw GateFailure("input-texture-create", "fixture device loss", DXGI_ERROR_DEVICE_REMOVED);
         if (candidate != EncoderCandidate{1, 1})
           throw GateFailure("fixture-activation", "candidate is not usable", E_FAIL);
       });
+  std::cerr.rdbuf(previous);
   assert((chosen == EncoderCandidate{1, 1}));
   assert((tried == std::vector<EncoderCandidate>{{1, 0}, {0, 0}, {1, 1}}));
+  assert(diagnostic.str().find("stage=input-texture-create") != std::string::npos);
+  assert(diagnostic.str().find("fixture device loss") != std::string::npos);
+  assert(diagnostic.str().find("hresult=0x887a0005") != std::string::npos);
   tried.clear();
   try {
     SelectEncoderCandidate(candidates, chosen, deadline, [&](EncoderCandidate candidate) {
@@ -203,6 +211,23 @@ void CheckAutoCadenceProbe(ID3D11Device* device) {
 }
 
 int main() {
+  VideoProfile profile{3840, 2160, 30, 12'000'000};
+  ValidateVideoProfile(profile);
+  assert(profile.h264_level() == 51 && profile.profile_level_id() == "42c033");
+  profile.frame_rate = 60;
+  ValidateVideoProfile(profile);
+  assert(profile.h264_level() == 52 && profile.profile_level_id() == "42c034");
+  profile = VideoProfile{2560, 1440, 60, 12'000'000};
+  assert(profile.h264_level() == 51);
+  profile = VideoProfile{1920, 1080, 60, 8'000'000};
+  assert(profile.h264_level() == 42);
+  profile = VideoProfile{7680, 4320, 30, 12'000'000};
+  try {
+    ValidateVideoProfile(profile);
+    assert(false);
+  } catch (const GateFailure& error) {
+    assert(error.stage() == "argument-profile");
+  }
   CheckEncoderCandidates();
   CheckPrimaryFailureDetails();
   ComPtr<ID3D11Device> device;

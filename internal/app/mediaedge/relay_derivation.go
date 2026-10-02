@@ -132,7 +132,7 @@ func (source *Source) relayPlan() relayPlan {
 	plan.output = nativecapture.ScreenShareOutputs(*plan.profile)[0]
 	plan.output.Width = min(width/4*2, plan.output.Width)
 	plan.output.Height = min(height/4*2, plan.output.Height)
-	if !plan.output.Valid() || width > 2560 || height > 1440 {
+	if !plan.output.Valid() || width > nativecapture.MaxVideoWidth || height > nativecapture.MaxVideoHeight {
 		return plan
 	}
 	demands := source.collectDemands(edges, nil)

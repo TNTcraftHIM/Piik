@@ -84,8 +84,8 @@ func parseFrameHeader(header []byte) (Frame, uint32, error) {
 	const maxTime100ns = uint64(1<<63-1) / 100
 	if timestamp100ns > maxTime100ns || duration100ns > maxTime100ns ||
 		(isTimed && duration100ns == 0) || (!isTimed && (timestamp100ns != 0 || duration100ns != 0)) ||
-		(isVideo && (header[6] > 1 || layer >= maxOutputs || width < 2 || width > 2560 ||
-			height < 2 || height > 1440 || width%2 != 0 || height%2 != 0)) ||
+		(isVideo && (header[6] > 1 || layer >= maxOutputs || width < 2 || width > MaxVideoWidth ||
+			height < 2 || height > MaxVideoHeight || width%2 != 0 || height%2 != 0)) ||
 		(!isVideo && (header[6] != 0 || width != 0 || height != 0)) ||
 		(kind == FrameLayerUnavailable && layer >= maxOutputs) ||
 		(!isVideo && kind != FrameLayerUnavailable && layer != 0) {

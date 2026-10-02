@@ -408,6 +408,7 @@ func TestCaptureStateKeepsStartingAndActiveContractsDistinct(t *testing.T) {
 		`{"state":"active","hardwareOnly":false,"codec":"vp8","width":1280,"height":720,"fps":30}`,
 		`{"state":"active","hardwareOnly":true,"codec":"h264","profileLevelId":"42c01e","width":854,"height":480,"fps":15}`,
 		`{"state":"active","hardwareOnly":true,"codec":"h264","profileLevelId":"42c033","width":2560,"height":1440,"fps":60,"restoreToken":"portal-token"}`,
+		`{"state":"active","hardwareOnly":true,"codec":"h264","profileLevelId":"42c034","width":3840,"height":2160,"fps":60}`,
 	} {
 		if _, err = decodeCaptureState(captureStatePayload(t, payload)); err != nil {
 			t.Fatalf("valid profile state was rejected: %s: %v", payload, err)

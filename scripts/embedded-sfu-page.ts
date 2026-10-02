@@ -5,6 +5,7 @@ import {
   SIGNALING_PROTOCOL,
   type ClientMessage,
   type CreateRoomResponse,
+  type QualityResolution,
   type QualitySettings,
   type ServerMessage,
 } from "../src/shared/protocol";
@@ -16,12 +17,12 @@ import { NativeSfuPublisher } from "../src/client/native/native-sfu-publisher";
 import { defaultNativeCapturePath } from "../src/client/native/capture-selection";
 import { HostSfuRoute, type HostPublisherTransport } from "../src/client/media/host-sfu-route";
 import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route";
+import { QUALITY_RESOLUTIONS } from "../src/client/media/quality";
 
 const high: QualitySettings = {
   resolution: "720p", maxFramerate: 15, maxBitrate: 2_000_000,
   degradationPreference: "maintain-resolution", screenAudioQuality: "saver",
 };
-const low: QualitySettings = { ...high, resolution: "480p" };
 const shareGeneration = crypto.randomUUID();
 const clientId = crypto.randomUUID();
 let socket: WebSocket | null = null;
@@ -351,17 +352,18 @@ export async function waitForFrames(width: number, height: number, minimumFrames
   });
 }
 
-export async function lowerProfile(): Promise<boolean> {
+export async function setResolution(resolution: QualityResolution): Promise<boolean> {
   if (!publisher) throw new Error("Publisher is unavailable");
-  if (native) await native.updateShare(shareGeneration, low);
+  const next = { ...profile, resolution };
+  if (native) await native.updateShare(shareGeneration, next);
   else {
     if (!canvas) throw new Error("Browser source is unavailable");
-    canvas.width = 854;
-    canvas.height = 480;
+    canvas.width = QUALITY_RESOLUTIONS[resolution].width;
+    canvas.height = QUALITY_RESOLUTIONS[resolution].height;
   }
-  profile = low;
-  send({ type: "set-quality-settings", qualitySettings: low });
-  return await hostRoute!.updateProfile(low);
+  profile = next;
+  send({ type: "set-quality-settings", qualitySettings: next });
+  return await hostRoute!.updateProfile(next);
 }
 
 export function pause(paused: boolean): void {

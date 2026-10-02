@@ -216,7 +216,7 @@ describe("native App private wire", () => {
     });
     const fetcher = vi.fn(async (url: string) => url.endsWith("/health")
       ? new Response(JSON.stringify({
-          protocol: 9, service: "piik-client", port: 39_721,
+          protocol: 10, service: "piik-client", port: 39_721,
           instanceToken: "a".repeat(43),
           nativeMedia: {video: true, processAudio: false, systemAudio: true, hardwareH264: true, softwareVP8: true},
         }), {status: 200})
@@ -243,7 +243,7 @@ describe("native App private wire", () => {
       static readonly CLOSING = 2;
       static readonly CLOSED = 3;
       readyState = FakeWebSocket.OPEN;
-      protocol = `piik-client-v9.${token}`;
+      protocol = `piik-client-v10.${token}`;
       readonly close = vi.fn(() => {
         this.readyState = FakeWebSocket.CLOSING;
       });
@@ -261,7 +261,7 @@ describe("native App private wire", () => {
           const event = new Event("message");
           Object.defineProperty(event, "data", {
             value: JSON.stringify({
-              version: 9,
+              version: 10,
               id: request.id,
               type: request.type === "hello" ? "ready" : request.type === "ping" ? "pong" : "request-failed",
               ...(request.type === "update-share" ? { code: "operation-failed" } : {}),
@@ -283,7 +283,7 @@ describe("native App private wire", () => {
     });
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({
-        protocol: 9,
+        protocol: 10,
         service: "piik-client",
         port: 39_721,
         instanceToken: token,
@@ -322,7 +322,7 @@ describe("native App private wire", () => {
   it("accepts descriptive health extensions and treats absent media features as unavailable", () => {
     expect(
       nativeHealthSchema.parse({
-        protocol: 9,
+        protocol: 10,
         service: "piik-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
@@ -374,7 +374,7 @@ describe("native App private wire", () => {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = CaptureSocket.OPEN;
-      protocol = `piik-client-v9.${health.instanceToken}`;
+      protocol = `piik-client-v10.${health.instanceToken}`;
       constructor() {
         super();
         queueMicrotask(() => this.dispatchEvent(new Event("open")));
@@ -430,7 +430,7 @@ describe("native App private wire", () => {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = Socket.OPEN;
-      protocol = `piik-client-v9.${health.instanceToken}`;
+      protocol = `piik-client-v10.${health.instanceToken}`;
       constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
       close() { this.readyState = Socket.CLOSING; }
       send(payload: string) {
@@ -479,11 +479,11 @@ describe("native App private wire", () => {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = Socket.OPEN;
-      protocol = `piik-client-v9.${health.instanceToken}`;
+      protocol = `piik-client-v10.${health.instanceToken}`;
       constructor() { super(); socket = this; queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
       close() { this.readyState = Socket.CLOSING; }
       ack(request: Record<string, unknown>, type: string, fields = {}) {
-        this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ version: 9, id: request.id, type, ...fields }) }));
+        this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ version: 10, id: request.id, type, ...fields }) }));
       }
       send(payload: string) {
         const request = JSON.parse(payload) as Record<string, unknown>;
@@ -542,14 +542,14 @@ describe("native App private wire", () => {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = Socket.OPEN;
-      protocol = `piik-client-v9.${health.instanceToken}`;
+      protocol = `piik-client-v10.${health.instanceToken}`;
       constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
       close() { this.readyState = Socket.CLOSING; }
       send(payload: string) {
         const request = JSON.parse(payload) as Record<string, unknown>;
         requests.push(request);
         queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({
-          version: 9, id: request.id, ...(request.type === "hello" ? { type: "ready" } : {
+          version: 10, id: request.id, ...(request.type === "hello" ? { type: "ready" } : {
             type: "receive-answer", shareId: request.shareId, connectionId: request.connectionId,
             sdp: "answer", audio: false, codec: "vp8", ...(supported ? { reused: true } : {}),
           }),
@@ -564,7 +564,7 @@ describe("native App private wire", () => {
     const client = (await NativeClient.connect())!;
     try {
       const result = await client.receiveOffer("share_123456", "connection_1234", { type: "offer", sdp: "offer" }, { iceServers: [] }, 2);
-      expect(requests.at(-1)).toEqual({ version: 9, id: expect.any(String), type: "receive-offer",
+      expect(requests.at(-1)).toEqual({ version: 10, id: expect.any(String), type: "receive-offer",
         shareId: "share_123456", connectionId: "connection_1234", sdp: "offer", iceServers: [], edgeCapacity: 2,
         ...(supported ? { reuseReceiver: true } : {}),
       });
@@ -609,7 +609,7 @@ describe("native App private wire", () => {
 
   it("fences native events by share and connection identity", () => {
     const event = {
-      version: 9,
+      version: 10,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: "edge_1234567",
@@ -623,7 +623,7 @@ describe("native App private wire", () => {
       nativeEventSchema.safeParse({ ...event, routeRevision: 1 }).success,
     ).toBe(false);
     const path = {
-      version: 9,
+      version: 10,
       type: "edge-path",
       shareId: "share_123456",
       connectionId: "edge_1234567",
@@ -638,7 +638,7 @@ describe("native App private wire", () => {
 
   it("keeps an unavailable preview advisory instead of treating it as media failure", () => {
     const preview = {
-      version: 9,
+      version: 10,
       id: "request_preview",
       type: "source-preview",
       sourceKey: "display:65537",
@@ -665,7 +665,7 @@ describe("native App private wire", () => {
       screenAudioQuality: "very-high",
     };
     expect(shareStartedResponseSchema.safeParse({
-      version: 9,
+      version: 10,
       id: "request_start",
       type: "share-started",
       shareId: "share_123456",
@@ -673,19 +673,19 @@ describe("native App private wire", () => {
       codec: "h264",
     }).success).toBe(true);
     expect(shareUpdatedResponseSchema.safeParse({
-      version: 9,
+      version: 10,
       id: "request_update",
       type: "share-updated",
       shareId: "share_123456",
     }).success).toBe(true);
     expect(shareSourceReplacedResponseSchema.safeParse({
-      version: 9,
+      version: 10,
       id: "request_source",
       type: "share-source-replaced",
       shareId: "share_123456",
     }).success).toBe(true);
     expect(shareUpdatedResponseSchema.safeParse({
-      version: 9,
+      version: 10,
       id: "request_update",
       type: "share-updated",
       shareId: "share_123456",
@@ -695,7 +695,7 @@ describe("native App private wire", () => {
 
   it("requires the actual Native codec instead of reporting Auto as media", () => {
     const response = {
-      version: 9,
+      version: 10,
       id: "request_receive",
       type: "receive-answer",
       shareId: "share_123456",
@@ -706,7 +706,7 @@ describe("native App private wire", () => {
     for (const codec of ["h264", "vp8"]) {
       expect(receiveAnswerResponseSchema.safeParse({ ...response, codec }).success).toBe(true);
       expect(shareStartedResponseSchema.safeParse({
-        version: 9, id: "request_start", type: "share-started",
+        version: 10, id: "request_start", type: "share-started",
         shareId: response.shareId, audio: false, codec,
       }).success).toBe(true);
     }
@@ -716,7 +716,7 @@ describe("native App private wire", () => {
 
   it("accepts only internally consistent native quality evidence", () => {
     const event = {
-      version: 9,
+      version: 10,
       type: "edge-quality",
       shareId: "share_123456",
       connectionId: "edge_1234567",

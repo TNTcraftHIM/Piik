@@ -7,6 +7,14 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **4K candidate acceptance.** Review 2160p in ordinary sharing settings and
+  complete cross-platform candidate packaging. Capture/decode/relay bounds,
+  live/paused changes, source replacement and local SFU reception are implemented
+  and checked on Windows. Presets, bitrate limits and routing remain unchanged.
+  [Status](./status.md#4k-candidate) owns the coordinated Web/App/Server upgrade
+  boundary; the next-major release still requires authorization. Device failures
+  and H.264 profile comparison remain in the evidence items below.
+
 - [ ] **Presentation, usability and platform integration.** Review the synchronized website,
   staged film, README screenshots, browser-picker wording, Browser microphone
   processing, local chat appearance/export and entry layout, release identity
@@ -153,6 +161,11 @@ These proposals remain deferred beyond the accepted interaction phase.
   codecs reportedly work; its Browser report records Auto startup returning
   `operation-failed` after 6.85 seconds, before the request timeout. Obtain the
   same attempt's App diagnostics to locate selection/activation failure.
+  The new `input-texture-create / 0x887a0005` report establishes a rejected
+  candidate with a lost D3D device, not the final outcome of sharing. Capture now
+  retains failure detail and queries the device-removal reason before releasing
+  that device. Obtain the same attempt's subsequent candidate/fallback result
+  and final share state before changing recovery or assigning a driver cause.
 - [ ] **Share ends after entering a game.** Screen sharing reportedly works
   until entering a game freezes the picture, followed seconds later by share
   termination. Version, capture path, codec and matched diagnostics are unknown.
@@ -259,22 +272,14 @@ not establish better connection success or speed; this note adds no retry policy
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.
-10. **4K in advanced sharing settings.** Hold the isolated candidate for a separately
-    accepted feature phase; its compatibility and release
-    boundary are not yet accepted. Add 3840x2160 without changing the default or recommended
-    presets. Extend the existing capture, decode and relay bounds together; verify
-    H.264 level negotiation for 4K at 60 fps. Current strict quality messages reject
-    `2160p`, so preserve published Browser/App/Server compatibility through explicit
-    receiving-end support before exposing or sending the new setting. Include
-    source replacement, lower outputs and resource limits in acceptance.
-11. **Release-operation policy.** Protected release environments, immutable
+10. **Release-operation policy.** Protected release environments, immutable
     draft assets and changing mirror-failure policy remain unaccepted proposals;
     evaluate their benefit before adding release machinery.
-12. **Automatic local chat history.** Explicit TXT export covers manual retention.
+11. **Automatic local chat history.** Explicit TXT export covers manual retention.
     Reconsider automatic storage only with a stable room-incarnation identity,
     bounded retention and a clear delete control; reusable room codes must not
     combine conversations. No new history service or wire field is authorized.
-13. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
+12. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
     The [capture assessment](./research/camera-and-microphone.md) records raw-frame
     output and the WHIP boundary; virtual camera alone is not a second encode.
     Do not add an RTMP/WHIP listener without an accepted publication owner.

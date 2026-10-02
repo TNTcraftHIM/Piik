@@ -19,6 +19,8 @@ import (
 )
 
 const (
+	MaxVideoWidth      = 3840
+	MaxVideoHeight     = 2160
 	captureStopTimeout = time.Second
 	maxPreviewBytes    = 192 * 1024
 	maxOutputs         = 6
@@ -80,8 +82,8 @@ type OutputProfile struct {
 }
 
 func (profile OutputProfile) Valid() bool {
-	return profile.Width >= 2 && profile.Width <= 2560 && profile.Width%2 == 0 &&
-		profile.Height >= 2 && profile.Height <= 1440 && profile.Height%2 == 0 &&
+	return profile.Width >= 2 && profile.Width <= MaxVideoWidth && profile.Width%2 == 0 &&
+		profile.Height >= 2 && profile.Height <= MaxVideoHeight && profile.Height%2 == 0 &&
 		profile.Framerate >= 1 && profile.Framerate <= 60 &&
 		profile.Bitrate >= minOutputBitrate && profile.Bitrate <= maxOutputBitrate
 }
@@ -106,7 +108,8 @@ func (profile VideoProfile) Valid() bool {
 		(profile.Width == 854 && profile.Height == 480) ||
 			(profile.Width == 1280 && profile.Height == 720) ||
 			(profile.Width == 1920 && profile.Height == 1080) ||
-			(profile.Width == 2560 && profile.Height == 1440)
+			(profile.Width == 2560 && profile.Height == 1440) ||
+			(profile.Width == 3840 && profile.Height == 2160)
 	return validResolution && profile.Framerate >= 15 && profile.Framerate <= 60 &&
 		profile.Bitrate >= 2_000_000 && profile.Bitrate <= 12_000_000 &&
 		validVideoPreference(profile.Preference)

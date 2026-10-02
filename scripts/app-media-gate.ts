@@ -355,7 +355,7 @@ async function browserMediaGate(input: {
           rejectRequest(new Error("Native request timed out: " + type));
         }, 8_000);
         pending.set(id, { resolve: resolveRequest, reject: rejectRequest, timer });
-        socket!.send(JSON.stringify({ version: 9, id, type, ...fields }));
+        socket!.send(JSON.stringify({ version: input.protocol, id, type, ...fields }));
       });
     };
     socket.onmessage = (event) => {
@@ -588,7 +588,7 @@ async function browserMediaGate(input: {
     const liveUpdate = await request("update-share", {
       shareId,
       profile: {
-        resolution: "1440p",
+        resolution: "2160p",
         maxFramerate: 60,
         maxBitrate: 12_000_000,
         degradationPreference: "maintain-framerate",
@@ -601,7 +601,7 @@ async function browserMediaGate(input: {
         ...videos.map((video) => video.getVideoPlaybackQuality().totalVideoFrames),
       );
       result.liveProfileUpdated = liveUpdate.type === "share-updated" &&
-        videos.every((video) => video.videoWidth === 2560 && video.videoHeight === 1440) &&
+        videos.every((video) => video.videoWidth === 3840 && video.videoHeight === 2160) &&
         frames >= framesBeforeLiveUpdate + 10;
       if (result.liveProfileUpdated) break;
       await new Promise((resolveWait) => window.setTimeout(resolveWait, 100));

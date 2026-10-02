@@ -123,7 +123,7 @@ const qualityEvidence = {
 
 describe("client signaling protocol", () => {
   it("uses the current strict signaling generation", () => {
-    expect(SIGNALING_PROTOCOL).toBe("piik-v23");
+    expect(SIGNALING_PROTOCOL).toBe("piik-v24");
   });
 
   it("keeps signaling challenges strict and sequence-only", () => {
@@ -769,7 +769,7 @@ describe("client signaling protocol", () => {
       ).toBe(true);
     }
     for (const invalid of [
-      { ...qualitySettings, resolution: "2160p" },
+      { ...qualitySettings, resolution: "4320p" },
       { ...qualitySettings, maxFramerate: 14 },
       { ...qualitySettings, maxFramerate: 61 },
       { ...qualitySettings, maxFramerate: 30.5 },

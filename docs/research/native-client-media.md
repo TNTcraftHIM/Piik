@@ -1,6 +1,6 @@
 # Native App Media Evidence
 
-- Reviewed: 2026-10-01
+- Reviewed: 2026-10-03
 - Scope: platform capture, shared encoded sources, Pion transport and Browser
   decode; current behavior belongs to [media quality](../standards/media-quality.md)
 - Status: Windows physical native Host and Viewer gates passed; macOS and Linux adapters
@@ -141,12 +141,13 @@ shutdown cannot be preempted by that deadline. Slow-output rejection has fixture
 coverage; native AMD/Intel physical acceptance and game-load behavior remain
 open. This evidence does not establish the cause of reported system-wide lag.
 
-The Windows Browser gate now also keeps two native PeerConnections alive while
-the source changes from 720p30 to 1440p60, then changes to 480p15 while paused
-and resumes both Viewers. It proves the same Pion source survives two hardware
-capture/encoder generations; direct capture probes also produced every current
-resolution/FPS extreme, and the same route survives an explicit native source
-switch. The result does not yet prove macOS/Linux physical capture or endurance.
+On 2026-10-03 the Windows Browser gate kept two native PeerConnections alive
+while the source changed from 720p30 to 2160p60, then to 480p15 while paused,
+and resumed both Viewers. The same Pion source survives the capture/encoder
+generations; a separate UI gate retains the route through a native source switch.
+Local embedded-SFU gates decoded 3840x2160 from Native H264 and Browser H264/VP8,
+then 854x480, retaining audio and subscription recovery. These bounded checks
+do not prove macOS/Linux physical 4K capture or sustained 4K60 performance.
 Native Host media is exposed only through an explicit App-launched Host
 selection; an ordinary Web Host retains Browser capture.
 
@@ -333,6 +334,16 @@ inspect the resulting bitstream and retain reference/decoded pictures. Raising
 the bitrate ceiling, lowering the default frame rate or changing profile is not
 justified by these logs alone; those changes have bandwidth, motion and receiver
 compatibility consequences.
+
+Rechecked 2026-10-03: Main/High are separate from the level increase needed for
+4K. [RFC 7742](https://www.rfc-editor.org/rfc/rfc7742.html#section-6.2) requires
+Constrained Baseline support; it does not make High universal. Microsoft's
+[encoder reference](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-encoder)
+exposes CABAC and B-frame controls separately: choosing Main/High alone does not
+prove CABAC is enabled, and B frames are not required by those profiles.
+A comparison should keep latency, frame ordering and rate control fixed, inspect
+actual SPS/PPS, and check every receiving/relay path before changing the default.
+The current implementation retains its Baseline contract.
 
 ## Implementation Boundary
 

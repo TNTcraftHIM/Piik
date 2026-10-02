@@ -23,7 +23,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const H264ProfileLevelID = "42c033"
+const H264ProfileLevelID = "42c034"
 const stunSurveyTimeout = 5 * time.Second
 
 var h264Capability = webrtc.RTPCodecCapability{

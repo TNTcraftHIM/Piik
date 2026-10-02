@@ -41,8 +41,8 @@ class H264Decoder final {
     Check(decoder_.As(&codec), "codec-api");
     for (const auto& setting : {
              std::pair<GUID, ULONG>{CODECAPI_AVLowLatencyMode, TRUE},
-             std::pair<GUID, ULONG>{CODECAPI_AVDecVideoMaxCodedWidth, 2560},
-             std::pair<GUID, ULONG>{CODECAPI_AVDecVideoMaxCodedHeight, 1440}}) {
+             std::pair<GUID, ULONG>{CODECAPI_AVDecVideoMaxCodedWidth, 3840},
+             std::pair<GUID, ULONG>{CODECAPI_AVDecVideoMaxCodedHeight, 2160}}) {
       VARIANT value;
       VariantInit(&value);
       value.vt = VT_UI4;
@@ -117,7 +117,7 @@ class H264Decoder final {
       if (subtype != MFVideoFormat_NV12) continue;
       UINT32 width = 0, height = 0;
       Check(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &width, &height), "output-size");
-      if (width < 2 || height < 2 || width > 2560 || height > 1440 || (width & 1) || (height & 1)) {
+      if (width < 2 || height < 2 || width > 3840 || height > 2160 || (width & 1) || (height & 1)) {
         throw std::runtime_error("H264 decoder output dimensions exceed the source bound");
       }
       Check(decoder_->SetOutputType(0, type.Get(), 0), "set-output");
@@ -144,7 +144,7 @@ class H264Decoder final {
       if (!(info.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES))) {
         const DWORD expected = static_cast<DWORD>(stride_) * height_ * 3 / 2;
         const DWORD size = std::max(info.cbSize, expected);
-        if (size > 2560 * 1440 * 2) throw std::runtime_error("H264 decoder output allocation exceeds its bound");
+        if (size > 3840 * 2160 * 2) throw std::runtime_error("H264 decoder output allocation exceeds its bound");
         Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
         Check(MFCreateAlignedMemoryBuffer(size, info.cbAlignment ? info.cbAlignment - 1 : 0, &buffer), "output-buffer");
         Check(MFCreateSample(&owned), "output-sample");
