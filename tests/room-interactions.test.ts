@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { CHAT_OVERLAY_DURATION_MS, RoomInteractionSession, type RoomInteraction } from "../src/client/lib/room-interactions";
+import { CHAT_HISTORY_LIMIT, CHAT_OVERLAY_DURATION_MS, RoomInteractionSession, type RoomInteraction } from "../src/client/lib/room-interactions";
 import { normalizeChatText } from "../src/shared/room-interactions";
 import { formatChatTranscript } from "../src/client/lib/room-chat-export";
 
@@ -91,16 +91,17 @@ test("data needs explicit readiness, waits for server echo, and has no offline r
 test("history and animations are bounded, deduplicated and retired with the room", () => {
   const { session } = setup();
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
-  for (let i = 0; i < 100; i++) session.receive(message(`event_${i}`));
-  session.receive(message("event_99"));
-  expect(session.getSnapshot().messages).toHaveLength(80);
+  for (let i = 0; i < CHAT_HISTORY_LIMIT + 20; i++) session.receive(message(`event_${i}`));
+  session.receive(message(`event_${CHAT_HISTORY_LIMIT + 19}`));
+  expect(session.getSnapshot().messages).toHaveLength(CHAT_HISTORY_LIMIT);
   expect(session.getSnapshot().messages[0].id).toBe("event_20");
+  expect(formatChatTranscript(session.getSnapshot().messages).match(/Hello/g)).toHaveLength(CHAT_HISTORY_LIMIT);
   for (let i = 0; i < 21; i++) session.receive({ ...message(`reaction_${i}`), payload: { kind: "reaction", reaction: "clap" } });
   expect(session.getSnapshot().reactions).toHaveLength(8);
   vi.advanceTimersByTime(2400);
   expect(session.getSnapshot().reactions).toHaveLength(0);
   session.authenticated("different_peer_1234");
-  expect(session.getSnapshot().messages).toHaveLength(80);
+  expect(session.getSnapshot().messages).toHaveLength(CHAT_HISTORY_LIMIT);
   session.close();
   expect(session.getSnapshot().messages).toHaveLength(0);
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });

@@ -73,7 +73,7 @@ ends that service; merely leaving the Host page does not.
   may duplicate a message that arrived before the confirmation was lost. Only
   the matching pending request may confirm a send or clear its draft/error;
   late echoes may enter history without confirming a newer attempt.
-- The page retains the latest 80 received chat messages and at most eight
+- The page retains the latest 1,000 received chat messages and at most eight
   simultaneous reaction effects. Effects expire after 2.4 seconds. Reconnection
   clears pending effects and re-subscribes, without replaying messages or actions.
   Same-room re-admission retains history, self attribution and the local draft,

@@ -52,6 +52,7 @@ export const en: Record<CopyKey, string> = {
   "common.name.hostDefault": "Host",
 
   "client.launch.title": "Open Piik",
+  "client.launch.version": "Installed version {version}",
   "client.launch.local": "Local room",
   "client.launch.localHint": "Use on the same local network",
   "client.launch.link": "Public invite",

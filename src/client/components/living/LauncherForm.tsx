@@ -89,12 +89,9 @@ export function LauncherForm({
     <form className="lr-client-launch-panel" onSubmit={onSubmit}>
       <BrandMark size={68} motion="once" />
       <WelcomeLine />
-      <div className={vis && !version ? "visually-hidden" : undefined}>
-        <h1 className={vis ? "visually-hidden" : "lr-client-launch-title"}>
-          {t("client.launch.title")}
-        </h1>
-        {version && <p className="lr-client-version">Piik App {version}</p>}
-      </div>
+      <h1 className={vis ? "visually-hidden" : "lr-client-launch-title"}>
+        {t("client.launch.title")}
+      </h1>
 
       {children}
 
@@ -211,6 +208,9 @@ export function LauncherForm({
         disabled={(mode === "site" && !site.trim()) ||
           (mode === "local" && lan !== undefined && !lan.selected)}
       />
+      {version && <p className="lr-client-version" aria-label={t("client.launch.version", { version })}>
+        {vis ? version : t("client.launch.version", { version })}
+      </p>}
     </form>
   );
 }

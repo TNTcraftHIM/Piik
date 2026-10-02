@@ -195,7 +195,7 @@ Stopping a share keeps the room's chat available. App Local and Public invite
 rooms require the App to stay open. Each page retains only its latest received
 messages: refreshing clears them, and late joiners receive no earlier history.
 To keep a copy, use **Chat settings → Export chat** to save the latest messages
-retained on this page (up to 80) as a text file.
+retained on this page (up to 1,000) as a text file.
 Chat travels through the room's server and is **not end-to-end encrypted**.
 
 ## When something gets in the way

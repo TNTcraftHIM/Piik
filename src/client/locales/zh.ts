@@ -52,6 +52,7 @@ export const zh = {
   "common.name.hostDefault": "房主",
 
   "client.launch.title": "打开 Piik",
+  "client.launch.version": "当前版本 {version}",
   "client.launch.local": "本地房间",
   "client.launch.localHint": "同一局域网内使用",
   "client.launch.link": "公网邀请",
