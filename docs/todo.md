@@ -14,6 +14,9 @@ history. A parked idea is not implementation authority.
   ([#449](https://github.com/TNTcraftHIM/Piik/pull/449)), and ARM64 Server / Intel
   Mac packages ([#439](https://github.com/TNTcraftHIM/Piik/issues/439),
   [#421](https://github.com/TNTcraftHIM/Piik/issues/421)).
+  Formally merge #449 into the integration branch; retain the contributor's
+  `Co-authored-by` identity in the final phase squash and credit the original PR
+  in the release notes.
   Product changes await the next authorized release; no new
   release is authorized. Matched field acceptance remains listed below.
 
