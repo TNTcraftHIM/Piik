@@ -23,7 +23,7 @@ export function RoomChatOverlay({ session, visible }: { session: RoomInteraction
 }
 
 function ConnectedOverlay({ session, visible }: { session: RoomInteractionSession; visible: boolean }) {
-  const { overlayMessages } = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const { overlayMessages, overlayAppearance } = useSyncExternalStore(session.subscribe, session.getSnapshot);
   useEffect(() => {
     const sync = () => session.setOverlayVisible(visible && !document.hidden);
     sync();
@@ -33,7 +33,8 @@ function ConnectedOverlay({ session, visible }: { session: RoomInteractionSessio
       session.setOverlayVisible(false);
     };
   }, [session, visible]);
-  return visible ? <div className="lr-chat-overlay" aria-hidden="true">
+  return visible ? <div className="lr-chat-overlay" aria-hidden="true"
+    style={{ "--chat-scale": overlayAppearance.scale, opacity: overlayAppearance.opacity } as CSSProperties}>
     {overlayMessages.map(message => <ChatFlight key={message.id} message={message} now={session.now} />)}
   </div> : null;
 }

@@ -31,10 +31,21 @@
 .lr-chat-compose:has(input:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-chat-compose > input { min-width: 0; flex: 1; width: 0; height: 44px; border: 0; outline: none; border-radius: 14px; padding: 0 10px; background: transparent; color: var(--ink); font-size: 16px; }
 .lr-chat-compose .lr-btn { flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border-radius: 15px; }
-.lr-chat-footer { display: flex; align-items: center; gap: 10px; min-height: 40px; margin-top: 8px; padding-right: 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.lr-chat-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 40px; margin-top: 8px; padding-right: 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.lr-chat-actions { display: flex; flex: none; align-items: center; gap: 6px; }
 .lr-chat-footer .lr-chat-overlay-toggle { flex: none; }
 .lr-chat-footer .lr-btn { min-height: 36px; padding: 0 8px; }
-.lr-chat-footer .lr-interaction-status { flex: 1; min-width: 0; min-height: 0; margin: 0; }
+.lr-chat-history[hidden], .lr-chat-compose[hidden] { display: none; }
+.lr-chat-settings { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 18px 2px; }
+.lr-chat-settings > p { margin: 0 0 20px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.lr-chat-setting { margin-bottom: 22px; }
+.lr-chat-setting > label { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 28px; font-size: 13px; }
+.lr-chat-setting output { color: var(--muted); font: 12px var(--mono); }
+.lr-chat-setting > .lr-comic-tip-wrap { display: flex; width: 100%; }
+.lr-chat-setting input[type="range"] { width: 100%; min-height: 40px; margin: 0; accent-color: var(--action); cursor: pointer; }
+.lr-chat-export { display: grid; justify-items: start; gap: 8px; padding-top: 16px; border-top: 1px solid var(--wall-2); }
+.lr-chat-export small { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.lr-chat-footer .lr-interaction-status { flex: 1 1 140px; min-width: 0; min-height: 0; margin: 0; overflow-wrap: anywhere; }
 .lr-chat-count { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; }
 .lr-interaction-status { display: flex; align-items: center; gap: 6px; min-height: 24px; margin-top: 6px; font-size: 11px; color: var(--muted); }
 .lr-person-menu { transform-origin: center bottom; }

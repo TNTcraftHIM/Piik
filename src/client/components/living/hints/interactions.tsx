@@ -51,9 +51,38 @@ function OverlayHint({ theme, show }: { theme: ComicTheme; show: boolean }) {
   </g>)}</>;
 }
 
+function ChatSettingsHint({ theme }: { theme: ComicTheme }) {
+  return <><InteractionMotion />{[0, 160].map((x, index) => <g key={x}>
+    <Frame x={x + 4} w={152} theme={theme} result={Boolean(index)} />
+    <MiniTv x={x + 25} y={14} w={110} h={59} />
+    <path d={`M${x + 36} 62l24-25 19 17 17-12 29 20Z`} fill={SKY} opacity={.5} />
+    <g className={index ? "vls-talk-bubble" : undefined}>
+      <path d={`M${x + 45} 31h${index ? 38 : 25}m7 0h${index ? 20 : 12}`}
+        stroke="#dfe8f2" strokeWidth={index ? 5 : 3} opacity={index ? .65 : 1} strokeLinecap="round" />
+    </g>
+    <Pawn x={x + 25} yb={87} s={9} eyes className={index ? "vls-talk-nod" : undefined} />
+    <g transform={`translate(${x + 75} 74)`}><Glyph name="sliders" size={17} /></g>
+  </g>)}</>;
+}
+
+function ChatExportHint({ theme }: { theme: ComicTheme }) {
+  return <><InteractionMotion />{[0, 160].map((x, index) => <g key={x}>
+    <Frame x={x + 4} w={152} theme={theme} result={Boolean(index)} />
+    <Pawn x={x + 35} yb={83} s={12} eyes className={index ? "vls-talk-nod" : undefined} />
+    <Bubble x={x + 19} y={15} />
+    {index ? <g className="vls-talk-bubble">
+      <rect x={x + 93} y={21} width={39} height={50} rx={4} fill="var(--paper)" stroke={FAINT} strokeWidth={2} />
+      <path d={`M${x + 101} 33h23m-23 9h16m-16 9h23`} stroke={YOU} strokeWidth={2} strokeLinecap="round" />
+      <g transform={`translate(${x + 102} 60)`}><Glyph name="save" size={19} /></g>
+    </g> : <Bubble x={x + 95} y={42} color={SKY} />}
+  </g>)}</>;
+}
+
 export const INTERACTION_SCENES: Record<InteractionHintKind, HintScene> = {
   "hint-chat-open": props => <ChatHint {...props} />,
   "hint-chat-send": props => <ChatHint {...props} send />,
+  "hint-chat-settings": props => <ChatSettingsHint {...props} />,
+  "hint-chat-export": props => <ChatExportHint {...props} />,
   "hint-chat-overlay-show": props => <OverlayHint {...props} show />,
   "hint-chat-overlay-hide": props => <OverlayHint {...props} show={false} />,
 };

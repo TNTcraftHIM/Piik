@@ -7,15 +7,11 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Issue and interaction follow-up.** The owner authorized checking deployment claims
-  (#440–442), evaluating OBS input and platform distribution, and implementing
-  small local danmaku preferences plus explicit chat export. Reuse existing
-  owners and verify each accepted change before integration. Automatic history
-  restoration and new media ingress remain design proposals, not promises.
-- [ ] **Presentation integration.** Review the synchronized website, staged film,
-  README screenshots, browser-picker wording and Browser microphone-processing
-  switch before integration. Shared App UI changes await the next authorized
-  product release; no new release is authorized.
+- [ ] **Presentation and usability integration.** Review the synchronized website,
+  staged film, README screenshots, browser-picker wording, Browser microphone
+  processing, local chat appearance/export and signaling admission recovery.
+  Shared App UI changes await the next authorized product release; no new
+  release is authorized. Matched field acceptance remains listed below.
 
 ## Held By Owner
 
@@ -75,6 +71,9 @@ These proposals remain deferred beyond the accepted interaction phase.
   [#443](https://github.com/TNTcraftHIM/Piik/issues/443)'s Host report reaches Native
   prepare/answer/candidate processing without a connected remote edge; obtain
   the same attempt's Viewer and App transport reports to locate the failure.
+  [#448](https://github.com/TNTcraftHIM/Piik/issues/448)'s Viewer remains at route
+  allocation; obtain the paired attempt before treating that wait as failed ICE
+  or assigning a capture/codec cause.
 - [ ] **Camera and Host microphone device coverage.** The owner accepted the
   sharing layout and authorized release with these physical limits recorded.
   Verify real audio levels/echo, multiple-device replacement and native mixing on
@@ -259,3 +258,15 @@ not establish better connection success or speed; this note adds no retry policy
     publishing together with deployment names, update links and runtime checks.
     A cross-compile alone does not establish a supported package. This is a
     community proposal, not part of the current accepted candidate.
+13. **Intel Mac App distribution (#421).** Verify native capture, SDK/cgo builds
+    and tunnel packaging on a macOS x64 runner before adding a public target.
+    Browser use remains available; the Apple Silicon App package is not an
+    Intel package. This is separate from Linux ARM64 Server distribution.
+14. **Automatic local chat history.** Explicit TXT export covers manual retention.
+    Reconsider automatic storage only with a stable room-incarnation identity,
+    bounded retention and a clear delete control; reusable room codes must not
+    combine conversations. No new history service or wire field is authorized.
+15. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
+    The [capture assessment](./research/camera-and-microphone.md) records raw-frame
+    output and the WHIP boundary; virtual camera alone is not a second encode.
+    Do not add an RTMP/WHIP listener without an accepted publication owner.

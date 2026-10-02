@@ -79,7 +79,9 @@ ends that service; merely leaving the Host page does not.
   Same-room re-admission retains history, self attribution and the local draft,
   even when its wire peer ID changes. Refresh, leaving, authority loss or room
   session replacement clears the page conversation; late joiners receive only
-  new messages. Nothing persists in Browser storage.
+  new messages. Nothing persists in Browser storage. An explicit TXT export saves
+  the currently retained messages with timestamps and display names; it does not
+  include pending sends, reactions, invite credentials or peer identifiers.
 - There is no server history, database table or message body in diagnostic
   exports. Transport is the site's HTTPS/WSS connection; **chat is not end-to-end
   encrypted**, and the server operator can access live message contents.
@@ -156,8 +158,13 @@ The optional chat overlay (danmaku) projects newly received chat over the pictur
 it adds no message kind, transport or delivery promise. It defaults off, with the
 same local switch beside the chat composer and Viewer playback bar, including HTML
 fullscreen. At most three single-line comments appear for up to six seconds each.
-Font size follows the picture width, with a fixed readable contrast and duration
-rather than separate typography, opacity and speed preferences.
+Font size follows the picture width. Chat settings can scale it to 80–130% and
+set opacity to 40–100%; defaults are 100%. These local preferences belong to the
+room interaction session, survive its signaling reconnection and reset when that
+session is replaced or the page reloads. Both Host and Viewer use the same owner.
+Adjustments preserve active flights and their shared timing; duration stays fixed.
+The settings view occupies the chat window's existing space and preserves its
+draft and scroll position. Hidden chat is not marked read while adjusting settings.
 Each event's sender and ID choose its lane, and a newer event replaces that lane's
 previous flight. All received text remains in the full chat log, without a playback queue. Text is clipped
 to the picture space above playback controls; smaller spaces show fewer complete

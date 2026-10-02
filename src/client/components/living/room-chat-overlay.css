@@ -2,19 +2,20 @@
 .lr-chat-overlay { position: absolute; inset: 0; overflow: hidden; pointer-events: none; container-type: size; }
 .lr-tv-screen:has(> .lr-playback) > .lr-chat-overlay { grid-area: 1 / 1 / 2 / 2; }
 .lr-chat-flight {
-  position: absolute; left: 100%; top: calc(12px + var(--chat-lane) * 30px);
+  position: absolute; left: 100%; top: calc(12px + var(--chat-lane) * 34px);
   max-width: 80%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 2px 10px; border-radius: 999px; background: rgb(15 25 35 / .68);
-  color: #fff; font-size: clamp(14px, 2cqw, 18px); font-weight: 600; line-height: 24px;
+  color: #fff; font-size: calc(clamp(14px, 2cqw, 18px) * var(--chat-scale, 1)); font-weight: 600; line-height: 28px;
   text-shadow: 0 1px 2px rgb(0 0 0 / .4);
   animation: lr-chat-flight linear both;
 }
 @keyframes lr-chat-flight { to { transform: translateX(calc(-100cqw - 100%)); } }
-/* Fit complete 28px lines above playback controls. Visibility preserves the
+/* Fixed rows fit the largest supported font without changing shared lanes.
+   Fit complete 32px lines above playback controls. Visibility preserves the
    running flight when the available picture space changes. */
-@container (height < 100px) { .lr-chat-flight[data-lane="2"] { visibility: hidden; } }
-@container (height < 70px) { .lr-chat-flight[data-lane="1"] { visibility: hidden; } }
-@container (height < 40px) { .lr-chat-flight { visibility: hidden; } }
+@container (height < 112px) { .lr-chat-flight[data-lane="2"] { visibility: hidden; } }
+@container (height < 78px) { .lr-chat-flight[data-lane="1"] { visibility: hidden; } }
+@container (height < 44px) { .lr-chat-flight { visibility: hidden; } }
 .lr-chat-overlay-toggle { display: inline-flex; }
 @container (max-width: 440px) {
   .lr-playback:has(.lr-chat-overlay-toggle) .lr-btn { width: clamp(28px, 9cqw, 40px); }

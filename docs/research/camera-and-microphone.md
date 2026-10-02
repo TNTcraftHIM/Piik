@@ -77,6 +77,21 @@ supplies video; its audio may be routed through a separately selected virtual
 audio input using the ordinary microphone control. This uses the existing
 mixer and routes. End-to-end OBS sound quality and A/V synchronization remain
 unverified device coverage.
+
+OBS's [Windows virtual-camera output](https://github.com/obsproject/obs-studio/blob/a1fbf1015f4079b79dc9ef4f6abecf67920e93cf/plugins/win-dshow/virtualcam.c)
+uses `raw_video` and writes raw NV12 frames, not an encoded H.264 stream. Virtual
+camera alone therefore does not require an OBS encode/decode round trip before
+Piik's encoder. Source decoding, composition, pixel conversion and copies may
+still cost resources. Do not promise a zero-copy path or describe every virtual
+camera setup as double encoding.
+
+Direct OBS ingestion is not currently implemented. OBS's
+[WHIP output](https://obsproject.com/kb/whip-streaming-guide) would be the relevant
+standard to evaluate if a measured virtual-camera bottleneck justified another
+input. It would still need an explicit publication/admission lifecycle and
+integration with Piik's existing media owner; an RTMP listener alone would not
+provide that. Keep this outside the current microphone/camera change.
+
 Camera selection belongs in the existing Camera tab and uses the same named
 thumbnail cards as window/display selection. Entering the
 Camera tab may request camera permission for local previews; it never requests

@@ -5,6 +5,13 @@ English · [简体中文](./self-hosting.zh-CN.md) · [Documentation](../README.
 Piik Server packages the web interface, room management and optional media
 forwarding in **one server binary**. Extract and run it; room data is stored in SQLite.
 
+The default P2P configuration handles room management, signaling and STUN; shared
+video and audio travel between participants. Enabling SFU adds media-forwarding
+bandwidth and processing on the server. For a small server, start with the default
+and measure CPU, memory and network use with your intended number of rooms and
+viewers before enabling SFU. Lowering picture resolution primarily reduces
+participants' capture and encoding work.
+
 ## Try it locally
 
 These server instructions use a Linux x64 machine.

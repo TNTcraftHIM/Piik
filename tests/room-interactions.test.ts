@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { CHAT_OVERLAY_DURATION_MS, RoomInteractionSession, type RoomInteraction } from "../src/client/lib/room-interactions";
 import { normalizeChatText } from "../src/shared/room-interactions";
+import { formatChatTranscript } from "../src/client/lib/room-chat-export";
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 function setup() {
@@ -13,6 +14,52 @@ function setup() {
 }
 const message = (id: string): RoomInteraction => ({ type: "room-interaction", id, requestId: "request_1234", occurredAt: Date.now(),
   sender: { peerId: "other_peer_1234", role: "viewer", displayName: "朋友" }, payload: { kind: "chat", text: "Hello" } });
+
+test("appearance is local, preserves a running flight, survives re-admission and resets with the room", () => {
+  const { session, send } = setup();
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  session.setOverlayEnabled(true);
+  session.setOverlayVisible(true);
+  session.receive(message("event_1234"));
+  const flights = session.getSnapshot().overlayMessages;
+  const sent = send.mock.calls.length;
+  session.setOverlayAppearance({ scale: 1.3, opacity: .4 });
+  expect(session.getSnapshot().overlayMessages).toBe(flights);
+  expect(send).toHaveBeenCalledTimes(sent);
+  vi.advanceTimersByTime(CHAT_OVERLAY_DURATION_MS);
+  expect(session.getSnapshot().overlayMessages).toEqual([]);
+  session.disconnected();
+  session.authenticated("replacement_peer");
+  expect(session.getSnapshot().overlayAppearance).toEqual({ scale: 1.3, opacity: .4 });
+  session.close();
+  expect(session.getSnapshot().overlayAppearance).toEqual({ scale: 1, opacity: 1 });
+  session.setOverlayAppearance({ scale: 1.2, opacity: .5 });
+  expect(session.getSnapshot().overlayAppearance).toEqual({ scale: 1, opacity: 1 });
+});
+
+test("appearance bounds preserve readable text and reject non-finite input", () => {
+  const { session } = setup();
+  session.setOverlayAppearance({ scale: 100, opacity: -1 });
+  expect(session.getSnapshot().overlayAppearance).toEqual({ scale: 1.3, opacity: .4 });
+  session.setOverlayAppearance({ scale: NaN, opacity: 1 });
+  expect(session.getSnapshot().overlayAppearance).toEqual({ scale: 1.3, opacity: .4 });
+  session.close();
+});
+
+test("explicit chat export keeps received text in order without identities, reactions or pending sends", () => {
+  const { session } = setup();
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  const first = { ...message("first_1234"), occurredAt: 0, payload: { kind: "chat" as const, text: "中文 👋 <b>text</b>" } };
+  const second = { ...message("second_1234"), occurredAt: 1_000 };
+  session.receive(first);
+  session.receive(second);
+  session.send({ kind: "chat", text: "not confirmed" });
+  const text = formatChatTranscript(session.getSnapshot().messages);
+  expect(text).toBe("\uFEFFPiik chat\r\n\r\n[1970-01-01T00:00:00.000Z] 朋友\r\n中文 👋 <b>text</b>\r\n\r\n[1970-01-01T00:00:01.000Z] 朋友\r\nHello\r\n");
+  expect(text).not.toMatch(/other_peer|request_1234|not confirmed/);
+  expect(formatChatTranscript([{ ...first, payload: { kind: "reaction", reaction: "heart" } }])).toBe("\uFEFFPiik chat\r\n\r\n");
+  session.close();
+});
 
 test("data needs explicit readiness, waits for server echo, and has no offline replay", () => {
   // LAN HTTP viewing does not expose secure-context-only crypto.randomUUID.

@@ -146,6 +146,8 @@ export type MetricHintKind = `hint-metric-${
 export type InteractionHintKind =
   | "hint-chat-open"
   | "hint-chat-send"
+  | "hint-chat-settings"
+  | "hint-chat-export"
   | "hint-chat-overlay-show"
   | "hint-chat-overlay-hide";
 
