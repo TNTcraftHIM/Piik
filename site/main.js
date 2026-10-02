@@ -11,7 +11,18 @@ if (releaseLabel) {
   void fetch(DEFAULT_RELEASE_API_URL, {
     credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
     signal: controller.signal, headers: { Accept: 'application/vnd.github+json' },
-  }).then(async response => response.ok ? parseReleaseMetadata(await response.json()) : null)
+  }).then(async response => {
+    if (!response.ok) return null;
+    const data = await response.json();
+    const release = parseReleaseMetadata(data);
+    if (!release) return null;
+    // Additional targets become visible only after their package is published.
+    for (const choice of document.querySelectorAll('[data-release-target]')) {
+      const targetRelease = parseReleaseMetadata(data, choice.dataset.releaseTarget);
+      choice.hidden = !targetRelease || targetRelease.url === release.url;
+    }
+    return release;
+  })
     .then(release => {
       if (!release?.publishedAt) return;
       releaseLabel.querySelector('b').textContent = release.version;

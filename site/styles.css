@@ -123,15 +123,17 @@ h3 { font-size: 21px; font-weight: 700; letter-spacing: -.03em; line-height: 1.3
 .release-date { white-space: nowrap; }
 .release-note { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 8px 13px; margin: 27px auto; color: var(--muted); font-size: 13px; text-align: center; }
 .download-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
-.download-card { display: flex; flex-direction: column; align-items: flex-start; padding: 28px; background: var(--paper); border: 1px solid var(--line); border-radius: 24px; box-shadow: 0 4px 0 color-mix(in srgb, var(--line) 40%, transparent); }
+.download-card { display: grid; grid-row: span 6; grid-template-rows: subgrid; row-gap: 0; justify-items: start; align-items: start; padding: 28px; background: var(--paper); border: 1px solid var(--line); border-radius: 24px; box-shadow: 0 4px 0 color-mix(in srgb, var(--line) 40%, transparent); }
 .platform-mark { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 18px; border-radius: 16px; background: var(--wall); }
 .platform-mark svg { width: 30px; height: 30px; }
 .download-card h3 { font-size: 25px; }
 .download-card > p { margin: 10px 0 23px; color: var(--muted); font-size: 13px; line-height: 1.8; }
 .download-button { width: 100%; gap: 10px; padding: 12px 15px; border-width: 1.5px; min-height: 48px; font-size: 13px; }
 .download-button svg { flex: none; width: 20px; height: 20px; }
-.download-card .download-button { margin-top: auto; }
 .download-card > a:not(.button) { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; font-size: 12px; }
+.download-alternative:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; width: 100%; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; }
+.download-alternative strong { width: 100%; color: var(--muted); }
+.download-alternative a { display: inline-flex; align-items: center; min-height: 44px; }
 .start-section { padding-block: 45px 67px; }
 .guide-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; margin: 28px 0; }
 .guide-links a { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; text-decoration: none; font-size: 13px; font-weight: 650; }

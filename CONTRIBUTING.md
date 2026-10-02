@@ -108,8 +108,11 @@ does not establish coverage.
   and deterministic native regressions. The Linux App packaging job includes
   its headless GStreamer output-profile and retirement test; this does not
   establish physical screen/audio capture on that runner.
+  The macOS frame self-test additionally needs an available hardware H.264
+  encoder. A runner without one reports that check as skipped and still checks
+  compilation, capability/source responses and the packaged App's startup.
 - `npm run check:container -- <local-image> <full-SHA>` checks the Compose recipe
-  against a packaged linux/amd64 image: embedded Web, P2P/STUN, optional SFU
+  against a packaged native Linux image (amd64 or arm64): embedded Web, P2P/STUN, optional SFU
   startup, room persistence across recreation, diagnostics and clean shutdown.
   It requires Docker Compose v2 and available recipe ports on an isolated runner;
   its temporary project and volumes are removed after the check.

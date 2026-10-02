@@ -166,9 +166,6 @@ function checkPlatformCapture() {
   if (!existsSync(executable)) {
     throw new Error("Native capture build did not produce its executable");
   }
-  if (process.platform === "darwin") {
-    run(executable, ["--self-test"]);
-  }
   const raw = run(executable, ["--probe"], { capture: true });
   const probe = JSON.parse(raw);
   const expectedPlatform = process.platform === "win32" ? "windows" : process.platform;
@@ -194,6 +191,13 @@ function checkPlatformCapture() {
     )
   ) {
     throw new Error("Native capture probe returned an invalid contract");
+  }
+  if (process.platform === "darwin") {
+    if (probe.adapters.some(adapter => adapter.hardwareH264.length > 0)) {
+      run(executable, ["--self-test"]);
+    } else {
+      process.stderr.write("Skipped VideoToolbox frame self-test: this machine exposes no usable hardware H.264 encoder; physical capture acceptance remains pending.\n");
+    }
   }
   const sources = JSON.parse(run(executable, ["--list"], { capture: true }));
   if (!Array.isArray(sources) || sources.some((target) =>

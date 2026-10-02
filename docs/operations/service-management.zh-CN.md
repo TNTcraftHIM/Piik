@@ -28,7 +28,8 @@ STUN 和可选的 SFU 使用各自的公网 UDP 监听器。已有 nginx 时，�
 
 安装步骤见 [Docker Compose 配置](./self-hosting.zh-CN.md#使用-docker-compose)。
 镜像为 `ghcr.io/tntcrafthim/piik`，提供 `latest` 和对应产品版本标签（`vMAJOR.MINOR.PATCH`），
-支持 **linux/amd64**。在 `.env` 中设置 `PIIK_IMAGE` 可固定版本或镜像摘要。
+Docker 会按主机架构选择 **linux/amd64** 或 **linux/arm64**。
+在 `.env` 中设置 `PIIK_IMAGE` 可固定版本或镜像摘要。
 更新需要手动执行；仅拉取镜像不会替换正在运行的容器。
 
 [运行时 Dockerfile](../../deploy/container/Dockerfile)封装已验证的 Server 压缩包，

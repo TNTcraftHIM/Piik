@@ -14,11 +14,18 @@ participants' capture and encoding work.
 
 ## Try it locally
 
-These server instructions use a Linux x64 machine.
+These instructions support Linux x64 and ARM64.
 
-Download **`piik-<revision>-runtime.tar.gz`**, the Linux x64 Server archive,
+Download the Server archive matching your machine
 from [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases)
 or the [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases).
+Use `uname -m` to check the architecture:
+
+| Architecture | Archive |
+| --- | --- |
+| `x86_64` (x64) | `piik-<revision>-runtime.tar.gz` |
+| `aarch64` (ARM64) | `piik-<revision>-linux-arm64-runtime.tar.gz` |
+
 Extract it and run the following in its directory:
 
 ```sh
@@ -31,7 +38,7 @@ use the [Piik App guide](../guide/getting-started.md).
 
 ## Docker Compose
 
-On a Linux x64 server with Docker Compose v2, download the two deployment files
+On a Linux x64 or ARM64 server with Docker Compose v2, download the two deployment files
 into an empty directory:
 
 ```sh
@@ -47,7 +54,7 @@ docker compose up -d
 ```
 
 The `ghcr.io/tntcrafthim/piik:latest` image includes the Web UI, signaling, STUN
-and optional SFU. Complete [HTTPS](#2-enable-https) and
+and optional SFU. Docker selects the matching architecture automatically. Complete [HTTPS](#2-enable-https) and
 [firewall configuration](#3-open-the-ports-and-verify) below. The default is P2P;
 the sample `.env` also shows how to enable SFU fallback. Keep the `piik-data`
 volume, which stores room data and optional diagnostics. See
@@ -55,7 +62,7 @@ volume, which stores room data and optional diagnostics. See
 
 ## Put it online
 
-You need a Linux x64 server and a domain pointing to its public IP.
+You need a Linux x64 or ARM64 server and a domain pointing to its public IP.
 The example uses `share.example.com`; replace it with your domain.
 
 ### 1. Configure and start Piik

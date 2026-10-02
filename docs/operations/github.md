@@ -91,12 +91,13 @@ Rerun the failed publishing job to verify existing files and upload only missing
 ones. GitHub's published release remains unchanged. Both publishers reject
 changing a published package; use a corrected new version if its bytes are wrong.
 
-For a local retry, use the original complete build output retained outside the
-checkout. While the publishing run's artifacts are available, download all four
+For a local retry, use the release revision's scripts and original complete build
+output retained outside the checkout. Earlier versions can have a different
+package set. While the publishing run's artifacts are available, download all packages
 into one directory (replace `RUN_ID`, `FULL_SOURCE_SHA` and `VERSION`):
 
 ```sh
-for artifact in piik-server piik-app-windows-amd64 piik-app-linux-amd64 piik-app-darwin-arm64; do
+for artifact in piik-server piik-server-linux-arm64 piik-app-windows-amd64 piik-app-linux-amd64 piik-app-darwin-arm64 piik-app-darwin-amd64; do
   gh run download RUN_ID --repo TNTcraftHIM/Piik \
     --name "$artifact-FULL_SOURCE_SHA" --dir /tmp/piik-mirror
 done

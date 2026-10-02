@@ -12,10 +12,17 @@ Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服
 
 ## 先在本机试用
 
-以下服务端操作在 Linux x64 环境中执行。
+以下操作适用于 Linux x64 和 ARM64 服务器。
 
 从 [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) 或
-[Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载 **`piik-<revision>-runtime.tar.gz`**，即 Linux x64 服务端程序包。
+[Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载对应架构的服务端程序包。
+可运行 `uname -m` 查看架构：
+
+| 架构 | 程序包 |
+| --- | --- |
+| `x86_64`（x64） | `piik-<revision>-runtime.tar.gz` |
+| `aarch64`（ARM64） | `piik-<revision>-linux-arm64-runtime.tar.gz` |
+
 解压后，在该目录运行：
 
 ```sh
@@ -27,7 +34,7 @@ Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服
 
 ## 使用 Docker Compose
 
-在已安装 Docker Compose v2 的 Linux x64 服务器上，将两个部署文件下载到空目录中：
+在已安装 Docker Compose v2 的 Linux x64 或 ARM64 服务器上，将两个部署文件下载到空目录中：
 
 ```sh
 curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/compose.yaml
@@ -42,6 +49,7 @@ docker compose up -d
 ```
 
 `ghcr.io/tntcrafthim/piik:latest` 镜像包含网页、信令、STUN 和可选 SFU。
+Docker 会自动选择对应架构的镜像。
 接着完成下方的 [HTTPS 配置](#2-配置-https)和[端口放行](#3-放行端口并检查)。
 默认使用 P2P；如需 SFU 兜底，按 `.env` 中的说明启用即可。
 请保留 `piik-data` 数据卷，房间数据和可选诊断文件都保存在其中。
@@ -49,7 +57,7 @@ docker compose up -d
 
 ## 对外提供服务
 
-准备一台 Linux x64 服务器，以及一个指向服务器公网 IP 的域名。
+准备一台 Linux x64 或 ARM64 服务器，以及一个指向服务器公网 IP 的域名。
 下文以 `share.example.com` 为例，请替换成自己的域名。
 
 ### 1. 配置并启动 Piik

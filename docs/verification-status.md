@@ -86,6 +86,10 @@ The first public release passed real Server/three-platform App packaging and
 GitHub/Gitee publication, including anonymous mirror checksum verification.
 These packaging checks do not establish physical macOS/Linux capture or expand the device/network evidence
 below. [Status](./status.md) owns current publication and activation state.
+Intel macOS runners can lack a usable hardware H.264 encoder. In that case,
+the VideoToolbox frame self-test is explicitly skipped; compilation and package
+startup do not establish Intel hardware capture. Verify it on a physical Intel
+Mac with macOS 13 or newer before claiming that device coverage.
 
 ## Remaining Device And Network Acceptance
 

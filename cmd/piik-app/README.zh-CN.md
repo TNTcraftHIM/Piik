@@ -16,7 +16,7 @@ Windows 运行 `piik-app.exe`，Linux 运行 `./piik-app`，macOS 打开 `Piik A
 
 目前主要测试 Windows 版 Piik App 和浏览器分享。macOS 与 Linux 版 Piik App 尚未经过实机测试，
 欢迎试用并[反馈结果](https://github.com/TNTcraftHIM/Piik/issues)。macOS 原生采集需要
-Apple 芯片及 macOS 13 或更新版本。构建程序包与公开发布 Release 是两个独立步骤，
+Apple 芯片或 Intel Mac，以及 macOS 13 或更新版本。构建程序包与公开发布 Release 是两个独立步骤，
 详见[部署与发布](../../docs/deployment.md)。
 
 ## 运行模式
@@ -168,7 +168,7 @@ node scripts/package-server-release.mjs /outside/repository/app-release
 node scripts/package-app-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/app-candidate
 ```
 
-支持的目标为 `windows-amd64`、`linux-amd64` 和 `darwin-arm64`，请替换命令中的目标名称。
+支持的目标为 `windows-amd64`、`linux-amd64`、`darwin-arm64` 和 `darwin-amd64`，请替换命令中的目标名称。
 Darwin 组装需要原生 macOS runner 与 SDK，并启用 cgo；Windows 与 Linux 组装禁用 cgo。
 结果是 ZIP 程序包和 SHA-256 文件。手动组装辅助程序、显式 CI 打包、Release 发布与更新，
 见[部署与发布](../../docs/deployment.md)；创建候选包不会将它发布。

@@ -73,6 +73,7 @@ App 的本地房间和临时公网邀请会随本次 App 退出而结束。
 | --- | --- |
 | `windows-amd64` | Windows x64 |
 | `darwin-arm64` | Apple 芯片；原生采集需 macOS 13 及以上 |
+| `darwin-amd64` | Intel Mac；原生采集需 macOS 13 及以上 |
 | `linux-amd64` | Linux x64 |
 
 目前主要测试 Windows 版 Piik App 和浏览器分享。macOS 和 Linux 版 Piik App 尚未经过实机测试，

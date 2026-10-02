@@ -58,7 +58,7 @@ you can also create a room in the online version.
 | --- | --- |
 | [Use Piik online](https://demo.piik.tv) | Share from a desktop browser, or choose Camera on a phone with browser camera support. |
 | [Download Piik App](https://piik.tv/#download) | Extract and open the App, choose **Public invite**, then **Open Piik** to create a temporary room. |
-| [Host your own site](./docs/operations/self-hosting.md) | Advanced: deploy Piik Server on a Linux x64 server with your own domain, then connect through Piik App or a browser. |
+| [Host your own site](./docs/operations/self-hosting.md) | Advanced: deploy Piik Server on a Linux x64 or ARM64 server with your own domain, then connect through Piik App or a browser. |
 
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="Choose a screen, send an invitation, watch together."></p>
 
@@ -79,6 +79,7 @@ Download a ZIP beginning with **`piik-app`**. The filename also identifies the p
 | --- | --- |
 | `windows-amd64` | Windows x64 |
 | `darwin-arm64` | Apple silicon; native capture requires macOS 13+ |
+| `darwin-amd64` | Intel Mac; native capture requires macOS 13+ |
 | `linux-amd64` | Linux x64 |
 
 [**Full setup guide →**](./docs/guide/getting-started.md) · [**Open online →**](https://demo.piik.tv)
@@ -92,7 +93,8 @@ link and the online version, may not connect on restrictive networks.
 ## Self-hosting
 
 Piik Server is a standalone binary with the web interface built in.
-Download the Linux x64 Server package (`piik-<revision>-runtime.tar.gz`),
+Download the Server package for Linux x64 (`piik-<revision>-runtime.tar.gz`)
+or ARM64 (`piik-<revision>-linux-arm64-runtime.tar.gz`),
 extract it, and run:
 
 ```sh
