@@ -64,8 +64,10 @@ documentation section: mark it as advanced, name its server/domain requirements
 and link its complete guide. The existing-site guide links there for visitors
 who want to run their own site. Explain what App and site each provide; optional SFU
 fallback requires the site to enable it and is not a connectivity guarantee.
-Platform download cards share one App tutorial entry. Keep section navigation
-available on phones rather than hiding the only route to documentation.
+Keep architecture choices beside each platform's download buttons, with one
+centered link for more downloads below the cards. Tutorials remain in their own
+sections. Keep section navigation available on phones rather than hiding the
+only route to documentation.
 The film can use bolder composition, but must show real operations and concrete
 benefits before its closing action. The [copy guide](./naming.md#voice-and-terminology)
 owns technical disclosure; a dramatic heading does not exempt copy from it.

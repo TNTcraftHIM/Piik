@@ -3,6 +3,18 @@ import { initialLanguage, rememberLanguage } from './assets/language.js';
 import { createTextCycle, startTextRotation } from '../src/client/ui/text-rotation.ts';
 import { DEFAULT_RELEASE_API_URL, parseReleaseMetadata } from '../src/client/lib/release-update.ts';
 mountBrands();
+const architecturePickers = document.querySelectorAll('.download-architecture');
+function syncDownloadLinks(picker) {
+  const selected = picker.querySelector('input:checked');
+  for (const link of picker.closest('.download-card').querySelectorAll('a')) {
+    const target = new URL(link.href);
+    target.pathname = target.pathname.replace(/piik-app-[a-z0-9]+-[a-z0-9]+\.zip$/, `piik-app-${selected.value}.zip`);
+    link.href = target.href;
+  }
+}
+for (const picker of architecturePickers) {
+  picker.addEventListener('change', () => syncDownloadLinks(picker));
+}
 // Content and download links remain usable without scripts or release metadata.
 const releaseLabel = document.getElementById('download-release');
 if (releaseLabel) {
@@ -20,6 +32,12 @@ if (releaseLabel) {
     for (const choice of document.querySelectorAll('[data-release-target]')) {
       const targetRelease = parseReleaseMetadata(data, choice.dataset.releaseTarget);
       choice.hidden = !targetRelease || targetRelease.url === release.url;
+    }
+    for (const picker of architecturePickers) {
+      const available = Array.from(picker.querySelectorAll('label:not([hidden]) input'));
+      picker.disabled = available.length < 2;
+      if (!available.some(input => input.checked)) available[0].checked = true;
+      syncDownloadLinks(picker);
     }
     return release;
   })

@@ -746,9 +746,11 @@
               </svg>
             </div>
             <h3 id="download-windows">Windows</h3>
-            <p>
-              <span lang="en">For x64 PCs.</span><span lang="zh-CN">适用于 x64 电脑。</span>
-            </p>
+            <fieldset class="download-architecture" disabled>
+              <legend class="sr-only"><span lang="en">Windows architecture</span><span lang="zh-CN">Windows 架构</span></legend>
+              <label><input type="radio" name="windows-architecture" value="windows-amd64" checked /><span><span lang="en">64-bit</span><span lang="zh-CN">64 位</span></span></label>
+              <label data-release-target="windows-386" hidden><input type="radio" name="windows-architecture" value="windows-386" /><span><span lang="en">32-bit</span><span lang="zh-CN">32 位</span></span></label>
+            </fieldset>
             <a
               class="button download-button"
               href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-windows-amd64.zip"
@@ -774,10 +776,11 @@
               </svg>
             </div>
             <h3 id="download-macos">macOS</h3>
-            <p>
-              <span lang="en">Apple silicon. Native capture needs macOS 13+.</span
-              ><span lang="zh-CN">适用于 Apple 芯片。原生采集需 macOS 13 及以上。</span>
-            </p>
+            <fieldset class="download-architecture" disabled>
+              <legend class="sr-only"><span lang="en">Mac processor</span><span lang="zh-CN">Mac 芯片</span></legend>
+              <label><input type="radio" name="macos-architecture" value="darwin-arm64" checked /><span><span lang="en">Apple silicon</span><span lang="zh-CN">Apple 芯片</span></span></label>
+              <label data-release-target="darwin-amd64" hidden><input type="radio" name="macos-architecture" value="darwin-amd64" /><span>Intel</span></label>
+            </fieldset>
             <a
               class="button download-button"
               href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-darwin-arm64.zip"
@@ -787,11 +790,7 @@
             ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-darwin-arm64.zip"
               ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a
             >
-            <div class="download-alternative" data-release-target="darwin-amd64" hidden>
-              <strong>Intel Mac</strong>
-              <a href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-darwin-amd64.zip"><span lang="en">Download from GitHub</span><span lang="zh-CN">GitHub 下载</span></a>
-              <a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-darwin-amd64.zip"><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a>
-            </div>
+            <p><span lang="en">Native capture requires macOS 13+.</span><span lang="zh-CN">原生采集需 macOS 13 及以上。</span></p>
           </article>
           <article class="download-card" aria-labelledby="download-linux">
             <div class="platform-mark" aria-hidden="true">
@@ -808,9 +807,11 @@
               </svg>
             </div>
             <h3 id="download-linux">Linux</h3>
-            <p>
-              <span lang="en">For x64 PCs.</span><span lang="zh-CN">适用于 x64 电脑。</span>
-            </p>
+            <fieldset class="download-architecture" disabled>
+              <legend class="sr-only"><span lang="en">Linux architecture</span><span lang="zh-CN">Linux 架构</span></legend>
+              <label><input type="radio" name="linux-architecture" value="linux-amd64" checked /><span>x64</span></label>
+              <label data-release-target="linux-arm64" hidden><input type="radio" name="linux-architecture" value="linux-arm64" /><span>ARM64</span></label>
+            </fieldset>
             <a
               class="button download-button"
               href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-linux-amd64.zip"
@@ -823,11 +824,7 @@
           </article>
         </div>
         <div class="download-help">
-          <div class="download-links">
-            <a class="button" href="https://github.com/TNTcraftHIM/Piik/releases"><span lang="en">More downloads</span><span lang="zh-CN">更多下载</span><span aria-hidden="true"> ↗</span></a>
-            <a class="text-link" href="#guide-app"><span lang="en">Piik App setup guide</span><span lang="zh-CN">Piik App 使用教程</span><span aria-hidden="true"> →</span></a>
-            <a class="text-link" href="#docs"><span lang="en">Server / NAS setup</span><span lang="zh-CN">服务器 / NAS 部署</span><span aria-hidden="true"> →</span></a>
-          </div>
+          <a class="button" href="https://github.com/TNTcraftHIM/Piik/releases"><span lang="en">More downloads</span><span lang="zh-CN">更多下载</span><span aria-hidden="true"> ↗</span></a>
           <p><span lang="en">Physical-device coverage for the macOS and Linux apps is still limited. If you have a device, we'd welcome your <a href="https://github.com/TNTcraftHIM/Piik/issues">test results and feedback</a>.</span><span lang="zh-CN">macOS 和 Linux 版 Piik App 仍需更多实机测试，欢迎有设备的朋友试用并<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈问题</a>。</span></p>
         </div>
       </section>
