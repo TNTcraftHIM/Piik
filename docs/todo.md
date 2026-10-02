@@ -7,6 +7,11 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Issue and interaction follow-up.** The owner authorized checking deployment claims
+  (#440–442), evaluating OBS input and platform distribution, and implementing
+  small local danmaku preferences plus explicit chat export. Reuse existing
+  owners and verify each accepted change before integration. Automatic history
+  restoration and new media ingress remain design proposals, not promises.
 - [ ] **Presentation integration.** Review the synchronized website, staged film,
   README screenshots, browser-picker wording and Browser microphone-processing
   switch before integration. Shared App UI changes await the next authorized
@@ -33,6 +38,10 @@ These proposals remain deferred beyond the accepted interaction phase.
 
 ## Awaiting Device Or Reporter Evidence
 
+- [ ] **Signaling recovery on passwordless sites (#446).** Verify the admission
+  correction against a matched Host/Server attempt. Local checks establish that
+  ambiguous `AUTH_REQUIRED` no longer invents site-password denial; the event
+  preceding the reporter's handshake failure is still unknown.
 - [ ] **HDR, audio-exclusion and mobile interaction device coverage.** Complete
   the remaining physical checks in
   [verification status](./verification-status.md#device-evidence-boundary):

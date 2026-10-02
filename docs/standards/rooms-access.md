@@ -52,6 +52,11 @@ Three independent authorities exist:
    restarting the Server/App requires site-password entry again. This does not
    revoke persisted room ownership or Viewer invitations. The application
    rejects framing through its own HTTP headers, including without a proxy.
+   A signaling authentication failure alone does not establish site-access
+   loss: its existing error also covers an incomplete or timed-out room
+   handshake. The Host checks the site-access authority before entering the
+   password gate; an allowed or unavailable check retains ordinary connection
+   recovery. Explicit room credential rejection remains terminal.
 2. **Host ownership.** The exact Host token authorizes that room's Host and
    access-management operations. It cannot authorize another room.
 3. **Viewer invitation.** Every room creates a 128-bit, 22-character base64url

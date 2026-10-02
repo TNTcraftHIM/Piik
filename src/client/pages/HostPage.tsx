@@ -2599,7 +2599,7 @@ export function HostPage({
             return;
           }
           if (message.type === "error") {
-            if (message.code !== "AUTH_REQUIRED") setNotice(hostServerErrorNotice(message.code), "signal-failed", "bad");
+            setNotice(hostServerErrorNotice(message.code), "signal-failed", "bad");
             return;
           }
           const mediaActive =
