@@ -1,6 +1,6 @@
 # Media Fidelity
 
-Reviewed 2026-10-01. [Media quality](../standards/media-quality.md) owns behavior;
+Reviewed 2026-10-03. [Media quality](../standards/media-quality.md) owns behavior;
 [TODO](../todo.md) owns remaining work. These synthetic checks do not establish
 all-device acceptance or full HDR support.
 
@@ -39,7 +39,9 @@ sound support.
 ## SDR Conversion
 
 [#445](https://github.com/TNTcraftHIM/Piik/issues/445) reports washed-out Native
-capture on an SDR Windows 10 system. Its proposed explanation is not established:
+capture on an SDR Windows 10 system. The reporter
+[confirmed the updated release resolved the overexposure](https://github.com/TNTcraftHIM/Piik/issues/445#issuecomment-5958654848)
+on 2026-10-02. That field result does not establish the proposed explanation:
 Microsoft documents full-range RGB as the
 [video processor's default input range](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_video_processor_color_space).
 The confirmed gap was that `FrameConverter` left its input/output range and
@@ -97,9 +99,8 @@ Radeon adapters. RTX H.264/VP8 encoding followed by Chrome 154 WebRTC playback
 also passed direct reception, decode/scale/re-encode and explicitly tagged
 BT.709 H.264 input to both output codecs; sampled RGB errors were at most 5/255.
 AMD hardware encoding was not accepted locally: MFT activation returned
-`0x8007000e` before color configuration. These local checks do not settle the
-reporter's Windows 10 environment, all hardware encoders, HDR content or missing
-upstream color declarations.
+`0x8007000e` before color configuration. These local checks do not establish
+coverage of all hardware encoders, HDR content or missing upstream color declarations.
 
 ## HDR To SDR
 

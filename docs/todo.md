@@ -72,10 +72,9 @@ These proposals remain deferred beyond the accepted interaction phase.
   real HDR/mixed displays under load, real voice-app process trees across playback
   devices, and phone keyboard/theater/participant-menu interaction. Local GPU,
   decoded-video, synthetic audio and responsive-browser evidence do not cover
-  those environments. Issues [#420](https://github.com/TNTcraftHIM/Piik/issues/420)
-  (Browser HDR) and [#445](https://github.com/TNTcraftHIM/Piik/issues/445)
-  (Windows 10 colors) still need matched capture evidence; do not assign them
-  the locally reproduced Native conversion defects.
+  those environments. [#420](https://github.com/TNTcraftHIM/Piik/issues/420)
+  (Browser HDR) still needs matched capture evidence; do not assign it the
+  locally reproduced Native conversion defects.
 - [ ] **Native H.264 motion quality (#432).** The original 720p30 H.264/VP8
   visual comparison remains unresolved. Browser evidence confirms similar
   delivered bitrate/format and zero reported loss, but contains no matched
