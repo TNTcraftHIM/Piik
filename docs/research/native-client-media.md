@@ -412,14 +412,33 @@ comparison used B pictures and several references, not this low-latency MFT.
 supports CBR but requires evaluating buffer/quality tradeoffs; its native SDK
 presets cannot be assumed to map directly to vendor Media Foundation properties.
 
-Compatibility remains decisive: Chrome and Edge 154 on this machine advertised
-Main/High, while [Firefox's default WebRTC codec list](https://github.com/mozilla-firefox/firefox/blob/main/dom/media/webrtc/jsep/JsepCodecDescription.h)
-still declares only Baseline variants for H264. The local Firefox test lacked its
-OpenH264 plugin and is not evidence of a normal Firefox H264 failure.
-[RFC 7742](https://www.rfc-editor.org/rfc/rfc7742.html#section-6.2) guarantees
-Constrained Baseline, not Main/High. Piik's native and forwarded source contract
-also remains Constrained Baseline. Retain that default, CBR and existing GOP;
-do not add a profile knob or per-receiver transcodes for this unproven field cause.
+### WebRTC Profile Compatibility
+
+Checked 2026-10-03. File decoding support, WebRTC negotiation and Piik's forwarded
+bitstream contract are separate capabilities. A higher profile must satisfy all
+three, including downstream relays; hardware support alone is insufficient.
+
+| Platform | Evidence and boundary |
+| --- | --- |
+| Windows Chrome / Edge 154 | Local sender/receiver capabilities advertise Main and High as well as Baseline. This does not establish other devices' hardware support. |
+| Firefox 155 on Windows | An isolated profile with checksum-verified official OpenH264 2.6.0 advertised only Baseline variants. Real Chrome-to-Firefox negotiation decoded 65 Constrained Baseline frames in a 2.2-second observation; Main-only and High-only offers were rejected (`m=video 0`), before media transport. |
+| Safari / iOS / macOS | Current [WebKit codec factories](https://github.com/WebKit/WebKit/blob/main/Source/ThirdParty/libwebrtc/Source/webrtc/webkit_sdk/objc/components/video_codec/RTCDefaultVideoDecoderFactory.m) list Constrained High and Constrained Baseline. Constrained High (`640c`) is a distinct negotiated subset from ordinary High (`6400`). Source review does not replace physical Safari acceptance. |
+| Android Chrome and other Chromium platforms | The [WebRTC decoder factory](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/platform/peerconnection/rtc_video_decoder_factory.cc) consults platform decoder capabilities. Android additionally [checks profile, level and dimensions](https://github.com/chromium/chromium/blob/main/media/gpu/android/media_codec_video_decoder.cc). No universal device guarantee or phone acceptance is established here. |
+| Piik App on Windows / macOS / Linux | Capture and encoded fanout retain Constrained Baseline. Changing only an encoder setting would leave admission and downstream declarations inconsistent. |
+
+The earlier Firefox probe without GMP was inconclusive; the installed-plugin
+check above supersedes it. [Firefox's current JSEP defaults](https://github.com/mozilla-firefox/firefox/blob/main/dom/media/webrtc/jsep/JsepCodecDescription.h)
+agree with the measured negotiation. Do not infer decoder limits from OpenH264's
+short README: its [release history](https://github.com/cisco/openh264/blob/master/RELEASES)
+records Main/High decoding, which does not change Firefox's advertised profiles.
+The historical [Mozilla interoperability report](https://bugzilla.mozilla.org/show_bug.cgi?id=1411681)
+also distinguishes a decodable bitstream from a profile incorrectly labeled as
+Baseline; it is context, not proof of a current regression.
+
+[RFC 7742](https://www.rfc-editor.org/rfc/rfc7742.html#section-6.2) requires
+Constrained Baseline and recommends Constrained High. Retain Piik's Baseline
+default, CBR and existing GOP; do not add a profile knob or per-receiver transcodes
+for the unproven field quality cause.
 
 One independent compatibility defect was confirmed: capture admission compared
 against `42c0` literally, rejecting equivalent Constrained Baseline SPS such as
@@ -428,6 +447,23 @@ against `42c0` literally, rejecting equivalent Constrained Baseline SPS such as
 the existing level bounds and rejecting actual Main/High. Windows active status
 reads the emitted SPS instead of synthesizing a vendor-specific value. This is
 not a profile upgrade or an explanation for `DXGI_ERROR_DEVICE_REMOVED`.
+
+The same review reproduced a separate Native receive/fanout defect. Pion 4.2.19
+can fall back to MIME-only matching when profile bytes differ. A Safari-order
+offer (`640c1f`, then `42e01f`) selected High, while the unchanged downstream source
+still declared Constrained Baseline; `42e01f` plus VP8 selected VP8 unexpectedly.
+Native SDP now uses the common `42e0` spelling, and the receive owner validates
+the supported coding subset, level and packetization before accepting or reusing
+a source. Capture and receive admission share the RFC profile predicate. This
+repairs the encoded-source contract without changing routing or adding encoding
+paths; it is not evidence for the reported D3D device loss.
+
+Firefox-generated SDP also reproduced audio omission for a valid `bundle-only`
+section with port zero. The receiver had treated every zero port as rejection;
+it now follows [RFC 9143](https://www.rfc-editor.org/rfc/rfc9143.html#section-6),
+retaining the existing inactive/receive-only checks. Piik's current balanced
+Browser offer did not trigger this variant; the max-bundle control did. This is
+a corrected SDP interpretation, not evidence that all Firefox sharing lost audio.
 
 ## Implementation Boundary
 

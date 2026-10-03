@@ -119,6 +119,9 @@ Constrained Baseline, with level 5.2 covering the 4K60 ceiling; profile and leve
 are different codec parameters. Capture validates the coding-tool subset under
 RFC 6184, including equivalent Constrained Baseline constraint bytes, and reports
 the actual SPS profile/level; one vendor's byte spelling is not the contract.
+Native ingress and relay accept only a negotiated profile/packetization compatible
+with their unchanged encoded downstream source. A codec name alone is not enough;
+same-source renegotiation must preserve that boundary before altering the live peer.
 [Status](../status.md#4k-candidate) owns the
 coordinated update and unpublished compatibility boundary.
 
