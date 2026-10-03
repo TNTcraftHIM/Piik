@@ -149,8 +149,12 @@ before releasing that candidate's device. Each later candidate and Auto's VP8
 fallback owns a fresh device; a live encoder does not silently change codec.
 A 2026-10-03 local check exercised all five enumerated adapter entries, including
 15 successful NVIDIA activation/encode/shutdown cycles on reused devices.
-AMD activation returned `0x8007000e` with a healthy D3D device; production Auto
-and manual H264 both moved from that preferred AMD candidate to working NVIDIA
+AMD activation returned `0x8007000e` with a healthy D3D device. A standalone
+`MFTEnum2 -> ActivateObject` probe reproduced that failure for both AMD entries
+without Piik, a D3D device or codec configuration, while NVIDIA entries activated.
+This isolates the local activation failure to the platform/MFT path; it does not
+identify the reporter's AMD failure. Production Auto and manual H264 both moved
+from that preferred AMD candidate to working NVIDIA
 H264 (about 1.95 s and 0.32 s). Auto also selected H264 at 2160p60. This did not
 reproduce the reporter's device removal. No driver reset was forced, and the
 optional D3D debug layer was unavailable. The reporter's removal reason,
