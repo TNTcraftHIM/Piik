@@ -29,6 +29,7 @@ export const en: Record<CopyKey, string> = {
   "brand.home": "Piik home",
 
   "common.roomCode": "Room code",
+  "host.roomCodePending": "A room code appears when sharing starts",
   "common.copy": "Copy",
   "common.copied": "Copied",
   "common.copyFailed": "Copy failed",

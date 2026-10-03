@@ -41,6 +41,7 @@ import {
   RoomAdmissionBadge,
   roomAdmission,
   RoomChip,
+  RoomCodePlaceholder,
 } from "../components/living/RoomChip";
 import { RouteTree } from "../components/living/RouteTree";
 import {
@@ -4080,9 +4081,9 @@ export function HostPage({
 
         <div className="lr-deck">
           <Row>
-            {room ? (
-              <RowGroup>
-                <FieldCap k="common.roomCode" />
+            <RowGroup>
+              <FieldCap k="common.roomCode" />
+              {room ? <>
                 <RoomChip
                   roomId={room.roomId}
                   onReplace={replaceCurrentRoom}
@@ -4094,9 +4095,9 @@ export function HostPage({
                     passwordEnabled={viewerPasswordEnabled}
                   />
                 ) : null}
-              </RowGroup>
-            ) : null}
-            {room ? <span className="lr-spacer" /> : null}
+              </> : <RoomCodePlaceholder />}
+            </RowGroup>
+            <span className="lr-spacer" />
             <div className="lr-host-personal-controls">
               <div className="lr-row-group lr-group-name lr-host-identity-slot">
                 {editingDisplayName ? (

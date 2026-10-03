@@ -19,7 +19,7 @@ import { RoomChatToggle } from "../../../src/client/components/living/RoomChatOv
 import { HostMicrophone } from "../../../src/client/components/living/HostMicrophone";
 import { PlaybackControlsView } from "../../../src/client/components/living/PlaybackControls";
 import { StatusIndicator } from "../../../src/client/components/living/StatusIndicator";
-import { Lcd, RoomChip, RoomAdmissionBadge } from "../../../src/client/components/living/RoomChip";
+import { Lcd, RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../../../src/client/components/living/RoomChip";
 import { Tooltip } from "../../../src/client/components/living/Tooltip";
 import {
   Btn,
@@ -302,14 +302,14 @@ function Screen({ shot }: { shot: Shot }) {
           </div>
           <div className="lr-deck">
             <div className={`lr-row${viewer ? " lr-viewer-summary-row" : ""}`}>
-              {live && <div className={`lr-row-group${viewer ? " lr-viewer-room-slot" : ""}`}>
+              <div className={`lr-row-group${viewer ? " lr-viewer-room-slot" : ""}`}>
                 <FieldCap k="common.roomCode" />
-                {viewer ? <Lcd code={roomId} /> : <>
+                {viewer ? <Lcd code={roomId} /> : live ? <>
                   <RoomChip roomId={roomId} onReplace={noop} />
                   <RoomAdmissionBadge policy="private" passwordEnabled={false} />
-                </>}
-              </div>}
-              {viewer ? <div className="lr-row-group lr-viewer-host-slot"><Glyph name="tv" size={18} /><b>{name}</b></div> : live ? <span className="lr-spacer" /> : null}
+                </> : <RoomCodePlaceholder />}
+              </div>
+              {viewer ? <div className="lr-row-group lr-viewer-host-slot"><Glyph name="tv" size={18} /><b>{name}</b></div> : <span className="lr-spacer" />}
               <div className={viewer ? "lr-viewer-personal-controls" : "lr-host-personal-controls"}>
                 <div className={`lr-row-group lr-group-name ${viewer ? "lr-viewer-self-slot" : "lr-host-identity-slot"}`}>
                   <NameTag name={viewer ? names[0] : name} identity={viewer ? guests[0] : host} />

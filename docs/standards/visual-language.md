@@ -55,6 +55,9 @@ the room code and its replacement confirmation. Let independent groups reflow;
 do not stretch short values to fill a phone row. Check actual control bounds
 around breakpoints, in both orientations and all presentation modes; page-level
 overflow clipping is not evidence that the content fits.
+Keep existing controls in their established positions as a room becomes active.
+Represent missing room identity with a passive placeholder in its own slot;
+do not move unrelated controls into that space to fill an empty state.
 
 Persistent room utilities use the shared floating panel without reflowing the
 living room. The shell owns visibility, focus return, movement, resizing and

@@ -837,7 +837,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   align-items: center;
   gap: 8px;
 }
-.lr-row > .lr-host-personal-controls:only-child { flex: 1 1 auto; justify-content: space-between; }
 .lr-host-identity-slot,
 .lr-host-diagnostics-slot { flex: 0 0 auto; }
 .lr-host-diagnostics-slot {
@@ -958,6 +957,8 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   letter-spacing: .3em;
   text-indent: .15em;
 }
+.lr-lcd.is-empty { border-style: dashed; border-color: var(--control-edge); background: var(--wall-2); color: var(--muted); }
+.lr-lcd.is-empty::after { content: ""; width: 34px; height: 34px; }
 .lr-lcd button {
   display: grid;
   width: 34px; height: 34px;

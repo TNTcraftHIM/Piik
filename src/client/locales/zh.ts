@@ -29,6 +29,7 @@ export const zh = {
   "brand.home": "Piik 首页",
 
   "common.roomCode": "房间号",
+  "host.roomCodePending": "开始分享后生成房间号",
   "common.copy": "复制",
   "common.copied": "已复制",
   "common.copyFailed": "复制失败",

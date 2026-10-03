@@ -7,6 +7,15 @@ import { copyRoomCode } from "../room-code";
 import { Btn, Pill } from "./primitives";
 import { Tooltip } from "./Tooltip";
 
+export function RoomCodePlaceholder() {
+  const { t } = useCopy();
+  return (
+    <span className="lr-lcd is-empty" role="img" aria-label={t("host.roomCodePending")}>
+      <span aria-hidden="true">----</span>
+    </span>
+  );
+}
+
 export function Lcd({ code }: { code: string }) {
   const { t, vis } = useCopy();
   const [copyResult, setCopyResult] = useState<{
