@@ -833,6 +833,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   display: flex;
   min-width: 0;
   flex: 0 1 auto;
+  margin-left: auto;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
@@ -972,6 +973,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-lcd button:hover { background: #ffffff22; }
 .lr-lcd-roll { display: inline-flex; overflow: hidden; }
 .lr-lcd-roll span { display: inline-block; animation: lr-roll .34s var(--spring) both; }
+.lr-lcd.is-empty .lr-lcd-roll span { animation: none; }
 @keyframes lr-roll { from { transform: translateY(110%); } }
 
 /* ---------- buttons & chips ---------- */
