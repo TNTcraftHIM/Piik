@@ -48,9 +48,16 @@ Windows native capture and thumbnails now share automatic HDR-to-SDR conversion;
 synthetic GPU and Browser reception checks pass, with physical HDR display
 acceptance still pending in [verification status](./verification-status.md).
 Room voice is outside the product plan; Host microphone commentary remains.
-4K remains deferred. These features are published; physical device limits remain open.
+These features are published; physical device limits remain open.
 Release artifacts and operator deployment records own delivery completion;
 [TODO](./todo.md#now) owns remaining work.
+
+## Current Candidate
+
+The current phase is being prepared as a compatible 1.x update. The published
+protocols and 1440p ceiling stay unchanged; 4K is deferred. Final acceptance and
+release authorization remain pending. [TODO](./todo.md#now) owns the phase scope
+and remaining work.
 
 ## Deployment
 
