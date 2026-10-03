@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	ProtocolVersion        = 10
+	ProtocolVersion        = 9
 	ServiceName            = "piik-client"
-	ControlSubprotocol     = "piik-client-v10"
+	ControlSubprotocol     = "piik-client-v9"
 	MaxControlMessageBytes = 256 << 10
 	DefaultPortStart       = 39721
 	DefaultPortEnd         = 39730

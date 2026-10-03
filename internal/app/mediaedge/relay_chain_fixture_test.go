@@ -59,7 +59,7 @@ func TestRelayChainEncodedFixture(t *testing.T) {
 		}
 		check(err)
 		if len(frames) >= 400 || frame.Index != len(frames) || frame.Width <= 0 || frame.Height <= 0 ||
-			frame.Width > nativecapture.MaxVideoWidth || frame.Height > nativecapture.MaxVideoHeight || len(frame.DataHex) == 0 || len(frame.DataHex) > 8<<20 ||
+			frame.Width > 2560 || frame.Height > 1440 || len(frame.DataHex) == 0 || len(frame.DataHex) > 8<<20 ||
 			len(frame.DataHex)%2 != 0 {
 			t.Fatal("encoded chain fixture has invalid or excessive frames")
 		}

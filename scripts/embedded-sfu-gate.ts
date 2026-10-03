@@ -97,7 +97,6 @@ async function main(): Promise<void> {
     sfuOnly, stereoSeparationDb: null as number[] | null,
     startedAt: new Date().toISOString(), finishedAt: "", processes: [] as Array<{ role: string; pid: number | null }>,
     high: null as { frames: number; width: number; height: number } | null,
-    fourK: null as { frames: number; width: number; height: number } | null,
     low: null as { frames: number; width: number; height: number } | null,
     audioEnergy: { high: 0, low: 0, recovered: 0 },
     audioDiagnostics: null as unknown,
@@ -291,15 +290,8 @@ async function main(): Promise<void> {
       await call(viewer, "gate.waitForFrames(1280, 720)");
       result.displayLifecycle.replaced = true;
     }
-    if (!displayArm) {
-      result.stage = "live-4k-profile";
-      if (!await call<boolean>(host, 'gate.setResolution("2160p")')) {
-        throw new Error("Live 4K profile update failed");
-      }
-      result.fourK = await call(viewer, "gate.waitForFrames(3840, 2160)");
-    }
     result.stage = "live-profile";
-    if (!await call<boolean>(host, 'gate.setResolution("480p")')) {
+    if (!await call<boolean>(host, "gate.lowerProfile()")) {
       result.host = await call(host, "gate.snapshot()");
       throw new Error("Live profile update failed");
     }
@@ -373,8 +365,7 @@ async function main(): Promise<void> {
     (sfuOnly ? result.viewer.peerFailures === 0 : result.viewer.peerFailures > 0) &&
     (nativeArm || result.stereoSeparationDb?.every(db => db > 20) === true) &&
     result.viewer.audioKbps > 0 && result.audioEnergy.high > 0 && result.audioEnergy.low > result.audioEnergy.high &&
-    result.high !== null && (displayArm || result.fourK !== null) &&
-    result.low !== null && result.audioEnergy.recovered > 0 &&
+    result.high !== null && result.low !== null && result.audioEnergy.recovered > 0 &&
     result.publicationRetired && result.subscriptionRecovered && result.cleanup && result.nativeShareStopped &&
     (!displayArm || result.displayLifecycle?.hiddenFrames === 150 && result.displayLifecycle.lowLayerDecoded &&
       result.displayLifecycle.resumed && result.displayLifecycle.replaced) &&

@@ -35,7 +35,7 @@ var (
 
 // Enumerations mirrored from src/shared/protocol.ts.
 var (
-	qualityResolutions           = []string{"480p", "720p", "1080p", "1440p", "2160p"}
+	qualityResolutions           = []string{"480p", "720p", "1080p", "1440p"}
 	degradationPreferences       = []string{"maintain-resolution", "balanced", "maintain-framerate"}
 	screenAudioQualities         = []string{"saver", "music", "very-high"}
 	mediaRoutePhases             = []string{"prepare", "active"}

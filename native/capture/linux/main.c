@@ -385,8 +385,8 @@ static gboolean parse_outputs(int count, char **values, guint start, CaptureRun 
     output->activation_timestamp = GST_CLOCK_TIME_NONE;
     output->profile.preference = run->profile.preference;
     if (strcmp(values[offset], "--output") != 0 ||
-        !parse_uint(values[offset + 1], 2, 3840, &output->profile.width) ||
-        !parse_uint(values[offset + 2], 2, 2160, &output->profile.height) ||
+        !parse_uint(values[offset + 1], 2, 2560, &output->profile.width) ||
+        !parse_uint(values[offset + 2], 2, 1440, &output->profile.height) ||
         !parse_uint(values[offset + 3], 1, 60, &output->profile.frame_rate) ||
         !parse_uint(values[offset + 4], 1000, 12000000, &output->profile.bit_rate) ||
         output->profile.width % 2 != 0 || output->profile.height % 2 != 0) return FALSE;
@@ -447,8 +447,7 @@ static gboolean parse_profile(int count, char **values, CaptureRun *run,
       (profile->width == 854 && profile->height == 480) ||
       (profile->width == 1280 && profile->height == 720) ||
       (profile->width == 1920 && profile->height == 1080) ||
-      (profile->width == 2560 && profile->height == 1440) ||
-      (profile->width == 3840 && profile->height == 2160);
+      (profile->width == 2560 && profile->height == 1440);
   if (!resolution) return FALSE;
   if (!parse_preference(values[19], profile) || !parse_outputs(count, values, 23, run)) return FALSE;
   run->original_output = MIN(1, run->output_count - 1);
@@ -750,7 +749,7 @@ static gboolean valid_input_header(CaptureRun *run) {
       run->input_size == 0 || run->input_size > kMaxPayloadBytes) return FALSE;
   guint width = (guint)read_be(header + 24, 2), height = (guint)read_be(header + 26, 2);
   guint64 timestamp = read_be(header + 8, 8), duration = read_be(header + 16, 8);
-  return width >= 2 && width <= 3840 && height >= 2 && height <= 2160 &&
+  return width >= 2 && width <= 2560 && height >= 2 && height <= 1440 &&
          width % 2 == 0 && height % 2 == 0 && duration > 0 &&
          timestamp <= INT64_MAX / 100 && duration <= INT64_MAX / 100;
 }

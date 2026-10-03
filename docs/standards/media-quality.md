@@ -109,21 +109,16 @@ The three recommended profiles are ceilings, not delivery guarantees:
 | `1080p30` | 1920x1080 at 30 fps | 5 Mbps |
 | `1080p60` | 1920x1080 at 60 fps | 8 Mbps |
 
-`1080p30` is the default. Advanced resolution includes 480p, 720p, 1080p,
-1440p and 2160p (3840x2160); frame rate, bitrate, and `maintain-resolution | balanced |
+`1080p30` is the default. Advanced resolution includes 480p, 720p, 1080p, and
+1440p; frame rate, bitrate, and `maintain-resolution | balanced |
 maintain-framerate` remain independent controls. Display video uses the standard
 `contentHint = "motion"` for game motion.
-4K uses the same live/paused controls and source-replacement boundary. It does
-not change the recommended presets or bitrate ceilings. Native H264 retains
-Constrained Baseline, with level 5.2 covering the 4K60 ceiling; profile and level
-are different codec parameters. Capture validates the coding-tool subset under
+Native H264 retains Constrained Baseline. Capture validates the coding-tool subset under
 RFC 6184, including equivalent Constrained Baseline constraint bytes, and reports
 the actual SPS profile/level; one vendor's byte spelling is not the contract.
 Native ingress and relay accept only a negotiated profile/packetization compatible
 with their unchanged encoded downstream source. A codec name alone is not enough;
 same-source renegotiation must preserve that boundary before altering the live peer.
-[Status](../status.md#4k-candidate) owns the
-coordinated update and unpublished compatibility boundary.
 
 Framework-driven downscaling under bandwidth or device pressure is valid within
 the selected degradation preference. A low decoded resolution alone is not a

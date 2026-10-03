@@ -460,7 +460,7 @@ func forwardableH264(fmtp string) bool {
 	}
 	// Receiving may include smaller Browser encodes than native capture presets.
 	switch level {
-	case 10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51, 52:
+	case 10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51:
 		return true
 	default:
 		return false

@@ -279,17 +279,12 @@ void CheckSurfaceSample(ID3D11Device* device) {
 }
 
 int main() {
-  VideoProfile profile{3840, 2160, 30, 12'000'000};
+  VideoProfile profile{2560, 1440, 60, 12'000'000};
   ValidateVideoProfile(profile);
   assert(profile.h264_level() == 51 && profile.profile_level_id() == "42c033");
-  profile.frame_rate = 60;
-  ValidateVideoProfile(profile);
-  assert(profile.h264_level() == 52 && profile.profile_level_id() == "42c034");
-  profile = VideoProfile{2560, 1440, 60, 12'000'000};
-  assert(profile.h264_level() == 51);
   profile = VideoProfile{1920, 1080, 60, 8'000'000};
   assert(profile.h264_level() == 42);
-  profile = VideoProfile{7680, 4320, 30, 12'000'000};
+  profile = VideoProfile{3840, 2160, 30, 12'000'000};
   try {
     ValidateVideoProfile(profile);
     assert(false);

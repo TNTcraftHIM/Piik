@@ -651,8 +651,6 @@ func nativeQualityProfile(settings qualitySettings) nativehost.QualityProfile {
 		width, height = 1920, 1080
 	case "1440p":
 		width, height = 2560, 1440
-	case "2160p":
-		width, height = 3840, 2160
 	}
 	audioBitrate := 0
 	switch settings.ScreenAudioQuality {

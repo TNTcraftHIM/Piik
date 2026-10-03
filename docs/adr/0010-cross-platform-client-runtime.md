@@ -46,7 +46,7 @@ topologies and makes a saved Site unavailable while another room source runs.
    public process identity, not authentication. The listener accepts the current
    Local Host origin and the one user-saved Site origin. Origin and Host
    validation plus the Browser's local-network permission own this boundary.
-4. Loopback control starts with a strict `hello` handshake. Up to two participant
+4. Loopback v9 starts with a strict `hello` handshake. Up to two participant
    control sessions may coexist; each retains its own share and media lifetime.
    This bounds concurrent Native work, not the shared server's room count.
    Ending one control session cannot end another; App exit waits for all

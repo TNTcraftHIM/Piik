@@ -66,17 +66,17 @@ describe("native sender edge adapter", () => {
     "keeps connected media when trickle signaling is unavailable: %j", async (candidate) => {
       const current = fixture();
       expect(await current.edge.start()).toBe(true);
-      current.emit({ version: 10, type: "edge-state", shareId: "share_1234567", connectionId: "edge_12345678", state: "connected" });
+      current.emit({ version: 9, type: "edge-state", shareId: "share_1234567", connectionId: "edge_12345678", state: "connected" });
       current.sendSignal.mockReturnValue(false);
-      current.emit({ version: 10, type: "edge-candidate", shareId: "share_1234567", connectionId: "edge_12345678", candidate });
+      current.emit({ version: 9, type: "edge-candidate", shareId: "share_1234567", connectionId: "edge_12345678", candidate });
       expect(current.edge.isConnected()).toBe(true);
       expect(current.control.closeEdge).not.toHaveBeenCalled();
       expect(current.states).toEqual(["connected"]);
-      current.emit({ version: 10, type: "edge-state", shareId: "share_1234567", connectionId: "edge_12345678", state: "failed" });
+      current.emit({ version: 9, type: "edge-state", shareId: "share_1234567", connectionId: "edge_12345678", state: "failed" });
       expect(current.edge.isConnected()).toBe(false);
       expect(current.states).toEqual(["connected", "failed"]);
       current.edge.dispose();
-      current.emit({ version: 10, type: "edge-state", shareId: "share_1234567", connectionId: "edge_12345678", state: "connected" });
+      current.emit({ version: 9, type: "edge-state", shareId: "share_1234567", connectionId: "edge_12345678", state: "connected" });
       expect(current.edge.isConnected()).toBe(false);
       expect(current.control.closeEdge).toHaveBeenCalledOnce();
     },
@@ -90,7 +90,7 @@ describe("native sender edge adapter", () => {
 
     const current = fixture();
     vi.mocked(current.control.prepareEdge).mockImplementationOnce(async () => {
-      current.emit({ version: 10, type: "edge-candidate", shareId: "share_1234567", connectionId: "edge_12345678", candidate: null });
+      current.emit({ version: 9, type: "edge-candidate", shareId: "share_1234567", connectionId: "edge_12345678", candidate: null });
       return { type: "offer", sdp: "v=0\r\n" };
     });
     current.sendSignal.mockImplementation((_peer, payload) => payload.kind === "description");
@@ -104,7 +104,7 @@ describe("native sender edge adapter", () => {
     const prepare = vi.mocked(current.control.prepareEdge);
     prepare.mockImplementationOnce(async () => {
       current.emit({
-        version: 10,
+        version: 9,
         type: "edge-candidate",
         shareId: "share_1234567",
         connectionId: "edge_12345678",
@@ -125,7 +125,7 @@ describe("native sender edge adapter", () => {
     const current = fixture();
     expect(await current.edge.start()).toBe(true);
     current.emit({
-      version: 10,
+      version: 9,
       type: "edge-state",
       shareId: "share_1234567",
       connectionId: "edge_12345678",
@@ -153,7 +153,7 @@ describe("native sender edge adapter", () => {
       .toHaveLength(3);
     for (const [index, port] of [40_000, 40_003, 40_006].entries()) {
       current.emit({
-        version: 10,
+        version: 9,
         type: "edge-candidate",
         shareId: "share_1234567",
         connectionId: "edge_12345678",

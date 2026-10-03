@@ -1004,7 +1004,7 @@ async function main(): Promise<void> {
         (deadline) => evaluate<boolean>(
           cdp!,
           host,
-          `Boolean(document.querySelector('button.lr-chip[aria-label="2160p (4K)"]'))`,
+          `Boolean(document.querySelector('button.lr-chip[aria-label="1440p"]'))`,
           deadline,
         ),
         Boolean,
@@ -1014,7 +1014,7 @@ async function main(): Promise<void> {
         cdp,
         host,
         `(() => {
-          const resolution = document.querySelector('button.lr-chip[aria-label="2160p (4K)"]');
+          const resolution = document.querySelector('button.lr-chip[aria-label="1440p"]');
           const preference = document.querySelector('button[name="degradationPreference"][value="maintain-framerate"]');
           const sliders = [...document.querySelectorAll('.lr-slider input[type="range"]')];
           return Boolean(
@@ -1030,7 +1030,7 @@ async function main(): Promise<void> {
       await evaluate<void>(
         cdp,
         host,
-        `document.querySelector('button.lr-chip[aria-label="2160p (4K)"]')?.click()`,
+        `document.querySelector('button.lr-chip[aria-label="1440p"]')?.click()`,
         Date.now() + 5_000,
       );
       result.liveQualityChanged = await waitForValue(
@@ -1038,7 +1038,7 @@ async function main(): Promise<void> {
           cdp!,
           viewer,
           `(() => { const video = document.querySelector('video'); return Boolean(
-            video && video.videoWidth === 3840 && video.videoHeight === 2160 &&
+            video && video.videoWidth === 2560 && video.videoHeight === 1440 &&
             video.getVideoPlaybackQuality().totalVideoFrames >= ${viewerState.frames + 10}
           ); })()`,
           deadline,
@@ -1049,8 +1049,8 @@ async function main(): Promise<void> {
       if (!result.liveQualityChanged) {
         throw new Error("Native quality change did not reach the Viewer");
       }
-      result.viewerWidth = 3840;
-      result.viewerHeight = 2160;
+      result.viewerWidth = 2560;
+      result.viewerHeight = 1440;
       await assertVideoCodec(cdp, viewer, actualCodec);
       const framesBeforePreference = await evaluate<number>(
         cdp,

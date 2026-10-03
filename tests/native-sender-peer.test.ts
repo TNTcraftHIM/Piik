@@ -67,7 +67,7 @@ describe("native Host peer quality", () => {
       qualityProbe: true,
     })).toBe(false);
     listener({
-      version: 10,
+      version: 9,
       type: "edge-state",
       shareId: "share_1234567",
       connectionId: "edge_12345678",
@@ -75,7 +75,7 @@ describe("native Host peer quality", () => {
     });
 
     const quality = {
-      version: 10 as const,
+      version: 9 as const,
       type: "edge-quality" as const,
       shareId: "share_1234567",
       connectionId: "edge_12345678",

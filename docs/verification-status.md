@@ -11,8 +11,7 @@ implementation and obsolete package history.
 
 Windows App and Browser are the owner's primary acceptance targets. Current
 Go packages embed their Web assets and do not run a Node backend. The current
-contract and the unpublished 4K candidate boundary are owned by
-[status](./status.md#4k-candidate).
+contract is Browser/server v23, Native control v9 and capture v7.
 
 Bounded current checks cover:
 
@@ -54,12 +53,6 @@ content, SDR white on HDR displays, mixed-display movement, display-mode changes
 and sustained GPU contention still require physical acceptance. The
 [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr) owns measurements.
 These checks do not establish Browser-capture HDR behavior or end-to-end HDR.
-
-The 4K candidate has bounded Windows Native H264 and Browser H264/VP8 reception
-evidence, including live profile changes through local P2P/SFU paths; the
-[native-media assessment](./research/native-client-media.md#current-boundary)
-owns those measurements. This is not sustained 4K60 or macOS/Linux physical
-capture evidence.
 
 Windows source-audio exclusion has bounded parent/child tone-isolation and
 target-exit evidence. It does not establish coverage of arbitrary process trees

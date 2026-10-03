@@ -1220,7 +1220,7 @@ func validH264ProfileLevelID(value string) bool {
 		return false
 	}
 	switch level {
-	case 30, 31, 32, 40, 41, 42, 50, 51, 52:
+	case 30, 31, 32, 40, 41, 42, 50, 51:
 		return true
 	default:
 		return false

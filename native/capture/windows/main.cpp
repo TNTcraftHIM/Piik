@@ -969,8 +969,7 @@ void ValidateVideoProfile(const VideoProfile& profile) {
       (profile.width == 854 && profile.height == 480) ||
       (profile.width == 1280 && profile.height == 720) ||
       (profile.width == 1920 && profile.height == 1080) ||
-      (profile.width == 2560 && profile.height == 1440) ||
-      (profile.width == 3840 && profile.height == 2160);
+      (profile.width == 2560 && profile.height == 1440);
   if (!valid_resolution || profile.frame_rate < 15 || profile.frame_rate > 60 ||
       profile.bit_rate < 2'000'000 || profile.bit_rate > 12'000'000) {
     Fail("argument-profile", "video profile is outside the product bounds");
@@ -986,7 +985,7 @@ void ParseOutputProfiles(ProductArguments& arguments, int first, int count, wcha
     output.frame_rate = ParseIndex(values[index + 3], "argument-output-fps");
     output.bit_rate = ParseIndex(values[index + 4], "argument-output-bitrate");
     if (output.width < 2 || output.height < 2 || (output.width & 1) || (output.height & 1) ||
-        output.width > 3840 || output.height > 2160 || output.frame_rate == 0 ||
+        output.width > 2560 || output.height > 1440 || output.frame_rate == 0 ||
         output.frame_rate > 60 || output.bit_rate < 1'000 || output.bit_rate > 12'000'000) {
       Fail("argument-output", "output profile exceeds codec bounds");
     }
@@ -1675,7 +1674,7 @@ ComPtr<ID3D11Texture2D> OwnDecodedTexture(const DeviceContext& device, IMFSample
     D3D11_TEXTURE2D_DESC description{};
     original->GetDesc(&description);
     if (description.Format != DXGI_FORMAT_NV12 || description.Width < width || description.Height < height ||
-        description.Width > 3840 || description.Height > 2160) Fail("decoded-texture-size", "decoder texture exceeds source bounds");
+        description.Width > 2560 || description.Height > 1440) Fail("decoded-texture-size", "decoder texture exceeds source bounds");
     description.ArraySize = description.MipLevels = 1;
     description.Usage = D3D11_USAGE_DEFAULT;
     description.CPUAccessFlags = description.MiscFlags = 0;

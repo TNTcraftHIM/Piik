@@ -126,7 +126,7 @@ const (
 func authenticatedHost() []member {
 	return []member{
 		{"type", `"authenticated"`},
-		{"protocol", `"piik-v24"`},
+		{"protocol", `"piik-v23"`},
 		{"peerId", `"host_12345678"`},
 		{"maxViewers", `8`},
 		{"endpointMediaCopyCapacity", `2`},
@@ -685,7 +685,7 @@ func TestAuthenticateConnectionProgressOptIn(t *testing.T) {
 
 func TestAuthenticateAppliesTheRoutePolicyDefault(t *testing.T) {
 	message, err := DecodeClientMessage([]byte(
-		`{"type":"authenticate","protocol":"piik-v24","roomId":"1234","role":"host",` +
+		`{"type":"authenticate","protocol":"piik-v23","roomId":"1234","role":"host",` +
 			`"token":"` + repeat("a", 43) + `","clientId":"client_12345678"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -701,7 +701,7 @@ func TestAuthenticateAppliesTheRoutePolicyDefault(t *testing.T) {
 
 func TestAuthenticateAcceptsPersistentRoomSessionOptIn(t *testing.T) {
 	message, err := DecodeClientMessage([]byte(
-		`{"type":"authenticate","protocol":"piik-v24","roomId":"1234","role":"host",` +
+		`{"type":"authenticate","protocol":"piik-v23","roomId":"1234","role":"host",` +
 			`"token":"` + repeat("a", 43) + `","clientId":"client_12345678","roomSession":true,"roomOnly":true}`))
 	if err != nil {
 		t.Fatal(err)
@@ -711,7 +711,7 @@ func TestAuthenticateAcceptsPersistentRoomSessionOptIn(t *testing.T) {
 		t.Fatalf("decoded %#v, want room-session opt-in and room-only state", message)
 	}
 	if _, err := DecodeClientMessage([]byte(
-		`{"type":"authenticate","protocol":"piik-v24","roomId":"1234","role":"host",` +
+		`{"type":"authenticate","protocol":"piik-v23","roomId":"1234","role":"host",` +
 			`"token":"` + repeat("a", 43) + `","clientId":"client_12345678","roomOnly":true}`)); err == nil {
 		t.Fatal("accepted roomOnly without roomSession opt-in")
 	}

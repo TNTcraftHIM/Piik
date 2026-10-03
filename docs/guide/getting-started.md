@@ -62,11 +62,6 @@ App Local rooms and temporary public invitations end when that App run stops.
 The online version is provided by the project. Media travels only between participants (P2P);
 restrictive networks may load the page but block video.
 
-In **Settings → Picture**, choose resolution up to **2160p (4K)**,
-frame rate and bitrate. These are maximums; actual quality depends on your
-source, device and connection. You can adjust them while sharing.
-4K requires the updated site and, for native capture, the matching Piik App.
-
 ## Share with Piik App
 
 1. Download a **`piik-app`** archive for your platform from

@@ -30,7 +30,7 @@ describe("Native SFU publication", () => {
     const activation = publisher.activate();
     if (mode === "transport") {
       await activation;
-      listener!({ version: 10, type: "publication-state", shareId: "native_share", ...config, state: "failed" });
+      listener!({ version: 9, type: "publication-state", shareId: "native_share", ...config, state: "failed" });
     }
     const firstClose = publisher.disconnect();
     expect(publisher.disconnect()).toBe(firstClose);
@@ -65,7 +65,7 @@ describe("Native SFU publication", () => {
     const control = {
       preparePublication: vi.fn(async () => {
         emit({
-          version: 10,
+          version: 9,
           type: "publication-candidate",
           shareId: "native_share",
           ...config,
@@ -135,7 +135,7 @@ describe("Native SFU publication", () => {
     expect(await publisher.updateProfile()).toBe(true);
     expect(sent.at(-1)).toMatchObject({ kind: "media", media });
     emit({
-      version: 10,
+      version: 9,
       type: "publication-quality",
       shareId: "native_share",
       ...config,
@@ -170,12 +170,12 @@ describe("Native SFU publication", () => {
         frameHeight: 360,
       }),
     );
-    emit({ version: 10, type: "publication-state", shareId: "native_share", ...config, state: "disconnected" });
+    emit({ version: 9, type: "publication-state", shareId: "native_share", ...config, state: "disconnected" });
     expect(control.closePublication).not.toHaveBeenCalled();
     expect(onDisconnected).not.toHaveBeenCalled();
-    emit({ version: 10, type: "publication-state", shareId: "native_share", ...config, state: "connected" });
+    emit({ version: 9, type: "publication-state", shareId: "native_share", ...config, state: "connected" });
     emit({
-      version: 10,
+      version: 9,
       type: "publication-state",
       shareId: "native_share",
       ...config,

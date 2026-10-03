@@ -7,14 +7,6 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **4K candidate acceptance.** Review 2160p in ordinary sharing settings.
-  Cross-platform candidate packaging passed without publishing. Capture/decode/relay bounds,
-  live/paused changes, source replacement and local SFU reception are implemented
-  and checked on Windows. Presets, bitrate limits and routing remain unchanged.
-  [Status](./status.md#4k-candidate) owns the coordinated Web/App/Server upgrade
-  boundary; the next-major release still requires authorization. Device failures
-  and the original H.264 quality report remain in the evidence items below.
-
 - [ ] **Presentation, usability and platform integration.** Review the synchronized website,
   staged film, README screenshots, browser-picker wording, Browser microphone
   processing, local chat appearance/export and entry layout, release identity
@@ -30,6 +22,9 @@ history. A parked idea is not implementation authority.
 
 ## Held By Owner
 
+- [ ] **4K sharing (#410).** Deferred by the owner on 2026-10-03; the current
+  release keeps the existing 1440p ceiling and 1.x Web/App/Server contracts.
+  Reopen only for a simple, explicitly accepted compatibility boundary.
 - [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
   own the evidence for synchronous H264 initialization, native adaptation and

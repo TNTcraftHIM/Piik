@@ -62,7 +62,7 @@ func TestSourceProbesRetireWithTheirControlConnection(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer connection.CloseNow()
-				if err = wsjson.Write(ctx, connection, json.RawMessage(`{"version":10,"id":"request_hello","type":"hello"}`)); err != nil {
+				if err = wsjson.Write(ctx, connection, json.RawMessage(`{"version":9,"id":"request_hello","type":"hello"}`)); err != nil {
 					t.Fatal(err)
 				}
 				var ready struct{ Type string }
@@ -78,7 +78,7 @@ func TestSourceProbesRetireWithTheirControlConnection(t *testing.T) {
 						t.Error("native probe fixture did not retire")
 					}
 				}()
-				payload := fmt.Sprintf(`{"version":10,"id":"request_probe","type":%q%s}`, request.kind, request.fields)
+				payload := fmt.Sprintf(`{"version":9,"id":"request_probe","type":%q%s}`, request.kind, request.fields)
 				if err = wsjson.Write(ctx, connection, json.RawMessage(payload)); err != nil {
 					t.Fatal(err)
 				}
@@ -150,7 +150,7 @@ func TestOperationalFailureAndIdempotentStopKeepTheRealControlConnection(t *test
 		{"ping", "", "pong"},
 	} {
 		id := fmt.Sprintf("request_%d", index)
-		payload := fmt.Sprintf(`{"version":10,"id":%q,"type":%q%s}`, id, command.kind, command.fields)
+		payload := fmt.Sprintf(`{"version":9,"id":%q,"type":%q%s}`, id, command.kind, command.fields)
 		if err := wsjson.Write(ctx, connection, json.RawMessage(payload)); err != nil {
 			t.Fatal(err)
 		}
@@ -164,7 +164,7 @@ func TestOperationalFailureAndIdempotentStopKeepTheRealControlConnection(t *test
 		}
 	}
 	// A gone target must not bypass strict publication validation.
-	if err := wsjson.Write(ctx, connection, json.RawMessage(`{"version":10,"id":"request_invalid","type":"close-publication","shareId":"missing_share","publicationGeneration":"publication_123","connectionId":"edge_123456","extra":true}`)); err != nil {
+	if err := wsjson.Write(ctx, connection, json.RawMessage(`{"version":9,"id":"request_invalid","type":"close-publication","shareId":"missing_share","publicationGeneration":"publication_123","connectionId":"edge_123456","extra":true}`)); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := connection.Read(ctx); websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
@@ -180,7 +180,7 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 	t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", t.TempDir())
 	session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false)
 	defer session.Close()
-	const start = `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
+	const start = `{"version":9,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
 	if value, err := awaitControlResponse(t, session, []byte(start)); err != nil {
 		t.Fatal(err)
 	} else if _, ok := value.(shareStartedResponse); !ok {
@@ -190,14 +190,14 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 	if host == nil {
 		t.Fatal("share was not installed")
 	}
-	const edge = `{"version":10,"id":"request_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_123456"}`
+	const edge = `{"version":9,"id":"request_edge","type":"prepare-local-edge","shareId":"share_123456","connectionId":"edge_123456"}`
 	if value, err := session.Handle(t.Context(), []byte(edge)); err != nil {
 		t.Fatal(err)
 	} else if _, ok := value.(edgeOfferResponse); !ok {
 		t.Fatalf("edge preparation failed: %#v", value)
 	}
 	assertOperationFailure(t, session, edge)
-	assertOperationFailure(t, session, `{"version":10,"id":"request_edge","type":"prepare-edge","shareId":"stale_share","connectionId":"edge_123456","iceServers":[]}`)
+	assertOperationFailure(t, session, `{"version":9,"id":"request_edge","type":"prepare-edge","shareId":"stale_share","connectionId":"edge_123456","iceServers":[]}`)
 	for _, text := range []string{strings.Repeat("界", 4096), strings.Repeat("界", 4097)} {
 		candidate, _ := json.Marshal(map[string]any{"candidate": text})
 		var upstream protocol.IceCandidate
@@ -209,7 +209,7 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 			if kind == "publication-candidate" {
 				fields = `,"publicationGeneration":"publication_123"`
 			}
-			payload := fmt.Sprintf(`{"version":10,"id":"request_remote","type":%q,"shareId":"share_123456","connectionId":"edge_123456","candidate":%s%s}`, kind, candidate, fields)
+			payload := fmt.Sprintf(`{"version":9,"id":"request_remote","type":%q,"shareId":"share_123456","connectionId":"edge_123456","candidate":%s%s}`, kind, candidate, fields)
 			if len([]rune(text)) > 4096 {
 				assertOperationFailure(t, session, payload)
 			} else if _, err := session.Handle(t.Context(), []byte(payload)); err != nil {
@@ -233,8 +233,8 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		value, err := session.Handle(t.Context(), []byte(`{"version":10,"id":"request_stop","type":"stop-share","shareId":"share_123456"}`))
-		if err != nil || value != response(requestEnvelope{Version: 10, ID: "request_stop"}, "share-stopped") {
+		value, err := session.Handle(t.Context(), []byte(`{"version":9,"id":"request_stop","type":"stop-share","shareId":"share_123456"}`))
+		if err != nil || value != response(requestEnvelope{Version: 9, ID: "request_stop"}, "share-stopped") {
 			t.Fatalf("late stop: %#v, %v", value, err)
 		}
 	}
@@ -274,7 +274,7 @@ func TestCaptureStartupAndReplacementRemainCancellable(t *testing.T) {
 			}
 			session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false)
 			defer session.Close()
-			start := `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
+			start := `{"version":9,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
 			payload := strings.Replace(start, "1080p", "720p", 1)
 			if kind == "replace-share-source" {
 				if value, err := awaitControlResponse(t, session, []byte(start)); err != nil {
@@ -282,7 +282,7 @@ func TestCaptureStartupAndReplacementRemainCancellable(t *testing.T) {
 				} else if _, ok := value.(shareStartedResponse); !ok {
 					t.Fatalf("start: %#v", value)
 				}
-				payload = `{"version":10,"id":"request_replace","type":"replace-share-source","shareId":"share_123456","source":{"kind":"display","sourceId":"2","title":"Fixture"},"audio":false}`
+				payload = `{"version":9,"id":"request_replace","type":"replace-share-source","shareId":"share_123456","source":{"kind":"display","sourceId":"2","title":"Fixture"},"audio":false}`
 			}
 			t.Setenv("PIIK_PENDING_CAPTURE_FIXTURE", "true")
 			if value, err := session.Handle(t.Context(), []byte(payload)); value != nil || err != nil {
@@ -300,12 +300,12 @@ func TestCaptureStartupAndReplacementRemainCancellable(t *testing.T) {
 			}
 			// No unbounded parallel initialization while the first is still waiting.
 			assertOperationFailure(t, session, payload)
-			if _, err := session.Handle(t.Context(), []byte(`{"version":10,"id":"request_ice","type":"edge-candidate","shareId":"share_123456","connectionId":"missing_edge","candidate":null}`)); err != nil {
+			if _, err := session.Handle(t.Context(), []byte(`{"version":9,"id":"request_ice","type":"edge-candidate","shareId":"share_123456","connectionId":"missing_edge","candidate":null}`)); err != nil {
 				t.Fatalf("capture initialization blocked independent control: %v", err)
 			}
 			stopped := make(chan error, 1)
 			go func() {
-				_, err := session.Handle(t.Context(), []byte(`{"version":10,"id":"request_stop","type":"stop-share","shareId":"share_123456"}`))
+				_, err := session.Handle(t.Context(), []byte(`{"version":9,"id":"request_stop","type":"stop-share","shareId":"share_123456"}`))
 				stopped <- err
 			}()
 			select {

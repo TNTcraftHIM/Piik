@@ -126,24 +126,6 @@ describe("realtime quality controls", () => {
     expect(videoTrack.applyConstraints).not.toHaveBeenCalled();
   });
 
-  it("switches into and out of 4K through the current capture", async () => {
-    const { stream, videoTrack } = createVideoStream();
-    const profile = { ...QUALITY_PROFILES["1080p60"], resolution: "2160p" } as const;
-    await applyCaptureProfile(stream, profile);
-    expect(videoTrack.applyConstraints).toHaveBeenLastCalledWith({
-      width: { ideal: 3840, max: 3840 },
-      height: { ideal: 2160, max: 2160 },
-      frameRate: { ideal: 60, max: 60 },
-    });
-    await applyCaptureProfile(stream, QUALITY_PROFILES["720p30"]);
-    expect(videoTrack.applyConstraints).toHaveBeenLastCalledWith({
-      width: { ideal: 1280, max: 1280 },
-      height: { ideal: 720, max: 720 },
-      frameRate: { ideal: 30, max: 30 },
-    });
-    expect(videoTrack.enabled).toBe(true);
-  });
-
   it("defaults every recommended profile to balanced", () => {
     expect(QUALITY_PROFILES["1080p30"].degradationPreference).toBe("balanced");
     expect(QUALITY_PROFILES["1080p60"].degradationPreference).toBe("balanced");

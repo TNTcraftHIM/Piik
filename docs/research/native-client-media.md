@@ -155,7 +155,7 @@ without Piik, a D3D device or codec configuration, while NVIDIA entries activate
 This isolates the local activation failure to the platform/MFT path; it does not
 identify the reporter's AMD failure. Production Auto and manual H264 both moved
 from that preferred AMD candidate to working NVIDIA
-H264 (about 1.95 s and 0.32 s). Auto also selected H264 at 2160p60. This did not
+H264 (about 1.95 s and 0.32 s). This did not
 reproduce the reporter's device removal. No driver reset was forced, and the
 optional D3D debug layer was unavailable. The reporter's removal reason,
 subsequent candidates and final outcome remain necessary to assign its cause.
@@ -163,8 +163,8 @@ subsequent candidates and final outcome remain necessary to assign its cause.
 A deeper check on the same machine passed 600 synthetic NV12 allocations
 across those adapter entries and all five resolutions. Forty activation/retirement
 cycles included cancellation and shutdown with an input still in flight; the
-device remained healthy. Five production selections, including AMD rejection
-and 2160p60, also succeeded while another process continued H264 encoding.
+device remained healthy. Five selections, including AMD rejection, also
+succeeded while another process continued H264 encoding.
 The reported stage creates probe textures before actual WGC capture; Auto's
 cadence textures are prepared before MFT activation. These results narrow the
 tested mechanisms but do not cover the failing device, driver reset or exhaustion.
@@ -189,13 +189,6 @@ failed before the fix and passes with a WARP surface, without an installed
 hardware encoder. This removes reliance on vendor tolerance; the reported
 texture-creation error precedes this wrapper, so it is not that error's cause.
 
-On 2026-10-03 the Windows Browser gate kept two native PeerConnections alive
-while the source changed from 720p30 to 2160p60, then to 480p15 while paused,
-and resumed both Viewers. The same Pion source survives the capture/encoder
-generations; a separate UI gate retains the route through a native source switch.
-Local embedded-SFU gates decoded 3840x2160 from Native H264 and Browser H264/VP8,
-then 854x480, retaining audio and subscription recovery. These bounded checks
-do not prove macOS/Linux physical 4K capture or sustained 4K60 performance.
 Native Host media is exposed only through an explicit App-launched Host
 selection; an ordinary Web Host retains Browser capture.
 
