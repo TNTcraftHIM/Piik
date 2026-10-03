@@ -235,6 +235,25 @@ void CheckAutoCadenceProbe(ID3D11Device* device) {
   assert(expired);
 }
 
+void CheckOutputSampleAlignment() {
+  Runtime runtime;
+  for (DWORD alignment : {0u, 1u, 16u, 64u, 512u}) {
+    MFT_OUTPUT_STREAM_INFO info{};
+    info.cbSize = 4096;
+    info.cbAlignment = alignment;
+    auto sample = CreateCallerOutputSample(info);
+    ComPtr<IMFMediaBuffer> buffer;
+    Check(sample->GetBufferByIndex(0, &buffer), "fixture-output-buffer");
+    BYTE* data = nullptr;
+    DWORD maximum = 0;
+    Check(buffer->Lock(&data, &maximum, nullptr), "fixture-output-lock");
+    const auto address = reinterpret_cast<uintptr_t>(data);
+    Check(buffer->Unlock(), "fixture-output-unlock");
+    assert(maximum >= info.cbSize);
+    assert(alignment == 0 || address % alignment == 0);
+  }
+}
+
 void CheckSurfaceSample(ID3D11Device* device) {
   Runtime runtime;
   const VideoProfile profile{64, 64, 30, 3'000'000};
@@ -280,6 +299,7 @@ int main() {
   CheckEncoderCandidates();
   CheckH264ProfileCompatibility();
   CheckPrimaryFailureDetails();
+  CheckOutputSampleAlignment();
   ComPtr<ID3D11Device> device;
   Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,
                          D3D11_SDK_VERSION, &device, nullptr, nullptr), "fixture-warp");

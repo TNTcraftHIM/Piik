@@ -549,7 +549,10 @@ ComPtr<IMFSample> CreateCallerOutputSample(const MFT_OUTPUT_STREAM_INFO& info) {
   ComPtr<IMFSample> sample;
   Check(MFCreateSample(&sample), "output-sample-create");
   ComPtr<IMFMediaBuffer> buffer;
-  Check(MFCreateMemoryBuffer(kMaxEncodedSampleBytes, &buffer),
+  // Stream info uses bytes; the allocator takes an alignment mask (bytes - 1).
+  Check(MFCreateAlignedMemoryBuffer(kMaxEncodedSampleBytes,
+                                    info.cbAlignment ? info.cbAlignment - 1 : 0,
+                                    &buffer),
         "output-memory-buffer");
   Check(sample->AddBuffer(buffer.Get()), "output-sample-buffer");
   return sample;
