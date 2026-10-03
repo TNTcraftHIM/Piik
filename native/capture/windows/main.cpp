@@ -193,20 +193,8 @@ ComPtr<ID3D11Texture2D> CreateSyntheticTexture(
 #ifdef PIIK_H264_FIXTURE
 ComPtr<IMFSample> CreateInputSample(ID3D11Device* device, UINT32 frame_index) {
   auto texture = CreateSyntheticTexture(device, frame_index);
-  ComPtr<IMFMediaBuffer> buffer;
-  Check(MFCreateDXGISurfaceBuffer(IID_ID3D11Texture2D, texture.Get(), 0,
-                                  FALSE, &buffer),
-        "input-dxgi-buffer");
-  ComPtr<IMFSample> sample;
-  Check(MFCreateVideoSampleFromSurface(nullptr, &sample),
-        "input-video-sample");
-  Check(sample->AddBuffer(buffer.Get()), "input-sample-buffer");
-  Check(sample->SetSampleTime(static_cast<LONGLONG>(frame_index) *
-                                  kFrameDuration100ns),
-        "input-sample-time");
-  Check(sample->SetSampleDuration(kFrameDuration100ns),
-        "input-sample-duration");
-  return sample;
+  return CreateSurfaceSample(texture.Get(),
+      static_cast<LONGLONG>(frame_index) * kFrameDuration100ns, kFrameDuration100ns);
 }
 #endif
 

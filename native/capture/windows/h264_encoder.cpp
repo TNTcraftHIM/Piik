@@ -607,6 +607,11 @@ ComPtr<IMFSample> CreateSurfaceSample(ID3D11Texture2D* texture,
   Check(MFCreateDXGISurfaceBuffer(IID_ID3D11Texture2D, texture, 0, FALSE,
                                   &buffer),
         "input-dxgi-buffer");
+  // Surface storage exists, but the wrapper initially reports zero valid bytes.
+  // MFTs may honor that length instead of inferring it from the texture.
+  DWORD length = 0;
+  Check(buffer->GetMaxLength(&length), "input-buffer-capacity");
+  Check(buffer->SetCurrentLength(length), "input-buffer-length");
   ComPtr<IMFSample> sample;
   Check(MFCreateVideoSampleFromSurface(nullptr, &sample),
         "input-video-sample");

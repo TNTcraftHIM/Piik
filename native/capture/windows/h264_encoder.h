@@ -184,6 +184,9 @@ void ValidateCodecReadback(ICodecAPI* codec,
 void ForceKeyFrame(ICodecAPI* codec);
 ComPtr<IMFSample> PullOutput(IMFTransform* transform,
                             const MFT_OUTPUT_STREAM_INFO& info);
+ComPtr<IMFSample> CreateSurfaceSample(ID3D11Texture2D* texture,
+                                      LONGLONG timestamp100ns,
+                                      LONGLONG duration100ns);
 NalSummary InspectAnnexB(const std::vector<UINT8>& bytes);
 std::vector<UINT8> ReadSample(IMFSample* sample);
 

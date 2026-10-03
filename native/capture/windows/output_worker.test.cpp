@@ -235,6 +235,30 @@ void CheckAutoCadenceProbe(ID3D11Device* device) {
   assert(expired);
 }
 
+void CheckSurfaceSample(ID3D11Device* device) {
+  Runtime runtime;
+  const VideoProfile profile{64, 64, 30, 3'000'000};
+  auto texture = CreateSyntheticTexture(device, 0, profile);
+  auto sample = CreateSurfaceSample(texture.Get(), 1'000'000, 333'333);
+  ComPtr<IMFMediaBuffer> buffer;
+  Check(sample->GetBufferByIndex(0, &buffer), "fixture-sample-buffer");
+  DWORD current = 0, maximum = 0, total = 0;
+  Check(buffer->GetCurrentLength(&current), "fixture-buffer-length");
+  Check(buffer->GetMaxLength(&maximum), "fixture-buffer-capacity");
+  Check(sample->GetTotalLength(&total), "fixture-sample-length");
+  assert(current == profile.width * profile.height * 3 / 2);
+  assert(total == current && maximum == current);
+  ComPtr<IMFDXGIBuffer> surface;
+  Check(buffer.As(&surface), "fixture-surface-buffer");
+  ComPtr<ID3D11Texture2D> retained;
+  Check(surface->GetResource(IID_PPV_ARGS(&retained)), "fixture-surface-resource");
+  assert(retained.Get() == texture.Get());
+  LONGLONG time = 0, duration = 0;
+  Check(sample->GetSampleTime(&time), "fixture-sample-time");
+  Check(sample->GetSampleDuration(&duration), "fixture-sample-duration");
+  assert(time == 1'000'000 && duration == 333'333);
+}
+
 int main() {
   VideoProfile profile{3840, 2160, 30, 12'000'000};
   ValidateVideoProfile(profile);
@@ -259,6 +283,7 @@ int main() {
   ComPtr<ID3D11Device> device;
   Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,
                          D3D11_SDK_VERSION, &device, nullptr, nullptr), "fixture-warp");
+  CheckSurfaceSample(device.Get());
   CheckAutoCadenceProbe(device.Get());
   CheckWorkerFailureGeneration(device.Get(), false);
   CheckWorkerFailureGeneration(device.Get(), true);

@@ -156,6 +156,35 @@ reproduce the reporter's device removal. No driver reset was forced, and the
 optional D3D debug layer was unavailable. The reporter's removal reason,
 subsequent candidates and final outcome remain necessary to assign its cause.
 
+A deeper check on the same machine passed 600 synthetic NV12 allocations
+across those adapter entries and all five resolutions. Forty activation/retirement
+cycles included cancellation and shutdown with an input still in flight; the
+device remained healthy. Five production selections, including AMD rejection
+and 2160p60, also succeeded while another process continued H264 encoding.
+The reported stage creates probe textures before actual WGC capture; Auto's
+cadence textures are prepared before MFT activation. These results narrow the
+tested mechanisms but do not cover the failing device, driver reset or exhaustion.
+
+Repeated NVIDIA MFT activation retained about two process handles per cycle.
+A standalone 40-cycle program reproduced this without Piik or a D3D device:
+`MFTEnum2 -> ActivateObject -> ShutdownObject -> Release`, with both COM reference
+counts reaching zero. Fresh activation objects, direct `MFShutdownObject`, and
+waiting five seconds after `MFShutdown` did not remove the incremental growth.
+This isolates a local platform/MFT resource behavior, not a proven cause of
+device loss. Retain capture-process ownership of driver resources; do not add
+unowned `Release` calls or infer a GPU-recovery policy from this observation.
+
+The same investigation found a separate MFT input-contract defect: a populated
+720p NV12 surface reported a maximum length of 1,382,400 bytes but current/sample
+length zero. The shared surface wrapper now sets the valid length from the
+platform's capacity; the hardware fixture uses that same wrapper. This follows
+Microsoft's [media-buffer contract](https://learn.microsoft.com/en-us/windows/win32/medfound/working-with-media-buffers)
+and [Chromium's MFT input handling](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc),
+which explicitly accommodates encoders that honor this length. The regression
+failed before the fix and passes with a WARP surface, without an installed
+hardware encoder. This removes reliance on vendor tolerance; the reported
+texture-creation error precedes this wrapper, so it is not that error's cause.
+
 On 2026-10-03 the Windows Browser gate kept two native PeerConnections alive
 while the source changed from 720p30 to 2160p60, then to 480p15 while paused,
 and resumed both Viewers. The same Pion source survives the capture/encoder
