@@ -240,7 +240,7 @@ export const en: Record<CopyKey, string> = {
   "host.pauseNotice": "Audio and video sharing paused",
   "host.stopNotice": "Sharing stopped",
   "host.roomReplaced": "Room code replaced",
-  "host.roomInvalid": "Room no longer available; press again to create a new one",
+  "host.roomInvalid": "This room has expired. Start sharing to create a new one.",
   "host.roomReplace": "Replace room code",
   "host.roomReplaceConfirm": "Replace the room code: this ends the current share and disconnects viewers",
   "host.terminated.stale": "Page updated; refresh to continue",

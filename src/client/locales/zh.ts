@@ -240,7 +240,7 @@ export const zh = {
   "host.pauseNotice": "音视频分享已暂停",
   "host.stopNotice": "已停止分享",
   "host.roomReplaced": "房间号已更换",
-  "host.roomInvalid": "房间已失效，再次点击将创建新房",
+  "host.roomInvalid": "房间已失效，开始分享时将创建新房",
   "host.roomReplace": "更换房间号",
   "host.roomReplaceConfirm": "确认更换房间号：当前分享会结束，观众需要重新加入",
   "host.terminated.stale": "页面版本已更新，请刷新后重试",

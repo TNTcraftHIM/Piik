@@ -508,6 +508,20 @@ export function HostPage({
   function setNoticeKey(key: CopyKey, comic: ComicKind | HintKind, tone: ComicTone, vars?: Record<string, string>): void {
     setNoticeValue({ kind: "key", key, vars, target: "operation", comic, tone });
   }
+  function setStatusNotice(
+    message: string | { key: CopyKey; vars?: Record<string, string> },
+    comic: ComicKind,
+    tone: ComicTone,
+  ): void {
+    setNoticeValue({
+      ...(typeof message === "string"
+        ? { kind: "text", text: message }
+        : { kind: "key", key: message.key, vars: message.vars }),
+      target: "television",
+      comic,
+      tone,
+    });
+  }
   function setNoticeError(
     error: unknown,
     action: HostAction,
@@ -990,14 +1004,7 @@ export function HostPage({
       writePreferredRoom(currentRoom.roomId);
     }
     disposeResources(notifyServer, keepRoomSession);
-    setNoticeValue({
-      ...(typeof message === "string"
-        ? { kind: "text", text: message }
-        : { kind: "key", key: message.key, vars: message.vars }),
-      target: "television",
-      comic,
-      tone,
-    });
+    setStatusNotice(message, comic, tone);
     setPhase("ended");
   }
 
@@ -2470,7 +2477,7 @@ export function HostPage({
             endSharing({ key: hostTerminationKey(reason) }, false, "signal-failed", "bad", false);
           } else {
             disposeResources(false);
-            setNoticeKey(hostTerminationKey(reason), "signal-failed", "bad");
+            setStatusNotice({ key: hostTerminationKey(reason) }, "signal-failed", "bad");
             setPhase("error");
           }
           if (reason === "SESSION_REPLACED") forgetRoom(activeRoom, true);
@@ -2481,7 +2488,7 @@ export function HostPage({
             endSharing({ key: "gate.expired" }, false, "access-denied", "bad", false);
           } else {
             disposeResources(false);
-            setNoticeKey("gate.expired", "access-denied", "bad");
+            setStatusNotice({ key: "gate.expired" }, "access-denied", "bad");
             setPhase("error");
           }
           onAuthorizationRequired?.();
@@ -2507,7 +2514,7 @@ export function HostPage({
               // Capture may still be awaiting permission. Its ready path owns
               // creation/publication; room recovery must not start it early.
               if (!localShareActive) {
-                setNoticeKey("host.roomInvalid", "room-not-found", "bad");
+                setStatusNotice({ key: "host.roomInvalid" }, "room-not-found", "bad");
                 setPhase("error");
               }
               return;
@@ -2525,7 +2532,7 @@ export function HostPage({
             } else {
               disposeResources(false);
               forgetRoom(activeRoom);
-              setNoticeKey("host.roomInvalid", "room-not-found", "bad");
+              setStatusNotice({ key: "host.roomInvalid" }, "room-not-found", "bad");
               setPhase("error");
             }
             return;
@@ -2533,10 +2540,10 @@ export function HostPage({
           if (message.type === "room-closed") {
             if (!forgetRoom(activeRoom)) return;
             if (localShareActive) {
-              endSharing(say("host.roomClosed"), false, "room-closed", "off", false);
+              endSharing({ key: "host.roomClosed" }, false, "room-closed", "off", false);
             } else {
               disposeResources(false);
-              setNoticeKey("host.roomClosed", "room-closed", "off");
+              setStatusNotice({ key: "host.roomClosed" }, "room-closed", "off");
               setPhase("ended");
             }
             return;
@@ -2546,7 +2553,7 @@ export function HostPage({
               endSharing(hostServerErrorNotice(message.code), false, "signal-failed", "bad", false);
             } else {
               disposeResources(false);
-              setNotice(hostServerErrorNotice(message.code), "signal-failed", "bad");
+              setStatusNotice(hostServerErrorNotice(message.code), "signal-failed", "bad");
               setPhase("error");
             }
             return;
@@ -3016,7 +3023,7 @@ export function HostPage({
     const previousStream = streamRef.current;
     if (!previousStream) {
       captured.getTracks().forEach((track) => track.stop());
-      setNoticeKey("host.shareEnded", "share-ended", "off");
+      setStatusNotice({ key: "host.shareEnded" }, "share-ended", "off");
       return;
     }
 
@@ -3538,8 +3545,13 @@ export function HostPage({
               phase === "idle" || phase === "ended" || phase === "error"
             }
             label={t("host.stageAria")}
-            indicator={<StatusIndicator status={hostStatus.television}
-              label={statusNotice ? noticeText ?? undefined : undefined} />}
+            indicator={<>
+              <StatusIndicator status={hostStatus.television}
+                label={statusNotice ? noticeText ?? undefined : undefined} />
+              <span className="visually-hidden" role="status" aria-live="polite">
+                {statusNotice ? noticeText : null}
+              </span>
+            </>}
           >
             {stream ? (
               <video ref={videoRef} autoPlay muted playsInline />

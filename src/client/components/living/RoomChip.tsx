@@ -24,6 +24,9 @@ export function RoomCodePlaceholder() {
   return (
     <span className="lr-lcd is-empty" role="img" aria-label={t("host.roomCodePending")}>
       <LcdDigits code="----" />
+      <span className="lr-lcd-copy-placeholder" aria-hidden="true">
+        <Glyph name="copy" size={16} />
+      </span>
     </span>
   );
 }

@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-03
+Last reviewed: 2026-10-04
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
@@ -45,6 +45,11 @@ history. A parked idea is not implementation authority.
 
 These proposals remain deferred beyond the accepted interaction phase.
 
+- [ ] **Phone as a Host microphone: assess after the current work.** Explore an
+  opt-in link that pairs a phone's microphone with the Host's existing audio
+  mixer. Evaluate pairing/revocation, latency/echo, browser background limits
+  and Browser/native input ownership before accepting an implementation. This
+  proposal does not reopen room voice or change the current release scope.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not

@@ -959,11 +959,13 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   text-indent: .15em;
 }
 .lr-lcd.is-empty { border-style: dashed; border-color: var(--control-edge); background: var(--wall-2); color: var(--muted); }
-.lr-lcd.is-empty::after { content: ""; width: 34px; height: 34px; }
-.lr-lcd button {
+.lr-lcd button, .lr-lcd-copy-placeholder {
   display: grid;
   width: 34px; height: 34px;
   place-items: center;
+}
+.lr-lcd-copy-placeholder { opacity: .45; }
+.lr-lcd button {
   border: 0;
   border-radius: 8px;
   background: transparent;
