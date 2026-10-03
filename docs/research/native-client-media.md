@@ -436,9 +436,13 @@ also distinguishes a decodable bitstream from a profile incorrectly labeled as
 Baseline; it is context, not proof of a current regression.
 
 [RFC 7742](https://www.rfc-editor.org/rfc/rfc7742.html#section-6.2) requires
-Constrained Baseline and recommends Constrained High. Retain Piik's Baseline
-default, CBR and existing GOP; do not add a profile knob or per-receiver transcodes
-for the unproven field quality cause.
+Constrained Baseline and recommends Constrained High. Native Main/High adoption
+is declined: the measured synthetic gain does not justify coordinating profile
+fallback across the shared encoded source. Retain the current Constrained
+Baseline, CBR and GOP, without a profile selector or additional transcodes.
+Browser-owned encoders keep ordinary negotiation among their supported profiles;
+the Main-only/High-only rejection above does not rule out a preference list with
+Baseline alternatives. The original field quality cause remains unproven.
 
 One independent compatibility defect was confirmed: capture admission compared
 against `42c0` literally, rejecting equivalent Constrained Baseline SPS such as
