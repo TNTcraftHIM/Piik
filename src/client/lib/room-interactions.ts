@@ -7,6 +7,9 @@ export type RoomInteraction = Extract<ServerMessage, { type: "room-interaction" 
 type Rejection = Extract<ServerMessage, { type: "room-interaction-rejected" }>["reason"];
 export type InteractionError = Rejection | "offline" | "unconfirmed";
 export const CHAT_OVERLAY_DURATION_MS = 6000;
+export const CHAT_HISTORY_LIMIT = 1000;
+export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1] } as const;
+type OverlayAppearance = { scale: number; opacity: number };
 const CHAT_OVERLAY_LANES = 3;
 interface InteractionState {
   ready: boolean;
@@ -14,6 +17,7 @@ interface InteractionState {
   messages: (RoomInteraction & { isSelf: boolean })[];
   reactions: (RoomInteraction & { expiresAt: number })[];
   overlayEnabled: boolean;
+  overlayAppearance: OverlayAppearance;
   overlayMessages: (RoomInteraction & { expiresAt: number; lane: number })[];
   pending: { requestId: string; payload: InteractionPayload } | null;
   confirmed: RoomInteraction | null;
@@ -21,7 +25,7 @@ interface InteractionState {
   error: InteractionError | null;
 }
 const initialState = (): InteractionState => ({ ready: false, peerId: null, messages: [], reactions: [],
-  overlayEnabled: false, overlayMessages: [],
+  overlayEnabled: false, overlayAppearance: { scale: 1, opacity: 1 }, overlayMessages: [],
   pending: null, confirmed: null, coolingDown: false, error: null });
 
 // One owner per signaling client. Authentication admits room data; media
@@ -96,7 +100,7 @@ export class RoomInteractionSession {
         // event to another lane, and bursts cannot accumulate a playback queue.
         overlayMessages = [...overlayMessages.filter(item => item.lane !== lane), { ...message, lane, expiresAt }];
       }
-      this.update({ messages: [...this.state.messages.slice(-79), { ...message, isSelf: own }],
+      this.update({ messages: [...this.state.messages.slice(1 - CHAT_HISTORY_LIMIT), { ...message, isSelf: own }],
         overlayMessages, pending, confirmed, error: confirmsPending ? null : this.state.error });
     } else {
       if (this.state.reactions.some(item => item.id === message.id)) return true;
@@ -139,6 +143,14 @@ export class RoomInteractionSession {
     this.overlayVisible = visible;
     if (!visible) this.update({ overlayMessages: [] });
     this.expireEffects();
+  }
+
+  setOverlayAppearance(appearance: OverlayAppearance) {
+    if (this.closed || !Number.isFinite(appearance.scale) || !Number.isFinite(appearance.opacity)) return;
+    this.update({ overlayAppearance: {
+      scale: Math.min(CHAT_OVERLAY_LIMITS.scale[1], Math.max(CHAT_OVERLAY_LIMITS.scale[0], appearance.scale)),
+      opacity: Math.min(CHAT_OVERLAY_LIMITS.opacity[1], Math.max(CHAT_OVERLAY_LIMITS.opacity[0], appearance.opacity)),
+    } });
   }
 
   private expireEffects() {

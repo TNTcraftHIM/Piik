@@ -41,8 +41,17 @@ main_asset="$(descriptor_text mainAsset)"
 [[ "$version" = development || "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
 [[ "$release_id" =~ ^[0-9a-f]{7}$ ]]
 test "$release_id" = "${revision:0:7}"
-test "$artifact_name" = "piik-${release_id}-runtime.tar.gz"
-test "$manifest_name" = "piik-${release_id}.manifest.tsv"
+validate_artifact_names() {
+  local stem
+  case "$(uname -m)" in
+    x86_64) stem="piik-${release_id}" ;;
+    aarch64|arm64) stem="piik-${release_id}-linux-arm64" ;;
+    *) printf 'unsupported Server architecture\n' >&2; return 2 ;;
+  esac
+  test "$artifact_name" = "${stem}-runtime.tar.gz" &&
+    test "$manifest_name" = "${stem}.manifest.tsv"
+}
+validate_artifact_names
 [[ "$artifact_sha" =~ ^[0-9a-f]{64}$ ]]
 [[ "$manifest_sha" =~ ^[0-9a-f]{64}$ ]]
 [[ "$file_count" =~ ^[1-9][0-9]*$ ]]

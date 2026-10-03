@@ -189,3 +189,62 @@ test("camera selection requests one exact device without microphone permission",
   expect(getUserMedia).toHaveBeenCalledWith({ audio: false, video: expect.objectContaining({ deviceId: { exact: "front-camera" } }) });
   expect(getUserMedia.mock.calls[0][0].video).not.toHaveProperty("facingMode");
 });
+
+test("voice processing replaces only the input and commits only after successful capture", async () => {
+  const { getUserMedia } = setup();
+  const video = new Track("video"), first = new Track("audio"), raw = new Track("audio");
+  const audio = new HostAudio(media(video), vi.fn(), "camera");
+  getUserMedia.mockResolvedValueOnce(media(first));
+  const output = (await audio.setMicrophone(true, "virtual-input"))!;
+  expect(getUserMedia).toHaveBeenLastCalledWith({ audio: {
+    echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+    deviceId: { exact: "virtual-input" },
+  } });
+  getUserMedia.mockRejectedValueOnce(new DOMException("Device busy", "NotReadableError"));
+  await expect(audio.setMicrophone(true, "virtual-input", false)).rejects.toThrow("Device busy");
+  expect(first.stop).not.toHaveBeenCalled();
+  await audio.setMicrophone(true, "virtual-input"); // Failure must retain the previous configuration.
+  expect(getUserMedia).toHaveBeenCalledTimes(2);
+
+  getUserMedia.mockResolvedValueOnce(media(raw));
+  expect(await audio.setMicrophone(true, "virtual-input", false)).toBeNull();
+  expect(getUserMedia).toHaveBeenLastCalledWith({ audio: {
+    echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+    voiceIsolation: false, channelCount: { ideal: 2 }, deviceId: { exact: "virtual-input" },
+  } });
+  expect(first.stop).toHaveBeenCalledOnce();
+  expect(video.stop).not.toHaveBeenCalled();
+  expect(output.getAudioTracks()[0].readyState).toBe("live");
+  expect(audio.attach(media(video)).getAudioTracks()).toEqual(output.getAudioTracks());
+  await audio.setMicrophone(false, "virtual-input");
+  await audio.toggleMicrophone();
+  expect(raw.enabled).toBe(true);
+  expect(getUserMedia).toHaveBeenCalledTimes(3); // Mute and source replacement retain processing intent.
+
+  await audio.setMicrophone(false, "virtual-input", true);
+  expect(raw.stop).toHaveBeenCalledOnce();
+  expect(getUserMedia).toHaveBeenCalledTimes(3); // A settings change while muted never opens the input.
+  getUserMedia.mockResolvedValueOnce(media(new Track("audio")));
+  await audio.toggleMicrophone();
+  expect(getUserMedia).toHaveBeenLastCalledWith({ audio: expect.objectContaining({ echoCancellation: true }) });
+  audio.dispose();
+});
+
+test("share retirement also cancels a pending processing change", async () => {
+  const { getUserMedia } = setup();
+  const first = new Track("audio"), late = new Track("audio");
+  const changed = vi.fn();
+  const audio = new HostAudio(media(new Track("video")), changed);
+  getUserMedia.mockResolvedValueOnce(media(first));
+  const output = (await audio.setMicrophone(true, ""))!;
+  let complete!: (stream: MediaStream) => void;
+  getUserMedia.mockImplementationOnce(() => new Promise<MediaStream>(resolve => { complete = resolve; }));
+  const replacing = audio.setMicrophone(true, "", false);
+  audio.dispose();
+  complete(media(late));
+  expect(await replacing).toBeNull();
+  expect(first.stop).toHaveBeenCalledOnce();
+  expect(late.stop).toHaveBeenCalledOnce();
+  expect(output.getAudioTracks()[0].readyState).toBe("ended");
+  expect(changed).toHaveBeenCalledOnce();
+});

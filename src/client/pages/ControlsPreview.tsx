@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
-import { RoomChip, RoomAdmissionBadge } from "../components/living/RoomChip";
+import { RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
@@ -49,6 +49,7 @@ export function ControlsPreview() {
   const [sound, setSound] = useState(true);
   const [microphone, setMicrophone] = useState(false);
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
+  const [voiceProcessing, setVoiceProcessing] = useState(true);
   const [microphoneDevice, setMicrophoneDevice] = useState("");
   const [sharingSettings, setSharingSettings] = useState(false);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
@@ -110,7 +111,8 @@ export function ControlsPreview() {
         <SharingSettings id="preview-sharing-settings" open={sharingSettings}
           presets={<QualityPresets selected={preset} onSelect={setPreset} />}
           audio={<HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
-            native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume} />}
+            enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
+            voiceProcessing={voiceProcessing} onVoiceProcessing={setVoiceProcessing} />}
         />
       </section>
       <section id="option-preview" className="cp-card">
@@ -166,7 +168,7 @@ export function ControlsPreview() {
           <SwitchItem checked={invalid} onChange={setInvalid} label={en ? "Show error" : "看看错误态"} />
         </div>
         {invalid ? <p id="preview-input-error" className="cp-input-error" role="alert">{en ? "That password did not match. Try again." : "密码没对上，再试一次。"}</p> : null}
-        <div className="cp-tools"><RoomChip roomId={roomCode} onReplace={() => setRoomCode(code => code === "6020" ? "2048" : "6020")} /></div>
+        <div className="cp-tools"><RoomCodePlaceholder /><RoomChip roomId={roomCode} onReplace={() => setRoomCode(code => code === "6020" ? "2048" : "6020")} /></div>
         <RoomCodeInput value={dial} onChange={setDial} />
       </section>
       <section id="feedback-preview" className="cp-card">
@@ -224,7 +226,7 @@ export function ControlsPreview() {
     <section id="launcher-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">08</span><h2>{t("client.launch.title")}</h2></header>
       <div className="lr-client-launch">
-        <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
+        <LauncherForm version="development" mode={launchMode} onModeChange={setLaunchMode}
           site={launchSite} onSiteChange={setLaunchSite}
           lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
             { address: "192.0.2.10", name: "Wi-Fi" },

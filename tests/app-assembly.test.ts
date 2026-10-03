@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 const source = vi.hoisted(() => ({
-  revision: "a".repeat(40), built: false, finalState: "clean", output: "",
+  revision: "a".repeat(40), built: false, finalState: "clean", output: "", machine: 0x3e,
 }));
 
 // Exercise the actual assembler and final export. Only external build tools,
@@ -27,7 +27,8 @@ vi.mock("node:child_process", async (original) => ({
     } else if (args[0] === "build") {
       const executable = Buffer.alloc(64);
       executable.set([0x7f, 0x45, 0x4c, 0x46, 2, 1]);
-      executable.writeUInt16LE(0x3e, 18);
+      executable.writeUInt16LE(source.finalState === "wrong-architecture"
+        ? (source.machine === 0x3e ? 0xb7 : 0x3e) : source.machine, 18);
       writeFileSync(args[args.indexOf("-o") + 1]!, executable);
       source.built = true;
       if (source.finalState === "output-created") {
@@ -53,8 +54,8 @@ vi.mock("node:fs", async (original) => {
 vi.mock("../scripts/app-icons.mjs", () => ({ writeAppPlatformAssets: () => ({}) }));
 vi.mock("../scripts/package-licenses.mjs", () => ({ writeAppLicenseNotices: () => undefined }));
 
-describe("App package source identity", () => {
-  it.each(["clean", "nested", "dirty", "revision", "copy", "existing", "output-created"])("exports only complete owned output from unchanged source (%s)", async (finalState) => {
+describe.each(["linux-amd64", "linux-arm64"])("App package source identity (%s)", (target) => {
+  it.each(["clean", "nested", "dirty", "revision", "copy", "existing", "output-created", "wrong-architecture"])("exports only complete owned output from unchanged source (%s)", async (finalState) => {
     const root = mkdtempSync(join(tmpdir(), "piik-app-assembly-"));
     const output = join(root, ...(finalState === "nested" ? ["new-parent"] : []), "app");
     const descriptor = join(root, "server.release.json");
@@ -67,6 +68,7 @@ describe("App package source identity", () => {
     source.built = false;
     source.finalState = finalState;
     source.output = output;
+    source.machine = target === "linux-arm64" ? 0xb7 : 0x3e;
     try {
       if (finalState === "existing") {
         mkdirSync(output);
@@ -77,7 +79,7 @@ describe("App package source identity", () => {
         schema: 2, version: "development", revision: source.revision,
         artifact: "server.tar.gz", artifactSha256: createHash("sha256").update(artifact).digest("hex"),
       }));
-      process.argv = [process.execPath, "assemble-app.mjs", descriptor, output, "--target", "linux-amd64"];
+      process.argv = [process.execPath, "assemble-app.mjs", descriptor, output, "--target", target];
       vi.resetModules();
       const assembly = import("../scripts/assemble-app.mjs");
       if (finalState === "clean" || finalState === "nested") {
@@ -90,6 +92,9 @@ describe("App package source identity", () => {
         expect(existsSync(join(output, "piik-app"))).toBe(false);
       } else if (finalState === "copy") {
         await expect(assembly).rejects.toThrow("copy interrupted");
+        expect(existsSync(output)).toBe(false);
+      } else if (finalState === "wrong-architecture") {
+        await expect(assembly).rejects.toThrow(`App executable does not match App package target ${target}`);
         expect(existsSync(output)).toBe(false);
       } else {
         await expect(assembly).rejects.toThrow(finalState === "dirty" ? "clean Git checkout" : "package source");

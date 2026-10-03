@@ -429,6 +429,22 @@ func TestCaptureStateRejectsUnknownOrUnattributedState(t *testing.T) {
 	}
 }
 
+func TestCaptureStateValidatesH264ToolsRatherThanConstraintSpelling(t *testing.T) {
+	for _, profile := range []string{"42c01f", "42e01f", "42E033", "4d801f", "58c02a"} {
+		state, err := decodeCaptureState(captureStatePayload(t,
+			`{"state":"active","hardwareOnly":true,"codec":"h264","profileLevelId":"`+profile+`","width":1280,"height":720,"fps":30}`))
+		if err != nil || state.ProfileLevelID != profile {
+			t.Fatalf("equivalent Constrained Baseline %q was rejected or rewritten: %+v, %v", profile, state, err)
+		}
+	}
+	for _, profile := range []string{"42001f", "4d001f", "64001f", "42e11f", "42e01", "42e01fg", "42e0gg", "42e034", "42e035", "42e03c"} {
+		if _, err := decodeCaptureState(captureStatePayload(t,
+			`{"state":"active","hardwareOnly":true,"codec":"h264","profileLevelId":"`+profile+`","width":1280,"height":720,"fps":30}`)); err == nil {
+			t.Fatalf("incompatible profile/level %q was admitted", profile)
+		}
+	}
+}
+
 func TestCaptureStateUsesOriginalSlotAndBoundsPhysicalGroups(t *testing.T) {
 	state, err := decodeCaptureState(captureStatePayload(t,
 		`{"state":"active","hardwareOnly":false,"codec":"vp8","width":1280,"height":720,"fps":30}`))

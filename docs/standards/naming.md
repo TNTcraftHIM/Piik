@@ -15,8 +15,13 @@ Role labels describe permission; a person's chosen nickname stays unchanged.
 | Product capability | Screen sharing | 屏幕共享 |
 | Start sending a chosen screen/window | Start sharing | 开始分享 |
 | Enter another person's room | Join a room | 加入房间 |
+| Open the browser-provided screen/window/tab chooser | Browser | 浏览器 |
 | Site-wide access secret | Site passphrase | 站点口令 |
 | Room-specific access secret | Room password | 房间密码 |
+
+The browser picker names a capture method, not a browser-tab-only source. Its
+short explanation includes screens, application windows and tabs; available
+choices remain owned by the browser and operating system.
 
 Write each language for its own audience. Chinese headings and welcomes may
 sound like friends inviting each other: “叫朋友来一起看。” or “沙发给你留着呢。”

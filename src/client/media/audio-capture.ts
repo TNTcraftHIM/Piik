@@ -3,24 +3,27 @@ type DisplayMediaAudioHints = DisplayMediaStreamOptions & {
   windowAudio?: "exclude" | "window" | "system";
 };
 
-type DisplayMediaAudioConstraints = MediaTrackConstraints & {
+type BrowserAudioConstraints = MediaTrackConstraints & {
   voiceIsolation?: ConstrainBoolean;
 };
+
+export function audioInputConstraints(voiceProcessing: boolean): BrowserAudioConstraints {
+  return {
+    echoCancellation: voiceProcessing,
+    noiseSuppression: voiceProcessing,
+    autoGainControl: voiceProcessing,
+    // Keep music/virtual inputs on the same unprocessed, stereo request as screen audio.
+    ...(!voiceProcessing ? { voiceIsolation: false, channelCount: { ideal: 2 } } : {}),
+  };
+}
 
 export function displayMediaOptions(
   video: MediaTrackConstraints,
 ): DisplayMediaStreamOptions {
   // Chromium web display capture otherwise defaults to speech processing.
-  const audio: DisplayMediaAudioConstraints = {
-    echoCancellation: false,
-    noiseSuppression: false,
-    autoGainControl: false,
-    voiceIsolation: false,
-    channelCount: { ideal: 2 },
-  };
   return {
     video,
-    audio,
+    audio: audioInputConstraints(false),
     systemAudio: "include",
     windowAudio: "window",
   } as DisplayMediaAudioHints;

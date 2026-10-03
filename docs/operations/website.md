@@ -119,16 +119,22 @@ HTML fallback when changing the public documentation.
 
 ## Downloads
 
-The Windows x64, macOS Apple silicon and Linux x64 cards use fixed filenames and
-each provider's native latest-attachment route:
+The Windows, macOS and Linux App cards use fixed filenames and each provider's
+native latest-attachment route:
 
 - GitHub: `releases/latest/download/asset-name.zip`
   ([documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases)).
 - Gitee: `releases/download/latest/asset-name.zip`
   ([Windows download](https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-windows-amd64.zip)).
 
-Both links follow provider publication without a website rebuild or a release
-API request from the build or visitor. Platform buttons say “Download from GitHub” /
+Both links follow provider publication without a website rebuild. Supported App
+architecture choices stay visible; one selection updates both providers' links.
+An optional GitHub metadata request supplies only the latest version/date;
+failure does not disable architecture selection. Without JavaScript, the default
+links remain Windows x64, Apple silicon and Linux x64. Publish a newly listed App
+package before deploying its website option. ARM64 Server packages alone do not
+enable an ARM64 App choice.
+Platform buttons say “Download from GitHub” /
 “GitHub 下载”; the secondary link says “Download from Gitee” /
 “Gitee 国内镜像下载”. Keep versions and archive formats out of these labels.
 [Versioning](../standards/versioning.md#release-sources) owns package verification

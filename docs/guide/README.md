@@ -17,9 +17,11 @@ Choose a guide for what you want to do.
 
 ## Get help
 
-[Troubleshooting](./troubleshooting.md) covers sound, screen sources, startup and playback.
-If the page opens but the picture will not connect, start with
-[connection troubleshooting](./troubleshooting.md#when-video-will-not-connect).
+[Troubleshooting](./troubleshooting.md) starts from the symptom you see. Common checks:
+
+- [Video will not connect](./troubleshooting.md#when-video-will-not-connect), including WebRTC settings and campus networks.
+- [H264 sharing or graphics problems](./troubleshooting.md#h264-sharing-fails-on-windows).
+- [Missing App sources](./troubleshooting.md#app-windows-or-screens-are-missing) or [room creation returns 403](./troubleshooting.md#room-creation-returns-403).
 
 Still stuck? [Report a problem](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
 with your version, system, browser and reproduction steps. The

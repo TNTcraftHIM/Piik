@@ -6,9 +6,8 @@ and [screen-audio research](../research/browser-screen-audio-quality.md).
 [ADR-0007](../adr/0007-path-isolated-representation-quality.md) owns Browser
 source intent and codec selection, [ADR-0008](../adr/0008-window-scoped-audio-capture.md)
 owns screen-audio scope, and [ADR-0013](../adr/0013-embedded-node-local-media.md)
-owns the current candidate's shared Native/SFU output model. This file describes
-that source contract. [Status](../status.md) separates it from the last known
-production behavior and remaining acceptance.
+owns the shared Native/SFU output model. This file describes that product
+contract. [Status](../status.md) indexes delivery and remaining acceptance.
 
 ## Capture And Controls
 
@@ -20,8 +19,12 @@ production behavior and remaining acceptance.
   a title. An ordinary Web Host does not probe localhost.
 - Camera is a peer source choice in the same picker, including on phones. Only
   the chosen source requests permission. Browser/camera Host microphone capture
-  is explicit and uses voice processing separately from screen audio; its mixer
-  produces one audio output for the existing media routes. Muting or losing the
+  is explicit and defaults to Browser voice processing, separately from screen audio.
+  The Host may turn that processing off for music or virtual audio inputs;
+  the input change preserves the existing mixed output and leaves the previous
+  input usable on failure. This requests Browser processing settings, not a
+  bypass of device/system effects. Native PCM capture uses device/system settings.
+  The mixer produces one audio output for the existing media routes. Muting or losing the
   microphone must not stop healthy video. Share retirement releases its devices
   and rejects late permission results. Native App capture mixes source and
   microphone PCM before its existing Opus encoder, preserving one output track
@@ -110,6 +113,12 @@ The three recommended profiles are ceilings, not delivery guarantees:
 1440p; frame rate, bitrate, and `maintain-resolution | balanced |
 maintain-framerate` remain independent controls. Display video uses the standard
 `contentHint = "motion"` for game motion.
+Native H264 retains Constrained Baseline. Capture validates the coding-tool subset under
+RFC 6184, including equivalent Constrained Baseline constraint bytes, and reports
+the actual SPS profile/level; one vendor's byte spelling is not the contract.
+Native ingress and relay accept only a negotiated profile/packetization compatible
+with their unchanged encoded downstream source. A codec name alone is not enough;
+same-source renegotiation must preserve that boundary before altering the live peer.
 
 Framework-driven downscaling under bandwidth or device pressure is valid within
 the selected degradation preference. A low decoded resolution alone is not a

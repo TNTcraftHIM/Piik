@@ -90,7 +90,7 @@ h1 { font-size: clamp(49px, 5.7vw, 76px); line-height: 1.06; margin-block: 22px 
   .film-preview iframe { height:calc(56.25cqw + 196px); }
 }
 .download-help { margin-top:22px; text-align:center; }
-.download-links { display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:12px 24px; margin-bottom:14px; }
+.download-help > .button { margin-bottom:14px; }
 .download-help p { max-width:760px; margin:6px auto 0; color:var(--muted); font-size:13px; }
 .hero-scene { min-width: 0; }
 .living-room { display: block; width: 108%; height: auto; max-width: none; margin-left: -5%; }
@@ -116,16 +116,30 @@ h2 { font-size: clamp(30px, 3.25vw, 42px); line-height: 1.2; margin-top: 12px; }
 h3 { font-size: 21px; font-weight: 700; letter-spacing: -.03em; line-height: 1.35; }
 .steps li > p:last-child { margin-top: 12px; font-size: 14px; line-height: 1.75; color: var(--muted); }
 .download-section { padding-block: 76px 60px; }
+.download-release { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; margin-top: 16px; color: var(--muted); font-size: 12px; }
+#download-release:not([hidden]) { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; }
+#download-release strong { color: var(--ink); font-weight: 650; }
+#download-release b { font: inherit; }
+.release-date { white-space: nowrap; }
 .release-note { display: flex; justify-content: center; align-items: baseline; flex-wrap: wrap; gap: 8px 13px; margin: 27px auto; color: var(--muted); font-size: 13px; text-align: center; }
 .download-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
-.download-card { display: flex; flex-direction: column; align-items: flex-start; padding: 28px; background: var(--paper); border: 1px solid var(--line); border-radius: 24px; box-shadow: 0 4px 0 color-mix(in srgb, var(--line) 40%, transparent); }
+.download-card { display: grid; grid-row: span 6; grid-template-rows: subgrid; row-gap: 0; justify-items: start; align-items: start; padding: 28px; background: var(--paper); border: 1px solid var(--line); border-radius: 24px; box-shadow: 0 4px 0 color-mix(in srgb, var(--line) 40%, transparent); }
 .platform-mark { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 18px; border-radius: 16px; background: var(--wall); }
 .platform-mark svg { width: 30px; height: 30px; }
 .download-card h3 { font-size: 25px; }
-.download-card > p { margin: 10px 0 23px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.download-card > p { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+.download-architecture { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; max-width: 100%; margin: 16px 0 20px; padding: 4px; border: 1px solid var(--line); border-radius: 24px; background: var(--wall); }
+.download-architecture label { position: relative; }
+.download-architecture input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.download-architecture input:disabled { cursor: default; }
+.download-architecture label > span { display: flex; align-items: center; justify-content: center; min-height: 36px; padding: 6px 12px; border: 1px solid transparent; border-radius: 18px; font-size: 12px; font-weight: 600; transition: background .18s ease, color .18s ease, box-shadow .18s ease; }
+.download-architecture input:checked + span { background: var(--paper); color: var(--green); border-color: var(--line); box-shadow: 0 2px 0 color-mix(in srgb, var(--line) 40%, transparent); }
+.download-architecture input:enabled:hover + span { color: var(--green); background: var(--paper); }
+.download-architecture input:focus-visible + span { outline: 3px solid var(--orange); outline-offset: 3px; }
+.download-architecture:disabled { border-color: transparent; background: transparent; padding-inline: 0; }
+.download-architecture:disabled label > span { padding-inline: 0; border-color: transparent; background: transparent; color: var(--muted); box-shadow: none; }
 .download-button { width: 100%; gap: 10px; padding: 12px 15px; border-width: 1.5px; min-height: 48px; font-size: 13px; }
 .download-button svg { flex: none; width: 20px; height: 20px; }
-.download-card .download-button { margin-top: auto; }
 .download-card > a:not(.button) { display: inline-flex; align-items: center; min-height: 44px; margin-top: 8px; font-size: 12px; }
 .start-section { padding-block: 45px 67px; }
 .guide-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; margin: 28px 0; }
@@ -253,6 +267,7 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
   .section-heading > p:last-child:not(.eyebrow) { font-size: 14px; }
   .download-cards { grid-template-columns: 1fr; max-width: 500px; margin: auto; gap: 15px; }
   .download-card { padding: 23px; }
+  .download-architecture label > span { min-height: 44px; }
   .platform-mark { margin-bottom: 14px; }
   .guide > summary { padding: 20px 18px; gap: 12px; }
   .guide-heading { font-size: 18px; }

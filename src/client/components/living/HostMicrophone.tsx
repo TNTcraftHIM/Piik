@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { Btn } from "./primitives";
+import { Btn, SwitchItem } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
@@ -25,10 +25,11 @@ export function HostMicrophone({ enabled, pending, disabled, paused, unavailable
       disabled={unavailable || pending || disabled || paused} onClick={onToggle} />;
 }
 
-export function HostMicrophoneSettings({ enabled, disabled, volume, onVolume, deviceId, onDevice, loadDevices, native }: {
+export function HostMicrophoneSettings({ enabled, disabled, volume, onVolume, deviceId, onDevice, loadDevices, native, voiceProcessing, onVoiceProcessing }: {
   enabled: boolean; disabled?: boolean; native?: boolean;
   volume: number; onVolume: (volume: number) => void;
   deviceId: string; onDevice: (id: string) => void; loadDevices: () => Promise<CaptureDevice[]>;
+  voiceProcessing: boolean; onVoiceProcessing: (enabled: boolean) => void;
 }) {
   const { t, vis } = useCopy();
   const id = useId();
@@ -45,5 +46,14 @@ export function HostMicrophoneSettings({ enabled, disabled, volume, onVolume, de
           aria-label={t("host.microphone.volume")} aria-valuetext={`${percent}%`}
           onChange={event => onVolume(Number(event.target.value) / 100)} />
       </Tooltip>
+      {!native && <>
+        <div className="lr-row-group">
+          {vis ? <Glyph name="microphone" size={18} /> : null}
+          <SwitchItem checked={voiceProcessing} onChange={onVoiceProcessing} disabled={disabled}
+            label={t("host.microphone.voiceProcessing")} note={t("host.microphone.voiceProcessingHint")}
+            hint="hint-microphone-processing" />
+        </div>
+        {!vis && <small>{t("host.microphone.voiceProcessingUsage")}</small>}
+      </>}
   </div>;
 }

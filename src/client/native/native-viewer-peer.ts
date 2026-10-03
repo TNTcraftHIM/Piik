@@ -110,6 +110,7 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
         const pending = this.pendingCandidates.get(payload.connectionId) ?? [];
         this.pendingCandidates.delete(payload.connectionId);
         for (const candidate of pending) {
+          if (this.disposed) return;
           await this.backend.acceptSignal(parentPeerId, candidate);
         }
         return;

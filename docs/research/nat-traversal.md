@@ -1,6 +1,6 @@
 # Browser And Native NAT Traversal
 
-Last reviewed: 2026-09-13
+Last reviewed: 2026-10-04
 
 This document owns evidence for improving direct ICE without adding a
 new relay or a custom transport. The current product contract remains standard
@@ -259,6 +259,40 @@ its UDP sockets and candidate checks; the Web application cannot replace that
 transport with a custom QUIC hole-punching socket. LiveKit may use its own
 supported WebRTC transport configuration, but that is the bounded SFU path, not
 a new Peer route.
+
+## Iroh And Tailscale Comparison
+
+Iroh's [NAT guide](https://docs.iroh.computer/concepts/nat-traversal) estimates
+direct reachability for roughly nine in ten network configurations. It does not
+provide a matched 70%-to-90% before/after measurement against Piik or its ICE
+stack. Keep direct success separate from the
+[relay fallback](https://docs.iroh.computer/concepts/relays) that carries traffic
+when hole punching fails; neither statistic transfers to our user population.
+
+| Mechanism | Piik comparison |
+| --- | --- |
+| Exchange endpoints and coordinate outbound probes | Existing room signaling plus Browser/Pion ICE connectivity checks. |
+| Discover and use the same UDP mapping | Native `UniversalUDPMux` already shares STUN, prediction and media; Chromium owns Browser sockets. |
+| IPv4/IPv6 and gateway mapping | Native dual-stack candidates and bounded PCP/NAT-PMP/UPnP already exist; actual availability depends on the network. |
+| Switch between direct and relay paths | Iroh manages QUIC paths; Piik hands off WebRTC edges through one room-route operation. These are different contracts. |
+| Relay data over TLS/TCP when direct UDP fails | Iroh and Tailscale provide this. Piik currently has optional SFU/UDP, while App public invitations remain P2P-only. This is a coverage difference, not a missing prediction formula. |
+
+[Tailscale magicsock](https://github.com/tailscale/tailscale/blob/main/wgengine/magicsock/magicsock.go)
+is implemented in Go and is integrated with WireGuard, peer discovery, network
+maps and DERP. Its language is not an obstacle, but it is not an interchangeable
+Browser ICE socket. Iroh's current
+[Browser implementation](https://docs.iroh.computer/languages/wasm-browser)
+requires relay traffic; it cannot directly hole-punch from the Browser sandbox.
+Adding either stack would require another transport/interop and deployment
+boundary, not just replacing a NAT helper.
+
+Use their [network-change and mapping-recovery work](https://tailscale.com/blog/nat-traversal-improvements-pt-1)
+as evidence prompts for existing ICE/gateway owners. Iroh's
+[asymmetric hard-NAT repair](https://www.iroh.computer/blog/iroh-1-0-0-rc-1)
+also reinforces testing both initiator directions. A future comparison should
+hold endpoint pairs, NAT/filtering, IPv6, network transitions and relay policy
+constant, measuring direct success, relay use and first media separately.
+No new transport or universal success-rate claim is accepted by this review.
 
 ## Primary Sources
 

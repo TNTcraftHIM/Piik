@@ -58,9 +58,11 @@ function parseSiteAccessStatus(value: unknown): SiteAccessStatus {
   };
 }
 
-export async function getSiteAccess(): Promise<SiteAccessStatus> {
+export async function getSiteAccess(signal?: AbortSignal): Promise<SiteAccessStatus> {
   const response = await fetch("/api/site-access", {
     headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal,
   });
   const body = await responseBody(response);
   if (!response.ok) {

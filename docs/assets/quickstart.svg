@@ -2,7 +2,7 @@
   <title id="title">Pick a screen, send an invitation, watch together</title>
   <desc id="desc">Three illustrated steps: choose a window, send its room invitation, and join friends on the sofa. Each loop pauses to let the scene settle.</desc>
   <style>
-    :root { --drawing:#22303e; --panel:#fafaf3; --line:#c6d6cc; --label:#256b47; --art-mint:#c4e3ce; --art-paper:#fffdf4; --art-blue:#a2c8e8; --art-yellow:#f5d37a; --art-orange:#ee8955; --art-pink:#e9b1bb; --couch:#edbb72; --couch-dark:#d99a56; }
+    :root { --drawing:#22303e; --panel:#fafaf3; --line:#c6d6cc; --label:#256b47; --art-mint:#c4e3ce; --art-paper:#fffdf4; --art-blue:#a2c8e8; --art-yellow:#f5d37a; --art-orange:#ee8955; --art-pink:#e9b1bb; --couch:#e9ad63; --couch-dark:#cd8845; }
     @media (prefers-color-scheme:dark) { :root { --panel:#1b2d34; --line:#3b5155; --label:#9bdbb2; } }
     text { fill:var(--label); font:600 13px system-ui,sans-serif; letter-spacing:2px; }
     @media (prefers-reduced-motion:no-preference) {

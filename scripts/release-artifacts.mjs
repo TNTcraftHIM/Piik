@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { APP_PACKAGE_TARGETS } from "./app-package-targets.mjs";
+import { SERVER_PACKAGE_TARGETS } from "./server-package-targets.mjs";
 
 export function readReleaseArtifacts(directory, version, revision) {
   if (!directory || !/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version ?? "") ||
@@ -10,6 +12,7 @@ export function readReleaseArtifacts(directory, version, revision) {
   const root = resolve(directory);
   const files = new Map();
   const packages = [];
+  const servers = [];
   const targets = new Set();
   function asset(name) {
     if (typeof name !== "string" || basename(name) !== name || !/^[a-zA-Z0-9._-]+$/.test(name)) {
@@ -35,19 +38,21 @@ export function readReleaseArtifacts(directory, version, revision) {
       throw new Error(`Release artifact checksum mismatch: ${name}`);
     }
     packages.push(archive);
-    if (target === "server") {
+    const serverTarget = SERVER_PACKAGE_TARGETS.find(candidate => candidate.id === target);
+    if (serverTarget) {
       if (asset(descriptor.manifest).sha256 !== descriptor.manifestSha256) {
         throw new Error("Server manifest checksum mismatch");
       }
+      servers.push({ ...archive, arch: serverTarget.goarch });
     } else if (readFileSync(asset(`${descriptor.artifact}.sha256`).path, "utf8").trim() !==
         `${descriptor.artifactSha256}  ${descriptor.artifact}`) {
       throw new Error(`App checksum file mismatch: ${target}`);
     }
   }
-  const expected = ["server", "windows-amd64", "linux-amd64", "darwin-arm64"];
+  const expected = [...SERVER_PACKAGE_TARGETS, ...APP_PACKAGE_TARGETS].map(target => target.id);
   if (targets.size !== expected.length || expected.some((target) => !targets.has(target))) {
-    throw new Error("Publication requires one matching Server and every App target");
+    throw new Error("Publication requires every registered Server and App target");
   }
   // Sidecars prove the local build; only installable packages are public assets.
-  return { files: packages, targets: [...targets] };
+  return { files: packages, servers, targets: [...targets] };
 }

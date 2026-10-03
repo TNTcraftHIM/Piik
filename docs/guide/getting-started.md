@@ -80,10 +80,12 @@ restrictive networks may load the page but block video.
 | --- | --- |
 | `windows-amd64` | Windows x64 |
 | `darwin-arm64` | Apple silicon; native capture requires macOS 13+ |
+| `darwin-amd64` | Intel Mac; native capture requires macOS 13+ |
 | `linux-amd64` | Linux x64 |
+| `linux-arm64` | Linux ARM64 |
 
-Windows App and browser sharing are the primary tested paths. The macOS and
-Linux apps have not yet been tested on physical devices;
+Windows App and browser sharing are the primary tested paths. Physical-device
+coverage for the macOS and Linux apps is still limited;
 [test results and feedback are welcome](https://github.com/TNTcraftHIM/Piik/issues).
 Linux native capture also needs [system components](../../native/capture/linux/README.md).
 See the [App guide](../../cmd/piik-app/README.md) for package and runtime details.
@@ -124,8 +126,8 @@ follow the [self-hosting guide](../operations/self-hosting.md) for server, HTTPS
 and network setup.
 
 1. Open your group's Piik site. Enter its site passphrase if asked.
-2. Choose **Start sharing**, then **Browser** to select a screen, window or tab
-   in the browser picker, or **Camera** where your computer or phone browser supports it.
+2. Choose **Start sharing**, then **Browser** to select a screen, window or tab,
+   or **Camera** where your computer or phone browser supports it.
    Enable source audio if the picker offers it.
 3. Check the preview, then choose **Copy invite link** and send it to your friends.
 4. Keep the sharing tab open. Use **Pause sharing**, **Switch source**, or
@@ -155,6 +157,16 @@ then select a picture card to start sharing. Device names and previews depend on
 browser permissions; while a camera is shared, other cameras are listed by name.
 Use headphones to keep speaker sound from feeding back into the microphone.
 
+With **Browser** or **Camera** capture, **Noise & echo reduction** in sound
+settings is on by default, asking the browser to handle echo, noise and volume.
+Turn it off for music or a virtual audio input. Device and system effects remain
+controlled by their own settings. App native capture uses device/system audio settings.
+
+A camera with a built-in microphone still needs separate video and audio input
+selection. OBS Virtual Camera supplies video only. To include OBS audio, follow
+the [OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tutorial/),
+then select the virtual audio input in Piik's microphone list and turn on the microphone.
+
 ### Exclude a voice app from screen audio
 
 On supported Windows Apps, open the **Screens** tab and enable **System sound**.
@@ -178,11 +190,14 @@ The chat window can be moved and resized without rearranging the page.
 
 **On screen**, beside the message box or in the viewer's playback bar, shows new
 messages over the picture. It is off by default and only changes your own view.
+Open **Chat settings** in the chat window to adjust text size and opacity.
 System video fullscreen and picture in picture cannot show these overlays.
 
 Stopping a share keeps the room's chat available. App Local and Public invite
 rooms require the App to stay open. Each page retains only its latest received
 messages: refreshing clears them, and late joiners receive no earlier history.
+To keep a copy, use **Chat settings → Export chat** to save the latest messages
+retained on this page (up to 1,000) as a text file.
 Chat travels through the room's server and is **not end-to-end encrypted**.
 
 ## When something gets in the way

@@ -82,11 +82,12 @@ function executableMatchesTarget(path, target) {
   if (target.goos === "linux") {
     return header.length >= 20 && header.subarray(0, 4).equals(
       Buffer.from([0x7f, 0x45, 0x4c, 0x46]),
-    ) && header[4] === 2 && header[5] === 1 && header.readUInt16LE(18) === 0x3e;
+    ) && header[4] === 2 && header[5] === 1 &&
+      header.readUInt16LE(18) === (target.goarch === "arm64" ? 0xb7 : 0x3e);
   }
   return header.length >= 8 && header.subarray(0, 4).equals(
     Buffer.from([0xcf, 0xfa, 0xed, 0xfe]),
-  ) && header.readUInt32LE(4) === 0x0100000c;
+  ) && header.readUInt32LE(4) === (target.goarch === "amd64" ? 0x01000007 : 0x0100000c);
 }
 
 function assertTargetExecutable(path, target, label) {
@@ -156,7 +157,7 @@ const positional = process.argv.slice(2, 4);
 const options = process.argv.slice(4);
 if (positional.length !== 2 || options.length % 2 !== 0) {
   fail(
-    "Usage: node scripts/assemble-app.mjs <server-release.json> <new-output-directory> --target <windows-amd64|linux-amd64|darwin-arm64> [--capture <executable>] [--tunnel <executable>]",
+    "Usage: node scripts/assemble-app.mjs <server-release.json> <new-output-directory> --target <target> [--capture <executable>] [--tunnel <executable>]",
   );
 }
 

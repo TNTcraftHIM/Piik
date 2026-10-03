@@ -14,14 +14,15 @@ vi.mock("node:timers/promises", () => ({ setTimeout: async () => undefined }));
 const directory = mkdtempSync(join(tmpdir(), "piik-publisher-"));
 const version = "v1.0.1", revision = "a".repeat(40);
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
-for (const target of ["server", "windows-amd64", "linux-amd64", "darwin-arm64"]) {
-  const artifact = `${target}.${target === "server" ? "tar.gz" : "zip"}`;
+for (const target of ["server", "server-linux-arm64", "windows-amd64", "linux-amd64", "linux-arm64", "darwin-arm64", "darwin-amd64"]) {
+  const server = target.startsWith("server");
+  const artifact = `${target}.${server ? "tar.gz" : "zip"}`;
   writeFileSync(join(directory, artifact), target);
   writeFileSync(join(directory, `${target}.release.json`), JSON.stringify({
     schema: 2, version, revision, artifact, artifactSha256: hash(target),
-    ...(target === "server" ? { manifest: "server.manifest.tsv", manifestSha256: hash("manifest") } : { target }),
+    target, ...(server ? { manifest: `${target}.manifest.tsv`, manifestSha256: hash("manifest") } : {}),
   }));
-  if (target === "server") writeFileSync(join(directory, "server.manifest.tsv"), "manifest");
+  if (server) writeFileSync(join(directory, `${target}.manifest.tsv`), "manifest");
   else writeFileSync(join(directory, `${artifact}.sha256`), `${hash(target)}  ${artifact}\n`);
 }
 afterAll(() => rmSync(directory, { recursive: true, force: true }));

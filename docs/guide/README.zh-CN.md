@@ -17,8 +17,11 @@
 
 ## 遇到问题
 
-[问题排查](./troubleshooting.zh-CN.md)包含声音、画面来源、启动与播放的常见问题。
-如果网页能打开，画面却连不上，先看[画面连接排查](./troubleshooting.zh-CN.md#画面连接不上)。
+[问题排查](./troubleshooting.zh-CN.md)按遇到的现象提供处理步骤，常用入口：
+
+- [画面连接不上](./troubleshooting.zh-CN.md#画面连接不上)，包括 WebRTC 设置与校园网问题。
+- [H264 分享失败与显卡排查](./troubleshooting.zh-CN.md#windows-上-h264-分享失败)。
+- [App 找不到来源](./troubleshooting.zh-CN.md#app-找不到窗口或屏幕)或[创建房间返回 403](./troubleshooting.zh-CN.md#创建房间返回-403)。
 
 仍然没解决？可以[反馈问题](https://github.com/TNTcraftHIM/Piik/issues/new/choose)，
 附上版本、系统、浏览器和复现步骤。需要收集报告时，参阅

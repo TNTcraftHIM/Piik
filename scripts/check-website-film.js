@@ -316,7 +316,16 @@
       const downloadedAgain = await at('website',4.5*BEAT,lang);
       assert(Math.hypot(downloadedAgain.x-downloaded.x, downloadedAgain.y-downloaded.y)<.01, 'The website scroll and click must survive reverse seeking');
       await at('launch',5*BEAT,lang);
-      assert(doc.querySelector('.lr-room') && doc.body.textContent.includes('9527'), 'Opening Piik must reveal the sample room before the next step');
+      assert(doc.querySelector('.lr-room') && !doc.querySelector('.lr-room-chip'), 'Opening Piik must show the ready page before a room has been created');
+      await at('share',3*BEAT,lang);
+      const tabs = [...doc.querySelectorAll('[role="tab"]')];
+      assert(tabs.length === 4 && tabs.every(tab => !tab.disabled), 'The App source picker must offer browser, camera, window and screen sources');
+      assert(tabs[0].textContent.trim() === (lang === 'en' ? 'Browser' : '浏览器'), 'The first tab must use the shared Browser label');
+      await at('share',6*BEAT,lang);
+      const hostControls = doc.querySelector('.lr-host-share-controls');
+      assert(hostControls && hostControls.querySelectorAll('button').length === 5 &&
+        hostControls.getBoundingClientRect().bottom <= 740 && doc.querySelector('.lr-room-chip'),
+        'The live host shot must expose the current microphone, pause, source, settings and stop controls');
       await at('invite',4.5*BEAT,lang);
       assert(doc.querySelector('#chat-draft').value.includes('/r/9527') && doc.querySelector('.film-chat'), 'The invite must be pasted into an external chat example');
       await at('invite',7*BEAT,lang);
@@ -324,6 +333,9 @@
       const beforeViewer = await at('invite',8*BEAT-1/60,lang);
       const afterViewer = await at('invite',8*BEAT+1/60,lang);
       assert(Math.abs(beforeViewer.pan-afterViewer.pan)<2, 'The camera must return smoothly before the viewer joins');
+      assert(doc.querySelector('.lr-playback') && doc.querySelector('.lr-room-interactions') &&
+        doc.querySelector('.lr-deck').getBoundingClientRect().bottom <= 740,
+        'The viewer wide shot must include current playback, room interactions and the room code');
       for (const [scene,beat,selector] of [
         ['desktop',2.5,'#desktop-app'],
         ['launch',1.5,'[role="radio"]'], ['launch',4,'button[type="submit"]'],

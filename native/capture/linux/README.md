@@ -20,11 +20,17 @@ sh native/capture/linux/build.sh /outside/repository/build
 ```
 
 Run `npm run check:native` on Linux to compile the sidecar, run the headless
-output-profile and retirement regression, and validate its probe/source list.
+output-profile, segment-timestamp and retirement regressions, and validate its probe/source list.
 The same check runs when the Linux CI job packages an App candidate. For the
 native build and regression alone, add `--check` to the command above. The test
 uses GStreamer's core synthetic elements and needs no display, Portal session,
 capture device or hardware encoder; physical capture remains a separate check.
+
+Input ticks, output activation and encoded frames use GStreamer running time,
+not raw buffer timestamps: encoders may offset PTS and the segment together.
+Keyframe events retain raw PTS for their timestamp field and normalized running
+time for their running-time field. The Portal stream uses the pipeline clock so
+unchanged content does not stop output keepalives.
 
 Each output bin contains its downstream flow failures before they reach the
 shared tee. The main-context bus handler reports that output as unavailable and

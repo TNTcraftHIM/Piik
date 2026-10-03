@@ -63,6 +63,35 @@ may appear only after the first grant; refresh and device-change events update
 the list. A missing selected device stays visible as unavailable.
 Switching an active microphone prepares the new input before retiring the old
 one; failure leaves the old input running. The mixed output stays unchanged.
+Browser voice-processing selection follows that same input-replacement operation.
+It lasts for the Host page lifetime and defaults on. When off, capture requests
+no echo cancellation, noise suppression, automatic gain or voice isolation,
+and prefers stereo; actual support remains Browser/device-owned. Muted changes
+do not request capture, and source replacement retains the selected processing.
+Native capture does not run Browser processing or expose its switch; platform
+audio effects remain system/device-owned.
+
+Camera and audio inputs are separate devices, even when a webcam includes a
+microphone. Camera capture never guesses an audio pairing. OBS Virtual Camera
+supplies video; its audio may be routed through a separately selected virtual
+audio input using the ordinary microphone control. This uses the existing
+mixer and routes. End-to-end OBS sound quality and A/V synchronization remain
+unverified device coverage.
+
+OBS's [Windows virtual-camera output](https://github.com/obsproject/obs-studio/blob/a1fbf1015f4079b79dc9ef4f6abecf67920e93cf/plugins/win-dshow/virtualcam.c)
+uses `raw_video` and writes raw NV12 frames, not an encoded H.264 stream. Virtual
+camera alone therefore does not require an OBS encode/decode round trip before
+Piik's encoder. Source decoding, composition, pixel conversion and copies may
+still cost resources. Do not promise a zero-copy path or describe every virtual
+camera setup as double encoding.
+
+Direct OBS ingestion is not currently implemented. OBS's
+[WHIP output](https://obsproject.com/kb/whip-streaming-guide) would be the relevant
+standard to evaluate if a measured virtual-camera bottleneck justified another
+input. It would still need an explicit publication/admission lifecycle and
+integration with Piik's existing media owner; an RTMP listener alone would not
+provide that. Keep this outside the current microphone/camera change.
+
 Camera selection belongs in the existing Camera tab and uses the same named
 thumbnail cards as window/display selection. Entering the
 Camera tab may request camera permission for local previews; it never requests
@@ -106,6 +135,10 @@ establish actual iOS/Android permission, orientation, background or audio behavi
   produces a single audio track from the audio graph.
 - [Media Capture and Streams](https://www.w3.org/TR/mediacapture-streams/)
   owns microphone permissions, device lifetime and echo-cancellation constraints.
+- [Media device grouping](https://developer.mozilla.org/en-US/docs/Web/API/MediaDeviceInfo/groupId)
+  identifies separate camera/microphone inputs belonging to one physical device.
+- [OBS audio routing](https://obsproject.com/kb/video-call-streaming-tutorial/)
+  describes sending an OBS mix through a virtual audio input.
 - [Camera capture](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
   and [screen capture](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
   have separate permissions, capabilities and secure-context requirements.

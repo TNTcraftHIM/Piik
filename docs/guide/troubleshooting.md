@@ -12,12 +12,15 @@ collect a diagnostic report if the problem persists.
 | Picture but no source sound | Unmute the video. The host should choose a source with shareable audio and enable sound in the source picker. |
 | Cannot hear the host's voice | The host can enable **Microphone** below the picture, then check the selected input and its volume in **Sharing settings → Sound**. Check the device connection and microphone permission. If the control is unavailable, update the App and refresh the page. |
 | No screen picker | Allow the browser or App to record the screen when the OS asks. Browser capture needs HTTPS or `localhost`; try sharing from a desktop computer. |
-| No App windows or screens listed | Check the message in the source picker, then follow [App source troubleshooting](#app-windows-or-screens-are-missing). **Browser** → **Browser picker** also offers browser capture. |
+| No App windows or screens listed | Check the message in the source picker, then follow [App source troubleshooting](#app-windows-or-screens-are-missing). **Browser** → **Choose what to share** opens the browser's screen, window or tab chooser. |
+| H264 fails to start, or sharing stops just after source selection | Try **Auto** or **VP8**, then follow [Windows H264 and graphics checks](#h264-sharing-fails-on-windows). |
 | Yellow outline around the shared window or screen | This is Windows' capture indicator. See [capture borders](#yellow-capture-border-on-windows) for Windows 11 controls and an optional Windows 10 workaround. |
 | App startup fails | Read the reason on the page and in the terminal. Reopen the App and enable the chip-shaped **Debug launch** control after the theme button before trying again. A failed startup then exports a report; its path appears in the terminal. |
 | Local invitation will not open | Check that both devices are on the same network and can reach each other. Guest Wi-Fi or firewall rules can block local access. |
 | Cannot create a room (403) | On a self-hosted site, ask the administrator to check the [allowed site address](#room-creation-returns-403). |
 | Page opens but video will not connect | Use **Reconnect** if available, or refresh the viewing page. See [connection troubleshooting](#when-video-will-not-connect) if it still fails. |
+| WebRTC or IP-leak protection is enabled | Check whether it blocks media connections using [browser WebRTC settings](#browser-webrtc-restrictions). |
+| Connection fails on a campus or restricted network | Compare with a phone hotspot, then consider a [site with SFU forwarding](#campus-networks-and-strict-nat). |
 | Sharing stops after sleep or suspension | Wake the device and return to the sharing tab; start sharing again if needed. Browser and OS suspension can interrupt capture or playback. |
 
 For a bug report, include the version, OS/browser, what you expected, and how
@@ -63,6 +66,33 @@ The source picker distinguishes these outcomes:
 Local-network permission lets the page contact the App. It is separate from
 the WebRTC media settings described below. An unreachable App alone does not
 prove that permission was denied.
+
+## H264 sharing fails on Windows
+
+If selecting a window or screen returns you to the start screen, or reports a
+sharing failure, it may involve capture, encoding or the Browser-to-App media
+connection. The message alone does not identify a graphics-driver problem.
+
+1. **Compare codecs on the same source.** In **Sharing settings**, change the
+   video codec from **H264** to **Auto** or **VP8**, then start sharing again.
+   If VP8 works, you can keep using it while checking the H264 path.
+2. **Update and restart.** Update Piik App and Chrome, and install the appropriate
+   graphics driver from your computer or GPU manufacturer's official support
+   page. On laptops with two GPUs, check both drivers. Restart after installation.
+3. **For Chrome, check graphics acceleration and GPU preference.** In Chrome's
+   **Settings → System**, enable graphics acceleration if it was disabled, then
+   restart Chrome ([Google's setting instructions](https://support.google.com/meet/answer/10058482?hl=en)).
+   On a multi-GPU Windows PC, open **Settings → System → Display → Graphics**,
+   select or add Chrome (`chrome.exe`), and choose **Options → High performance → Save**.
+   Completely quit and reopen Chrome before retrying. If it does not help, restore
+   **Let Windows decide** ([Microsoft's graphics settings](https://support.microsoft.com/en-us/windows/hardware/display-graphics/optimizations-for-windowed-games-in-windows-11)).
+
+The Windows preference is a browser-side check, not a guarantee of H264 support.
+Piik App selects its native encoder separately; changing Chrome's GPU preference
+does not select the App's capture GPU. If App capture still fails, keep the codec
+comparison and export the App and browser reports for the same attempt. Include
+your GPU model, driver version, source type and whether VP8 works. If both codecs
+fail, also check [WebRTC restrictions](#browser-webrtc-restrictions).
 
 ## Yellow capture border on Windows
 
@@ -125,13 +155,9 @@ Try these in order, stopping when the picture arrives:
    disabled or does not help, refresh the viewing page or reopen the invitation.
    Let each connection attempt finish. One or two fresh attempts can be worth
    trying; repeated refreshes cannot remove a network restriction.
-2. **Check WebRTC settings in the viewing browser.** A browser setting or VPN/privacy
-   extension that disables WebRTC or non-proxied UDP can prevent viewing, even
-   while the page loads. Merely hiding local IP addresses does not necessarily
-   block WebRTC. Try the same invitation in a browser profile without those
-   extensions, or review the specific WebRTC setting, then reload Piik.
-   See [browser connection settings](../../cmd/piik-app/README.md#chromium-webrtc-connections)
-   for examples and the privacy tradeoff; keep unrelated protections enabled.
+2. **Check browser WebRTC settings.** Browser settings or VPN/privacy extensions
+   can block media even while the page loads. This affects both sharing and viewing;
+   follow [browser WebRTC checks](#browser-webrtc-restrictions) below.
 3. **Try another network.** For example, test a phone hotspot. If you use a VPN
    or proxy, check its UDP policy; ask the administrator on a managed network.
 4. **Enable usable IPv6.** Check that your provider, router and device support it.
@@ -165,6 +191,43 @@ explains discovery and connection checks in more technical detail.
 If these steps do not help, collect a [Debug report](../../cmd/piik-app/README.md#diagnostics)
 from the affected Viewer and, if possible, the Host for the same attempt. Include
 the time, Piik version and network type when reporting the problem.
+
+### Browser WebRTC restrictions
+
+WebRTC carries Piik's picture and sound. Disabling it or blocking non-proxied UDP
+can prevent viewing and even the local Browser-to-App media connection. Successful
+source selection does not prove that connection works. Hiding local IP addresses
+alone does not necessarily block WebRTC.
+
+1. Open the same invitation in a browser profile with default settings and no
+   VPN/privacy extensions. If that works, check the original profile's WebRTC or
+   IP-leak protection settings.
+2. Restore a policy that allows WebRTC UDP. A policy named `disable_non_proxied_udp`
+   is restrictive; the browser default is a useful comparison. Vivaldi exposes
+   **Settings → Privacy and Security → WebRTC IP Handling → Broadcast IP for Best WebRTC Performance**.
+   Chrome extensions can control this policy even without a visible browser switch.
+3. Reload the affected Piik page and retry. If a school or company manages the
+   setting, ask its administrator to review it.
+
+Allowing these connections can expose network addresses to WebRTC peers; change
+only the relevant setting. See [Chrome's policy reference](https://developer.chrome.com/docs/extensions/reference/api/privacy#property-network)
+and [Vivaldi's privacy settings](https://help.vivaldi.com/desktop/privacy/privacy-settings/).
+
+### Campus networks and strict NAT
+
+A campus network can work with Piik, but a shared Internet gateway or restrictive
+firewall may make direct connections harder. Try a phone hotspot first: if the
+same invitation works there, focus on the original network's restrictions.
+
+For regular use, consider **self-hosting a Piik site with SFU media forwarding**.
+This gives viewers a server path when direct connections fail. Follow the
+[deployment guide](../operations/self-hosting.md#optional-media-fallback), including
+its public-address and UDP-port requirements. The Host can then open that site
+through the App's **Site** mode and send invitations from the new site.
+
+The public demo and App Public invite mode remain P2P-only. SFU also requires
+usable UDP: when the network blocks UDP entirely, use another network or ask the
+administrator for access. Deploying a server alone does not remove that restriction.
 
 Ready to host a site for your group? Follow [self-hosting](../operations/self-hosting.md).
 For other guides, return to [the documentation home](./README.md).

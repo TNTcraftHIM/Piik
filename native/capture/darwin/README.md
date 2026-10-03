@@ -9,7 +9,8 @@ audio is converted to stereo PCM16 for the existing Go Opus boundary. The Go
 session applies live profile changes by replacing that capture generation behind
 the same Pion source.
 
-Build on Apple Silicon macOS 13 or newer:
+Build on Apple silicon or Intel macOS 13 or newer; the helper uses the build
+machine's architecture:
 
 ```sh
 sh native/capture/darwin/build.sh /outside/repository/build

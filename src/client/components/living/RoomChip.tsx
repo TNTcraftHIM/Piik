@@ -7,6 +7,30 @@ import { copyRoomCode } from "../room-code";
 import { Btn, Pill } from "./primitives";
 import { Tooltip } from "./Tooltip";
 
+function LcdDigits({ code }: { code: string }) {
+  return (
+    <span className="lr-lcd-roll" aria-hidden="true">
+      {[...code].map((digit, index) => (
+        <span key={`${code}-${index}`} style={{ animationDelay: `${index * 45}ms` }}>
+          {digit}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export function RoomCodePlaceholder() {
+  const { t } = useCopy();
+  return (
+    <span className="lr-lcd is-empty" role="img" aria-label={t("host.roomCodePending")}>
+      <LcdDigits code="----" />
+      <span className="lr-lcd-copy-placeholder" aria-hidden="true">
+        <Glyph name="copy" size={16} />
+      </span>
+    </span>
+  );
+}
+
 export function Lcd({ code }: { code: string }) {
   const { t, vis } = useCopy();
   const [copyResult, setCopyResult] = useState<{
@@ -82,13 +106,7 @@ export function Lcd({ code }: { code: string }) {
       role="group"
       aria-label={`${t("common.roomCode")} ${code}`}
     >
-      <span className="lr-lcd-roll" aria-hidden="true">
-        {[...code].map((digit, index) => (
-          <span key={`${code}-${index}`} style={{ animationDelay: `${index * 45}ms` }}>
-            {digit}
-          </span>
-        ))}
-      </span>
+      <LcdDigits code={code} />
       <Tooltip kind={copyState === "failed" ? "copy-failed" : "hint-copy-code"}
         tone={copyState === "copied" ? "live" : copyState === "failed" ? "bad" : "off"}
         motion={copyState === "idle" ? "demo" : "still"}

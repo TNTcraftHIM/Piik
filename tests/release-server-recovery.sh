@@ -18,6 +18,27 @@ if grep -q '^cleanup_release() {' "$release_script"; then
 fi
 eval "$(extract_function wait_for_health)"
 eval "$(extract_function recover)"
+eval "$(extract_function validate_artifact_names)"
+
+# Reject the other architecture before any deployment state is touched.
+(
+  release_id='abcdef0'
+  uname() { printf '%s\n' "$architecture"; }
+  for architecture in x86_64 aarch64 arm64; do
+    for suffix in '' '-linux-arm64'; do
+      artifact_name="piik-${release_id}${suffix}-runtime.tar.gz"
+      manifest_name="piik-${release_id}${suffix}.manifest.tsv"
+      if { [ "$architecture" = x86_64 ] && [ -z "$suffix" ]; } ||
+          { [ "$architecture" != x86_64 ] && [ -n "$suffix" ]; }; then
+        validate_artifact_names
+      elif validate_artifact_names; then
+        printf 'accepted the wrong Server architecture\n' >&2; exit 1
+      fi
+    done
+  done
+  architecture='riscv64'
+  if validate_artifact_names; then exit 1; fi
+)
 
 test_root="$(mktemp -d)"
 trap 'rm -rf --one-file-system -- "$test_root"' EXIT

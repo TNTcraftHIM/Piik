@@ -1,6 +1,6 @@
 # Native App Media Evidence
 
-- Reviewed: 2026-10-01
+- Reviewed: 2026-10-03
 - Scope: platform capture, shared encoded sources, Pion transport and Browser
   decode; current behavior belongs to [media quality](../standards/media-quality.md)
 - Status: Windows physical native Host and Viewer gates passed; macOS and Linux adapters
@@ -141,12 +141,54 @@ shutdown cannot be preempted by that deadline. Slow-output rejection has fixture
 coverage; native AMD/Intel physical acceptance and game-load behavior remain
 open. This evidence does not establish the cause of reported system-wide lag.
 
-The Windows Browser gate now also keeps two native PeerConnections alive while
-the source changes from 720p30 to 1440p60, then changes to 480p15 while paused
-and resumes both Viewers. It proves the same Pion source survives two hardware
-capture/encoder generations; direct capture probes also produced every current
-resolution/FPS extreme, and the same route survives an explicit native source
-switch. The result does not yet prove macOS/Linux physical capture or endurance.
+The `input-texture-create / 0x887a0005` report identifies a lost D3D device during
+candidate preparation, not a failed room route or proof that every candidate
+failed. Following Microsoft's [device-loss guidance](https://learn.microsoft.com/en-us/windows/uwp/gaming/handling-device-lost-scenarios),
+capture preserves the original stage/HRESULT and queries `GetDeviceRemovedReason`
+before releasing that candidate's device. Each later candidate and Auto's VP8
+fallback owns a fresh device; a live encoder does not silently change codec.
+A 2026-10-03 local check exercised all five enumerated adapter entries, including
+15 successful NVIDIA activation/encode/shutdown cycles on reused devices.
+AMD activation returned `0x8007000e` with a healthy D3D device. A standalone
+`MFTEnum2 -> ActivateObject` probe reproduced that failure for both AMD entries
+without Piik, a D3D device or codec configuration, while NVIDIA entries activated.
+This isolates the local activation failure to the platform/MFT path; it does not
+identify the reporter's AMD failure. Production Auto and manual H264 both moved
+from that preferred AMD candidate to working NVIDIA
+H264 (about 1.95 s and 0.32 s). This did not
+reproduce the reporter's device removal. No driver reset was forced, and the
+optional D3D debug layer was unavailable. The reporter's removal reason,
+subsequent candidates and final outcome remain necessary to assign its cause.
+
+A deeper check on the same machine passed 600 synthetic NV12 allocations
+across those adapter entries and all five resolutions. Forty activation/retirement
+cycles included cancellation and shutdown with an input still in flight; the
+device remained healthy. Five selections, including AMD rejection, also
+succeeded while another process continued H264 encoding.
+The reported stage creates probe textures before actual WGC capture; Auto's
+cadence textures are prepared before MFT activation. These results narrow the
+tested mechanisms but do not cover the failing device, driver reset or exhaustion.
+
+Repeated NVIDIA MFT activation retained about two process handles per cycle.
+A standalone 40-cycle program reproduced this without Piik or a D3D device:
+`MFTEnum2 -> ActivateObject -> ShutdownObject -> Release`, with both COM reference
+counts reaching zero. Fresh activation objects, direct `MFShutdownObject`, and
+waiting five seconds after `MFShutdown` did not remove the incremental growth.
+This isolates a local platform/MFT resource behavior, not a proven cause of
+device loss. Retain capture-process ownership of driver resources; do not add
+unowned `Release` calls or infer a GPU-recovery policy from this observation.
+
+The same investigation found a separate MFT input-contract defect: a populated
+720p NV12 surface reported a maximum length of 1,382,400 bytes but current/sample
+length zero. The shared surface wrapper now sets the valid length from the
+platform's capacity; the hardware fixture uses that same wrapper. This follows
+Microsoft's [media-buffer contract](https://learn.microsoft.com/en-us/windows/win32/medfound/working-with-media-buffers)
+and [Chromium's MFT input handling](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc),
+which explicitly accommodates encoders that honor this length. The regression
+failed before the fix and passes with a WARP surface, without an installed
+hardware encoder. This removes reliance on vendor tolerance; the reported
+texture-creation error precedes this wrapper, so it is not that error's cause.
+
 Native Host media is exposed only through an explicit App-launched Host
 selection; an ordinary Web Host retains Browser capture.
 
@@ -333,6 +375,96 @@ inspect the resulting bitstream and retain reference/decoded pictures. Raising
 the bitrate ceiling, lowering the default frame rate or changing profile is not
 justified by these logs alone; those changes have bandwidth, motion and receiver
 compatibility consequences.
+
+### Profile And Parameter Comparison
+
+Measured 2026-10-03 on Windows 11 26200, RTX 4070 SUPER, driver 32.0.16.1088,
+using the production Media Foundation owner with profile-only research changes.
+Each comparison reused identical FFmpeg `testsrc2` NV12 frames, unchanged CBR,
+low-latency mode, two-second GOP and quality/speed 50. Runs covered six seconds
+at 720p30 and four seconds at 1080p60. FFmpeg decoded the retained Annex-B output;
+PSNR/SSIM comparisons aligned frames by index and checked all output frame types.
+These are synthetic codec comparisons, not a reproduction of the reported game.
+
+| Source / requested bitrate | Baseline: actual Mbps / PSNR dB | Main: actual Mbps / PSNR dB | High: actual Mbps / PSNR dB |
+| --- | --- | --- | --- |
+| 720p30 / 3 Mbps | 3.078 / 43.17 | 3.030 / 44.02 | 3.056 / 44.05 |
+| 720p30 / 11 Mbps | 10.603 / 60.66 | 10.219 / 61.81 | 10.220 / 61.74 |
+| 1080p60 / 10 Mbps | 10.104 / 42.53 | 10.046 / 43.28 | 10.167 / 43.20 |
+
+All streams retained order and had zero B frames. Main/High PPS enabled CABAC;
+explicitly requesting CABAC produced byte-identical output to the corresponding
+profile's default. Baseline PPS correctly disabled CABAC even though the NVIDIA
+property readback returned true: property readback alone is not bitstream proof.
+Median encode time was about 2–3 ms in these paced runs. Quality/speed 100 did not
+consistently improve PSNR, so it does not justify replacing the current preference
+mapping. A one-frame CBR buffer reduced 720p30 actual output to 2.319 Mbps and
+41.08 dB; four frames produced 3.003 Mbps and 43.08 dB. Neither improved on the
+default. The experiment does not establish end-to-end latency.
+
+The [Marpe/Wiegand/Sullivan paper](https://doi.org/10.1109/MCOM.2006.1678121)
+establishes benefits of CABAC and High-profile tools, but its reference-encoder
+comparison used B pictures and several references, not this low-latency MFT.
+[NVIDIA's low-latency guidance](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.1/nvenc-video-encoder-api-prog-guide/index.html#low-latency-encoding)
+supports CBR but requires evaluating buffer/quality tradeoffs; its native SDK
+presets cannot be assumed to map directly to vendor Media Foundation properties.
+
+### WebRTC Profile Compatibility
+
+Checked 2026-10-03. File decoding support, WebRTC negotiation and Piik's forwarded
+bitstream contract are separate capabilities. A higher profile must satisfy all
+three, including downstream relays; hardware support alone is insufficient.
+
+| Platform | Evidence and boundary |
+| --- | --- |
+| Windows Chrome / Edge 154 | Local sender/receiver capabilities advertise Main and High as well as Baseline. This does not establish other devices' hardware support. |
+| Firefox 155 on Windows | An isolated profile with checksum-verified official OpenH264 2.6.0 advertised only Baseline variants. Real Chrome-to-Firefox negotiation decoded 65 Constrained Baseline frames in a 2.2-second observation; Main-only and High-only offers were rejected (`m=video 0`), before media transport. |
+| Safari / iOS / macOS | Current [WebKit codec factories](https://github.com/WebKit/WebKit/blob/main/Source/ThirdParty/libwebrtc/Source/webrtc/webkit_sdk/objc/components/video_codec/RTCDefaultVideoDecoderFactory.m) list Constrained High and Constrained Baseline. Constrained High (`640c`) is a distinct negotiated subset from ordinary High (`6400`). Source review does not replace physical Safari acceptance. |
+| Android Chrome and other Chromium platforms | The [WebRTC decoder factory](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/platform/peerconnection/rtc_video_decoder_factory.cc) consults platform decoder capabilities. Android additionally [checks profile, level and dimensions](https://github.com/chromium/chromium/blob/main/media/gpu/android/media_codec_video_decoder.cc). No universal device guarantee or phone acceptance is established here. |
+| Piik App on Windows / macOS / Linux | Capture and encoded fanout retain Constrained Baseline. Changing only an encoder setting would leave admission and downstream declarations inconsistent. |
+
+The earlier Firefox probe without GMP was inconclusive; the installed-plugin
+check above supersedes it. [Firefox's current JSEP defaults](https://github.com/mozilla-firefox/firefox/blob/main/dom/media/webrtc/jsep/JsepCodecDescription.h)
+agree with the measured negotiation. Do not infer decoder limits from OpenH264's
+short README: its [release history](https://github.com/cisco/openh264/blob/master/RELEASES)
+records Main/High decoding, which does not change Firefox's advertised profiles.
+The historical [Mozilla interoperability report](https://bugzilla.mozilla.org/show_bug.cgi?id=1411681)
+also distinguishes a decodable bitstream from a profile incorrectly labeled as
+Baseline; it is context, not proof of a current regression.
+
+[RFC 7742](https://www.rfc-editor.org/rfc/rfc7742.html#section-6.2) requires
+Constrained Baseline and recommends Constrained High. Native Main/High adoption
+is declined: the measured synthetic gain does not justify coordinating profile
+fallback across the shared encoded source. Retain the current Constrained
+Baseline, CBR and GOP, without a profile selector or additional transcodes.
+Browser-owned encoders keep ordinary negotiation among their supported profiles;
+the Main-only/High-only rejection above does not rule out a preference list with
+Baseline alternatives. The original field quality cause remains unproven.
+
+One independent compatibility defect was confirmed: capture admission compared
+against `42c0` literally, rejecting equivalent Constrained Baseline SPS such as
+`42e0`. Windows validation and the shared Go capture-state reader now follow
+[RFC 6184 Table 5](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.1), retaining
+the existing level bounds and rejecting actual Main/High. Windows active status
+reads the emitted SPS instead of synthesizing a vendor-specific value. This is
+not a profile upgrade or an explanation for `DXGI_ERROR_DEVICE_REMOVED`.
+
+The same review reproduced a separate Native receive/fanout defect. Pion 4.2.19
+can fall back to MIME-only matching when profile bytes differ. A Safari-order
+offer (`640c1f`, then `42e01f`) selected High, while the unchanged downstream source
+still declared Constrained Baseline; `42e01f` plus VP8 selected VP8 unexpectedly.
+Native SDP now uses the common `42e0` spelling, and the receive owner validates
+the supported coding subset, level and packetization before accepting or reusing
+a source. Capture and receive admission share the RFC profile predicate. This
+repairs the encoded-source contract without changing routing or adding encoding
+paths; it is not evidence for the reported D3D device loss.
+
+Firefox-generated SDP also reproduced audio omission for a valid `bundle-only`
+section with port zero. The receiver had treated every zero port as rejection;
+it now follows [RFC 9143](https://www.rfc-editor.org/rfc/rfc9143.html#section-6),
+retaining the existing inactive/receive-only checks. Piik's current balanced
+Browser offer did not trigger this variant; the max-bundle control did. This is
+a corrected SDP interpretation, not evidence that all Firefox sharing lost audio.
 
 ## Implementation Boundary
 

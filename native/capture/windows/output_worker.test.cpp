@@ -63,7 +63,7 @@ void CheckWorkerFailureGeneration(ID3D11Device* device, bool replace) {
   OutputWorker worker(0, VideoProfile{}, OutputKind::h264, device, writer,
       [&](const VideoProfile&) -> std::unique_ptr<VideoEncoder> {
         return std::make_unique<FixtureEncoder>(created++ == 0 ? &entered : nullptr, released);
-      }, nullptr, true, [&] { output.set_value(); },
+      }, nullptr, true, [&](const EncodedAccessUnit&) { output.set_value(); },
       [&](std::exception_ptr error) {
         try { std::rethrow_exception(error); }
         catch (const GateFailure& actual) { assert(actual.result() == E_FAIL); }
@@ -115,19 +115,52 @@ void CheckPrimaryFailureDetails() {
   assert(rejected);
 }
 
+void CheckH264ProfileCompatibility() {
+  const VideoProfile profile;
+  for (const auto* value : {"42c01f", "42e01f", "42E01F", "4d801f", "58c01f"})
+    assert(profile.accepts_h264_profile_level_id(value));
+  for (const auto* value : {"42001f", "4d001f", "64001f", "42e11f", "42e01", "42e01fg",
+                           "42e0gg", "42e034", "42e01e", " 42c01"})
+    assert(!profile.accepts_h264_profile_level_id(value));
+
+  HANDLE read = nullptr, write = nullptr;
+  assert(CreatePipe(&read, &write, nullptr, 4096));
+  ProtocolWriter writer(write);
+  ProductArguments arguments;
+  arguments.outputs = {profile};
+  EncodedAccessUnit output{0, true, {0, 0, 0, 1, 0x67, 0x42, 0xe0, 0x1f}};
+  WriteVideoActive(writer, arguments, true, output);
+  std::array<char, 4096> bytes{};
+  DWORD count = 0;
+  assert(ReadFile(read, bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr));
+  const std::string status(bytes.data(), count);
+  assert(status.find("\"profileLevelId\":\"42e01f\"") != std::string::npos);
+  assert(status.find("42c01f") == std::string::npos);
+  CloseHandle(write);
+  CloseHandle(read);
+}
+
 void CheckEncoderCandidates() {
   const std::vector<EncoderCandidate> candidates{{0, 0}, {1, 0}, {1, 1}, {2, 0}};
   const EncoderCandidate preferred{1, 0};
   std::vector<EncoderCandidate> tried;
   const auto deadline = EncoderClock::now() + std::chrono::seconds(1);
+  std::ostringstream diagnostic;
+  auto previous = std::cerr.rdbuf(diagnostic.rdbuf());
   const auto chosen = SelectEncoderCandidate(candidates, preferred, deadline,
       [&](EncoderCandidate candidate) {
         tried.push_back(candidate);
+        if (candidate == preferred)
+          throw GateFailure("input-texture-create", "fixture device loss", DXGI_ERROR_DEVICE_REMOVED);
         if (candidate != EncoderCandidate{1, 1})
           throw GateFailure("fixture-activation", "candidate is not usable", E_FAIL);
       });
+  std::cerr.rdbuf(previous);
   assert((chosen == EncoderCandidate{1, 1}));
   assert((tried == std::vector<EncoderCandidate>{{1, 0}, {0, 0}, {1, 1}}));
+  assert(diagnostic.str().find("stage=input-texture-create") != std::string::npos);
+  assert(diagnostic.str().find("fixture device loss") != std::string::npos);
+  assert(diagnostic.str().find("hresult=0x887a0005") != std::string::npos);
   tried.clear();
   try {
     SelectEncoderCandidate(candidates, chosen, deadline, [&](EncoderCandidate candidate) {
@@ -202,12 +235,70 @@ void CheckAutoCadenceProbe(ID3D11Device* device) {
   assert(expired);
 }
 
+void CheckOutputSampleAlignment() {
+  Runtime runtime;
+  for (DWORD alignment : {0u, 1u, 16u, 64u, 512u}) {
+    MFT_OUTPUT_STREAM_INFO info{};
+    info.cbSize = 4096;
+    info.cbAlignment = alignment;
+    auto sample = CreateCallerOutputSample(info);
+    ComPtr<IMFMediaBuffer> buffer;
+    Check(sample->GetBufferByIndex(0, &buffer), "fixture-output-buffer");
+    BYTE* data = nullptr;
+    DWORD maximum = 0;
+    Check(buffer->Lock(&data, &maximum, nullptr), "fixture-output-lock");
+    const auto address = reinterpret_cast<uintptr_t>(data);
+    Check(buffer->Unlock(), "fixture-output-unlock");
+    assert(maximum >= info.cbSize);
+    assert(alignment == 0 || address % alignment == 0);
+  }
+}
+
+void CheckSurfaceSample(ID3D11Device* device) {
+  Runtime runtime;
+  const VideoProfile profile{64, 64, 30, 3'000'000};
+  auto texture = CreateSyntheticTexture(device, 0, profile);
+  auto sample = CreateSurfaceSample(texture.Get(), 1'000'000, 333'333);
+  ComPtr<IMFMediaBuffer> buffer;
+  Check(sample->GetBufferByIndex(0, &buffer), "fixture-sample-buffer");
+  DWORD current = 0, maximum = 0, total = 0;
+  Check(buffer->GetCurrentLength(&current), "fixture-buffer-length");
+  Check(buffer->GetMaxLength(&maximum), "fixture-buffer-capacity");
+  Check(sample->GetTotalLength(&total), "fixture-sample-length");
+  assert(current == profile.width * profile.height * 3 / 2);
+  assert(total == current && maximum == current);
+  ComPtr<IMFDXGIBuffer> surface;
+  Check(buffer.As(&surface), "fixture-surface-buffer");
+  ComPtr<ID3D11Texture2D> retained;
+  Check(surface->GetResource(IID_PPV_ARGS(&retained)), "fixture-surface-resource");
+  assert(retained.Get() == texture.Get());
+  LONGLONG time = 0, duration = 0;
+  Check(sample->GetSampleTime(&time), "fixture-sample-time");
+  Check(sample->GetSampleDuration(&duration), "fixture-sample-duration");
+  assert(time == 1'000'000 && duration == 333'333);
+}
+
 int main() {
+  VideoProfile profile{2560, 1440, 60, 12'000'000};
+  ValidateVideoProfile(profile);
+  assert(profile.h264_level() == 51 && profile.profile_level_id() == "42c033");
+  profile = VideoProfile{1920, 1080, 60, 8'000'000};
+  assert(profile.h264_level() == 42);
+  profile = VideoProfile{3840, 2160, 30, 12'000'000};
+  try {
+    ValidateVideoProfile(profile);
+    assert(false);
+  } catch (const GateFailure& error) {
+    assert(error.stage() == "argument-profile");
+  }
   CheckEncoderCandidates();
+  CheckH264ProfileCompatibility();
   CheckPrimaryFailureDetails();
+  CheckOutputSampleAlignment();
   ComPtr<ID3D11Device> device;
   Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,
                          D3D11_SDK_VERSION, &device, nullptr, nullptr), "fixture-warp");
+  CheckSurfaceSample(device.Get());
   CheckAutoCadenceProbe(device.Get());
   CheckWorkerFailureGeneration(device.Get(), false);
   CheckWorkerFailureGeneration(device.Get(), true);

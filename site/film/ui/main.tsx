@@ -1,6 +1,6 @@
 // Staged data, real product components. This sandbox never starts a room,
 // requests capture permission, or connects to an API/signaling service.
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import {
@@ -13,18 +13,26 @@ import {
   StaticNoise,
 } from "../../../src/client/components/living/Stage";
 import { CaptureSourcePicker } from "../../../src/client/components/living/CaptureSourcePicker";
-import { Couch } from "../../../src/client/components/living/Couch";
+import { RoomInteractions } from "../../../src/client/components/living/RoomInteractions";
+import { RoomInteractionSession } from "../../../src/client/lib/room-interactions";
+import { RoomChatToggle } from "../../../src/client/components/living/RoomChatOverlay";
+import { HostMicrophone } from "../../../src/client/components/living/HostMicrophone";
+import { PlaybackControlsView } from "../../../src/client/components/living/PlaybackControls";
 import { StatusIndicator } from "../../../src/client/components/living/StatusIndicator";
-import { RoomChip } from "../../../src/client/components/living/RoomChip";
+import { Lcd, RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../../../src/client/components/living/RoomChip";
+import { Tooltip } from "../../../src/client/components/living/Tooltip";
 import {
   Btn,
   Row,
   RowGroup,
   NameTag,
   FieldCap,
+  Cap,
+  SwitchItem,
 } from "../../../src/client/components/living/primitives";
 import { Glyph } from "../../../src/client/ui/icons";
 import { setCopy, useCopy } from "../../../src/client/ui/copy";
+import { initTheme } from "../../../src/client/ui/theme";
 import { deriveHostStatus, deriveParticipantStatus, deriveViewerStatus } from "../../../src/client/ui/media-status";
 import {
   deriveViewerPresentation,
@@ -49,6 +57,26 @@ const guests = [
   "7e3c8491-04c9-44b0-a233-b2f4d894058b",
   "c8f606ea-0e95-40d6-9018-436bedbdc742",
 ];
+const cast = (zh: boolean) => ({
+  name: zh ? "摸鱼办主任" : "ThisIsFine",
+  names: zh ? ["派大星", "大聪明", "咸鱼突刺"] : ["Leeroy", "Kenobi", "NotABot"],
+});
+
+function sampleInteractions(zh: boolean, viewer: boolean) {
+  const session = new RoomInteractionSession(() => true, () => 0);
+  const { name, names } = cast(zh);
+  session.authenticated(viewer ? guests[0] : host);
+  session.receive({ type: "room-interactions-ready", serverTime: 0 });
+  if (!viewer) return session;
+  [
+    { peerId: host, role: "host" as const, displayName: name, text: zh ? "来，看点好康的。" : "Come on in." },
+    { peerId: guests[0], role: "viewer" as const, displayName: names[0], text: zh ? "前排就位。" : "Front row, reporting in." },
+  ].forEach(({ text, ...sender }, index) => session.receive({
+    type: "room-interaction", id: `sample-${index}`, requestId: `sample-${index}`,
+    occurredAt: 0, sender, payload: { kind: "chat", text },
+  }));
+  return session;
+}
 const status = deriveParticipantStatus(
   { mediaReady: true, upstream: { kind: "peer", peerId: host } },
   true,
@@ -133,6 +161,9 @@ function Chat({shot}: {shot: Shot}) {
 
 function Screen({ shot }: { shot: Shot }) {
   const { t, lang } = useCopy();
+  const viewer = shot === "viewer";
+  const session = useMemo(() => sampleInteractions(lang === "zh", viewer), [lang, viewer]);
+  useEffect(() => () => session.close(), [session]);
   if (shot === "desktop") return (
     <main className="desktop">
       <div className="desktop-folder">
@@ -154,12 +185,10 @@ function Screen({ shot }: { shot: Shot }) {
   const hostStatus = deriveHostStatus({
     phase: live ? "live" : "idle",
     paused: false,
-    signal: live ? "connected" : "offline",
-    roomReady: true,
+    signal: "connected",
+    roomReady: live,
   });
-  const name = lang === "zh" ? "摸鱼办主任" : "ThisIsFine";
-  const names =
-    lang === "zh" ? ["派大星", "大聪明", "咸鱼突刺"] : ["Leeroy", "Kenobi", "NotABot"];
+  const { name, names } = cast(lang === "zh");
   return (
     <div className="lr-app">
       <AppHeader
@@ -195,15 +224,27 @@ function Screen({ shot }: { shot: Shot }) {
               indicator={<StatusIndicator status={shot === "viewer" ? viewerTelevision : hostStatus.television} />}
             >
               {live ? <Game /> : <StaticNoise />}
+              {viewer && <PlaybackControlsView
+                audio={{ level: 1, muted: false, boostAvailable: true }} paused={false}
+                hasAudio canPlay theaterMode={false}
+                fullscreen={{ supported: true, ready: true, active: false }}
+                picture={{ supported: true, active: false, failed: false, toggle: async () => {} }}
+                togglePlayback={noop} toggleFullscreen={noop} toggleMute={noop} setLevel={noop}
+                onToggleTheater={noop} onReconnect={noop} reconnectAvailable
+                extraActions={<RoomChatToggle session={session} />} />}
               {shot === "picker" && (
                 <CaptureSourcePicker
                   nativeSources={{
                     kind: "ready",
                     processAudio: true,
                     systemAudio: true,
+                    processAudioExclusion: true,
+                    captureBorderControl: true,
                     sources,
                   }}
                   onBrowser={noop}
+                  onCamera={noop}
+                  loadCameras={async (_signal, publish) => publish([])}
                   onNative={noop}
                   onPreview={preview}
                   onRefresh={noop}
@@ -233,10 +274,20 @@ function Screen({ shot }: { shot: Shot }) {
                 </div>
               )}
             </StageTv>
+            {!viewer && <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
+              <HostMicrophone enabled={false} volume={1} onToggle={noop} />
+              {live && <>
+                <Btn icon="pause" cap="host.pause" title="host.pause" hint="hint-pause" draw="host-share-toggle" />
+                <Btn icon="switchSource" cap="host.switchSource" title="host.switchSource" hint="hint-switch-source" />
+              </>}
+              <Btn icon="sliders" cap="host.settings.button" title="host.advanced" hint="hint-advanced" expanded={false} />
+              {live && <Btn icon="stop" tone="danger" cap="host.stop" title="host.stop" hint="hint-share-stop" />}
+            </div>}
             <div className="lr-stage-notices" />
-            <Couch
-              view={shot === "viewer" ? "viewer" : "host"}
-              host={{ key: host, name, you: shot !== "viewer" }}
+            <RoomInteractions
+              session={live ? session : null}
+              view={viewer ? "viewer" : "host"}
+              host={{ key: host, name, you: !viewer }}
               entries={
                 shot === "viewer"
                   ? guests.map((key, i) => ({
@@ -250,35 +301,28 @@ function Screen({ shot }: { shot: Shot }) {
             />
           </div>
           <div className="lr-deck">
-            <Row>
-              <RowGroup>
+            <div className={`lr-row${viewer ? " lr-viewer-summary-row" : ""}`}>
+              <div className={`lr-row-group${viewer ? " lr-viewer-room-slot" : ""}`}>
                 <FieldCap k="common.roomCode" />
-                <RoomChip roomId={roomId} onReplace={shot === "viewer" ? undefined : noop} />
-              </RowGroup>
-              <span className="lr-spacer" />
-              <NameTag name={shot === "viewer" ? names[0] : name} identity={shot === "viewer" ? guests[0] : host} />
-              <Btn icon="pencil" cap="common.edit" title="host.nameEdit" hint="hint-rename" />
-              <Btn icon="gauge" cap="host.details" title="host.details" hint="hint-details" />
-              <Btn
-                icon="network"
-                cap="host.topology"
-                title="host.topology.show"
-                hint="hint-topology"
-              />
-            </Row>
-            {live && shot !== "viewer" ? (
-              <>
-                <Row>
-                  <Btn icon="pause" cap="host.pause" title="host.pause" hint="hint-pause" />
-                  <Btn
-                    icon="switchSource"
-                    cap="host.switchSource"
-                    title="host.switchSource"
-                    hint="hint-switch-source"
-                  />
-                  <Btn icon="stop" tone="danger" cap="host.stop" title="host.stop" hint="hint-share-stop" />
-                </Row>
-                <Row label={t("host.invite")}>
+                {viewer ? <Lcd code={roomId} /> : live ? <>
+                  <RoomChip roomId={roomId} onReplace={noop} />
+                  <RoomAdmissionBadge policy="private" passwordEnabled={false} />
+                </> : <RoomCodePlaceholder />}
+              </div>
+              {viewer ? <div className="lr-row-group lr-viewer-host-slot"><Glyph name="tv" size={18} /><b>{name}</b></div> : <span className="lr-spacer" />}
+              <div className={viewer ? "lr-viewer-personal-controls" : "lr-host-personal-controls"}>
+                <div className={`lr-row-group lr-group-name ${viewer ? "lr-viewer-self-slot" : "lr-host-identity-slot"}`}>
+                  <NameTag name={viewer ? names[0] : name} identity={viewer ? guests[0] : host} />
+                  <Btn icon="pencil" cap="common.edit" title="host.nameEdit" hint="hint-rename" />
+                </div>
+                <div className={`lr-row-group lr-group-actions ${viewer ? "lr-viewer-actions-slot" : "lr-host-diagnostics-slot"}`}>
+                  <Btn icon="gauge" cap="host.details" title="host.details" hint="hint-details" disabled={!live} />
+                  <Btn icon="network" cap="host.topology" title="host.topology.show" hint="hint-topology" />
+                </div>
+              </div>
+            </div>
+            {live && !viewer ? (
+                <Row label={t("host.policy")}>
                   <RowGroup actions>
                     <Btn
                       icon={shot === "copied" || chat ? "check" : "link"}
@@ -298,19 +342,33 @@ function Screen({ shot }: { shot: Shot }) {
                     />
                     <Btn
                       icon="linkOff"
+                      tone="danger"
                       cap="host.invite.revokeShort"
                       title="host.invite.revoke"
                       hint="hint-revoke-invite"
                     />
                   </RowGroup>
-                  <input
+                  <div className="lr-invite-field">
+                  <Tooltip kind="hint-invite-link" text={inviteUrl} className="lr-invite-hint"><input
                     className="lr-invite-url"
                     readOnly
                     value={inviteUrl}
                     aria-label={t("host.invite")}
-                  />
+                  /></Tooltip>
+                  <span className="lr-row-group"><Glyph name="key" size={17} />
+                    <SwitchItem checked label={t("host.invite.includeCredential")} hint="hint-invite-link"
+                      note={t("host.invite.credentialHint")} onChange={noop} />
+                  </span>
+                  </div>
+                  <span className="lr-divider" aria-hidden="true" />
+                  <RowGroup>
+                    <span className="lr-toggle" role="group" aria-label={t("host.policy")} data-selected="private">
+                      <button type="button" aria-pressed={false}><Glyph name="globe" size={19} /><Cap k="host.policy.open" /></button>
+                      <button type="button" className="is-selected" aria-pressed><Glyph name="lock" size={19} /><Cap k="host.policy.private" /></button>
+                    </span>
+                    <Btn icon="key" cap="join.password" title="host.password.setAction" hint="hint-password" />
+                  </RowGroup>
                 </Row>
-              </>
             ) : null}
           </div>
         </main>
@@ -323,6 +381,24 @@ function Screen({ shot }: { shot: Shot }) {
 const root = createRoot(document.getElementById("root")!);
 const camera = document.getElementById("camera")!;
 const cursor = document.getElementById("cursor")!;
+const params = new URLSearchParams(location.search);
+const still = params.get("still");
+// README stills share the film fixture and product controls, at natural page size.
+if (still === "host" || still === "viewer" || still === "picker" || still === "idle") {
+  document.documentElement.classList.add("is-still");
+  document.documentElement.dataset.theme = params.get("theme") === "dark" ? "dark" : "light";
+  initTheme(undefined, false);
+  setCopy({ lang: params.get("lang") === "zh" ? "zh" : "en", vis: false });
+  flushSync(() => root.render(<Screen shot={still} />));
+  const paintStill = () => {
+    drawGame?.(17.6);
+    document.getAnimations().forEach(animation => { animation.pause(); animation.currentTime = 17600; });
+  };
+  paintStill();
+  requestAnimationFrame(() => requestAnimationFrame(paintStill));
+  cursor.setAttribute("hidden", "");
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+}
 let current = "";
 const clamp = (n: number) => Math.min(1, Math.max(0, n));
 const ease = (n: number) => 1 - (1 - clamp(n)) ** 4;
@@ -400,11 +476,23 @@ function paint(data: Frame) {
     animation.currentTime = data.time * 1000;
   });
   camera.style.transform = "none";
+  if (data.scene === "invite" && t >= cues.viewer) {
+    // The final wide shot includes the current playback bar, sofa, chat and deck.
+    // Zoom the whole page, retaining product layout and proportions.
+    const scale = Math.min(1, 740 / document.querySelector<HTMLElement>(".lr-app")!.scrollHeight);
+    camera.style.transform = `translateX(${1100 * (1 - scale) / 2}px) scale(${scale})`;
+    cursor.style.opacity = "0";
+    return;
+  }
   let pan = 0;
+  if (data.scene === "share" && t >= cues.live) {
+    const controls = document.querySelector<HTMLElement>(".lr-host-share-controls")!;
+    pan = Math.max(0, controls.getBoundingClientRect().bottom - 716) * ease((t - cues.live) / BEAT);
+  }
   if (data.scene === "invite") {
     const row = document.querySelector<HTMLElement>(".lr-invite-url");
-    pan = row ? Math.max(0, row.getBoundingClientRect().top - 490) : 130;
-    pan += (130 - pan) * ease((t - 7 * BEAT) / BEAT);
+    pan = row ? Math.max(0, row.getBoundingClientRect().top - 490) : 0;
+    pan *= 1 - ease((t - 7 * BEAT) / BEAT);
     pan *= ease(t / BEAT);
     const chat = document.querySelector<HTMLElement>(".film-chat");
     if (chat) chat.style.transform = `translateY(${pan}px)`;

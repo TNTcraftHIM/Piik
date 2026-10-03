@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-01
+Last updated: 2026-10-03
 
 This file owns physical evidence limits that change how the product may be
 described. [Status](./status.md) owns the execution/deployment index.
@@ -45,9 +45,9 @@ Neither a statistical NAT campaign nor exhaustive Auto hardware benchmarking
 is required to close this phase. Investigate further only from a new failure
 or a measured improvement worth its implementation and maintenance cost.
 
-## Candidate Evidence Boundary
+## Device Evidence Boundary
 
-The Windows HDR-to-SDR candidate has synthetic FP16 conversion and decoded
+Windows HDR-to-SDR has synthetic FP16 conversion and decoded
 H.264/VP8 Browser reception evidence. Local displays were in SDR mode; real HDR
 content, SDR white on HDR displays, mixed-display movement, display-mode changes
 and sustained GPU contention still require physical acceptance. The
@@ -86,6 +86,14 @@ The first public release passed real Server/three-platform App packaging and
 GitHub/Gitee publication, including anonymous mirror checksum verification.
 These packaging checks do not establish physical macOS/Linux capture or expand the device/network evidence
 below. [Status](./status.md) owns current publication and activation state.
+Intel macOS runners can lack a usable hardware H.264 encoder. In that case,
+the VideoToolbox frame self-test is explicitly skipped; compilation and package
+startup do not establish Intel hardware capture. Verify it on a physical Intel
+Mac with macOS 13 or newer before claiming that device coverage.
+Linux x64 and ARM64 use the same Portal/PipeWire/GStreamer capture path.
+Package startup and headless native regressions do not establish physical
+screen/audio capture or a working hardware H.264 encoder on an ARM64 desktop.
+Verify those capabilities on the target device before claiming device coverage.
 
 ## Remaining Device And Network Acceptance
 

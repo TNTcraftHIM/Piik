@@ -833,6 +833,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   display: flex;
   min-width: 0;
   flex: 0 1 auto;
+  margin-left: auto;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
@@ -957,10 +958,14 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   letter-spacing: .3em;
   text-indent: .15em;
 }
-.lr-lcd button {
+.lr-lcd.is-empty { border-style: dashed; border-color: var(--control-edge); background: var(--wall-2); color: var(--muted); }
+.lr-lcd button, .lr-lcd-copy-placeholder {
   display: grid;
   width: 34px; height: 34px;
   place-items: center;
+}
+.lr-lcd-copy-placeholder { opacity: .45; }
+.lr-lcd button {
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -970,6 +975,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-lcd button:hover { background: #ffffff22; }
 .lr-lcd-roll { display: inline-flex; overflow: hidden; }
 .lr-lcd-roll span { display: inline-block; animation: lr-roll .34s var(--spring) both; }
+.lr-lcd.is-empty .lr-lcd-roll span { animation: none; }
 @keyframes lr-roll { from { transform: translateY(110%); } }
 
 /* ---------- buttons & chips ---------- */
@@ -1494,6 +1500,10 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
   gap: 20px;
 }
 .lr-client-launch-title { font-size: 24px; text-align: center; }
+.lr-client-about { display: grid; gap: 4px; max-width: 100%; color: var(--muted); font-size: 12px; text-align: center; overflow-wrap: anywhere; }
+.lr-client-project-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 0 20px; }
+.lr-client-project-links a { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; color: inherit; text-underline-offset: 3px; }
+.lr-client-project-links a:is(:hover, :focus-visible) { color: var(--ink); }
 .lr-client-launch-status { color: var(--ink); font-size: 14px; font-weight: 650; }
 .lr-client-launch-detail { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font: 13px/1.6 var(--mono); }
 .lr-client-update {
@@ -1851,6 +1861,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-microphone-settings input { width: 100%; min-width: 32px; height: 36px; padding: 0; accent-color: var(--action); cursor: pointer; }
 .lr-microphone-settings input:disabled { cursor: default; }
 .lr-microphone-settings output { min-width: 4ch; font-variant-numeric: tabular-nums; text-align: right; }
+.lr-microphone-settings .lr-switch-item .lr-cap { white-space: normal; }
 .lr-capture-device { display: grid; gap: 6px; min-width: 0; padding: 4px 10px 10px; }
 .lr-capture-device label { font-size: 12px; padding: 0; color: var(--muted); }
 .lr-capture-device-controls { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -1864,7 +1875,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-capture-device .lr-device-refresh { min-width: 40px; width: 40px; height: 40px; padding: 0; border-width: 1px; }
 .lr-capture-device select:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .lr-capture-device select:disabled { opacity: .55; cursor: default; }
-.lr-capture-device small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.lr-capture-device small, .lr-microphone-settings > small { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .lr-source-picker-body > .lr-capture-device { margin-bottom: 10px; }
 .lr-source-picker .lr-capture-device :is(label, small) { color: #9aa8bb; }
 @media (max-width: 580px) {

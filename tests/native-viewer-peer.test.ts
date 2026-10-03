@@ -16,6 +16,46 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it("retires queued candidates when disposed during their delivery", async () => {
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
+  let finishCandidate!: () => void;
+  const accept = vi.spyOn(ViewerPeer.prototype, "acceptSignal").mockImplementation(
+    async (_parent, payload) => {
+      if (payload.kind === "candidate") {
+        await new Promise<void>(resolve => { finishCandidate = resolve; });
+      }
+    },
+  );
+  const peer = new NativeCapableViewerPeer(
+    { iceServers: [] },
+    {
+      sendSignal: () => true, sendRestartRequest: () => true,
+      onStream: () => undefined, onUpdate: () => undefined,
+    },
+    {}, async () => null, () => undefined, "session", 2,
+  );
+  try {
+    for (const port of [5000, 5001]) {
+      await peer.acceptSignal("parent", {
+        kind: "candidate", connectionId: "current",
+        candidate: { candidate: `candidate:1 1 UDP 2122260223 192.0.2.1 ${port} typ host` },
+      });
+    }
+    const accepting = peer.acceptSignal("parent", {
+      kind: "description", connectionId: "current",
+      description: { type: "offer", sdp: "v=0\r\n" },
+    });
+    await vi.waitFor(() => expect(accept).toHaveBeenCalledTimes(2));
+    peer.dispose();
+    finishCandidate();
+    await expect(accepting).resolves.toBeUndefined();
+    expect(accept).toHaveBeenCalledTimes(2);
+  } finally {
+    peer.dispose();
+  }
+});
+
 it.each(["viewer", "route"] as const)("retires a connected Native receiver on control loss (%s)", async (recoveryOwner) => {
   vi.useFakeTimers();
   vi.stubGlobal("window", globalThis);

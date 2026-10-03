@@ -1,5 +1,6 @@
 // The roster sits in responsive couch rows. UUIDs own identity and gestures;
 // self carries the green pointer, and the Host wears the gold crown.
+import type { ReactNode } from "react";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { useElementWidth } from "../../lib/use-element-width";
@@ -31,6 +32,7 @@ export interface CouchProps {
   entries: CouchEntry[];
   selectedKey?: string | null;
   onSelect?: (key: string) => void;
+  footerAction?: ReactNode;
   participantAction?: {
     open: (key: string, trigger: HTMLButtonElement) => void;
     target: string | null;
@@ -45,6 +47,7 @@ export function Couch({
   selectedKey,
   onSelect,
   participantAction,
+  footerAction,
 }: CouchProps) {
   const { t } = useCopy();
   const [couchRef, containerWidth] = useElementWidth();
@@ -155,10 +158,11 @@ export function Couch({
           })}
         </div>
       </div>
-      <div className="lr-couch-footer">
+      <div className={`lr-couch-footer${footerAction ? " has-action lr-media-controls" : ""}`}>
         <span className="lr-couch-count" role="img" aria-label={`${t("common.viewers")} ${entries.length}`}>
           <Glyph name="users" size={14} /><b>{entries.length}</b>
         </span>
+        {footerAction}
       </div>
       {entries.length === 0 && !host ? (
         <div

@@ -82,7 +82,8 @@ try {
   assert.equal(metadata.Config.User, "65532:65532");
   assert.equal(metadata.Config.Labels["org.opencontainers.image.revision"], revision);
   assert.equal(metadata.Os, "linux");
-  assert.equal(metadata.Architecture, "amd64");
+  assert.equal(metadata.Architecture, process.arch === "x64" ? "amd64" : process.arch);
+  assert.ok(["amd64", "arm64"].includes(metadata.Architecture));
   assert.match(compose("run", "--rm", "--no-deps", "piik", "--check-config"), /config=ok/);
   compose("up", "-d", "--pull", "never");
   await until(async () => assert.deepEqual(await (await request("/healthz")).json(), { status: "ok" }), "ready");

@@ -1,8 +1,8 @@
 .lr-room-interactions { position: relative; width: min(960px, 100%); margin: 0 auto; }
 .lr-interaction-couch { position: relative; }
-.lr-interaction-toggle { display: flex; justify-content: center; align-items: center; gap: 2px; width: fit-content; margin: 12px auto 4px; padding: 3px; background: var(--paper); border: 1px solid var(--control-edge); border-radius: 18px; }
+.lr-couch-footer.has-action { gap: 4px; width: fit-content; margin: 0 auto; padding: 3px; background: var(--paper); border: 1px solid var(--control-edge); border-radius: 18px; color: var(--ink); }
+.lr-couch-footer.has-action .lr-couch-count { padding: 0 12px 0 9px; border: 0; border-right: 1px solid var(--control-edge); border-radius: 0; background: transparent; color: var(--muted); }
 .lr-interaction-chat-toggle { display: flex; position: relative; }
-.lr-interaction-toggle .lr-btn { min-height: 44px; }
 .lr-interaction-unread { align-self: flex-start; margin: -4px 0 0 -8px; z-index: 1; min-width: 22px; padding: 2px 6px; border-radius: 20px; color: var(--paper); background: var(--action); font: 700 11px var(--mono); text-align: center; }
 .lr-chat-compose, .lr-chat-footer { flex-shrink: 0; }
 .lr-interaction-effects { display: flex; align-items: center; gap: 8px; min-height: 40px; width: fit-content; margin-top: 8px; font-size: 12px; font-weight: 400; color: var(--muted); }
@@ -31,10 +31,21 @@
 .lr-chat-compose:has(input:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-chat-compose > input { min-width: 0; flex: 1; width: 0; height: 44px; border: 0; outline: none; border-radius: 14px; padding: 0 10px; background: transparent; color: var(--ink); font-size: 16px; }
 .lr-chat-compose .lr-btn { flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0; border-radius: 15px; }
-.lr-chat-footer { display: flex; align-items: center; gap: 10px; min-height: 40px; margin-top: 8px; padding-right: 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.lr-chat-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 40px; margin-top: 8px; padding-right: 12px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.lr-chat-actions { display: flex; flex: none; align-items: center; gap: 6px; }
 .lr-chat-footer .lr-chat-overlay-toggle { flex: none; }
 .lr-chat-footer .lr-btn { min-height: 36px; padding: 0 8px; }
-.lr-chat-footer .lr-interaction-status { flex: 1; min-width: 0; min-height: 0; margin: 0; }
+.lr-chat-history[hidden], .lr-chat-compose[hidden] { display: none; }
+.lr-chat-settings { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 18px 2px; }
+.lr-chat-settings > p { margin: 0 0 20px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.lr-chat-setting { margin-bottom: 22px; }
+.lr-chat-setting > label { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 28px; font-size: 13px; }
+.lr-chat-setting output { color: var(--muted); font: 12px var(--mono); }
+.lr-chat-setting > .lr-comic-tip-wrap { display: flex; width: 100%; }
+.lr-chat-setting input[type="range"] { width: 100%; min-height: 40px; margin: 0; accent-color: var(--action); cursor: pointer; }
+.lr-chat-export { display: grid; justify-items: start; gap: 8px; padding-top: 16px; border-top: 1px solid var(--wall-2); }
+.lr-chat-export small { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.lr-chat-footer .lr-interaction-status { flex: 1 1 140px; min-width: 0; min-height: 0; margin: 0; overflow-wrap: anywhere; }
 .lr-chat-count { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; }
 .lr-interaction-status { display: flex; align-items: center; gap: 6px; min-height: 24px; margin-top: 6px; font-size: 11px; color: var(--muted); }
 .lr-person-menu { transform-origin: center bottom; }
@@ -61,8 +72,8 @@
 .lr-person-menu .lr-interaction-effects { font-size: 11px; }
 /* Theater keeps the same top-layer chat; the picture never changes size. */
 .lr-room.is-theater .lr-room-interactions { position: absolute; top: 12px; right: 12px; z-index: 5; width: auto; }
-.lr-room.is-theater .lr-interaction-toggle { margin: 0 0 0 auto; }
-.lr-room.is-theater .lr-interaction-couch { display: none; }
+.lr-room.is-theater .lr-room-interactions .lr-couch { display: block; width: auto; margin: 0; }
+.lr-room.is-theater .lr-room-interactions :is(.lr-couch-seating, .lr-couch-count, .lr-reaction-flight) { display: none; }
 .lr-pawn[aria-expanded="true"] { background: color-mix(in srgb, var(--paper) 72%, transparent); border-radius: 18px; }
 .lr-reaction-flight { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: visible; }
 /* The path positions the center; percentage translation centers any glyph size. */

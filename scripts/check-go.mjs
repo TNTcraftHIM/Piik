@@ -9,12 +9,12 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { APP_PACKAGE_TARGETS, appPackageTarget, goBuildEnvironment } from "./app-package-targets.mjs";
+import { APP_PACKAGE_TARGETS, goBuildEnvironment } from "./app-package-targets.mjs";
+import { SERVER_PACKAGE_TARGETS } from "./server-package-targets.mjs";
 
 // Every Go command embeds the Vite output, so the build, vet and test steps all
 // fail without it. The Server binary is cross-built for its deployment target.
 const WEB_INDEX = join("internal", "server", "webassets", "dist", "index.html");
-const SERVER_TARGET = appPackageTarget("linux-amd64");
 // Local dependency repairs retain upstream tests, including PCPv6 composition.
 // Nested modules need explicit test patterns; remove these with the replacements.
 // Go source lives here; ./... would also scan downloaded SDKs and build probes.
@@ -79,7 +79,9 @@ function checkCore() {
   const builds = buildTargets.flatMap((target) =>
     ["piik-app", "piik-peer-gate"].map((command) => ({ target, command })),
   );
-  builds.push({ target: SERVER_TARGET, command: "piik-server" });
+  builds.push(...SERVER_PACKAGE_TARGETS.map(target => ({
+    target: { ...target, id: `linux-${target.goarch}`, cgo: false }, command: "piik-server",
+  })));
   for (const { target, command } of builds) {
     const outputName = target.goos === "windows"
       ? `${command}.exe`
@@ -164,9 +166,6 @@ function checkPlatformCapture() {
   if (!existsSync(executable)) {
     throw new Error("Native capture build did not produce its executable");
   }
-  if (process.platform === "darwin") {
-    run(executable, ["--self-test"]);
-  }
   const raw = run(executable, ["--probe"], { capture: true });
   const probe = JSON.parse(raw);
   const expectedPlatform = process.platform === "win32" ? "windows" : process.platform;
@@ -192,6 +191,13 @@ function checkPlatformCapture() {
     )
   ) {
     throw new Error("Native capture probe returned an invalid contract");
+  }
+  if (process.platform === "darwin") {
+    if (probe.adapters.some(adapter => adapter.hardwareH264.length > 0)) {
+      run(executable, ["--self-test"]);
+    } else {
+      process.stderr.write("Skipped VideoToolbox frame self-test: this machine exposes no usable hardware H.264 encoder; physical capture acceptance remains pending.\n");
+    }
   }
   const sources = JSON.parse(run(executable, ["--list"], { capture: true }));
   if (!Array.isArray(sources) || sources.some((target) =>

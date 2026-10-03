@@ -22,8 +22,8 @@ WebSocket; there is no second admission or identity system.
 
 Messages do not need a media route, decoded frame, or SFU. They do not mutate the
 media graph, add a port, create an extra connection, or restart capture. Pause,
-source replacement and media recovery keep the current conversation. In this
-candidate, a capable Host explicitly opts into a persistent room session.
+source replacement and media recovery keep the current conversation. A capable
+Host explicitly opts into a persistent room session.
 Restoring an existing room connects that session without requesting capture or
 starting media. The capture-ready owner requests publication; merely entering a
 capture picker or awaiting permission cannot publish. Stopping the publication
@@ -73,13 +73,15 @@ ends that service; merely leaving the Host page does not.
   may duplicate a message that arrived before the confirmation was lost. Only
   the matching pending request may confirm a send or clear its draft/error;
   late echoes may enter history without confirming a newer attempt.
-- The page retains the latest 80 received chat messages and at most eight
+- The page retains the latest 1,000 received chat messages and at most eight
   simultaneous reaction effects. Effects expire after 2.4 seconds. Reconnection
   clears pending effects and re-subscribes, without replaying messages or actions.
   Same-room re-admission retains history, self attribution and the local draft,
   even when its wire peer ID changes. Refresh, leaving, authority loss or room
   session replacement clears the page conversation; late joiners receive only
-  new messages. Nothing persists in Browser storage.
+  new messages. Nothing persists in Browser storage. An explicit TXT export saves
+  the currently retained messages with timestamps and display names; it does not
+  include pending sends, reactions, invite credentials or peer identifiers.
 - There is no server history, database table or message body in diagnostic
   exports. Transport is the site's HTTPS/WSS connection; **chat is not end-to-end
   encrypted**, and the server operator can access live message contents.
@@ -110,8 +112,9 @@ growing the panel. Consecutive messages from the same sender share visual identi
 each message retains its accessible author. Hiding and reopening preserves the
 reader's position; a latest-message action resumes following. Sending waits for
 confirmation without locking draft editing or introducing a message queue.
-The conversation entry sits below the couch, separate from
-the Host's sharing controls; theater retains its compact conversation entry.
+The conversation entry shares the couch footer with its participant count,
+separate from the Host's sharing controls. Theater hides the seating and count,
+retaining the same compact conversation entry and focus target.
 Selecting a person opens the compact reaction palette in the shared floating
 shell, initially beside the selected person (below when space permits). Each
 opening anchors there before allowing free movement. Its portrait and name identify the
@@ -156,8 +159,13 @@ The optional chat overlay (danmaku) projects newly received chat over the pictur
 it adds no message kind, transport or delivery promise. It defaults off, with the
 same local switch beside the chat composer and Viewer playback bar, including HTML
 fullscreen. At most three single-line comments appear for up to six seconds each.
-Font size follows the picture width, with a fixed readable contrast and duration
-rather than separate typography, opacity and speed preferences.
+Font size follows the picture width. Chat settings can scale it to 80–130% and
+set opacity to 40–100%; defaults are 100%. These local preferences belong to the
+room interaction session, survive its signaling reconnection and reset when that
+session is replaced or the page reloads. Both Host and Viewer use the same owner.
+Adjustments preserve active flights and their shared timing; duration stays fixed.
+The settings view occupies the chat window's existing space and preserves its
+draft and scroll position. Hidden chat is not marked read while adjusting settings.
 Each event's sender and ID choose its lane, and a newer event replaces that lane's
 previous flight. All received text remains in the full chat log, without a playback queue. Text is clipped
 to the picture space above playback controls; smaller spaces show fewer complete
@@ -229,7 +237,7 @@ admission or additional media peers.
   signaling channel; adding the LiveKit room service solely for chat is unnecessary.
 - [LiveKit text streams](https://docs.livekit.io/transport/data/text-streams/)
   distinguishes current-participant delivery from persistent history. The
-  candidate likewise promises transient room messages, with explicit local bounds.
+  implementation likewise promises transient room messages, with explicit local bounds.
 - [WebSocket buffering](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket/bufferedAmount)
   and [WebSocket API limitations](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
   motivate bounded queues and explicit send failure rather than an accumulating outbox.

@@ -1,4 +1,5 @@
 import type { BrowserCaptureSource } from "./quality";
+import { audioInputConstraints } from "./audio-capture";
 
 // The Host session owns capture and lifetime. This helper owns only the raw
 // audio inputs and mixer; transports borrow its single output track.
@@ -11,6 +12,7 @@ export class HostAudio {
   private microphoneGain: GainNode | null = null;
   private microphoneVolume = 1;
   private microphoneDevice = "";
+  private voiceProcessing = true;
   private closed = false;
 
   constructor(source: MediaStream, private changed: (enabled: boolean) => void,
@@ -43,15 +45,17 @@ export class HostAudio {
     return this.setMicrophone(!this.microphone?.enabled, deviceId);
   }
 
-  async setMicrophone(enabled: boolean, deviceId: string): Promise<MediaStream | null> {
+  async setMicrophone(enabled: boolean, deviceId: string, voiceProcessing = this.voiceProcessing): Promise<MediaStream | null> {
     if (this.closed) return null;
-    if (!enabled || (this.microphone && deviceId === this.microphoneDevice)) {
-      if (this.microphone && deviceId !== this.microphoneDevice) {
+    const sameInput = deviceId === this.microphoneDevice && voiceProcessing === this.voiceProcessing;
+    if (!enabled || (this.microphone && sameInput)) {
+      if (this.microphone && !sameInput) {
         this.microphone.stop();
         this.microphone = null;
         this.compose();
       }
       this.microphoneDevice = deviceId;
+      this.voiceProcessing = voiceProcessing;
       if (this.microphone) this.microphone.enabled = enabled;
       this.changed(enabled);
       return null;
@@ -68,7 +72,7 @@ export class HostAudio {
     let stream: MediaStream | null = null;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: {
-        echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+        ...audioInputConstraints(voiceProcessing),
         ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
       } });
       if (this.closed) return null;
@@ -79,6 +83,7 @@ export class HostAudio {
       const previous = this.microphone;
       this.microphone = microphone;
       this.microphoneDevice = deviceId;
+      this.voiceProcessing = voiceProcessing;
       microphone.onended = () => {
         if (this.closed || this.microphone !== microphone) return;
         this.microphone = null;

@@ -23,7 +23,9 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const H264ProfileLevelID = "42c033"
+// Use the browser-standard spelling of Constrained Baseline in SDP. Pion's
+// codec ordering prefers literal profile matches over equivalent constraint bits.
+const H264ProfileLevelID = "42e033"
 const stunSurveyTimeout = 5 * time.Second
 
 var h264Capability = webrtc.RTPCodecCapability{

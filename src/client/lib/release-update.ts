@@ -14,6 +14,7 @@ interface PublishedRelease {
   version: string;
   revision: string | null;
   url: string;
+  publishedAt?: string;
 }
 export interface ReleaseUpdateNotice extends PublishedRelease {
   kind: "update-available" | "different-build" | "official-release";
@@ -53,11 +54,14 @@ export function parseReleaseMetadata(value: unknown, packageTarget?: string): Pu
   const version = normalizeVersion(release.tag_name);
   if (!version || version !== release.tag_name || !/^v\d+\.\d+\.\d+$/.test(version) ||
       release.html_url !== RELEASE_PAGE + version) return null;
+  const publishedTime = typeof release.published_at === "string" && /^\d{4}-\d{2}-\d{2}T/.test(release.published_at)
+    ? Date.parse(release.published_at) : NaN;
   const normalized = {
     version,
     // GitHub permits a branch here; only our publisher's full SHA is provenance.
     revision: normalizeReleaseRevision(release.target_commitish),
     url: RELEASE_PAGE + version,
+    ...(Number.isFinite(publishedTime) ? { publishedAt: new Date(publishedTime).toISOString() } : {}),
   };
   return { ...normalized, url: packageDownloadURL(normalized, release.assets, packageTarget) };
 }

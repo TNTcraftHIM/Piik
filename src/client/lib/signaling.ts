@@ -12,6 +12,7 @@ import type { SignalConnectionState } from "../types";
 import { qualitySettingsEqual } from "../media/quality";
 import { debugEvent } from "./debug";
 import { RoomInteractionSession } from "./room-interactions";
+import { getSiteAccess } from "./api";
 
 type WithoutProtocolEnvelope<T> = T extends {
   type: string;
@@ -36,7 +37,6 @@ export type SignalingTerminationReason =
   | "SIGNAL_TERMINATED";
 
 const FATAL_SIGNAL_ERRORS = new Set([
-  "AUTH_REQUIRED",
   "INVALID_TOKEN",
   "ROOM_NOT_FOUND",
   "ROOM_ACCESS_DENIED",
@@ -48,6 +48,7 @@ const TERMINAL_SEND_TIMEOUT_MS = 15_000;
 const SIGNALING_CHALLENGE_INTERVAL_MS = 5_000;
 const SIGNALING_CHALLENGE_TIMEOUT_MS = 2_000;
 const SIGNALING_TIMER_LAG_TOLERANCE_MS = 1_000;
+const AUTHENTICATION_TIMEOUT_MS = 8_000;
 
 interface PendingSignalingChallenge {
   generation: number;
@@ -83,6 +84,7 @@ export class SignalingClient {
   private reconnectAttempt = 0;
   private reconnectTimer: number | null = null;
   private authenticationTimer: number | null = null;
+  private accessCheck: AbortController | null = null;
   private terminalTimer: number | null = null;
   private terminalMessage: ClientMessage | null = null;
   private socketGeneration = 0;
@@ -282,6 +284,13 @@ export class SignalingClient {
     if (this.stopped) {
       return;
     }
+    // An explicit start may supersede a pending reconnect for the same room.
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.accessCheck?.abort();
+    this.accessCheck = null;
 
     const generation = ++this.socketGeneration;
     debugEvent("signal", "connecting", { role: this.identity.role, generation });
@@ -306,7 +315,7 @@ export class SignalingClient {
         if (!this.authenticatedPeerId && this.socket === socket) {
           socket.close(4000, "authentication timeout");
         }
-      }, 8_000);
+      }, AUTHENTICATION_TIMEOUT_MS);
     });
 
     socket.addEventListener("message", (event) => {
@@ -347,12 +356,14 @@ export class SignalingClient {
         return;
       }
 
+      if (message.type === "error" && message.code === "AUTH_REQUIRED") {
+        void this.recoverAuthentication(generation);
+        return;
+      }
+
       if (message.type === "error" && FATAL_SIGNAL_ERRORS.has(message.code)) {
         this.stop();
         this.events.onMessage(message);
-        if (message.code === "AUTH_REQUIRED" && this.identity.role === "host") {
-          this.events.onAccessRequired();
-        }
         return;
       }
 
@@ -442,6 +453,34 @@ export class SignalingClient {
       this.reconnectTimer = null;
       this.connect();
     }, delay);
+  }
+
+  private async recoverAuthentication(generation: number): Promise<void> {
+    this.retireSocketForRecovery();
+    // AUTH_REQUIRED also means the room handshake timed out or was incomplete.
+    // Only the site-access owner can require a Host to enter a site password.
+    if (this.identity.role === "host") {
+      this.events.onStatus("reconnecting");
+      if (this.stopped || generation !== this.socketGeneration) return;
+      const controller = new AbortController();
+      this.accessCheck = controller;
+      const timer = window.setTimeout(() => controller.abort(), AUTHENTICATION_TIMEOUT_MS);
+      try {
+        const access = await getSiteAccess(controller.signal);
+        if (this.stopped || generation !== this.socketGeneration) return;
+        if (access.required && !access.authenticated) {
+          this.stop();
+          this.events.onAccessRequired();
+          return;
+        }
+      } catch {
+        // An unavailable check is a connection failure, not evidence of denial.
+      } finally {
+        window.clearTimeout(timer);
+        if (this.accessCheck === controller) this.accessCheck = null;
+      }
+    }
+    if (!this.stopped && generation === this.socketGeneration) this.scheduleReconnect();
   }
 
   private terminateForProtocolMismatch(): void {
@@ -582,6 +621,8 @@ export class SignalingClient {
   }
 
   private clearTimers(): void {
+    this.accessCheck?.abort();
+    this.accessCheck = null;
     this.clearAuthenticationTimer();
     this.clearSignalingWatchdog();
     if (this.reconnectTimer !== null) {
@@ -675,20 +716,24 @@ export class SignalingClient {
   }
 
   private replaceUnresponsiveSocket(generation: number): void {
-    const socket = this.socket;
-    if (!socket || generation !== this.socketGeneration || this.stopped) {
+    if (!this.socket || generation !== this.socketGeneration || this.stopped) {
       return;
     }
+    this.retireSocketForRecovery();
+    this.events.onStatus("reconnecting");
+    this.connect();
+  }
+
+  private retireSocketForRecovery(): void {
+    const socket = this.socket;
     this.socket = null;
     this.authenticatedPeerId = null;
     this.interactions?.disconnected();
     this.clearAuthenticationTimer();
     this.clearSignalingWatchdog();
-    this.events.onStatus("reconnecting");
-    if (socket.readyState < WebSocket.CLOSING) {
-      socket.close(SIGNAL_CLOSE_CODES.clientReconnect, "signaling timeout");
+    if (socket && socket.readyState < WebSocket.CLOSING) {
+      socket.close(SIGNAL_CLOSE_CODES.clientReconnect, "signaling recovery");
     }
-    this.connect();
   }
 
   private rebaselineSignalingWatchdog(): void {

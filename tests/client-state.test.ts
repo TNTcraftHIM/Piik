@@ -796,7 +796,7 @@ describe("site access API", () => {
 
     expect(fetchMock.mock.calls[0]).toEqual([
       "/api/site-access",
-      { headers: { Accept: "application/json" } },
+      { headers: { Accept: "application/json" }, cache: "no-store", signal: undefined },
     ]);
     const post = fetchMock.mock.calls[1][1];
     expect(post?.method).toBe("POST");
@@ -2153,7 +2153,9 @@ describe("client signaling recovery policy", () => {
     },
   );
 
-  it("returns only a Host to the admission gate after AUTH_REQUIRED", () => {
+  it("returns a Host to the admission gate after confirmed site-access denial", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ required: true, authenticated: false })));
     const sockets: FakeWebSocket[] = [];
     class FakeWebSocket extends EventTarget {
       static readonly CLOSING = 2;
@@ -2204,13 +2206,10 @@ describe("client signaling recovery policy", () => {
       },
     });
     sockets[0]!.dispatchEvent(message);
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(onAccessRequired).toHaveBeenCalledOnce();
-    expect(onMessage).toHaveBeenCalledWith({
-      type: "error",
-      code: "AUTH_REQUIRED",
-      message: "Site access is required",
-    });
+    expect(onMessage).not.toHaveBeenCalled();
     expect(statuses.at(-1)).toBe("offline");
     expect(sockets).toHaveLength(1);
   });

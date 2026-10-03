@@ -37,6 +37,9 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   Both reuse `Tooltip` for hover, keyboard focus, touch hold and viewport
   placement; no native `title` competes with the custom status hint. There is no
   permanent text bubble, additional round lamp, or repeated control-menu caption.
+  Room/session termination refines this same indicator before and during sharing;
+  it must not become an operation pill merely because no source is active. Keep
+  its reason available to assistive technology without moving focus.
   The Host television describes its local source, not an arbitrary outbound
   child. A confirmed limitation may colour the relevant icon amber while the
   page title still says watching.

@@ -55,6 +55,7 @@ export type Set1Kind =
   | "hint-microphone-on"
   | "hint-microphone-off"
   | "hint-microphone-volume"
+  | "hint-microphone-processing"
   | "hint-capture-window"
   | "hint-capture-display";
 
@@ -145,6 +146,8 @@ export type MetricHintKind = `hint-metric-${
 export type InteractionHintKind =
   | "hint-chat-open"
   | "hint-chat-send"
+  | "hint-chat-settings"
+  | "hint-chat-export"
   | "hint-chat-overlay-show"
   | "hint-chat-overlay-hide";
 

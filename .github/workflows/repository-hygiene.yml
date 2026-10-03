@@ -107,7 +107,17 @@ jobs:
     if: >-
       needs.validate.outputs.publish == 'true' ||
       (github.event_name == 'workflow_dispatch' && inputs.app_checks == true)
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            artifact: piik-server
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            artifact: piik-server-linux-arm64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     env:
       PIIK_BUILD_VERSION: ${{ needs.validate.outputs.version }}
@@ -129,22 +139,23 @@ jobs:
       - name: Package Server release
         run: >-
           node scripts/package-server-release.mjs "$RUNNER_TEMP/server-release"
-          --container-image "piik-candidate:$GITHUB_SHA"
+          --arch "${{ matrix.arch }}"
+          --container-image "piik-candidate:$GITHUB_SHA-${{ matrix.arch }}"
       - name: Check the container and deployment recipe
-        run: npm run check:container -- "piik-candidate:$GITHUB_SHA" "$GITHUB_SHA"
+        run: npm run check:container -- "piik-candidate:$GITHUB_SHA-${{ matrix.arch }}" "$GITHUB_SHA"
       - name: Save the verified container
-        run: docker save "piik-candidate:$GITHUB_SHA" --output "$RUNNER_TEMP/piik-container.tar"
+        run: docker save "piik-candidate:$GITHUB_SHA-${{ matrix.arch }}" --output "$RUNNER_TEMP/piik-container-${{ matrix.arch }}.tar"
       - name: Upload the verified container
         uses: actions/upload-artifact@v7
         with:
-          name: piik-container-${{ github.sha }}
-          path: ${{ runner.temp }}/piik-container.tar
+          name: piik-container-${{ matrix.arch }}-${{ github.sha }}
+          path: ${{ runner.temp }}/piik-container-${{ matrix.arch }}.tar
           if-no-files-found: error
           retention-days: 14
       - name: Upload Server release
         uses: actions/upload-artifact@v7
         with:
-          name: piik-server-${{ github.sha }}
+          name: ${{ matrix.artifact }}-${{ github.sha }}
           path: ${{ runner.temp }}/server-release/*
           if-no-files-found: error
           retention-days: 14
@@ -164,8 +175,12 @@ jobs:
             runner: windows-latest
           - target: linux-amd64
             runner: ubuntu-latest
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
           - target: darwin-arm64
             runner: macos-15
+          - target: darwin-amd64
+            runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     env:
@@ -189,7 +204,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Install Linux packaging and native capture dependencies
-        if: matrix.target == 'linux-amd64'
+        if: startsWith(matrix.target, 'linux-')
         run: >-
           sudo apt-get update && sudo apt-get install -y
           zip
@@ -246,8 +261,9 @@ jobs:
       - name: Download Server release
         uses: actions/download-artifact@v8
         with:
-          name: piik-server-${{ github.sha }}
+          pattern: piik-server*-${{ github.sha }}
           path: ${{ runner.temp }}/publish-release
+          merge-multiple: true
       - name: Download App release candidates
         uses: actions/download-artifact@v8
         with:
@@ -257,10 +273,14 @@ jobs:
       - name: Download the verified container
         uses: actions/download-artifact@v8
         with:
-          name: piik-container-${{ github.sha }}
+          pattern: piik-container-*-${{ github.sha }}
           path: ${{ runner.temp }}/container
+          merge-multiple: true
       - name: Load the verified container
-        run: docker load --input "$RUNNER_TEMP/container/piik-container.tar"
+        run: |
+          for arch in amd64 arm64; do
+            docker load --input "$RUNNER_TEMP/container/piik-container-$arch.tar"
+          done
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:

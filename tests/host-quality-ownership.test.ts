@@ -24,7 +24,7 @@ const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
   "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "changeMicrophone", "toggleSharingPause",
-  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setNoticeError", "setNoticeErrorKey", "endSharing", "copyRoomLink", "isCurrentRoomAuthority"]);
+  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setStatusNotice", "setNoticeError", "setNoticeErrorKey", "endSharing", "hostTerminationKey", "copyRoomLink", "isCurrentRoomAuthority"]);
 
 const functions: string[] = [];
 function collect(node: ts.Node): void {
@@ -92,6 +92,7 @@ function fixture(launchedByClient = true) {
     qualityChangeRef: ref<object | null>(null), pendingQualityChangeRef: ref<QualitySettings | null>(null),
     activeGenerationRef: ref<number | null>(1), streamRef: ref<typeof stream | null>(stream), sourceSwitchRef: ref<object | null>(null),
     nativeSourceAudioRef: ref<boolean | undefined>(undefined), setMicrophoneEnabled: vi.fn(),
+    microphoneVoiceProcessing: true, setMicrophoneVoiceProcessing: vi.fn(),
     nativeAudioSelectionRef: ref<{ enabled: boolean; exclude?: unknown } | null>(null),
     nativeModeRef: ref(false), nativeClientRef: ref<typeof client | null>(client), nativeShareGenerationRef: ref<string | null>("share"),
     hostAudioRef: ref<{ sourceStream: MediaStream } | null>(null),
@@ -207,7 +208,11 @@ describe("Host room ownership", () => {
       interactions = {};
       stop = vi.fn();
       constructor(public identity: { roomId: string; token: string; roomOnly?: true; shareGeneration?: string },
-        public events: { onMessage(message: unknown): void }) { signals.push(this); }
+        public events: {
+          onMessage(message: unknown): void;
+          onTerminated(reason: "SIGNAL_TERMINATED"): void;
+          onAccessRequired(): void;
+        }) { signals.push(this); }
       ownsHostRoom(roomId: string, token: string) { return this.identity.roomId === roomId && this.identity.token === token; }
       wantsHostPublication(generation: string) { return this.identity.shareGeneration === generation && this.identity.roomOnly !== true; }
     }
@@ -222,6 +227,7 @@ describe("Host room ownership", () => {
       getStableClientId: () => "host-client", defaultHostDisplayName: () => "Host", readDisplayName: () => "Host",
       setDisplayName: vi.fn(), setDisplayNameDraft: vi.fn(), setDisplayNameError: vi.fn(),
       setInteractionSession: vi.fn(), setSignalStatus: vi.fn(), forgetRoom,
+      onAuthorizationRequired: vi.fn(),
       hostServerErrorNotice: (code: string) => code,
     });
     return { ...current, room, signals, forgetRoom, connect: (value = room) => current.context.connectRoomSignal(value) as Signal };
@@ -247,7 +253,41 @@ describe("Host room ownership", () => {
     expect(current.disposeResources).not.toHaveBeenCalled();
     expect(current.activeGenerationRef.current).toBe(1);
     expect(current.setPhase).not.toHaveBeenCalled();
+    expect(current.setNoticeValue).not.toHaveBeenCalled();
   });
+
+  it("shows a rejected restored room on the television before any sharing starts", () => {
+    const current = roomFixture();
+    current.activeGenerationRef.current = null;
+    current.shareGenerationRef.current = null;
+    current.connect().events.onMessage({ type: "error", code: "INVALID_TOKEN" });
+    expect(current.setNoticeValue).toHaveBeenCalledExactlyOnceWith({
+      kind: "key", key: "host.roomInvalid", vars: undefined,
+      target: "television", comic: "room-not-found", tone: "bad",
+    });
+  });
+
+  it.each(["INVALID_TOKEN", "HOST_ALREADY_CONNECTED", "room-closed", "terminated", "access-required"])(
+    "keeps %s in the same status surface with and without a source", event => {
+      const outcomes: unknown[] = [];
+      for (const sharing of [false, true]) {
+        const current = roomFixture();
+        current.activeGenerationRef.current = sharing ? 1 : null;
+        current.shareGenerationRef.current = sharing ? "share" : null;
+        const signal = current.context.connectRoomSignal(current.room, undefined, false) as ReturnType<typeof current.connect>;
+        if (event === "terminated") signal.events.onTerminated("SIGNAL_TERMINATED");
+        else if (event === "access-required") signal.events.onAccessRequired();
+        else signal.events.onMessage(event === "room-closed" ? { type: event } : { type: "error", code: event });
+        expect(current.setNoticeValue).toHaveBeenCalledOnce();
+        const notice = current.setNoticeValue.mock.calls[0][0];
+        expect(notice).toMatchObject({ target: "television", tone: event === "room-closed" ? "off" : "bad" });
+        outcomes.push({ text: notice.kind === "key" ? notice.key : notice.text, comic: notice.comic });
+        expect(current.activeGenerationRef.current).toBeNull();
+        expect(current.disposeResources).toHaveBeenCalledOnce();
+      }
+      expect(outcomes[0]).toEqual(outcomes[1]);
+    },
+  );
 
   it("checks the existing connection's authority before reusing it", () => {
     const current = roomFixture();
@@ -655,6 +695,28 @@ describe("Host quality ownership", () => {
     expect(current.setPhase).not.toHaveBeenCalled();
     expect(current.track.stop).not.toHaveBeenCalled();
     expect(current.sourceSwitchRef.current).toBeNull();
+  });
+
+  it.each(["applied", "failed", "stopped"])("commits Browser voice processing only for the current successful input: %s", async outcome => {
+    const current = fixture();
+    const capture = deferred<MediaStream | null>();
+    const setMicrophone = vi.fn(() => capture.promise);
+    Object.assign(current.context, {
+      hostAudioRef: ref({ setMicrophoneVolume: vi.fn(), setMicrophone }),
+      sharingPausedRef: ref(false), microphoneVolume: 1, setMicrophonePending: vi.fn(),
+      setMicrophoneDevices: vi.fn(),
+    });
+    const changing = current.context.changeMicrophone(true, "virtual-input", false);
+    expect(setMicrophone).toHaveBeenCalledWith(true, "virtual-input", false);
+    expect(current.context.setMicrophoneVoiceProcessing).not.toHaveBeenCalled();
+    if (outcome === "stopped") current.activeGenerationRef.current = null;
+    if (outcome === "failed") capture.reject(new Error("Input unavailable"));
+    else capture.resolve(null); // Input replacement keeps the existing mixed stream.
+    await changing;
+    if (outcome === "applied") expect(current.context.setMicrophoneVoiceProcessing).toHaveBeenCalledWith(false);
+    else expect(current.context.setMicrophoneVoiceProcessing).not.toHaveBeenCalled();
+    expect(current.setPhase).not.toHaveBeenCalled();
+    expect(current.track.stop).not.toHaveBeenCalled();
   });
 
   it("keeps a rejected source change as operation feedback while the current share stays live", async () => {

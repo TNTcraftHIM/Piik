@@ -42,11 +42,13 @@ node scripts/package-server-release.mjs <output-directory-outside-repository>
 ```
 
 The packager refuses a dirty tree, builds the Browser assets and the
-linux/amd64 server binary from that exact revision without cgo, records the
+linux/amd64 server binary (or linux/arm64 with `--arch arm64`) from that exact revision without cgo, records the
 full revision, emits a runtime archive plus path/size/SHA-256 manifest and release descriptor, and
 extracts its own artifact to verify it. The archive contains exactly
 `piik-server`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`, and `REVISION`. Upload
 the archive, manifest, and descriptor together to `/opt/piik/uploads`.
+ARM64 file names include `-linux-arm64` after the revision; x64 names stay
+unchanged. The deployment wrapper rejects a package for another host architecture.
 
 Public Release pages expose the runnable packages and put package checksums in
 the release body. Retain the original complete build output outside the checkout
@@ -69,7 +71,7 @@ PIIK_GO=/path/to/go node scripts/assemble-app.mjs \
 Assembly refuses a dirty or different revision and emits one directory with the
 App executable, the Browser assets taken from that release and embedded in
 it, the selected sidecars, notices, and matching `REVISION`. Its required target
-is one of `windows-amd64`, `linux-amd64`, or `darwin-arm64`; every supplied
+is one of `windows-amd64`, `linux-amd64`, `linux-arm64`, `darwin-arm64` or `darwin-amd64`; every supplied
 binary input must match it. It does not create an installer, auto-updater,
 release tag, or compatibility bundle.
 
@@ -78,7 +80,7 @@ LiveKit dependency's [Darwin CPU statistics](https://github.com/mackerelio/go-os
 call Mach APIs. Windows and Linux
 App builds keep cgo disabled. A core check on those hosts explicitly skips
 the Darwin binaries; macOS build and package verification belong to the existing
-native runner. This does not change the cgo-free linux/amd64 Server artifact.
+native runner. Server builds for both Linux architectures remain cgo-free.
 
 The platform package also carries its native presentation metadata: Windows
 embeds the icon in the Go executable, Linux emits a freedesktop desktop entry
@@ -110,7 +112,7 @@ Retain the descriptor and successful deployment output as release metadata. Do
 not create a follow-up source commit solely to duplicate their revision, asset,
 or hashes.
 
-Manual `app_checks=true` dispatch packages Server and three-platform App
+Manual `app_checks=true` dispatch packages both Server architectures and all App
 candidates after validation. Once [automatic publication](./operations/github.md)
 is explicitly enabled, accepted main merges run that same pipeline and publish
 the verified artifacts. Candidate artifacts are retained for 14 days. Ordinary

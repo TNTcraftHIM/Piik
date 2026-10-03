@@ -16,10 +16,10 @@ in the [Linux capture guide](../../native/capture/linux/README.md).
 If the page does not open automatically, open the address shown in the terminal
 or press **O** there to retry. Keep the App running while using that page.
 
-Windows App and browser sharing are the primary tested paths. The macOS and
-Linux apps have not yet been tested on physical devices; test results and
+Windows App and browser sharing are the primary tested paths. Physical-device
+coverage for the macOS and Linux apps is still limited; test results and
 [feedback](https://github.com/TNTcraftHIM/Piik/issues) are welcome. macOS native
-capture requires Apple silicon and macOS 13 or newer. Package construction and public Release
+capture requires macOS 13 or newer on Apple silicon or Intel. Package construction and public Release
 publication are separate steps in [deployment](../../docs/deployment.md).
 
 ## Modes
@@ -102,25 +102,10 @@ use a configured Site when persistent control availability or SFU fallback matte
 
 **Why can the page open, or screen capture succeed, while sharing or viewing fails?**
 
-Chromium-based Browsers can restrict WebRTC UDP through Browser settings,
-extensions or managed policies. Disabling non-proxied UDP can prevent even the
-local Browser-to-App media connection; successful capture or page loading
-does not prove that this separate connection is available.
-The viewing browser is affected too: this can lead to **No media route available**
-or another connection error. Hiding local IP addresses alone does not necessarily
-disable WebRTC; the effective transport policy matters.
-
-Check the Browser's WebRTC/IP-handling policy and any extension's WebRTC or
-IP-leak protection setting. Restore a policy that permits WebRTC UDP, reload
-Piik, and verify that another extension or managed policy has not overridden
-the choice. Setting names and availability differ between Browsers. For example,
-Vivaldi exposes **Settings > Privacy and Security > WebRTC IP Handling >
-Broadcast IP for Best WebRTC Performance**. Changing this policy can expose
-network addresses to WebRTC peers; do not disable unrelated protections.
-
-See [Chromium's extension policy API](https://developer.chrome.com/docs/extensions/reference/api/privacy#property-network),
-[Vivaldi's setting example](https://help.vivaldi.com/desktop/privacy/privacy-settings/),
-and the [verified policy mechanism and field case](../../docs/research/native-client-lifecycle.md).
+Browser settings, extensions or managed policies can block WebRTC UDP, including
+the local Browser-to-App media connection. Follow the documentation center's
+[browser WebRTC checks](../../docs/guide/troubleshooting.md#browser-webrtc-restrictions).
+For codec-specific failures, see [Windows H264 troubleshooting](../../docs/guide/troubleshooting.md#h264-sharing-fails-on-windows).
 
 ### Diagnostics
 
@@ -206,7 +191,7 @@ node scripts/package-server-release.mjs /outside/repository/app-release
 node scripts/package-app-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/app-candidate
 ```
 
-Supported targets are `windows-amd64`, `linux-amd64`, and `darwin-arm64`.
+Supported targets are `windows-amd64`, `linux-amd64`, `linux-arm64`, `darwin-arm64` and `darwin-amd64`.
 Use the matching target name in the command above. Darwin assembly requires a
 native macOS runner with its SDK and enables cgo; Windows and Linux assembly keep
 cgo disabled.

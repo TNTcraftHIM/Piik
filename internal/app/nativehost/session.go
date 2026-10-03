@@ -1215,8 +1215,12 @@ func (state CaptureState) applyBackend(options *nativecapture.VideoOptions) {
 }
 
 func validH264ProfileLevelID(value string) bool {
-	switch value {
-	case "42c01e", "42c01f", "42c020", "42c028", "42c029", "42c02a", "42c032", "42c033":
+	level, valid := encoded.H264ConstrainedBaselineLevel(value)
+	if !valid {
+		return false
+	}
+	switch level {
+	case 30, 31, 32, 40, 41, 42, 50, 51:
 		return true
 	default:
 		return false

@@ -25,6 +25,11 @@ Keep those internal values at the first public release: resetting schema or
 authorization counters for visual consistency can invalidate data or stale-work
 fences. A room number is a user-facing address, not a software version.
 The private tooling-only npm package carries no independent product version.
+The App launcher displays its installed version from the existing launcher state;
+Server startup logs retain the running version and revision. The website may
+display GitHub's latest stable tag and `published_at` as optional metadata, never
+a manually maintained version or the installed App's identity. Publication time
+is distinct from build time; an unavailable check must not block downloads.
 
 ## Public Compatibility Promise
 
@@ -94,8 +99,8 @@ release descriptor. Fixed names allow GitHub's native latest-asset links;
 [website operations](../operations/website.md#preview) owns download presentation
 and verification of the matching Gitee mirror.
 
-Public Release attachments contain the three App ZIPs and the Server runtime
-archive. Package descriptors (`.release.json`), file manifests (`.manifest.tsv`)
+Public Release attachments contain the App ZIPs and Server runtime archives
+for the registered package targets. Package descriptors (`.release.json`), file manifests (`.manifest.tsv`)
 and standalone `.sha256` files remain build/deployment inputs in the local output
 and CI artifacts; publishers validate them but do not upload them to GitHub or
 Gitee Releases. The release body includes a collapsed full source SHA and
@@ -170,12 +175,15 @@ introduced by this policy.
 
 ## Container Distribution
 
-`ghcr.io/tntcrafthim/piik` wraps the same verified linux/amd64 Server archive as
-the GitHub release. The packager's optional `--container-image <tag>` builds from
-that extraction; CI checks its Compose recipe and transfers the verified image
+`ghcr.io/tntcrafthim/piik` wraps the same verified linux/amd64 and linux/arm64
+Server archives as the GitHub release. The packager's optional
+`--container-image <tag>` builds from that architecture's extraction;
+CI checks its Compose recipe on the matching native runner and transfers the verified image
 between jobs as a CI artifact, outside public Release attachments.
 `publish-container.mjs` requires matching published GitHub source, version and
-Server digest in the image labels. Existing version tags are retained; `latest`
+Server digest in each image's labels. A standard multi-platform image index
+selects the matching architecture; platform tags are immutable inputs to that
+index. Existing version tags are retained; `latest`
 moves only when that version is GitHub's latest. Manual candidates never publish.
 The [release approval boundary](#automatic-publication) and
 [first-publication visibility check](../operations/github.md#container-registry)
