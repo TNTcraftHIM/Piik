@@ -54,6 +54,9 @@ export const zh = {
 
   "client.launch.title": "打开 Piik",
   "client.launch.version": "当前版本 {version}",
+  "client.launch.credit": "免费开源 · TNTcraft 与贡献者",
+  "client.launch.website": "官方网站",
+  "client.launch.source": "GitHub 源码",
   "client.launch.local": "本地房间",
   "client.launch.localHint": "同一局域网内使用",
   "client.launch.link": "公网邀请",
