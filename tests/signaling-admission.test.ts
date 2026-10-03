@@ -37,6 +37,21 @@ function fixture(role: "host" | "viewer" = "host") {
 }
 
 describe("room authentication and site admission", () => {
+  it("keeps one connection when starting the room during reconnect backoff", async () => {
+    const { signal, sockets, events } = fixture();
+    sockets[0]!.dispatchEvent(Object.assign(new Event("close"), { code: 1006 }));
+    // Starting a share reuses the room's signal and calls start() again.
+    signal.start();
+    const replacement = sockets[1]!;
+    replacement.dispatchEvent(new Event("open"));
+    await vi.advanceTimersByTimeAsync(800);
+    expect(sockets).toHaveLength(2);
+    expect(replacement.close).not.toHaveBeenCalled();
+    expect(events.onTerminated).not.toHaveBeenCalled();
+    signal.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it.each([
     { required: false, authenticated: true },
     { required: true, authenticated: true },

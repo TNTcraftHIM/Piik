@@ -284,6 +284,11 @@ export class SignalingClient {
     if (this.stopped) {
       return;
     }
+    // An explicit start may supersede a pending reconnect for the same room.
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.accessCheck?.abort();
     this.accessCheck = null;
 
