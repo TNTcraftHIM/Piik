@@ -80,21 +80,9 @@ App 在独立 Windows 控制台中启动时，启动或运行错误会保留在�
 
 **为什么网页能打开、屏幕也能采集，却无法分享或观看？**
 
-基于 Chromium 的浏览器可能通过浏览器设置、扩展或管理策略限制 WebRTC UDP。
-禁止未经代理的 UDP，甚至会阻止本机浏览器与 App 之间的媒体连接；
-采集成功或页面能打开，并不能证明这条独立连接可用。
-观看端也会受影响，可能看到 **没有可用的媒体线路** 或其他连接失败提示。
-仅隐藏本机 IP 地址不一定会禁用 WebRTC，需要看实际生效的传输策略。
-
-检查浏览器的 WebRTC/IP 处理策略，以及扩展中的 WebRTC 或 IP 泄露保护设置。
-恢复允许 WebRTC UDP 的策略，重新加载 Piik，再确认没有其他扩展或管理策略覆盖该选择。
-各浏览器的设置名称与可用选项不同。例如，Vivaldi 提供
-**Settings > Privacy and Security > WebRTC IP Handling > Broadcast IP for Best WebRTC Performance**。
-修改这项策略可能向 WebRTC 对端暴露网络地址，请不要同时关闭无关保护。
-
-参考 [Chromium 扩展策略 API](https://developer.chrome.com/docs/extensions/reference/api/privacy#property-network)、
-[Vivaldi 设置说明](https://help.vivaldi.com/desktop/privacy/privacy-settings/)和
-[已核验的策略机制与实际案例](../../docs/research/native-client-lifecycle.md)。
+浏览器设置、扩展或管理策略可能阻止 WebRTC UDP，包括本机网页与 App 之间的媒体连接。
+按文档中心的 [浏览器 WebRTC 排查](../../docs/guide/troubleshooting.zh-CN.md#浏览器限制了-webrtc)操作。
+特定编码失败时，另见 [Windows H264 排查](../../docs/guide/troubleshooting.zh-CN.md#windows-上-h264-分享失败)。
 
 ### 诊断
 

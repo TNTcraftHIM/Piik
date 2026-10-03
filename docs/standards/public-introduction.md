@@ -31,8 +31,10 @@ platforms, audience size, sound and sharing across networks. Order them along
 the visitor's decisions: device and installation requirements, joining friends,
 shared media, then advanced hosting. Keep related questions together and place
 material limitations beside their answers. Specific errors and recovery procedures
-belong in the usage guides, reached through a short documentation link after
-the FAQ. Do not duplicate troubleshooting steps on the homepage.
+belong in the troubleshooting guide, linked directly from the header, the end
+of the FAQ and the footer in the selected language. Keep these steps in one
+reader guide; App references link to it rather than maintaining a second copy.
+Do not duplicate troubleshooting steps on the homepage.
 
 ## Presentation
 
