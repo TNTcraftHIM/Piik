@@ -13,6 +13,8 @@ function syncDownloadLinks(picker) {
   }
 }
 for (const picker of architecturePickers) {
+  picker.disabled = picker.querySelectorAll('input').length < 2;
+  syncDownloadLinks(picker);
   picker.addEventListener('change', () => syncDownloadLinks(picker));
 }
 // Content and download links remain usable without scripts or release metadata.
@@ -25,21 +27,7 @@ if (releaseLabel) {
     signal: controller.signal, headers: { Accept: 'application/vnd.github+json' },
   }).then(async response => {
     if (!response.ok) return null;
-    const data = await response.json();
-    const release = parseReleaseMetadata(data);
-    if (!release) return null;
-    // Additional targets become visible only after their package is published.
-    for (const choice of document.querySelectorAll('[data-release-target]')) {
-      const targetRelease = parseReleaseMetadata(data, choice.dataset.releaseTarget);
-      choice.hidden = !targetRelease || targetRelease.url === release.url;
-    }
-    for (const picker of architecturePickers) {
-      const available = Array.from(picker.querySelectorAll('label:not([hidden]) input'));
-      picker.disabled = available.length < 2;
-      if (!available.some(input => input.checked)) available[0].checked = true;
-      syncDownloadLinks(picker);
-    }
-    return release;
+    return parseReleaseMetadata(await response.json());
   })
     .then(release => {
       if (!release?.publishedAt) return;

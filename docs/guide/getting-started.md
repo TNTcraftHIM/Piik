@@ -52,7 +52,7 @@ App Local rooms and temporary public invitations end when that App run stops.
 ## Use Piik online
 
 1. Open [demo.piik.tv](https://demo.piik.tv) in your browser.
-2. Select **Start sharing**, then **Browser picker** for a screen, window or tab, or
+2. Select **Start sharing**, then **Browser** for a screen, window or tab, or
    **Camera** where your computer or phone browser supports it. Enable source
    audio if the picker offers it.
 3. Confirm the preview and select **Copy invite link**. Open that link on a
@@ -72,7 +72,7 @@ restrictive networks may load the page but block video.
    The launcher opens in your system browser.
 3. Choose **Public invite** for friends outside your local network, then select
    **Open Piik**. Other modes are explained below.
-4. Choose **Start sharing**, then select **Browser picker**, **Camera**, **Apps / Windows**, or
+4. Choose **Start sharing**, then select **Browser**, **Camera**, **Apps / Windows**, or
    **Screens** as available. Pick the actual source and sound option.
 5. Copy and send the room invitation. Keep both the App and sharing tab open.
 
@@ -126,7 +126,7 @@ follow the [self-hosting guide](../operations/self-hosting.md) for server, HTTPS
 and network setup.
 
 1. Open your group's Piik site. Enter its site passphrase if asked.
-2. Choose **Start sharing**, then **Browser picker** to select a screen, window or tab,
+2. Choose **Start sharing**, then **Browser** to select a screen, window or tab,
    or **Camera** where your computer or phone browser supports it.
    Enable source audio if the picker offers it.
 3. Check the preview, then choose **Copy invite link** and send it to your friends.
@@ -157,7 +157,7 @@ then select a picture card to start sharing. Device names and previews depend on
 browser permissions; while a camera is shared, other cameras are listed by name.
 Use headphones to keep speaker sound from feeding back into the microphone.
 
-With **Browser picker** or **Camera** capture, **Noise & echo reduction** in sound
+With **Browser** or **Camera** capture, **Noise & echo reduction** in sound
 settings is on by default, asking the browser to handle echo, noise and volume.
 Turn it off for music or a virtual audio input. Device and system effects remain
 controlled by their own settings. App native capture uses device/system audio settings.

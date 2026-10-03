@@ -309,7 +309,7 @@ function Screen({ shot }: { shot: Shot }) {
                   <RoomAdmissionBadge policy="private" passwordEnabled={false} />
                 </>}
               </div>}
-              {viewer ? <div className="lr-row-group lr-viewer-host-slot"><Glyph name="tv" size={18} /><b>{name}</b></div> : <span className="lr-spacer" />}
+              {viewer ? <div className="lr-row-group lr-viewer-host-slot"><Glyph name="tv" size={18} /><b>{name}</b></div> : live ? <span className="lr-spacer" /> : null}
               <div className={viewer ? "lr-viewer-personal-controls" : "lr-host-personal-controls"}>
                 <div className={`lr-row-group lr-group-name ${viewer ? "lr-viewer-self-slot" : "lr-host-identity-slot"}`}>
                   <NameTag name={viewer ? names[0] : name} identity={viewer ? guests[0] : host} />

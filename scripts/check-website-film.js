@@ -320,7 +320,7 @@
       await at('share',3*BEAT,lang);
       const tabs = [...doc.querySelectorAll('[role="tab"]')];
       assert(tabs.length === 4 && tabs.every(tab => !tab.disabled), 'The App source picker must offer browser, camera, window and screen sources');
-      assert(tabs[0].textContent.includes(lang === 'en' ? 'Browser picker' : '浏览器选源'), 'The first tab must name the browser picker rather than limit the source to a tab');
+      assert(tabs[0].textContent.trim() === (lang === 'en' ? 'Browser' : '浏览器'), 'The first tab must use the shared Browser label');
       await at('share',6*BEAT,lang);
       const hostControls = doc.querySelector('.lr-host-share-controls');
       assert(hostControls && hostControls.querySelectorAll('button').length === 5 &&

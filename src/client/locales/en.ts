@@ -194,7 +194,7 @@ export const en: Record<CopyKey, string> = {
   "host.microphone.denied": "Microphone access was not allowed. Allow Piik to use it and try again.",
   "host.microphone.unavailable": "The microphone is unavailable. Check its connection and microphone permissions.",
   "host.sourcePicker.tab.camera": "Camera",
-  "host.sourcePicker.tab.browser": "Browser picker",
+  "host.sourcePicker.tab.browser": "Browser",
   "host.sourcePicker.tab.window": "Apps / Windows",
   "host.sourcePicker.tab.display": "Screens",
   "host.sourcePicker.windowAudio": "Application sound",

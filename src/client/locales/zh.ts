@@ -194,7 +194,7 @@ export const zh = {
   "host.microphone.denied": "未获得麦克风权限，请允许 Piik 使用麦克风后重试。",
   "host.microphone.unavailable": "暂时无法使用麦克风，请检查设备连接和麦克风权限。",
   "host.sourcePicker.tab.camera": "摄像头",
-  "host.sourcePicker.tab.browser": "浏览器选源",
+  "host.sourcePicker.tab.browser": "浏览器",
   "host.sourcePicker.tab.window": "程序 / 窗口",
   "host.sourcePicker.tab.display": "屏幕",
   "host.sourcePicker.windowAudio": "应用声音",

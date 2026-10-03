@@ -15,7 +15,7 @@ Role labels describe permission; a person's chosen nickname stays unchanged.
 | Product capability | Screen sharing | 屏幕共享 |
 | Start sending a chosen screen/window | Start sharing | 开始分享 |
 | Enter another person's room | Join a room | 加入房间 |
-| Open the browser-provided screen/window/tab chooser | Browser picker | 浏览器选源 |
+| Open the browser-provided screen/window/tab chooser | Browser | 浏览器 |
 | Site-wide access secret | Site passphrase | 站点口令 |
 | Room-specific access secret | Room password | 房间密码 |
 

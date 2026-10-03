@@ -837,6 +837,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   align-items: center;
   gap: 8px;
 }
+.lr-row > .lr-host-personal-controls:only-child { flex: 1 1 auto; justify-content: space-between; }
 .lr-host-identity-slot,
 .lr-host-diagnostics-slot { flex: 0 0 auto; }
 .lr-host-diagnostics-slot {

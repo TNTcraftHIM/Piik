@@ -4096,7 +4096,7 @@ export function HostPage({
                 ) : null}
               </RowGroup>
             ) : null}
-            <span className="lr-spacer" />
+            {room ? <span className="lr-spacer" /> : null}
             <div className="lr-host-personal-controls">
               <div className="lr-row-group lr-group-name lr-host-identity-slot">
                 {editingDisplayName ? (

@@ -127,11 +127,13 @@ native latest-attachment route:
 - Gitee: `releases/download/latest/asset-name.zip`
   ([Windows download](https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-windows-amd64.zip)).
 
-Both links follow provider publication without a website rebuild. An optional
-GitHub metadata request supplies the latest version/date and reveals architecture
-choices only when their App packages are published. One selection updates both
-providers' links. The no-script/API-failure defaults stay Windows x64, Apple
-silicon and Linux x64. ARM64 Server packages do not enable an ARM64 App choice.
+Both links follow provider publication without a website rebuild. Supported App
+architecture choices stay visible; one selection updates both providers' links.
+An optional GitHub metadata request supplies only the latest version/date;
+failure does not disable architecture selection. Without JavaScript, the default
+links remain Windows x64, Apple silicon and Linux x64. Publish a newly listed App
+package before deploying its website option. ARM64 Server packages alone do not
+enable an ARM64 App choice.
 Platform buttons say “Download from GitHub” /
 “GitHub 下载”; the secondary link says “Download from Gitee” /
 “Gitee 国内镜像下载”. Keep versions and archive formats out of these labels.
