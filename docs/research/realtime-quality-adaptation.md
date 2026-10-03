@@ -30,6 +30,35 @@
   cannot prove an unconnected parent is better or authorize parent-wide/SFU
   routing changes.
 
+## Go GC Attribution
+
+A stall or resolution drop alone does not identify garbage collection. The
+relevant boundary is the selected media path:
+
+| Path | Go's role |
+| --- | --- |
+| Browser capture and Browser P2P/relay | Chrome owns capture, encoding and RTP. Go owns room/signaling; its GC does not directly pause those Browser media workers. Control delays and shared-machine resource pressure remain possible indirect effects. |
+| Native App | The capture helper owns encoding; Go reads its output and runs Pion/LiveKit transport. Go scheduling or allocation pressure can delay frame ingestion, packet delivery or feedback. |
+| Embedded SFU or Native relay | Go participates in forwarding, so its runtime is on the media path. |
+
+The [Browser adaptation comparisons](./browser-local-encoding-pool.md#sustained-h264-recovery)
+include low-output recovery in an isolated Chrome/Node harness without a Go
+process. Go GC is therefore not necessary for those reproductions; this does
+not diagnose every field blur, drop or Native/SFU interruption.
+
+Go's [GC guide](https://go.dev/doc/gc-guide#Latency) distinguishes brief global
+pauses from concurrent CPU cost, allocation assists and scheduling delays. A
+small pause total alone cannot rule out runtime pressure. Before tuning GC,
+correlate the same attempt's source/encoder progress, RTP/loss/RTT, selected
+route and receiver frames with the relevant Go process. Existing diagnostic
+`memory.json` contains GC counts, recent pause durations/end times and cumulative
+GC CPU fraction; `heap.pprof` identifies sampled allocations. These are snapshots,
+not a continuous latency trace. Use a bounded local Go execution trace/CPU profile
+or `GODEBUG=gctrace=1` reproduction when the snapshots justify it, following
+[Go diagnostics](https://go.dev/doc/diagnostics); no public profiler is needed.
+Current evidence does not justify disabling GC, imposing a memory limit or
+replacing the Go transport. The unmatched field reports remain in [TODO](../todo.md).
+
 ## VP8 Cost And Hardware Boundary
 
 Chromium 151's Windows Media Foundation and D3D12 WebRTC encoder factories did

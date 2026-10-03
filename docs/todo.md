@@ -14,10 +14,6 @@ history. A parked idea is not implementation authority.
   contributor credit and `Co-authored-by` identity in the phase squash. Reply to
   resolved issues and declined requests at publication; retain the unmatched
   field reports below. Implementation history belongs to the phase PR.
-- [ ] **GC and NAT evidence review.** After the current presentation cleanup,
-  trace whether Go GC can affect the reported media path. Compare iroh/Tailscale
-  traversal with current ICE, separating direct success from relay availability
-  and implementation cost. Research is authorized; a new transport is not.
 
 ## Held By Owner
 
@@ -136,7 +132,9 @@ of a reporter's cause; research owns the completed experiments and their limits.
   codec, profile, display refresh rate and CPU/GPU use, distinguishing startup
   from sustained lag. Compare saturated GPU/game-FPS impact and multi-output
   recovery with the [helper-cost checks](./research/native-client-media.md#windows-helper-cost-2026-09-29)
-  before changing allocation or cadence.
+  before changing allocation or cadence. For Native/SFU stalls, correlate the
+  relevant Go runtime using the [GC attribution boundary](./research/realtime-quality-adaptation.md#go-gc-attribution);
+  no field report currently establishes GC as its cause.
 
 ## Next: P2P Connection And Feedback Evidence
 
@@ -147,7 +145,9 @@ Use existing Debug provenance and selected-path events under the
 Separate candidates, attempts, successful paths and timeouts; scope observations
 to connection generations without raw endpoints. Verify survey responses and
 P2P/SFU handoffs, including background direct attempts behind working SFU media.
-The [routing contract](./standards/routing-transport.md) remains unchanged.
+The [iroh/Tailscale comparison](./research/nat-traversal.md#iroh-and-tailscale-comparison)
+records reusable checks and Browser/relay limits; it does not authorize another
+transport. The [routing contract](./standards/routing-transport.md) remains unchanged.
 
 ## Parked Product Work
 
