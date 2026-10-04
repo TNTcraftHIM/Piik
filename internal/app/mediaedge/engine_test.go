@@ -129,7 +129,7 @@ func TestDefaultEngineSTUNUsesOnePortForBothFamilies(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = server.Close() })
-			mapped, err := engine.mux.GetXORMappedAddrContext(t.Context(), listener.LocalAddr(), time.Second)
+			mapped, err := engine.stunMapping(t.Context(), listener.LocalAddr().(*net.UDPAddr))
 			if err != nil {
 				t.Fatal(err)
 			}

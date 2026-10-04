@@ -265,14 +265,16 @@ a new Peer route.
 Iroh's [NAT guide](https://docs.iroh.computer/concepts/nat-traversal) estimates
 direct reachability for roughly nine in ten network configurations. It does not
 provide a matched 70%-to-90% before/after measurement against Piik or its ICE
-stack. Keep direct success separate from the
+stack. Tailscale also [reports direct success above 90% in typical conditions](https://tailscale.com/blog/nat-traversal-improvements-pt-1);
+that figure explicitly counts direct connections, not relay-only success.
+Keep direct success separate from the
 [relay fallback](https://docs.iroh.computer/concepts/relays) that carries traffic
 when hole punching fails; neither statistic transfers to our user population.
 
 | Mechanism | Piik comparison |
 | --- | --- |
 | Exchange endpoints and coordinate outbound probes | Existing room signaling plus Browser/Pion ICE connectivity checks. |
-| Discover and use the same UDP mapping | Native `UniversalUDPMux` already shares STUN, prediction and media; Chromium owns Browser sockets. |
+| Discover and use the same UDP mapping | Native shares one Pion UDP mux across fresh STUN discovery, prediction and media; Chromium owns Browser sockets. |
 | IPv4/IPv6 and gateway mapping | Native dual-stack candidates and bounded PCP/NAT-PMP/UPnP already exist; actual availability depends on the network. |
 | Switch between direct and relay paths | Iroh manages QUIC paths; Piik hands off WebRTC edges through one room-route operation. These are different contracts. |
 | Relay data over TLS/TCP when direct UDP fails | Iroh and Tailscale provide this. Piik currently has optional SFU/UDP, while App public invitations remain P2P-only. This is a coverage difference, not a missing prediction formula. |
@@ -315,12 +317,21 @@ The one-second virtual lease injected mapping loss; it does not establish a
 typical router lease or the cause of an unmatched field report. The fast lab
 attempts also do not represent four full 20-second product operation timeouts.
 
-This confirms a conditional Native address-freshness gap. Expiry alone does not
-regather an active connection's candidates. Correction belongs to shared STUN
-discovery and must preserve healthy siblings, generation fences, in-flight
-queries and existing route deadlines. Do not rotate the media socket, wait out
-25 seconds on every retry or adopt an arbitrary tiny TTL as a substitute for
-that ownership. Follow-up is tracked in [TODO](../todo.md#now).
+The correction keeps Pion's ordinary UDP mux and uses the existing Pion STUN
+client for each observation. Only concurrent in-flight queries to the same
+destination are shared; completed addresses are not cached. Pion owns request
+transaction matching and retransmission within the existing five-second survey
+bound. A caller can stop waiting independently; Engine retirement ends discovery.
+No socket rotation, retry-count change, periodic probe or new transport is added.
+
+The same review reproduced acceptance of an unmatched STUN response in the old
+universal cache path. Stock STUN transactions reject it and recover a dropped
+Binding response. Native edge replacement and receiver ICE restart now query
+again while ordinary SDP renegotiation keeps its collector. Regression checks
+exercise a healthy encoded-media sibling, concurrent/canceled gatherings,
+Engine shutdown and both address families. Replacing only the implementation
+with the prior revision makes the address-refresh and transaction tests fail.
+These controlled checks do not assign a cause to unmatched field reports.
 
 ## Primary Sources
 

@@ -2,14 +2,17 @@ package mediaedge
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
+	"github.com/pion/stun/v3"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -315,7 +318,12 @@ func testReceiverForwarding(t *testing.T, codec string) {
 	completed := make(chan struct{}, 4)
 	gatheringCurrent := make(chan func() bool, 4)
 	surveyCandidates := 0
-	servers := []webrtc.ICEServer{{URLs: []string{localSurveyServer(t)}}}
+	var bindingRequests atomic.Int32
+	server := bindingServer(t, func(request *stun.Message, sender *net.UDPAddr, listener *net.UDPConn) {
+		bindingRequests.Add(1)
+		answerBinding(request, sender, listener, sender.Port)
+	})
+	servers := []webrtc.ICEServer{{URLs: []string{"stun:" + server.String()}}}
 	upstream.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
 			return
@@ -540,6 +548,11 @@ func testReceiverForwarding(t *testing.T, codec string) {
 			if count != 2 {
 				t.Fatalf("STUN survey candidates=%d, want one per gathering", count)
 			}
+			if bindingRequests.Load() < 2 {
+				t.Fatal("receiver ICE restart reused a completed STUN observation")
+			}
+		} else if bindingRequests.Load() != 1 {
+			t.Fatal("ordinary SDP renegotiation restarted STUN discovery")
 		}
 		if nativeReceiver.Source() != source || nativeReceiver.AudioSource() != audio ||
 			downstream.connection.ConnectionState() != webrtc.PeerConnectionStateConnected {

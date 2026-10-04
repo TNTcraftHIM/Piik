@@ -7,13 +7,14 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Native STUN cache freshness during recovery.** Resolve the
-  [reproduced mapping-loss boundary](./research/nat-traversal.md#native-mapping-cache-and-retry-lifetimes)
-  before completing the candidate review. New Native edges can reuse a stale
-  mapping from the Engine's 25-second Pion cache during shorter recovery steps.
-  Keep one shared socket and the existing route owner; verify fresh discovery
-  with concurrent gathering and a healthy sibling before accepting a repair.
-  This does not establish the cause of unmatched field connection failures.
+- [ ] **Go magicsock integration experiment.** After validating the Native STUN
+  repair, extend the isolated `spike/magicsock-feasibility` experiment to actual
+  WebRTC media and mapping/network changes. Reuse Tailscale's Go implementation
+  first; a Rust module is only an alternative if a concrete Go limitation
+  justifies it. Keep production protocols, route policy and dependencies intact.
+  Compare direct success, relay requirements and recovery separately; the
+  [existing evidence](./research/nat-traversal.md#iroh-and-tailscale-comparison)
+  does not establish a population-wide gain or Browser-native interoperability.
 - [ ] **v1.8.0 final acceptance.** Present the website, launcher and product
   previews with bilingual release notes; wait for the owner's final review before
   publishing. Verify final candidate artifacts through the existing release
@@ -153,8 +154,8 @@ Separate candidates, attempts, successful paths and timeouts; scope observations
 to connection generations without raw endpoints. Verify survey responses and
 P2P/SFU handoffs, including background direct attempts behind working SFU media.
 The [iroh/Tailscale comparison](./research/nat-traversal.md#iroh-and-tailscale-comparison)
-records reusable checks and Browser/relay limits; it does not authorize another
-transport. The [routing contract](./standards/routing-transport.md) remains unchanged.
+records reusable checks and Browser/relay limits. The isolated experiment above
+does not change the production [routing contract](./standards/routing-transport.md).
 
 ## Parked Product Work
 

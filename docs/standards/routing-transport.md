@@ -124,7 +124,10 @@ rebuilds that connection if necessary, within the existing two-request budget.
 Capable Native receivers also renegotiate that connection while retaining the
 encoded source, local playback and downstream edges when its codec/audio shape
 is unchanged. Pion owns ICE restart; each actual gathering owns fresh supplemental
-candidates. A changed media shape replaces the source and its dependent edges.
+candidates. Native STUN observations share only an in-flight transaction, never
+a completed address across gatherings. Discovery uses the existing media socket;
+retiring one gathering does not cancel another or close healthy media.
+A changed media shape replaces the source and its dependent edges.
 It does not require NAT prediction or reopen the route candidate. A prepared
 candidate instead follows its current route operation's failure path, without
 an independent restart loop.

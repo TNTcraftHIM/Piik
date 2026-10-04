@@ -21,6 +21,7 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/stun/v3"
 	"github.com/pion/webrtc/v4"
+	"golang.org/x/sync/singleflight"
 )
 
 // Use the browser-standard spelling of Constrained Baseline in SDP. Pion's
@@ -62,7 +63,8 @@ type EngineOptions struct {
 type Engine struct {
 	api            *webrtc.API
 	settings       webrtc.SettingEngine
-	mux            *ice.UniversalUDPMuxDefault
+	mux            *ice.UDPMuxDefault
+	stunQueries    singleflight.Group
 	listenAddress  string
 	localPort      int
 	portMapping    *portmapping.Mapping
@@ -92,12 +94,10 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		return nil, errors.New("native media UDP socket is unavailable")
 	}
 	loggerFactory := diagnostics.PionLoggerFactory()
-	ready := make(chan struct{})
-	mux := ice.NewUniversalUDPMuxDefault(ice.UniversalUDPMuxParams{
+	mux := ice.NewUDPMuxDefault(ice.UDPMuxParams{
 		Logger:  loggerFactory.NewLogger("piik-ice"),
-		UDPConn: &initializingUDPConn{UDPConn: connection, ready: ready},
+		UDPConn: connection,
 	})
-	close(ready)
 	settingEngine := webrtc.SettingEngine{LoggerFactory: loggerFactory}
 	settingEngine.SetICEUDPMux(mux)
 	settingEngine.SetIncludeLoopbackCandidate(options.IncludeLoopback)
@@ -147,29 +147,6 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 	return engine, nil
 }
 
-// Pion starts its reader before publishing the embedded UDP mux. Both receive
-// paths wait for construction; the AddrPort interface preserves its fast path.
-type initializingUDPConn struct {
-	*net.UDPConn
-	ready <-chan struct{}
-}
-
-var _ ice.AddrPortReaderWriter = (*initializingUDPConn)(nil)
-
-func (connection *initializingUDPConn) ReadFrom(buffer []byte) (int, net.Addr, error) {
-	<-connection.ready
-	return connection.UDPConn.ReadFrom(buffer)
-}
-
-func (connection *initializingUDPConn) ReadFromAddrPort(buffer []byte) (int, netip.AddrPort, error) {
-	<-connection.ready
-	return connection.UDPConn.ReadFromUDPAddrPort(buffer)
-}
-
-func (connection *initializingUDPConn) WriteToAddrPort(buffer []byte, address netip.AddrPort) (int, error) {
-	return connection.UDPConn.WriteToUDPAddrPort(buffer, address)
-}
-
 type mappedAddress struct {
 	address string
 	port    int
@@ -205,11 +182,7 @@ func (engine *Engine) surveySTUN(
 				}
 				address := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addresses[0], uint16(uri.Port)))
 				started := time.Now()
-				mapped, err := engine.mux.GetXORMappedAddrContext(
-					surveyContext,
-					address,
-					stunSurveyTimeout,
-				)
+				mapped, err := engine.stunMapping(surveyContext, address)
 				if err != nil || mapped == nil || mapped.IP.To4() == nil ||
 					mapped.Port < 1 || mapped.Port > 65_535 {
 					slog.DebugContext(surveyContext, "nat-survey", "event", "binding-failed", "serverPort", address.Port,
