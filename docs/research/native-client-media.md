@@ -486,6 +486,13 @@ This is a code-derived result, not a new physical capture measurement. Evaluate
 orientation-independent limits and preservation of source aspect ratio together;
 adding numeric fields alone would retain the current geometry limitation.
 
+The restriction extends beyond resolution labels: shared readers also bound
+frame rate and bitrate, and Native's selectable profile admits four exact raster
+pairs while derived outputs admit other dimensions within axis-specific limits.
+These are different meanings. Keep explicit resource ceilings, but assess them
+separately from presets and device capability; arbitrary numbers are not the
+replacement contract.
+
 The smallest proposed extension separates UI presets from numeric media limits
 and uses existing WebRTC codec negotiation. The
 [Media Capture specification](https://www.w3.org/TR/mediacapture-streams/)
@@ -501,6 +508,15 @@ evaluate, not promised product formats. A late Viewer or relay that cannot
 receive the current encoded source needs an explicit policy; SDP negotiation
 alone cannot convert that source. Per-Viewer transcodes or room-wide codec
 switches are not implied by this proposal.
+
+Current discovery couples format to implementation (`hardwareH264` and
+`softwareVP8`), and Browser preference uses a VP8-specific fallback flag.
+Capture, forwarding and SFU each correctly reject formats they cannot process,
+but adding another format therefore needs coordinated changes beyond SDP.
+Assess a small format-specific capability description at these existing owners
+only when selecting a concrete additional codec; no codec plugin system is
+proposed. Browser-to-App fanout is currently H.264-gated and falls back to ordinary
+Browser senders, so that optimization is not evidence that VP8 sharing is broken.
 
 Under [versioning](../standards/versioning.md#extending-interfaces), unknown
 descriptive capabilities may be ignored, but unsupported commands are not sent

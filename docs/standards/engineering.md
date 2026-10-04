@@ -79,6 +79,20 @@ the relevant existing fixture/check together. Do not create another handwritten
 field list in documentation, parallel DTO hierarchy or schema generator without
 a demonstrated reduction in ownership or drift.
 
+Keep UI presets, requested values, runtime capabilities and hard resource limits
+distinct. A current menu is not sufficient reason to freeze its values into every
+wire reader or platform adapter. Preserve meaningful authorization and resource
+bounds; prove that a producer's valid aggregate output fits its consumer, including
+serialization overhead. A per-item limit alone does not establish that contract.
+
+When extending a boundary, exercise a representative new value and an unchanged
+consumer before calling the design extensible. For media, include another source
+orientation and distinguish encode, decode and forwarding support. Optional
+presentation additions need a bounded unsupported-value policy separate from
+authority violations, following [versioning](./versioning.md#extending-interfaces).
+Use the existing owner and concrete capability negotiation; these checks do not
+justify a generic plugin framework or accepting unknown commands.
+
 ## Runtime Lifecycles
 
 Read each runtime as acquisition, the authoritative commit that makes its work

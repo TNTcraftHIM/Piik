@@ -7,6 +7,20 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Resolve the extensibility audit boundaries before freezing 2.0.** Review
+  the media findings in the assessment below together with optional interaction
+  evolution: the current reaction catalog is a strict wire enum, and an unknown
+  reaction or extra event field terminates the Browser signaling session.
+  Current producers do not send those values. Choose bounded capability-gated
+  delivery or a safe presentation fallback before expanding the catalog; preserve
+  strict command and authority validation. No replacement protocol is accepted yet.
+- [ ] **Align native source-list aggregate bounds.** The helper admits up to
+  1024 sources, but `nativecapture.ListSources` reuses the 64 KiB probe-output
+  bound. A synthetic helper with 64 individually valid 512-character window
+  titles returns no list; the 32-source control succeeds. Align enumeration,
+  encoded JSON and loopback response budgets with bounded overflow behavior.
+  This is a confirmed uncommon enumeration failure, not a diagnosis of earlier
+  reporter logs; it does not justify removing byte limits or adding pagination.
 - [ ] **Assess a 2.0 transport and media phase.** The owner reopened Magicsock,
   4K (#410) and additional codecs on 2026-10-04. Compare the isolated Go transport
   with the repaired Pion baseline under the [NAT evidence boundary](#next-p2p-connection-and-feedback-evidence).
