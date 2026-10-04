@@ -7,19 +7,25 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **v1.8.0 final acceptance.** Present the website, launcher and product
-  previews with bilingual release notes; wait for the owner's final review before
-  publishing. Verify final candidate artifacts through the existing release
-  workflow. Preserve [#449](https://github.com/TNTcraftHIM/Piik/pull/449)'s
-  contributor credit and `Co-authored-by` identity in the phase squash. Reply to
-  resolved issues and declined requests at publication; retain the unmatched
-  field reports below. Implementation history belongs to the phase PR.
+- [ ] **Assess a 2.0 transport and media phase.** The owner reopened Magicsock,
+  4K (#410) and additional codecs on 2026-10-04. Compare the isolated Go transport
+  with the repaired Pion baseline under the [NAT evidence boundary](#next-p2p-connection-and-feedback-evidence).
+  Evaluate numeric resolution limits and negotiated codec capabilities under the
+  [media extension assessment](./research/native-client-media.md#media-capability-extension-assessment).
+  Establish the supported paths, late-join behavior, resource bounds and public
+  compatibility boundary before accepting the production design. Existing fixes
+  remain checkpointed; experiments do not establish a connectivity gain or
+  authorize publication.
 
 ## Held By Owner
 
-- [ ] **4K sharing (#410).** Deferred by the owner on 2026-10-03; the current
-  release keeps the existing 1440p ceiling and 1.x Web/App/Server contracts.
-  Reopen only for a simple, explicitly accepted compatibility boundary.
+- [ ] **Candidate publication.** The owner paused the planned v1.8.0 release on
+  2026-10-04 while assessing 2.0. Before publication, present the final version,
+  previews and complete bilingual notes for fresh approval, then verify the
+  candidate artifacts through the existing workflow. Preserve
+  [#449](https://github.com/TNTcraftHIM/Piik/pull/449)'s contributor credit and
+  `Co-authored-by` identity in the phase squash. Reply to resolved issues and
+  declined requests at publication; retain unmatched field reports below.
 - [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
   own the evidence for synchronous H264 initialization, native adaptation and
@@ -138,7 +144,7 @@ of a reporter's cause; research owns the completed experiments and their limits.
 
 ## Next: P2P Connection And Feedback Evidence
 
-After the current phase, measure connection success, time to first picture and
+For the transport assessment, measure connection success, time to first picture and
 failure causes on representative networks, especially App and P2P-only sites.
 Use existing Debug provenance and selected-path events under the
 [NAT evidence boundaries](./research/nat-traversal.md#gateway-and-survey-limits).

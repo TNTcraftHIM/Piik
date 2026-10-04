@@ -1,6 +1,6 @@
 # Native App Media Evidence
 
-- Reviewed: 2026-10-03
+- Reviewed: 2026-10-04
 - Scope: platform capture, shared encoded sources, Pion transport and Browser
   decode; current behavior belongs to [media quality](../standards/media-quality.md)
 - Status: Windows physical native Host and Viewer gates passed; macOS and Linux adapters
@@ -465,6 +465,39 @@ it now follows [RFC 9143](https://www.rfc-editor.org/rfc/rfc9143.html#section-6)
 retaining the existing inactive/receive-only checks. Piik's current balanced
 Browser offer did not trigger this variant; the max-bundle control did. This is
 a corrected SDP interpretation, not evidence that all Firefox sharing lost audio.
+
+## Media Capability Extension Assessment
+
+Proposal assessed 2026-10-04 for a possible 2.0 phase; this does not change the
+current contract or the profile decision above. Resolution enums are enforced
+by both signaling readers and Native control, while capture admission separately
+bounds dimensions. Native capture, forwarding and SFU declarations also admit
+specific encoded formats. Removing one validator would leave these consumers
+inconsistent.
+
+The smallest proposed extension separates UI presets from numeric media limits
+and uses existing WebRTC codec negotiation. The
+[Media Capture specification](https://www.w3.org/TR/mediacapture-streams/)
+distinguishes requested constraints, supported ranges and actual settings;
+[WebRTC capabilities](https://www.w3.org/TR/webrtc/#rtcrtpsender-interface)
+advertise optimistic codec support, not guaranteed hardware execution. Preserve
+actual encoder admission and validate dimensions, pixel counts, frame sizes and
+resource bounds at their existing owners.
+
+Codec support must distinguish encoding, decoding and encoded forwarding,
+including profile/packetization and SFU admission. AV1 and VP9 are candidates to
+evaluate, not promised product formats. A late Viewer or relay that cannot
+receive the current encoded source needs an explicit policy; SDP negotiation
+alone cannot convert that source. Per-Viewer transcodes or room-wide codec
+switches are not implied by this proposal.
+
+Under [versioning](../standards/versioning.md#extending-interfaces), unknown
+descriptive capabilities may be ignored, but unsupported commands are not sent
+or executed. Numeric limits and advertised optional formats could make future
+resolution/codec additions compatible minor releases. 4K itself does not
+inherently require a major; breaking an existing public contract does. Evaluate
+the Browser/App/Server and mixed-peer flows before freezing a replacement
+contract; avoid a general compatibility framework.
 
 ## Implementation Boundary
 

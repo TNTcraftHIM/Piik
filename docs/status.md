@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-03
+Last updated: 2026-10-04
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -54,10 +54,11 @@ Release artifacts and operator deployment records own delivery completion;
 
 ## Current Candidate
 
-The current phase is being prepared as a compatible 1.x update. The published
-protocols and 1440p ceiling stay unchanged; 4K is deferred. Final acceptance and
-release authorization remain pending. [TODO](./todo.md#now) owns the phase scope
-and remaining work.
+Publication is on hold while a possible 2.0 phase is assessed: Native Magicsock,
+4K and extensible media capabilities. The checkpointed candidate still uses the
+published protocols and 1440p ceiling; the isolated transport experiment is not
+part of the product. Final scope, compatibility design and release authorization
+remain pending. [TODO](./todo.md#now) owns remaining work.
 
 ## Deployment
 
