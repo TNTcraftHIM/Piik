@@ -32,6 +32,7 @@ type EdgeOptions struct {
 type Edge struct {
 	connectionID  string
 	engine        *Engine
+	socket        *iceSocket
 	source        *Source
 	audioSource   *AudioSource
 	connection    *webrtc.PeerConnection
@@ -52,17 +53,13 @@ type Edge struct {
 	localCandidates      *localCandidateGathering
 }
 
-func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error) {
+func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (_ *Edge, err error) {
 	if source == nil || source.engine != engine || options.ConnectionID == "" ||
 		len(options.ConnectionID) > 256 {
 		return nil, errors.New("native media edge input is invalid")
 	}
 	if options.Audio != nil && options.Audio.engine != engine {
 		return nil, errors.New("native audio edge source belongs to another engine")
-	}
-	var prepareMapping func() int
-	if engine.portMapping != nil && !options.Local && len(options.ICEServers) > 0 {
-		prepareMapping = engine.portMapping.Prepare
 	}
 	if err := source.reserve(options.Local); err != nil {
 		return nil, err
@@ -73,12 +70,29 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 			return nil, err
 		}
 	}
+	socket, err := engine.newICESocket(options.ICEServers, !options.Local)
+	if err != nil {
+		source.releaseReservation(options.Local)
+		if options.Audio != nil {
+			options.Audio.releaseReservation(options.Local)
+		}
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			socket.close()
+		}
+	}()
+	var prepareMapping func() int
+	if socket.portMapping != nil {
+		prepareMapping = socket.portMapping.Prepare
+	}
 	var audio webrtc.TrackLocal
 	if options.Audio != nil {
 		audio = options.Audio.track
 	}
 	transport, err := forwarding.NewTransport(forwarding.TransportOptions{
-		Source: source.media.Source, Settings: engine.settings, ConnectionID: options.ConnectionID,
+		Source: source.media.Source, Settings: socket.settings(), ConnectionID: options.ConnectionID,
 		InitialBitrate: engine.initialBitrate, Audio: audio,
 	})
 	if err != nil {
@@ -94,6 +108,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 	edge := &Edge{
 		connectionID:  options.ConnectionID,
 		engine:        engine,
+		socket:        socket,
 		source:        source,
 		audioSource:   options.Audio,
 		connection:    connection,
@@ -129,7 +144,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (*Edge, error
 		}
 	}
 	edge.localCandidates = newLocalCandidateGathering(
-		engine,
+		socket,
 		options.ICEServers,
 		prepareMapping,
 		options.Events.LocalCandidate,
@@ -363,6 +378,7 @@ func (edge *Edge) Close() error {
 		logLocalMediaCandidateCounts(edge.connection.GetStats())
 	}
 	err := edge.transport.Close()
+	edge.socket.close()
 	edge.source.detach(edge)
 	if edge.audioSource != nil {
 		edge.audioSource.detach(edge)

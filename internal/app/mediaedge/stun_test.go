@@ -73,12 +73,11 @@ func TestNativeGatheringRefreshesMappingWithoutInterruptingSibling(t *testing.T)
 	})
 	connectEdgeToReceiver(t, sibling, receiver)
 	var mappedPort, requests atomic.Int32
+	var observedLocalPort atomic.Int32
 	mappedPort.Store(40000)
 	server := bindingServer(t, func(request *stun.Message, sender *net.UDPAddr, listener *net.UDPConn) {
 		requests.Add(1)
-		if sender.Port != engine.localPort {
-			t.Error("STUN left the shared media socket")
-		}
+		observedLocalPort.Store(int32(sender.Port))
 		answerBinding(request, sender, listener, int(mappedPort.Load()))
 	})
 	for attempt := range 3 {
@@ -105,6 +104,9 @@ func TestNativeGatheringRefreshesMappingWithoutInterruptingSibling(t *testing.T)
 				}
 				if strings.HasPrefix(candidate.Candidate, "candidate:ns") {
 					fields := strings.Fields(candidate.Candidate)
+					if observedLocalPort.Load() != int32(edge.socket.localPort) || fields[len(fields)-1] != strconv.Itoa(edge.socket.localPort) {
+						t.Fatal("STUN and candidate discovery left the edge's media socket")
+					}
 					if fields[5] != strconv.Itoa(wantPort) {
 						t.Fatalf("attempt %d reused mapping %s; want %d", attempt, fields[5], wantPort)
 					}
@@ -134,6 +136,7 @@ func TestSurveyRetriesLostBindingAndIgnoresUnmatchedResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
+	socket := testICESocket(t, engine)
 	var requests atomic.Int32
 	server := bindingServer(t, func(request *stun.Message, sender *net.UDPAddr, listener *net.UDPConn) {
 		if requests.Add(1) == 1 {
@@ -145,7 +148,7 @@ func TestSurveyRetriesLostBindingAndIgnoresUnmatchedResponse(t *testing.T) {
 		answerBinding(request, sender, listener, 40001)
 	})
 	observations := 0
-	engine.surveySTUN(t.Context(), []webrtc.ICEServer{{URLs: []string{"stun:" + server.String()}}}, func(mapped mappedAddress) {
+	socket.surveySTUN(t.Context(), []webrtc.ICEServer{{URLs: []string{"stun:" + server.String()}}}, func(mapped mappedAddress) {
 		observations++
 		if mapped.port != 40001 {
 			t.Errorf("accepted an unmatched STUN transaction: %+v", mapped)
@@ -162,6 +165,7 @@ func TestConcurrentSurveyCancellationAndEngineRetirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
+	socket := testICESocket(t, engine)
 	var answer atomic.Bool
 	requested := make(chan struct{}, 16)
 	server := bindingServer(t, func(request *stun.Message, sender *net.UDPAddr, listener *net.UDPConn) {
@@ -178,13 +182,13 @@ func TestConcurrentSurveyCancellationAndEngineRetirement(t *testing.T) {
 	retired := make(chan struct{})
 	go func() {
 		defer close(retired)
-		engine.surveySTUN(retiringContext, servers, func(mappedAddress) { t.Error("retired survey emitted a candidate") })
+		socket.surveySTUN(retiringContext, servers, func(mappedAddress) { t.Error("retired survey emitted a candidate") })
 	}()
 	waitSignal(t, requested, "initial Binding request")
 	const siblings = 3
 	results := make(chan mappedAddress, siblings)
 	for range siblings {
-		go engine.surveySTUN(t.Context(), servers, func(mapped mappedAddress) { results <- mapped })
+		go socket.surveySTUN(t.Context(), servers, func(mapped mappedAddress) { results <- mapped })
 	}
 	cancel()
 	waitSignal(t, retired, "retired gathering")
@@ -208,7 +212,7 @@ func TestConcurrentSurveyCancellationAndEngineRetirement(t *testing.T) {
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
-		engine.surveySTUN(t.Context(), servers, func(mappedAddress) { t.Error("retained a completed mapping") })
+		socket.surveySTUN(t.Context(), servers, func(mappedAddress) { t.Error("retained a completed mapping") })
 	}()
 	waitSignal(t, requested, "new Binding request after success")
 	_ = engine.Close()

@@ -267,6 +267,9 @@ after cancellation; a timeout constant or a close call alone proves no deadline.
 Keep the shared resources production retains while changing the external
 condition. New request/connection IDs alone do not prove that a dependency's
 cached observations, failure state or resource lease have been refreshed.
+For overlapping connections, preserve the actual shared local and remote
+endpoints; giving each fixture an independent listener can hide demultiplexing
+conflicts. Check both commit and rollback while the surviving media still flows.
 Keep the regression at the owning boundary and verify it rejects the old
 behavior. Report which failure sequences were exercised, rather than treating
 test counts, file coverage or an earlier audit as proof of lifecycle coverage.

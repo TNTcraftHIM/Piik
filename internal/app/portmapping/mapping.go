@@ -15,7 +15,7 @@ const (
 	// five-second direct-connection head start.
 	attemptTimeout = 3 * time.Second
 	deleteTimeout  = 2 * time.Second
-	// RFC 6886 recommends a two-hour NAT-PMP lease; later edges renew it at
+	// RFC 6886 recommends a two-hour NAT-PMP lease; later gatherings renew it at
 	// half-life without adding a background poller.
 	leaseDuration = 2 * time.Hour
 )
@@ -33,6 +33,7 @@ var discoverGateway = func(ctx context.Context) (gateway, error) {
 // functional when no mapping service is available.
 type Mapping struct {
 	localPort int
+	ctx       context.Context
 	cancel    context.CancelFunc
 	ready     chan struct{}
 
@@ -50,6 +51,7 @@ func Start(localPort int) *Mapping {
 	ctx, cancel := context.WithCancel(context.Background())
 	mapping := &Mapping{
 		localPort: localPort,
+		ctx:       ctx,
 		cancel:    cancel,
 		ready:     make(chan struct{}),
 	}
@@ -61,14 +63,14 @@ func (mapping *Mapping) Prepare() int {
 	<-mapping.ready
 	mapping.mu.Lock()
 	defer mapping.mu.Unlock()
-	if mapping.closed || mapping.gateway == nil ||
+	if mapping.closed || mapping.ctx.Err() != nil || mapping.gateway == nil ||
 		(mapping.attempted && !mapping.mapped) {
 		return 0
 	}
 	if mapping.mapped && time.Now().Before(mapping.renewAfter) {
 		return mapping.externalPort
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), attemptTimeout)
+	ctx, cancel := context.WithTimeout(mapping.ctx, attemptTimeout)
 	defer cancel()
 	mapping.mapPortLocked(ctx)
 	if !mapping.mapped {

@@ -46,7 +46,7 @@ share generation:
   a Site may use self-hosted 3478/3479/3480, Public Link uses its bounded public survey, and
   pure LAN supplies none. Its default-on Host switch augments Browser and Native
   P2P edges. This gate leaves ordinary ICE and Native gateway mapping enabled.
-  Native uses one media socket for IPv4 and, where available, IPv6
+  Each Native connection uses one media socket for IPv4 and, where available, IPv6
   direct connections; its STUN survey and best-effort gateway mapping use IPv4.
   Availability and background direct acquisition share a bounded budget of
   four actual connection attempts per eligible parent/session opportunity:
@@ -127,6 +127,12 @@ is unchanged. Pion owns ICE restart; each actual gathering owns fresh supplement
 candidates. Native STUN observations share only an in-flight transaction, never
 a completed address across gatherings. Discovery uses the existing media socket;
 retiring one gathering does not cancel another or close healthy media.
+A Native connection owns its UDP socket and optional gateway mapping. A new
+connection receives an independent socket; ICE restart retains the current one.
+Discovery and media must use that same connection-owned socket. Sharing a socket
+between physical connections can collapse an admitted overlap into one remote
+address/port, which Pion's UDP mux cannot demultiplex. Encoded sources remain
+shared; this isolation changes neither route authority nor copy capacity.
 A changed media shape replaces the source and its dependent edges.
 It does not require NAT prediction or reopen the route candidate. A prepared
 candidate instead follows its current route operation's failure path, without

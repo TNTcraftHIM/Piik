@@ -63,12 +63,18 @@ func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publ
 		}
 	}
 	publication := &Publication{source: source, audio: options.Audio}
+	socket, err := engine.newICESocket(options.ICEServers, false)
+	if err != nil {
+		_ = publication.Close()
+		return nil, err
+	}
+	publication.signaling.socket = socket
 	var audio webrtc.TrackLocal
 	if options.Audio != nil {
 		audio = options.Audio.track
 	}
 	transport, err := forwarding.NewPublication(forwarding.TransportOptions{
-		Source: source.media.Source, Settings: engine.settings, ConnectionID: options.ConnectionID,
+		Source: source.media.Source, Settings: socket.settings(), ConnectionID: options.ConnectionID,
 		InitialBitrate: engine.initialBitrate, Audio: audio,
 	})
 	if err != nil {
@@ -78,7 +84,7 @@ func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publ
 	publication.transport = transport
 	transport.SetAudioBitrate(options.Audio.configuredBitrate())
 	publication.signaling.connection = transport.PC
-	publication.signaling.localCandidates = newLocalCandidateGathering(engine, options.ICEServers, nil, options.Events.LocalCandidate)
+	publication.signaling.localCandidates = newLocalCandidateGathering(socket, options.ICEServers, nil, options.Events.LocalCandidate)
 	transport.PC.OnICECandidate(publication.signaling.localCandidates.addPion)
 	transport.PC.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		if state == webrtc.PeerConnectionStateConnected {
@@ -216,6 +222,7 @@ func (publication *Publication) Close() error {
 		if publication.transport != nil {
 			publication.closeErr = publication.transport.Close()
 		}
+		publication.signaling.socket.close()
 		publication.source.mu.Lock()
 		delete(publication.source.publications, publication)
 		publication.source.mu.Unlock()

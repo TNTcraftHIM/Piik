@@ -11,22 +11,22 @@ import (
 
 // Only in-flight discovery is shared. Completed observations must not survive
 // into a later ICE gathering: the socket can outlive its public NAT mapping.
-func (engine *Engine) stunMapping(ctx context.Context, server *net.UDPAddr) (*stun.XORMappedAddress, error) {
+func (socket *iceSocket) stunMapping(ctx context.Context, server *net.UDPAddr) (*stun.XORMappedAddress, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	result := engine.stunQueries.DoChan(server.String(), func() (any, error) {
-		// A retiring edge must not cancel another edge's discovery. The Engine
-		// owns this bounded transaction; each caller keeps its own wait deadline.
-		queryContext, cancel := context.WithTimeout(engine.ctx, stunSurveyTimeout)
+	result := socket.stunQueries.DoChan(server.String(), func() (any, error) {
+		// A retiring gathering must not cancel its successor's discovery. The
+		// connection owns the transaction; callers keep their own wait deadline.
+		queryContext, cancel := context.WithTimeout(socket.ctx, stunSurveyTimeout)
 		defer cancel()
-		return engine.querySTUN(queryContext, server)
+		return socket.querySTUN(queryContext, server)
 	})
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-engine.ctx.Done():
-		return nil, engine.ctx.Err()
+	case <-socket.ctx.Done():
+		return nil, socket.ctx.Err()
 	case outcome := <-result:
 		if outcome.Err != nil {
 			return nil, outcome.Err
@@ -35,16 +35,16 @@ func (engine *Engine) stunMapping(ctx context.Context, server *net.UDPAddr) (*st
 	}
 }
 
-func (engine *Engine) querySTUN(ctx context.Context, server *net.UDPAddr) (*stun.XORMappedAddress, error) {
+func (socket *iceSocket) querySTUN(ctx context.Context, server *net.UDPAddr) (*stun.XORMappedAddress, error) {
 	request := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
 	// Use an independent registration so late cleanup cannot retire the next
 	// query or an ICE connection. The UDP socket and healthy media stay intact.
 	key := fmt.Sprintf("stun-%x", request.TransactionID)
-	connection, err := engine.mux.GetConn(key, engine.mux.LocalAddr())
+	connection, err := socket.mux.GetConn(key, socket.mux.LocalAddr())
 	if err != nil {
 		return nil, err
 	}
-	defer engine.mux.RemoveConnByUfrag(key)
+	defer socket.mux.RemoveConnByUfrag(key)
 	defer connection.Close()
 	client, err := stun.NewClient(&stunConnection{PacketConn: connection, server: server},
 		stun.WithLoggerFactory(diagnostics.PionLoggerFactory()))

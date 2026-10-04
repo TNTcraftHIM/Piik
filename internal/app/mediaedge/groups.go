@@ -2,6 +2,7 @@ package mediaedge
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -198,7 +199,7 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 		if selected.budget != demand.budget || source.memberships[demand.consumer] != selected {
 			if slog.Default().Enabled(source.engine.ctx, slog.LevelDebug) {
 				slog.Debug("encoding-group", "event", "demand", "slot", selected.slot, "budget", demand.budget,
-					"localPort", source.engine.localPort, "rtcPeerId", groupConsumerID(demand.consumer))
+					"sourceId", diagnostics.ID(fmt.Sprintf("%p", source)), "rtcPeerId", groupConsumerID(demand.consumer))
 			}
 		}
 		selected.budget = demand.budget
@@ -223,7 +224,7 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 		}
 		nextActive := active && source.outputBitrates[group.slot] > 0
 		if group.active != nextActive {
-			slog.Debug("encoding-group", "event", "activity", "slot", group.slot, "active", nextActive, "localPort", source.engine.localPort)
+			slog.Debug("encoding-group", "event", "activity", "slot", group.slot, "active", nextActive, "sourceId", diagnostics.ID(fmt.Sprintf("%p", source)))
 		}
 		group.active = nextActive
 		plan.Active[group.slot] = group.active
@@ -286,7 +287,7 @@ func (source *Source) installGroup(group *outputGroup, original bool) {
 					slot = group.slot
 				}
 				slog.Debug("encoding-group", "event", "attachment", "slot", slot, "original", original,
-					"localPort", source.engine.localPort, "rtcPeerId", groupConsumerID(consumer), diagnostics.Error(err))
+					"sourceId", diagnostics.ID(fmt.Sprintf("%p", source)), "rtcPeerId", groupConsumerID(consumer), diagnostics.Error(err))
 			}
 		}
 	}

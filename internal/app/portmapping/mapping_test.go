@@ -88,7 +88,7 @@ func TestMappingAbsenceLeavesICEAvailable(t *testing.T) {
 	mapping.Close()
 }
 
-func TestMappingFailureIsNotRetriedForEveryEdge(t *testing.T) {
+func TestMappingFailureIsNotRetriedWithinTheConnection(t *testing.T) {
 	original := discoverGateway
 	t.Cleanup(func() { discoverGateway = original })
 	fake := &fakeGateway{addErr: errors.New("mapping rejected")}
@@ -191,7 +191,48 @@ func TestRenewalFailureKeepsTheOriginalMappingOwnedUntilClose(t *testing.T) {
 	}
 }
 
-func TestMappingDiscoveryStopsWithTheShare(t *testing.T) {
+type cancelableGateway struct {
+	*fakeGateway
+	started chan struct{}
+}
+
+func (gateway *cancelableGateway) AddPortMapping(ctx context.Context, _ string, _ int, _ string, _ time.Duration) (int, error) {
+	close(gateway.started)
+	<-ctx.Done()
+	return 0, ctx.Err()
+}
+
+func TestMappingCloseCancelsPendingCreation(t *testing.T) {
+	original := discoverGateway
+	t.Cleanup(func() { discoverGateway = original })
+	fake := &cancelableGateway{fakeGateway: &fakeGateway{}, started: make(chan struct{})}
+	discoverGateway = func(context.Context) (gateway, error) { return fake, nil }
+	mapping := Start(43210)
+	prepared := make(chan int, 1)
+	go func() { prepared <- mapping.Prepare() }()
+	<-fake.started
+	done := make(chan struct{})
+	go func() {
+		mapping.Close()
+		close(done)
+	}()
+	t.Cleanup(func() { <-done })
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("mapping close did not cancel creation")
+	}
+	if port := <-prepared; port != 0 {
+		t.Fatalf("retired mapping returned port %d", port)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.deleted) != 1 {
+		t.Fatalf("cleanup calls = %v, want the canceled attempt released", fake.deleted)
+	}
+}
+
+func TestMappingDiscoveryStopsWithTheConnection(t *testing.T) {
 	original := discoverGateway
 	t.Cleanup(func() { discoverGateway = original })
 	discoverGateway = func(ctx context.Context) (gateway, error) {

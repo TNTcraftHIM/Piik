@@ -9,6 +9,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/interceptor"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -52,8 +53,8 @@ func TestPublicationOwnsOneReservationAndSourceLifetime(t *testing.T) {
 	if _, err = engine.NewPublication(source, EdgeOptions{ConnectionID: "third"}); err == nil {
 		t.Fatal("third publication was admitted")
 	}
-	if source.reservations != 2 {
-		t.Fatal("failed publication leaked its reservation")
+	if source.reservations != 2 || len(engine.sockets) != 2 {
+		t.Fatal("failed publication leaked its reservation or socket")
 	}
 	edge, err := engine.NewEdge(source, EdgeOptions{ConnectionID: "sibling"})
 	if err != nil {
@@ -81,7 +82,7 @@ func TestPublicationOwnsOneReservationAndSourceLifetime(t *testing.T) {
 	if _, err = engine.NewPublication(source, EdgeOptions{ConnectionID: "failed-output"}); err == nil {
 		t.Fatal("failed output was admitted into publication metadata")
 	}
-	if source.reservations != 0 || len(source.publications) != 0 {
+	if source.reservations != 0 || len(source.publications) != 0 || len(engine.sockets) != 1 {
 		t.Fatal("failed publication demand retained a reservation")
 	}
 	if err = source.ConfigureOutputs([]uint32{90_000, 300_000}); err != nil {
@@ -94,9 +95,94 @@ func TestPublicationOwnsOneReservationAndSourceLifetime(t *testing.T) {
 	if err = source.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if replacement.signaling.connection.ConnectionState() != webrtc.PeerConnectionStateClosed || len(engine.publications) != 0 || source.reservations != 0 {
+	if replacement.signaling.connection.ConnectionState() != webrtc.PeerConnectionStateClosed || len(engine.publications) != 0 || source.reservations != 0 || len(engine.sockets) != 0 {
 		t.Fatal("source retirement did not release the publication")
 	}
+}
+
+func TestPublicationOverlapToSharedSFUSocket(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource("vp8", 2, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = source.Close() })
+	if err = source.SetFormat(0, 8, 8); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.ConfigureOutputs([]uint32{90_000}); err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	// The embedded SFU deliberately keeps its shared listener. Native publication
+	// replacement must work against that unchanged, single-port remote endpoint.
+	sfuSocket := testICESocket(t, server)
+	for _, uri := range []string{"urn:ietf:params:rtp-hdrext:sdes:mid", "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"} {
+		if err = server.media.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: uri}, webrtc.RTPCodecTypeVideo); err != nil {
+			t.Fatal(err)
+		}
+	}
+	connect := func(id string) (*Publication, <-chan *rtp.Packet) {
+		t.Helper()
+		publication, err := engine.NewPublication(source, EdgeOptions{ConnectionID: id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = publication.Close() })
+		receiver, err := sfuSocket.newPeerConnection()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = receiver.Close() })
+		packets := make(chan *rtp.Packet, 8)
+		receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+			for {
+				packet, _, err := track.ReadRTP()
+				if err != nil {
+					return
+				}
+				select {
+				case packets <- packet:
+				default:
+				}
+			}
+		})
+		connectEdgeToReceiver(t, &publication.signaling, receiver)
+		return publication, packets
+	}
+	pts := time.Duration(0)
+	delivery := func(streams ...<-chan *rtp.Packet) {
+		t.Helper()
+		for _, packets := range streams {
+			for len(packets) > 0 {
+				<-packets
+			}
+		}
+		for range 20 {
+			pts += time.Second / 30
+			if err = writeSourceFrame(source, sfu.VP8KeyFrame8x8, pts, time.Second/30); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Second / 30)
+		}
+		for _, packets := range streams {
+			_ = waitPacket(t, packets)
+		}
+	}
+	_, current := connect("current")
+	delivery(current)
+	candidate, pending := connect("candidate")
+	delivery(current, pending)
+	_ = candidate.Close()
+	delivery(current)
 }
 
 func TestPublicationAdmissionIgnoresUnrelatedFailedOutputs(t *testing.T) {

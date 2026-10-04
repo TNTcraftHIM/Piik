@@ -12,6 +12,15 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+func testICESocket(t *testing.T, engine *Engine) *iceSocket {
+	t.Helper()
+	socket, err := engine.newICESocket(nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return socket
+}
+
 func TestEngineMediaAddressFamilies(t *testing.T) {
 	for _, test := range []struct {
 		name, bind, receiver string
@@ -58,12 +67,12 @@ func TestEngineMediaAddressFamilies(t *testing.T) {
 			}
 			if (net.ParseIP(pair.Local.Address).To4() == nil) != test.ipv6 ||
 				(net.ParseIP(pair.Remote.Address).To4() == nil) != test.ipv6 ||
-				int(pair.Local.Port) != engine.localPort {
+				int(pair.Local.Port) != edge.socket.localPort {
 				t.Fatal("ICE selected a different address family or media socket")
 			}
 			for _, stats := range edge.connection.GetStats() {
 				if candidate, ok := stats.(webrtc.ICECandidateStats); ok && candidate.Type == webrtc.StatsTypeLocalCandidate &&
-					int(candidate.Port) != engine.localPort {
+					int(candidate.Port) != edge.socket.localPort {
 					t.Fatal("ICE candidate did not use the shared media port")
 				}
 			}
@@ -79,7 +88,7 @@ func TestEngineMediaAddressFamilies(t *testing.T) {
 			if edge.State() != webrtc.PeerConnectionStateClosed {
 				t.Fatal("engine shutdown retained its media edge")
 			}
-			address, err := net.ResolveUDPAddr("udp", engine.ListenAddress())
+			address, err := net.ResolveUDPAddr("udp", edge.socket.mux.LocalAddr().String())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -92,12 +101,13 @@ func TestEngineMediaAddressFamilies(t *testing.T) {
 	}
 }
 
-func TestDefaultEngineSTUNUsesOnePortForBothFamilies(t *testing.T) {
+func TestICESocketSTUNUsesOnePortForBothFamilies(t *testing.T) {
 	engine, err := NewEngine(EngineOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
+	socket := testICESocket(t, engine)
 	for _, test := range []struct {
 		network string
 		ip      net.IP
@@ -106,7 +116,7 @@ func TestDefaultEngineSTUNUsesOnePortForBothFamilies(t *testing.T) {
 		{network: "udp6", ip: net.IPv6loopback},
 	} {
 		t.Run(test.network, func(t *testing.T) {
-			bound, err := net.ResolveUDPAddr("udp", engine.ListenAddress())
+			bound, err := net.ResolveUDPAddr("udp", socket.mux.LocalAddr().String())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -129,19 +139,19 @@ func TestDefaultEngineSTUNUsesOnePortForBothFamilies(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = server.Close() })
-			mapped, err := engine.stunMapping(t.Context(), listener.LocalAddr().(*net.UDPAddr))
+			mapped, err := socket.stunMapping(t.Context(), listener.LocalAddr().(*net.UDPAddr))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if mapped.Port != engine.localPort || !mapped.IP.Equal(test.ip) {
+			if mapped.Port != socket.localPort || !mapped.IP.Equal(test.ip) {
 				t.Fatal("STUN observed a different socket or address family")
 			}
 			if test.network == "udp4" {
 				observations := 0
-				engine.surveySTUN(t.Context(), []webrtc.ICEServer{{URLs: []string{"stun:" + listener.LocalAddr().String()}}},
+				socket.surveySTUN(t.Context(), []webrtc.ICEServer{{URLs: []string{"stun:" + listener.LocalAddr().String()}}},
 					func(mapped mappedAddress) {
 						observations++
-						if mapped.port != engine.localPort || net.ParseIP(mapped.address).To4() == nil {
+						if mapped.port != socket.localPort || net.ParseIP(mapped.address).To4() == nil {
 							t.Error("Native survey did not retain its IPv4 media socket")
 						}
 					})

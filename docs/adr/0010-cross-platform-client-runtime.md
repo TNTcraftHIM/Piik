@@ -96,9 +96,11 @@ topologies and makes a saved Site unavailable while another room source runs.
     existing Browser peer. One isolated
    platform capture feeds one encoded source and bounded independent Pion
    transports, with process-loopback audio for windows or system-loopback audio
-   for screens sharing the same PeerConnection when available. Each Site or one-link share makes one bounded, best-effort PCP,
-   UPnP, or NAT-PMP mapping for that same Pion UDP socket before its first edge
-   gathers ICE; pure LAN Local mode does not. Once ordinary STUN observes a
+   for screens sharing the same PeerConnection when available. Each physical Native
+   connection owns an independent UDP socket; discovery and media share that
+   socket, including after ICE restart. Site and one-link P2P connections request
+   a bounded, best-effort PCP, UPnP, or NAT-PMP mapping alongside gathering;
+   pure LAN Local connections do not. Once ordinary STUN observes a
    public address, Native advertises the mapped port as one lower-priority,
    srflx-shaped candidate on that address. Absence or rejection leaves ordinary
    ICE/STUN unchanged. Native P2P quality uses Pion's transport-wide

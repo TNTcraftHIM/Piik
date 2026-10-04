@@ -279,7 +279,7 @@ func TestShutdownClosesSiblingTransportsBeforeWaitingForWrites(t *testing.T) {
 func TestPortMappingCandidateUsesObservedPublicAddress(t *testing.T) {
 	var emitted []*webrtc.ICECandidateInit
 	gathering := &localCandidateGathering{
-		engine:           &Engine{localPort: 43210},
+		socket:           &iceSocket{localPort: 43210},
 		mappedPort:       43211,
 		mappedCandidates: make(map[string]struct{}),
 		emit: func(candidate *webrtc.ICECandidateInit) {
@@ -333,7 +333,7 @@ func testEncodedSourceFanout(t *testing.T, codec string) {
 	edgeB, receiverB, packetB := connectedReceiver(t, engine, source, "edge-b")
 	t.Cleanup(func() { _ = receiverA.Close() })
 	t.Cleanup(func() { _ = receiverB.Close() })
-	if edgeA.connection == edgeB.connection || engine.ListenAddress() == "" {
+	if edgeA.connection == edgeB.connection || edgeA.socket == edgeB.socket || edgeA.socket.localPort == edgeB.socket.localPort {
 		t.Fatal("media edges did not keep independent transports")
 	}
 	if edgeA.transport == edgeB.transport {

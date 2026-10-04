@@ -42,11 +42,12 @@ func TestCandidatesTrickleBeforeGatewayMappingCompletes(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = engine.Close() })
+			socket := testICESocket(t, engine)
 			mapping := make(chan int, 1)
 			t.Cleanup(func() { close(mapping) })
 			started := make(chan struct{})
 			candidates := make(chan *webrtc.ICECandidateInit, 8)
-			gathering := newLocalCandidateGathering(engine,
+			gathering := newLocalCandidateGathering(socket,
 				[]webrtc.ICEServer{{URLs: []string{localSurveyServer(t)}}},
 				func() int { close(started); return <-mapping },
 				func(candidate *webrtc.ICECandidateInit) { candidates <- candidate },
@@ -56,7 +57,7 @@ func TestCandidatesTrickleBeforeGatewayMappingCompletes(t *testing.T) {
 			waitSignal(t, started, "mapping start")
 			gathering.addPion(&webrtc.ICECandidate{
 				Foundation: "host", Component: 1, Protocol: webrtc.ICEProtocolUDP,
-				Address: "127.0.0.1", Port: uint16(engine.localPort), Typ: webrtc.ICECandidateTypeHost,
+				Address: "127.0.0.1", Port: uint16(socket.localPort), Typ: webrtc.ICECandidateTypeHost,
 			})
 			gathering.addPion(nil)
 			for received := 0; received < 2; received++ {
@@ -78,7 +79,7 @@ func TestCandidatesTrickleBeforeGatewayMappingCompletes(t *testing.T) {
 			if closeFirst {
 				gathering.close()
 			}
-			mapping <- engine.localPort%65535 + 1
+			mapping <- socket.localPort%65535 + 1
 			if closeFirst {
 				select {
 				case candidate := <-candidates:
@@ -114,6 +115,7 @@ func TestSurveyHealthySTUNDoesNotWaitForSlowDNS(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
+	socket := testICESocket(t, engine)
 	original := net.DefaultResolver
 	t.Cleanup(func() { net.DefaultResolver = original })
 	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -126,11 +128,11 @@ func TestSurveyHealthySTUNDoesNotWaitForSlowDNS(t *testing.T) {
 	started := time.Now()
 	go func() {
 		defer close(done)
-		engine.surveySTUN(t.Context(), servers, func(mapped mappedAddress) { observations <- mapped })
+		socket.surveySTUN(t.Context(), servers, func(mapped mappedAddress) { observations <- mapped })
 	}()
 	select {
 	case mapped := <-observations:
-		if mapped.port != engine.localPort {
+		if mapped.port != socket.localPort {
 			t.Fatal("STUN did not use the shared media socket")
 		}
 	case <-time.After(time.Second):
@@ -159,8 +161,9 @@ func TestSurveyReturnsWhenEveryDestinationAlreadyFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
+	socket := testICESocket(t, engine)
 	started := time.Now()
-	engine.surveySTUN(t.Context(), []webrtc.ICEServer{{URLs: []string{"stun:127.0.0.1:9"}}},
+	socket.surveySTUN(t.Context(), []webrtc.ICEServer{{URLs: []string{"stun:127.0.0.1:9"}}},
 		func(mappedAddress) { t.Error("failed transport emitted a candidate") })
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("completed failure retained its survey timer: %v", elapsed)

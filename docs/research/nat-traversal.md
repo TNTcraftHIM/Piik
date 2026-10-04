@@ -98,7 +98,7 @@ and does not establish the cause of undiagnosed field route failures.
 
 ### Native Shared-Socket Preflight
 
-Native requests one dual-stack wildcard UDP socket through Go and Pion's existing
+Each Native connection requests a dual-stack wildcard UDP socket through Go and Pion's existing
 UDP mux. IPv4 remains usable on IPv4-only systems, and concrete IPv4 bindings
 remain IPv4-only. Usable IPv6 interfaces can supply direct ICE candidates on the
 same port; IPv4 discovery, prediction and gateway mapping retain their current
@@ -121,7 +121,7 @@ one distinct mapped endpoint across the public survey, so no port sequence or
 prediction was claimed. The result proves shared-socket discovery and transport,
 not public-survey availability or a predicted-path success rate.
 
-Native Site and public-link shares also request one PCP, UPnP, or NAT-PMP
+Native Site and public-link P2P connections also request one PCP, UPnP, or NAT-PMP
 mapping for that same socket. The returned port is advertised as a
 lower-priority candidate using a public address already observed by ordinary
 STUN. This is additive and bounded; a VPN, double NAT, or absent mapping service
@@ -147,10 +147,15 @@ Packet-level loopback regressions cover reassignment, renewal, deletion,
 cancellation and the existing PCPv6 combination. They do not establish physical
 router coverage or a higher field connection-success rate.
 
-Piik still bounds a mapping caller's wait to three seconds. PCPv6 rollback can
+Piik bounds a mapping caller's wait to three seconds. Connection retirement
+cancels both discovery and pending creation; a canceled owner cannot start a
+later mapping request. Cleanup has its own deadline because it must still run
+after cancellation. PCPv6 rollback can
 finish after that wait, so cleanup must wait for the in-flight gateway call
-before accessing its bookkeeping. Failed attempts are not relaunched by later
-edges. Close attempts deletion even after a failed request, because losing a
+before accessing its bookkeeping. A connection does not relaunch failed mapping
+requests. Replacement connections have independent sockets and rediscover their
+gateway; one connection's failure does not disable later attempts. Close attempts
+deletion even after a failed request, because losing a
 reply does not prove the router rejected the mapping. Cleanup is best effort:
 an unreachable gateway or unsettled rollback can leave a lease to expire.
 Caller cancellation and router lease expiry remain distinct lifecycle boundaries.
@@ -277,7 +282,7 @@ when hole punching fails; neither statistic transfers to our user population.
 | Mechanism | Piik comparison |
 | --- | --- |
 | Exchange endpoints and coordinate outbound probes | Existing room signaling plus Browser/Pion ICE connectivity checks. |
-| Discover and use the same UDP mapping | Native shares one Pion UDP mux across fresh STUN discovery, prediction and media; Chromium owns Browser sockets. |
+| Discover and use the same UDP mapping | Each Native connection shares its Pion UDP socket across fresh STUN discovery, prediction and media; Chromium owns Browser sockets. |
 | IPv4/IPv6 and gateway mapping | Native dual-stack candidates and bounded PCP/NAT-PMP/UPnP already exist; actual availability depends on the network. |
 | Switch between direct and relay paths | Iroh manages QUIC paths; Piik hands off WebRTC edges through one room-route operation. These are different contracts. |
 | Relay data over TLS/TCP when direct UDP fails | Iroh and Tailscale provide this. Piik currently has optional SFU/UDP, while App public invitations remain P2P-only. This is a coverage difference, not a missing prediction formula. |
@@ -315,8 +320,8 @@ isolated branch; production dependencies and routing remain unchanged.
 ## Native Mapping Cache And Retry Lifetimes
 
 Pion ICE `v4.4.0` caches a shared socket's STUN mapping by destination for 25
-seconds. Native Host/Viewer Engines outlive their individual media edges; edge
-replacement and ICE restart do not invalidate that cache. Browser-only ICE
+seconds. The former Native Host/Viewer Engine socket outlived its media edges;
+edge replacement and ICE restart did not invalidate that cache. Browser-only ICE
 does not use it. Piik's default route-operation deadline is 20 seconds, while
 committed-edge recovery has three-second steps. These are distinct lifetimes:
 a new connection or new ICE credentials do not promise a new public port.
@@ -337,8 +342,9 @@ The correction keeps Pion's ordinary UDP mux and uses the existing Pion STUN
 client for each observation. Only concurrent in-flight queries to the same
 destination are shared; completed addresses are not cached. Pion owns request
 transaction matching and retransmission within the existing five-second survey
-bound. A caller can stop waiting independently; Engine retirement ends discovery.
-No socket rotation, retry-count change, periodic probe or new transport is added.
+bound. A caller can stop waiting independently; connection retirement ends discovery.
+ICE restart retains its socket. The separate overlap correction below isolates
+replacement connections without adding a retry loop, periodic probe or new transport.
 
 The same review reproduced acceptance of an unmatched STUN response in the old
 universal cache path. Stock STUN transactions reject it and recover a dropped
@@ -366,6 +372,42 @@ The scoped review also retains the controller's four-attempt, final-candidate
 deadline and stale-event checks; slow DNS and gateway preparation do not hold
 ordinary candidates. Those boundaries do not establish exhaustive traversal
 coverage or justify a claim that no implementation can limit connectivity.
+
+## Native Connection Socket Ownership
+
+A real Native-to-Native overlap reproduced a second shared-resource defect:
+the first connection delivered encoded video, the candidate connected, then the
+current connection stopped receiving RTP. Both connections had the same local
+and remote UDP tuple. Pion's mux routes non-STUN traffic by remote IP and port;
+new ICE credentials do not separate those DTLS/SRTP sessions. This is also an
+[upstream-documented limitation](https://github.com/pion/webrtc/discussions/2598).
+The old fan-out check used a separate remote socket for each receiver and could
+not expose this Native-to-Native boundary.
+
+Each Native send, receive and SFU publication now owns its socket. STUN, optional
+gateway mapping and media still share that socket; an ICE restart retains it,
+while a replacement allocates another. Encoded sources and the existing route
+operation remain unchanged. Gateway cleanup precedes socket release so a late
+delete cannot target a replacement's recycled port. Engine retirement closes
+remaining owned sockets, including a preparation that fails before registration.
+
+Regression checks exercise real ICE/DTLS/SRTP for two simultaneous Native routes
+through commit and rollback, and two publications against one unchanged
+SFU-style UDP listener through rollback. Surviving media continues. The Native overlap
+test fails on the pre-correction product. Receiver renegotiation retains its
+socket, source and downstream media; failed admission releases its reservation
+and socket. IPv4, IPv6, canceled surveys and slow supplemental discovery keep
+their existing checks.
+
+An additional cancellation fixture showed pending mapping creation could retain
+its three-second wait after connection retirement: only discovery inherited the
+mapping owner's cancellation. Both now share that owner; the fixture verifies
+prompt cancellation followed by bounded cleanup.
+
+The cost is one ephemeral UDP socket and, when enabled, one gateway mapping per
+physical connection instead of per Engine. Existing connection/copy limits bound
+their number. This changes no public wire format, fixed service port or route
+policy, and is not evidence that any unmatched field report has been resolved.
 
 ## Primary Sources
 

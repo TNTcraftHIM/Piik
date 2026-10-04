@@ -219,14 +219,14 @@ media on a physical second device. Cloudflare carries HTTPS/WebSocket control
 and provides public STUN, while DTLS-SRTP media remains direct. STUN alone
 cannot replace SFU/TURN on a restricted pair.
 
-Native shares use the same Pion UDP socket for all edges. Site and one-link
-shares make one bounded, best-effort PCP, UPnP, or NAT-PMP mapping through
+Native physical connections own independent Pion UDP sockets. Site and one-link
+P2P connections make a bounded, best-effort PCP, UPnP, or NAT-PMP mapping through
 NetBird's standalone Go NAT package; pure LAN Local mode does not. A physical
 router created and removed an ephemeral UPnP mapping; the Apache-2.0 dependency
 added about 0.38 MiB to the stripped Windows App. Mapping and the supplemental
 STUN survey now run alongside ordinary candidate gathering; neither delays the
 offer or ordinary candidates. End-of-candidates waits for both owners. Mapping
-refresh and retirement remain engine-owned; [NAT evidence](./nat-traversal.md)
+refresh and retirement follow the connection; [NAT evidence](./nat-traversal.md)
 records the current dependency and reachability limits.
 The returned port is advertised once per observed public address as a
 lower-priority candidate. Only the three explicit same-socket survey candidates
@@ -469,8 +469,8 @@ a corrected SDP interpretation, not evidence that all Firefox sharing lost audio
 ## Implementation Boundary
 
 - `nativecapture` owns the child process, source identity, and bounded frame protocol.
-- `mediaedge` owns the stable Pion API, one UDP mux, shared encoded sources,
-  and independent PeerConnections.
+- `mediaedge` owns shared encoded sources and independent PeerConnections with
+  their connection-scoped UDP discovery, mapping and socket lifetime.
 - `nativehost` owns the current capture generation and its bounded stable edges.
 - `nativeviewer` owns one native inbound media source and its encoded child
   edges; it does not own room or route state.

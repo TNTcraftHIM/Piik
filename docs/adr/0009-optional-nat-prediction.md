@@ -42,8 +42,8 @@ connection acquisition reuses the route controller's existing opportunity ledger
    Every host and observed srflx candidate keeps normal Trickle ICE timing; no ordinary
    candidate is delayed, rejected, or replaced. A Browser that does not expose
    candidate source URLs keeps ordinary ICE without prediction. Rejection of a
-   predicted remote candidate discards only that optional candidate; ordinary
-   candidate errors retain their normal connection error semantics.
+   remote candidate discards only that candidate; ICE connection state remains
+   the authority for transport failure.
 4. Candidate observations remain in memory for that connection only. They do
    not create persistent NAT labels, endpoint addresses, routing scores, hard
    candidate skips, or periodic probes. Sanitized diagnostics record only
@@ -57,7 +57,9 @@ connection acquisition reuses the route controller's existing opportunity ledger
    peer-only rooms can exhaust that budget without SFU, while mixed rooms use
    the remaining attempts behind a working SFU route. A new connection can
    provide another mapping opportunity, not guaranteed independent randomness:
-   in particular, Native connections may retain the same shared UDP socket.
+   Native replacements allocate an independent socket, while an ICE restart on
+   the same connection retains its socket. Neither promises an independent
+   public NAT mapping.
    A committed Browser P2P edge uses its existing two-request automatic-recovery
    budget: first ICE restart on the same connection, then connection rebuild.
    Recovery does not choose a new parent or add a route candidate; unsuccessful

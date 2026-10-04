@@ -131,7 +131,7 @@ func TestReceiverCodecMatchesTheSingleNegotiatedAnswer(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = engine.Close() })
-		upstream, err := engine.api.NewPeerConnection(webrtc.Configuration{})
+		upstream, err := testICESocket(t, engine).newPeerConnection()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -280,7 +280,7 @@ func testReceiverForwarding(t *testing.T, codec string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = upstreamEngine.Close() })
-	upstream, err := upstreamEngine.api.NewPeerConnection(webrtc.Configuration{})
+	upstream, err := testICESocket(t, upstreamEngine).newPeerConnection()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,6 +497,7 @@ func testReceiverForwarding(t *testing.T, codec string) {
 		}
 	}()
 	source, audio := nativeReceiver.Source(), nativeReceiver.AudioSource()
+	socket := nativeReceiver.socket
 	for _, restart := range []bool{false, true} {
 		previousGathering := nativeReceiver.localCandidates
 		candidateMu.Lock()
@@ -554,7 +555,7 @@ func testReceiverForwarding(t *testing.T, codec string) {
 		} else if bindingRequests.Load() != 1 {
 			t.Fatal("ordinary SDP renegotiation restarted STUN discovery")
 		}
-		if nativeReceiver.Source() != source || nativeReceiver.AudioSource() != audio ||
+		if nativeReceiver.socket != socket || nativeReceiver.Source() != source || nativeReceiver.AudioSource() != audio ||
 			downstream.connection.ConnectionState() != webrtc.PeerConnectionStateConnected {
 			t.Fatal("renegotiation retired the source or its healthy downstream")
 		}

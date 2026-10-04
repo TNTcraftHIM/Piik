@@ -81,6 +81,8 @@ func TestRelayNetworkVP8Fixture(t *testing.T) {
 	sendNet, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"10.0.0.1"}})
 	check(err)
 	check(router.AddNet(sendNet))
+	engine.listenPacket = sendNet.ListenPacket
+	engine.bindAddress = "10.0.0.1:0"
 	engine.settings = webrtc.SettingEngine{}
 	engine.settings.SetNet(sendNet)
 	engine.settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
