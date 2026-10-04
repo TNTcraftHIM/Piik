@@ -294,6 +294,34 @@ hold endpoint pairs, NAT/filtering, IPv6, network transitions and relay policy
 constant, measuring direct success, relay use and first media separately.
 No new transport or universal success-rate claim is accepted by this review.
 
+## Native Mapping Cache And Retry Lifetimes
+
+Pion ICE `v4.4.0` caches a shared socket's STUN mapping by destination for 25
+seconds. Native Host/Viewer Engines outlive their individual media edges; edge
+replacement and ICE restart do not invalidate that cache. Browser-only ICE
+does not use it. Piik's default route-operation deadline is 20 seconds, while
+committed-edge recovery has three-second steps. These are distinct lifetimes:
+a new connection or new ICE credentials do not promise a new public port.
+
+On 2026-10-04, a loopback check through Native `Engine.NewEdge`, `CreateOffer`
+and edge replacement re-emitted the old `ns` candidate after the STUN fixture
+changed its mapping. Replacing the Engine queried the new mapping. An isolated
+Pion virtual-network comparison then kept sockets/muxes alive and expired one
+NAT mapping: four fresh-agent attempts within the cache lifetime failed against
+address-and-port filtering, then fresh gathering after expiry connected. An
+unchanged mapping connected with the cache, and an independent-filtering peer
+recovered through peer-reflexive discovery despite the stale advertised address.
+The one-second virtual lease injected mapping loss; it does not establish a
+typical router lease or the cause of an unmatched field report. The fast lab
+attempts also do not represent four full 20-second product operation timeouts.
+
+This confirms a conditional Native address-freshness gap. Expiry alone does not
+regather an active connection's candidates. Correction belongs to shared STUN
+discovery and must preserve healthy siblings, generation fences, in-flight
+queries and existing route deadlines. Do not rotate the media socket, wait out
+25 seconds on every retry or adopt an arbitrary tiny TTL as a substitute for
+that ownership. Follow-up is tracked in [TODO](../todo.md#now).
+
 ## Primary Sources
 
 - [RFC 8445: Interactive Connectivity Establishment](https://datatracker.ietf.org/doc/html/rfc8445)

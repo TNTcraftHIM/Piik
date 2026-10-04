@@ -7,6 +7,13 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Native STUN cache freshness during recovery.** Resolve the
+  [reproduced mapping-loss boundary](./research/nat-traversal.md#native-mapping-cache-and-retry-lifetimes)
+  before completing the candidate review. New Native edges can reuse a stale
+  mapping from the Engine's 25-second Pion cache during shorter recovery steps.
+  Keep one shared socket and the existing route owner; verify fresh discovery
+  with concurrent gathering and a healthy sibling before accepting a repair.
+  This does not establish the cause of unmatched field connection failures.
 - [ ] **v1.8.0 final acceptance.** Present the website, launcher and product
   previews with bilingual release notes; wait for the owner's final review before
   publishing. Verify final candidate artifacts through the existing release
