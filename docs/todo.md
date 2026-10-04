@@ -7,14 +7,6 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Go magicsock integration experiment.** After validating the Native STUN
-  repair, extend the isolated `spike/magicsock-feasibility` experiment to actual
-  WebRTC media and mapping/network changes. Reuse Tailscale's Go implementation
-  first; a Rust module is only an alternative if a concrete Go limitation
-  justifies it. Keep production protocols, route policy and dependencies intact.
-  Compare direct success, relay requirements and recovery separately; the
-  [existing evidence](./research/nat-traversal.md#iroh-and-tailscale-comparison)
-  does not establish a population-wide gain or Browser-native interoperability.
 - [ ] **v1.8.0 final acceptance.** Present the website, launcher and product
   previews with bilingual release notes; wait for the owner's final review before
   publishing. Verify final candidate artifacts through the existing release
@@ -154,8 +146,12 @@ Separate candidates, attempts, successful paths and timeouts; scope observations
 to connection generations without raw endpoints. Verify survey responses and
 P2P/SFU handoffs, including background direct attempts behind working SFU media.
 The [iroh/Tailscale comparison](./research/nat-traversal.md#iroh-and-tailscale-comparison)
-records reusable checks and Browser/relay limits. The isolated experiment above
-does not change the production [routing contract](./standards/routing-transport.md).
+records the isolated Go media/migration experiment and Browser/relay limits.
+Before adopting magicsock in the product, establish a benefit on matched network
+pairs and define room-authorized peer keys, endpoint exchange, MTU/resource limits
+and mixed Browser/Native behavior. Keep the experiment isolated from the
+production [routing contract](./standards/routing-transport.md); Go reuse already
+works, so a Rust alternative needs a concrete Go limitation.
 
 ## Parked Product Work
 

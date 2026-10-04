@@ -296,6 +296,19 @@ hold endpoint pairs, NAT/filtering, IPv6, network transitions and relay policy
 constant, measuring direct success, relay use and first media separately.
 No new transport or universal success-rate claim is accepted by this review.
 
+The isolated `spike/magicsock-feasibility` Go experiment on 2026-10-04 carried
+Pion ICE/DTLS and matching synthetic audio/video RTP payloads over magicsock,
+then delivered new payloads after both UDP endpoints changed without new SDP.
+Loopback and separate address-and-port-filtering NATs passed, including five
+race-detector repetitions. The fixture supplied authenticated peer identities
+and endpoint updates; it did not test automatic OS network-change detection,
+decoded playback or real routers. A separate seven-pair NAT matrix found the
+same direct reachability as Pion within four-second windows, not a field success
+rate. Go integration is feasible; no Rust requirement was found. Product use
+still needs room-authorized key/endpoint exchange, MTU/resource limits and mixed
+Browser/Native behavior. The nested probe module and full evidence stay on that
+isolated branch; production dependencies and routing remain unchanged.
+
 ## Native Mapping Cache And Retry Lifetimes
 
 Pion ICE `v4.4.0` caches a shared socket's STUN mapping by destination for 25
