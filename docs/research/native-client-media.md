@@ -475,6 +475,17 @@ bounds dimensions. Native capture, forwarding and SFU declarations also admit
 specific encoded formats. Removing one validator would leave these consumers
 inconsistent.
 
+Source review also distinguishes output geometry from a quality limit. Windows
+`FrameConverter` fits content into the selected landscape raster with a black
+background, so its padding is encoded. Browser display capture instead requests
+landscape width/height ceilings; a portrait source can be reduced unnecessarily
+by the height ceiling. The shared TV uses `object-fit: contain` in a 16:9 stage,
+adding presentation space independently of encoded padding. For example, the
+Windows fit rule places 1080x1920 content at 608x1080 inside a 1920x1080 output.
+This is a code-derived result, not a new physical capture measurement. Evaluate
+orientation-independent limits and preservation of source aspect ratio together;
+adding numeric fields alone would retain the current geometry limitation.
+
 The smallest proposed extension separates UI presets from numeric media limits
 and uses existing WebRTC codec negotiation. The
 [Media Capture specification](https://www.w3.org/TR/mediacapture-streams/)

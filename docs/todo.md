@@ -10,7 +10,8 @@ history. A parked idea is not implementation authority.
 - [ ] **Assess a 2.0 transport and media phase.** The owner reopened Magicsock,
   4K (#410) and additional codecs on 2026-10-04. Compare the isolated Go transport
   with the repaired Pion baseline under the [NAT evidence boundary](#next-p2p-connection-and-feedback-evidence).
-  Evaluate numeric resolution limits and negotiated codec capabilities under the
+  Evaluate orientation-independent resolution limits, source aspect preservation
+  and negotiated codec capabilities under the
   [media extension assessment](./research/native-client-media.md#media-capability-extension-assessment).
   Establish the supported paths, late-join behavior, resource bounds and public
   compatibility boundary before accepting the production design. Existing fixes
