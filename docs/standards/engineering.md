@@ -264,6 +264,9 @@ sibling through the real producer/consumer boundary. Compare preparation with
 live operation, and current implementations with supported compatibility paths.
 Exercise optional failure after success and a dependency that remains pending
 after cancellation; a timeout constant or a close call alone proves no deadline.
+Keep the shared resources production retains while changing the external
+condition. New request/connection IDs alone do not prove that a dependency's
+cached observations, failure state or resource lease have been refreshed.
 Keep the regression at the owning boundary and verify it rejects the old
 behavior. Report which failure sequences were exercised, rather than treating
 test counts, file coverage or an earlier audit as proof of lifecycle coverage.

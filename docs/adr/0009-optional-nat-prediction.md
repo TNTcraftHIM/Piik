@@ -31,8 +31,8 @@ connection acquisition reuses the route controller's existing opportunity ledger
    Browser or Native P2P edge. SFU PeerConnections remain unchanged.
 3. For one ICE gathering generation, the adapter observes only UDP `srflx`
    candidates belonging to the exact three-destination survey set. Browser
-   candidates are matched by their reported STUN URL. Native Pion uses its
-   `UniversalUDPMux` to perform the survey on the media socket and emits standard
+   candidates are matched by their reported STUN URL. Native uses Pion's STUN
+   client through its ordinary UDP mux to survey the media socket and emits standard
    srflx-shaped observations marked with an `ns` foundation. Only those explicit
    survey observations feed prediction; port-mapped candidates remain ordinary
    ICE inputs. If three or more distinct survey candidates for

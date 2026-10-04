@@ -68,9 +68,9 @@ small two-sided candidate window from the observed port-sequence endpoint.
 Ordinary candidates trickle immediately, so unavailable auxiliary listeners
 cannot hold back stock ICE. There is no NAT label, hard candidate skip,
 route-controller input, or SFU preference. Browser candidates are filtered by
-their reported STUN URL. Native Pion performs the same survey through its
-`UniversalUDPMux`, so every observation and subsequent media packet uses one
-socket. Only explicitly marked Native survey observations feed prediction;
+their reported STUN URL. Native uses Pion's STUN client over its ordinary UDP
+mux, so every fresh observation and subsequent media packet uses one socket.
+Only explicitly marked Native survey observations feed prediction;
 the independently mapped-port candidate does not. The switch applies to Host,
 Viewer upstream, and Viewer relay P2P connections. Its exact scope is recorded in
 [ADR-0009](../adr/0009-optional-nat-prediction.md).
@@ -110,6 +110,9 @@ engine's ordinary UDP mux. This invalidated the prior assumption that Native
 STUN and media already shared one socket. Pion ICE's `UniversalUDPMux` was then
 used as the media mux and direct STUN observation owner. Its emitted srflx
 candidate reported the exact Engine listener as its related port.
+That initial-gathering check did not establish mapping freshness when the same
+Engine survived a later retry; the [cache correction](#native-mapping-cache-and-retry-lifetimes)
+retains the socket while replacing completed observation reuse.
 
 The same build carried a public-link session to an independent Linux Pion
 Viewer: 35 H.264 RTP packets arrived over a selected direct host-to-srflx pair,
@@ -345,6 +348,24 @@ exercise a healthy encoded-media sibling, concurrent/canceled gatherings,
 Engine shutdown and both address families. Replacing only the implementation
 with the prior revision makes the address-refresh and transaction tests fail.
 These controlled checks do not assign a cause to unmatched field reports.
+
+The missing case in the earlier shared-socket preflight was a retained Engine
+whose router mapping changed between gatherings. Proving one socket, a new
+connection ID, or new ICE credentials did not prove a fresh library observation.
+Recovery checks must retain the resources production retains while changing the
+external condition; recreating everything would hide this cache boundary.
+
+A separate Chrome 152 Windows loopback probe on 2026-10-04 changed a STUN
+fixture's reported mapping across four gatherings on one PeerConnection and
+four replacement PeerConnections. Every gathering sent a new Binding request
+and emitted only the current mapping; a lost valid response plus an unmatched
+transaction response recovered through retransmission in both sequences. This
+checks real Browser candidate gathering, not a connected media session, a
+physical NAT mapping change, Firefox/Safari behavior or field success rate.
+The scoped review also retains the controller's four-attempt, final-candidate
+deadline and stale-event checks; slow DNS and gateway preparation do not hold
+ordinary candidates. Those boundaries do not establish exhaustive traversal
+coverage or justify a claim that no implementation can limit connectivity.
 
 ## Primary Sources
 
