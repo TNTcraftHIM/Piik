@@ -7,6 +7,13 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Publish the accepted v1.8.0 candidate first.** Authorized by the owner
+  on 2026-10-04. Complete final checks and publish through the existing squash
+  PR, packaging, mirror and deployment workflow. Preserve
+  [#449](https://github.com/TNTcraftHIM/Piik/pull/449)'s contributor credit and
+  `Co-authored-by` identity. Reply to resolved issues at publication; retain
+  unmatched field reports below. This release keeps the published protocols
+  and 1440p ceiling; the subsequent media/transport work is separate.
 - [ ] **Resolve the extensibility audit boundaries before freezing 2.0.** Review
   the media findings in the assessment below together with optional interaction
   evolution: the current reaction catalog is a strict wire enum, and an unknown
@@ -21,26 +28,22 @@ history. A parked idea is not implementation authority.
   encoded JSON and loopback response budgets with bounded overflow behavior.
   This is a confirmed uncommon enumeration failure, not a diagnosis of earlier
   reporter logs; it does not justify removing byte limits or adding pagination.
-- [ ] **Assess a 2.0 transport and media phase.** The owner reopened Magicsock,
-  4K (#410) and additional codecs on 2026-10-04. Compare the isolated Go transport
+- [ ] **Implement extensible resolution and transport support after v1.8.0.**
+  The owner requested continued repository review, then 4K (#410) and additional
+  resolutions with adaptation and capability negotiation, followed by Magicsock
+  NAT traversal on 2026-10-04. Compare the isolated Go transport
   with the repaired Pion baseline under the [NAT evidence boundary](#next-p2p-connection-and-feedback-evidence).
   Evaluate orientation-independent resolution limits, source aspect preservation
   and negotiated codec capabilities under the
   [media extension assessment](./research/native-client-media.md#media-capability-extension-assessment).
   Establish the supported paths, late-join behavior, resource bounds and public
-  compatibility boundary before accepting the production design. Existing fixes
-  remain checkpointed; experiments do not establish a connectivity gain or
-  authorize publication.
+  compatibility boundary before freezing the production design. Additional
+  codecs still require a concrete format decision. Experiments do not establish
+  a connectivity gain; implementation authority does not authorize publishing
+  the later release.
 
 ## Held By Owner
 
-- [ ] **Candidate publication.** The owner paused the planned v1.8.0 release on
-  2026-10-04 while assessing 2.0. Before publication, present the final version,
-  previews and complete bilingual notes for fresh approval, then verify the
-  candidate artifacts through the existing workflow. Preserve
-  [#449](https://github.com/TNTcraftHIM/Piik/pull/449)'s contributor credit and
-  `Co-authored-by` identity in the phase squash. Reply to resolved issues and
-  declined requests at publication; retain unmatched field reports below.
 - [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
   own the evidence for synchronous H264 initialization, native adaptation and
