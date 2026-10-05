@@ -105,7 +105,11 @@ func TestAudioExclusionFailureMutesOnlySourceAndNeverFallsBack(t *testing.T) {
 		}
 		video := session.stream
 		t.Setenv(fault, "1")
-		if err := session.ReplaceSource(options, true, excluded); err == nil {
+		attempt := options
+		if fault == "PIIK_VIDEO_FAIL" {
+			attempt.Target.SourceID = "2"
+		}
+		if err := session.ReplaceSource(attempt, true, excluded); err == nil {
 			t.Fatal("failed exclusion was accepted", fault)
 		}
 		if session.SourceAudio() == nil || *session.SourceAudio() || session.audioStream != nil || session.stream != video {
@@ -162,6 +166,36 @@ func TestAudioExclusionFailureMutesOnlySourceAndNeverFallsBack(t *testing.T) {
 	session.mixer.mu.Unlock()
 	if !sourceEnded || !sameMicrophone || session.audioSource != output || !session.HasAudio() {
 		t.Fatal("exclusion loss disturbed microphone or output ownership")
+	}
+}
+
+func TestSameVideoSourceAudioChangesPreserveCaptureAndConnections(t *testing.T) {
+	session, options, _ := startMixedFixture(t)
+	if _, err := session.PrepareLocalEdge("audio_change"); err != nil {
+		t.Fatal(err)
+	}
+	video, source, output, edge := session.stream, session.source, session.audioSource, session.edge("audio_change")
+	// New capture is deliberately unavailable; changing sound must still work.
+	t.Setenv("PIIK_VIDEO_FAIL", "1")
+	options.Target.Title = "Renamed display"
+	excluded := &nativecapture.CaptureTarget{Kind: "window", SourceID: "123", PID: 456, CreationTime: "789", Title: "Voice fixture"}
+	for _, selection := range []struct {
+		enabled bool
+		exclude *nativecapture.CaptureTarget
+	}{{true, excluded}, {false, nil}, {true, nil}} {
+		if err := session.ReplaceSource(options, selection.enabled, selection.exclude); err != nil {
+			t.Fatal(err)
+		}
+		if session.stream != video || session.source != source || session.audioSource != output || session.edge("audio_change") != edge {
+			t.Fatal("audio-only selection replaced capture or media owners")
+		}
+		if session.SourceAudio() == nil || *session.SourceAudio() != selection.enabled {
+			t.Fatal("source audio did not follow the selection")
+		}
+	}
+	options.ShowCaptureBorder = true
+	if err := session.ReplaceSource(options, true, nil); err == nil {
+		t.Fatal("a changed video option was mistaken for an audio-only update")
 	}
 }
 

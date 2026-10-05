@@ -72,6 +72,7 @@ export type Set2Kind =
 export type Set3Kind =
   | "hint-quality"
   | "hint-audio-quality"
+  | "hint-exclude-audio"
   | "hint-degrade-pref"
   | "hint-prefer-resolution"
   | "hint-prefer-framerate"

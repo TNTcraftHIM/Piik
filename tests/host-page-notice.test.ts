@@ -100,6 +100,7 @@ describe("host error notices", () => {
     );
     expect(hostActionErrorNotice(sentinel, "room")).toBe("房间操作失败");
     expect(hostActionErrorNotice(sentinel, "source")).toBe("切换分享来源失败");
+    expect(hostActionErrorNotice(sentinel, "sourceAudio")).toBe("未能更新来源声音，请重试");
   });
 
   it.each([

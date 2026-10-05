@@ -28,6 +28,7 @@ import { WelcomeLine } from "../components/living/WelcomeLine";
 import type { CouchEntry } from "../components/living/Couch";
 import { SharingSettings } from "../components/living/SharingSettings";
 import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
+import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
@@ -173,6 +174,7 @@ import { NativeMediaBridge, NativeMediaBridgeError } from "../native/media-bridg
 import { NativeMediaIngress } from "../native/media-ingress";
 import {
   defaultNativeCapturePath,
+  nativeCaptureTargetKey,
   type NativeCapturePath,
 } from "../native/capture-selection";
 import type { NativeCaptureTarget } from "../native/wire";
@@ -539,7 +541,7 @@ export function HostPage({
     setNoticeValue({ kind: "text", text: readableError(error, action), target, tone: permissionMissing ? "warn" : "bad",
       failureCode: error instanceof ApiError ? `site/http-${error.status}` : hostFailureCode(error, action),
       comic: permissionMissing ? "hint-capture-browser" : action === "connection" ? "route-failed" : action === "capture" || action === "source"
-        ? "source-failed" : action === "quality" ? "settings-failed" : "warning" });
+        ? "source-failed" : action === "quality" || action === "sourceAudio" ? "settings-failed" : "warning" });
   }
   function setNoticeErrorKey(
     key: CopyKey,
@@ -605,7 +607,7 @@ export function HostPage({
   const activeRouteRevisionRef = useRef(0);
   const generationRef = useRef(0);
   const activeGenerationRef = useRef<number | null>(null);
-  const sourceSwitchRef = useRef<{ replacingVideo?: MediaStreamTrack } | null>(null);
+  const sourceSwitchRef = useRef<{ replacingVideo?: MediaStreamTrack; audioOnly?: boolean } | null>(null);
   const qualityChangeRef = useRef<object | null>(null);
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
@@ -630,7 +632,12 @@ export function HostPage({
   const nativeClientCloseCleanupRef = useRef<(() => void) | null>(null);
   const nativeModeRef = useRef(false);
   const nativeSourceAudioRef = useRef<boolean | undefined>(undefined);
-  const nativeAudioSelectionRef = useRef<{ enabled: boolean; exclude?: NativeCaptureTarget } | null>(null);
+  const nativeSourceSelectionRef = useRef<Extract<ShareSourceSelection, { kind: "native" }> | null>(null);
+  const loadAudioApplications = useCallback(async () => {
+    const client = nativeClientRef.current;
+    if (!client || !nativeModeRef.current) throw new Error("Piik App is unavailable");
+    return client.sources();
+  }, []);
   const nativeSourceRequestRef = useRef<object | null>(null);
   const nativePreviewTailRef = useRef<Promise<void>>(Promise.resolve());
   const nativeSourcePathRef = useRef<NativeCapturePath | null>(null);
@@ -1232,7 +1239,7 @@ export function HostPage({
       );
       nativeMediaBridgeRef.current = bridge;
       nativeSourceAudioRef.current = undefined;
-      nativeAudioSelectionRef.current = { enabled: audio, exclude: excludeAudio };
+      nativeSourceSelectionRef.current = selection;
       nativeEventCleanup = client.onEvent((event) => {
         if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeClientRef.current !== client) return;
         if (event.type === "audio-state") {
@@ -1566,7 +1573,7 @@ export function HostPage({
     nativeShareGenerationRef.current = null;
     nativeModeRef.current = false;
     nativeSourceAudioRef.current = undefined;
-    nativeAudioSelectionRef.current = null;
+    nativeSourceSelectionRef.current = null;
     setNativeActive(false);
     if (!client || !shareGeneration) {
       releaseUnusedNativeClient();
@@ -2847,7 +2854,10 @@ export function HostPage({
     ) {
       return;
     }
-    const token = {};
+    const previous = nativeSourceSelectionRef.current;
+    const token = { audioOnly: target.kind !== "picker" && !!previous &&
+      nativeCaptureTargetKey(previous.target) === nativeCaptureTargetKey(target) &&
+      previous.showCaptureBorder === showCaptureBorder };
     sourceSwitchRef.current = token;
     closeCaptureSourcePicker();
     setSwitchingSource(true);
@@ -2861,7 +2871,7 @@ export function HostPage({
       ) return;
       // Preserve an exclusion request even on failure: the App mutes source
       // audio before replacing it, and the next picker must not default to all.
-      if (audio && excludeAudio) nativeAudioSelectionRef.current = { enabled: audio, exclude: excludeAudio };
+      if (audio && excludeAudio && previous) nativeSourceSelectionRef.current = { ...previous, audio, excludeAudio };
       await client.replaceShareSource(
         shareGeneration,
         target,
@@ -2877,16 +2887,17 @@ export function HostPage({
       ) {
         return;
       }
-      invalidateSenderQualityEvidence();
-      nativeAudioSelectionRef.current = { enabled: audio, exclude: excludeAudio };
-      if (routePolicyRef.current.topologyOptimization) {
-        signalRef.current?.send({ type: "reset-sender-quality" });
-      }
+      nativeSourceSelectionRef.current = { kind: "native", client, target, audio, path, showCaptureBorder, excludeAudio };
       const activeStream = streamRef.current;
       if (activeStream) {
         setDetails(
           captureDetails(activeStream, true, nativeSourceAudioRef.current),
         );
+      }
+      if (token.audioOnly) return;
+      invalidateSenderQualityEvidence();
+      if (routePolicyRef.current.topologyOptimization) {
+        signalRef.current?.send({ type: "reset-sender-quality" });
       }
       const sfuUpdated = await hostSfuRouteRef.current?.updateProfile(qualitySettingsRef.current) ?? true;
       if (
@@ -2905,11 +2916,17 @@ export function HostPage({
         isCurrentGeneration(generation) &&
         sourceSwitchRef.current === token
       ) {
-        setNoticeError(error, "source");
+        setNoticeError(error, token.audioOnly ? "sourceAudio" : "source");
       }
     } finally {
       finishSourceSwitch(token);
     }
+  }
+
+  function changeNativeSourceAudio(audio: boolean, excludeAudio?: NativeCaptureTarget): void {
+    const selection = nativeSourceSelectionRef.current;
+    if (!selection || selection.target.kind !== "display") return;
+    void switchNativeSource(selection.client, selection.target, audio, selection.path, selection.showCaptureBorder, excludeAudio);
   }
 
   async function switchSource(source?: BrowserCaptureSource, deviceId = ""): Promise<void> {
@@ -3570,7 +3587,7 @@ export function HostPage({
               <video ref={videoRef} autoPlay muted playsInline />
             ) : null}
             <RoomChatOverlay session={room ? interactionSession : null}
-              visible={phase === "live" && !nativeSources && !sharingPaused && !switchingSource && !localPreviewPaused} />
+              visible={phase === "live" && !nativeSources && !sharingPaused && !(switchingSource && !sourceSwitchRef.current?.audioOnly) && !localPreviewPaused} />
             {nativeSources ? (
               <CaptureSourcePicker
                 nativeSources={nativeSources}
@@ -3587,14 +3604,14 @@ export function HostPage({
                 selectionDisabled={roomMutating || switchingSource || changingQuality}
                 initialAudio={
                   nativeActive
-                    ? nativeAudioSelectionRef.current?.exclude
-                      ? nativeAudioSelectionRef.current.enabled
+                    ? nativeSourceSelectionRef.current?.excludeAudio
+                      ? nativeSourceSelectionRef.current.audio
                       : nativeSourceAudioRef.current ?? false
                     : true
                 }
                 audioLocked={nativeActive && !nativeClientRef.current?.health.nativeMedia.microphone}
                 initialShowCaptureBorder={showCaptureBorder}
-                initialExcludeAudio={nativeAudioSelectionRef.current?.exclude}
+                initialExcludeAudio={nativeSourceSelectionRef.current?.excludeAudio}
               />
             ) : !stream &&
               (phase === "idle" || phase === "ended" || phase === "error") ? (
@@ -3663,7 +3680,7 @@ export function HostPage({
             ) : null}
             {/* The picker owns the stage while it is open: a state overlay
                 painted after it would cover and swallow its controls. */}
-            {nativeSources ? null : switchingSource ? (
+            {nativeSources ? null : switchingSource && !sourceSwitchRef.current?.audioOnly ? (
               <StageOverlay
                 icon="refresh"
                 comic="source-switching"
@@ -3707,7 +3724,7 @@ export function HostPage({
               <Btn
                 id="host-switch-source"
                 icon="switchSource"
-                cap={switchingSource ? "host.switching" : "host.switchSource"}
+                cap={switchingSource && !sourceSwitchRef.current?.audioOnly ? "host.switching" : "host.switchSource"}
                 title="host.switchSource"
                 hint="hint-switch-source"
                 disabled={switchingSource || changingQuality || microphonePending}
@@ -3903,6 +3920,18 @@ export function HostPage({
               </div>
             </>}
             audio={<>
+              {phase === "live" && nativeActive && nativeSourceSelectionRef.current?.target.kind === "display" &&
+                nativeClientRef.current?.health.nativeMedia.microphone && nativeClientRef.current.health.nativeMedia.processAudioExclusion ? (
+                <div className="lr-door-group lr-source-audio-settings">
+                  <SwitchItem checked={nativeSourceSelectionRef.current.audio}
+                    label={t("host.sourcePicker.systemAudio")} hint={nativeSourceSelectionRef.current.audio ? "hint-stop-audio" : "hint-share-audio"}
+                    disabled={microphonePending || switchingSource || changingQuality || sharingPaused}
+                    onChange={audio => changeNativeSourceAudio(audio, nativeSourceSelectionRef.current?.excludeAudio)} />
+                  <LiveAudioExclusion load={loadAudioApplications} value={nativeSourceSelectionRef.current.excludeAudio}
+                    disabled={!nativeSourceSelectionRef.current.audio || microphonePending || switchingSource || changingQuality || sharingPaused}
+                    onChange={target => changeNativeSourceAudio(true, target)} />
+                </div>
+              ) : null}
               {phase === "live" && (!nativeActive || nativeClientRef.current?.health.nativeMedia.microphone) ? (
                 <HostMicrophoneSettings enabled={microphoneEnabled}
                 disabled={microphonePending || switchingSource || changingQuality || sharingPaused}

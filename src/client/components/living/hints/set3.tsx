@@ -54,6 +54,30 @@ ${rmBlock(["vls-audio-quality-wave"], [[".vls-audio-quality-wave", "stroke-dasho
   <text x={240} y={88} fill="var(--ink)" fontSize={11} textAnchor="middle">kb/s</text>
 </>;
 
+const hintExcludeAudio: HintScene = ({ theme }) => <>
+  <style>{`
+.vls-exclude-wave{stroke-dasharray:3 5;animation:vlsExcludeWave var(--comic-duration,3.2s) linear var(--comic-repeat,1) both}
+.vls-exclude-cut{animation:vlsExcludeCut var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsExcludeWave{from{stroke-dashoffset:16}to{stroke-dashoffset:0}}
+@keyframes vlsExcludeCut{0%,8%{opacity:0;transform:translateY(-3px)}25%,100%{opacity:1;transform:none}}
+${rmBlock(["vls-exclude-wave"], [[".vls-exclude-wave", "stroke-dashoffset:0"]], false)}
+${rmBlock(["vls-exclude-cut"], [[".vls-exclude-cut", "opacity:1;transform:none"]], false)}
+`}</style>
+  <Frame x={4} w={152} theme={theme} /><Frame x={164} w={152} theme={theme} result />
+  {[0, 1].map(panel => <g key={panel} transform={`translate(${panel * 160} 0)`}>
+    <Pawn x={22} yb={81} s={7} eyes host />
+    {[25, 61].map((y, app) => <g key={y}>
+      <rect x={41} y={y - 9} width={27} height={23} rx={4} stroke="var(--ink)" strokeWidth={1.8} fill="var(--paper)" />
+      <path d={`M42 ${y - 2}h25`} stroke="var(--ink)" strokeWidth={1.5} />
+      <path d={`M48 ${y + 8}l5-5 7 5`} stroke={SKY} strokeWidth={2} fill="none" />
+      {panel && !app ? <path className="vls-exclude-cut" d="m77 20 10 10m-10 0 10-10" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />
+        : <path className="vls-exclude-wave" d={`M74 ${y + 2}H91L101 46`} stroke="var(--ink)" strokeWidth={1.8} fill="none" />}
+    </g>)}
+    <MiniTv x={103} y={31} w={37} h={25} />
+    <path d="M147 37q5 6 0 12" stroke="var(--ink)" strokeWidth={1.5} fill="none" />
+  </g>)}
+</>;
+
 function PreferenceHint({ theme, preference }: Parameters<HintScene>[0] & {
   preference: "resolution" | "balanced" | "framerate";
 }) {
@@ -286,6 +310,7 @@ ${rmBlock(["vls-export-report", "vls-export-arrow"], [[".vls-export-report,.vls-
 export const SET3_SCENES: Record<Set3Kind, HintScene> = {
   "hint-quality": hintQuality,
   "hint-audio-quality": hintAudioQuality,
+  "hint-exclude-audio": hintExcludeAudio,
   "hint-degrade-pref": hintDegradePref,
   "hint-prefer-resolution": props => <PreferenceHint {...props} preference="resolution" />,
   "hint-prefer-framerate": props => <PreferenceHint {...props} preference="framerate" />,

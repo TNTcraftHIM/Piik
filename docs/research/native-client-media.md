@@ -1,6 +1,6 @@
 # Native App Media Evidence
 
-- Reviewed: 2026-10-04
+- Reviewed: 2026-10-06
 - Scope: platform capture, shared encoded sources, Pion transport and Browser
   decode; current behavior belongs to [media quality](../standards/media-quality.md)
 - Status: Windows physical native Host and Viewer gates passed; macOS and Linux adapters
@@ -31,6 +31,14 @@ local Windows implementation and one direct child, not coverage of every voice
 application's process tree or simultaneous playback across several output devices. Those remain
 device acceptance boundaries. [ADR-0008](../adr/0008-window-scoped-audio-capture.md)
 owns the platform choice.
+
+The capability check now attempts exclusion activation on Windows 10 2004+
+instead of rejecting all builds below 20348. Microsoft documents 20348 as the
+minimum, while OBS documents application loopback on Windows 10 2004+; the
+activation result, not an OS label, controls availability. Physical Windows 10
+exclusion remains unverified. A session regression check changes exclusion and
+source-audio off/on while video preparation is deliberately unavailable: the
+capture stream, encoded source, audio output and connected edge remain the same.
 
 The [Windows activation contract](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
 accepts one PID and its process tree, not a list of unrelated processes.

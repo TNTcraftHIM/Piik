@@ -5,6 +5,8 @@ import { CaptureSourcePicker, type NativeSourceList } from "../components/living
 import { LedStrip } from "../components/living/Header";
 import { StageTv } from "../components/living/Stage";
 import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
+import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
+import type { NativeCaptureTarget } from "../native/wire";
 import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { RoomInteractionSession } from "../lib/room-interactions";
@@ -41,12 +43,14 @@ const previewCameras: typeof loadCameraPreviews = async (_signal, publish) => pu
   { id: "usb", label: "USB Camera", preview: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180" fill="#e2c5a8"/><path d="M0 25h320M0 157h320" stroke="#cda987" stroke-width="2"/><rect x="53" y="27" width="163" height="124" rx="5" fill="#fffaf0" transform="rotate(-8 135 89)"/><path d="m97 112 30-35 23 25 18-12 18 19" fill="none" stroke="#689b8a" stroke-width="5" stroke-linejoin="round"/><circle cx="166" cy="57" r="11" fill="#ebbd63"/><path d="m245 64 8 77" stroke="#477b73" stroke-width="7" stroke-linecap="round"/><circle cx="266" cy="35" r="19" fill="#f9f5df"/><circle cx="266" cy="35" r="12" fill="#8c6651"/></svg>')}` },
 ]);
 const previewMicrophones = async () => [{ id: "headset", label: "USB Headset" }, { id: "desk", label: "Desk Microphone" }];
+const previewApplications = async () => SOURCES.sources;
 
 export function ControlsPreview() {
   const { t, lang, vis } = useCopy();
   const en = lang === "en";
   const displayPreview = new URLSearchParams(window.location.search).get("source") === "display";
   const [sound, setSound] = useState(true);
+  const [excludedAudio, setExcludedAudio] = useState<NativeCaptureTarget | undefined>(SOURCES.sources[2]);
   const [microphone, setMicrophone] = useState(false);
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
   const [voiceProcessing, setVoiceProcessing] = useState(true);
@@ -110,9 +114,13 @@ export function ControlsPreview() {
         </div>
         <SharingSettings id="preview-sharing-settings" open={sharingSettings}
           presets={<QualityPresets selected={preset} onSelect={setPreset} />}
-          audio={<HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
-            enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
-            voiceProcessing={voiceProcessing} onVoiceProcessing={setVoiceProcessing} />}
+          audio={<><div className="lr-door-group lr-source-audio-settings">
+            <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.systemAudio")}
+              hint={sound ? "hint-stop-audio" : "hint-share-audio"} />
+            <LiveAudioExclusion load={previewApplications} value={excludedAudio} onChange={setExcludedAudio} disabled={!sound || paused} />
+          </div><HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
+            native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
+            voiceProcessing={voiceProcessing} onVoiceProcessing={setVoiceProcessing} /></>}
         />
       </section>
       <section id="option-preview" className="cp-card">

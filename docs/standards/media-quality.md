@@ -119,6 +119,10 @@ the actual SPS profile/level; one vendor's byte spelling is not the contract.
 Native ingress and relay accept only a negotiated profile/packetization compatible
 with their unchanged encoded downstream source. A codec name alone is not enough;
 same-source renegotiation must preserve that boundary before altering the live peer.
+Received picture summaries are not decoder allocation limits. Before Native
+derivation, validate every H.264 sequence parameter set's supported format,
+coded storage and visible crop; a later small descriptor cannot authorize earlier
+large input.
 
 Framework-driven downscaling under bandwidth or device pressure is valid within
 the selected degradation preference. A low decoded resolution alone is not a
@@ -341,7 +345,11 @@ and is never saved across App runs or rebound by executable name. Changing to a
 window source or explicitly selecting no exclusion clears it. A requested
 exclusion retires previous source audio before replacement preparation; failure
 or target exit leaves source audio silent while healthy video and the Host
-microphone continue. Only an explicit source selection resumes it. A missing
+microphone continue. Only an explicit audio/source selection resumes it. Live
+sound controls reuse source replacement and its serialization owner; when the
+video target and capture options are unchanged, update only the audio input.
+Keep the video generation, encoder, media connections and quality evidence.
+A missing
 capability must reject the request, never discard the exclusion. Old pages keep
 their existing audio behavior.
 

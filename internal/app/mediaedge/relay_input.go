@@ -2,10 +2,13 @@ package mediaedge
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/bluenviron/mediacommon/v2/pkg/codecs/h264"
 	mediacodec "github.com/livekit/mediatransportutil/pkg/codec"
 	"github.com/livekit/server-sdk-go/v2/pkg/samplebuilder"
 	"github.com/pion/rtp"
@@ -99,11 +102,12 @@ func (input *relayVideoInput) frame(data []byte) (nativecapture.Frame, error) {
 			}
 			switch nal.UnitType {
 			case h264reader.NalUnitTypeSPS:
-				input.sps = append(input.sps[:0], nal.Data...)
-				size := mediacodec.ExtractH264VideoSize(nal.Data)
-				if size.Width > 0 && size.Height > 0 {
-					input.width, input.height = size.Width, size.Height
+				width, height, err := relayH264Size(nal.Data)
+				if err != nil {
+					return frame, err
 				}
+				input.sps = append(input.sps[:0], nal.Data...)
+				input.width, input.height = width, height
 			case h264reader.NalUnitTypePPS:
 				input.pps = append(input.pps[:0], nal.Data...)
 			case h264reader.NalUnitTypeCodedSliceIdr:
@@ -125,4 +129,42 @@ func (input *relayVideoInput) frame(data []byte) (nativecapture.Frame, error) {
 	}
 	frame.Width, frame.Height = input.width, input.height
 	return frame, nil
+}
+
+// A size summary is not a decoder allocation bound: one access unit may carry
+// several SPS IDs, and a slice need not reference the last one. Admit every SPS
+// before forwarding it to any platform decoder, including its uncropped storage.
+func relayH264Size(nal []byte) (uint32, uint32, error) {
+	if len(nal) < 4 || !forwardableH264("profile-level-id="+hex.EncodeToString(nal[1:4])+";packetization-mode=1") {
+		return 0, 0, errors.New("native H264 input profile is unsupported")
+	}
+	var sps h264.SPS
+	if err := sps.Unmarshal(nal); err != nil {
+		return 0, 0, fmt.Errorf("invalid native H264 input SPS: %w", err)
+	}
+	width := (uint64(sps.PicWidthInMbsMinus1) + 1) * 16
+	height := (uint64(sps.PicHeightInMapUnitsMinus1) + 1) * 16
+	cropUnitY := uint64(2)
+	if !sps.FrameMbsOnlyFlag {
+		height *= 2
+		cropUnitY *= 2
+	}
+	// Constrained Baseline uses 8-bit 4:2:0. Bound uncropped storage before
+	// allowing padding to be removed from the visible picture.
+	if sps.ChromaFormatIdc != 1 || sps.MaxNumRefFrames > 16 ||
+		width > nativecapture.MaxVideoWidth || height > nativecapture.MaxVideoHeight {
+		return 0, 0, errors.New("native H264 input storage exceeds its bound")
+	}
+	if crop := sps.FrameCropping; crop != nil {
+		x := (uint64(crop.LeftOffset) + uint64(crop.RightOffset)) * 2
+		y := (uint64(crop.TopOffset) + uint64(crop.BottomOffset)) * cropUnitY
+		if x >= width || y >= height {
+			return 0, 0, errors.New("native H264 input crop is outside its picture")
+		}
+		width, height = width-x, height-y
+	}
+	if !nativecapture.ValidVideoSize(uint32(width), uint32(height)) {
+		return 0, 0, errors.New("native H264 input picture exceeds its bound")
+	}
+	return uint32(width), uint32(height), nil
 }

@@ -1,6 +1,6 @@
 module github.com/TNTcraftHIM/Piik
 
-go 1.26
+go 1.26.0
 
 // Scoped NAT-PMP fixes; provenance and removal criteria: internal/thirdparty/README.md.
 replace github.com/netbirdio/go-nat => ./internal/thirdparty/go-nat
@@ -10,6 +10,7 @@ replace github.com/jackpal/go-nat-pmp => ./internal/thirdparty/go-nat-pmp
 require (
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/lipgloss/v2 v2.0.6
+	github.com/bluenviron/mediacommon/v2 v2.9.5
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/term v0.2.2

@@ -3,6 +3,7 @@ import { createOpaqueId } from "../lib/opaque-id";
 import { debugError, debugEvent } from "../lib/debug";
 import { debugRtcFailure, debugRtcStats, debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
+import { normalizeVideoOfferSdp } from "../webrtc/video-codec";
 import { encodedStreams } from "./browser-encoding-output";
 import {
   applyVideoCaptureProfile, configureVideoSender,
@@ -117,7 +118,7 @@ export class BrowserEncodingProducer {
       await this.serialize(() => this.applyCurrent());
       await send.setLocalDescription(await send.createOffer());
       this.checkAlive();
-      await receive.setRemoteDescription(send.localDescription!);
+      await receive.setRemoteDescription({ type: "offer", sdp: normalizeVideoOfferSdp(send.localDescription!.sdp) });
       await flushReceive();
       this.checkAlive();
       await receive.setLocalDescription(this.seedLocalAnswer(await receive.createAnswer()));

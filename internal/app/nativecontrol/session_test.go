@@ -89,6 +89,14 @@ func TestReceiveOfferReusePreservesLegacyResponseShape(t *testing.T) {
 }
 
 func TestMain(tests *testing.M) {
+	if path := os.Getenv("PIIK_SOURCE_LIST_FIXTURE"); path != "" {
+		payload, err := os.ReadFile(path)
+		if err != nil {
+			os.Exit(1)
+		}
+		_, _ = os.Stdout.Write(payload)
+		os.Exit(0)
+	}
 	if marker := os.Getenv("PIIK_SOURCE_PROBE_FIXTURE"); marker != "" {
 		if err := os.WriteFile(marker, nil, 0600); err != nil {
 			os.Exit(1)
@@ -101,6 +109,55 @@ func TestMain(tests *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(tests.Run())
+}
+
+func TestSourceListFitsTheControlEnvelope(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []struct {
+		title string
+		count int
+	}{
+		{strings.Repeat("界", 512), 64},
+		{strings.Repeat("<", 512), 100},
+	} {
+		targets := make([]nativecapture.CaptureTarget, check.count)
+		for index := range targets {
+			targets[index] = nativecapture.CaptureTarget{Kind: "window", SourceID: strconv.Itoa(index + 1),
+				PID: 1, CreationTime: "1", Title: check.title}
+		}
+		var payload bytes.Buffer
+		encoder := json.NewEncoder(&payload)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(targets); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "sources.json")
+		if err := os.WriteFile(path, payload.Bytes(), 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PIIK_SOURCE_LIST_FIXTURE", path)
+		session := New(executable, nativecapture.Capabilities{}, false)
+		defer session.Close()
+		value, err := awaitControlResponse(t, session,
+			[]byte(`{"version":9,"id":"request_sources","type":"list-sources"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, ok := value.(sourceListResponse)
+		if !ok || len(response.Sources) == 0 {
+			t.Fatalf("usable sources were lost: %#v", value)
+		}
+		if check.count == 64 && len(response.Sources) != 64 {
+			t.Fatalf("localized windows were truncated: %d", len(response.Sources))
+		}
+		encoded, err := json.Marshal(response)
+		if err != nil || len(encoded) > loopback.MaxControlMessageBytes {
+			t.Fatalf("valid enumeration would close control: %d bytes, %v", len(encoded), err)
+		}
+	}
 }
 
 func runQuietCaptureFixture(directory string) {

@@ -6,9 +6,11 @@ import {
 } from "../media/quality";
 import {
   applyH264ProbeCodec,
+  normalizeVideoOfferSdp,
   type BrowserVideoCodec,
 } from "./video-codec";
 import { addRemoteIceCandidate } from "./nat-prediction";
+import { mediaSourceRecord } from "./stats";
 
 const PREFLIGHT_DEADLINE_MS = 4_000;
 const PREFLIGHT_POLL_MS = 100;
@@ -174,7 +176,7 @@ function readH264ProbeSample(report: RTCStatsReport): H264ProbeSample | null {
   }
   const outbound = candidates[0]!;
   const codec = recordById(report, outbound.codecId);
-  const source = recordById(report, outbound.mediaSourceId);
+  const source = mediaSourceRecord(report, outbound);
   const mimeType = stringValue(codec?.mimeType);
   if (
     codec?.type !== "codec" ||
@@ -345,7 +347,7 @@ async function runH264Probe(
     const offer = await wait(() => senderConnection.createOffer());
     await wait(() => senderConnection.setLocalDescription(offer));
     await wait(() => receiverConnection.setRemoteDescription(
-      senderConnection.localDescription!,
+      { type: "offer", sdp: normalizeVideoOfferSdp(senderConnection.localDescription!.sdp) },
     ));
     receiverRemoteReady = true;
     await wait(() => Promise.all(

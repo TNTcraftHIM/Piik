@@ -9,6 +9,7 @@ import {
 } from "../src/client/media/quality";
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
 import { NativeCompatibilityError, NativeRequestError } from "../src/client/native/client";
+import { nativeCaptureTargetKey } from "../src/client/native/capture-selection";
 import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
 import { reconcileBoundedMediaChildren } from "../src/client/webrtc/media-assignment";
 import { debugError, debugEvent, debugOperation } from "../src/client/lib/debug";
@@ -93,7 +94,7 @@ function fixture(launchedByClient = true) {
     activeGenerationRef: ref<number | null>(1), streamRef: ref<typeof stream | null>(stream), sourceSwitchRef: ref<object | null>(null),
     nativeSourceAudioRef: ref<boolean | undefined>(undefined), setMicrophoneEnabled: vi.fn(),
     microphoneVoiceProcessing: true, setMicrophoneVoiceProcessing: vi.fn(),
-    nativeAudioSelectionRef: ref<{ enabled: boolean; exclude?: unknown } | null>(null),
+    nativeSourceSelectionRef: ref<Record<string, unknown> | null>(null), nativeCaptureTargetKey,
     nativeModeRef: ref(false), nativeClientRef: ref<typeof client | null>(client), nativeShareGenerationRef: ref<string | null>("share"),
     hostAudioRef: ref<{ sourceStream: MediaStream } | null>(null),
     nativeMediaIngressRef: ref<ReturnType<typeof ingress> | null>(null), nativeMediaBridgeRef: ref(null),
@@ -483,15 +484,31 @@ describe("Host quality ownership", () => {
     const path = { adapterIndex: 0, encoderIndex: 0 };
     for (const enabled of [true, false, true]) {
       await current.context.switchNativeSource(current.client, target, enabled, path, false, excluded);
-      expect(current.nativeAudioSelectionRef.current).toEqual({ enabled, exclude: excluded });
+      expect(current.nativeSourceSelectionRef.current).toMatchObject({ target, audio: enabled, excludeAudio: excluded });
       expect(current.client.replaceShareSource).toHaveBeenLastCalledWith("share", target, enabled, path, false, enabled ? excluded : undefined);
     }
     const next = { ...excluded, pid: 321, creationTime: "654" };
     current.client.replaceShareSource.mockRejectedValueOnce(new Error("audio unavailable"));
     await current.context.switchNativeSource(current.client, target, true, path, false, next);
-    expect(current.nativeAudioSelectionRef.current).toEqual({ enabled: true, exclude: next });
+    expect(current.nativeSourceSelectionRef.current).toMatchObject({ target, audio: true, excludeAudio: next });
     current.disposeNative();
-    expect(current.nativeAudioSelectionRef.current).toBeNull();
+    expect(current.nativeSourceSelectionRef.current).toBeNull();
+  });
+
+  it("changes native source audio without resetting sender quality or SFU publication", async () => {
+    const current = fixture();
+    current.nativeModeRef.current = true;
+    current.routePolicyRef.current.topologyOptimization = true;
+    const target = { kind: "display", sourceId: "2", title: "Display" };
+    const path = { adapterIndex: 0, encoderIndex: 0 };
+    current.nativeSourceSelectionRef.current = { target, path, client: current.client, showCaptureBorder: false, audio: true };
+    const excluded = { kind: "window", sourceId: "3", pid: 123, creationTime: "456", title: "Voice" };
+    await current.context.switchNativeSource(current.client, { ...target, title: "Renamed" }, true, path, false, excluded);
+    expect(current.client.replaceShareSource).toHaveBeenCalledOnce();
+    expect(current.invalidateSenderQualityEvidence).not.toHaveBeenCalled();
+    expect(current.signalRef.current.send).not.toHaveBeenCalled();
+    expect(current.hostSfuRouteRef.current.updateProfile).not.toHaveBeenCalled();
+    expect(current.sourceSwitchRef.current).toBeNull();
   });
 
   it.each(["browser", "native"] as const)("keeps the %s selection until room work permits capture", async (kind) => {

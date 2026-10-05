@@ -7,20 +7,6 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Review independent correctness repairs for separate integration.** The
-  retained media candidate contains source-list size bounds, owned-window
-  discovery, ICE gateway-mapping lifecycle and encoded-media validation repairs.
-  Review their dependencies against the published contract, then transplant and
-  verify only independently justified changes. They are not part of the scoped
-  troubleshooting release; do not merge the held candidate wholesale.
-- [ ] **Review the audio-exclusion candidate separately.** Verify the Windows
-  capability probe and live exclusion controls against the published App/Web
-  contract. Preserve the source/mixer owner and the physical Windows 10 evidence
-  limit; these changes are not included in the troubleshooting release.
-- [ ] **Integrate the isolated website refinements separately.** Review the
-  retained download architecture-selection animation and joint script/style
-  cache identity against the current site. These website changes do not require
-  a product release and must not pull in the held media candidate.
 - [ ] **Assess Native Magicsock transport.** Compare the isolated Go transport
   with the repaired Pion baseline under the [NAT evidence boundary](#next-p2p-connection-and-feedback-evidence).
   Establish a measured benefit, supported paths, resource/authority bounds and
@@ -29,13 +15,14 @@ history. A parked idea is not implementation authority.
 
 ## Held By Owner
 
-- [ ] **4K and resolution/capability expansion.** Paused by the owner, reaffirmed
-  on 2026-10-06. Preserve the unpublished candidate for evaluation; keep the
+- [ ] **4K and resolution/capability expansion.** Not planned for this phase,
+  reaffirmed by the owner on 2026-10-06 because of cost relative to benefit. Keep the
   public v23/v9/v7 contract and 1440p ceiling. Resume the extensibility audit and
   [media extension assessment](./research/native-client-media.md#media-capability-extension-assessment)
   only with a renewed benefit/cost decision. This includes unfinished
   cross-platform capture and capability negotiation; local tests alone do not
-  authorize a protocol break or a 2.0 release.
+  authorize a protocol break or a 2.0 release. Retain recoverable Git evidence
+  for the experiment without requiring an active worktree.
 - [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
   own the evidence for synchronous H264 initialization, native adaptation and
@@ -45,7 +32,7 @@ history. A parked idea is not implementation authority.
 - [ ] **32-bit Windows/Linux Apps.** Deferred by the owner on 2026-10-02;
   no package or website option is planned. Browser use remains available where
   the OS/browser supports the required media APIs. Retain the isolated
-  `spike/windows-x86-capture` experiment; revisit its native dependencies,
+  Git evidence for the Windows x86 capture experiment; revisit its native dependencies,
   atomic alignment and real 32-bit device coverage only if this work is reopened.
 - [ ] **Windows ARM64 App.** Deferred by the owner on 2026-10-03. Keep Windows
   App packages and website downloads x64-only until this work is reopened.

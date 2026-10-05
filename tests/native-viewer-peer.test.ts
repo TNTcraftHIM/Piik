@@ -250,17 +250,61 @@ it("admits one active sending H264 or VP8 video section, not unrelated SDP codec
     `m=video ${port} UDP/TLS/RTP/SAVPF ${payload}`,
     `a=${direction}`,
     `a=rtpmap:96 ${codec}/90000`,
+    "a=fmtp:96 profile-level-id=42e01f;packetization-mode=1",
     "",
   ].join("\r\n");
   expect(offerHasNativeVideoCodec(video("H264"))).toBe(true);
   expect(offerHasNativeVideoCodec(video("VP8"))).toBe(true);
   expect(offerHasNativeVideoCodec(video("VP8", "sendrecv"))).toBe(true);
+  expect(offerHasNativeVideoCodec("a=group:BUNDLE 0\r\n" +
+    video("VP8", "sendonly", 0) + "a=bundle-only\r\na=mid:0\r\n")).toBe(true);
+  expect(offerHasNativeVideoCodec("m=video 9 UDP/TLS/RTP/SAVPF 96 97\r\n" +
+    "a=sendonly\r\na=rtpmap:96 H264/90000\r\na=rtpmap:97 VP8/90000\r\n")).toBe(true);
   for (const offer of [
     video("VP8", "recvonly"), video("VP8", "inactive"),
     video("VP8", "sendonly", 0), video("VP8", "sendonly", 9, 97),
+    video("VP8", "sendonly", 0) + "a=bundle-only\r\na=mid:0\r\n",
     video("VP9"), video("H264") + video("VP8"),
     "m=audio 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 VP8/90000\r\n",
   ]) expect(offerHasNativeVideoCodec(offer)).toBe(false);
+});
+
+it.each([
+  ["42e01f", "1", true], ["42c01f", "1", true],
+  ["4de01f", "1", true], ["58c01f", "1", true],
+  ["42e00b", "1", true], ["42e033", "1", true], ["42e034", "1", false],
+  ["4d001f", "1", false], ["64001f", "1", false], ["42001f", "1", false],
+  ["42e11f", "1", false], ["42e035", "1", false], ["42e03c", "1", false],
+  ["42e01f=invalid", "1", false],
+  ["", "1", false], ["42e01f", "0", false], ["42e01f", "", false],
+])("matches Native H264 forwarding admission: profile=%s, packetization=%s", (profile, mode, supported) => {
+  const offer = "m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\n" +
+    "a=rtpmap:96 H264/90000\r\n" +
+    `a=fmtp:96 profile-level-id=${profile};packetization-mode=${mode}\r\n`;
+  expect(offerHasNativeVideoCodec(offer)).toBe(supported);
+});
+
+it("sends an unsupported Native format straight to the Browser without failing the App", async () => {
+  vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
+  const browserSignal = vi.spyOn(ViewerPeer.prototype, "acceptSignal").mockResolvedValue();
+  const acquire = vi.fn(async () => null);
+  const unavailable = vi.fn();
+  const restart = vi.fn(() => true);
+  const peer = new NativeCapableViewerPeer({ iceServers: [] }, {
+    sendSignal: () => true, sendRestartRequest: restart,
+    onStream: () => undefined, onUpdate: () => undefined,
+  }, {}, acquire, unavailable, "session", 2);
+  const offer: SignalPayload = { kind: "description", connectionId: "current", description: {
+    type: "offer", sdp: "m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\n" +
+      "a=rtpmap:96 H264/90000\r\na=fmtp:96 profile-level-id=64001f;packetization-mode=1\r\n",
+  }};
+  try {
+    await peer.acceptSignal("parent", offer);
+    expect(browserSignal).toHaveBeenCalledExactlyOnceWith("parent", offer);
+    expect(acquire).not.toHaveBeenCalled();
+    expect(unavailable).not.toHaveBeenCalled();
+    expect(restart).not.toHaveBeenCalled();
+  } finally { peer.dispose(); }
 });
 
 it("does not create a browser backend after deferred native discovery is disposed", async () => {

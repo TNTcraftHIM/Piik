@@ -127,6 +127,9 @@ is unchanged. Pion owns ICE restart; each actual gathering owns fresh supplement
 candidates. Native STUN observations share only an in-flight transaction, never
 a completed address across gatherings. Discovery uses the existing media socket;
 retiring one gathering does not cancel another or close healthy media.
+Each actual gathering also refreshes a previously successful gateway mapping;
+the requested lease does not prove that the gateway retained its state. Ordinary
+SDP renegotiation does not refresh mappings, and this adds no background poller.
 A Native connection owns its UDP socket and optional gateway mapping. A new
 connection receives an independent socket; ICE restart retains the current one.
 Discovery and media must use that same connection-owned socket. Sharing a socket

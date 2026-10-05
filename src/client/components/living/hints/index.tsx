@@ -51,6 +51,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-admission-invite",
   "hint-quality",
   "hint-audio-quality",
+  "hint-exclude-audio",
   "hint-degrade-pref",
   "hint-prefer-resolution",
   "hint-prefer-framerate",

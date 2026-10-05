@@ -29,6 +29,7 @@ import {
 } from "./stats";
 import {
   applyVideoCodecPreference,
+  normalizeVideoOfferSdp,
   type BrowserVideoCodecPreference,
   VP8_ONLY_VIDEO_CODEC,
 } from "./video-codec";
@@ -703,7 +704,7 @@ export class HostPeer {
           connectionId: this.connectionId,
           description: {
             type: "offer",
-            sdp: this.connection.localDescription.sdp,
+            sdp: normalizeVideoOfferSdp(this.connection.localDescription.sdp),
           },
         })
       ) {

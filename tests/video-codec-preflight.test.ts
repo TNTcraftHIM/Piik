@@ -166,7 +166,7 @@ describe("codec probe lifetime", () => {
     vi.useRealTimers();
   });
 
-  function fixture(blocked = "", failReceiver = false) {
+  function fixture(blocked = "", failReceiver = false, linkSource = true) {
     vi.useFakeTimers();
     vi.stubGlobal("window", globalThis);
     let resolve!: () => void;
@@ -208,9 +208,9 @@ describe("codec probe lifetime", () => {
               const frames = timestamp * 30 / 1_000;
               return new Map([
                 ["out", { id: "out", type: "outbound-rtp", kind: "video", timestamp,
-                  codecId: "codec", mediaSourceId: "source", framesEncoded: frames }],
+                  codecId: "codec", mediaSourceId: linkSource ? "source" : undefined, framesEncoded: frames }],
                 ["codec", { type: "codec", mimeType: "video/H264" }],
-                ["source", { id: "source", type: "media-source", frames }],
+                ["source", { id: "source", type: "media-source", kind: "video", frames }],
               ]);
             },
           },
@@ -278,8 +278,8 @@ describe("codec probe lifetime", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("keeps a proved H264 result and retires the budget", async () => {
-    const f = fixture();
+  it.each([true, false])("keeps proved H264 and retires the budget (source link: %s)", async (linkSource) => {
+    const f = fixture("", false, linkSource);
     const run = preferredVideoCodecForTrack(f.source, QUALITY_PROFILES["1080p30"]);
     await vi.advanceTimersByTimeAsync(2_000);
     await expect(run).resolves.toBe("h264");

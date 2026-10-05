@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import type { NativeCaptureTarget } from "../../native/wire";
-import { nativeCaptureTargetKey } from "../../native/capture-selection";
+import { audioApplicationKey, audioApplications, nativeCaptureTargetKey } from "../../native/capture-selection";
 import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
@@ -9,6 +9,7 @@ import { HintComic } from "./hints";
 import { Pill } from "./primitives";
 import { CameraSources, useCameraSources } from "./CameraSources";
 import { CaptureSourceCard } from "./CaptureSourceCard";
+import { AudioExclusionSelect } from "./AudioExclusionSelect";
 import type { loadCameraPreviews } from "../../media/camera-previews";
 
 const SOURCE_TABS = ["browser", "camera", "window", "display"] as const;
@@ -127,12 +128,10 @@ export function CaptureSourcePicker({
       : nativeSources.systemAudio);
   const anyNativeAudio = sources.some(supportsAudio);
   // Source enumeration already owns process identity; do not create a second app scanner.
-  const audioApplications = nativeSources.kind === "ready"
-    ? [...new Map(nativeSources.sources.filter(target => target.kind === "window")
-      .map(target => [`${target.pid}:${target.creationTime}`, target])).values()] : [];
-  const exclusionKey = excludeAudio?.kind === "window" ? `${excludeAudio.pid}:${excludeAudio.creationTime}` : "";
+  const applications = nativeSources.kind === "ready" ? audioApplications(nativeSources.sources) : [];
+  const exclusionKey = excludeAudio ? audioApplicationKey(excludeAudio) : "";
   const canExcludeAudio = activeTab === "display" && nativeSources.kind === "ready" && nativeSources.processAudioExclusion;
-  const missingExclusion = !!excludeAudio && !audioApplications.some(target => `${target.pid}:${target.creationTime}` === exclusionKey);
+  const missingExclusion = !!excludeAudio && !applications.some(target => audioApplicationKey(target) === exclusionKey);
   const exclusionUnavailable = activeTab === "display" && shareAudio && !!excludeAudio && (!canExcludeAudio || missingExclusion);
   const refreshing = activeTab === "camera" ? cameraSources.busy : nativeSources.kind === "loading";
   const refreshLabel = t(refreshing ? "host.sourcePicker.loading" : "host.sourcePicker.refresh");
@@ -373,21 +372,8 @@ export function CaptureSourcePicker({
                     {!vis && <span>{t("host.sourcePicker.excludeAudio")}{excludeAudio ? ` · ${excludeAudio.title}` : ""}</span>}
                     <Glyph name="chevron" size={14} />
                   </summary>
-                  <div className="lr-capture-device">
-                    <select id={`${pickerId}-exclude-audio`} value={exclusionKey}
-                      aria-label={t("host.sourcePicker.excludeAudio")}
-                      aria-describedby={`${pickerId}-exclude-hint`} disabled={selectionDisabled}
-                      onChange={event => setExcludeAudio(audioApplications.find(target => `${target.pid}:${target.creationTime}` === event.target.value))}>
-                      <option value="">{t("host.sourcePicker.excludeNone")}</option>
-                      {missingExclusion && <option value={exclusionKey} disabled>{excludeAudio?.title} · {t("host.sourcePicker.excludeMissing")}</option>}
-                      {audioApplications.map(target => <option key={`${target.pid}:${target.creationTime}`} value={`${target.pid}:${target.creationTime}`}>
-                        {target.title}
-                      </option>)}
-                    </select>
-                    <small id={`${pickerId}-exclude-hint`} className={vis ? "visually-hidden" : undefined}>
-                      {t(excludeAudio ? "host.sourcePicker.excludeAudioHint" : "host.sourcePicker.excludeAudioChoose")}
-                    </small>
-                  </div>
+                  <AudioExclusionSelect sources={applications} value={excludeAudio}
+                    showLabel={false} disabled={selectionDisabled} onChange={setExcludeAudio} />
                 </details>
               ) : null}
             </div>

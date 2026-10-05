@@ -9,11 +9,12 @@ import (
 )
 
 type fakeGateway struct {
-	mu      sync.Mutex
-	added   []int
-	deleted []int
-	addErr  error
-	block   chan struct{}
+	mu           sync.Mutex
+	added        []int
+	deleted      []int
+	addErr       error
+	block        chan struct{}
+	externalPort int
 }
 
 func (gateway *fakeGateway) AddPortMapping(
@@ -27,6 +28,7 @@ func (gateway *fakeGateway) AddPortMapping(
 	gateway.added = append(gateway.added, port)
 	block := gateway.block
 	addErr := gateway.addErr
+	externalPort := gateway.externalPort
 	gateway.mu.Unlock()
 	if block != nil {
 		// Exercise the caller's bound even if a gateway fails to observe context.
@@ -34,6 +36,9 @@ func (gateway *fakeGateway) AddPortMapping(
 	}
 	if addErr != nil {
 		return 0, addErr
+	}
+	if externalPort != 0 {
+		return externalPort, nil
 	}
 	return port + 1, nil
 }
@@ -48,7 +53,7 @@ func (gateway *fakeGateway) DeletePortMapping(
 	return nil
 }
 
-func TestMappingCreatesOnceAndReleases(t *testing.T) {
+func TestMappingRefreshesForEachGatheringAndReleasesOnce(t *testing.T) {
 	original := discoverGateway
 	t.Cleanup(func() { discoverGateway = original })
 	fake := &fakeGateway{}
@@ -61,15 +66,15 @@ func TestMappingCreatesOnceAndReleases(t *testing.T) {
 		t.Fatalf("mapped port = %d, want 43211", port)
 	}
 	if port := mapping.Prepare(); port != 43211 {
-		t.Fatalf("cached mapped port = %d, want 43211", port)
+		t.Fatalf("refreshed mapped port = %d, want 43211", port)
 	}
 	mapping.Close()
 	mapping.Close()
 
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
-	if len(fake.added) != 1 || fake.added[0] != 43210 {
-		t.Fatalf("added ports = %v, want [43210]", fake.added)
+	if len(fake.added) != 2 || fake.added[0] != 43210 || fake.added[1] != 43210 {
+		t.Fatalf("added ports = %v, want [43210 43210]", fake.added)
 	}
 	if len(fake.deleted) != 1 || fake.deleted[0] != 43210 {
 		t.Fatalf("deleted ports = %v, want [43210]", fake.deleted)
@@ -86,6 +91,26 @@ func TestMappingAbsenceLeavesICEAvailable(t *testing.T) {
 	mapping := Start(43210)
 	mapping.Prepare()
 	mapping.Close()
+}
+
+func TestMappingGatheringAfterGatewayStateLossUsesNewAllocation(t *testing.T) {
+	original := discoverGateway
+	t.Cleanup(func() { discoverGateway = original })
+	fake := &fakeGateway{externalPort: 43211}
+	discoverGateway = func(context.Context) (gateway, error) { return fake, nil }
+	mapping := Start(43210)
+	t.Cleanup(mapping.Close)
+	if port := mapping.Prepare(); port != 43211 {
+		t.Fatalf("initial mapped port = %d", port)
+	}
+	// A gateway reset can discard a mapping before its requested lease expires.
+	// An ICE restart retains this connection/socket and starts a fresh gathering.
+	fake.mu.Lock()
+	fake.externalPort = 43212
+	fake.mu.Unlock()
+	if port := mapping.Prepare(); port != 43212 {
+		t.Fatalf("new gathering advertised stale mapped port %d, want 43212", port)
+	}
 }
 
 func TestMappingFailureIsNotRetriedWithinTheConnection(t *testing.T) {
@@ -140,9 +165,6 @@ func TestCloseSkipsDeleteWhileAnAttemptIsStillAbandoned(t *testing.T) {
 	if port := mapping.Prepare(); port != 43211 {
 		t.Fatalf("mapped port = %d, want 43211", port)
 	}
-	mapping.mu.Lock()
-	mapping.renewAfter = time.Now().Add(-time.Second)
-	mapping.mu.Unlock()
 	fake.mu.Lock()
 	fake.block = make(chan struct{})
 	fake.mu.Unlock()
@@ -175,13 +197,12 @@ func TestRenewalFailureKeepsTheOriginalMappingOwnedUntilClose(t *testing.T) {
 
 	mapping := Start(43210)
 	mapping.Prepare()
-	mapping.mu.Lock()
-	mapping.renewAfter = time.Now().Add(-time.Second)
-	mapping.mu.Unlock()
 	fake.mu.Lock()
 	fake.addErr = errors.New("renewal rejected")
 	fake.mu.Unlock()
-	mapping.Prepare()
+	if port := mapping.Prepare(); port != 0 {
+		t.Fatalf("failed renewal advertised stale port %d", port)
+	}
 	mapping.Close()
 
 	fake.mu.Lock()

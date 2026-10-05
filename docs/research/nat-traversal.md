@@ -361,6 +361,14 @@ connection ID, or new ICE credentials did not prove a fresh library observation.
 Recovery checks must retain the resources production retains while changing the
 external condition; recreating everything would hide this cache boundary.
 
+The same lifetime review found gateway mappings were reused until half their
+requested lease elapsed. A router restart can lose that mapping sooner. Each
+actual gathering now refreshes a successful mapping through the existing bounded
+gateway owner; ordinary renegotiation does not. A retained-owner fixture changes
+the allocated external port between gatherings and verifies the new result.
+Failed attempts still obey the existing cancellation and cleanup rules; this
+adds no periodic renewal loop or claim of improved field success rates.
+
 A separate Chrome 152 Windows loopback probe on 2026-10-04 changed a STUN
 fixture's reported mapping across four gatherings on one PeerConnection and
 four replacement PeerConnections. Every gathering sent a new Binding request

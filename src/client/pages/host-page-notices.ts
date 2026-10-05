@@ -6,6 +6,7 @@ import { currentLang, joinSentences, say, type CopyKey } from "../ui/copy";
 export type HostAction =
   | "capture"
   | "source"
+  | "sourceAudio"
   | "quality"
   | "connection"
   | "room";
@@ -13,6 +14,7 @@ export type HostAction =
 const HOST_ACTION_FALLBACK: Record<HostAction, CopyKey> = {
   capture: "host.fail.start",
   source: "host.fail.source",
+  sourceAudio: "host.fail.sourceAudio",
   quality: "host.fail.quality",
   connection: "host.fail.connection",
   room: "host.fail.room",

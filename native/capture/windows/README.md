@@ -33,7 +33,9 @@ unavailable instead of failing the whole source. Process loopback is probed by
 activation rather than inferred from a Windows build number; display sources
 normally use the standard render-device loopback available on Windows 10 and
 later. The optional `--capture-audio exclude <pid> <creation-time>` mode requires
-build 20348+ and a successful exclusion probe. It captures all output devices
+build 19041+ and a successful exclusion-mode probe. Windows 10 isolation still
+needs physical verification; see the [audio evidence](../../../docs/research/native-client-media.md#windows-audio-exclusion).
+It captures all output devices
 except the selected process tree, and retires when that process exits. The
 [screen-audio contract](../../../docs/standards/media-quality.md#screen-audio)
 owns selection and failure behavior.

@@ -87,6 +87,11 @@ ranges for seeking the soundtrack. Keep asset links relative so both a custom
 domain and GitHub's `/Piik/` project path work. For a nested deployment, set
 `PIIK_DOCS_BASE=/Piik/docs/` when building; ordinary custom-domain builds use `/docs/`.
 
+The homepage, film and demonstration frames use content-hashed script/style
+bundles. Their HTML references come from the same build, including imported
+dependencies; fixed filenames must not mix a new page with cached old controls
+or styles. Publish the complete output together.
+
 ## Documentation Build
 
 `site/docs/` configures VitePress; its isolated package and lockfile keep document

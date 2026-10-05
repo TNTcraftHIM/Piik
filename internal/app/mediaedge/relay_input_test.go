@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/rtp"
@@ -39,7 +40,11 @@ func TestRelayInputKeepsRecoveryAndEmitsACompleteQuietFrame(t *testing.T) {
 	}
 
 	input = relayVideoInput{codec: "h264"}
-	configuration, _ := hex.DecodeString("000000016742c01eda0280b7fe5c050505020000000168ce06e2")
+	var configuration []byte
+	for _, nal := range sfu.H264KeyFrame2x2[:2] {
+		configuration = append(configuration, 0, 0, 0, 1)
+		configuration = append(configuration, nal...)
+	}
 	if _, err = input.frame(configuration); err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +53,94 @@ func TestRelayInputKeepsRecoveryAndEmitsACompleteQuietFrame(t *testing.T) {
 		!bytes.Contains(frame.Data, input.pps) {
 		t.Fatal("H264 IDR lost preceding decoder configuration")
 	}
+}
+
+func TestRelayInputRejectsUnsafeH264Configuration(t *testing.T) {
+	// Locally generated Constrained Baseline SPS: ID 0 is 4096x2160; ID 1 is
+	// 160x90. A decoder may use either, regardless of which arrived last.
+	const oversized = "6742c033dc0100010fb016a02020280000030008000003001478c19c"
+	const small = "6742c015570a37e4c05a8303035280000003008000000301478b17c0"
+	for _, test := range []struct {
+		name string
+		nals []string
+	}{
+		{"oversize-hidden-by-small-SPS", []string{oversized, small}},
+		{"oversize-after-small-SPS", []string{small, oversized}},
+		{"truncated-SPS", []string{small, "6742c015"}},
+		{"truncated-VUI", []string{"6742c01eda0280b7fe5c0505050200"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var data []byte
+			for _, value := range test.nals {
+				nal, err := hex.DecodeString(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = append(data, 0, 0, 0, 1)
+				data = append(data, nal...)
+			}
+			input := relayVideoInput{codec: "h264"}
+			if _, err := input.frame(data); err == nil {
+				t.Fatal("unsafe configuration reached the native decoder boundary")
+			}
+		})
+	}
+	input := relayVideoInput{codec: "h264"}
+	data, err := hex.DecodeString("00000001" + small)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame, err := input.frame(data)
+	if err != nil || frame.Width != 160 || frame.Height != 90 {
+		t.Fatalf("valid cropped SPS was rejected: %dx%d, %v", frame.Width, frame.Height, err)
+	}
+}
+
+func TestRelayH264AllocationBounds(t *testing.T) {
+	// Minimal Constrained Baseline parameter sets, including valid codec padding
+	// and coded dimensions hidden behind a small crop. No decoder is allocated.
+	for _, test := range []struct {
+		name, sps     string
+		width, height uint32
+	}{
+		{"1440p", "6742c033da00a002d640", 2560, 1440},
+		{"padded-1080p", "6742c033da01e0089f95", 1920, 1080},
+		{"portrait-within-bound", "6742c033da01100b5e5d", 1080, 1440},
+		{"4k", "6742c033da00f0010f90", 0, 0},
+		{"portrait-overflow", "6742c033da008701e190", 0, 0},
+		{"padded-4k", "6742c033da00f00111f894", 0, 0},
+		{"large-cropped-storage", "6742c033da00f001e1f8034940", 0, 0},
+		{"crop-overflow", "6742c033da0a37e000000300100000030004", 0, 0},
+		{"coded-size-overflow", "6742c033da000003000040000003000d90", 0, 0},
+		{"excessive-references", "6742c033d84828d9", 0, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			data, err := hex.DecodeString(test.sps)
+			if err != nil {
+				t.Fatal(err)
+			}
+			width, height, err := relayH264Size(data)
+			if (err == nil) != (test.width != 0) || width != test.width || height != test.height {
+				t.Fatalf("picture = %dx%d, %v; want %dx%d", width, height, err, test.width, test.height)
+			}
+		})
+	}
+}
+
+func FuzzRelayH264Size(f *testing.F) {
+	for _, value := range []string{"6742c033da00f0010f90", "6742c033da008701e190", "6742c033da00f00111f894", "6742c015"} {
+		data, err := hex.DecodeString(value)
+		if err != nil {
+			f.Fatal(err)
+		}
+		f.Add(data)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		width, height, err := relayH264Size(data)
+		if err == nil && !nativecapture.ValidVideoSize(width, height) {
+			t.Fatalf("unbounded picture accepted: %dx%d", width, height)
+		}
+	})
 }
 
 func TestLargeRecoveryUsesTheDefaultPacketWindow(t *testing.T) {
@@ -134,9 +227,8 @@ func TestLargeRecoveryUsesTheDefaultPacketWindow(t *testing.T) {
 
 func TestRelayAssemblyRecoversAtNewIndependentFrame(t *testing.T) {
 	key, _ := hex.DecodeString("1000009d012aa0005a00")
-	sps, _ := hex.DecodeString("6742c01eda0280b7fe5c0505050200")
-	pps := []byte{0x68, 0xce, 0x06, 0xe2}
-	idr := []byte{0x65, 0x88, 0x84}
+	sps, pps := sfu.H264KeyFrame2x2[0], sfu.H264KeyFrame2x2[1]
+	idr := sfu.H264KeyFrame2x2IDR
 	stap := []byte{0x78}
 	for _, nal := range [][]byte{sps, pps, idr} {
 		stap = append(stap, byte(len(nal)>>8), byte(len(nal)))

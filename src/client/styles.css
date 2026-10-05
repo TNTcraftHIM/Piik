@@ -1856,6 +1856,8 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-host-share-controls > .lr-comic-tip-wrap:has(#host-stop-share) { margin-inline-start: 4px; padding-inline-start: 8px; border-inline-start: 1px solid var(--control-edge); }
 .lr-microphone-settings { min-width: 0; max-width: 440px; gap: 6px; }
 .lr-microphone-settings .lr-capture-device { padding: 0; }
+.lr-source-audio-settings .lr-capture-device { padding: 0; }
+.lr-audio-exclusion-select label { display: flex; align-items: center; gap: 6px; cursor: default; }
 .lr-microphone-settings > label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted); }
 .lr-microphone-settings > .lr-comic-tip-wrap { display: flex; width: 100%; }
 .lr-microphone-settings input { width: 100%; min-width: 32px; height: 36px; padding: 0; accent-color: var(--action); cursor: pointer; }

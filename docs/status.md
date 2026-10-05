@@ -55,13 +55,14 @@ Release artifacts and operator deployment records own delivery completion;
 ## Current Work
 
 The public baseline retains Browser/server v23, Native control v9, capture v7
-and the 1440p ceiling. The scoped maintenance work improves error guidance and
-bilingual troubleshooting without changing media or authorization behavior.
-4K/resolution expansion is held by the owner; the incompatible candidate remains
-isolated. Independent capture/media repairs, audio-exclusion refinements and
-Native Magicsock assessment are separate follow-ups, not part of this release.
+and the 1440p ceiling. The compatible maintenance phase combines sharing-failure
+guidance and bilingual troubleshooting with source-list, codec admission,
+minimized-capture and gateway-mapping repairs. Live audio-exclusion controls
+reuse the source/mixer owner; website controls retain shared motion and cache
+identity. 4K and resolution/capability expansion are not planned for this phase.
+Native Magicsock remains a separate experiment, outside product integration.
 Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns
-remaining work and later release authorization.
+remaining work.
 
 ## Deployment
 
@@ -90,7 +91,7 @@ public release on 2026-09-12. Source is public, main protection is active, and
 remains a separate deployment. Release descriptors and GitHub deployment records
 identify published artifacts and website revisions.
 
-The matching Server and three App packages are published on GitHub and Gitee;
+Matching Server and registered App packages are published on GitHub and Gitee;
 anonymous mirror downloads match the original checksums. Public-repository CI
 and native packaging passed. App entry, update links
 and bounded two-build interoperability have acceptance evidence. Accepted

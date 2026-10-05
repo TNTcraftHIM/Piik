@@ -1,6 +1,7 @@
 import { observeDebugConnection } from "../lib/debug-webrtc";
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
+import { normalizeVideoOfferSdp } from "../webrtc/video-codec";
 import type {
   ServerMessage,
   SfuMedia,
@@ -96,7 +97,7 @@ export class SfuPeer {
     }
     this.pendingDescription = {
       kind: "description",
-      description: { type: local.type, sdp: local.sdp },
+      description: { type: local.type, sdp: local.type === "offer" ? normalizeVideoOfferSdp(local.sdp) : local.sdp },
       ...(media ? { media } : {}),
     };
     this.flushSignaling();

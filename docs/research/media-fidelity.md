@@ -104,9 +104,10 @@ coverage of all hardware encoders, HDR content or missing upstream color declara
 
 ## HDR To SDR
 
-[#420](https://github.com/TNTcraftHIM/Piik/issues/420) reports overexposure with
-both App and Browser capture on one Windows HDR machine. The report does not
-locate the failing stage.
+[#420](https://github.com/TNTcraftHIM/Piik/issues/420) initially reported
+overexposure with both App and Browser capture. On 2026-10-04 the reporter
+confirmed that native App capture was corrected in v1.7, while Browser capture
+remained overexposed. This is one machine's evidence, not all-device acceptance.
 
 The previous native WGC frame pool and thumbnails requested BGRA8, discarding
 HDR range before the existing 8-bit H.264/VP8 encoder. Microsoft's
@@ -156,6 +157,13 @@ monitors were SDR: physical HDR highlights, SDR content on HDR displays,
 thumbnails, mixed displays and mode changes under load remain unaccepted.
 Browser capture owns its own conversion; inspect the acquired frame before
 assigning a downstream bug.
+
+The reviewed [WebRTC WGC implementation](https://webrtc.googlesource.com/src/+/b5cf1fa607113788cf894d5b6895c72fba1d9254/modules/desktop_capture/win/wgc_capture_session.cc)
+requests an 8-bit BGRA frame pool. The Web capture API exposes no portable
+HDR-tone-mapping control; once highlights are clipped, lowering brightness in
+Piik cannot recover them. Keep this Browser/platform limitation explicit and
+offer native capture or disabling system HDR in troubleshooting. Do not add a
+second Browser pixel pipeline without evidence that it receives intact HDR.
 
 Full HDR requires a separate end-to-end decision for bit depth, codec support,
 color metadata, decoding and mixed Viewer capabilities. It is not a quality

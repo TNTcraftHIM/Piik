@@ -56,7 +56,8 @@ These checks do not establish Browser-capture HDR behavior or end-to-end HDR.
 
 Windows source-audio exclusion has bounded parent/child tone-isolation and
 target-exit evidence. It does not establish coverage of arbitrary process trees
-or real voice applications across playback devices. The
+or real voice applications across playback devices. Windows 10 exclusion
+activation and tone isolation still need a physical device check. The
 [audio assessment](./research/native-client-media.md#windows-audio-exclusion)
 owns that distinction.
 

@@ -1171,7 +1171,6 @@ UINT32 WindowsBuild() {
 void WriteCapabilityProbe() {
   constexpr UINT32 kCreateForWindowMinimumBuild = 18'362;
   constexpr UINT32 kProcessLoopbackMinimumBuild = 19'041;
-  constexpr UINT32 kProcessExclusionMinimumBuild = 20'348;
   const UINT32 build = WindowsBuild();
   bool window_capture = false;
   if (build >= kCreateForWindowMinimumBuild) {
@@ -1186,7 +1185,9 @@ void WriteCapabilityProbe() {
       build >= kProcessLoopbackMinimumBuild &&
       piik::capture::ProcessAudioAvailable();
   const bool system_audio = piik::capture::SystemAudioAvailable();
-  const bool process_audio_exclusion = build >= kProcessExclusionMinimumBuild &&
+  // Process loopback was backported to Windows 10 2004. Probe each mode;
+  // the documented 20348 minimum must not hide a working exclusion interface.
+  const bool process_audio_exclusion = build >= kProcessLoopbackMinimumBuild &&
       piik::capture::ProcessAudioAvailable(true);
 
   std::vector<Adapter> adapters = EnumerateAdapters();
@@ -1943,7 +1944,10 @@ void RunVideoCapture(ProductArguments arguments) {
     const HANDLE window_waits[] = {
         process.get(), shutdown.get(), frame_ready.get()};
     const HANDLE display_waits[] = {shutdown.get(), frame_ready.get()};
+    bool source_was_minimized = false;
     for (;;) {
+      if (window_target && IsIconic(reinterpret_cast<HWND>(
+              static_cast<UINT_PTR>(arguments.source_id)))) source_was_minimized = true;
       for (const auto& control : controls.Read()) {
         if (control.kind == 'Q') {
           cleanup();
@@ -1997,6 +2001,21 @@ void RunVideoCapture(ProductArguments arguments) {
         latest = std::move(next);
       }
       if (!latest) continue;
+      // Minimized content is a placeholder, including queued frames after
+      // restoration. Retire that pool generation before admitting pictures.
+      if (window_target && IsIconic(reinterpret_cast<HWND>(
+              static_cast<UINT_PTR>(arguments.source_id)))) {
+        source_was_minimized = true;
+        latest.Close();
+        continue;
+      }
+      if (source_was_minimized) {
+        latest.Close();
+        latest = nullptr;
+        pool.Recreate(capture_device, static_cast<DirectXPixelFormat>(pool_format), 2, pool_size);
+        source_was_minimized = false;
+        continue;
+      }
       INT64 signed_timestamp = latest.SystemRelativeTime().count();
       if (signed_timestamp <= 0) {
         Fail("capture-timestamp", "captured frame has no QPC timestamp");

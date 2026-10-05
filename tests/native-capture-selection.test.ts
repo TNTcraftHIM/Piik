@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { CaptureSourcePicker } from "../src/client/components/living/CaptureSourcePicker";
+import { AudioExclusionSelect } from "../src/client/components/living/AudioExclusionSelect";
 import { setCopy, t } from "../src/client/ui/copy";
 
 import {
@@ -60,6 +61,18 @@ describe("native capture source selection", () => {
         title: "Display 1",
       }),
     ).toBe("display:2");
+  });
+
+  it("keeps a missing exclusion selected and distinguishes a restarted process", () => {
+    setCopy({ lang: "en", vis: false });
+    const restarted = { ...game, creationTime: "654321" };
+    const html = renderToStaticMarkup(createElement(AudioExclusionSelect, {
+      sources: [restarted, { ...restarted, sourceId: "2" }],
+      value: game, onChange: () => {},
+    }));
+    expect(html).toMatch(/<option value="10:123456" disabled="" selected="">/);
+    expect(html.match(/<option value="10:654321"/g)).toHaveLength(1);
+    expect(html).not.toMatch(/<option value="" selected="">/);
   });
 
   it.each(["unavailable", "unsupported", "failed"] as const)("does not describe %s as an empty list or block Browser capture", (kind) => {

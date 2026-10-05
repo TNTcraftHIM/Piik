@@ -2,6 +2,7 @@ package nativecapture
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,11 +20,18 @@ import (
 )
 
 const (
-	captureStopTimeout = time.Second
-	maxPreviewBytes    = 192 * 1024
-	maxOutputs         = 6
-	minOutputBitrate   = 1_000 // Codec rate APIs use whole kbps.
-	maxOutputBitrate   = 12_000_000
+	captureStopTimeout  = time.Second
+	maxPreviewBytes     = 192 * 1024
+	maxOutputs          = 6
+	minOutputBitrate    = 1_000 // Codec rate APIs use whole kbps.
+	maxOutputBitrate    = 12_000_000
+	maxSources          = 1024
+	maxSourceTitleBytes = 4096
+	// Leave room for the control envelope within loopback's 256 KiB message.
+	maxSourceListBytes = 192 * 1024
+	// A complete helper list may be larger than the returned prefix. Decode it
+	// incrementally; JSON escaping can use six bytes for each title byte.
+	maxSourceOutputBytes = maxSources*(maxSourceTitleBytes*6+256) + 2
 )
 
 var (
@@ -80,8 +88,7 @@ type OutputProfile struct {
 }
 
 func (profile OutputProfile) Valid() bool {
-	return profile.Width >= 2 && profile.Width <= 2560 && profile.Width%2 == 0 &&
-		profile.Height >= 2 && profile.Height <= 1440 && profile.Height%2 == 0 &&
+	return ValidVideoSize(profile.Width, profile.Height) &&
 		profile.Framerate >= 1 && profile.Framerate <= 60 &&
 		profile.Bitrate >= minOutputBitrate && profile.Bitrate <= maxOutputBitrate
 }
@@ -137,25 +144,71 @@ type Stream struct {
 func ListSources(parent context.Context, executable string) ([]CaptureTarget, error) {
 	ctx, cancel := context.WithTimeout(parent, probeTimeout)
 	defer cancel()
-	stdout := &boundedBuffer{limit: maxProbeOutputBytes}
 	command := exec.CommandContext(ctx, executable, "--list")
-	command.Stdout = stdout
 	stderr := diagnostics.Writer("native-source-list")
 	defer stderr.Close()
 	command.Stderr = stderr
 	hideWindow(command)
-	if err := command.Run(); err != nil {
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		return nil, errors.New("native capture source list is unavailable")
+	}
+	if err := command.Start(); err != nil {
 		slog.DebugContext(ctx, "piik-client", "event", "capture-source-list-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
 		return nil, errors.New("native capture source list is unavailable")
 	}
-	var targets []CaptureTarget
-	if err := decodeStrictJSON(stdout.Bytes(), &targets); err != nil || len(targets) > 1024 {
+	targets, readErr := readSources(stdout)
+	if readErr != nil {
+		cancel()
+	}
+	waitErr := command.Wait()
+	if waitErr != nil {
+		slog.DebugContext(ctx, "piik-client", "event", "capture-source-list-failed", diagnostics.Error(waitErr), "canceled", ctx.Err() != nil)
+	}
+	if readErr != nil {
 		return nil, errors.New("native capture source list is invalid")
 	}
-	for _, target := range targets {
-		if !target.Valid() {
-			return nil, errors.New("native capture target is invalid")
+	if waitErr != nil {
+		return nil, errors.New("native capture source list is unavailable")
+	}
+	return targets, nil
+}
+
+func readSources(reader io.Reader) ([]CaptureTarget, error) {
+	input := &io.LimitedReader{R: reader, N: maxSourceOutputBytes + 1}
+	decoder := json.NewDecoder(input)
+	decoder.DisallowUnknownFields()
+	invalid := errors.New("native capture source list is invalid")
+	if token, err := decoder.Token(); err != nil || token != json.Delim('[') {
+		return nil, invalid
+	}
+	targets := make([]CaptureTarget, 0)
+	size := 2 // JSON array delimiters; subsequent entries also need a comma.
+	full := false
+	for count := 0; decoder.More(); count++ {
+		var target CaptureTarget
+		if count >= maxSources || decoder.Decode(&target) != nil || !target.Valid() {
+			return nil, invalid
 		}
+		if full {
+			continue
+		}
+		encoded, err := json.Marshal(target)
+		if err != nil {
+			return nil, invalid
+		}
+		if size+len(encoded)+1 > maxSourceListBytes {
+			full = true
+			continue
+		}
+		targets = append(targets, target)
+		size += len(encoded) + 1
+	}
+	if token, err := decoder.Token(); err != nil || token != json.Delim(']') {
+		return nil, invalid
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF || input.N == 0 {
+		return nil, invalid
 	}
 	return targets, nil
 }
@@ -355,7 +408,7 @@ func startAudioStreamWithTimeout(parent context.Context, executable string, argu
 
 func (target CaptureTarget) Valid() bool {
 	if !positiveDecimal(target.SourceID) || len(target.Title) == 0 ||
-		len(target.Title) > 4096 {
+		len(target.Title) > maxSourceTitleBytes {
 		return false
 	}
 	switch target.Kind {

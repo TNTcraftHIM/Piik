@@ -169,10 +169,13 @@ BOOL CALLBACK CollectWindow(HWND window, LPARAM parameter) {
   auto* targets = reinterpret_cast<std::vector<SourceTarget>*>(parameter);
   // FALSE makes EnumWindows report failure; a full list is still usable.
   if (targets->size() >= kMaxSources) return TRUE;
-  if (!IsWindowVisible(window) || GetWindow(window, GW_OWNER) != nullptr) {
+  if (!IsWindowVisible(window)) return TRUE;
+  const LONG_PTR extended_style = GetWindowLongPtrW(window, GWL_EXSTYLE);
+  // An owned window can still be an independent taskbar application window.
+  if (GetWindow(window, GW_OWNER) != nullptr &&
+      (extended_style & WS_EX_APPWINDOW) == 0) {
     return TRUE;
   }
-  const LONG_PTR extended_style = GetWindowLongPtrW(window, GWL_EXSTYLE);
   if ((extended_style & WS_EX_TOOLWINDOW) != 0 ||
       (extended_style & WS_EX_NOACTIVATE) != 0) {
     return TRUE;

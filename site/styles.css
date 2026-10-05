@@ -19,6 +19,7 @@
   --couch: #e9ad63;
   --couch-dark: #cd8845;
   --comic-beat: 3.2s;
+  --spring: cubic-bezier(.3, 1.45, .45, 1);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) { color-scheme: dark; --wall: #14232b; --paper: #1b2d34; --ink: #eef4eb; --muted: #b3c4bd; --line: #3b5155; --green: #9bdbb2; --orange: #f28d66; --soft-orange: #3d342c; --button-ink: #14232b; }
@@ -128,13 +129,16 @@ h3 { font-size: 21px; font-weight: 700; letter-spacing: -.03em; line-height: 1.3
 .platform-mark svg { width: 30px; height: 30px; }
 .download-card h3 { font-size: 25px; }
 .download-card > p { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.8; }
-.download-architecture { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; max-width: 100%; margin: 16px 0 20px; padding: 4px; border: 1px solid var(--line); border-radius: 24px; background: var(--wall); }
-.download-architecture label { position: relative; }
+.download-architecture { position: relative; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; min-width: 0; max-width: 100%; margin: 16px 0 20px; padding: 4px; border: 1px solid var(--line); border-radius: 24px; background: var(--wall); }
+.download-architecture:not(:disabled)::before { content: ""; position: absolute; inset: 4px auto 4px 4px; box-sizing: border-box; width: calc((100% - 8px) / 2); border: 1px solid var(--line); border-radius: 18px; background: var(--paper); box-shadow: 0 2px 0 color-mix(in srgb, var(--line) 40%, transparent); transition: transform 260ms var(--spring); pointer-events: none; }
+.download-architecture:has(> label:nth-of-type(2) input:checked)::before { transform: translateX(100%); }
+.download-architecture label { position: relative; min-width: 0; }
 .download-architecture input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .download-architecture input:disabled { cursor: default; }
-.download-architecture label > span { display: flex; align-items: center; justify-content: center; min-height: 36px; padding: 6px 12px; border: 1px solid transparent; border-radius: 18px; font-size: 12px; font-weight: 600; transition: background .18s ease, color .18s ease, box-shadow .18s ease; }
-.download-architecture input:checked + span { background: var(--paper); color: var(--green); border-color: var(--line); box-shadow: 0 2px 0 color-mix(in srgb, var(--line) 40%, transparent); }
-.download-architecture input:enabled:hover + span { color: var(--green); background: var(--paper); }
+.download-architecture label > span { position: relative; display: flex; align-items: center; justify-content: center; height: 100%; min-height: 36px; padding: 6px 12px; border: 1px solid transparent; border-radius: 18px; font-size: 12px; font-weight: 600; pointer-events: none; transition: color 140ms ease, transform 180ms var(--spring); }
+.download-architecture input:checked + span { color: var(--green); }
+.download-architecture input:enabled:is(:hover, :focus-visible) + span { color: var(--green); transform: translateY(-1px); }
+.download-architecture input:enabled:active + span { transform: scale(.9); }
 .download-architecture input:focus-visible + span { outline: 3px solid var(--orange); outline-offset: 3px; }
 .download-architecture:disabled { border-color: transparent; background: transparent; padding-inline: 0; }
 .download-architecture:disabled label > span { padding-inline: 0; border-color: transparent; background: transparent; color: var(--muted); box-shadow: none; }
@@ -338,8 +342,8 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; }
-  .button:not(:disabled):is(:hover, :focus-visible, :active), .button:not(:disabled):is(:hover, :focus-visible) svg { transform: none; }
+  .button:not(:disabled):is(:hover, :focus-visible, :active), .button:not(:disabled):is(:hover, :focus-visible) svg, .download-architecture input:enabled:is(:hover, :focus-visible, :active) + span { transform: none; }
 }
 html[data-reduced-motion] { scroll-behavior: auto; }
 html[data-reduced-motion] *, html[data-reduced-motion] *::before, html[data-reduced-motion] *::after { animation: none !important; transition: none !important; }
-html[data-reduced-motion] :is(.button, .button svg, .film-play, .project-tv) { transform: none !important; }
+html[data-reduced-motion] :is(.button, .button svg, .film-play, .project-tv, .download-architecture label > span) { transform: none !important; }

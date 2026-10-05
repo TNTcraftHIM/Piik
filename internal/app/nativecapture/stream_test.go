@@ -9,11 +9,74 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestSourceListBoundsFollowSerializedOutput(t *testing.T) {
+	for _, check := range []struct {
+		name, title string
+		count       int
+		truncated   bool
+	}{
+		{"empty", "Window", 0, false},
+		{"long-localized-titles", strings.Repeat("界", 512), 64, false},
+		{"many-windows", "Window", maxSources, false},
+		{"escaped-titles", strings.Repeat("<", 512), 100, true},
+		{"full-list", strings.Repeat("a", maxSourceTitleBytes), maxSources, true},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			targets := make([]CaptureTarget, check.count)
+			for index := range targets {
+				targets[index] = CaptureTarget{Kind: "window", SourceID: strconv.Itoa(index + 1),
+					PID: 1, CreationTime: "1", Title: check.title}
+			}
+			var input bytes.Buffer
+			encoder := json.NewEncoder(&input)
+			// The platform helpers need not use Go's HTML escaping.
+			encoder.SetEscapeHTML(false)
+			if err := encoder.Encode(targets); err != nil {
+				t.Fatal(err)
+			}
+			got, err := readSources(&input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (!check.truncated && len(got) != len(targets)) ||
+				(check.truncated && (len(got) == 0 || len(got) >= len(targets))) {
+				t.Fatalf("source count = %d of %d", len(got), len(targets))
+			}
+			for index, target := range got {
+				if target != targets[index] {
+					t.Fatal("bounded list changed a source's identity or title")
+				}
+			}
+			output, _ := json.Marshal(got)
+			if len(output) > maxSourceListBytes || string(output) == "null" {
+				t.Fatalf("source-list response exceeds its contract: %d bytes", len(output))
+			}
+		})
+	}
+}
+
+func TestSourceListRejectsMalformedOutputEvenAfterTheReturnedPrefix(t *testing.T) {
+	valid := `{"kind":"display","sourceId":"1","title":"Display"}`
+	full := `{"kind":"display","sourceId":"1","title":"` + strings.Repeat("a", maxSourceTitleBytes) + `"}`
+	for _, payload := range []string{
+		`null`, `{}`, `[`, `[` + valid, `[` + valid + `] []`,
+		`[{"kind":"display","sourceId":"1","title":"Display","extra":true}]`,
+		`[` + strings.Repeat(valid+",", maxSources) + valid + `]`,
+		`[` + strings.Repeat(full+",", 100) + `{"kind":"wrong","sourceId":"1","title":"Window"}]`,
+		`[]` + strings.Repeat(" ", maxSourceOutputBytes),
+	} {
+		if _, err := readSources(strings.NewReader(payload)); err == nil {
+			t.Fatal("invalid helper output was accepted")
+		}
+	}
+}
 
 func TestCaptureStopHelper(t *testing.T) {
 	mode := os.Getenv("PIIK_CAPTURE_STOP_FIXTURE")

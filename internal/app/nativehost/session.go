@@ -419,6 +419,11 @@ func (session *Session) ReplaceSource(
 	options.EncoderIndex = session.videoOptions.EncoderIndex
 	options.OutputGroups = session.edgeCapacity
 	hasAudio := session.audioSource != nil && session.audioStream != nil
+	currentTarget := session.videoOptions.Target
+	audioOnly := options.Target.Kind != "picker" &&
+		options.Target.Kind == currentTarget.Kind && options.Target.SourceID == currentTarget.SourceID &&
+		options.Target.PID == currentTarget.PID && options.Target.CreationTime == currentTarget.CreationTime &&
+		options.ShowCaptureBorder == session.videoOptions.ShowCaptureBorder
 	session.mu.Unlock()
 	if session.mixer == nil && audioEnabled != hasAudio {
 		return errors.New("native source audio availability cannot change while sharing")
@@ -440,9 +445,14 @@ func (session *Session) ReplaceSource(
 	}
 	options.Profile = profile.Video
 	options.RestoreToken = ""
-	replacement, state, err := session.prepareVideo(session.ctx, options, options.Target.Kind == "picker", false)
-	if err != nil {
-		return err
+	var replacement *nativecapture.Stream
+	var state CaptureState
+	var err error
+	if !audioOnly {
+		replacement, state, err = session.prepareVideo(session.ctx, options, options.Target.Kind == "picker", false)
+		if err != nil {
+			return err
+		}
 	}
 	var replacementAudio *nativecapture.Stream
 	if audioEnabled {
@@ -453,7 +463,9 @@ func (session *Session) ReplaceSource(
 			excludeAudio,
 		)
 		if err != nil {
-			_ = replacement.Close()
+			if replacement != nil {
+				_ = replacement.Close()
+			}
 			return errors.New("native source audio could not start")
 		}
 	}
@@ -524,7 +536,9 @@ func (session *Session) commitCapture(
 	session.mu.Lock()
 	if session.closed || session.ctx.Err() != nil {
 		session.mu.Unlock()
-		_ = replacement.Close()
+		if replacement != nil {
+			_ = replacement.Close()
+		}
 		if replacementAudio != nil {
 			_ = replacementAudio.Close()
 		}
@@ -532,14 +546,20 @@ func (session *Session) commitCapture(
 	}
 	previous := session.stream
 	previousAudio := session.audioStream
-	if state.RestoreToken != "" {
-		options.RestoreToken = state.RestoreToken
+	var applied chan struct{}
+	// A source-audio change retains the current capture generation and encoder.
+	if replacement != nil {
+		if state.RestoreToken != "" {
+			options.RestoreToken = state.RestoreToken
+		}
+		state.applyBackend(&options)
+		session.stream = replacement
+		applied = make(chan struct{})
+		session.captureApplied = applied
+		session.captureUnavailable = state.unavailableLayers
+		session.videoOptions = options
+		session.profile = profile
 	}
-	state.applyBackend(&options)
-	session.stream = replacement
-	applied := make(chan struct{})
-	session.captureApplied = applied
-	session.captureUnavailable = state.unavailableLayers
 	if replaceAudio {
 		session.audioStream = replacementAudio
 		select {
@@ -547,18 +567,19 @@ func (session *Session) commitCapture(
 		default:
 		}
 	}
-	session.videoOptions = options
-	session.profile = profile
 	session.mu.Unlock()
 
 	if replaceAudio && session.mixer != nil {
 		session.mixer.setSource(replacementAudio)
 	}
-	_ = replacement.RequestKeyFrame(-1)
-	_ = previous.Close()
 	if replaceAudio && previousAudio != nil {
 		_ = previousAudio.Close()
 	}
+	if replacement == nil {
+		return nil
+	}
+	_ = replacement.RequestKeyFrame(-1)
+	_ = previous.Close()
 	select {
 	case <-applied:
 	case <-session.ctx.Done():

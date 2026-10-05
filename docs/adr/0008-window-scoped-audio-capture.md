@@ -2,7 +2,7 @@
 
 - Status: accepted for Browser capture and the Windows App audio paths
 - Date: 2026-08-21
-- Last updated: 2026-10-01
+- Last updated: 2026-10-06
 
 ## Context
 
@@ -39,8 +39,11 @@ platform probe and physical gate report it.
    [ADR-0010](./0010-cross-platform-client-runtime.md); measurements are in
    [Native App media](../research/native-client-media.md).
 7. Windows App screen sharing can optionally exclude one selected process tree
-   through WASAPI's exclusion mode, on build 20348+ with a successful capability
-   probe. This mode spans all render endpoints; it is not restricted to the
+   through WASAPI's exclusion mode after successful activation of that mode.
+   Probe Windows 10 build 19041+ to include backported implementations, following
+   the same capability boundary as application capture. Microsoft's documented
+   minimum remains 20348; a Windows version alone does not establish support.
+   This mode spans all render endpoints; it is not restricted to the
    default playback device. Reuse source enumeration and the existing PCM/mixed
    output. Generic Browser capture and arbitrary unrelated process sets are not
    covered. [Media quality](../standards/media-quality.md#screen-audio) owns
@@ -68,3 +71,4 @@ Negative:
 - [Windows application loopback](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)
 - [Windows Graphics Capture](https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture)
 - [WASAPI process-loopback activation](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
+- [OBS application-audio platform support](https://obsproject.com/kb/application-audio-capture-guide)

@@ -15,8 +15,8 @@ const (
 	// five-second direct-connection head start.
 	attemptTimeout = 3 * time.Second
 	deleteTimeout  = 2 * time.Second
-	// RFC 6886 recommends a two-hour NAT-PMP lease; later gatherings renew it at
-	// half-life without adding a background poller.
+	// RFC 6886 recommends requesting a two-hour NAT-PMP lease. A new gathering
+	// revalidates it: gateway state can disappear before the requested expiry.
 	leaseDuration = 2 * time.Hour
 )
 
@@ -43,7 +43,6 @@ type Mapping struct {
 	mapped       bool
 	externalPort int
 	attemptDone  chan struct{}
-	renewAfter   time.Time
 	closed       bool
 }
 
@@ -59,6 +58,8 @@ func Start(localPort int) *Mapping {
 	return mapping
 }
 
+// Prepare confirms the mapping for one ICE gathering. The gathering calls it
+// once; ordinary renegotiation does not create a gathering or refresh mappings.
 func (mapping *Mapping) Prepare() int {
 	<-mapping.ready
 	mapping.mu.Lock()
@@ -66,9 +67,6 @@ func (mapping *Mapping) Prepare() int {
 	if mapping.closed || mapping.ctx.Err() != nil || mapping.gateway == nil ||
 		(mapping.attempted && !mapping.mapped) {
 		return 0
-	}
-	if mapping.mapped && time.Now().Before(mapping.renewAfter) {
-		return mapping.externalPort
 	}
 	ctx, cancel := context.WithTimeout(mapping.ctx, attemptTimeout)
 	defer cancel()
@@ -174,5 +172,4 @@ func (mapping *Mapping) mapPortLocked(ctx context.Context) {
 	}
 	mapping.mapped = true
 	mapping.externalPort = externalPort
-	mapping.renewAfter = time.Now().Add(leaseDuration / 2)
 }

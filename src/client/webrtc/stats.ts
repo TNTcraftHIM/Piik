@@ -413,13 +413,28 @@ function mediaTrackIdentifier(
   return stringValue(source, "trackIdentifier");
 }
 
-function mediaSourceRecord(
+export function mediaSourceRecord(
   report: RTCStatsReport,
   media: StatsRecord | null,
 ): StatsRecord | null {
-  const source = getRecord(report, stringValue(media, "mediaSourceId"));
-  return source?.type === "media-source"
-    ? source
+  if (!media || media.type !== "outbound-rtp" || media.isRemote === true) return null;
+  if (media.mediaSourceId !== undefined) {
+    const source = getRecord(report, stringValue(media, "mediaSourceId"));
+    return source?.type === "media-source" ? source : null;
+  }
+  if (media.kind !== "video" && media.kind !== "audio") return null;
+  // Some browsers omit the link. Infer it only for one sender and one source
+  // of the same kind; stale/multiple senders or sources remain ambiguous.
+  const senders: StatsRecord[] = [];
+  const sources: StatsRecord[] = [];
+  report.forEach((raw) => {
+    const record = raw as StatsRecord;
+    if (record.kind !== media.kind) return;
+    if (record.type === "outbound-rtp" && record.isRemote !== true) senders.push(record);
+    if (record.type === "media-source") sources.push(record);
+  });
+  return senders.length === 1 && senders[0]!.id === media.id && sources.length === 1
+    ? sources[0]!
     : null;
 }
 

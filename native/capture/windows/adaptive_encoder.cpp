@@ -207,6 +207,11 @@ class HardwareEncoder final : public webrtc::VideoEncoder {
       applied_bitrate_ = profile_.bit_rate;
       return WEBRTC_VIDEO_CODEC_OK;
     } catch (...) {
+      if (config) {
+        std::osyncstream(std::cerr) << "event=encoder-initialization-failed codec=h264 width="
+            << config->width << " height=" << config->height
+            << " fps=" << config->maxFramerate << " bitrate=" << config->startBitrate * 1000 << '\n';
+      }
       failure_.Capture();
       Release();
       return WEBRTC_VIDEO_CODEC_ENCODER_FAILURE;
