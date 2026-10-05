@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-04
+Last updated: 2026-10-06
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -52,15 +52,16 @@ These features are published; physical device limits remain open.
 Release artifacts and operator deployment records own delivery completion;
 [TODO](./todo.md#now) owns remaining work.
 
-## Current Candidate
+## Current Work
 
-The owner authorized v1.8.0 publication on 2026-10-04. This phase retains the
-published protocols and 1440p ceiling; immutable release artifacts own delivery
-completion. Follow-up work reviews extension boundaries, implements 4K and more
-resolutions with capability negotiation, then develops Native Magicsock NAT
-traversal. The isolated transport experiment is not part of v1.8.0; its product
-integration and connectivity benefit still require verification.
-[TODO](./todo.md#now) owns remaining work and later release authorization.
+The public baseline retains Browser/server v23, Native control v9, capture v7
+and the 1440p ceiling. The scoped maintenance work improves error guidance and
+bilingual troubleshooting without changing media or authorization behavior.
+4K/resolution expansion is held by the owner; the incompatible candidate remains
+isolated. Independent capture/media repairs, audio-exclusion refinements and
+Native Magicsock assessment are separate follow-ups, not part of this release.
+Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns
+remaining work and later release authorization.
 
 ## Deployment
 

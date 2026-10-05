@@ -31,7 +31,7 @@ and use its buttons. Safari may show system controls in video fullscreen.
 | Control | What it does |
 | --- | --- |
 | **Theater mode** | Expands the picture inside the browser tab. |
-| **Fullscreen** | Fills your screen. |
+| **Fullscreen** | Uses the full screen while keeping the picture's proportions; black bars can remain when they differ from your screen. |
 | **Picture in picture** | Opens a floating video where supported. |
 | **Volume** | Goes up to 200% with audio boost, or 100% otherwise. Lower it if the sound distorts. |
 
@@ -145,7 +145,7 @@ sharing to allow that fallback. The project's online site uses P2P only.
 ## Add your voice
 
 While sharing, select **Microphone** below the picture and
-allow microphone access. Select it again to mute. Open **Sharing settings** below the picture
+allow microphone access. Select it again to mute. Open **Settings → Sound** below the picture
 to choose a microphone and adjust its input volume.
 The default volume is 100%, with up to 200% available.
 Source audio and your voice reach viewers together. The Host preview stays muted.

@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { setCopy } from "../src/client/ui/copy.ts";
 import { NativeMediaBridgeError, NativeMediaBridgeInitializationError } from "../src/client/native/media-bridge";
+import { NativeRequestError } from "../src/client/native/client";
 import {
   hostActionErrorNotice,
+  hostFailureCode,
+  hostFailureChecks,
   hostServerErrorNotice,
   shouldPauseLocalPreview,
   sourceSwitchNotice,
@@ -12,9 +15,42 @@ import {
 setCopy({ lang: "zh" });
 
 describe("host error notices", () => {
+  it("keeps known App failure boundaries and support context without claiming a driver diagnosis", () => {
+    const rejected = new NativeRequestError("rejected", "start-share", { cause: "private source title" });
+    const timeout = new NativeRequestError("timeout", "start-share");
+    const disconnected = new NativeRequestError("disconnected", "start-share");
+    expect(hostActionErrorNotice(rejected, "capture")).toContain("未能采集所选来源");
+    expect(hostActionErrorNotice(timeout, "capture")).toContain("响应超时");
+    expect(hostActionErrorNotice(disconnected, "capture")).toContain("连接已断开");
+    expect(hostFailureCode(rejected, "capture")).toBe("app/start-share/rejected");
+    expect(hostFailureCode(new Error("secret invitation and source"), "capture")).toBe("capture/unknown");
+    expect(hostFailureCode(new DOMException("secret", "UnrecognizedError"), "capture")).toBe("capture/unknown");
+    expect(hostFailureCode(new DOMException("secret", "NotAllowedError"), "capture", "camera")).toBe("camera/NotAllowedError");
+  });
+
   it.each([
-    ["zh", "浏览器无法建立媒体连接。请刷新页面，或换一个浏览器重试。"],
-    ["en", "The browser could not create a media connection. Refresh the page or try another browser."],
+    ["site/http-403", ["shareHelp.site"]],
+    ["room/unknown", ["shareHelp.site"]],
+    ["app/start-share/rejected", ["shareHelp.source", "shareHelp.compare"]],
+    ["app/start-share/timeout", ["shareHelp.appConnection"]],
+    ["app/control/disconnected", ["shareHelp.appConnection"]],
+    ["app/prepare-edge/disconnected", ["shareHelp.appConnection"]],
+    ["app/prepare-edge/rejected", ["shareHelp.mediaConnection"]],
+    ["app/browser-media/connection", ["shareHelp.mediaConnection"]],
+    ["app/capture/failed", ["shareHelp.source", "shareHelp.compare"]],
+    ["browser/NotAllowedError", ["shareHelp.permission"]],
+    ["browser/NotReadableError", ["shareHelp.source"]],
+    ["camera/NotAllowedError", ["shareHelp.camera"]],
+    ["status/unknown", []],
+    ["connection/unknown", []],
+    ["quality/unknown", []],
+    ["app/update-share/rejected", []],
+  ])("keeps troubleshooting relevant to %s", (code, checks) => {
+    expect(hostFailureChecks(code as string)).toEqual(checks);
+  });
+  it.each([
+    ["zh", "浏览器无法建立媒体连接，请刷新页面重试。"],
+    ["en", "The browser could not create a media connection; reload to retry."],
   ] as const)("identifies Browser initialization failure in %s without blaming capture permission", (lang, notice) => {
     setCopy({ lang });
     try {
@@ -69,8 +105,10 @@ describe("host error notices", () => {
   it.each([
     ["NotAllowedError", "屏幕选择已取消或没有共享权限"],
     ["NotFoundError", "没有可用的屏幕分享来源"],
-    ["NotReadableError", "浏览器暂时无法读取所选分享来源"],
+    ["NotReadableError", "无法读取所选分享来源，请重新选源"],
     ["SecurityError", "当前页面无法启动屏幕分享"],
+    ["InvalidStateError", "请回到当前页面，再点击分享并选择来源。"],
+    ["OverconstrainedError", "所选来源无法满足当前画面设置。请降低设置或换一个来源。"],
   ])("maps capture DOMException %s", (name, notice) => {
     expect(
       hostActionErrorNotice(new DOMException("raw-browser-text", name), "capture"),

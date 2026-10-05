@@ -64,6 +64,7 @@ async function ungrantedLocalPermission(): Promise<PermissionState | null> {
 }
 
 interface PendingRequest<T = unknown> {
+  operation: string;
   schema: z.ZodType<T>;
   resolve: (value: T) => void;
   reject: (error: Error) => void;
@@ -87,6 +88,25 @@ export class NativeCompatibilityError extends Error {
   constructor(readonly actualProtocol: number) {
     super(`Piik App control protocol ${actualProtocol} is incompatible with ${NATIVE_CLIENT_PROTOCOL}`);
     this.name = "NativeCompatibilityError";
+  }
+}
+
+/** The control boundary knows the failed operation, not the driver's cause. */
+export class NativeRequestError extends Error {
+  constructor(
+    readonly reason: "unavailable" | "timeout" | "send-failed" | "rejected" | "invalid-response" | "disconnected",
+    readonly operation: string,
+    options?: ErrorOptions,
+  ) {
+    super({
+      unavailable: "Piik App is unavailable",
+      timeout: "Piik App request timed out",
+      "send-failed": "Piik App request failed",
+      rejected: "Piik App request failed",
+      "invalid-response": "Piik App response is invalid",
+      disconnected: "Piik App disconnected",
+    }[reason], options);
+    this.name = "NativeRequestError";
   }
 }
 
@@ -657,7 +677,7 @@ export class NativeClient {
     timeoutMs: number | null = REQUEST_TIMEOUT_MS,
   ): Promise<T> {
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error("Piik App is unavailable"));
+      return Promise.reject(new NativeRequestError("unavailable", type));
     }
     const id = createOpaqueId();
     const began = performance.now();
@@ -669,9 +689,10 @@ export class NativeClient {
           : window.setTimeout(() => {
               this.pending.delete(id);
               debugEvent("native", "request-timeout", { ...details, durationMs: performance.now() - began });
-              rejectRequest(new Error("Piik App request timed out"));
+              rejectRequest(new NativeRequestError("timeout", type));
             }, timeoutMs);
       this.pending.set(id, {
+        operation: type,
         schema,
         resolve: (value) => {
           debugEvent("native", "response", { ...details, durationMs: performance.now() - began, applied: value });
@@ -697,7 +718,7 @@ export class NativeClient {
         if (timer !== null) window.clearTimeout(timer);
         this.pending.delete(id);
         debugError("native", "request-failed", error, { ...details, durationMs: performance.now() - began });
-        rejectRequest(new Error("Piik App request failed"));
+        rejectRequest(new NativeRequestError("send-failed", type, { cause: error }));
       }
     });
   }
@@ -719,14 +740,14 @@ export class NativeClient {
       if (pending.timer !== null) window.clearTimeout(pending.timer);
       const failure = requestFailedResponseSchema.safeParse(value);
       if (failure.success) {
-        pending.reject(new Error("Piik App request failed", { cause: { code: failure.data.code } }));
+        pending.reject(new NativeRequestError("rejected", pending.operation, { cause: { code: failure.data.code } }));
         return;
       }
       const parsed = pending.schema.safeParse(value);
       if (parsed.success) {
         pending.resolve(parsed.data);
       } else {
-        pending.reject(new Error("Piik App response is invalid", { cause: parsed.error }));
+        pending.reject(new NativeRequestError("invalid-response", pending.operation, { cause: parsed.error }));
       }
       return;
     }
@@ -763,7 +784,7 @@ export class NativeClient {
   private rejectPending(): void {
     for (const request of this.pending.values()) {
       if (request.timer !== null) window.clearTimeout(request.timer);
-      request.reject(new Error("Piik App disconnected"));
+      request.reject(new NativeRequestError("disconnected", request.operation));
     }
     this.pending.clear();
   }

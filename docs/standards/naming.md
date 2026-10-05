@@ -103,7 +103,9 @@ Download/availability labels, platform requirements, instructions, permission
 prompts, status and errors stay plain and specific. Use the exact visible action
 names in tutorials; a playful caption never replaces “Download”, “Join a room”
 or a platform/connection limitation. Explain what happened, what the user can do
-next, and any real limitation. Jokes belong
+next, and any real limitation. Keep inline errors to the observed problem and
+one useful next action; put longer checks in the existing help dialog or guide.
+Automatic recovery states describe progress, not a request to reload. Jokes belong
 in the welcome or illustration caption. Do not soften a failure into a joke,
 invent connection progress or promise guaranteed connectivity or absolute privacy.
 Screen sharing includes games, creative work and showing a useful discovery.

@@ -43,6 +43,16 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   The Host television describes its local source, not an arbitrary outbound
   child. A confirmed limitation may colour the relevant icon amber while the
   page title still says watching.
+  A Host failure may open a troubleshooting dialog from this same icon. Keep
+  the existing hover explanation; the dialog owns actionable help, not a second
+  banner or an interactive tooltip. Preserve the observed operation and failure
+  boundary (timeout, disconnect, rejection); an unspecified App rejection does
+  not establish a driver or network cause. Copy only bounded diagnostic context,
+  never raw exceptions, source names or invitation URLs. Recording remains an
+  explicit opt-in through the shared diagnostic control. Troubleshooting follows
+  the known failure boundary: unknown/session/settings failures must not default
+  to capture advice, and retiring a share must retain a known App control or
+  media-connection failure instead of replacing it with a generic stop notice.
 - Host couch: each Viewer has one round lamp. Grey means waiting for the share,
   blue means waiting for the media path, green means committed `mediaReady`, and
   amber means a recent receive freeze. The Host's own pawn has no duplicate

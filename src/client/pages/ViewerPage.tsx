@@ -2013,8 +2013,9 @@ export function ViewerPage({
       : failureCode === "ROOM_FULL" ? "viewer.hint.full"
       : codeOnlyDenied
       ? "viewer.hint.denied"
-      : failureCode === "ROOM_NOT_FOUND" ||
-          failureCode === "ROOM_CLOSED"
+      : failureCode === "ROOM_CLOSED" ? "viewer.hint.closed"
+      : failureCode === "SESSION_REPLACED" ? "viewer.hint.sessionReplaced"
+      : failureCode === "ROOM_NOT_FOUND"
         ? "viewer.hint.notFound"
         : failureCode === "INVALID_TOKEN"
           // A grant that the room no longer accepts is not a retry case:

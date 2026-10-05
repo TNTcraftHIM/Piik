@@ -4,6 +4,8 @@ import { AppHeader, LedStrip } from "../components/living/Header";
 import { StageOverlay, StageTv } from "../components/living/Stage";
 import { Couch } from "../components/living/Couch";
 import { StatusIndicator } from "../components/living/StatusIndicator";
+import { ShareFailureHelp } from "../components/living/ShareFailureHelp";
+import { hostFailureChecks } from "./host-page-notices";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { Pill } from "../components/living/primitives";
 import { deriveViewerPresentation } from "../media/viewer-presentation";
@@ -56,6 +58,24 @@ export function StatusPreviewPage() {
     <div className="lr-app sp-page" data-comic-reduced-motion={reducedMotion || undefined}>
       <AppHeader homeHref="/__status-preview" />
       <main className="sp-main">
+        <section className="sp-catalog" id="sharing-troubleshooting">
+          <header><h2>分享失败排查</h2><p>悬停看原因，点击状态图标打开排查；不会自动重试或更改设置。</p></header>
+          <div className="sp-catalog-grid">
+            {([
+              ["native.fail.captureStart", "app/start-share/rejected", "source-failed"],
+              ["native.fail.requestTimeout", "app/start-share/timeout", "source-failed"],
+              ["native.fail.controlDisconnected", "app/start-share/disconnected", "route-failed"],
+              ["native.fail.edge", "app/browser-media/connection", "route-failed"],
+              ["api.originNotAllowed", "site/http-403", "warning"],
+              ["host.capture.cancelled", "browser/NotAllowedError", "hint-capture-browser"],
+              ["host.camera.denied", "camera/NotAllowedError", "source-failed"],
+              ["host.roomInvalid", "status/unknown", "room-not-found"],
+            ] as const).map(([key, code, tooltip]) => <article key={code}>
+              <ShareFailureHelp status={{ icon: "alert", tone: code.endsWith("NotAllowedError") ? "warn" : "bad", tooltip, labelKey: key }} label={t(key)} code={code} checks={hostFailureChecks(code)} />
+              <span>{t(key)}</span>
+            </article>)}
+          </div>
+        </section>
         <header className="sp-heading">
           <div><p className="sp-kicker">Piik · 状态语义</p><h1>同一事实，各有分寸。</h1>
             <p>标题说正在做什么，顶部说明信令，电视下沿图标说明画面；悬停查看图示与文字说明。</p></div>

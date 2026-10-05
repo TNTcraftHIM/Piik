@@ -19,9 +19,10 @@
 
 [问题排查](./troubleshooting.zh-CN.md)按遇到的现象提供处理步骤，常用入口：
 
+- [公网邀请失败或 1033](./troubleshooting.zh-CN.md#公网邀请创建失败或出现-1033)、[创建房间返回 403](./troubleshooting.zh-CN.md#创建房间返回-403)。
+- [无法开始分享](./troubleshooting.zh-CN.md#选源后无法开始分享)、[App 找不到来源](./troubleshooting.zh-CN.md#app-找不到窗口或屏幕)、[H264 与显卡排查](./troubleshooting.zh-CN.md#windows-上-h264-分享失败)。
 - [画面连接不上](./troubleshooting.zh-CN.md#画面连接不上)，包括 WebRTC 设置与校园网问题。
-- [H264 分享失败与显卡排查](./troubleshooting.zh-CN.md#windows-上-h264-分享失败)。
-- [App 找不到来源](./troubleshooting.zh-CN.md#app-找不到窗口或屏幕)或[创建房间返回 403](./troubleshooting.zh-CN.md#创建房间返回-403)。
+- [模糊或卡顿](./troubleshooting.zh-CN.md#画面模糊卡顿或中断)、[HDR 过曝](./troubleshooting.zh-CN.md#hdr-画面过亮或颜色发白)。
 
 仍然没解决？可以[反馈问题](https://github.com/TNTcraftHIM/Piik/issues/new/choose)，
 附上版本、系统、浏览器和复现步骤。需要收集报告时，参阅

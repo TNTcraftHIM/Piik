@@ -43,39 +43,17 @@ export function LedStrip({
   );
 }
 
-export function HeaderControls({ diagnosticControl }: { diagnosticControl?: React.ReactNode } = {}) {
+/** Shared explicit opt-in/export action; starting diagnostics reloads the page. */
+export function BrowserDiagnosticsButton() {
   const { vis, t } = useCopy();
-  const { theme, toggle } = useTheme();
   const [debugExport, setDebugExport] = useState<"idle" | "busy" | "failed">("idle");
-  const themeTitle = t(theme === "dark" ? "theme.light" : "theme.dark");
-  const themeButton = (
-    <button
-      type="button"
-      className="lr-btn"
-      style={{ minWidth: 40, height: 40, borderRadius: 999 }}
-      aria-label={themeTitle}
-      onClick={(event) => {
-        // Pointer activation must not pin the hint open; keyboard keeps focus.
-        if (event.detail !== 0) event.currentTarget.blur();
-        toggle();
-      }}
-    >
-      <Glyph name={theme === "dark" ? "sun" : "moon"} size={16} draw="theme-toggle" />
-      {vis ? null : (
-        <span className="lr-cap">
-          {t(theme === "dark" ? "theme.light.short" : "theme.dark.short")}
-        </span>
-      )}
-    </button>
-  );
   const debugTitle = t(!browserDebugEnabled ? "debug.startHint" :
     debugExport === "failed" ? "debug.exportFailed" : "debug.exportHint");
   const debugButton = (
     <button
       type="button" className={`lr-btn${browserDebugEnabled ? " is-on" : ""}`} disabled={debugExport === "busy"}
       aria-label={debugTitle} aria-busy={debugExport === "busy" || undefined}
-      onClick={(event) => {
-        if (event.detail !== 0) event.currentTarget.blur();
+      onClick={() => {
         if (!browserDebugEnabled) {
           // Start collection before connection owners attach their observers.
           // Preserve the current route, access parameters and invitation fragment.
@@ -97,6 +75,36 @@ export function HeaderControls({ diagnosticControl }: { diagnosticControl?: Reac
         debugExport === "failed" ? "common.retry" : "debug.export")}</span>}
     </button>
   );
+  return <Tooltip kind={!browserDebugEnabled ? "debug-start" : debugExport === "failed" ? "debug-export-failed" : "hint-debug-export"}
+    tone={debugExport === "failed" ? "bad" : debugExport === "busy" ? "busy" : "off"}
+    motion={debugExport === "failed" ? "still" : debugExport === "busy" ? "progress" : "demo"}
+    text={vis ? undefined : debugTitle} place="below" align="end">{debugButton}</Tooltip>;
+}
+
+export function HeaderControls({ diagnosticControl }: { diagnosticControl?: React.ReactNode } = {}) {
+  const { vis, t } = useCopy();
+  const { theme, toggle } = useTheme();
+  const themeTitle = t(theme === "dark" ? "theme.light" : "theme.dark");
+  const themeButton = (
+    <button
+      type="button"
+      className="lr-btn"
+      style={{ minWidth: 40, height: 40, borderRadius: 999 }}
+      aria-label={themeTitle}
+      onClick={(event) => {
+        // Pointer activation must not pin the hint open; keyboard keeps focus.
+        if (event.detail !== 0) event.currentTarget.blur();
+        toggle();
+      }}
+    >
+      <Glyph name={theme === "dark" ? "sun" : "moon"} size={16} draw="theme-toggle" />
+      {vis ? null : (
+        <span className="lr-cap">
+          {t(theme === "dark" ? "theme.light.short" : "theme.dark.short")}
+        </span>
+      )}
+    </button>
+  );
   return (
     <span className="lr-top-right lr-header-controls">
       <LanguageControl />
@@ -104,12 +112,7 @@ export function HeaderControls({ diagnosticControl }: { diagnosticControl?: Reac
         {themeButton}
       </Tooltip>
       {diagnosticControl !== null && <span className="lr-header-diagnostic">
-        {diagnosticControl === undefined ? <Tooltip kind={!browserDebugEnabled ? "debug-start" : debugExport === "failed" ? "debug-export-failed" : "hint-debug-export"}
-          tone={debugExport === "failed" ? "bad" : debugExport === "busy" ? "busy" : "off"}
-          motion={debugExport === "failed" ? "still" : debugExport === "busy" ? "progress" : "demo"}
-          text={vis ? undefined : debugTitle} place="below" align="end">
-          {debugButton}
-        </Tooltip> : diagnosticControl}
+        {diagnosticControl === undefined ? <BrowserDiagnosticsButton /> : diagnosticControl}
       </span>}
     </span>
   );

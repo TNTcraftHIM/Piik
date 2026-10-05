@@ -61,6 +61,7 @@ import {
   StaticNoise,
 } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
+import { ShareFailureHelp } from "../components/living/ShareFailureHelp";
 import {
   Btn,
   Cap,
@@ -161,7 +162,7 @@ import type {
   SignalConnectionState,
 } from "../types";
 import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
-import { NativeClient, NativeCompatibilityError } from "../native/client";
+import { NativeClient, NativeCompatibilityError, NativeRequestError } from "../native/client";
 import {
   NativeSenderPeer,
   shouldUseBrowserQualityCandidate,
@@ -194,6 +195,8 @@ import {
   shouldPauseLocalPreview,
   sourceSwitchNotice,
   isCapturePermissionFailure,
+  hostFailureCode,
+  hostFailureChecks,
   type HostAction,
 } from "./host-page-notices";
 
@@ -204,7 +207,10 @@ type NoticeValue = (
   target: "television" | "operation";
   comic: ComicKind | HintKind;
   tone: ComicTone;
+  failureCode?: string;
 };
+
+type StatusNoticeMessage = string | { key: CopyKey; vars?: Record<string, string>; failureCode?: string };
 
 const PREFERENCE_PRESENTATION: Record<
   DegradationPreference,
@@ -509,14 +515,14 @@ export function HostPage({
     setNoticeValue({ kind: "key", key, vars, target: "operation", comic, tone });
   }
   function setStatusNotice(
-    message: string | { key: CopyKey; vars?: Record<string, string> },
+    message: StatusNoticeMessage,
     comic: ComicKind,
     tone: ComicTone,
   ): void {
     setNoticeValue({
       ...(typeof message === "string"
         ? { kind: "text", text: message }
-        : { kind: "key", key: message.key, vars: message.vars }),
+        : { kind: "key", ...message, vars: message.vars }),
       target: "television",
       comic,
       tone,
@@ -527,9 +533,11 @@ export function HostPage({
     action: HostAction,
     target: NoticeValue["target"] = "operation",
   ): void {
-    if (error instanceof NativeMediaBridgeError) action = "connection";
+    if (error instanceof NativeMediaBridgeError || (error instanceof NativeRequestError &&
+      (["unavailable", "disconnected", "send-failed"].includes(error.reason) || error.operation === "prepare-edge"))) action = "connection";
     const permissionMissing = isCapturePermissionFailure(error, action);
     setNoticeValue({ kind: "text", text: readableError(error, action), target, tone: permissionMissing ? "warn" : "bad",
+      failureCode: error instanceof ApiError ? `site/http-${error.status}` : hostFailureCode(error, action),
       comic: permissionMissing ? "hint-capture-browser" : action === "connection" ? "route-failed" : action === "capture" || action === "source"
         ? "source-failed" : action === "quality" ? "settings-failed" : "warning" });
   }
@@ -986,7 +994,7 @@ export function HostPage({
   }
 
   function endSharing(
-    message: string | { key: CopyKey; vars?: Record<string, string> },
+    message: StatusNoticeMessage,
     notifyServer = true,
     comic: ComicKind = "share-ended",
     tone: ComicTone = "off",
@@ -1207,7 +1215,7 @@ export function HostPage({
       await nativeShareCleanupRef.current;
       await nativePreviewTailRef.current;
       if (!isCurrentShare(generation, shareGeneration)) return null;
-      if (nativeClientRef.current !== client) throw new Error("Piik App is unavailable");
+      if (nativeClientRef.current !== client) throw new NativeRequestError("unavailable", "start-share");
       // Acquire the required Browser peer before starting capture. Pending
       // cancellation owns this bridge, but still closes control to abort startup.
       bridge = new NativeMediaBridge(
@@ -1218,7 +1226,7 @@ export function HostPage({
             nativeMediaBridgeRef.current === bridge &&
             isCurrentShare(generation, shareGeneration)
           ) {
-            endSharing({ key: "host.shareEnded" }, true, "source-failed", "bad");
+            endSharing({ key: "native.fail.edge", failureCode: "app/browser-media/connection" }, true, "route-failed", "bad");
           }
         },
       );
@@ -1235,7 +1243,7 @@ export function HostPage({
         }
         if (event.type === "share-ended") {
           endSharing(
-            { key: event.failed ? "host.shareEnded" : "host.stopNotice" },
+            event.failed ? { key: "host.shareEnded", failureCode: "app/capture/failed" } : { key: "host.stopNotice" },
             true,
             event.failed ? "source-failed" : "share-ended",
             event.failed ? "bad" : "off",
@@ -1262,7 +1270,7 @@ export function HostPage({
         await client.stopShare(shareGeneration).catch(() => discardNativeClient(client));
         return null;
       }
-      if (nativeClientRef.current !== client) throw new Error("Piik App is unavailable");
+      if (nativeClientRef.current !== client) throw new NativeRequestError("unavailable", "start-share");
       nativeSourceAudioRef.current ??= started.sourceAudio ?? started.audio;
       videoCodecRef.current = manualVideoCodecPreference(started.codec);
       // Register ownership before waiting for the local bridge. A native edge
@@ -1317,7 +1325,7 @@ export function HostPage({
       if (nativeMediaIngressRef.current) {
         recoverBrowserFanout(nativeMediaIngressRef.current);
       } else if (nativeModeRef.current && activeGenerationRef.current !== null) {
-        endSharing({ key: "host.shareEnded" }, true, "source-failed", "bad");
+        endSharing({ key: "native.fail.controlDisconnected", failureCode: "app/control/disconnected" }, true, "route-failed", "bad");
       }
     });
   }
@@ -2976,7 +2984,8 @@ export function HostPage({
       return;
     }
     setNoticeValue({ kind: "key", key: error instanceof DOMException && error.name === "NotAllowedError"
-      ? "host.camera.denied" : "host.camera.unavailable", target, comic: "source-failed", tone: "warn" });
+      ? "host.camera.denied" : "host.camera.unavailable", target, comic: "source-failed", tone: "warn",
+      failureCode: hostFailureCode(error, action, "camera") });
   }
 
   async function changeMicrophone(enabled: boolean, deviceId: string, voiceProcessing = microphoneVoiceProcessing): Promise<void> {
@@ -3546,8 +3555,12 @@ export function HostPage({
             }
             label={t("host.stageAria")}
             indicator={<>
-              <StatusIndicator status={hostStatus.television}
-                label={statusNotice ? noticeText ?? undefined : undefined} />
+              {statusNotice && noticeText && (statusNotice.failureCode || statusNotice.tone === "bad")
+                ? <ShareFailureHelp key={`${statusNotice.failureCode}:${noticeText}`} status={hostStatus.television}
+                    label={noticeText} code={statusNotice.failureCode ?? "status/unknown"}
+                    checks={hostFailureChecks(statusNotice.failureCode ?? "status/unknown")} />
+                : <StatusIndicator status={hostStatus.television}
+                    label={statusNotice ? noticeText ?? undefined : undefined} />}
               <span className="visually-hidden" role="status" aria-live="polite">
                 {statusNotice ? noticeText : null}
               </span>

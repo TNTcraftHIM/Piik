@@ -22,7 +22,7 @@ import {
   readDisplayName,
   saveDisplayName,
 } from "../src/client/lib/display-name.ts";
-import { setCopy } from "../src/client/ui/copy.ts";
+import { say, setCopy } from "../src/client/ui/copy.ts";
 import {
   clearHostRoom,
   clientLaunchURL,
@@ -746,8 +746,8 @@ describe("site access API", () => {
       new Response(JSON.stringify({ error: "Origin not allowed" }), { status: 403 }),
     ));
     const message = lang === "zh"
-      ? "服务器未允许当前网址 (403)。请联系站点管理员检查 PUBLIC_BASE_URL 和 ALLOWED_ORIGINS。"
-      : "This address is not allowed by the server (403). Ask the site administrator to check PUBLIC_BASE_URL and ALLOWED_ORIGINS.";
+      ? "当前网址不在服务器允许的范围内 (403)，请联系管理员。"
+      : "The server does not allow this address (403); contact the site administrator.";
     for (const request of [
       () => authenticateSiteAccess("password"),
       () => createRoom("open", null),
@@ -763,7 +763,7 @@ describe("site access API", () => {
       vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(new Response(body, { status: 403 })));
       await expect(createRoom("open", null)).rejects.toMatchObject({
         status: 403,
-        message: expect.not.stringContaining("ALLOWED_ORIGINS"),
+        message: expect.not.stringContaining(say("api.originNotAllowed")),
       });
     }
   });
@@ -835,7 +835,7 @@ describe("site access API", () => {
 
     await expect(getSiteAccess()).rejects.toMatchObject({
       status: 503,
-      message: "站点验证服务暂时不可用 (503)",
+      message: "站点服务暂不可用 (503)，请稍后重试",
     });
   });
 

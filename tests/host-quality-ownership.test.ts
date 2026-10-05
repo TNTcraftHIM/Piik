@@ -8,11 +8,11 @@ import {
   type QualitySettings,
 } from "../src/client/media/quality";
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
-import { NativeCompatibilityError } from "../src/client/native/client";
+import { NativeCompatibilityError, NativeRequestError } from "../src/client/native/client";
 import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
 import { reconcileBoundedMediaChildren } from "../src/client/webrtc/media-assignment";
 import { debugError, debugEvent, debugOperation } from "../src/client/lib/debug";
-import { hostActionErrorNotice, isCapturePermissionFailure } from "../src/client/pages/host-page-notices";
+import { hostActionErrorNotice, hostFailureCode, isCapturePermissionFailure } from "../src/client/pages/host-page-notices";
 
 // Exercise the actual page owners without mounting capture hardware or a Browser.
 const source = ts.createSourceFile("HostPage.tsx", readFileSync(
@@ -63,13 +63,13 @@ function fixture(launchedByClient = true) {
   const client = { updateShare: vi.fn(async () => undefined), replaceShareSource: vi.fn(async () => undefined),
     startShare: vi.fn(async (): Promise<{ audio: boolean; codec: "h264" }> => ({ audio: false, codec: "h264" })),
     onEvent: vi.fn((_listener: (event: unknown) => void) => () => undefined),
-    close: vi.fn(), onClose: vi.fn(() => () => undefined),
+    close: vi.fn(), onClose: vi.fn((_listener: () => void) => () => undefined),
     health: { nativeMedia: { video: true, hardwareH264: true, softwareVP8: true } },
     captureOptions: vi.fn(async () => []), sources: vi.fn(async () => []),
     stopReceive: vi.fn(async () => undefined), stopShare: vi.fn(async () => undefined) };
   const route = { updateProfile: vi.fn(async () => true), resyncAuthoritative: vi.fn(async (): Promise<void> => undefined) };
   const state = {
-    debugError, debugEvent, debugOperation, NativeCompatibilityError, NativeMediaBridgeError, isCapturePermissionFailure, DOMException,
+    debugError, debugEvent, debugOperation, NativeCompatibilityError, NativeRequestError, NativeMediaBridgeError, isCapturePermissionFailure, hostFailureCode, DOMException,
     launchedByClient, hostRoomSessionAvailable: false,
     NativeClient: { connect: vi.fn(async (): Promise<typeof client | null> => null) },
     nativeClientConnectRef: ref<Promise<typeof client | null> | null>(null),
@@ -87,7 +87,7 @@ function fixture(launchedByClient = true) {
 
     createRoom: vi.fn(async () => { throw new Error("must not create an empty room"); }),
     readPreferredRoomId: () => null, disposeResources: vi.fn(), ApiError: class extends Error {},
-    NativeMediaBridge: vi.fn(function () { return bridge; }), manualVideoCodecPreference: vi.fn(),
+    NativeMediaBridge: vi.fn(function (_shareId: string, _client: unknown, _onFailed: () => void) { return bridge; }), manualVideoCodecPreference: vi.fn(),
     phase: "live", qualitySettingsRef: ref<QualitySettings>(original), advancedQualityRef: ref<QualitySettings>(original),
     qualityChangeRef: ref<object | null>(null), pendingQualityChangeRef: ref<QualitySettings | null>(null),
     activeGenerationRef: ref<number | null>(1), streamRef: ref<typeof stream | null>(stream), sourceSwitchRef: ref<object | null>(null),
@@ -563,6 +563,7 @@ describe("Host quality ownership", () => {
     expect(setNoticeValue).toHaveBeenLastCalledWith({
       kind: "text", text: hostActionErrorNotice(denied, "capture"),
       target: "television", comic: "hint-capture-browser", tone: "warn",
+      failureCode: "browser/NotAllowedError",
     });
     expect(current.setPhase).toHaveBeenLastCalledWith("idle");
     expect(current.createRoom).not.toHaveBeenCalled();
@@ -732,6 +733,7 @@ describe("Host quality ownership", () => {
     expect(setNoticeValue).toHaveBeenLastCalledWith({
       kind: "text", text: hostActionErrorNotice(denied, "source"),
       target: "operation", comic: "hint-capture-browser", tone: "warn",
+      failureCode: "browser/NotAllowedError",
     });
     expect(current.setPhase).not.toHaveBeenCalled();
     expect(current.track.stop).not.toHaveBeenCalled();
@@ -751,6 +753,26 @@ describe("Host quality ownership", () => {
       target: "television", comic, tone,
     });
     expect(current.setPhase).toHaveBeenLastCalledWith("ended");
+    expect(current.activeGenerationRef.current).toBeNull();
+  });
+
+  it.each([
+    ["capture", "host.shareEnded", "app/capture/failed", "source-failed"],
+    ["media", "native.fail.edge", "app/browser-media/connection", "route-failed"],
+    ["control", "native.fail.controlDisconnected", "app/control/disconnected", "route-failed"],
+  ])("retains the known %s failure when retiring native sharing", async (kind, key, failureCode, comic) => {
+    const current = fixture();
+    current.generationRef.current = 1;
+    current.nativeClientRef.current = null;
+    current.context.ownNativeClient(current.client);
+    await current.startNative();
+    if (kind === "control") current.client.onClose.mock.calls[0]![0]();
+    else if (kind === "media") current.NativeMediaBridge.mock.calls[0]![2]();
+    else current.client.onEvent.mock.calls[0]![0]({ type: "share-ended", shareId: "share", failed: true });
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith({
+      kind: "key", key, vars: undefined, failureCode, target: "television", comic, tone: "bad",
+    });
+    expect(current.disposeResources).toHaveBeenCalledExactlyOnceWith(true, false);
     expect(current.activeGenerationRef.current).toBeNull();
   });
 

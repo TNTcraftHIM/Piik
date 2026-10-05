@@ -302,13 +302,27 @@ describe("native App private wire", () => {
     const unexpected = vi.fn();
     client!.onClose(unexpected);
     await expect(client!.updateShare("share_123456", DEFAULT_QUALITY_SETTINGS))
-      .rejects.toThrow("Piik App request failed");
+      .rejects.toMatchObject({ name: "NativeRequestError", reason: "rejected", operation: "update-share" });
     await client!.ping();
     expect(sockets[0]!.close).not.toHaveBeenCalled();
     expect(unexpected).not.toHaveBeenCalled();
+    vi.useFakeTimers();
+    window.setTimeout = globalThis.setTimeout;
+    window.clearTimeout = globalThis.clearTimeout;
+    const timedOut = expect(client!.sources()).rejects.toMatchObject({ reason: "timeout", operation: "list-sources" });
+    await vi.advanceTimersByTimeAsync(8_000);
+    await timedOut;
+    expect(sockets[0]!.close).not.toHaveBeenCalled();
+    vi.useRealTimers();
+    window.setTimeout = globalThis.setTimeout;
+    window.clearTimeout = globalThis.clearTimeout;
+    const pending = client!.sources();
+    const closedRequest = expect(pending).rejects.toMatchObject({ name: "NativeRequestError", reason: "disconnected", operation: "list-sources" });
     sockets[0]!.emitUnexpectedClose();
     sockets[0]!.emitUnexpectedClose();
     expect(unexpected).toHaveBeenCalledOnce();
+    await closedRequest;
+    await expect(client!.sources()).rejects.toMatchObject({ reason: "unavailable", operation: "list-sources" });
 
     const cleanClient = await NativeClient.connect();
     expect(cleanClient).not.toBeNull();
