@@ -202,6 +202,42 @@ for recoverable edge disconnects. Piik's four-start acquisition limit is not a
 four-reconnect limit after readiness. Restarting the Quick Tunnel process would
 allocate a new public address rather than repair the old invitation.
 
+## Major-Upgrade Delivery Assessment
+
+Reviewed 2026-10-06 against released update checkers and simulated v2.0.0
+metadata. The v1.0.0 checker opens a provider's release page; v1.1.0 and v1.9.1
+choose a matching ZIP on both GitHub and the Gitee fallback. Detection does not
+download or install anything: the user must click. These clients have no
+major-upgrade warning. The bounded replay used the released source, not the
+current candidate's checker.
+
+The legacy checkers accept exact provider release/asset URLs; release metadata
+cannot redirect them to `piik.tv`. A valid GitHub API response wins without
+checking whether its page or attachment is reachable. Gitee fallback selects
+the highest stable version itself, so keeping GitHub's Latest on a transition
+release does not constrain both discovery paths. Publishing a transition
+release first cannot guarantee that every installed client receives it.
+
+[Sparkle](https://sparkle-project.org/documentation/publishing/#major-upgrades)
+separates major-upgrade presentation from installation and supports
+[website downloads](https://sparkle-project.org/documentation/publishing/#downloading-from-a-web-site).
+Its [feature-upgrade guidance](https://sparkle-project.org/documentation/publishing/#upgrading-to-newer-features)
+also requires capable readers or a separate feed; metadata alone cannot teach
+older readers a new rule.
+
+[CC Switch's About panel](https://github.com/farion1231/cc-switch/blob/243cd9a93b67f56efac173f32505b4085fb40cae/src/components/settings/AboutSection.tsx)
+separates its update action from opening the target version's release notes.
+The installed edition downloads, installs and restarts. Reading release notes
+is optional. This supports Piik's action hierarchy, not adoption of CC Switch's
+installer or update infrastructure; no implementation code was copied.
+
+The evidence supports direct manual downloads with an optional release-note
+link and inline major-upgrade guidance. The accepted behavior belongs to
+[versioning](../standards/versioning.md#major-upgrade-guidance). Historical
+clients still follow their released behavior; a notice cannot substitute for
+actual App/Site compatibility checks. The scope of a future 2.0 break remains
+undecided.
+
 ## Remaining Gates
 
 - Run the exact clean-revision package on macOS; Linux amd64 is proved.

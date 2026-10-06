@@ -7,11 +7,13 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Accept the update-readiness candidate.** Review the scoped build dependency
-  patch, native self-test diagnostics and App/Server major-update guidance.
-  Keep release notes on GitHub/Gitee and manual downloads; no new updater or
-  embedded changelog viewer. Publication requires a version and bilingual notes
-  approved under [versioning](./standards/versioning.md#automatic-publication).
+- [ ] **Accept the update-readiness candidate.** Retain direct downloads with a
+  secondary release-note link and concise major-update guidance under
+  [versioning](./standards/versioning.md#major-upgrade-guidance). Review the scoped
+  build dependency patch and native self-test diagnostics alongside App/Server
+  presentation. Historical download behavior is accepted; no mandatory website
+  detour or transition-release channel is planned. Publication requires a version
+  and bilingual notes approved under [versioning](./standards/versioning.md#automatic-publication).
   Preparing for 2.0 does not reopen held media extensions or authorize a wire bump.
 
 ## Held By Owner

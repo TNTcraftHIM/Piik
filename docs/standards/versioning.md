@@ -130,8 +130,12 @@ Server logs the same distinction while preserving its checker JSON and exit
 codes. This is release guidance, not a replacement for actual wire checks.
 Updates remain a manual action. Release prose stays on GitHub/Gitee; the App
 does not fetch or render remote Markdown or add a second changelog store.
+Direct download remains the primary action; reading notes is optional. Keep the
+major warning inline, without a confirmation dialog or mandatory website detour.
 
 Older installed Apps cannot acquire new warning UI from release metadata.
+Their historical download behavior is accepted; do not split release feeds or
+force a stepping-stone release solely to make advisory presentation identical.
 Before a major release, put bilingual upgrade guidance near the top of its
 release notes and on the website download entry. Name the actual incompatible
 App/Site combinations, required upgrade order, interruptions and any persistent
