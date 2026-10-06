@@ -51,6 +51,28 @@ func TestReleaseNoticeUsesOperatorLogsOnlyForAvailableChoices(t *testing.T) {
 	}
 }
 
+func TestReleaseNoticeWarnsAboutANewerMajorWithoutChangingCheckerStatus(t *testing.T) {
+	for _, current := range []string{"v1.9.1", "v2.0.0-rc.1", "development"} {
+		t.Run(current, func(t *testing.T) {
+			var output bytes.Buffer
+			version, page := "v2.0.0", releaseURLPrefix+"v2.0.0"
+			logReleaseNotice(slog.New(slog.NewJSONHandler(&output, nil)), releaseResult{
+				Status: statusUpdateAvailable, CurrentVersion: &current, LatestVersion: &version, ReleaseURL: &page,
+			})
+			var entry map[string]any
+			if err := json.Unmarshal(output.Bytes(), &entry); err != nil {
+				t.Fatal(err)
+			}
+			warning := current == "v1.9.1"
+			if (entry["level"] == "WARN") != warning ||
+				strings.Contains(entry["msg"].(string), "breaking changes") != warning ||
+				entry["status"] != statusUpdateAvailable || entry["releaseUrl"] != page {
+				t.Fatalf("incorrect major release notice: %v", entry)
+			}
+		})
+	}
+}
+
 func TestParseReleaseMetadataAcceptsOnlyTheStrictReleaseIdentity(t *testing.T) {
 	tagged := func(version, page string) string {
 		return `{"tag_name":"` + version + `","html_url":"` + page + `"}`

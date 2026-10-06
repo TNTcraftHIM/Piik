@@ -76,6 +76,10 @@ restrictive networks may load the page but block video.
    **Screens** as available. Pick the actual source and sound option.
 5. Copy and send the room invitation. Keep both the App and sharing tab open.
 
+When the launcher offers an update, **Release notes** opens its details on GitHub
+or Gitee. A new major version includes a compatibility warning; read the upgrade
+instructions before replacing your App.
+
 | Filename contains | Platform |
 | --- | --- |
 | `windows-amd64` | Windows x64 |

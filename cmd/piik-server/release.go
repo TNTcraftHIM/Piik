@@ -126,7 +126,13 @@ func logReleaseNotice(logger *slog.Logger, result releaseResult) {
 	if result.CurrentVersion != nil {
 		current = *result.CurrentVersion
 	}
-	logger.Info(message, "event", "release-check", "status", result.Status,
+	level := slog.LevelInfo
+	if result.Status == statusUpdateAvailable && semver.IsValid(current) &&
+		semver.Major(*result.LatestVersion) != semver.Major(current) {
+		level = slog.LevelWarn
+		message = "A new major Piik release is available; review breaking changes in the release notes before upgrading"
+	}
+	logger.Log(context.Background(), level, message, "event", "release-check", "status", result.Status,
 		"currentVersion", current, "latestVersion", *result.LatestVersion, "releaseUrl", *result.ReleaseURL)
 }
 

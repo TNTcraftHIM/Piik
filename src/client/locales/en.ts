@@ -79,6 +79,9 @@ export const en: Record<CopyKey, string> = {
   "client.launch.debugHint": "Record App and browser diagnostics for this launch. Press D in the terminal to export App logs.",
   "client.launch.loadFailed": "Could not read launcher settings; reload to retry",
   "client.update.available": "A newer Piik release is available",
+  "client.update.major": "New major Piik release",
+  "client.update.majorHint": "This update includes breaking changes. Read the release notes before upgrading.",
+  "client.update.notes": "Release notes",
   "client.update.differentBuild": "This build differs from the official release",
   "client.update.official": "An official Piik release is available",
 

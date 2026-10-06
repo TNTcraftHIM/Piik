@@ -8,6 +8,8 @@
 #include <array>
 #include <cassert>
 #include <chrono>
+#include <cstdio>
+#include <exception>
 #include <future>
 #include <thread>
 #include <vector>
@@ -62,6 +64,7 @@ void CheckWorkers() {
   std::mutex mutex;
   std::condition_variable changed;
   std::exception_ptr failure;
+  size_t failed_layer = 0;
   std::promise<void> entered, release;
   auto entered_future = entered.get_future();
   auto released = release.get_future().share();
@@ -99,7 +102,10 @@ void CheckWorkers() {
         }
       } catch (...) {
         std::lock_guard<std::mutex> lock(mutex);
-        failure = std::current_exception();
+        if (!failure) {
+          failure = std::current_exception();
+          failed_layer = layer;
+        }
         changed.notify_one();
       }
     });
@@ -108,28 +114,45 @@ void CheckWorkers() {
     auto input = std::make_shared<Input>(Input{index});
     for (auto& mailbox : mailboxes) mailbox.Submit(input);
   };
-  auto wait = [&](auto predicate) {
+  auto wait = [&](const char* phase, auto predicate) {
     std::unique_lock<std::mutex> lock(mutex);
     const bool ready = changed.wait_for(lock, std::chrono::seconds(2), [&]() { return failure || predicate(); });
+    if (!ready || failure) {
+      std::fprintf(stderr, "capture_control: phase=%s result=%s\n", phase,
+          failure ? "worker-exception" : "timeout");
+      if (failure) {
+        try { std::rethrow_exception(failure); }
+        catch (const std::exception& error) {
+          std::fprintf(stderr, "  layer=%zu error=%s\n", failed_layer, error.what());
+        } catch (...) {
+          std::fprintf(stderr, "  layer=%zu error=non-standard-exception\n", failed_layer);
+        }
+      }
+      for (size_t layer = 0; layer < workers.size(); ++layer) {
+        std::fprintf(stderr, "  layer=%zu last=%u count=%u retired=%u\n",
+            layer, last[layer], count[layer], retired[layer]);
+      }
+      std::fflush(stderr);
+    }
     assert(ready && !failure);
   };
   submit(1);
   assert(entered_future.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
   for (uint32_t index = 2; index <= 4; ++index) submit(index);
-  wait([&]() { return last[1] == 4 && last[2] == 4; });
+  wait("independent-outputs", [&]() { return last[1] == 4 && last[2] == 4; });
   mailboxes[0].RequestKeyFrame();
   release.set_value();
-  wait([&]() { return last[0] == 4; });
+  wait("pending-recovery", [&]() { return last[0] == 4; });
   assert(count[0] == 2 && recovery[0]); // New request survived the older keyframe; pending 2/3 were replaced.
   mailboxes[1].SetActive(false);
   mailboxes[2].SetActive(false);
   submit(5);
-  wait([&]() { return last[0] == 5 && retired[1] == 1 && retired[2] == 1; });
+  wait("output-retirement", [&]() { return last[0] == 5 && retired[1] == 1 && retired[2] == 1; });
   assert(last[1] == 4 && last[2] == 4);
   mailboxes[0].SetBitrate(30'000);
   for (auto& mailbox : mailboxes) { mailbox.SetActive(true); mailbox.RequestKeyFrame(); }
   submit(6);
-  wait([&]() { return last[0] == 6 && last[1] == 6 && last[2] == 6; });
+  wait("output-reactivation", [&]() { return last[0] == 6 && last[1] == 6 && last[2] == 6; });
   assert(recovery[0] && recovery[1] && recovery[2]);
   const auto stopped = std::chrono::steady_clock::now();
   for (auto& mailbox : mailboxes) mailbox.Stop();

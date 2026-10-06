@@ -317,6 +317,50 @@ still needs room-authorized key/endpoint exchange, MTU/resource limits and mixed
 Browser/Native behavior. The nested probe module and full evidence stay on that
 isolated branch; production dependencies and routing remain unchanged.
 
+### Integration Cost And Recovery Controls
+
+The 2026-10-06 assessment retains the probes on `spike/magicsock-assessment`
+at `fea0587f`, based on current main. These nested Go modules are outside Piik's
+build and dependency graph. Repeated local Tailcat bootstrap, peer denial,
+revocation and synthetic SRTP media checks passed; the raw magicsock direct-path
+matrix again found the same reachable classes as fresh Pion ICE. Retired shared
+mapping-cache reproductions remain causal controls, not the current baseline.
+
+[Tailcat](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/README.md)
+provides a supported Go reuse lead: magicsock plus WireGuard, with DERP bootstrap
+and relay fallback. Its Browser path at that pin is relay-only. In the isolated
+Linux kernel NAT comparison on 2026-10-05, both stacks connected directly through
+ordinary/ordinary and open/hard gateways in either direction. Neither delivered
+fresh direct payloads through ordinary/hard, hard/ordinary, hard/hard or blocked
+UDP pairs within the observation window. Tailcat delivered those cases while
+the fixture relay remained available. This demonstrates relay coverage, not
+an additional P2P reachability class or a field success rate.
+
+Replacing one gateway mapping without notifying endpoints separated recovery
+from initial reachability. Neither established direct path delivered within
+20 seconds with the relay closed. Fresh Pion discovery/exchange recovered in
+about 0.6 seconds after it was started. Tailcat recovered delivery in about
+6.5 seconds through its retained relay; closing it immediately lost delivery
+again. Keeping traffic and discovery alive for 45 seconds allowed subsequent
+direct delivery after relay closure. Both gateway directions were checked.
+These timings have different detection/setup boundaries and are not a Piik
+startup or playback benchmark.
+
+The raw Bind adapter also has a composition cost: it consumes unwrapped STUN
+payloads, and its discovery retry can outlive Pion's initial check budget.
+Dropping the first discovery packet in each direction reproduced that failure;
+increasing only the fixture's ICE budget recovered media. The ordinary Pion
+loss control recovered without that override. Do not adopt packet prefixes,
+diagnostic Ping polling or wider product deadlines as integration shortcuts.
+
+Current recommendation: keep the transport isolated. Go reuse is feasible, but
+new key authorization/revocation, underlay readiness, packet-size limits and
+relay operation have no demonstrated direct-coverage benefit sufficient for
+product integration. A future trial needs matched networks with a repeatable
+benefit, separate direct/relayed/first-media results, and current room/route
+ownership. IPv6, gateway mapping, Piik prediction, physical routers, decoded
+playback and mixed Browser/Native fanout remain outside this comparison.
+
 ## Native Mapping Cache And Retry Lifetimes
 
 Pion ICE `v4.4.0` caches a shared socket's STUN mapping by destination for 25

@@ -3,12 +3,11 @@ import { z } from "zod";
 
 import { BrandMark } from "../components/living/BrandMark";
 import { LoadingStatus } from "../components/living/WaitingStatus";
-import { Tooltip } from "../components/living/Tooltip";
+import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { AppHeader } from "../components/living/Header";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
-import { Glyph } from "../ui/icons";
-import { hasCopyPreference, useCopy, type CopyKey } from "../ui/copy";
+import { hasCopyPreference, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { currentThemePreference } from "../ui/theme";
 import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
@@ -124,27 +123,6 @@ export function AppLauncherPage() {
     }
   }
 
-  const updateKey: CopyKey =
-    update?.kind === "different-build"
-      ? "client.update.differentBuild"
-      : update?.kind === "official-release"
-        ? "client.update.official"
-        : "client.update.available";
-  const updateText = update ? `${t(updateKey)} · ${update.version}` : "";
-  const updateLink = update ? (
-    <a
-      className="lr-btn lr-client-update"
-      href={update.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={updateText}
-    >
-      <Glyph name="arrowUp" size={17} />
-      <span className={vis ? "visually-hidden" : undefined}>{updateText}</span>
-      {vis && <span aria-hidden="true">{update.version}</span>}
-    </a>
-  ) : null;
-
   return (
     <div className="lr-app">
       <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
@@ -189,7 +167,7 @@ export function AppLauncherPage() {
             lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
             onSubmit={launch}
           >
-            {update && updateLink && <Tooltip kind="update-available" text={vis ? update.version : updateText}>{updateLink}</Tooltip>}
+            {update && <AppReleaseNotice update={update} />}
           </LauncherForm>
         )}
       </main>

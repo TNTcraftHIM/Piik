@@ -122,6 +122,25 @@ notice. Unknown SHA is not inferred from a branch name in GitHub metadata.
 The publisher records a full SHA in `target_commitish` and verifies actual tag
 identity separately. Stable update notices ignore prereleases.
 
+### Major-Upgrade Guidance
+
+The App update notice keeps a separate link to the selected provider's exact
+release page. A newer major adds a short, visible breaking-change notice; the
+Server logs the same distinction while preserving its checker JSON and exit
+codes. This is release guidance, not a replacement for actual wire checks.
+Updates remain a manual action. Release prose stays on GitHub/Gitee; the App
+does not fetch or render remote Markdown or add a second changelog store.
+
+Older installed Apps cannot acquire new warning UI from release metadata.
+Before a major release, put bilingual upgrade guidance near the top of its
+release notes and on the website download entry. Name the actual incompatible
+App/Site combinations, required upgrade order, interruptions and any persistent
+data implications. Do not assume everyone installed the preceding minor/patch.
+Verify the oldest relevant public App/page and the last preceding-major release
+against the candidate: actual mismatches must fail clearly at their owning
+contract. Keep historical packages available through GitHub releases. A major
+preparation change does not itself authorize a wire bump, migration or release.
+
 ## Automatic Publication
 
 Before a product-changing merge or manual run that can publish, present the

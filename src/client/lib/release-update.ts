@@ -1,4 +1,4 @@
-import { compare, valid } from "semver";
+import { compare, major, valid } from "semver";
 
 export const DEFAULT_RELEASE_API_URL =
   "https://api.github.com/repos/TNTcraftHIM/Piik/releases/latest";
@@ -14,10 +14,11 @@ interface PublishedRelease {
   version: string;
   revision: string | null;
   url: string;
+  releaseURL: string;
   publishedAt?: string;
 }
 export interface ReleaseUpdateNotice extends PublishedRelease {
-  kind: "update-available" | "different-build" | "official-release";
+  kind: "update-available" | "major-update" | "different-build" | "official-release";
 }
 
 export function normalizeReleaseRevision(value: unknown): string | null {
@@ -61,6 +62,7 @@ export function parseReleaseMetadata(value: unknown, packageTarget?: string): Pu
     // GitHub permits a branch here; only our publisher's full SHA is provenance.
     revision: normalizeReleaseRevision(release.target_commitish),
     url: RELEASE_PAGE + version,
+    releaseURL: RELEASE_PAGE + version,
     ...(Number.isFinite(publishedTime) ? { publishedAt: new Date(publishedTime).toISOString() } : {}),
   };
   return { ...normalized, url: packageDownloadURL(normalized, release.assets, packageTarget) };
@@ -78,7 +80,8 @@ export function parseMirrorReleaseMetadata(value: unknown, packageTarget?: strin
     target_commitish: sources[0][1],
   });
   if (!normalized) return null;
-  const mirror = { ...normalized, url: MIRROR_RELEASE_PAGE + normalized.version };
+  const mirror = { ...normalized, url: MIRROR_RELEASE_PAGE + normalized.version,
+    releaseURL: MIRROR_RELEASE_PAGE + normalized.version };
   return { ...mirror, url: packageDownloadURL(mirror, release.assets, packageTarget) };
 }
 
@@ -90,7 +93,8 @@ export function releaseUpdateNotice(
   const revision = normalizeReleaseRevision(current.revision);
   if (version) {
     const order = compare(latest.version, version);
-    if (order > 0) return { ...latest, kind: "update-available" };
+    if (order > 0) return { ...latest,
+      kind: major(latest.version) > major(version) ? "major-update" : "update-available" };
     if (order === 0 && revision && latest.revision && revision !== latest.revision) {
       return { ...latest, kind: "different-build" };
     }

@@ -79,6 +79,9 @@ export const zh = {
   "client.launch.debugHint": "本次启动记录 App 和网页诊断。App 日志可在终端按 D 导出。",
   "client.launch.loadFailed": "无法读取启动设置，请刷新页面重试",
   "client.update.available": "发现新的 Piik 版本",
+  "client.update.major": "发现新的 Piik 大版本",
+  "client.update.majorHint": "此更新含不兼容改动。升级前请查看版本说明。",
+  "client.update.notes": "版本说明",
   "client.update.differentBuild": "当前构建与官方发行版不同",
   "client.update.official": "可获取 Piik 正式发行版",
 
