@@ -29,7 +29,8 @@ Apple 芯片或 Intel Mac，以及 macOS 13 或更新版本。构建程序包与
   [App 配置](../../docs/standards/configuration.md#piik-app-configuration)。
 - `--site`、`--local` 和 `--link` 用于在 CI 或开发时直接选择模式。
 - 默认启动页打开后会检查官方发布，优先使用 GitHub，GitHub 不可用时使用 Gitee。
-  有对应平台的 ZIP 时直接打开下载地址，否则打开发布页。App 不会自行安装或替换程序。
+  点击更新按钮下载对应平台的 ZIP，没有匹配包时打开发布页。
+  **版本说明** 可单独查看；发现新的大版本时会显示升级提示。App 不会自行安装或替换程序。
 
 本地房间仅在本次 App 运行期间有效，适用于设备间可互相访问的局域网。
 **公网邀请** 通过程序包中的 Cloudflare Tunnel 辅助程序，为同一个房间服务提供临时 HTTPS 地址。

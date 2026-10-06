@@ -7,14 +7,14 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Accept the update-readiness candidate.** Retain direct downloads with a
-  secondary release-note link and concise major-update guidance under
-  [versioning](./standards/versioning.md#major-upgrade-guidance). Review the scoped
-  build dependency patch and native self-test diagnostics alongside App/Server
-  presentation. Historical download behavior is accepted; no mandatory website
-  detour or transition-release channel is planned. Publication requires a version
-  and bilingual notes approved under [versioning](./standards/versioning.md#automatic-publication).
-  Preparing for 2.0 does not reopen held media extensions or authorize a wire bump.
+- [ ] **Publish the update-readiness candidate.** The accepted scope covers
+  simpler Site-address entry, direct downloads with separate release notes and
+  concise major-upgrade guidance, launcher accessibility, website brand alignment,
+  the scoped build dependency patch and native self-test diagnostics. Integrate
+  through one squash PR after the version and bilingual
+  notes are approved under [versioning](./standards/versioning.md#automatic-publication).
+  Historical download behavior is accepted; no mandatory website detour,
+  transition-release channel, held media extension or wire bump is included.
 
 ## Held By Owner
 

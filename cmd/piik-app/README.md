@@ -35,8 +35,10 @@ publication are separate steps in [deployment](../../docs/deployment.md).
   covers saved preferences and custom paths.
 - The `--site`, `--local`, and `--link` flags select a mode for CI and development.
 - The default launcher checks official releases after it opens, using GitHub
-  first and Gitee if GitHub is unavailable. It opens the matching platform ZIP
-  when available, falling back to the release page. It does not install or replace the App.
+  first and Gitee if GitHub is unavailable. Click the update button to download
+  the matching platform ZIP, or open the release page when no package matches.
+  **Release notes** opens separately; a new major version includes an upgrade
+  warning. The App does not install or replace itself.
 
 Local rooms last for this App run and work on a reachable LAN. **Public invite**
 uses the packaged Cloudflare Tunnel helper to expose that same room service at a
