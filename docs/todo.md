@@ -7,11 +7,13 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Release empty-room retention.** After release approval, publish the
-  compatible retention/capacity-guidance fix, enable
-  `ROOM_EMPTY_TIMEOUT_SECONDS=3600` on the Demo and
-  verify public creation, viewing and room retirement. Keep its open-access,
-  P2P-only configuration and the default indefinite retention on other sites.
+- [ ] **Resolve room-retention semantics before release.** The unpublished
+  candidate waits until every authenticated participant leaves. The historical
+  lease instead followed Host sharing; Viewer presence did not renew it. The
+  owner accepted one hour and has challenged this change of trigger. Reconcile
+  it with current stop-share chat sessions before publishing or enabling the
+  policy on the Demo. Keep the Demo open-access and P2P-only. Other sites retain
+  their default indefinite rooms.
 
 - [ ] **Assess Native Magicsock transport.** Compare the isolated Go transport
   with the repaired Pion baseline under the [NAT evidence boundary](#next-p2p-connection-and-feedback-evidence).
