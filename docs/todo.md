@@ -11,11 +11,6 @@ history. A parked idea is not implementation authority.
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
   must remain visible without blocking product CI or Website delivery.
-- [ ] **Windows CI worker-check acceptance.** A constrained-CPU run reproduced
-  the worker test's timeout while its VP8 fixture was still encoding. The mailbox
-  lifecycle check now uses deterministic work; real encode/decode checks remain
-  separate. Verify the change on the hosted Windows runner before closing this
-  item. The earlier CI assertion lacks the phase needed to establish the same cause.
 
 ## Held By Owner
 
