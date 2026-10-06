@@ -252,7 +252,9 @@ export function ControlsPreview() {
           localAccessPassword={launchPassword} onLocalAccessPasswordChange={setLaunchPassword}
           onSubmit={event => event.preventDefault()}>
           <AppReleaseNotice update={{ kind: majorUpdate ? "major-update" : "update-available",
-            version: releaseVersion, revision: null, url: releaseURL, releaseURL }} />
+            version: releaseVersion, revision: null,
+            url: `https://github.com/TNTcraftHIM/Piik/releases/download/${releaseVersion}/piik-app-windows-amd64.zip`,
+            releaseURL }} />
         </LauncherForm>
       </div>
     </section>

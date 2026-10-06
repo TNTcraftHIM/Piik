@@ -1507,7 +1507,7 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 .lr-client-launch-status { color: var(--ink); font-size: 14px; font-weight: 650; }
 .lr-client-launch-detail { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font: 13px/1.6 var(--mono); }
 .lr-client-release { display: grid; justify-items: center; gap: 6px; max-width: 100%; }
-.lr-client-release .lr-client-project-links { align-items: center; gap: 4px 12px; font-size: 12.5px; }
+.lr-client-release .lr-client-project-links { flex-direction: column; align-items: center; gap: 4px; font-size: 12.5px; }
 .lr-client-release-warning { max-width: 42ch; color: var(--muted); font-size: 12px; line-height: 1.6; text-align: center; }
 .lr-client-update {
   gap: 7px;
