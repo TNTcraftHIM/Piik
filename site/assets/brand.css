@@ -1,5 +1,8 @@
 .identity { display:flex; gap:11px; align-items:center; text-decoration:none; font-size:32px; font-weight:800; letter-spacing:-.065em; line-height:1; color:inherit; }
 .identity .mascot { width:37px; height:37px; overflow:visible; }
+/* Align the feet with the wordmark baseline, allowing for the SVG's bottom inset. */
+.identity[data-brand],.footer-identity { align-items:baseline; }
+.identity[data-brand] .mascot,.footer-identity > svg { translate:0 .1em; }
 .identity-dot { color:#e4572e; }
 .identity .mascot-face,.identity .mascot-eye-open,.identity .mascot-sparkles { transform-box:fill-box; transform-origin:center; }
 @media (prefers-reduced-motion:no-preference) {

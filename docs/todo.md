@@ -7,6 +7,17 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Refresh the source-map build dependency.** Both the root and reader-docs
+  lockfiles select `source-map-js` 1.2.1. Update to the compatible
+  [upstream 1.2.2 patch](https://github.com/7rulnik/source-map-js/releases/tag/v1.2.2)
+  for malformed indexed-map denial of service, then verify both builds and their
+  dependency audits. This is a build-tool finding; it does not establish an
+  exploitable App/Server runtime path. Keep the update scoped to this dependency.
+- [ ] **Make native capture self-test failures actionable.** The Windows
+  `capture_control` worker check reports the same assertion for several phases
+  and hides a captured encoder exception. Include the phase and original failure
+  before diagnosing the intermittent CI result. Keep the deadlines and assertions;
+  a successful rerun does not establish the cause or authorize weaker checks.
 - [ ] **Assess Native Magicsock transport.** Compare the isolated Go transport
   with the repaired Pion baseline under the [NAT evidence boundary](#next-p2p-connection-and-feedback-evidence).
   Establish a measured benefit, supported paths, resource/authority bounds and
