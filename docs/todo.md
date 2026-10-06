@@ -11,6 +11,11 @@ history. A parked idea is not implementation authority.
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
   must remain visible without blocking product CI or Website delivery.
+- [ ] **Windows CI worker-check acceptance.** A constrained-CPU run reproduced
+  the worker test's timeout while its VP8 fixture was still encoding. The mailbox
+  lifecycle check now uses deterministic work; real encode/decode checks remain
+  separate. Verify the change on the hosted Windows runner before closing this
+  item. The earlier CI assertion lacks the phase needed to establish the same cause.
 
 ## Held By Owner
 
@@ -65,10 +70,6 @@ These proposals remain deferred beyond the accepted interaction phase.
 These reports remain unmatched. A local repair or successful test is not proof
 of a reporter's cause; research owns the completed experiments and their limits.
 
-- [ ] **Intermittent native capture self-test failure.** The worker check now
-  records its phase, original exception and per-output progress. A local pass
-  does not explain the earlier CI failure; use the next failed run's diagnostics
-  before changing deadlines or worker behavior.
 - [ ] **macOS and Linux physical capture.** Complete the remaining capture/audio
   checks in [verification status](./verification-status.md#device-evidence-boundary),
   including an Intel Mac with a usable hardware H.264 encoder, an ARM64 Linux
