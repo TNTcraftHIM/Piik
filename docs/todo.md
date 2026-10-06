@@ -7,14 +7,8 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
-- [ ] **Publish the update-readiness candidate.** The accepted scope covers
-  simpler Site-address entry, direct downloads with separate release notes and
-  concise major-upgrade guidance, launcher accessibility, website brand alignment,
-  the scoped build dependency patch and native self-test diagnostics. Integrate
-  through one squash PR after the version and bilingual
-  notes are approved under [versioning](./standards/versioning.md#automatic-publication).
-  Historical download behavior is accepted; no mandatory website detour,
-  transition-release channel, held media extension or wire bump is included.
+No active implementation work. Deferred proposals and evidence-dependent reports
+remain below; release delivery is tracked by the pipeline and deployment records.
 
 ## Held By Owner
 
