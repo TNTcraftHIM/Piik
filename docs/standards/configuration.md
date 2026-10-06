@@ -111,6 +111,11 @@ schema field. The user settings are:
 | `site` | Saved Piik Site origin. The launcher or `--site` updates it. |
 | `localAccessPassword` | Empty by default. Optional password for the App's Local room authority, with the same exact-match behavior as `SITE_ACCESS_PASSWORD`. It is separate from a hosted site's password. |
 
+Site input in the launcher and `--site` defaults to HTTPS when the scheme is
+omitted; explicit HTTP or HTTPS is preserved. The App saves the normalized origin
+and still rejects credentials, room paths, queries and fragments. It does not
+probe protocols or downgrade a failed HTTPS connection to HTTP.
+
 The launcher remembers the last mode confirmed with the launch button. This
 optional preference lives beside the configuration as `client.json.mode` (or
 `<custom-config-path>.mode`); removing it restores the initial selection without

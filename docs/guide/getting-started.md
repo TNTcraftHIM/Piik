@@ -105,9 +105,9 @@ See the [App guide](../../cmd/piik-app/README.md) for package and runtime detail
 For Local room and Public invite, expand **Site passphrase** to set an optional
 access passphrase.
 
-For **Connect to Site**, enter the full site address, such as
-`https://demo.piik.tv`, then choose **Open Piik**. Enter the site's passphrase
-on the page that opens if asked.
+For **Connect to Site**, enter a domain such as `demo.piik.tv` or paste the full
+site address, then choose **Open Piik**. HTTPS is added when omitted; for an HTTP
+site, include `http://`. Enter the site's passphrase on the page that opens if asked.
 After opening the site through the App once, the same browser remembers that
 entry. Keep the App running with that site configured and you can visit the
 address directly. **Start sharing** opens the selector; choose **Apps / Windows**

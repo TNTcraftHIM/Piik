@@ -251,12 +251,33 @@ func TestLauncherRequiresTheEmbeddedBrowserBuild(t *testing.T) {
 	}
 }
 
+func TestLauncherNormalizesSiteSelection(t *testing.T) {
+	for input, want := range map[string]string{
+		" Share.Example:443/ ":     "https://share.example",
+		"https://Share.Example/":   "https://share.example",
+		"http://192.168.1.4:8787/": "http://192.168.1.4:8787",
+	} {
+		t.Run(input, func(t *testing.T) {
+			payload, err := json.Marshal(Selection{Mode: ModeSite, Language: "en", Site: input})
+			if err != nil {
+				t.Fatal(err)
+			}
+			selection, err := decodeSelection(bytes.NewReader(payload))
+			if err != nil || selection.Site != want {
+				t.Fatalf("site selection = %+v, %v; want %q", selection, err, want)
+			}
+		})
+	}
+}
+
 func TestLauncherRejectsInvalidSelections(t *testing.T) {
 	for name, payload := range map[string]string{
 		"unknown":          `{"mode":"other","language":"en"}`,
 		"local-site":       `{"mode":"local","language":"en","site":"https://share.example"}`,
 		"missing-site":     `{"mode":"site","language":"en"}`,
 		"site-path":        `{"mode":"site","language":"en","site":"https://share.example/path"}`,
+		"bare-site-path":   `{"mode":"site","language":"en","site":"share.example/path"}`,
+		"site-credentials": `{"mode":"site","language":"en","site":"user:pass@share.example"}`,
 		"site-password":    `{"mode":"site","language":"en","site":"https://share.example","localAccessPassword":"valid-pass"}`,
 		"unknown-field":    `{"mode":"local","language":"en","extra":true}`,
 		"password-type":    `{"mode":"local","language":"en","localAccessPassword":123}`,

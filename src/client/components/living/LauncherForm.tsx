@@ -166,12 +166,15 @@ export function LauncherForm({
       {mode === "site" ? (
         <label className="lr-input lr-client-site">
           <Glyph name="link" size={18} />
+          {/* The App normalizes bare domains; type="url" would block submission first. */}
           <input
-            type="url"
+            type="text"
             value={site}
+            autoCapitalize="none"
+            autoCorrect="off"
             spellCheck={false}
             inputMode="url"
-            placeholder="https://piik.example.com"
+            placeholder="piik.example.com"
             aria-label={t("client.launch.siteAddress")}
             onChange={(event) => {
               onSiteChange(event.target.value);

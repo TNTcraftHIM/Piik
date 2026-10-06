@@ -143,6 +143,14 @@ func TestSaveDoesNotModifyPreviousFileInPlace(t *testing.T) {
 
 func TestNormalizeSiteAcceptsOnlyAPlainWebOrigin(t *testing.T) {
 	for value, want := range map[string]string{
+		"":                              "",
+		" \t ":                          "",
+		"share.example":                 "https://share.example",
+		" Share.Example:443/ ":          "https://share.example",
+		"share.example:8443":            "https://share.example:8443",
+		"[::1]:8443":                    "https://[::1]:8443",
+		"bücher.example":                "https://xn--bcher-kva.example",
+		" HTTPS://Share.Example/ ":      "https://share.example",
 		"https://share.example":         "https://share.example",
 		"https://Share.Example:443/":    "https://share.example",
 		"http://Share.Example:80":       "http://share.example",
@@ -158,6 +166,14 @@ func TestNormalizeSiteAcceptsOnlyAPlainWebOrigin(t *testing.T) {
 		}
 	}
 	for _, value := range []string{
+		"https://https://share.example",
+		"share.example/r/9527",
+		"share.example?mode=host",
+		"share.example#credential",
+		"user:pass@share.example",
+		"share.example:65536",
+		"ftp://share.example",
+		"javascript:alert(1)",
 		"file:///tmp/app",
 		"https://user:pass@share.example",
 		"https://share.example/room",

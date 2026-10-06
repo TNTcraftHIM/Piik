@@ -103,6 +103,9 @@ func NormalizeSite(value string) (string, error) {
 	if value == "" {
 		return "", nil
 	}
+	if !strings.Contains(value, "://") {
+		value = "https://" + value
+	}
 	parsed, err := url.Parse(value)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
 		parsed.Host == "" || parsed.User != nil ||
