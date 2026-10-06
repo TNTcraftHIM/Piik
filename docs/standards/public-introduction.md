@@ -36,6 +36,12 @@ of the FAQ and the footer in the selected language. Keep these steps in one
 reader guide; App references link to it rather than maintaining a second copy.
 Do not duplicate troubleshooting steps on the homepage.
 
+Search titles, descriptions and repository topics describe the actual product:
+private screen sharing, watching together and optional self-hosting. Use natural
+Chinese and English phrases in the relevant introduction; preserve the brand
+line in the visible headline. Follow [Google's title guidance](https://developers.google.com/search/docs/appearance/title-link):
+avoid keyword lists, unrelated product names and unsupported performance claims.
+
 ## Presentation
 
 Keep three presentation responsibilities distinct:

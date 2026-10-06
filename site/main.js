@@ -88,8 +88,8 @@ const copy = {
     image: roomIllustration.alt,
   },
   'zh-CN': {
-    title: 'Piik — 来，看点好康的。',
-    description: '游戏、绘画、电影、照片。Piik 是免费开源的屏幕共享工具，邀请最多 20 位朋友用浏览器观看。',
+    title: 'Piik — 免费开源的屏幕共享',
+    description: 'Piik 是免费开源的私密屏幕共享工具，适合游戏直播、一起看电影、展示绘画和照片。支持自部署站点，邀请最多 20 位朋友通过浏览器观看。',
     themes: { system: '跟随系统', light: '浅色', dark: '深色' },
     image: '戴着小金冠的房主分享 RPG 游戏、绘画、旅行照片和动画电影，三位朋友坐在沙发上观看。',
   },

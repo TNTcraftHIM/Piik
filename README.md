@@ -15,9 +15,10 @@
 </p>
 <p align="center">English · <a href="./README.zh-CN.md">简体中文</a></p>
 
-Piik is a free, open-source screen sharing tool for games, movie nights,
-drawings and photos. Choose what to share and send an invitation. Your friends
-watch in their browsers.
+Piik is a free, open-source screen sharing tool for private live streams with
+friends: games, movie nights, drawings and photos. Choose what to share and send
+an invitation. Your friends watch in their browsers. You can also self-host Piik
+on your own server.
 
 <details open>
 <summary>A little room · Show / hide animation</summary>
