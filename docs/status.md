@@ -55,10 +55,10 @@ Release artifacts and operator deployment records own delivery completion;
 ## Current Work
 
 The public baseline retains Browser/server v23, Native control v9, capture v7,
-SQLite schema 2 and the 1440p ceiling. The current follow-up adds opt-in Hosted
-empty-room retention and capacity guidance, preserving indefinite retention by
-default. Demo retention activation remains part of the next release's deployment;
-operator records own its current database and postflight evidence.
+SQLite schema 2 and the 1440p ceiling. Hosted empty-room retention and capacity
+guidance preserve indefinite retention by default. The accepted Demo policy is
+one hour without authenticated participants; the private deployment retains the
+default. Operator records own activation, database and postflight evidence.
 4K and resolution/capability expansion are not planned for this phase.
 Native Magicsock remains a separate experiment, outside product integration.
 Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns

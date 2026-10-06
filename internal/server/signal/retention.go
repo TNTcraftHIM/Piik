@@ -2,6 +2,7 @@ package signal
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/TNTcraftHIM/Piik/internal/server/room"
 )
@@ -35,7 +36,7 @@ func (s *Server) expireEmptyRooms() {
 	}
 	closed, err := s.store.ExpireEmptyRooms(s.now() - s.roomEmptyTimeoutMs)
 	if err != nil {
-		s.logger.Error("Could not expire empty rooms", "error", err)
+		s.logger.Error("Could not expire empty rooms", "errorType", fmt.Sprintf("%T", err))
 		return
 	}
 	for _, room := range closed {
