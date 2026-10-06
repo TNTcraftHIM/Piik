@@ -48,6 +48,9 @@ const roomSchema = `
         PRAGMA user_version = 2;
       `
 
+// The current schema only inserts/deletes rooms; updates retain rowid. Reading
+// its insertion order keeps oldest-empty allocation stable across restarts,
+// without persisting presence or adding a creation-time schema migration.
 const selectStoredRooms = `SELECT
          room_id,
          host_token_digest,
@@ -56,7 +59,7 @@ const selectStoredRooms = `SELECT
          code_entry_policy,
          viewer_password_material
        FROM rooms
-       ORDER BY room_id`
+       ORDER BY rowid`
 
 const insertStoredRoom = `INSERT INTO rooms (
          room_id,
@@ -264,17 +267,23 @@ func (d *Database) SetViewerGrant(
 	})
 }
 
-// DeleteRoom is deleteRoom.
-func (d *Database) DeleteRoom(roomID string, hostTokenDigest []byte) error {
-	if err := assertRoomIdentity(roomID, hostTokenDigest); err != nil {
-		return err
-	}
-	return d.transaction(func() error {
-		changes, err := d.exec(deleteRoomStatement, roomID, hostTokenDigest)
-		if err != nil {
+func (d *Database) deleteRooms(rooms []StoredRoomAuthority) error {
+	for _, room := range rooms {
+		if err := assertRoomIdentity(room.RoomID, room.HostTokenDigest); err != nil {
 			return err
 		}
-		return assertSingleChange(changes, "delete")
+	}
+	return d.transaction(func() error {
+		for _, room := range rooms {
+			changes, err := d.exec(deleteRoomStatement, room.RoomID, room.HostTokenDigest)
+			if err != nil {
+				return err
+			}
+			if err := assertSingleChange(changes, "delete"); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

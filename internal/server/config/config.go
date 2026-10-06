@@ -57,8 +57,8 @@ var removedEnvironmentVariables = []struct{ name, reason string }{
 	{"PEER_ASSISTED_MEDIA", "peer-assisted media is always enabled"},
 	{"HOST_ADMISSION_PASSWORD", "use SITE_ACCESS_PASSWORD"},
 	{"MAX_PEER_RELAY_DOWNSTREAM_EDGES", "use ENDPOINT_MEDIA_COPY_CAPACITY"},
-	{"ROOM_TTL_SECONDS", "rooms do not expire"},
-	{"ROOM_LEASE_SECONDS", "rooms do not expire"},
+	{"ROOM_TTL_SECONDS", "use ROOM_EMPTY_TIMEOUT_SECONDS for empty-room retention"},
+	{"ROOM_LEASE_SECONDS", "use ROOM_EMPTY_TIMEOUT_SECONDS for empty-room retention"},
 	{"ACCESS_PASSWORD", "use SITE_ACCESS_PASSWORD"},
 	{"NODE_ENV", "use PIIK_ENV"},
 }
@@ -82,6 +82,7 @@ type Config struct {
 	AllowedOrigins            map[string]struct{}
 	SiteAccessPassword        string
 	RoomDatabasePath          string
+	RoomEmptyTimeoutSeconds   int
 	MaxViewersPerRoom         int
 	EndpointMediaCopyCapacity int
 	SFU                       *SFUConfig
@@ -144,6 +145,13 @@ func Load(env map[string]string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	roomEmptyTimeout := 0
+	if value := strings.TrimSpace(env["ROOM_EMPTY_TIMEOUT_SECONDS"]); value != "" {
+		roomEmptyTimeout, err = strconv.Atoi(value)
+		if err != nil || roomEmptyTimeout < 0 || roomEmptyTimeout > 31_536_000 {
+			return Config{}, errors.New("ROOM_EMPTY_TIMEOUT_SECONDS must be an integer between 0 and 31536000")
+		}
+	}
 	stunURLs, err := parseStunURLList(env["STUN_URLS"], "STUN_URLS")
 	if err != nil {
 		return Config{}, err
@@ -201,6 +209,7 @@ func Load(env map[string]string) (Config, error) {
 		AllowedOrigins:            allowedOrigins,
 		SiteAccessPassword:        siteAccessPassword,
 		RoomDatabasePath:          roomDatabasePath,
+		RoomEmptyTimeoutSeconds:   roomEmptyTimeout,
 		MaxViewersPerRoom:         int(maxViewersPerRoom),
 		EndpointMediaCopyCapacity: int(endpointMediaCopyCapacity),
 		SFU:                       sfu,

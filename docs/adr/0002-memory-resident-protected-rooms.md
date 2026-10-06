@@ -28,11 +28,15 @@ Every room owns:
 - a monotonically increasing Viewer authorization generation;
 - `open | private` code entry and optional salted scrypt password material.
 
-Room authority has no time limit. Stop, disconnect and inactivity do not change
-it. Explicit replacement or deletion invalidates its credentials and releases
-the code; grant rotation or revocation retires the invitation independently.
-There is no lease, renewal, expiry timer or replacement garbage collector.
-The existing 9,000-code bound remains; a full store rejects new rooms.
+Room authority has no time limit by default. Explicit replacement or deletion
+invalidates its credentials and releases the code; grant rotation or revocation
+retires the invitation independently. Public sites may opt into the
+[empty-room retention policy](../standards/rooms-access.md#optional-empty-room-retention)
+to keep abandoned allocations from exhausting the 9,000-code space. Occupancy,
+including idle chat, protects a room; the existing signaling heartbeat owns
+expiry and normal retirement owns cleanup. There is no client lease or renewal.
+The allocation bound remains; a full store rejects creation when no empty room
+is reclaimable.
 Site-access cookies retain their separate 24-hour rolling idle lifetime.
 
 ### Lightweight And Stable Storage
@@ -126,8 +130,10 @@ returns `ROOM_ACCESS_DENIED`.
 
 - Both modes pass the same creation, ownership, admission, password,
   rotate/revoke, replacement and 9,000-code-capacity behavior.
-- Inactivity cannot invalidate room authority. Stable restart preserves it
-  exactly and restores no participant or media authority.
+- Default inactivity cannot invalidate room authority. Opt-in retention only
+  retires empty rooms, commits storage first and cleans up all transient effects.
+  Stable restart preserves authority, restarts the empty interval and restores
+  no participant or media authority.
 - A surviving Host and Viewer can reauthenticate after restart, receive fresh
   sessions/routes, and recommit media; an old revoked grant stays revoked.
 - Replacement never returns the old code, never partially retires the old room,
@@ -142,4 +148,5 @@ returns `ROOM_ACCESS_DENIED`.
 - [`modernc.org/sqlite` driver](https://pkg.go.dev/modernc.org/sqlite)
 - [SQLite transactional guarantees](https://www.sqlite.org/transactional.html)
 - [SQLite locking mode](https://sqlite.org/pragma.html#pragma_locking_mode)
+- [LiveKit room lifecycle timeouts](https://docs.livekit.io/reference/other/roomservice-api/)
 - [LiveKit reconnect behavior](https://docs.livekit.io/intro/basics/connect/#network-changes-and-reconnection)

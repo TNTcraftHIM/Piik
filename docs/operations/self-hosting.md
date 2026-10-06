@@ -100,6 +100,12 @@ cause [403 when creating a room](../guide/troubleshooting.md#room-creation-retur
 resources. See [room capacity](../standards/configuration.md#room-capacity)
 for defaults and the difference from App rooms.
 
+For a public site, optionally set `ROOM_EMPTY_TIMEOUT_SECONDS=3600` and restart.
+Rooms with nobody connected are reclaimed after an hour; if all room codes are
+used, the oldest empty room can be reclaimed earlier. Occupied rooms keep working.
+Reclaimed rooms need new invitations. Unset or `0` keeps the default indefinite
+retention; see [room retention](../standards/configuration.md#room-retention).
+
 ### 2. Enable HTTPS
 
 Use your existing HTTPS reverse proxy to forward to `127.0.0.1:8787` with

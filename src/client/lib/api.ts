@@ -32,11 +32,13 @@ async function responseBody(response: Response): Promise<unknown> {
   } catch {
     throw new ApiError(say("host.err.serverError"), response.status);
   }
-  if (
-    response.status === 403 && body && typeof body === "object" &&
-    "error" in body && body.error === "Origin not allowed"
-  ) {
-    throw new ApiError(say("api.originNotAllowed"), response.status);
+  if (body && typeof body === "object" && "error" in body) {
+    if (response.status === 403 && body.error === "Origin not allowed") {
+      throw new ApiError(say("api.originNotAllowed"), response.status);
+    }
+    if (response.status === 503 && body.error === "Room capacity reached") {
+      throw new ApiError(say("host.err.roomCapacity"), response.status);
+    }
   }
   return body;
 }

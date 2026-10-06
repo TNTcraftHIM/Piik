@@ -169,6 +169,7 @@ func New(options Options) (*Server, error) {
 		AuthenticationTimeoutMs:       options.AuthenticationTimeoutMs,
 		ViewerDisconnectGraceMs:       options.ViewerDisconnectGraceMs,
 		HeartbeatIntervalMs:           options.HeartbeatIntervalMs,
+		RoomEmptyTimeoutMs:            int64(configuration.RoomEmptyTimeoutSeconds) * 1_000,
 		MaxConnections:                options.MaxSignalConnections,
 		MaxUnauthenticatedConnections: options.MaxUnauthenticatedSignalConnections,
 		AfterFunc:                     options.AfterFunc,
@@ -204,6 +205,7 @@ func newRoomStore(options Options) (*room.Store, error) {
 		MaxRooms:          room.Capacity,
 		MaxViewersPerRoom: options.Config.MaxViewersPerRoom,
 		Database:          database,
+		Now:               options.Now,
 	})
 }
 

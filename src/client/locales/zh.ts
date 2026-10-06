@@ -523,6 +523,7 @@ export const zh = {
   "host.err.forbidden": "当前操作不可用",
   "host.err.serverError": "服务暂时不可用，请稍后重试",
   "host.err.createRoomStatus": "当前无法创建房间 ({status})",
+  "host.err.roomCapacity": "站点房间号已用满，请稍后重试或使用其他 Piik 站点。",
   "host.err.replaceRoomStatus": "当前无法更换房间 ({status})",
   "host.err.updateRoomStatus": "当前无法更新房间设置 ({status})",
   "host.capture.cancelled": "屏幕选择已取消或没有共享权限",

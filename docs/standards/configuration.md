@@ -27,6 +27,7 @@ service secret store or an untracked access-restricted environment file.
 | `ALLOWED_ORIGINS` | Unset or empty follows `PUBLIC_BASE_URL`. A non-empty comma-separated list replaces that default; include every trusted browser origin (scheme, host and port). Wildcard is invalid. |
 | `SITE_ACCESS_PASSWORD` | Optional in every environment. Unset or empty allows entry without a site password. A configured value is matched exactly, including spaces and Unicode; there are no password length or character rules. General HTTP request limits still apply. Room ownership and Viewer admission remain independent. |
 | `ROOM_DATABASE_PATH` | Hosted defaults to `rooms.sqlite` in its working directory when unset or blank. An explicit absolute file path selects another SQLite file; `:memory:` opts into process-memory room authority. App Local remains in memory. |
+| `ROOM_EMPTY_TIMEOUT_SECONDS` | Integer `0..31536000`, default `0` (disabled). Positive values enable empty-room expiry and oldest-empty reclamation under allocation pressure. Apply at Server startup; App Local retains its process-only lifecycle. |
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `20`; excludes the Host. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated advertised `stun:` discovery URLs; at least one is required in production. These are not local bind addresses and may use an unproxied DNS name separate from the Web origin. |
@@ -46,6 +47,15 @@ Values above `20` are rejected at startup. This is also a wire-contract bound,
 so increasing it in source requires a compatibility and capacity review. More
 Viewers can add relay hops, routing wait and total media load. The setting does
 not increase the per-endpoint copy cap or guarantee available bandwidth.
+
+### Room retention
+
+Public sites can use `ROOM_EMPTY_TIMEOUT_SECONDS=3600` to release unused codes.
+Only rooms without authenticated participants expire; watching, paused sharing
+and idle chat are protected. When all codes are used, the oldest empty room may
+be reclaimed before the hour. Expired rooms and invitations must be recreated.
+The default `0` preserves existing indefinite-room behavior. The complete
+lifecycle and restart semantics belong to [rooms/access](./rooms-access.md#optional-empty-room-retention).
 
 ### Media fallback
 
@@ -79,9 +89,9 @@ The SQLite parent directory must exist and be writable. The systemd template
 sets `/var/lib/piik/rooms.sqlite` under its managed state directory; the
 container image sets `/home/nonroot/rooms.sqlite` under its writable data
 directory. Keep the existing database path and data across application updates.
-Room authority has no idle expiry; the separate site-access cookie keeps its
+Room authority has no idle expiry by default; the separate site-access cookie keeps its
 24-hour idle lifetime within one service run. Restarting the App or Server
-requires site-password entry again; saved rooms and invitation grants are unaffected.
+requires site-password entry again; saved rooms and invitation grants are restored.
 
 Removed access, room TTL/lease, endpoint-tier, room-rollout, and TURN variables fail
 startup even when blank. A present `NODE_ENV` fails the same way, so a stale

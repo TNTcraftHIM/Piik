@@ -523,6 +523,7 @@ export const en: Record<CopyKey, string> = {
   "host.err.forbidden": "Action unavailable",
   "host.err.serverError": "Service temporarily unavailable; try again later",
   "host.err.createRoomStatus": "Cannot create a room right now ({status})",
+  "host.err.roomCapacity": "All room codes are in use. Try again later or use another Piik site.",
   "host.err.replaceRoomStatus": "Cannot change rooms right now ({status})",
   "host.err.updateRoomStatus": "Cannot update room settings right now ({status})",
   "host.capture.cancelled": "Screen selection cancelled or not permitted",

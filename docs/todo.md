@@ -7,6 +7,12 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **Release empty-room retention.** After release approval, publish the
+  compatible retention/capacity-guidance fix, enable
+  `ROOM_EMPTY_TIMEOUT_SECONDS=3600` on the Demo and
+  verify public creation, viewing and room retirement. Keep its open-access,
+  P2P-only configuration and the default indefinite retention on other sites.
+
 - [ ] **Assess Native Magicsock transport.** Compare the isolated Go transport
   with the repaired Pion baseline under the [NAT evidence boundary](#next-p2p-connection-and-feedback-evidence).
   Establish a measured benefit, supported paths, resource/authority bounds and

@@ -531,7 +531,7 @@ func TestRejectsInvalidAuthorityArguments(t *testing.T) {
 			return d.InsertRoom(room)
 		}, "Viewer password material must contain 48 bytes"},
 		{"identity", func(d *Database) error {
-			return d.DeleteRoom("123", make([]byte, 32))
+			return d.deleteRooms([]StoredRoomAuthority{{RoomID: "123", HostTokenDigest: make([]byte, 32)}})
 		}, "Room ID is invalid"},
 		{"update policy", func(d *Database) error {
 			return d.SetCodeEntryPolicy("1234", make([]byte, 32), "public")

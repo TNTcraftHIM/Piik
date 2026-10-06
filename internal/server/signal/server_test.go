@@ -248,6 +248,7 @@ func TestPersistentRoomSessionReconnectStaysMediaIdle(t *testing.T) {
 type harnessOptions struct {
 	authenticationTimeoutMs             int
 	viewerDisconnectGraceMs             int
+	roomEmptyTimeoutMs                  int64
 	maxViewersPerRoom                   int
 	maxSignalConnections                int
 	maxUnauthenticatedSignalConnections int
@@ -353,6 +354,7 @@ func startHarness(t *testing.T, options harnessOptions) *harness {
 		AuthenticationTimeoutMs:       orValue(options.authenticationTimeoutMs, 500),
 		ViewerDisconnectGraceMs:       orValue(options.viewerDisconnectGraceMs, 50),
 		HeartbeatIntervalMs:           60_000,
+		RoomEmptyTimeoutMs:            options.roomEmptyTimeoutMs,
 		MaxConnections:                options.maxSignalConnections,
 		MaxUnauthenticatedConnections: options.maxUnauthenticatedSignalConnections,
 		AfterFunc:                     options.afterFunc,

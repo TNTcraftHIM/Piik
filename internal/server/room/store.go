@@ -12,6 +12,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
@@ -77,6 +78,9 @@ type Room struct {
 	viewerAuthorizationGeneration string
 	codeEntryPolicy               protocol.CodeEntryPolicy
 	host                          *participant
+	// Process-local: restored rooms receive a fresh reconnect window. Only the
+	// last authenticated departure updates this; failed admission cannot renew it.
+	emptySinceMs int64
 	// ordering: JS Map insertion order decides viewer presence order, the
 	// closed-session list and the router's participant order.
 	viewers ordered.Map[string, *participant]
@@ -175,6 +179,7 @@ type Options struct {
 	MaxViewersPerRoom int
 	Database          *Database
 	Random            func(size int) []byte
+	Now               func() int64
 }
 
 // Store is RoomStore. See the package comment for the locking contract.
@@ -183,6 +188,7 @@ type Store struct {
 	rooms             ordered.Map[string, *Room]
 	freeRoomCodes     []string
 	random            func(size int) []byte
+	now               func() int64
 	database          *Database
 	initialized       bool
 	maxRooms          int
@@ -207,6 +213,7 @@ func New(options Options) (*Store, error) {
 	store := &Store{
 		freeRoomCodes:     make([]string, Capacity),
 		random:            options.Random,
+		now:               options.Now,
 		database:          options.Database,
 		initialized:       options.Database == nil,
 		maxRooms:          options.MaxRooms,
@@ -218,6 +225,9 @@ func New(options Options) (*Store, error) {
 	}
 	if store.random == nil {
 		store.random = cryptoRandom
+	}
+	if store.now == nil {
+		store.now = func() int64 { return time.Now().UnixMilli() }
 	}
 	return store, nil
 }
@@ -284,6 +294,7 @@ func (s *Store) restore() error {
 			viewerPasswordMaterial:        bytes.Clone(stored.ViewerPasswordMaterial),
 			viewerAuthorizationGeneration: stored.ViewerAuthorizationGeneration,
 			codeEntryPolicy:               stored.CodeEntryPolicy,
+			emptySinceMs:                  s.now(),
 		})
 	}
 	available := s.freeRoomCodes[:0]
@@ -538,11 +549,15 @@ func (s *Store) SetViewerGrant(
 	}
 	room.viewerGrantDigest = viewerGrantDigest
 	room.viewerAuthorizationGeneration = generation
+	wasOccupied := roomOccupied(room)
 	// ordering: delete during iteration, which a JS Map allows.
 	for clientID, viewer := range room.viewers.All() {
 		if viewer.admittedBy == admittedByGrant {
 			room.viewers.Delete(clientID)
 		}
+	}
+	if wasOccupied && !roomOccupied(room) {
+		room.emptySinceMs = s.now()
 	}
 	return ViewerGrantUpdate{
 		ViewerGrant:                           viewerGrant,
@@ -681,6 +696,9 @@ func (s *Store) DisconnectParticipant(
 			return nil, nil
 		}
 		room.host.sessionID = ""
+		if !roomOccupied(room) {
+			room.emptySinceMs = s.now()
+		}
 		return &DisconnectedParticipant{
 			RoomID: roomID, Role: protocol.RoleHost, PeerID: peerID}, nil
 	}
@@ -690,6 +708,9 @@ func (s *Store) DisconnectParticipant(
 		return nil, nil
 	}
 	viewer.sessionID = ""
+	if !roomOccupied(room) {
+		room.emptySinceMs = s.now()
+	}
 	return &DisconnectedParticipant{
 		RoomID: roomID, Role: protocol.RoleViewer, PeerID: peerID}, nil
 }
@@ -761,41 +782,46 @@ func (s *Store) GetConnectedViewers(roomID string) []ConnectedPeer {
 // AbandonRoom is abandonRoom; it returns nil where the TypeScript returned
 // undefined.
 func (s *Store) AbandonRoom(roomID string) (*ClosedRoom, error) {
+	closed, err := s.abandonRooms([]string{roomID})
+	if err != nil || len(closed) == 0 {
+		return nil, err
+	}
+	return &closed[0], nil
+}
+
+// Retire a batch atomically before releasing codes. One SQLite transaction
+// avoids thousands of fsyncs under the signaling lock after a restart.
+func (s *Store) abandonRooms(roomIDs []string) ([]ClosedRoom, error) {
 	if err := s.ensureInitialized(); err != nil {
 		return nil, err
 	}
-	room, ok := s.rooms.Get(roomID)
-	if !ok {
+	var authorities []StoredRoomAuthority
+	var closed []ClosedRoom
+	for _, roomID := range roomIDs {
+		if room, ok := s.rooms.Get(roomID); ok {
+			authorities = append(authorities, StoredRoomAuthority{RoomID: roomID, HostTokenDigest: room.hostTokenDigest})
+			closed = append(closed, ClosedRoom{RoomID: roomID, SessionIDs: connectedSessionIDs(room)})
+		}
+	}
+	if len(closed) == 0 {
 		return nil, nil
 	}
-	sessionIDs := connectedSessionIDs(room)
 	err := s.writeDatabase(func() error {
-		return s.database.DeleteRoom(roomID, room.hostTokenDigest)
+		return s.database.deleteRooms(authorities)
 	})
 	if err != nil {
 		return nil, err
 	}
-	s.rooms.Delete(roomID)
-	s.releaseRoomCode(roomID)
-	return &ClosedRoom{RoomID: roomID, SessionIDs: sessionIDs}, nil
+	for _, room := range closed {
+		s.rooms.Delete(room.RoomID)
+		s.releaseRoomCode(room.RoomID)
+	}
+	return closed, nil
 }
 
 // AbandonAllRooms is abandonAllRooms, in room insertion order.
 func (s *Store) AbandonAllRooms() ([]ClosedRoom, error) {
-	if err := s.ensureInitialized(); err != nil {
-		return nil, err
-	}
-	var closedRooms []ClosedRoom
-	for _, roomID := range s.rooms.Keys() {
-		closed, err := s.AbandonRoom(roomID)
-		if err != nil {
-			return nil, err
-		}
-		if closed != nil {
-			closedRooms = append(closedRooms, *closed)
-		}
-	}
-	return closedRooms, nil
+	return s.abandonRooms(s.rooms.Keys())
 }
 
 func (s *Store) connectHost(
@@ -1004,6 +1030,7 @@ func (s *Store) newRoom(
 		viewerPasswordMaterial:        material,
 		viewerAuthorizationGeneration: generation,
 		codeEntryPolicy:               policy,
+		emptySinceMs:                  s.now(),
 	}
 	return room, CreatedRoom{
 		RoomID:          roomID,

@@ -92,6 +92,11 @@ SITE_ACCESS_PASSWORD=
 人数越多，对网络和转发资源的需求也可能增加。默认值及 App 房间的区别见
 [人数限制](../standards/configuration.md#room-capacity)。
 
+公开站点可选设 `ROOM_EMPTY_TIMEOUT_SECONDS=3600`，重启后，无人在线的房间会在空置一小时后
+回收；房间号用满时，会提前回收最早创建的空房间，仍有人在线的房间不受影响。
+被回收的房间需要重新创建并发送邀请。不设置或设为 `0` 则保持默认的长期保留行为，
+详见[房间保留策略](../standards/configuration.md#room-retention)。
+
 ### 2. 配置 HTTPS
 
 如果已有 HTTPS 反向代理，将请求转发到 `127.0.0.1:8787`，并启用 WebSocket 支持。

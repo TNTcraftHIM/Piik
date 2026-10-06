@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-10-01
+Last updated: 2026-10-06
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -60,9 +60,10 @@ implementation and routine UI detail.
 
 - Rooms use random four-digit codes, exact Host ownership, room-scoped Viewer
   invitations and independent `open | private` code entry. Room authority ends
-  through explicit replacement/deletion, with separate invitation rotation or
-  revocation. Hosted defaults to SQLite, with explicit process-memory opt-out;
-  App Local remains process-only. Site access has a separate 24-hour idle
+  through replacement/deletion, with separate invitation rotation or revocation.
+  Hosted operators may opt into empty-room expiry and capacity reclamation;
+  the default retains rooms indefinitely. Hosted defaults to SQLite, with explicit
+  process-memory opt-out; App Local remains process-only. Site access has a separate 24-hour idle
   cookie lifetime within one service run. Production persists SQLite room
   authority; live participants, routes, and media remain process-only.
 - Media is automatic and distributed. Ordinary peers are STUN-only and prefer

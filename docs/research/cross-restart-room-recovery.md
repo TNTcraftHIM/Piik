@@ -13,7 +13,9 @@ code-entry policy and password verifier. It is not a generic
 store for future features.
 
 Hosted defaults to SQLite over the same RoomStore contract. Process-only mode
-remains an explicit composition; neither mode needs time-based room expiry.
+remains an explicit composition. Persistence is independent of the optional
+[empty-room retention policy](../standards/rooms-access.md#optional-empty-room-retention):
+the default keeps authority indefinitely; public sites may reclaim abandoned codes.
 
 ## Stored Authority
 
@@ -92,7 +94,8 @@ compatibility path. The completed cutover is retained in Git; current
 2. Stable restart preserves code, token/grant validation, password, policy,
    generation while restoring zero participants or media state.
 3. A grant revoked before restart remains revoked afterward.
-4. Presence and elapsed time do not mutate durable authority.
+4. Default presence and elapsed time do not mutate durable authority; opt-in
+   retention retires only empty rooms and resets the empty interval on restart.
 5. Explicit deletion/replacement releases codes; the allocation bound is unchanged.
 6. Corrupt/mismatched/multiply owned state fails before accepting traffic.
 7. Surviving Host/Viewer tabs reauthenticate and rebuild a fresh route; no test

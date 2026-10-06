@@ -740,6 +740,25 @@ describe("client session identity", () => {
 });
 
 describe("site access API", () => {
+  it.each(["zh", "en"] as const)("explains room capacity across creation and replacement in %s", async (lang) => {
+    setCopy({ lang, vis: false });
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(async () =>
+      new Response(JSON.stringify({ error: "Room capacity reached" }), { status: 503 }),
+    ));
+    for (const request of [
+      () => createRoom("open", null),
+      () => replaceOwnedRoom("4321", "host-token", "open", null),
+    ]) {
+      await expect(request()).rejects.toMatchObject({ status: 503, message: say("host.err.roomCapacity") });
+    }
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ error: "Room creation unavailable" }), { status: 503 }),
+    ));
+    await expect(createRoom("open", null)).rejects.toMatchObject({
+      status: 503, message: say("host.err.createRoomStatus", { status: "503" }),
+    });
+  });
+
   it.each(["zh", "en"] as const)("explains rejected origins across write APIs in %s", async (lang) => {
     setCopy({ lang, vis: false });
     vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(async () =>

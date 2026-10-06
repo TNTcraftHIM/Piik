@@ -12,7 +12,7 @@ and Git/PRs own completed history.
   [Versioning](./standards/versioning.md#public-compatibility-promise) owns
   compatibility between published Web/App/Server versions.
 - Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
-  expiry; explicit replacement/deletion or grant rotation/revocation ends the
+  expiry by default; replacement/deletion or grant rotation/revocation ends the
   corresponding authority. Explicit memory mode and App Local end rooms at
   process exit. Site access retains its separate 24-hour idle lifetime within
   one service run; service restart requires site-password entry again.
@@ -54,12 +54,12 @@ Release artifacts and operator deployment records own delivery completion;
 
 ## Current Work
 
-The public baseline retains Browser/server v23, Native control v9, capture v7
-and the 1440p ceiling. The compatible maintenance phase combines sharing-failure
-guidance and bilingual troubleshooting with source-list, codec admission,
-minimized-capture and gateway-mapping repairs. Live audio-exclusion controls
-reuse the source/mixer owner; website controls retain shared motion and cache
-identity. 4K and resolution/capability expansion are not planned for this phase.
+The public baseline retains Browser/server v23, Native control v9, capture v7,
+SQLite schema 2 and the 1440p ceiling. The current follow-up adds opt-in Hosted
+empty-room retention and capacity guidance, preserving indefinite retention by
+default. Demo retention activation remains part of the next release's deployment;
+operator records own its current database and postflight evidence.
+4K and resolution/capability expansion are not planned for this phase.
 Native Magicsock remains a separate experiment, outside product integration.
 Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns
 remaining work.

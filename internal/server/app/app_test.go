@@ -1265,6 +1265,31 @@ func TestRoomCreationReturnsServiceUnavailableAtTheGlobalRoomBound(t *testing.T)
 		expect(http.StatusServiceUnavailable, `{"error":"Room capacity reached"}`)
 }
 
+func TestConfiguredEmptyRoomExpiryRunsFromTheOwnedHeartbeat(t *testing.T) {
+	var now atomic.Int64
+	configuration := testConfig(t)
+	configuration.SiteAccessPassword = ""
+	configuration.RoomEmptyTimeoutSeconds = 3600
+	ticks := make(chan func(), 2)
+	server := start(t, Options{
+		Config: configuration, Now: now.Load,
+		AfterFunc: func(_ time.Duration, callback func()) func() bool {
+			ticks <- callback
+			return func() bool { return true }
+		},
+	})
+	created := server.createRoom(roomRequest{}).expectStatus(http.StatusCreated).room()
+	now.Store(3_599_999)
+	(<-ticks)()
+	request := accessRequest{roomID: created.RoomID, hostToken: created.HostToken,
+		body: `{"action":"set-code-entry-policy","policy":"private"}`}
+	server.updateRoomAccess(request).expectStatus(http.StatusOK)
+	now.Store(3_600_000)
+	(<-ticks)()
+	server.updateRoomAccess(request).expectStatus(http.StatusNotFound)
+	server.createRoom(roomRequest{}).expectStatus(http.StatusCreated)
+}
+
 // --- server HTTP listener and health --------------------------------------
 
 func TestServesAnExplicitStaticFrontendIndependentlyOfTheEnvironment(t *testing.T) {

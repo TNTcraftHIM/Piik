@@ -85,10 +85,13 @@ type Options struct {
 	SiteAccessAtUpgrade  func(*http.Request) bool
 	PublicBaseURL        *url.URL
 	// Now returns Unix milliseconds; nil uses the wall clock.
-	Now                           func() int64
-	AuthenticationTimeoutMs       int
-	ViewerDisconnectGraceMs       int
-	HeartbeatIntervalMs           int
+	Now                     func() int64
+	AuthenticationTimeoutMs int
+	ViewerDisconnectGraceMs int
+	HeartbeatIntervalMs     int
+	// Zero retains room authority indefinitely. Otherwise empty rooms expire
+	// and allocation pressure may reclaim the oldest empty room early.
+	RoomEmptyTimeoutMs            int64
 	MaxConnections                int
 	MaxUnauthenticatedConnections int
 	// AfterFunc is the timer factory; nil uses time.AfterFunc.
@@ -178,6 +181,7 @@ type Server struct {
 	authenticationTimeoutMs       int
 	viewerDisconnectGraceMs       int
 	heartbeatIntervalMs           int
+	roomEmptyTimeoutMs            int64
 	maxConnections                int
 	maxUnauthenticatedConnections int
 
@@ -235,6 +239,7 @@ func New(options Options) (*Server, error) {
 		authenticationTimeoutMs:       orDefault(options.AuthenticationTimeoutMs, defaultAuthenticationTimeoutMs),
 		viewerDisconnectGraceMs:       orDefault(options.ViewerDisconnectGraceMs, defaultViewerDisconnectGraceMs),
 		heartbeatIntervalMs:           orDefault(options.HeartbeatIntervalMs, defaultHeartbeatIntervalMs),
+		roomEmptyTimeoutMs:            options.RoomEmptyTimeoutMs,
 		maxConnections:                orDefault(options.MaxConnections, defaultMaxSignalConnections),
 		maxUnauthenticatedConnections: orDefault(options.MaxUnauthenticatedConnections, defaultMaxUnauthenticatedConnections),
 		sessionsByID:                  map[string]*session{},
@@ -599,6 +604,13 @@ func (s *Server) ReplaceRoom(
 	}
 	material, derived := s.deriveViewerPasswordMaterial(roomID, hostToken, roomPassword, current)
 	replacement, err := s.store.ReplaceRoom(roomID, hostToken, codeEntryPolicy, material, derived, current)
+	if derived == nil {
+		if candidate := s.roomCapacityCandidate(err, roomID); candidate != "" {
+			if err = s.abandonRoom(candidate); err == nil {
+				replacement, err = s.store.ReplaceRoom(roomID, hostToken, codeEntryPolicy, material, derived, current)
+			}
+		}
+	}
 	if err != nil {
 		return room.CreatedRoom{}, err
 	}
@@ -615,7 +627,7 @@ func (s *Server) CreateRoom(
 ) (room.CreatedRoom, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.store.BeginCreateRoom(); err != nil {
+	if err := s.store.BeginCreateRoom(); err != nil && s.roomCapacityCandidate(err, "") == "" {
 		return room.CreatedRoom{}, err
 	}
 	var material []byte
@@ -627,7 +639,15 @@ func (s *Server) CreateRoom(
 			material, derived = s.store.DeriveViewerPasswordMaterial(*roomPassword, nil)
 		}()
 	}
-	return s.store.CreateRoom(codeEntryPolicy, material, derived, preferredRoomID)
+	created, err := s.store.CreateRoom(codeEntryPolicy, material, derived, preferredRoomID)
+	if derived == nil {
+		if candidate := s.roomCapacityCandidate(err, ""); candidate != "" {
+			if err = s.abandonRoom(candidate); err == nil {
+				created, err = s.store.CreateRoom(codeEntryPolicy, material, derived, preferredRoomID)
+			}
+		}
+	}
+	return created, err
 }
 
 // armHeartbeat is the heartbeat setInterval: each tick re-arms the
@@ -641,6 +661,7 @@ func (s *Server) armHeartbeat() {
 			return
 		}
 		pings := s.heartbeat()
+		s.expireEmptyRooms()
 		s.armHeartbeat()
 		s.mu.Unlock()
 		for _, sess := range pings {

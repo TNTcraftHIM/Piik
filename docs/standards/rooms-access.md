@@ -20,17 +20,45 @@ the storage decision; implementation detail belongs in code and tests.
   but duplicated-tab exclusion is not guaranteed. Closing the tab releases its
   claim; losing Host authority clears that tab without erasing another tab's
   resume hint.
-- Room identity and credentials do not expire with inactivity. The exact Host
-  token resumes the room until explicit replacement or deletion. Grant rotation
-  or revocation ends an invitation without changing the room code. No presence
-  event renews or shortens room authority.
+- Room identity and credentials have no inactivity expiry by default. The exact
+  Host token resumes the room until explicit replacement or deletion, including
+  the optional empty-room policy below. Grant rotation or revocation ends an
+  invitation without changing the room code.
 - The Host may replace its room code. Replacement atomically creates a different
   room and invalidates the old ownership, invitations, password, sessions,
   routes, and media resources. It ends an active share and stops its capture
   tracks; it does not migrate or automatically restart capture.
 - A locally remembered preferred code is only a request. The server remains the
   authority and allocates another code when that code is unavailable. The store
-  remains bounded by 9,000 codes; it rejects new rooms when full.
+  remains bounded by 9,000 codes; full allocation rejects new rooms when no
+  empty room may be reclaimed under the deployment's retention policy.
+
+### Optional empty-room retention
+
+Hosted operators may enable `ROOM_EMPTY_TIMEOUT_SECONDS`; `0` (default) preserves
+indefinite authority. A positive value retires a room after that many seconds
+continuously without any authenticated Host or Viewer. Never-joined rooms start
+empty at creation. Sharing, pausing and idle chat do not change this rule; failed
+authentication and HTTP access do not renew it. The existing heartbeat performs
+expiry checks, normally every 30 seconds.
+
+With retention enabled, allocation first reclaims expired empty rooms; if none
+are available, it may retire the earliest-created empty room before the timeout,
+including when replacing a room code. Early reclamation observes the existing
+20-second reconnect grace after creation, restore or the last departure. Occupied rooms
+are never candidates; a replacement cannot reclaim its own old room before the
+replacement commits. If all rooms are occupied, creation still returns capacity
+exhaustion. Expiry and pressure retirement use the same storage-first deletion
+and signaling cleanup as explicit abandonment; recycled codes never retain old
+credentials, share generations or reconnect timers.
+
+The empty interval is process-local. Restored rooms receive a fresh interval so
+surviving pages can reconnect; allocation pressure can still reclaim them while
+empty. SQLite restores the insertion order of retained rows. This policy adds
+no room lease, client renewal, wire field or persisted presence. Deletion ends
+both ownership and invitations; ordinary missing-room/invalid-credential handling
+applies. [Configuration](./configuration.md#room-retention) owns deployment values.
+Disabling retention stops future reclamation; it cannot restore retired authority.
 
 ## Admission Paths
 
