@@ -176,7 +176,9 @@ after all required artifacts and checks pass. The publisher verifies matching
 version, source SHA and checksums, then creates/uploads/publishes one GitHub draft.
 When there are no unpublished product changes, CI validates a development build
 and skips packaging and publication; it never assigns an old release version to
-a new source SHA. The separate Website workflow updates the static site after CI.
+a new source SHA. The separate Website and Gitee mirror workflows follow successful
+main CI independently. Mirror failure must remain visible without blocking GitHub
+publication or Website deployment; retries use the original publishing artifacts.
 Failed draft uploads can resume; published artifacts are never overwritten.
 An older draft retried after a newer release cannot take over `latest`.
 

@@ -15,6 +15,15 @@ const api = `https://gitee.com/api/v5/repos/${repository}`;
 const marker = `<!-- piik-source: ${revision} -->`;
 const token = process.env.GITEE_TOKEN?.trim();
 
+function requireLatestSource() {
+  const latest = JSON.parse(execFileSync("gh", ["api", `repos/${repository}/releases/latest`],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 }));
+  if (latest.tag_name !== version || latest.target_commitish !== revision ||
+      latest.draft !== false || latest.prerelease !== false) {
+    throw new Error("Only the latest GitHub release may create or complete a Gitee mirror");
+  }
+}
+
 async function fetchResponse(url, options, timeout) {
   const attempts = (options.method ?? "GET") === "GET" ? 3 : 1;
   for (let attempt = 1; ; attempt++) {
@@ -88,6 +97,7 @@ if (option === "--dry-run") {
     throw new Error("Existing mirror release belongs to a different or unknown source revision");
   }
   const body = `${source.body ?? ""}\n\nSource: https://github.com/${repository}/commit/${revision}\n\n${marker}\n`;
+  if (!release || release.prerelease) requireLatestSource();
   if (!release) {
     const repo = await request("");
     if (!repo || repo.private || !repo.default_branch) throw new Error("A public initialized Gitee mirror is required");
@@ -111,6 +121,8 @@ if (option === "--dry-run") {
   }
   // Gitee has no draft API. Its preview flag fences incomplete uploads from checks.
   if (release.prerelease) {
+    // Uploads may take minutes; a newer GitHub release must not be displaced.
+    requireLatestSource();
     const completed = await request(`/releases/${release.id}`, "PATCH", {
       tag_name: version, name: source.name || `Piik ${version}`, body, prerelease: false,
     });

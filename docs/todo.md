@@ -1,14 +1,16 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-06
+Last reviewed: 2026-10-07
 
 Only **Now** is executable. Product modules own behavior; Git/PRs own completed
 history. A parked idea is not implementation authority.
 
 ## Now
 
-No active implementation work. Deferred proposals and evidence-dependent reports
-remain below; release delivery is tracked by the pipeline and deployment records.
+- [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
+  are complete. Integrate through the next owner-approved publishing merge and
+  verify the separate workflow with its original CI artifacts. Mirror failure
+  must remain visible without blocking product CI or Website delivery.
 
 ## Held By Owner
 
@@ -206,9 +208,9 @@ works, so a Rust alternative needs a concrete Go limitation.
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.
-10. **Release-operation policy.** Protected release environments, immutable
-    draft assets and changing mirror-failure policy remain unaccepted proposals;
-    evaluate their benefit before adding release machinery.
+10. **Release-operation policy.** Protected release environments and immutable
+    draft assets remain unaccepted proposals; evaluate their benefit before
+    adding release machinery.
 11. **Automatic local chat history.** Explicit TXT export covers manual retention.
     Reconsider automatic storage only with a stable room-incarnation identity,
     bounded retention and a clear delete control; reusable room codes must not

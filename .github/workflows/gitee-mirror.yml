@@ -1,0 +1,83 @@
+name: Gitee mirror
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Original CI run that published the current GitHub release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: gitee-mirror
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  mirror:
+    if: >-
+      github.repository == 'TNTcraftHIM/Piik' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.conclusion == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Execute trusted main tooling; upstream artifacts are data, never code.
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Resolve the published source
+        id: source
+        run: node scripts/release-mirror-source.mjs "$PIIK_SOURCE_RUN_ID"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PIIK_SOURCE_RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
+      - name: Download original Server artifacts
+        if: steps.source.outputs.mirror == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          pattern: piik-server*-${{ steps.source.outputs.revision }}
+          path: ${{ runner.temp }}/mirror-release
+          merge-multiple: true
+      - name: Download original App artifacts
+        if: steps.source.outputs.mirror == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          pattern: piik-app-*-${{ steps.source.outputs.revision }}
+          path: ${{ runner.temp }}/mirror-release
+          merge-multiple: true
+      - name: Mirror and verify original packages
+        if: steps.source.outputs.mirror == 'true'
+        run: >-
+          node scripts/mirror-release.mjs
+          "$RUNNER_TEMP/mirror-release" "$PIIK_RELEASE_VERSION" "$PIIK_RELEASE_REVISION"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          PIIK_RELEASE_VERSION: ${{ steps.source.outputs.version }}
+          PIIK_RELEASE_REVISION: ${{ steps.source.outputs.revision }}
+      - name: Explain recovery
+        if: failure() && steps.source.outputs.mirror == 'true'
+        run: |
+          printf 'Mirror failed; GitHub publication and Website are independent. Retry this workflow with original CI run %s. If artifacts expired, recover the retained original build output; do not rebuild this version. See docs/operations/github.md.\n' "$PIIK_SOURCE_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          PIIK_SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}

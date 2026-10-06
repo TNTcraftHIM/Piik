@@ -161,7 +161,8 @@ Verify the latest redirects and package checksums after releases.
 4. Accepted main pushes run CI first; success triggers **Website**, which checks
    out that CI run's exact commit. Manual dispatch uses its selected `main` commit.
    Before publishing, both paths skip a build that is no longer current main;
-   dispatch again for the latest commit when needed. Download links resolve through each provider, so
+   dispatch again for the latest commit when needed. The separate Gitee mirror
+   workflow does not gate Website deployment. Download links resolve through each provider, so
    publishing a package or retrying its mirror needs no link refresh.
    Only `build/site/` is uploaded; website work does not package App/Server.
    Verify HTTPS, both languages, relative assets and per-platform download links.

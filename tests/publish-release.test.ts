@@ -45,15 +45,26 @@ describe("Gitee mirror publication", () => {
   });
   async function mirror(options: { existing?: "pending" | "published" | "unknown"; corrupt?: boolean;
     wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean;
+    stale?: boolean; supersededDuringUpload?: boolean;
     fault?: { method: string; remaining: number; status: number | "timeout" } } = {}) {
     const mutations: string[] = [];
     const attachments = sourceAssets.map(({ name, size }) => ({ name, size, browser_download_url: download + name }));
     const present = options.existing === "pending" ? attachments.slice(0, 1) : options.missing ? [] : attachments;
-    command.mockReturnValue(JSON.stringify({
+    const source = {
       ...release(false), html_url: `https://github.com/TNTcraftHIM/Piik/releases/tag/${version}`,
       target_commitish: options.wrongSource ? "b".repeat(40) : revision,
       assets: options.wrongDigest ? sourceAssets.map((asset) => ({ ...asset, digest: "sha256:wrong" })) : sourceAssets,
-    }));
+    };
+    let latestReads = 0;
+    command.mockImplementation((_program, args) => {
+      if (args[1].endsWith("/releases/latest")) {
+        latestReads++;
+        if (options.stale || (options.supersededDuringUpload && latestReads > 1)) {
+          return JSON.stringify({ ...source, tag_name: "v1.1.0", target_commitish: "b".repeat(40) });
+        }
+      } else expect(args[1]).toBe(`repos/TNTcraftHIM/Piik/releases/tags/${version}`);
+      return JSON.stringify(source);
+    });
     vi.stubEnv("GITEE_TOKEN", "fixture-mirror-token");
     vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input);
@@ -127,6 +138,18 @@ describe("Gitee mirror publication", () => {
     expect(pending.failure).toBeUndefined();
     expect(pending.mutations.filter((value) => value.endsWith("/attach_files"))).toHaveLength(sourceAssets.length - 1);
     expect(await mirror({ existing: "published" })).toEqual({ mutations: [], failure: undefined });
+  });
+
+  it("prevents stale creation or completion while allowing existing stable verification", async () => {
+    for (const existing of [undefined, "pending"] as const) {
+      const result = await mirror({ existing, stale: true });
+      expect(result.failure).toContain("Only the latest GitHub release");
+      expect(result.mutations).toEqual([]);
+    }
+    const superseded = await mirror({ existing: "pending", supersededDuringUpload: true });
+    expect(superseded.failure).toContain("Only the latest GitHub release");
+    expect(superseded.mutations).not.toContain("PATCH /releases/42");
+    expect(await mirror({ existing: "published", stale: true })).toEqual({ mutations: [], failure: undefined });
   });
 
   it.each([503, "timeout"] as const)("retries transient read failures (%s) within a fixed bound", async (status) => {
