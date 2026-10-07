@@ -371,7 +371,9 @@ Temporary capture instrumentation observed about 3–4 WGC frame-arrival events
 per second. Queue draining was bounded in the observation, conversion/submission
 took less than a millisecond, and encoder diagnostics showed small encode times
 without CPU/quality adaptation. Bringing the source window forward did not
-restore cadence. This localizes the limit before encoding but does not establish
+restore cadence. A capture-only control, without the App or SFU, also delivered
+about 3.9 fps from both Chrome and a separate animated Windows Forms window.
+This localizes the limit before encoding but does not establish
 the virtual driver's cause or diagnose a field report. Retain the gate's
 threshold and compare a physical display before changing capture scheduling,
 encoder policy or route behavior.
