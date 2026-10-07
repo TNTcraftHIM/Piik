@@ -1,6 +1,6 @@
 # Browser And Native NAT Traversal
 
-Last reviewed: 2026-10-04
+Last reviewed: 2026-10-07
 
 This document owns evidence for improving direct ICE without adding a
 new relay or a custom transport. The current product contract remains standard
@@ -319,8 +319,8 @@ isolated branch; production dependencies and routing remain unchanged.
 
 ### Integration Cost And Recovery Controls
 
-The 2026-10-06 assessment retains the probes on `spike/magicsock-assessment`
-at `fea0587f`, based on current main. These nested Go modules are outside Piik's
+The isolated `spike/magicsock-assessment` branch retains the comparison probes.
+These nested Go modules are outside Piik's
 build and dependency graph. Repeated local Tailcat bootstrap, peer denial,
 revocation and synthetic SRTP media checks passed; the raw magicsock direct-path
 matrix again found the same reachable classes as fresh Pion ICE. Retired shared
@@ -353,13 +353,64 @@ increasing only the fixture's ICE budget recovered media. The ordinary Pion
 loss control recovered without that override. Do not adopt packet prefixes,
 diagnostic Ping polling or wider product deadlines as integration shortcuts.
 
-Reassessed on 2026-10-07: keep the transport isolated. Go reuse is feasible, but
-new key authorization/revocation, underlay readiness, packet-size limits and
-relay operation have no demonstrated direct-coverage benefit sufficient for
-product integration. A future trial needs matched networks with a repeatable
-benefit, separate direct/relayed/first-media results, and current room/route
-ownership. IPv6, gateway mapping, Piik prediction, physical routers, decoded
-playback and mixed Browser/Native fanout remain outside this comparison.
+Keep product integration conditional on a repeatable benefit on matched networks,
+with direct coverage, relay coverage, recovery and first picture measured
+separately. Go feasibility alone does not establish that benefit. Gateway
+mapping, Piik prediction, physical routers and the full mixed Piik topology
+remain outside the comparison. The isolated controls below do not change that
+adoption boundary.
+
+### Isolated Connection-Layer Acceptance
+
+The 2026-10-07 experiment through `f0ca8056` keeps Pion's ICE/DTLS/SRTP over
+Tailcat. Each physical connection owns a virtual UDP tuple and mux; its one-shot
+listener retires after admission. Connections to one authorized peer may share
+the tunnel. Closing or aborting one flow preserves healthy siblings; revoking
+the fixture peer key denies admission and disconnects that tunnel. These checks
+do not implement Piik room grants or endpoint exchange.
+
+Repeated lifecycle and Linux race checks cover overlapping media preparation,
+rollback, replacement, canceled preparation followed by retry, bounded datagrams
+and blocked-reader retirement. A 350 ms interruption of one flow preserved its
+sibling and recovered without replacing SDP. Piik's actual encoded source,
+LiveKit forwarder and pacer also carried a small VP8/Opus fixture over ordinary
+Pion and Tailcat, including TWCC and keyframe requests. Tailcat recovered an
+injected missing video packet through existing NACK handling after DERP closed.
+This is forwarding evidence, not throughput or room-controller acceptance.
+
+A separate real Chrome control decoded H.264/Opus and VP8/Opus from a generated
+640×360 picture and tone through Browser WebRTC → Pion/Tailcat/Pion → Browser
+WebRTC without re-encoding. Picture and decoded audio continued after DERP
+closure and stopped after peer revocation. It uses ordinary Browser WebRTC,
+not Browser-native Magicsock, physical capture or cross-browser acceptance.
+
+The 1200-byte Native packetization envelope with TWCC and short MID/RID headers
+produced at most 1228-byte encrypted datagrams across Pion's three default SRTP
+profiles. Only four bytes remain below Tailcat's 1232-byte ceiling; larger
+headers and maximum compound RTCP remain integration checks. The small actual
+forwarder fixture does not establish those limits.
+
+Kernel gateway rebinding retained full WebRTC sessions. With DERP available,
+fresh media resumed in about 6.4–6.5 seconds and ICE reported `connected` in about
+7.1–8.1 seconds, without new SDP. With DERP closed, neither gateway direction
+recovered within 20 seconds. Fresh media and ICE state are separate observations;
+Piik's disconnected grace, restart and retirement need a full integration
+control before adoption. Underlay preparation must fit the existing operation
+deadline, not start a second budget. Local cold setup of about 3.3 seconds for
+Tailcat versus 0.2 seconds for Pion disabled STUN/gateway mapping and is not a WAN
+startup comparison.
+
+Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
+IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
+required fresh bidirectional delivery after DERP closed. One side reporting a
+direct address did not establish that both directions were direct. IPv4 TCP
+still supplied bootstrap, so this is not an IPv6-only or physical ISP check.
+These controls add no demonstrated direct-reachability advantage for Magicsock.
+
+The experiment's README owns commands and fixture boundaries; raw output remains
+ignored. Further product work needs a measurable network benefit and accepted
+room authorization, resource and relay-operation owners, not more loopback
+successes.
 
 ## Native Mapping Cache And Retry Lifetimes
 
