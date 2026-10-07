@@ -17,8 +17,9 @@ Git/PRs own completed history.
   before accepting a changed contract.
 - [ ] **Windows 11 capture border remains visible.** Reopened by a new report
   on 2026-10-07. Recheck App/Browser capture ownership, border permission/API
-  results, live setting changes and concurrent captures before attributing this
-  to Windows. Obtain the affected version/path/build when available; the report
+  results, live setting changes, concurrent captures and source-thumbnail
+  cancellation/retirement before attributing this to Windows. Obtain the
+  affected version/path/build when available; the report
   does not yet identify them. [Capture evidence](./research/native-client-lifecycle.md#windows-capture-borders)
   owns the prior graceful-retirement and concurrent-capture checks.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
