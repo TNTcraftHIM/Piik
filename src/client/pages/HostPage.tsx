@@ -89,6 +89,7 @@ import {
   type HostCreationProfile,
 } from "../lib/creation-profile";
 import { readPreferredQuality, savePreferredQuality } from "../lib/quality-preference";
+import { AppQualityPreference } from "../native/quality-preference";
 import { createOpaqueId } from "../lib/opaque-id";
 import { debugError, debugEvent, debugOperation } from "../lib/debug";
 import {
@@ -611,6 +612,9 @@ export function HostPage({
   const qualityChangeRef = useRef<object | null>(null);
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(qualitySettings);
+  const appQualityPreferenceRef = useRef<AppQualityPreference | null>(null);
+  const qualityPreferenceEditedRef = useRef(false);
+  const pendingAppQualityPreferenceRef = useRef<QualitySettings | null>(null);
   const routePolicyRef = useRef<RoutePolicy>(routePolicy);
   const advancedQualityRef = useRef<QualitySettings>(advancedQuality);
   const videoCodecModeRef = useRef<BrowserVideoCodecMode>(videoCodecMode);
@@ -665,6 +669,18 @@ export function HostPage({
     phase === "live" && resolvedVideoCodec
       ? resolvedVideoCodec
       : videoCodecMode;
+
+  useEffect(() => {
+    if (!launchedByClient) return;
+    const controller = new AbortController();
+    void loadAppQualityPreference(controller.signal).catch(error => {
+      if (!controller.signal.aborted) debugError("native", "quality-preference-load-failed", error);
+    });
+    return () => {
+      controller.abort();
+      appQualityPreferenceRef.current = null;
+    };
+  }, [launchedByClient]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -1602,6 +1618,32 @@ export function HostPage({
     setAdvancedQuality(visibleSettings);
   }
 
+  function rememberQuality(settings: QualitySettings): void {
+    const preference = appQualityPreferenceRef.current;
+    if (preference) preference.save(settings);
+    else {
+      pendingAppQualityPreferenceRef.current = settings;
+      savePreferredQuality(settings);
+    }
+  }
+
+  async function loadAppQualityPreference(signal: AbortSignal): Promise<void> {
+    const initial = qualitySettingsRef.current;
+    const preference = await AppQualityPreference.connect(signal);
+    if (!preference || signal.aborted) return;
+    appQualityPreferenceRef.current = preference;
+    // An explicit choice made during discovery wins, even before permission resolves.
+    const pending = pendingAppQualityPreferenceRef.current;
+    pendingAppQualityPreferenceRef.current = null;
+    if (pending) preference.save(pending);
+    const saved = await preference.read();
+    if (!signal.aborted && saved && !qualityPreferenceEditedRef.current &&
+      qualitySettingsRef.current === initial && activeGenerationRef.current === null &&
+      roomMutationRef.current === null) {
+      commitQuality(saved);
+    }
+  }
+
   function changeScreenAudioQuality(
     screenAudioQuality: ScreenAudioQuality,
   ): void {
@@ -1640,6 +1682,7 @@ export function HostPage({
   }
 
   async function changeQuality(nextProfile: QualitySettings): Promise<void> {
+    qualityPreferenceEditedRef.current = true;
     advancedQualityRef.current = nextProfile;
     setAdvancedQuality(nextProfile);
     if (phase !== "live") {
@@ -1647,7 +1690,7 @@ export function HostPage({
         return;
       }
       commitQuality(nextProfile);
-      savePreferredQuality(nextProfile);
+      rememberQuality(nextProfile);
       return;
     }
     if (qualityChangeRef.current) {
@@ -1719,7 +1762,7 @@ export function HostPage({
       }
 
       commitQuality(appliedProfile);
-      savePreferredQuality(appliedProfile);
+      rememberQuality(appliedProfile);
       debugEvent("quality", "committed", { generation, applied: appliedProfile });
       outcome = "applied";
       if (nativeUpdate) {

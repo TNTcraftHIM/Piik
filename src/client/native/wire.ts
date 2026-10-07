@@ -26,6 +26,7 @@ export const nativeDiscoveryIdentitySchema = z.object({
 
 export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
   protocol: z.literal(NATIVE_CLIENT_PROTOCOL),
+  qualityPreference: z.boolean().optional(),
   instanceToken: z
     .string()
     .length(43)

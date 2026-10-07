@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/coder/websocket"
 )
 
@@ -29,12 +30,13 @@ const (
 )
 
 type Options struct {
-	PortStart      int
-	PortEnd        int
-	AllowedOrigins []string
-	NativeMedia    NativeMediaCapabilities
-	NewControl     func() ControlSession
-	Presentation   func(language string)
+	PortStart         int
+	PortEnd           int
+	AllowedOrigins    []string
+	NativeMedia       NativeMediaCapabilities
+	NewControl        func() ControlSession
+	Presentation      func(language string)
+	QualityPreference *appconfig.QualityPreference
 }
 
 type ControlSession interface {
@@ -61,11 +63,12 @@ type Endpoint struct {
 }
 
 type Health struct {
-	Protocol      int                     `json:"protocol"`
-	Service       string                  `json:"service"`
-	Port          int                     `json:"port"`
-	InstanceToken string                  `json:"instanceToken"`
-	NativeMedia   NativeMediaCapabilities `json:"nativeMedia"`
+	Protocol          int                     `json:"protocol"`
+	Service           string                  `json:"service"`
+	Port              int                     `json:"port"`
+	InstanceToken     string                  `json:"instanceToken"`
+	NativeMedia       NativeMediaCapabilities `json:"nativeMedia"`
+	QualityPreference bool                    `json:"qualityPreference,omitempty"`
 }
 
 type NativeMediaCapabilities struct {
@@ -81,16 +84,17 @@ type NativeMediaCapabilities struct {
 }
 
 type Server struct {
-	ctx            context.Context
-	cancel         context.CancelFunc
-	listener       net.Listener
-	httpServer     *http.Server
-	endpoint       Endpoint
-	allowedOrigins []string
-	nativeMedia    NativeMediaCapabilities
-	newControl     func() ControlSession
-	presentation   func(string)
-	done           chan error
+	ctx               context.Context
+	cancel            context.CancelFunc
+	listener          net.Listener
+	httpServer        *http.Server
+	endpoint          Endpoint
+	allowedOrigins    []string
+	nativeMedia       NativeMediaCapabilities
+	newControl        func() ControlSession
+	presentation      func(string)
+	qualityPreference *appconfig.QualityPreference
+	done              chan error
 
 	mu          sync.Mutex
 	connections map[*websocket.Conn]struct{}
@@ -129,12 +133,13 @@ func Start(parent context.Context, options Options) (*Server, error) {
 			Port:          address.Port,
 			InstanceToken: instanceToken,
 		},
-		allowedOrigins: normalizedOrigins(options.AllowedOrigins),
-		nativeMedia:    options.NativeMedia,
-		newControl:     options.NewControl,
-		presentation:   options.Presentation,
-		done:           make(chan error, 1),
-		connections:    make(map[*websocket.Conn]struct{}),
+		allowedOrigins:    normalizedOrigins(options.AllowedOrigins),
+		nativeMedia:       options.NativeMedia,
+		newControl:        options.NewControl,
+		presentation:      options.Presentation,
+		qualityPreference: options.QualityPreference,
+		done:              make(chan error, 1),
+		connections:       make(map[*websocket.Conn]struct{}),
 	}
 	server.httpServer = &http.Server{
 		Handler:           server,
@@ -216,6 +221,8 @@ func (server *Server) ServeHTTP(response http.ResponseWriter, request *http.Requ
 		server.handleControl(response, request)
 	case "/presentation":
 		server.handlePresentation(response, request)
+	case "/quality-preference":
+		server.handleQualityPreference(response, request)
 	default:
 		http.NotFound(response, request)
 	}
@@ -265,11 +272,12 @@ func (server *Server) handleHealth(response http.ResponseWriter, request *http.R
 	}
 	response.Header().Set("Cache-Control", "no-store")
 	writeJSON(response, http.StatusOK, Health{
-		Protocol:      ProtocolVersion,
-		Service:       ServiceName,
-		Port:          server.endpoint.Port,
-		InstanceToken: server.endpoint.InstanceToken,
-		NativeMedia:   server.nativeMedia,
+		Protocol:          ProtocolVersion,
+		Service:           ServiceName,
+		Port:              server.endpoint.Port,
+		InstanceToken:     server.endpoint.InstanceToken,
+		NativeMedia:       server.nativeMedia,
+		QualityPreference: server.qualityPreference != nil,
 	})
 }
 

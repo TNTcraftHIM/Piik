@@ -146,6 +146,10 @@ Command-line options select entry and local runtime behavior:
 
 Share quality, room access policy, language and theme are configured in
 the shared Web UI. Decorative motion follows the system's reduced-motion preference.
+App-wide picture/audio quality preferences use `<config-path>.quality`; removing
+that optional file resets them on the next App launch. It contains no device or
+room credentials. The [media owner](./media-quality.md#video-profiles) defines when
+preferences apply; older Apps ignore the file and keep reading `client.json`.
 
 ## Diagnostics
 

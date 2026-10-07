@@ -149,8 +149,9 @@ sharing to allow that fallback. The project's online site uses P2P only.
 ## Picture and sound settings
 
 Open **Sharing settings** below the picture to adjust picture and audio quality.
-Piik remembers your applied settings in this browser for this site. A new
-temporary public-invite address has separate settings.
+Piik remembers your applied settings for the next visit. Browser-only use remembers
+them for the current site; opening Piik through an updated App also keeps them
+when your public-invite address changes.
 
 ## Add your voice
 

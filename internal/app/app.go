@@ -158,11 +158,16 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			"softwareVP8", nativeMedia.capabilities.SoftwareVP8, diagnostics.Error(nativeMedia.discoveryErr))
 	}
 	recordContext(options, config)
+	qualityPreference, preferenceErr := appconfig.LoadQualityPreference(configPath)
+	if preferenceErr != nil {
+		slog.Debug("piik-client", "event", "quality-preference-load-failed", diagnostics.Error(preferenceErr))
+	}
 	control, err := loopback.Start(ctx, loopback.Options{
-		AllowedOrigins: allowedOrigins(config.Site, options.Port),
-		NativeMedia:    nativeMedia.capabilities,
-		NewControl:     nativeMedia.controlFactory(),
-		Presentation:   options.console.setLanguage,
+		AllowedOrigins:    allowedOrigins(config.Site, options.Port),
+		NativeMedia:       nativeMedia.capabilities,
+		NewControl:        nativeMedia.controlFactory(),
+		Presentation:      options.console.setLanguage,
+		QualityPreference: qualityPreference,
 	})
 	if err != nil {
 		return fmt.Errorf("Piik App native control could not start: %w", err)
