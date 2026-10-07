@@ -16,7 +16,7 @@ import (
 // depend on the machine; with X-Content-Type-Options: nosniff a wrong type on a
 // font or a webmanifest is user visible.
 var staticContentTypes = map[string]string{
-	".html":        "text/html;charset=utf-8", // sirv appends ";charset=utf-8" with no space
+	".html":        "text/html;charset=utf-8",
 	".htm":         "text/html;charset=utf-8",
 	".js":          "text/javascript",
 	".mjs":         "text/javascript",
@@ -39,7 +39,7 @@ var staticContentTypes = map[string]string{
 	".webmanifest": "application/manifest+json",
 	".bin":         "application/octet-stream",
 	".xml":         "text/xml",
-	".ico":         "", // mrmime has no .ico, so sirv sends an EMPTY Content-Type
+	".ico":         "", // Preserve the published empty type without sniffing.
 }
 
 // staticHandler serves embedded assets and falls back to index.html for SPA
@@ -78,13 +78,11 @@ func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
 			return true
 		}
 
-		// sirv strips a trailing "/" before the lookup, and its FILES map holds
-		// files only, so "/assets/" can never hit a file.
+		// A trailing slash cannot name an asset file.
 		if !strings.HasSuffix(request.URL.Path, "/") && serve(name) {
 			return
 		}
-		// opts.single: fall back to index.html unless the request matches one
-		// of sirv's two default ignores.
+		// Route-like paths use the SPA; files and .well-known requests do not.
 		if !looksLikeFile(cleaned) && !strings.Contains(cleaned, "/.well-known") {
 			if serve("index.html") {
 				return
@@ -94,9 +92,7 @@ func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
 	})
 }
 
-// hasDotSegment reports whether any path segment starts with '.', reproducing
-// totalist's filter `!opts.dotfiles && /(^\.|[\\+|\/+]\.)/.test(name)` together
-// with the `/\.well-known[\\+\/]/` exemption that runs before it.
+// hasDotSegment excludes hidden assets, with the published .well-known exemption.
 func hasDotSegment(name string) bool {
 	if strings.Contains(name, ".well-known/") {
 		return false
@@ -109,13 +105,9 @@ func hasDotSegment(name string) bool {
 	return false
 }
 
-// looksLikeFile ports sirv's default "any extn" ignore,
-// /[/]([A-Za-z\s\d~$._-]+\.\w+){1,}$/. Because the character class excludes
-// "/" and the match is anchored at the end, only the last path segment can
-// match: it must contain a dot with a non-empty [A-Za-z0-9_] extension after
-// it, and everything before that dot must be in the class. The class is
-// ASCII-only, so "/文件.js" and "/café.css" are NOT ignored and do get the
-// index.html fallback.
+// looksLikeFile preserves the published SPA fallback boundary: the last path
+// segment needs an ASCII-style basename and a nonempty alphanumeric/underscore
+// extension. Names such as "/文件.js" and "/café.css" still reach the SPA.
 func looksLikeFile(pathname string) bool {
 	slash := strings.LastIndexByte(pathname, '/')
 	if slash < 0 {

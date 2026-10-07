@@ -41,21 +41,19 @@ import (
 
 // HTTP request, header and keep-alive deadlines.
 const (
-	requestTimeout   = 10 * time.Second // httpServer.requestTimeout
-	headersTimeout   = 15 * time.Second // httpServer.headersTimeout
-	keepAliveTimeout = 5 * time.Second  // httpServer.keepAliveTimeout
+	requestTimeout   = 10 * time.Second
+	headersTimeout   = 15 * time.Second
+	keepAliveTimeout = 5 * time.Second
 )
 
-// Options is CreateServerOptions. Every zero value means the TS `undefined`.
+// Options supplies service configuration and optional lifecycle dependencies.
 type Options struct {
 	// Config is the loaded server configuration; cmd owns config.Load / Local.
 	Config config.Config
 	// Listener is optional prebound TCP ownership transferred on successful New.
-	// It lets the Local Client reserve its HTTP port before opening a tunnel.
+	// It lets the Local App reserve its HTTP port before opening a tunnel.
 	Listener *net.TCPListener
-	// Assets is the built Browser UI. A nil FS serves the API only, which is
-	// the TS frontend mode "none"; webassets.FS() returns nil the same way
-	// when no build was embedded.
+	// Assets is the built Browser UI. A nil FS serves the API only.
 	Assets fs.FS
 	// Now returns Unix milliseconds; nil uses the wall clock.
 	Now func() int64
@@ -75,7 +73,7 @@ type Options struct {
 	RoomStore *room.Store
 }
 
-// Server is PiikServer.
+// Server owns one shared HTTP, room-authority and media service lifecycle.
 type Server struct {
 	config        config.Config
 	store         *room.Store
@@ -108,9 +106,7 @@ type Server struct {
 	shutdownErr  error
 }
 
-// New is createPiikServer minus the listening: it builds the SFU fallback,
-// the room store, the site-access issuer, the frontend handler and the HTTP
-// server, none of which performs I/O.
+// New composes the service without binding sockets or opening the room database.
 func New(options Options) (*Server, error) {
 	configuration := options.Config
 	now := options.Now
@@ -156,9 +152,7 @@ func New(options Options) (*Server, error) {
 		EndpointMediaCopyCapacity: configuration.EndpointMediaCopyCapacity,
 		SfuOnly:                   configuration.SFU != nil && configuration.SFU.Only,
 		Ice:                       config.IceConfig(configuration),
-		// The TS signaling server read natPredictionEnabled off the same
-		// `ice` options object it forwarded; the Go IceConfig is already the
-		// wire shape, so the capability travels beside it.
+		// The prediction capability is separate from the wire-shaped ICE settings.
 		NATPredictionEnabled: configuration.NATPredictionEnabled,
 		AllowedOrigins:       configuration.AllowedOrigins,
 		SiteAccessAtUpgrade: func(request *http.Request) bool {
@@ -180,13 +174,13 @@ func New(options Options) (*Server, error) {
 		ReadHeaderTimeout: headersTimeout,
 		ReadTimeout:       requestTimeout,
 		IdleTimeout:       keepAliveTimeout,
-		// No WriteTimeout: Node had none, and it would cut long downloads.
+		// No WriteTimeout: a fixed deadline would cut long asset downloads.
 	}
 	return server, nil
 }
 
-// newRoomStore builds the room store createPiikServer would otherwise take
-// from Options.RoomStore. An empty RoomDatabasePath is the memory-only mode.
+// newRoomStore uses the injected store or creates one from configuration.
+// An empty RoomDatabasePath selects memory-only authority.
 func newRoomStore(options Options) (*room.Store, error) {
 	if options.RoomStore != nil {
 		return options.RoomStore, nil
@@ -332,9 +326,8 @@ func (s *Server) reconcile() error {
 	if err := s.store.Initialize(); err != nil {
 		return err
 	}
-	// Holding mu across the check and the two stores is what made the TS
-	// single thread safe here: a shutdown that already set closing must never
-	// see traffic re-enabled behind it.
+	// Serialize publication with shutdown; once closing is set, startup must
+	// never re-enable traffic.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closing {
@@ -355,14 +348,13 @@ func (s *Server) Close(ctx context.Context) error {
 	return s.shutdown(ctx, false)
 }
 
-// End is Close preceded by ending every room. The Client uses it, because its
+// End is Close preceded by ending every room. The Local App uses it, because its
 // authority dies with the process.
 func (s *Server) End(ctx context.Context) error {
 	return s.shutdown(ctx, true)
 }
 
-// shutdown is memoised exactly as the TS shutdownOperation was: the second
-// caller joins the first and gets its result, whichever entry point it used.
+// Every shutdown caller joins the first operation and receives the same result.
 func (s *Server) shutdown(ctx context.Context, endRooms bool) error {
 	s.shutdownOnce.Do(func() { s.shutdownErr = s.runShutdown(ctx, endRooms) })
 	return s.shutdownErr
@@ -398,9 +390,8 @@ func (s *Server) runShutdown(ctx context.Context, endRooms bool) error {
 	return nil
 }
 
-// endAllRooms is the TS `signaling ? signaling.endAllRooms() :
-// roomStore.abandonAllRooms()`: without a signaling server nobody is connected,
-// so the store can be closed down directly.
+// Without signaling no participant is connected, so room authority can be
+// retired directly; otherwise signaling owns participant and media teardown.
 func (s *Server) endAllRooms(signaling *signal.Server) error {
 	if signaling != nil {
 		return signaling.EndAllRooms()

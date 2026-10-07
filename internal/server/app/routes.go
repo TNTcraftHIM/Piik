@@ -48,8 +48,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	}
 	signaling := s.signaling.Load()
 	if isUpgradeRequest(request) {
-		// Node routed every upgrade to the SignalingServer's "upgrade"
-		// listener, which was attached only while traffic was accepted.
+		// Signaling owns every upgrade, including rejection of invalid paths.
 		signaling.ServeHTTP(recorder, request)
 		return
 	}
@@ -122,8 +121,7 @@ func (s *Server) route(
 	notFoundJSON(writer, request)
 }
 
-// notFoundJSON is the fallthrough app.ts handed to sirv as its next()
-// callback and used when no frontend is composed at all.
+// notFoundJSON handles missing assets and requests without a composed frontend.
 func notFoundJSON(writer http.ResponseWriter, _ *http.Request) {
 	sendJSON(writer, http.StatusNotFound, errorBody{"Not found"})
 }
@@ -145,7 +143,7 @@ func allowMethod(writer http.ResponseWriter, request *http.Request, allowed stri
 	return false
 }
 
-// handleSiteAccess is handleSiteAccessRequest of app.ts.
+// handleSiteAccess reports or grants site access without claiming room authority.
 func (s *Server) handleSiteAccess(writer http.ResponseWriter, request *http.Request) {
 	noStoreJSON(writer)
 	access := s.siteAccessForRequest(request)
@@ -156,8 +154,7 @@ func (s *Server) handleSiteAccess(writer http.ResponseWriter, request *http.Requ
 			Authenticated: access.isAuthenticated(cookieHeader(request)),
 		}
 		if status.Required && status.Authenticated {
-			// The Set-Cookie value is written verbatim, in the TS attribute
-			// order.
+			// Authenticated visits renew the site's idle access lifetime.
 			writer.Header().Set("Set-Cookie", access.createCookie())
 		}
 		sendJSON(writer, http.StatusOK, status)
@@ -312,13 +309,8 @@ func (s *Server) handleRoomCreation(
 		sendJSON(writer, http.StatusBadRequest, errorBody{"Invalid room request"})
 		return
 	}
-	// TS called roomStore.createRoom directly; the store is now guarded by the
-	// signaling server's global mutex, so creation goes through it. There is
-	// no `signaling == nil` answer here, because app.ts had no getSignaling()
-	// check on this route: reconcile stores the signaling server before it
-	// sets acceptingTraffic and never clears it again, so reaching a handler
-	// at all means the pointer is set (the two sibling room routes keep their
-	// 503 only because the TypeScript had one).
+	// Signaling owns room mutations. Startup publishes it before accepting
+	// traffic, and shutdown retains the pointer for requests already admitted.
 	created, err := signaling.CreateRoom(
 		parsed.CodeEntryPolicy,
 		parsed.RoomPassword.Value,
@@ -335,8 +327,8 @@ func (s *Server) handleRoomCreation(
 	sendJSON(writer, http.StatusCreated, s.createRoomResponse(created))
 }
 
-// authorizedRoomHostToken of app.ts: origin, then site access, then the bearer
-// Host token, each with its own terminal response.
+// authorizedRoomHostToken checks origin, site access and the bearer Host token
+// in that order, each with its own terminal response.
 func (s *Server) authorizedRoomHostToken(
 	writer http.ResponseWriter,
 	request *http.Request,
@@ -424,8 +416,7 @@ func roomErrorCode(err error) room.ErrorCode {
 	return ""
 }
 
-// replacementFailure maps replaceRoom errors; an unmapped error rethrows into
-// the 500 handler, as the TS `throw error` did.
+// replacementFailure maps room replacement errors; unmapped errors reach the 500 handler.
 func replacementFailure(err error) (int, string, bool) {
 	switch roomErrorCode(err) {
 	case room.CodeRoomLimit:
@@ -439,7 +430,7 @@ func replacementFailure(err error) (int, string, bool) {
 }
 
 // accessFailure maps updateRoomAccess errors. Unlike the other two tables,
-// every remaining RoomStoreError is a 404; only a non-store error rethrows.
+// every remaining RoomStoreError is a 404; non-store errors reach the 500 handler.
 func accessFailure(err error) (int, string, bool) {
 	switch code := roomErrorCode(err); code {
 	case "":
