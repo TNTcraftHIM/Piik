@@ -35,7 +35,7 @@ type siteAccessBody struct {
 func sendJSON(writer http.ResponseWriter, status int, body any) {
 	var buffer bytes.Buffer
 	encoder := json.NewEncoder(&buffer)
-	// JSON.stringify does not escape HTML either.
+	// Responses have a JSON content type and are never embedded into HTML.
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(body); err != nil {
 		panic(err)
@@ -75,21 +75,13 @@ func hasRequestBody(request *http.Request) bool {
 	return len(request.TransferEncoding) > 0 || request.ContentLength != 0
 }
 
-// requestPath is the WHATWG `url.pathname` app.ts routed and logged on. It is
-// the escaped path on purpose: `new URL()` does not percent-decode, so
-// "/api%2frooms" must not reach the /api/rooms route.
-//
-// Deviation: `new URL()` also resolves "." and ".." segments, which net/http
-// leaves in the path. "/x/../api/rooms" therefore reaches the frontend handler
-// here where TypeScript routed it to room creation. Only stricter: a raw path
-// that already names a route still matches, so nothing can slip past an origin,
-// cookie or token check that way.
+// requestPath matches API routes without decoding separators or normalizing
+// dot segments: "/api%2frooms" and "/x/../api/rooms" cannot alias /api/rooms.
 func requestPath(request *http.Request) string {
 	return request.URL.EscapedPath()
 }
 
-// cookieHeader rebuilds the single Cookie header value the Node parser handed
-// to access-session.ts; Go keeps repeated Cookie headers apart.
+// cookieHeader joins repeated Cookie headers before the shared cookie reader.
 func cookieHeader(request *http.Request) string {
 	return strings.Join(request.Header.Values("Cookie"), "; ")
 }
@@ -104,10 +96,8 @@ func bearerToken(request *http.Request) string {
 	return strings.TrimPrefix(authorization, "Bearer ")
 }
 
-// isUpgradeRequest reproduces the condition under which Node emitted "upgrade"
-// instead of "request": the parser needs both a Connection: upgrade token and
-// an Upgrade header. The SignalingServer, not this router, owns the rejection
-// ladder for a path or query that is not exactly /signal.
+// Upgrades require both a Connection: upgrade token and an Upgrade header.
+// Signaling owns validation of the exact /signal path, query and admission.
 func isUpgradeRequest(request *http.Request) bool {
 	if request.Header.Get("Upgrade") == "" {
 		return false
@@ -120,8 +110,8 @@ func isUpgradeRequest(request *http.Request) bool {
 	return false
 }
 
-// responseRecorder tracks response.headersSent so the recover wrapper can pick
-// between the JSON 500 and destroying the connection, as app.ts did.
+// responseRecorder lets panic recovery send JSON only before a response starts;
+// a partial response must instead abort the connection.
 type responseRecorder struct {
 	http.ResponseWriter
 	wrote bool

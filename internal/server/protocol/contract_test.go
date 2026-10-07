@@ -159,6 +159,26 @@ func assertServerMessage(t *testing.T, name string, data []byte, want bool) {
 	})
 }
 
+func TestFutureReactionEventsKeepPayloadAndAuthorityBounds(t *testing.T) {
+	for _, payload := range []string{
+		`{"kind":"reaction","reaction":""}`,
+		`{"kind":"reaction","reaction":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
+		`{"kind":"reaction","reaction":"future effect"}`,
+		`{"kind":"reaction","reaction":"👋"}`,
+		`{"kind":"reaction","reaction":"future-effect","targetPeerId":"bad"}`,
+		`{"kind":"reaction","reaction":"future-effect","text":"hidden command"}`,
+		`{"kind":"reaction","reaction":"tomato"}`,
+		`{"kind":"future-kind","reaction":"wave"}`,
+	} {
+		raw := `{"type":"room-interaction","id":"event_future_1234","requestId":"request_future_1234","occurredAt":1,` +
+			`"sender":{"peerId":"sender_peer_1234","role":"viewer","displayName":"Friend"},"payload":` + payload + `}`
+		assertServerMessage(t, payload, []byte(raw), false)
+	}
+	assertServerMessage(t, "future reaction with invalid sender", []byte(
+		`{"type":"room-interaction","id":"event_future_1234","requestId":"request_future_1234","occurredAt":1,`+
+			`"sender":{"peerId":"bad","role":"viewer","displayName":"Friend"},"payload":{"kind":"reaction","reaction":"future-effect"}}`), false)
+}
+
 func assertClientMessage(t *testing.T, name string, data []byte, want bool) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {

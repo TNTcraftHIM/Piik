@@ -357,6 +357,40 @@ that result nor the allocation timings establish the reported system-wide lag's
 cause. Retain the existing implementation; reopen optimization from a matched
 bottleneck.
 
+### Virtual-Display Acceptance Limit
+
+On 2026-10-07, the local Native H.264 SFU gate initially passed its two-room
+check, then missed its unchanged 300-frame/30-second requirement. The repeat
+environment exposed only a GameViewer virtual display. Current main reproduced
+the failure with its own App and capture binary: video/audio arrived, but video
+was roughly 4–7 fps without receiver loss or decode drops. A source-window draw
+counter advanced about 133 times per second; that counts drawing attempts, not
+Windows capture delivery.
+
+Temporary capture instrumentation observed about 3–4 WGC frame-arrival events
+per second. Queue draining was bounded in the observation, conversion/submission
+took less than a millisecond, and encoder diagnostics showed small encode times
+without CPU/quality adaptation. Bringing the source window forward did not
+restore cadence. A capture-only control, without the App or SFU, also delivered
+about 3.9 fps from both Chrome and a separate animated Windows Forms window.
+A separate minimal WGC program, using only Windows APIs and no Piik code,
+reproduced about 3.8 fps while that Forms window painted about 32 fps.
+Default, 4 ms and 1 ms capture intervals returned the same rate, including with
+the source kept topmost; property readback confirmed each requested interval.
+This localizes the limit to platform capture delivery in this environment but
+does not establish the virtual driver's cause or diagnose a field report.
+No capture scheduling, encoder policy or gate threshold was changed.
+
+Later on the same day, Windows reported an active physical AOC display. The
+unchanged Windows-API-only probe delivered about 32 fps, matching its GDI source,
+at the default, 4 ms and 1 ms intervals. The candidate's Native H.264 two-room
+SFU gate then passed the original 300-frame/30-second requirement, live profile
+change, decoded audio, subscription recovery and retirement. Stopping the first
+room preserved another 30 decoded frames and continuing audio in the second;
+all owned processes, profiles and ports were released. This closes that local
+throughput acceptance gap. It does not isolate the virtual driver's cause or
+establish physical HDR, game-load or other-device performance.
+
 ## Native H.264 Motion Quality
 
 Issue [#432](https://github.com/TNTcraftHIM/Piik/issues/432) reports more visible
@@ -533,6 +567,16 @@ resolution/codec additions compatible minor releases. 4K itself does not
 inherently require a major; breaking an existing public contract does. Evaluate
 the Browser/App/Server and mixed-peer flows before freezing a replacement
 contract; avoid a general compatibility framework.
+
+The 2026-10-07 candidate review does not recommend adding these extensions to
+the current release. A 4K path must change the three platform capture/decoder
+bounds, encoded-frame limits and SFU admission together; Windows H.264's current
+level ceiling also does not cover 4K60. The existing Main/High comparison shows
+a modest synthetic quality gain, but Firefox's receiver gap prevents treating
+it as a transparent upgrade. Keep the current formats and limits until a
+specific use case justifies that coordinated change. This is a scope
+recommendation, not a claim that 4K is impossible or that the current geometry
+should become a permanent protocol rule.
 
 ## Implementation Boundary
 

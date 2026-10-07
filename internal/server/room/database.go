@@ -89,9 +89,6 @@ type Database struct {
 	path string
 	db   *sql.DB
 	conn *sql.Conn
-	// inTransaction reproduces DatabaseSync.isTransaction, which the driver
-	// does not expose; the ROLLBACK guard depends on it.
-	inTransaction bool
 }
 
 // NewDatabase is the RoomDatabase constructor.
@@ -141,16 +138,16 @@ func (d *Database) Initialize() (restored []StoredRoomAuthority, err error) {
 	if lockingMode != "exclusive" {
 		return nil, errors.New("Room database could not acquire exclusive locking mode")
 	}
-	if err = d.begin("BEGIN EXCLUSIVE"); err != nil {
+	if _, err = d.exec("BEGIN EXCLUSIVE"); err != nil {
 		return nil, err
 	}
 	restored, err = d.recover()
 	if err != nil {
-		d.rollbackIfNeeded()
+		d.rollback()
 		return nil, err
 	}
-	if err = d.finish("COMMIT"); err != nil {
-		d.rollbackIfNeeded()
+	if _, err = d.exec("COMMIT"); err != nil {
+		d.rollback()
 		return nil, err
 	}
 	return restored, nil
@@ -173,7 +170,7 @@ func (d *Database) recover() ([]StoredRoomAuthority, error) {
 	return d.readStoredRooms()
 }
 
-// InsertRoom is insertRoom.
+// InsertRoom persists one validated authority record atomically.
 func (d *Database) InsertRoom(room StoredRoomAuthority) error {
 	if err := assertStoredRoom(room); err != nil {
 		return err
@@ -193,7 +190,7 @@ func (d *Database) InsertRoom(room StoredRoomAuthority) error {
 	})
 }
 
-// SetViewerPassword is setViewerPassword; nil material clears the password.
+// SetViewerPassword updates the exact Host's room; nil material clears the password.
 func (d *Database) SetViewerPassword(
 	roomID string, hostTokenDigest, viewerPasswordMaterial []byte,
 ) error {
@@ -216,7 +213,7 @@ func (d *Database) SetViewerPassword(
 	})
 }
 
-// SetCodeEntryPolicy is setCodeEntryPolicy.
+// SetCodeEntryPolicy persists code admission for the exact Host's room.
 func (d *Database) SetCodeEntryPolicy(
 	roomID string, hostTokenDigest []byte, codeEntryPolicy protocol.CodeEntryPolicy,
 ) error {
@@ -239,7 +236,7 @@ func (d *Database) SetCodeEntryPolicy(
 	})
 }
 
-// SetViewerGrant is setViewerGrant.
+// SetViewerGrant atomically replaces the grant digest and authorization generation.
 func (d *Database) SetViewerGrant(
 	roomID string, hostTokenDigest, viewerGrantDigest []byte,
 	viewerAuthorizationGeneration string,
@@ -330,7 +327,7 @@ func (d *Database) Close() error {
 
 func (d *Database) closeHandles() error {
 	conn, db := d.conn, d.db
-	d.conn, d.db, d.inTransaction = nil, nil, false
+	d.conn, d.db = nil, nil
 	var connError error
 	if conn != nil {
 		connError = conn.Close()
@@ -531,42 +528,25 @@ func (d *Database) transaction(operation func() error) error {
 	if d.conn == nil {
 		return errors.New("Room database is not initialized")
 	}
-	if err := d.begin("BEGIN IMMEDIATE"); err != nil {
+	if _, err := d.exec("BEGIN IMMEDIATE"); err != nil {
 		return err
 	}
 	if err := operation(); err != nil {
-		d.rollbackIfNeeded()
+		d.rollback()
 		return err
 	}
-	if err := d.finish("COMMIT"); err != nil {
-		d.rollbackIfNeeded()
+	if _, err := d.exec("COMMIT"); err != nil {
+		d.rollback()
 		return err
 	}
 	return nil
 }
 
-func (d *Database) begin(statement string) error {
-	if _, err := d.conn.ExecContext(context.Background(), statement); err != nil {
-		return err
-	}
-	d.inTransaction = true
-	return nil
-}
-
-func (d *Database) finish(statement string) error {
-	if _, err := d.conn.ExecContext(context.Background(), statement); err != nil {
-		return err
-	}
-	d.inTransaction = false
-	return nil
-}
-
-// rollbackIfNeeded is `if (database.isTransaction) database.exec("ROLLBACK")`:
-// a ROLLBACK with no active transaction is itself an error.
-func (d *Database) rollbackIfNeeded() {
-	if d.inTransaction {
-		_ = d.finish("ROLLBACK")
-	}
+// SQLite may already have rolled back after an I/O or capacity error. An
+// explicit rollback is harmless then; SQLite, not a Go mirror, owns that state.
+// Preserve the original failure rather than replacing it with "no transaction".
+func (d *Database) rollback() {
+	_, _ = d.exec("ROLLBACK")
 }
 
 func (d *Database) exec(query string, args ...any) (int64, error) {

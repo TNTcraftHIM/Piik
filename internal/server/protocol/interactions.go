@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -10,6 +11,8 @@ import (
 
 const MaxChatCodePoints = 280
 const InteractionIntervalMs = 800
+
+var reactionIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
 type InteractionPayload struct {
 	Kind         string `json:"kind"`
@@ -44,7 +47,8 @@ func (payload *InteractionPayload) UnmarshalJSON(data []byte) error {
 		if err = fields.optional("targetPeerId"); err != nil {
 			return err
 		}
-		if fields.has("text") || (fields.has("targetPeerId") && !ValidOpaqueID(value.TargetPeerID)) {
+		if fields.has("text") || !reactionIDPattern.MatchString(value.Reaction) ||
+			(fields.has("targetPeerId") && !ValidOpaqueID(value.TargetPeerID)) {
 			return errors.New("invalid reaction payload")
 		}
 		switch value.Reaction {
@@ -52,9 +56,6 @@ func (payload *InteractionPayload) UnmarshalJSON(data []byte) error {
 			if !ValidOpaqueID(value.TargetPeerID) {
 				return errors.New("throwing a prop requires a participant")
 			}
-		case "wave", "heart", "clap", "laugh", "wow", "party", "fire", "eyes", "star", "sleep":
-		default:
-			return errors.New("unknown reaction")
 		}
 	default:
 		return errors.New("unknown interaction kind")
@@ -92,6 +93,15 @@ func decodeSendRoomInteraction(data []byte) (ClientMessage, error) {
 	}
 	if !ValidOpaqueID(message.RequestID) {
 		return nil, errors.New("invalid interaction requestId")
+	}
+	// Only received presentation events are extensible. An unregistered command
+	// must never acquire meaning merely because its identifier is well-formed.
+	if message.Payload.Kind == "reaction" {
+		switch message.Payload.Reaction {
+		case "wave", "heart", "clap", "laugh", "wow", "party", "fire", "eyes", "star", "sleep", "tomato", "poop":
+		default:
+			return nil, errors.New("unknown reaction")
+		}
 	}
 	return message, nil
 }

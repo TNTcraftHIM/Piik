@@ -31,7 +31,7 @@ const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "go-check");
 export const SOURCE_TITLE = "Piik Native Gate Source";
 
-type GateMode = "local" | "cross-nat" | "one-link";
+type GateMode = "local" | "one-link";
 type VideoCodec = "h264" | "vp8";
 
 const CODEC_PROBE = `(() => {
@@ -92,7 +92,6 @@ interface GateResult {
   remoteRemoteCandidateType: string;
   remoteNatPath: boolean;
   remotePeerExited: boolean | null;
-  reverseSignalTunnelClosed: boolean | null;
   sourceFailureEndedShare: boolean | null;
   replacementViewerConnected: boolean | null;
   replacementViewerFrames: number | null;
@@ -110,7 +109,6 @@ interface RemoteGateOptions {
   host: string;
   user: string;
   key: string;
-  signalPort: number;
   bindAddress: string | null;
 }
 
@@ -273,18 +271,15 @@ function remoteOptions(): RemoteGateOptions {
   const host = process.env.PIIK_REMOTE_HOST?.trim();
   const user = process.env.PIIK_REMOTE_USER?.trim() || "root";
   const key = process.env.PIIK_REMOTE_SSH_KEY?.trim();
-  const signalPortText = process.env.PIIK_REMOTE_SIGNAL_PORT?.trim() || "49721";
-  const signalPort = Number(signalPortText);
-  if (!host || !key || !Number.isInteger(signalPort) || signalPort < 1024 || signalPort > 65_535) {
+  if (!host || !key) {
     throw new Error(
-      "PIIK_REMOTE_HOST, PIIK_REMOTE_SSH_KEY, and a valid PIIK_REMOTE_SIGNAL_PORT are required",
+      "PIIK_REMOTE_HOST and PIIK_REMOTE_SSH_KEY are required",
     );
   }
   return {
     host,
     user,
     key,
-    signalPort,
     bindAddress: process.env.PIIK_REMOTE_BIND_ADDRESS?.trim() || null,
   };
 }
@@ -574,16 +569,8 @@ async function main(): Promise<void> {
   if (process.env.PIIK_CLIENT_NATIVE_HOST_GATE !== "true") {
     throw new Error("PIIK_CLIENT_NATIVE_HOST_GATE=true is required");
   }
-  const crossNat = process.env.PIIK_CLIENT_CROSS_NAT_GATE === "true";
   const linkMedia = process.env.PIIK_CLIENT_LINK_MEDIA_GATE === "true";
-  if (crossNat && linkMedia) {
-    throw new Error("Cross-NAT and one-link gate modes are mutually exclusive");
-  }
-  const mode: GateMode = linkMedia ? "one-link" : crossNat ? "cross-nat" : "local";
-  const gateStunUrls = process.env.PIIK_CLIENT_GATE_STUN_URLS?.trim();
-  if (mode === "cross-nat" && !gateStunUrls) {
-    throw new Error("PIIK_CLIENT_GATE_STUN_URLS is required for the cross-NAT gate");
-  }
+  const mode: GateMode = linkMedia ? "one-link" : "local";
   const crashGate =
     process.env.PIIK_CLIENT_NATIVE_HOST_CRASH_GATE === "true";
   if (crashGate && mode !== "local") {
@@ -597,7 +584,7 @@ async function main(): Promise<void> {
   if (requestedCodec !== "auto" && requestedCodec !== "h264" && requestedCodec !== "vp8") {
     throw new Error("PIIK_CLIENT_NATIVE_HOST_CODEC must be auto, h264, or vp8");
   }
-  const remote = mode === "cross-nat" || mode === "one-link" &&
+  const remote = mode === "one-link" &&
     Boolean(process.env.PIIK_REMOTE_HOST?.trim() || process.env.PIIK_REMOTE_SSH_KEY?.trim())
       ? remoteOptions() : null;
   const chromePath = process.env.CHROME_PATH?.trim();
@@ -627,7 +614,6 @@ async function main(): Promise<void> {
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null;
   let nativePort = 0;
-  let remoteTunnel: ChildProcess | null = null;
   let stage = "setup";
   const result: GateResult = {
     passed: false,
@@ -656,7 +642,6 @@ async function main(): Promise<void> {
     remoteRemoteCandidateType: "",
     remoteNatPath: false,
     remotePeerExited: null,
-    reverseSignalTunnelClosed: mode === "cross-nat" ? false : null,
     sourceFailureEndedShare: mode === "local" ? false : null,
     replacementViewerConnected: mode === "local" ? false : null,
     replacementViewerFrames: mode === "local" ? 0 : null,
@@ -727,37 +712,12 @@ async function main(): Promise<void> {
         ...process.env,
         PIIK_DEBUG: "",
         PIIK_CLIENT_GATE_NO_BROWSER: "true",
-        // STUN_URLS reaches only the App's own Pion edge: the in-process
-        // room server never reads it, so the cross-NAT arm stays isolated.
-        ...(mode === "cross-nat" && gateStunUrls
-          ? { STUN_URLS: gateStunUrls }
-          : {}),
       },
     });
     app.stderr.resume();
     stage = "app-ready";
     const appInfo = await readAppEndpoint(app, mode === "one-link");
     nativePort = appInfo.endpoint.port;
-    if (mode === "cross-nat" && remote) {
-      stage = "signaling-tunnel";
-      const tunnel = spawn(
-        process.env.PIIK_SSH?.trim() || "ssh",
-        [
-          "-N", "-T",
-          ...remoteTransportOptions(remote),
-          "-o", "ExitOnForwardFailure=yes",
-          "-R", `127.0.0.1:${remote.signalPort}:127.0.0.1:${appPort}`,
-          `${remote.user}@${remote.host}`,
-        ],
-        { stdio: "ignore", windowsHide: true },
-      );
-      remoteTunnel = tunnel;
-      tunnel.on("error", () => undefined);
-      await new Promise((resolveTunnel) => setTimeout(resolveTunnel, 300));
-      if (tunnel.exitCode !== null) {
-        throw new Error("signaling tunnel could not start");
-      }
-    }
     stage = "local-server-ready";
     await waitForValue(
       async () => {
@@ -893,19 +853,14 @@ async function main(): Promise<void> {
     }
     if (remote) {
       stage = "remote-viewer";
-      const signalUrl = mode === "one-link"
-        ? new URL("/signal", appInfo.publicOrigin!).toString().replace(/^http/, "ws")
-        : `ws://127.0.0.1:${remote.signalPort}/signal`;
-      const signalOrigin = mode === "one-link"
-        ? appInfo.publicOrigin!
-        : `http://localhost:${appPort}`;
+      const signalUrl = new URL("/signal", appInfo.publicOrigin!).toString().replace(/^http/, "ws");
       const remoteResult = await runRemotePeerGate(
         remoteBinary,
         remote,
         signalUrl,
         roomMatch[1],
         viewerGrant,
-        signalOrigin,
+        appInfo.publicOrigin!,
       );
       result.remoteViewerConnected = remoteResult.passed;
       result.remoteViewerPackets = remoteResult.packets;
@@ -1467,9 +1422,6 @@ async function main(): Promise<void> {
     result.error = error instanceof Error ? error.message : String(error);
     result.stage = stage;
   } finally {
-    if (remoteTunnel) {
-      result.reverseSignalTunnelClosed = await stopChild(remoteTunnel);
-    }
     if (sourceChrome && sourceCdp) {
       await closeSourceBrowser(sourceChrome, sourceCdp);
       sourceChrome = null;
@@ -1505,8 +1457,7 @@ async function main(): Promise<void> {
     result.hostInvite &&
     (remote
       ? result.remoteViewerConnected && result.remoteViewerPackets >= 30 &&
-        result.remoteNatPath && result.remotePeerExited === true &&
-        (mode !== "cross-nat" || result.reverseSignalTunnelClosed === true)
+        result.remoteNatPath && result.remotePeerExited === true
       : mode === "one-link"
         ? result.publicViewerPage && result.publicViewerSignal && result.viewerConnected &&
           result.viewerFrames >= 30 && result.viewerWidth === 1920 && result.viewerHeight === 1080 && result.codecPreserved

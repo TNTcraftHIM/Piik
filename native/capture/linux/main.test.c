@@ -62,8 +62,15 @@ static void check_encoder_admission_and_control(void) {
   gst_object_unref(encoder);
 }
 
+static gboolean capture_failure_timeout(gpointer data) {
+  (void)data;
+  g_error("capture failure was lost before the main loop started");
+  return G_SOURCE_REMOVE;
+}
+
 static void check_bus_error_retains_primary_cause(void) {
-  CaptureRun run = {.loop = g_main_loop_new(NULL, FALSE), .output_count = 1};
+  CaptureRun run = {.loop = g_main_loop_new(NULL, FALSE), .output_count = 1,
+                    .pipeline = gst_pipeline_new(NULL)};
   g_mutex_init(&run.lock);
   run.outputs[0].run = &run;
   run.outputs[0].encoder = gst_element_factory_make("identity", NULL);
@@ -85,9 +92,19 @@ static void check_bus_error_retains_primary_cause(void) {
   unlink(frame_path);
   g_free(frame_path);
   g_assert_cmpstr(run.failure, ==, error->message);
+  // Startup callbacks can fail before the bus watch/main loop is running.
+  // The recorded failure must still retire the pipeline once dispatch starts.
+  GstBus *bus = gst_element_get_bus(run.pipeline);
+  guint watch = gst_bus_add_watch(bus, bus_message, &run);
+  guint timeout = g_timeout_add(500, capture_failure_timeout, NULL);
+  g_main_loop_run(run.loop);
+  g_source_remove(timeout);
+  g_source_remove(watch);
+  gst_object_unref(bus);
   gst_message_unref(message);
   g_error_free(error);
   gst_object_unref(run.outputs[0].encoder);
+  gst_object_unref(run.pipeline);
   g_free(run.failure);
   g_main_loop_unref(run.loop);
   g_mutex_clear(&run.lock);

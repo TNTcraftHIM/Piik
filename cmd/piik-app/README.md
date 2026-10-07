@@ -59,8 +59,8 @@ An App-opened Site remembers native activation, so later pages there may reuse
 the running App. Browser capture remains available without the App; see the
 [entry workflow](../../docs/standards/presentation-lifecycle.md#product-surface).
 
-The Host page offers Browser capture and available native windows or screens;
-select the source explicitly. Windows native capture offers VP8/Auto/H264;
+The Host page offers Browser and Camera capture alongside available native
+windows or screens; select the source explicitly. Windows native capture offers VP8/Auto/H264;
 Auto chooses one codec for the share. macOS and Linux native capture require
 hardware H264. Source and audio support vary by platform; their setup is covered
 in the [Windows](../../native/capture/windows/README.md),
@@ -259,16 +259,6 @@ PIIK_GO=/path/to/go \
 npm run gate:app-native-host
 
 PIIK_CLIENT_NATIVE_HOST_GATE=true \
-PIIK_CLIENT_CROSS_NAT_GATE=true \
-CHROME_PATH=/path/to/chrome \
-PIIK_GO=/path/to/go \
-PIIK_REMOTE_HOST=<public-test-host> \
-PIIK_REMOTE_USER=<ssh-user> \
-PIIK_REMOTE_SSH_KEY=/path/to/key \
-PIIK_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
-npm run gate:app-native-host
-
-PIIK_CLIENT_NATIVE_HOST_GATE=true \
 PIIK_CLIENT_LINK_MEDIA_GATE=true \
 CHROME_PATH=/path/to/chrome \
 PIIK_GO=/path/to/go \
@@ -291,11 +281,12 @@ The Windows media gate proves one hardware-H.264
 capture generation, shared Pion source, Browser decode, PLI recovery, and STUN
 candidate gathering. The native Host gate proves room creation and native video
 delivery through the current route; native audio is included when the capability
-probe and target OS support it. The cross-NAT variant uses a temporary reverse
-SSH path for signaling only and requires a selected `srflx` or `prflx` media pair;
-media never travels through SSH. The one-link media variant instead carries the
-same signaling through the App's temporary public origin and requires direct
-media delivery to an independent Linux peer. Native P2P quality evidence and
-embedded SFU delivery have explicit gates. macOS and Linux capture still
+probe and target OS support it. The one-link media variant carries signaling
+through the App's temporary public origin and requires direct video RTP delivery
+to an independent Linux peer, with a selected `srflx` or `prflx` candidate.
+SSH only runs the remote probe; media never travels through it. Without a remote
+host, this variant checks decoded media in a local Browser through the public
+invitation; that does not establish cross-network connectivity. Native P2P
+quality evidence and embedded SFU delivery have explicit gates. macOS and Linux capture still
 require physical desktop/media gates; CI compilation and package smoke do not
 substitute for them.

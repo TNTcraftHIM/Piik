@@ -14,9 +14,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/room"
 )
 
-// viewerKey is the TS `${roomId}:${peerId}` used by the grace timers and the
-// viewer quality evidence maps (viewerGraceKey and viewerConnectionKey were
-// the same expression).
+// viewerKey scopes grace timers and quality evidence to one room participant.
 func viewerKey(roomID, peerID string) string { return roomID + ":" + peerID }
 
 // sendViewerPresence lists the host entry first
@@ -158,9 +156,8 @@ func (s *Server) handleDisconnect(sess *session) {
 
 	s.sendViewerPresence(disconnected.RoomID)
 
-	// The viewer grace timer. The registered-pointer check stands in
-	// for clearTimeout; the store's removeDisconnectedViewer is the identity
-	// guard against a viewer that reconnected meanwhile.
+	// The registered pointer rejects stale grace callbacks; the store then
+	// guards against removing a Viewer that has already reconnected.
 	roomID, peerID := disconnected.RoomID, disconnected.PeerID
 	key := viewerKey(roomID, peerID)
 	timer := &graceTimer{}

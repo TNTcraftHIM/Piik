@@ -68,6 +68,7 @@ type incoming struct {
 	Revision     int    `json:"revision"`
 	ConnectionID string `json:"connectionId"`
 	Phase        string `json:"phase"`
+	State        string `json:"state"`
 	Candidate    struct {
 		ConnectionID string `json:"connectionId"`
 	} `json:"candidate"`
@@ -316,7 +317,7 @@ func run(ctx context.Context, config gateConfig) gateResult {
 					return gateResult{Error: "receiver signaling failed"}
 				}
 			case "route-status":
-				if message.Phase == "failed" {
+				if message.State == "failed" {
 					return gateResult{Error: "route assignment failed"}
 				}
 			}
@@ -384,9 +385,13 @@ func (receiver *receiver) createPeer(raw []wireICEServer) error {
 	pc.OnTrack(func(track *webrtc.TrackRemote, rtpReceiver *webrtc.RTPReceiver) {
 		receiver.recordSelectedPair(rtpReceiver)
 		for {
-			_, _, readErr := track.ReadRTP()
+			packet, _, readErr := track.ReadRTP()
 			if readErr != nil {
 				return
+			}
+			// Audio or padding alone cannot prove video delivery.
+			if track.Kind() != webrtc.RTPCodecTypeVideo || len(packet.Payload) == 0 {
+				continue
 			}
 			receiver.packetMu.Lock()
 			receiver.packets++

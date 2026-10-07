@@ -27,7 +27,6 @@ const PROFILE_SETTINGS = QUALITY_PROFILES;
 type ProfileId = QualityProfileId;
 type PageRole = "host" | "viewer";
 type BenchmarkCodecMode = "vp8" | "auto" | "h264";
-type BenchmarkCanaryMode = "none" | "viewer-mbb";
 
 const ROUTE_TIMING_KEYS = [
   "queueWaitMs",
@@ -54,14 +53,6 @@ type BenchmarkRouteTimingSummary = Record<
   RouteTimingDistribution
 >;
 
-interface ViewerMbbCanaryResult {
-  kind: "viewer-mbb";
-  status: "passed" | "failed";
-  assertions: Record<string, boolean>;
-  counters: Record<string, number>;
-  failureCode?: "topology-unavailable" | "probe-unavailable";
-}
-
 interface BenchmarkConfig {
   chromePath: string;
   viewerCounts: number[];
@@ -78,7 +69,6 @@ interface BenchmarkConfig {
   headless: boolean;
   noSandbox: boolean;
   qualityControlSmoke: boolean;
-  canaryMode: BenchmarkCanaryMode;
 }
 
 interface ExternalServerTarget {
@@ -567,12 +557,6 @@ function parseBoolean(value: string | undefined, fallback: boolean, name: string
   throw new Error(`${name} must be true, false, 1, or 0`);
 }
 
-function parseBenchmarkCanaryMode(value: string | undefined): BenchmarkCanaryMode {
-  const mode = value?.trim() || "none";
-  if (mode === "none" || mode === "viewer-mbb") return mode;
-  throw new Error("BENCHMARK_CANARY must be none or viewer-mbb");
-}
-
 function parseBenchmarkCodecMode(
   value: string | undefined,
 ): BenchmarkCodecMode {
@@ -619,11 +603,8 @@ function parseBenchmarkConfig(
       "BENCHMARK_QUALITY_SMOKE requires a selected viewer count of at least 3",
     );
   }
-  const canaryMode = parseBenchmarkCanaryMode(environment.BENCHMARK_CANARY);
-  if (canaryMode === "viewer-mbb" && !viewerCounts.includes(3)) {
-    throw new Error(
-      "BENCHMARK_CANARY=viewer-mbb requires a selected viewer count of 3",
-    );
+  if (environment.BENCHMARK_CANARY && environment.BENCHMARK_CANARY !== "none") {
+    throw new Error("BENCHMARK_CANARY is obsolete; this gate covers topology and relay-loss recovery");
   }
   const recoveryText = environment.BENCHMARK_RECOVERY_VIEWERS?.trim();
   const recoveryViewerCount = recoveryText ? Number(recoveryText) : null;
@@ -671,7 +652,8 @@ function parseBenchmarkConfig(
     connectionTimeoutMs:
       parseNumber(
         environment.BENCHMARK_CONNECTION_TIMEOUT_SECONDS,
-        20,
+        // Includes the whole burst's queue: the room admits one child at a time.
+        90,
         "BENCHMARK_CONNECTION_TIMEOUT_SECONDS",
         3,
         120,
@@ -697,7 +679,6 @@ function parseBenchmarkConfig(
       "BENCHMARK_CHROME_NO_SANDBOX",
     ),
     qualityControlSmoke,
-    canaryMode,
   };
 }
 
@@ -1677,12 +1658,18 @@ function buildBenchmarkInitScript(options: {
   height: number;
   frameRate: number;
   expectedEndpointCap: number;
+  qualityControlSmoke?: boolean;
 }): string {
   const serialized = JSON.stringify(options);
   return `(() => {
     if (globalThis.__PIIK_BENCHMARK__) return;
     const options = ${serialized};
     const expectedRoleCap = options.expectedEndpointCap;
+    // The parameter-readback arm exercises ordinary senders. Pool producers
+    // and their independent transport clocks have separate probe coverage.
+    if (options.qualityControlSmoke) {
+      Object.defineProperty(RTCRtpSender.prototype, "createEncodedStreams", { value: undefined, configurable: true });
+    }
     if (options.clearHostRoom) {
       try { localStorage.removeItem("piik:host-room:v1"); } catch {}
     }
@@ -1714,7 +1701,6 @@ function buildBenchmarkInitScript(options: {
     let transitionRevision = -1;
     let transitionPhase = null;
     let plannedRouteAssignment = null;
-    const canary = { prepareUpdates: 0, activeUpdates: 0, routeFailed: 0 };
     const nativeSends = new WeakMap();
     const routeTimingKeys = ${JSON.stringify(ROUTE_TIMING_KEYS)};
     let routeDiagnosticRequested = false;
@@ -1806,8 +1792,6 @@ function buildBenchmarkInitScript(options: {
       transitionRevision = revision;
       transitionPhase = phase;
       plannedRouteAssignment = assignment;
-      if (phase === "prepare") canary.prepareUpdates += 1;
-      else canary.activeUpdates += 1;
       if (phase === "active") {
         state.routeRevision = revision;
         state.routeAssignment = cloneRouteAssignment(assignment);
@@ -1879,8 +1863,6 @@ function buildBenchmarkInitScript(options: {
         return;
       } else if (direction === "out" && message.type === "set-quality-settings") {
         state.qualitySettings = message.qualitySettings;
-      } else if (direction === "out" && message.type === "route-failed") {
-        canary.routeFailed += 1;
       }
       if (direction === "in" && message.type === "authenticated") {
         state.peerId = message.peerId;
@@ -1923,8 +1905,6 @@ function buildBenchmarkInitScript(options: {
         const nativeSend = socket.send;
         nativeSends.set(socket, nativeSend);
         socket.send = function(data) {
-          let parsed = null;
-          if (typeof data === "string") { try { parsed = JSON.parse(data); } catch {} }
           const result = nativeSend.call(socket, data);
           handleSignalMessage(data, "out", socket);
           return result;
@@ -1939,7 +1919,7 @@ function buildBenchmarkInitScript(options: {
       },
     });
 
-    function sendCanaryMessage(message) {
+    function sendDiagnosticMessage(message) {
       const socket = signalingSocket;
       const nativeSend = socket ? nativeSends.get(socket) : null;
       if (!socket || typeof nativeSend !== "function") return false;
@@ -1958,7 +1938,7 @@ function buildBenchmarkInitScript(options: {
         return false;
       }
       routeDiagnosticRequested = true;
-      if (sendCanaryMessage({ type: "request-route-diagnostic" })) {
+      if (sendDiagnosticMessage({ type: "request-route-diagnostic" })) {
         return true;
       }
       routeDiagnosticRequested = false;
@@ -2213,11 +2193,8 @@ function buildBenchmarkInitScript(options: {
       };
     }
 
-    function canarySnapshot() {
-      return { ...canary, connectionCount: connections.length, maxActiveOutboundMediaEdges: state.maxActiveOutboundMediaEdges };
-    }
     function senderDegradationPreferences() {
-      return connections.flatMap(({ connection }) => {
+      return networkConnections().flatMap(({ connection }) => {
         if (
           connection.connectionState === "closed" ||
           connection.connectionState === "failed"
@@ -2227,15 +2204,12 @@ function buildBenchmarkInitScript(options: {
           .map((sender) => sender.getParameters().degradationPreference ?? null);
       });
     }
-    function sendViewerQualityEvidence(message) {
-      return message?.type === "viewer-quality-evidence" && sendCanaryMessage(message);
-    }
     function markShareRequested() {
       state.shareRequestedAtEpochMs = Date.now();
     }
     Object.defineProperty(globalThis, "__PIIK_BENCHMARK__", {
       configurable: false,
-      value: { sample, progress, snapshot, canarySnapshot, senderDegradationPreferences, sendViewerQualityEvidence, markShareRequested, requestRouteDiagnosticSnapshot, routeDiagnosticTimingSamples, stop: () => clearInterval(videoObserver) },
+      value: { sample, progress, snapshot, senderDegradationPreferences, markShareRequested, requestRouteDiagnosticSnapshot, routeDiagnosticTimingSamples, stop: () => clearInterval(videoObserver) },
     });
   })();`;
 }
@@ -2563,17 +2537,18 @@ async function startHost(
     "host controls",
     signal,
   );
+  await evaluate(cdp, page, `(() => {
+    const settings = document.querySelector('button[aria-controls="host-advanced-door"]');
+    if (!(settings instanceof HTMLButtonElement)) throw new Error('Sharing settings button missing');
+    if (settings.getAttribute('aria-expanded') !== 'true') settings.click();
+  })()`);
+  await waitForPage(cdp, page, "document.querySelector('#host-advanced-door .lr-tiles button')",
+    5_000, "sharing settings", signal);
   if (codecMode !== "auto") {
-    await evaluate(
-      cdp,
-      page,
-      `(() => {
-        const advanced = document.querySelector('button[aria-controls="host-advanced-door"]');
-        if (!(advanced instanceof HTMLButtonElement)) throw new Error('Advanced settings button missing');
-        advanced.click();
-        return true;
-      })()`,
-    );
+    await evaluate(cdp, page, `(() => {
+      const technical = document.querySelector('#host-advanced-door details');
+      if (technical instanceof HTMLDetailsElement && !technical.open) technical.querySelector('summary')?.click();
+    })()`);
     await waitForPage(
       cdp,
       page,
@@ -2612,6 +2587,9 @@ async function startHost(
       return true;
     })()`,
   );
+  await waitForPage(cdp, page, "document.querySelector('.lr-source-option.is-browser')",
+    5_000, "Browser capture choice", signal);
+  await evaluate(cdp, page, "document.querySelector('.lr-source-option.is-browser').click()");
   await waitForPage(
     cdp,
     page,
@@ -2896,7 +2874,10 @@ async function runQualityControlSmoke(
           10_000,
           `${preference} sender parameter readback`,
           signal,
-        );
+        ).catch(async error => {
+          const values = await evaluate(cdp, page, "globalThis.__PIIK_BENCHMARK__.senderDegradationPreferences()");
+          throw new Error(`${errorMessage(error)}; expected ${expectedCount} sender(s), received ${JSON.stringify(values)}`);
+        });
         return evaluate<boolean>(cdp, page, `Boolean(${predicate})`);
       }),
     );
@@ -3207,123 +3188,6 @@ async function runRecovery(
   };
 }
 
-async function runViewerMbbCanary(
-  cdp: CdpConnection,
-  pages: PageHandle[],
-  signal: AbortSignal,
-): Promise<ViewerMbbCanaryResult> {
-  const failed = (failureCode: ViewerMbbCanaryResult["failureCode"]): ViewerMbbCanaryResult => ({
-    kind: "viewer-mbb", status: "failed", assertions: {}, counters: {}, failureCode,
-  });
-  let parentHandle: PageHandle | null = null;
-  try {
-    const observations = await Promise.all(pages.map((page) => progressSample(cdp, page)));
-    const byPeer = new Map(observations.flatMap((page) => page.peerId ? [[page.peerId, page] as const] : []));
-    const viewers = observations.filter((page) => page.role === "viewer");
-    const target = viewers.find((page) => {
-      const upstream = page.routeAssignment?.upstream;
-      const parent = upstream?.kind === "peer" ? byPeer.get(upstream.peerId) : null;
-      return page.routeRevision !== null && upstream?.kind === "peer" &&
-        parent?.role === "viewer" && page.routeAssignment?.childPeerIds.length === 0;
-    });
-    const candidate = viewers.find((page) => page !== target && page.peerId &&
-      page.routeAssignment?.childPeerIds.length === 0 && hasAuthoritativeMediaUpstream(page) &&
-      activeVideoEdgeCount(page, "send") === 0);
-    if (!target || !candidate || target.routeAssignment?.upstream.kind !== "peer") return failed("topology-unavailable");
-    const parent = byPeer.get(target.routeAssignment.upstream.peerId);
-    if (!parent) return failed("topology-unavailable");
-    const targetHandle = pages.find((page) => page.label === target.label);
-    parentHandle = pages.find((page) => page.label === parent.label) ?? null;
-    const candidateHandle = pages.find((page) => page.label === candidate.label);
-    const old = target.connections.find((connection) =>
-      connection.hasInboundVideo && connection.connectionState === "connected" &&
-      connection.remotePeerId === parent.peerId && connection.connectionId,
-    );
-    if (!targetHandle || !parentHandle || !candidateHandle || !old || target.routeRevision === null || !target.peerId || !parent.peerId || !old.connectionId) return failed("probe-unavailable");
-    const oldFrames = old.receiveTotals?.framesTotal ?? 0;
-    const revision = target.routeRevision;
-    const send = (page: PageHandle, method: string, message: unknown) =>
-      evaluate<boolean>(cdp, page, `globalThis.__PIIK_BENCHMARK__.${method}(${JSON.stringify(message)})`);
-    let windows = 0;
-    for (let sequence = 0; sequence < 3; sequence += 1) {
-      const windowSent = await send(targetHandle, "sendViewerQualityEvidence", {
-        type: "viewer-quality-evidence", guard: { connectionId: old.connectionId, routeRevision: revision },
-        sequence, windowMs: 2_000,
-        metrics: { width: null, height: null, framesPerSecond: 0, bitrateKbps: 0,
-          packetsReceivedDelta: 100, packetsLostDelta: 0, jitterMs: 0, framesDecodedDelta: 0,
-          framesDroppedDelta: 0, decodeMsPerFrame: 0, freezeCountDelta: 0, freezeDurationMsDelta: null,
-          codec: null, codecProfile: null, codecParameters: null },
-      });
-      if (windowSent) windows += 1;
-      if (sequence < 2) await delay(2_100, signal);
-    }
-    let retained = false, provisional = false, promoted = false, sameIdentity = false, framesAdvanced = false;
-    let newId: string | null = null, newIndex: number | null = null;
-    let targetTelemetry = await canary(cdp, targetHandle);
-    let parentTelemetry = await canary(cdp, parentHandle);
-    let candidateTelemetry = await canary(cdp, candidateHandle);
-    const deadline = Date.now() + 15_000;
-    while (Date.now() < deadline) {
-      const current = await progressSample(cdp, targetHandle);
-      targetTelemetry = await canary(cdp, targetHandle);
-      parentTelemetry = await canary(cdp, parentHandle);
-      candidateTelemetry = await canary(cdp, candidateHandle);
-      const currentOld = current.connections.find((connection) => connection.connectionId === old.connectionId);
-      const currentNew = current.connections.find((connection) => connection.hasInboundVideo && connection.index !== old.index && connection.connectionState === "connected" && connection.connectionId !== old.connectionId);
-      if (currentOld?.connectionState === "connected" && currentNew) {
-        retained = true; provisional = true; newId = currentNew.connectionId; newIndex = currentNew.index;
-      }
-      framesAdvanced ||= (currentOld?.receiveTotals?.framesTotal ?? oldFrames) > oldFrames;
-      const upstream = current.routeAssignment?.upstream;
-      const upstreamPeerId = upstream?.kind === "peer" ? upstream.peerId : null;
-      promoted = current.routeRevision !== null && current.routeRevision !== revision && upstreamPeerId !== null && upstreamPeerId !== parent.peerId;
-      if (promoted) {
-        const active = current.connections.find((connection) => connection.hasInboundVideo && connection.connectionState === "connected" && connection.remotePeerId === upstreamPeerId);
-        sameIdentity = Boolean(active && ((newId && active.connectionId === newId) || (!newId && active.index === newIndex)));
-      }
-      if (promoted && sameIdentity && retained && framesAdvanced) break;
-      await delay(100, signal);
-    }
-    const assertions = {
-      syntheticViewerEvidence: windows === 3,
-      oldEdgeRetained: retained,
-      provisionalPcObserved: provisional,
-      promotedToViewerCandidate: promoted,
-      provisionalIdentityPromoted: sameIdentity,
-      oldMediaFramesAdvanced: framesAdvanced,
-      endpointCapRespected: Math.max(targetTelemetry.maxActiveOutboundMediaEdges, parentTelemetry.maxActiveOutboundMediaEdges, candidateTelemetry.maxActiveOutboundMediaEdges) <= 1,
-      noRouteFailed: targetTelemetry.routeFailed === 0 && parentTelemetry.routeFailed === 0 && candidateTelemetry.routeFailed === 0,
-    };
-    return { kind: "viewer-mbb", status: Object.values(assertions).every(Boolean) ? "passed" : "failed", assertions,
-      counters: { pages: pages.length, evidenceWindows: windows,
-        routePrepareUpdates: targetTelemetry.prepareUpdates + parentTelemetry.prepareUpdates + candidateTelemetry.prepareUpdates,
-        routeActiveUpdates: targetTelemetry.activeUpdates + parentTelemetry.activeUpdates + candidateTelemetry.activeUpdates,
-        maxActiveOutboundEdges: Math.max(targetTelemetry.maxActiveOutboundMediaEdges, parentTelemetry.maxActiveOutboundMediaEdges, candidateTelemetry.maxActiveOutboundMediaEdges),
-        routeFailedMessages: targetTelemetry.routeFailed + parentTelemetry.routeFailed + candidateTelemetry.routeFailed },
-      ...(Object.values(assertions).every(Boolean) ? {} : { failureCode: "probe-unavailable" as const }) };
-  } catch {
-    return failed("probe-unavailable");
-  }
-}
-
-async function canary(cdp: CdpConnection, page: PageHandle): Promise<{
-  prepareUpdates: number; activeUpdates: number; routeFailed: number;
-  maxActiveOutboundMediaEdges: number;
-}> {
-  return evaluate(cdp, page, "globalThis.__PIIK_BENCHMARK__.canarySnapshot()");
-}
-
-function canaryChecks(result: ViewerMbbCanaryResult): RunCheck[] {
-  return [
-    ...Object.entries(result.assertions).map(([name, passed]) => ({
-      name: `viewer-mbb-${name}`, passed, actual: passed, expected: "true",
-    })),
-    ...Object.entries(result.counters).map(([name, actual]) => ({
-      name: `viewer-mbb-counter-${name}`, passed: true, actual, expected: "sanitized counter",
-    })),
-  ];
-}
-
 async function runCase(
   cdp: CdpConnection,
   baseUrl: string,
@@ -3345,6 +3209,7 @@ async function runCase(
       height: captureResolution.height,
       frameRate: capture.maxFramerate,
       expectedEndpointCap: config.expectedEndpointCap,
+      qualityControlSmoke: config.qualityControlSmoke,
     };
     const hostPage = await createPage(cdp, baseUrl, {
       ...commonInit,
@@ -3412,21 +3277,6 @@ async function runCase(
     }
     if (config.settleMs > 0) {
       await delay(config.settleMs, signal);
-    }
-    if (config.canaryMode === "viewer-mbb" && viewerCount === 3) {
-      const canaryResult = await runViewerMbbCanary(cdp, pages, signal);
-      return {
-        viewerCount,
-        startedAt: new Date(startedAtMs).toISOString(),
-        completedAt: new Date().toISOString(),
-        status: canaryResult.status,
-        checks: canaryChecks(canaryResult),
-        summary: null,
-        routeTimingSummary,
-        routeTimingStatus,
-        samples: [],
-        recovery: { triggered: false },
-      };
     }
     const measurementStartedAt = Date.now();
     const deadline = measurementStartedAt + config.durationMs;
@@ -3668,7 +3518,6 @@ async function main(): Promise<number> {
       headless: config.headless,
       noSandbox: config.noSandbox,
       qualityControlSmoke: config.qualityControlSmoke,
-      canaryMode: config.canaryMode,
       chromeExecutable: basename(config.chromePath),
       output: config.outputPath ?? "stdout",
     },
@@ -3687,9 +3536,10 @@ async function main(): Promise<number> {
       "CDP SystemInfo exposes no resident-set field, so peakResidentSetBytes is null; GPU, NIC, glass-to-glass latency, generational visual quality, mobile browsers, and SFU require other measurement.",
       externalServer
         ? "The external server target is exercised as configured; the gate does not infer unavailable transports."
-        : "The local runner does not start LiveKit; SFU consistency is reported only when an SFU route is actually observed.",
+        : "The local runner does not enable embedded SFU; SFU consistency is reported only when an SFU route is actually observed.",
       "The harness emits raw gate fields and simple invariants; it does not implement a route score or runtime policy.",
-      "BENCHMARK_CANARY=viewer-mbb injects only sanitized control counters; it does not claim detector quality or network performance. Host-candidate and signaling-blackhole canaries remain deferred.",
+      "BENCHMARK_QUALITY_SMOKE disables encoded-stream support to verify ordinary-sender parameter propagation. Browser pool producer/clock settings are checked by browser-local-pool-probe.ts.",
+      "This gate measures initial topology and relay-loss recovery, not sender-quality convergence or synthetic Viewer-triggered handoffs.",
     ],
     runs: [],
   };
@@ -3724,10 +3574,7 @@ async function main(): Promise<number> {
         PUBLIC_BASE_URL: baseUrl,
         ALLOWED_ORIGINS: baseUrl,
         ENDPOINT_MEDIA_COPY_CAPACITY: String(config.expectedEndpointCap),
-        MAX_VIEWERS_PER_ROOM: String(Math.max(
-          ...config.viewerCounts,
-          config.canaryMode === "viewer-mbb" ? 3 : 1,
-        )),
+        MAX_VIEWERS_PER_ROOM: String(Math.max(...config.viewerCounts)),
         // The loopback gate measures peer topology, never a relayed candidate.
         STUN_URLS: "",
       }, profileDirectory);
@@ -3774,8 +3621,7 @@ async function main(): Promise<number> {
       await authenticateExternalServer(cdp, externalServer, abortController.signal);
     }
 
-    const viewerCounts = config.canaryMode === "viewer-mbb" ? [3] : config.viewerCounts;
-    for (const viewerCount of viewerCounts) {
+    for (const viewerCount of config.viewerCounts) {
       abortController.signal.throwIfAborted();
       console.error(`Running peer-topology loopback with ${viewerCount} viewer(s)`);
       report.runs.push(

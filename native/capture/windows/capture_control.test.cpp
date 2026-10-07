@@ -54,12 +54,12 @@ void CheckOutputPipe() {
   CloseHandle(output);
 }
 
-void CheckWorkers() {
+void CheckMailboxWorkers() {
   struct Input { uint32_t index; };
   using Mailbox = piik::capture::OutputMailbox<Input>;
   std::array<Mailbox, 3> mailboxes{Mailbox(90'000), Mailbox(300'000), Mailbox(1'200'000)};
   std::array<std::thread, 3> workers;
-  std::array<uint32_t, 3> last{}, count{}, retired{};
+  std::array<uint32_t, 3> last{}, count{}, retired{}, bitrate{};
   std::array<bool, 3> recovery{};
   std::mutex mutex;
   std::condition_variable changed;
@@ -71,15 +71,10 @@ void CheckWorkers() {
   for (size_t layer = 0; layer < workers.size(); ++layer) {
     workers[layer] = std::thread([&, layer]() {
       try {
-        const uint32_t width = 160u << layer;
-        const uint32_t height = 90u << layer;
-        std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 3 / 2, 128);
-        std::unique_ptr<piik::capture::Vp8Encoder> encoder;
         for (;;) {
           const auto work = mailboxes[layer].Take();
           if (work.action == Mailbox::Action::stop) break;
           if (work.action == Mailbox::Action::retire) {
-            encoder.reset();
             std::lock_guard<std::mutex> lock(mutex);
             ++retired[layer];
             changed.notify_one();
@@ -89,14 +84,13 @@ void CheckWorkers() {
             entered.set_value();
             released.wait();
           }
-          if (!encoder) encoder = std::make_unique<piik::capture::Vp8Encoder>(width, height, 30, work.bitrate);
-          encoder->SetBitrate(work.bitrate);
-          const auto output = encoder->Encode(pixels.data(), width,
-              static_cast<uint64_t>(work.input->index) * 10'000'000 / 30, work.recovery);
+          // Test mailbox ordering independently of codec speed. The separate
+          // encode/decode check below exercises real frames and keyframe output.
           if (!mailboxes[layer].Accept(work.generation)) continue;
           std::lock_guard<std::mutex> lock(mutex);
           last[layer] = work.input->index;
-          recovery[layer] = output.key_frame;
+          bitrate[layer] = work.bitrate;
+          recovery[layer] = work.recovery;
           ++count[layer];
           changed.notify_one();
         }
@@ -143,7 +137,7 @@ void CheckWorkers() {
   mailboxes[0].RequestKeyFrame();
   release.set_value();
   wait("pending-recovery", [&]() { return last[0] == 4; });
-  assert(count[0] == 2 && recovery[0]); // New request survived the older keyframe; pending 2/3 were replaced.
+  assert(count[0] == 2 && recovery[0]); // New request survived older work; pending 2/3 were replaced.
   mailboxes[1].SetActive(false);
   mailboxes[2].SetActive(false);
   submit(5);
@@ -154,6 +148,7 @@ void CheckWorkers() {
   submit(6);
   wait("output-reactivation", [&]() { return last[0] == 6 && last[1] == 6 && last[2] == 6; });
   assert(recovery[0] && recovery[1] && recovery[2]);
+  assert(bitrate[0] == 30'000 && bitrate[1] == 300'000 && bitrate[2] == 1'200'000);
   const auto stopped = std::chrono::steady_clock::now();
   for (auto& mailbox : mailboxes) mailbox.Stop();
   for (auto& worker : workers) worker.join();
@@ -263,7 +258,7 @@ int main() {
     const auto decoded = decoder.Decode(output.bytes);
     assert(decoded.width == 160 && decoded.height == 90 && decoded.nv12.size() == pixels.size());
   }
-  CheckWorkers();
+  CheckMailboxWorkers();
   CheckDroppedRecoveryInput();
   CheckIndependentActivation();
   CheckOutputPipe();

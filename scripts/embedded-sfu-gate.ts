@@ -104,6 +104,7 @@ async function main(): Promise<void> {
     host: null as Snapshot | null, viewer: null as Snapshot | null,
     displayLifecycle: null as { hiddenFrames: number; hiddenElapsedMs: number; lowLayerDecoded: boolean; resumed: boolean; replaced: boolean } | null,
     mediaDiagnostics: null as unknown,
+    sourceDrawing: null as { draws: number; elapsedMs: number; visibility: string } | null,
     publicationRetired: false, subscriptionRecovered: false, nativeShareStopped: !nativeArm, udpReleased: false, cleanup: false, error: null as string | null };
   let server: ChildProcessWithoutNullStreams | null = null;
   let chrome: ChildProcessWithoutNullStreams | null = null;
@@ -118,6 +119,7 @@ async function main(): Promise<void> {
   let nativePort = 0;
   let sourceChrome: ChildProcessWithoutNullStreams | null = null;
   let sourceCdp: CdpConnection | null = null;
+  let sourcePage: PageHandle | null = null;
   let sourceHTTP: Awaited<ReturnType<typeof sourceServer>> | null = null;
   const call = async <T>(page: PageHandle, expression: string, timeout = 25_000): Promise<T> => {
     const value = await evaluate<{ value?: T; error?: string }>(cdp!, page,
@@ -195,6 +197,7 @@ async function main(): Promise<void> {
       if (!target) throw new Error("Gate source page is unavailable");
       const attached = await sourceCdp.call<{ sessionId: string }>("Target.attachToTarget",
         { targetId: target.targetId, flatten: true }, undefined, Date.now() + 5_000);
+      sourcePage = attached;
       const audioState = await evaluate<string>(sourceCdp, attached, `(async () => {
         const audio = new AudioContext(), tone = audio.createOscillator(), gain = audio.createGain();
         gain.gain.value = 0.01; tone.connect(gain).connect(audio.destination); tone.start();
@@ -256,7 +259,21 @@ async function main(): Promise<void> {
     result.stage = "simulcast-first-frame";
     await cdp.call("Page.bringToFront", {}, viewer.sessionId, Date.now() + 3_000);
     result.host = await call(host, "gate.snapshot()");
-    result.high = await call(viewer, nativeArm ? "gate.waitForFrames(1280, 720, 300)" : "gate.waitForFrames(1280, 720)", nativeArm ? 32_000 : 25_000);
+    const sourceSample = async () => sourceCdp && sourcePage
+      ? await evaluate<{ draws: number; at: number; visibility: string }>(sourceCdp, sourcePage,
+        "({ draws: n, at: performance.now(), visibility: document.visibilityState })", Date.now() + 3_000)
+      : null;
+    const sourceBefore = await sourceSample();
+    try {
+      result.high = await call(viewer, nativeArm ? "gate.waitForFrames(1280, 720, 300)" : "gate.waitForFrames(1280, 720)", nativeArm ? 32_000 : 25_000);
+    } finally {
+      const sourceAfter = await sourceSample().catch(() => null);
+      if (sourceBefore && sourceAfter) result.sourceDrawing = {
+        draws: sourceAfter.draws - sourceBefore.draws,
+        elapsedMs: sourceAfter.at - sourceBefore.at,
+        visibility: sourceAfter.visibility,
+      };
+    }
     result.stage = "decoded-audio-energy";
     await waitForSample(() => call<number>(viewer!, "gate.audioEnergy()", 3_000),
       (energy) => { result.audioEnergy.high = energy; return energy > 0; }, 5_000);
@@ -337,6 +354,7 @@ async function main(): Promise<void> {
     if (cdp) result.mediaDiagnostics = await Promise.all([host, viewer].map(page => page ?
       evaluate(cdp!, page, "window.__piikGateMediaStats?.()", Date.now() + 3_000).catch(() => null) : null));
     if (viewer && cdp) result.viewer = await call<Snapshot>(viewer, "gate.snapshot()", 3_000).catch(() => null);
+    if (host && cdp) result.host = await call<Snapshot>(host, "gate.snapshot()", 3_000).catch(() => null);
     if (viewer && cdp && result.stage === "decoded-audio-energy") result.audioDiagnostics = await evaluate(
       cdp, viewer, "window.__piikGateAudioStats ?? null", Date.now() + 3_000).catch(() => null);
     if (serverError) result.error += `; server: ${serverError}`;

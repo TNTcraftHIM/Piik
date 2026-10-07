@@ -124,6 +124,28 @@ ordinary invitation in another browser tab. Use headphones for same-device
 microphone tests. Browser-emulated mobile layout and synthetic devices do not
 establish actual iOS/Android permission, orientation, background or audio behavior.
 
+## Phone Microphone Assessment
+
+The proposed phone link would supply one Host audio input, not give Viewers a
+room-voice permission. Web Audio can mix a received `MediaStream` into the
+Browser Host's existing output. The native mixer instead consumes fixed PCM
+from local capture processes; it has no authenticated remote-input boundary.
+Room signaling authorizes assigned parent/child connections, so an ordinary
+Viewer invitation must not become permission to publish audio into the Host.
+
+A coherent implementation therefore needs a Host-scoped, revocable pairing
+grant, one incoming audio connection and a decoded/resampled input for native
+mixing. The existing Host share must own that input's mute, replacement and
+retirement; input loss must leave healthy picture/source audio running. Phone
+capture still requires a secure origin and explicit microphone permission.
+The transport adds latency, and physical phone echo/background/lock behavior
+is not established by Browser emulation or a loopback audio test.
+
+This is a source/API assessment, not an implemented or device-verified feature.
+Keep it outside the current candidate until a concrete use case justifies that
+pairing and input ownership. An audio device already exposed by the operating
+system can use Piik's existing microphone selector without this extension.
+
 ## Primary Technical References
 
 - [Google Meet audio controls](https://support.google.com/meet/answer/10409699?hl=en)

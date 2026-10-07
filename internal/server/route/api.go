@@ -6,9 +6,8 @@ import (
 )
 
 // Resource is the caller-owned SFU/overlap allocation the controller stores,
-// moves between collections and compares by pointer identity (TS: the bare
-// Resource type parameter, always used through JS Set semantics). The
-// controller never reads its fields; they exist for the router and tests.
+// moves between collections and compares by pointer identity. The controller
+// never reads its fields; the router owns their meaning and release.
 type Resource struct {
 	Kind ResourceKind
 	// EndpointPeerID is set for ResourceOverlap.
@@ -25,7 +24,7 @@ type Resource struct {
 	Released bool
 }
 
-// ResourceKind is the RouteResource discriminator of hybrid-media-router.ts.
+// ResourceKind identifies the allocation owned by the router.
 type ResourceKind string
 
 // Resource kinds.
@@ -36,7 +35,7 @@ const (
 )
 
 // UpstreamKind discriminates CandidateTuple, CommittedEdge, committedEdgeSeed
-// and QualityUpstream (TS kind: "peer" | "sfu").
+// and QualityUpstream.
 type UpstreamKind string
 
 // Upstream kinds.
@@ -45,7 +44,7 @@ const (
 	UpstreamSfu  UpstreamKind = "sfu"
 )
 
-// Transport is the edge transport (TS transport: "direct" | "sfu").
+// Transport is the edge transport.
 type Transport string
 
 // Transports.
@@ -54,7 +53,7 @@ const (
 	TransportSfu    Transport = "sfu"
 )
 
-// PublicationPlan is the SFU tuple action (TS publication: "reuse" | "create" | "replace").
+// PublicationPlan is the SFU tuple action.
 type PublicationPlan string
 
 // Publication plans.
@@ -93,8 +92,7 @@ const (
 	TransitionBoundedGap TransitionKind = "bounded-gap"
 )
 
-// SenderQualityState is the sender-side health sample state
-// (TS "unknown" | "healthy" | "degraded").
+// SenderQualityState is the sender-side health sample state.
 type SenderQualityState string
 
 // Sender quality states.
@@ -158,7 +156,7 @@ const (
 // CandidateTuple is one route candidate: a direct edge from ParentPeerID
 // (Kind UpstreamPeer, Transport always TransportDirect, Regenerate = rebuild
 // the same edge with a fresh connection) or an SFU edge (Kind UpstreamSfu,
-// Publication set). TS: CandidateTuple.
+// Publication set).
 type CandidateTuple struct {
 	Kind         UpstreamKind
 	ParentPeerID string
@@ -171,7 +169,7 @@ type CandidateTuple struct {
 // BeginCurrentCandidate. Edge/Publication are set per Kind
 // (direct: neither; sfu-reuse: Edge, Borrowed when it is another holder's
 // live subscription and must not be released; sfu-create: Edge and
-// Publication). Overlap is optional for every kind. TS: CandidateReservation.
+// Publication). Overlap is optional for every kind.
 type CandidateReservation struct {
 	Kind        ReservationKind
 	Edge        *Resource
@@ -183,7 +181,7 @@ type CandidateReservation struct {
 // EndpointRetirement is the producer retirement a bounded-gap transition
 // requires: an existing direct edge (RetireEdge: Child*/Parent*/Transport/
 // ConnectionID) or the Host publication (RetirePublication: HostSessionID/
-// Generation/ConnectionID). TS: EndpointRetirement.
+// Generation/ConnectionID).
 type EndpointRetirement struct {
 	Kind            RetirementKind
 	ChildPeerID     string
@@ -198,15 +196,14 @@ type EndpointRetirement struct {
 
 // EndpointTransition says how the producer's copy budget absorbs the
 // candidate. ProducerPeerID is nil only for TransitionNone on an sfu/reuse
-// plan (TS omitted it there and endpointTransitionEquals compares it).
-// Retire is set only for TransitionBoundedGap. TS: EndpointTransition.
+// plan. Retire is set only for TransitionBoundedGap.
 type EndpointTransition struct {
 	Kind           TransitionKind
 	ProducerPeerID *string
 	Retire         *EndpointRetirement
 }
 
-// CandidatePlan is a tuple with its endpoint transition. TS: CandidatePlan.
+// CandidatePlan is a tuple with its endpoint transition.
 type CandidatePlan struct {
 	Tuple              CandidateTuple
 	EndpointTransition EndpointTransition
@@ -215,7 +212,7 @@ type CandidatePlan struct {
 // CommittedEdge is a child's one upstream edge in the committed graph.
 // Peer edges (Kind UpstreamPeer) set ParentPeerID/ParentSessionID and leave
 // Resource nil; SFU edges (Kind UpstreamSfu) set PublicationGeneration and
-// Resource. TS: CommittedEdge.
+// Resource.
 type CommittedEdge struct {
 	Kind                  UpstreamKind
 	ChildSessionID        string
@@ -229,7 +226,7 @@ type CommittedEdge struct {
 	Resource              *Resource
 }
 
-// HostPublication is the single live SFU ingress. TS: HostPublication.
+// HostPublication is the single live SFU ingress.
 type HostPublication struct {
 	Generation     string
 	HostSessionID  string
@@ -246,7 +243,7 @@ type ConnectionAttemptProgress struct {
 	Total   int
 }
 
-// CurrentAttempt is OperationSnapshot.current: the live candidate attempt.
+// CurrentAttempt describes the operation's live candidate attempt.
 // ConnectionAttempt is nil when the attempt has no NAT opportunity.
 type CurrentAttempt struct {
 	Tuple             CandidateTuple
@@ -256,7 +253,7 @@ type CurrentAttempt struct {
 }
 
 // OperationSnapshot is a deep copy of the in-flight operation plus the
-// derived WakeAtMs. Current is nil without a live attempt. TS: OperationSnapshot.
+// derived WakeAtMs. Current is nil without a live attempt.
 type OperationSnapshot struct {
 	ChildPeerID    string
 	ChildSessionID string
@@ -283,7 +280,7 @@ type RouteSnapshot struct {
 	Operation        *OperationSnapshot
 }
 
-// ReconcileResult is the scheduler outcome. TS: ReconcileResult.
+// ReconcileResult is the scheduler outcome.
 type ReconcileResult struct {
 	Operation      *OperationSnapshot
 	RemovedPeerIDs []string
@@ -292,8 +289,7 @@ type ReconcileResult struct {
 }
 
 // SettleResult is the outcome of candidate settlement or active replacement.
-// Committed is true only when CandidateReady committed the attempt (TS: optional
-// committed, read as truthy by the router). TS: SettleResult.
+// Committed is true only when CandidateReady committed the attempt.
 type SettleResult struct {
 	Accepted       bool
 	Committed      bool
@@ -302,9 +298,7 @@ type SettleResult struct {
 	Released       []*Resource
 }
 
-// SenderQualityEvidenceResult is the outcome of the two sender-side
-// observers. TS declares it separately with a required committed flag; the
-// Go shape is identical to SettleResult.
+// SenderQualityEvidenceResult is the settlement outcome of sender-side evidence.
 type SenderQualityEvidenceResult = SettleResult
 
 // BeginResult is the outcome of the cursor-guarded candidate calls.
@@ -315,7 +309,7 @@ type BeginResult struct {
 	Released      []*Resource
 }
 
-// ParticipantInput describes a connected participant. TS: ParticipantInput.
+// ParticipantInput describes a connected participant.
 type ParticipantInput struct {
 	PeerID                      string
 	Role                        protocol.Role
@@ -325,7 +319,7 @@ type ParticipantInput struct {
 
 // EdgeGuard identifies one committed edge exactly. ParentSessionID is only
 // compared for peer edges; callers pass the edge's own ParentSessionID for
-// those and leave it empty for SFU edges. TS: EdgeGuard.
+// those and leave it empty for SFU edges.
 type EdgeGuard struct {
 	ChildPeerID     string
 	ChildSessionID  string
@@ -342,8 +336,7 @@ type ParentEdgeGuard struct {
 	ConnectionID    string
 }
 
-// PublicationGuard identifies the Host publication exactly. TS: the inline
-// guard of invalidateHostPublication and retireHostPublication.
+// PublicationGuard identifies the Host publication exactly.
 type PublicationGuard struct {
 	HostSessionID string
 	RouteRevision int64
@@ -352,13 +345,13 @@ type PublicationGuard struct {
 }
 
 // AdoptDirectConnectionInput is an EdgeGuard plus the replacement
-// connection. TS: EdgeGuard & { newConnectionId }.
+// connection.
 type AdoptDirectConnectionInput struct {
 	EdgeGuard
 	NewConnectionID string
 }
 
-// CandidateGuard identifies the live attempt exactly. TS: CandidateGuard.
+// CandidateGuard identifies the live attempt exactly.
 type CandidateGuard struct {
 	ChildPeerID    string
 	ChildSessionID string
@@ -368,7 +361,7 @@ type CandidateGuard struct {
 
 // CandidateCursorGuard identifies one candidate slot of the current
 // operation: it must still be at Cursor with an equal Plan, built at
-// FactVersion on BaseRevision. TS: CandidateCursorGuard.
+// FactVersion on BaseRevision.
 type CandidateCursorGuard struct {
 	ChildPeerID    string
 	ChildSessionID string
@@ -380,8 +373,7 @@ type CandidateCursorGuard struct {
 
 // BeginInput is the BeginCurrentCandidate input. PublicationGeneration and
 // PublicationConnectionID are required for sfu create/replace tuples;
-// HostSessionID is required for every SFU tuple (empty = TS undefined,
-// rejected the same way). TS: the inline input of beginCurrentCandidate.
+// HostSessionID is required for every SFU tuple.
 type BeginInput struct {
 	Guard                   CandidateCursorGuard
 	NowMs                   int64
@@ -398,7 +390,7 @@ type CandidateProof struct {
 }
 
 // QualityUpstream names the upstream a receiver-side window was measured
-// on: PeerID is set only for UpstreamPeer. TS: RouteQualityEvidenceInput.upstream.
+// on: PeerID is set only for UpstreamPeer.
 type QualityUpstream struct {
 	Kind   UpstreamKind
 	PeerID string
@@ -445,7 +437,7 @@ type SfuPublisherQualityEvidenceInput struct {
 }
 
 // Options configures a Controller. DebugRoomID empty disables the sanitised
-// route debug events. TS: ControllerOptions.
+// route debug events.
 type Options struct {
 	HostPeerID  string
 	DebugRoomID string
@@ -498,5 +490,5 @@ type Controller struct {
 	retiringPublicationGenerations    ordered.Map[string, struct{}]
 	sfuBootstrapIntent                *sfuBootstrapIntent
 	consumedSfuBootstrapOpportunities ordered.Map[string, int]
-	rootConvergenceRootPeerID         string // "" = TS undefined
+	rootConvergenceRootPeerID         string
 }

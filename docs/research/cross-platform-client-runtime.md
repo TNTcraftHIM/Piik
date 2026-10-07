@@ -190,6 +190,14 @@ own the dependency behavior. An early-exit fixture confirms fourth-start recover
 and bounded exhaustion; these checks do not identify a reporter's API or network
 failure or guarantee four starts when earlier attempts consume the deadline.
 
+The public App log in [#452](https://github.com/TNTcraftHIM/Piik/issues/452),
+reviewed on 2026-10-07, records a QUIC timeout followed by a TCP port-7844
+connect timeout within that deadline. Thus fallback ran; the report does not
+establish a local port-80/443 collision. Its accelerator dependency remains a
+network-path hypothesis requiring the same endpoint with/without the accelerator.
+The attachment contains no capture start, so it cannot diagnose the separately
+reported H.264 failure.
+
 [HTTP 1033](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1033/)
 means Cloudflare cannot find a healthy tunnel connector. App readiness requires
 both the assigned origin and a registered connection; later reconnection belongs

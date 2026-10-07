@@ -66,13 +66,22 @@ const opaqueIdSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
 
-export const interactionPayloadSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("chat"), text: z.string().min(1).max(MAX_CHAT_CODE_POINTS * 2)
-    .refine(value => normalizeChatText(value) === value) }).strict(),
-  z.object({ kind: z.literal("reaction"), reaction: z.enum(REACTION_IDS),
-    targetPeerId: opaqueIdSchema.optional() }).strict(),
-]).refine(payload => payload.kind !== "reaction" || !isThrow(payload.reaction) || !!payload.targetPeerId,
+const chatPayloadSchema = z.object({ kind: z.literal("chat"),
+  text: z.string().min(1).max(MAX_CHAT_CODE_POINTS * 2)
+    .refine(value => normalizeChatText(value) === value) }).strict();
+const reactionPayloadSchema = z.object({ kind: z.literal("reaction"),
+  reaction: z.string().min(1).max(32).regex(/^[a-z][a-z0-9-]*$/),
+  targetPeerId: opaqueIdSchema.optional() }).strict()
+  .refine(payload => !isThrow(payload.reaction) || !!payload.targetPeerId,
   { message: "Throwing a prop requires a participant" });
+// Commands require a registered effect; received events may carry a future
+// display-only identifier. Identity, payload shape and target bounds stay strict.
+export const interactionPayloadSchema = z.discriminatedUnion("kind", [
+  chatPayloadSchema, reactionPayloadSchema.safeExtend({ reaction: z.enum(REACTION_IDS) }),
+]);
+const receivedInteractionPayloadSchema = z.discriminatedUnion("kind", [
+  chatPayloadSchema, reactionPayloadSchema,
+]);
 export type InteractionPayload = z.infer<typeof interactionPayloadSchema>;
 
 const noMediaRouteUpstreamSchema = z
@@ -1051,7 +1060,7 @@ export const serverMessageSchema = z.union([
   z.object({ type: z.literal("room-interaction"), id: opaqueIdSchema, requestId: opaqueIdSchema,
     occurredAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     sender: z.object({ peerId: opaqueIdSchema, role: z.enum(["host", "viewer"]), displayName: displayNameSchema }).strict(),
-    payload: interactionPayloadSchema }).strict(),
+    payload: receivedInteractionPayloadSchema }).strict(),
   authenticatedMessageSchema,
   z.object({
     type: z.literal("sharing-start-failed"),

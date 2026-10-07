@@ -1,4 +1,8 @@
 #include "capture_target.h"
+#include "capture_event.h"
+
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Graphics.Capture.h>
 
 #include <cassert>
 #include <iostream>
@@ -6,6 +10,32 @@
 #include <string>
 
 namespace {
+
+void CheckInFlightCaptureEvent() {
+  using namespace winrt::Windows::Graphics::Capture;
+  using namespace winrt::Windows::Foundation;
+  // A dispatched delegate can outlive both revocation and the capture owner.
+  // Exercise the handler shared by streaming capture and source thumbnails.
+  for (const bool manual_reset : {false, true}) {
+    auto signal = std::make_shared<winrt::handle>(
+        CreateEventW(nullptr, manual_reset, FALSE, nullptr));
+    assert(*signal);
+    const HANDLE handle = signal->get();
+    std::weak_ptr<winrt::handle> lifetime = signal;
+    TypedEventHandler<Direct3D11CaptureFramePool, IInspectable> in_flight{
+        piik::capture::CaptureEventHandler(signal)};
+    signal.reset();
+    assert(!lifetime.expired());
+
+    winrt::handle replacement{CreateEventW(nullptr, FALSE, FALSE, nullptr)};
+    assert(replacement);
+    in_flight(nullptr, nullptr);
+    assert(WaitForSingleObject(handle, 0) == WAIT_OBJECT_0);
+    assert(WaitForSingleObject(replacement.get(), 0) == WAIT_TIMEOUT);
+    in_flight = nullptr;
+    assert(lifetime.expired());
+  }
+}
 
 void CheckOwnedApplicationWindow() {
   HWND owner = CreateWindowExW(0, L"STATIC", L"Piik enumeration owner",
@@ -57,6 +87,7 @@ int wmain(int count, wchar_t** arguments) {
     };
     return result == 0 && listed(arguments[2]) && !listed(arguments[3]) ? 0 : 1;
   }
+  CheckInFlightCaptureEvent();
   CheckOwnedApplicationWindow();
   // Enumeration and preview are separate operations. A once-listed window may
   // become hidden before WGC creates its item. Unsupported capture may return

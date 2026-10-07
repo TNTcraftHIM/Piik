@@ -31,6 +31,7 @@
 
 #include "capture_target.h"
 #include "capture_border.h"
+#include "capture_event.h"
 #include "capture_geometry.h"
 #include "capture_color.h"
 #include "capture_sdr.h"
@@ -1855,24 +1856,17 @@ void RunVideoCapture(ProductArguments arguments) {
   EnableFastCaptureUpdates(capture_session);
   piik::capture::CaptureBorder border;
 
-  UniqueHandle shutdown(CreateEventW(nullptr, TRUE, FALSE, nullptr));
-  UniqueHandle frame_ready(CreateEventW(nullptr, FALSE, FALSE, nullptr));
-  if (shutdown.get() == nullptr || frame_ready.get() == nullptr) {
+  auto shutdown = std::make_shared<winrt::handle>(
+      CreateEventW(nullptr, TRUE, FALSE, nullptr));
+  auto frame_ready = std::make_shared<winrt::handle>(
+      CreateEventW(nullptr, FALSE, FALSE, nullptr));
+  if (!*shutdown || !*frame_ready) {
     Check(HRESULT_FROM_WIN32(GetLastError()), "capture-events");
   }
 
-  std::atomic<bool> item_closed{false};
   auto frame_token = pool.FrameArrived(
-      [event = frame_ready.get()](const Direct3D11CaptureFramePool&,
-                                  const winrt::Windows::Foundation::IInspectable&) {
-        SetEvent(event);
-      });
-  auto closed_token = item.Closed(
-      [event = shutdown.get(), &item_closed](const GraphicsCaptureItem&,
-                                              const winrt::Windows::Foundation::IInspectable&) {
-        item_closed.store(true);
-        SetEvent(event);
-      });
+      piik::capture::CaptureEventHandler(frame_ready));
+  auto closed_token = item.Closed(piik::capture::CaptureEventHandler(shutdown));
   std::vector<std::unique_ptr<OutputWorker>> workers;
   std::atomic<bool> active_status_written{false};
   std::mutex failure_mutex;
@@ -1882,10 +1876,10 @@ void RunVideoCapture(ProductArguments arguments) {
       std::lock_guard<std::mutex> lock(failure_mutex);
       if (!failure) failure = error;
     }
-    SetEvent(shutdown.get());
+    SetEvent(shutdown->get());
   };
   auto cleanup = [&]() noexcept {
-    SetEvent(shutdown.get());
+    SetEvent(shutdown->get());
     writer.Stop();
     for (auto& worker : workers) worker->Stop();
     try {
@@ -1942,8 +1936,8 @@ void RunVideoCapture(ProductArguments arguments) {
       refresh_input = false;
     };
     const HANDLE window_waits[] = {
-        process.get(), shutdown.get(), frame_ready.get()};
-    const HANDLE display_waits[] = {shutdown.get(), frame_ready.get()};
+        process.get(), shutdown->get(), frame_ready->get()};
+    const HANDLE display_waits[] = {shutdown->get(), frame_ready->get()};
     bool source_was_minimized = false;
     for (;;) {
       if (window_target && IsIconic(reinterpret_cast<HWND>(
@@ -1976,10 +1970,8 @@ void RunVideoCapture(ProductArguments arguments) {
           std::lock_guard<std::mutex> lock(failure_mutex);
           if (failure) std::rethrow_exception(failure);
         }
-        if (item_closed.load()) {
-          Fail("capture-closed", "selected source stopped capture");
-        }
-        Fail("capture-stopped", "source capture stopped");
+        // A worker failure was handled above; the other live wake is item.Closed.
+        Fail("capture-closed", "selected source stopped capture");
       }
       if (wait == WAIT_TIMEOUT) {
         // An explicit output/control request may reuse a quiet source; silence is not EOF.

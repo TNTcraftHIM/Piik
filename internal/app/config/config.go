@@ -72,7 +72,11 @@ func Save(path string, config Config) error {
 	if err != nil {
 		return err
 	}
-	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	return saveFile(path, payload)
+}
+
+func saveFile(path string, payload []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create App configuration directory: %w", err)
 	}
 	// Keep the last readable configuration until the replacement is complete.

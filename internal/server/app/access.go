@@ -68,7 +68,7 @@ func (s *Server) siteAccessForRequest(request *http.Request) *siteAccessGate {
 	return &access
 }
 
-// newSiteAccess mirrors the SiteAccess constructor, including its TTL check.
+// newSiteAccess creates one process-scoped cookie authority.
 func newSiteAccess(options siteAccessOptions) (*siteAccessGate, error) {
 	ttlSeconds := options.TTLSeconds
 	if ttlSeconds == 0 {
@@ -100,13 +100,12 @@ func (a *siteAccessGate) required() bool {
 	return a.password != ""
 }
 
-// passwordMatches mirrors passwordMatches: an unset password accepts anything,
-// a set password needs a non-empty exact match.
+// An unset password permits entry; a configured password requires an exact match.
 func (a *siteAccessGate) passwordMatches(value string) bool {
 	return !a.required() || (value != "" && secretMatches(value, a.password))
 }
 
-// isAuthenticated mirrors isAuthenticated over a raw Cookie request header.
+// isAuthenticated verifies the cookie signature and expiry when access is required.
 func (a *siteAccessGate) isAuthenticated(cookieHeader string) bool {
 	if !a.required() {
 		return true
@@ -134,8 +133,7 @@ func (a *siteAccessGate) isAuthenticated(cookieHeader string) bool {
 	return secretMatches(segments[2], a.sign(segments[0]+"."+segments[1]))
 }
 
-// createCookie mirrors createCookie and returns the Set-Cookie header value,
-// or "" where TS returned undefined (site access is not required).
+// createCookie returns a Set-Cookie value, or "" when access is not required.
 func (a *siteAccessGate) createCookie() string {
 	if !a.required() {
 		return ""
@@ -143,7 +141,6 @@ func (a *siteAccessGate) createCookie() string {
 	expiresAt := floorSeconds(a.now()) + int64(a.ttlSeconds)
 	payload := cookieVersion + "." + strconv.FormatInt(expiresAt, 10)
 	value := payload + "." + a.sign(payload)
-	// Attribute order is the TS array order; the app writes it verbatim.
 	attributes := []string{
 		a.cookieName() + "=" + value,
 		"Path=/",
@@ -180,8 +177,7 @@ func floorSeconds(milliseconds int64) int64 {
 	return seconds
 }
 
-// readCookie mirrors the TS reader: the first part whose trimmed name matches
-// wins, and an empty value counts as absent.
+// readCookie uses the first matching name; an empty value counts as absent.
 func readCookie(header string, name string) string {
 	for _, part := range strings.Split(header, ";") {
 		separator := strings.IndexByte(part, '=')
@@ -193,7 +189,7 @@ func readCookie(header string, name string) string {
 }
 
 // secretMatches compares through SHA-256 digests so the comparison is constant
-// time regardless of length, exactly as the TS helper does.
+// time regardless of length.
 func secretMatches(actual string, expected string) bool {
 	actualDigest := sha256.Sum256([]byte(actual))
 	expectedDigest := sha256.Sum256([]byte(expected))

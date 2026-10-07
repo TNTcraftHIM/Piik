@@ -63,8 +63,10 @@ parallel authority writers or blanket old-client fallback paths.
 
 ## Extending Interfaces
 
-Command/event JSON objects still reject unknown keys and enums, and required
-fields reject omissions. Therefore even adding a field can break the other side.
+Command/event JSON objects still reject unknown keys, and required fields reject
+omissions. Most enums remain closed; the bounded display-only reaction identifier
+has an explicit [receive-side exception](./rooms-access.md#room-interactions).
+Therefore even adding a field can break the other side.
 The former required `sfu` addition to strict `/api/capabilities` demonstrated
 both directions of this problem; an unchanged signaling identifier does not
 cover HTTP compatibility.
@@ -75,7 +77,9 @@ capability means unavailable. Commands, credentials and authority checks remain
 strict. A new
 message type, enum value or behavior-changing field is emitted only after the
 other side advertises support; accepting unknown metadata is not permission to
-execute unknown commands. Verify both readers before calling a change additive.
+execute unknown commands. A more tolerant reader does not update already-released
+readers: do not emit a new reaction to legacy pages merely because current pages
+can skip it. Verify both readers before calling a change additive.
 
 Native discovery distinguishes an incompatible Piik App from an absent App and
 reports protocol numbers to local diagnostics; the source picker offers update/
@@ -176,7 +180,9 @@ after all required artifacts and checks pass. The publisher verifies matching
 version, source SHA and checksums, then creates/uploads/publishes one GitHub draft.
 When there are no unpublished product changes, CI validates a development build
 and skips packaging and publication; it never assigns an old release version to
-a new source SHA. The separate Website workflow updates the static site after CI.
+a new source SHA. The separate Website and Gitee mirror workflows follow successful
+main CI independently. Mirror failure must remain visible without blocking GitHub
+publication or Website deployment; retries use the original publishing artifacts.
 Failed draft uploads can resume; published artifacts are never overwritten.
 An older draft retried after a newer release cannot take over `latest`.
 

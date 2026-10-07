@@ -1,9 +1,53 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
+
+func TestRunReportsRouteFailure(t *testing.T) {
+	done := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		var auth json.RawMessage
+		if err := wsjson.Read(r.Context(), conn, &auth); err != nil {
+			t.Error(err)
+			return
+		}
+		if err := wsjson.Write(r.Context(), conn, protocol.RouteStatusMessage{
+			Type: "route-status", Revision: 1, State: "failed", Reason: "route-exhausted",
+		}); err != nil {
+			t.Error(err)
+			return
+		}
+		<-done
+	}))
+	defer server.Close()
+	defer close(done)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	result := run(ctx, gateConfig{
+		SignalURL: "ws" + strings.TrimPrefix(server.URL, "http"),
+		Origin:    server.URL, RoomID: "1234", ClientID: "remote_test", ViewerGrant: "test",
+	})
+	if result.Passed || result.Error != "route assignment failed" {
+		t.Fatalf("expected the route failure, got %+v", result)
+	}
+}
 
 func TestIncomingUsesCurrentWireFieldNames(t *testing.T) {
 	payload := []byte(`{

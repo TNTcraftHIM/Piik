@@ -47,7 +47,7 @@ App 会在启动时再次检查所选地址；它只影响本地邀请链接，�
 通过 App 打开的站点会记住原生功能的启用选择，之后打开该站点的页面可继续使用正在运行的 App。
 没有 App 时仍可使用浏览器采集，详见[进入流程](../../docs/standards/presentation-lifecycle.md#product-surface)。
 
-房主页面提供浏览器采集及可用的原生窗口或屏幕，请明确选择来源。
+房主页面提供浏览器、摄像头采集，以及可用的原生窗口或屏幕，请明确选择来源。
 Windows 原生采集提供 VP8/Auto/H264，Auto 会为本次分享选定一种编码。
 macOS 和 Linux 原生采集需要硬件 H264。可选来源与音频支持取决于平台，设置要求见
 [Windows](../../native/capture/windows/README.md)、[macOS](../../native/capture/darwin/README.md)
@@ -214,16 +214,6 @@ PIIK_GO=/path/to/go \
 npm run gate:app-native-host
 
 PIIK_CLIENT_NATIVE_HOST_GATE=true \
-PIIK_CLIENT_CROSS_NAT_GATE=true \
-CHROME_PATH=/path/to/chrome \
-PIIK_GO=/path/to/go \
-PIIK_REMOTE_HOST=<public-test-host> \
-PIIK_REMOTE_USER=<ssh-user> \
-PIIK_REMOTE_SSH_KEY=/path/to/key \
-PIIK_CLIENT_GATE_STUN_URLS=stun:<stun-host>:3478 \
-npm run gate:app-native-host
-
-PIIK_CLIENT_NATIVE_HOST_GATE=true \
 PIIK_CLIENT_LINK_MEDIA_GATE=true \
 CHROME_PATH=/path/to/chrome \
 PIIK_GO=/path/to/go \
@@ -246,7 +236,8 @@ Windows media gate 验证一个硬件 H.264 采集代次、共享 Pion 来源、
 STUN 候选收集。native Host gate 验证房间创建及当前路由上的原生视频传输；
 能力探测与目标系统支持时，也包含原生音频。
 
-跨 NAT 变体仅将临时反向 SSH 路径用于信令，并要求选中的媒体候选对包含 `srflx` 或 `prflx`；
-媒体不会经过 SSH。公网邀请媒体变体通过 App 临时公网来源传送相同信令，
-并要求将媒体直接传给独立的 Linux 对端。原生 P2P 质量证据与内嵌 SFU 传输有各自的验证入口。
+公网邀请媒体变体通过 App 临时公网地址传送信令，要求将视频 RTP 直接传给独立的 Linux 对端，
+且选中的候选对包含 `srflx` 或 `prflx`。SSH 仅运行远端探针，媒体不会经过 SSH。
+不配置远端主机时，该变体在本机浏览器中通过公网邀请检查解码画面，不能据此认定跨网络连通。
+原生 P2P 质量证据与内嵌 SFU 传输有各自的验证入口。
 macOS 和 Linux 采集仍需实机桌面与媒体验证，CI 编译及程序包冒烟检查不能替代这些验证。

@@ -18,6 +18,7 @@
 
 #include "capture_target.h"
 #include "capture_border.h"
+#include "capture_event.h"
 #include "capture_geometry.h"
 #include "capture_sdr.h"
 
@@ -489,7 +490,8 @@ HRESULT CaptureWithWgc(TargetKind kind, UINT64 source_id,
   Direct3D11CaptureFramePool pool{nullptr};
   GraphicsCaptureSession session{nullptr};
   CaptureBorder border;
-  HANDLE frame_ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  auto frame_ready = std::make_shared<winrt::handle>(
+      CreateEventW(nullptr, FALSE, FALSE, nullptr));
   winrt::event_token frame_token{};
   bool subscribed = false;
   HRESULT result = S_OK;
@@ -498,7 +500,7 @@ HRESULT CaptureWithWgc(TargetKind kind, UINT64 source_id,
     if (SUCCEEDED(result)) result = CreateWgcItem(kind, source_id, &item);
     if (SUCCEEDED(result)) {
       auto size = item.Size();
-      if (size.Width <= 0 || size.Height <= 0 || frame_ready == nullptr) {
+      if (size.Width <= 0 || size.Height <= 0 || !*frame_ready) {
         result = HRESULT_FROM_WIN32(ERROR_INVALID_DATA);
       } else {
         windows::CaptureDisplayColor display_color(kind, source_id);
@@ -508,15 +510,11 @@ HRESULT CaptureWithWgc(TargetKind kind, UINT64 source_id,
             capture_device, static_cast<DirectXPixelFormat>(color.Format()), 1,
             size);
         session = pool.CreateCaptureSession(item);
-        frame_token = pool.FrameArrived(
-            [frame_ready](const Direct3D11CaptureFramePool&,
-                          const winrt::Windows::Foundation::IInspectable&) {
-              if (frame_ready != nullptr) SetEvent(frame_ready);
-            });
+        frame_token = pool.FrameArrived(CaptureEventHandler(frame_ready));
         subscribed = true;
         border.Start(session);
         session.StartCapture();
-        const DWORD wait = WaitForSingleObject(frame_ready, 1'500);
+        const DWORD wait = WaitForSingleObject(frame_ready->get(), 1'500);
         border.Apply(session);
         if (wait != WAIT_OBJECT_0) {
           result = wait == WAIT_TIMEOUT
@@ -603,9 +601,6 @@ HRESULT CaptureWithWgc(TargetKind kind, UINT64 source_id,
   capture_device = nullptr;
   context.Reset();
   device.Reset();
-  if (frame_ready != nullptr) {
-    CloseHandle(frame_ready);
-  }
   if (uninitialize) {
     CoUninitialize();
   }

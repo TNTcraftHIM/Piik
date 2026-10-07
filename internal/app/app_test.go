@@ -699,8 +699,8 @@ func TestLinkModeKeepsOneLocalAuthority(t *testing.T) {
 	}
 }
 
-// The Local room authority owns its ICE configuration: a STUN_URLS meant for
-// the App's own Pion edge must not reach it, and only --link is public.
+// The Local room authority owns its ICE configuration independently of Hosted
+// environment settings, and only --link is public.
 func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 	t.Setenv("STUN_URLS", "stun:inherited.example:3478")
 	for _, testCase := range []struct {

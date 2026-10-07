@@ -101,6 +101,17 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
 
 ## Video Profiles
 
+The Host remembers explicitly applied picture and source-audio quality settings.
+Browser-only use stores them per origin. An App-opened page uses the running,
+authorized App's optional preference store when available, including across
+temporary public-link origins; older or unavailable Apps retain Browser storage.
+These preferences seed a new page, never an active share. Explicit edits and
+authoritative room recovery win over a late preference read. Failed or superseded
+changes and server snapshots do not replace the preference; pending saves retain
+only the latest applied choice. Storage failure never fails capture or startup.
+This does not retain capture permission, device/session identity, routing policy
+or microphone activation, and reading settings claims no Native media session.
+
 The three recommended profiles are ceilings, not delivery guarantees:
 
 | Profile | Target | Video bitrate ceiling |

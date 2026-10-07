@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-06
+Last updated: 2026-10-07
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -59,8 +59,10 @@ SQLite schema 2 and the 1440p ceiling. Hosted empty-room retention and capacity
 guidance preserve indefinite retention by default. The accepted Demo policy is
 one hour without authenticated participants; the private deployment retains the
 default. Operator records own activation, database and postflight evidence.
-4K and resolution/capability expansion are not planned for this phase.
-Native Magicsock remains a separate experiment, outside product integration.
+The owner reopened 2.0 candidate preparation, including reassessment of 4K,
+codec expansion and Native Magicsock where demonstrated benefit justifies total
+complexity. These experiments do not yet change the accepted contract or product
+transport. Release remains subject to the owner's final acceptance.
 Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns
 remaining work.
 
@@ -73,8 +75,8 @@ record own exact identity and postflight results.
 
 The existing deployment uses one Go process for Web, room authority/signaling,
 Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns
-HTTPS; external LiveKit/coturn services remain disabled. Participants, routes and
-media remain process-only. This private service is not a public demonstration.
+HTTPS. Participants, routes and media remain process-only. This private service
+is not a public demonstration.
 
 The separate US [public demo](https://demo.piik.tv) is deployed with open site
 entry, persistent room authority and P2P-only media. Cloudflare fronts HTTP/WSS

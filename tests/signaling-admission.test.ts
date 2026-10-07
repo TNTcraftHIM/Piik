@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SignalingClient } from "../src/client/lib/signaling";
 import { DEFAULT_ROUTE_POLICY } from "../src/shared/protocol";
@@ -37,6 +38,34 @@ function fixture(role: "host" | "viewer" = "host") {
 }
 
 describe("room authentication and site admission", () => {
+  it("skips an unknown reaction without interrupting chat, media messages or a pending send", () => {
+    const { signal, sockets, events } = fixture();
+    const interactions = signal.interactions!;
+    const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
+    const authenticated = JSON.parse(wire.serverMessages.find(
+      (sample: { name: string }) => sample.name === "authenticated-host-minimal").json);
+    sockets[0]!.receive(authenticated);
+    sockets[0]!.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+    expect(interactions.send({ kind: "chat", text: "keep my draft" })).toBe(true);
+    const before = interactions.getSnapshot();
+    const event = { type: "room-interaction", id: "future_event_1234", requestId: before.pending!.requestId,
+      occurredAt: Date.now(), sender: { peerId: authenticated.peerId, role: "host", displayName: "Friend" },
+      payload: { kind: "reaction", reaction: "future-effect" } };
+    sockets[0]!.receive(event);
+    expect(interactions.getSnapshot()).toBe(before);
+    sockets[0]!.receive({ ...event, id: "chat_event_1234", payload: { kind: "chat", text: "keep my draft" } });
+    expect(interactions.getSnapshot().messages).toHaveLength(1);
+    expect(interactions.getSnapshot().pending).toBeNull();
+    const media = { type: "host-status", online: true, paused: false };
+    sockets[0]!.receive(media);
+    expect(events.onMessage).toHaveBeenCalledWith(media);
+    expect(events.onTerminated).not.toHaveBeenCalled();
+    expect(sockets[0]!.close).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(1);
+    signal.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("keeps one connection when starting the room during reconnect backoff", async () => {
     const { signal, sockets, events } = fixture();
     sockets[0]!.dispatchEvent(Object.assign(new Event("close"), { code: 1006 }));

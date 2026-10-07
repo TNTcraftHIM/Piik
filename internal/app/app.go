@@ -158,11 +158,16 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			"softwareVP8", nativeMedia.capabilities.SoftwareVP8, diagnostics.Error(nativeMedia.discoveryErr))
 	}
 	recordContext(options, config)
+	qualityPreference, preferenceErr := appconfig.LoadQualityPreference(configPath)
+	if preferenceErr != nil {
+		slog.Debug("piik-client", "event", "quality-preference-load-failed", diagnostics.Error(preferenceErr))
+	}
 	control, err := loopback.Start(ctx, loopback.Options{
-		AllowedOrigins: allowedOrigins(config.Site, options.Port),
-		NativeMedia:    nativeMedia.capabilities,
-		NewControl:     nativeMedia.controlFactory(),
-		Presentation:   options.console.setLanguage,
+		AllowedOrigins:    allowedOrigins(config.Site, options.Port),
+		NativeMedia:       nativeMedia.capabilities,
+		NewControl:        nativeMedia.controlFactory(),
+		Presentation:      options.console.setLanguage,
+		QualityPreference: qualityPreference,
 	})
 	if err != nil {
 		return fmt.Errorf("Piik App native control could not start: %w", err)
@@ -636,9 +641,8 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 
 // localSTUNURLs is the Local room authority's ICE configuration. Only --link
 // has a public path, so only --link configures public STUN and the bounded NAT
-// prediction survey. The lists are literals on purpose: a gate that sets
-// STUN_URLS is configuring the App's own Pion edge, and that value must not
-// reach the room server (which is why serverconfig.Local reads no environment).
+// prediction survey. Native edges receive ICE configuration from that authority;
+// serverconfig.Local deliberately does not inherit Hosted environment settings.
 func localSTUNURLs(link bool) (stunURLs []string, natPredictionSTUNURLs []string) {
 	if !link {
 		return nil, nil

@@ -80,19 +80,34 @@ Image checks, version identity and retries follow
 ## Gitee Download Mirror
 
 [TNTcraftHIM/Piik](https://gitee.com/TNTcraftHIM/Piik) is a public README/Release
-mirror. Source, documentation and issues stay on GitHub. The publishing job uses
-the repository Actions secret `GITEE_TOKEN`, which is configured; rotate it there
+mirror. Source, documentation and issues stay on GitHub. The **Gitee mirror**
+workflow uses the repository Actions secret `GITEE_TOKEN`, which is configured; rotate it there
 when needed. Never put it in source, a remote URL or a distributed package.
 GitHub publication continues to use the workflow's scoped token.
 
-After GitHub publication, the same job runs `scripts/mirror-release.mjs` on the
-original artifacts. Upload failure leaves the Gitee release marked as a preview.
-Rerun the failed publishing job to verify existing files and upload only missing
-ones. GitHub's published release remains unchanged. Both publishers reject
-changing a published package; use a corrected new version if its bytes are wrong.
+After a successful main-push CI run, **Gitee mirror** downloads that run's original
+artifacts and runs `scripts/mirror-release.mjs`. It skips runs that did not publish
+the current GitHub release. GitHub publication and **Website** do not depend on
+mirror success. A mirror failure stays visible in its own failed workflow; an
+unfinished Gitee release remains a preview.
 
-For a local retry, use the release revision's scripts and original complete build
-output retained outside the checkout. Earlier versions can have a different
+Rerun **Gitee mirror** to verify existing files and upload only missing ones.
+For a separate retry, dispatch it on `main` with the **original CI run ID**:
+
+```sh
+gh workflow run gitee-mirror.yml --repo TNTcraftHIM/Piik --ref main -f run_id=RUN_ID
+```
+
+The source must be a completed main-push run of this repository's CI workflow,
+matching the latest published GitHub release. Manual recovery also accepts a
+legacy CI run that failed after GitHub publication. The workflow executes trusted
+main tooling and treats downloaded artifacts only as data. Old retries cannot
+complete a mirror for a superseded release. Both publishers reject changing a
+published package; use a corrected new version if its bytes are wrong.
+
+For a local retry, first let any active mirror workflow finish. Use the release
+revision's scripts and original complete build output retained outside the
+checkout. Earlier versions can have a different
 package set. While the publishing run's artifacts are available, download all packages
 into one directory (replace `RUN_ID`, `FULL_SOURCE_SHA` and `VERSION`):
 
@@ -130,4 +145,6 @@ history. The upload script does not itself delete older attachments.
 
 - [Protected branch availability](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
 - [Workflow concurrency and queued runs](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#example-queueing-multiple-pending-runs)
+- [Workflow completion triggers and trust boundaries](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run)
+- [Downloading original artifacts from another run](https://github.com/actions/download-artifact#download-artifacts-from-other-workflow-runs-or-repositories)
 - [Immutable release workflow](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)

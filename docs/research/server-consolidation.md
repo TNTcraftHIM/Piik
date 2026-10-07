@@ -1,8 +1,9 @@
 # Server Consolidation
 
-- Reviewed: 2026-09-06
-- Status: implemented in the candidate; the acceptance list below is the
-  remaining boundary
+- Reviewed: 2026-10-07
+- Status: published; current physical limits are in
+  [verification status](../verification-status.md). The before/after measurements
+  below describe the original 2026-09-06 consolidation, not current package cost.
 - Scope: one shared Go backend for Hosted and self-contained App operation
 
 ## Current Ownership
@@ -13,9 +14,10 @@ reachability, and lifecycle policy. Within that scope `protocol` owns wire types
 strict decoding, and shared scalars; `config` owns environment validation plus
 the Hosted and Local compositions; `room` owns room authority, participants, and
 the SQLite database; `route` decides graph transitions without I/O; `signal`
-executes signaling and SFU effects under one lock; `sfu` owns admission, LiveKit
-room control, and token issue; `app` owns HTTP composition, site access, static
-assets, and lifecycle; and `webassets` carries the embedded Browser bundle.
+executes signaling and SFU effects under one lock; `sfu` owns admission and
+embedded media through the shared Pion/LiveKit adapter; `app` owns HTTP
+composition, site access, static assets, and lifecycle; and `webassets` carries
+the embedded Browser bundle.
 `internal/app` keeps the native, launcher, and platform boundaries and
 supervises no server process. These are useful boundaries, not duplication to
 remove.
@@ -39,7 +41,8 @@ requires a concrete ownership gain before further extraction.
 
 The graph controller is now universal. The former rollout switch and ordinary
 Host-star signaling path were removed together, so Hosted and Local
-share one route authority and LiveKit remains an optional fallback of that graph.
+share one route authority. Embedded SFU remains an optional fallback of that graph
+under [ADR-0013](../adr/0013-embedded-node-local-media.md).
 
 ## Target Composition
 
@@ -59,8 +62,8 @@ own their defaults, reachability and lifecycle policy.
 
 Each room keeps one serialized state owner. Go HTTP/WebSocket handlers must not
 mutate room, share and route maps independently. Run password derivation and
-LiveKit I/O outside that owner, then apply results only while the exact session,
-share and operation identities still match. Preserve the existing distinction
+media-transport I/O outside that owner, then apply results only while the exact
+session, share and operation identities still match. Preserve the existing distinction
 between decisions and effects rather than replacing Node serialization with
 unrelated locks around each map.
 
@@ -70,10 +73,9 @@ unrelated locks around each map.
   [`embed`](https://pkg.go.dev/embed) serve HTTP and the built assets.
 - Signaling reuses the App's
   [`coder/websocket`](https://pkg.go.dev/github.com/coder/websocket).
-- LiveKit room control and tokens use the standard library only: HS256 JWTs and
-  Twirp JSON requests. The official
-  [LiveKit Go SDK](https://github.com/livekit/server-sdk-go) adds a large module
-  and license surface for a handful of call shapes and is not used.
+- Embedded SFU and Native media share `internal/media/forwarding`, which reuses
+  Pion transport and LiveKit media components. SDP/ICE uses the authenticated room
+  WebSocket; no external LiveKit room API or media-token service remains.
 - Room persistence keeps the current schema and transactions on the pure-Go
   [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) driver, which
   builds without cgo and holds one exclusive connection; no ORM is needed.
@@ -98,6 +100,31 @@ and [ADR-0010](../adr/0010-cross-platform-client-runtime.md) as amended by
 [ADR-0012](../adr/0012-shared-go-backend-core.md).
 
 ## Measured Before And After
+
+### Signaling Execution Check
+
+On 2026-10-07, an isolated Windows loopback check used 10 rooms with one Host and
+20 Viewers each. Nine Hosts changed their display names 10 times/s, exercising
+presence encoding and fan-out; another task changed room policy 10 times/s,
+and four password tasks ran once/s outside the signaling lock. The diagnostic
+variant additionally wrote 200 synthetic route records/s through the real file
+sink under that lock. Each run measured 200 requests from a separate room.
+
+| Storage / diagnostics | Signaling lock wait P95 | Request round-trip P95 | Retained connections |
+| --- | ---: | ---: | ---: |
+| Memory | Below clock resolution | 6.5 ms | 210/210 |
+| SQLite | 1.0 ms | 5.9 ms | 210/210 |
+| SQLite + diagnostic sink | 3.0 ms | 7.0 ms | 210/210 |
+
+These short local checks do not establish WAN, slow-disk or maximum-capacity
+performance. A separate overload run at 900 name changes/s and 40 password
+tasks/s reached 205 ms request P95 and lost 12 connections while bounded queues
+were exercised; it is not a passing workload. The ordinary workload provides
+no reason to introduce room actors or another mutation owner. Preserve the
+bounded queues and unlocked password/media work; measure synchronous storage
+and diagnostic sinks before changing execution for a larger deployment.
+
+### Original Package Consolidation
 
 One machine, 2026-09-06: Windows 11, Node 24.15.0, Go 1.26.6. A script spawned
 each server with the same production configuration (`PORT=18787`, HTTPS public

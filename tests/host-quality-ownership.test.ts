@@ -19,7 +19,7 @@ import { hostActionErrorNotice, hostFailureCode, isCapturePermissionFailure } fr
 const source = ts.createSourceFile("HostPage.tsx", readFileSync(
   new URL("../src/client/pages/HostPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const owners = new Set(["changeQuality", "commitQuality", "handleSignalMessage",
+const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "loadAppQualityPreference", "handleSignalMessage",
   "switchSource", "watchCaptureEnd", "switchNativeSource", "finishSourceSwitch", "replaceBrowserStream", "recoverBrowserFanout", "disposeNativeShare",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
@@ -91,6 +91,8 @@ function fixture(launchedByClient = true) {
     NativeMediaBridge: vi.fn(function (_shareId: string, _client: unknown, _onFailed: () => void) { return bridge; }), manualVideoCodecPreference: vi.fn(),
     phase: "live", qualitySettingsRef: ref<QualitySettings>(original), advancedQualityRef: ref<QualitySettings>(original),
     qualityChangeRef: ref<object | null>(null), pendingQualityChangeRef: ref<QualitySettings | null>(null),
+    appQualityPreferenceRef: ref<{ save: (quality: QualitySettings) => void } | null>(null),
+    qualityPreferenceEditedRef: ref(false), pendingAppQualityPreferenceRef: ref<QualitySettings | null>(null),
     activeGenerationRef: ref<number | null>(1), streamRef: ref<typeof stream | null>(stream), sourceSwitchRef: ref<object | null>(null),
     nativeSourceAudioRef: ref<boolean | undefined>(undefined), setMicrophoneEnabled: vi.fn(),
     microphoneVoiceProcessing: true, setMicrophoneVoiceProcessing: vi.fn(),
@@ -101,7 +103,7 @@ function fixture(launchedByClient = true) {
     nativeEventCleanupRef: ref(null), nativeShareCleanupRef: ref(Promise.resolve()),
     peersRef: ref(new Map([["viewer", peer]])), hostProvisionalChildRef: ref(null), hostSfuRouteRef: ref(route),
     signalRef: ref({ setHostQualitySettings: vi.fn(), send: vi.fn() }),
-    setQualitySettings: vi.fn(), setAdvancedQuality: vi.fn(), setChangingQuality: vi.fn(),
+    setQualitySettings: vi.fn(), setAdvancedQuality: vi.fn(), setChangingQuality: vi.fn(), savePreferredQuality: vi.fn(),
     setNoticeValue: vi.fn(), setNoticeError: vi.fn(), readableError: hostActionErrorNotice,
     setDetails: vi.fn(), setNativeActive: vi.fn(),
     applyCaptureProfile: vi.fn(async (_stream: unknown, profile: QualitySettings) => { physical = profile; }),
@@ -424,6 +426,71 @@ describe("Host room-link copy feedback", () => {
 });
 
 describe("Host quality ownership", () => {
+  it("restores App preferences without acquiring media or changing a room", async () => {
+    const current = fixture();
+    current.activeGenerationRef.current = null;
+    const preference = { read: vi.fn(async () => lower), save: vi.fn() };
+    current.context.AppQualityPreference = { connect: vi.fn(async () => preference) };
+    await current.context.loadAppQualityPreference(new AbortController().signal);
+    expect(current.qualitySettingsRef.current).toEqual(lower);
+    expect(current.NativeClient.connect).not.toHaveBeenCalled();
+    expect(current.signalRef.current.setHostQualitySettings).not.toHaveBeenCalled();
+    expect(preference.save).not.toHaveBeenCalled();
+  });
+
+  it.each(["explicit", "room", "sharing", "creating", "retired"])(
+    "does not let a late App preference override %s ownership", async (owner) => {
+      const current = fixture();
+      current.activeGenerationRef.current = null;
+      const pending = deferred<QualitySettings>();
+      const preference = { read: vi.fn(() => pending.promise), save: vi.fn() };
+      current.context.AppQualityPreference = { connect: vi.fn(async () => preference) };
+      const controller = new AbortController();
+      const loading = current.context.loadAppQualityPreference(controller.signal);
+      await Promise.resolve();
+      if (owner === "explicit") current.qualityPreferenceEditedRef.current = true;
+      if (owner === "room") current.context.commitQuality({ ...original });
+      if (owner === "sharing") current.activeGenerationRef.current = 2;
+      if (owner === "creating") current.roomMutationRef.current = {};
+      if (owner === "retired") controller.abort();
+      pending.resolve(lower);
+      await loading;
+      expect(current.qualitySettingsRef.current).toEqual(original);
+      expect(preference.save).not.toHaveBeenCalled();
+    },
+  );
+
+  it("carries an applied choice across delayed App discovery without persisting room snapshots", async () => {
+    const current = fixture();
+    current.context.phase = "idle";
+    current.activeGenerationRef.current = null;
+    const preference = { read: vi.fn(async () => original), save: vi.fn() };
+    current.context.AppQualityPreference = { connect: vi.fn(async () => preference) };
+    await current.change(lower);
+    await current.context.loadAppQualityPreference(new AbortController().signal);
+    expect(preference.save).toHaveBeenCalledExactlyOnceWith(lower);
+    expect(current.qualitySettingsRef.current).toEqual(lower);
+    current.context.commitQuality(original);
+    expect(preference.save).toHaveBeenCalledOnce();
+    await current.change(lower);
+    expect(preference.save).toHaveBeenCalledTimes(2);
+  });
+
+  it("remembers an explicit pre-share choice without changing room or capture state", async () => {
+    const current = fixture();
+    current.context.phase = "idle";
+    await current.change(lower);
+    expect(current.savePreferredQuality).toHaveBeenCalledWith(lower);
+    expect(current.applyCaptureProfile).not.toHaveBeenCalled();
+    expect(current.signalRef.current.setHostQualitySettings).not.toHaveBeenCalled();
+  });
+
+  it("does not replace a local preference with reauthenticated room settings", () => {
+    const current = fixture();
+    current.reauthenticate();
+    expect(current.savePreferredQuality).not.toHaveBeenCalled();
+  });
+
   it.each([true, false])("resumes the former raw audio input only after an accepted mixed-output resume: %s", (accepted) => {
     const current = fixture(false);
     const source = {} as MediaStream;
@@ -1102,6 +1169,7 @@ describe("Host quality ownership", () => {
     expect(current.physical()).toEqual(lower);
     expect(current.qualitySettingsRef.current).toEqual(lower);
     expect(current.advancedQualityRef.current).toEqual(lower);
+    expect(current.savePreferredQuality).toHaveBeenCalledWith(lower);
     expect(current.peer.updateCaptureProfile).toHaveBeenCalledWith(lower);
     expect(optional.dispose).toHaveBeenCalledOnce();
     expect(current.client.stopReceive).toHaveBeenCalledWith("share");
@@ -1116,6 +1184,7 @@ describe("Host quality ownership", () => {
     current.applyCaptureProfile.mockRejectedValue(new Error("capture rejected"));
     await current.change(lower);
     expect(current.physical()).toEqual(original);
+    expect(current.savePreferredQuality).not.toHaveBeenCalled();
     expect(current.qualitySettingsRef.current).toEqual(original);
     expect(current.advancedQualityRef.current).toEqual(original);
     expect(optional.updateProfile).not.toHaveBeenCalled();
@@ -1160,6 +1229,7 @@ describe("Host quality ownership", () => {
     pending.resolve();
     await changing;
     expect(current.qualitySettingsRef.current).toEqual(original);
+    expect(current.savePreferredQuality).not.toHaveBeenCalled();
     expect(current.signalRef.current.setHostQualitySettings).not.toHaveBeenCalled();
   });
 

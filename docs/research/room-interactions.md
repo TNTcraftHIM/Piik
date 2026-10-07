@@ -60,9 +60,15 @@ ends that service; merely leaving the Host page does not.
   session.
 - The viewer discovers this optional capability independently of first-picture
   startup. Late capability discovery enables data on the existing connection.
-- A strict payload union admits plain chat text or a registered reaction. Chat is
+- A strict command payload union admits plain chat text or a registered reaction. Chat is
   at most 280 Unicode code points, normalized to NFC, without control/bidi
   characters. It renders as text, with no markup, links, attachments or commands.
+- Received reaction names are bounded lowercase ASCII identifiers, not arbitrary
+  HTML, assets or commands. The page ignores an unsupported effect after protocol
+  validation; malformed events still fail validation. This follows the command/
+  response distinction in [Azure's extensible-enum guidance](https://github.com/microsoft/api-guidelines/blob/vNext/azure/Guidelines.md#enums--sdks-client-libraries),
+  checked on 2026-10-07. Existing strict pages still reject new names, so this
+  reader change alone does not authorize sending new reactions to those pages.
 - The server accepts at most one interaction per 800 ms per connection. It
   validates identity, subscription and target before fan-out. A slow recipient's
   data is skipped at 16 KiB queued output, reserving the existing bounded queue

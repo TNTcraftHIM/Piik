@@ -1,7 +1,7 @@
 package signal
 
 // The router owns no lock. signal.Server.mu (routerOptions.mu) is held by the
-// caller of every method except close, hooks are called with it held, and the
+// caller of every method, hooks are called with it held, and the
 // goroutines the router starts (pump driver, media prepares, drains and timer
 // callbacks) take it themselves. After unlocked I/O, revalidate the owning
 // room, operation and resource before committing effects under the lock.
@@ -52,16 +52,16 @@ func routeDebugSink() func(string, ...any) {
 	return slog.Info
 }
 
-// sfuFallback is SfuFallbackOptions. A zero timeout means the TS default.
+// sfuFallback supplies embedded media and admission; zero selects the default timeout.
 type sfuFallback struct {
 	media            sfu.Runtime
 	admission        *sfu.Admission
 	prepareTimeoutMs int64
 }
 
-// routerHooks are the signaling server callbacks of HybridMediaRouterOptions.
+// routerHooks are callbacks into the signaling server.
 // Every hook is called with mu held and must not block. shareGeneration
-// returns "" where the TS returned undefined; routesChanged may be nil.
+// returns "" when no share exists; routesChanged may be nil.
 type routerHooks struct {
 	sendToSession   func(sessionID string, message protocol.ServerMessage)
 	shareGeneration func(roomID string) string
@@ -81,8 +81,7 @@ type routerOptions struct {
 	afterFunc                 func(time.Duration, func()) func() bool
 }
 
-// authenticatedRouteParticipant is AuthenticatedRouteParticipant; routePolicy
-// is nil where the TS key was absent.
+// authenticatedRouteParticipant carries admitted identity and optional Host policy.
 type authenticatedRouteParticipant struct {
 	roomID      string
 	role        protocol.Role
@@ -91,22 +90,21 @@ type authenticatedRouteParticipant struct {
 	routePolicy *protocol.RoutePolicy
 }
 
-// hybridAuthenticationState is HybridAuthenticationState.
+// hybridAuthenticationState supplies the joining session's route assignment.
 type hybridAuthenticationState struct {
 	routeRevision   int64
 	routeAssignment protocol.ParticipantRouteAssignment
 }
 
-// activeViewerMediaEdge is ActiveViewerMediaEdge; upstream is peer or sfu.
+// activeViewerMediaEdge identifies one Viewer's active Peer or SFU upstream.
 type activeViewerMediaEdge struct {
 	revision     int64
 	connectionID string
 	upstream     protocol.MediaRouteUpstream
 }
 
-// signalAuthorization is the `boolean | "probe" | undefined` result of
-// peerSignalAuthorization. signalAuthorizationUnassigned is the TS undefined:
-// the signaling server falls back to the committed-edge assignment.
+// signalAuthorization is the peerSignalAuthorization result. Unassigned makes
+// the signaling server check the committed-edge assignment.
 type signalAuthorization int
 
 const (
@@ -116,8 +114,8 @@ const (
 	signalAuthorizationProbe
 )
 
-// peerSignalInput is the peerSignalAuthorization input; descriptionType is
-// "" where the TS key was absent.
+// peerSignalInput supplies session/connection identity for signal authorization.
+// descriptionType is empty for signals without an SDP description.
 type peerSignalInput struct {
 	roomID          string
 	sourcePeerID    string
@@ -129,8 +127,7 @@ type peerSignalInput struct {
 	descriptionType string
 }
 
-// peerSignalDebugInput is the debugPeerSignal input; candidateOrigin and
-// descriptionType are "" where the TS keys were absent.
+// peerSignalDebugInput supplies signal provenance; optional fields are empty.
 type peerSignalDebugInput struct {
 	roomID          string
 	sourcePeerID    string
@@ -141,8 +138,8 @@ type peerSignalDebugInput struct {
 	authorization   signalAuthorization
 }
 
-// roomRuntime is RoomRuntime. pumping is the `pump` promise used as a
-// single-flight token; deadlineGeneration is bumped by every clearDeadline so
+// roomRuntime owns one controller. pumping prevents concurrent drivers;
+// deadlineGeneration is bumped by every clearDeadline so
 // a callback that lost the Stop race sees it is stale.
 type roomRuntime struct {
 	hostPeerID string
@@ -155,7 +152,7 @@ type roomRuntime struct {
 	deadlineGeneration         uint64
 }
 
-// router is HybridMediaRouter.
+// router applies controller decisions through room signaling and media resources.
 type router struct {
 	mu        *sync.Mutex
 	store     *room.Store
@@ -172,13 +169,12 @@ type router struct {
 	resourceWaiters ordered.Map[string, struct{}]
 	sfuDrainTasks   ordered.Map[sfu.SubscriptionFence, *sfuDrainTask]
 	// inflight counts the goroutines that will re-acquire mu: the pump
-	// drivers, fresh SFU config issues and drains. It is the TS microtask
-	// backlog; tests wait for it to reach zero where the TS awaited.
+	// drivers, fresh SFU config issues and drains.
 	inflight int
 	closing  bool
 }
 
-// newRouter is the HybridMediaRouter constructor.
+// newRouter shares the server's lock and supplies clock defaults.
 func newRouter(options routerOptions) *router {
 	if err := protocol.AssertEndpointMediaCopyCapacity(options.endpointMediaCopyCapacity); err != nil {
 		panic(err)
@@ -205,12 +201,9 @@ func newRouter(options routerOptions) *router {
 	return r
 }
 
-// io is one TS `await` on external work: mu is released around fn and always
-// re-acquired, including while a panic unwinds. That last part is the reason
-// this is a helper rather than an inline Unlock/Lock pair: recoverPump turns a
-// panic raised inside such a window into the TS pump rejection, and its
-// caller's `defer r.mu.Unlock()` would otherwise unlock a mutex nobody holds
-// (an unrecoverable runtime error). Nothing may touch router state inside fn.
+// io releases mu for external work and reacquires it even while a panic unwinds.
+// This keeps the caller's deferred unlock valid when recoverPump catches the
+// failure. Nothing may touch router state inside fn.
 func (r *router) io(fn func()) {
 	r.mu.Unlock()
 	defer r.mu.Lock()
@@ -266,9 +259,7 @@ func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridA
 		if rm.controller != nil && rm.hostPeerID != input.peerID {
 			r.clearDeadline(rm)
 			// rm.hostPeerID always equals the controller's, so this branch
-			// takes RebindHostIdentity's clearing path: every committed edge
-			// goes, which is what the TS per-viewer deleteConnectionId loop
-			// then restated into the mirror.
+			// takes RebindHostIdentity's clearing path: every committed edge goes.
 			r.releaseResources(rm.controller.RebindHostIdentity(input.peerID, input.sessionID, r.nowPtr()))
 		}
 		rm.hostPeerID = input.peerID
@@ -1089,7 +1080,7 @@ func (r *router) assignments(
 		publicationGeneration = snapshot.HostPublication.Generation
 	}
 	if candidate != nil && candidateChildPeerID != "" {
-		// TS delete-then-set: the candidate child moves to the back.
+		// The replacement candidate follows the surviving committed children.
 		edges.Delete(candidateChildPeerID)
 		if candidate.Kind == route.UpstreamPeer {
 			edges.Set(candidateChildPeerID, assignmentEdge{kind: route.UpstreamPeer, parentPeerID: candidate.ParentPeerID})
@@ -1292,8 +1283,8 @@ type qualitySample struct {
 	hostSessionID         string
 }
 
-// qualityCopyContext is QualityCopyContext; operationReason and
-// candidateTransition are "" where the TS had null.
+// qualityCopyContext attributes copy demand to committed and candidate work;
+// operationReason and candidateTransition are empty when no such work exists.
 type qualityCopyContext struct {
 	committedCopies         int
 	candidateReservedCopies int
@@ -1519,8 +1510,7 @@ func nullable[T any](value protocol.Nullable[T]) any {
 	return *value.Value
 }
 
-// nullString is the debug value of a string that is "" where the TS had
-// null or undefined.
+// nullString emits absent debug identities as null.
 func nullString(value string) any {
 	if value == "" {
 		return nil

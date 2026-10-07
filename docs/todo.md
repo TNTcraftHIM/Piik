@@ -1,25 +1,34 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-06
+Last reviewed: 2026-10-07
 
-Only **Now** is executable. Product modules own behavior; Git/PRs own completed
-history. A parked idea is not implementation authority.
+The current 2.0 preparation includes independent investigation across this
+ledger. Explicit owner holds remain in force; an investigation does not itself
+accept a new feature or architecture. A missing device or reporter trace blocks
+only that evidence claim, not unrelated work. Product modules own behavior;
+Git/PRs own completed history.
 
 ## Now
 
-No active implementation work. Deferred proposals and evidence-dependent reports
-remain below; release delivery is tracked by the pipeline and deployment records.
+- [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
+  useful improvements and outstanding acceptance on 2026-10-07. Prepare one
+  coherent candidate and stop before publication. Preserve the existing product
+  model; evaluate held features against measurable benefit and total complexity
+  before accepting a changed contract.
+- [ ] **Windows 11 capture border remains visible.** Reopened by a new report
+  on 2026-10-07. Recheck App/Browser capture ownership, border permission/API
+  results, live setting changes, display-mode changes, concurrent captures and
+  source-thumbnail cancellation/retirement before attributing this to Windows.
+  Obtain the affected version/path/build when available; the report
+  does not yet identify them. [Capture evidence](./research/native-client-lifecycle.md#windows-capture-borders)
+  owns the prior graceful-retirement and concurrent-capture checks.
+- [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
+  are complete. Integrate through the next owner-approved publishing merge and
+  verify the separate workflow with its original CI artifacts. Mirror failure
+  must remain visible without blocking product CI or Website delivery.
 
 ## Held By Owner
 
-- [ ] **4K and resolution/capability expansion.** Not planned for this phase,
-  reaffirmed by the owner on 2026-10-06 because of cost relative to benefit. Keep the
-  public v23/v9/v7 contract and 1440p ceiling. Resume the extensibility audit and
-  [media extension assessment](./research/native-client-media.md#media-capability-extension-assessment)
-  only with a renewed benefit/cost decision. This includes unfinished
-  cross-platform capture and capability negotiation; local tests alone do not
-  authorize a protocol break or a 2.0 release. Retain recoverable Git evidence
-  for the experiment without requiring an active worktree.
 - [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
   own the evidence for synchronous H264 initialization, native adaptation and
@@ -34,24 +43,34 @@ remain below; release delivery is tracked by the pipeline and deployment records
 - [ ] **Windows ARM64 App.** Deferred by the owner on 2026-10-03. Keep Windows
   App packages and website downloads x64-only until this work is reopened.
 
-## Deferred Feature Work
+## Feature Assessments
 
-These proposals remain deferred beyond the accepted interaction phase.
+Assess these proposals against the owner's benefit/complexity condition.
+Existing negative results narrow the next experiment; they do not freeze the
+whole candidate or require another version-number decision before other work.
+Implementation needs a concrete useful result within the product model.
 
-- [ ] **Native Magicsock integration.** The [isolated comparison](./research/nat-traversal.md#integration-cost-and-recovery-controls)
-  establishes Go feasibility and relay-assisted recovery, but no additional
-  direct-reachability class in its tested matrix. Keep product transport unchanged.
-  Reopen integration only for a repeatable benefit on matched networks that
-  justifies the extra identity, readiness, packet-size and relay responsibilities.
-- [ ] **Managed Demo hosting.** Evaluate cost and public UDP support before any
-  migration. The assessment remains outside the current product release; keep
-  the existing P2P-only Demo deployment until a provider and operating boundary
-  are accepted.
-- [ ] **Phone as a Host microphone: assess after the current work.** Explore an
-  opt-in link that pairs a phone's microphone with the Host's existing audio
-  mixer. Evaluate pairing/revocation, latency/echo, browser background limits
-  and Browser/native input ownership before accepting an implementation. This
-  proposal does not reopen room voice or change the current release scope.
+- [ ] **4K and additional codecs.** The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
+  recommends retaining current limits. Assess concrete source/receiver cases
+  before accepting coordinated capture, forwarding and resource-bound changes;
+  keep UI presets separate from those bounds in any new design. Additional
+  formats must account for late Viewers and relays that cannot decode or forward
+  the published format; codec negotiation alone does not transcode it.
+- [ ] **Native Magicsock.** Go reuse is feasible, but the
+  [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
+  have not established improved direct reachability. Seek a repeatable benefit
+  before accepting peer-key authorization/revocation, underlay readiness and
+  relay operation. The isolated feedback check also requires a supported RTCP
+  size boundary for the tunnel's MTU. Keep the experiment separate from product
+  routing; the P2P evidence work below owns the network/interop acceptance boundary.
+- [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
+  identifies UDP/storage requirements but establishes no cost saving. Keep the
+  existing P2P-only Demo until a provider and operating boundary are accepted.
+- [ ] **Phone as a Host microphone.** The [input assessment](./research/camera-and-microphone.md#phone-microphone-assessment)
+  identifies pairing/revocation and native decoded-input ownership beyond the
+  existing device selector. Keep it outside this candidate until a concrete
+  use case justifies that boundary and physical latency/echo/background checks.
+  This proposal does not reopen room voice.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not
@@ -63,10 +82,6 @@ These proposals remain deferred beyond the accepted interaction phase.
 These reports remain unmatched. A local repair or successful test is not proof
 of a reporter's cause; research owns the completed experiments and their limits.
 
-- [ ] **Intermittent native capture self-test failure.** The worker check now
-  records its phase, original exception and per-output progress. A local pass
-  does not explain the earlier CI failure; use the next failed run's diagnostics
-  before changing deadlines or worker behavior.
 - [ ] **macOS and Linux physical capture.** Complete the remaining capture/audio
   checks in [verification status](./verification-status.md#device-evidence-boundary),
   including an Intel Mac with a usable hardware H.264 encoder, an ARM64 Linux
@@ -95,6 +110,8 @@ of a reporter's cause; research owns the completed experiments and their limits.
   [#443](https://github.com/TNTcraftHIM/Piik/issues/443) lacks a connected Native
   edge and its paired Viewer/App transport report;
   [#448](https://github.com/TNTcraftHIM/Piik/issues/448) only reaches route allocation.
+  [#453](https://github.com/TNTcraftHIM/Piik/issues/453) has no matched endpoint
+  reports to distinguish network reachability from a product failure.
   The v1.6.3 candidate-timeout report lacks share-start and SDP/ICE evidence.
 - [ ] **Camera and Host microphone device coverage.** Check real audio levels,
   echo, device replacement/native mixing and phone camera permission, orientation
@@ -109,16 +126,15 @@ of a reporter's cause; research owns the completed experiments and their limits.
   the [runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup).
   [#434](https://github.com/TNTcraftHIM/Piik/issues/434) establishes DNS refusal
   during edge discovery, not a cause shared by all startup reports.
+  [#452](https://github.com/TNTcraftHIM/Piik/issues/452) records both QUIC and TCP
+  connection timeouts; compare the same endpoint with/without its accelerator.
+  That startup log contains no evidence for its separate H.264 report.
 - [ ] **Viewer interruptions.** Obtain paired endpoint/upstream-relay diagnostics
   for established viewing returning to P2P connecting, including
   [#429](https://github.com/TNTcraftHIM/Piik/issues/429)'s SFU-to-P2P dropout.
   Separately retest the v1.5.0 App public-link report where one Viewer drops
   immediately after connection details appear while others work. Distinguish
   first-frame admission, signaling grace and current-edge recovery.
-- [ ] **Windows 11 capture border remains visible.** Identify the App/Browser
-  capture path, Windows build, permission result and other active captures.
-  [Capture evidence](./research/native-client-lifecycle.md#windows-capture-borders)
-  owns the graceful-retirement and concurrent-capture checks.
 - [ ] **App discovery and share-start failures.** Retest missing sources and
   unreachable App reports across authorization, browser permissions, control
   capacity, enumeration and startup. For the v1.6.5 Auto-to-VP8 report, obtain
@@ -171,49 +187,32 @@ works, so a Rust alternative needs a concrete Go limitation.
 1. **Representative device/network acceptance.** Resume the remaining matrix in
    [verification status](./verification-status.md#remaining-device-and-network-acceptance)
    when directed, preserving platform deferrals and serial physical checks.
-   Before reusing the optional `viewer-mbb` canary, replace its obsolete
-   Viewer-only trigger and capacity assertions with the sender-owned contract.
 2. **Broader quality work.** Reopen from measured interruptions, failed recovery
    or healthy-sibling degradation at acceptable complexity. The
    [Browser pool comparison](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
    owns cold-encoder tradeoffs; low resolution alone is not a defect. Check
    whether a proposed move merely shifts pressure to another parent's siblings.
-3. **Signaling execution model.** Measure signaling-lock contention, synchronous
-   persistence, presence fan-out, diagnostic I/O and cross-room password-work
-   fairness before changing the lock or execution model.
-4. **Reachable ownership/refactor work.** With related behavior changes, evaluate
-   per-share Host and Viewer route ownership under
-   [engineering review](./standards/engineering.md#ablation-and-review).
-   Reopen C=3 structural-intent retention or multi-child evidence ownership only
-   with current-contract reproductions. Shared recovery must preserve Native
-   bridge versus network-failure semantics. Before changing Host loopback-failure
-   retirement, account for its preview, Browser quality candidates, quality/SFU
-   updates and track-ended consumers; independent Native publication alone does
-   not make ignoring the failure safe. This is not a diagnosed field cause.
-5. **Storage fault recovery.** Choose and verify a damaged-disk/COMMIT/ROLLBACK
-   recovery policy before adding catch-and-continue or retries. This failure
-   boundary remains unestablished after ordinary persistence checks.
-6. **Platform output.** Reopen for a registered receiver acting as an ordinary
+3. **Platform output.** Reopen for a registered receiver acting as an ordinary
    Viewer only after the [platform-output gate](./research/platform-output.md)
    passes.
-7. **Additional languages.** Review community catalogs and their rendered UI
+4. **Additional languages.** Review community catalogs and their rendered UI
    following the [translation guide](./guide/translating.md), including names,
    menu navigation, text direction and layout.
-8. **Windows code signing.** Revisit after enrollment in a trusted signing
+5. **Windows code signing.** Revisit after enrollment in a trusted signing
     service. Sign executables before archive checksums; publisher identity does
     not guarantee that antivirus cloud scanning stops.
-9. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
+6. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.
-10. **Release-operation policy.** Protected release environments, immutable
-    draft assets and changing mirror-failure policy remain unaccepted proposals;
-    evaluate their benefit before adding release machinery.
-11. **Automatic local chat history.** Explicit TXT export covers manual retention.
+7. **Release-operation policy.** Protected release environments and immutable
+    draft assets remain unaccepted proposals; evaluate their benefit before
+    adding release machinery.
+8. **Automatic local chat history.** Explicit TXT export covers manual retention.
     Reconsider automatic storage only with a stable room-incarnation identity,
     bounded retention and a clear delete control; reusable room codes must not
     combine conversations. No new history service or wire field is authorized.
-12. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
+9. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
     The [capture assessment](./research/camera-and-microphone.md) records raw-frame
     output and the WHIP boundary; virtual camera alone is not a second encode.
     Do not add an RTMP/WHIP listener without an accepted publication owner.

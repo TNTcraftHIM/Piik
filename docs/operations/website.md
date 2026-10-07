@@ -24,6 +24,21 @@ GitHub Pages can serve the complete website: it hosts
 The demo also needs the Go service for room authority, WebSocket signaling and
 UDP STUN, so it runs on the separate US server rather than Pages.
 
+### Managed Hosting Assessment
+
+Reviewed 2026-10-07. Keep the current deployment for this candidate. A managed
+container can reduce host administration, but must preserve public UDP, stable
+room authority and SQLite storage. [Fly.io supports public UDP](https://docs.fly.io/networking/udp-and-tcp)
+with a dedicated IPv4 address and a specific UDP bind address; external and
+internal UDP ports must match. Its [dedicated IPv4 charge](https://docs.fly.io/about/pricing)
+is $2/month before compute, storage and transfer. This is a possible deployment
+target, not an established cost saving over the current server.
+
+[Cloudflare Containers disks are ephemeral by default](https://developers.cloudflare.com/containers/faq/#is-disk-persistent-what-happens-to-my-disk-when-my-container-sleeps).
+Snapshots or object-backed storage are not a drop-in replacement for the current
+live SQLite contract. No provider migration is accepted; compare the complete
+cost and verify storage, UDP and restart behavior before changing the Demo.
+
 ## Public Demo Configuration
 
 The chosen demo allows entry without a site password and provides P2P sharing
@@ -161,7 +176,8 @@ Verify the latest redirects and package checksums after releases.
 4. Accepted main pushes run CI first; success triggers **Website**, which checks
    out that CI run's exact commit. Manual dispatch uses its selected `main` commit.
    Before publishing, both paths skip a build that is no longer current main;
-   dispatch again for the latest commit when needed. Download links resolve through each provider, so
+   dispatch again for the latest commit when needed. The separate Gitee mirror
+   workflow does not gate Website deployment. Download links resolve through each provider, so
    publishing a package or retrying its mirror needs no link refresh.
    Only `build/site/` is uploaded; website work does not package App/Server.
    Verify HTTPS, both languages, relative assets and per-platform download links.
