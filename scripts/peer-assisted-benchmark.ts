@@ -652,7 +652,8 @@ function parseBenchmarkConfig(
     connectionTimeoutMs:
       parseNumber(
         environment.BENCHMARK_CONNECTION_TIMEOUT_SECONDS,
-        20,
+        // Includes the whole burst's queue: the room admits one child at a time.
+        90,
         "BENCHMARK_CONNECTION_TIMEOUT_SECONDS",
         3,
         120,
