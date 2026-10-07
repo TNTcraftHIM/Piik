@@ -596,18 +596,16 @@ static NalSummary inspect_h264(const guint8 *data, gsize size) {
   return summary;
 }
 
-static gboolean quit_loop(gpointer data) {
-  CaptureRun *run = data;
-  g_main_loop_quit(run->loop);
-  return G_SOURCE_REMOVE;
-}
-
 static void fail_run(CaptureRun *run, const char *message) {
   g_mutex_lock(&run->lock);
   gboolean first = run->failure == NULL;
   if (first) run->failure = g_strdup(message);
   g_mutex_unlock(&run->lock);
-  if (first) g_main_context_invoke(NULL, quit_loop, run);
+  // MainContext.invoke can execute immediately before the loop starts, losing
+  // quit(). The pipeline bus queues the failure and owns its callback lifetime.
+  if (first) gst_element_post_message(run->pipeline,
+      gst_message_new_application(GST_OBJECT(run->pipeline),
+          gst_structure_new_empty("piik-capture-failed")));
 }
 
 static void fail_output(VideoOutput *output, const char *message) {
@@ -895,7 +893,10 @@ static GstPadProbeReturn output_input_frame(GstPad *pad, GstPadProbeInfo *info,
 static gboolean bus_message(GstBus *bus, GstMessage *message, gpointer data) {
   (void)bus;
   CaptureRun *run = data;
-  if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
+  if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_APPLICATION &&
+      gst_message_has_name(message, "piik-capture-failed")) {
+    g_main_loop_quit(run->loop);
+  } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
     GError *error = NULL;
     char *debug = NULL;
     gst_message_parse_error(message, &error, &debug);
