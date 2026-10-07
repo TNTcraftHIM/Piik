@@ -379,8 +379,17 @@ Default, 4 ms and 1 ms capture intervals returned the same rate, including with
 the source kept topmost; property readback confirmed each requested interval.
 This localizes the limit to platform capture delivery in this environment but
 does not establish the virtual driver's cause or diagnose a field report.
-Retain the gate's threshold and compare a physical display before changing capture scheduling,
-encoder policy or route behavior.
+No capture scheduling, encoder policy or gate threshold was changed.
+
+Later on the same day, Windows reported an active physical AOC display. The
+unchanged Windows-API-only probe delivered about 32 fps, matching its GDI source,
+at the default, 4 ms and 1 ms intervals. The candidate's Native H.264 two-room
+SFU gate then passed the original 300-frame/30-second requirement, live profile
+change, decoded audio, subscription recovery and retirement. Stopping the first
+room preserved another 30 decoded frames and continuing audio in the second;
+all owned processes, profiles and ports were released. This closes that local
+throughput acceptance gap. It does not isolate the virtual driver's cause or
+establish physical HDR, game-load or other-device performance.
 
 ## Native H.264 Motion Quality
 

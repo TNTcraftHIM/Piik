@@ -21,11 +21,6 @@ Git/PRs own completed history.
   to Windows. Obtain the affected version/path/build when available; the report
   does not yet identify them. [Capture evidence](./research/native-client-lifecycle.md#windows-capture-borders)
   owns the prior graceful-retirement and concurrent-capture checks.
-- [ ] **Native capture cadence acceptance.** The local Native SFU throughput
-  rerun is limited by [low WGC arrival cadence](./research/native-client-media.md#virtual-display-acceptance-limit)
-  reproduced on unchanged main and a separate Windows-API-only capture probe.
-  Compare on a physical display before claiming current Native throughput
-  acceptance; do not lower the unchanged 300-frame/30-second requirement.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
