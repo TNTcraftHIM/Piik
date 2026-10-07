@@ -101,6 +101,31 @@ and [ADR-0010](../adr/0010-cross-platform-client-runtime.md) as amended by
 
 ## Measured Before And After
 
+### Signaling Execution Check
+
+On 2026-10-07, an isolated Windows loopback check used 10 rooms with one Host and
+20 Viewers each. Nine Hosts changed their display names 10 times/s, exercising
+presence encoding and fan-out; another task changed room policy 10 times/s,
+and four password tasks ran once/s outside the signaling lock. The diagnostic
+variant additionally wrote 200 synthetic route records/s through the real file
+sink under that lock. Each run measured 200 requests from a separate room.
+
+| Storage / diagnostics | Signaling lock wait P95 | Request round-trip P95 | Retained connections |
+| --- | ---: | ---: | ---: |
+| Memory | Below clock resolution | 6.5 ms | 210/210 |
+| SQLite | 1.0 ms | 5.9 ms | 210/210 |
+| SQLite + diagnostic sink | 3.0 ms | 7.0 ms | 210/210 |
+
+These short local checks do not establish WAN, slow-disk or maximum-capacity
+performance. A separate overload run at 900 name changes/s and 40 password
+tasks/s reached 205 ms request P95 and lost 12 connections while bounded queues
+were exercised; it is not a passing workload. The ordinary workload provides
+no reason to introduce room actors or another mutation owner. Preserve the
+bounded queues and unlocked password/media work; measure synchronous storage
+and diagnostic sinks before changing execution for a larger deployment.
+
+### Original Package Consolidation
+
 One machine, 2026-09-06: Windows 11, Node 24.15.0, Go 1.26.6. A script spawned
 each server with the same production configuration (`PORT=18787`, HTTPS public
 origin, site-access password, one STUN URL, loopback listen host), polled

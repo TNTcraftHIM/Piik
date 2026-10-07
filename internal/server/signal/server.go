@@ -6,10 +6,11 @@
 //
 // Server.mu is the one lock of the effect layer: it guards every field of
 // the server and the router, the room.Store and the route controllers. Every
-// handler, timer callback and goroutine takes it; it is released only around
-// I/O (the password KDF and media transport), after which current session,
+// handler, timer callback and goroutine takes it; password KDF and media
+// transport work run unlocked, after which current session,
 // room and operation identities must be revalidated. Router methods and hooks are
-// called with mu held and never lock.
+// called with mu held and never lock. Room persistence and the optional route
+// diagnostic sink are synchronous and belong in this lock's latency budget.
 package signal
 
 import (
@@ -45,7 +46,7 @@ const (
 	defaultMaxSignalConnections          = 2_048
 	defaultMaxUnauthenticatedConnections = 256
 	// minSignalingChallengeIntervalMs is MIN_SIGNALING_CHALLENGE_INTERVAL_MS:
-	// the floor between two password challenges on one connection.
+	// the floor between two liveness challenges on one connection.
 	minSignalingChallengeIntervalMs = int64(1_000)
 	// serviceRestartCloseGrace is SERVICE_RESTART_CLOSE_GRACE_MS: how long a
 	// peer has to acknowledge close{1012} before the socket is terminated.

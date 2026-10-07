@@ -15,10 +15,6 @@ Git/PRs own completed history.
   coherent candidate and stop before publication. Preserve the existing product
   model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
-- [ ] **Signaling execution and fairness.** Measure signaling-lock contention,
-  synchronous persistence, presence fan-out, diagnostic I/O and cross-room
-  password work before changing the lock or execution model. Start from the
-  existing bounded owners; do not introduce per-room actors without evidence.
 - [ ] **Lifecycle ownership review.** Trace reachable per-share Host/Viewer,
   source replacement, signaling recovery and media retirement paths under
   [engineering review](./standards/engineering.md#ablation-and-review).
@@ -29,6 +25,12 @@ Git/PRs own completed history.
 - [ ] **Documentation consistency.** Check the remaining guides, research and
   owner links against current behavior; remove obsolete service/API descriptions
   while retaining the scope and date of historical measurements.
+- [ ] **Windows 11 capture border remains visible.** Reopened by a new report
+  on 2026-10-07. Recheck App/Browser capture ownership, border permission/API
+  results, live setting changes and concurrent captures before attributing this
+  to Windows. Obtain the affected version/path/build when available; the report
+  does not yet identify them. [Capture evidence](./research/native-client-lifecycle.md#windows-capture-borders)
+  owns the prior graceful-retirement and concurrent-capture checks.
 - [ ] **Native capture cadence acceptance.** The local Native SFU throughput
   rerun is limited by [low WGC arrival cadence](./research/native-client-media.md#virtual-display-acceptance-limit)
   reproduced on unchanged main and a separate Windows-API-only capture probe.
@@ -146,10 +148,6 @@ of a reporter's cause; research owns the completed experiments and their limits.
   Separately retest the v1.5.0 App public-link report where one Viewer drops
   immediately after connection details appear while others work. Distinguish
   first-frame admission, signaling grace and current-edge recovery.
-- [ ] **Windows 11 capture border remains visible.** Identify the App/Browser
-  capture path, Windows build, permission result and other active captures.
-  [Capture evidence](./research/native-client-lifecycle.md#windows-capture-borders)
-  owns the graceful-retirement and concurrent-capture checks.
 - [ ] **App discovery and share-start failures.** Retest missing sources and
   unreachable App reports across authorization, browser permissions, control
   capacity, enumeration and startup. For the v1.6.5 Auto-to-VP8 report, obtain
