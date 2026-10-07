@@ -26,25 +26,21 @@ const (
 	gatePendingLimit = 16
 )
 
-// errDerivationCancelled is the AsyncGate "cancelled" outcome. Callers never
-// inspect it: they hand it to the commit method, which maps it the way the
-// TypeScript call site did.
+// errDerivationCancelled means the queued caller lost authority before its
+// derivation started. The caller maps it to the operation's error.
 var errDerivationCancelled = errors.New("password derivation was cancelled")
 
-// isGateOutcome reports whether err is one of the two AsyncGate outcomes rather
-// than a thrown error. The TypeScript returned busy and cancelled as values,
-// which its post-await checks inspected after re-reading the room; everything
-// else threw out of the await.
+// isGateOutcome identifies admission results that the commit boundary resolves
+// after rechecking room authority. Other derivation errors return immediately.
 func isGateOutcome(err error) bool {
 	return errors.Is(err, errDerivationCancelled) || hasCode(err, CodeRoomBusy)
 }
 
-// DeriveViewerPasswordMaterial is createViewerPasswordMaterial: it validates the
-// password, draws a fresh salt and returns salt||verifier. Call it WITHOUT the
-// caller's lock held and hand both results to CreateRoom, ReplaceRoom or
-// SetViewerPassword unchanged; those reproduce the TypeScript order in which a
-// busy or cancelled outcome is turned into an error. mayStart may be nil, which
-// is the TypeScript default of `() => true`.
+// DeriveViewerPasswordMaterial validates the password, draws a fresh salt and
+// returns salt||verifier. Call it without the caller's lock held and pass both
+// results to CreateRoom, ReplaceRoom or SetViewerPassword unchanged so those
+// commits can recheck authority before reporting busy/cancelled admission.
+// A nil mayStart permits derivation once the gate admits it.
 func (s *Store) DeriveViewerPasswordMaterial(
 	password string, mayStart func() bool,
 ) ([]byte, error) {
@@ -62,10 +58,9 @@ func (s *Store) DeriveViewerPasswordMaterial(
 	return slices.Concat(salt, verifier), nil
 }
 
-// DeriveViewerPassword is the unlocked middle of connectViewerWithPassword: it
-// derives the verifier for the salt ViewerPasswordChallenge returned. Unlike
-// DeriveViewerPasswordMaterial it maps both gate outcomes itself, because the
-// TypeScript threw them immediately after the await, before re-reading the room.
+// DeriveViewerPassword is the unlocked password-admission step: it derives the
+// verifier for the salt ViewerPasswordChallenge returned. Gate failures return
+// before the room commit; cancelled admission is reported as an invalid token.
 func (s *Store) DeriveViewerPassword(
 	password string, salt []byte, mayConnect func() bool,
 ) ([]byte, error) {
@@ -89,7 +84,7 @@ func (s *Store) deriveViewerPassword(
 	})
 }
 
-// gate is AsyncGate: at most limit derivations run at once and at most
+// gate admits at most limit concurrent derivations and at most
 // pendingLimit wait, first in first out. A saturated gate answers ROOM_BUSY.
 type gate struct {
 	mu           sync.Mutex
@@ -128,8 +123,8 @@ func (g *gate) acquire() bool {
 	return true
 }
 
-// release hands the slot to the first waiter instead of decrementing, which is
-// what `const next = this.waiters.shift(); if (next) { next(); return; }` did.
+// release transfers the active slot to the first waiter, keeping new callers
+// behind already queued derivations.
 func (g *gate) release() {
 	g.mu.Lock()
 	if len(g.waiters) > 0 {

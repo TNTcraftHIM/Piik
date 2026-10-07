@@ -9,7 +9,7 @@ import (
 // validation is the private validateOrAdvance result.
 type validation struct {
 	released             []*Resource
-	exhaustedChildPeerID string // "" = undefined
+	exhaustedChildPeerID string
 	expired              bool
 	consumedGuard        bool
 }
@@ -353,7 +353,7 @@ func (c *Controller) NoteCurrentCandidateRejection(guard CandidateCursorGuard, b
 }
 
 // SkipCurrentCandidate consumes the guarded candidate and advances the
-// cursor (TS defaulted bucket to "stale"; Go callers pass RejectionStale).
+// cursor, recording the caller's rejection reason.
 func (c *Controller) SkipCurrentCandidate(guard CandidateCursorGuard, nowMs int64, bucket RejectionBucket) BeginResult {
 	validation := c.validateOrAdvance(nowMs, nil)
 	op := c.operation
@@ -1163,7 +1163,7 @@ func (c *Controller) replanRemaining(op *operation, firstTuple, restoreTuple *Ca
 }
 
 // operationSnapshot returns a deep copy plus the derived wakeAtMs;
-// Current omits ConnectionAttempt when undefined.
+// Current omits ConnectionAttempt when the attempt has no NAT opportunity.
 func (c *Controller) operationSnapshot() *OperationSnapshot {
 	op := c.operation
 	if op == nil {
@@ -1440,7 +1440,7 @@ func (c *Controller) consumeDirectContinuationCandidate(op *operation) {
 	if len(continuation.parentPeerIDs) == 0 {
 		c.directContinuations.Delete(op.childPeerID)
 	} else {
-		// TS delete + set: the entry moves to the tail (round-robin state).
+		// Give the next continuation a turn before retrying this child.
 		c.directContinuations.MoveToBack(op.childPeerID, continuation)
 	}
 }

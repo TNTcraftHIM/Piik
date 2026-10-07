@@ -353,8 +353,7 @@ func (c *Controller) descendantsOf(peerID string) []string {
 	return descendants
 }
 
-// withSelf ports `this.descendantsOf(peerId).add(peerId)`: the peer itself
-// is appended last unless the walk already reached it.
+// withSelf appends the peer itself unless the descendant walk already reached it.
 func withSelf(descendants []string, peerID string) []string {
 	if slices.Contains(descendants, peerID) {
 		return descendants
@@ -508,8 +507,8 @@ func stringPtrEquals(left, right *string) bool {
 	return *left == *right
 }
 
-// In endpointTransitionEquals, `undefined !== HOST` matters for the
-// none producer, hence the pointer comparison.
+// endpointTransitionEquals distinguishes an absent producer from every peer,
+// including the Host, even when no retirement is needed.
 func endpointTransitionEquals(left, right EndpointTransition) bool {
 	if left.Kind != right.Kind {
 		return false

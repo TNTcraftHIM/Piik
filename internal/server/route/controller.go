@@ -20,18 +20,15 @@ const (
 	persistentDegradedWindows       = int64(protocol.PersistentNativeEdgeDegradedWindows)
 )
 
-// candidateOpportunity is one consumed-ledger entry (TS CandidateOpportunity).
+// candidateOpportunity records the attempts consumed at one candidate rank.
 type candidateOpportunity struct {
 	rank            int
 	startedAttempts int
 	exhausted       bool
 }
 
-// participant is a known peer (TS Participant). sessionID "" is the TS
-// null: disconnected but in grace, or departed. Wire session IDs are
-// validated opaque IDs, so an empty string never names a live session;
-// bootstrapFailureReported and sfuFirstAtNextRoute are TS `true | undefined`
-// and only ever compared to true, so a bool is exact.
+// participant is a known peer. An empty sessionID means disconnected but in
+// grace, or departed; validated wire IDs never name a live session with "".
 type participant struct {
 	peerID                         string
 	role                           protocol.Role
@@ -45,13 +42,12 @@ type participant struct {
 	sfuFirstAtNextRoute            bool
 }
 
-// sessionIs ports `participant.sessionId === id`: a disconnected
-// participant (TS null) never equals any session string.
+// sessionIs never matches a disconnected participant, including an empty id.
 func (p *participant) sessionIs(id string) bool {
 	return p.sessionID != "" && p.sessionID == id
 }
 
-// senderQualityIdentity is TS SenderQualityIdentity.
+// senderQualityIdentity scopes quality evidence to one physical sender.
 type senderQualityIdentity struct {
 	childSessionID  string
 	parentPeerID    string
@@ -60,10 +56,8 @@ type senderQualityIdentity struct {
 	senderIdentity  string
 }
 
-// attempt is the live candidate (TS Attempt). The optional strings use ""
-// for undefined (they are only ever set to non-empty values or compared
-// after a truthiness check); the optional timestamps are pointers because
-// 0 is a legal accepted/sample time and `!== undefined` is semantic.
+// attempt is the live candidate. Optional identities use ""; optional
+// timestamps use pointers because zero is a valid accepted/sample time.
 type attempt struct {
 	tuple                                   CandidateTuple
 	revision                                int64
@@ -78,16 +72,16 @@ type attempt struct {
 	transportConnected                      bool
 	mediaReady                              bool
 	connectionAttempt                       *ConnectionAttemptProgress
-	senderQualityState                      SenderQualityState // "" = undefined
+	senderQualityState                      SenderQualityState
 	senderQualityAcceptedAtMs               *int64
-	senderQualityConsecutiveHealthyWindows  int64 // read only through `?? 0`
-	senderQualityConsecutiveDegradedWindows int64 // read only through `?? 0`
+	senderQualityConsecutiveHealthyWindows  int64
+	senderQualityConsecutiveDegradedWindows int64
 	senderQualitySampleTimestampMs          *int64
-	senderQualityIdentity                   string // "" = undefined
+	senderQualityIdentity                   string
 	relativeQualityApprovedAtMs             *int64
 }
 
-// operation is the single in-flight route operation (TS ChildOperation).
+// operation is the single in-flight route operation.
 type operation struct {
 	childPeerID           string
 	childSessionID        string
@@ -105,9 +99,8 @@ type operation struct {
 	current               *attempt
 }
 
-// planAt ports `operation.candidates[index]`: nil when out of range. It
-// returns a copy because the candidate array is spliced in place and TS
-// plan objects are never mutated after construction.
+// planAt returns nil when out of range and otherwise copies the plan so callers
+// do not retain a pointer into the candidate slice while it is reordered.
 func (o *operation) planAt(index int) *CandidatePlan {
 	if index < 0 || index >= len(o.candidates) {
 		return nil
@@ -116,13 +109,13 @@ func (o *operation) planAt(index int) *CandidatePlan {
 	return &plan
 }
 
-// planAtOrLast ports `operation.candidates[Math.min(cursor, length - 1)]`,
-// which is undefined (nil) for an empty array.
+// planAtOrLast returns the cursor's plan, the final plan if exhausted, or nil
+// when there are no candidates.
 func (o *operation) planAtOrLast() *CandidatePlan {
 	return o.planAt(min(o.cursor, len(o.candidates)-1))
 }
 
-// currentTuple ports `operation.current?.tuple ?? operation.candidates[operation.cursor]?.tuple`.
+// currentTuple prefers the live attempt over the next planned candidate.
 func (o *operation) currentTuple() *CandidateTuple {
 	if o.current != nil {
 		tuple := o.current.tuple
@@ -134,8 +127,7 @@ func (o *operation) currentTuple() *CandidateTuple {
 	return nil
 }
 
-// directContinuation is TS DirectContinuation; parentPeerIDs is the retry
-// order and is spliced in place.
+// directContinuation retains the remaining parent retry order behind an SFU edge.
 type directContinuation struct {
 	childSessionID        string
 	sfuConnectionID       string
@@ -154,8 +146,8 @@ type sfuBootstrapCarrier struct {
 	carrierPeerID   string
 }
 
-// routeTimingRecord is TS RouteTimingRecord; the optional timestamps are
-// pointers (undefined = never happened, distinct from 0).
+// routeTimingRecord uses nil timestamps for events that have not happened;
+// zero is a valid event time.
 type routeTimingRecord struct {
 	demandAtMs            int64
 	reason                DemandReason
@@ -167,8 +159,8 @@ type routeTimingRecord struct {
 	rejectionBucket       RejectionBucket
 }
 
-// routeQualityObservation is TS RouteQualityObservation. upstreamPeerID is
-// "" for the sfu upstream (TS null); lastDecodedProgressAtMs nil is TS null.
+// routeQualityObservation belongs to one receiver edge and presentation epoch.
+// upstreamPeerID is empty for SFU; nil lastDecodedProgressAtMs means no progress.
 type routeQualityObservation struct {
 	childSessionID          string
 	upstreamKind            UpstreamKind
@@ -186,8 +178,8 @@ type routeQualityObservation struct {
 	lastDecodedProgressAtMs *int64
 }
 
-// senderQualityObservation is TS SenderQualityObservation. The consumed
-// ledger is a pointer because `{...previous}` copies carry the same Map.
+// senderQualityObservation copies share the consumed-candidate ledger, so a new
+// sample on the same physical sender cannot reopen an exhausted opportunity.
 type senderQualityObservation struct {
 	childSessionID             string
 	parentPeerID               string
@@ -210,7 +202,7 @@ type sfuPublisherQualityObservation struct {
 	lastAcceptedAtMs          int64
 }
 
-// resourceSet is a JS Set<Resource>: pointer identity plus insertion order.
+// resourceSet deduplicates by pointer identity and preserves insertion order.
 type resourceSet struct {
 	seen map[*Resource]struct{}
 	list []*Resource
@@ -234,12 +226,12 @@ func (s *resourceSet) has(resource *Resource) bool {
 	return ok
 }
 
-// resources returns a fresh slice in insertion order (`[...set]`).
+// resources returns a fresh slice in insertion order.
 func (s *resourceSet) resources() []*Resource {
 	return append([]*Resource{}, s.list...)
 }
 
-// concatResources ports `[...a, ...b]` into a fresh, never-nil slice.
+// concatResources concatenates into a fresh, never-nil slice.
 func concatResources(parts ...[]*Resource) []*Resource {
 	out := []*Resource{}
 	for _, part := range parts {
@@ -248,7 +240,7 @@ func concatResources(parts ...[]*Resource) []*Resource {
 	return out
 }
 
-// dedupeStrings ports `[...new Set(values)]`: first occurrence wins.
+// dedupeStrings retains each value's first occurrence.
 func dedupeStrings(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	out := make([]string, 0, len(values))
@@ -262,8 +254,7 @@ func dedupeStrings(values []string) []string {
 	return out
 }
 
-// New ports the constructor: panics with "Endpoint media copy capacity must
-// be 1, 2, or 3" or "Route operation timeout must be a positive integer".
+// New constructs a controller and panics on invalid capacity, timeout or SFU policy.
 func New(options Options) *Controller {
 	if err := protocol.AssertEndpointMediaCopyCapacity(options.EndpointMediaCopyCapacity); err != nil {
 		panic(err)
@@ -476,7 +467,7 @@ func (c *Controller) UpsertParticipant(input ParticipantInput, nowMs *int64) []*
 		}
 		return released
 	}
-	// A new key appends to the insertion order (TS Map.set at 573).
+	// New participants append to the scheduling order.
 	c.participants.Set(input.PeerID, &participant{
 		peerID:                      input.PeerID,
 		role:                        input.Role,
@@ -899,15 +890,13 @@ func (c *Controller) allocateRevision() int64 {
 	return c.latestRevision
 }
 
-// isSafeInteger is Number.isSafeInteger for a value that is already integral.
+// isSafeInteger keeps values exactly representable by the Browser's number type.
 func isSafeInteger(value int64) bool {
 	return value >= -maxSafeInteger && value <= maxSafeInteger
 }
 
-// joinOrder is allocated once per participant and preserved across
-// rebindHostIdentity, so two live
-// participants never share one and the TS localeCompare (ICU) tiebreak is
-// unreachable; strings.Compare stands in for it.
+// compareParticipant preserves join order, including across Host rebinding.
+// Live participants have unique orders; peer ID breaks ties in synthetic inputs.
 func compareParticipant(left, right *participant) int {
 	if left.joinOrder != right.joinOrder {
 		if left.joinOrder < right.joinOrder {
@@ -929,9 +918,7 @@ func stablePairRank(childPeerID, parentPeerID string) int64 {
 	return rank
 }
 
-// JS Math.round is half-up while math.Round is half-away-from-zero;
-// they differ only for negative halves, which the
-// `rounded < 0` branch drops either way. NaN and +/-Inf drop the window.
+// safeAdd ignores invalid rounded deltas and saturates at the wire integer bound.
 func safeAdd(total int64, delta float64) int64 {
 	rounded := math.Round(delta)
 	if math.IsNaN(rounded) || math.IsInf(rounded, 0) || rounded < 0 || rounded > float64(maxSafeInteger) {

@@ -386,7 +386,7 @@ func (c *Controller) ObserveSfuPublisherQualityEvidence(input SfuPublisherQualit
 }
 
 // settleCandidateQuality folds a sender sample into the live
-// candidate and fails or commits it. senderIdentity "" is the TS null.
+// candidate and fails or commits it. An empty senderIdentity means unknown.
 func (c *Controller) settleCandidateQuality(op *operation, att *attempt, state SenderQualityState, acceptedAtMs int64, senderIdentity string, sampleTimestampMs *int64, commitReservation func(CandidateReservation) bool) SenderQualityEvidenceResult {
 	if att.senderQualityState != state {
 		c.debug("candidate-quality-observed",
@@ -796,7 +796,7 @@ func qualityUpstreamMatches(edge *CommittedEdge, upstream QualityUpstream) bool 
 	return upstream.Kind == UpstreamSfu
 }
 
-// qualityObservationMatchesEdge treats an empty upstreamPeerID as TypeScript null.
+// qualityObservationMatchesEdge requires an empty upstreamPeerID for SFU.
 func qualityObservationMatchesEdge(observation *routeQualityObservation, edge *CommittedEdge) bool {
 	if edge.Kind == UpstreamPeer {
 		return observation.upstreamKind == UpstreamPeer && observation.upstreamPeerID == edge.ParentPeerID

@@ -53,7 +53,7 @@ func (c *Controller) pruneDepartedLeaves(released *[]*Resource) []string {
 	changed := true
 	for changed {
 		changed = false
-		// Live iteration: deleting the visited entry is JS-safe (ordered.Map.All).
+		// ordered.Map.All permits deleting the visited entry during iteration.
 		for _, current := range c.participants.All() {
 			if current.role != protocol.RoleViewer || !current.departureConfirmed || len(c.childrenOf(current.peerID)) > 0 {
 				continue
@@ -167,8 +167,7 @@ func (c *Controller) removePublicationGeneration(generation string) []*Resource 
 	return released
 }
 
-// retainsAnchor is the TS default argument of retireSfuEdge
-// (`this.childrenOf(viewerPeerId).length > 0`), evaluated at call time.
+// retainsAnchor keeps a retiring SFU edge while it still has peer children.
 func (c *Controller) retainsAnchor(viewerPeerID string) bool {
 	return len(c.childrenOf(viewerPeerID)) > 0
 }
@@ -191,7 +190,7 @@ func (c *Controller) retireSfuEdge(viewerPeerID string, edge *CommittedEdge, rel
 }
 
 // hasRetiringAnchor reports whether an inactive SFU edge still references
-// the generation (the `some` at 4816 and 4880).
+// the generation.
 func (c *Controller) hasRetiringAnchor(generation string) bool {
 	for _, edge := range c.upstreamByViewer.Values() {
 		if edge.Kind == UpstreamSfu && !edge.PhysicalActive && edge.PublicationGeneration == generation {

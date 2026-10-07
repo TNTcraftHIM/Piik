@@ -140,7 +140,7 @@ func (c *Controller) diagnosticParent(edge *CommittedEdge, ordinals map[string]i
 	return protocol.RouteDiagnosticParent{Kind: "viewer", Ordinal: protocol.Int(ordinal)}
 }
 
-// diagnosticQuality returns nil (TS null) unless the observation is
+// diagnosticQuality returns nil unless the observation is
 // fresh, non-empty and still describes the current edge.
 func (c *Controller) diagnosticQuality(childPeerID string, edge *CommittedEdge, nowMs int64) *protocol.RouteDiagnosticQuality {
 	observation := c.qualityObservations[childPeerID]
@@ -170,9 +170,8 @@ func (c *Controller) diagnosticQuality(childPeerID string, edge *CommittedEdge, 
 	}
 }
 
-// elapsedMs returns nil (TS null) when the end precedes the start or
-// the difference is not a safe integer; the inputs are integral so
-// Math.floor is the identity.
+// elapsedMs returns nil when the end precedes the start or the difference
+// exceeds the wire integer bound.
 func elapsedMs(startedAtMs, endedAtMs int64) *protocol.Int {
 	elapsed := endedAtMs - startedAtMs
 	if !isSafeInteger(elapsed) || elapsed < 0 {

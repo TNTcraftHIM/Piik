@@ -170,7 +170,7 @@ func (d *Database) recover() ([]StoredRoomAuthority, error) {
 	return d.readStoredRooms()
 }
 
-// InsertRoom is insertRoom.
+// InsertRoom persists one validated authority record atomically.
 func (d *Database) InsertRoom(room StoredRoomAuthority) error {
 	if err := assertStoredRoom(room); err != nil {
 		return err
@@ -190,7 +190,7 @@ func (d *Database) InsertRoom(room StoredRoomAuthority) error {
 	})
 }
 
-// SetViewerPassword is setViewerPassword; nil material clears the password.
+// SetViewerPassword updates the exact Host's room; nil material clears the password.
 func (d *Database) SetViewerPassword(
 	roomID string, hostTokenDigest, viewerPasswordMaterial []byte,
 ) error {
@@ -213,7 +213,7 @@ func (d *Database) SetViewerPassword(
 	})
 }
 
-// SetCodeEntryPolicy is setCodeEntryPolicy.
+// SetCodeEntryPolicy persists code admission for the exact Host's room.
 func (d *Database) SetCodeEntryPolicy(
 	roomID string, hostTokenDigest []byte, codeEntryPolicy protocol.CodeEntryPolicy,
 ) error {
@@ -236,7 +236,7 @@ func (d *Database) SetCodeEntryPolicy(
 	})
 }
 
-// SetViewerGrant is setViewerGrant.
+// SetViewerGrant atomically replaces the grant digest and authorization generation.
 func (d *Database) SetViewerGrant(
 	roomID string, hostTokenDigest, viewerGrantDigest []byte,
 	viewerAuthorizationGeneration string,

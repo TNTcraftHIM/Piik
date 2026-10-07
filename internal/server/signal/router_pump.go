@@ -12,7 +12,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 )
 
-// preparedCandidate is PreparedCandidate; the optional TS keys are "" / nil.
+// preparedCandidate holds the allocations and signaling needed to begin an attempt.
 type preparedCandidate struct {
 	reservation             route.CandidateReservation
 	connectionID            string
@@ -446,9 +446,8 @@ func (r *router) sendPrepareMessages(
 	}
 }
 
-// scheduleDeadline registers a callback that verifies it is
-// still the registered deadline through the room's generation counter, which
-// clearDeadline bumps: a cleared TS timer never fired.
+// scheduleDeadline fences callbacks by the room's deadline generation.
+// clearDeadline invalidates even a callback that already won the timer Stop race.
 func (r *router) scheduleDeadline(roomID string, rm *roomRuntime, operation *route.OperationSnapshot) {
 	r.clearDeadline(rm)
 	wakeInMs := max(int64(0), operation.WakeAtMs-r.now())

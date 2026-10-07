@@ -18,15 +18,15 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// Capacity is ROOM_CAPACITY: every four-digit room code.
+// Capacity is the number of four-digit room codes without a leading zero.
 const Capacity = 9_000
 
 const roomCodeFirst = 1_000
 
-// ErrorCode is RoomStoreErrorCode.
+// ErrorCode identifies a room authority or admission failure.
 type ErrorCode string
 
-// The RoomStoreErrorCode set.
+// Room authority and admission errors.
 const (
 	CodeInvalidToken         ErrorCode = "INVALID_TOKEN"
 	CodeRoomAccessDenied     ErrorCode = "ROOM_ACCESS_DENIED"
@@ -37,12 +37,12 @@ const (
 	CodeRoomLimit            ErrorCode = "ROOM_LIMIT"
 )
 
-// Error is RoomStoreError. Its message is the code, as `super(code)` made it.
+// Error carries a room authority or admission error code.
 type Error struct {
 	Code ErrorCode
 }
 
-// Error returns the code, which is the message `super(code)` produced.
+// Error returns the code.
 func (e *Error) Error() string { return string(e.Code) }
 
 func codeError(code ErrorCode) error { return &Error{Code: code} }
@@ -61,15 +61,14 @@ const (
 type participant struct {
 	clientID string
 	peerID   string
-	// sessionID is "" where the TypeScript left sessionId undefined. Session
-	// IDs are opaque IDs of at least 8 characters, so "" cannot collide.
+	// An empty sessionID means offline; validated wire IDs are never empty.
 	sessionID  string
 	admittedBy string
 }
 
 // Room is one room's authority plus its participants. It has no exported
 // members: callers hold the pointer only to compare identity across the
-// unlocked password derivation, as the TypeScript compared room objects.
+// unlocked password derivation.
 type Room struct {
 	roomID                        string
 	hostTokenDigest               []byte
@@ -81,12 +80,12 @@ type Room struct {
 	// Process-local: restored rooms receive a fresh reconnect window. Only the
 	// last authenticated departure updates this; failed admission cannot renew it.
 	emptySinceMs int64
-	// ordering: JS Map insertion order decides viewer presence order, the
+	// Insertion order decides viewer presence order, the
 	// closed-session list and the router's participant order.
 	viewers ordered.Map[string, *participant]
 }
 
-// CreatedRoom is CreatedRoom. ViewerGrant is "" where the TypeScript had null.
+// CreatedRoom carries newly issued Host authority and an optional Viewer grant.
 type CreatedRoom struct {
 	RoomID          string
 	HostToken       string
@@ -94,8 +93,8 @@ type CreatedRoom struct {
 	ViewerGrant     string
 }
 
-// ConnectParticipantInput is ConnectParticipantInput; Token is read for a host
-// and ViewerGrant for a viewer, "" meaning the key was absent.
+// ConnectParticipantInput uses Token for a Host and ViewerGrant for a Viewer.
+// Empty credentials are absent.
 type ConnectParticipantInput struct {
 	RoomID      string
 	Role        protocol.Role
@@ -105,7 +104,7 @@ type ConnectParticipantInput struct {
 	SessionID   string
 }
 
-// ConnectViewerWithPasswordInput is ConnectViewerWithPasswordInput. Password is
+// ConnectViewerWithPasswordInput supplies Viewer password admission. Password is
 // consumed by the caller's DeriveViewerPassword call, not by the commit.
 type ConnectViewerWithPasswordInput struct {
 	RoomID    string
@@ -114,8 +113,8 @@ type ConnectViewerWithPasswordInput struct {
 	SessionID string
 }
 
-// ConnectedParticipant is ConnectedParticipant. ReplacedSessionID is "" where
-// the TypeScript omitted replacedSessionId.
+// ConnectedParticipant records admission and any session it superseded.
+// ReplacedSessionID is empty when no connected session was replaced.
 type ConnectedParticipant struct {
 	RoomID                        string
 	Role                          protocol.Role
@@ -127,39 +126,35 @@ type ConnectedParticipant struct {
 	ViewerAuthorizationGeneration string
 }
 
-// DisconnectedParticipant is DisconnectedParticipant.
 type DisconnectedParticipant struct {
 	RoomID string
 	Role   protocol.Role
 	PeerID string
 }
 
-// ConnectedPeer is ConnectedPeer.
 type ConnectedPeer struct {
 	PeerID    string
 	SessionID string
 }
 
-// ClosedRoom is ClosedRoom.
 type ClosedRoom struct {
 	RoomID     string
 	SessionIDs []string
 }
 
-// ReplacedRoom is ReplacedRoom.
 type ReplacedRoom struct {
 	Created CreatedRoom
 	Closed  ClosedRoom
 }
 
-// RevokedViewer is RevokedViewer; SessionID is "" where the TypeScript omitted
-// sessionId.
+// RevokedViewer identifies revoked admission. SessionID is empty for an offline Viewer.
 type RevokedViewer struct {
 	PeerID    string
 	SessionID string
 }
 
-// ViewerGrantUpdate is ViewerGrantUpdate. ViewerGrant is "" for a revoke.
+// ViewerGrantUpdate carries a grant change and affected Viewers; ViewerGrant is
+// empty when the invitation was revoked.
 type ViewerGrantUpdate struct {
 	ViewerGrant                           string
 	ViewerAuthorizationGeneration         string
@@ -167,13 +162,12 @@ type ViewerGrantUpdate struct {
 	RevokedViewers                        []RevokedViewer
 }
 
-// CodeEntryUpdate is CodeEntryUpdate.
 type CodeEntryUpdate struct {
 	CodeEntryPolicy       protocol.CodeEntryPolicy
 	ViewerPasswordEnabled bool
 }
 
-// Options is RoomStoreOptions.
+// Options configures capacity, optional persistence and injectable entropy/time.
 type Options struct {
 	MaxRooms          int
 	MaxViewersPerRoom int
@@ -182,9 +176,9 @@ type Options struct {
 	Now               func() int64
 }
 
-// Store is RoomStore. See the package comment for the locking contract.
+// Store owns room authority. See the package comment for the locking contract.
 type Store struct {
-	// ordering: JS Map insertion order decides AbandonAllRooms.
+	// Insertion order determines the order returned by AbandonAllRooms.
 	rooms             ordered.Map[string, *Room]
 	freeRoomCodes     []string
 	random            func(size int) []byte
@@ -193,13 +187,11 @@ type Store struct {
 	initialized       bool
 	maxRooms          int
 	maxViewersPerRoom int
-	// gate is per store; the TypeScript module-level gate was shared by every
-	// RoomStore in a process, of which there was one.
+	// The derivation gate bounds work across every room in this store.
 	gate gate
 }
 
-// New is the RoomStore constructor; the TypeScript threw where this returns an
-// error.
+// New validates limits and prepares a Store; Initialize loads persisted authority.
 func New(options Options) (*Store, error) {
 	if options.MaxRooms <= 0 || options.MaxRooms > Capacity {
 		return nil, fmt.Errorf("Room limit must be an integer between 1 and %d", Capacity)
@@ -318,7 +310,7 @@ func (s *Store) BeginCreateRoom() error {
 	return nil
 }
 
-// CreateRoom is the commit half of createRoom. material and derived are the
+// CreateRoom commits room creation. material and derived are the
 // results of DeriveViewerPasswordMaterial (both zero when no password was
 // given).
 func (s *Store) CreateRoom(
@@ -327,7 +319,7 @@ func (s *Store) CreateRoom(
 	derived error,
 	preferredRoomID string,
 ) (CreatedRoom, error) {
-	// createViewerPasswordMaterial threw before any of the checks below.
+	// Derivation failures precede admission checks; gate outcomes are resolved below.
 	if derived != nil && !isGateOutcome(derived) {
 		return CreatedRoom{}, derived
 	}
@@ -359,8 +351,8 @@ func (s *Store) CreateRoom(
 	return created, nil
 }
 
-// HostManagedRoom is getHostManagedRoom: the room the exact Host token owns.
-// It is the pre-KDF half of replaceRoom and setViewerPassword.
+// HostManagedRoom returns the room owned by the exact Host token. The caller
+// retains its identity while deriving password material outside the lock.
 func (s *Store) HostManagedRoom(roomID, hostToken string) (*Room, error) {
 	if err := s.ensureInitialized(); err != nil {
 		return nil, err
@@ -368,7 +360,7 @@ func (s *Store) HostManagedRoom(roomID, hostToken string) (*Room, error) {
 	return s.getHostManagedRoom(roomID, hostToken)
 }
 
-// HostStillOwnsRoom is the mayStart closure replaceRoom and setViewerPassword
+// HostStillOwnsRoom is the mayStart closure ReplaceRoom and SetViewerPassword
 // hand to the KDF gate: the room must still be the same object and the token
 // must still own it. Call it with the lock held.
 func (s *Store) HostStillOwnsRoom(roomID, hostToken string, current *Room) bool {
@@ -376,7 +368,7 @@ func (s *Store) HostStillOwnsRoom(roomID, hostToken string, current *Room) bool 
 	return ok && room == current && verifyDigest(hostToken, room.hostTokenDigest)
 }
 
-// ReplaceRoom is the commit half of replaceRoom. current is the room
+// ReplaceRoom commits a replacement. current is the room
 // HostManagedRoom returned before the derivation.
 func (s *Store) ReplaceRoom(
 	roomID, hostToken string,
@@ -385,7 +377,7 @@ func (s *Store) ReplaceRoom(
 	derived error,
 	current *Room,
 ) (ReplacedRoom, error) {
-	// createViewerPasswordMaterial threw before the second getHostManagedRoom.
+	// Derivation failures return before rechecking authority; gate outcomes do not.
 	if derived != nil && !isGateOutcome(derived) {
 		return ReplacedRoom{}, derived
 	}
@@ -438,7 +430,7 @@ func (s *Store) replaceRoom(
 	return ReplacedRoom{Created: created, Closed: closed}, nil
 }
 
-// SetViewerPassword is the commit half of setViewerPassword; it reports whether
+// SetViewerPassword commits a password change; it reports whether
 // a password is now set. current is the room HostManagedRoom returned before
 // the derivation.
 func (s *Store) SetViewerPassword(
@@ -447,7 +439,7 @@ func (s *Store) SetViewerPassword(
 	derived error,
 	current *Room,
 ) (bool, error) {
-	// createViewerPasswordMaterial threw before the second getHostManagedRoom.
+	// Derivation failures return before rechecking authority; gate outcomes do not.
 	if derived != nil && !isGateOutcome(derived) {
 		return false, derived
 	}
@@ -474,7 +466,7 @@ func (s *Store) SetViewerPassword(
 	return material != nil, nil
 }
 
-// SetCodeEntryPolicy is setCodeEntryPolicy.
+// SetCodeEntryPolicy updates code admission under exact Host authority.
 func (s *Store) SetCodeEntryPolicy(
 	roomID string,
 	policy protocol.CodeEntryPolicy,
@@ -500,7 +492,7 @@ func (s *Store) SetCodeEntryPolicy(
 	}, nil
 }
 
-// SetViewerGrant is setViewerGrant; action is "rotate" or "revoke".
+// SetViewerGrant rotates or revokes invitations and removes grant-admitted Viewers.
 func (s *Store) SetViewerGrant(
 	roomID, action, hostToken string,
 ) (ViewerGrantUpdate, error) {
@@ -550,7 +542,7 @@ func (s *Store) SetViewerGrant(
 	room.viewerGrantDigest = viewerGrantDigest
 	room.viewerAuthorizationGeneration = generation
 	wasOccupied := roomOccupied(room)
-	// ordering: delete during iteration, which a JS Map allows.
+	// ordered.Map.All permits removal without skipping surviving entries.
 	for clientID, viewer := range room.viewers.All() {
 		if viewer.admittedBy == admittedByGrant {
 			room.viewers.Delete(clientID)
@@ -567,7 +559,7 @@ func (s *Store) SetViewerGrant(
 	}, nil
 }
 
-// ConnectParticipant is connectParticipant.
+// ConnectParticipant authenticates a Host token, Viewer grant or open code entry.
 func (s *Store) ConnectParticipant(input ConnectParticipantInput) (ConnectedParticipant, error) {
 	if err := s.ensureInitialized(); err != nil {
 		return ConnectedParticipant{}, err
@@ -599,7 +591,7 @@ func (s *Store) ConnectParticipant(input ConnectParticipantInput) (ConnectedPart
 	return s.connectViewer(room, input.ClientID, input.SessionID, admittedByCode)
 }
 
-// ViewerGrantMayEnter is viewerGrantMayEnter.
+// ViewerGrantMayEnter validates an invitation without admitting a participant.
 func (s *Store) ViewerGrantMayEnter(roomID, grant string) (bool, error) {
 	if err := s.ensureInitialized(); err != nil {
 		return false, err
@@ -615,12 +607,12 @@ func (s *Store) ViewerGrantMayEnter(roomID, grant string) (bool, error) {
 	return viewerGrantIsValid(room, grant), nil
 }
 
-// ViewerPasswordChallenge is the locked first half of connectViewerWithPassword:
+// ViewerPasswordChallenge is the locked first half of password admission:
 // it returns the salt to derive against, a copy of the material to compare with
 // and the room reference to re-check afterwards. A missing room and a room
 // without a private password both answer with the same 48 zero
-// bytes so the derivation cost does not reveal which. The only error is the
-// `ensureInitialized()` the TypeScript ran before the password check.
+// bytes so the derivation cost does not reveal which. An uninitialized store
+// fails before this check.
 func (s *Store) ViewerPasswordChallenge(
 	roomID string,
 ) (salt, expectedMaterial []byte, room *Room, err error) {
@@ -639,7 +631,7 @@ func (s *Store) ViewerPasswordChallenge(
 	return expectedMaterial[:viewerPasswordSaltBytes], expectedMaterial, found, nil
 }
 
-// ConnectViewerWithPassword is the commit half of connectViewerWithPassword.
+// ConnectViewerWithPassword commits password admission after derivation.
 // derived is the DeriveViewerPassword result; expectedMaterial and room come
 // from ViewerPasswordChallenge; mayConnect is evaluated with the lock held.
 func (s *Store) ConnectViewerWithPassword(
@@ -678,8 +670,8 @@ func (s *Store) ConnectViewerWithPassword(
 	return connected, err
 }
 
-// DisconnectParticipant is disconnectParticipant; it returns nil where the
-// TypeScript returned undefined.
+// DisconnectParticipant clears only the matching session and returns nil when
+// the room, peer or current session no longer matches.
 func (s *Store) DisconnectParticipant(
 	roomID, peerID, sessionID string,
 ) (*DisconnectedParticipant, error) {
@@ -715,7 +707,7 @@ func (s *Store) DisconnectParticipant(
 		RoomID: roomID, Role: protocol.RoleViewer, PeerID: peerID}, nil
 }
 
-// RemoveDisconnectedViewer is removeDisconnectedViewer.
+// RemoveDisconnectedViewer removes a Viewer only if it has no current session.
 func (s *Store) RemoveDisconnectedViewer(roomID, peerID string) bool {
 	room, ok := s.rooms.Get(roomID)
 	if !ok {
@@ -728,7 +720,7 @@ func (s *Store) RemoveDisconnectedViewer(roomID, peerID string) bool {
 	return room.viewers.Delete(viewer.clientID)
 }
 
-// GetConnectedHost is getConnectedHost.
+// GetConnectedHost returns only a Host with a current session.
 func (s *Store) GetConnectedHost(roomID string) (ConnectedPeer, bool) {
 	room, ok := s.rooms.Get(roomID)
 	if !ok || room.host == nil || room.host.sessionID == "" {
@@ -737,7 +729,7 @@ func (s *Store) GetConnectedHost(roomID string) (ConnectedPeer, bool) {
 	return ConnectedPeer{PeerID: room.host.peerID, SessionID: room.host.sessionID}, true
 }
 
-// GetConnectedViewer is getConnectedViewer.
+// GetConnectedViewer returns only a Viewer with a current session.
 func (s *Store) GetConnectedViewer(roomID, peerID string) (ConnectedPeer, bool) {
 	room, ok := s.rooms.Get(roomID)
 	if !ok {
@@ -779,8 +771,7 @@ func (s *Store) GetConnectedViewers(roomID string) []ConnectedPeer {
 	return connected
 }
 
-// AbandonRoom is abandonRoom; it returns nil where the TypeScript returned
-// undefined.
+// AbandonRoom retires room authority, returning nil if the room is already absent.
 func (s *Store) AbandonRoom(roomID string) (*ClosedRoom, error) {
 	closed, err := s.abandonRooms([]string{roomID})
 	if err != nil || len(closed) == 0 {
@@ -940,9 +931,8 @@ func (s *Store) takeRoomCode(preferredRoomID string) (string, error) {
 }
 
 // uniformIndex draws a uniform index below count from 8 random bytes, rejecting
-// the values above the largest multiple of count. The TypeScript computed the
-// limit in BigInt as 2^64 - 2^64 % count; (MaxUint64 % count + 1) % count is
-// the same remainder without the uint64 wrap at a power-of-two count.
+// the incomplete final bucket of the 2^64 possible values.
+// (MaxUint64 % count + 1) % count computes 2^64 % count without overflowing.
 func uniformIndex(count int, random func(size int) []byte) (int, error) {
 	span := uint64(count)
 	remainder := (math.MaxUint64%span + 1) % span
@@ -1063,8 +1053,7 @@ func (s *Store) ensureInitialized() error {
 	return nil
 }
 
-// writeDatabase runs a stable-authority write when a database is configured,
-// which is the TypeScript `this.options.database?.write(...)`.
+// writeDatabase runs a stable-authority write when a database is configured.
 func (s *Store) writeDatabase(write func() error) error {
 	if s.database == nil {
 		return nil
