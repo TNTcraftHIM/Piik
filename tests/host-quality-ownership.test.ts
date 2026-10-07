@@ -101,7 +101,7 @@ function fixture(launchedByClient = true) {
     nativeEventCleanupRef: ref(null), nativeShareCleanupRef: ref(Promise.resolve()),
     peersRef: ref(new Map([["viewer", peer]])), hostProvisionalChildRef: ref(null), hostSfuRouteRef: ref(route),
     signalRef: ref({ setHostQualitySettings: vi.fn(), send: vi.fn() }),
-    setQualitySettings: vi.fn(), setAdvancedQuality: vi.fn(), setChangingQuality: vi.fn(),
+    setQualitySettings: vi.fn(), setAdvancedQuality: vi.fn(), setChangingQuality: vi.fn(), savePreferredQuality: vi.fn(),
     setNoticeValue: vi.fn(), setNoticeError: vi.fn(), readableError: hostActionErrorNotice,
     setDetails: vi.fn(), setNativeActive: vi.fn(),
     applyCaptureProfile: vi.fn(async (_stream: unknown, profile: QualitySettings) => { physical = profile; }),
@@ -424,6 +424,21 @@ describe("Host room-link copy feedback", () => {
 });
 
 describe("Host quality ownership", () => {
+  it("remembers an explicit pre-share choice without changing room or capture state", async () => {
+    const current = fixture();
+    current.context.phase = "idle";
+    await current.change(lower);
+    expect(current.savePreferredQuality).toHaveBeenCalledWith(lower);
+    expect(current.applyCaptureProfile).not.toHaveBeenCalled();
+    expect(current.signalRef.current.setHostQualitySettings).not.toHaveBeenCalled();
+  });
+
+  it("does not replace a local preference with reauthenticated room settings", () => {
+    const current = fixture();
+    current.reauthenticate();
+    expect(current.savePreferredQuality).not.toHaveBeenCalled();
+  });
+
   it.each([true, false])("resumes the former raw audio input only after an accepted mixed-output resume: %s", (accepted) => {
     const current = fixture(false);
     const source = {} as MediaStream;
@@ -1102,6 +1117,7 @@ describe("Host quality ownership", () => {
     expect(current.physical()).toEqual(lower);
     expect(current.qualitySettingsRef.current).toEqual(lower);
     expect(current.advancedQualityRef.current).toEqual(lower);
+    expect(current.savePreferredQuality).toHaveBeenCalledWith(lower);
     expect(current.peer.updateCaptureProfile).toHaveBeenCalledWith(lower);
     expect(optional.dispose).toHaveBeenCalledOnce();
     expect(current.client.stopReceive).toHaveBeenCalledWith("share");
@@ -1116,6 +1132,7 @@ describe("Host quality ownership", () => {
     current.applyCaptureProfile.mockRejectedValue(new Error("capture rejected"));
     await current.change(lower);
     expect(current.physical()).toEqual(original);
+    expect(current.savePreferredQuality).not.toHaveBeenCalled();
     expect(current.qualitySettingsRef.current).toEqual(original);
     expect(current.advancedQualityRef.current).toEqual(original);
     expect(optional.updateProfile).not.toHaveBeenCalled();
@@ -1160,6 +1177,7 @@ describe("Host quality ownership", () => {
     pending.resolve();
     await changing;
     expect(current.qualitySettingsRef.current).toEqual(original);
+    expect(current.savePreferredQuality).not.toHaveBeenCalled();
     expect(current.signalRef.current.setHostQualitySettings).not.toHaveBeenCalled();
   });
 

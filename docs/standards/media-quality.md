@@ -101,6 +101,14 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
 
 ## Video Profiles
 
+The Host remembers explicitly applied picture and source-audio quality settings
+in same-origin Browser storage. They seed a new page; authoritative room recovery
+still owns an existing share. Failed or superseded changes and server snapshots
+do not replace the preference. Storage failure falls back to session-only use.
+This does not retain capture permission, device/session identity or microphone
+activation. A different site or temporary public-link origin has separate
+Browser preferences; this is not an App-wide configuration sync.
+
 The three recommended profiles are ceilings, not delivery guarantees:
 
 | Profile | Target | Video bitrate ceiling |

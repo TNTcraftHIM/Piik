@@ -8,7 +8,6 @@ import {
   type FormEvent,
 } from "react";
 import {
-  DEFAULT_QUALITY_SETTINGS,
   DEFAULT_ROUTE_POLICY,
   MAX_VIEWER_PASSWORD_LENGTH,
   viewerPasswordSchema,
@@ -89,6 +88,7 @@ import {
   saveCreationProfile,
   type HostCreationProfile,
 } from "../lib/creation-profile";
+import { readPreferredQuality, savePreferredQuality } from "../lib/quality-preference";
 import { createOpaqueId } from "../lib/opaque-id";
 import { debugError, debugEvent, debugOperation } from "../lib/debug";
 import {
@@ -377,10 +377,10 @@ export function HostPage({
   const copy = useCopy();
   const { lang, vis, t, titleFrames } = copy;
   const [qualitySettings, setQualitySettings] = useState<QualitySettings>(
-    DEFAULT_QUALITY_SETTINGS,
+    readPreferredQuality,
   );
   const [advancedQuality, setAdvancedQuality] = useState<QualitySettings>(
-    DEFAULT_QUALITY_SETTINGS,
+    qualitySettings,
   );
   const [routePolicy, setRoutePolicy] = useState<RoutePolicy>(
     () => ({
@@ -610,7 +610,7 @@ export function HostPage({
   const sourceSwitchRef = useRef<{ replacingVideo?: MediaStreamTrack; audioOnly?: boolean } | null>(null);
   const qualityChangeRef = useRef<object | null>(null);
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
-  const qualitySettingsRef = useRef<QualitySettings>(DEFAULT_QUALITY_SETTINGS);
+  const qualitySettingsRef = useRef<QualitySettings>(qualitySettings);
   const routePolicyRef = useRef<RoutePolicy>(routePolicy);
   const advancedQualityRef = useRef<QualitySettings>(advancedQuality);
   const videoCodecModeRef = useRef<BrowserVideoCodecMode>(videoCodecMode);
@@ -1647,6 +1647,7 @@ export function HostPage({
         return;
       }
       commitQuality(nextProfile);
+      savePreferredQuality(nextProfile);
       return;
     }
     if (qualityChangeRef.current) {
@@ -1718,6 +1719,7 @@ export function HostPage({
       }
 
       commitQuality(appliedProfile);
+      savePreferredQuality(appliedProfile);
       debugEvent("quality", "committed", { generation, applied: appliedProfile });
       outcome = "applied";
       if (nativeUpdate) {

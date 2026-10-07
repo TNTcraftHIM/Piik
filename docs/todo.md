@@ -7,6 +7,35 @@ history. A parked idea is not implementation authority.
 
 ## Now
 
+- [ ] **2.0 candidate review and acceptance.** The owner reopened investigation,
+  useful improvements and outstanding acceptance on 2026-10-07. Prepare one
+  coherent candidate and stop before publication. Preserve the existing product
+  model; evaluate held features against measurable benefit and total complexity
+  before accepting a changed contract.
+- [ ] **App-wide sharing preferences (#460).** Same-origin Browser preferences
+  are implemented. Assess retaining explicit settings across changing App public
+  origins without eagerly claiming Native sessions, adding a second settings
+  owner or persisting live device/session authority. Keep the Browser scope clear
+  if an App-wide bridge is not justified.
+- [ ] **Current issue evidence.** Review #452's public-link/H.264 report and
+  #453's cross-network failure against current startup and ICE behavior. Revisit
+  #432's motion-quality evidence and existing unmatched reports; do not equate a
+  successful local reproduction with resolving a different reporter's cause.
+- [ ] **Current-contract runtime acceptance.** Exercise sharing, source/quality
+  replacement, reconnect, peer/SFU handoff and independent retirement. Repair
+  the obsolete optional `viewer-mbb` canary before using it as evidence. Review
+  responsive interaction and reader documentation against the accepted result;
+  keep unavailable physical-device checks explicit.
+- [ ] **Deferred-work decisions.** Reassess transport, microphone pairing,
+  passive App attachment, hosting and remaining structural proposals in order
+  of demonstrated value. Record accepted scope in the owning modules before
+  implementation; do not turn every proposal into a release requirement.
+- [ ] **4K, codec expansion and Native Magicsock assessment.** Reopened by the
+  owner on 2026-10-07 for 2.0 only where measured benefit justifies a simple
+  implementation. Review the [media extension assessment](./research/native-client-media.md#media-capability-extension-assessment)
+  and [transport comparison](./research/nat-traversal.md#integration-cost-and-recovery-controls)
+  against current main. No changed wire contract or product transport is accepted
+  merely by reopening the experiments.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
@@ -14,14 +43,6 @@ history. A parked idea is not implementation authority.
 
 ## Held By Owner
 
-- [ ] **4K and resolution/capability expansion.** Not planned for this phase,
-  reaffirmed by the owner on 2026-10-06 because of cost relative to benefit. Keep the
-  public v23/v9/v7 contract and 1440p ceiling. Resume the extensibility audit and
-  [media extension assessment](./research/native-client-media.md#media-capability-extension-assessment)
-  only with a renewed benefit/cost decision. This includes unfinished
-  cross-platform capture and capability negotiation; local tests alone do not
-  authorize a protocol break or a 2.0 release. Retain recoverable Git evidence
-  for the experiment without requiring an active worktree.
 - [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
   own the evidence for synchronous H264 initialization, native adaptation and
@@ -40,11 +61,6 @@ history. A parked idea is not implementation authority.
 
 These proposals remain deferred beyond the accepted interaction phase.
 
-- [ ] **Native Magicsock integration.** The [isolated comparison](./research/nat-traversal.md#integration-cost-and-recovery-controls)
-  establishes Go feasibility and relay-assisted recovery, but no additional
-  direct-reachability class in its tested matrix. Keep product transport unchanged.
-  Reopen integration only for a repeatable benefit on matched networks that
-  justifies the extra identity, readiness, packet-size and relay responsibilities.
 - [ ] **Managed Demo hosting.** Evaluate cost and public UDP support before any
   migration. The assessment remains outside the current product release; keep
   the existing P2P-only Demo deployment until a provider and operating boundary

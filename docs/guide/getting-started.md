@@ -146,6 +146,12 @@ The site manages rooms and invitations; the App supplies native capture.
 If its operator has enabled SFU forwarding, turn off **Privacy mode** before
 sharing to allow that fallback. The project's online site uses P2P only.
 
+## Picture and sound settings
+
+Open **Sharing settings** below the picture to adjust picture and audio quality.
+Piik remembers your applied settings in this browser for this site. A new
+temporary public-invite address has separate settings.
+
 ## Add your voice
 
 While sharing, select **Microphone** below the picture and
