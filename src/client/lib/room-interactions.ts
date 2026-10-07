@@ -3,7 +3,9 @@ import { INTERACTION_INTERVAL_MS, REACTION_DURATION_MS } from "../../shared/room
 import { createOpaqueId } from "./opaque-id";
 import { identityHash } from "./identity-hash";
 
-export type RoomInteraction = Extract<ServerMessage, { type: "room-interaction" }>;
+export type RoomInteraction = Omit<Extract<ServerMessage, { type: "room-interaction" }>, "payload"> & {
+  payload: InteractionPayload;
+};
 type Rejection = Extract<ServerMessage, { type: "room-interaction-rejected" }>["reason"];
 export type InteractionError = Rejection | "offline" | "unconfirmed";
 export const CHAT_OVERLAY_DURATION_MS = 6000;
@@ -62,25 +64,29 @@ export class RoomInteractionSession {
     this.sendMessage({ type: "subscribe-room-interactions" });
   }
 
-  receive(message: ServerMessage): boolean {
+  receive(event: ServerMessage): boolean {
     if (this.closed) return false;
-    if (message.type === "room-interactions-ready") {
+    if (event.type === "room-interactions-ready") {
       if (this.subscriptionStartedAt === null) return true;
       // One connection-scoped midpoint estimate; arrivals never move the clock.
-      this.serverOffset = message.serverTime - (this.subscriptionStartedAt + this.now()) / 2;
+      this.serverOffset = event.serverTime - (this.subscriptionStartedAt + this.now()) / 2;
       this.subscriptionStartedAt = null;
       this.update({ ready: true });
       return true;
     }
-    if (message.type === "room-interaction-rejected") {
-      if (message.requestId === this.state.pending?.requestId) {
+    if (event.type === "room-interaction-rejected") {
+      if (event.requestId === this.state.pending?.requestId) {
         clearTimeout(this.pendingTimer);
-        this.update({ pending: null, error: message.reason });
+        this.update({ pending: null, error: event.reason });
       }
       return true;
     }
-    if (message.type !== "room-interaction") return false;
+    if (event.type !== "room-interaction") return false;
     if (!this.state.ready) return true;
+    const payload = interactionPayloadSchema.safeParse(event.payload);
+    // Unsupported decoration is not a signaling failure or a send confirmation.
+    if (!payload.success) return true;
+    const message: RoomInteraction = { ...event, payload: payload.data };
     const now = this.now();
     // Clock uncertainty may put a fresh event slightly ahead. Never extend its
     // lifetime beyond one full effect, and never replay an expired effect.

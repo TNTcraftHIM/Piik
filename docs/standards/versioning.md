@@ -63,8 +63,10 @@ parallel authority writers or blanket old-client fallback paths.
 
 ## Extending Interfaces
 
-Command/event JSON objects still reject unknown keys and enums, and required
-fields reject omissions. Therefore even adding a field can break the other side.
+Command/event JSON objects still reject unknown keys, and required fields reject
+omissions. Most enums remain closed; the bounded display-only reaction identifier
+has an explicit [receive-side exception](./rooms-access.md#room-interactions).
+Therefore even adding a field can break the other side.
 The former required `sfu` addition to strict `/api/capabilities` demonstrated
 both directions of this problem; an unchanged signaling identifier does not
 cover HTTP compatibility.
@@ -75,7 +77,9 @@ capability means unavailable. Commands, credentials and authority checks remain
 strict. A new
 message type, enum value or behavior-changing field is emitted only after the
 other side advertises support; accepting unknown metadata is not permission to
-execute unknown commands. Verify both readers before calling a change additive.
+execute unknown commands. A more tolerant reader does not update already-released
+readers: do not emit a new reaction to legacy pages merely because current pages
+can skip it. Verify both readers before calling a change additive.
 
 Native discovery distinguishes an incompatible Piik App from an absent App and
 reports protocol numbers to local diagnostics; the source picker offers update/

@@ -4,7 +4,7 @@ export const INTERACTION_INTERVAL_MS = 800;
 export const REACTION_DURATION_MS = 2400;
 export const REACTION_IDS = ["wave", "heart", "clap", "laugh", "wow", "party", "fire", "eyes", "star", "sleep", "tomato", "poop"] as const;
 export type ReactionId = typeof REACTION_IDS[number];
-export const isThrow = (reaction: ReactionId) => reaction === "tomato" || reaction === "poop";
+export const isThrow = (reaction: string) => reaction === "tomato" || reaction === "poop";
 export const REACTION_GLYPHS: Record<ReactionId, string> = {
   wave: "👋", heart: "❤️", clap: "👏", laugh: "😂", wow: "🤯", party: "🎉",
   fire: "🔥", eyes: "👀", star: "⭐", sleep: "😴", tomato: "🍅", poop: "💩",

@@ -132,6 +132,13 @@ for participants still connected to the same room. Interaction subscriptions
 inherit existing membership, replacement and revocation checks; they grant no
 additional authority and do not modify media routes.
 
+Sending a reaction requires a registered identifier. Received reaction events
+validate their envelope, identity, target and bounded identifier, then the page
+skips effects it cannot display. An unknown effect does not terminate signaling,
+enter history, clear a draft or confirm a pending send. Unknown message kinds,
+extra fields and malformed identities remain invalid; this presentation rule
+does not make commands or access checks extensible.
+
 Delivery is transient and bounded. The server keeps no message history; each
 page keeps only a bounded set of received messages and effects, without writing
 them to storage or diagnostics. Re-admission to the same room may retain that

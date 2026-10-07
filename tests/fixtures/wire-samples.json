@@ -41,6 +41,12 @@
   },
   "clientMessages": [
     {
+      "name": "send-unregistered-reaction",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"future-effect\"}}",
+      "valid": false
+    },
+    {
       "name": "authenticate-host-minimal",
       "schema": "client",
       "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\"}",
@@ -1050,6 +1056,10 @@
     }
   ],
   "serverMessages": [
+    {
+      "name": "room-interaction-future-reaction",
+      "json": "{\"type\":\"room-interaction\",\"id\":\"event_12345678\",\"requestId\":\"request_12345678\",\"occurredAt\":1700000000010,\"sender\":{\"peerId\":\"peer_12345678\",\"role\":\"host\",\"displayName\":\"Piik friend\"},\"payload\":{\"kind\":\"reaction\",\"reaction\":\"future-effect\",\"targetPeerId\":\"target_12345678\"}}"
+    },
     {
       "name": "authenticated-host-minimal",
       "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v23\",\"peerId\":\"host_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"connectionId\":null,\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"none\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"screenAudioQuality\":\"music\"},\"role\":\"host\",\"viewerPasswordEnabled\":false}"

@@ -15,13 +15,6 @@ Git/PRs own completed history.
   coherent candidate and stop before publication. Preserve the existing product
   model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
-- [ ] **Optional interaction compatibility.** Apply the owner's chosen rule:
-  an unknown received reaction skips that visual effect while chat and sharing
-  continue. Current command/event decoding shares a strict reaction enum and a
-  decode error terminates signaling. Separate presentation support from malformed
-  or unauthorized traffic at the existing protocol owner; preserve bounded
-  payloads, membership/target validation and strict outgoing commands. Verify
-  the old/new reader boundary before adding another registered reaction.
 - [ ] **Signaling execution and fairness.** Measure signaling-lock contention,
   synchronous persistence, presence fan-out, diagnostic I/O and cross-room
   password work before changing the lock or execution model. Start from the

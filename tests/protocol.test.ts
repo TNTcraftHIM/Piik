@@ -27,6 +27,22 @@ import {
 const token = "a".repeat(43);
 const roomId = "1234";
 const viewerGrant = `${"b".repeat(21)}g`;
+
+it("accepts bounded future reaction events while keeping commands and known prop targets strict", () => {
+  const event = { type: "room-interaction", id: "event_future_1234", requestId: "request_future_1234", occurredAt: 1,
+    sender: { peerId: "sender_peer_1234", role: "viewer", displayName: "Friend" },
+    payload: { kind: "reaction", reaction: "future-effect", targetPeerId: "target_peer_1234" } };
+  expect(serverMessageSchema.safeParse(event).success).toBe(true);
+  expect(clientMessageSchema.safeParse({ type: "send-room-interaction", requestId: event.requestId, payload: event.payload }).success).toBe(false);
+  for (const payload of [
+    { kind: "reaction", reaction: "" }, { kind: "reaction", reaction: "a".repeat(33) },
+    { kind: "reaction", reaction: "future effect" }, { kind: "reaction", reaction: "👋" },
+    { kind: "reaction", reaction: "future-effect", targetPeerId: "bad" },
+    { kind: "reaction", reaction: "future-effect", text: "hidden command" },
+    { kind: "reaction", reaction: "tomato" }, { kind: "future-kind", reaction: "wave" },
+  ]) expect(serverMessageSchema.safeParse({ ...event, payload }).success).toBe(false);
+  expect(serverMessageSchema.safeParse({ ...event, sender: { ...event.sender, peerId: "bad" } }).success).toBe(false);
+});
 const qualitySettings = {
   resolution: "1080p",
   maxFramerate: 60,
