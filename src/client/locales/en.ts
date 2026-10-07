@@ -361,6 +361,8 @@ export const en: Record<CopyKey, string> = {
   "host.advanced.audio.saver": "Standard",
   "host.advanced.audio.music": "Music",
   "host.advanced.audio.veryHigh": "Studio",
+  "host.advanced.audio.ultra": "Ultra",
+  "host.advanced.audio.master": "Master",
   "host.advanced.route": "Route policy",
   "host.advanced.route.sfuOnly": "Server media",
   "host.advanced.route.sfuOnlyHint": "This site sends all shared video and audio through its media server",

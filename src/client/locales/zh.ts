@@ -361,6 +361,8 @@ export const zh = {
   "host.advanced.audio.saver": "普通",
   "host.advanced.audio.music": "音乐",
   "host.advanced.audio.veryHigh": "保真",
+  "host.advanced.audio.ultra": "超保真",
+  "host.advanced.audio.master": "录音室",
   "host.advanced.route": "路由策略",
   "host.advanced.route.sfuOnly": "服务器转发",
   "host.advanced.route.sfuOnlyHint": "此站点的共享画面与声音统一由媒体服务器转发",

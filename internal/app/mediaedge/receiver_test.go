@@ -108,7 +108,7 @@ func TestReceiverAdvertisesLocalStereoPreference(t *testing.T) {
 						continue
 					}
 					for _, attribute := range media.Attributes {
-						if attribute.Key == "fmtp" && strings.Contains(attribute.Value, "stereo=1") && strings.Contains(attribute.Value, "maxaveragebitrate=192000") {
+						if attribute.Key == "fmtp" && strings.Contains(attribute.Value, "stereo=1") && strings.Contains(attribute.Value, "maxaveragebitrate=320000") {
 							found = true
 						}
 					}

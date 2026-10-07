@@ -760,6 +760,8 @@ describe("client signaling protocol", () => {
       "saver",
       "music",
       "very-high",
+      "ultra",
+      "master",
     ] as const) {
       expect(
         clientMessageSchema.safeParse({

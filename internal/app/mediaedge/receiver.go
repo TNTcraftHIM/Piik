@@ -249,7 +249,7 @@ func (receiver *Receiver) createAnswer() (webrtc.SessionDescription, error) {
 			if !strings.EqualFold(codec.MimeType, webrtc.MimeTypeOpus) {
 				continue
 			}
-			codec.SDPFmtpLine = opusSDPFmtpLine + ";stereo=1;maxaveragebitrate=192000"
+			codec.SDPFmtpLine = opusSDPFmtpLine + ";stereo=1;maxaveragebitrate=320000"
 			if err := transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{codec}); err != nil {
 				return webrtc.SessionDescription{}, err
 			}

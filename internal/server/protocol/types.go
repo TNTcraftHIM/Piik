@@ -37,7 +37,7 @@ var (
 var (
 	qualityResolutions           = []string{"480p", "720p", "1080p", "1440p"}
 	degradationPreferences       = []string{"maintain-resolution", "balanced", "maintain-framerate"}
-	screenAudioQualities         = []string{"saver", "music", "very-high"}
+	screenAudioQualities         = []string{"saver", "music", "very-high", "ultra", "master"}
 	mediaRoutePhases             = []string{"prepare", "active"}
 	routeDemandReasons           = []string{"join", "edge-unavailable", "parent-departed", "capacity-reduction", "sfu-bootstrap", "direct-convergence", "quality-convergence", "root-convergence"}
 	routeDiagnosticFinalRoutes   = []string{"direct", "sfu", "waiting", "failed"}
