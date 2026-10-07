@@ -59,8 +59,8 @@ An App-opened Site remembers native activation, so later pages there may reuse
 the running App. Browser capture remains available without the App; see the
 [entry workflow](../../docs/standards/presentation-lifecycle.md#product-surface).
 
-The Host page offers Browser capture and available native windows or screens;
-select the source explicitly. Windows native capture offers VP8/Auto/H264;
+The Host page offers Browser and Camera capture alongside available native
+windows or screens; select the source explicitly. Windows native capture offers VP8/Auto/H264;
 Auto chooses one codec for the share. macOS and Linux native capture require
 hardware H264. Source and audio support vary by platform; their setup is covered
 in the [Windows](../../native/capture/windows/README.md),

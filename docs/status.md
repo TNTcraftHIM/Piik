@@ -75,8 +75,8 @@ record own exact identity and postflight results.
 
 The existing deployment uses one Go process for Web, room authority/signaling,
 Binding-only STUN on UDP 3478/3479/3480 and optional SFU on UDP 7882. nginx owns
-HTTPS; external LiveKit/coturn services remain disabled. Participants, routes and
-media remain process-only. This private service is not a public demonstration.
+HTTPS. Participants, routes and media remain process-only. This private service
+is not a public demonstration.
 
 The separate US [public demo](https://demo.piik.tv) is deployed with open site
 entry, persistent room authority and P2P-only media. Cloudflare fronts HTTP/WSS

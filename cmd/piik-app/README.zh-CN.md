@@ -47,7 +47,7 @@ App 会在启动时再次检查所选地址；它只影响本地邀请链接，�
 通过 App 打开的站点会记住原生功能的启用选择，之后打开该站点的页面可继续使用正在运行的 App。
 没有 App 时仍可使用浏览器采集，详见[进入流程](../../docs/standards/presentation-lifecycle.md#product-surface)。
 
-房主页面提供浏览器采集及可用的原生窗口或屏幕，请明确选择来源。
+房主页面提供浏览器、摄像头采集，以及可用的原生窗口或屏幕，请明确选择来源。
 Windows 原生采集提供 VP8/Auto/H264，Auto 会为本次分享选定一种编码。
 macOS 和 Linux 原生采集需要硬件 H264。可选来源与音频支持取决于平台，设置要求见
 [Windows](../../native/capture/windows/README.md)、[macOS](../../native/capture/darwin/README.md)

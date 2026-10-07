@@ -275,12 +275,11 @@ When `NAT_PREDICTION_ENABLED=true`, the server derives
 `stun:<same-hostname>:3479` and `:3480` from the first ordinary STUN authority
 on UDP 3478. The Host sees a pre-share switch that defaults on and may disable
 it. The capability adds no media route or third-party service. It needs both
-cloud security-group rules and the host's `/etc/nftables.conf` rule. Piik
+cloud security-group rules and the host firewall. Piik
 binds every required UDP listener before opening room persistence or accepting
 signaling; a bind failure rolls back all newly owned sockets. Close and End
-retire these listeners with the application. Existing coturn listeners must
-be retired in the coordinated deployment because two processes cannot own the
-same ports. Opening a cloud port without a listener has no effect, and local
+retire these listeners with the application. No other service may own the same
+listening ports. Opening a cloud port without a listener has no effect, and local
 binding alone does not prove external reachability. Disable the capability
 before removing firewall rules. Same-IP ports
 expose destination-port allocation behavior; a full RFC 5780 alternate-address

@@ -15,9 +15,6 @@ Git/PRs own completed history.
   coherent candidate and stop before publication. Preserve the existing product
   model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
-- [ ] **Documentation consistency.** Check the remaining guides, research and
-  owner links against current behavior; remove obsolete service/API descriptions
-  while retaining the scope and date of historical measurements.
 - [ ] **Windows 11 capture border remains visible.** Reopened by a new report
   on 2026-10-07. Recheck App/Browser capture ownership, border permission/API
   results, live setting changes and concurrent captures before attributing this
