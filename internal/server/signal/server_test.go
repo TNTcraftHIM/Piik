@@ -72,6 +72,71 @@ func TestCreateRoomReleasesLockWhenDerivationOrCommitPanics(t *testing.T) {
 	}
 }
 
+func TestPasswordPreparationDoesNotBlockAnotherRoom(t *testing.T) {
+	for _, update := range []bool{false, true} {
+		t.Run(fmt.Sprintf("update=%v", update), func(t *testing.T) {
+			started, release := make(chan struct{}), make(chan struct{})
+			var hold atomic.Bool
+			var releaseOnce sync.Once
+			unblock := func() { releaseOnce.Do(func() { close(release) }) }
+			t.Cleanup(unblock)
+			store, err := room.New(room.Options{
+				MaxRooms: 3, MaxViewersPerRoom: 1,
+				Random: func(size int) []byte {
+					// Hold the existing salt source in the unlocked password phase.
+					if hold.CompareAndSwap(true, false) {
+						close(started)
+						<-release
+					}
+					return bytes.Repeat([]byte{byte(size)}, size)
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			server := &Server{store: store}
+			original, err := server.CreateRoom(protocol.CodeEntryOpen, nil, "1234")
+			if err != nil {
+				t.Fatal(err)
+			}
+			hold.Store(true)
+			done := make(chan error, 1)
+			go func() {
+				password := "room-password"
+				var err error
+				if update {
+					_, err = server.UpdateRoomAccess(original.RoomID, original.HostToken,
+						protocol.SetViewerPasswordRequest{Password: &password})
+				} else {
+					_, err = server.CreateRoom(protocol.CodeEntryPrivate, &password, "2345")
+				}
+				done <- err
+			}()
+			select {
+			case <-started:
+			case <-time.After(defaultWait):
+				t.Fatal("password preparation did not start")
+			}
+			if !server.mu.TryLock() {
+				t.Fatal("password work blocks signaling for other rooms")
+			}
+			server.mu.Unlock()
+			if _, err := server.CreateRoom(protocol.CodeEntryOpen, nil, "3456"); err != nil {
+				t.Fatalf("independent room creation: %v", err)
+			}
+			unblock()
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("password operation: %v", err)
+				}
+			case <-time.After(defaultWait):
+				t.Fatal("password operation did not finish")
+			}
+		})
+	}
+}
+
 func TestStopSharingDoesNotWriteRoomAuthority(t *testing.T) {
 	database, err := room.NewDatabase(filepath.Join(t.TempDir(), "rooms.sqlite"))
 	if err != nil {

@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"database/sql"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
@@ -89,6 +94,121 @@ func TestDoesNotPersistARoomWhenPasswordDerivationIsBusy(t *testing.T) {
 	if created := createRoom(t, second, protocol.CodeEntryPrivate, "", "4321"); created.RoomID != "4321" {
 		t.Fatalf("room = %q, want 4321", created.RoomID)
 	}
+}
+
+func TestRoomCreationStorageFailuresPreserveAuthority(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		install string
+		remove  string
+		code    int
+	}{
+		{
+			name: "read-only connection", install: "PRAGMA query_only = ON",
+			remove: "PRAGMA query_only = OFF", code: sqlite3.SQLITE_READONLY,
+		},
+		{
+			// The room INSERT succeeds; a deferred constraint rejects COMMIT.
+			// Temporary objects leave the production schema unchanged.
+			name: "commit rejection",
+			install: `PRAGMA foreign_keys = ON;
+				CREATE TEMP TABLE fault_parent (id INTEGER PRIMARY KEY);
+				CREATE TEMP TABLE fault_child (
+					id INTEGER REFERENCES fault_parent(id) DEFERRABLE INITIALLY DEFERRED
+				);
+				CREATE TEMP TRIGGER reject_commit AFTER INSERT ON main.rooms
+				BEGIN INSERT INTO fault_child VALUES (1); END;`,
+			remove: "DROP TRIGGER temp.reject_commit",
+			code:   sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			path := databasePath(t)
+			store := stableStore(t, path, Options{})
+			createRoom(t, store, protocol.CodeEntryOpen, "", "4321")
+			before, err := store.database.readStoredRooms()
+			if err != nil {
+				t.Fatal(err)
+			}
+			free := len(store.freeRoomCodes)
+			if _, err := store.database.exec(testCase.install); err != nil {
+				t.Fatal(err)
+			}
+			_, err = tryCreateRoom(store, protocol.CodeEntryOpen, "", "5678")
+			var sqliteErr *sqlite.Error
+			if !errors.As(err, &sqliteErr) || sqliteErr.Code() != testCase.code {
+				t.Fatalf("create error = %v, want SQLite code %d", err, testCase.code)
+			}
+			after, err := store.database.readStoredRooms()
+			if err != nil || !reflect.DeepEqual(before, after) || store.Size() != 1 || len(store.freeRoomCodes) != free {
+				t.Fatalf("failed write changed authority: rooms=%d, free=%d, error=%v", store.Size(), len(store.freeRoomCodes), err)
+			}
+			if _, err := store.database.exec(testCase.remove); err != nil {
+				t.Fatal(err)
+			}
+			created := createRoom(t, store, protocol.CodeEntryOpen, "", "5678")
+			if created.RoomID != "5678" {
+				t.Fatalf("failed write did not release room code: %s", created.RoomID)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+			restored := stableStore(t, path, Options{})
+			if restored.Size() != 2 {
+				t.Fatalf("restored rooms = %d, want 2", restored.Size())
+			}
+			if _, err := restored.HostManagedRoom(created.RoomID, created.HostToken); err != nil {
+				t.Fatalf("restored Host authority: %v", err)
+			}
+		})
+	}
+}
+
+func TestDatabaseFullDoesNotConsumeRoomAuthorityOrPreventLaterWrites(t *testing.T) {
+	path := databasePath(t)
+	store := stableStore(t, path, Options{MaxRooms: 1000})
+	initialFree := len(store.freeRoomCodes)
+	pages, err := store.database.readPragmaInteger("page_count")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.database.exec(fmt.Sprintf("PRAGMA max_page_count = %d", pages)); err != nil {
+		t.Fatal(err)
+	}
+	for n := 0; n < 1000; n++ {
+		roomID := fmt.Sprintf("%04d", 1000+n)
+		_, err := tryCreateRoom(store, protocol.CodeEntryOpen, "", roomID)
+		if err == nil {
+			continue
+		}
+		var sqliteErr *sqlite.Error
+		if !errors.As(err, &sqliteErr) || sqliteErr.Code() != sqlite3.SQLITE_FULL {
+			t.Fatalf("create error = %v, want SQLITE_FULL", err)
+		}
+		rows, err := store.database.readStoredRooms()
+		if err != nil || len(rows) != n || store.Size() != n || len(store.freeRoomCodes) != initialFree-n {
+			t.Fatalf("full database changed authority: rows=%d, rooms=%d, free=%d, error=%v", len(rows), store.Size(), len(store.freeRoomCodes), err)
+		}
+		if _, err := store.database.exec("PRAGMA max_page_count = 1000"); err != nil {
+			t.Fatal(err)
+		}
+		created := createRoom(t, store, protocol.CodeEntryOpen, "", roomID)
+		if created.RoomID != roomID {
+			t.Fatalf("recovered room code = %s, want %s", created.RoomID, roomID)
+		}
+		if err := store.Close(); err != nil {
+			t.Fatal(err)
+		}
+		restored := stableStore(t, path, Options{MaxRooms: 1000})
+		if restored.Size() != n+1 {
+			t.Fatalf("restored rooms = %d, want %d", restored.Size(), n+1)
+		}
+		if _, err := restored.HostManagedRoom(created.RoomID, created.HostToken); err != nil {
+			t.Fatalf("restored Host authority: %v", err)
+		}
+		return
+	}
+	t.Fatal("bounded database did not reach SQLITE_FULL")
 }
 
 func TestRestoresTheExactAuthorityAggregateWithoutParticipants(t *testing.T) {

@@ -2,16 +2,46 @@
 
 Last reviewed: 2026-10-07
 
-Only **Now** is executable. Product modules own behavior; Git/PRs own completed
-history. A parked idea is not implementation authority.
+The current 2.0 preparation includes independent investigation across this
+ledger. Explicit owner holds remain in force; an investigation does not itself
+accept a new feature or architecture. A missing device or reporter trace blocks
+only that evidence claim, not unrelated work. Product modules own behavior;
+Git/PRs own completed history.
 
 ## Now
 
-- [ ] **2.0 candidate review and acceptance.** The owner reopened investigation,
+- [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
   useful improvements and outstanding acceptance on 2026-10-07. Prepare one
   coherent candidate and stop before publication. Preserve the existing product
   model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
+- [ ] **Optional interaction compatibility.** Apply the owner's chosen rule:
+  an unknown received reaction skips that visual effect while chat and sharing
+  continue. Current command/event decoding shares a strict reaction enum and a
+  decode error terminates signaling. Separate presentation support from malformed
+  or unauthorized traffic at the existing protocol owner; preserve bounded
+  payloads, membership/target validation and strict outgoing commands. Verify
+  the old/new reader boundary before adding another registered reaction.
+- [ ] **Signaling execution and fairness.** Measure signaling-lock contention,
+  synchronous persistence, presence fan-out, diagnostic I/O and cross-room
+  password work before changing the lock or execution model. Start from the
+  existing bounded owners; do not introduce per-room actors without evidence.
+- [ ] **Storage fault boundaries.** Extend real SQLite fault checks to disk I/O
+  failure during COMMIT/ROLLBACK. Write rejection, page-capacity exhaustion and
+  deferred-constraint COMMIT rejection are covered by the room tests. Verify
+  durable and in-memory room authority remain consistent and the next operation
+  has a defined outcome before choosing a recovery change; do not add
+  catch-and-continue retries.
+- [ ] **Lifecycle ownership review.** Trace reachable per-share Host/Viewer,
+  source replacement, signaling recovery and media retirement paths under
+  [engineering review](./standards/engineering.md#ablation-and-review).
+  Reproduce C=3 structural-intent or multi-child evidence concerns before changing
+  their ownership. Keep Native bridge failure distinct from network failure;
+  account for preview, quality candidates, SFU updates and track-ended consumers
+  before changing Host loopback retirement. Simplify only for a concrete gain.
+- [ ] **Documentation consistency.** Check the remaining guides, research and
+  owner links against current behavior; remove obsolete service/API descriptions
+  while retaining the scope and date of historical measurements.
 - [ ] **Native capture cadence acceptance.** The local Native SFU throughput
   rerun is limited by [low WGC arrival cadence](./research/native-client-media.md#virtual-display-acceptance-limit)
   reproduced on unchanged main and a separate Windows-API-only capture probe.
@@ -38,26 +68,33 @@ history. A parked idea is not implementation authority.
 - [ ] **Windows ARM64 App.** Deferred by the owner on 2026-10-03. Keep Windows
   App packages and website downloads x64-only until this work is reopened.
 
-## Deferred Feature Work
+## Feature Assessments
 
-These proposals remain outside the current candidate. Reassessment on
-2026-10-07 did not establish enough benefit for their added owners and operating
-cost. The media and transport assessments below remain recommendations for the
-owner's final scope review, not permanent prohibitions.
+Assess these proposals against the owner's benefit/complexity condition.
+Existing negative results narrow the next experiment; they do not freeze the
+whole candidate or require another version-number decision before other work.
+Implementation needs a concrete useful result within the product model.
 
 - [ ] **4K and additional codecs.** The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
-  recommends retaining current limits for this candidate. Reopen with a concrete
-  source/receiver use case that justifies coordinated capture, forwarding and
-  resource bounds; keep UI presets separate from those bounds in any new design.
-
+  recommends retaining current limits. Assess concrete source/receiver cases
+  before accepting coordinated capture, forwarding and resource-bound changes;
+  keep UI presets separate from those bounds in any new design. Additional
+  formats must account for late Viewers and relays that cannot decode or forward
+  the published format; codec negotiation alone does not transcode it.
+- [ ] **Native Magicsock.** Go reuse is feasible, but the
+  [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
+  have not established improved direct reachability. Seek a repeatable benefit
+  before accepting peer-key authorization/revocation, underlay readiness and
+  relay operation. Keep the isolated experiment separate from product routing;
+  the P2P evidence work below owns the network/interop acceptance boundary.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
   identifies UDP/storage requirements but establishes no cost saving. Keep the
   existing P2P-only Demo until a provider and operating boundary are accepted.
-- [ ] **Phone as a Host microphone: assess after the current work.** Explore an
-  opt-in link that pairs a phone's microphone with the Host's existing audio
-  mixer. Evaluate pairing/revocation, latency/echo, browser background limits
+- [ ] **Phone as a Host microphone.** Assess an opt-in link that pairs a phone's
+  microphone with the Host's existing audio mixer. Evaluate pairing/revocation,
+  latency/echo, browser background limits
   and Browser/native input ownership before accepting an implementation. This
-  proposal does not reopen room voice or change the current release scope.
+  proposal does not reopen room voice; establish feasibility before accepting it.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not
@@ -183,42 +220,27 @@ works, so a Rust alternative needs a concrete Go limitation.
    [Browser pool comparison](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
    owns cold-encoder tradeoffs; low resolution alone is not a defect. Check
    whether a proposed move merely shifts pressure to another parent's siblings.
-3. **Signaling execution model.** Measure signaling-lock contention, synchronous
-   persistence, presence fan-out, diagnostic I/O and cross-room password-work
-   fairness before changing the lock or execution model.
-4. **Reachable ownership/refactor work.** With related behavior changes, evaluate
-   per-share Host and Viewer route ownership under
-   [engineering review](./standards/engineering.md#ablation-and-review).
-   Reopen C=3 structural-intent retention or multi-child evidence ownership only
-   with current-contract reproductions. Shared recovery must preserve Native
-   bridge versus network-failure semantics. Before changing Host loopback-failure
-   retirement, account for its preview, Browser quality candidates, quality/SFU
-   updates and track-ended consumers; independent Native publication alone does
-   not make ignoring the failure safe. This is not a diagnosed field cause.
-5. **Storage fault recovery.** Choose and verify a damaged-disk/COMMIT/ROLLBACK
-   recovery policy before adding catch-and-continue or retries. This failure
-   boundary remains unestablished after ordinary persistence checks.
-6. **Platform output.** Reopen for a registered receiver acting as an ordinary
+3. **Platform output.** Reopen for a registered receiver acting as an ordinary
    Viewer only after the [platform-output gate](./research/platform-output.md)
    passes.
-7. **Additional languages.** Review community catalogs and their rendered UI
+4. **Additional languages.** Review community catalogs and their rendered UI
    following the [translation guide](./guide/translating.md), including names,
    menu navigation, text direction and layout.
-8. **Windows code signing.** Revisit after enrollment in a trusted signing
+5. **Windows code signing.** Revisit after enrollment in a trusted signing
     service. Sign executables before archive checksums; publisher identity does
     not guarantee that antivirus cloud scanning stops.
-9. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
+6. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.
-10. **Release-operation policy.** Protected release environments and immutable
+7. **Release-operation policy.** Protected release environments and immutable
     draft assets remain unaccepted proposals; evaluate their benefit before
     adding release machinery.
-11. **Automatic local chat history.** Explicit TXT export covers manual retention.
+8. **Automatic local chat history.** Explicit TXT export covers manual retention.
     Reconsider automatic storage only with a stable room-incarnation identity,
     bounded retention and a clear delete control; reusable room codes must not
     combine conversations. No new history service or wire field is authorized.
-12. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
+9. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
     The [capture assessment](./research/camera-and-microphone.md) records raw-frame
     output and the WHIP boundary; virtual camera alone is not a second encode.
     Do not add an RTMP/WHIP listener without an accepted publication owner.
