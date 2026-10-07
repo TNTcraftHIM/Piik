@@ -236,6 +236,8 @@ const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioQuality, CopyKey> = {
   saver: "host.advanced.audio.saver",
   music: "host.advanced.audio.music",
   "very-high": "host.advanced.audio.veryHigh",
+  ultra: "host.advanced.audio.ultra",
+  master: "host.advanced.audio.master",
 };
 
 type ViewerQualityEvidence = Extract<

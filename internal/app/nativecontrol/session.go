@@ -660,6 +660,10 @@ func nativeQualityProfile(settings qualitySettings) nativehost.QualityProfile {
 		audioBitrate = 64_000
 	case "very-high":
 		audioBitrate = 192_000
+	case "ultra":
+		audioBitrate = 256_000
+	case "master":
+		audioBitrate = 320_000
 	}
 	return nativehost.QualityProfile{
 		Video: nativecapture.VideoProfile{

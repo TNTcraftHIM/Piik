@@ -297,6 +297,8 @@ describe("realtime quality controls", () => {
     ["saver", 64_000],
     ["music", 128_000],
     ["very-high", 192_000],
+    ["ultra", 256_000],
+    ["master", 320_000],
   ] as const)("applies and reads back the %s audio ceiling", async (quality, bitrate) => {
     let applied = { encodings: [] } as unknown as RTCRtpSendParameters;
     const sender = {

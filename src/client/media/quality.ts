@@ -69,9 +69,12 @@ export const SCREEN_AUDIO_BITRATES = {
   saver: 64_000,
   music: 128_000,
   "very-high": 192_000,
+  ultra: 256_000,
+  master: 320_000,
 } as const satisfies Record<ScreenAudioQuality, number>;
+// Receivers advertise the top preset so any sender ceiling can be accepted.
 export const SCREEN_AUDIO_RECEIVE_MAX_BITRATE =
-  SCREEN_AUDIO_BITRATES["very-high"];
+  SCREEN_AUDIO_BITRATES["master"];
 
 export function startupVideoProfile(
   profile: QualityProfile,

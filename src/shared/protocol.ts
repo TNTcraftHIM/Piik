@@ -192,6 +192,8 @@ export const screenAudioQualitySchema = z.enum([
   "saver",
   "music",
   "very-high",
+  "ultra",
+  "master",
 ]);
 export type ScreenAudioQuality = z.infer<typeof screenAudioQualitySchema>;
 
