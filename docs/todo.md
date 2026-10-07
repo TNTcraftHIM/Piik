@@ -19,12 +19,6 @@ Git/PRs own completed history.
   synchronous persistence, presence fan-out, diagnostic I/O and cross-room
   password work before changing the lock or execution model. Start from the
   existing bounded owners; do not introduce per-room actors without evidence.
-- [ ] **Storage fault boundaries.** Extend real SQLite fault checks to disk I/O
-  failure during COMMIT/ROLLBACK. Write rejection, page-capacity exhaustion and
-  deferred-constraint COMMIT rejection are covered by the room tests. Verify
-  durable and in-memory room authority remain consistent and the next operation
-  has a defined outcome before choosing a recovery change; do not add
-  catch-and-continue retries.
 - [ ] **Lifecycle ownership review.** Trace reachable per-share Host/Viewer,
   source replacement, signaling recovery and media retirement paths under
   [engineering review](./standards/engineering.md#ablation-and-review).
