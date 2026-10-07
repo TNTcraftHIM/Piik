@@ -3536,7 +3536,7 @@ async function main(): Promise<number> {
       "CDP SystemInfo exposes no resident-set field, so peakResidentSetBytes is null; GPU, NIC, glass-to-glass latency, generational visual quality, mobile browsers, and SFU require other measurement.",
       externalServer
         ? "The external server target is exercised as configured; the gate does not infer unavailable transports."
-        : "The local runner does not start LiveKit; SFU consistency is reported only when an SFU route is actually observed.",
+        : "The local runner does not enable embedded SFU; SFU consistency is reported only when an SFU route is actually observed.",
       "The harness emits raw gate fields and simple invariants; it does not implement a route score or runtime policy.",
       "BENCHMARK_QUALITY_SMOKE disables encoded-stream support to verify ordinary-sender parameter propagation. Browser pool producer/clock settings are checked by browser-local-pool-probe.ts.",
       "This gate measures initial topology and relay-loss recovery, not sender-quality convergence or synthetic Viewer-triggered handoffs.",

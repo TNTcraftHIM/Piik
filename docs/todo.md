@@ -12,12 +12,11 @@ history. A parked idea is not implementation authority.
   coherent candidate and stop before publication. Preserve the existing product
   model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
-- [ ] **Current-contract runtime acceptance.** Exercise sharing, source/quality
-  replacement, reconnect, peer/SFU handoff and independent retirement. Review
-  responsive interaction and reader documentation against the accepted result;
-  keep unavailable physical-device checks explicit. The local Native SFU
-  throughput rerun is limited by [low WGC arrival cadence](./research/native-client-media.md#virtual-display-acceptance-limit)
-  reproduced on unchanged main; do not lower its frame requirement to report a pass.
+- [ ] **Native capture cadence acceptance.** The local Native SFU throughput
+  rerun is limited by [low WGC arrival cadence](./research/native-client-media.md#virtual-display-acceptance-limit)
+  reproduced on unchanged main and a separate Windows-API-only capture probe.
+  Compare on a physical display before claiming current Native throughput
+  acceptance; do not lower the unchanged 300-frame/30-second requirement.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
