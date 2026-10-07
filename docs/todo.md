@@ -15,13 +15,6 @@ Git/PRs own completed history.
   coherent candidate and stop before publication. Preserve the existing product
   model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
-- [ ] **Lifecycle ownership review.** Trace reachable per-share Host/Viewer,
-  source replacement, signaling recovery and media retirement paths under
-  [engineering review](./standards/engineering.md#ablation-and-review).
-  Reproduce C=3 structural-intent or multi-child evidence concerns before changing
-  their ownership. Keep Native bridge failure distinct from network failure;
-  account for preview, quality candidates, SFU updates and track-ended consumers
-  before changing Host loopback retirement. Simplify only for a concrete gain.
 - [ ] **Documentation consistency.** Check the remaining guides, research and
   owner links against current behavior; remove obsolete service/API descriptions
   while retaining the scope and date of historical measurements.

@@ -241,6 +241,14 @@ use Browser reception; existing healthy peers are not torn down by this choice.
 Parent-network failure alone is not evidence that the local Native capability
 is unavailable.
 
+The Native Host's local bridge remains required by its Browser share owner:
+the stream supplies preview and Browser quality candidates and participates in
+source and quality changes. A terminal failure retires that share through the
+existing Host lifecycle; it is not merely a missing preview. An individual
+downstream network failure instead recovers that edge and does not retire the
+bridge or capture. Browser capture's optional Native fanout can fall back to
+Browser senders because the Browser still owns its source.
+
 ## Presence And Diagnostics
 
 Host and Viewer pages show the authoritative online Viewer count and roster,
