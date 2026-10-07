@@ -22,8 +22,7 @@ history. A parked idea is not implementation authority.
   #432's motion-quality evidence and existing unmatched reports; do not equate a
   successful local reproduction with resolving a different reporter's cause.
 - [ ] **Current-contract runtime acceptance.** Exercise sharing, source/quality
-  replacement, reconnect, peer/SFU handoff and independent retirement. Repair
-  the obsolete optional `viewer-mbb` canary before using it as evidence. Review
+  replacement, reconnect, peer/SFU handoff and independent retirement. Review
   responsive interaction and reader documentation against the accepted result;
   keep unavailable physical-device checks explicit.
 - [ ] **Deferred-work decisions.** Reassess transport, microphone pairing,
@@ -123,6 +122,9 @@ of a reporter's cause; research owns the completed experiments and their limits.
   the [runtime evidence](./research/cross-platform-client-runtime.md#public-invitation-startup).
   [#434](https://github.com/TNTcraftHIM/Piik/issues/434) establishes DNS refusal
   during edge discovery, not a cause shared by all startup reports.
+  [#452](https://github.com/TNTcraftHIM/Piik/issues/452) records both QUIC and TCP
+  connection timeouts; compare the same endpoint with/without its accelerator.
+  That startup log contains no evidence for its separate H.264 report.
 - [ ] **Viewer interruptions.** Obtain paired endpoint/upstream-relay diagnostics
   for established viewing returning to P2P connecting, including
   [#429](https://github.com/TNTcraftHIM/Piik/issues/429)'s SFU-to-P2P dropout.
@@ -185,8 +187,6 @@ works, so a Rust alternative needs a concrete Go limitation.
 1. **Representative device/network acceptance.** Resume the remaining matrix in
    [verification status](./verification-status.md#remaining-device-and-network-acceptance)
    when directed, preserving platform deferrals and serial physical checks.
-   Before reusing the optional `viewer-mbb` canary, replace its obsolete
-   Viewer-only trigger and capacity assertions with the sender-owned contract.
 2. **Broader quality work.** Reopen from measured interruptions, failed recovery
    or healthy-sibling degradation at acceptable complexity. The
    [Browser pool comparison](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
