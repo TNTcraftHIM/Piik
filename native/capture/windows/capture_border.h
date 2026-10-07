@@ -47,7 +47,9 @@ class CaptureBorder final {
     try {
       if (access_.Status() == winrt::Windows::Foundation::AsyncStatus::Started) return;
       const auto access = access_.GetResults();
-      if (access == AccessStatus::Allowed) session.IsBorderRequired(false);
+      // Store the request even when consent is denied. Windows enforces current
+      // permission and can honor this preference if consent changes mid-share.
+      session.IsBorderRequired(false);
       std::osyncstream(std::cerr) << "capture-border-access="
           << (access == AccessStatus::Allowed ? "allowed" : "not-allowed")
           << " status=" << static_cast<int>(access) << '\n';
