@@ -353,7 +353,7 @@ increasing only the fixture's ICE budget recovered media. The ordinary Pion
 loss control recovered without that override. Do not adopt packet prefixes,
 diagnostic Ping polling or wider product deadlines as integration shortcuts.
 
-Current recommendation: keep the transport isolated. Go reuse is feasible, but
+Reassessed on 2026-10-07: keep the transport isolated. Go reuse is feasible, but
 new key authorization/revocation, underlay readiness, packet-size limits and
 relay operation have no demonstrated direct-coverage benefit sufficient for
 product integration. A future trial needs matched networks with a repeatable

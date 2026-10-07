@@ -337,7 +337,7 @@ export async function waitForFrames(width: number, height: number, minimumFrames
     let callback = 0;
     const timer = setTimeout(() => {
       target.cancelVideoFrameCallback(callback);
-      reject(new Error(`Viewer did not decode ${width}x${height}; current ${target.videoWidth}x${target.videoHeight}; ${frames} frame callbacks; ${document.visibilityState}; ${error ?? "no signaling error"}`));
+      reject(new Error(`Viewer did not reach ${minimumFrames} decoded frame callbacks at ${width}x${height}; current ${target.videoWidth}x${target.videoHeight}; ${frames} matching callbacks; ${document.visibilityState}; ${error ?? "no signaling error"}`));
     }, minimumFrames > 15 ? 30_000 : 20_000);
     const next = () => {
       callback = target.requestVideoFrameCallback(() => {

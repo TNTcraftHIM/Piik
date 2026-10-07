@@ -12,29 +12,12 @@ history. A parked idea is not implementation authority.
   coherent candidate and stop before publication. Preserve the existing product
   model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
-- [ ] **App-wide sharing preferences (#460).** Same-origin Browser preferences
-  are implemented. Assess retaining explicit settings across changing App public
-  origins without eagerly claiming Native sessions, adding a second settings
-  owner or persisting live device/session authority. Keep the Browser scope clear
-  if an App-wide bridge is not justified.
-- [ ] **Current issue evidence.** Review #452's public-link/H.264 report and
-  #453's cross-network failure against current startup and ICE behavior. Revisit
-  #432's motion-quality evidence and existing unmatched reports; do not equate a
-  successful local reproduction with resolving a different reporter's cause.
 - [ ] **Current-contract runtime acceptance.** Exercise sharing, source/quality
   replacement, reconnect, peer/SFU handoff and independent retirement. Review
   responsive interaction and reader documentation against the accepted result;
-  keep unavailable physical-device checks explicit.
-- [ ] **Deferred-work decisions.** Reassess transport, microphone pairing,
-  passive App attachment, hosting and remaining structural proposals in order
-  of demonstrated value. Record accepted scope in the owning modules before
-  implementation; do not turn every proposal into a release requirement.
-- [ ] **4K, codec expansion and Native Magicsock assessment.** Reopened by the
-  owner on 2026-10-07 for 2.0 only where measured benefit justifies a simple
-  implementation. Review the [media extension assessment](./research/native-client-media.md#media-capability-extension-assessment)
-  and [transport comparison](./research/nat-traversal.md#integration-cost-and-recovery-controls)
-  against current main. No changed wire contract or product transport is accepted
-  merely by reopening the experiments.
+  keep unavailable physical-device checks explicit. The local Native SFU
+  throughput rerun is limited by [low WGC arrival cadence](./research/native-client-media.md#virtual-display-acceptance-limit)
+  reproduced on unchanged main; do not lower its frame requirement to report a pass.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
@@ -58,12 +41,19 @@ history. A parked idea is not implementation authority.
 
 ## Deferred Feature Work
 
-These proposals remain deferred beyond the accepted interaction phase.
+These proposals remain outside the current candidate. Reassessment on
+2026-10-07 did not establish enough benefit for their added owners and operating
+cost. The media and transport assessments below remain recommendations for the
+owner's final scope review, not permanent prohibitions.
 
-- [ ] **Managed Demo hosting.** Evaluate cost and public UDP support before any
-  migration. The assessment remains outside the current product release; keep
-  the existing P2P-only Demo deployment until a provider and operating boundary
-  are accepted.
+- [ ] **4K and additional codecs.** The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
+  recommends retaining current limits for this candidate. Reopen with a concrete
+  source/receiver use case that justifies coordinated capture, forwarding and
+  resource bounds; keep UI presets separate from those bounds in any new design.
+
+- [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
+  identifies UDP/storage requirements but establishes no cost saving. Keep the
+  existing P2P-only Demo until a provider and operating boundary are accepted.
 - [ ] **Phone as a Host microphone: assess after the current work.** Explore an
   opt-in link that pairs a phone's microphone with the Host's existing audio
   mixer. Evaluate pairing/revocation, latency/echo, browser background limits
@@ -108,6 +98,8 @@ of a reporter's cause; research owns the completed experiments and their limits.
   [#443](https://github.com/TNTcraftHIM/Piik/issues/443) lacks a connected Native
   edge and its paired Viewer/App transport report;
   [#448](https://github.com/TNTcraftHIM/Piik/issues/448) only reaches route allocation.
+  [#453](https://github.com/TNTcraftHIM/Piik/issues/453) has no matched endpoint
+  reports to distinguish network reachability from a product failure.
   The v1.6.3 candidate-timeout report lacks share-start and SDP/ICE evidence.
 - [ ] **Camera and Host microphone device coverage.** Check real audio levels,
   echo, device replacement/native mixing and phone camera permission, orientation
