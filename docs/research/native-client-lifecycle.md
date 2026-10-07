@@ -343,6 +343,12 @@ This establishes a retirement defect and its local repair, not the cause of
 every reported Windows 11 border: denied consent and other active captures
 remain distinct Windows-owned limits.
 
+The upstream [display-resolution change report](https://github.com/robmikh/Win32CaptureSample/issues/59)
+is still open as of 2026-10-07: it reports borderless display capture losing that
+preference after a mode change. It gives neither a current Windows build nor a
+verified repair. Include display-mode changes in physical reproduction; this
+report alone does not justify toggling the property or restarting capture.
+
 An unofficial WGC-preserving option exists:
 [Windhawk's DWM Custom Projection Border](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/dwm-custom-projection-border.wh.cpp)
 documents disabling the border on Windows 10 21H2. Source inspection confirms
