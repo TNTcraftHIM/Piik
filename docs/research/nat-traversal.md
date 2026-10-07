@@ -390,6 +390,22 @@ profiles. Only four bytes remain below Tailcat's 1232-byte ceiling; larger
 headers and maximum compound RTCP remain integration checks. The small actual
 forwarder fixture does not establish those limits.
 
+A feedback control found a concrete mismatch: Pion's TWCC recorder generated
+a 1244-byte encrypted report and a 1268-byte compound batch. Ordinary Pion
+delivered both; the bounded adapter rejected them, and unwrapped Tailcat did
+not deliver either within two seconds. A 1144-byte report arrived before and
+after. Windows and Linux race checks repeated this result three times each.
+Pion ICE treats non-close socket write errors as packet loss, so `WriteRTCP`
+returning no error did not prove delivery. This does not establish how often
+Piik would produce these batches. Tailcat's
+[documented payload bound](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/tailcat.go#L574)
+needs a supported feedback-size boundary before integration; reducing RTP
+packetization alone does not bound RTCP. No product transport or custom packet
+fragmentation was added for this check.
+The related [Pion feedback-MTU report](https://github.com/pion/interceptor/issues/416)
+remains open as of 2026-10-07. Its out-of-order packet evidence does not establish
+the cause of any Piik field report; the pinned recorder has no byte-size option.
+
 Kernel gateway rebinding retained full WebRTC sessions. With DERP available,
 fresh media resumed in about 6.4–6.5 seconds and ICE reported `connected` in about
 7.1–8.1 seconds, without new SDP. With DERP closed, neither gateway direction

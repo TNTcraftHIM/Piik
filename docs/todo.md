@@ -60,8 +60,9 @@ Implementation needs a concrete useful result within the product model.
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   have not established improved direct reachability. Seek a repeatable benefit
   before accepting peer-key authorization/revocation, underlay readiness and
-  relay operation. Keep the isolated experiment separate from product routing;
-  the P2P evidence work below owns the network/interop acceptance boundary.
+  relay operation. The isolated feedback check also requires a supported RTCP
+  size boundary for the tunnel's MTU. Keep the experiment separate from product
+  routing; the P2P evidence work below owns the network/interop acceptance boundary.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
   identifies UDP/storage requirements but establishes no cost saving. Keep the
   existing P2P-only Demo until a provider and operating boundary are accepted.
