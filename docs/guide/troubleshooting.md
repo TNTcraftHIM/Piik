@@ -217,6 +217,11 @@ from a page that opens but reports **No media route available**.
    firewall blocks Cloudflare Tunnel; adjust only relevant rules. Ask the
    administrator about a school or workplace network.
 
+For a terminal timeout mentioning `:7844`, check outbound connections from
+`cloudflared`, including proxy or game-accelerator rules.
+[Cloudflare's connectivity checks](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/troubleshoot-tunnels/connectivity-prechecks/)
+cover UDP and TCP on this port. This does not require opening an inbound port on your router.
+
 If it keeps failing, you can share through the [online site or an existing site](./getting-started.md#share-from-an-existing-site).
 Include the App version, failure time and [App diagnostic report](../../cmd/piik-app/README.md#diagnostics)
 in feedback. If the unavailable address is a self-hosted site rather than the App's

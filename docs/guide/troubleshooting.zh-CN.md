@@ -184,6 +184,10 @@ App 的 **公网邀请** 通过 Cloudflare Tunnel 提供临时网页地址。
 3. **对照网络。** 可用手机热点重试，检查 DNS、代理或防火墙是否阻止 Cloudflare Tunnel。
    只调整相关规则；学校或公司的网络应联系管理员。
 
+如果终端中的超时错误带有 `:7844`，请检查 `cloudflared` 的出站连接，
+包括代理或游戏加速器的规则。[Cloudflare 连接检查](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/troubleshoot-tunnels/connectivity-prechecks/)（英文）
+说明了该端口的 UDP 和 TCP 要求，无需在路由器上开放入站端口。
+
 反复失败时可先通过[在线版或已有站点](./getting-started.zh-CN.md#使用已有站点分享)分享。
 反馈中请附上 App 版本、失败时间和 [App 诊断报告](../../cmd/piik-app/README.zh-CN.md#诊断)。
 如果打不开的是自建站点而非 App 的临时地址，请联系该站点管理员检查服务。
