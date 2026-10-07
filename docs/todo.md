@@ -69,11 +69,11 @@ Implementation needs a concrete useful result within the product model.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
   identifies UDP/storage requirements but establishes no cost saving. Keep the
   existing P2P-only Demo until a provider and operating boundary are accepted.
-- [ ] **Phone as a Host microphone.** Assess an opt-in link that pairs a phone's
-  microphone with the Host's existing audio mixer. Evaluate pairing/revocation,
-  latency/echo, browser background limits
-  and Browser/native input ownership before accepting an implementation. This
-  proposal does not reopen room voice; establish feasibility before accepting it.
+- [ ] **Phone as a Host microphone.** The [input assessment](./research/camera-and-microphone.md#phone-microphone-assessment)
+  identifies pairing/revocation and native decoded-input ownership beyond the
+  existing device selector. Keep it outside this candidate until a concrete
+  use case justifies that boundary and physical latency/echo/background checks.
+  This proposal does not reopen room voice.
 - [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
   origin and supplies native media without starting a local room server. A
   passive replacement needs an accepted site-consent/discovery flow; it must not
