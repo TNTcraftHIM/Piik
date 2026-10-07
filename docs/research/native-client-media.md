@@ -373,9 +373,13 @@ took less than a millisecond, and encoder diagnostics showed small encode times
 without CPU/quality adaptation. Bringing the source window forward did not
 restore cadence. A capture-only control, without the App or SFU, also delivered
 about 3.9 fps from both Chrome and a separate animated Windows Forms window.
-This localizes the limit before encoding but does not establish
-the virtual driver's cause or diagnose a field report. Retain the gate's
-threshold and compare a physical display before changing capture scheduling,
+A separate minimal WGC program, using only Windows APIs and no Piik code,
+reproduced about 3.8 fps while that Forms window painted about 32 fps.
+Default, 4 ms and 1 ms capture intervals returned the same rate, including with
+the source kept topmost; property readback confirmed each requested interval.
+This localizes the limit to platform capture delivery in this environment but
+does not establish the virtual driver's cause or diagnose a field report.
+Retain the gate's threshold and compare a physical display before changing capture scheduling,
 encoder policy or route behavior.
 
 ## Native H.264 Motion Quality
