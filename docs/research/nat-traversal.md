@@ -323,7 +323,10 @@ Pion ICE. Retired mapping-cache reproductions remain controls, not the baseline.
 
 [Tailcat](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/README.md)
 provides an upstream Go reuse candidate: magicsock plus WireGuard, with DERP bootstrap
-and relay fallback. Its Browser path at that pin is relay-only. In the isolated
+and relay fallback. Its Browser path at that pin is relay-only. Tailscale's open
+[Browser P2P proposal](https://github.com/tailscale/tailscale/issues/21027) uses
+WebRTC because the Browser cannot expose raw UDP; it is not an implemented
+Browser Magicsock hole-puncher. In the isolated
 Linux kernel NAT comparison on 2026-10-05, both stacks connected directly through
 ordinary/ordinary and open/hard gateways in either direction. Neither delivered
 fresh direct payloads through ordinary/hard, hard/ordinary, hard/hard or blocked
@@ -471,6 +474,30 @@ not a passing gate or a diagnosis of an existing Piik user report. Do not widen
 product timeouts or add diagnostic Ping polling to hide it. An actual local
 ICE restart on a shared tunnel also preserved continuous sibling audio/video;
 that healthy-network control does not establish impaired-network recovery.
+
+A narrower control kept a three-second recovery window and used Pion's existing
+`SetICEMaxBindingRequests(16)`. The nine-second blackout recovered in about
+1.9 seconds across three default-library repetitions, but changing the outage
+to eleven seconds produced no media before the same deadline. The isolated
+authorization/feedback candidate reproduced both outcomes. Other checked outage
+phases took up to about 2.9 seconds. Increasing the inner request count therefore
+does not ensure recovery inside Piik's current opportunity. Explicitly retiring
+that failed flow after three seconds preserved a sibling's continuous audio/video
+under the race detector. These fixture windows start after network restoration;
+they do not run Piik's complete disconnect-grace, restart and rebuild schedule.
+A separate one-shot `Client.DiscoPing` before ICE restart also retained failures
+with the default inner budget, despite a successful diagnostic reply.
+That diagnostic response alone does not prove bidirectional encrypted media
+readiness. Neither counterfactual is an accepted transport adapter.
+
+An isolated follow-up mirrored that discovery call on Tailcat's Server for the
+existing fixture peer. Calling both sides once before ICE restart recovered the
+nine- and eleven-second controls twice under the race detector, within the same
+three-second budget including rediscovery and SDP exchange. Pion retained its
+default request count. This supports coordinating underlay revalidation with the
+existing restart owner instead of widening deadlines. The Server hook is not an
+upstream API, and this probe does not validate concurrent revocation, failed
+rediscovery, the complete Piik recovery schedule or additional NAT reachability.
 
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
