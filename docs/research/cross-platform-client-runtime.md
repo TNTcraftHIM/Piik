@@ -167,9 +167,11 @@ the existing 30-second startup budget. This affects HTTP/WebSocket control only;
 media routes, tunnel identity and ordered shutdown keep their existing owners.
 DNS failures, API rejection and networks blocking both transports can still fail.
 The preceding Quick Tunnel allocation is a single HTTPS request with a 15-second
-dependency timeout; failure exits before transport fallback applies. The App's
-pre-readiness exit message and exit code do not identify that cause. Match the
-same run's `public-tunnel` dependency diagnostics before classifying a report.
+dependency timeout; failure exits before transport fallback applies. The exit
+code alone does not identify that cause. An abnormal exit now retains the latest
+sanitized dependency error or plain stderr detail in the existing failure result.
+This is the last reported observation, not a classification or a complete log;
+match the same run's `public-tunnel` diagnostics when the detail is insufficient.
 Piik retries a child that exits before readiness, up to four starts with a
 one-second pause between starts, all within the same 30-second acquisition
 deadline. The previous child, output readers and temporary config retire before
@@ -189,6 +191,13 @@ and [protocol fallback](https://github.com/cloudflare/cloudflared/blob/2026.8.3/
 own the dependency behavior. An early-exit fixture confirms fourth-start recovery
 and bounded exhaustion; these checks do not identify a reporter's API or network
 failure or guarantee four starts when earlier attempts consume the deadline.
+
+A 2026-10-08 Windows check against a deliberately refused local allocation API
+confirmed that cloudflared 2026.8.3 emits its final allocation error as plain
+stderr even with `--output json`. A JSON-only error reader therefore misses it.
+The process boundary retains that detail without changing retries or shutdown;
+normal cancellation still stays clean, and late cleanup cannot erase an already
+observed failure. The launcher applies its existing redaction and display limit.
 
 The public App log in [#452](https://github.com/TNTcraftHIM/Piik/issues/452),
 reviewed on 2026-10-07, records a QUIC timeout followed by a TCP port-7844

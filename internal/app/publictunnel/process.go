@@ -43,8 +43,9 @@ type Process struct {
 	done   chan struct{}
 	once   sync.Once
 
-	mu  sync.Mutex
-	err error
+	mu         sync.Mutex
+	err        error
+	lastDetail string
 }
 
 func PackagedExecutable() string {
@@ -166,7 +167,15 @@ func startAttempt(parent context.Context, executable, localOrigin string) (*Proc
 	var connectOnce sync.Once
 	var outputDone sync.WaitGroup
 	outputDone.Add(2)
-	readOutput := func(reader io.Reader) {
+	recordDetail := func(text string) {
+		// One line is bounded by the scanner. Redact before UI truncation.
+		if text = diagnostics.SafeText(strings.TrimSpace(text)); text != "" {
+			process.mu.Lock()
+			process.lastDetail = text
+			process.mu.Unlock()
+		}
+	}
+	readOutput := func(reader io.Reader, stderr bool) {
 		defer outputDone.Done()
 		scanner := bufio.NewScanner(reader)
 		scanner.Buffer(make([]byte, 4096), maxLogLineBytes)
@@ -178,8 +187,16 @@ func startAttempt(parent context.Context, executable, localOrigin string) (*Proc
 				Error   string `json:"error"`
 			}
 			if json.Unmarshal([]byte(line), &entry) != nil {
+				// cloudflared's CLI also returns plain stderr errors, including
+				// Quick Tunnel allocation failures before a transport exists.
+				if stderr {
+					recordDetail(line)
+				}
 				slog.Debug("public-tunnel", "event", "dependency-output", "message", diagnostics.SafeText(line))
 			} else if entry.Level == "error" || entry.Level == "warn" || entry.Level == "fatal" {
+				if entry.Level != "warn" {
+					recordDetail(strings.Join([]string{entry.Message, entry.Error}, "\n"))
+				}
 				slog.Debug("public-tunnel", "event", "dependency-output", "level", entry.Level,
 					"message", diagnostics.SafeText(entry.Message), "cause", diagnostics.SafeText(entry.Error))
 			}
@@ -194,8 +211,8 @@ func startAttempt(parent context.Context, executable, localOrigin string) (*Proc
 			slog.Debug("public-tunnel", "event", "output-read-failed", diagnostics.Error(err))
 		}
 	}
-	go readOutput(stdout)
-	go readOutput(stderr)
+	go readOutput(stdout, false)
+	go readOutput(stderr, true)
 	go func() {
 		waitErr := child.Wait()
 		// Classify the observed exit before draining logs: later owner cleanup
@@ -209,6 +226,11 @@ func startAttempt(parent context.Context, executable, localOrigin string) (*Proc
 		// Wait closes the pipe readers; join them before App closes its recorder.
 		// Do not wait before Wait: that would bypass its bounded pipe shutdown.
 		outputDone.Wait()
+		process.mu.Lock()
+		if process.err != nil && process.lastDetail != "" {
+			process.err = fmt.Errorf("%w\nlast public invitation detail: %s", process.err, process.lastDetail)
+		}
+		process.mu.Unlock()
 		_ = os.Remove(configPath)
 		close(process.done)
 	}()

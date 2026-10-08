@@ -19,6 +19,11 @@ import (
 
 func TestMain(tests *testing.M) {
 	if mode := os.Getenv("PIIK_TUNNEL_FIXTURE"); mode != "" {
+		if mode == "plain-exit" {
+			fmt.Fprintln(os.Stderr, "failed to request quick Tunnel: connect timeout token=fixture-secret")
+			fmt.Fprintln(os.Stdout, "trailing ordinary output")
+			os.Exit(7)
+		}
 		if record := os.Getenv("PIIK_TUNNEL_FIXTURE_ATTEMPTS"); record != "" {
 			previous, _ := os.ReadFile(record)
 			var paths []string
@@ -46,7 +51,10 @@ func TestMain(tests *testing.M) {
 			}
 			failures, _ := strconv.Atoi(os.Getenv("PIIK_TUNNEL_FIXTURE_FAILURES"))
 			if len(paths) < failures {
-				fmt.Fprintln(os.Stderr, "fixture allocation unavailable")
+				fmt.Fprintln(os.Stderr, `{"level":"error","message":"older recovered failure"}`)
+				fmt.Fprintln(os.Stderr, `{"level":"error","message":"fixture allocation unavailable","error":"connect timeout token=fixture-secret"}`)
+				fmt.Fprintln(os.Stderr, `{"level":"warn","message":"cleanup warning"}`)
+				fmt.Fprintln(os.Stderr, `{"level":"info","message":"cleanup complete"}`)
 				code, _ := strconv.Atoi(os.Getenv("PIIK_TUNNEL_FIXTURE_EXIT_CODE"))
 				os.Exit(code)
 			}
@@ -81,6 +89,23 @@ func TestMain(tests *testing.M) {
 		}
 	}
 	os.Exit(tests.Run())
+}
+
+func TestStartupRetainsPlainDependencyFailure(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PIIK_TUNNEL_FIXTURE", "plain-exit")
+	process, err := startAttempt(t.Context(), executable, "http://127.0.0.1:8787")
+	var failure *exec.ExitError
+	if process != nil || !errors.Is(err, errStartupExited) || !errors.As(err, &failure) || failure.ExitCode() != 7 {
+		t.Fatalf("plain dependency failure lost its exit status: %v, %v", process, err)
+	}
+	if !strings.Contains(err.Error(), "failed to request quick Tunnel: connect timeout token=[redacted]") ||
+		strings.Contains(err.Error(), "fixture-secret") || strings.Contains(err.Error(), "ordinary output") {
+		t.Fatalf("plain dependency failure was omitted, unsafe or overwritten: %v", err)
+	}
 }
 
 func TestStartupRetriesOnlyRetiredPreReadyChildren(t *testing.T) {
@@ -119,6 +144,11 @@ func TestStartupRetriesOnlyRetiredPreReadyChildren(t *testing.T) {
 					var failure *exec.ExitError
 					if !errors.As(err, &failure) || failure.ExitCode() != sample.exitCode {
 						t.Fatalf("latest dependency exit was lost: %v", err)
+					}
+					if !strings.Contains(err.Error(), "fixture allocation unavailable\nconnect timeout token=[redacted]") ||
+						strings.Contains(err.Error(), "fixture-secret") || strings.Contains(err.Error(), "older recovered failure") ||
+						strings.Contains(err.Error(), "cleanup") {
+						t.Fatalf("latest sanitized dependency cause was lost or replaced: %v", err)
 					}
 				}
 			}
@@ -317,6 +347,9 @@ func TestCloseKeepsAnObservedFailureWhileLogsDrain(t *testing.T) {
 		var failure *exec.ExitError
 		if !errors.As(err, &failure) || failure.ExitCode() != 7 {
 			t.Fatalf("late owner cancellation lost the observed dependency failure: %v", err)
+		}
+		if !strings.Contains(err.Error(), "fixture exit failure") {
+			t.Fatalf("late output lost the dependency detail: %v", err)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("tunnel did not retire after its logs drained")

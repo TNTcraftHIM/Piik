@@ -210,8 +210,9 @@ from a page that opens but reports **No media route available**.
 1. **Viewers: confirm the link.** Ask the host to check that the App is running
    and the computer is awake, then send the current invitation. Use a new link
    after the App restarts; the old address may no longer work.
-2. **Hosts: read the terminal error.** Check that the complete App package was
-   extracted. Save the full startup error and try again with **Debug launch**
+2. **Hosts: read the failure details.** Check that the complete App package was
+   extracted. Save the full error from the launch page or terminal, including
+   any detail after the exit code, and try again with **Debug launch**
    enabled. The App retries early tunnel-process exits within its startup deadline.
 3. **Compare networks.** Try a phone hotspot. Check whether DNS, a proxy or a
    firewall blocks Cloudflare Tunnel; adjust only relevant rules. Ask the

@@ -164,6 +164,9 @@ of a reporter's cause; research owns the completed experiments and their limits.
   [#452](https://github.com/TNTcraftHIM/Piik/issues/452) records both QUIC and TCP
   connection timeouts; compare the same endpoint with/without its accelerator.
   That startup log contains no evidence for its separate H.264 report.
+  [#466](https://github.com/TNTcraftHIM/Piik/issues/466) supplies only an early-exit
+  screenshot. Retaining dependency failure details improves the next report;
+  it does not establish or resolve this attempt's cause.
 - [ ] **Viewer interruptions.** Obtain paired endpoint/upstream-relay diagnostics
   for established viewing returning to P2P connecting, including
   [#429](https://github.com/TNTcraftHIM/Piik/issues/429)'s SFU-to-P2P dropout.
