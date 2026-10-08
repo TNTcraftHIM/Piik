@@ -714,6 +714,7 @@ func (r *router) handleRouteReady(participant authenticatedRouteParticipant, mes
 		"participant", r.debugPeer(participant.roomID, participant.peerID),
 		"revision", revision,
 		"accepted", settled.Accepted,
+		"committed", settled.Committed,
 		"exhausted", len(settled.FailedPeerIDs) > 0)
 	r.releaseResources(settled.Released)
 	if settled.Committed && settled.Accepted {
@@ -1189,7 +1190,7 @@ func (r *router) broadcastActive(roomID string, rm *roomRuntime) {
 		r.debug(roomID, "active-topology",
 			"revision", snapshot.Revision,
 			"paused", snapshot.Paused,
-			"hostPublication", snapshot.HostPublication != nil && snapshot.HostPublication.PhysicalActive,
+			"committedHostPublication", snapshot.HostPublication != nil && snapshot.HostPublication.PhysicalActive,
 			"routes", routes)
 	}
 	assignments := r.assignments(roomID, snapshot, nil, "", "")

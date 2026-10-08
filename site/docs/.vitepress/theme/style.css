@@ -26,8 +26,7 @@
   --vp-c-divider: #3b5155;
   --vp-code-block-bg: #14232b;
 }
-.VPNavBarTitle .title { gap: 8px; font-size: 24px; font-weight: 800; letter-spacing: -.045em; }
-.VPNavBarTitle .title::after { content: "."; margin-left: -8px; color: #e4572e; }
+.VPNavBarTitle .identity { gap: 8px; font-size: 24px; letter-spacing: -.045em; }
 .VPNavBarTitle .mascot { width: 30px; height: 30px; }
 .vp-doc h1 { letter-spacing: -.035em; }
 .vp-doc p, .vp-doc li { line-height: 1.85; }

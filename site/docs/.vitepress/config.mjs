@@ -48,6 +48,7 @@ export default defineConfig({
     },
   },
   themeConfig: {
+    siteTitle: false,
     nav: [{ text: 'Website', link: 'https://piik.tv/?lang=en' }, { text: 'Use online', link: 'https://demo.piik.tv' }],
     socialLinks: [{ icon: 'github', link: repository }],
     outline: [2, 3],

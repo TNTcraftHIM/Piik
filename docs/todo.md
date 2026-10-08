@@ -63,7 +63,9 @@ Implementation needs a concrete useful result within the product model.
   relay operation. The isolated feedback check also requires a supported RTCP
   size boundary for the tunnel's MTU, including reordered-history reports and
   compound batches; shorter feedback intervals and the checked upstream updates
-  do not supply it. Kernel NAT, dual-stack, mapping replacement and bounded
+  do not supply it. An isolated upstream repair candidate passes actual encrypted
+  feedback and race checks; it is not a supported or adopted dependency change.
+  Kernel NAT, dual-stack, mapping replacement and bounded
   loss/reordering checks exist, but do not establish that benefit. Keep the
   experiment separate from product routing; the P2P evidence work below owns
   the network/interop acceptance boundary.
@@ -117,6 +119,9 @@ of a reporter's cause; research owns the completed experiments and their limits.
   [#453](https://github.com/TNTcraftHIM/Piik/issues/453) has no matched endpoint
   reports to distinguish network reachability from a product failure.
   The v1.6.3 candidate-timeout report lacks share-start and SDP/ICE evidence.
+  A self-hosted SFU report supplies only a screenshot of a third-party diagnosis;
+  obtain the original Viewer decode/`route-ready` events and matching Server
+  revision before attributing timeout to the committed-publication flag.
 - [ ] **Camera and Host microphone device coverage.** Check real audio levels,
   echo, device replacement/native mixing and phone camera permission, orientation
   and background behavior. Include OBS virtual-camera/audio-input sound quality

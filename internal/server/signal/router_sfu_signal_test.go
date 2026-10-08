@@ -221,6 +221,9 @@ func TestEmbeddedSfuAuthenticatedWebSocketCarriesActualRTP(t *testing.T) {
 		if room.controller.Operation() == nil {
 			t.Fatal("transport/RTP arrival committed without client decoded-frame proof")
 		}
+		if room.controller.Publication() != nil {
+			t.Fatal("preparing media was advertised as a committed Host publication")
+		}
 	})
 	viewer.sendJSON(map[string]any{"type": "route-ready", "revision": viewerConfig.Revision, "phase": "prepare"})
 	if !waitFor(t, time.Second, func() bool {

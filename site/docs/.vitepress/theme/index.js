@@ -1,7 +1,7 @@
 import DefaultTheme from 'vitepress/theme-without-fonts';
 import { useData, withBase } from 'vitepress';
 import { h } from 'vue';
-import { mascotMarkup } from '../../../assets/brand.js';
+import { brandMarkup } from '../../../assets/brand.js';
 import { initialLanguage, rememberLanguage } from '../../../assets/language.js';
 import '../../../assets/brand.css';
 import './style.css';
@@ -11,8 +11,8 @@ export default {
   Layout() {
     const { lang } = useData();
     return h(DefaultTheme.Layout, null, {
-      'nav-bar-title-before': () => h('span', { class: 'identity', 'aria-hidden': 'true',
-        innerHTML: `<svg class="mascot" viewBox="0 0 32 32">${mascotMarkup('docs-brand')}</svg>` }),
+      'nav-bar-title-before': () => h('span', { class: 'identity',
+        innerHTML: brandMarkup('docs-brand') }),
       'doc-bottom': () => h('p', { class: 'docs-license' }, [
         h('a', { href: withBase('/third-party-licenses.txt') },
           lang.value === 'zh-CN' ? '第三方软件许可' : 'Third-party licenses'),

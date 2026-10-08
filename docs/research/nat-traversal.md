@@ -417,6 +417,18 @@ is byte-identical to the pinned recorder; Tailcat's
 the same payload limit and Tailscale dependency. A dependency bump does not
 supply the missing per-report and compound-batch size boundary.
 
+A local upstream-layer repair candidate now bounds TWCC reports through the
+existing recorder split loop and sends them separately before encryption. Its
+fixed 1200-byte plaintext budget is experimental, not a supported upstream
+option. Unit checks preserve loss, reordered history, wrapped sequence numbers
+and arrival times; restoring either old recorder or writer fails its regression
+check. A real interceptor-to-Tailcat control delivered all 1500 statuses in two
+reports after DERP closed, with a largest encrypted datagram of 1212 bytes.
+Windows and three Linux race repetitions passed, as did the upstream TWCC suite
+with the candidate. The isolated probe retains the opt-in patch and reproduction;
+production dependencies are unchanged. This narrows one integration obstacle,
+not the missing direct-reachability benefit or other feedback producers' bounds.
+
 The same Linux kernel lab also compared established Pion and Tailcat SRTP under
 delay/jitter, 5% packet loss, reordering and a 350 ms complete interruption.
 DERP was closed before these phases. Both retained their session and resumed

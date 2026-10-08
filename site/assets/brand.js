@@ -15,9 +15,13 @@ export function mascotMarkup(id, fill = 'none') {
     </g></g>`;
 }
 
+export function brandMarkup(id) {
+  return `<svg class="mascot" viewBox="0 0 32 32" aria-hidden="true">${mascotMarkup(id)}</svg><span>Piik<span class="identity-dot">.</span></span>`;
+}
+
 export function mountBrands() {
   document.querySelectorAll('[data-brand]').forEach((link, index) => {
-    link.innerHTML = `<svg class="mascot" viewBox="0 0 32 32" aria-hidden="true">${mascotMarkup(`brand-${index}`)}</svg><span>Piik<span class="identity-dot">.</span></span>`;
+    link.innerHTML = brandMarkup(`brand-${index}`);
     const replay = () => link.getAnimations({ subtree: true }).forEach(animation => { animation.currentTime = 0; });
     link.addEventListener('pointerenter', replay);
     link.addEventListener('focus', replay);
