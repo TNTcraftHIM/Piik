@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     displayLifecycle: null as { hiddenFrames: number; hiddenElapsedMs: number; lowLayerDecoded: boolean; resumed: boolean; replaced: boolean } | null,
     mediaDiagnostics: null as unknown,
     sourceDrawing: null as { draws: number; elapsedMs: number; visibility: string } | null,
-    publicationRetired: false, subscriptionRecovered: false, nativeShareStopped: !nativeArm, udpReleased: false, cleanup: false, error: null as string | null };
+    publicationRetired: false, subscriptionRecovered: false, pageReloadRecovered: false, nativeShareStopped: !nativeArm, udpReleased: false, cleanup: false, error: null as string | null };
   let server: ChildProcessWithoutNullStreams | null = null;
   let chrome: ChildProcessWithoutNullStreams | null = null;
   let vite: ViteDevServer | null = null;
@@ -315,6 +315,14 @@ async function main(): Promise<void> {
     result.low = await call(viewer, "gate.waitForFrames(854, 480)");
     await waitForSample(() => call<number>(viewer!, "gate.audioEnergy()", 3_000),
       (energy) => { result.audioEnergy.low = energy; return energy > result.audioEnergy.high; }, 5_000);
+    result.stage = "viewer-media-reload";
+    const retainedSubscription = (await call<Snapshot>(viewer, "gate.snapshot()")).connectionId;
+    // A reload loses local media before reporting failure, while room authority
+    // still retains the old committed edge inside the reconnect grace period.
+    await call(viewer, `gate.reconnectViewer(${JSON.stringify(room)}, true)`);
+    await until(viewer, value => value.committed && value.connectionId !== retainedSubscription && value.audioKbps > 0);
+    await call(viewer, "gate.waitForFrames(854, 480)");
+    result.pageReloadRecovered = true;
     result.stage = "committed-subscription-recovery";
     const previousSubscription = await call<string>(viewer, "gate.failSubscription()");
     // Terminal failure consumes this exact opportunity. A new authenticated
@@ -384,7 +392,7 @@ async function main(): Promise<void> {
     (nativeArm || result.stereoSeparationDb?.every(db => db > 20) === true) &&
     result.viewer.audioKbps > 0 && result.audioEnergy.high > 0 && result.audioEnergy.low > result.audioEnergy.high &&
     result.high !== null && result.low !== null && result.audioEnergy.recovered > 0 &&
-    result.publicationRetired && result.subscriptionRecovered && result.cleanup && result.nativeShareStopped &&
+    result.publicationRetired && result.subscriptionRecovered && result.pageReloadRecovered && result.cleanup && result.nativeShareStopped &&
     (!displayArm || result.displayLifecycle?.hiddenFrames === 150 && result.displayLifecycle.lowLayerDecoded &&
       result.displayLifecycle.resumed && result.displayLifecycle.replaced) &&
     (!result.secondRoom || result.secondRoom.connected && result.secondRoom.framesAfterFirstStopped >= 30 &&

@@ -224,6 +224,8 @@ type CommittedEdge struct {
 	Usable                bool
 	PhysicalActive        bool
 	Resource              *Resource
+	// The acquisition's session key stays fixed when signaling ownership rebinds.
+	opportunityKey string
 }
 
 // HostPublication is the single live SFU ingress.

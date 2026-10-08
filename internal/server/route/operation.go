@@ -948,6 +948,7 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 			ConnectionID:    att.connectionID,
 			Usable:          true,
 			PhysicalActive:  true,
+			opportunityKey:  c.candidateOpportunityBase(op.childPeerID, CandidatePlan{Tuple: att.tuple}),
 		})
 		c.directContinuations.Delete(op.childPeerID)
 	} else {
@@ -981,6 +982,7 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 			Usable:                true,
 			PhysicalActive:        true,
 			Resource:              att.reservation.Edge,
+			opportunityKey:        c.candidateOpportunityBase(op.childPeerID, CandidatePlan{Tuple: att.tuple}),
 		})
 		var remainingParentPeerIDs []string
 		if op.reason == DemandSfuBootstrap && oldPeer && old.Usable && old.PhysicalActive {

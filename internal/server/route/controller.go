@@ -742,6 +742,9 @@ func (c *Controller) AdoptDirectConnection(input AdoptDirectConnectionInput, now
 	}
 	c.clearQualityForParticipant(input.ChildPeerID)
 	edge.ConnectionID = input.NewConnectionID
+	edge.opportunityKey = c.candidateOpportunityBase(input.ChildPeerID, CandidatePlan{
+		Tuple: CandidateTuple{Kind: edge.Kind, ParentPeerID: edge.ParentPeerID},
+	})
 	if child, ok := c.participants.Get(input.ChildPeerID); ok {
 		child.availabilityExhausted = false
 	}

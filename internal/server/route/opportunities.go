@@ -165,19 +165,19 @@ func (c *Controller) consumeQualityOperationCandidates(op *operation) {
 
 // consumeActiveEdgeOpportunity exhausts the invalidated edge's exact tuple at rank 0.
 func (c *Controller) consumeActiveEdgeOpportunity(child *participant, edge *CommittedEdge) {
-	if edge.Kind == UpstreamPeer {
-		key := "peer:" + edge.ParentPeerID + "\x00" + child.sessionID + "\x00" + edge.ParentSessionID
-		previous, _ := child.consumedCandidateOpportunities.Get(key)
-		child.consumedCandidateOpportunities.Set(key, candidateOpportunity{
-			rank:            0,
-			startedAttempts: previous.startedAttempts,
-			exhausted:       true,
-		})
+	key := c.candidateOpportunityBase(child.peerID, CandidatePlan{
+		Tuple: CandidateTuple{Kind: edge.Kind, ParentPeerID: edge.ParentPeerID},
+	})
+	// A retained connection can fail after reauthentication. Its old acquisition
+	// must not exhaust the replacement session's still-untried opportunity.
+	if edge.opportunityKey != key {
 		return
 	}
-	c.consumeCandidateOpportunity(child.peerID, CandidatePlan{
-		Tuple:              CandidateTuple{Kind: UpstreamSfu, Publication: PublicationReuse},
-		EndpointTransition: EndpointTransition{Kind: TransitionNone},
+	previous, _ := child.consumedCandidateOpportunities.Get(key)
+	child.consumedCandidateOpportunities.Set(key, candidateOpportunity{
+		rank:            0,
+		startedAttempts: previous.startedAttempts,
+		exhausted:       true,
 	})
 }
 

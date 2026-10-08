@@ -217,6 +217,9 @@ An active configuration describes that connection; it cannot create a replacemen
 Browser subscriber. Replacement needs the controller's prepared subscription and
 first-frame proof. Reauthentication during an unfinished restart also returns
 that subscription to its route owner; sending an answer is not connection proof.
+Retained media keeps its original acquisition opportunity when signaling sessions
+change. Its failure cannot consume a new session's untried opportunity; a new
+physical connection binds the current one. This applies to Peer and SFU edges.
 An exhausted opportunity remains an explicit failure until an eligible new fact
 reopens acquisition. Source capture remains Host-owned throughout.
 

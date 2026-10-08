@@ -488,6 +488,7 @@ disconnect-grace, restart and rebuild schedule.
 | One probe on each side before default-Pion restart | Nine- and eleven-second blackouts recovered in three race-detector repetitions, including both probes and SDP exchange inside three seconds. This requires an isolated, unsupported Server hook. |
 | Same bilateral probe begins while the network is still down | After eight seconds of blackout, restoration one or two seconds into the probe still left it waiting until its three-second deadline in repeated race checks. Post-restoration controls continued to pass. |
 | Lost bilateral probes, retain the existing media connection | In six race checks, both probes expired while WebRTC was already connected; a subsequent observation received fresh SRTP without new SDP, sockets or credentials. The separate three-second observation is not a product recovery extension. |
+| New flow confirms encrypted UDP in both directions before inner ICE | With the listener-state repair and actual Viewer owner, one of four nine-/eleven-second controls recovered; three timed out in the existing three-second preparation, before SDP. The bounded fixture echo changes where waiting occurs, not the underlying recovery limit. |
 
 These controls limit the bilateral proposal: a
 [`DiscoPing` call](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/tailcat.go#L2258)

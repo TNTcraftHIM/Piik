@@ -4,7 +4,98 @@ import (
 	"testing"
 
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/TNTcraftHIM/Piik/internal/server/room"
+	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 )
+
+func TestRouterPreparesSfuForNewAndReauthenticatedViewers(t *testing.T) {
+	for _, reauthenticate := range []bool{false, true} {
+		name := "new-viewer"
+		if reauthenticate {
+			name = "lost-retained-media"
+		}
+		t.Run(name, func(t *testing.T) {
+			h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true, fakeTimers: true})
+			created := h.createRoom()
+			_, first, sibling := h.establishSfuRoom(created)
+			viewer := first
+			if reauthenticate {
+				viewer.sessionID = "replacement_viewer_session_12345678"
+				h.locked(func() {
+					connected, err := h.store.ConnectParticipant(room.ConnectParticipantInput{
+						RoomID: created.RoomID, Role: protocol.RoleViewer,
+						ViewerGrant: created.ViewerGrant,
+						ClientID:    "viewer_client_sfu-root-" + created.RoomID + "_12345678",
+						SessionID:   viewer.sessionID,
+					})
+					if err != nil || connected.PeerID != first.peerID {
+						t.Fatalf("viewer replacement changed identity: %v", err)
+					}
+				})
+			} else {
+				viewer = h.connectViewer(created, "late-viewer")
+			}
+			var retained activeViewerMediaEdge
+			h.locked(func() {
+				if reauthenticate {
+					retained = h.doMustEdge(created.RoomID, viewer.peerID)
+				}
+				state := h.doComplete(viewer)
+				expected := protocol.NoUpstream()
+				if reauthenticate {
+					expected = protocol.SfuUpstream()
+				}
+				if state.routeAssignment.Upstream != expected {
+					t.Fatalf("authentication upstream = %v, want %v", state.routeAssignment.Upstream, expected)
+				}
+			})
+			if reauthenticate {
+				h.settle()
+				if sfuConfigCount(h.messages(viewer.sessionID)) != 1 {
+					t.Fatal("healthy retained media must receive its current configuration")
+				}
+				for _, message := range h.messages(viewer.sessionID) {
+					if _, ok := message.(protocol.RouteUpdatePrepareMessage); ok {
+						t.Fatal("reauthentication alone must not replace healthy media")
+					}
+				}
+				h.routeFailed(viewer, routeFailedMessage(retained.revision, "active", retained.connectionID))
+			}
+			prepared := h.waitPreparedTransport(viewer.sessionID, "sfu")
+			if prepared.Candidate.ConnectionID == retained.connectionID {
+				t.Fatal("replacement must allocate a new physical connection")
+			}
+			preparedSeen, configured := false, false
+			for _, message := range h.messages(viewer.sessionID) {
+				switch value := message.(type) {
+				case protocol.RouteUpdatePrepareMessage:
+					preparedSeen = value.Candidate.ConnectionID == prepared.Candidate.ConnectionID
+				case protocol.SfuConfigMessage:
+					if value.ConnectionID == prepared.Candidate.ConnectionID {
+						if !preparedSeen {
+							t.Fatal("new subscription configuration preceded its preparation")
+						}
+						configured = true
+					}
+				}
+			}
+			if !configured {
+				t.Fatal("prepared subscription has no configuration")
+			}
+			h.routeReady(viewer, int64(prepared.Revision))
+			h.locked(func() {
+				if h.doMustEdge(created.RoomID, sibling.peerID).upstream != protocol.SfuUpstream() {
+					t.Fatal("healthy sibling lost its SFU route")
+				}
+			})
+			egress := 3
+			if reauthenticate {
+				egress = 2
+			}
+			h.waitUsage(sfu.Usage{Ingress: 1, Egress: egress})
+		})
+	}
+}
 
 func TestRouterFencesDelayedActiveFailureByPhysicalConnection(t *testing.T) {
 	for _, transport := range []string{"peer", "sfu"} {

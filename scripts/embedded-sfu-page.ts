@@ -157,7 +157,9 @@ async function accept(message: ServerMessage, host: boolean): Promise<void> {
     }
   }
   if (message.type === "sfu-config") {
-    configuration = message;
+    // A late refresh can describe the old edge after a newer prepare. The route
+    // owner rejects it; the fixture's reported identity must not move backward.
+    if (!configuration || message.revision >= configuration.revision) configuration = message;
     if (host) {
       await hostRoute?.acceptConfig(message);
       published = publisher !== null;
@@ -173,6 +175,7 @@ async function connect(room: CreateRoomResponse, host: boolean): Promise<void> {
   socket = new WebSocket(new URL("/signal", location.href).href.replace(/^http/, "ws"));
   const connection = socket;
   socket.addEventListener("message", ({ data }) => {
+    if (socket !== connection) return;
     messageTail = messageTail.then(() => accept(decodeServerMessage(String(data)), host)).catch(failed);
   });
   socket.addEventListener("error", () => failed("Room WebSocket failed"));
@@ -295,10 +298,18 @@ export async function startViewer(room: CreateRoomResponse): Promise<void> {
   await connect(room, false);
 }
 
-export async function reconnectViewer(room: CreateRoomResponse): Promise<void> {
+export async function reconnectViewer(room: CreateRoomResponse, discardMedia = false): Promise<void> {
   const previous = socket;
   socket = null;
   previous?.close();
+  if (discardMedia) {
+    await messageTail;
+    await viewerRoute?.disconnect();
+    viewerRoute = null;
+    video?.remove();
+    video = null;
+    decoded = committed = false;
+  }
   authenticated = false;
   await connect(room, false);
 }

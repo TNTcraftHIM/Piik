@@ -15,9 +15,6 @@ Git/PRs own completed history.
   coherent candidate and stop before publication. Preserve the existing product
   model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
-  Windows full Go acceptance needs a runner that permits its test executables;
-  the current run stopped before the Browser-launcher package tests with an OS
-  access denial. Separate native checks and Linux checks do not close that gap.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
@@ -130,6 +127,14 @@ of a reporter's cause; research owns the completed experiments and their limits.
   The local Native H264/SFU-only control passes, but does not reproduce the
   reporter's network. Correlate transport-state diagnostics with the affected
   Viewer before changing admission or recovery.
+  [#468](https://github.com/TNTcraftHIM/Piik/issues/468) needs the complete join
+  trace to distinguish a new Viewer from reauthentication with lost local media;
+  its excerpt starts with an already committed SFU edge. Retest the affected
+  deployment with the repaired retained-connection opportunity accounting.
+  [#467](https://github.com/TNTcraftHIM/Piik/issues/467)'s Viewer report reaches
+  four preparations and exhaustion in about 170 ms, without local peer creation
+  or a Viewer failure report. Obtain the paired Host/App rejection before
+  attributing this attempt to NAT or extending its network timeout.
   [#465](https://github.com/TNTcraftHIM/Piik/issues/465) reports Chrome/Firefox
   LAN asymmetry, local-pool timeout and separate public-path quality loss.
   Its successful repeat changed both local-network permission and IP masking.
