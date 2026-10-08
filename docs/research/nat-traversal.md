@@ -320,14 +320,14 @@ isolated branch; production dependencies and routing remain unchanged.
 ### Integration Cost And Recovery Controls
 
 The isolated `spike/magicsock-assessment` branch retains the comparison probes.
-These nested Go modules are outside Piik's
-build and dependency graph. Repeated local Tailcat bootstrap, peer denial,
-revocation and synthetic SRTP media checks passed; the raw magicsock direct-path
-matrix again found the same reachable classes as fresh Pion ICE. Retired shared
-mapping-cache reproductions remain causal controls, not the current baseline.
+The nested modules are outside Piik's build. Local bootstrap, peer denial and
+synthetic SRTP media checks passed. Initial withdrawal checks observed stopped
+outbound media; the stronger authorization checks below found revocation defects.
+The raw magicsock direct-path matrix found the same reachable classes as fresh
+Pion ICE. Retired mapping-cache reproductions remain controls, not the baseline.
 
 [Tailcat](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/README.md)
-provides a supported Go reuse lead: magicsock plus WireGuard, with DERP bootstrap
+provides an upstream Go reuse candidate: magicsock plus WireGuard, with DERP bootstrap
 and relay fallback. Its Browser path at that pin is relay-only. In the isolated
 Linux kernel NAT comparison on 2026-10-05, both stacks connected directly through
 ordinary/ordinary and open/hard gateways in either direction. Neither delivered
@@ -365,9 +365,10 @@ adoption boundary.
 The 2026-10-07 experiment through `f0ca8056` keeps Pion's ICE/DTLS/SRTP over
 Tailcat. Each physical connection owns a virtual UDP tuple and mux; its one-shot
 listener retires after admission. Connections to one authorized peer may share
-the tunnel. Closing or aborting one flow preserves healthy siblings; revoking
-the fixture peer key denies admission and disconnects that tunnel. These checks
-do not implement Piik room grants or endpoint exchange.
+the tunnel. Closing or aborting one flow preserves healthy siblings. Initial
+revocation checks stopped outbound media and denied a fresh client; they did not
+prove that the old client's inbound traffic was rejected. These checks do not
+implement Piik room grants or endpoint exchange.
 
 Repeated lifecycle and Linux race checks cover overlapping media preparation,
 rollback, replacement, canceled preparation followed by retry, bounded datagrams
@@ -467,6 +468,34 @@ The experiment's README owns commands and fixture boundaries; raw output remains
 ignored. Further product work needs a measurable network benefit and accepted
 room authorization, resource and relay-operation owners, not more loopback
 successes.
+
+### Peer Authorization Boundary
+
+The 2026-10-08 three-peer control found that Tailcat forgets a revoked key but
+leaves its WireGuard session alive: fresh inbound UDP still arrives after
+`DisconnectClient` returns and `PeerKey` no longer recognizes it. A separate
+controlled race lets a late positive `AllowClient` result re-admit a revoked
+key. Both defects were independently reproduced; Tailcat's checked
+[October 7 source](https://github.com/tailscale/tailcat/blob/52fbad323e9d352f1febb623e0975368e9a8cbdd/tailcat.go)
+retains both mechanisms. Piik's current transport does not use this dependency.
+
+An opt-in patch syncs the existing engine after releasing the backend lock and
+invalidates late results in the existing pending-hook map. Three Windows and
+Linux race repetitions reject both traffic directions and new admission,
+preserve two healthy peers' media, and permit a later explicit grant. Removing
+either correction fails its regression; upstream admission/disconnect checks
+pass. This is a partial repair, not safe-to-adopt authorization.
+
+A deeper unit reproduction pauses WireGuard's lazy peer-config lookup, withdraws
+authority and calls `RemovePeer`, then releases the old result. `LookupPeer`
+still installs an active peer. Both the pinned `0a83b87f7908` and
+[October 2 revision](https://github.com/tailscale/wireguard-go/blob/18e99eba5393b8c9ea513ab7a1db1a12625422ca/device/device.go)
+reproduce it, including three Windows and Linux race repetitions on the newer
+version. This proves an authority/install race, not an end-to-end Piik exploit.
+A supported atomic retirement/creation boundary remains necessary below Tailcat;
+its partial patch cannot close that race. The probe retains the patch and failing
+reproduction. Piik deny lists or repeated resets are not substitutes. This,
+feedback sizing and unproven direct-reachability gains block product adoption.
 
 ## Native Mapping Cache And Retry Lifetimes
 
