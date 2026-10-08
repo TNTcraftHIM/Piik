@@ -410,11 +410,16 @@ Three race repetitions, the copied Tailcat listener suite and the combined
 revocation/isolation controls pass. The patch remains experimental; it neither
 changes Piik nor fixes the independent inner-ICE recovery failure below.
 
-A separate real Chrome control decoded H.264/Opus and VP8/Opus from a generated
-640×360 picture and tone through Browser WebRTC → Pion/Tailcat/Pion → Browser
-WebRTC without re-encoding. Picture and decoded audio continued after DERP
-closure and stopped after peer revocation. It uses ordinary Browser WebRTC,
-not Browser-native Magicsock, physical capture or cross-browser acceptance.
+Real Browser controls forward generated H.264/Opus and VP8/Opus through Browser
+WebRTC → Pion/Tailcat/Pion → Browser WebRTC without re-encoding. Both decode at
+640×360 and, with the combined dependency candidate, 1920×1080. The larger input
+requests 60 fps with a 6 Mbps ceiling and fixed dimensions; actual encoding
+cadence varies, so it establishes neither 1080p60 delivery nor a throughput
+advantage. Fresh picture/audio arrive in each two-second window across eight
+seconds after DERP closure and stop after revocation. At about 3.6–4.3 Mbps,
+reported RTP loss is zero and the largest Tailcat datagram is 1208 bytes, with
+no size rejection. This does not bound all RTCP workloads or establish physical
+capture, Browser-native Magicsock or complete Piik relay interoperability.
 
 The 1200-byte Native packetization envelope with TWCC and short MID/RID headers
 produced at most 1228-byte encrypted datagrams across Pion's three default SRTP
