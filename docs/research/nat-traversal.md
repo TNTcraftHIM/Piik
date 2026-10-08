@@ -376,6 +376,16 @@ Pion and Tailcat, including TWCC and keyframe requests. Tailcat recovered an
 injected missing video packet through existing NACK handling after DERP closed.
 This is forwarding evidence, not throughput or room-controller acceptance.
 
+A 2026-10-09 inbound-only control found that opening or closing an unrelated
+Tailcat listener discards an accepted UDP flow's filter state. The unchanged
+control passes; both listener changes stop delivery. Continuous outbound media
+can recreate the reverse-flow entry, explaining why bidirectional checks alone
+miss this boundary. The isolated repair passes the previous filter to Tailscale's
+[existing shared-state API](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/wgengine/filter/filter.go#L218).
+Three race repetitions, the copied Tailcat listener suite and the combined
+revocation/isolation controls pass. The patch remains experimental; it neither
+changes Piik nor fixes the independent inner-ICE recovery failure below.
+
 A separate real Chrome control decoded H.264/Opus and VP8/Opus from a generated
 640×360 picture and tone through Browser WebRTC → Pion/Tailcat/Pion → Browser
 WebRTC without re-encoding. Picture and decoded audio continued after DERP
@@ -507,7 +517,7 @@ This independent recovery defect does not establish the self-hosted SFU report's
 
 With that correction, two-second interruptions recover without restart;
 permanent loss exhausts recovery and disposal cancels it. Seven- and eleven-second
-Tailcat interruptions pass in the checked run. Nine seconds exhausts the budget:
+Tailcat interruptions pass in the checked run. Nine seconds can exhaust the budget:
 the replacement sends eight inner Binding checks, receives none, and delivers no
 fresh SRTP during its initial deadline or a separate three-second observation
 after exhaustion. That observation grants no additional recovery. Native control
@@ -521,7 +531,11 @@ and 64-check controls initially recovered nine- and eleven-second interruptions.
 Six further 16-check cases recovered three times and failed three times during
 replacement setup, before its SDP exchange completed. Three narrower reruns with
 stage diagnostics passed; the setup failures' precise cause remains unconfirmed.
-Increasing inner checks can bridge one discovery phase but has not established
+With the separate listener-state repair, paired counters still reproduce a
+default-budget failure: the server receives the client's inner STUN packets,
+while the client receives none. Four additional 16-check controls recover;
+they do not resolve the earlier setup failures. Increasing inner checks can
+bridge one discovery phase but has not established
 reliable composition. It is not an accepted product setting or reason to add a
 second readiness owner, discovery loop or longer deadline.
 
