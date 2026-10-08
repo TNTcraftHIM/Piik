@@ -526,6 +526,22 @@ and local decoding are stubbed, events are sampled within 100 ms, and SDP waits
 for complete gathering. These limits prevent claiming full App integration or
 diagnosing a field failure; the composition gap remains an adoption concern.
 
+Matched plain-Pion controls through that same owner recover two- and nine-second
+outages in two repetitions. Both eleven-second controls instead reach the
+fixture's three-second complete-gathering limit: the ICE restart begins while
+the network is still unavailable. Piik uses Trickle ICE, so this is a fixture
+limit, not an established product failure or Tailcat advantage. Full comparative
+recovery claims require matching that signaling behavior first.
+
+Bounded anonymous traces further localize two Tailcat encrypted-echo failures.
+The replacement flow is accepted and its client preface read at the server,
+but the reverse read expires after three seconds before SDP. The server selects
+its direct path near the end of that window; the client has selected its path
+about two seconds earlier. No filter-drop event was observed, which is not
+packet-delivery proof. Other timing phases recover. This supports a directional
+underlay scheduling limit; it does not establish a new authorization defect,
+a safe readiness barrier, or a reason to widen product deadlines.
+
 The existing [Pion Binding-request setting](https://github.com/pion/webrtc/blob/v4.2.19/settingengine.go#L506)
 was then varied without changing the owner, timers or outer tunnel. Both 16-
 and 64-check controls initially recovered nine- and eleven-second interruptions.
