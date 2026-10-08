@@ -544,19 +544,26 @@ packet-delivery proof. Other timing phases recover. This supports a directional
 underlay scheduling limit; it does not establish a new authorization defect,
 a safe readiness barrier, or a reason to widen product deadlines.
 
-The existing [Pion Binding-request setting](https://github.com/pion/webrtc/blob/v4.2.19/settingengine.go#L506)
-was then varied without changing the owner, timers or outer tunnel. Both 16-
-and 64-check controls initially recovered nine- and eleven-second interruptions.
-Six further 16-check cases recovered three times and failed three times during
-replacement setup, before its SDP exchange completed. Three narrower reruns with
-stage diagnostics passed; the setup failures' precise cause remains unconfirmed.
-With the separate listener-state repair, paired counters still reproduce a
-default-budget failure: the server receives the client's inner STUN packets,
-while the client receives none. Four additional 16-check controls recover;
-they do not resolve the earlier setup failures. Increasing inner checks can
-bridge one discovery phase but has not established
-reliable composition. It is not an accepted product setting or reason to add a
-second readiness owner, discovery loop or longer deadline.
+Varying the existing [Pion Binding-request setting](https://github.com/pion/webrtc/blob/v4.2.19/settingengine.go#L506)
+can bridge a discovery delay, but repeated controls also fail before SDP during
+new-flow setup. Paired counters separately show the server receiving inner STUN
+while the client receives none. More checks cannot repair every setup failure;
+neither a new readiness owner nor a longer product deadline is accepted.
+
+A retained-flow counterfactual reuses Pion's existing
+[UDP mux](https://github.com/pion/ice/blob/v4.4.0/udp_mux.go) after closing the old
+PeerConnection. It keeps the accepted Tailcat flow and replaces ICE/DTLS/SRTP,
+without another listener or preparation exchange. Setup falls from about 913 ms
+to 11–20 ms, but only three of six default-check nine-/eleven-second controls
+recover. The other three exhaust inner checks without fresh SRTP. This removes
+flow creation from those failures; it does not by itself resolve recovery.
+Combining retained flow with 16 checks still fails two of six cases. With 64
+checks, all six nine-/eleven-second cases recover; permanent loss still exhausts
+the existing two-request budget after the replacement's 15-second initial
+deadline, and disposal cancels recovery. This identifies a bounded composition
+candidate without another timer or readiness probe. The fixture remains serial:
+it does not establish safe overlapping connections, a room-authorized retained-flow
+owner, full App interoperability or any additional direct-reachability benefit.
 
 Separate checks preserve continuous sibling audio/video through a local ICE
 restart, failed-flow retirement, both callers' pending cancellation/deadline,
