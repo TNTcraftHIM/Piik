@@ -27,6 +27,23 @@ configured, Chromium emitted one deduplicated srflx candidate. No raw address or
 port was retained. This proves endpoint reachability and candidate
 deduplication; it does not classify the NAT or prove another direct path.
 
+### SFU Behind Server NAT
+
+An isolated Linux kernel-NAT control on 2026-10-09 places the current Server
+behind same-port UDP forwarding with `SFU_PUBLIC_IP`; direct access to its private
+address is blocked. Chromium 152 Host/Viewer pages use the real SFU route owners
+and authenticated signaling under `SFU_ONLY`. VP8/Opus reception, 720p-to-480p
+changes, fresh decoding after Viewer reauthentication and retirement all pass.
+
+Blocking only the Viewer process's UDP preserves connected Host ingress and
+LiveKit's `downtrack bound`, but the Viewer remains connecting without RTP or
+decoded frames. Its transport fails after about 15 seconds and the controller
+rejects that candidate without committing a publication. Thus binding plus
+healthy ingress cannot establish Viewer readiness or a controller defect.
+This does not reproduce the reported Native/phone attempt or its 20-second
+deadline: matched Viewer transport/decode evidence is still required. The control
+changes no product deadline, retry or first-frame rule.
+
 ## Browser Prediction Preflight
 
 A 2026-09-01 Chrome 151 preflight repeated the combined self-hosted plus
