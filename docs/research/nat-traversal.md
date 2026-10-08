@@ -485,18 +485,18 @@ A deeper unit reproduction pauses WireGuard's lazy peer-config lookup, withdraws
 authority and calls `RemovePeer`, then releases the old result. `LookupPeer`
 still installs an active peer. Both the pinned `0a83b87f7908` and
 [October 2 revision](https://github.com/tailscale/wireguard-go/blob/18e99eba5393b8c9ea513ab7a1db1a12625422ca/device/device.go)
-reproduce it. An isolated patch on the newer version fences late installation
-by the peer table's generation and starts lazy peers under that same lock.
-Removal, lookup replacement, close and regrant checks pass; removing the fence
-reproduces the failure. The full device suite passes on Windows and Linux
-(race detection on Linux), and its lock-order analyzer passes. Combined Tailcat/
-WireGuard media and bounded TWCC checks pass three repetitions on both platforms.
-The combined patches also preserve the kernel NAT, dual-stack, rebinding and
-weak-network results in the Linux race run.
-One removal also invalidates other pending lookups; existing media is untouched.
-This coarse experimental fence needs review before adoption. The probe retains
-the patches; supported dependency contracts and demonstrated network benefit
-remain open. Piik's production dependencies and routing are unchanged.
+reproduce it. An isolated patch on the newer version tracks in-flight config
+lookups at the peer table and starts lazy peers under that same lock. Removing
+a key retires only its pending calls; lookup replacement and close retire all.
+Tokens are reclaimed on completion without accumulating historical keys.
+An unrelated-key control rejects a global generation fence: it cancels valid
+concurrent admission. Scoped tokens preserve that admission, overlapping grants
+and cleanup; removing the retirement check reproduces stale installation.
+The full device suite and lock-order analyzer pass, including three Linux race
+runs. Combined media and TWCC checks pass on Windows and Linux; the Linux kernel
+NAT, dual-stack, rebinding and weak-network controls also pass. Supported dependency
+contracts and demonstrated network benefit remain open. The probe retains the
+isolated patches; Piik's production transport is unchanged.
 
 ## Native Mapping Cache And Retry Lifetimes
 

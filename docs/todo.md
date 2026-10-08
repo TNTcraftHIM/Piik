@@ -56,8 +56,8 @@ Implementation needs a concrete useful result within the product model.
   relay operation. The [authorization assessment](./research/nat-traversal.md#peer-authorization-boundary)
   reproduces stale WireGuard sessions, late admission and a deeper lazy-peer
   creation race. Isolated Tailcat/WireGuard corrections pass bounded checks;
-  supported upstream fixes and the coarse generation fence's admission impact
-  still need review before product adoption.
+  the scoped lookup fence also preserves unrelated concurrent admission.
+  Supported upstream fixes still need review before product adoption.
   The isolated feedback check also requires a supported RTCP
   size boundary for the tunnel's MTU, including reordered-history reports and
   compound batches; shorter feedback intervals and the checked upstream updates
