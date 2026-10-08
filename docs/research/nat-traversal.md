@@ -505,6 +505,22 @@ failure controls intact. This hook is not an upstream API; these checks do not
 establish room-authorized integration, the complete Piik recovery schedule or
 additional NAT reachability.
 
+A discovery-retained control on 2026-10-08 addresses a limit of closing DERP:
+closure also removes its endpoint exchange. The upstream relay's packet-class
+counters distinguish discovery from WireGuard traffic. A 500 ms window with
+connected WebRTC, at least three fresh tagged SRTP packets and no non-discovery
+relay packets proves direct media while keeping endpoint exchange available.
+Ordinary NAT passes that proof; blocked UDP correctly remains relay-only. Both
+orientations of the hard-NAT pair deliver through DERP without a proved direct
+window in 20 seconds. After either gateway mapping changes, media returns in
+about six seconds. Default-library repetitions do not prove direct recovery in
+20 seconds. The combined isolated candidate proves it once per direction at
+about 17 seconds, but neither of two further repetitions per direction does.
+This variation does not establish a repeatable candidate advantage or an extra
+reachable class. The control makes no explicit rediscovery call; its passing
+result validates the measurement and available-media baseline, not universal
+direct recovery. It does not run Piik's complete reconnect schedule.
+
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
 required fresh bidirectional delivery after DERP closed. One side reporting a
