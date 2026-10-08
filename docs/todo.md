@@ -126,9 +126,10 @@ of a reporter's cause; research owns the completed experiments and their limits.
   `SFU_ONLY`. They still lack the matched Viewer ICE, decode and `route-ready`
   trace. The cited Host failure follows the operation deadline; healthy ingress
   and a bound subscription do not establish delivered frames or its cause.
-  Local Native H264 and [kernel-NAT Browser SFU controls](./research/nat-traversal.md#sfu-behind-server-nat)
-  pass, but do not reproduce the reporter's network. The blocked-Viewer control
-  preserves healthy ingress and a bound track without usable Viewer media.
+  Native H264 and Browser [SFU controls behind kernel NAT](./research/nat-traversal.md#sfu-behind-server-nat)
+  pass, but do not reproduce the reporter's network. Blocking Viewer media alone
+  preserves connected endpoints and a bound track until the operation deadline;
+  that log sequence does not identify a unique cause.
   Correlate transport-state diagnostics with the affected
   Viewer before changing admission or recovery.
   [#468](https://github.com/TNTcraftHIM/Piik/issues/468) needs the complete join

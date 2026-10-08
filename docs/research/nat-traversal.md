@@ -34,15 +34,22 @@ behind same-port UDP forwarding with `SFU_PUBLIC_IP`; direct access to its priva
 address is blocked. Chromium 152 Host/Viewer pages use the real SFU route owners
 and authenticated signaling under `SFU_ONLY`. VP8/Opus reception, 720p-to-480p
 changes, fresh decoding after Viewer reauthentication and retirement all pass.
+Windows Native H264/Opus also passes through QEMU UDP forwarding and the Linux
+NAT, decoding 300 720p frames in Chrome 154, changing to 480p, recovering its
+subscription and reauthenticating after local media loss. The App captures a
+dedicated generated window; this does not reproduce a phone or carrier network.
 
 Blocking only the Viewer process's UDP preserves connected Host ingress and
 LiveKit's `downtrack bound`, but the Viewer remains connecting without RTP or
 decoded frames. Its transport fails after about 15 seconds and the controller
 rejects that candidate without committing a publication. Thus binding plus
 healthy ingress cannot establish Viewer readiness or a controller defect.
-This does not reproduce the reported Native/phone attempt or its 20-second
-deadline: matched Viewer transport/decode evidence is still required. The control
-changes no product deadline, retry or first-frame rule.
+A separate control discards only the Viewer's RTP/RTCP datagrams while allowing
+STUN and DTLS. Both endpoints connect and the exact subscription binds, but no
+Viewer frames arrive; the existing 20-second operation deadline then expires.
+Thus even the reported timeout order does not identify a unique cause. Matched
+Viewer transport/decode evidence is still required. Neither control changes a
+product deadline, retry or first-frame rule.
 
 ## Browser Prediction Preflight
 
@@ -582,6 +589,9 @@ candidate without another timer or readiness probe. Each retained flow is serial
 overlapping connections still use separate flows. Three local race controls keep
 sibling audio/video flowing through two retained-flow replacements and another
 flow's rollback; peer revocation stops fresh media on both remaining flows.
+The combined listener-state, Tailcat/WireGuard revocation and bounded-TWCC
+candidates also pass Linux race checks for those isolation boundaries and the
+retained-flow/64-check nine-/eleven-second, permanent-loss and retirement cases.
 These checks do not define room-grant integration or establish full App
 interoperability or any additional direct-reachability benefit.
 
