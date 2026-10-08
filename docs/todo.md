@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-07
+Last reviewed: 2026-10-08
 
 The current 2.0 preparation includes independent investigation across this
 ledger. Explicit owner holds remain in force; an investigation does not itself
@@ -61,8 +61,12 @@ Implementation needs a concrete useful result within the product model.
   have not established improved direct reachability. Seek a repeatable benefit
   before accepting peer-key authorization/revocation, underlay readiness and
   relay operation. The isolated feedback check also requires a supported RTCP
-  size boundary for the tunnel's MTU. Keep the experiment separate from product
-  routing; the P2P evidence work below owns the network/interop acceptance boundary.
+  size boundary for the tunnel's MTU, including reordered-history reports and
+  compound batches; shorter feedback intervals and the checked upstream updates
+  do not supply it. Kernel NAT, dual-stack, mapping replacement and bounded
+  loss/reordering checks exist, but do not establish that benefit. Keep the
+  experiment separate from product routing; the P2P evidence work below owns
+  the network/interop acceptance boundary.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
   identifies UDP/storage requirements but establishes no cost saving. Keep the
   existing P2P-only Demo until a provider and operating boundary are accepted.

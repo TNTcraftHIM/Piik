@@ -406,6 +406,26 @@ The related [Pion feedback-MTU report](https://github.com/pion/interceptor/issue
 remains open as of 2026-10-07. Its out-of-order packet evidence does not establish
 the cause of any Piik field report; the pinned recorder has no byte-size option.
 
+A 2026-10-08 reordering control flushed twelve 100-arrival reports, then supplied
+one delayed packet. The recorder included already reported history and generated
+a 1248-byte encrypted report from that one new arrival. Shortening the feedback
+interval alone cannot bound its size. Windows and three Linux race repetitions
+passed the reproduction. The latest tagged
+[interceptor v0.1.49 recorder](https://github.com/pion/interceptor/blob/v0.1.49/pkg/twcc/twcc.go)
+is byte-identical to the pinned recorder; Tailcat's
+[October 7 revision](https://github.com/tailscale/tailcat/blob/52fbad323e9d352f1febb623e0975368e9a8cbdd/tailcat.go#L574) retains
+the same payload limit and Tailscale dependency. A dependency bump does not
+supply the missing per-report and compound-batch size boundary.
+
+The same Linux kernel lab also compared established Pion and Tailcat SRTP under
+delay/jitter, 5% packet loss, reordering and a 350 ms complete interruption.
+DERP was closed before these phases. Both retained their session and resumed
+fresh media after restoration in three race-detector repetitions. Fresh payload
+tags and unique sequence counts exclude queued or duplicate-packet success.
+The original NAT and rebinding matrix repeated its prior outcomes. These controls
+add bounded weak-network recovery evidence, not decoded quality or a demonstrated
+direct-reachability advantage.
+
 Kernel gateway rebinding retained full WebRTC sessions. With DERP available,
 fresh media resumed in about 6.4–6.5 seconds and ICE reported `connected` in about
 7.1–8.1 seconds, without new SDP. With DERP closed, neither gateway direction
