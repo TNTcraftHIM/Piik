@@ -492,12 +492,18 @@ readiness. Neither counterfactual is an accepted transport adapter.
 
 An isolated follow-up mirrored that discovery call on Tailcat's Server for the
 existing fixture peer. Calling both sides once before ICE restart recovered the
-nine- and eleven-second controls twice under the race detector, within the same
-three-second budget including rediscovery and SDP exchange. Pion retained its
-default request count. This supports coordinating underlay revalidation with the
-existing restart owner instead of widening deadlines. The Server hook is not an
-upstream API, and this probe does not validate concurrent revocation, failed
-rediscovery, the complete Piik recovery schedule or additional NAT reachability.
+nine- and eleven-second controls in three retained race-detector repetitions.
+The unchanged three-second budget includes rediscovery and SDP exchange. Pion
+retained its default request count. This supports coordinating underlay revalidation with the
+existing restart owner instead of widening deadlines. Separate repeated checks
+cover both callers' pending cancellation/deadline, revocation during a Server
+probe, and unknown-peer rejection while sibling audio/video continues. Caller
+cancellation ends the wait, not the upstream ping packets: existing five-second
+discovery and ten-second TSMP timers bound their callback retention.
+The opt-in fixture retains its isolated Server patch and leaves the default
+failure controls intact. This hook is not an upstream API; these checks do not
+establish room-authorized integration, the complete Piik recovery schedule or
+additional NAT reachability.
 
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof

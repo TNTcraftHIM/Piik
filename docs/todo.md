@@ -72,7 +72,8 @@ Implementation needs a concrete useful result within the product model.
   a larger request count within the unchanged three-second opportunity still
   fails at another outage phase. Explicit bilateral rediscovery recovers the
   tested phases with default Pion, but requires an experimental Server hook;
-  its cancellation/revocation and complete recovery lifecycle need validation.
+  bounded cancellation, revocation and sibling isolation pass repeated checks.
+  Room-authorized integration and the complete recovery lifecycle remain unverified.
   No timeout change or transport integration is accepted. Keep the
   experiment separate from product routing; the P2P evidence work below owns
   the network/interop acceptance boundary.
