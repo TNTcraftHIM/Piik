@@ -144,7 +144,8 @@ configuration uses P2P media, so participants need a usable UDP path.
 
 Add `SFU_UDP_PORT=7882` to `.env`, allow UDP 7882, and restart Piik to enable
 automatic SFU fallback. When the server is behind NAT, also set `SFU_PUBLIC_IP`
-to its reachable public IPv4 address. The same binary provides the fallback.
+to its reachable public IPv4 address and forward the same external and internal
+UDP port as `SFU_UDP_PORT`. The same binary provides the fallback.
 Allow server forwarding capacity and outbound bandwidth for Viewers actually
 using the SFU.
 The Host must turn off **Privacy mode** before sharing to allow this route.

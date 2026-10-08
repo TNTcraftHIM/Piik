@@ -225,7 +225,7 @@ func (r *router) handleSfuMediaEvent(event sfu.MediaEvent) {
 	peer, connected := r.connectedPeer(event.Fence.RoomID, peerID)
 	snapshot := rm.controller.Snapshot()
 	participant := authenticatedRouteParticipant{roomID: event.Fence.RoomID, role: role, peerID: peerID, sessionID: peer.SessionID}
-	_, revision := sfuConnectionPhase(snapshot, role, peerID, event.Fence.PublicationGeneration, event.ConnectionID)
+	phase, revision := sfuConnectionPhase(snapshot, role, peerID, event.Fence.PublicationGeneration, event.ConnectionID)
 	message := protocol.SfuSignalMessage{Type: "sfu-signal", Kind: "candidate", Revision: protocol.Int(revision), PublicationGeneration: event.Fence.PublicationGeneration, ConnectionID: event.ConnectionID}
 	if !connected && role == protocol.RoleHost && event.State == webrtc.PeerConnectionStateFailed {
 		publication := snapshot.HostPublication
@@ -245,11 +245,13 @@ func (r *router) handleSfuMediaEvent(event sfu.MediaEvent) {
 		r.hooks.sendToSession(participant.sessionID, message)
 		return
 	}
-	if event.State == webrtc.PeerConnectionStateFailed {
-		r.failSfuConnection(participant, message)
-		return
-	}
 	if event.State != webrtc.PeerConnectionStateUnknown {
+		r.debug(participant.roomID, "sfu-transport-state",
+			"participant", r.debugPeer(participant.roomID, participant.peerID),
+			"role", role, "phase", phase, "revision", revision, "state", event.State.String())
+		if event.State == webrtc.PeerConnectionStateFailed {
+			r.failSfuConnection(participant, message)
+		}
 		return
 	}
 	if event.Candidate != nil {

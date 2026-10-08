@@ -141,11 +141,14 @@ of a reporter's cause; research owns the completed experiments and their limits.
   [#453](https://github.com/TNTcraftHIM/Piik/issues/453) has no matched endpoint
   reports to distinguish network reachability from a product failure.
   The v1.6.3 candidate-timeout report lacks share-start and SDP/ICE evidence.
-  [#464](https://github.com/TNTcraftHIM/Piik/issues/464) adds Server/Host excerpts
-  to the self-hosted SFU screenshot report, but still lacks the matched Viewer
-  ICE, decode and `route-ready` trace. Healthy publication ingress and a bound
-  subscription do not establish delivered frames; the committed-publication
-  flag alone cannot identify why the candidate timed out.
+  [#464](https://github.com/TNTcraftHIM/Piik/issues/464) and the supplied report
+  identify v1.9.2, a NAT-hosted Server, Native Host, and the same timeout under
+  `SFU_ONLY`. They still lack the matched Viewer ICE, decode and `route-ready`
+  trace. The cited Host failure follows the operation deadline; healthy ingress
+  and a bound subscription do not establish delivered frames or its cause.
+  The local Native H264/SFU-only control passes, but does not reproduce the
+  reporter's network. Correlate transport-state diagnostics with the affected
+  Viewer before changing admission or recovery.
   [#465](https://github.com/TNTcraftHIM/Piik/issues/465) reports Chrome/Firefox
   LAN asymmetry, local-pool timeout and separate public-path quality loss.
   Its successful repeat changed both local-network permission and IP masking.

@@ -66,6 +66,7 @@ func TestEmbeddedSfuSignalsRequireExactAdmittedConnectionAndCurrentSession(t *te
 }
 
 func TestEmbeddedSfuAuthenticatedWebSocketCarriesActualRTP(t *testing.T) {
+	diagnostics := captureRouteDebug(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	check := func(err error) {
@@ -215,6 +216,15 @@ func TestEmbeddedSfuAuthenticatedWebSocketCarriesActualRTP(t *testing.T) {
 	applyRemote(viewer, subscriber, viewerConfig, true)
 	if !waitFor(t, 3*time.Second, func() bool { return received.Load() >= 3 }) {
 		t.Fatal("authenticated signaling did not produce forwarded video RTP")
+	}
+	if !waitFor(t, time.Second, func() bool {
+		return diagnostics.calledWith(h.room.RoomID, "sfu-transport-state", map[string]any{
+			"role": "host", "phase": "prepare", "revision": int64(hostConfig.Revision), "state": "connected",
+		}) && diagnostics.calledWith(h.room.RoomID, "sfu-transport-state", map[string]any{
+			"role": "viewer", "phase": "prepare", "revision": int64(viewerConfig.Revision), "state": "connected",
+		})
+	}) {
+		t.Fatal("SFU diagnostics did not distinguish connected ingress and egress before route commit")
 	}
 	h.locked(func() {
 		room, _ := h.server.router.rooms.Get(h.room.RoomID)

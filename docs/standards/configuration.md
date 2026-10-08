@@ -65,7 +65,7 @@ Automatic SFU fallback runs inside the Hosted process when `SFU_UDP_PORT` is set
 | --- | --- |
 | `SFU_UDP_PORT` | Optional UDP media port `1..65535`; unset or blank disables SFU and fixes Privacy mode on for every room. Set `7882` for the standard public listener and allow the Host to choose Privacy mode. |
 | `SFU_LISTEN_HOST` | IPv4 bind address, default `0.0.0.0`; independent of HTTP `LISTEN_HOST`. Read only when SFU is enabled. |
-| `SFU_PUBLIC_IP` | Optional explicit IPv4 advertised-address override for a host behind NAT. Read only when SFU is enabled. |
+| `SFU_PUBLIC_IP` | Optional explicit IPv4 advertised-address override for a host behind NAT. It changes the advertised address, not the port: forward the same UDP port as `SFU_UDP_PORT`. Read only when SFU is enabled. |
 | `SFU_ONLY` | `false` by default. `true` requires `SFU_UDP_PORT` and sends every room through SFU, without Peer candidates or background P2P convergence. Applies after Server restart. |
 
 SFU control uses the application's authenticated signaling connection. No

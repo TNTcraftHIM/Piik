@@ -301,6 +301,9 @@ explains discovery and connection checks in more technical detail.
 If these steps do not help, collect a [Debug report](../../cmd/piik-app/README.md#diagnostics)
 from the affected Viewer and, if possible, the Host for the same attempt. Include
 the time, Piik version and network type when reporting the problem.
+For a self-hosted site using SFU, also include the Server report. Successful Host
+upload or subscription setup alone does not establish that the Viewer received
+and decoded the picture; the reports from both sides help locate the failing step.
 
 ### Browser WebRTC restrictions
 
