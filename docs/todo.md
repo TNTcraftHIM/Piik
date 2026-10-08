@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-08
+Last reviewed: 2026-10-09
 
 The current 2.0 preparation includes independent investigation across this
 ledger. Explicit owner holds remain in force; an investigation does not itself
@@ -55,34 +55,15 @@ Implementation needs a concrete useful result within the product model.
 - [ ] **Native Magicsock.** Go reuse is feasible, but the
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   have not established improved direct reachability. Seek a repeatable benefit
-  before accepting peer-key authorization/revocation, underlay readiness and
-  relay operation. The [authorization assessment](./research/nat-traversal.md#peer-authorization-boundary)
-  reproduces stale WireGuard sessions, late admission and a deeper lazy-peer
-  creation race. Isolated Tailcat/WireGuard corrections pass bounded checks;
-  the scoped lookup fence also preserves unrelated concurrent admission.
-  Supported upstream fixes still need review before product adoption.
-  The isolated feedback check also requires a supported RTCP
-  size boundary for the tunnel's MTU, including reordered-history reports and
-  compound batches; shorter feedback intervals and the checked upstream updates
-  do not supply it. An isolated upstream repair candidate passes actual encrypted
-  feedback and race checks; it is not a supported or adopted dependency change.
-  Kernel checks now include Piik's actual Native engine, shared predictor,
-  real gateway mapping and verified multi-destination netcheck alongside
-  dual-stack, mapping replacement and bounded loss/reordering. They still do not
-  establish extra direct reachability. Actual ICE restart after a kernel blackout
-  also exposes an inner-check/underlay-recovery timing conflict; the default
-  Tailcat gate does not reliably pass. A wider fixture budget identifies the cause;
-  a larger request count within the unchanged three-second opportunity still
-  fails at another outage phase. Explicit bilateral rediscovery recovers the
-  tested post-restoration phases with default Pion, but requires an experimental
-  Server hook. Its proposed readiness gate fails when called before network
-  restoration; probe expiry can coexist with recovered media. Bounded
-  cancellation, revocation and sibling isolation pass repeated checks;
-  a diagnostic reply is not a general underlay-readiness contract.
-  Room-authorized integration and the complete recovery lifecycle remain unverified.
-  No timeout change or transport integration is accepted. Keep the
-  experiment separate from product routing; the P2P evidence work below owns
-  the network/interop acceptance boundary.
+  before accepting room-scoped peer keys, flow admission and relay operation.
+  Product adoption still needs supported
+  [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
+  and RTCP/MTU boundaries, plus verification through the actual Viewer recovery
+  owner and mixed Browser/Native routes. Keep isolated dependency patches and
+  recovery counterfactuals outside product routing; a diagnostic reply is not
+  media-readiness authority. Research owns the experiments and their limits.
+  No timeout change or transport integration is accepted; the P2P evidence work
+  below owns the network/interop acceptance boundary.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
   identifies UDP/storage requirements but establishes no cost saving. Keep the
   existing P2P-only Demo until a provider and operating boundary are accepted.

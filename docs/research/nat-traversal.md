@@ -488,6 +488,27 @@ barrier, and probe expiry does not establish media failure or justify replacing
 healthy media. These controls use fixture SDP exchange; they do not diagnose the
 product's Trickle ICE or an existing user's failure.
 
+A follow-up kernel fixture on 2026-10-09 matches the committed Viewer's two
+three-second recovery opportunities: restart ICE, then rebuild only if still
+not connected at the first deadline. It retains tunnel identity and outer NAT
+mappings, creates a new inner flow for replacement, and keeps default Pion checks
+without an explicit discovery hook. Setup consumes its opportunity; fresh SRTP
+is checked separately after connection meets the deadline. Post-restoration
+controls cover eight-, nine- and eleven-second blackouts; Tailcat also starts
+recovery one or two seconds before restoration. All five Tailcat cases pass two
+further race-detector repetitions, recovering through restart or replacement;
+the ordinary Pion controls also pass. Failure of the first ICE generation alone
+therefore does not establish failure of both existing recovery opportunities.
+
+The fixture's replacement flow repeats an initial datagram until the SDP exchange
+confirms listener acceptance, bounded by that same opportunity. A lone lost
+preface had blocked setup before ICE could run. This fixture handshake is not an
+accepted product protocol or proof of media readiness. Its complete-gathering
+SDP exchange also stalls ordinary Pion when started before network restoration;
+that result is not Piik's Trickle ICE behavior. The passing controls narrow the
+integration question but do not run the actual Viewer scheduler, room authority
+or Browser decoder, and do not establish additional direct reachability.
+
 Separate checks preserve continuous sibling audio/video through a local ICE
 restart, failed-flow retirement, both callers' pending cancellation/deadline,
 revocation during a Server probe and unknown-peer rejection. Canceling a probe
@@ -495,8 +516,8 @@ ends the caller's wait, not upstream packets: existing five-second discovery and
 ten-second TSMP timers bound callback retention. These local checks do not prove
 impaired-network recovery.
 
-The opt-in experiment retains the failing default and pre-restoration assertions.
-It is not an all-green acceptance gate or a supported transport adapter. Do not
+The opt-in experiment retains the failing single-restart and blocking-probe
+assertions. It is not an all-green acceptance gate or a supported adapter. Do not
 widen product timeouts or add diagnostic Ping polling to hide these failures.
 Room-authorized integration and the complete recovery lifecycle remain unverified.
 
