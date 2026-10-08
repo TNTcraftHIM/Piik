@@ -450,6 +450,28 @@ unilateral direct address are separate facts. Underlay setup must fit the existi
 operation deadline. Local cold setup of about 3.3 seconds for Tailcat versus 0.2
 seconds for Pion disabled STUN/gateway mapping; it is not a WAN startup comparison.
 
+A subsequent actual ICE-restart control on 2026-10-08 exposed a composition
+failure. After the same nine-second kernel blackout, ordinary Pion resumed
+media, but default Tailcat sometimes sent eight inner Binding requests without
+receiving any, then remained unavailable through Pion's failed state. In the
+captured failure, outer discovery resumed about 2.4 seconds after restoration,
+after the inner check budget had already been spent. Pion's
+[candidate-pair check budget](https://github.com/pion/ice/blob/v4.4.0/agent.go#L790)
+and Magicsock's
+[rate-limited discovery](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/wgengine/magicsock/endpoint.go#L1421)
+are independent; a restored outer path does not restart exhausted inner checks.
+Keeping the accepted flow's listener open did not resolve the failure. A new
+ICE generation after underlay recovery delivered three fresh packets in about
+63 ms. Increasing only the fixture's Binding budget to 64 recovered in about
+1.9 seconds; both controls retained the same sockets, keys and NAT mappings.
+These distinguish underlay/check scheduling from permanent resource retirement.
+The isolated authorization and feedback patches retain the same restart failure.
+The pinned default restart assertion remains a reproducible integration failure,
+not a passing gate or a diagnosis of an existing Piik user report. Do not widen
+product timeouts or add diagnostic Ping polling to hide it. An actual local
+ICE restart on a shared tunnel also preserved continuous sibling audio/video;
+that healthy-network control does not establish impaired-network recovery.
+
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
 required fresh bidirectional delivery after DERP closed. One side reporting a

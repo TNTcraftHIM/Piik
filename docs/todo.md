@@ -66,7 +66,10 @@ Implementation needs a concrete useful result within the product model.
   Kernel checks now include Piik's actual Native engine, shared predictor,
   real gateway mapping and verified multi-destination netcheck alongside
   dual-stack, mapping replacement and bounded loss/reordering. They still do not
-  establish extra direct reachability. Keep the
+  establish extra direct reachability. Actual ICE restart after a kernel blackout
+  also exposes an inner-check/underlay-recovery timing conflict; the default
+  Tailcat gate does not reliably pass. A wider fixture budget identifies the cause,
+  not an accepted timeout change. Keep the
   experiment separate from product routing; the P2P evidence work below owns
   the network/interop acceptance boundary.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
