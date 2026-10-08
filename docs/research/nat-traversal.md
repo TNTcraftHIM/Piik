@@ -465,7 +465,8 @@ generated VP8 frame, excluding padding/duplicates. With no gateway service,
 mapping enabled did not hold ordinary media behind discovery: delivery took
 about 0.8 seconds. Either usable IP family also carried media. Sequential-port
 NAT failed without prediction and delivered through a predicted candidate when
-enabled; random-port NAT remained unreachable in the bounded checks. A real
+enabled, with the changing-port gateway on either endpoint; random-port NAT
+remained unreachable in the bounded checks. A real
 MiniUPnPd gateway made a hard/hard pair reachable when mapping was enabled.
 These are encoded-media checks, not capture, Browser decode or room admission.
 
@@ -473,10 +474,21 @@ Tailcat's matched controls explicitly link its [optional portmapper feature](htt
 clearing its disable flag alone does not register that optional feature. Gateway
 mapping then passed three race repetitions after DERP closure. The 20-second
 comparison distinguishes fresh direct SRTP from relay delivery and retains the
-same gateway filtering. Without mapping service, Tailcat's random and sequential
-pairs remained relay-only; no extra direct-reachability class over Piik was found.
-Its relay bootstrap and Piik's local playback differ, so their startup timings
-are not a first-picture benchmark. Product dependencies and routing are unchanged.
+same gateway filtering. Its relay bootstrap and Piik's local playback differ,
+so startup timings are not a first-picture benchmark.
+
+A 2026-10-08 fairness control found that Tailcat's single bootstrap region leaves
+`MappingVariesByDestIP` unknown even with three STUN addresses: upstream
+[netcheck](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/net/netcheck/netcheck.go)
+cancels the region's other probes after its first reply. A lab-only map projection
+gives those real addresses independent probe regions and pins the original relay;
+it is not a supported Tailcat option. Twelve Linux race cases verify classification
+on the actual media socket, keep media flowing until relay closure at 12 seconds,
+and require a fresh payload before the 20-second bound. Random/sequential pairs
+remain relay-only in both directions, with or without an absent-gateway mapping
+probe; an available gateway still establishes direct media. No extra direct path
+over Piik was found. Physical routers and field success rates remain unmeasured.
+Product dependencies and routing are unchanged.
 
 The experiment's README owns commands and fixture boundaries; raw output remains
 ignored. Further product work needs a measurable network benefit and accepted

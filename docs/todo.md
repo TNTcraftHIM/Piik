@@ -63,9 +63,10 @@ Implementation needs a concrete useful result within the product model.
   compound batches; shorter feedback intervals and the checked upstream updates
   do not supply it. An isolated upstream repair candidate passes actual encrypted
   feedback and race checks; it is not a supported or adopted dependency change.
-  Kernel checks now include Piik's actual Native engine, shared predictor and
-  real gateway mapping alongside dual-stack, mapping replacement and bounded
-  loss/reordering. They still do not establish extra direct reachability. Keep the
+  Kernel checks now include Piik's actual Native engine, shared predictor,
+  real gateway mapping and verified multi-destination netcheck alongside
+  dual-stack, mapping replacement and bounded loss/reordering. They still do not
+  establish extra direct reachability. Keep the
   experiment separate from product routing; the P2P evidence work below owns
   the network/interop acceptance boundary.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
