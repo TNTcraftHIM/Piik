@@ -561,9 +561,12 @@ Combining retained flow with 16 checks still fails two of six cases. With 64
 checks, all six nine-/eleven-second cases recover; permanent loss still exhausts
 the existing two-request budget after the replacement's 15-second initial
 deadline, and disposal cancels recovery. This identifies a bounded composition
-candidate without another timer or readiness probe. The fixture remains serial:
-it does not establish safe overlapping connections, a room-authorized retained-flow
-owner, full App interoperability or any additional direct-reachability benefit.
+candidate without another timer or readiness probe. Each retained flow is serial:
+overlapping connections still use separate flows. Three local race controls keep
+sibling audio/video flowing through two retained-flow replacements and another
+flow's rollback; peer revocation stops fresh media on both remaining flows.
+These checks do not define room-grant integration or establish full App
+interoperability or any additional direct-reachability benefit.
 
 Separate checks preserve continuous sibling audio/video through a local ICE
 restart, failed-flow retirement, both callers' pending cancellation/deadline,
