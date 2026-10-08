@@ -43,12 +43,17 @@ Existing negative results narrow the next experiment; they do not freeze the
 whole candidate or require another version-number decision before other work.
 Implementation needs a concrete useful result within the product model.
 
-- [ ] **4K and additional codecs.** The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
+- [ ] **4K, additional codecs and audio presets.** The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
   recommends retaining current limits. Assess concrete source/receiver cases
   before accepting coordinated capture, forwarding and resource-bound changes;
   keep UI presets separate from those bounds in any new design. Additional
   formats must account for late Viewers and relays that cannot decode or forward
   the published format; codec negotiation alone does not transcode it.
+  Review [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps Opus
+  presets under the same compatibility boundary: v1.9.2 rejects the new enums
+  in Viewer authentication and Native control, terminating those sessions.
+  Establish an audible benefit and a supported mixed-version policy before
+  adopting its additional controls; its current non-breaking claim is incorrect.
 - [ ] **Native Magicsock.** Go reuse is feasible, but the
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   have not established improved direct reachability. Seek a repeatable benefit
