@@ -516,22 +516,24 @@ after a third automatic request, outside the two-request contract. The corrected
 owner and fixture retain the count across Native and Browser backend replacement.
 This independent recovery defect does not establish the self-hosted SFU report's cause.
 
-With that correction, two-second interruptions recover without restart;
-permanent loss exhausts recovery and disposal cancels it. Seven- and eleven-second
-Tailcat interruptions pass in the checked run. Nine seconds can exhaust the budget:
-the replacement sends eight inner Binding checks, receives none, and delivers no
-fresh SRTP during its initial deadline or a separate three-second observation
-after exhaustion. That observation grants no additional recovery. Native control
-and local decoding are stubbed, events are sampled within 100 ms, and SDP waits
-for complete gathering. These limits prevent claiming full App integration or
-diagnosing a field failure; the composition gap remains an adoption concern.
+The actual-owner fixture now supports incremental SDP/candidate exchange,
+matching Piik's [Trickle ICE generation boundary](https://www.rfc-editor.org/rfc/rfc8838.html#section-13).
+With this enabled, ordinary Pion recovers two-, nine- and eleven-second outages
+in three runs each. Without it, the same eleven-second control still fails at
+the fixture's three-second gathering barrier while the network is unavailable.
+That negative control is a fixture limitation, not a product defect.
 
-Matched plain-Pion controls through that same owner recover two- and nine-second
-outages in two repetitions. Both eleven-second controls instead reach the
-fixture's three-second complete-gathering limit: the ICE restart begins while
-the network is still unavailable. Piik uses Trickle ICE, so this is a fixture
-limit, not an established product failure or Tailcat advantage. Full comparative
-recovery claims require matching that signaling behavior first.
+In the matched Trickle run with the isolated listener-state repair, Tailcat
+recovers two- and seven-second interruptions. Nine- and eleven-second outages
+exhaust recovery: the replacement sends eight inner Binding checks, receives
+none, and delivers no fresh SRTP during its initial deadline or a separate
+three-second observation after exhaustion. Both 16-check cases pass; one
+64-check replacement instead fails before SDP while awaiting its inner flow.
+Permanent loss exhausts the existing budget and disposal cancels recovery.
+No observation grants another attempt or extends a deadline. Native control
+and local decoding remain stubs, and events are sampled within 100 ms. These
+limits prevent claiming full App integration or diagnosing a field failure;
+the composition gap remains an adoption concern.
 
 Bounded anonymous traces further localize two Tailcat encrypted-echo failures.
 The replacement flow is accepted and its client preface read at the server,

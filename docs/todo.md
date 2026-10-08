@@ -55,9 +55,9 @@ Implementation needs a concrete useful result within the product model.
   before accepting room-scoped peer keys, flow admission and relay operation.
   Product adoption still needs supported
   [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
-  and RTCP/MTU boundaries, resolution of recovery failures under the actual Viewer
-  owner with Trickle ICE rather than the fixture's complete-gathering wait, and
-  mixed Browser/Native verification. Keep isolated dependency patches and
+  and RTCP/MTU boundaries, resolution of the reproduced recovery failures under
+  the actual Viewer owner with Trickle ICE, and mixed Browser/Native verification.
+  Keep isolated dependency patches and
   recovery counterfactuals outside product routing; a diagnostic reply is not
   media-readiness authority. Research owns the experiments and their limits.
   No timeout change or transport integration is accepted; the P2P evidence work
