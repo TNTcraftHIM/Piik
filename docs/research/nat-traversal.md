@@ -453,57 +453,50 @@ unilateral direct address are separate facts. Underlay setup must fit the existi
 operation deadline. Local cold setup of about 3.3 seconds for Tailcat versus 0.2
 seconds for Pion disabled STUN/gateway mapping; it is not a WAN startup comparison.
 
-A subsequent actual ICE-restart control on 2026-10-08 exposed a composition
-failure. After the same nine-second kernel blackout, ordinary Pion resumed
-media, but default Tailcat sometimes sent eight inner Binding requests without
-receiving any, then remained unavailable through Pion's failed state. In the
-captured failure, outer discovery resumed about 2.4 seconds after restoration,
-after the inner check budget had already been spent. Pion's
+Actual ICE-restart controls on 2026-10-08 exposed a composition failure.
+After a nine-second kernel blackout, ordinary Pion resumed media, but default
+Tailcat sometimes exhausted eight inner Binding requests before outer discovery
+recovered about 2.4 seconds after restoration. Pion's
 [candidate-pair check budget](https://github.com/pion/ice/blob/v4.4.0/agent.go#L790)
 and Magicsock's
 [rate-limited discovery](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/wgengine/magicsock/endpoint.go#L1421)
-are independent; a restored outer path does not restart exhausted inner checks.
-Keeping the accepted flow's listener open did not resolve the failure. A new
-ICE generation after underlay recovery delivered three fresh packets in about
-63 ms. Increasing only the fixture's Binding budget to 64 recovered in about
-1.9 seconds; both controls retained the same sockets, keys and NAT mappings.
-These distinguish underlay/check scheduling from permanent resource retirement.
-The isolated authorization and feedback patches retain the same restart failure.
-The pinned default restart assertion remains a reproducible integration failure,
-not a passing gate or a diagnosis of an existing Piik user report. Do not widen
-product timeouts or add diagnostic Ping polling to hide it. An actual local
-ICE restart on a shared tunnel also preserved continuous sibling audio/video;
-that healthy-network control does not establish impaired-network recovery.
+are independent: outer recovery does not restart exhausted inner checks.
+Keeping the accepted listener open did not help; a new ICE generation after
+underlay recovery delivered three fresh packets in about 63 ms. This distinguishes
+check scheduling from permanently retired resources. The isolated authorization
+and feedback patches retain this failure.
 
-A narrower control kept a three-second recovery window and used Pion's existing
-`SetICEMaxBindingRequests(16)`. The nine-second blackout recovered in about
-1.9 seconds across three default-library repetitions, but changing the outage
-to eleven seconds produced no media before the same deadline. The isolated
-authorization/feedback candidate reproduced both outcomes. Other checked outage
-phases took up to about 2.9 seconds. Increasing the inner request count therefore
-does not ensure recovery inside Piik's current opportunity. Explicitly retiring
-that failed flow after three seconds preserved a sibling's continuous audio/video
-under the race detector. These fixture windows start after network restoration;
-they do not run Piik's complete disconnect-grace, restart and rebuild schedule.
-A separate one-shot `Client.DiscoPing` before ICE restart also retained failures
-with the default inner budget, despite a successful diagnostic reply.
-That diagnostic response alone does not prove bidirectional encrypted media
-readiness. Neither counterfactual is an accepted transport adapter.
+The following counterfactuals preserve sockets, keys and NAT mappings. Unless
+noted, recovery starts after network restoration; none runs Piik's complete
+disconnect-grace, restart and rebuild schedule.
 
-An isolated follow-up mirrored that discovery call on Tailcat's Server for the
-existing fixture peer. Calling both sides once before ICE restart recovered the
-nine- and eleven-second controls in three retained race-detector repetitions.
-The unchanged three-second budget includes rediscovery and SDP exchange. Pion
-retained its default request count. This supports coordinating underlay revalidation with the
-existing restart owner instead of widening deadlines. Separate repeated checks
-cover both callers' pending cancellation/deadline, revocation during a Server
-probe, and unknown-peer rejection while sibling audio/video continues. Caller
-cancellation ends the wait, not the upstream ping packets: existing five-second
-discovery and ten-second TSMP timers bound their callback retention.
-The opt-in fixture retains its isolated Server patch and leaves the default
-failure controls intact. This hook is not an upstream API; these checks do not
-establish room-authorized integration, the complete Piik recovery schedule or
-additional NAT reachability.
+| Tailcat recovery control | Observation |
+| --- | --- |
+| Increase only the fixture's Binding request budget to 64 | Media recovered in about 1.9 seconds inside the fixture's eight-second window. This does not accept a product timeout change. |
+| 16 Binding requests, three-second recovery window | Nine-second blackout recovered in about 1.9 seconds across three default-library repetitions; eleven seconds did not recover in budget. Other checked phases reached about 2.9 seconds. The authorization/feedback candidate reproduced both outcomes. |
+| One client-side `DiscoPing` before default-Pion restart | Failures remained even after a diagnostic reply; that reply does not prove bidirectional encrypted media readiness. |
+| One probe on each side before default-Pion restart | Nine- and eleven-second blackouts recovered in three race-detector repetitions, including both probes and SDP exchange inside three seconds. This requires an isolated, unsupported Server hook. |
+| Same bilateral probe begins while the network is still down | After eight seconds of blackout, restoration one or two seconds into the probe still left it waiting until its three-second deadline in repeated race checks. Post-restoration controls continued to pass. |
+
+The last control limits the bilateral proposal: a
+[`DiscoPing` call](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/tailcat.go#L2258)
+waits for its own diagnostic reply, not an ongoing connection-readiness event.
+Later network restoration cannot guarantee that a lost probe completes.
+The earlier passing phase therefore does not establish a universal recovery
+barrier. These controls use fixture SDP exchange; they do not diagnose the
+product's Trickle ICE or an existing user's failure.
+
+Separate checks preserve continuous sibling audio/video through a local ICE
+restart, failed-flow retirement, both callers' pending cancellation/deadline,
+revocation during a Server probe and unknown-peer rejection. Canceling a probe
+ends the caller's wait, not upstream packets: existing five-second discovery and
+ten-second TSMP timers bound callback retention. These local checks do not prove
+impaired-network recovery.
+
+The opt-in experiment retains the failing default and pre-restoration assertions.
+It is not an all-green acceptance gate or a supported transport adapter. Do not
+widen product timeouts or add diagnostic Ping polling to hide these failures.
+Room-authorized integration and the complete recovery lifecycle remain unverified.
 
 A discovery-retained control on 2026-10-08 addresses a limit of closing DERP:
 closure also removes its endpoint exchange. The upstream relay's packet-class

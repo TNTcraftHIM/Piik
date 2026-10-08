@@ -15,6 +15,9 @@ Git/PRs own completed history.
   coherent candidate and stop before publication. Preserve the existing product
   model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
+  Windows full Go acceptance needs a runner that permits its test executables;
+  the current run stopped before the Browser-launcher package tests with an OS
+  access denial. Separate native checks and Linux checks do not close that gap.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
@@ -71,8 +74,10 @@ Implementation needs a concrete useful result within the product model.
   Tailcat gate does not reliably pass. A wider fixture budget identifies the cause;
   a larger request count within the unchanged three-second opportunity still
   fails at another outage phase. Explicit bilateral rediscovery recovers the
-  tested phases with default Pion, but requires an experimental Server hook;
-  bounded cancellation, revocation and sibling isolation pass repeated checks.
+  tested post-restoration phases with default Pion, but requires an experimental
+  Server hook and fails when called before network restoration. Bounded
+  cancellation, revocation and sibling isolation pass repeated checks;
+  a diagnostic reply is not a general underlay-readiness contract.
   Room-authorized integration and the complete recovery lifecycle remain unverified.
   No timeout change or transport integration is accepted. Keep the
   experiment separate from product routing; the P2P evidence work below owns
