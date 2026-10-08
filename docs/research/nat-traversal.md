@@ -1,6 +1,6 @@
 # Browser And Native NAT Traversal
 
-Last reviewed: 2026-10-07
+Last reviewed: 2026-10-09
 
 This document owns evidence for improving direct ICE without adding a
 new relay or a custom transport. The current product contract remains standard
@@ -488,26 +488,42 @@ barrier, and probe expiry does not establish media failure or justify replacing
 healthy media. These controls use fixture SDP exchange; they do not diagnose the
 product's Trickle ICE or an existing user's failure.
 
-A follow-up kernel fixture on 2026-10-09 matches the committed Viewer's two
-three-second recovery opportunities: restart ICE, then rebuild only if still
-not connected at the first deadline. It retains tunnel identity and outer NAT
-mappings, creates a new inner flow for replacement, and keeps default Pion checks
-without an explicit discovery hook. Setup consumes its opportunity; fresh SRTP
-is checked separately after connection meets the deadline. Post-restoration
-controls cover eight-, nine- and eleven-second blackouts; Tailcat also starts
-recovery one or two seconds before restoration. All five Tailcat cases pass two
-further race-detector repetitions, recovering through restart or replacement;
-the ordinary Pion controls also pass. Failure of the first ICE generation alone
-therefore does not establish failure of both existing recovery opportunities.
+Manually phased replacement controls give ICE restart and inner-flow replacement
+three seconds each, retaining the tunnel, outer mappings and default Pion checks.
+Post-restoration controls pass after eight-, nine- and eleven-second blackouts;
+two Tailcat controls starting before restoration also pass two further race
+repetitions. These windows are stricter than a replacement receiver's actual
+15-second initial-connection deadline, not a reproduction of the Viewer schedule.
+A bounded repeated fixture preface prevents a lost first UDP packet from blocking
+listener acceptance before ICE. It is not product signaling or media-health proof.
 
-The fixture's replacement flow repeats an initial datagram until the SDP exchange
-confirms listener acceptance, bounded by that same opportunity. A lone lost
-preface had blocked setup before ICE could run. This fixture handshake is not an
-accepted product protocol or proof of media readiness. Its complete-gathering
-SDP exchange also stalls ordinary Pion when started before network restoration;
-that result is not Piik's Trickle ICE behavior. The passing controls narrow the
-integration question but do not run the actual Viewer scheduler, room authority
-or Browser decoder, and do not establish additional direct reachability.
+A separate fixture feeds kernel connection states into the actual
+`NativeCapableViewerPeer`. Each rebuild gets a new connection ID, as in the
+product, while preserving the parent's recovery budget. Renewing that budget
+on replacement hid the nine-second outage: three repetitions recovered only
+after a third automatic request, outside the two-request contract. The corrected
+owner and fixture retain the count across Native and Browser backend replacement.
+This independent recovery defect does not establish the self-hosted SFU report's cause.
+
+With that correction, two-second interruptions recover without restart;
+permanent loss exhausts recovery and disposal cancels it. Seven- and eleven-second
+Tailcat interruptions pass in the checked run. Nine seconds exhausts the budget:
+the replacement sends eight inner Binding checks, receives none, and delivers no
+fresh SRTP during its initial deadline or a separate three-second observation
+after exhaustion. That observation grants no additional recovery. Native control
+and local decoding are stubbed, events are sampled within 100 ms, and SDP waits
+for complete gathering. These limits prevent claiming full App integration or
+diagnosing a field failure; the composition gap remains an adoption concern.
+
+The existing [Pion Binding-request setting](https://github.com/pion/webrtc/blob/v4.2.19/settingengine.go#L506)
+was then varied without changing the owner, timers or outer tunnel. Both 16-
+and 64-check controls initially recovered nine- and eleven-second interruptions.
+Six further 16-check cases recovered three times and failed three times during
+replacement setup, before its SDP exchange completed. Three narrower reruns with
+stage diagnostics passed; the setup failures' precise cause remains unconfirmed.
+Increasing inner checks can bridge one discovery phase but has not established
+reliable composition. It is not an accepted product setting or reason to add a
+second readiness owner, discovery loop or longer deadline.
 
 Separate checks preserve continuous sibling audio/video through a local ICE
 restart, failed-flow retirement, both callers' pending cancellation/deadline,
