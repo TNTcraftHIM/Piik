@@ -477,13 +477,15 @@ disconnect-grace, restart and rebuild schedule.
 | One client-side `DiscoPing` before default-Pion restart | Failures remained even after a diagnostic reply; that reply does not prove bidirectional encrypted media readiness. |
 | One probe on each side before default-Pion restart | Nine- and eleven-second blackouts recovered in three race-detector repetitions, including both probes and SDP exchange inside three seconds. This requires an isolated, unsupported Server hook. |
 | Same bilateral probe begins while the network is still down | After eight seconds of blackout, restoration one or two seconds into the probe still left it waiting until its three-second deadline in repeated race checks. Post-restoration controls continued to pass. |
+| Lost bilateral probes, retain the existing media connection | In six race checks, both probes expired while WebRTC was already connected; a subsequent observation received fresh SRTP without new SDP, sockets or credentials. The separate three-second observation is not a product recovery extension. |
 
-The last control limits the bilateral proposal: a
+These controls limit the bilateral proposal: a
 [`DiscoPing` call](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/tailcat.go#L2258)
 waits for its own diagnostic reply, not an ongoing connection-readiness event.
 Later network restoration cannot guarantee that a lost probe completes.
 The earlier passing phase therefore does not establish a universal recovery
-barrier. These controls use fixture SDP exchange; they do not diagnose the
+barrier, and probe expiry does not establish media failure or justify replacing
+healthy media. These controls use fixture SDP exchange; they do not diagnose the
 product's Trickle ICE or an existing user's failure.
 
 Separate checks preserve continuous sibling audio/video through a local ICE

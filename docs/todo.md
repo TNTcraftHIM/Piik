@@ -75,7 +75,8 @@ Implementation needs a concrete useful result within the product model.
   a larger request count within the unchanged three-second opportunity still
   fails at another outage phase. Explicit bilateral rediscovery recovers the
   tested post-restoration phases with default Pion, but requires an experimental
-  Server hook and fails when called before network restoration. Bounded
+  Server hook. Its proposed readiness gate fails when called before network
+  restoration; probe expiry can coexist with recovered media. Bounded
   cancellation, revocation and sibling isolation pass repeated checks;
   a diagnostic reply is not a general underlay-readiness contract.
   Room-authorized integration and the complete recovery lifecycle remain unverified.
