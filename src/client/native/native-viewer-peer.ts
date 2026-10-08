@@ -15,6 +15,8 @@ import {
   ViewerPeer,
   type ViewerPeerEvents,
   type ViewerPeerOptions,
+  type ViewerRecoveryBudget,
+  createViewerRecoveryBudget,
 } from "../webrtc/viewer-peer";
 import {
   iceServersWithNatPrediction,
@@ -61,6 +63,10 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
     private readonly edgeCapacity: number,
   ) {
     this.currentIceConfig = iceConfig;
+    this.options = {
+      ...options,
+      recoveryBudget: options.recoveryBudget ?? createViewerRecoveryBudget(),
+    };
   }
 
   acceptSignal(parentPeerId: string, payload: SignalPayload): Promise<void> {
@@ -87,6 +93,9 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
         ) {
           this.backend?.dispose();
           this.backend = null;
+          if (this.identity && this.identity.parentPeerId !== parentPeerId) {
+            this.options = { ...this.options, recoveryBudget: createViewerRecoveryBudget() };
+          }
           this.identity = nextIdentity;
         }
         if (!this.backend) {
@@ -198,8 +207,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
   private disconnectTimer: number | null = null;
   private initialConnectionTimer: number | null = null;
   private recoveryTimer: number | null = null;
-  private automaticRecoveryRequests = 0;
-  private recoveryExhaustedReported = false;
+  private readonly recoveryBudget: ViewerRecoveryBudget;
   private state: RTCPeerConnectionState = "new";
   private localCandidateType: RTCIceCandidateType | null = null;
   private remoteCandidateType: RTCIceCandidateType | null = null;
@@ -236,6 +244,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
   ) {
     this.currentIceConfig = iceConfig;
     this.recoveryOwner = options.recoveryOwner ?? "viewer";
+    this.recoveryBudget = options.recoveryBudget ?? createViewerRecoveryBudget();
     this.natPredictionEnabled = options.natPredictionEnabled ?? false;
     this.unsubscribe = client.onEvent((event) => this.onEvent(event));
     this.unsubscribeClose = client.onClose(() => {
@@ -291,8 +300,9 @@ class NativeViewerPeer implements ViewerMediaPeer {
     );
     if (sent) {
       this.clearInitialConnectionTimer();
-      this.automaticRecoveryRequests = Math.max(
-        this.automaticRecoveryRequests,
+      this.recoveryBudget.exhaustedReported = false;
+      this.recoveryBudget.requests = Math.max(
+        this.recoveryBudget.requests,
         rebuild ? VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS : 1,
       );
       this.scheduleRecoveryDeadline();
@@ -364,7 +374,6 @@ class NativeViewerPeer implements ViewerMediaPeer {
       }
       this.parentPeerId = parentPeerId;
       this.connectionId = connectionId;
-      this.resetAutomaticRecovery();
     } else if (!retainSource) {
       this.disposeBridge();
     }
@@ -478,8 +487,8 @@ class NativeViewerPeer implements ViewerMediaPeer {
       );
       if (this.recoveryOwner === "route") {
         this.reportRecoveryExhausted();
-      } else if (!this.requestRecovery(true)) {
-        this.reportRecoveryExhausted();
+      } else {
+        this.attemptAutomaticRecovery(true);
       }
       return;
     }
@@ -650,41 +659,41 @@ class NativeViewerPeer implements ViewerMediaPeer {
       this.reportRecoveryExhausted();
       return;
     }
-    if (!this.requestRecovery(true)) {
-      this.reportRecoveryExhausted();
-    }
+    this.attemptAutomaticRecovery(true);
   }
 
-  private attemptAutomaticRecovery(): void {
+  private attemptAutomaticRecovery(forceRebuild = false): void {
     this.clearInitialConnectionTimer();
     if (
       this.disposed ||
       this.recoveryTimer !== null ||
-      this.recoveryExhaustedReported ||
+      this.recoveryBudget.exhaustedReported ||
       !this.connectionId ||
       !this.parentPeerId
     ) {
       return;
     }
     if (
-      this.automaticRecoveryRequests >=
+      this.recoveryBudget.requests >=
       VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS
     ) {
       this.reportRecoveryExhausted();
       return;
     }
-    const rebuild = this.automaticRecoveryRequests > 0;
+    const rebuild = forceRebuild || this.recoveryBudget.requests > 0;
     if (!this.events.sendRestartRequest(this.parentPeerId, this.connectionId, rebuild)) {
       this.reportRecoveryExhausted();
       return;
     }
-    this.automaticRecoveryRequests += 1;
+    this.recoveryBudget.requests = rebuild
+      ? VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS
+      : this.recoveryBudget.requests + 1;
     this.scheduleRecoveryDeadline();
   }
 
   private reportRecoveryExhausted(): void {
     if (
-      this.recoveryExhaustedReported ||
+      this.recoveryBudget.exhaustedReported ||
       !this.parentPeerId ||
       !this.connectionId
     ) return;
@@ -693,7 +702,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
       this.parentPeerId,
       this.connectionId,
     ) ?? true;
-    if (reported) this.recoveryExhaustedReported = true;
+    if (reported) this.recoveryBudget.exhaustedReported = true;
     else this.scheduleRecoveryDeadline();
   }
 
@@ -721,8 +730,8 @@ class NativeViewerPeer implements ViewerMediaPeer {
 
   private resetAutomaticRecovery(): void {
     this.clearRecoveryTimer();
-    this.automaticRecoveryRequests = 0;
-    this.recoveryExhaustedReported = false;
+    this.recoveryBudget.requests = 0;
+    this.recoveryBudget.exhaustedReported = false;
   }
 
   private disposeBridge(): void {

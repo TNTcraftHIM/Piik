@@ -541,7 +541,7 @@ it.each([
   }
 });
 
-it.each([false, true])("keeps committed route recovery across backend replacement (replaced=%s)", async (replaced) => {
+it.each(["first", "replacement", "failed-offer"])("keeps committed route recovery and its budget across backend replacement (%s)", async (scenario) => {
   vi.useFakeTimers();
   vi.stubGlobal("window", globalThis);
   vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
@@ -550,8 +550,9 @@ it.each([false, true])("keeps committed route recovery across backend replacemen
   vi.spyOn(NativeMediaBridge.prototype, "collectMetrics").mockResolvedValue({ ...EMPTY_METRICS });
   vi.spyOn(NativeMediaBridge.prototype, "decodedVideoFrames").mockResolvedValue(null);
   let onEvent!: (event: NativeClientEvent) => void;
+  const receiveOffer = vi.fn(async () => ({ answer: { type: "answer", sdp: "v=0\r\n" }, audio: false, codec: "vp8" }));
   const client = {
-    receiveOffer: async () => ({ answer: { type: "answer", sdp: "v=0\r\n" }, audio: false, codec: "vp8" }),
+    receiveOffer,
     onEvent: (fn: typeof onEvent) => { onEvent = fn; return () => undefined; },
     onClose: () => () => undefined,
     closeReceiver: vi.fn(async () => undefined), closeEdge: vi.fn(async () => undefined),
@@ -573,13 +574,38 @@ it.each([false, true])("keeps committed route recovery across backend replacemen
     state("first", "connected");
     peer.activatePreparedRoute();
     expect(options.recoveryOwner).toBe("route"); // Caller options are not mutable route state.
-    const connectionId = replaced ? "replacement" : "first";
-    if (replaced) {
+    const connectionId = scenario === "replacement" ? "replacement" : "first";
+    if (scenario === "replacement") {
       await peer.acceptSignal("parent", offer(connectionId));
       state(connectionId, "connected");
     }
     state(connectionId, "failed");
     expect(restart).toHaveBeenCalledExactlyOnceWith("parent", connectionId, false);
     expect(exhausted).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(VIEWER_AUTOMATIC_RECOVERY_TIMEOUT_MS);
+    expect(restart).toHaveBeenNthCalledWith(2, "parent", connectionId, true);
+
+    // A new physical ID is the requested rebuild, not a recovered parent.
+    const retiredEvent = onEvent;
+    if (scenario === "failed-offer") receiveOffer.mockRejectedValueOnce(new Error("receiver unavailable"));
+    await peer.acceptSignal("parent", offer("rebuilt"));
+    retiredEvent({ version: 9, shareId: "session", connectionId, type: "edge-state", state: "connected" });
+    state("rebuilt", "failed");
+    expect(restart).toHaveBeenCalledTimes(2);
+    expect(exhausted).toHaveBeenCalledExactlyOnceWith("parent", "rebuilt");
+
+    // Explicit retry owns a new bounded request and must report its outcome.
+    expect(peer.requestRecovery(true)).toBe(true);
+    await vi.advanceTimersByTimeAsync(VIEWER_AUTOMATIC_RECOVERY_TIMEOUT_MS);
+    expect(exhausted).toHaveBeenCalledTimes(2);
+
+    // Only actual recovery or a different parent gives a fresh budget.
+    await peer.acceptSignal("parent", offer("healthy"));
+    state("healthy", "connected");
+    state("healthy", "failed");
+    expect(restart).toHaveBeenNthCalledWith(4, "parent", "healthy", false);
+    await peer.acceptSignal("other-parent", offer("other-connection"));
+    state("other-connection", "failed");
+    expect(restart).toHaveBeenNthCalledWith(5, "other-parent", "other-connection", false);
   } finally { peer.dispose(); }
 });

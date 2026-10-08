@@ -119,8 +119,11 @@ deadline or start an independent recovery loop.
 When NAT traversal enhancement is enabled, another operation may use the
 remaining connection-attempt budget after rollback. The waiting display uses the actual
 server-issued attempt ordinal; it never counts time as an attempted connection.
-Committed Browser P2P recovery first restarts ICE on the same connection, then
+Committed P2P recovery first restarts ICE on the same connection, then
 rebuilds that connection if necessary, within the existing two-request budget.
+The budget belongs to the current parent and survives physical connection or
+Browser/Native backend replacement. Only a connected transport or a new parent
+resets it; replacing an unconnected backend cannot renew recovery indefinitely.
 Capable Native receivers also renegotiate that connection while retaining the
 encoded source, local playback and downstream edges when its codec/audio shape
 is unchanged. Pion owns ICE restart; each actual gathering owns fresh supplemental

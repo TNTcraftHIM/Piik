@@ -53,6 +53,17 @@ export interface ViewerPeerEvents {
 export interface ViewerPeerOptions {
   natPredictionEnabled?: boolean;
   recoveryOwner?: "viewer" | "route";
+  recoveryBudget?: ViewerRecoveryBudget;
+}
+
+// Physical replacement does not make an unreachable parent healthy again.
+export interface ViewerRecoveryBudget {
+  requests: number;
+  exhaustedReported: boolean;
+}
+
+export function createViewerRecoveryBudget(): ViewerRecoveryBudget {
+  return { requests: 0, exhaustedReported: false };
 }
 
 export interface ViewerMediaPeer {
@@ -89,9 +100,7 @@ export class ViewerPeer implements ViewerMediaPeer {
   private disconnectTimer: number | null = null;
   private initialConnectionTimer: number | null = null;
   private recoveryTimer: number | null = null;
-  private offerRecoveryAttempts = 0;
-  private automaticRecoveryRequests = 0;
-  private recoveryExhaustedReported = false;
+  private readonly recoveryBudget: ViewerRecoveryBudget;
   private disposed = false;
   private currentIceConfig: PeerIceConfig;
   private localIceCandidates: NatPredictionCandidateEmitter | null = null;
@@ -108,6 +117,7 @@ export class ViewerPeer implements ViewerMediaPeer {
     this.currentIceConfig = iceConfig;
     this.natPredictionEnabled = options.natPredictionEnabled ?? false;
     this.recoveryOwner = options.recoveryOwner ?? "viewer";
+    this.recoveryBudget = options.recoveryBudget ?? createViewerRecoveryBudget();
   }
 
   async acceptSignal(
@@ -185,8 +195,9 @@ export class ViewerPeer implements ViewerMediaPeer {
     );
     if (sent) {
       this.clearInitialConnectionTimer();
-      this.automaticRecoveryRequests = Math.max(
-        this.automaticRecoveryRequests,
+      this.recoveryBudget.exhaustedReported = false;
+      this.recoveryBudget.requests = Math.max(
+        this.recoveryBudget.requests,
         rebuild ? VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS : 1,
       );
       this.scheduleRecoveryDeadline();
@@ -248,7 +259,6 @@ export class ViewerPeer implements ViewerMediaPeer {
       this.parentPeerId !== null && this.parentPeerId !== parentPeerId;
     this.disposeConnection();
     if (parentChanged) {
-      this.offerRecoveryAttempts = 0;
       this.resetAutomaticRecovery();
     }
     this.parentPeerId = parentPeerId;
@@ -396,7 +406,6 @@ export class ViewerPeer implements ViewerMediaPeer {
         throw new Error("signal send rejected");
       }
       this.clearRecoveryTimer();
-      this.offerRecoveryAttempts = 0;
       this.scheduleInitialConnectionDeadline(connection, connectionId);
     } catch (error) {
       if (!this.isCurrentConnection(connection, connectionId)) {
@@ -410,11 +419,11 @@ export class ViewerPeer implements ViewerMediaPeer {
     this.setError(error, "host.fail.connection");
     if (
       this.recoveryOwner === "viewer" &&
-      this.offerRecoveryAttempts < 1 &&
+      !this.recoveryBudget.exhaustedReported &&
+      this.recoveryBudget.requests < VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS &&
       this.events.sendRestartRequest(parentPeerId, connectionId, true)
     ) {
-      this.offerRecoveryAttempts += 1;
-      this.automaticRecoveryRequests = VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS;
+      this.recoveryBudget.requests = VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS;
       this.scheduleRecoveryDeadline();
     } else {
       this.reportRecoveryExhausted();
@@ -479,18 +488,18 @@ export class ViewerPeer implements ViewerMediaPeer {
     if (
       this.disposed ||
       this.recoveryTimer !== null ||
-      this.recoveryExhaustedReported ||
+      this.recoveryBudget.exhaustedReported ||
       this.connection?.connectionState === "connected" ||
       !this.connectionId ||
       !this.parentPeerId
     ) {
       return;
     }
-    if (this.automaticRecoveryRequests >= VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS) {
+    if (this.recoveryBudget.requests >= VIEWER_MAX_AUTOMATIC_RECOVERY_REQUESTS) {
       this.reportRecoveryExhausted();
       return;
     }
-    const rebuild = this.automaticRecoveryRequests > 0;
+    const rebuild = this.recoveryBudget.requests > 0;
     if (
       !this.events.sendRestartRequest(
         this.parentPeerId,
@@ -501,7 +510,7 @@ export class ViewerPeer implements ViewerMediaPeer {
       this.reportRecoveryExhausted();
       return;
     }
-    this.automaticRecoveryRequests += 1;
+    this.recoveryBudget.requests += 1;
     this.scheduleRecoveryDeadline();
   }
 
@@ -547,7 +556,7 @@ export class ViewerPeer implements ViewerMediaPeer {
 
   private reportRecoveryExhausted(): void {
     if (
-      this.recoveryExhaustedReported ||
+      this.recoveryBudget.exhaustedReported ||
       !this.parentPeerId ||
       !this.connectionId
     ) {
@@ -560,7 +569,7 @@ export class ViewerPeer implements ViewerMediaPeer {
         this.connectionId,
       ) ?? true;
     if (reported) {
-      this.recoveryExhaustedReported = true;
+      this.recoveryBudget.exhaustedReported = true;
     } else {
       this.scheduleRecoveryDeadline();
     }
@@ -568,8 +577,8 @@ export class ViewerPeer implements ViewerMediaPeer {
 
   private resetAutomaticRecovery(): void {
     this.clearRecoveryTimer();
-    this.automaticRecoveryRequests = 0;
-    this.recoveryExhaustedReported = false;
+    this.recoveryBudget.requests = 0;
+    this.recoveryBudget.exhaustedReported = false;
   }
 
   private queueCandidate(
