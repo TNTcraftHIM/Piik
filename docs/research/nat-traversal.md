@@ -432,24 +432,23 @@ ingress callback forwards only PLI/FIR, and LiveKit's reachable XR response cont
 DLRR block. No additional oversized producer was found in these paths; this
 does not bound arbitrary caller-created RTCP batches or future configurations.
 
-The same Linux kernel lab also compared established Pion and Tailcat SRTP under
-delay/jitter, 5% packet loss, reordering and a 350 ms complete interruption.
-DERP was closed before these phases. Both retained their session and resumed
-fresh media after restoration in three race-detector repetitions. Fresh payload
-tags and unique sequence counts exclude queued or duplicate-packet success.
-The original NAT and rebinding matrix repeated its prior outcomes. These controls
-add bounded weak-network recovery evidence, not decoded quality or a demonstrated
-direct-reachability advantage.
+Kernel queue controls compare established Pion and Tailcat SRTP under delay,
+jitter, 5% loss and reordering with DERP closed. Both retained their session and
+resumed after a 350 ms blackout in three race repetitions, and after a separate
+nine-second blackout. Fresh tags and unique sequences exclude queued/duplicate
+success. These are bounded recovery checks, not decoded quality or field coverage.
 
-Kernel gateway rebinding retained full WebRTC sessions. With DERP available,
-fresh media resumed in about 6.4–6.5 seconds and ICE reported `connected` in about
-7.1–8.1 seconds, without new SDP. With DERP closed, neither gateway direction
-recovered within 20 seconds. Fresh media and ICE state are separate observations;
-Piik's disconnected grace, restart and retirement need a full integration
-control before adoption. Underlay preparation must fit the existing operation
-deadline, not start a second budget. Local cold setup of about 3.3 seconds for
-Tailcat versus 0.2 seconds for Pion disabled STUN/gateway mapping and is not a WAN
-startup comparison.
+Kernel gateway rebinding retained full WebRTC: DERP restored fresh media in about
+6.4–6.5 seconds and ICE `connected` in 7.1–8.1 seconds, without new SDP. Its recorded
+disconnected interval was about two seconds, inside Piik's three-second grace;
+the nine-second blackout reached about four seconds disconnected. Actual Native
+Viewer-owner replays cancel grace or request one restart, clear recovery on
+connection and retain the receiver. They mock App events, so do not exercise the
+restart exchange over Tailcat or prove full integration. With DERP closed, neither
+gateway direction recovered within 20 seconds. Fresh media, ICE state and a
+unilateral direct address are separate facts. Underlay setup must fit the existing
+operation deadline. Local cold setup of about 3.3 seconds for Tailcat versus 0.2
+seconds for Pion disabled STUN/gateway mapping; it is not a WAN startup comparison.
 
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
