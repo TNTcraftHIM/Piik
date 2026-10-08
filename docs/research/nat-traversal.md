@@ -304,18 +304,13 @@ hold endpoint pairs, NAT/filtering, IPv6, network transitions and relay policy
 constant, measuring direct success, relay use and first media separately.
 No new transport or universal success-rate claim is accepted by this review.
 
-The isolated `spike/magicsock-feasibility` Go experiment on 2026-10-04 carried
-Pion ICE/DTLS and matching synthetic audio/video RTP payloads over magicsock,
-then delivered new payloads after both UDP endpoints changed without new SDP.
-Loopback and separate address-and-port-filtering NATs passed, including five
-race-detector repetitions. The fixture supplied authenticated peer identities
-and endpoint updates; it did not test automatic OS network-change detection,
-decoded playback or real routers. A separate seven-pair NAT matrix found the
-same direct reachability as Pion within four-second windows, not a field success
-rate. Go integration is feasible; no Rust requirement was found. Product use
-still needs room-authorized key/endpoint exchange, MTU/resource limits and mixed
-Browser/Native behavior. The nested probe module and full evidence stay on that
-isolated branch; production dependencies and routing remain unchanged.
+The initial Go control carried Pion ICE/DTLS/SRTP over magicsock and delivered
+fresh media after both UDP endpoints changed without new SDP. Loopback and
+separate address-and-port-filtering NATs passed five race repetitions. The
+fixture supplied peer identities and endpoint updates; it did not prove automatic
+OS network-change detection, decoded playback or real-router behavior. Its
+seven-pair direct matrix matched Pion within four-second windows. Go reuse is
+feasible; product integration and network benefit require the controls below.
 
 ### Integration Cost And Recovery Controls
 
@@ -479,23 +474,29 @@ key. Both defects were independently reproduced; Tailcat's checked
 [October 7 source](https://github.com/tailscale/tailcat/blob/52fbad323e9d352f1febb623e0975368e9a8cbdd/tailcat.go)
 retains both mechanisms. Piik's current transport does not use this dependency.
 
-An opt-in patch syncs the existing engine after releasing the backend lock and
-invalidates late results in the existing pending-hook map. Three Windows and
-Linux race repetitions reject both traffic directions and new admission,
-preserve two healthy peers' media, and permit a later explicit grant. Removing
-either correction fails its regression; upstream admission/disconnect checks
-pass. This is a partial repair, not safe-to-adopt authorization.
+An opt-in Tailcat patch syncs the existing engine after releasing the backend
+lock and invalidates late results in its pending-hook map. Three Windows
+repetitions and three Linux race runs reject both traffic directions and new
+admission, preserve two healthy peers' media and permit a later explicit grant.
+Removing either correction fails its regression; upstream admission/disconnect
+checks pass. This repairs the Tailcat layer only.
 
 A deeper unit reproduction pauses WireGuard's lazy peer-config lookup, withdraws
 authority and calls `RemovePeer`, then releases the old result. `LookupPeer`
 still installs an active peer. Both the pinned `0a83b87f7908` and
 [October 2 revision](https://github.com/tailscale/wireguard-go/blob/18e99eba5393b8c9ea513ab7a1db1a12625422ca/device/device.go)
-reproduce it, including three Windows and Linux race repetitions on the newer
-version. This proves an authority/install race, not an end-to-end Piik exploit.
-A supported atomic retirement/creation boundary remains necessary below Tailcat;
-its partial patch cannot close that race. The probe retains the patch and failing
-reproduction. Piik deny lists or repeated resets are not substitutes. This,
-feedback sizing and unproven direct-reachability gains block product adoption.
+reproduce it. An isolated patch on the newer version fences late installation
+by the peer table's generation and starts lazy peers under that same lock.
+Removal, lookup replacement, close and regrant checks pass; removing the fence
+reproduces the failure. The full device suite passes on Windows and Linux
+(race detection on Linux), and its lock-order analyzer passes. Combined Tailcat/
+WireGuard media and bounded TWCC checks pass three repetitions on both platforms.
+The combined patches also preserve the kernel NAT, dual-stack, rebinding and
+weak-network results in the Linux race run.
+One removal also invalidates other pending lookups; existing media is untouched.
+This coarse experimental fence needs review before adoption. The probe retains
+the patches; supported dependency contracts and demonstrated network benefit
+remain open. Piik's production dependencies and routing are unchanged.
 
 ## Native Mapping Cache And Retry Lifetimes
 
