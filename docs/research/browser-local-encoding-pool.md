@@ -101,6 +101,22 @@ around fallback was 271 ms for H264 and 80 ms for VP8. Source-wide fallback
 therefore has a measurable handoff cost, even without a resolution drop or
 connection failure. This does not establish low-end hardware capacity.
 
+### Local Connection Failure Control
+
+On 2026-10-08, Windows headless Chrome 154 ran the actual `HostPeer` and pool
+with a moving 640x360 VP8 source. mDNS host candidates supported one producer
+and two receivers. Discarding only the producer's ICE candidates triggered its
+eight-second timeout; both existing P2P connections then delivered 30 ordinary
+decoded frames each, retaining the source and no producer groups.
+
+This loopback-origin diagnostic does not test public-origin permission,
+Chrome/Firefox LAN interoperability or public-path quality. In
+[#465](https://github.com/TNTcraftHIM/Piik/issues/465), the successful repeat
+changed permission and IP masking together. Neither is an isolated cause;
+[HTTP App discovery](https://developer.chrome.com/blog/local-network-access)
+and [WebRTC connectivity](https://chromestatus.com/feature/5065884686876672)
+need separate evidence. This control is not a release acceptance gate.
+
 ### Balanced Startup And Recovery
 
 Serial Chrome 152 checks on 2026-09-25 reproduced two composition defects in

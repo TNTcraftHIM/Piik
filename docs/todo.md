@@ -127,9 +127,19 @@ of a reporter's cause; research owns the completed experiments and their limits.
   [#453](https://github.com/TNTcraftHIM/Piik/issues/453) has no matched endpoint
   reports to distinguish network reachability from a product failure.
   The v1.6.3 candidate-timeout report lacks share-start and SDP/ICE evidence.
-  A self-hosted SFU report supplies only a screenshot of a third-party diagnosis;
-  obtain the original Viewer decode/`route-ready` events and matching Server
-  revision before attributing timeout to the committed-publication flag.
+  [#464](https://github.com/TNTcraftHIM/Piik/issues/464) adds Server/Host excerpts
+  to the self-hosted SFU screenshot report, but still lacks the matched Viewer
+  ICE, decode and `route-ready` trace. Healthy publication ingress and a bound
+  subscription do not establish delivered frames; the committed-publication
+  flag alone cannot identify why the candidate timed out.
+  [#465](https://github.com/TNTcraftHIM/Piik/issues/465) reports Chrome/Firefox
+  LAN asymmetry, local-pool timeout and separate public-path quality loss.
+  Its successful repeat changed both local-network permission and IP masking.
+  [Local controls](./research/browser-local-encoding-pool.md#local-connection-failure-control)
+  retain P2P through producer timeout; isolate the settings and compare paired
+  reports before changing routing or advising users to disable IP masking.
+  [#463](https://github.com/TNTcraftHIM/Piik/issues/463) lacks the Browser-only
+  Mac/phone attempt details needed to distinguish capture, entry and media failure.
 - [ ] **Camera and Host microphone device coverage.** Check real audio levels,
   echo, device replacement/native mixing and phone camera permission, orientation
   and background behavior. Include OBS virtual-camera/audio-input sound quality
