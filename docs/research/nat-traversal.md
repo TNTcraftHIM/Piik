@@ -427,7 +427,15 @@ reports after DERP closed, with a largest encrypted datagram of 1212 bytes.
 Windows and three Linux race repetitions passed, as did the upstream TWCC suite
 with the candidate. The isolated probe retains the opt-in patch and reproduction;
 production dependencies are unchanged. This narrows one integration obstacle,
-not the missing direct-reachability benefit or other feedback producers' bounds.
+not the missing direct-reachability benefit or a supported upstream MTU contract.
+
+The current Go feedback paths were also traced end to end. Pion's default NACK
+generator retains a 512-packet window and writes one report per media SSRC;
+a full-loss/wrapped-gap control with two SSRCs stays within 156 encrypted bytes.
+Normal sender/receiver reports are written separately per stream. Piik's SFU
+ingress callback forwards only PLI/FIR, and LiveKit's reachable XR response contains one
+DLRR block. No additional oversized producer was found in these paths; this
+does not bound arbitrary caller-created RTCP batches or future configurations.
 
 The same Linux kernel lab also compared established Pion and Tailcat SRTP under
 delay/jitter, 5% packet loss, reordering and a 350 ms complete interruption.

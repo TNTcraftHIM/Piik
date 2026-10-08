@@ -343,6 +343,14 @@ This establishes a retirement defect and its local repair, not the cause of
 every reported Windows 11 border: denied consent and other active captures
 remain distinct Windows-owned limits.
 
+The source-preview call chain has a separate, finite lifetime. Closing the
+picker invalidates queued thumbnails and their results; it does not kill the
+in-flight helper. That helper closes its WGC session before writing the bitmap.
+Control-session loss or the three-second preview deadline can still terminate
+it through `CommandContext`. The 2026-10-08 review did not reproduce a retained
+border from this path. Its desktop-pixel control could not see the controlled
+source, so capture/permission logs alone were not accepted as visual evidence.
+
 The upstream [display-resolution change report](https://github.com/robmikh/Win32CaptureSample/issues/59)
 is still open as of 2026-10-07: it reports borderless display capture losing that
 preference after a mode change. It gives neither a current Windows build nor a

@@ -15,13 +15,6 @@ Git/PRs own completed history.
   coherent candidate and stop before publication. Preserve the existing product
   model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
-- [ ] **Windows 11 capture border remains visible.** Reopened by a new report
-  on 2026-10-07. Recheck App/Browser capture ownership, border permission/API
-  results, live setting changes, display-mode changes, concurrent captures and
-  source-thumbnail cancellation/retirement before attributing this to Windows.
-  Obtain the affected version/path/build when available; the report
-  does not yet identify them. [Capture evidence](./research/native-client-lifecycle.md#windows-capture-borders)
-  owns the prior graceful-retirement and concurrent-capture checks.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
@@ -88,6 +81,14 @@ Implementation needs a concrete useful result within the product model.
 These reports remain unmatched. A local repair or successful test is not proof
 of a reporter's cause; research owns the completed experiments and their limits.
 
+- [ ] **Windows 11 capture border remains visible.** The new report does not
+  identify the affected version, capture path or Windows build. The reviewed
+  picker/start/source-change paths preserve the border preference; no additional
+  confirmed defect was found. [Capture evidence](./research/native-client-lifecycle.md#windows-capture-borders)
+  owns the permission correction, retirement checks and preview-cancellation
+  boundary. Visible permission changes, display-mode changes and the reporter's
+  setup still need matched physical evidence; API success does not prove that
+  Windows hid the border.
 - [ ] **macOS and Linux physical capture.** Complete the remaining capture/audio
   checks in [verification status](./verification-status.md#device-evidence-boundary),
   including an Intel Mac with a usable hardware H.264 encoder, an ARM64 Linux
