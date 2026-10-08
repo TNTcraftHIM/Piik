@@ -350,10 +350,9 @@ diagnostic Ping polling or wider product deadlines as integration shortcuts.
 
 Keep product integration conditional on a repeatable benefit on matched networks,
 with direct coverage, relay coverage, recovery and first picture measured
-separately. Go feasibility alone does not establish that benefit. Gateway
-mapping, Piik prediction, physical routers and the full mixed Piik topology
-remain outside the comparison. The isolated controls below do not change that
-adoption boundary.
+separately. Go feasibility alone does not establish that benefit. The actual
+Native-engine controls below cover gateway mapping, prediction and IPv6;
+physical routers and the full mixed Piik topology remain outside the comparison.
 
 ### Isolated Connection-Layer Acceptance
 
@@ -458,6 +457,26 @@ required fresh bidirectional delivery after DERP closed. One side reporting a
 direct address did not establish that both directions were direct. IPv4 TCP
 still supplied bootstrap, so this is not an IPv6-only or physical ISP check.
 These controls add no demonstrated direct-reachability advantage for Magicsock.
+
+The actual Native `mediaedge.Engine` Host/Viewer now runs through the same kernel
+gateways, including local playback and the unchanged TypeScript survey predictor.
+Three Linux race repetitions received ten distinct RTP packets containing the
+generated VP8 frame, excluding padding/duplicates. With no gateway service,
+mapping enabled did not hold ordinary media behind discovery: delivery took
+about 0.8 seconds. Either usable IP family also carried media. Sequential-port
+NAT failed without prediction and delivered through a predicted candidate when
+enabled; random-port NAT remained unreachable in the bounded checks. A real
+MiniUPnPd gateway made a hard/hard pair reachable when mapping was enabled.
+These are encoded-media checks, not capture, Browser decode or room admission.
+
+Tailcat's matched controls explicitly link its [optional portmapper feature](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/feature/portmapper/portmapper.go);
+clearing its disable flag alone does not register that optional feature. Gateway
+mapping then passed three race repetitions after DERP closure. The 20-second
+comparison distinguishes fresh direct SRTP from relay delivery and retains the
+same gateway filtering. Without mapping service, Tailcat's random and sequential
+pairs remained relay-only; no extra direct-reachability class over Piik was found.
+Its relay bootstrap and Piik's local playback differ, so their startup timings
+are not a first-picture benchmark. Product dependencies and routing are unchanged.
 
 The experiment's README owns commands and fixture boundaries; raw output remains
 ignored. Further product work needs a measurable network benefit and accepted
