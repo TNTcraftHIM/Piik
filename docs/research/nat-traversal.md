@@ -39,6 +39,13 @@ NAT, decoding 300 720p frames in Chrome 154, changing to 480p, recovering its
 subscription and reauthenticating after local media loss. The App captures a
 dedicated generated window; this does not reproduce a phone or carrier network.
 
+The published v1.9.2 Windows App/capture and Linux Server artifacts, verified
+against their release hashes and paired with that revision's Browser source,
+also pass this Native H264/Opus startup control: 300 decoded 720p frames, a 480p
+change, subscription recovery and retirement. This original-release control
+excludes reauthentication after lost local media, which has a separate confirmed
+repair below. It does not establish the cause of the reported phone failure.
+
 Blocking only the Viewer process's UDP preserves connected Host ingress and
 LiveKit's `downtrack bound`, but the Viewer remains connecting without RTP or
 decoded frames. Its transport fails after about 15 seconds and the controller

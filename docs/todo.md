@@ -127,7 +127,8 @@ of a reporter's cause; research owns the completed experiments and their limits.
   trace. The cited Host failure follows the operation deadline; healthy ingress
   and a bound subscription do not establish delivered frames or its cause.
   Native H264 and Browser [SFU controls behind kernel NAT](./research/nat-traversal.md#sfu-behind-server-nat)
-  pass, but do not reproduce the reporter's network. Blocking Viewer media alone
+  pass, including Native H264 on published v1.9.2, but do not reproduce the
+  reporter's network. Blocking Viewer media alone
   preserves connected endpoints and a bound track until the operation deadline;
   that log sequence does not identify a unique cause.
   Correlate transport-state diagnostics with the affected
