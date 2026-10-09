@@ -49,8 +49,10 @@ Implementation needs a concrete useful result within the product model.
   separate UI presets, numeric requests, bounded implementation capabilities and
   actual output. Numeric audio and video controls are implemented; the assessment
   owns local capture, codec, derived-output and SFU evidence. Next verify
-  Native/Browser mixed routes, 4K source/live changes and limited receivers.
-  Browser/macOS geometry and physical 4K capture remain open. Preserve safety
+  route changes, limited receivers and cross-browser/camera orientation behavior.
+  Browser display capture, Browser relay and Browser-to-Native fanout now have
+  bounded high-resolution evidence. macOS geometry and physical 4K/game capture
+  remain open. Preserve safety
   limits and framework-owned adaptation. The
   [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)
   retain explicit receive-limit enforcement and the current 320 kbps sender

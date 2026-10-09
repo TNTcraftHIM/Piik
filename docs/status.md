@@ -69,8 +69,9 @@ remain unchanged. Matched candidate App/Web/Server builds are required;
 Custom width/height controls apply combined size and frame-rate limits, admitting
 4K30. Windows and Linux output preserve source shape within the selected ceiling.
 The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
-owns local codec, derived-output, SFU and live-control evidence. Browser/macOS
-geometry, whole-route/device acceptance and additional codecs remain open.
+owns local codec, derived-output, SFU, Browser/Native fanout and live-control
+evidence. macOS geometry, cross-browser/device and route-change acceptance, and
+additional codecs remain open.
 Native Magicsock remains an isolated experiment with incomplete product
 integration and unresolved recovery cases. These proposals do not yet change
 the accepted contract or transport. A small external test is proposed before

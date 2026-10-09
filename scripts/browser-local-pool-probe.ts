@@ -6,15 +6,18 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CdpConnection, cleanupRun, createPage, evaluate, launchChrome, reservePort, waitForSample, waitForVersion } from './browser-gate-harness';
 import { createPoolShaper } from './browser-pool-shaper.mjs';
+import { parseVideoGateSize } from './media-gate-geometry';
 
 const mode = process.argv[2] || 'carrier', args = process.argv.slice(3);
 const flags = new Set(['--product', '--1080', '--h264', '--single', '--av', '--late', '--background',
     '--native-source', '--lifecycle', '--network', '--auto', '--relay', '--debug', '--short-pulse', '--display', '--quiet-start']);
 if (!['ordinary', 'carrier'].includes(mode)) throw Error('Expected ordinary|carrier');
-for (const arg of args) if (!flags.has(arg) && !arg.startsWith('--rate=') && !arg.startsWith('--preference=') && !arg.startsWith('--audio-bitrate='))
+for (const arg of args) if (!flags.has(arg) && !arg.startsWith('--rate=') && !arg.startsWith('--preference=') && !arg.startsWith('--audio-bitrate=') && !arg.startsWith('--size='))
     throw Error('Unsupported option: ' + arg);
 const codec = args.includes('--h264') ? 'H264' : 'VP8', network = args.includes('--network');
 const automatic = args.includes('--auto'), high = args.includes('--1080'), av = args.includes('--av');
+const sizeArgument = args.find(arg => arg.startsWith('--size='));
+const size = sizeArgument ? parseVideoGateSize(sizeArgument.slice('--size='.length)) : undefined;
 const single = args.includes('--single'), late = args.includes('--late'), background = args.includes('--background');
 const displaySource = args.includes('--display');
 const quietStart = args.includes('--quiet-start');
@@ -24,7 +27,7 @@ const shortPulse = args.includes('--short-pulse');
 const rate = Number(args.find(arg => arg.startsWith('--rate='))?.split('=')[1] || 120000);
 const audioBitrate = Number(args.find(arg => arg.startsWith('--audio-bitrate='))?.split('=')[1] || 128000);
 if (!Number.isInteger(audioBitrate) || audioBitrate < 6000 || audioBitrate > 320000) throw Error('Audio bitrate must be 6000..320000 bps');
-const preference = args.find(arg => arg.startsWith('--preference='))?.split('=')[1] || (high ? 'maintain-resolution' : 'balanced');
+const preference = args.find(arg => arg.startsWith('--preference='))?.split('=')[1] || (high || size ? 'maintain-resolution' : 'balanced');
 if (!['balanced', 'maintain-resolution', 'maintain-framerate'].includes(preference)) throw Error('Unsupported degradation preference');
 if (!Number.isInteger(rate) || rate <= 0) throw Error('Rate must be a positive integer in bps');
 if (lifecycle && (nativeSource || network || relay)) throw Error('Lifecycle uses direct canvas/display capture without network shaping');
@@ -76,7 +79,7 @@ const port = (server.address() as { port: number }).port, debugPort = await rese
 const profile = await mkdtemp(join(tmpdir(), 'piik-client-media-'));
 const chrome = await launchChrome(process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', debugPort, profile,
     ['--headless=new', '--no-first-run', '--autoplay-policy=no-user-gesture-required',
-        ...(displaySource ? ['--window-size=1920,1200', '--force-device-scale-factor=1',
+        ...(displaySource ? [`--window-size=${size?.width ?? 1920},${size?.height ?? 1200}`, '--force-device-scale-factor=1',
             '--auto-accept-this-tab-capture', '--auto-select-tab-capture-source-by-title=Browser local pool'] : []),
         ...(background ? [] : ['--disable-background-timer-throttling', '--disable-renderer-backgrounding']),
         ...(nativeSource ? ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] : [])]);
@@ -88,6 +91,9 @@ try {
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 5000);
     page = await createPage(cdp, 'about:blank');
     const query = new URLSearchParams({ mode, codec, rate: String(rate), preference, audioBitrate: String(audioBitrate) });
+    if (size) {
+        query.set('width', String(size.width)); query.set('height', String(size.height));
+    }
     if (process.argv.includes('--debug')) query.set('debug', '1');
     for (const [key, value] of Object.entries({ network, automatic, high, av, single, late, background, nativeSource, displaySource, quietStart, lifecycle, relay, shortPulse }))
         query.set(key, value ? '1' : '0');

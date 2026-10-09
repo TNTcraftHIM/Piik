@@ -1,7 +1,7 @@
 // Actual HostPeer/BrowserEncodingPool comparison; synthetic source and local receivers only.
 import { BrowserEncodingPool as ProbePool } from '../src/client/media/browser-encoding-pool';
 import { HostPeer as ProbeHostPeer } from '../src/client/webrtc/host-peer';
-import { applyVideoCaptureProfile as probeApplyProfile } from '../src/client/media/quality';
+import { applyVideoCaptureProfile as probeApplyProfile, QUALITY_RESOLUTIONS } from '../src/client/media/quality';
 import { browserDebugEnabled, exportBrowserDebug } from '../src/client/lib/debug';
 
 const settings = new URLSearchParams(location.search);
@@ -15,8 +15,9 @@ const relay = settings.get('relay') === '1';
 const shortPulse = settings.get('shortPulse') === '1';
 const displaySource = settings.get('displaySource') === '1';
 const quietStart = settings.get('quietStart') === '1';
-const selectedProfile = () => ({ resolution: high ? '1080p' : '480p', maxFramerate: 30,
-    maxBitrate: high ? 5000000 : 1700000,
+const customSize = settings.has('width') ? { width: Number(settings.get('width')), height: Number(settings.get('height')) } : null;
+const selectedProfile = () => ({ resolution: customSize ?? QUALITY_RESOLUTIONS[high ? '1080p' : '480p'], maxFramerate: 30,
+    maxBitrate: customSize ? 12000000 : high ? 5000000 : 1700000,
     degradationPreference: settings.get('preference') || (high ? 'maintain-resolution' : 'balanced'),
     maxAudioBitrate: Number(settings.get('audioBitrate') || 128000) });
 const productPool = mode === 'carrier' ? new ProbePool() : null;
@@ -46,6 +47,8 @@ const poolState = () => productPool ? {
         ready: g.ready, failed: g.failed, output: g.output }))
 } : null;
 window.probeProgress = () => ({ phase, sourceFrame, errors, pool: poolState(),
+    sourceSize: { width: rawSource?.getSettings().width, height: rawSource?.getSettings().height },
+    captured: sourceFrames.slice(-3), decoded: monitors.map(m => ({ role: m.role, last: m.samples.at(-1) })),
     peers: peers.map(p => ({ connection: p.connectionState, ice: p.iceConnectionState })),
     audio: audioMonitors.map(m => ({ role: m.role, attached: m.attached, pulses: m.pulses.length })) });
 
@@ -231,10 +234,10 @@ async function run() {
         audioTrack = destination.stream.getAudioTracks()[0]; tracks.push(audioTrack);
     }
     const source = document.createElement('canvas');
-    source.width = high ? 1920 : 640; source.height = high ? 1080 : 360;
+    source.width = customSize?.width ?? (high ? 1920 : 640); source.height = customSize?.height ?? (high ? 1080 : 360);
     if (!nativeSource) document.body.prepend(source);
     const ctx = source.getContext('2d');
-    if (high) ctx.scale(3, 3);
+    ctx.scale(source.width / 640, source.height / 360);
     if (displaySource) {
         document.body.style.margin = '0';
         source.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;z-index:10';
@@ -294,8 +297,10 @@ async function run() {
         let activated = null;
         for (;;) {
             const members = [...productPool.members];
+            // Compatible allocations share an owner; distinct BWE budgets must
+            // remain independent even when this synthetic scene encodes cheaply.
             const sharing = members.length === productPeers.length && members.every(m => m.current && m.carrier && !m.replacement) &&
-                new Set(members.map(m => m.current)).size === 1;
+                new Set(members.map(m => m.current)).size === new Set(members.map(m => m.budget)).size;
             if (sharing) activated ??= performance.now();
             else activated = null;
             if (activated !== null && monitors.every(m => {
@@ -335,16 +340,16 @@ async function run() {
             phase = name; await wait(duration); snapshots.push(await snapshot());
             if (name.startsWith('quiet-') || name.startsWith('paused-')) return;
             for (const monitor of monitors) {
-                const last = monitor.samples.at(-1), ceiling = { '480p': 480, '720p': 720, '1080p': 1080 }[appliedProfile.resolution];
+                const last = monitor.samples.at(-1), ceiling = appliedProfile.resolution;
                 if (last?.phase !== name || (!displaySource && (last.age === null || last.age >= 1000)) ||
-                    performance.now() - last.at >= 1000 || last.height > ceiling)
+                    performance.now() - last.at >= 1000 || last.width > ceiling.width || last.height > ceiling.height)
                     throw Error(name + ': receiver did not deliver current frames within the requested ceiling');
             }
         };
-        const p60 = { ...selectedProfile(), resolution: '720p', maxFramerate: 60, maxBitrate: 5000000 };
+        const p60 = { ...selectedProfile(), resolution: QUALITY_RESOLUTIONS['720p'], maxFramerate: 60, maxBitrate: 5000000 };
         phase = 'profile-720p60'; await apply(p60); await observe(phase);
         producing = false; phase = 'quiet-profile-480p30';
-        await apply({ ...p60, resolution: '480p', maxFramerate: 30, maxBitrate: 3000000 });
+        await apply({ ...p60, resolution: QUALITY_RESOLUTIONS['480p'], maxFramerate: 30, maxBitrate: 3000000 });
         await observe(phase, 2500);
         producing = true; await observe('resumed-480p30');
         rawSource.enabled = false; productPeers.forEach(peer => peer.setPaused(true));

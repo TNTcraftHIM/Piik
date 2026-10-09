@@ -677,9 +677,16 @@ npx tsx scripts/browser-local-pool-probe.ts carrier --1080 --background
 npx tsx scripts/browser-local-pool-probe.ts carrier --display --quiet-start --1080 --h264 --av --lifecycle
 npx tsx scripts/browser-local-pool-probe.ts ordinary --display --quiet-start --1080 --av --lifecycle
 npx tsx scripts/browser-local-pool-probe.ts carrier --display --1080 --h264 --av --network --auto --rate=400000 --preference=balanced
+npx tsx scripts/browser-local-pool-probe.ts carrier --display --size=3840x2160 --h264 --single --lifecycle
+npx tsx scripts/browser-local-pool-probe.ts carrier --size=2160x3840 --h264 --relay --late
 ```
 
 Add `--h264`, `--single` or `--late` for the corresponding case. Set
+`--size=WIDTHxHEIGHT` for a numeric source/quality ceiling within current 30 fps
+capture bounds; this also requests that window size for real tab capture.
+Chrome's content area and capture toolbar can make the actual surface smaller.
+The pool check expects one output owner per compatible allocation, not one
+owner for children with different bandwidth budgets. Set
 `--network --auto --short-pulse` for a 45-second warmup, one-second constraint
 and 40-second recovery instead of the ordinary 14-second constraint. Set
 `CHROME_PATH` for another installed Chromium binary. `--auto` extends the

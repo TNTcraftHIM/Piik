@@ -608,9 +608,18 @@ profile, audio-only edits with retained connections, subscription/page recovery
 and retirement. Windows native checks and Linux headless build/checks pass;
 macOS SDK and physical 4K capture are not verified here. Controls now use the
 combined limits, reject oversized pixel totals and cap frame rate on size changes.
-Whole-route and cross-device acceptance remain open. These checks do not
-establish 4K60, sustained device performance or
-universal portrait decoding support.
+
+Chrome 154 real portrait/landscape tab capture retained the source aspect through
+the pooled output. The landscape check also passed live/quiet/paused profile
+changes, source replacement and ordinary recovery after producer failure.
+A synthetic 2160x3840 Browser relay delivered fresh pictures to two children,
+including a late connection. Separate 3840x2160 and 2160x3840 Browser-to-Native
+fanout checks delivered about 30 fps to both Viewers and passed live reduction,
+pause/resume, source-audio changes and App-exit recovery. Reproduce with
+`PIIK_CLIENT_BROWSER_FANOUT_GATE=true`, `PIIK_CLIENT_GATE_VIDEO_SIZE=WIDTHxHEIGHT`
+and `CHROME_PATH` set, then run `npm run gate:app-browser-fanout`.
+These local checks do not establish 4K60, physical 4K/game
+capture, sustained device performance, all Browser decoders or all route changes.
 
 The proposed boundary follows the
 [Media Capture specification](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface):
