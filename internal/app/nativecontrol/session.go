@@ -57,7 +57,7 @@ type Session struct {
 }
 
 type outboundMediaSession interface {
-	SetAnswer(string, webrtc.SessionDescription) error
+	SetAnswer(string, webrtc.SessionDescription, string) error
 	AddCandidate(string, *webrtc.ICECandidateInit) error
 	CloseEdge(string)
 }
@@ -355,7 +355,8 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		var request edgeAnswerRequest
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
-			!validIdentities(request.ShareID, request.ConnectionID) {
+			!validIdentities(request.ShareID, request.ConnectionID) ||
+			(request.OfferID != "" && !identityPattern.MatchString(request.OfferID)) {
 			return nil, protocolViolation("native edge-answer request is invalid")
 		}
 		if !validSDP(request.SDP) {
@@ -368,6 +369,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := media.SetAnswer(
 			request.ConnectionID,
 			webrtc.SessionDescription{Type: webrtc.SDPTypeAnswer, SDP: request.SDP},
+			request.OfferID,
 		); err != nil {
 			return nil, err
 		}
@@ -696,12 +698,13 @@ func (session *Session) prepareLocalEdge(
 	var offer webrtc.SessionDescription
 	var err error
 	if host := session.current(request.ShareID); host != nil && request.SourceConnectionID == "" {
-		offer, err = host.PrepareLocalEdge(request.ConnectionID)
+		offer, err = host.PrepareLocalEdge(request.ConnectionID, envelope.ID, request.Restart)
 	} else if viewer := session.currentViewer(request.ShareID); viewer != nil &&
 		identityPattern.MatchString(request.SourceConnectionID) {
 		offer, err = viewer.PrepareLocalEdge(
 			request.SourceConnectionID,
 			request.ConnectionID,
+			envelope.ID, request.Restart,
 		)
 	} else {
 		return nil, errors.New("native media source does not exist")

@@ -117,7 +117,7 @@ func (publication *Publication) CreateOffer() (webrtc.SessionDescription, error)
 	return publication.signaling.CreateOffer()
 }
 func (publication *Publication) SetAnswer(answer webrtc.SessionDescription) error {
-	return publication.signaling.SetAnswer(answer)
+	return publication.signaling.SetAnswer(answer, "")
 }
 func (publication *Publication) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
 	return publication.signaling.AddRemoteCandidate(candidate)

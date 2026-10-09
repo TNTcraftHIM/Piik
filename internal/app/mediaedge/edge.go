@@ -1,12 +1,14 @@
 package mediaedge
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
@@ -51,6 +53,7 @@ type Edge struct {
 	qualityMu            sync.Mutex
 	qualityBaseline      qualityBaseline
 	answerMu             sync.Mutex
+	localOfferID         string
 	localCandidates      *localCandidateGathering
 }
 
@@ -143,15 +146,14 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (_ *Edge, err
 			return nil, err
 		}
 	}
-	edge.localCandidates = newLocalCandidateGathering(
-		socket,
-		options.ICEServers,
-		prepareMapping,
-		options.Events.LocalCandidate,
-	)
-	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		edge.localCandidates.addPion(candidate)
-	})
+	if !options.Local {
+		edge.localCandidates = newLocalCandidateGathering(
+			socket, options.ICEServers, prepareMapping, options.Events.LocalCandidate,
+		)
+		connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+			edge.localCandidates.addPion(candidate)
+		})
+	}
 	connection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
 		log.Debug("piik-client", "event", "media-ice-state", "direction", "outbound", "local", options.Local, "state", state.String())
 	})
@@ -226,6 +228,9 @@ func (edge *Edge) SetTargetLayer(layer int) error {
 }
 
 func (edge *Edge) CreateOffer() (webrtc.SessionDescription, error) {
+	if edge.local {
+		return webrtc.SessionDescription{}, errors.New("local media requires an identified offer")
+	}
 	offer, err := edge.connection.CreateOffer(nil)
 	if err != nil {
 		return webrtc.SessionDescription{}, err
@@ -237,9 +242,54 @@ func (edge *Edge) CreateOffer() (webrtc.SessionDescription, error) {
 	return offer, nil
 }
 
-func (edge *Edge) SetAnswer(answer webrtc.SessionDescription) error {
+// Local bridges have no STUN or gateway discovery. Complete SDP keeps their
+// candidates and answer in one bounded negotiation, including ICE restarts.
+func (edge *Edge) CreateLocalOffer(ctx context.Context, offerID string, restart bool) (webrtc.SessionDescription, error) {
 	edge.answerMu.Lock()
 	defer edge.answerMu.Unlock()
+	edge.mu.Lock()
+	available := edge.local && !edge.closed && offerID != "" && offerID != edge.localOfferID &&
+		((!restart && edge.localOfferID == "") || (restart && edge.remoteDescriptionSet))
+	edge.mu.Unlock()
+	if !available {
+		return webrtc.SessionDescription{}, errors.New("local media negotiation is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+	offer, err := edge.connection.CreateOffer(&webrtc.OfferOptions{ICERestart: restart})
+	if err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+	gathered := webrtc.GatheringCompletePromise(edge.connection)
+	if err = edge.connection.SetLocalDescription(offer); err != nil {
+		return webrtc.SessionDescription{}, err
+	}
+	edge.localOfferID = offerID
+	edge.mu.Lock()
+	edge.remoteDescriptionSet = false
+	edge.mu.Unlock()
+	select {
+	case <-gathered:
+		if description := edge.connection.LocalDescription(); description != nil {
+			return *description, nil
+		}
+		return webrtc.SessionDescription{}, io.ErrClosedPipe
+	case <-ctx.Done():
+		return webrtc.SessionDescription{}, ctx.Err()
+	case <-edge.socket.ctx.Done():
+		return webrtc.SessionDescription{}, io.ErrClosedPipe
+	}
+}
+
+func (edge *Edge) SetAnswer(answer webrtc.SessionDescription, offerID string) error {
+	edge.answerMu.Lock()
+	defer edge.answerMu.Unlock()
+	if (edge.local && (offerID == "" || offerID != edge.localOfferID)) || (!edge.local && offerID != "") {
+		return errors.New("native media answer does not match its offer")
+	}
 	if answer.Type != webrtc.SDPTypeAnswer {
 		return errors.New("native media edge requires an SDP answer")
 	}
@@ -249,9 +299,8 @@ func (edge *Edge) SetAnswer(answer webrtc.SessionDescription) error {
 		return errors.New("native media edge is closed")
 	}
 	if edge.remoteDescriptionSet {
-		// The connection identity fences the answer to one edge. A repeated
-		// answer is a retransmission; the first applied description remains
-		// authoritative.
+		// A repeated answer within the same connection/offer is a
+		// retransmission; its first applied description remains authoritative.
 		edge.mu.Unlock()
 		return nil
 	}
@@ -280,6 +329,9 @@ func (edge *Edge) SetAnswer(answer webrtc.SessionDescription) error {
 }
 
 func (edge *Edge) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
+	if edge.local {
+		return errors.New("local media candidates belong in the SDP answer")
+	}
 	if malformedRemoteCandidate(candidate) {
 		slog.Debug("media-candidate-rejected", "connectionId", diagnostics.ID(edge.connectionID), "stage", "malformed")
 		return nil

@@ -501,12 +501,14 @@ export class NativeClient {
     shareId: string,
     connectionId: string,
     sourceConnectionId?: string,
-  ): Promise<RTCSessionDescriptionInit> {
+    restart = false,
+  ): Promise<RTCSessionDescriptionInit & { offerId: string }> {
     const response = await this.request(
       "prepare-local-edge",
       {
         shareId,
         connectionId,
+        restart,
         ...(sourceConnectionId ? { sourceConnectionId } : {}),
       },
       edgeOfferResponseSchema,
@@ -517,7 +519,7 @@ export class NativeClient {
     ) {
       throw new Error("Native local edge identity changed");
     }
-    return { type: "offer", sdp: response.sdp };
+    return { type: "offer", sdp: response.sdp, offerId: response.id };
   }
 
   async receiveOffer(
@@ -591,13 +593,14 @@ export class NativeClient {
     shareId: string,
     connectionId: string,
     payload: SignalPayload,
+    offerId?: string,
   ): Promise<void> {
     if (payload.connectionId !== connectionId) return;
     if (payload.kind === "description") {
       if (payload.description.type !== "answer") return;
       await this.request(
         "edge-answer",
-        { shareId, connectionId, sdp: payload.description.sdp },
+        { shareId, connectionId, sdp: payload.description.sdp, ...(offerId ? { offerId } : {}) },
         nativeAckResponseSchema,
       );
       return;

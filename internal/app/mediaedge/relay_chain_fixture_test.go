@@ -138,7 +138,7 @@ func TestRelayChainEncodedFixture(t *testing.T) {
 		check(createErr)
 		relays = append(relays, receiver)
 		waitSignal(t, webrtc.GatheringCompletePromise(receiver.connection), "chain answer gathering")
-		check(edge.SetAnswer(*receiver.connection.LocalDescription()))
+		check(edge.SetAnswer(*receiver.connection.LocalDescription(), ""))
 		waitConnected(t, edge.connection, "chain upstream")
 		waitConnected(t, receiver.connection, "chain native receiver")
 		check(receiver.Source().SetRelayProfile(nativecapture.VideoProfile{

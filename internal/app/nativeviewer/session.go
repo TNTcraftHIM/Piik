@@ -203,9 +203,20 @@ func (session *Session) AddReceiverCandidate(
 
 func (session *Session) PrepareLocalEdge(
 	sourceConnectionID string,
-	connectionID string,
+	connectionID, offerID string,
+	restart bool,
 ) (webrtc.SessionDescription, error) {
-	return session.prepareEdge(sourceConnectionID, connectionID, nil, true)
+	if restart {
+		session.mu.Lock()
+		current := session.edges[connectionID]
+		available := !session.closed && current.edge != nil && current.sourceConnectionID == sourceConnectionID
+		session.mu.Unlock()
+		if !available {
+			return webrtc.SessionDescription{}, errors.New("native local Viewer edge does not exist")
+		}
+		return current.edge.CreateLocalOffer(session.ctx, offerID, true)
+	}
+	return session.prepareEdge(sourceConnectionID, connectionID, nil, offerID)
 }
 
 func (session *Session) PrepareEdge(
@@ -213,15 +224,16 @@ func (session *Session) PrepareEdge(
 	connectionID string,
 	iceServers []webrtc.ICEServer,
 ) (webrtc.SessionDescription, error) {
-	return session.prepareEdge(sourceConnectionID, connectionID, iceServers, false)
+	return session.prepareEdge(sourceConnectionID, connectionID, iceServers, "")
 }
 
 func (session *Session) prepareEdge(
 	sourceConnectionID string,
 	connectionID string,
 	iceServers []webrtc.ICEServer,
-	local bool,
+	localOfferID string,
 ) (webrtc.SessionDescription, error) {
+	local := localOfferID != ""
 	receiver := session.receiver(sourceConnectionID)
 	if receiver == nil {
 		return webrtc.SessionDescription{}, errors.New("native Viewer source does not exist")
@@ -279,7 +291,12 @@ func (session *Session) prepareEdge(
 		edge: edge, sourceConnectionID: sourceConnectionID,
 	}
 	session.mu.Unlock()
-	offer, err := edge.CreateOffer()
+	var offer webrtc.SessionDescription
+	if local {
+		offer, err = edge.CreateLocalOffer(session.ctx, localOfferID, false)
+	} else {
+		offer, err = edge.CreateOffer()
+	}
 	if err != nil {
 		session.CloseEdge(connectionID)
 		return webrtc.SessionDescription{}, err
@@ -287,12 +304,12 @@ func (session *Session) prepareEdge(
 	return offer, nil
 }
 
-func (session *Session) SetAnswer(connectionID string, answer webrtc.SessionDescription) error {
+func (session *Session) SetAnswer(connectionID string, answer webrtc.SessionDescription, offerID string) error {
 	edge := session.edge(connectionID)
 	if edge == nil {
 		return errors.New("native Viewer edge does not exist")
 	}
-	return edge.SetAnswer(answer)
+	return edge.SetAnswer(answer, offerID)
 }
 
 func (session *Session) AddCandidate(connectionID string, candidate *webrtc.ICECandidateInit) error {

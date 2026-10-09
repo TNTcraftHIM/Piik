@@ -689,12 +689,13 @@ Firefox 155 fails that connection; the same Firefox fixture decodes with the
 current wildcard bind and a non-loopback selected pair. Mozilla also keeps
 [ICE loopback disabled by default](https://searchfox.org/firefox-main/source/modules/libpref/init/all.js).
 These controls establish a compatibility limit, not its complete Browser cause
-or public-Site permission behavior. Keep the current address policy. The Host
-currently ends sharing when its required local bridge fails; the Viewer delegates
-that failure to its existing bounded connection-replacement owner.
+or public-Site permission behavior. Keep the current address policy. A terminal
+local-bridge failure ends the Host share or delegates Viewer recovery to its
+existing connection owner.
 
-Complete App UI controls on 2026-10-10 confirm this distinction in a disposable
-Linux network namespace, with automatic topology optimization disabled and no
+Before local-bridge recovery, complete App UI controls on 2026-10-10 confirmed
+this distinction in a disposable Linux network namespace, with automatic
+topology optimization disabled and no
 product source changes. Chromium 152 retains its loopback playback connection
 when the namespace's LAN address changes. Firefox 151 selects that LAN address:
 the Viewer resumes decoded pictures through the existing Browser fallback after
@@ -704,11 +705,9 @@ connection; the Chromium Host control continues. The Host source is generated
 VP8 delivered through the real capture-process interface, not physical capture.
 Acceptance checks fresh rendered frames at the end, not accumulated frames from
 before the interruption. All controls retire their App, Browsers and interfaces.
-These are ordinary-transport controls of the current App, not integrated
-Magicsock or physical roaming evidence. A faster remote tunnel alone cannot
-establish complete App handoff; local playback composition remains an adoption
-boundary. Retain the existing failure owners and address policy until a bounded
-alternative passes both Browser and Host/Viewer controls.
+These are ordinary-transport controls, not integrated Magicsock or physical
+roaming evidence. A faster remote tunnel alone cannot establish complete App
+handoff; both the network and Browser playback legs must recover.
 
 The local restart control exposed a separate address-cache defect: Pion ICE
 v4.4.0's [wildcard UDP mux](https://github.com/pion/ice/blob/v4.4.0/udp_mux.go)
@@ -721,10 +720,26 @@ The isolated regression covers restart and a new connection; restoring the
 former constructor fails on the stale candidate. Firefox also resumes fresh
 rendered frames on the same track after a standard ICE restart, including from
 the failed state, while a separately bound loopback sibling keeps receiving.
-That browser control uses complete SDP through a lab-only restart entry point.
-It establishes the underlying repair, not product local-bridge recovery: the
-App's current local bridge still negotiates only once, and its existing failure
-owners remain unchanged.
+Replacing only the Native PeerConnection while retaining the Browser connection
+instead reported connected without fresh decoded pictures in the same fixture;
+it is not the accepted recovery mechanism.
+
+The 2.0 candidate now uses the existing bridge owner for one standard ICE restart
+after a three-second disconnect grace, or immediately after failure. Initial and
+restart negotiations use complete local SDP with the request ID fencing the answer;
+there is no separate local trickle queue. The negotiation has an eight-second
+deadline, including a five-second Native gathering bound. Retirement cancels it;
+failure retains the existing Host/Viewer terminal owners. Paused sources need not
+produce new frames to prove a transport connection.
+
+Matched complete App controls retain the same Firefox Host and Viewer media track
+through the namespace address change. The Host keeps sharing and decoding, its
+downstream Viewer keeps rendering, and the Native Viewer resumes fresh rendered
+frames without replacing its route or falling back to Browser reception.
+Chromium Host/Viewer controls retain their working loopback leg without a restart.
+These controls use ordinary Pion and generated media. They close the reproduced local
+bridge gap, not the remaining Magicsock composition, physical roaming or platform
+acceptance boundaries.
 
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof

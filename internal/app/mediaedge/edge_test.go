@@ -467,7 +467,7 @@ func TestRepeatedAnswerIsIdempotent(t *testing.T) {
 	if answer == nil {
 		t.Fatal("receiver did not retain its answer")
 	}
-	if err = edge.SetAnswer(*answer); err != nil {
+	if err = edge.SetAnswer(*answer, ""); err != nil {
 		t.Fatalf("repeated answer was not idempotent: %v", err)
 	}
 }
@@ -741,7 +741,7 @@ func TestAudioSourceDeliversOpusOnTheVideoPeerConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	answer.SDP = strings.ReplaceAll(answer.SDP, "maxaveragebitrate=510000", "maxaveragebitrate=192000")
-	if err = limited.SetAnswer(answer); err == nil {
+	if err = limited.SetAnswer(answer, ""); err == nil {
 		t.Fatal("shared audio accepted an insufficient receiver limit")
 	}
 	if limited.connection.RemoteDescription() != nil {
@@ -822,7 +822,7 @@ func connectEdgeToReceiver(
 		t.Fatal(err)
 	}
 	waitSignal(t, gatherAnswer, "answer ICE gathering")
-	if err = edge.SetAnswer(*receiver.LocalDescription()); err != nil {
+	if err = edge.SetAnswer(*receiver.LocalDescription(), ""); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)

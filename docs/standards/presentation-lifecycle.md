@@ -235,7 +235,13 @@ recovery state still requires a fresh current frame to clear. SFU media is
 retained independently of transient room-signaling loss, but Browser or OS
 suspension and page reclamation remain outside Web guarantees.
 
-Failure of the local Native media bridge disables Native reception for the
+The local Native media bridge owns bounded ICE recovery on its existing
+connection and stream. Its offer identity fences each answer; retirement cancels
+pending negotiation and cannot recreate a source or receiver. Connection recovery
+does not assert fresh media, and an intentionally paused source is not a failure.
+First-frame and playback owners retain their existing evidence requirements.
+
+Terminal failure of the local Native media bridge disables Native reception for the
 current Viewer session before route recovery runs. Future peers in that session
 use Browser reception; existing healthy peers are not torn down by this choice.
 Parent-network failure alone is not evidence that the local Native capability

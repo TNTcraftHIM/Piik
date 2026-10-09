@@ -125,6 +125,7 @@ type prepareLocalEdgeRequest struct {
 	ShareID            string `json:"shareId"`
 	ConnectionID       string `json:"connectionId"`
 	SourceConnectionID string `json:"sourceConnectionId,omitempty"`
+	Restart            bool   `json:"restart"`
 }
 
 type receiveOfferRequest struct {
@@ -170,6 +171,7 @@ type edgeAnswerRequest struct {
 	ShareID      string `json:"shareId"`
 	ConnectionID string `json:"connectionId"`
 	SDP          string `json:"sdp"`
+	OfferID      string `json:"offerId,omitempty"`
 }
 
 type edgeCandidateRequest struct {

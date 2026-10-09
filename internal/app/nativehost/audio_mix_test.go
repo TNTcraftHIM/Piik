@@ -171,7 +171,7 @@ func TestAudioExclusionFailureMutesOnlySourceAndNeverFallsBack(t *testing.T) {
 
 func TestSameVideoSourceAudioChangesPreserveCaptureAndConnections(t *testing.T) {
 	session, options, _ := startMixedFixture(t)
-	if _, err := session.PrepareLocalEdge("audio_change"); err != nil {
+	if _, err := session.PrepareLocalEdge("audio_change", "local_offer_1", false); err != nil {
 		t.Fatal(err)
 	}
 	video, source, output, edge := session.stream, session.source, session.audioSource, session.edge("audio_change")
@@ -210,7 +210,7 @@ func TestNativeMicrophonePreservesMediaOwnersAcrossInputChanges(t *testing.T) {
 	if !session.HasAudio() || session.SourceAudio() == nil || *session.SourceAudio() {
 		t.Fatal("silent mixed output was not reserved independently of source")
 	}
-	_, err := session.PrepareLocalEdge("mixed_edge")
+	_, err := session.PrepareLocalEdge("mixed_edge", "local_offer_1", false)
 	check(err)
 	edge, source := session.edge("mixed_edge"), session.audioSource
 	enabled, gain := true, 1.0

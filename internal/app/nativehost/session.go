@@ -235,19 +235,27 @@ func (session *Session) PrepareEdge(
 	connectionID string,
 	iceServers []webrtc.ICEServer,
 ) (webrtc.SessionDescription, error) {
-	return session.prepareEdge(connectionID, iceServers, false)
+	return session.prepareEdge(connectionID, iceServers, "")
 }
 
 func (session *Session) PrepareLocalEdge(
-	connectionID string,
+	connectionID, offerID string,
+	restart bool,
 ) (webrtc.SessionDescription, error) {
-	return session.prepareEdge(connectionID, nil, true)
+	if restart {
+		edge := session.edge(connectionID)
+		if edge == nil {
+			return webrtc.SessionDescription{}, errors.New("native local media edge does not exist")
+		}
+		return edge.CreateLocalOffer(session.ctx, offerID, true)
+	}
+	return session.prepareEdge(connectionID, nil, offerID)
 }
 
 func (session *Session) prepareEdge(
 	connectionID string,
 	iceServers []webrtc.ICEServer,
-	local bool,
+	localOfferID string,
 ) (webrtc.SessionDescription, error) {
 	session.mu.Lock()
 	if session.closed || session.edges[connectionID] != nil {
@@ -259,7 +267,7 @@ func (session *Session) prepareEdge(
 		ConnectionID: connectionID,
 		ICEServers:   iceServers,
 		Audio:        session.audioSource,
-		Local:        local,
+		Local:        localOfferID != "",
 		Events: mediaedge.EdgeEvents{
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
 				session.emit(Event{
@@ -296,7 +304,12 @@ func (session *Session) prepareEdge(
 	}
 	session.edges[connectionID] = edge
 	session.mu.Unlock()
-	offer, err := edge.CreateOffer()
+	var offer webrtc.SessionDescription
+	if localOfferID != "" {
+		offer, err = edge.CreateLocalOffer(session.ctx, localOfferID, false)
+	} else {
+		offer, err = edge.CreateOffer()
+	}
 	if err != nil {
 		session.CloseEdge(connectionID)
 		return webrtc.SessionDescription{}, err
@@ -304,12 +317,12 @@ func (session *Session) prepareEdge(
 	return offer, nil
 }
 
-func (session *Session) SetAnswer(connectionID string, answer webrtc.SessionDescription) error {
+func (session *Session) SetAnswer(connectionID string, answer webrtc.SessionDescription, offerID string) error {
 	edge := session.edge(connectionID)
 	if edge == nil {
 		return errors.New("native media edge does not exist")
 	}
-	return edge.SetAnswer(answer)
+	return edge.SetAnswer(answer, offerID)
 }
 
 func (session *Session) AddCandidate(
@@ -709,7 +722,8 @@ func (session *Session) run() {
 	}()
 	if session.mixer != nil {
 		go func() { session.mixer.run(); close(audioDone) }()
-	} else if session.audioStream == nil {
+	} else if session.audioSource == nil {
+		// The session's output shape is fixed; source inputs can change concurrently.
 		close(audioDone)
 	} else {
 		go func() {

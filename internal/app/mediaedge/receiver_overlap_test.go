@@ -51,7 +51,7 @@ func TestNativeReceiverOverlapKeepsCurrentMedia(t *testing.T) {
 				}
 				t.Cleanup(func() { _ = receiver.Close() })
 				waitSignal(t, webrtc.GatheringCompletePromise(receiver.connection), "Native answer")
-				if err = edge.SetAnswer(*receiver.connection.LocalDescription()); err != nil {
+				if err = edge.SetAnswer(*receiver.connection.LocalDescription(), ""); err != nil {
 					t.Fatal(err)
 				}
 				waitConnected(t, edge.connection, id)

@@ -47,7 +47,7 @@ func TestOfferReuseKeepsSourceAndChildOwnership(t *testing.T) {
 				t.Fatal("incompatible source retained its old edge")
 			}
 			receiver := session.receiver("upstream")
-			if _, err = session.PrepareLocalEdge("upstream", "local-playback"); err != nil {
+			if _, err = session.PrepareLocalEdge("upstream", "local-playback", "local_offer_1", false); err != nil {
 				t.Fatal(err)
 			}
 			child := session.edge("local-playback")

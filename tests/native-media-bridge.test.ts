@@ -38,7 +38,8 @@ class FakeMediaStream {
 class FakePeerConnection extends EventTarget {
   connectionState: RTCPeerConnectionState = "new";
   iceConnectionState: RTCIceConnectionState = "new";
-  iceGatheringState: RTCIceGatheringState = "new";
+  iceGatheringState: RTCIceGatheringState = "complete";
+  localDescription: RTCSessionDescriptionInit | null = null;
   readonly getReceivers = vi.fn<() => RTCRtpReceiver[]>(() => []);
   readonly getSenders = vi.fn<() => RTCRtpSender[]>(() => []);
   readonly getStats = vi.fn(async () => new Map());
@@ -48,7 +49,9 @@ class FakePeerConnection extends EventTarget {
     type: "answer" as const,
     sdp: "v=0\r\n",
   }));
-  readonly setLocalDescription = vi.fn(async (): Promise<void> => undefined);
+  readonly setLocalDescription = vi.fn(async (description: RTCSessionDescriptionInit): Promise<void> => {
+    this.localDescription = description;
+  });
   readonly close = vi.fn(() => {
     this.connectionState = "closed";
   });
@@ -78,20 +81,11 @@ function fixture(options: {
   });
   const prepareLocalEdge = vi.fn<
     NativeMediaBridgeControl["prepareLocalEdge"]
-  >(async (_shareId, connectionId) => {
-      listener?.({
-        version: 10,
-        type: "edge-candidate",
-        shareId: "share_123456",
-        connectionId,
-        candidate: {
-          candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host",
-        },
-      });
+  >(async () => {
       if (options.hangPreparation) {
-        return await new Promise<RTCSessionDescriptionInit>(() => undefined);
+        return await new Promise<RTCSessionDescriptionInit & { offerId: string }>(() => undefined);
       }
-      return { type: "offer", sdp: "v=0\r\n" };
+      return { type: "offer", sdp: "v=0\r\n", offerId: "local_offer_1" };
     });
   const control: NativeMediaBridgeControl = {
     prepareLocalEdge,
@@ -130,6 +124,82 @@ afterEach(() => {
 });
 
 describe("native media bridge", () => {
+  it("recovers one retained transport after a disconnect grace, including a quiet source", async () => {
+    vi.useFakeTimers();
+    const current = fixture();
+    const starting = current.bridge.start(true);
+    const video = { kind: "video", stop: vi.fn() } as unknown as MediaStreamTrack;
+    const audio = { kind: "audio", stop: vi.fn() } as unknown as MediaStreamTrack;
+    current.peer().emitTrack(video);
+    current.peer().emitTrack(audio);
+    current.peer().setState("connected");
+    await starting;
+
+    current.peer().setState("disconnected");
+    await vi.advanceTimersByTimeAsync(2_000);
+    current.peer().setState("connected");
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(current.control.prepareLocalEdge).toHaveBeenCalledTimes(1);
+
+    vi.mocked(current.control.prepareLocalEdge).mockResolvedValueOnce({
+      type: "offer", sdp: "v=0\r\n", offerId: "local_offer_2",
+    });
+    current.peer().setState("disconnected");
+    await vi.advanceTimersByTimeAsync(3_000);
+    current.emit({ version: 10, type: "edge-state", shareId: "share_123456",
+      connectionId: current.bridge.connectionId, state: "failed" });
+    expect(current.control.prepareLocalEdge).toHaveBeenLastCalledWith(
+      "share_123456", current.bridge.connectionId, undefined, true,
+    );
+    expect(current.control.prepareLocalEdge).toHaveBeenCalledTimes(2);
+    expect(current.control.acceptSignal).toHaveBeenLastCalledWith(
+      "share_123456", current.bridge.connectionId, expect.objectContaining({ kind: "description" }), "local_offer_2",
+    );
+    current.peer().setState("connected");
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(current.bridge.stream.getTracks()).toEqual([video, audio]);
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(audio.stop).not.toHaveBeenCalled();
+    expect(current.peer().close).not.toHaveBeenCalled();
+    expect(current.onFailed).not.toHaveBeenCalled();
+    current.bridge.dispose();
+  });
+
+  it("bounds a failed restart and ignores its late offer after disposal", async () => {
+    vi.useFakeTimers();
+    const current = fixture();
+    const starting = current.bridge.start();
+    current.peer().emitTrack({ kind: "video", stop: vi.fn() } as unknown as MediaStreamTrack);
+    current.peer().setState("connected");
+    await starting;
+    let finish!: (offer: RTCSessionDescriptionInit & { offerId: string }) => void;
+    vi.mocked(current.control.prepareLocalEdge).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    current.peer().setState("failed");
+    current.peer().setState("failed");
+    expect(current.control.prepareLocalEdge).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(8_000);
+    finish({ type: "offer", sdp: "v=0\r\n", offerId: "late_offer" });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(current.onFailed).toHaveBeenCalledOnce();
+    expect(current.peer().setRemoteDescription).toHaveBeenCalledOnce();
+    expect(current.control.acceptSignal).toHaveBeenCalledOnce();
+    expect(current.control.closeEdge).toHaveBeenCalledOnce();
+  });
+
+  it("gathers the answer before signaling and cancels gathering on disposal", async () => {
+    const current = fixture();
+    current.peer().iceGatheringState = "gathering";
+    const starting = current.bridge.start();
+    const rejected = expect(starting).rejects.toBeInstanceOf(NativeMediaBridgeError);
+    await vi.waitFor(() => expect(current.peer().setLocalDescription).toHaveBeenCalledOnce());
+    expect(current.control.acceptSignal).not.toHaveBeenCalled();
+    current.bridge.dispose();
+    current.peer().iceGatheringState = "complete";
+    current.peer().dispatchEvent(new Event("icegatheringstatechange"));
+    await rejected;
+    expect(current.control.acceptSignal).not.toHaveBeenCalled();
+  });
+
   it("advertises the same Opus receive range on local preview as remote viewers", async () => {
     const current = fixture();
     current.peer().createAnswer.mockResolvedValueOnce({ type: "answer", sdp:
@@ -143,7 +213,7 @@ describe("native media bridge", () => {
         kind: "description", description: expect.objectContaining({
           sdp: expect.stringContaining("stereo=1;maxaveragebitrate=510000"),
         }),
-      }),
+      }), "local_offer_1",
     ));
     expect(current.peer().setLocalDescription).toHaveBeenCalledWith(expect.objectContaining({
       sdp: expect.stringContaining("stereo=1;maxaveragebitrate=510000"),
@@ -195,107 +265,6 @@ describe("native media bridge", () => {
     expect(current.peer().close).toHaveBeenCalledOnce();
     expect(current.control.closeEdge).toHaveBeenCalledOnce();
     expect(current.onFailed).not.toHaveBeenCalled();
-  });
-
-  it.each(["candidate-signal", "candidate-apply"])("preserves the active %s failure and retires once", async (stage) => {
-    const current = fixture();
-    const starting = current.bridge.start();
-    await vi.waitFor(() => expect(current.peer().setLocalDescription).toHaveBeenCalledOnce());
-    current.peer().emitTrack({ kind: "video", stop: vi.fn() } as unknown as MediaStreamTrack);
-    current.peer().setState("connected");
-    await starting;
-    const cause = new DOMException("Connection is unavailable", "InvalidStateError");
-    if (stage === "candidate-signal") {
-      vi.mocked(current.control.acceptSignal).mockRejectedValueOnce(cause);
-      current.peer().dispatchEvent(Object.assign(new Event("icecandidate"), { candidate: null }));
-    } else {
-      current.peer().addIceCandidate.mockRejectedValueOnce(cause);
-      current.emit({ version: 10, type: "edge-candidate", shareId: "share_123456",
-        connectionId: current.bridge.connectionId, candidate: null });
-    }
-    await vi.waitFor(() => expect(current.onFailed).toHaveBeenCalledOnce());
-    expect(debugError).toHaveBeenCalledWith("native-bridge", "failed", cause, { type: stage, state: "active" });
-    expect(current.peer().close).toHaveBeenCalledOnce();
-    expect(current.control.closeEdge).toHaveBeenCalledOnce();
-  });
-
-  it.each(["queued", "active"])("keeps media alive after a %s candidate is rejected", async (phase) => {
-    const current = fixture();
-    const peer = current.peer();
-    if (phase === "queued") {
-      peer.addIceCandidate.mockRejectedValueOnce(new DOMException("Rejected candidate", "OperationError"));
-    }
-    const starting = current.bridge.start();
-    // Register a rejection observer before allowing negotiation to run.
-    const result = starting.catch((error: unknown) => error);
-    if (phase === "queued") {
-      current.emit({
-        version: 10, type: "edge-candidate", shareId: "share_123456",
-        connectionId: current.bridge.connectionId,
-        candidate: { candidate: "candidate:2 1 udp 1 127.0.0.1 10 typ host" },
-      });
-    }
-    await vi.waitFor(() => expect(peer.setLocalDescription).toHaveBeenCalledOnce());
-    const track = { kind: "video", stop: vi.fn() } as unknown as MediaStreamTrack;
-    peer.emitTrack(track);
-    peer.setState("connected");
-    await expect(result).resolves.toBe(current.bridge.stream);
-    if (phase === "active") {
-      peer.addIceCandidate.mockRejectedValueOnce(new DOMException("Rejected candidate", "OperationError"));
-      current.emit({
-        version: 10, type: "edge-candidate", shareId: "share_123456",
-        connectionId: current.bridge.connectionId,
-        candidate: { candidate: "candidate:2 1 udp 1 127.0.0.1 10 typ host" },
-      });
-    }
-    current.emit({
-      version: 10, type: "edge-candidate", shareId: "share_123456",
-      connectionId: current.bridge.connectionId, candidate: null,
-    });
-    await vi.waitFor(() => expect(debugError).toHaveBeenCalledWith(
-      "webrtc", "remote-candidate-rejected", expect.any(DOMException), { origin: "ordinary" },
-    ));
-    expect(peer.addIceCandidate).toHaveBeenCalledWith(null);
-    expect(peer.close).not.toHaveBeenCalled();
-    expect(track.stop).not.toHaveBeenCalled();
-    expect(current.onFailed).not.toHaveBeenCalled();
-    current.bridge.dispose();
-  });
-
-  it("still rejects invalid negotiation state when applying a candidate", async () => {
-    const current = fixture();
-    current.peer().addIceCandidate.mockRejectedValueOnce(new DOMException("No description", "InvalidStateError"));
-    await expect(current.bridge.start()).rejects.toBeInstanceOf(NativeMediaBridgeError);
-    expect(current.peer().close).toHaveBeenCalledOnce();
-    expect(current.control.closeEdge).toHaveBeenCalledOnce();
-  });
-
-  it("orders an early native candidate after the remote offer", async () => {
-    const current = fixture();
-    const starting = current.bridge.start();
-    await vi.waitFor(() => {
-      expect(current.peer().setLocalDescription).toHaveBeenCalledOnce();
-    });
-    const track = {
-      kind: "video",
-      stop: vi.fn(),
-    } as unknown as MediaStreamTrack;
-    current.peer().emitTrack(track);
-    current.peer().setState("connected");
-
-    await expect(starting).resolves.toBe(current.bridge.stream);
-    expect(current.peer().addIceCandidate).toHaveBeenCalledWith(
-      expect.objectContaining({ candidate: expect.stringContaining("127.0.0.1") }),
-    );
-    expect(current.control.acceptSignal).toHaveBeenCalledWith(
-      "share_123456",
-      current.bridge.connectionId,
-      expect.objectContaining({ kind: "description" }),
-    );
-    current.bridge.dispose();
-    expect(current.peer().close).toHaveBeenCalledOnce();
-    expect(track.stop).toHaveBeenCalledOnce();
-    expect(current.control.closeEdge).toHaveBeenCalledOnce();
   });
 
   it("releases a local edge when preparation exceeds the total deadline", async () => {
@@ -389,7 +358,7 @@ describe("native media bridge", () => {
     );
   });
 
-  it("reports an active native failure once and retires its edge", async () => {
+  it("retires an actively closed native edge once", async () => {
     const current = fixture();
     const starting = current.bridge.start();
     await vi.waitFor(() => {
@@ -407,14 +376,14 @@ describe("native media bridge", () => {
       type: "edge-state",
       shareId: "share_123456",
       connectionId: current.bridge.connectionId,
-      state: "failed",
+      state: "closed",
     });
     current.emit({
       version: 10,
       type: "edge-state",
       shareId: "share_123456",
       connectionId: current.bridge.connectionId,
-      state: "failed",
+      state: "closed",
     });
 
     expect(current.onFailed).toHaveBeenCalledOnce();
@@ -445,7 +414,7 @@ describe("native media bridge", () => {
     if (stage === "prepare") {
       vi.mocked(current.control.prepareLocalEdge).mockImplementationOnce(async () => {
         await pending;
-        return { type: "offer", sdp: "v=0\r\n" };
+        return { type: "offer", sdp: "v=0\r\n", offerId: "local_offer_1" };
       });
     } else {
       current.peer().setLocalDescription.mockImplementationOnce(() => pending);

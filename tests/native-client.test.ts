@@ -39,6 +39,47 @@ describe("native App private wire", () => {
     expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoMacroblocksPerSecond: -1 } }).success).toBe(false);
   });
 
+  it("binds a local answer to its prepare request across an ICE restart", async () => {
+    const requests: Record<string, unknown>[] = [];
+    class Socket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = Socket.OPEN;
+      protocol = `piik-client-v10.${health.instanceToken}`;
+      constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
+      close() { this.readyState = Socket.CLOSING; }
+      send(payload: string) {
+        const request = JSON.parse(payload) as Record<string, unknown>;
+        requests.push(request);
+        const fields = request.type === "hello" ? { type: "ready" }
+          : request.type === "prepare-local-edge" ? {
+            type: "edge-offer", shareId: request.shareId, connectionId: request.connectionId, sdp: "v=0\r\n",
+          } : { type: "edge-answer-accepted" };
+        queueMicrotask(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({ version: 10, id: request.id, ...fields }),
+        })));
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
+    const client = (await NativeClient.connect())!;
+    try {
+      let lastOffer = "";
+      for (const restart of [false, true]) {
+        const offer = await client.prepareLocalEdge("share_123456", "local_123456", "source_123456", restart);
+        expect(offer.offerId).toBe(requests.at(-1)?.id);
+        expect(offer.offerId).not.toBe(lastOffer);
+        expect(requests.at(-1)).toMatchObject({ type: "prepare-local-edge", restart, sourceConnectionId: "source_123456" });
+        await client.acceptSignal("share_123456", "local_123456", {
+          kind: "description", connectionId: "local_123456", description: { type: "answer", sdp: "v=0\r\n" },
+        }, offer.offerId);
+        expect(requests.at(-1)).toMatchObject({ type: "edge-answer", offerId: offer.offerId });
+        lastOffer = offer.offerId;
+      }
+    } finally { client.close(); }
+  });
+
   it.each(["prompt", "denied"] as const)("does not hold Viewer reception for %s permission and observes a later grant", async (state) => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
     const query = vi.fn().mockResolvedValue({ state });
