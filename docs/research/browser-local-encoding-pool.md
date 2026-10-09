@@ -101,6 +101,15 @@ around fallback was 271 ms for H264 and 80 ms for VP8. Source-wide fallback
 therefore has a measurable handoff cost, even without a resolution drop or
 connection failure. This does not establish low-end hardware capacity.
 
+An unmatched negotiated codec is instead connection-local. A Chrome 154
+late-Viewer control reproduced all members losing pooling when only the new
+Viewer advertised different codec parameters. Scoped fallback now preserves
+the first Viewer's producer and delivers fresh pictures to both Viewers in
+VP8 1080p and H264 4K controls. Unit counterfactuals cover admission and active
+codec changes; producer failure retains its existing source-wide fallback.
+These controls establish membership isolation, not enforcement of physical
+decoder limits or the cause of field quality fluctuations.
+
 ### Local Connection Failure Control
 
 On 2026-10-08, Windows headless Chrome 154 ran the actual `HostPeer` and pool

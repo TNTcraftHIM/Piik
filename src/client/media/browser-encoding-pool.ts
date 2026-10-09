@@ -158,16 +158,16 @@ export class BrowserEncodingPool {
           if (!report) { member.budget = undefined; return; }
           const codec = negotiatedCodec(report);
           if (!codec) {
-            if (member.current || member.pending) this.failSource(member.source);
+            if (member.current || member.pending) this.fallback(member);
             else {
               const outbound = videoOutbound(report);
-              if (outbound?.codecId && report.get(outbound.codecId)) this.failSource(member.source);
+              if (outbound?.codecId && report.get(outbound.codecId)) this.fallback(member);
             }
             return;
           }
           const key = codecIdentity(codec);
           if (member.codecKey && member.codecKey !== key && (member.current || member.pending)) {
-            this.failSource(member.source); return;
+            this.fallback(member); return;
           }
           member.codec = codec; member.codecKey = key;
           member.raw = videoOutbound(report);
@@ -375,14 +375,19 @@ export class BrowserEncodingPool {
       .finally(() => { member.replacement = undefined; this.prune(); });
   }
 
+  // Negotiated compatibility belongs to one connection. Its ordinary sender
+  // remains available without retiring a healthy sibling's shared producer.
+  private fallback(member: Member): void {
+    if (member.disabled || member.disposed) return;
+    member.disabled = true;
+    if (member.replacement) void member.replacement.then(() => this.restore(member));
+    else this.restore(member);
+  }
+
   private failSource(source: MediaStreamTrack): void {
     if (this.failedSources.has(source)) return;
     this.failedSources.add(source);
-    for (const member of this.members) if (member.source === source) {
-      member.disabled = true;
-      if (member.replacement) void member.replacement.then(() => this.restore(member));
-      else this.restore(member);
-    }
+    for (const member of this.members) if (member.source === source) this.fallback(member);
   }
 
   private updatePauses(): void {

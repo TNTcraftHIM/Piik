@@ -12,15 +12,15 @@ const producers = new Map<BrowserEncodingProducer, {
 }>();
 let pool: BrowserEncodingPool;
 
-function stats(row: Record<string, unknown>): RTCStatsReport {
+function stats(row: Record<string, unknown>, negotiated: RTCRtpCodec = codec): RTCStatsReport {
   return new Map([
     ["video", { id: "video", timestamp: Date.now(), type: "outbound-rtp", kind: "video", codecId: "codec", ...row }],
-    ["codec", { id: "codec", timestamp: Date.now(), type: "codec", ...codec }],
+    ["codec", { id: "codec", timestamp: Date.now(), type: "codec", ...negotiated }],
   ]) as unknown as RTCStatsReport;
 }
 
 function member(budget = 2_000_000) {
-  const demand = { budget };
+  const demand = { budget, codec: { ...codec } as RTCRtpCodec };
   let producerId: string | null = null;
   const select = vi.fn((id: string, _requestKey: () => Promise<void>, selected: () => void,
     accept: (metadata: RTCEncodedVideoFrameMetadata) => boolean) => {
@@ -31,14 +31,14 @@ function member(budget = 2_000_000) {
   });
   const cancelSelection = vi.fn(() => true);
   const encoded = {
-    select, cancelSelection, push: vi.fn(), passthrough: vi.fn(), setPaused: vi.fn(),
+    select, cancelSelection, push: vi.fn(), passthrough: vi.fn(() => { producerId = null; }), setPaused: vi.fn(),
     snapshot: () => ({ frames: producerId ? 30 : 0, width: 1920, height: 1080, timestamp: Date.now(), lastProducerId: producerId }),
   } as unknown as BrowserEncodingOutput;
-  const connection = { connectionState: "connected", getStats: async () => stats({ targetBitrate: demand.budget }) };
+  const connection = { connectionState: "connected", getStats: async () => stats({ targetBitrate: demand.budget }, demand.codec) };
   const fatal = vi.fn();
   const handle = pool.create(source, {} as RTCRtpSender, connection as RTCPeerConnection, profile,
     encoded, async () => true, async () => undefined, fatal)!;
-  return { demand, select, cancelSelection, fatal, handle, producerId: () => producerId };
+  return { demand, select, cancelSelection, fatal, handle, encoded, producerId: () => producerId };
 }
 
 async function sample(count = 1) {
@@ -86,6 +86,30 @@ afterEach(() => {
 });
 
 describe("Browser encoding pool ownership", () => {
+  it.each(["joining", "active", "changed"])("isolates codec fallback for a %s member from healthy siblings", async (state) => {
+    const healthy = member();
+    let limited = state === "joining" ? null : member();
+    await sample(4);
+    const producer = [...producers.keys()][0]!;
+    limited ??= member();
+    if (state === "changed") {
+      limited.demand.codec = { mimeType: "video/H264", clockRate: 90_000,
+        sdpFmtpLine: "packetization-mode=1;profile-level-id=42e01f" };
+      vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [codec, limited!.demand.codec] }) });
+    } else limited.demand.codec = { ...codec, sdpFmtpLine: "max-fr=15;max-fs=1200" };
+    await sample(3);
+
+    expect(limited.encoded.passthrough).toHaveBeenCalledTimes(1);
+    expect(limited.fatal).not.toHaveBeenCalled();
+    expect(healthy.producerId()).toBe(producer.id);
+    expect(healthy.encoded.passthrough).not.toHaveBeenCalled();
+    expect(producer.dispose).not.toHaveBeenCalled();
+    const later = member();
+    expect(later.handle).not.toBeNull();
+    await sample(3);
+    expect(later.producerId()).toBe(producer.id);
+  });
+
   it("pauses a shared producer only when all of its members pause", async () => {
     const first = member(), second = member();
     await sample(4);

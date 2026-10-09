@@ -273,7 +273,9 @@ bitrate still follows the Host ceiling; ordinary fallback restores its picture
 sender limits. Preparation and applied-budget completion re-evaluate pending
 membership immediately; accepting a recovery frame still commits the handoff.
 The first eligible consumer follows the same path; unsupported APIs or failed
-pooling use ordinary senders. Prepared ordinary quality candidates, Native
+pooling use ordinary senders. Negotiated codec incompatibility retires only
+that connection's pool membership; healthy siblings keep their producers.
+Prepared ordinary quality candidates, Native
 ingress and Browser SFU remain independent compositions.
 
 Each ordinary Browser PeerConnection owns stock WebRTC congestion control and

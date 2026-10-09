@@ -646,6 +646,15 @@ general constraint solver or second recovery owner. Numeric limits describe
 ceilings, not a promise of a constant rate or resolution. A receiver's limits
 constrain its edge or existing local output group, not every Viewer in the room.
 
+Receiver-limit acceptance cannot rely on SDP matching alone. Chrome 154
+advertised H.264 Level 3.1 while decoding the 4K controls above. In isolated
+ordinary-sender checks, lowering the answer to Level 1.2, or adding VP8
+`max-fs=1200;max-fr=15`, did not reduce the received picture size. This is not
+evidence for a physical low-capability decoder. [RFC 6184's receive-level
+rules](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.2.2) and actual
+framework behavior therefore need separate validation before promising
+automatic compatibility with smaller future capability sets.
+
 Codec support must distinguish encoding, decoding and encoded forwarding,
 including profile/packetization and SFU admission. Reuse SDP codec matching;
 describe only Native control and forwarding limits that it cannot express,
