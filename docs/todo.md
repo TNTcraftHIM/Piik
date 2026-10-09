@@ -83,6 +83,8 @@ Implementation needs a concrete useful result within the product model.
   exhaust before the underlay recovers; research distinguishes eventual recovery
   from exhaustion by sender behavior. No new product setting or flow owner is
   accepted.
+  Resolve admission-before-answer ordering at the assigned-connection owner;
+  research owns the Native control retirement checks and their pre-granted scope.
   Keep isolated dependency patches and
   recovery counterfactuals outside product routing; a diagnostic reply is not
   media-readiness authority. Research owns the experiments and their limits.

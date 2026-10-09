@@ -773,6 +773,15 @@ HTTP replaces Native control only in this fixture; App authorization, room routi
 and prolonged-outage replacement are not exercised. No product timeout, address
 policy or inner Binding setting changes for these handoff checks.
 
+A separate Linux race check now passes those experimental flows through real
+Native control commands and the Viewer session's existing receiver owner.
+Closing a receiver releases its physical flow; replacement and a healthy sibling
+keep receiving fresh RTP after DERP closes, including after late cleanup for the
+old connection ID. Stopping reception or closing the control session releases
+both remaining flows. Omitting receiver retirement in the test overlay is
+detected. Keys are still pre-granted locally: this establishes resource cleanup,
+not room authorization, automatic App recovery or Browser decoding in this check.
+
 The earlier FFmpeg matrix had one decoded-content failure. Matched synthetic
 bitstream/RTP replay identifies a receiver-fixture mismatch: its separate SDK
 assembler emits a truncated startup frame and can resume dependent frames after
@@ -863,6 +872,17 @@ runs. Combined media and TWCC checks pass on Windows and Linux; the Linux kernel
 NAT, dual-stack, rebinding and weak-network controls also pass. Supported dependency
 contracts and demonstrated network benefit remain open. The probe retains the
 isolated patches; Piik's production transport is unchanged.
+
+Admission ordering is also an integration constraint. Upstream
+[`Client.DialUDPPort`](https://github.com/tailscale/tailcat/blob/52fbad323e9d352f1febb623e0975368e9a8cbdd/tailcat.go)
+waits for the server to admit the client's key before returning a socket.
+Piik creates the receiver and its socket before returning a media answer.
+Authorizing that key only after receiving the answer would therefore introduce
+a circular wait. Existing fixtures pre-grant keys and do not test this exchange.
+A product design must resolve that ordering within the existing assigned
+connection's authority; accepting arbitrary keys or passing room credentials
+into Native control is not an equivalent shortcut. This is a source-traced
+integration constraint, not a defect in Piik's current transport.
 
 ## Native Mapping Cache And Retry Lifetimes
 
