@@ -607,6 +607,22 @@ retained-flow/64-check nine-/eleven-second, permanent-loss and retirement cases.
 These checks do not define room-grant integration or establish full App
 interoperability or any additional direct-reachability benefit.
 
+A preface-free alternative uses Tailcat's existing
+[UDP listener](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/listen.go)
+to reserve the address before SDP, allowing ICE to supply the first authenticated
+datagram. Each replacement owns a fresh flow; no old mux survives it. An
+unaccepted write returns a socket error instead of blocking ICE's event loop.
+In the combined dependency candidate, 64-check nine-/eleven-second controls
+each pass two Linux race repetitions under the actual Viewer owner. Setup takes
+12–15 ms; fresh media returns at about 14.2 seconds from blackout onset, within
+the unchanged two-request and initial-connection budgets. Permanent loss still
+exhausts recovery, and retirement closes pending work. Local race controls cover
+mutable deadlines, closing during ICE, peer rejection and continuous sibling
+audio/video. Default inner checks still fail in the matched outage controls.
+This removes the fixture-preface and retained-flow lifetime requirements; it
+does not accept a product Binding limit, implement room grants or establish
+full App/decoded-media acceptance of this alternative.
+
 Separate checks preserve continuous sibling audio/video through a local ICE
 restart, failed-flow retirement, both callers' pending cancellation/deadline,
 revocation during a Server probe and unknown-peer rejection. Canceling a probe
