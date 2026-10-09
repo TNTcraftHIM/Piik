@@ -35,7 +35,7 @@ var (
 
 // Enumerations mirrored from src/shared/protocol.ts.
 var (
-	qualityResolutions           = []string{"480p", "720p", "1080p", "1440p"}
+	qualityResolutions           = []string{"480p", "720p", "1080p", "1440p", "2160p"}
 	degradationPreferences       = []string{"maintain-resolution", "balanced", "maintain-framerate"}
 	screenAudioQualities         = []string{"saver", "music", "very-high"}
 	mediaRoutePhases             = []string{"prepare", "active"}
@@ -136,7 +136,7 @@ func (v *QualitySettings) UnmarshalJSON(data []byte) error {
 	if !inRangeInt(v.MaxFramerate, 15, 60) {
 		return errors.New("maxFramerate is out of range")
 	}
-	if !inRangeInt(v.MaxBitrate, 2_000_000, 12_000_000) {
+	if !inRangeInt(v.MaxBitrate, 2_000_000, 40_000_000) {
 		return errors.New("maxBitrate is out of range")
 	}
 	if !enumOf(v.DegradationPreference, degradationPreferences...) {

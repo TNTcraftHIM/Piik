@@ -34,6 +34,17 @@ type Encoder struct {
 	Identity string `json:"identity"`
 }
 
+// advertisedVideoBound accepts an absent advertisement (an older helper that
+// states no bound) or a pair inside the App's own frame contract. A helper must
+// never advertise more than the App can parse.
+func advertisedVideoBound(width, height uint32) bool {
+	if width == 0 && height == 0 {
+		return true
+	}
+	return width >= 2 && width <= MaxVideoWidth && width%2 == 0 &&
+		height >= 2 && height <= MaxVideoHeight && height%2 == 0
+}
+
 type Adapter struct {
 	Index        uint32    `json:"index"`
 	Name         string    `json:"name"`
@@ -47,6 +58,8 @@ type Capabilities struct {
 	PlatformBuild         string    `json:"platformBuild"`
 	VideoCapture          bool      `json:"videoCapture"`
 	CaptureBorderControl  bool      `json:"captureBorderControl,omitempty"`
+	MaxVideoWidth         uint32    `json:"maxVideoWidth,omitempty"`
+	MaxVideoHeight        uint32    `json:"maxVideoHeight,omitempty"`
 	Microphone            bool      `json:"microphone,omitempty"`
 	ProcessAudio          bool      `json:"processAudio"`
 	ProcessAudioExclusion bool      `json:"processAudioExclusion,omitempty"`
@@ -58,6 +71,8 @@ type Capabilities struct {
 type Summary struct {
 	Video                 bool
 	CaptureBorderControl  bool
+	MaxVideoWidth         uint32
+	MaxVideoHeight        uint32
 	Microphone            bool
 	ProcessAudio          bool
 	ProcessAudioExclusion bool
@@ -70,6 +85,8 @@ func (capabilities Capabilities) Summary() Summary {
 	summary := Summary{
 		Video:                 capabilities.VideoCapture,
 		CaptureBorderControl:  capabilities.VideoCapture && capabilities.CaptureBorderControl,
+		MaxVideoWidth:         capabilities.MaxVideoWidth,
+		MaxVideoHeight:        capabilities.MaxVideoHeight,
 		Microphone:            capabilities.Microphone,
 		ProcessAudio:          capabilities.ProcessAudio,
 		ProcessAudioExclusion: capabilities.ProcessAudioExclusion && capabilities.Microphone,
@@ -164,6 +181,9 @@ func decodeProbe(payload []byte) (Capabilities, error) {
 		len(capabilities.PlatformBuild) > maxIdentityBytes ||
 		len(capabilities.Adapters) > maxAdapters {
 		return Capabilities{}, errors.New("native capture probe returned an invalid contract")
+	}
+	if !advertisedVideoBound(capabilities.MaxVideoWidth, capabilities.MaxVideoHeight) {
+		return Capabilities{}, errors.New("native capture probe returned an invalid video bound")
 	}
 	adapterIndexes := make(map[uint32]struct{}, len(capabilities.Adapters))
 	for _, adapter := range capabilities.Adapters {

@@ -665,6 +665,15 @@ func TestQualitySettingsMapOnceIntoNativeMedia(t *testing.T) {
 		t.Fatalf("native profile = %+v", profile)
 	}
 	settings.Resolution = "2160p"
+	settings.MaxBitrate = 40_000_000
+	if !validQualitySettings(settings) {
+		t.Fatal("2160p resolution was rejected")
+	}
+	profile = nativeQualityProfile(settings)
+	if profile.Video.Width != 3840 || profile.Video.Height != 2160 {
+		t.Fatalf("2160p native profile = %+v", profile.Video)
+	}
+	settings.Resolution = "4320p"
 	if validQualitySettings(settings) {
 		t.Fatal("unsupported resolution was accepted")
 	}

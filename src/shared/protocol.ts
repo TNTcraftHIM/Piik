@@ -176,6 +176,7 @@ export const qualityResolutionSchema = z.enum([
   "720p",
   "1080p",
   "1440p",
+  "2160p",
 ]);
 export type QualityResolution = z.infer<typeof qualityResolutionSchema>;
 
@@ -199,7 +200,7 @@ export const qualitySettingsSchema = z
   .object({
     resolution: qualityResolutionSchema,
     maxFramerate: z.number().int().min(15).max(60),
-    maxBitrate: z.number().int().min(2_000_000).max(12_000_000),
+    maxBitrate: z.number().int().min(2_000_000).max(40_000_000),
     degradationPreference: degradationPreferenceSchema,
     screenAudioQuality: screenAudioQualitySchema.optional(),
   })

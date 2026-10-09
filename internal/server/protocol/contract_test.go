@@ -223,9 +223,13 @@ func TestAuthenticatedRoomRevision(t *testing.T) {
 		object(drop(authenticatedHost(), "routeAssignment")), false)
 	assertServerMessage(t, "absent media mode",
 		object(drop(authenticatedHost(), "mediaMode")), false)
+	assertServerMessage(t, "quality settings at the bitrate ceiling",
+		object(with(authenticatedHost(), member{"qualitySettings",
+			`{"resolution":"2160p","maxFramerate":60,"maxBitrate":40000000,` +
+				`"degradationPreference":"maintain-resolution"}`})), true)
 	assertServerMessage(t, "quality settings past the bitrate ceiling",
 		object(with(authenticatedHost(), member{"qualitySettings",
-			`{"resolution":"1080p","maxFramerate":60,"maxBitrate":20000000,` +
+			`{"resolution":"1080p","maxFramerate":60,"maxBitrate":40000001,` +
 				`"degradationPreference":"maintain-resolution"}`})), false)
 }
 

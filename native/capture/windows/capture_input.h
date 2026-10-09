@@ -85,8 +85,8 @@ class InputEnvelopes final {
     } else if ((frame_.kind != 2 && frame_.kind != 4) || header_[6] > 1 ||
                frame_.duration == 0 || frame_.timestamp > static_cast<uint64_t>(INT64_MAX) / 100 ||
                frame_.duration > static_cast<uint64_t>(INT64_MAX) / 100 ||
-               frame_.width < 2 || frame_.height < 2 || frame_.width > 2560 || frame_.height > 1440 ||
-               (frame_.width & 1) || (frame_.height & 1) || payload_size_ > 4 * 1024 * 1024) {
+               frame_.width < 2 || frame_.height < 2 || frame_.width > 3840 || frame_.height > 2160 ||
+               (frame_.width & 1) || (frame_.height & 1) || payload_size_ > 8 * 1024 * 1024) {
       throw std::runtime_error("Invalid native encoded input");
     }
     frame_.data.reserve(payload_size_);

@@ -20,7 +20,7 @@ namespace {
 namespace native = piik::capture::windows;
 
 bool ValidDimensions(int width, int height) {
-  return width >= 2 && width <= 2560 && height >= 2 && height <= 1440 &&
+  return width >= 2 && width <= 3840 && height >= 2 && height <= 2160 &&
          width % 2 == 0 && height % 2 == 0;
 }
 

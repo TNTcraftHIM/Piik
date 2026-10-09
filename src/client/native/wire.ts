@@ -40,6 +40,9 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       microphone: z.boolean().default(false),
       // API availability, not Windows approval or observed border visibility.
       captureBorderControl: z.boolean().default(false),
+      // Absent on an older App that states no native capture bound.
+      maxVideoWidth: z.number().int().positive().max(8192).optional(),
+      maxVideoHeight: z.number().int().positive().max(8192).optional(),
       hardwareH264: z.boolean().default(false),
       softwareVP8: z.boolean().default(false),
     })

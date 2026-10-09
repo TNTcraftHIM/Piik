@@ -65,7 +65,8 @@ struct VideoProfile final {
     if (macroblocks <= 8'192 && macroblocks_per_second <= 245'760) return 40;
     if (macroblocks <= 8'704 && macroblocks_per_second <= 522'240) return 42;
     if (macroblocks <= 22'080 && macroblocks_per_second <= 589'824) return 50;
-    return 51;
+    if (macroblocks <= 36'864 && macroblocks_per_second <= 983'040) return 51;
+    return 52;
   }
   std::string profile_level_id() const {
     std::ostringstream output;

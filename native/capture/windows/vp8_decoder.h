@@ -32,12 +32,12 @@ class Vp8Decoder final {
   Vp8Decoder& operator=(const Vp8Decoder&) = delete;
 
   Image Decode(const std::vector<uint8_t>& data) {
-    if (data.empty() || data.size() > 4 * 1024 * 1024) throw std::runtime_error("Invalid VP8 decoder input size");
+    if (data.empty() || data.size() > 8 * 1024 * 1024) throw std::runtime_error("Invalid VP8 decoder input size");
     if (!(data[0] & 1)) {
       vpx_codec_stream_info_t info{};
       info.sz = sizeof(info);
       if (vpx_codec_peek_stream_info(vpx_codec_vp8_dx(), data.data(), static_cast<unsigned int>(data.size()), &info) != VPX_CODEC_OK ||
-          info.w < 2 || info.h < 2 || info.w > 2560 || info.h > 1440 || (info.w & 1) || (info.h & 1)) {
+          info.w < 2 || info.h < 2 || info.w > 3840 || info.h > 2160 || (info.w & 1) || (info.h & 1)) {
         throw std::runtime_error("VP8 decoder input dimensions exceed the source bound");
       }
     }
@@ -48,7 +48,7 @@ class Vp8Decoder final {
     const auto* image = vpx_codec_get_frame(&codec_, &iterator);
     if (!image) return {};
     const uint32_t width = image->d_w, height = image->d_h;
-    if (width < 2 || height < 2 || width > 2560 || height > 1440 || (width & 1) || (height & 1) ||
+    if (width < 2 || height < 2 || width > 3840 || height > 2160 || (width & 1) || (height & 1) ||
         image->fmt != VPX_IMG_FMT_I420 || image->stride[0] < static_cast<int>(width) ||
         image->stride[1] < static_cast<int>(width / 2) || image->stride[2] < static_cast<int>(width / 2)) {
       throw std::runtime_error("VP8 decoder output format is unsupported");

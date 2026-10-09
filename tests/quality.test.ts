@@ -11,6 +11,7 @@ import {
   needsStartupVideoProfile,
   QUALITY_PROFILES,
   QUALITY_RESOLUTIONS,
+  availableQualityResolutions,
   qualitySettingsEqual,
   SCREEN_AUDIO_BITRATES,
   senderParameterWarning,
@@ -69,6 +70,39 @@ describe("realtime quality controls", () => {
     expect(
       Object.values(QUALITY_PROFILES).map((profile) => profile.resolution),
     ).not.toContain("480p");
+  });
+
+  it("keeps 2160p inside the advanced resolution ceiling", () => {
+    expect(QUALITY_RESOLUTIONS["2160p"]).toEqual({
+      width: 3840,
+      height: 2160,
+      label: "2160p",
+    });
+    expect(
+      Object.values(QUALITY_PROFILES).map((profile) => profile.resolution),
+    ).not.toContain("2160p");
+  });
+
+  it("narrows advanced resolutions to the bound a connected App advertises", () => {
+    // No App, or an App that states no bound: every product resolution stays.
+    expect(availableQualityResolutions()).toEqual([
+      "480p",
+      "720p",
+      "1080p",
+      "1440p",
+      "2160p",
+    ]);
+    // A 1440p-bounded App hides only the resolutions above its bound.
+    expect(availableQualityResolutions(2560, 1440)).toEqual([
+      "480p",
+      "720p",
+      "1080p",
+      "1440p",
+    ]);
+    expect(availableQualityResolutions(3840, 2160)).toContain("2160p");
+    expect(availableQualityResolutions(1920, 1080)).not.toContain("1440p");
+    // The bound is a pair: either half narrows the list.
+    expect(availableQualityResolutions(3840, 1080)).not.toContain("1440p");
   });
 
   it("bounds initial capture to the selected profile", async () => {

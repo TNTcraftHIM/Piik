@@ -15,8 +15,8 @@ const (
 	maxMediaBytes       = encoded.MaxAccessUnitBytes
 	maxStatusBytes      = 4 * 1024
 	maxControlBytes     = 64
-	MaxVideoWidth       = 2560
-	MaxVideoHeight      = 1440
+	MaxVideoWidth       = 3840
+	MaxVideoHeight      = 2160
 )
 
 // ValidVideoSize bounds the decoded picture in the current capture contract.
