@@ -105,8 +105,8 @@ describe("realtime quality controls", () => {
 
     expect(getDisplayMedia).toHaveBeenCalledWith({
       video: {
-        width: { ideal: 1920, max: 1920 },
-        height: { ideal: 1080, max: 1080 },
+        width: { max: 1920 },
+        height: { max: 1080 },
         frameRate: { ideal: 30, max: 30 },
       },
       audio: {
@@ -123,19 +123,20 @@ describe("realtime quality controls", () => {
     expect(audioTrack.contentHint).toBe("music");
   });
 
-  it("changes custom capture ceilings without selecting the source again", async () => {
+  it("changes capture ceilings without requesting a crop or locking source orientation", async () => {
     const { stream, videoTrack } = createVideoStream();
+    videoTrack.getSettings = () => ({ width: 540, height: 960, aspectRatio: 9 / 16 });
 
     await applyCaptureProfile(stream, {
-      resolution: { width: 1920, height: 1200 },
+      resolution: { width: 1280, height: 720 },
       maxFramerate: 45,
       maxBitrate: 9_500_000,
       degradationPreference: "balanced",
     });
 
     expect(videoTrack.applyConstraints).toHaveBeenCalledWith({
-      width: { ideal: 1920, max: 1920 },
-      height: { ideal: 1200, max: 1200 },
+      width: { max: 1280 },
+      height: { max: 720 },
       frameRate: { ideal: 45, max: 45 },
     });
   });

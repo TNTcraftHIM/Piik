@@ -14,6 +14,7 @@ function setup({ permission = true, frames = true } = {}) {
   };
   const getUserMedia = vi.fn(async (options: MediaStreamConstraints) => {
     expect(options.audio).toBe(false);
+    expect(options.video).toHaveProperty("resizeMode", { exact: "none" });
     expect(tracks.filter(track => track.readyState === "live")).toHaveLength(0);
     permission = true;
     const id = (options.video as MediaTrackConstraints).deviceId as ConstrainDOMStringParameters | undefined;

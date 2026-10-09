@@ -52,6 +52,7 @@ test("camera is a bounded video source and never implicitly requests a microphon
   getUserMedia.mockResolvedValue(source);
   expect(await captureBrowserSource(QUALITY_PROFILES["1080p30"], "camera")).toBe(source);
   expect(getUserMedia).toHaveBeenCalledWith({ audio: false, video: {
+    resizeMode: { exact: "none" },
     facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 },
     frameRate: { ideal: 30, max: 30 },
   } });
@@ -187,6 +188,7 @@ test("camera selection requests one exact device without microphone permission",
   getUserMedia.mockResolvedValue(media(new Track("video")));
   await captureBrowserSource(QUALITY_PROFILES["1080p30"], "camera", "front-camera");
   expect(getUserMedia).toHaveBeenCalledWith({ audio: false, video: expect.objectContaining({ deviceId: { exact: "front-camera" } }) });
+  expect(getUserMedia.mock.calls[0][0].video).toHaveProperty("resizeMode", { exact: "none" });
   expect(getUserMedia.mock.calls[0][0].video).not.toHaveProperty("facingMode");
 });
 

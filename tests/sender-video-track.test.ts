@@ -79,7 +79,7 @@ describe("sender display-frame ownership", () => {
     expect(p.write).toHaveBeenCalledWith(frame);
     expect(frame.close).toHaveBeenCalledOnce();
     await applyVideoCaptureProfile(track, QUALITY_PROFILES["720p30"]);
-    expect(input.applyConstraints).toHaveBeenCalledWith(expect.objectContaining({ width: { ideal: 1280, max: 1280 } }));
+    expect(input.applyConstraints).toHaveBeenCalledWith(expect.objectContaining({ width: { max: 1280 } }));
     expect(input.applyConstraints).toHaveBeenLastCalledWith(expect.objectContaining({ frameRate: { min: 1, ideal: 30, max: 30 } }));
     expect((track as unknown as Track).applyConstraints).not.toHaveBeenCalled();
 

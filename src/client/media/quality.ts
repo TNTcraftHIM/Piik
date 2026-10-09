@@ -12,6 +12,7 @@ import { displayMediaOptions } from "./audio-capture";
 import { browserDebugEnabled, debugOperation } from "../lib/debug";
 import { debugTrack } from "../lib/debug-webrtc";
 import { applySenderCaptureConstraints, senderCaptureTrack } from "./sender-video-track";
+import { cameraCaptureConstraints } from "./capture-devices";
 
 export type {
   DegradationPreference,
@@ -212,8 +213,9 @@ export function qualitySettingsLabel(settings: QualitySettings): string {
 function captureConstraints(profile: QualityProfile): MediaTrackConstraints {
   const resolution = profile.resolution;
   return {
-    width: { ideal: resolution.width, max: resolution.width },
-    height: { ideal: resolution.height, max: resolution.height },
+    // A ceiling must not ask the Browser to fill both axes by cropping a source.
+    width: { max: resolution.width },
+    height: { max: resolution.height },
     frameRate: {
       ideal: profile.maxFramerate,
       max: profile.maxFramerate,
@@ -259,12 +261,8 @@ export type BrowserCaptureSource = "browser" | "camera";
 
 export async function captureBrowserSource(profile: QualityProfile, source: BrowserCaptureSource, deviceId = ""): Promise<MediaStream> {
   if (source !== "camera") return captureDisplay(profile);
-  const resolution = profile.resolution;
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
-    ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: "environment" } }),
-    width: { ideal: resolution.width }, height: { ideal: resolution.height },
-    frameRate: { ideal: profile.maxFramerate, max: profile.maxFramerate },
-  } });
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+    video: cameraCaptureConstraints(profile.resolution, profile.maxFramerate, deviceId) });
   const track = stream.getVideoTracks()[0];
   if (!track || track.readyState === "ended") {
     stream.getTracks().forEach((track) => track.stop());

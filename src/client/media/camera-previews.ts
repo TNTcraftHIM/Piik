@@ -1,4 +1,4 @@
-import { browserCameras, type CaptureDevice } from "./capture-devices";
+import { browserCameras, cameraCaptureConstraints, type CaptureDevice } from "./capture-devices";
 
 export type CameraPreview = CaptureDevice & { preview: string | null };
 
@@ -47,10 +47,8 @@ export async function loadCameraPreviews(signal: AbortSignal,
   const release = () => { owned?.getTracks().forEach(track => track.stop()); owned = null; };
   const open = async (id: string) => {
     signal.throwIfAborted();
-    owned = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
-      ...(id ? { deviceId: { exact: id } } : { facingMode: { ideal: "environment" } }),
-      width: { ideal: 320 }, height: { ideal: 180 }, frameRate: { ideal: 15, max: 15 },
-    } });
+    owned = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: cameraCaptureConstraints({ width: 320, height: 180 }, 15, id) });
     // A permission promise can settle after the picker has closed.
     if (signal.aborted) { release(); signal.throwIfAborted(); }
     return owned;

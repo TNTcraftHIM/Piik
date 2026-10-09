@@ -640,9 +640,26 @@ reduction, numeric audio updates, subscription/page recovery and retirement.
 The tab control also passed background capture, lower-layer demand, pause/resume
 and source replacement. A separate full-UI 2160x3840 control passed SFU-to-P2P
 commit and failed-P2P-to-SFU recovery through the room controller, keeping the
-old SFU picture during peer preparation. These checks use loopback and synthetic
-content; they do not establish physical 4K capture, every mixed Native/Browser
-handoff or cross-network performance.
+old SFU picture during peer preparation. The mixed Browser Host/Native Viewer
+control also passed those transitions. With clarity priority, its live
+2160x3840-to-360x640 edit retained the Native connection and playback track;
+SFU recovery retained that size and then restored 2160x3840. Firefox 155 received
+the same VP8 sizes from Chrome, retaining its track through both edits. All
+controls retired their receiving connections on stop. Balanced priority may
+deliver smaller adapted pictures. These local checks do not establish physical
+4K capture, every mixed handoff or cross-network performance.
+
+Chrome 154 camera controls exposed a separate constraint bug: lowering a
+540x960 input to the 1280x720 ceiling produced a cropped 540x720 picture when
+both axes also carried `ideal` values. Maximum-only constraints produced
+405x720, retained portrait shape through a subsequent 360x640 setting, and
+restored 540x960. Camera startup and picker requests could likewise crop to their
+ideal axes; they now share an uncropped device-format request (`resizeMode:
+{ exact: "none" }`). Portrait thumbnails then measured 180x320 instead of 320x180.
+A landscape control retained shape within rounding. Shared live constraints use
+ceilings without a fixed aspect ratio or rotation listener, following the Media
+Capture distinction below. Synthetic devices do not establish physical phone
+orientation behavior.
 
 The proposed boundary follows the
 [Media Capture specification](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface):

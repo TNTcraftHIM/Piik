@@ -18,7 +18,9 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
   latter uses one supported native codec path and never infers a target from
   a title. An ordinary Web Host does not probe localhost.
 - Camera is a peer source choice in the same picker, including on phones. Only
-  the chosen source requests permission. Browser/camera Host microphone capture
+  the chosen source requests permission. Camera input and thumbnails request
+  an uncropped device format; sender constraints own later scaling.
+  Browser/camera Host microphone capture
   is explicit and defaults to Browser voice processing, separately from screen audio.
   The Host may turn that processing off for music or virtual audio inputs;
   the input change preserves the existing mixed output and leaves the previous
@@ -81,7 +83,9 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
   not intentionally stop capture, encoding, or upload.
 - Live quality changes update the current capture and Host sender-track
   constraints plus sender ceilings without reopening source selection or
-  replacing a healthy route.
+  replacing a healthy route. Shared Browser capture constraints express size
+  ceilings, not ideal dimensions or a fixed aspect ratio: lowering a ceiling
+  must not request a crop, and source orientation remains Browser-owned.
 - Native quality changes use the same room settings. The App prepares a new
   platform capture/encoder generation, then replaces the old generation behind
   the same encoded source and PeerConnections; audio-only changes update the

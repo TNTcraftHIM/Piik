@@ -1140,8 +1140,8 @@ describe("HostPeer source replacement", () => {
       peer.updateCaptureProfile(QUALITY_PROFILES["1080p60"]),
     ).resolves.toBe(true);
     expect(senderVideo.applyConstraints).toHaveBeenLastCalledWith({
-      width: { ideal: 1920, max: 1920 },
-      height: { ideal: 1080, max: 1080 },
+      width: { max: 1920 },
+      height: { max: 1080 },
       frameRate: { ideal: 60, max: 60 },
     });
     expect(sourceVideo.applyConstraints).not.toHaveBeenCalled();
