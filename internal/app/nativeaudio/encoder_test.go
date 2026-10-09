@@ -86,7 +86,7 @@ func TestEncodePreservesAudiblePCM(t *testing.T) {
 }
 
 func TestEncodePreservesStereoSeparation(t *testing.T) {
-	for _, bitrate := range []int{64_000, 128_000, 192_000} {
+	for _, bitrate := range []int{64_000, 128_000, 192_000, 256_000, 320_000} {
 		encoder, err := NewEncoder(bitrate)
 		if err != nil {
 			t.Fatal(err)
@@ -150,13 +150,35 @@ func TestEncoderUpdatesBitrateWithinTheSameGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, bitrate := range []int{64_000, 192_000, DefaultBitrate} {
+	decoder, err := gopus.NewDecoder(gopus.DefaultDecoderConfig(SampleRate, Channels))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pcm := make([]byte, FrameBytes)
+	decoded := make([]int16, FrameSamples*Channels)
+	for _, bitrate := range []int{64_000, 192_000, 256_000, 320_000, 96_000, DefaultBitrate} {
 		if err = encoder.SetBitrate(bitrate); err != nil {
 			t.Fatalf("SetBitrate(%d) = %v", bitrate, err)
 		}
+		if encoder.Bitrate() != bitrate {
+			t.Fatalf("SetBitrate(%d) readback = %d", bitrate, encoder.Bitrate())
+		}
+		packet, err := encoder.Encode(pcm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		count, err := decoder.DecodeInt16(packet, decoded)
+		if err != nil || count != FrameSamples {
+			t.Fatalf("decode after bitrate %d: %d samples, %v", bitrate, count, err)
+		}
 	}
-	if err = encoder.SetBitrate(0); err == nil {
-		t.Fatal("invalid live bitrate was accepted")
+	for _, bitrate := range []int{0, 5_999, 510_001} {
+		if err = encoder.SetBitrate(bitrate); err == nil {
+			t.Fatalf("invalid live bitrate %d was accepted", bitrate)
+		}
+		if encoder.Bitrate() != DefaultBitrate {
+			t.Fatalf("rejected bitrate %d replaced the active setting", bitrate)
+		}
 	}
 }
 

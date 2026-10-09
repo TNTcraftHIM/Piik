@@ -400,7 +400,7 @@ export async function configureVideoSender(
 
 export async function configureScreenAudioSender(
   sender: RTCRtpSender,
-  quality?: ScreenAudioQuality,
+  requestedMaxBitrate: number,
 ): Promise<AudioSenderParameterReadback> {
   const current = sender.getParameters();
   const parameters = {
@@ -410,7 +410,6 @@ export async function configureScreenAudioSender(
   if (parameters.encodings.length === 0) {
     parameters.encodings = [{}];
   }
-  const requestedMaxBitrate = screenAudioBitrate(quality);
   parameters.encodings[0]!.maxBitrate = requestedMaxBitrate;
   await sender.setParameters(parameters);
   const appliedMaxBitrate =

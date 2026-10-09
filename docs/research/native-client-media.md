@@ -608,6 +608,9 @@ For 2.0, prototype one numeric audio-bitrate ceiling through capture, sender,
 receiver and SFU; derive existing preset labels locally. Align receive admission
 with codec support instead of the largest UI shortcut. Keep the existing default
 while comparing actual Opus output and listening results for higher ceilings.
+The [numeric audio controls](./browser-screen-audio-quality.md#numeric-bitrate-assessment)
+establish local 256/320 kbps encoding and Browser reception, with separate
+receive-limit enforcement and high-rate packet-size boundaries still to resolve.
 [LiveKit's AudioPreset](https://docs.livekit.io/reference/client-sdk-js/interfaces/AudioPreset.html)
 likewise contains a numeric maximum bitrate; its
 [high-fidelity example](https://docs.livekit.io/transport/media/advanced/#hi-fi-audio)

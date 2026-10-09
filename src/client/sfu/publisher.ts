@@ -510,7 +510,7 @@ export class SfuPublisher {
     try {
       const audio = await peer.waitForOperation(() => configureScreenAudioSender(
         audioSender,
-        profile.screenAudioQuality,
+        screenAudioBitrate(profile.screenAudioQuality),
       ));
       if (this.peer !== peer) return false;
       this.audioWarning = audioSenderParameterWarning(audio);

@@ -55,6 +55,45 @@ weak-network behavior, real-game A/V synchronization, or mobile playback.
 - Lossy Wi-Fi/cellular concealment and Opus FEC behavior with current options.
 - macOS, Android, and iOS capture/playback behavior.
 
+## Numeric Bitrate Assessment
+
+Checked 2026-10-09 for the proposed 2.0 media boundary. The current product still
+uses its published presets; these experiments do not accept a new wire format or
+raise its audio ceiling. The shared Browser sender primitive now takes a numeric
+ceiling, with current direct/SFU callers resolving their existing preset first.
+
+The existing Go Opus encoder accepted live 128/192/256/320/96/128 kbps changes
+without replacement. A 48 kHz stereo tone/noise input continued decoding into
+960 samples per channel; the existing deterministic tests also verify stereo
+separation at 256/320 kbps and rejection of invalid updates without replacing
+the last setting. This establishes encoding continuity, not audible benefit.
+
+A Chrome 152 loopback used the actual sender primitive, generated stereo audio,
+and decoded PCM measurement. The same PeerConnections remained connected while
+changing those ceilings. Received payload tracked approximately 96/128/192/256/320
+kbps, with decoded samples advancing and nonzero waveform energy. This is a
+local Browser check, not relay/SFU, mobile, impaired-network or listening acceptance.
+
+Two controls constrain the replacement design:
+
+- Chrome retained `maxaveragebitrate=192000` in the remote answer and sender
+  codec parameters, yet later `setParameters()` calls produced approximately
+  256/320 kbps. Repeating with a 510000 answer also passed. This scoped runtime
+  counterexample does not change [RFC 7587's receive-limit semantics](https://www.rfc-editor.org/rfc/rfc7587.html#section-7.1).
+  A numeric sender setting must respect the admitted receiver limit; do not
+  assume SDP presence or successful parameter readback proves enforcement.
+- With native 20 ms frames, the tone/noise check produced maximum Opus payloads
+  of 641 bytes at 256 kbps and 801 at 320 kbps. At 510 kbps, all 150 frames
+  produced RTP packets larger than a 1200-byte packetizer budget. Pinned
+  [Pion's Opus payloader](https://github.com/pion/rtp/blob/v1.10.2/codecs/opus_packet.go)
+  keeps each Opus payload intact. This is a packet-size result, not measured
+  network loss; accepting the codec's maximum requires a transport/packet-duration
+  decision. Do not equate the codec range with every route's safe operating range.
+
+The [media extension proposal](./native-client-media.md#audio-and-ui-proposal)
+owns the planned UI and contract. Complete admitted receive limits, native control,
+preference storage and live relay/SFU verification before exposing custom values.
+
 ## Primary Sources
 
 - [Screen Capture](https://www.w3.org/TR/screen-capture/)

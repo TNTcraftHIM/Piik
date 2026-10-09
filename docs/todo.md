@@ -47,10 +47,14 @@ Implementation needs a concrete useful result within the product model.
 - [ ] **Media parameters and capabilities for 2.0.** Follow the
   [media assessment](./research/native-client-media.md#media-capability-extension-assessment):
   separate UI presets, numeric requests, bounded implementation capabilities and
-  actual output. Prototype numeric audio bitrate first using
+  actual output. Complete numeric audio bitrate admission and storage first using
   [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s use case, then
   source-aspect-preserving geometry and 4K through the same owners. Preserve
-  safety limits and framework-owned adaptation. New codecs need complete
+  safety limits and framework-owned adaptation. The
+  [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)
+  require explicit receive-limit enforcement and a packet-size decision before
+  exposing higher numeric ceilings; add live relay/SFU acceptance to the local
+  encoding/Browser evidence. New codecs need complete
   encode/decode/forward support and a late-Viewer policy before inclusion;
   selecting a codec cannot transcode an existing publication. Confirm live
   changes, relay/SFU paths, older 2.x capability subsets and explicit 1.x

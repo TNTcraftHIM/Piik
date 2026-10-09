@@ -12,6 +12,7 @@ import {
   configureVideoSender,
   needsStartupVideoProfile,
   resolveScreenAudioQuality,
+  screenAudioBitrate,
   screenAudioQualityEqual,
   STARTUP_VIDEO_ENCODED_FRAMES,
   startupVideoProfile,
@@ -924,7 +925,7 @@ export class HostPeer {
         try {
           audioSenderParameters = await this.waitForOperation(() => configureScreenAudioSender(
             audioSender,
-            profile.screenAudioQuality,
+            screenAudioBitrate(profile.screenAudioQuality),
           ));
         } catch (error) {
           if (this.disposed) return false;
