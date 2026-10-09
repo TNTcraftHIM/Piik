@@ -361,7 +361,7 @@ export const zh = {
   "host.advanced.audioBitrate": "音频码率上限",
   "host.video.width": "宽度上限（像素）",
   "host.video.height": "高度上限（像素）",
-  "host.video.resolutionHint": "宽 × 高上限：{width} × {height} 像素。保留来源比例。",
+  "host.video.resolutionHint": "宽 ≤ {width}，高 ≤ {height} 像素；总像素 ≤ {pixels}。保留来源比例，帧率上限随尺寸调整。",
   "host.audio.bitrateHint": "音频码率上限：{min}–{max} kbps。",
   "host.advanced.audio.saver": "普通",
   "host.advanced.audio.music": "音乐",

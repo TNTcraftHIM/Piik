@@ -361,7 +361,7 @@ export const en: Record<CopyKey, string> = {
   "host.advanced.audioBitrate": "Audio bitrate limit",
   "host.video.width": "Width limit in pixels",
   "host.video.height": "Height limit in pixels",
-  "host.video.resolutionHint": "Width × height limits: {width} × {height} pixels. Source proportions are preserved.",
+  "host.video.resolutionHint": "Width ≤ {width} px; height ≤ {height} px; total ≤ {pixels} pixels. Source proportions are preserved; the FPS limit follows the size.",
   "host.audio.bitrateHint": "Audio bitrate limit: {min}–{max} kbps.",
   "host.advanced.audio.saver": "Standard",
   "host.advanced.audio.music": "Music",

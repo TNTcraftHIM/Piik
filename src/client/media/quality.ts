@@ -21,8 +21,40 @@ export type {
 
 export type QualityProfile = QualitySettings;
 export const STARTUP_VIDEO_ENCODED_FRAMES = 5;
-// Current product output boundary, independent of wire admission and UI shortcuts.
-export const MAX_CAPTURE_RESOLUTION = { width: 2560, height: 1440 } as const;
+export interface VideoCaptureLimits {
+  maxVideoResolution: QualityResolution;
+  maxVideoPixels: number;
+  maxVideoMacroblocksPerSecond: number;
+}
+
+// Current output boundary, independent of descriptive wire bounds and UI presets.
+// The common H.264 Level 5.1 path admits 4K30 and 1440p60 in either orientation.
+export const VIDEO_CAPTURE_LIMITS: VideoCaptureLimits = {
+  maxVideoResolution: { width: 3840, height: 3840 },
+  maxVideoPixels: 3840 * 2160,
+  maxVideoMacroblocksPerSecond: 983_040,
+};
+
+export function videoCaptureLimits(advertised?: Partial<VideoCaptureLimits>): VideoCaptureLimits {
+  const local = VIDEO_CAPTURE_LIMITS;
+  return {
+    maxVideoResolution: {
+      width: Math.min(local.maxVideoResolution.width, advertised?.maxVideoResolution?.width ?? local.maxVideoResolution.width),
+      height: Math.min(local.maxVideoResolution.height, advertised?.maxVideoResolution?.height ?? local.maxVideoResolution.height),
+    },
+    maxVideoPixels: Math.min(local.maxVideoPixels, advertised?.maxVideoPixels ?? local.maxVideoPixels),
+    maxVideoMacroblocksPerSecond: Math.min(local.maxVideoMacroblocksPerSecond,
+      advertised?.maxVideoMacroblocksPerSecond ?? local.maxVideoMacroblocksPerSecond),
+  };
+}
+
+export function captureFramerateCeiling(size: QualityResolution, limits = VIDEO_CAPTURE_LIMITS): number {
+  if (![size.width, size.height].every(value => Number.isInteger(value) && value >= 4 && value % 2 === 0)
+    || size.width > limits.maxVideoResolution.width || size.height > limits.maxVideoResolution.height
+    || size.width * size.height > limits.maxVideoPixels) return 0;
+  return Math.min(60, Math.floor(limits.maxVideoMacroblocksPerSecond /
+    (Math.ceil(size.width / 16) * Math.ceil(size.height / 16))));
+}
 
 export const QUALITY_PROFILES = {
   "720p30": {
@@ -54,6 +86,7 @@ export const QUALITY_RESOLUTIONS = {
   "720p": { width: 1280, height: 720 },
   "1080p": { width: 1920, height: 1080 },
   "1440p": { width: 2560, height: 1440 },
+  "4K": { width: 3840, height: 2160 },
 } as const satisfies Record<string, QualityResolution>;
 
 export function qualityResolutionEqual(left: QualityResolution, right: QualityResolution): boolean {

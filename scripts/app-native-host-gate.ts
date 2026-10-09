@@ -82,6 +82,7 @@ interface GateResult {
   qualityControlsEnabled: boolean;
   livePresetChanges: number;
   liveQualityChanged: boolean;
+  fourKQualityChanged: boolean;
   customQualityChanged: boolean;
   pausedQualityChanged: boolean;
   backgroundProfileRecovery: boolean | null;
@@ -633,6 +634,7 @@ async function main(): Promise<void> {
     qualityControlsEnabled: false,
     livePresetChanges: 0,
     liveQualityChanged: false,
+    fourKQualityChanged: false,
     customQualityChanged: false,
     pausedQualityChanged: false,
     backgroundProfileRecovery: mode === "local" && sourceKind === "window" ? false : null,
@@ -1019,6 +1021,29 @@ async function main(): Promise<void> {
       }
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
+      await assertVideoCodec(cdp, viewer, actualCodec);
+      stage = "native-4k-quality";
+      await clickHostControl(cdp, host, `document.querySelectorAll('button.lr-tile')[2]`);
+      await waitForValue(deadline => evaluate<boolean>(cdp!, host,
+        `document.querySelector('.lr-slider input[type="range"]')?.value === '60' &&
+          document.querySelector('.lr-sharing-panel')?.getAttribute('aria-busy') === 'false'`,
+        deadline), Boolean, 20_000);
+      const framesBefore4K = await evaluate<number>(cdp, viewer,
+        `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`, Date.now() + 5_000);
+      await evaluate<void>(cdp, host,
+        `document.querySelector('button.lr-chip[aria-label="4K"]')?.click()`, Date.now() + 5_000);
+      await waitForValue(deadline => evaluate<boolean>(cdp!, host, `(() => {
+        const fps = document.querySelector('.lr-slider input[type="range"]');
+        const width = document.querySelector('.lr-video-size input[name="width"]');
+        const height = document.querySelector('.lr-video-size input[name="height"]');
+        return fps?.max === '30' && fps.value === '30' && width?.value === '3840' && height?.value === '2160';
+      })()`, deadline), Boolean, 10_000);
+      result.fourKQualityChanged = await waitForValue(deadline => evaluate<boolean>(cdp!, viewer, `(() => {
+        const video = document.querySelector('video');
+        return Boolean(video && window.__piikGateFitsProfile(3840, 2160) &&
+          video.srcObject === window.__piikGateMedia &&
+          video.getVideoPlaybackQuality().totalVideoFrames >= ${framesBefore4K + 10});
+      })()`, deadline), Boolean, 20_000);
       await assertVideoCodec(cdp, viewer, actualCodec);
       stage = "native-custom-quality";
       const framesBeforeCustom = await evaluate<number>(cdp, viewer,
@@ -1493,7 +1518,7 @@ async function main(): Promise<void> {
           result.viewerFrames >= 30 && result.viewerWidth > 0 && result.viewerWidth <= 2560 &&
           result.viewerHeight > 0 && result.viewerHeight <= 1440 && result.codecPreserved
         : result.viewerConnected && result.viewerFrames >= 30 &&
-        result.qualityControlsEnabled && result.liveQualityChanged && result.customQualityChanged &&
+        result.qualityControlsEnabled && result.liveQualityChanged && result.fourKQualityChanged && result.customQualityChanged &&
         result.backgroundProfileRecovery !== false &&
         result.sourceWindowRecovery !== false &&
         result.livePresetChanges === 2 &&

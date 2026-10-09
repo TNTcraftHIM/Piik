@@ -128,7 +128,8 @@ import {
   matchingQualityProfileId,
   QUALITY_PROFILES,
   DEGRADATION_PREFERENCE_KEYS,
-  MAX_CAPTURE_RESOLUTION,
+  videoCaptureLimits,
+  captureFramerateCeiling,
   qualityResolutionEqual,
   qualitySettingsEqual,
   qualitySettingsLabel,
@@ -3597,11 +3598,8 @@ export function HostPage({
   const audioBitrateCeiling = Math.min(MAX_SCREEN_AUDIO_BITRATE, nativeActive
     ? nativeClientRef.current?.health.nativeMedia.maxAudioBitrate ?? MAX_SCREEN_AUDIO_BITRATE
     : MAX_SCREEN_AUDIO_BITRATE);
-  const nativeResolutionCeiling = nativeActive ? nativeClientRef.current?.health.nativeMedia.maxVideoResolution : undefined;
-  const resolutionCeiling = {
-    width: Math.min(MAX_CAPTURE_RESOLUTION.width, nativeResolutionCeiling?.width ?? MAX_CAPTURE_RESOLUTION.width),
-    height: Math.min(MAX_CAPTURE_RESOLUTION.height, nativeResolutionCeiling?.height ?? MAX_CAPTURE_RESOLUTION.height),
-  };
+  const videoLimits = videoCaptureLimits(nativeActive ? nativeClientRef.current?.health.nativeMedia : undefined);
+  const framerateCeiling = Math.max(15, captureFramerateCeiling(advancedQuality.resolution, videoLimits));
 
   return (
     <div className="lr-app">
@@ -3835,7 +3833,7 @@ export function HostPage({
           </div>
           <SharingSettings id="host-advanced-door" open={showAdvanced} busy={changingQuality}
             presets={
-              <QualityPresets selected={selectedQualityProfileId} busy={changingQuality}
+              <QualityPresets selected={selectedQualityProfileId} limits={videoLimits} busy={changingQuality}
                 disabled={phase === "starting" || switchingSource}
                 onSelect={id => void changeQuality({ ...QUALITY_PROFILES[id],
                   maxAudioBitrate: screenAudioBitrate(advancedQualityRef.current.maxAudioBitrate),
@@ -3849,9 +3847,11 @@ export function HostPage({
                   <Glyph name="expand" size={19} />
                   <Cap k="host.advanced.resolution" />
                 </span>
-                <ResolutionControl value={advancedQuality.resolution} maximum={resolutionCeiling}
+                <ResolutionControl value={advancedQuality.resolution} limits={videoLimits}
                   disabled={phase === "starting" || switchingSource}
-                  onChange={resolution => changeAdvancedQuality({ resolution })} />
+                  onChange={resolution => changeAdvancedQuality({ resolution,
+                    maxFramerate: Math.min(advancedQualityRef.current.maxFramerate, captureFramerateCeiling(resolution, videoLimits)),
+                  })} />
               </div>
               <div className="lr-sharing-limits">
                 <div className="lr-door-group">
@@ -3866,8 +3866,8 @@ export function HostPage({
                       <input
                         type="range"
                         min={15}
-                        max={60}
-                        step={5}
+                        max={framerateCeiling}
+                        step={1}
                         value={advancedQuality.maxFramerate}
                         disabled={phase === "starting" || switchingSource}
                         aria-label={t("host.advanced.framerate")}

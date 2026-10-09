@@ -47,19 +47,11 @@ Implementation needs a concrete useful result within the product model.
 - [ ] **Media parameters and capabilities for 2.0.** Follow the
   [media assessment](./research/native-client-media.md#media-capability-extension-assessment):
   separate UI presets, numeric requests, bounded implementation capabilities and
-  actual output. Numeric audio admission, storage and the compact custom input
-  implement [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s use case, with
-  local Browser/direct/relay and Browser/native SFU evidence. Numeric video
-  requests and custom width/height controls now pass the existing Windows live
-  capture gate within current implementation limits. Next assess
-  source-aspect-preserving geometry and 4K through the same owners. Windows and
-  Linux outputs now fit the source without a fixed padded landscape canvas;
-  Native axis-independent 4K30 admission and bounded Windows codec/derived-output
-  checks now pass, as does Browser H.264 4K30 over the existing SFU gate with a
-  synthetic source. Next align controls with combined size/rate limits and verify
-  Native/Browser mixed routes, source/live changes and limited receivers.
-  Browser/macOS geometry and physical 4K capture remain open. Preserve
-  safety limits and framework-owned adaptation. The
+  actual output. Numeric audio and video controls are implemented; the assessment
+  owns local capture, codec, derived-output and SFU evidence. Next verify
+  Native/Browser mixed routes, 4K source/live changes and limited receivers.
+  Browser/macOS geometry and physical 4K capture remain open. Preserve safety
+  limits and framework-owned adaptation. The
   [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)
   retain explicit receive-limit enforcement and the current 320 kbps sender
   ceiling; physical listening and impaired-network evidence remain open.

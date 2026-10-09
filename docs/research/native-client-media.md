@@ -571,12 +571,15 @@ presets. A source ceiling must also yield a valid half-size output. Bitrate and
 output-count bounds remain unchanged. Candidate signaling and Native control now carry numeric
 width/height ceilings, with custom input beside the existing UI shortcuts.
 Descriptive wire bounds are independent of the current implementation maximum;
-App discovery advertises per-axis maxima, and Native rejects unsupported
+App discovery advertises axis, pixel-count and macroblock-rate limits, and Native rejects unsupported
 size/rate combinations as operation failures without retiring the control
 session. Removing an enum is not permission to allocate arbitrary media resources.
 
-The Windows H.264 UI gate applies a non-preset 960x600 ceiling during a live
-share and observes fitted output without replacing the Viewer media object.
+The Windows H.264 UI gate switches from 1080p60 to the 4K ceiling with the
+30 fps limit, then applies a non-preset 960x600 ceiling during the live share.
+It observes fitted output without replacing the Viewer media object. The
+captured window is smaller than 4K, so this verifies settings/lifecycle, not
+physical 4K capture.
 Preset changes, paused updates, source recovery/replacement and subsequent
 sharing still pass. Value-based comparison prevents an identical deserialized
 size from turning an audio-only edit into a video update. Numeric preference
@@ -603,9 +606,10 @@ VP8 derivation produced the lower output from the 4K input. The Browser H.264 SF
 a synthetic 3840x2160/30 source passed first-picture delivery, an explicit lower
 profile, audio-only edits with retained connections, subscription/page recovery
 and retirement. Windows native checks and Linux headless build/checks pass;
-macOS SDK and physical 4K capture are not verified here. The UI ceiling remains
-2560x1440 until combined capability controls and whole-route acceptance are
-complete. These checks do not establish 4K60, sustained device performance or
+macOS SDK and physical 4K capture are not verified here. Controls now use the
+combined limits, reject oversized pixel totals and cap frame rate on size changes.
+Whole-route and cross-device acceptance remain open. These checks do not
+establish 4K60, sustained device performance or
 universal portrait decoding support.
 
 The proposed boundary follows the

@@ -21,7 +21,7 @@ import { useTheaterMode } from "../components/living/use-theater-mode";
 
 import { QualityPresets, ResolutionControl } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
-import { MAX_CAPTURE_RESOLUTION, QUALITY_PROFILES, type QualityProfileId, type QualityResolution } from "../media/quality";
+import { VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, type QualityProfileId, type QualityResolution } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
 import { Tooltip } from "../components/living/Tooltip";
 import { StatusIndicator } from "../components/living/StatusIndicator";
@@ -119,7 +119,7 @@ export function ControlsPreview() {
         </div>
         <SharingSettings id="preview-sharing-settings" open={sharingSettings}
           presets={<QualityPresets selected={preset} onSelect={id => { setPreset(id); setResolution(QUALITY_PROFILES[id].resolution); }} />}
-          picture={<ResolutionControl value={resolution} maximum={MAX_CAPTURE_RESOLUTION} disabled={false}
+          picture={<ResolutionControl value={resolution} limits={VIDEO_CAPTURE_LIMITS} disabled={false}
             onChange={value => { setResolution(value); setPreset(null); }} />}
           audio={<><div className="lr-door-group lr-source-audio-settings">
             <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.systemAudio")}

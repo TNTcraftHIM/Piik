@@ -5,6 +5,8 @@ import {
   applyCaptureProfile,
   applyVideoCaptureProfile,
   captureDisplay,
+  captureFramerateCeiling,
+  videoCaptureLimits,
   configureScreenAudioSender,
   configureVideoSender,
   matchingQualityProfileId,
@@ -50,6 +52,25 @@ afterEach(() => {
 });
 
 describe("realtime quality controls", () => {
+  it("bounds custom size, orientation and frame rate together before capture", () => {
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"])).toBe(30);
+    expect(captureFramerateCeiling({ width: 2160, height: 3840 })).toBe(30);
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["1440p"])).toBe(60);
+    expect(captureFramerateCeiling({ width: 1440, height: 2560 })).toBe(60);
+    expect(captureFramerateCeiling({ width: 3840, height: 2100 })).toBe(31);
+    for (const size of [{ width: 3840, height: 3840 }, { width: 1921, height: 1080 },
+      { width: 4.5, height: 4 }, { width: Infinity, height: 4 }, { width: 2, height: 4 }]) {
+      expect(captureFramerateCeiling(size)).toBe(0);
+    }
+    const limited = videoCaptureLimits({ maxVideoResolution: { width: 1920, height: 1080 },
+      maxVideoPixels: 1920 * 1080, maxVideoMacroblocksPerSecond: 245_760 });
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"], limited)).toBe(0);
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["1080p"], limited)).toBe(30);
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["720p"], limited)).toBe(60);
+    expect(videoCaptureLimits({ maxVideoResolution: { width: 8192, height: 8192 },
+      maxVideoPixels: 8192 * 8192, maxVideoMacroblocksPerSecond: 9_000_000 })).toEqual(videoCaptureLimits());
+  });
+
   it("keeps exactly three recommended profiles with 1080p30 as the default", () => {
     expect(Object.keys(QUALITY_PROFILES)).toEqual([
       "720p30",

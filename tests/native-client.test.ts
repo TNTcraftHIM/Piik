@@ -31,6 +31,14 @@ describe("native App private wire", () => {
     nativeMedia: { video: true, hardwareH264: true },
   };
 
+  it("reads numeric video capability descriptions and rejects malformed limits", () => {
+    const nativeMedia = { ...health.nativeMedia, maxVideoResolution: { width: 3840, height: 3840 },
+      maxVideoPixels: 3840 * 2160, maxVideoMacroblocksPerSecond: 983_040 };
+    expect(nativeHealthSchema.parse({ ...health, nativeMedia }).nativeMedia).toMatchObject(nativeMedia);
+    expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoPixels: 0 } }).success).toBe(false);
+    expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoMacroblocksPerSecond: -1 } }).success).toBe(false);
+  });
+
   it.each(["prompt", "denied"] as const)("does not hold Viewer reception for %s permission and observes a later grant", async (state) => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
     const query = vi.fn().mockResolvedValue({ state });

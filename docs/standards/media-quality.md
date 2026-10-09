@@ -127,12 +127,14 @@ The three recommended profiles are ceilings, not delivery guarantees:
 | `1080p60` | 1920x1080 at 60 fps | 8 Mbps |
 
 `1080p30` is the default. The 2.0 candidate carries numeric width/height ceilings;
-480p, 720p, 1080p and 1440p remain UI shortcuts. Advanced picture settings also
-accept custom even dimensions within the current 2560x1440 UI bound.
-Width and height form one applied edit. Larger wire-valid requests do not
+480p, 720p, 1080p, 1440p and 4K are UI shortcuts. Advanced picture settings also
+accept custom even dimensions within the combined implementation bounds below.
+Width and height form one applied edit. A size change caps the requested frame
+rate in the same quality operation when the larger size requires a lower limit.
+Larger wire-valid requests do not
 authorize an adapter to exceed its local capture, codec or allocation limits.
 Frame rate, bitrate, and `maintain-resolution | balanced |
-maintain-framerate` remain independent controls. Display video uses the standard
+maintain-framerate` retain their controls. Display video uses the standard
 `contentHint = "motion"` for game motion.
 Native H264 retains Constrained Baseline. Capture validates the coding-tool subset under
 RFC 6184, including equivalent Constrained Baseline constraint bytes, and reports
@@ -151,7 +153,10 @@ Level 5.1: 983,040 16x16 macroblocks per second, with at most 60 fps. This admit
 landscape/portrait 4K30 and existing 1440p60, not 4K60. Decoder alignment has a
 separate coded-storage bound; reference-picture storage is bounded before
 Native derivation. These are admission limits, not a device performance promise.
-The UI remains within its previous ceiling pending whole-route acceptance.
+App discovery reports axis, pixel-count and output-rate limits through the
+existing native health description. Controls use the intersection with local
+implementation limits; a remote claim cannot raise those limits. Whole-route
+and physical-device acceptance remain separate from available controls.
 
 Framework-driven downscaling under bandwidth or device pressure is valid within
 the selected degradation preference. A low decoded resolution alone is not a
