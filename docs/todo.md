@@ -88,8 +88,8 @@ Implementation needs a concrete useful result within the product model.
   from exhaustion by sender behavior. No new product setting or flow owner is
   accepted.
   Resolve key exchange and admission before ICE at the assigned-connection owner;
-  research owns the Native control retirement checks and the isolated candidate
-  gate. Neither the pre-granted nor gated fixture implements room authorization.
+  research owns the supported pre-ICE dial/retirement checks and the isolated
+  gated counterfactual. Neither fixture implements room authorization.
   Keep isolated dependency patches and
   recovery counterfactuals outside product routing; a diagnostic reply is not
   media-readiness authority. Research owns the experiments and their limits.

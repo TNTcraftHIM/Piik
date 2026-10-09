@@ -888,6 +888,16 @@ the roughly one-second grant acknowledgment, reaches eight and receives no RTP
 within the unchanged bound. Complete-SDP and early-trickle controls both fail.
 The early-trickle counterfactual is opt-in and intentionally fails its media check.
 
+The simpler pre-ICE control uses supported `DialUDPPort` in both Native
+listener/dialer orientations. With keys already admitted, the real Native control
+session receives fresh RTP, replaces a flow without interrupting its sibling and
+retires all flows on stop or control close. All four Linux race cases and vet
+pass with `PrepareUDPPort` removed from the copied dependency, without an explicit
+diagnostic ping or an admission-dependent candidate gate. The other isolated
+dependency corrections remain. This removes the need for that extra startup API
+when key admission precedes media negotiation; it does not implement room-scoped
+key exchange or demonstrate higher direct reachability.
+
 This establishes a startup-order constraint, not a product integration or a Piik
 field defect. Keys and grants remain local fixture inputs; the candidate gate
 and unsupported dependency method are not accepted product mechanisms.
