@@ -104,6 +104,12 @@ export const STATUS_SCENARIOS: readonly StatusScenario[] = [
   scenario("playback-failed", "浏览器播放失败", "连接存在，但播放器无法呈现画面。", [
     ...receiving, { type: "playback-failed", generation: 1, revision: 1 },
   ]),
+  scenario("video-rejected", "浏览器拒绝视频协商", "浏览器明确拒绝接收画面；沿用媒体恢复和呈现归属，不误报为网络线路故障。", [
+    ...ready,
+    { type: "route", revision: 1, phase: "prepare", kind: "p2p" },
+    { type: "receive-failure", revision: 1, failure: "VIDEO_REJECTED" },
+    { type: "route-status", revision: 1, state: "failed" },
+  ]),
   scenario("waiting-host", "等待房主开始分享", "房间存在，当前没有共享源。", [{ type: "access", access: "ready" }]),
   scenario("host-absence-snapshot", "重连后只确认房主不在线", "快照没有说明房主为何不在线；用中性等待，不推断主动停播或连接中断。", [
     ...ready, { type: "host", host: "unknown" },

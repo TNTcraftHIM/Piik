@@ -25,6 +25,7 @@ export type ViewerFailureCode =
   | "HOST_OFFLINE"
   | "ROUTE_EXHAUSTED"
   | "AUTOPLAY_BLOCKED"
+  | "VIDEO_REJECTED"
   | "PLAYBACK_FAILED";
 
 export type ViewerMessageKey = Extract<CopyKey, `viewer.msg.${string}`>;
@@ -46,6 +47,7 @@ export type ViewerStage =
   | "playing"
   | "recovering"
   | "route-failed"
+  | "video-rejected"
   | "playback-failed"
   | "waiting-host"
   | "host-offline"
@@ -92,6 +94,7 @@ export interface ViewerPresentationState {
   autoplayBlockedGeneration: number | null;
   playbackFailedGeneration: number | null;
   runtimeFailure: "SERVER_ERROR" | null;
+  receiveFailure: "VIDEO_REJECTED" | null;
 }
 
 export type ViewerPresentationAction =
@@ -101,6 +104,7 @@ export type ViewerPresentationAction =
       failure?: ViewerFailureCode | null;
     }
   | { type: "signal"; signal: SignalConnectionState }
+  | { type: "receive-failure"; revision: number; failure: "VIDEO_REJECTED" | null }
   | { type: "host"; host: ViewerHostState }
   | {
       type: "route";
@@ -159,6 +163,7 @@ export const INITIAL_VIEWER_PRESENTATION_STATE: ViewerPresentationState = {
   autoplayBlockedGeneration: null,
   playbackFailedGeneration: null,
   runtimeFailure: null,
+  receiveFailure: null,
 };
 
 export function reduceViewerPresentation(
@@ -181,6 +186,10 @@ export function reduceViewerPresentation(
       };
     case "signal":
       return { ...state, signal: action.signal };
+    case "receive-failure":
+      if (state.revision !== null && action.revision < state.revision) return state;
+      if (state.receiveFailure === action.failure) return state;
+      return { ...state, receiveFailure: action.failure };
     case "host": {
       if (action.host === "offline" && state.host === "stopped") {
         return state;
@@ -202,6 +211,7 @@ export function reduceViewerPresentation(
       return {
         ...state,
         revision: action.revision,
+        receiveFailure: action.authoritative ? null : state.receiveFailure,
         route: {
           revision: action.revision,
           phase: action.phase,
@@ -303,6 +313,7 @@ export function reduceViewerPresentation(
         retainedFrame: false,
         routeStatus: null,
         playbackFailedGeneration: null,
+        receiveFailure: null,
       };
     case "frame-proof-reset":
       if (!state.media || state.media.generation !== action.generation) {
@@ -376,6 +387,7 @@ export function reduceViewerPresentation(
         autoplayBlockedGeneration: null,
         playbackFailedGeneration: null,
         runtimeFailure: null,
+        receiveFailure: null,
       };
     case "server-error":
       return { ...state, runtimeFailure: "SERVER_ERROR" };
@@ -498,6 +510,9 @@ export function deriveViewerPresentation(
   // A failed route explains missing media only while the Host can publish.
   // Keep the fact: Host reconnection alone does not repair that route.
   if (state.host === "online" && state.routeStatus?.state === "failed") {
+    if (state.receiveFailure === "VIDEO_REJECTED") {
+      return presentation("video-rejected", "viewer.msg.videoRejected", frameOverlay, state, "VIDEO_REJECTED");
+    }
     return presentation(
       "route-failed",
       "viewer.msg.routeFailed",

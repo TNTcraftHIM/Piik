@@ -1093,6 +1093,11 @@ export function ViewerPage({
         currentPeerMetrics: () => activePeerMetrics,
         qualityProbeEligible: () =>
           qualityPresentationEligible(committedTransportConnected()),
+        onSfuFailure: (failure, revision) => {
+          if (active && viewerSfuRoute === route) {
+            dispatchPresentation({ type: "receive-failure", revision, failure });
+          }
+        },
         onSfuState: (state, revision) => {
           if (active && viewerSfuRoute === route) {
             const connected = state === "connected";
@@ -1288,6 +1293,7 @@ export function ViewerPage({
             if (pendingPeer === probe) {
               if (snapshot.connectionId !== probe.candidateConnectionId) return;
               probe.snapshot = snapshot;
+              noteReceiveFailure(snapshot, probe.revision);
               if (probe.qualityProbe) {
                 if (
                   pageSuspended ||
@@ -1319,6 +1325,7 @@ export function ViewerPage({
               }
               provePendingPeer();
             } else if (active && peerRef.current === peer) {
+              noteReceiveFailure(snapshot, currentRouteRevision);
               activePeerMetrics = snapshot.metrics;
               offerPeerQualityEvidence(snapshot, peer);
               setPeerSnapshot(snapshot);
@@ -1407,6 +1414,7 @@ export function ViewerPage({
           },
           onUpdate: (snapshot) => {
             if (active) {
+              noteReceiveFailure(snapshot, currentRouteRevision);
               activePeerMetrics = snapshot.metrics;
               offerPeerQualityEvidence(snapshot, peer);
               if (
@@ -1452,6 +1460,11 @@ export function ViewerPage({
       );
       peerRef.current = peer;
       return peer;
+    }
+
+    function noteReceiveFailure(snapshot: PeerSnapshot, revision: number): void {
+      dispatchPresentation({ type: "receive-failure", revision,
+        failure: snapshot.error?.key === "viewer.msg.videoRejected" ? "VIDEO_REJECTED" : null });
     }
 
     async function handleMessage(

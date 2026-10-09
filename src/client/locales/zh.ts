@@ -464,6 +464,7 @@ export const zh = {
   "viewer.msg.hostPaused": "房主已暂停分享",
   "viewer.msg.recovering": "正在恢复连接",
   "viewer.msg.routeFailed": "没有可用的媒体线路，可刷新重试",
+  "viewer.msg.videoRejected": "当前浏览器无法接收画面，请尝试更换浏览器",
   "viewer.msg.playbackFailed": "无法播放当前画面，请刷新重试",
   "viewer.msg.hostOffline": "房主连接已中断",
   "viewer.msg.serverError": "连接服务暂时不可用",

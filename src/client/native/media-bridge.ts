@@ -4,6 +4,7 @@ import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
 import { observeDebugConnection } from "../lib/debug-webrtc";
 import type { ConnectionMetrics } from "../types";
 import { preferScreenAudioStereo } from "../webrtc/screen-audio-sdp";
+import { requireReceivingVideo } from "../webrtc/video-codec";
 import {
   collectConnectionMetrics,
   decodedVideoFrames,
@@ -195,6 +196,7 @@ export class NativeMediaBridge {
     this.lifetime.signal.throwIfAborted();
     const answer = preferScreenAudioStereo(await this.peer.createAnswer());
     this.lifetime.signal.throwIfAborted();
+    requireReceivingVideo(offer, answer);
     await this.peer.setLocalDescription(answer);
     await this.gatherCandidates();
     this.lifetime.signal.throwIfAborted();

@@ -1118,6 +1118,7 @@ describe("minimal route transition contracts", () => {
   });
 
   it("ignores a retired subscriber failure after same-generation resync", async () => {
+    const onSfuFailure = vi.fn();
     let releaseOldConnect!: () => void;
     const oldConnectGate = new Promise<void>((resolve) => {
       releaseOldConnect = resolve;
@@ -1125,6 +1126,7 @@ describe("minimal route transition contracts", () => {
     const messages: ClientMessage[] = [];
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
     const route = new ViewerSfuRoute("viewer_12345678", {
+      onSfuFailure,
       activatePeer: () => true,
       reconcileSfuChildren: () => undefined,
       onSfuStream: () => undefined,
@@ -1182,6 +1184,12 @@ describe("minimal route transition contracts", () => {
       [],
     );
     expect(subscribers[2]?.activate).toHaveBeenCalledOnce();
+    onSfuFailure.mockClear();
+    subscribers[1]?.events.onDisconnected("VIDEO_REJECTED");
+    expect(onSfuFailure).not.toHaveBeenCalled();
+    subscribers[2]?.events.onDisconnected("VIDEO_REJECTED");
+    expect(onSfuFailure).toHaveBeenCalledExactlyOnceWith("VIDEO_REJECTED", 2);
+    await route.disconnect();
   });
 
 

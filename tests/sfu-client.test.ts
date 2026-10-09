@@ -631,6 +631,20 @@ describe("embedded SFU browser transport", () => {
     expect(onStream).toHaveBeenLastCalledWith(null);
   });
 
+  it("reports Browser video rejection through the existing SFU failure owner", async () => {
+    const send = vi.fn(() => true), onDisconnected = vi.fn();
+    const subscriber = new SfuSubscriber({ send, onStream: vi.fn(), onDisconnected });
+    cleanups.push(() => subscriber.disconnect());
+    await subscriber.connect(config);
+    const pc = FakePc.instances[0]!;
+    pc.createAnswer.mockResolvedValueOnce({ type: "answer", sdp: "m=video 0 UDP/TLS/RTP/SAVPF 120\r\n" });
+    await subscriber.acceptSignal(signal({ description: { type: "offer",
+      sdp: "m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\n" } }));
+    expect(onDisconnected).toHaveBeenCalledExactlyOnceWith("VIDEO_REJECTED");
+    expect(pc.close).toHaveBeenCalledOnce();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it.each([
     [false, false], [true, false], [false, true], [true, true],
   ])("retires an unfinished ICE restart on reauthentication (send=%s, answer=%s)", async (sent, answered) => {

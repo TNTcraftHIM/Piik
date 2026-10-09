@@ -14,6 +14,7 @@ import {
   type StatsAccumulator,
 } from "./stats";
 import { preferScreenAudioStereo } from "./screen-audio-sdp";
+import { requireReceivingVideo, VideoReceiveRejectedError } from "./video-codec";
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 import {
   addRemoteIceCandidate,
@@ -388,6 +389,8 @@ export class ViewerPeer implements ViewerMediaPeer {
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
       }
+      requireReceivingVideo(payload.description, answer);
+      if (this.snapshot) this.snapshot = { ...this.snapshot, error: null };
       await this.waitForOperation(connection, () => connection.setLocalDescription(answer));
       if (!this.isCurrentConnection(connection, connectionId)) {
         return;
@@ -416,7 +419,8 @@ export class ViewerPeer implements ViewerMediaPeer {
   }
 
   private failOffer(error: unknown, parentPeerId: string, connectionId: string): void {
-    this.setError(error, "host.fail.connection");
+    this.setError(error, error instanceof VideoReceiveRejectedError
+      ? "viewer.msg.videoRejected" : "host.fail.connection");
     if (
       this.recoveryOwner === "viewer" &&
       !this.recoveryBudget.exhaustedReported &&

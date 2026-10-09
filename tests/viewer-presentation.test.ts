@@ -23,6 +23,37 @@ function applyFrom(
 }
 
 describe("Viewer presentation reducer", () => {
+  it("retains receiving rejection through route exhaustion but not fresh negotiation or stop", () => {
+    const failed = apply(
+      { type: "access", access: "ready" }, { type: "host", host: "online" },
+      { type: "route", revision: 2, phase: "prepare", kind: "p2p" },
+      { type: "receive-failure", revision: 2, failure: "VIDEO_REJECTED" },
+      { type: "route", revision: 3, phase: "active", kind: "none" },
+      { type: "route-status", revision: 3, state: "failed" },
+    );
+    expect(deriveViewerPresentation(failed)).toMatchObject({ stage: "video-rejected", failureCode: "VIDEO_REJECTED" });
+    const late = applyFrom(failed, { type: "receive-failure", revision: 2, failure: null });
+    expect(late).toBe(failed);
+    expect(deriveViewerPresentation(applyFrom(failed, { type: "host", host: "offline" })).stage).toBe("host-offline");
+    expect(deriveViewerPresentation(applyFrom(failed,
+      { type: "receive-failure", revision: 3, failure: null })).stage).toBe("route-failed");
+    expect(applyFrom(failed, { type: "sharing-stopped" }).receiveFailure).toBeNull();
+    expect(applyFrom(failed, { type: "route", revision: 1, phase: "active", kind: "p2p", authoritative: true })
+      .receiveFailure).toBeNull();
+  });
+
+  it("does not replace a healthy picture with a rejected preparation", () => {
+    const state = apply(
+      { type: "access", access: "ready" }, { type: "host", host: "online" },
+      { type: "media-bound", generation: 1, revision: 1 },
+      { type: "frame-presented", generation: 1, proofEpoch: 0, revision: 1 },
+      { type: "route", revision: 2, phase: "prepare", kind: "sfu" },
+      { type: "receive-failure", revision: 2, failure: "VIDEO_REJECTED" },
+    );
+    expect(deriveViewerPresentation(state).stage).toBe("playing");
+    expect(applyFrom(state, { type: "frame-presented", generation: 1, proofEpoch: 0, revision: 2 }).receiveFailure).toBeNull();
+  });
+
   it("derives connection stages from typed current-revision facts", () => {
     const preparing = apply(
       { type: "access", access: "ready" },

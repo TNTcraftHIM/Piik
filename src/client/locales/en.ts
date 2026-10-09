@@ -464,6 +464,7 @@ export const en: Record<CopyKey, string> = {
   "viewer.msg.hostPaused": "Host paused",
   "viewer.msg.recovering": "Recovering connection",
   "viewer.msg.routeFailed": "No media route available; reload to retry",
+  "viewer.msg.videoRejected": "This browser cannot receive the video; try another browser",
   "viewer.msg.playbackFailed": "Cannot play this stream; reload to retry",
   "viewer.msg.hostOffline": "Host connection lost",
   "viewer.msg.serverError": "Connection service unavailable",

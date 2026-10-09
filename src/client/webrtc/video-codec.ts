@@ -1,3 +1,5 @@
+import { parse } from "sdp-transform";
+
 export type BrowserVideoCodec = "h264" | "vp8";
 export type BrowserVideoCodecMode = "vp8" | "auto" | "h264";
 
@@ -134,4 +136,26 @@ export function normalizeVideoOfferSdp(sdp: string): string {
     return true;
   });
   return changed ? lines.join(sdp.includes("\r\n") ? "\r\n" : "\n") : sdp;
+}
+
+export class VideoReceiveRejectedError extends Error {
+  constructor() { super("Browser rejected the offered video"); }
+}
+
+// JSEP rejects a media section with port zero. Let the Browser negotiate codecs;
+// reject only an answer that explicitly declines every offered sending video.
+export function requireReceivingVideo(
+  offer: RTCSessionDescriptionInit,
+  answer: RTCSessionDescriptionInit,
+): void {
+  if (offer.type !== "offer" || answer.type !== "answer" || !offer.sdp || !answer.sdp) return;
+  const remote = parse(offer.sdp), local = parse(answer.sdp);
+  const sendingVideo = remote.media.flatMap((media, index) => {
+    const direction = media.direction ?? remote.direction;
+    return media.type === "video" && (media.port !== 0 || media.bundleOnly !== undefined) &&
+      direction !== "inactive" && direction !== "recvonly" ? [index] : [];
+  });
+  if (sendingVideo.length > 0 && sendingVideo.every(index =>
+    local.media[index]?.type === "video" && local.media[index]?.port === 0,
+  )) throw new VideoReceiveRejectedError();
 }

@@ -124,6 +124,17 @@ afterEach(() => {
 });
 
 describe("native media bridge", () => {
+  it("retires rejected local video through the existing bridge failure path", async () => {
+    const current = fixture();
+    vi.mocked(current.control.prepareLocalEdge).mockResolvedValueOnce({ type: "offer", offerId: "local_offer_1",
+      sdp: "m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\n" });
+    current.peer().createAnswer.mockResolvedValueOnce({ type: "answer", sdp: "m=video 0 UDP/TLS/RTP/SAVPF 120\r\n" });
+    await expect(current.bridge.start()).rejects.toBeInstanceOf(NativeMediaBridgeError);
+    expect(current.control.acceptSignal).not.toHaveBeenCalled();
+    expect(current.control.closeEdge).toHaveBeenCalledOnce();
+    expect(current.peer().close).toHaveBeenCalledOnce();
+  });
+
   it("recovers one retained transport after a disconnect grace, including a quiet source", async () => {
     vi.useFakeTimers();
     const current = fixture();

@@ -645,8 +645,9 @@ control also passed those transitions. With clarity priority, its live
 2160x3840-to-360x640 edit retained the Native connection and playback track;
 SFU recovery retained that size and then restored 2160x3840. Firefox 155 received
 the same VP8 and H.264 sizes from Chrome 154, retaining its track through both
-edits. All controls retired their receiving connections on stop. Balanced priority may
-deliver smaller adapted pictures. These local checks do not establish physical
+edits; H.264 also passed through embedded SFU. All controls retired their
+receiving connections on stop. Balanced priority may deliver smaller adapted pictures.
+These local checks do not establish physical
 4K capture, every mixed handoff or cross-network performance.
 
 The H.264 control supplies OpenH264 2.6.0 to an isolated Firefox profile, using
@@ -657,10 +658,13 @@ H.264-only share, so codec availability must be established before attributing
 that result to resolution or networking. Firefox owns its component installation;
 the [upstream report](https://bugzilla.mozilla.org/show_bug.cgi?id=1766638) records
 the separate first-use installation boundary.
-A controlled receiver with H.264 unavailable reaches the current generic
-“No media route available” presentation. Receiving feedback does not yet retain
-that confirmed incompatibility through route exhaustion; capability work needs
-to distinguish it without introducing another retry or failure owner.
+With H.264 unavailable, the Browser accepts the offer but rejects its video
+section in the answer. The shared receiving check uses this
+[JSEP rejection](https://www.rfc-editor.org/rfc/rfc8829.html#section-5.3.1), rather
+than inferring support from a codec list. P2P and SFU controls now retain that
+cause through route exhaustion instead of reporting only a media-route failure;
+the Native local bridge uses the same check and its existing failure path.
+An answer rejection alone does not identify the decoder or platform cause.
 
 Chrome 154 camera controls exposed a separate constraint bug: lowering a
 540x960 input to the 1280x720 ceiling produced a cropped 540x720 picture when

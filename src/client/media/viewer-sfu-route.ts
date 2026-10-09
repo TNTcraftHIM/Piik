@@ -85,6 +85,7 @@ interface ViewerSfuRouteEvents {
     state: "connected" | "reconnecting",
     revision: number,
   ) => void;
+  onSfuFailure?: (failure: "VIDEO_REJECTED" | null, revision: number) => void;
   send: (message: ClientMessage) => boolean;
   createSubscriber?: (
     events: {
@@ -93,7 +94,7 @@ interface ViewerSfuRouteEvents {
       onStats: (metrics: ConnectionMetrics) => void;
       onFirstDecodedFrame: () => boolean;
       onState: (state: "connected" | "reconnecting") => void;
-      onDisconnected: () => void;
+      onDisconnected: (failure?: "VIDEO_REJECTED") => void;
     },
   ) => ViewerSubscriberTransport;
 }
@@ -468,7 +469,7 @@ export class ViewerSfuRoute {
           this.events.onSfuState?.(state, slot.revision);
         }
       },
-      onDisconnected: () => this.failSubscriberSlot(slot),
+      onDisconnected: (failure?: "VIDEO_REJECTED") => this.failSubscriberSlot(slot, failure),
     };
     const subscriber =
       this.events.createSubscriber?.(subscriberEvents) ??
@@ -494,6 +495,7 @@ export class ViewerSfuRoute {
       activationToken: null,
     };
     this.pending = slot;
+    this.events.onSfuFailure?.(null, slot.revision);
     try {
       const connected = await subscriber.connect(message);
       if (!connected) {
@@ -906,7 +908,7 @@ export class ViewerSfuRoute {
     await disconnectSubscriber(active.subscriber);
   }
 
-  private handleFailure(slot: ViewerSubscriberSlot): void {
+  private handleFailure(slot: ViewerSubscriberSlot, failure?: "VIDEO_REJECTED"): void {
     if (this.closed || slot.failed) {
       return;
     }
@@ -916,6 +918,7 @@ export class ViewerSfuRoute {
       slot.failed = true;
       return;
     }
+    this.events.onSfuFailure?.(failure ?? null, slot.revision);
     slot.failed = true;
     slot.subscriber.stopDecodedFrameProof();
     if (this.pending === slot) {
@@ -950,12 +953,12 @@ export class ViewerSfuRoute {
     }
   }
 
-  private failSubscriberSlot(slot: ViewerSubscriberSlot): void {
+  private failSubscriberSlot(slot: ViewerSubscriberSlot, failure?: "VIDEO_REJECTED"): void {
     if (this.pending !== slot && this.active !== slot) {
       slot.failed = true;
       return;
     }
-    this.handleFailure(slot);
+    this.handleFailure(slot, failure);
   }
 
   private routeFailed(

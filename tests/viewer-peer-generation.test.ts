@@ -35,6 +35,7 @@ const ANSWER_SDP = [
 interface ConnectionPlan {
   constructorError?: Error;
   answerError?: Error;
+  answerSdp?: string;
   candidateGates?: Promise<void>[];
   localDescriptionGate?: Promise<void>;
   statsGate?: Promise<RTCStatsReport>;
@@ -75,6 +76,7 @@ class FakePeerConnection extends EventTarget {
   private readonly candidateGates: Promise<void>[];
   private readonly localDescriptionGate: Promise<void> | null;
   private readonly answerError: Error | null;
+  private readonly answerSdp: string;
 
   readonly addIceCandidate = vi.fn(async (_candidate: RTCIceCandidateInit | null) => {
     const gate = this.candidateGates.shift();
@@ -107,6 +109,7 @@ class FakePeerConnection extends EventTarget {
     this.candidateGates = [...(plan.candidateGates ?? [])];
     this.localDescriptionGate = plan.localDescriptionGate ?? null;
     this.answerError = plan.answerError ?? null;
+    this.answerSdp = plan.answerSdp ?? ANSWER_SDP;
     this.statsGate = plan.statsGate ?? null;
     FakePeerConnection.instances.push(this);
   }
@@ -123,7 +126,7 @@ class FakePeerConnection extends EventTarget {
     }
     return {
       type: "answer",
-      sdp: ANSWER_SDP,
+      sdp: this.answerSdp,
     };
   }
 
@@ -340,6 +343,23 @@ describe("ViewerPeer connection generations", () => {
     await peer.acceptSignal("host", offer("prepared"));
     expect(restart).not.toHaveBeenCalled();
     expect(exhausted).toHaveBeenCalledExactlyOnceWith("host", "prepared");
+    expect(timeoutCallbacks.size).toBe(0);
+    peer.dispose();
+  });
+
+  it("returns rejected video to the existing route owner with its receiving cause", async () => {
+    const restart = vi.fn(() => true), exhausted = vi.fn(() => true), sendSignal = vi.fn(() => true);
+    const updates: PeerSnapshot[] = [];
+    const peer = new ViewerPeer({ iceServers: [] }, { sendSignal, sendRestartRequest: restart,
+      onStream: () => undefined, onUpdate: value => updates.push(value), onRecoveryExhausted: exhausted },
+      { recoveryOwner: "route" });
+    FakePeerConnection.plans.push({ answerSdp: "m=video 0 UDP/TLS/RTP/SAVPF 120\r\n" });
+    await peer.acceptSignal("host", { kind: "description", connectionId: "rejected",
+      description: { type: "offer", sdp: "m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\n" } });
+    expect(updates.at(-1)?.error).toEqual({ key: "viewer.msg.videoRejected" });
+    expect(exhausted).toHaveBeenCalledExactlyOnceWith("host", "rejected");
+    expect(sendSignal).not.toHaveBeenCalled();
+    expect(restart).not.toHaveBeenCalled();
     expect(timeoutCallbacks.size).toBe(0);
     peer.dispose();
   });

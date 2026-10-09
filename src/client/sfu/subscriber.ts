@@ -7,6 +7,7 @@ import {
   decodedVideoFrames,
 } from "../webrtc/stats";
 import { preferScreenAudioStereo } from "../webrtc/screen-audio-sdp";
+import { requireReceivingVideo, VideoReceiveRejectedError } from "../webrtc/video-codec";
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 import { SfuPeer, type SfuConnectionConfig } from "./peer";
 
@@ -17,7 +18,7 @@ interface SubscriberEvents {
   onStats?: (metrics: ConnectionMetrics) => void;
   onFirstDecodedFrame?: () => boolean;
   onState?: (state: "connected" | "reconnecting") => void;
-  onDisconnected?: () => void;
+  onDisconnected?: (failure?: "VIDEO_REJECTED") => void;
 }
 
 interface SubscribedTrack {
@@ -80,13 +81,13 @@ export class SfuSubscriber {
           throw new Error("SFU subscriber expected an offer");
         await peer.waitForOperation(() => peer.pc.setRemoteDescription(description));
         if (this.peer !== peer) return;
-        await peer.sendDescription(
-          preferScreenAudioStereo(await peer.waitForOperation(() => peer.pc.createAnswer())),
-        );
+        const answer = preferScreenAudioStereo(await peer.waitForOperation(() => peer.pc.createAnswer()));
+        requireReceivingVideo(description, answer);
+        await peer.sendDescription(answer);
         if (peer.pc.connectionState === "connected") this.restartPending = false;
       });
-    } catch {
-      if (this.peer === peer) this.fail();
+    } catch (error) {
+      if (this.peer === peer) this.fail(error instanceof VideoReceiveRejectedError ? "VIDEO_REJECTED" : undefined);
     }
   }
 
@@ -148,10 +149,10 @@ export class SfuSubscriber {
     this.streamEmitted = false;
   }
 
-  private fail(): void {
+  private fail(failure?: "VIDEO_REJECTED"): void {
     if (this.closed) return;
     void this.disconnect();
-    this.events.onDisconnected?.();
+    this.events.onDisconnected?.(failure);
   }
 
   private addTrack({ track, receiver }: RTCTrackEvent): void {

@@ -67,6 +67,7 @@ const STAGE_VISUALS = {
   playing: { tone: "live", icon: "play", comic: "media-playing" },
   recovering: { tone: "warn", icon: "refresh", comic: "recovering", pulse: true },
   "route-failed": { tone: "bad", icon: "wifiOff", comic: "route-failed" },
+  "video-rejected": { tone: "bad", icon: "alert", comic: "playback-failed" },
   "playback-failed": { tone: "bad", icon: "alert", comic: "playback-failed" },
   "waiting-host": { tone: "off", icon: "moon", comic: "waiting-for-host" },
   "host-offline": { tone: "bad", icon: "wifiOff", comic: "host-offline" },
