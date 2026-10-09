@@ -19,7 +19,7 @@ import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route";
 
 const high: QualitySettings = {
   resolution: "720p", maxFramerate: 15, maxBitrate: 2_000_000,
-  degradationPreference: "maintain-resolution", screenAudioQuality: "saver",
+  degradationPreference: "maintain-resolution", maxAudioBitrate: 64000,
 };
 const low: QualitySettings = { ...high, resolution: "480p" };
 const shareGeneration = crypto.randomUUID();
@@ -316,6 +316,7 @@ export async function reconnectViewer(room: CreateRoomResponse, discardMedia = f
 
 export function snapshot() {
   return { authenticated, published, simulcast, decoded, committed, peerFailures,
+    maxAudioBitrate: profile.maxAudioBitrate,
     visibility: document.visibilityState, capture: source?.getVideoTracks()[0]?.getSettings(),
     routeEvents, routeStatus,
     connectionId: configuration?.connectionId,
@@ -338,6 +339,15 @@ export function failSubscription(): string {
 export async function audioEnergy(): Promise<number> {
   const probe = (window as unknown as { __piikGateAudioEnergy: () => Promise<number> }).__piikGateAudioEnergy;
   return await probe();
+}
+
+export async function setAudioBitrate(maxAudioBitrate: number): Promise<boolean> {
+  const next = { ...profile, maxAudioBitrate };
+  if (native) await native.updateShare(shareGeneration, next);
+  if (!await hostRoute!.updateProfile(next)) return false;
+  profile = next;
+  send({ type: "set-quality-settings", qualitySettings: next });
+  return true;
 }
 
 export async function waitForFrames(width: number, height: number, minimumFrames = 15) {

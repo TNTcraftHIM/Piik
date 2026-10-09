@@ -355,7 +355,7 @@ async function browserMediaGate(input: {
           rejectRequest(new Error("Native request timed out: " + type));
         }, 8_000);
         pending.set(id, { resolve: resolveRequest, reject: rejectRequest, timer });
-        socket!.send(JSON.stringify({ version: 9, id, type, ...fields }));
+        socket!.send(JSON.stringify({ version: 10, id, type, ...fields }));
       });
     };
     socket.onmessage = (event) => {
@@ -440,7 +440,7 @@ async function browserMediaGate(input: {
         maxFramerate: 30,
         maxBitrate: 3_000_000,
         degradationPreference: "balanced",
-        screenAudioQuality: "music",
+        maxAudioBitrate: 128000,
       },
     });
     if (started.shareId !== shareId || started.audio !== result.audioAvailable) {
@@ -592,7 +592,7 @@ async function browserMediaGate(input: {
         maxFramerate: 60,
         maxBitrate: 12_000_000,
         degradationPreference: "maintain-framerate",
-        screenAudioQuality: "very-high",
+        maxAudioBitrate: 192000,
       },
     });
     const liveDeadline = performance.now() + 15_000;
@@ -618,7 +618,7 @@ async function browserMediaGate(input: {
         maxFramerate: 15,
         maxBitrate: 2_000_000,
         degradationPreference: "maintain-resolution",
-        screenAudioQuality: "saver",
+        maxAudioBitrate: 64000,
       },
     });
     const framesBeforeResume = Math.min(

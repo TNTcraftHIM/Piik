@@ -9,8 +9,8 @@ all-device acceptance or full HDR support.
 Browser display capture requests two channels without speech processing. The
 Host mixer uses a stereo Web Audio destination; Native capture and mixing use
 48 kHz, two-channel PCM16. Native Opus uses the audio application mode. Browser,
-Native and SFU receivers request stereo. The existing 64/128/192 kbps choices
-are ceilings, not a lossless-audio promise.
+Native and SFU receivers request stereo. Audio settings are bitrate ceilings,
+not a lossless-audio promise; the media-quality owner defines the current controls.
 
 `opus/48000/2` alone does not prove stereo content: Opus permits mono packets
 under that declaration. [RFC 7587](https://www.rfc-editor.org/rfc/rfc7587.html#section-7)

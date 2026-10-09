@@ -8,7 +8,7 @@ import { NAT_TRAVERSAL_PATHS } from "./nat-candidate.js";
 export const MAX_VIEWERS_PER_ROOM_LIMIT = 20;
 export const MAX_PARTICIPANTS_PER_ROOM_LIMIT = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
 export const MAX_SIGNAL_BYTES = 64 * 1024;
-export const SIGNALING_PROTOCOL = "piik-v23";
+export const SIGNALING_PROTOCOL = "piik-v24";
 export const SIGNAL_CLOSE_CODES = {
   serviceRestart: 1012,
   sessionReplaced: 4001,
@@ -197,12 +197,9 @@ export type DegradationPreference = z.infer<
   typeof degradationPreferenceSchema
 >;
 
-export const screenAudioQualitySchema = z.enum([
-  "saver",
-  "music",
-  "very-high",
-]);
-export type ScreenAudioQuality = z.infer<typeof screenAudioQualitySchema>;
+export const MIN_AUDIO_BITRATE = 6_000;
+export const MAX_AUDIO_BITRATE = 510_000;
+export const maxAudioBitrateSchema = z.number().int().min(MIN_AUDIO_BITRATE).max(MAX_AUDIO_BITRATE);
 
 export const qualitySettingsSchema = z
   .object({
@@ -210,7 +207,7 @@ export const qualitySettingsSchema = z
     maxFramerate: z.number().int().min(15).max(60),
     maxBitrate: z.number().int().min(2_000_000).max(12_000_000),
     degradationPreference: degradationPreferenceSchema,
-    screenAudioQuality: screenAudioQualitySchema.optional(),
+    maxAudioBitrate: maxAudioBitrateSchema.optional(),
   })
   .strict();
 export type QualitySettings = z.infer<typeof qualitySettingsSchema>;
@@ -219,7 +216,7 @@ export const DEFAULT_QUALITY_SETTINGS = {
   maxFramerate: 30,
   maxBitrate: 5_000_000,
   degradationPreference: "balanced",
-  screenAudioQuality: "music",
+  maxAudioBitrate: 128000,
 } as const satisfies QualitySettings;
 
 export const routePolicySchema = z

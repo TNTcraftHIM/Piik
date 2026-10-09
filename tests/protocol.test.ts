@@ -87,7 +87,7 @@ describe("runtime capabilities", () => {
 
 const qualitySettingsWithAudio = {
   ...qualitySettings,
-  screenAudioQuality: "music",
+  maxAudioBitrate: 128000,
 } as const;
 
 const legacyCodecQualitySettings = {
@@ -139,7 +139,7 @@ const qualityEvidence = {
 
 describe("client signaling protocol", () => {
   it("uses the current strict signaling generation", () => {
-    expect(SIGNALING_PROTOCOL).toBe("piik-v23");
+    expect(SIGNALING_PROTOCOL).toBe("piik-v24");
   });
 
   it("keeps signaling challenges strict and sequence-only", () => {
@@ -772,15 +772,13 @@ describe("client signaling protocol", () => {
         qualitySettings: { ...qualitySettings, resolution: "480p" },
       }).success,
     ).toBe(true);
-    for (const screenAudioQuality of [
-      "saver",
-      "music",
-      "very-high",
+    for (const maxAudioBitrate of [
+      6_000, 96_000, 256_000, 320_000, 510_000,
     ] as const) {
       expect(
         clientMessageSchema.safeParse({
           type: "set-quality-settings",
-          qualitySettings: { ...qualitySettings, screenAudioQuality },
+          qualitySettings: { ...qualitySettings, maxAudioBitrate },
         }).success,
       ).toBe(true);
     }
@@ -794,8 +792,14 @@ describe("client signaling protocol", () => {
       { ...qualitySettings, maxBitrate: 5_000_000.5 },
       { ...qualitySettings, degradationPreference: "automatic" },
       legacyCodecQualitySettings,
-      { ...qualitySettings, screenAudioQuality: "lossless" },
-      { ...qualitySettings, screenAudioQuality: 960_000 },
+      { ...qualitySettings, maxAudioBitrate: "lossless" },
+      { ...qualitySettings, maxAudioBitrate: "music" },
+      { ...qualitySettings, maxAudioBitrate: 0 },
+      { ...qualitySettings, maxAudioBitrate: 5_999 },
+      { ...qualitySettings, maxAudioBitrate: 510_001 },
+      { ...qualitySettings, maxAudioBitrate: 128_000.5 },
+      { ...qualitySettings, maxAudioBitrate: null },
+      { ...qualitySettings, maxAudioBitrate: 960_000 },
       { ...qualitySettings, codec: "video/VP9" },
     ]) {
       expect(

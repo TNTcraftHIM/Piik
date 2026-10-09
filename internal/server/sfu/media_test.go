@@ -296,6 +296,18 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 			}
 		})
 		check(receiver.SetRemoteDescription(offer))
+		for _, transceiver := range receiver.GetTransceivers() {
+			if transceiver.Kind() != webrtc.RTPCodecTypeAudio {
+				continue
+			}
+			for _, codec := range transceiver.Receiver().GetParameters().Codecs {
+				if codec.MimeType == webrtc.MimeTypeOpus {
+					codec.SDPFmtpLine = "stereo=1;maxaveragebitrate=510000"
+					check(transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{codec}))
+					break
+				}
+			}
+		}
 		answer, answerErr := receiver.CreateAnswer(nil)
 		check(answerErr)
 		check(service.ApplySubscriberAnswer(subscription, "subscriber_123456", waitGathering(receiver, answer)))

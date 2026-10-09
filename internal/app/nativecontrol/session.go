@@ -178,9 +178,11 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			!identityPattern.MatchString(request.ShareID) ||
 			!request.Source.Valid() ||
 			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity ||
-			(request.Codec != "auto" && request.Codec != "h264" && request.Codec != "vp8") ||
-			!validQualitySettings(request.Profile) {
+			(request.Codec != "auto" && request.Codec != "h264" && request.Codec != "vp8") {
 			return nil, protocolViolation("native start-share request is invalid")
+		}
+		if !nativeQualityProfile(request.Profile).Valid() {
+			return nil, errors.New("native sharing profile is unsupported")
 		}
 		if err := session.validateAudioExclusion(request.Source, request.Audio, request.ExcludeAudio); err != nil {
 			return nil, err
@@ -226,11 +228,13 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		var request updateShareRequest
 		if err := decodeStrict(payload, &request); err != nil ||
 			request.Type != envelope.Type ||
-			!validIdentities(request.ShareID) ||
-			!validQualitySettings(request.Profile) {
+			!validIdentities(request.ShareID) {
 			return nil, protocolViolation("native update-share request is invalid")
 		}
 		profile := nativeQualityProfile(request.Profile)
+		if !profile.Valid() {
+			return nil, errors.New("native sharing profile is unsupported")
+		}
 		slog.Debug("piik-client", "event", "native-profile-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "profile", profile)
 		var err error
@@ -636,10 +640,6 @@ func (session *Session) startShare(
 	}, nil
 }
 
-func validQualitySettings(settings qualitySettings) bool {
-	return nativeQualityProfile(settings).Valid()
-}
-
 func nativeQualityProfile(settings qualitySettings) nativehost.QualityProfile {
 	width, height := uint32(0), uint32(0)
 	switch settings.Resolution {
@@ -652,21 +652,16 @@ func nativeQualityProfile(settings qualitySettings) nativehost.QualityProfile {
 	case "1440p":
 		width, height = 2560, 1440
 	}
-	audioBitrate := 0
-	switch settings.ScreenAudioQuality {
-	case "", "music":
-		audioBitrate = 128_000
-	case "saver":
-		audioBitrate = 64_000
-	case "very-high":
-		audioBitrate = 192_000
+	audioBitrate := int(settings.MaxAudioBitrate)
+	if audioBitrate == 0 {
+		audioBitrate = int(protocol.DefaultQualitySettings.MaxAudioBitrate)
 	}
 	return nativehost.QualityProfile{
 		Video: nativecapture.VideoProfile{
 			Width:      width,
 			Height:     height,
-			Framerate:  settings.MaxFramerate,
-			Bitrate:    settings.MaxBitrate,
+			Framerate:  uint32(settings.MaxFramerate),
+			Bitrate:    uint32(settings.MaxBitrate),
 			Preference: settings.DegradationPreference,
 		},
 		AudioBitrate: audioBitrate,

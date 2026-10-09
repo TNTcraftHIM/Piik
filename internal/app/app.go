@@ -20,6 +20,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
+	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
 	"github.com/TNTcraftHIM/Piik/internal/app/publictunnel"
@@ -626,6 +627,7 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 		captureProcess: path,
 		capture:        capabilities,
 		capabilities: loopback.NativeMediaCapabilities{
+			MaxAudioBitrate:       nativeaudio.MaxSendBitrate,
 			ReceiverReuse:         true,
 			Video:                 summary.Video,
 			CaptureBorderControl:  summary.CaptureBorderControl,

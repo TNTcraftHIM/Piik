@@ -37,7 +37,6 @@ var (
 var (
 	qualityResolutions           = []string{"480p", "720p", "1080p", "1440p"}
 	degradationPreferences       = []string{"maintain-resolution", "balanced", "maintain-framerate"}
-	screenAudioQualities         = []string{"saver", "music", "very-high"}
 	mediaRoutePhases             = []string{"prepare", "active"}
 	routeDemandReasons           = []string{"join", "edge-unavailable", "parent-departed", "capacity-reduction", "sfu-bootstrap", "direct-convergence", "quality-convergence", "root-convergence"}
 	routeDiagnosticFinalRoutes   = []string{"direct", "sfu", "waiting", "failed"}
@@ -112,7 +111,7 @@ type QualitySettings struct {
 	MaxFramerate          Int    `json:"maxFramerate"`
 	MaxBitrate            Int    `json:"maxBitrate"`
 	DegradationPreference string `json:"degradationPreference"`
-	ScreenAudioQuality    string `json:"screenAudioQuality,omitempty"`
+	MaxAudioBitrate       Int    `json:"maxAudioBitrate,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -127,7 +126,7 @@ func (v *QualitySettings) UnmarshalJSON(data []byte) error {
 		"resolution", "maxFramerate", "maxBitrate", "degradationPreference"); err != nil {
 		return err
 	}
-	if err := present.optional("screenAudioQuality"); err != nil {
+	if err := present.optional("maxAudioBitrate"); err != nil {
 		return err
 	}
 	if !enumOf(v.Resolution, qualityResolutions...) {
@@ -142,8 +141,8 @@ func (v *QualitySettings) UnmarshalJSON(data []byte) error {
 	if !enumOf(v.DegradationPreference, degradationPreferences...) {
 		return fmt.Errorf("unknown degradationPreference %q", v.DegradationPreference)
 	}
-	if present.has("screenAudioQuality") && !enumOf(v.ScreenAudioQuality, screenAudioQualities...) {
-		return fmt.Errorf("unknown screenAudioQuality %q", v.ScreenAudioQuality)
+	if present.has("maxAudioBitrate") && !inRangeInt(v.MaxAudioBitrate, MinAudioBitrate, MaxAudioBitrate) {
+		return errors.New("maxAudioBitrate is out of range")
 	}
 	return nil
 }

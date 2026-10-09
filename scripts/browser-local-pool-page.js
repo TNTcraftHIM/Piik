@@ -18,7 +18,7 @@ const quietStart = settings.get('quietStart') === '1';
 const selectedProfile = () => ({ resolution: high ? '1080p' : '480p', maxFramerate: 30,
     maxBitrate: high ? 5000000 : 1700000,
     degradationPreference: settings.get('preference') || (high ? 'maintain-resolution' : 'balanced'),
-    screenAudioQuality: 'music' });
+    maxAudioBitrate: Number(settings.get('audioBitrate') || 128000) });
 const productPool = mode === 'carrier' ? new ProbePool() : null;
 const productPeers = [], peers = [], tracks = [], edges = [], monitors = [], audioMonitors = [];
 const errors = [], sourcePulses = [], controls = [], visibility = [], productTrace = [], sourceFrames = [];
@@ -193,7 +193,8 @@ async function statistics() {
     const result = {};
     for (const edge of edges) {
         const metrics = edge.peer.getSnapshot().metrics;
-        result[edge.role] = { send: selectReport(await edge.send.getStats()),
+        result[edge.role] = { audioParameters: edge.peer.getSnapshot().audioSenderParameters,
+            send: selectReport(await edge.send.getStats()),
             receive: selectReport(await edge.receive.getStats()),
             details: Object.fromEntries(['frameWidth', 'frameHeight', 'framesPerSecond', 'bitrateKbps',
                 'qualityLimitationReason', 'nativeEdgeQualityState', 'intervalFramesSent', 'intervalFramesEncoded']

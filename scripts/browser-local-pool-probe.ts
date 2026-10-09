@@ -11,7 +11,7 @@ const mode = process.argv[2] || 'carrier', args = process.argv.slice(3);
 const flags = new Set(['--product', '--1080', '--h264', '--single', '--av', '--late', '--background',
     '--native-source', '--lifecycle', '--network', '--auto', '--relay', '--debug', '--short-pulse', '--display', '--quiet-start']);
 if (!['ordinary', 'carrier'].includes(mode)) throw Error('Expected ordinary|carrier');
-for (const arg of args) if (!flags.has(arg) && !arg.startsWith('--rate=') && !arg.startsWith('--preference='))
+for (const arg of args) if (!flags.has(arg) && !arg.startsWith('--rate=') && !arg.startsWith('--preference=') && !arg.startsWith('--audio-bitrate='))
     throw Error('Unsupported option: ' + arg);
 const codec = args.includes('--h264') ? 'H264' : 'VP8', network = args.includes('--network');
 const automatic = args.includes('--auto'), high = args.includes('--1080'), av = args.includes('--av');
@@ -22,6 +22,8 @@ const nativeSource = background || args.includes('--native-source'), lifecycle =
 const relay = args.includes('--relay');
 const shortPulse = args.includes('--short-pulse');
 const rate = Number(args.find(arg => arg.startsWith('--rate='))?.split('=')[1] || 120000);
+const audioBitrate = Number(args.find(arg => arg.startsWith('--audio-bitrate='))?.split('=')[1] || 128000);
+if (!Number.isInteger(audioBitrate) || audioBitrate < 6000 || audioBitrate > 320000) throw Error('Audio bitrate must be 6000..320000 bps');
 const preference = args.find(arg => arg.startsWith('--preference='))?.split('=')[1] || (high ? 'maintain-resolution' : 'balanced');
 if (!['balanced', 'maintain-resolution', 'maintain-framerate'].includes(preference)) throw Error('Unsupported degradation preference');
 if (!Number.isInteger(rate) || rate <= 0) throw Error('Rate must be a positive integer in bps');
@@ -85,7 +87,7 @@ try {
     const version = await waitForVersion(debugPort, chrome);
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 5000);
     page = await createPage(cdp, 'about:blank');
-    const query = new URLSearchParams({ mode, codec, rate: String(rate), preference });
+    const query = new URLSearchParams({ mode, codec, rate: String(rate), preference, audioBitrate: String(audioBitrate) });
     if (process.argv.includes('--debug')) query.set('debug', '1');
     for (const [key, value] of Object.entries({ network, automatic, high, av, single, late, background, nativeSource, displaySource, quietStart, lifecycle, relay, shortPulse }))
         query.set(key, value ? '1' : '0');

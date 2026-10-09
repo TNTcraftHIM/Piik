@@ -1,10 +1,11 @@
 import {
   DEFAULT_QUALITY_SETTINGS,
+  MIN_AUDIO_BITRATE,
+  MAX_AUDIO_BITRATE,
   type DegradationPreference,
   type QualityProfileId,
   type QualityResolution,
   type QualitySettings,
-  type ScreenAudioQuality,
 } from "../../shared/protocol";
 import { say, type CopyKey } from "../ui/copy";
 import type { MediaFailure } from "../ui/media-failure";
@@ -18,7 +19,6 @@ export type {
   QualityProfileId,
   QualityResolution,
   QualitySettings,
-  ScreenAudioQuality,
 } from "../../shared/protocol";
 
 export type QualityProfile = QualitySettings;
@@ -30,7 +30,7 @@ export const QUALITY_PROFILES = {
     maxFramerate: 30,
     maxBitrate: 3_000_000,
     degradationPreference: "balanced",
-    screenAudioQuality: "music",
+    maxAudioBitrate: 128000,
   },
   "1080p30": DEFAULT_QUALITY_SETTINGS,
   "1080p60": {
@@ -38,7 +38,7 @@ export const QUALITY_PROFILES = {
     maxFramerate: 60,
     maxBitrate: 8_000_000,
     degradationPreference: "balanced",
-    screenAudioQuality: "music",
+    maxAudioBitrate: 128000,
   },
 } as const satisfies Record<QualityProfileId, QualitySettings>;
 
@@ -64,14 +64,15 @@ export const DEGRADATION_PREFERENCE_KEYS = {
   "maintain-framerate": "host.advanced.preference.framerate",
 } as const satisfies Record<DegradationPreference, CopyKey>;
 
-export const DEFAULT_SCREEN_AUDIO_QUALITY: ScreenAudioQuality = "music";
 export const SCREEN_AUDIO_BITRATES = {
   saver: 64_000,
   music: 128_000,
   "very-high": 192_000,
-} as const satisfies Record<ScreenAudioQuality, number>;
-export const SCREEN_AUDIO_RECEIVE_MAX_BITRATE =
-  SCREEN_AUDIO_BITRATES["very-high"];
+} as const;
+export type ScreenAudioPreset = keyof typeof SCREEN_AUDIO_BITRATES;
+// Current 20 ms output leaves room for RTP/SRTP overhead within a 1200-byte packet.
+export const MAX_SCREEN_AUDIO_BITRATE = 320_000;
+export const SCREEN_AUDIO_RECEIVE_MAX_BITRATE = MAX_AUDIO_BITRATE;
 
 export function startupVideoProfile(
   profile: QualityProfile,
@@ -105,16 +106,10 @@ export interface AudioSenderParameterReadback {
   mismatch: boolean;
 }
 
-export function resolveScreenAudioQuality(
-  quality: ScreenAudioQuality | undefined,
-): ScreenAudioQuality {
-  return quality ?? DEFAULT_SCREEN_AUDIO_QUALITY;
-}
-
 export function screenAudioBitrate(
-  quality: ScreenAudioQuality | undefined,
+  bitrate: number | undefined,
 ): number {
-  return SCREEN_AUDIO_BITRATES[resolveScreenAudioQuality(quality)];
+  return bitrate ?? DEFAULT_QUALITY_SETTINGS.maxAudioBitrate;
 }
 
 export function qualitySettingsEqual(
@@ -123,7 +118,7 @@ export function qualitySettingsEqual(
 ): boolean {
   return (
     videoQualitySettingsEqual(left, right) &&
-    screenAudioQualityEqual(left, right)
+    audioQualitySettingsEqual(left, right)
   );
 }
 
@@ -139,13 +134,13 @@ export function videoQualitySettingsEqual(
   );
 }
 
-export function screenAudioQualityEqual(
+export function audioQualitySettingsEqual(
   left: QualitySettings,
   right: QualitySettings,
 ): boolean {
   return (
-    resolveScreenAudioQuality(left.screenAudioQuality) ===
-      resolveScreenAudioQuality(right.screenAudioQuality)
+    screenAudioBitrate(left.maxAudioBitrate) ===
+      screenAudioBitrate(right.maxAudioBitrate)
   );
 }
 
@@ -398,6 +393,36 @@ export async function configureVideoSender(
   return senderParameterReadback(requested, applied);
 }
 
+export function screenAudioSenderCeiling(current: RTCRtpSendParameters, requestedMaxBitrate: number): number {
+  // Some Browsers accept setParameters above the negotiated Opus receive limit.
+  // Keep that limit on this sender, never on the shared capture or sibling edges.
+  let ceiling = Math.min(requestedMaxBitrate, MAX_SCREEN_AUDIO_BITRATE);
+  for (const codec of current.codecs ?? []) {
+    if (codec.mimeType.toLowerCase() !== "audio/opus") continue;
+    let receiveLimit: number | undefined;
+    let playbackRate = 48_000;
+    let channels = 1;
+    for (const parameter of (codec.sdpFmtpLine ?? "").split(";")) {
+      const [name, value] = parameter.trim().split("=");
+      const key = name?.trim().toLowerCase();
+      const number = Number(value);
+      if (key === "stereo") channels = value?.trim() === "1" ? 2 : 1;
+      if (key === "maxplaybackrate" && Number.isInteger(number) && number >= 8_000 && number <= 48_000) {
+        playbackRate = number;
+      }
+      // RFC 7587 ignores out-of-range receive preferences.
+      if (key === "maxaveragebitrate" && Number.isInteger(number) && number >= MIN_AUDIO_BITRATE && number <= MAX_AUDIO_BITRATE) {
+        receiveLimit = Math.min(receiveLimit ?? MAX_AUDIO_BITRATE, number);
+      }
+    }
+    // Match libwebrtc's default when the peer omits a valid explicit ceiling;
+    // omission must not let setParameters override the default with a higher rate.
+    const defaultBitrate = (playbackRate <= 8_000 ? 12_000 : playbackRate <= 16_000 ? 20_000 : 32_000) * channels;
+    ceiling = Math.min(ceiling, receiveLimit ?? defaultBitrate);
+  }
+  return ceiling;
+}
+
 export async function configureScreenAudioSender(
   sender: RTCRtpSender,
   requestedMaxBitrate: number,
@@ -410,7 +435,7 @@ export async function configureScreenAudioSender(
   if (parameters.encodings.length === 0) {
     parameters.encodings = [{}];
   }
-  parameters.encodings[0]!.maxBitrate = requestedMaxBitrate;
+  parameters.encodings[0]!.maxBitrate = screenAudioSenderCeiling(current, requestedMaxBitrate);
   await sender.setParameters(parameters);
   const appliedMaxBitrate =
     sender.getParameters().encodings[0]?.maxBitrate ?? null;

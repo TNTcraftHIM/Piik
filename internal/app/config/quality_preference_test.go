@@ -20,7 +20,7 @@ func TestQualityPreferencePersistsWithoutChangingAppConfiguration(t *testing.T) 
 		t.Fatalf("initial preference: %v, %v", p.Read(), err)
 	}
 	quality := protocol.DefaultQualitySettings
-	quality.Resolution, quality.ScreenAudioQuality = "1440p", "very-high"
+	quality.Resolution, quality.MaxAudioBitrate = "1440p", 320_000
 	if err := p.Save(quality); err != nil {
 		t.Fatal(err)
 	}

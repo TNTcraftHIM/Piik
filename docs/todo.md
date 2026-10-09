@@ -47,19 +47,21 @@ Implementation needs a concrete useful result within the product model.
 - [ ] **Media parameters and capabilities for 2.0.** Follow the
   [media assessment](./research/native-client-media.md#media-capability-extension-assessment):
   separate UI presets, numeric requests, bounded implementation capabilities and
-  actual output. Complete numeric audio bitrate admission and storage first using
-  [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s use case, then
+  actual output. Numeric audio admission, storage and the compact custom input
+  implement [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s use case, with
+  local Browser/direct/relay and Browser/native SFU evidence. Next assess
   source-aspect-preserving geometry and 4K through the same owners. Preserve
   safety limits and framework-owned adaptation. The
   [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)
-  require explicit receive-limit enforcement and a packet-size decision before
-  exposing higher numeric ceilings; add live relay/SFU acceptance to the local
-  encoding/Browser evidence. New codecs need complete
+  retain explicit receive-limit enforcement and the current 320 kbps sender
+  ceiling; physical listening and impaired-network evidence remain open.
+  New codecs need complete
   encode/decode/forward support and a late-Viewer policy before inclusion;
   selecting a codec cannot transcode an existing publication. Confirm live
   changes, relay/SFU paths, older 2.x capability subsets and explicit 1.x
-  mismatch before accepting the replacement contract. The current 1.x enums
-  remain; the PR is not a compatible enum-only extension of v1.9.2.
+  mismatch before accepting the replacement contract. The published 1.x enums
+  remain that major's baseline; the PR is not a compatible enum-only extension
+  of v1.9.2.
 - [ ] **Native Magicsock.** Go reuse is feasible, but the
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   have not established improved direct reachability. Seek a repeatable benefit

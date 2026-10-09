@@ -373,7 +373,7 @@ describe("embedded SFU browser transport", () => {
     const { publisher: host, pc, send } = await publisher();
     const profile = {
       ...QUALITY_PROFILES["720p30"],
-      screenAudioQuality: "very-high" as const,
+      maxAudioBitrate: 192000 as const,
     };
     expect(await host.updateProfile(profile)).toBe(true);
     expect(pc.transceivers[0]!.sender.parameters.encodings).toEqual([
@@ -680,7 +680,7 @@ describe("embedded SFU browser transport", () => {
     expect(
       await host.updateProfile({
         ...QUALITY_PROFILES["1080p30"],
-        screenAudioQuality: "saver",
+        maxAudioBitrate: 64000,
       }),
     ).toBe(true);
     expect(video.clones[0]!.applyConstraints).toHaveBeenCalledTimes(

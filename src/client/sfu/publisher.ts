@@ -10,6 +10,7 @@ import {
   needsStartupVideoProfile,
   QUALITY_RESOLUTIONS,
   screenAudioBitrate,
+  screenAudioSenderCeiling,
   senderParameterWarning,
   STARTUP_VIDEO_ENCODED_FRAMES,
   startupVideoProfile,
@@ -108,6 +109,16 @@ export class SfuPublisher {
           if (description.type !== "answer")
             throw new Error("SFU publisher expected an answer");
           await peer.waitForOperation(() => peer.pc.setRemoteDescription(description));
+          const audio = this.audioSender;
+          if (this.profile && audio?.track && screenAudioSenderCeiling(audio.getParameters(),
+            screenAudioBitrate(this.profile.maxAudioBitrate)) !== audio.getParameters().encodings[0]?.maxBitrate) {
+            void this.enqueue(async () => {
+              if (this.peer !== peer || !this.profile) return false;
+              const applied = await this.configure(this.profile, false);
+              if (!applied && this.peer === peer) this.fail("transport");
+              return applied;
+            }).catch(() => this.fail("transport"));
+          }
         },
         async (activeCount) => {
           await this.enqueue(async () => {
@@ -181,7 +192,7 @@ export class SfuPublisher {
           direction: "sendonly",
           streams: [stream],
           sendEncodings: [
-            { maxBitrate: screenAudioBitrate(profile.screenAudioQuality) },
+            { maxBitrate: screenAudioBitrate(profile.maxAudioBitrate) },
           ],
         });
         const opus = RTCRtpSender.getCapabilities("audio")?.codecs.filter(
@@ -475,7 +486,7 @@ export class SfuPublisher {
         bitrate: encoding.maxBitrate!,
       })),
       audio: this.audio !== null,
-      audioBitrate: screenAudioBitrate(profile.screenAudioQuality),
+      audioBitrate: screenAudioBitrate(profile.maxAudioBitrate),
     };
   }
 
@@ -510,7 +521,7 @@ export class SfuPublisher {
     try {
       const audio = await peer.waitForOperation(() => configureScreenAudioSender(
         audioSender,
-        screenAudioBitrate(profile.screenAudioQuality),
+        screenAudioBitrate(profile.maxAudioBitrate),
       ));
       if (this.peer !== peer) return false;
       this.audioWarning = audioSenderParameterWarning(audio);

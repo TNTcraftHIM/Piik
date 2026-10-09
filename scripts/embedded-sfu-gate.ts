@@ -99,6 +99,7 @@ async function main(): Promise<void> {
     high: null as { frames: number; width: number; height: number } | null,
     low: null as { frames: number; width: number; height: number } | null,
     audioEnergy: { high: 0, low: 0, recovered: 0 },
+    audioUpdates: [] as Array<{ bitrate: number; frames: number; connectionRetained: boolean; energy: number }>,
     audioDiagnostics: null as unknown,
     secondRoom: twoRooms ? { connected: false, framesAfterFirstStopped: 0, audioBefore: 0, audioAfter: 0, stopped: false } : null,
     host: null as Snapshot | null, viewer: null as Snapshot | null,
@@ -279,6 +280,19 @@ async function main(): Promise<void> {
       (energy) => { result.audioEnergy.high = energy; return energy > 0; }, 5_000);
     if (!nativeArm) result.stereoSeparationDb = await call(viewer, "gate.audioSeparation()", 5_000);
     result.host = await call(host, "gate.snapshot()");
+    result.stage = "numeric-audio-update";
+    const audioConnection = (await call<Snapshot>(viewer, "gate.snapshot()")).connectionId;
+    let previousEnergy = result.audioEnergy.high;
+    for (const bitrate of [320_000, 96_000]) {
+      if (!await call<boolean>(host, `gate.setAudioBitrate(${bitrate})`)) throw new Error("Numeric audio update failed");
+      const frames = await call<{ frames: number }>(viewer, "gate.waitForFrames(1280, 720)");
+      const after = await call<Snapshot>(viewer, "gate.snapshot()");
+      const energy = await call<number>(viewer, "gate.audioEnergy()", 3_000);
+      const retained = after.connectionId === audioConnection && after.committed;
+      result.audioUpdates.push({ bitrate, frames: frames.frames, connectionRetained: retained, energy });
+      if (!retained || energy <= previousEnergy) throw new Error("Audio update interrupted the current media connection");
+      previousEnergy = energy;
+    }
     if (displayArm) {
       result.stage = "display-background";
       if (result.host!.capture?.displaySurface !== "browser" || result.host!.visibility !== "hidden") {

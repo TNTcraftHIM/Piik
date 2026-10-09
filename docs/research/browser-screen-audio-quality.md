@@ -57,10 +57,10 @@ weak-network behavior, real-game A/V synchronization, or mobile playback.
 
 ## Numeric Bitrate Assessment
 
-Checked 2026-10-09 for the proposed 2.0 media boundary. The current product still
-uses its published presets; these experiments do not accept a new wire format or
-raise its audio ceiling. The shared Browser sender primitive now takes a numeric
-ceiling, with current direct/SFU callers resolving their existing preset first.
+Checked 2026-10-09 for the 2.0 candidate. The published 1.x product retains its
+preset contract. Candidate numeric requests and supported limits are owned by
+[media quality](../standards/media-quality.md#screen-audio); these measurements
+do not establish audible improvement or accept a public release.
 
 The existing Go Opus encoder accepted live 128/192/256/320/96/128 kbps changes
 without replacement. A 48 kHz stereo tone/noise input continued decoding into
@@ -91,8 +91,29 @@ Two controls constrain the replacement design:
   decision. Do not equate the codec range with every route's safe operating range.
 
 The [media extension proposal](./native-client-media.md#audio-and-ui-proposal)
-owns the planned UI and contract. Complete admitted receive limits, native control,
-preference storage and live relay/SFU verification before exposing custom values.
+owns the UI and contract rationale. The candidate enforces a Browser sender's
+negotiated Opus limit, and admits unchanged Native/SFU forwarding only when the
+receiver's declared limit accommodates the full shared format. A codec-valid
+native setting beyond the current sender ceiling remains an operational failure.
+Browser and App preference stores round-trip custom numeric values; those stores
+were not part of published v1.9.2, so no legacy preset migration is required.
+
+The retained SFU gate passed for both Browser and Windows native publication:
+live 320/96 kbps changes retained the same subscription, with advancing decoded
+audio energy and video frames. Video profile changes, reload, recovery and
+retirement also passed; the Browser run measured stereo separation. An ordinary
+Browser relay forwarded received tracks to two children at 320 kbps, with
+advancing decoded audio and successful cleanup. A direct Browser control now
+keeps requested 256/320 kbps below an explicit 192 kbps receive limit, while a
+510 kbps receiver permits both rates. These are local runtime checks; impaired
+networks, mobile playback and physical listening remain open.
+
+RFC 7587 gives an omitted receive bitrate a mode-dependent default, not an
+unrestricted value, and asks receivers to ignore out-of-range preferences.
+All candidate Piik receivers therefore declare the full Opus range explicitly.
+Browser sender enforcement uses [libwebrtc's existing default calculation](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/audio_coding/codecs/opus/audio_encoder_opus.cc)
+when a peer omits a valid limit. Unchanged forwarding requires an explicit
+sufficient limit; it cannot turn down the shared source for one receiver.
 
 ## Primary Sources
 

@@ -3,6 +3,7 @@ package nativecontrol
 import (
 	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -33,13 +34,7 @@ type sourcePreviewRequest struct {
 	Source  nativecapture.CaptureTarget `json:"source"`
 }
 
-type qualitySettings struct {
-	Resolution            string `json:"resolution"`
-	MaxFramerate          uint32 `json:"maxFramerate"`
-	MaxBitrate            uint32 `json:"maxBitrate"`
-	DegradationPreference string `json:"degradationPreference"`
-	ScreenAudioQuality    string `json:"screenAudioQuality,omitempty"`
-}
+type qualitySettings = protocol.QualitySettings
 
 type startShareRequest struct {
 	Version           int                          `json:"version"`

@@ -2434,9 +2434,9 @@ func TestSignalBindsNewShareQualityAndPreservesActiveShareQualityAcrossReconnect
 		"maxFramerate":          60,
 		"maxBitrate":            8_000_000,
 		"degradationPreference": "maintain-resolution",
-		"screenAudioQuality":    "very-high",
+		"maxAudioBitrate":       192000,
 	}
-	initialJSON := `{"resolution":"1440p","maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution","screenAudioQuality":"very-high"}`
+	initialJSON := `{"resolution":"1440p","maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution","maxAudioBitrate":192000}`
 	firstGeneration := "first_share_generation_12345678"
 	viewer := openClient(t, h)
 	authenticate(t, viewer, h.room, protocol.RoleViewer, "quality-viewer-client", 1, "", presenceOptions{})
@@ -2452,9 +2452,9 @@ func TestSignalBindsNewShareQualityAndPreservesActiveShareQualityAcrossReconnect
 		"maxFramerate":          15,
 		"maxBitrate":            2_000_000,
 		"degradationPreference": "maintain-framerate",
-		"screenAudioQuality":    "saver",
+		"maxAudioBitrate":       64000,
 	}
-	reconnectJSON := `{"resolution":"480p","maxFramerate":15,"maxBitrate":2000000,"degradationPreference":"maintain-framerate","screenAudioQuality":"saver"}`
+	reconnectJSON := `{"resolution":"480p","maxFramerate":15,"maxBitrate":2000000,"degradationPreference":"maintain-framerate","maxAudioBitrate":64000}`
 	reconnectedHost := openClient(t, h)
 	reconnectedAuth := authenticate(t, reconnectedHost, h.room, protocol.RoleHost, "quality-host-client", 1, firstGeneration,
 		presenceOptions{qualitySettings: reconnectSettings})
@@ -2469,9 +2469,9 @@ func TestSignalBindsNewShareQualityAndPreservesActiveShareQualityAcrossReconnect
 		"maxFramerate":          30,
 		"maxBitrate":            3_000_000,
 		"degradationPreference": "balanced",
-		"screenAudioQuality":    "music",
+		"maxAudioBitrate":       128000,
 	}
-	updatedJSON := `{"resolution":"720p","maxFramerate":30,"maxBitrate":3000000,"degradationPreference":"balanced","screenAudioQuality":"music"}`
+	updatedJSON := `{"resolution":"720p","maxFramerate":30,"maxBitrate":3000000,"degradationPreference":"balanced","maxAudioBitrate":128000}`
 	reconnectedHost.sendJSON(map[string]any{"type": "set-quality-settings", "qualitySettings": updatedSettings})
 	expectEqual(t, viewer.next("quality-settings").raw, `{"type":"quality-settings","qualitySettings":`+updatedJSON+`}`)
 

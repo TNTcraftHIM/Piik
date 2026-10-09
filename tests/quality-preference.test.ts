@@ -14,7 +14,7 @@ describe("sharing quality preference", () => {
     expect(readPreferredQuality()).toEqual(DEFAULT_QUALITY_SETTINGS);
     const chosen = { ...DEFAULT_QUALITY_SETTINGS, resolution: "1440p" as const,
       maxFramerate: 60, maxBitrate: 10_000_000, degradationPreference: "maintain-resolution" as const,
-      screenAudioQuality: "very-high" as const };
+      maxAudioBitrate: 256_000 };
     savePreferredQuality(chosen);
     expect(readPreferredQuality()).toEqual(chosen);
     savePreferredQuality({ ...chosen, maxBitrate: -1 });

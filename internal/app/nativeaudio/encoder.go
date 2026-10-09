@@ -8,12 +8,16 @@ import (
 )
 
 const (
-	SampleRate        = 48_000
-	Channels          = 2
-	FrameSamples      = 960
-	FrameBytes        = FrameSamples * Channels * 2
-	MaxPacketBytes    = 4_000
-	DefaultBitrate    = 128_000
+	SampleRate     = 48_000
+	Channels       = 2
+	FrameSamples   = 960
+	FrameBytes     = FrameSamples * Channels * 2
+	MaxPacketBytes = 4_000
+	DefaultBitrate = 128_000
+	MinBitrate     = 6_000
+	MaxBitrate     = 510_000
+	// The 20 ms sender leaves RTP/SRTP headroom within an ordinary 1200-byte packet.
+	MaxSendBitrate    = 320_000
 	defaultComplexity = 5
 )
 
@@ -29,14 +33,14 @@ type Encoder struct {
 func (encoder *Encoder) Bitrate() int { return encoder.codec.Bitrate() }
 
 func (encoder *Encoder) SetBitrate(bitrate int) error {
-	if encoder == nil || encoder.codec == nil || bitrate < 6_000 || bitrate > 510_000 {
+	if encoder == nil || encoder.codec == nil || bitrate < MinBitrate || bitrate > MaxBitrate {
 		return errors.New("native audio bitrate is outside the Opus range")
 	}
 	return encoder.codec.SetBitrate(bitrate)
 }
 
 func NewEncoder(bitrate int) (*Encoder, error) {
-	if bitrate < 6_000 || bitrate > 510_000 {
+	if bitrate < MinBitrate || bitrate > MaxBitrate {
 		return nil, errors.New("native audio bitrate is outside the Opus range")
 	}
 	codec, err := gopus.NewEncoder(gopus.EncoderConfig{

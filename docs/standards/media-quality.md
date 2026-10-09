@@ -336,10 +336,22 @@ application-defined whole-room lowest-common-denominator target.
 
 ## Screen Audio
 
-Display audio uses `contentHint = "music"`. The live sender ceilings are 64,
-128, and 192 kbps with 128 kbps default. Browser and Native Peer answers request
-Opus stereo and a 192 kbps receive ceiling, including renegotiation. These are
-local receive preferences, independent of the offer's receive preferences.
+Display audio uses `contentHint = "music"`. The 2.0 candidate keeps 64/128/192 kbps
+shortcuts and the 128 kbps default, with a custom numeric ceiling in the same
+sound settings. Current Browser/native senders support 6..320 kbps; the numeric
+wire format uses Opus's 6..510 kbps bounds independently of those shortcuts.
+The current native 20 ms sender ceiling leaves packet-size headroom; a larger
+codec-valid request fails that operation without retiring native control.
+An audio-only update retains capture, media connections and video startup state.
+
+Browser, Native and SFU receive answers request Opus stereo and the full Opus
+receive range, including renegotiation. Browser senders enforce a smaller
+negotiated receive limit on their own encoding, falling back to libwebrtc's
+mode-dependent default when no valid limit is declared. Native/SFU unchanged forwarding
+requires a receiver that can accept the shared source's full range; a smaller
+or undeclared limit rejects that edge before binding, without reducing the source or
+its healthy siblings. An omitted preference does not mean unrestricted reception.
+These receive preferences are independent of the offer's receive preferences.
 The SFU publication uses stereo, DTX disabled, and RED
 disabled; this accepts less burst-loss resilience in exchange for bounded
 publisher traffic. The Browser and source still decide whether an audio track

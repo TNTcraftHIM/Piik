@@ -783,11 +783,9 @@ func connectEdgeToReceiver(
 		t.Fatal(err)
 	}
 	gatherAnswer := webrtc.GatheringCompletePromise(receiver)
-	answer, err := receiver.CreateAnswer(nil)
+	// Use the product's receive preferences rather than Pion's generic defaults.
+	_, err := (&Receiver{connection: receiver}).createAnswer()
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err = receiver.SetLocalDescription(answer); err != nil {
 		t.Fatal(err)
 	}
 	waitSignal(t, gatherAnswer, "answer ICE gathering")

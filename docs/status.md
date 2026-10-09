@@ -8,7 +8,7 @@ and Git/PRs own completed history.
 
 ## Accepted Release Contract
 
-- Browser/server v23, Native control v9 and capture v7 form the current contract.
+- Browser/server v23, Native control v9 and capture v7 form the published contract.
   [Versioning](./standards/versioning.md#public-compatibility-promise) owns
   compatibility between published Web/App/Server versions.
 - Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
@@ -60,8 +60,12 @@ guidance preserve indefinite retention by default. The accepted Demo policy is
 one hour without authenticated participants; the private deployment retains the
 default. Operator records own activation, database and postflight evidence.
 The owner is holding the unpublished maintenance changes for 2.0. Preparation
-includes separating media presets from numeric requests and bounded capabilities,
-with audio presets, 4K and additional codecs assessed through that boundary.
+includes separating media presets from numeric requests and bounded capabilities.
+Numeric audio is implemented in the unpublished candidate: Browser/server v24
+and Native control v10 replace the preset field; capture v7 and SQLite schema 2
+remain unchanged. Matched candidate App/Web/Server builds are required;
+1.x participants are rejected by the existing compatibility checks.
+Geometry, 4K and additional codecs are still assessed through the media boundary.
 Native Magicsock remains an isolated experiment with incomplete product
 integration and unresolved recovery cases. These proposals do not yet change
 the accepted contract or transport. A small external test is proposed before

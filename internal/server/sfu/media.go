@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
@@ -342,7 +344,7 @@ func (media *Media) AcceptPublisherOffer(fence ResourceFence, connectionID strin
 			return webrtc.SessionDescription{}, errors.New("SFU publisher codec does not match its declaration")
 		}
 		if transceiver.Kind() == webrtc.RTPCodecTypeAudio {
-			selected[0].SDPFmtpLine = "minptime=10;useinbandfec=1;stereo=1;usedtx=0"
+			selected[0].SDPFmtpLine = "minptime=10;useinbandfec=1;stereo=1;usedtx=0;maxaveragebitrate=" + strconv.Itoa(protocol.MaxAudioBitrate)
 		}
 		if err = transceiver.SetCodecPreferences(selected[:1]); err != nil {
 			return webrtc.SessionDescription{}, err
@@ -638,6 +640,11 @@ func (media *Media) ApplySubscriberAnswer(fence SubscriptionFence, connectionID 
 	defer subscriber.signaling.Unlock()
 	if answer.Type != webrtc.SDPTypeAnswer {
 		return errors.New("SFU subscriber requires an answer")
+	}
+	if subscriber.transport.AudioSender != nil {
+		if err := forwarding.CheckAudioReceiveLimit(answer.SDP, protocol.MaxAudioBitrate); err != nil {
+			return err
+		}
 	}
 	return subscriber.transport.PC.SetRemoteDescription(answer)
 }

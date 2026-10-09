@@ -72,6 +72,7 @@ type Health struct {
 }
 
 type NativeMediaCapabilities struct {
+	MaxAudioBitrate       int  `json:"maxAudioBitrate,omitempty"`
 	ReceiverReuse         bool `json:"receiverReuse,omitempty"`
 	Video                 bool `json:"video"`
 	CaptureBorderControl  bool `json:"captureBorderControl,omitempty"`

@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { sfuMediaSchema } from "../../shared/protocol";
+import { sfuMediaSchema, maxAudioBitrateSchema } from "../../shared/protocol";
 
-export const NATIVE_CLIENT_PROTOCOL = 9;
+export const NATIVE_CLIENT_PROTOCOL = 10;
 export const NATIVE_CLIENT_PORT_START = 39_721;
 export const NATIVE_CLIENT_PORT_END = 39_730;
-export const NATIVE_CLIENT_SUBPROTOCOL = "piik-client-v9";
+export const NATIVE_CLIENT_SUBPROTOCOL = "piik-client-v10";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);
 const opaqueIdentifierSchema = z
@@ -33,6 +33,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
     .regex(/^[A-Za-z0-9_-]+$/),
   nativeMedia: z
     .object({
+      maxAudioBitrate: maxAudioBitrateSchema.optional(),
       receiverReuse: z.boolean().default(false),
       video: z.boolean().default(false),
       processAudio: z.boolean().default(false),

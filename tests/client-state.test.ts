@@ -1728,7 +1728,7 @@ describe("client signaling recovery policy", () => {
       maxFramerate: 30,
       maxBitrate: 5_000_000,
       degradationPreference: "balanced",
-      screenAudioQuality: "music",
+      maxAudioBitrate: 128000,
     } as const;
     const firstPending = {
       ...initialQuality,
@@ -2045,7 +2045,7 @@ describe("client signaling recovery policy", () => {
         maxFramerate: 30,
         maxBitrate: 5_000_000,
         degradationPreference: "balanced",
-        screenAudioQuality: "music",
+        maxAudioBitrate: 128000,
       },
       routePolicy: DEFAULT_ROUTE_POLICY,
     });

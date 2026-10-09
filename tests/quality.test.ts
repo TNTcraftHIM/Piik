@@ -13,6 +13,7 @@ import {
   QUALITY_RESOLUTIONS,
   qualitySettingsEqual,
   screenAudioBitrate,
+  screenAudioSenderCeiling,
   senderParameterWarning,
   setMediaPaused,
   startupVideoProfile,
@@ -150,10 +151,10 @@ describe("realtime quality controls", () => {
   it("keeps audio selection orthogonal while defaulting missing settings to music", () => {
     const saver = {
       ...QUALITY_PROFILES["1080p60"],
-      screenAudioQuality: "saver",
+      maxAudioBitrate: 64000,
     } as const;
     const {
-      screenAudioQuality: _screenAudioQuality,
+      maxAudioBitrate: _maxAudioBitrate,
       ...legacySettings
     } = QUALITY_PROFILES["1080p60"];
 
@@ -295,9 +296,9 @@ describe("realtime quality controls", () => {
 
   it.each([
     [undefined, 128_000],
-    ["saver", 64_000],
-    ["music", 128_000],
-    ["very-high", 192_000],
+    [64_000, 64_000],
+    [128_000, 128_000],
+    [192_000, 192_000],
   ] as const)("applies and reads back the %s audio ceiling", async (quality, bitrate) => {
     let applied = { encodings: [] } as unknown as RTCRtpSendParameters;
     const sender = {
@@ -329,6 +330,38 @@ describe("realtime quality controls", () => {
       appliedMaxBitrate: bitrate,
       mismatch: false,
     });
+  });
+
+  it.each([192_000, 510_000])("honors the receiver's %i Opus limit on every live update", async (limit) => {
+    let applied = {
+      codecs: [{ mimeType: "audio/opus", sdpFmtpLine: `stereo=1;maxaveragebitrate=${limit}` }],
+      encodings: [{}],
+    } as RTCRtpSendParameters;
+    const sender = {
+      getParameters: () => applied,
+      setParameters: async (value: RTCRtpSendParameters) => { applied = value; },
+    } as RTCRtpSender;
+    for (const bitrate of [128_000, 320_000, 96_000, 510_000]) {
+      const ceiling = Math.min(bitrate, limit, 320_000);
+      await expect(configureScreenAudioSender(sender, bitrate)).resolves.toEqual({
+        requestedMaxBitrate: bitrate, appliedMaxBitrate: ceiling, mismatch: ceiling !== bitrate,
+      });
+      expect(applied.encodings[0]?.maxBitrate).toBe(ceiling);
+    }
+  });
+
+  it.each([
+    ["", 32_000],
+    ["stereo=1", 64_000],
+    ["stereo=1;maxaveragebitrate=invalid", 64_000],
+    ["stereo=1;maxaveragebitrate=510001", 64_000],
+    ["maxplaybackrate=8000", 12_000],
+    ["stereo=1;maxplaybackrate=16000", 40_000],
+    ["maxaveragebitrate=510000;maxaveragebitrate=96000", 96_000],
+  ] as const)("keeps omitted/invalid Opus limits bounded: %s", (sdpFmtpLine, expected) => {
+    const parameters = { codecs: [{ mimeType: "audio/opus", sdpFmtpLine }] } as RTCRtpSendParameters;
+    expect(screenAudioSenderCeiling(parameters, 320_000)).toBe(expected);
+    expect(screenAudioSenderCeiling(parameters, 6_000)).toBe(6_000);
   });
 
   it("reports an audio ceiling the browser rewrites", async () => {

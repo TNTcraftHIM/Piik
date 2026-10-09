@@ -7,12 +7,18 @@ package protocol
 // MaxSafeInteger is JavaScript's Number.MAX_SAFE_INTEGER.
 const MaxSafeInteger = 9007199254740991
 
+// Opus format bounds, independent of UI presets and current sender capabilities.
+const (
+	MinAudioBitrate = 6_000
+	MaxAudioBitrate = 510_000
+)
+
 // Limits and identifiers in the Piik wire contract.
 const (
 	MaxViewersPerRoomLimit      = 20
 	MaxParticipantsPerRoomLimit = MaxViewersPerRoomLimit + 1
 	MaxSignalBytes              = 64 * 1024
-	SignalingProtocol           = "piik-v23"
+	SignalingProtocol           = "piik-v24"
 	RoomCodeLength              = 4
 	MaxMediaRouteRevision       = MaxSafeInteger
 	MaxIceServerURLs            = 8
@@ -62,7 +68,7 @@ var DefaultQualitySettings = QualitySettings{
 	MaxFramerate:          30,
 	MaxBitrate:            5_000_000,
 	DegradationPreference: "balanced",
-	ScreenAudioQuality:    "music",
+	MaxAudioBitrate:       128000,
 }
 
 // DefaultRoutePolicy mirrors DEFAULT_ROUTE_POLICY.

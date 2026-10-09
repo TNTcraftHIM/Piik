@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_ROUTE_POLICY,
   MAX_VIEWER_PASSWORD_LENGTH,
+  MIN_AUDIO_BITRATE,
   viewerPasswordSchema,
   type CreateRoomResponse,
   type ClientMessage,
@@ -130,14 +131,15 @@ import {
   QUALITY_RESOLUTIONS,
   qualitySettingsEqual,
   qualitySettingsLabel,
-  resolveScreenAudioQuality,
+  screenAudioBitrate,
+  MAX_SCREEN_AUDIO_BITRATE,
   SCREEN_AUDIO_BITRATES,
   setMediaPaused,
   videoQualitySettingsEqual,
   type DegradationPreference,
   type QualityResolution,
   type QualitySettings,
-  type ScreenAudioQuality,
+  type ScreenAudioPreset,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
@@ -233,7 +235,7 @@ const PREFERENCE_PRESENTATION: Record<
   },
 };
 
-const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioQuality, CopyKey> = {
+const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioPreset, CopyKey> = {
   saver: "host.advanced.audio.saver",
   music: "host.advanced.audio.music",
   "very-high": "host.advanced.audio.veryHigh",
@@ -1644,13 +1646,13 @@ export function HostPage({
     }
   }
 
-  function changeScreenAudioQuality(
-    screenAudioQuality: ScreenAudioQuality,
+  function changeMaxAudioBitrate(
+    maxAudioBitrate: number,
   ): void {
     if (phase === "starting") {
       return;
     }
-    const next = { ...advancedQualityRef.current, screenAudioQuality };
+    const next = { ...advancedQualityRef.current, maxAudioBitrate };
     void changeQuality(next);
   }
 
@@ -1730,8 +1732,8 @@ export function HostPage({
       previousProfile.resolution !== nextProfile.resolution ||
       previousProfile.maxFramerate !== nextProfile.maxFramerate;
     const audioChanged =
-      resolveScreenAudioQuality(previousProfile.screenAudioQuality) !==
-      resolveScreenAudioQuality(nextProfile.screenAudioQuality);
+      screenAudioBitrate(previousProfile.maxAudioBitrate) !==
+      screenAudioBitrate(nextProfile.maxAudioBitrate);
     try {
       const nativeClient = nativeClientRef.current;
       const nativeShareGeneration = nativeShareGenerationRef.current;
@@ -1822,7 +1824,7 @@ export function HostPage({
             : null;
         const successNotice =
           audioChanged && !videoChanged
-            ? say("host.notice.audioSet", { label: say(AUDIO_QUALITY_CAPTIONS[resolveScreenAudioQuality(nextProfile.screenAudioQuality)]) })
+            ? say("host.notice.audioSet", { kbps: String(screenAudioBitrate(nextProfile.maxAudioBitrate) / 1_000) })
             : videoChanged && audioChanged
               ? say("host.notice.qualityApplied")
               : say("host.notice.qualitySet", {
@@ -3592,6 +3594,9 @@ export function HostPage({
   const titleContent = titleFrames(hostStatus.titleFrameKey);
   useDocumentTitle([room?.roomId, titleContent.label, hostStatus.titleMarker], titleContent.variations,
     `${lang}:${vis}:${hostStatus.titleFrameKey}:${room?.roomId ?? ""}`);
+  const audioBitrateCeiling = Math.min(MAX_SCREEN_AUDIO_BITRATE, nativeActive
+    ? nativeClientRef.current?.health.nativeMedia.maxAudioBitrate ?? MAX_SCREEN_AUDIO_BITRATE
+    : MAX_SCREEN_AUDIO_BITRATE);
 
   return (
     <div className="lr-app">
@@ -3828,7 +3833,7 @@ export function HostPage({
               <QualityPresets selected={selectedQualityProfileId} busy={changingQuality}
                 disabled={phase === "starting" || switchingSource}
                 onSelect={id => void changeQuality({ ...QUALITY_PROFILES[id],
-                  screenAudioQuality: resolveScreenAudioQuality(advancedQualityRef.current.screenAudioQuality),
+                  maxAudioBitrate: screenAudioBitrate(advancedQualityRef.current.maxAudioBitrate),
                 })} />
             }
             picture={<>
@@ -4016,16 +4021,17 @@ export function HostPage({
                   {(
                     Object.keys(
                       AUDIO_QUALITY_CAPTIONS,
-                    ) as ScreenAudioQuality[]
+                    ) as ScreenAudioPreset[]
                   ).map((audioQuality) => (
                     <Chip
                       key={audioQuality}
                       selected={
-                        resolveScreenAudioQuality(
-                          advancedQuality.screenAudioQuality,
-                        ) === audioQuality
+                        screenAudioBitrate(
+                          advancedQuality.maxAudioBitrate,
+                        ) === SCREEN_AUDIO_BITRATES[audioQuality]
                       }
-                      disabled={phase === "starting" || switchingSource}
+                      disabled={phase === "starting" || switchingSource ||
+                        SCREEN_AUDIO_BITRATES[audioQuality] > audioBitrateCeiling}
                       title={t("host.audio.title", {
                         label: t(AUDIO_QUALITY_CAPTIONS[audioQuality]),
                         kbps: String(
@@ -4033,7 +4039,7 @@ export function HostPage({
                         ),
                       })}
                       hint="hint-audio-quality"
-                      onClick={() => changeScreenAudioQuality(audioQuality)}
+                      onClick={() => changeMaxAudioBitrate(SCREEN_AUDIO_BITRATES[audioQuality])}
                     >
                       <Cap k={AUDIO_QUALITY_CAPTIONS[audioQuality]} />
                       <small className="lr-audio-rate">
@@ -4042,6 +4048,36 @@ export function HostPage({
                     </Chip>
                   ))}
                 </div>
+                <Tooltip kind="hint-audio-quality" text={vis ? undefined : t("host.audio.bitrateHint", {
+                  min: String(MIN_AUDIO_BITRATE / 1_000), max: String(audioBitrateCeiling / 1_000),
+                })}>
+                  <label className="lr-input lr-audio-bitrate">
+                    <input type="number" inputMode="numeric"
+                      key={screenAudioBitrate(advancedQuality.maxAudioBitrate)}
+                      defaultValue={screenAudioBitrate(advancedQuality.maxAudioBitrate) / 1_000}
+                      min={MIN_AUDIO_BITRATE / 1_000}
+                      max={audioBitrateCeiling / 1_000} step={1}
+                      disabled={phase === "starting" || switchingSource}
+                      aria-label={t("host.advanced.audioBitrate")}
+                      onBlur={event => {
+                        const input = event.currentTarget;
+                        if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) {
+                          input.value = String(screenAudioBitrate(advancedQuality.maxAudioBitrate) / 1_000);
+                          return;
+                        }
+                        changeMaxAudioBitrate(input.valueAsNumber * 1_000);
+                      }}
+                      onKeyDown={event => {
+                        if (event.key === "Enter") event.currentTarget.blur();
+                        if (event.key === "Escape") {
+                          event.currentTarget.value = String(screenAudioBitrate(advancedQuality.maxAudioBitrate) / 1_000);
+                          event.currentTarget.blur();
+                          event.stopPropagation();
+                        }
+                      }} />
+                    <span>kbps</span>
+                  </label>
+                </Tooltip>
               </div>
             </>}
             technical={<>

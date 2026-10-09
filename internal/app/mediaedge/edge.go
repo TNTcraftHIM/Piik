@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/pion/ice/v4"
@@ -256,6 +257,11 @@ func (edge *Edge) SetAnswer(answer webrtc.SessionDescription) error {
 		return nil
 	}
 	edge.mu.Unlock()
+	if edge.audioSource != nil {
+		if err := forwarding.CheckAudioReceiveLimit(answer.SDP, nativeaudio.MaxBitrate); err != nil {
+			return err
+		}
+	}
 	if err := edge.connection.SetRemoteDescription(answer); err != nil {
 		return err
 	}
