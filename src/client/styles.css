@@ -1178,6 +1178,11 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-input input[type="password"]:not(:placeholder-shown) { letter-spacing: .25em; }
 .lr-input.lr-audio-bitrate { width: 160px; max-width: 100%; font-family: var(--mono); }
 .lr-audio-bitrate span { color: var(--muted); font-size: 12px; }
+.lr-input.lr-video-size { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 4px; padding-inline: 8px; width: 252px; max-width: 100%; font-family: var(--mono); }
+.lr-resolution-controls { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.lr-video-size input { width: 100%; padding: 0; text-align: center; appearance: textfield; }
+.lr-video-size input::-webkit-inner-spin-button, .lr-video-size input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.lr-video-size span { color: var(--muted); font-size: 12px; }
 .lr-welcome { width: 100%; min-width: 0; max-width: 100%; margin: 0; overflow: hidden; color: inherit; font-size: 15px; font-weight: 600; line-height: 1.7; text-align: center; white-space: nowrap; text-overflow: ellipsis; }
 .lr-welcome:not(.is-cipher)::before { content: "✦"; color: #d7982b; margin-right: 8px; }
 .lr-welcome-cipher { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; opacity: .72; white-space: nowrap; }

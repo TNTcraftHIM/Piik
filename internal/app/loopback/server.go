@@ -17,6 +17,7 @@ import (
 	"time"
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/coder/websocket"
 )
 
@@ -72,16 +73,17 @@ type Health struct {
 }
 
 type NativeMediaCapabilities struct {
-	MaxAudioBitrate       int  `json:"maxAudioBitrate,omitempty"`
-	ReceiverReuse         bool `json:"receiverReuse,omitempty"`
-	Video                 bool `json:"video"`
-	CaptureBorderControl  bool `json:"captureBorderControl,omitempty"`
-	Microphone            bool `json:"microphone,omitempty"`
-	ProcessAudio          bool `json:"processAudio"`
-	ProcessAudioExclusion bool `json:"processAudioExclusion,omitempty"`
-	SystemAudio           bool `json:"systemAudio"`
-	HardwareH264          bool `json:"hardwareH264"`
-	SoftwareVP8           bool `json:"softwareVP8"`
+	MaxVideoResolution    protocol.QualityResolution `json:"maxVideoResolution,omitzero"`
+	MaxAudioBitrate       int                        `json:"maxAudioBitrate,omitempty"`
+	ReceiverReuse         bool                       `json:"receiverReuse,omitempty"`
+	Video                 bool                       `json:"video"`
+	CaptureBorderControl  bool                       `json:"captureBorderControl,omitempty"`
+	Microphone            bool                       `json:"microphone,omitempty"`
+	ProcessAudio          bool                       `json:"processAudio"`
+	ProcessAudioExclusion bool                       `json:"processAudioExclusion,omitempty"`
+	SystemAudio           bool                       `json:"systemAudio"`
+	HardwareH264          bool                       `json:"hardwareH264"`
+	SoftwareVP8           bool                       `json:"softwareVP8"`
 }
 
 type Server struct {

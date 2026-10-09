@@ -1724,7 +1724,7 @@ describe("client signaling recovery policy", () => {
     });
     const shareGeneration = "share_generation_12345678";
     const initialQuality = {
-      resolution: "1080p",
+      resolution: { width: 1920, height: 1080 },
       maxFramerate: 30,
       maxBitrate: 5_000_000,
       degradationPreference: "balanced",
@@ -1732,7 +1732,7 @@ describe("client signaling recovery policy", () => {
     } as const;
     const firstPending = {
       ...initialQuality,
-      resolution: "720p",
+      resolution: { width: 1280, height: 720 },
       maxBitrate: 3_000_000,
     } as const;
     const latestPending = {
@@ -2041,7 +2041,7 @@ describe("client signaling recovery policy", () => {
         sfuPublicationGeneration: null,
       },
       qualitySettings: {
-        resolution: "1080p",
+        resolution: { width: 1920, height: 1080 },
         maxFramerate: 30,
         maxBitrate: 5_000_000,
         degradationPreference: "balanced",

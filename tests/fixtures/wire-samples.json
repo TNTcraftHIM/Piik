@@ -25,7 +25,10 @@
     "signalCloseCodeAuthenticationFailed": 4003,
     "signalCloseCodeViewerAccessRevoked": 4004,
     "defaultQualitySettings": {
-      "resolution": "1080p",
+      "resolution": {
+        "width": 1920,
+        "height": 1080
+      },
       "maxFramerate": 30,
       "maxBitrate": 5000000,
       "degradationPreference": "balanced",
@@ -55,7 +58,7 @@
     {
       "name": "authenticate-host-full",
       "schema": "client",
-      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v24\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"shareGeneration\":\"share_generation_12345678\",\"sharingPaused\":false,\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"viewerPresence\":true,\"displayName\":\"小明\"}",
+      "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v24\",\"roomId\":\"1234\",\"role\":\"host\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"client_12345678\",\"shareGeneration\":\"share_generation_12345678\",\"sharingPaused\":false,\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"viewerPresence\":true,\"displayName\":\"小明\"}",
       "valid": true
     },
     {
@@ -277,37 +280,37 @@
     {
       "name": "set-quality-settings",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
       "valid": true
     },
     {
       "name": "set-quality-settings-with-audio",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000}}",
       "valid": true
     },
     {
       "name": "set-quality-settings-legacy-codec",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"videoCodec\":\"vp8\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"videoCodec\":\"vp8\"}}",
       "valid": false
     },
     {
       "name": "set-quality-settings-framerate-below-floor",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":14,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":14,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
       "valid": false
     },
     {
       "name": "set-quality-settings-fractional-bitrate",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":5000000.5,\"degradationPreference\":\"maintain-resolution\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":5000000.5,\"degradationPreference\":\"maintain-resolution\"}}",
       "valid": false
     },
     {
       "name": "set-quality-settings-missing-framerate",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
       "valid": false
     },
     {
@@ -817,31 +820,31 @@
     {
       "name": "set-quality-settings-folded-audio-invalid",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxaudiobitrate\":\"invalid\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxaudiobitrate\":\"invalid\"}}",
       "valid": false
     },
     {
       "name": "set-quality-settings-folded-audio-null",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxaudiobitrate\":null}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxaudiobitrate\":null}}",
       "valid": false
     },
     {
       "name": "set-quality-settings-folded-key-collision",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000,\"maxaudiobitrate\":\"invalid\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000,\"maxaudiobitrate\":\"invalid\"}}",
       "valid": false
     },
     {
       "name": "set-quality-settings-exact-duplicate-last-valid",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":null,\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":null,\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
       "valid": true
     },
     {
       "name": "set-quality-settings-exact-duplicate-last-null",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxFramerate\":null,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxFramerate\":null,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
       "valid": false
     },
     {
@@ -1057,67 +1060,145 @@
     {
       "name": "numeric-audio-6000",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":6000}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":6000}}",
       "valid": true
     },
     {
       "name": "numeric-audio-96000",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":96000}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":96000}}",
       "valid": true
     },
     {
       "name": "numeric-audio-256000",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":256000}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":256000}}",
       "valid": true
     },
     {
       "name": "numeric-audio-320000",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":320000}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":320000}}",
       "valid": true
     },
     {
       "name": "numeric-audio-510000",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":510000}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":510000}}",
       "valid": true
     },
     {
       "name": "numeric-audio-5999",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":5999}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":5999}}",
       "valid": false
     },
     {
       "name": "numeric-audio-510001",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":510001}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":510001}}",
       "valid": false
     },
     {
       "name": "numeric-audio-128000.5",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000.5}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000.5}}",
       "valid": false
     },
     {
       "name": "numeric-audio-null",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":null}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":null}}",
       "valid": false
     },
     {
       "name": "numeric-audio-music",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":\"music\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":\"music\"}}",
       "valid": false
     },
     {
       "name": "published-1.x-authentication",
       "schema": "client",
       "json": "{\"type\":\"authenticate\",\"protocol\":\"piik-v23\",\"roomId\":\"1234\",\"role\":\"viewer\",\"clientId\":\"client_12345678\"}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-numeric-16-10",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1200},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": true
+    },
+    {
+      "name": "set-quality-settings-portrait",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":720,\"height\":1280},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": true
+    },
+    {
+      "name": "set-quality-settings-square",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1080,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": true
+    },
+    {
+      "name": "set-quality-settings-future-4k-description",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":3840,\"height\":2160},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": true
+    },
+    {
+      "name": "set-quality-settings-maximum-description",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":8192,\"height\":8192},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": true
+    },
+    {
+      "name": "set-quality-settings-too-wide",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":8194,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-too-tall",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":8194},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-too-small",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":2,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-odd-size",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1919,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-fractional-size",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080.5},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-missing-height",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-null-size",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":null},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-ui-label-on-wire",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080,\"label\":\"1080p\"},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
       "valid": false
     }
   ],
@@ -1128,19 +1209,19 @@
     },
     {
       "name": "authenticated-host-minimal",
-      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v24\",\"peerId\":\"host_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"connectionId\":null,\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"none\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"role\":\"host\",\"viewerPasswordEnabled\":false}"
+      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v24\",\"peerId\":\"host_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"connectionId\":null,\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"none\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"role\":\"host\",\"viewerPasswordEnabled\":false}"
     },
     {
       "name": "authenticated-host-full",
-      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v24\",\"peerId\":\"host_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"connectionId\":\"connection_12345678\",\"iceConfig\":{\"iceServers\":[{\"urls\":\"stun:stun.example.test:3478\"},{\"urls\":[\"stun:stun-1.example.test:3478\",\"stun:[2001:db8::1]:3478\"]}],\"natPredictionStunUrls\":[\"stun:nat.example.test:3478\"]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"sfu\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":\"generation_12345678\"},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"role\":\"host\",\"viewerPasswordEnabled\":false}"
+      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v24\",\"peerId\":\"host_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"connectionId\":\"connection_12345678\",\"iceConfig\":{\"iceServers\":[{\"urls\":\"stun:stun.example.test:3478\"},{\"urls\":[\"stun:stun-1.example.test:3478\",\"stun:[2001:db8::1]:3478\"]}],\"natPredictionStunUrls\":[\"stun:nat.example.test:3478\"]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"sfu\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":\"generation_12345678\"},\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"role\":\"host\",\"viewerPasswordEnabled\":false}"
     },
     {
       "name": "authenticated-viewer-minimal",
-      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v24\",\"peerId\":\"viewer_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"hostPaused\":false,\"connectionId\":null,\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"none\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"role\":\"viewer\"}"
+      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v24\",\"peerId\":\"viewer_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"hostPaused\":false,\"connectionId\":null,\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"none\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"role\":\"viewer\"}"
     },
     {
       "name": "authenticated-viewer-full",
-      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v24\",\"peerId\":\"viewer_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"hostPaused\":true,\"connectionId\":\"connection_12345678\",\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"peer\",\"peerId\":\"parent_12345678\"},\"childPeerIds\":[\"child_12345678\",\"child_87654321\"],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"role\":\"viewer\"}"
+      "json": "{\"type\":\"authenticated\",\"protocol\":\"piik-v24\",\"peerId\":\"viewer_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"hostPaused\":true,\"connectionId\":\"connection_12345678\",\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"peer\",\"peerId\":\"parent_12345678\"},\"childPeerIds\":[\"child_12345678\",\"child_87654321\"],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"role\":\"viewer\"}"
     },
     {
       "name": "signaling-challenge-response",
@@ -1196,11 +1277,11 @@
     },
     {
       "name": "quality-settings",
-      "json": "{\"type\":\"quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000}}"
+      "json": "{\"type\":\"quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000}}"
     },
     {
       "name": "quality-settings-without-audio",
-      "json": "{\"type\":\"quality-settings\",\"qualitySettings\":{\"resolution\":\"1080p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}"
+      "json": "{\"type\":\"quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}"
     },
     {
       "name": "route-policy",

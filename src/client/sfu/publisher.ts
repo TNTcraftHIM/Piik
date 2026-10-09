@@ -8,7 +8,6 @@ import {
   configureScreenAudioSender,
   configureVideoSender,
   needsStartupVideoProfile,
-  QUALITY_RESOLUTIONS,
   screenAudioBitrate,
   screenAudioSenderCeiling,
   senderParameterWarning,
@@ -436,7 +435,7 @@ export class SfuPublisher {
 
   private encodings(profile: QualityProfile): RTCRtpEncodingParameters[] {
     const settings = this.video ? senderCaptureTrack(this.video).getSettings() : undefined;
-    const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
+    const ceiling = profile.resolution;
     const width = settings?.width ?? ceiling.width;
     const height = settings?.height ?? ceiling.height;
     const scale = Math.max(1, width / ceiling.width, height / ceiling.height);
@@ -465,7 +464,7 @@ export class SfuPublisher {
 
   private media(profile: QualityProfile): SfuMedia {
     const settings = senderCaptureTrack(this.video!).getSettings();
-    const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
+    const ceiling = profile.resolution;
     return {
       codec: this.codec,
       layers: this.encodings(profile).map((encoding) => ({

@@ -44,7 +44,7 @@ it("accepts bounded future reaction events while keeping commands and known prop
   expect(serverMessageSchema.safeParse({ ...event, sender: { ...event.sender, peerId: "bad" } }).success).toBe(false);
 });
 const qualitySettings = {
-  resolution: "1080p",
+  resolution: { width: 1920, height: 1080 },
   maxFramerate: 60,
   maxBitrate: 8_000_000,
   degradationPreference: "maintain-resolution",
@@ -769,7 +769,7 @@ describe("client signaling protocol", () => {
     expect(
       clientMessageSchema.safeParse({
         type: "set-quality-settings",
-        qualitySettings: { ...qualitySettings, resolution: "480p" },
+        qualitySettings: { ...qualitySettings, resolution: { width: 854, height: 480 } },
       }).success,
     ).toBe(true);
     for (const maxAudioBitrate of [
@@ -1555,7 +1555,7 @@ describe("server signaling protocol", () => {
       serverMessageSchema.safeParse({
         type: "quality-settings",
         qualitySettings: {
-          resolution: "720p",
+          resolution: { width: 1280, height: 720 },
           maxFramerate: 30,
           maxBitrate: 3_000_000,
           degradationPreference: "balanced",

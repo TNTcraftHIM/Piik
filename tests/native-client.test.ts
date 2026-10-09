@@ -672,7 +672,7 @@ describe("native App private wire", () => {
 
   it("keeps native share lifecycle responses as strict acknowledgements", () => {
     const profile = {
-      resolution: "1440p",
+      resolution: { width: 2560, height: 1440 },
       maxFramerate: 60,
       maxBitrate: 12_000_000,
       degradationPreference: "maintain-framerate",

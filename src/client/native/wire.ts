@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { sfuMediaSchema, maxAudioBitrateSchema } from "../../shared/protocol";
+import { sfuMediaSchema, maxAudioBitrateSchema, qualityResolutionSchema } from "../../shared/protocol";
 
 export const NATIVE_CLIENT_PROTOCOL = 10;
 export const NATIVE_CLIENT_PORT_START = 39_721;
@@ -34,6 +34,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
   nativeMedia: z
     .object({
       maxAudioBitrate: maxAudioBitrateSchema.optional(),
+      maxVideoResolution: qualityResolutionSchema.optional(),
       receiverReuse: z.boolean().default(false),
       video: z.boolean().default(false),
       processAudio: z.boolean().default(false),

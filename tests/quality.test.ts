@@ -12,6 +12,8 @@ import {
   QUALITY_PROFILES,
   QUALITY_RESOLUTIONS,
   qualitySettingsEqual,
+  qualityResolutionLabel,
+  videoQualitySettingsEqual,
   screenAudioBitrate,
   screenAudioSenderCeiling,
   senderParameterWarning,
@@ -55,7 +57,7 @@ describe("realtime quality controls", () => {
       "1080p60",
     ]);
     expect(QUALITY_PROFILES["1080p30"]).toMatchObject({
-      resolution: "1080p",
+      resolution: { width: 1920, height: 1080 },
       maxFramerate: 30,
       maxBitrate: 5_000_000,
     });
@@ -65,11 +67,10 @@ describe("realtime quality controls", () => {
     expect(QUALITY_RESOLUTIONS["480p"]).toEqual({
       width: 854,
       height: 480,
-      label: "480p",
     });
     expect(
       Object.values(QUALITY_PROFILES).map((profile) => profile.resolution),
-    ).not.toContain("480p");
+    ).not.toContainEqual(QUALITY_RESOLUTIONS["480p"]);
   });
 
   it("bounds initial capture to the selected profile", async () => {
@@ -105,17 +106,27 @@ describe("realtime quality controls", () => {
     const { stream, videoTrack } = createVideoStream();
 
     await applyCaptureProfile(stream, {
-      resolution: "1440p",
+      resolution: { width: 1920, height: 1200 },
       maxFramerate: 45,
       maxBitrate: 9_500_000,
       degradationPreference: "balanced",
     });
 
     expect(videoTrack.applyConstraints).toHaveBeenCalledWith({
-      width: { ideal: 2560, max: 2560 },
-      height: { ideal: 1440, max: 1440 },
+      width: { ideal: 1920, max: 1920 },
+      height: { ideal: 1200, max: 1200 },
       frameRate: { ideal: 45, max: 45 },
     });
+  });
+
+  it("compares deserialized size values without treating audio edits as new video", () => {
+    const profile = QUALITY_PROFILES["1080p30"];
+    const restored = JSON.parse(JSON.stringify(profile));
+    expect(qualitySettingsEqual(profile, restored)).toBe(true);
+    expect(videoQualitySettingsEqual(profile, { ...restored, maxAudioBitrate: 256_000 })).toBe(true);
+    expect(videoQualitySettingsEqual(profile, { ...restored, resolution: { width: 1920, height: 1200 } })).toBe(false);
+    expect(qualityResolutionLabel(restored.resolution)).toBe("1080p");
+    expect(qualityResolutionLabel({ width: 1920, height: 1200 })).toBe("1920×1200");
   });
 
   it("leaves capture constraints with the owner of a remote track", async () => {

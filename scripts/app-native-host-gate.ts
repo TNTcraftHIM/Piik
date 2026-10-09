@@ -82,6 +82,7 @@ interface GateResult {
   qualityControlsEnabled: boolean;
   livePresetChanges: number;
   liveQualityChanged: boolean;
+  customQualityChanged: boolean;
   pausedQualityChanged: boolean;
   backgroundProfileRecovery: boolean | null;
   sourceWindowRecovery: boolean | null;
@@ -632,6 +633,7 @@ async function main(): Promise<void> {
     qualityControlsEnabled: false,
     livePresetChanges: 0,
     liveQualityChanged: false,
+    customQualityChanged: false,
     pausedQualityChanged: false,
     backgroundProfileRecovery: mode === "local" && sourceKind === "window" ? false : null,
     sourceWindowRecovery: mode === "local" && sourceKind === "window" ? false : null,
@@ -1017,6 +1019,23 @@ async function main(): Promise<void> {
       }
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
+      await assertVideoCodec(cdp, viewer, actualCodec);
+      stage = "native-custom-quality";
+      const framesBeforeCustom = await evaluate<number>(cdp, viewer,
+        `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`, Date.now() + 5_000);
+      await evaluate<void>(cdp, host, `(() => {
+        const width = document.querySelector('.lr-video-size input[name="width"]');
+        const height = document.querySelector('.lr-video-size input[name="height"]');
+        width.focus(); width.value = '960';
+        height.focus(); height.value = '600'; height.blur();
+      })()`, Date.now() + 5_000);
+      result.customQualityChanged = await waitForValue(
+        deadline => evaluate<boolean>(cdp!, viewer, `(() => {
+          const video = document.querySelector('video');
+          return Boolean(video && window.__piikGateFitsProfile(960, 600) &&
+            video.srcObject === window.__piikGateMedia &&
+            video.getVideoPlaybackQuality().totalVideoFrames >= ${framesBeforeCustom + 10});
+        })()`, deadline), Boolean, 20_000);
       await assertVideoCodec(cdp, viewer, actualCodec);
       const framesBeforePreference = await evaluate<number>(
         cdp,
@@ -1474,7 +1493,7 @@ async function main(): Promise<void> {
           result.viewerFrames >= 30 && result.viewerWidth > 0 && result.viewerWidth <= 2560 &&
           result.viewerHeight > 0 && result.viewerHeight <= 1440 && result.codecPreserved
         : result.viewerConnected && result.viewerFrames >= 30 &&
-        result.qualityControlsEnabled && result.liveQualityChanged &&
+        result.qualityControlsEnabled && result.liveQualityChanged && result.customQualityChanged &&
         result.backgroundProfileRecovery !== false &&
         result.sourceWindowRecovery !== false &&
         result.livePresetChanges === 2 &&

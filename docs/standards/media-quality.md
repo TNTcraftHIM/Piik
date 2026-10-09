@@ -126,8 +126,12 @@ The three recommended profiles are ceilings, not delivery guarantees:
 | `1080p30` | 1920x1080 at 30 fps | 5 Mbps |
 | `1080p60` | 1920x1080 at 60 fps | 8 Mbps |
 
-`1080p30` is the default. Advanced resolution includes 480p, 720p, 1080p, and
-1440p; frame rate, bitrate, and `maintain-resolution | balanced |
+`1080p30` is the default. The 2.0 candidate carries numeric width/height ceilings;
+480p, 720p, 1080p and 1440p remain UI shortcuts. Advanced picture settings also
+accept custom even dimensions within the current 2560x1440 implementation bound.
+Width and height form one applied edit. Larger wire-valid requests do not
+authorize an adapter to exceed its local capture, codec or allocation limits.
+Frame rate, bitrate, and `maintain-resolution | balanced |
 maintain-framerate` remain independent controls. Display video uses the standard
 `contentHint = "motion"` for game motion.
 Native H264 retains Constrained Baseline. Capture validates the coding-tool subset under

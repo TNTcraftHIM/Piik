@@ -173,19 +173,12 @@ export const roomCodeSchema = z
 export const roleSchema = z.enum(["host", "viewer"]);
 export type Role = z.infer<typeof roleSchema>;
 
-export const qualityProfileIdSchema = z.enum([
-  "720p30",
-  "1080p30",
-  "1080p60",
-]);
-export type QualityProfileId = z.infer<typeof qualityProfileIdSchema>;
-
-export const qualityResolutionSchema = z.enum([
-  "480p",
-  "720p",
-  "1080p",
-  "1440p",
-]);
+// Describes a requested ceiling, not encoder availability or an allocation.
+// Match the existing media-description bound; adapters retain their own limits.
+export const qualityResolutionSchema = z.object({
+  width: z.number().int().min(4).max(8192).multipleOf(2),
+  height: z.number().int().min(4).max(8192).multipleOf(2),
+}).strict();
 export type QualityResolution = z.infer<typeof qualityResolutionSchema>;
 
 export const degradationPreferenceSchema = z.enum([
@@ -212,7 +205,7 @@ export const qualitySettingsSchema = z
   .strict();
 export type QualitySettings = z.infer<typeof qualitySettingsSchema>;
 export const DEFAULT_QUALITY_SETTINGS = {
-  resolution: "1080p",
+  resolution: { width: 1920, height: 1080 },
   maxFramerate: 30,
   maxBitrate: 5_000_000,
   degradationPreference: "balanced",

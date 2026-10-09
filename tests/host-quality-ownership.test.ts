@@ -3,7 +3,7 @@ import { createContext, runInContext } from "node:vm";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import {
-  QUALITY_PROFILES, qualitySettingsEqual, qualitySettingsLabel,
+  QUALITY_PROFILES, qualitySettingsEqual, qualitySettingsLabel, qualityResolutionEqual,
   screenAudioBitrate, videoQualitySettingsEqual,
   type QualitySettings,
 } from "../src/client/media/quality";
@@ -108,7 +108,7 @@ function fixture(launchedByClient = true) {
     setDetails: vi.fn(), setNativeActive: vi.fn(),
     applyCaptureProfile: vi.fn(async (_stream: unknown, profile: QualitySettings) => { physical = profile; }),
     captureDetails: () => ({}),
-    qualitySettingsEqual, videoQualitySettingsEqual, screenAudioBitrate, qualitySettingsLabel,
+    qualitySettingsEqual, qualityResolutionEqual, videoQualitySettingsEqual, screenAudioBitrate, qualitySettingsLabel,
     say: (key: string) => key, syncHostSfuQualityWarning: () => null,
     NativeSenderPeer, discardPreparedHostChild: vi.fn(), removePeer: vi.fn(), startPeer: vi.fn(async () => undefined),
     nativePreviewTailRef: ref(Promise.resolve()), setSwitchingSource: vi.fn(),

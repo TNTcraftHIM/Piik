@@ -424,7 +424,7 @@ describe("Browser encoding pool ownership", () => {
       }
       if (change === "budget") { strong.demand.budget = 500_000; await sample(); }
       if (change === "target demand") { weak.demand.budget = 500_000; await sample(); }
-      if (change === "profile") await strong.handle.updateProfile({ ...profile, resolution: "720p" });
+      if (change === "profile") await strong.handle.updateProfile({ ...profile, resolution: { width: 1280, height: 720 } });
       const key = ["key dimensions", "quiet current", "unknown current"].includes(change)
         ? { width: 960, height: 540 } : { width: 1920, height: 1080 };
       expect(accept(key)).toBe(false);

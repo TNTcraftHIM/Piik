@@ -18,10 +18,10 @@ import { HostSfuRoute, type HostPublisherTransport } from "../src/client/media/h
 import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route";
 
 const high: QualitySettings = {
-  resolution: "720p", maxFramerate: 15, maxBitrate: 2_000_000,
+  resolution: { width: 1280, height: 720 }, maxFramerate: 15, maxBitrate: 2_000_000,
   degradationPreference: "maintain-resolution", maxAudioBitrate: 64000,
 };
-const low: QualitySettings = { ...high, resolution: "480p" };
+const low: QualitySettings = { ...high, resolution: { width: 854, height: 480 } };
 const shareGeneration = crypto.randomUUID();
 const clientId = crypto.randomUUID();
 let socket: WebSocket | null = null;

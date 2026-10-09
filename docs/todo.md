@@ -49,7 +49,9 @@ Implementation needs a concrete useful result within the product model.
   separate UI presets, numeric requests, bounded implementation capabilities and
   actual output. Numeric audio admission, storage and the compact custom input
   implement [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s use case, with
-  local Browser/direct/relay and Browser/native SFU evidence. Next assess
+  local Browser/direct/relay and Browser/native SFU evidence. Numeric video
+  requests and custom width/height controls now pass the existing Windows live
+  capture gate within current implementation limits. Next assess
   source-aspect-preserving geometry and 4K through the same owners. Windows and
   Linux outputs now fit the source without a fixed padded landscape canvas;
   axis-independent limits, Browser/macOS geometry and product 4K

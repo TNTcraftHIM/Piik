@@ -35,7 +35,6 @@ var (
 
 // Enumerations mirrored from src/shared/protocol.ts.
 var (
-	qualityResolutions           = []string{"480p", "720p", "1080p", "1440p"}
 	degradationPreferences       = []string{"maintain-resolution", "balanced", "maintain-framerate"}
 	mediaRoutePhases             = []string{"prepare", "active"}
 	routeDemandReasons           = []string{"join", "edge-unavailable", "parent-departed", "capacity-reduction", "sfu-bootstrap", "direct-convergence", "quality-convergence", "root-convergence"}
@@ -105,13 +104,36 @@ func (v *MediaRouteUpstream) UnmarshalJSON(data []byte) error {
 // qualitySettingsSchema / routePolicySchema / runtimeCapabilitiesSchema
 // ---------------------------------------------------------------------------
 
+// QualityResolution is a requested ceiling, not encoder availability or an allocation.
+type QualityResolution struct {
+	Width  Int `json:"width"`
+	Height Int `json:"height"`
+}
+
+func (v *QualityResolution) UnmarshalJSON(data []byte) error {
+	*v = QualityResolution{}
+	type raw QualityResolution
+	present, err := decodeObject(data, (*raw)(v))
+	if err != nil {
+		return err
+	}
+	if err := present.require("width", "height"); err != nil {
+		return err
+	}
+	if !inRangeInt(v.Width, 4, 8192) || v.Width%2 != 0 ||
+		!inRangeInt(v.Height, 4, 8192) || v.Height%2 != 0 {
+		return errors.New("resolution is out of range")
+	}
+	return nil
+}
+
 // QualitySettings mirrors qualitySettingsSchema.
 type QualitySettings struct {
-	Resolution            string `json:"resolution"`
-	MaxFramerate          Int    `json:"maxFramerate"`
-	MaxBitrate            Int    `json:"maxBitrate"`
-	DegradationPreference string `json:"degradationPreference"`
-	MaxAudioBitrate       Int    `json:"maxAudioBitrate,omitempty"`
+	Resolution            QualityResolution `json:"resolution"`
+	MaxFramerate          Int               `json:"maxFramerate"`
+	MaxBitrate            Int               `json:"maxBitrate"`
+	DegradationPreference string            `json:"degradationPreference"`
+	MaxAudioBitrate       Int               `json:"maxAudioBitrate,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -128,9 +150,6 @@ func (v *QualitySettings) UnmarshalJSON(data []byte) error {
 	}
 	if err := present.optional("maxAudioBitrate"); err != nil {
 		return err
-	}
-	if !enumOf(v.Resolution, qualityResolutions...) {
-		return fmt.Errorf("unknown resolution %q", v.Resolution)
 	}
 	if !inRangeInt(v.MaxFramerate, 15, 60) {
 		return errors.New("maxFramerate is out of range")

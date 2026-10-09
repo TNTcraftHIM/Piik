@@ -6,7 +6,7 @@ import { BrowserEncodingProducer } from "./browser-encoding-producer";
 import { BROWSER_CARRIER_SIZE, type BrowserEncodingOutput } from "./browser-encoding-output";
 import { codecIdentity, fits, nativeVideoBudget, negotiatedCodec, noRegression, observeVideo,
   projectEncodingMetrics, videoOutbound, type Observation } from "./browser-encoding-stats";
-import { QUALITY_RESOLUTIONS, videoQualitySettingsEqual, type QualityProfile } from "./quality";
+import { videoQualitySettingsEqual, type QualityProfile } from "./quality";
 
 export interface BrowserPooledSender {
   updateProfile(profile: QualityProfile): Promise<void>;
@@ -63,7 +63,7 @@ export class BrowserEncodingPool {
     return {
       carrierScale: () => {
         if (!member.carrier) return;
-        const width = member.sender.track?.getSettings().width ?? QUALITY_RESOLUTIONS[member.profile.resolution].width;
+        const width = member.sender.track?.getSettings().width ?? member.profile.resolution.width;
         return Math.max(1, width / BROWSER_CARRIER_SIZE);
       },
       updateProfile: async (next) => {

@@ -12,7 +12,7 @@ describe("sharing quality preference", () => {
       setItem: (key: string, value: string) => storage.set(key, value),
     } });
     expect(readPreferredQuality()).toEqual(DEFAULT_QUALITY_SETTINGS);
-    const chosen = { ...DEFAULT_QUALITY_SETTINGS, resolution: "1440p" as const,
+    const chosen = { ...DEFAULT_QUALITY_SETTINGS, resolution: { width: 2560, height: 1440 } as const,
       maxFramerate: 60, maxBitrate: 10_000_000, degradationPreference: "maintain-resolution" as const,
       maxAudioBitrate: 256_000 };
     savePreferredQuality(chosen);

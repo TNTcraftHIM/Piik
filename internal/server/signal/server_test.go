@@ -2430,13 +2430,13 @@ func TestSignalRetainsAuthoritativePauseWhenReconnectingHostAdvertisesUnpaused(t
 func TestSignalBindsNewShareQualityAndPreservesActiveShareQualityAcrossReconnect(t *testing.T) {
 	h := startHarness(t, harnessOptions{})
 	initialSettings := map[string]any{
-		"resolution":            "1440p",
+		"resolution":            protocol.QualityResolution{Width: 2560, Height: 1440},
 		"maxFramerate":          60,
 		"maxBitrate":            8_000_000,
 		"degradationPreference": "maintain-resolution",
 		"maxAudioBitrate":       192000,
 	}
-	initialJSON := `{"resolution":"1440p","maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution","maxAudioBitrate":192000}`
+	initialJSON := `{"resolution":{"width":2560,"height":1440},"maxFramerate":60,"maxBitrate":8000000,"degradationPreference":"maintain-resolution","maxAudioBitrate":192000}`
 	firstGeneration := "first_share_generation_12345678"
 	viewer := openClient(t, h)
 	authenticate(t, viewer, h.room, protocol.RoleViewer, "quality-viewer-client", 1, "", presenceOptions{})
@@ -2448,13 +2448,13 @@ func TestSignalBindsNewShareQualityAndPreservesActiveShareQualityAcrossReconnect
 	expectEqual(t, viewer.next("quality-settings").raw, `{"type":"quality-settings","qualitySettings":`+initialJSON+`}`)
 
 	reconnectSettings := map[string]any{
-		"resolution":            "480p",
+		"resolution":            protocol.QualityResolution{Width: 854, Height: 480},
 		"maxFramerate":          15,
 		"maxBitrate":            2_000_000,
 		"degradationPreference": "maintain-framerate",
 		"maxAudioBitrate":       64000,
 	}
-	reconnectJSON := `{"resolution":"480p","maxFramerate":15,"maxBitrate":2000000,"degradationPreference":"maintain-framerate","maxAudioBitrate":64000}`
+	reconnectJSON := `{"resolution":{"width":854,"height":480},"maxFramerate":15,"maxBitrate":2000000,"degradationPreference":"maintain-framerate","maxAudioBitrate":64000}`
 	reconnectedHost := openClient(t, h)
 	reconnectedAuth := authenticate(t, reconnectedHost, h.room, protocol.RoleHost, "quality-host-client", 1, firstGeneration,
 		presenceOptions{qualitySettings: reconnectSettings})
@@ -2465,13 +2465,13 @@ func TestSignalBindsNewShareQualityAndPreservesActiveShareQualityAcrossReconnect
 	}
 
 	updatedSettings := map[string]any{
-		"resolution":            "720p",
+		"resolution":            protocol.QualityResolution{Width: 1280, Height: 720},
 		"maxFramerate":          30,
 		"maxBitrate":            3_000_000,
 		"degradationPreference": "balanced",
 		"maxAudioBitrate":       128000,
 	}
-	updatedJSON := `{"resolution":"720p","maxFramerate":30,"maxBitrate":3000000,"degradationPreference":"balanced","maxAudioBitrate":128000}`
+	updatedJSON := `{"resolution":{"width":1280,"height":720},"maxFramerate":30,"maxBitrate":3000000,"degradationPreference":"balanced","maxAudioBitrate":128000}`
 	reconnectedHost.sendJSON(map[string]any{"type": "set-quality-settings", "qualitySettings": updatedSettings})
 	expectEqual(t, viewer.next("quality-settings").raw, `{"type":"quality-settings","qualitySettings":`+updatedJSON+`}`)
 

@@ -437,7 +437,7 @@ async function browserMediaGate(input: {
       encoderIndex: encoder.index,
       edgeCapacity: 2,
       profile: {
-        resolution: "1440p",
+        resolution: { width: 2560, height: 1440 },
         maxFramerate: 30,
         maxBitrate: 3_000_000,
         degradationPreference: "maintain-resolution",
@@ -597,7 +597,7 @@ async function browserMediaGate(input: {
     const liveUpdate = await request("update-share", {
       shareId,
       profile: {
-        resolution: "720p",
+        resolution: { width: 1280, height: 720 },
         maxFramerate: 60,
         maxBitrate: 12_000_000,
         degradationPreference: "maintain-framerate",
@@ -623,7 +623,7 @@ async function browserMediaGate(input: {
     const pausedUpdate = await request("update-share", {
       shareId,
       profile: {
-        resolution: "480p",
+        resolution: { width: 854, height: 480 },
         maxFramerate: 15,
         maxBitrate: 2_000_000,
         degradationPreference: "maintain-resolution",

@@ -3,7 +3,6 @@ import {
   MIN_AUDIO_BITRATE,
   MAX_AUDIO_BITRATE,
   type DegradationPreference,
-  type QualityProfileId,
   type QualityResolution,
   type QualitySettings,
 } from "../../shared/protocol";
@@ -16,17 +15,18 @@ import { applySenderCaptureConstraints, senderCaptureTrack } from "./sender-vide
 
 export type {
   DegradationPreference,
-  QualityProfileId,
   QualityResolution,
   QualitySettings,
 } from "../../shared/protocol";
 
 export type QualityProfile = QualitySettings;
 export const STARTUP_VIDEO_ENCODED_FRAMES = 5;
+// Current product output boundary, independent of wire admission and UI shortcuts.
+export const MAX_CAPTURE_RESOLUTION = { width: 2560, height: 1440 } as const;
 
 export const QUALITY_PROFILES = {
   "720p30": {
-    resolution: "720p",
+    resolution: { width: 1280, height: 720 },
     maxFramerate: 30,
     maxBitrate: 3_000_000,
     degradationPreference: "balanced",
@@ -34,13 +34,14 @@ export const QUALITY_PROFILES = {
   },
   "1080p30": DEFAULT_QUALITY_SETTINGS,
   "1080p60": {
-    resolution: "1080p",
+    resolution: { width: 1920, height: 1080 },
     maxFramerate: 60,
     maxBitrate: 8_000_000,
     degradationPreference: "balanced",
     maxAudioBitrate: 128000,
   },
-} as const satisfies Record<QualityProfileId, QualitySettings>;
+} as const satisfies Record<string, QualitySettings>;
+export type QualityProfileId = keyof typeof QUALITY_PROFILES;
 
 export const QUALITY_PROFILE_KEYS = {
   "720p30": "host.quality.720p30",
@@ -49,14 +50,20 @@ export const QUALITY_PROFILE_KEYS = {
 } as const satisfies Record<QualityProfileId, CopyKey>;
 
 export const QUALITY_RESOLUTIONS = {
-  "480p": { width: 854, height: 480, label: "480p" },
-  "720p": { width: 1280, height: 720, label: "720p" },
-  "1080p": { width: 1920, height: 1080, label: "1080p" },
-  "1440p": { width: 2560, height: 1440, label: "1440p" },
-} as const satisfies Record<
-  QualityResolution,
-  { width: number; height: number; label: string }
->;
+  "480p": { width: 854, height: 480 },
+  "720p": { width: 1280, height: 720 },
+  "1080p": { width: 1920, height: 1080 },
+  "1440p": { width: 2560, height: 1440 },
+} as const satisfies Record<string, QualityResolution>;
+
+export function qualityResolutionEqual(left: QualityResolution, right: QualityResolution): boolean {
+  return left.width === right.width && left.height === right.height;
+}
+
+export function qualityResolutionLabel(resolution: QualityResolution): string {
+  return Object.entries(QUALITY_RESOLUTIONS).find(([, size]) => qualityResolutionEqual(size, resolution))?.[0]
+    ?? `${resolution.width}×${resolution.height}`;
+}
 
 export const DEGRADATION_PREFERENCE_KEYS = {
   "maintain-resolution": "host.advanced.preference.resolution",
@@ -127,7 +134,7 @@ export function videoQualitySettingsEqual(
   right: QualitySettings,
 ): boolean {
   return (
-    left.resolution === right.resolution &&
+    qualityResolutionEqual(left.resolution, right.resolution) &&
     left.maxFramerate === right.maxFramerate &&
     left.maxBitrate === right.maxBitrate &&
     left.degradationPreference === right.degradationPreference
@@ -150,7 +157,7 @@ export function matchingQualityProfileId(
   for (const id of Object.keys(QUALITY_PROFILES) as QualityProfileId[]) {
     const profile = QUALITY_PROFILES[id];
     if (
-      settings.resolution === profile.resolution &&
+      qualityResolutionEqual(settings.resolution, profile.resolution) &&
       settings.maxFramerate === profile.maxFramerate &&
       settings.maxBitrate === profile.maxBitrate &&
       settings.degradationPreference === profile.degradationPreference
@@ -166,11 +173,11 @@ export function qualitySettingsLabel(settings: QualitySettings): string {
   if (profileId) {
     return say(QUALITY_PROFILE_KEYS[profileId]);
   }
-  return `${QUALITY_RESOLUTIONS[settings.resolution].label} ${settings.maxFramerate} fps · ${(settings.maxBitrate / 1_000_000).toFixed(1)} Mbps · ${say(DEGRADATION_PREFERENCE_KEYS[settings.degradationPreference])}`;
+  return `${qualityResolutionLabel(settings.resolution)} ${settings.maxFramerate} fps · ${(settings.maxBitrate / 1_000_000).toFixed(1)} Mbps · ${say(DEGRADATION_PREFERENCE_KEYS[settings.degradationPreference])}`;
 }
 
 function captureConstraints(profile: QualityProfile): MediaTrackConstraints {
-  const resolution = QUALITY_RESOLUTIONS[profile.resolution];
+  const resolution = profile.resolution;
   return {
     width: { ideal: resolution.width, max: resolution.width },
     height: { ideal: resolution.height, max: resolution.height },
@@ -219,7 +226,7 @@ export type BrowserCaptureSource = "browser" | "camera";
 
 export async function captureBrowserSource(profile: QualityProfile, source: BrowserCaptureSource, deviceId = ""): Promise<MediaStream> {
   if (source !== "camera") return captureDisplay(profile);
-  const resolution = QUALITY_RESOLUTIONS[profile.resolution];
+  const resolution = profile.resolution;
   const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
     ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: "environment" } }),
     width: { ideal: resolution.width }, height: { ideal: resolution.height },
@@ -295,7 +302,7 @@ function requestedScaleResolutionDownBy(
     sender.track && typeof sender.track.getSettings === "function"
       ? senderCaptureTrack(sender.track).getSettings()
       : undefined;
-  const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
+  const ceiling = profile.resolution;
   if (!source?.width || !source.height) {
     return 1;
   }

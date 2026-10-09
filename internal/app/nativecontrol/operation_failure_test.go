@@ -138,7 +138,7 @@ func TestOperationalFailureAndIdempotentStopKeepTheRealControlConnection(t *test
 	defer connection.CloseNow()
 	for index, command := range []struct{ kind, fields, expected string }{
 		{"hello", "", "ready"},
-		{"start-share", `,"shareId":"missing_share","source":{"kind":"display","sourceId":"1","title":"Fixture"},"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}`, "request-failed"},
+		{"start-share", `,"shareId":"missing_share","source":{"kind":"display","sourceId":"1","title":"Fixture"},"edgeCapacity":1,"codec":"vp8","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}`, "request-failed"},
 		{"prepare-edge", `,"shareId":"missing_share","connectionId":"edge_123456","iceServers":[]`, "request-failed"},
 		{"edge-answer", `,"shareId":"missing_share","connectionId":"edge_123456","sdp":"v=0"`, "request-failed"},
 		{"receive-candidate", `,"shareId":"missing_share","connectionId":"edge_123456","candidate":null`, "request-failed"},
@@ -180,7 +180,7 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 	t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", t.TempDir())
 	session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false)
 	defer session.Close()
-	const start = `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
+	const start = `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
 	if value, err := awaitControlResponse(t, session, []byte(start)); err != nil {
 		t.Fatal(err)
 	} else if _, ok := value.(shareStartedResponse); !ok {
@@ -274,8 +274,8 @@ func TestCaptureStartupAndReplacementRemainCancellable(t *testing.T) {
 			}
 			session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false)
 			defer session.Close()
-			start := `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
-			payload := strings.Replace(start, "1080p", "720p", 1)
+			start := `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"edgeCapacity":1,"codec":"vp8","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
+			payload := strings.Replace(start, `"width":1920,"height":1080`, `"width":1280,"height":720`, 1)
 			if kind == "replace-share-source" {
 				if value, err := awaitControlResponse(t, session, []byte(start)); err != nil {
 					t.Fatal(err)

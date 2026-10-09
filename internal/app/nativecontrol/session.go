@@ -641,25 +641,14 @@ func (session *Session) startShare(
 }
 
 func nativeQualityProfile(settings qualitySettings) nativehost.QualityProfile {
-	width, height := uint32(0), uint32(0)
-	switch settings.Resolution {
-	case "480p":
-		width, height = 854, 480
-	case "720p":
-		width, height = 1280, 720
-	case "1080p":
-		width, height = 1920, 1080
-	case "1440p":
-		width, height = 2560, 1440
-	}
 	audioBitrate := int(settings.MaxAudioBitrate)
 	if audioBitrate == 0 {
 		audioBitrate = int(protocol.DefaultQualitySettings.MaxAudioBitrate)
 	}
 	return nativehost.QualityProfile{
 		Video: nativecapture.VideoProfile{
-			Width:      width,
-			Height:     height,
+			Width:      uint32(settings.Resolution.Width),
+			Height:     uint32(settings.Resolution.Height),
 			Framerate:  uint32(settings.MaxFramerate),
 			Bitrate:    uint32(settings.MaxBitrate),
 			Preference: settings.DegradationPreference,

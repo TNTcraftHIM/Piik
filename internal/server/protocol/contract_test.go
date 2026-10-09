@@ -117,7 +117,7 @@ func drop(base []member, keys ...string) []member {
 const (
 	testAssignmentNone = `{"upstream":{"kind":"none"},"childPeerIds":[],` +
 		`"sfuPublicationGeneration":null}`
-	testQualitySettings = `{"resolution":"1080p","maxFramerate":60,"maxBitrate":8000000,` +
+	testQualitySettings = `{"resolution":{"width":1920,"height":1080},"maxFramerate":60,"maxBitrate":8000000,` +
 		`"degradationPreference":"maintain-resolution"}`
 	testRoutePolicy = `{"peerOnly":false,"topologyOptimization":true,"natPrediction":false}`
 	testIceConfig   = `{"iceServers":[],"natPredictionStunUrls":[]}`
@@ -245,7 +245,7 @@ func TestAuthenticatedRoomRevision(t *testing.T) {
 		object(drop(authenticatedHost(), "mediaMode")), false)
 	assertServerMessage(t, "quality settings past the bitrate ceiling",
 		object(with(authenticatedHost(), member{"qualitySettings",
-			`{"resolution":"1080p","maxFramerate":60,"maxBitrate":20000000,` +
+			`{"resolution":{"width":1920,"height":1080},"maxFramerate":60,"maxBitrate":20000000,` +
 				`"degradationPreference":"maintain-resolution"}`})), false)
 }
 
@@ -578,7 +578,7 @@ func TestDuplicateKeysKeepTheLastOccurrence(t *testing.T) {
 	}
 	// A duplicated object is replaced, not merged.
 	if _, err := DecodeClientMessage(
-		[]byte(`{"type":"set-quality-settings","qualitySettings":{"resolution":"480p"},` +
+		[]byte(`{"type":"set-quality-settings","qualitySettings":{"resolution":{"width":854,"height":480}},` +
 			`"qualitySettings":` + testQualitySettings + `}`)); err != nil {
 		t.Fatalf("a duplicated object must be replaced wholesale: %v", err)
 	}

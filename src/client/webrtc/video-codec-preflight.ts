@@ -1,6 +1,5 @@
 import {
   configureVideoSender,
-  QUALITY_RESOLUTIONS,
   startupVideoProfile,
   type QualityProfile,
 } from "../media/quality";
@@ -56,7 +55,7 @@ export function h264ProbeTarget(
   settings: MediaTrackSettings,
   profile: QualityProfile,
 ): H264ProbeTarget {
-  const ceiling = QUALITY_RESOLUTIONS[profile.resolution];
+  const ceiling = profile.resolution;
   const sourceWidth = positiveNumber(settings.width, ceiling.width);
   const sourceHeight = positiveNumber(settings.height, ceiling.height);
   const scale = Math.max(

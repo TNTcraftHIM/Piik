@@ -18,6 +18,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -253,7 +254,7 @@ func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing
 			request := startShareRequest{Version: 10, ID: "request_start", Type: "start-share", ShareID: "share_123456",
 				Source:           nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"},
 				MicrophoneMixing: optIn, EdgeCapacity: 1, Codec: "vp8",
-				Profile: qualitySettings{Resolution: "1080p", MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
+				Profile: qualitySettings{Resolution: protocol.QualityResolution{Width: 1920, Height: 1080}, MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
 			payload, _ := json.Marshal(request)
 			result, err := awaitControlResponse(t, session, payload)
 			started, ok := result.(shareStartedResponse)
@@ -335,11 +336,11 @@ func TestCaptureBorderPreferenceFollowsSourceAndProfile(t *testing.T) {
 			start := startShareRequest{Version: 10, ID: "request_start", Type: "start-share", ShareID: "share_123456",
 				Source:            nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"},
 				ShowCaptureBorder: true, EdgeCapacity: 1, Codec: "vp8",
-				Profile: qualitySettings{Resolution: "1080p", MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
+				Profile: qualitySettings{Resolution: protocol.QualityResolution{Width: 1920, Height: 1080}, MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
 			handle(start)
 			assertBorder(supported)
 			profile := start.Profile
-			profile.Resolution = "480p"
+			profile.Resolution = protocol.QualityResolution{Width: 854, Height: 480}
 			handle(updateShareRequest{Version: 10, ID: "request_update", Type: "update-share", ShareID: start.ShareID, Profile: profile})
 			session.mu.Lock()
 			done := session.updateDone
@@ -393,9 +394,9 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 				}
 				return value
 			}
-			const start = `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"adapterIndex":0,"encoderIndex":0,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
+			const start = `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"adapterIndex":0,"encoderIndex":0,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
 			handle(start)
-			const update = `{"version":10,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"720p","maxFramerate":30,"maxBitrate":3000000,"degradationPreference":"balanced"}}`
+			const update = `{"version":10,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":{"width":1280,"height":720},"maxFramerate":30,"maxBitrate":3000000,"degradationPreference":"balanced"}}`
 			if value := handle(update); value != nil {
 				t.Fatalf("Host update did not defer: %#v", value)
 			}
@@ -652,7 +653,7 @@ func TestSourceEnumerationFailureDoesNotCloseControl(t *testing.T) {
 
 func TestQualitySettingsMapOnceIntoNativeMedia(t *testing.T) {
 	settings := qualitySettings{
-		Resolution: "1440p", MaxFramerate: 60, MaxBitrate: 12_000_000,
+		Resolution: protocol.QualityResolution{Width: 2560, Height: 1440}, MaxFramerate: 60, MaxBitrate: 12_000_000,
 		DegradationPreference: "maintain-framerate",
 		MaxAudioBitrate:       192000,
 	}
@@ -664,7 +665,11 @@ func TestQualitySettingsMapOnceIntoNativeMedia(t *testing.T) {
 		profile.AudioBitrate != 192_000 {
 		t.Fatalf("native profile = %+v", profile)
 	}
-	settings.Resolution = "2160p"
+	settings.Resolution = protocol.QualityResolution{Width: 1920, Height: 1200}
+	if profile := nativeQualityProfile(settings); !profile.Valid() || profile.Video.Height != 1200 {
+		t.Fatalf("numeric size outside UI presets was not preserved: %+v", profile)
+	}
+	settings.Resolution = protocol.QualityResolution{Width: 3840, Height: 2160}
 	if nativeQualityProfile(settings).Valid() {
 		t.Fatal("unsupported resolution was accepted")
 	}
@@ -673,15 +678,18 @@ func TestQualitySettingsMapOnceIntoNativeMedia(t *testing.T) {
 func TestUpdateShareRequiresTheCurrentStrictProfile(t *testing.T) {
 	session := New("missing-capture-process", nativecapture.Capabilities{}, false)
 	t.Cleanup(func() { _ = session.Close() })
-	valid := `{"version":10,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced","maxAudioBitrate":128000}}`
+	valid := `{"version":10,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced","maxAudioBitrate":128000}}`
 	assertOperationFailure(t, session, valid)
 	// Opus permits this numeric request, but the current 20 ms sender does not.
 	// Keep the control session usable and let the caller keep its current share.
 	assertOperationFailure(t, session, strings.Replace(valid, `"maxAudioBitrate":128000`, `"maxAudioBitrate":510000`, 1))
+	assertOperationFailure(t, session, strings.Replace(valid,
+		`"resolution":{"width":1920,"height":1080}`,
+		`"resolution":{"width":3840,"height":2160}`, 1))
 	if _, err := session.Handle(t.Context(), []byte(`{"version":10,"id":"request_options","type":"capture-options"}`)); err != nil {
 		t.Fatalf("unsupported media setting retired control: %v", err)
 	}
-	invalid := `{"version":10,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":"1080p","maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced","maxAudioBitrate":128000,"extra":true}}`
+	invalid := `{"version":10,"id":"request_update","type":"update-share","shareId":"share_123456","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced","maxAudioBitrate":128000,"extra":true}}`
 	if _, err := session.Handle(t.Context(), []byte(invalid)); err == nil ||
 		err.Error() != "native update-share request is invalid" {
 		t.Fatalf("extended update was accepted: %v", err)

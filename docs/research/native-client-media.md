@@ -513,7 +513,7 @@ a corrected SDP interpretation, not evidence that all Firefox sharing lost audio
 Planning direction reviewed 2026-10-09 for 2.0; the design below is a proposal,
 not a replacement for the current contract or profile decision above. The owner
 reopened numeric media requests and capability negotiation as one coherent
-extension. Resolution enums are enforced
+extension. The published resolution enums are enforced
 by both signaling readers and Native control, while capture admission separately
 bounds dimensions. Native capture, forwarding and SFU declarations also admit
 specific encoded formats. Removing one validator would leave these consumers
@@ -569,10 +569,20 @@ The candidate's Native capture admission now shares the numeric dimension
 bounds already used by encoded outputs instead of duplicating the four UI
 presets. Even dimensions must fit within 2560x1440; a source ceiling must also
 yield a valid half-size output. Frame-rate, bitrate and output-count bounds
-remain unchanged. Signaling still uses the existing resolution enum: custom
-dimensions are an internal foundation, not yet a product control or a 4K option.
-Device capability and the public request contract still need separate admission;
-removing an enum is not permission to allocate arbitrary media resources.
+remain unchanged. Candidate signaling and Native control now carry numeric
+width/height ceilings, with custom input beside the existing UI shortcuts.
+Descriptive wire bounds are independent of the current implementation maximum;
+App discovery advertises that maximum, and Native rejects unsupported profiles
+as operation failures without retiring the control session. This does not yet
+admit product 4K. Removing an enum is not permission to allocate arbitrary media
+resources.
+
+The Windows H.264 UI gate applies a non-preset 960x600 ceiling during a live
+share and observes fitted output without replacing the Viewer media object.
+Preset changes, paused updates, source recovery/replacement and subsequent
+sharing still pass. Value-based comparison prevents an identical deserialized
+size from turning an audio-only edit into a video update. Numeric preference
+round-trips and malformed/unsupported requests have separate boundary checks.
 
 The proposed boundary follows the
 [Media Capture specification](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface):

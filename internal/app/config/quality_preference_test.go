@@ -20,7 +20,7 @@ func TestQualityPreferencePersistsWithoutChangingAppConfiguration(t *testing.T) 
 		t.Fatalf("initial preference: %v, %v", p.Read(), err)
 	}
 	quality := protocol.DefaultQualitySettings
-	quality.Resolution, quality.MaxAudioBitrate = "1440p", 320_000
+	quality.Resolution, quality.MaxAudioBitrate = protocol.QualityResolution{Width: 1920, Height: 1200}, 320_000
 	if err := p.Save(quality); err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestQualityPreferencePersistsWithoutChangingAppConfiguration(t *testing.T) 
 		t.Fatalf("restored: %v, %v", loaded.Read(), err)
 	}
 	copy := loaded.Read()
-	copy.Resolution = "480p"
+	copy.Resolution.Width = 854
 	if *loaded.Read() != quality {
 		t.Fatal("caller modified stored settings")
 	}
@@ -38,7 +38,7 @@ func TestQualityPreferencePersistsWithoutChangingAppConfiguration(t *testing.T) 
 		t.Fatal("preference changed strict App configuration")
 	}
 	invalid := quality
-	invalid.Resolution = "2160p"
+	invalid.Resolution.Width = 8194
 	if p.Save(invalid) == nil || *p.Read() != quality {
 		t.Fatal("invalid choice changed preference")
 	}
@@ -48,8 +48,8 @@ func TestQualityPreferencePersistsWithoutChangingAppConfiguration(t *testing.T) 
 	if err := os.Mkdir(path+".quality", 0700); err != nil {
 		t.Fatal(err)
 	}
-	quality.Resolution = "720p"
-	if p.Save(quality) == nil || p.Read().Resolution != "1440p" {
+	quality.Resolution = protocol.QualityResolution{Width: 1280, Height: 720}
+	if p.Save(quality) == nil || p.Read().Resolution != (protocol.QualityResolution{Width: 1920, Height: 1200}) {
 		t.Fatal("failed write replaced saved preference")
 	}
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
 	"golang.org/x/mod/semver"
 )
@@ -627,6 +628,9 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 		captureProcess: path,
 		capture:        capabilities,
 		capabilities: loopback.NativeMediaCapabilities{
+			MaxVideoResolution: protocol.QualityResolution{
+				Width: nativecapture.MaxVideoWidth, Height: nativecapture.MaxVideoHeight,
+			},
 			MaxAudioBitrate:       nativeaudio.MaxSendBitrate,
 			ReceiverReuse:         true,
 			Video:                 summary.Video,

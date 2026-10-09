@@ -61,11 +61,13 @@ one hour without authenticated participants; the private deployment retains the
 default. Operator records own activation, database and postflight evidence.
 The owner is holding the unpublished maintenance changes for 2.0. Preparation
 includes separating media presets from numeric requests and bounded capabilities.
-Numeric audio is implemented in the unpublished candidate: Browser/server v24
-and Native control v10 replace the preset field; capture v7 and SQLite schema 2
+Numeric audio and video ceilings are implemented in the unpublished candidate:
+Browser/server v24 and Native control v10 replace the preset fields;
+capture v7 and SQLite schema 2
 remain unchanged. Matched candidate App/Web/Server builds are required;
 1.x participants are rejected by the existing compatibility checks.
-Windows and Linux output now preserve source shape within the existing ceiling;
+Custom width/height controls retain the current implementation ceiling.
+Windows and Linux output now preserve source shape within that ceiling;
 axis-independent limits, Browser/macOS geometry, 4K and additional codecs are
 still assessed through the media boundary.
 Native Magicsock remains an isolated experiment with incomplete product

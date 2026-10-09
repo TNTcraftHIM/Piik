@@ -18,7 +18,6 @@ import {
 } from "../src/shared/media-copy-accounting";
 import {
   QUALITY_PROFILES,
-  QUALITY_RESOLUTIONS,
   qualitySettingsEqual,
   type QualityProfileId,
   type QualitySettings,
@@ -3203,7 +3202,7 @@ async function runCase(
   let routeTimingStatus: BenchmarkRun["routeTimingStatus"] = "not-requested";
   try {
     const capture = PROFILE_SETTINGS[config.profileId];
-    const captureResolution = QUALITY_RESOLUTIONS[capture.resolution];
+    const captureResolution = capture.resolution;
     const commonInit = {
       width: captureResolution.width,
       height: captureResolution.height,
@@ -3491,7 +3490,7 @@ async function main(): Promise<number> {
   }
 
   const profile = PROFILE_SETTINGS[config.profileId];
-  const profileResolution = QUALITY_RESOLUTIONS[profile.resolution];
+  const profileResolution = profile.resolution;
   const report: BenchmarkReport = {
     schemaVersion: 5,
     startedAt: new Date().toISOString(),

@@ -53,7 +53,7 @@ import type { ComicKind } from "../components/living/Comic";
 import type { HintKind } from "../ui/visual-kinds";
 import type { ComicTone } from "../components/living/comic-presentation";
 import { Tooltip } from "../components/living/Tooltip";
-import { QualityPresets } from "../components/living/QualityPresets";
+import { QualityPresets, ResolutionControl } from "../components/living/QualityPresets";
 import { RoomCodeInput, RoomCodeError } from "../components/living/RoomCodeInput";
 import { MetricCell } from "../components/living/Metrics";
 import {
@@ -128,7 +128,8 @@ import {
   matchingQualityProfileId,
   QUALITY_PROFILES,
   DEGRADATION_PREFERENCE_KEYS,
-  QUALITY_RESOLUTIONS,
+  MAX_CAPTURE_RESOLUTION,
+  qualityResolutionEqual,
   qualitySettingsEqual,
   qualitySettingsLabel,
   screenAudioBitrate,
@@ -137,7 +138,6 @@ import {
   setMediaPaused,
   videoQualitySettingsEqual,
   type DegradationPreference,
-  type QualityResolution,
   type QualitySettings,
   type ScreenAudioPreset,
 } from "../media/quality";
@@ -1729,7 +1729,7 @@ export function HostPage({
       nextProfile,
     );
     const captureChanged =
-      previousProfile.resolution !== nextProfile.resolution ||
+      !qualityResolutionEqual(previousProfile.resolution, nextProfile.resolution) ||
       previousProfile.maxFramerate !== nextProfile.maxFramerate;
     const audioChanged =
       screenAudioBitrate(previousProfile.maxAudioBitrate) !==
@@ -3597,6 +3597,11 @@ export function HostPage({
   const audioBitrateCeiling = Math.min(MAX_SCREEN_AUDIO_BITRATE, nativeActive
     ? nativeClientRef.current?.health.nativeMedia.maxAudioBitrate ?? MAX_SCREEN_AUDIO_BITRATE
     : MAX_SCREEN_AUDIO_BITRATE);
+  const nativeResolutionCeiling = nativeActive ? nativeClientRef.current?.health.nativeMedia.maxVideoResolution : undefined;
+  const resolutionCeiling = {
+    width: Math.min(MAX_CAPTURE_RESOLUTION.width, nativeResolutionCeiling?.width ?? MAX_CAPTURE_RESOLUTION.width),
+    height: Math.min(MAX_CAPTURE_RESOLUTION.height, nativeResolutionCeiling?.height ?? MAX_CAPTURE_RESOLUTION.height),
+  };
 
   return (
     <div className="lr-app">
@@ -3844,28 +3849,9 @@ export function HostPage({
                   <Glyph name="expand" size={19} />
                   <Cap k="host.advanced.resolution" />
                 </span>
-                <div
-                  className="lr-row-group"
-                  role="group"
-                  aria-label={t("host.advanced.resolution")}
-                >
-                  {(
-                    Object.keys(QUALITY_RESOLUTIONS) as QualityResolution[]
-                  ).map((resolution) => (
-                    <Chip
-                      key={resolution}
-                      selected={advancedQuality.resolution === resolution}
-                      disabled={phase === "starting" || switchingSource}
-                      title={QUALITY_RESOLUTIONS[resolution].label}
-                      hint="hint-quality"
-                      onClick={() =>
-                        changeAdvancedQuality({ resolution })
-                      }
-                    >
-                      {QUALITY_RESOLUTIONS[resolution].label}
-                    </Chip>
-                  ))}
-                </div>
+                <ResolutionControl value={advancedQuality.resolution} maximum={resolutionCeiling}
+                  disabled={phase === "starting" || switchingSource}
+                  onChange={resolution => changeAdvancedQuality({ resolution })} />
               </div>
               <div className="lr-sharing-limits">
                 <div className="lr-door-group">

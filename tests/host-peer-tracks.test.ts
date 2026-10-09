@@ -3377,7 +3377,7 @@ describe("ViewerRelay downstream ownership", () => {
 
   it("applies the latest profile to the current and future child", async () => {
     const customSettings = {
-      resolution: "1440p",
+      resolution: { width: 2560, height: 1440 },
       maxFramerate: 45,
       maxBitrate: 10_500_000,
       degradationPreference: "balanced",

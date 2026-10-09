@@ -64,7 +64,7 @@ var NatTraversalPaths = [...]string{"unknown", "ordinary", "predicted"}
 
 // DefaultQualitySettings mirrors DEFAULT_QUALITY_SETTINGS.
 var DefaultQualitySettings = QualitySettings{
-	Resolution:            "1080p",
+	Resolution:            QualityResolution{Width: 1920, Height: 1080},
 	MaxFramerate:          30,
 	MaxBitrate:            5_000_000,
 	DegradationPreference: "balanced",
