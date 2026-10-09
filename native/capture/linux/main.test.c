@@ -1,7 +1,8 @@
-// build.sh --check uses synthetic GStreamer elements; no capture or codec is used.
+// build.sh --check uses synthetic video/GStreamer elements; no capture or codec is used.
 #define main capture_main
 #include "main.c"
 #undef main
+#include <gst/video/video.h>
 
 typedef struct { GstElement parent; guint bitrate; } FixtureEncoder;
 typedef struct { GstElementClass parent; } FixtureEncoderClass;
@@ -209,7 +210,8 @@ static void check_encoder_timestamp_segment(GstClockTime offset) {
   gst_pad_add_probe(source_pad, GST_PAD_PROBE_TYPE_BUFFER, begin_input_frame, &run, NULL);
   gst_pad_add_probe(source_pad, GST_PAD_PROBE_TYPE_BUFFER, output_input_frame, &output, NULL);
   gst_pad_add_probe(sink_pad, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, record_key_request, &request, NULL);
-  GstCaps *caps = gst_caps_from_string("video/x-h264,stream-format=byte-stream,alignment=au");
+  GstCaps *caps = gst_caps_from_string(
+      "video/x-h264,stream-format=byte-stream,alignment=au,width=640,height=480");
   GstBuffer *buffer = gst_buffer_new_allocate(NULL, sizeof(h264), NULL);
   gst_buffer_fill(buffer, 0, h264, sizeof(h264));
   GST_BUFFER_PTS(buffer) = offset + GST_SECOND;
@@ -244,6 +246,8 @@ static void check_encoder_timestamp_segment(GstClockTime offset) {
   g_assert_cmpint(bytes[37], ==, 2);
   g_assert_cmpint(bytes[38], ==, 1);
   g_assert_cmpuint(read_be((guint8 *)bytes + 40, 8), ==, 3 * GST_SECOND / 100);
+  g_assert_cmpuint(read_be((guint8 *)bytes + 56, 2), ==, 640);
+  g_assert_cmpuint(read_be((guint8 *)bytes + 58, 2), ==, 480);
   g_assert_cmpmem(bytes + 64, sizeof(h264), h264, sizeof(h264));
   g_assert_cmpuint(output.activation_timestamp, ==, 3 * GST_SECOND);
   g_assert_nonnull(request);
@@ -272,6 +276,66 @@ static GstState branch_state(VideoOutput *output) {
   g_assert_cmpint(gst_element_get_state(output->branch, &state, NULL, GST_SECOND),
                  !=, GST_STATE_CHANGE_FAILURE);
   return state;
+}
+
+static void check_source_geometry(guint max_width, guint max_height) {
+  const VideoProfile profile = {.width = max_width, .height = max_height};
+  GString *description = g_string_new("appsrc name=source format=time ! ");
+  append_video_scale(description, &profile);
+  g_string_append(description, "appsink name=output sync=false async=false");
+  GError *error = NULL;
+  GstElement *pipeline = gst_parse_launch(description->str, &error);
+  g_string_free(description, TRUE);
+  g_assert_no_error(error);
+  GstElement *source = gst_bin_get_by_name(GST_BIN(pipeline), "source");
+  GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), "output");
+  g_assert_cmpint(gst_element_set_state(pipeline, GST_STATE_PLAYING), !=,
+                 GST_STATE_CHANGE_FAILURE);
+  // Keep one pipeline while input caps change, as a resized captured window or
+  // decoded relay source does. Small sources must not be enlarged to the ceiling.
+  const guint sizes[][2] = {{1080, 1920}, {3440, 1440}, {640, 480},
+                           {1920, 1080}, {641, 479}, {600, 600}};
+  for (guint index = 0; index < G_N_ELEMENTS(sizes); ++index) {
+    GstVideoInfo input;
+    g_assert_true(gst_video_info_set_format(&input, GST_VIDEO_FORMAT_NV12,
+                                           sizes[index][0], sizes[index][1]));
+    GstCaps *caps = gst_video_info_to_caps(&input);
+    gst_app_src_set_caps(GST_APP_SRC(source), caps);
+    gst_caps_unref(caps);
+    GstBuffer *buffer = gst_buffer_new_allocate(NULL, input.size, NULL);
+    gst_buffer_memset(buffer, 0, 128, input.size);
+    gst_buffer_memset(buffer, 0, 235, input.offset[1]);
+    GST_BUFFER_PTS(buffer) = index * GST_SECOND / 30;
+    GST_BUFFER_DURATION(buffer) = GST_SECOND / 30;
+    g_assert_cmpint(gst_app_src_push_buffer(GST_APP_SRC(source), buffer), ==, GST_FLOW_OK);
+    GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(sink), GST_SECOND);
+    g_assert_nonnull(sample);
+    GstVideoInfo actual;
+    g_assert_true(gst_video_info_from_caps(&actual, gst_sample_get_caps(sample)));
+    g_assert_true(valid_video_size(actual.width, actual.height));
+    g_assert_cmpuint(actual.width, <=, max_width);
+    g_assert_cmpuint(actual.height, <=, max_height);
+    g_assert_cmpint(actual.par_n, ==, actual.par_d);
+    double scale = MIN(1.0, MIN((double)max_width / input.width,
+                               (double)max_height / input.height));
+    g_assert_cmpfloat(ABS(actual.width - input.width * scale), <=, 2);
+    g_assert_cmpfloat(ABS(actual.height - input.height * scale), <=, 2);
+    GstVideoFrame frame;
+    g_assert_true(gst_video_frame_map(&frame, &actual, gst_sample_get_buffer(sample), GST_MAP_READ));
+    const guint8 *luma = GST_VIDEO_FRAME_PLANE_DATA(&frame, 0);
+    const gint stride = GST_VIDEO_FRAME_PLANE_STRIDE(&frame, 0);
+    // No encoded letterbox: even the four corners still contain the source.
+    for (gint y = 0; y < actual.height; y += actual.height - 1) {
+      g_assert_cmpint(luma[y * stride], >=, 230);
+      g_assert_cmpint(luma[y * stride + actual.width - 1], >=, 230);
+    }
+    gst_video_frame_unmap(&frame);
+    gst_sample_unref(sample);
+  }
+  gst_element_set_state(pipeline, GST_STATE_NULL);
+  gst_object_unref(source);
+  gst_object_unref(sink);
+  gst_object_unref(pipeline);
 }
 
 static void check_slot_retirement(void) {
@@ -470,6 +534,8 @@ int main(int argc, char **argv) {
   check_encoder_admission_and_control();
   check_bus_error_retains_primary_cause();
   check_slot_profiles();
+  check_source_geometry(1920, 1080);
+  check_source_geometry(2, 2);
   check_encoder_timestamp_segment(1000ULL * 60 * 60 * GST_SECOND);
   check_encoder_timestamp_segment(0);
   check_slot_retirement();

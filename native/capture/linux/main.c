@@ -941,6 +941,17 @@ static GstFlowReturn video_sample(GstAppSink *sink, gpointer data) {
   CaptureRun *run = output->run;
   GstSample *sample = gst_app_sink_pull_sample(sink);
   if (sample == NULL) return GST_FLOW_EOS;
+  GstCaps *caps = gst_sample_get_caps(sample);
+  const GstStructure *format = caps == NULL ? NULL : gst_caps_get_structure(caps, 0);
+  gint width = 0, height = 0;
+  if (format == NULL || !gst_structure_get_int(format, "width", &width) ||
+      !gst_structure_get_int(format, "height", &height) ||
+      !valid_video_size(width, height) ||
+      (guint)width > output->profile.width || (guint)height > output->profile.height) {
+    gst_sample_unref(sample);
+    fail_output(output, "GStreamer returned H.264 dimensions outside the output ceiling");
+    return GST_FLOW_ERROR;
+  }
   GstBuffer *buffer = gst_sample_get_buffer(sample);
   GstMapInfo mapped = GST_MAP_INFO_INIT;
   if (buffer == NULL || !gst_buffer_map(buffer, &mapped, GST_MAP_READ) ||
@@ -982,7 +993,7 @@ static GstFlowReturn video_sample(GstAppSink *sink, gpointer data) {
     return GST_FLOW_OK;
   }
   gboolean written = write_frame(2, recovery ? 1 : 0, (guint8)output->layer,
-                                  output->profile.width, output->profile.height,
+                                  width, height,
                                   timestamp / 100,
                                   10000000ULL / output->profile.frame_rate,
                                   mapped.data, mapped.size);
@@ -1099,6 +1110,22 @@ stopped:
   return 0;
 }
 
+static void append_video_scale(GString *pipeline, const VideoProfile *profile) {
+  // Let GStreamer preserve source aspect and renegotiate after a resize. The
+  // step keeps NV12 dimensions even; the profile is a ceiling, not a canvas.
+  g_string_append(pipeline, "videoconvert ! videoscale add-borders=false ! "
+                           "video/x-raw,format=NV12,");
+  const struct { const char *name; guint limit; } dimensions[] = {
+      {"width", profile->width}, {"height", profile->height}};
+  for (guint index = 0; index < G_N_ELEMENTS(dimensions); ++index) {
+    // GStreamer represents a one-value range as a scalar.
+    g_string_append_printf(pipeline, dimensions[index].limit == 2
+        ? "%s=(int)%u," : "%s=(int)[2,%u,2],",
+        dimensions[index].name, dimensions[index].limit);
+  }
+  g_string_append(pipeline, "pixel-aspect-ratio=1/1 ! ");
+}
+
 static int capture_video(int count, char **values) {
   CaptureRun run = {.last_input_timestamp = GST_CLOCK_TIME_NONE};
   gboolean encoded = count > 1 && strcmp(values[1], "--encoded-video") == 0;
@@ -1141,16 +1168,17 @@ static int capture_video(int count, char **values) {
         "frames. ! valve name=gate%u drop=%s ! ( "
         "queue name=raw%u max-size-buffers=1 max-size-bytes=0 "
         "max-size-time=0 leaky=downstream ! videorate drop-only=true ! "
-        "video/x-raw,framerate=%u/1 ! videoconvert ! videoscale ! "
-        "video/x-raw,format=NV12,width=%u,height=%u ! "
+        "video/x-raw,framerate=%u/1 ! ",
+        index, run.outputs[index].enabled ? "false" : "true",
+        index, profile->frame_rate);
+    append_video_scale(pipeline_text, profile);
+    g_string_append_printf(pipeline_text,
         "%s name=encoder%u ! video/x-h264,profile=constrained-baseline ! "
         "h264parse config-interval=-1 ! "
         "video/x-h264,stream-format=byte-stream,alignment=au ! "
         "appsink name=output%u emit-signals=true sync=false async=false "
         "max-buffers=1 drop=false ) ",
-        index, run.outputs[index].enabled ? "false" : "true",
-        index, profile->frame_rate, profile->width, profile->height, encoder_info->factory,
-        index, index);
+        encoder_info->factory, index, index);
   }
   GstElement *pipeline = gst_parse_launch(pipeline_text->str, &error);
   g_string_free(pipeline_text, TRUE);

@@ -536,7 +536,16 @@ ceiling. A 640x480 source stays 640x480; portrait and ultrawide sources no longe
 require an encoded landscape canvas. The converter, adaptation owner, output
 generation and frame envelope are reused. Axis-specific limits still apply;
 this does not yet give portrait capture a transposed ceiling or add a 4K setting.
-Browser and other platform geometry remain separate pending work.
+Browser and macOS geometry remain separate pending work.
+
+Linux uses the existing [GStreamer scaler](https://gstreamer.freedesktop.org/documentation/videoconvertscale/videoscale.html)
+with bounded even-dimension ranges instead of fixed output dimensions. Square
+pixel negotiation retains presentation aspect without a padded canvas; encoded
+samples provide the actual dimensions for the frame envelope. The headless
+control changes portrait, ultrawide, small, odd-sized and square inputs within
+one pipeline, checks the output ceiling and image corners, and exercises the
+smallest derived output. Compilation and those regressions passed on Linux;
+Portal capture and hardware encoder resizing still need a physical device.
 
 Local synthetic-input controls exercised that production worker through four
 successive source sizes: 1080x1920, 3440x1440, 640x480 and 1920x1080. Under the

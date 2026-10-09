@@ -50,9 +50,9 @@ Implementation needs a concrete useful result within the product model.
   actual output. Numeric audio admission, storage and the compact custom input
   implement [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s use case, with
   local Browser/direct/relay and Browser/native SFU evidence. Next assess
-  source-aspect-preserving geometry and 4K through the same owners. Windows
-  output now fits the source without a padded landscape canvas or upscaling;
-  axis-independent limits, Browser/other-platform geometry and product 4K
+  source-aspect-preserving geometry and 4K through the same owners. Windows and
+  Linux outputs now fit the source without a fixed padded landscape canvas;
+  axis-independent limits, Browser/macOS geometry and product 4K
   admission remain open. Preserve
   safety limits and framework-owned adaptation. The
   [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)

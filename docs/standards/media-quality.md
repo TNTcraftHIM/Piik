@@ -42,10 +42,12 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
   frame matches its desktop source dimensions. Other frames retain their own
   aspect ratio. This changes only the encoded presentation, never the game or
   display settings; vendor-private scaling is not inferred.
-  Each Windows output fits that presentation within its selected ceiling using
-  even dimensions, without enlarging the source or encoding a fixed landscape
-  canvas. The existing WebRTC encoder may adapt further; source resizing does
-  not create a new room or route. Frame envelopes carry actual output dimensions.
+- Windows and Linux outputs preserve source presentation aspect within the
+  selected ceiling, rounded to even dimensions. Small sources are not enlarged
+  to a fixed landscape canvas. Windows uses its existing converter; Linux uses
+  GStreamer's size negotiation. Source resizing does not create a new room or
+  route, and frame envelopes carry actual output dimensions. Network adaptation
+  remains owned by the existing media framework.
 - Windows SDR conversion owns one output color contract: limited-range BT.601
   NV12 with matching H.264 metadata. RGB capture and decoded video retain their
   input range/matrix through conversion and relay scaling; dimensions do not
