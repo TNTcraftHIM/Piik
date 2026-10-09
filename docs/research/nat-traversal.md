@@ -878,11 +878,22 @@ Admission ordering is also an integration constraint. Upstream
 waits for the server to admit the client's key before returning a socket.
 Piik creates the receiver and its socket before returning a media answer.
 Authorizing that key only after receiving the answer would therefore introduce
-a circular wait. Existing fixtures pre-grant keys and do not test this exchange.
-A product design must resolve that ordering within the existing assigned
-connection's authority; accepting arbitrary keys or passing room credentials
-into Native control is not an equivalent shortcut. This is a source-traced
-integration constraint, not a defect in Piik's current transport.
+a circular wait. An isolated `PrepareUDPPort` patch reserves the local address
+without waiting for admission. Through real Native control, it can return the
+answer first and receive fresh RTP if the fixture holds remote ICE candidates
+until the grant completes. Both receiver/control retirement paths retain their
+cleanup checks; the pre-granted control uses the same client/server orientation.
+Without that experimental candidate gate, Native sends five ICE checks before
+the roughly one-second grant acknowledgment, reaches eight and receives no RTP
+within the unchanged bound. Complete-SDP and early-trickle controls both fail.
+The early-trickle counterfactual is opt-in and intentionally fails its media check.
+
+This establishes a startup-order constraint, not a product integration or a Piik
+field defect. Keys and grants remain local fixture inputs; the candidate gate
+and unsupported dependency method are not accepted product mechanisms.
+The existing assigned-connection owner must resolve key exchange and admission
+before ICE starts. Accepting arbitrary keys, passing room credentials into Native
+control or enlarging its timeout is not an equivalent solution.
 
 ## Native Mapping Cache And Retry Lifetimes
 

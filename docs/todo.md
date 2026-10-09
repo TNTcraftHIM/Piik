@@ -16,6 +16,10 @@ Git/PRs own completed history.
   Prepare one coherent candidate and stop before publication. Preserve the existing
   product model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
+  Isolate the intermittent Linux race-suite no-output result in
+  `TestQualityDimensionsFollowAssignedSource`; focused repetitions and the next
+  full package run pass. No product cause is established; preserve its assertion
+  and timeout while collecting a matched failure.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
@@ -83,8 +87,9 @@ Implementation needs a concrete useful result within the product model.
   exhaust before the underlay recovers; research distinguishes eventual recovery
   from exhaustion by sender behavior. No new product setting or flow owner is
   accepted.
-  Resolve admission-before-answer ordering at the assigned-connection owner;
-  research owns the Native control retirement checks and their pre-granted scope.
+  Resolve key exchange and admission before ICE at the assigned-connection owner;
+  research owns the Native control retirement checks and the isolated candidate
+  gate. Neither the pre-granted nor gated fixture implements room authorization.
   Keep isolated dependency patches and
   recovery counterfactuals outside product routing; a diagnostic reply is not
   media-readiness authority. Research owns the experiments and their limits.
