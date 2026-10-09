@@ -89,7 +89,9 @@ Implementation needs a concrete useful result within the product model.
   accepted.
   Resolve key exchange and admission before ICE at the assigned-connection owner;
   research owns the supported pre-ICE dial/retirement checks and the isolated
-  gated counterfactual. Neither fixture implements room authorization.
+  gated counterfactual. A Go-only overlay verifies room-scoped key signaling;
+  Native key installation and flow revocation still need to follow those room
+  events. No product wire extension or Browser integration is implemented.
   Keep isolated dependency patches and
   recovery counterfactuals outside product routing; a diagnostic reply is not
   media-readiness authority. Research owns the experiments and their limits.

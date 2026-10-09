@@ -898,8 +898,19 @@ dependency corrections remain. This removes the need for that extra startup API
 when key admission precedes media negotiation; it does not implement room-scoped
 key exchange or demonstrate higher direct reachability.
 
+An isolated Go signaling extension now carries one bounded public key through
+the real room WebSocket and existing assigned-connection authorizer. It forwards
+candidate and retained-connection metadata, rejects unrelated peers/rooms and
+retired connection IDs, and cannot adopt a new connection from a key message.
+Ordinary invitation revocation still closes the authenticated Viewer session.
+The protocol/signaling race suites pass; removing the connection guard fails
+the scoped probe. This establishes metadata authorization only: Native key
+installation and flow retirement are not yet connected to those room events.
+The generated extension adds no server key registry and does not change the
+product wire format or Browser implementation.
+
 This establishes a startup-order constraint, not a product integration or a Piik
-field defect. Keys and grants remain local fixture inputs; the candidate gate
+field defect. The Native media checks still use local grants; the candidate gate
 and unsupported dependency method are not accepted product mechanisms.
 The existing assigned-connection owner must resolve key exchange and admission
 before ICE starts. Accepting arbitrary keys, passing room credentials into Native
