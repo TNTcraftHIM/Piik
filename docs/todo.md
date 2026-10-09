@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-09
+Last reviewed: 2026-10-10
 
 The current 2.0 preparation includes independent investigation across this
 ledger. Explicit owner holds remain in force; an investigation does not itself
@@ -75,10 +75,11 @@ Implementation needs a concrete useful result within the product model.
   pipeline and physical networks; it does not establish another reachable NAT class.
   Live-encoder/decoded-picture controls now separate shared forwarding queue
   delay from the local playback leg losing its selected LAN address. The shared
-  send-queue repair passes constrained-link recovery; verify the App's local
-  Browser bridge during address changes. A loopback-only policy fails the Firefox
-  control; retain the current address policy and verify both Host and Viewer
-  lifecycle behavior before claiming complete App recovery.
+  send-queue repair passes constrained-link recovery. The complete App controls
+  confirm that its local Browser bridge is a separate handoff limit, especially
+  for Host preview. Resolve that composition within the existing owners before
+  claiming complete App recovery. A loopback-only policy fails the Firefox
+  control; retain the current address policy.
   Product adoption still needs supported
   [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
   and RTCP/MTU boundaries, retained-flow recovery beyond the passing serial

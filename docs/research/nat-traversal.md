@@ -691,9 +691,24 @@ current wildcard bind and a non-loopback selected pair. Mozilla also keeps
 These controls establish a compatibility limit, not its complete Browser cause
 or public-Site permission behavior. Keep the current address policy. The Host
 currently ends sharing when its required local bridge fails; the Viewer delegates
-that failure to its existing bounded connection-replacement owner. Complete App
-handoff acceptance must cover both, without treating the remote tunnel's survival
-as proof that local playback survived.
+that failure to its existing bounded connection-replacement owner.
+
+Complete App UI controls on 2026-10-10 confirm this distinction in a disposable
+Linux network namespace, with automatic topology optimization disabled and no
+product source changes. Chromium 152 retains its loopback playback connection
+when the namespace's LAN address changes. Firefox 151 selects that LAN address:
+the Viewer resumes decoded pictures through the existing Browser fallback after
+the local connection fails, roughly 30 seconds later. A Firefox Host instead
+ends sharing on that preview failure, including a still-delivering downstream
+connection; the Chromium Host control continues. The Host source is generated
+VP8 delivered through the real capture-process interface, not physical capture.
+Acceptance checks fresh rendered frames at the end, not accumulated frames from
+before the interruption. All controls retire their App, Browsers and interfaces.
+These are ordinary-transport controls of the current App, not integrated
+Magicsock or physical roaming evidence. A faster remote tunnel alone cannot
+establish complete App handoff; local playback composition remains an adoption
+boundary. Retain the existing failure owners and address policy until a bounded
+alternative passes both Browser and Host/Viewer controls.
 
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
