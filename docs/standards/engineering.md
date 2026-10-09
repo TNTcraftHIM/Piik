@@ -171,6 +171,8 @@ above rather than searching the tree.
   Construction is part of acquisition: if it throws, release resources created
   before the failure and report through the existing operation owner. A failed
   allocation does not erase the operation's authoritative identity.
+  Initialize callback-visible state before registration or binding; library
+  constructors can start background work before returning.
   Ordered shutdown may require a ready auxiliary transport to outlive the stop
   request; its owner closes it after dependants retire. External convenience
   actions must not block lifecycle handling, and repeated attempts stay bounded.

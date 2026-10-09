@@ -92,19 +92,18 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 		prepareMapping: prepareMapping,
 	}
 	layers := 1
+	var relay *RelayOptions
 	if _, supported := relayBackend(videoCodec, options.Relay); supported {
 		layers = 2
+		relay = options.Relay
 	}
-	receiver.source, err = engine.NewSource(videoCodec, options.EdgeCapacity, layers, func([]int) {
+	receiver.source, err = engine.newSource(videoCodec, options.EdgeCapacity, layers, relay, func([]int) {
 		// Local output slots all derive from this one upstream encoded stream.
 		receiver.RequestKeyFrame()
 	})
 	if err != nil {
 		_ = connection.Close()
 		return nil, webrtc.SessionDescription{}, err
-	}
-	if layers > 1 {
-		receiver.source.relay = &relayDerivation{source: receiver.source, options: *options.Relay}
 	}
 	if hasAudio {
 		receiver.audioSource, err = engine.NewRelayedAudioSource(options.EdgeCapacity)

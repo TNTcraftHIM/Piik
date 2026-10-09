@@ -51,15 +51,14 @@ func TestRelayDerivationFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource("vp8", 2, 2, nil)
+	source, err := engine.newSource("vp8", 2, 2, &RelayOptions{
+		CaptureProcess: executable,
+		Capabilities:   nativecapture.Capabilities{SoftwareVP8: true, Adapters: []nativecapture.Adapter{{Index: 0}}},
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = source.Close() })
-	source.relay = &relayDerivation{source: source, options: RelayOptions{
-		CaptureProcess: executable,
-		Capabilities:   nativecapture.Capabilities{SoftwareVP8: true, Adapters: []nativecapture.Adapter{{Index: 0}}},
-	}}
 	profile := nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 2_000_000, Preference: "balanced"}
 	if err = source.SetRelayProfile(profile); err != nil {
 		t.Fatal(err)
@@ -330,13 +329,12 @@ func TestRelayIndependentSpatialFixture(t *testing.T) {
 	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
 	check(err)
 	defer engine.Close()
-	source, err := engine.NewSource("vp8", 2, 2, nil)
-	check(err)
-	defer source.Close()
-	source.relay = &relayDerivation{source: source, options: RelayOptions{
+	source, err := engine.newSource("vp8", 2, 2, &RelayOptions{
 		CaptureProcess: executable,
 		Capabilities:   nativecapture.Capabilities{SoftwareVP8: true, Adapters: []nativecapture.Adapter{{Index: 0}}},
-	}}
+	}, nil)
+	check(err)
+	defer source.Close()
 	check(source.SetRelayProfile(nativecapture.VideoProfile{
 		Width: 1920, Height: 1080, Framerate: 30, Bitrate: 5_000_000, Preference: "maintain-framerate",
 	}))

@@ -56,6 +56,37 @@ func TestSourceRecoveryCoalescesTargetsWithoutWakingUnrelatedOutputs(t *testing.
 	}
 }
 
+func TestSourceStartupFeedbackRequestsRecovery(t *testing.T) {
+	for _, relay := range []*RelayOptions{nil, {}} {
+		t.Run(fmt.Sprintf("relay-%t", relay != nil), func(t *testing.T) {
+			requested := make(chan []int, 4)
+			source, err := (&Engine{}).newSource("vp8", 2, 2, relay, func(layers []int) {
+				select {
+				case requested <- layers:
+				default:
+				}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer source.Close()
+			// LiveKit can request startup keyframes as soon as its buffers are bound.
+			// Wait for that real asynchronous callback, without manually sending PLI.
+			select {
+			case layers := <-requested:
+				if len(layers) == 0 {
+					t.Fatal("startup recovery has no output identity")
+				}
+				if (source.groupRecovery.Load() != 0) != (relay != nil) {
+					t.Fatal("startup recovery used the wrong capture/relay owner")
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("startup feedback lost its recovery notification")
+			}
+		})
+	}
+}
+
 func TestSourceRecoveryRetainsLocalPlanWithoutDirectCaptureCallback(t *testing.T) {
 	for _, relay := range []bool{false, true} {
 		t.Run(fmt.Sprint(relay), func(t *testing.T) {

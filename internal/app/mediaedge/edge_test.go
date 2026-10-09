@@ -125,12 +125,11 @@ func TestRelayFailureCannotRetireReconfiguredProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource("vp8", 1, 2, nil)
+	source, err := engine.newSource("vp8", 1, 2, &RelayOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = source.Close() })
-	source.relay = &relayDerivation{source: source}
 	_ = source.SetFormat(1, 640, 360)
 	profile := nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"}
 	if err = source.SetRelayProfile(profile); err != nil {
@@ -182,12 +181,11 @@ func TestRetiredRelayFailureCannotDisableLaterDemand(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	source, err := engine.NewSource("vp8", 2, 2, nil)
+	source, err := engine.newSource("vp8", 2, 2, &RelayOptions{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = source.Close() })
-	source.relay = &relayDerivation{source: source}
 	if err = source.SetFormat(1, 640, 360); err != nil {
 		t.Fatal(err)
 	}

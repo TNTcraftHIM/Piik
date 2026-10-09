@@ -137,6 +137,10 @@ func stunServers(servers []webrtc.ICEServer) []webrtc.ICEServer {
 // NewSource coalesces recovery requests by physical output slot; [-1] requests
 // all outputs. The callback runs outside the source lock and forwarding path.
 func (engine *Engine) NewSource(codec string, capacity, layers int, requestKeyFrame func([]int)) (*Source, error) {
+	return engine.newSource(codec, capacity, layers, nil, requestKeyFrame)
+}
+
+func (engine *Engine) newSource(codec string, capacity, layers int, relay *RelayOptions, requestKeyFrame func([]int)) (*Source, error) {
 	_, supported := videoCodecs[codec]
 	if !supported {
 		return nil, errors.New("native video codec is unsupported")
@@ -157,6 +161,15 @@ func (engine *Engine) NewSource(codec string, capacity, layers int, requestKeyFr
 		capacity: capacity, requestKeyFrame: requestKeyFrame, edges: make(map[*Edge]bool),
 		publications: make(map[*Publication]struct{}),
 	}
+	// Binding forwarding buffers can start asynchronous PLI callbacks. Publish
+	// their immutable inputs before binding, and start our worker only on success.
+	if requestKeyFrame != nil {
+		source.recoveryRequests = make(chan struct{}, 1)
+		source.recoveryStopped = make(chan struct{})
+	}
+	if relay != nil {
+		source.relay = &relayDerivation{source: source, options: *relay}
+	}
 	media, err := forwarding.NewEncodedSource(forwarding.SourceOptions{
 		ID: "screen", StreamID: "piik-native", Codec: videoCodecs[codec],
 		Formats: make([]forwarding.LayerFormat, layers), MaxPackets: encoded.MaxPacketWindow,
@@ -174,8 +187,6 @@ func (engine *Engine) NewSource(codec string, capacity, layers int, requestKeyFr
 	}
 	source.media = media
 	if requestKeyFrame != nil {
-		source.recoveryRequests = make(chan struct{}, 1)
-		source.recoveryStopped = make(chan struct{})
 		go source.runRecovery()
 	}
 	return source, nil
