@@ -83,7 +83,6 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 	check(mediaEngine.RegisterDefaultCodecs())
 	registry := &interceptor.Registry{}
 	check(webrtc.RegisterDefaultInterceptors(mediaEngine, registry))
-	check(webrtc.ConfigureTWCCSender(mediaEngine, registry))
 	reports := &receiverReportGate{}
 	registry.Add(reports)
 	receiver, err := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(registry),

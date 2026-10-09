@@ -826,9 +826,6 @@ func newReceiverWithAudio(t *testing.T, includeAudio bool, bindAddress string) *
 		}
 	}
 	registry := &interceptor.Registry{}
-	if err := webrtc.ConfigureTWCCSender(mediaEngine, registry); err != nil {
-		t.Fatal(err)
-	}
 	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
 		t.Fatal(err)
 	}

@@ -124,7 +124,6 @@ func TestRelayNetworkVP8Fixture(t *testing.T) {
 		check(media.RegisterDefaultCodecs())
 		registry := &interceptor.Registry{}
 		check(webrtc.RegisterDefaultInterceptors(media, registry))
-		check(webrtc.ConfigureTWCCSender(media, registry))
 		receiver, createErr := webrtc.NewAPI(webrtc.WithMediaEngine(media), webrtc.WithInterceptorRegistry(registry),
 			webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
 		check(createErr)

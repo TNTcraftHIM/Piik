@@ -70,7 +70,6 @@ func TestTransportConstrainedDormantRecovery(t *testing.T) {
 	check(media.RegisterDefaultCodecs())
 	registry := &interceptor.Registry{}
 	check(webrtc.RegisterDefaultInterceptors(media, registry))
-	check(webrtc.ConfigureTWCCSender(media, registry))
 	receiver, err := webrtc.NewAPI(webrtc.WithMediaEngine(media), webrtc.WithInterceptorRegistry(registry),
 		webrtc.WithSettingEngine(receiveSettings)).NewPeerConnection(webrtc.Configuration{})
 	check(err)
