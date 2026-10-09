@@ -635,6 +635,27 @@ reachable class. The control makes no explicit rediscovery call; its passing
 result validates the measurement and available-media baseline, not universal
 direct recovery. It does not run Piik's complete reconnect schedule.
 
+An actual local-address-change control on 2026-10-09 replaces one endpoint's
+IPv4 address, default route and public UDP mapping, allowing upstream network
+monitoring to react. Discovery stays available, without an explicit endpoint
+update or diagnostic Ping. With Piik's unchanged Viewer recovery owner and
+Trickle exchange, three repetitions per direction preserve Tailcat's same media
+session: direct delivery returns in 1.25–6.40 seconds with no owner restart.
+Both default inner checks and the isolated 64-check candidate pass this control.
+The ordinary Pion comparison requests one ICE restart and returns direct media
+in 9.14–9.24 seconds. Relay accounting separates first available media from
+direct delivery; another two seconds of fresh SRTP after DERP closes confirms it.
+
+The actual Native Engine's wildcard UDP socket is a separate baseline: both
+directions stop delivering after the address change without new SDP, and fresh
+Native discovery restores local playback on that same changed network. This
+avoids attributing only Pion's default per-interface socket behavior to Piik.
+These controls establish a bounded address-handoff benefit, not an additional
+initial NAT-reachability class, physical Wi-Fi roaming or complete App/decoder
+acceptance. They do not resolve the gateway-only or prolonged-outage controls
+above. Supported dependencies, room grants and representative network evidence
+remain prerequisites for product adoption.
+
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
 required fresh bidirectional delivery after DERP closed. One side reporting a

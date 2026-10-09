@@ -69,6 +69,9 @@ Implementation needs a concrete useful result within the product model.
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   have not established improved direct reachability. Seek a repeatable benefit
   before accepting room-scoped peer keys, flow admission and relay operation.
+  Isolated local-address changes now preserve the same session under the actual
+  Viewer recovery owner. Verify that bounded benefit through the complete App
+  pipeline and physical networks; it does not establish another reachable NAT class.
   Product adoption still needs supported
   [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
   and RTCP/MTU boundaries, retained-flow recovery beyond the passing serial
