@@ -590,22 +590,14 @@ A retained-flow counterfactual reuses Pion's existing
 [UDP mux](https://github.com/pion/ice/blob/v4.4.0/udp_mux.go) after closing the old
 PeerConnection. It keeps the accepted Tailcat flow and replaces ICE/DTLS/SRTP,
 without another listener or preparation exchange. Setup falls from about 913 ms
-to 11–20 ms, but only three of six default-check nine-/eleven-second controls
-recover. The other three exhaust inner checks without fresh SRTP. This removes
-flow creation from those failures; it does not by itself resolve recovery.
-Combining retained flow with 16 checks still fails two of six cases. With 64
-checks, all six nine-/eleven-second cases recover; permanent loss still exhausts
-the existing two-request budget after the replacement's 15-second initial
-deadline, and disposal cancels recovery. This identifies a bounded composition
-candidate without another timer or readiness probe. Each retained flow is serial:
-overlapping connections still use separate flows. Three local race controls keep
-sibling audio/video flowing through two retained-flow replacements and another
-flow's rollback; peer revocation stops fresh media on both remaining flows.
-The combined listener-state, Tailcat/WireGuard revocation and bounded-TWCC
-candidates also pass Linux race checks for those isolation boundaries and the
-retained-flow/64-check nine-/eleven-second, permanent-loss and retirement cases.
-These checks do not define room-grant integration or establish full App
-interoperability or any additional direct-reachability benefit.
+to 11–20 ms. Nine-/eleven-second recovery passes three of six default-check
+cases, four of six with 16 checks and six of six with 64. Removing flow creation
+alone therefore does not resolve recovery. Combined listener/revocation/TWCC
+patches pass Linux race checks for 64-check recovery, bounded exhaustion,
+retirement and sibling audio/video through serial replacements and rollback.
+Overlapping connections still use separate flows, and revocation stops both.
+This counterfactual does not accept retained flow as a product owner; the fresh
+flow alternative below avoids that extra lifetime.
 
 A preface-free alternative uses Tailcat's existing
 [UDP listener](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/listen.go)
@@ -618,10 +610,22 @@ each pass two Linux race repetitions under the actual Viewer owner. Setup takes
 the unchanged two-request and initial-connection budgets. Permanent loss still
 exhausts recovery, and retirement closes pending work. Local race controls cover
 mutable deadlines, closing during ICE, peer rejection and continuous sibling
-audio/video. Default inner checks still fail in the matched outage controls.
+audio/video. Default inner checks still fail in these restart-then-rebuild controls.
 This removes the fixture-preface and retained-flow lifetime requirements; it
 does not accept a product Binding limit, implement room grants or establish
-full App/decoded-media acceptance of this alternative.
+full App recovery acceptance of this alternative.
+
+The sender's [restart capability](../standards/routing-transport.md#reconciliation)
+changes that schedule. Modeling the current Native sender's first-request
+replacement under the same Viewer owner on 2026-10-10, default checks recover both
+nine- and eleven-second outages at about 23.3 seconds after two replacements. Their first
+replacement still exhausts eight checks; the second starts after its existing
+15-second initial deadline. With 64 checks, these controls recover after one
+replacement at about 12.2 and 15.3 seconds respectively. Permanent loss exhausts
+two replacements at about 38.3 seconds, and disposal cancels pending recovery.
+This narrows the earlier failure claim to its tested sender behavior; it is not a universal Native failure
+or an accepted product tuning. Native control and decoding remain stubbed in
+this owner fixture, distinct from the decoded handoff checks below.
 
 Separate checks preserve continuous sibling audio/video through a local ICE
 restart, failed-flow retirement, both callers' pending cancellation/deadline,
@@ -758,13 +762,16 @@ bridge gap, not the remaining Magicsock composition, physical roaming or platfor
 acceptance boundaries.
 
 The aligned candidate also combines the real Native encoder/forwarder/receiver
-with the actual Browser bridge over the experimental Tailcat socket. Chromium
-152 and Firefox 151 each pass an unchanged ordinary-Pion control and both
-Tailcat address-change directions. After DERP closes, new blue content keeps
-rendering on the same track. Firefox renegotiates its local leg once when that
-endpoint moves; Chromium retains its working loopback leg. Local HTTP replaces
-Native control only in this fixture; App authorization and the room controller
-are not exercised. No product timeout or address policy changes for this check.
+with the actual Browser bridge over the experimental Tailcat socket. The fresh
+flow adapter now replaces its synthetic preface: SDP starts before peer admission,
+and ICE supplies the first datagram. All six FFmpeg-decoded controls pass Linux
+race checks. Chromium 152 and Firefox 151 each pass an unchanged ordinary-Pion
+control and both Tailcat address-change directions. After DERP closes, new blue
+content keeps rendering on the same track. Firefox renegotiates its local leg
+once when that endpoint moves; Chromium retains its working loopback leg. Local
+HTTP replaces Native control only in this fixture; App authorization, room routing
+and prolonged-outage replacement are not exercised. No product timeout, address
+policy or inner Binding setting changes for these handoff checks.
 
 The earlier FFmpeg matrix had one decoded-content failure. Matched synthetic
 bitstream/RTP replay identifies a receiver-fixture mismatch: its separate SDK

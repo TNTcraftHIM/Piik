@@ -119,8 +119,10 @@ deadline or start an independent recovery loop.
 When NAT traversal enhancement is enabled, another operation may use the
 remaining connection-attempt budget after rollback. The waiting display uses the actual
 server-issued attempt ordinal; it never counts time as an attempted connection.
-Committed P2P recovery first restarts ICE on the same connection, then
-rebuilds that connection if necessary, within the existing two-request budget.
+Committed P2P recovery first requests an ICE restart, then requests a rebuild
+if necessary, within the existing two-request budget. A sender without restart
+support, including the current Native sender, replaces its connection on that
+first request.
 The budget belongs to the current parent and survives physical connection or
 Browser/Native backend replacement. Only a connected transport or a new parent
 resets it; replacing an unconnected backend cannot renew recovery indefinitely.

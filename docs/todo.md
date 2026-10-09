@@ -78,9 +78,11 @@ Implementation needs a concrete useful result within the product model.
   Product adoption still needs supported
   [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
   and RTCP/MTU boundaries, complete recovery with fresh per-connection flows
-  beyond the isolated Trickle/64-check experiment, and mixed Browser/Native
-  verification. Default inner checks still fail; no new product setting or flow
-  owner is accepted.
+  beyond the isolated owner and decoded-handoff checks, including each sender's
+  recovery capability, and mixed Browser/Native verification. Inner checks can
+  exhaust before the underlay recovers; research distinguishes eventual recovery
+  from exhaustion by sender behavior. No new product setting or flow owner is
+  accepted.
   Keep isolated dependency patches and
   recovery counterfactuals outside product routing; a diagnostic reply is not
   media-readiness authority. Research owns the experiments and their limits.
