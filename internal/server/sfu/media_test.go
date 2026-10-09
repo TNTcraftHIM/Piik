@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -310,7 +311,31 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 		}
 		answer, answerErr := receiver.CreateAnswer(nil)
 		check(answerErr)
-		check(service.ApplySubscriberAnswer(subscription, "subscriber_123456", waitGathering(receiver, answer)))
+		answer = waitGathering(receiver, answer)
+		if index == 1 {
+			// Admission of one limited receiver must not bind its incompatible
+			// audio or disturb the publication and its already-playing sibling.
+			limited := answer
+			limited.SDP = strings.ReplaceAll(limited.SDP, "maxaveragebitrate=510000", "maxaveragebitrate=192000")
+			if limited.SDP == answer.SDP {
+				t.Fatal("receiver fixture did not declare its Opus limit")
+			}
+			if service.ApplySubscriberAnswer(subscription, "subscriber_123456", limited) == nil {
+				t.Fatal("shared audio accepted an insufficient receiver limit")
+			}
+			if physical.transport.PC.RemoteDescription() != nil {
+				t.Fatal("rejected answer was applied before admission")
+			}
+			beforeVideo, beforeAudio := videoPackets[0].Load(), audioPackets[0].Load()
+			for videoPackets[0].Load() < beforeVideo+3 || audioPackets[0].Load() < beforeAudio+3 {
+				select {
+				case <-time.After(10 * time.Millisecond):
+				case <-ctx.Done():
+					t.Fatal("receiver rejection interrupted its healthy sibling")
+				}
+			}
+		}
+		check(service.ApplySubscriberAnswer(subscription, "subscriber_123456", answer))
 	}
 	for videoPackets[0].Load() < 3 || videoPackets[1].Load() < 3 ||
 		audioPackets[0].Load() < 3 || audioPackets[1].Load() < 3 {

@@ -696,11 +696,11 @@ func TestAudioSourceDeliversOpusOnTheVideoPeerConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Close() })
-	video, err := engine.NewSource("h264", 1, 1, nil)
+	video, err := engine.NewSource("h264", 2, 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	audio, err := engine.NewAudioSource(1, 128_000)
+	audio, err := engine.NewAudioSource(2, 128_000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -722,6 +722,39 @@ func TestAudioSourceDeliversOpusOnTheVideoPeerConnection(t *testing.T) {
 		}
 	})
 	connectEdgeToReceiver(t, edge, receiver)
+	limited, err := engine.NewEdge(video, EdgeOptions{ConnectionID: "limited-audio-edge", Audio: audio})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = limited.Close() })
+	limitedReceiver := newAudioReceiver(t)
+	t.Cleanup(func() { _ = limitedReceiver.Close() })
+	offer, err := limited.CreateOffer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = limitedReceiver.SetRemoteDescription(offer); err != nil {
+		t.Fatal(err)
+	}
+	answer, err := (&Receiver{connection: limitedReceiver}).createAnswer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer.SDP = strings.ReplaceAll(answer.SDP, "maxaveragebitrate=510000", "maxaveragebitrate=192000")
+	if err = limited.SetAnswer(answer); err == nil {
+		t.Fatal("shared audio accepted an insufficient receiver limit")
+	}
+	if limited.connection.RemoteDescription() != nil {
+		t.Fatal("rejected answer was applied before admission")
+	}
+	if err = limited.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Rejecting and retiring this edge must leave the shared audio source and
+	// the first receiver usable, without reducing the source's live setting.
+	if audio.configuredBitrate() != 128_000 {
+		t.Fatal("receiver admission changed the shared audio setting")
+	}
 	if err = audio.WritePCM(make([]byte, nativeaudio.FrameBytes), 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}

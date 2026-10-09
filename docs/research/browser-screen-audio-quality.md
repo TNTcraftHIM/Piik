@@ -105,7 +105,11 @@ retirement also passed; the Browser run measured stereo separation. An ordinary
 Browser relay forwarded received tracks to two children at 320 kbps, with
 advancing decoded audio and successful cleanup. A direct Browser control now
 keeps requested 256/320 kbps below an explicit 192 kbps receive limit, while a
-510 kbps receiver permits both rates. A native real-Opus control through
+510 kbps receiver permits both rates. Native and SFU adapter controls reject
+an insufficient 192 kbps answer before binding it; retiring or correcting that
+preparation leaves the original source and healthy sibling delivering media.
+These controls do not establish the complete room-route response to rejection.
+A native real-Opus control through
 6 Mbps -> 500 kbps -> 6 Mbps shaping retains decoded audio during live
 320/96/320 kbps changes, with sustained high video after the shared
 [probe measurement and video-budget repairs](./node-local-media-design.md#send-queue-recovery).
