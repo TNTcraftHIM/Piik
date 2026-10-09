@@ -55,6 +55,9 @@ Implementation needs a concrete useful result within the product model.
   owns local capture, codec, derived-output, SFU and bounded mixed-route evidence.
   Extend Browser interoperability and mixed-topology checks to limited receivers
   and physical camera orientation behavior.
+  Preserve confirmed decoder incompatibility in receiving feedback: the local
+  H.264-unavailable control currently ends with generic route exhaustion.
+  Keep the existing presentation and recovery owners.
   Browser display capture, Browser relay and Browser-to-Native fanout now have
   bounded high-resolution evidence. macOS geometry and physical 4K/game capture
   remain open. Preserve safety

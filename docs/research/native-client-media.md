@@ -644,10 +644,23 @@ old SFU picture during peer preparation. The mixed Browser Host/Native Viewer
 control also passed those transitions. With clarity priority, its live
 2160x3840-to-360x640 edit retained the Native connection and playback track;
 SFU recovery retained that size and then restored 2160x3840. Firefox 155 received
-the same VP8 sizes from Chrome, retaining its track through both edits. All
-controls retired their receiving connections on stop. Balanced priority may
+the same VP8 and H.264 sizes from Chrome 154, retaining its track through both
+edits. All controls retired their receiving connections on stop. Balanced priority may
 deliver smaller adapted pictures. These local checks do not establish physical
 4K capture, every mixed handoff or cross-network performance.
+
+The H.264 control supplies OpenH264 2.6.0 to an isolated Firefox profile, using
+the artifact and SHA-512 from [Mozilla's codec manifest](https://github.com/mozilla-firefox/firefox/blob/main/toolkit/content/gmp-sources/openh264.json).
+This follows the [Web Platform Tests setup](https://github.com/web-platform-tests/wpt/blob/master/tools/wpt/browser.py).
+A fresh-profile control did not advertise H.264 and could not receive the
+H.264-only share, so codec availability must be established before attributing
+that result to resolution or networking. Firefox owns its component installation;
+the [upstream report](https://bugzilla.mozilla.org/show_bug.cgi?id=1766638) records
+the separate first-use installation boundary.
+A controlled receiver with H.264 unavailable reaches the current generic
+“No media route available” presentation. Receiving feedback does not yet retain
+that confirmed incompatibility through route exhaustion; capability work needs
+to distinguish it without introducing another retry or failure owner.
 
 Chrome 154 camera controls exposed a separate constraint bug: lowering a
 540x960 input to the 1280x720 ceiling produced a cropped 540x720 picture when
