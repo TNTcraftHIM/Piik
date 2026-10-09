@@ -741,6 +741,23 @@ These controls use ordinary Pion and generated media. They close the reproduced 
 bridge gap, not the remaining Magicsock composition, physical roaming or platform
 acceptance boundaries.
 
+The aligned candidate also combines the real Native encoder/forwarder/receiver
+with the actual Browser bridge over the experimental Tailcat socket. Chromium
+152 and Firefox 151 each pass an unchanged ordinary-Pion control and both
+Tailcat address-change directions. After DERP closes, new blue content keeps
+rendering on the same track. Firefox renegotiates its local leg once when that
+endpoint moves; Chromium retains its working loopback leg. Local HTTP replaces
+Native control only in this fixture; App authorization and the room controller
+are not exercised. No product timeout or address policy changes for this check.
+
+The matching FFmpeg matrix passed five of six cases. One source-address handoff
+kept decoded-frame counts advancing but lost the expected new colour; three
+focused repetitions then passed. Decoder errors and this intermittent result
+remain unresolved. The FFmpeg sink's direct SDK assembler differs from the
+product relay-input owner, so the observation needs a matched bitstream/assembler
+control before attributing it to product transport. Browser passes do not erase
+that failed control or establish universal continuity.
+
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
 required fresh bidirectional delivery after DERP closed. One side reporting a

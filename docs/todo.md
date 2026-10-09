@@ -79,8 +79,11 @@ Implementation needs a concrete useful result within the product model.
   exposed a separate local Browser bridge limit. Fresh interface gathering and
   bounded bridge renegotiation now preserve the local track in complete ordinary
   Pion App controls, including Firefox Host and Viewer. Retain the existing
-  address policy: forcing loopback fails Firefox. Verify the combined Magicsock
-  and Browser pipeline before claiming complete App recovery through that transport.
+  address policy: forcing loopback fails Firefox. Combined Native-engine/Browser
+  bridge controls pass both handoff directions in Chromium and Firefox; full App
+  authorization and room routing remain outside that fixture. Resolve the
+  intermittent FFmpeg decoded-content failure with a matched assembler/bitstream
+  control before claiming complete recovery through that transport.
   Product adoption still needs supported
   [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
   and RTCP/MTU boundaries, retained-flow recovery beyond the passing serial
