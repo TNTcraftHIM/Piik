@@ -366,6 +366,15 @@ UDP pairs within the observation window. Tailcat delivered those cases while
 the fixture relay remained available. This demonstrates relay coverage, not
 an additional P2P reachability class or a field success rate.
 
+Relay policy remains a separate integration boundary. Tailcat's documented
+fallback may carry media through DERP during startup or recovery. Closing DERP
+or counting its packets in a fixture measures the path; neither enforces Piik's
+product policy. The reviewed Tailcat API does not expose a direct-only media
+policy that retains discovery. Disabling DERP also removes bootstrap/endpoint
+exchange, and polling a direct-path status cannot authorize each later packet.
+Product adoption needs that separation or an accepted transport-policy change;
+it must not silently add a media relay to P2P-only rooms or bypass SFU-only sites.
+
 Replacing one gateway mapping without notifying endpoints separated recovery
 from initial reachability. Neither established direct path delivered within
 20 seconds with the relay closed. Fresh Pion discovery/exchange recovered in
@@ -908,6 +917,17 @@ the scoped probe. This establishes metadata authorization only: Native key
 installation and flow retirement are not yet connected to those room events.
 The generated extension adds no server key registry and does not change the
 product wire format or Browser implementation.
+
+A separate Native control check derives admission from its actual owned inbound
+flows. Closing one flow retains the shared peer's authorization while another
+flow remains; closing the last disconnects that peer. Final revocation and a new
+grant serialize without holding the flow-map lock through Tailcat callbacks.
+Stop and control-close cases pass under the race detector, including fresh
+sibling RTP before preparing a replacement. Counterfactuals that disconnect on
+every close or never disconnect fail those checks. This composes physical-flow
+cleanup with the Native session; keys still come from the local fixture, not
+the room signaling experiment above. Complete room-to-App authorization remains
+open.
 
 This establishes a startup-order constraint, not a product integration or a Piik
 field defect. The Native media checks still use local grants; the candidate gate

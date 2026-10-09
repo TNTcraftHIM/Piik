@@ -90,8 +90,11 @@ Implementation needs a concrete useful result within the product model.
   Resolve key exchange and admission before ICE at the assigned-connection owner;
   research owns the supported pre-ICE dial/retirement checks and the isolated
   gated counterfactual. A Go-only overlay verifies room-scoped key signaling;
-  Native key installation and flow revocation still need to follow those room
+  a separate Native control fixture ties key revocation to its last owned flow.
+  Native key installation and flow retirement still need to follow those room
   events. No product wire extension or Browser integration is implemented.
+  Resolve direct-only media enforcement while retaining discovery; DERP must
+  not silently become another media fallback or bypass site/share route policy.
   Keep isolated dependency patches and
   recovery counterfactuals outside product routing; a diagnostic reply is not
   media-readiness authority. Research owns the experiments and their limits.
