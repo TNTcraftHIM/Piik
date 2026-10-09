@@ -95,19 +95,15 @@ of a reporter's cause; research owns the completed experiments and their limits.
   boundary. Visible permission changes, display-mode changes and the reporter's
   setup still need matched physical evidence; API success does not prove that
   Windows hid the border.
-- [ ] **macOS and Linux physical capture.** Complete the remaining capture/audio
-  checks in [verification status](./verification-status.md#device-evidence-boundary),
-  including an Intel Mac with a usable hardware H.264 encoder, an ARM64 Linux
-  desktop, and Linux systems beyond the PR author's Hyprland/NVIDIA result.
-- [ ] **Signaling recovery on passwordless sites (#446).** Verify the admission
-  correction against a matched Host/Server attempt; identify the event preceding
-  the handshake failure rather than inferring password denial from `AUTH_REQUIRED`.
-- [ ] **HDR, audio-exclusion and mobile interaction device coverage.** Complete
-  the [physical matrix](./verification-status.md#device-evidence-boundary):
-  HDR/mixed displays, voice-app process trees across playback devices and phone
-  keyboard/theater/participant-menu interaction. Browser HDR overexposure is an
-  accepted limitation with [documented alternatives](./guide/troubleshooting.md#hdr-picture-looks-too-bright-or-washed-out);
-  reopen conversion work only with new evidence and an accepted implementation.
+- [ ] **Physical device and network acceptance.** Complete the remaining
+  [device checks](./verification-status.md#device-evidence-boundary) and
+  [network/endurance matrix](./verification-status.md#remaining-device-and-network-acceptance),
+  preserving platform deferrals and serial physical checks. Include macOS/Linux
+  capture, HDR/mixed displays, audio exclusion across real process trees and
+  playback devices, and mobile keyboard/theater/participant controls. The
+  [camera and microphone assessment](./research/camera-and-microphone.md)
+  additionally owns levels, echo, device replacement/native mixing, OBS input
+  A/V synchronization and phone camera permission/orientation/background limits.
 - [ ] **Native H.264 motion quality (#432).** Obtain matched source/decoded
   pictures and bitstream for the original 720p30 game comparison. Retain current
   codec parameters. The [evidence review](./research/native-client-media.md#native-h264-motion-quality)
@@ -126,18 +122,6 @@ of a reporter's cause; research owns the completed experiments and their limits.
   [#453](https://github.com/TNTcraftHIM/Piik/issues/453) has no matched endpoint
   reports to distinguish network reachability from a product failure.
   The v1.6.3 candidate-timeout report lacks share-start and SDP/ICE evidence.
-  [#464](https://github.com/TNTcraftHIM/Piik/issues/464) and the supplied report
-  identify v1.9.2, a NAT-hosted Server, Native Host, and the same timeout under
-  `SFU_ONLY`. They still lack the matched Viewer ICE, decode and `route-ready`
-  trace. The cited Host failure follows the operation deadline; healthy ingress
-  and a bound subscription do not establish delivered frames or its cause.
-  Native H264 and Browser [SFU controls behind kernel NAT](./research/nat-traversal.md#sfu-behind-server-nat)
-  pass, including Native H264 on published v1.9.2, but do not reproduce the
-  reporter's network. Blocking Viewer media alone
-  preserves connected endpoints and a bound track until the operation deadline;
-  that log sequence does not identify a unique cause.
-  Correlate transport-state diagnostics with the affected
-  Viewer before changing admission or recovery.
   [#468](https://github.com/TNTcraftHIM/Piik/issues/468) needs the complete join
   trace to distinguish a new Viewer from reauthentication with lost local media;
   its excerpt starts with an already committed SFU edge. Retest the affected
@@ -154,11 +138,6 @@ of a reporter's cause; research owns the completed experiments and their limits.
   reports before changing routing or advising users to disable IP masking.
   [#463](https://github.com/TNTcraftHIM/Piik/issues/463) lacks the Browser-only
   Mac/phone attempt details needed to distinguish capture, entry and media failure.
-- [ ] **Camera and Host microphone device coverage.** Check real audio levels,
-  echo, device replacement/native mixing and phone camera permission, orientation
-  and background behavior. Include OBS virtual-camera/audio-input sound quality
-  and A/V synchronization. The [capture assessment](./research/camera-and-microphone.md)
-  owns current behavior and the accepted physical limits.
 - [ ] **Public-invitation startup and HTTP 1033.** Obtain version and matched
   diagnostics for creation failures, Demo access and a stream stalling before
   reload returns 1033. Distinguish connector recovery/exit, DNS/provider failure
@@ -174,8 +153,7 @@ of a reporter's cause; research owns the completed experiments and their limits.
   screenshot. Retaining dependency failure details improves the next report;
   it does not establish or resolve this attempt's cause.
 - [ ] **Viewer interruptions.** Obtain paired endpoint/upstream-relay diagnostics
-  for established viewing returning to P2P connecting, including
-  [#429](https://github.com/TNTcraftHIM/Piik/issues/429)'s SFU-to-P2P dropout.
+  for established viewing returning to P2P connecting.
   Separately retest the v1.5.0 App public-link report where one Viewer drops
   immediately after connection details appear while others work. Distinguish
   first-frame admission, signaling grace and current-edge recovery.
@@ -228,35 +206,32 @@ works, so a Rust alternative needs a concrete Go limitation.
 
 ## Parked Product Work
 
-1. **Representative device/network acceptance.** Resume the remaining matrix in
-   [verification status](./verification-status.md#remaining-device-and-network-acceptance)
-   when directed, preserving platform deferrals and serial physical checks.
-2. **Broader quality work.** Reopen from measured interruptions, failed recovery
+1. **Broader quality work.** Reopen from measured interruptions, failed recovery
    or healthy-sibling degradation at acceptable complexity. The
    [Browser pool comparison](./research/browser-local-encoding-pool.md#balanced-startup-and-recovery)
    owns cold-encoder tradeoffs; low resolution alone is not a defect. Check
    whether a proposed move merely shifts pressure to another parent's siblings.
-3. **Platform output.** Reopen for a registered receiver acting as an ordinary
+2. **Platform output.** Reopen for a registered receiver acting as an ordinary
    Viewer only after the [platform-output gate](./research/platform-output.md)
    passes.
-4. **Additional languages.** Review community catalogs and their rendered UI
+3. **Additional languages.** Review community catalogs and their rendered UI
    following the [translation guide](./guide/translating.md), including names,
    menu navigation, text direction and layout.
-5. **Windows code signing.** Revisit after enrollment in a trusted signing
+4. **Windows code signing.** Revisit after enrollment in a trusted signing
     service. Sign executables before archive checksums; publisher identity does
     not guarantee that antivirus cloud scanning stops.
-6. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
+5. **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
     and retain Gitee; do not add a self-hosted mirror. Chrome still blocks the
     Gitee attachment when Referer is removed. Reopen for new evidence or a
     provider review; the warning remains unresolved.
-7. **Release-operation policy.** Protected release environments and immutable
+6. **Release-operation policy.** Protected release environments and immutable
     draft assets remain unaccepted proposals; evaluate their benefit before
     adding release machinery.
-8. **Automatic local chat history.** Explicit TXT export covers manual retention.
+7. **Automatic local chat history.** Explicit TXT export covers manual retention.
     Reconsider automatic storage only with a stable room-incarnation identity,
     bounded retention and a clear delete control; reusable room codes must not
     combine conversations. No new history service or wire field is authorized.
-9. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
+8. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
     The [capture assessment](./research/camera-and-microphone.md) records raw-frame
     output and the WHIP boundary; virtual camera alone is not a second encode.
     Do not add an RTMP/WHIP listener without an accepted publication owner.

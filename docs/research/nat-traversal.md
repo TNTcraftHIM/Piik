@@ -44,7 +44,8 @@ against their release hashes and paired with that revision's Browser source,
 also pass this Native H264/Opus startup control: 300 decoded 720p frames, a 480p
 change, subscription recovery and retirement. This original-release control
 excludes reauthentication after lost local media, which has a separate confirmed
-repair below. It does not establish the cause of the reported phone failure.
+repair below. The desktop control does not establish physical phone or carrier
+network coverage.
 
 Blocking only the Viewer process's UDP preserves connected Host ingress and
 LiveKit's `downtrack bound`, but the Viewer remains connecting without RTP or
@@ -54,9 +55,9 @@ healthy ingress cannot establish Viewer readiness or a controller defect.
 A separate control discards only the Viewer's RTP/RTCP datagrams while allowing
 STUN and DTLS. Both endpoints connect and the exact subscription binds, but no
 Viewer frames arrive; the existing 20-second operation deadline then expires.
-Thus even the reported timeout order does not identify a unique cause. Matched
-Viewer transport/decode evidence is still required. Neither control changes a
-product deadline, retry or first-frame rule.
+Connected endpoints, a bound track and an operation timeout do not identify a
+unique cause; diagnosis requires the affected Viewer's transport/decode evidence.
+Neither control changes a product deadline, retry or first-frame rule.
 
 ## Browser Prediction Preflight
 
@@ -550,7 +551,6 @@ product, while preserving the parent's recovery budget. Renewing that budget
 on replacement hid the nine-second outage: three repetitions recovered only
 after a third automatic request, outside the two-request contract. The corrected
 owner and fixture retain the count across Native and Browser backend replacement.
-This independent recovery defect does not establish the self-hosted SFU report's cause.
 
 The actual-owner fixture now supports incremental SDP/candidate exchange,
 matching Piik's [Trickle ICE generation boundary](https://www.rfc-editor.org/rfc/rfc8838.html#section-13).
