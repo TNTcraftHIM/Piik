@@ -1022,12 +1022,13 @@ async function main(): Promise<void> {
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
       await assertVideoCodec(cdp, viewer, actualCodec);
-      stage = "native-4k-quality";
+      stage = "native-4k-preset";
       await clickHostControl(cdp, host, `document.querySelectorAll('button.lr-tile')[2]`);
       await waitForValue(deadline => evaluate<boolean>(cdp!, host,
         `document.querySelector('.lr-slider input[type="range"]')?.value === '60' &&
           document.querySelector('.lr-sharing-panel')?.getAttribute('aria-busy') === 'false'`,
         deadline), Boolean, 20_000);
+      stage = "native-4k-controls";
       const framesBefore4K = await evaluate<number>(cdp, viewer,
         `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`, Date.now() + 5_000);
       await evaluate<void>(cdp, host,
@@ -1038,6 +1039,7 @@ async function main(): Promise<void> {
         const height = document.querySelector('.lr-video-size input[name="height"]');
         return fps?.max === '30' && fps.value === '30' && width?.value === '3840' && height?.value === '2160';
       })()`, deadline), Boolean, 10_000);
+      stage = "native-4k-decode";
       result.fourKQualityChanged = await waitForValue(deadline => evaluate<boolean>(cdp!, viewer, `(() => {
         const video = document.querySelector('video');
         return Boolean(video && window.__piikGateFitsProfile(3840, 2160) &&
