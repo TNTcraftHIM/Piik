@@ -92,6 +92,7 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 	defer receiver.Close()
 	var videoPackets, audioPackets atomic.Uint32
 	firstVideo := make(chan *rtp.Packet, 1)
+	paddingPackets := make(chan *rtp.Packet, 8)
 	var recoveryTimestamp atomic.Uint32
 	recovered := make(chan struct{}, 1)
 	var readers sync.WaitGroup
@@ -102,6 +103,12 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 			packet, _, readErr := track.ReadRTP()
 			if readErr != nil {
 				return
+			}
+			if packet.Padding {
+				select {
+				case paddingPackets <- packet:
+				default:
+				}
 			}
 			if len(packet.Payload) == 0 {
 				continue
@@ -243,6 +250,19 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 	transport.mu.Unlock()
 	if ready || transport.prober.IsRunning() {
 		t.Fatal("transport probed before a receiver report")
+	}
+	// Exercise the library's real padding packet through Pion SRTP. Probe bytes
+	// must be stripped by RTP decoding, not exposed to the video decoder as media.
+	if transport.Output.WritePaddingRTP(255, true, false) == 0 {
+		t.Fatal("padding fixture did not emit a probe")
+	}
+	select {
+	case packet := <-paddingPackets:
+		if len(packet.Payload) != 0 || packet.Header.PaddingSize == 0 {
+			t.Fatalf("padding reached the receiver as video: payload=%d padding=%d", len(packet.Payload), packet.Header.PaddingSize)
+		}
+	case <-ctx.Done():
+		t.Fatal("padding packet did not arrive")
 	}
 	// A muted library sender returns zero padding bytes despite a connected PC
 	// and valid RR. Its probe must finish, and inconclusive feedback must not

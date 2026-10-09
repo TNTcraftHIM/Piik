@@ -636,6 +636,9 @@ func (ticket *pacedPacket) WriteRTP(*rtp.Header, []byte) (int, error) {
 	if packet == nil {
 		return 0, io.ErrClosedPipe
 	}
+	if packet.Header.Padding {
+		packet.WriteStream = pionPaddingWriter{packet.WriteStream}
+	}
 	written, err := queue.sender.SendPacket(packet)
 	if err == nil && written > 0 {
 		queue.packets.Add(1)
@@ -646,6 +649,18 @@ func (ticket *pacedPacket) WriteRTP(*rtp.Header, []byte) (int, error) {
 }
 
 func (*pacedPacket) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+
+// LiveKit's padding payload already includes its trailing padding bytes. Keep
+// that size for pacing/BWE, but let Pion serialize the padding exactly once.
+type pionPaddingWriter struct{ webrtc.TrackLocalWriter }
+
+func (writer pionPaddingWriter) WriteRTP(header *rtp.Header, payload []byte) (int, error) {
+	padding := int(header.PaddingSize)
+	if padding == 0 || padding > len(payload) {
+		return 0, errors.New("invalid forwarding padding")
+	}
+	return writer.TrackLocalWriter.WriteRTP(header, payload[:len(payload)-padding])
+}
 
 type closedPacketWriter struct{}
 
