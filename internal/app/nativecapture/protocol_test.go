@@ -290,13 +290,27 @@ func TestVideoProfileUsesTheProductBounds(t *testing.T) {
 		{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 60, Bitrate: 8_000_000, Preference: "maintain-framerate"},
 		{Width: 2560, Height: 1440, Framerate: 60, Bitrate: 12_000_000, Preference: "balanced"},
+		{Width: 1920, Height: 1200, Framerate: 30, Bitrate: 5_000_000, Preference: "balanced"},
+		{Width: 720, Height: 1280, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
+		{Width: 4, Height: 4, Framerate: 15, Bitrate: 2_000_000, Preference: "balanced"},
 	} {
 		if !profile.Valid() {
 			t.Fatalf("valid profile rejected: %+v", profile)
 		}
+		for _, output := range ScreenShareOutputs(profile) {
+			if !output.Valid() {
+				t.Fatalf("valid source profile produced an invalid output: %+v", output)
+			}
+		}
 	}
 	for _, profile := range []VideoProfile{
-		{Width: 1920, Height: 1200, Framerate: 30, Bitrate: 5_000_000, Preference: "balanced"},
+		{Width: 0, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
+		{Width: 2, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
+		{Width: 1280, Height: 2, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
+		{Width: 1279, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
+		{Width: 1280, Height: 719, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
+		{Width: 2562, Height: 1440, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
+		{Width: 2560, Height: 1442, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 14, Bitrate: 5_000_000, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 12_000_001, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 5_000_000, Preference: "unknown"},

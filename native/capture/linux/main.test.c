@@ -152,6 +152,24 @@ static void check_slot_profiles(void) {
   for (guint index = 0; index < run.output_count; ++index) {
     g_assert_false(run.outputs[index].enabled);
   }
+
+  char *numeric[] = {
+      "capture", "--capture-video", "picker", "1", "0", "0",
+      "--adapter-index", "0", "--mft-index", "0", "--width", "1920",
+      "--height", "1200", "--fps", "30", "--bitrate", "3000000",
+      "--preference", "balanced", "--codec", "h264", "--protocol-v7",
+      "--output", "1920", "1200", "30", "3000000"};
+  const struct { char *width; char *height; gboolean valid; } sizes[] = {
+      {"1920", "1200", TRUE}, {"720", "1280", TRUE}, {"4", "4", TRUE},
+      {"0", "720", FALSE}, {"2", "720", FALSE}, {"1280", "2", FALSE},
+      {"1279", "720", FALSE}, {"1280", "719", FALSE},
+      {"2562", "1440", FALSE}, {"2560", "1442", FALSE}, {"3840", "2160", FALSE}};
+  for (guint index = 0; index < G_N_ELEMENTS(sizes); ++index) {
+    numeric[11] = numeric[24] = sizes[index].width;
+    numeric[13] = numeric[25] = sizes[index].height;
+    run = (CaptureRun){0};
+    g_assert_cmpint(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder), ==, sizes[index].valid);
+  }
 }
 
 static GstPadProbeReturn record_key_request(GstPad *pad, GstPadProbeInfo *info,

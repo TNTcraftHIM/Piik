@@ -315,12 +315,17 @@ int main() {
   assert(profile.h264_level() == 51 && profile.profile_level_id() == "42c033");
   profile = VideoProfile{1920, 1080, 60, 8'000'000};
   assert(profile.h264_level() == 42);
-  profile = VideoProfile{3840, 2160, 30, 12'000'000};
-  try {
-    ValidateVideoProfile(profile);
-    assert(false);
-  } catch (const GateFailure& error) {
-    assert(error.stage() == "argument-profile");
+  for (const SIZE size : {SIZE{1920, 1200}, SIZE{720, 1280}, SIZE{4, 4}}) {
+    ValidateVideoProfile(VideoProfile{static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy), 30, 3'000'000});
+  }
+  for (const SIZE size : {SIZE{0, 720}, SIZE{2, 720}, SIZE{1280, 2}, SIZE{1279, 720},
+                          SIZE{1280, 719}, SIZE{2562, 1440}, SIZE{2560, 1442}, SIZE{3840, 2160}}) {
+    try {
+      ValidateVideoProfile(VideoProfile{static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy), 30, 3'000'000});
+      assert(false);
+    } catch (const GateFailure& error) {
+      assert(error.stage() == "argument-profile");
+    }
   }
   CheckEncoderCandidates();
   CheckH264ProfileCompatibility();

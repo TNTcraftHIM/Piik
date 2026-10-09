@@ -556,12 +556,14 @@ changes, Viewer reload/recovery and cleanup. Gate expectations now derive from
 the observed source and selected ceilings, instead of requiring encoded 16:9
 padding. Physical game, macOS/Linux and orientation-change acceptance remain open.
 
-The restriction extends beyond resolution labels: shared readers also bound
-frame rate and bitrate, and Native's selectable profile admits four exact raster
-pairs while derived outputs admit other dimensions within axis-specific limits.
-These are different meanings. Keep explicit resource ceilings, but assess them
-separately from presets and device capability; arbitrary numbers are not the
-replacement contract.
+The candidate's Native capture admission now shares the numeric dimension
+bounds already used by encoded outputs instead of duplicating the four UI
+presets. Even dimensions must fit within 2560x1440; a source ceiling must also
+yield a valid half-size output. Frame-rate, bitrate and output-count bounds
+remain unchanged. Signaling still uses the existing resolution enum: custom
+dimensions are an internal foundation, not yet a product control or a 4K option.
+Device capability and the public request contract still need separate admission;
+removing an enum is not permission to allocate arbitrary media resources.
 
 The proposed boundary follows the
 [Media Capture specification](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface):

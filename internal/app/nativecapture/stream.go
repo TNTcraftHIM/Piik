@@ -109,12 +109,10 @@ func ScreenShareOutputs(profile VideoProfile) []OutputProfile {
 }
 
 func (profile VideoProfile) Valid() bool {
-	validResolution :=
-		(profile.Width == 854 && profile.Height == 480) ||
-			(profile.Width == 1280 && profile.Height == 720) ||
-			(profile.Width == 1920 && profile.Height == 1080) ||
-			(profile.Width == 2560 && profile.Height == 1440)
-	return validResolution && profile.Framerate >= 15 && profile.Framerate <= 60 &&
+	// The source ceiling must also yield a valid half-size output. Preset labels
+	// belong to the UI, not the capture process's numeric resource boundary.
+	return ValidVideoSize(profile.Width, profile.Height) && profile.Width >= 4 && profile.Height >= 4 &&
+		profile.Framerate >= 15 && profile.Framerate <= 60 &&
 		profile.Bitrate >= 2_000_000 && profile.Bitrate <= 12_000_000 &&
 		validVideoPreference(profile.Preference)
 }

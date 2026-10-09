@@ -1340,6 +1340,11 @@ private func captureFilter(
     throw CaptureFailure(description: "capture target kind is unsupported")
 }
 
+private func validVideoSize(_ width: Int, _ height: Int) -> Bool {
+    width >= 2 && width <= 2560 && width % 2 == 0 &&
+        height >= 2 && height <= 1440 && height % 2 == 0
+}
+
 private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
     guard arguments.count >= 28,
           arguments[10] == "--width", let width = Int(arguments[11]),
@@ -1353,12 +1358,8 @@ private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
           arguments[22] == "--protocol-v7" else {
         throw CaptureFailure(description: "invalid video profile arguments")
     }
-    let validResolution =
-        (width == 854 && height == 480) ||
-        (width == 1280 && height == 720) ||
-        (width == 1920 && height == 1080) ||
-        (width == 2560 && height == 1440)
-    guard validResolution, frameRate >= 15, frameRate <= 60,
+    guard validVideoSize(width, height), width >= 4, height >= 4,
+          frameRate >= 15, frameRate <= 60,
           bitrate >= 2_000_000, bitrate <= 12_000_000 else {
         throw CaptureFailure(description: "video profile is outside the product bounds")
     }
@@ -1384,8 +1385,8 @@ private func outputProfiles(_ arguments: [String], start: Int = 23,
               let height = Int(arguments[index + 2]),
               let fps = Int32(arguments[index + 3]),
               let bitrate = Int(arguments[index + 4]),
-              width >= 2, width <= (source?.width ?? 2560), width % 2 == 0,
-              height >= 2, height <= (source?.height ?? 1440), height % 2 == 0,
+              validVideoSize(width, height),
+              width <= (source?.width ?? 2560), height <= (source?.height ?? 1440),
               fps >= 1, fps <= (source?.frameRate ?? 60),
               bitrate >= 1000, bitrate <= (source?.bitrate ?? 12_000_000) else {
             throw CaptureFailure(description: "output profile is outside source bounds")
@@ -1438,8 +1439,7 @@ private func readInput(done: StopSignal, outputs: [OutputProfile] = [],
                     let timestamp = number(8..<16), duration = number(16..<24)
                     let width = number(24..<26), height = number(26..<28)
                     guard size <= maxPayloadBytes, header[6] <= 1, header[7] == 0,
-                          width >= 2, width <= 2560, width % 2 == 0,
-                          height >= 2, height <= 1440, height % 2 == 0,
+                          validVideoSize(Int(width), Int(height)),
                           timestamp <= UInt64(Int64.max) / 100,
                           duration > 0, duration <= UInt64(Int64.max) / 100,
                           let payload = try readExactly(size) else {

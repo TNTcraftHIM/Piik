@@ -966,12 +966,8 @@ DegradationPreference ParseDegradationPreference(const wchar_t* value) {
 }
 
 void ValidateVideoProfile(const VideoProfile& profile) {
-  const bool valid_resolution =
-      (profile.width == 854 && profile.height == 480) ||
-      (profile.width == 1280 && profile.height == 720) ||
-      (profile.width == 1920 && profile.height == 1080) ||
-      (profile.width == 2560 && profile.height == 1440);
-  if (!valid_resolution || profile.frame_rate < 15 || profile.frame_rate > 60 ||
+  if (!piik::capture::ValidVideoSize(profile.width, profile.height) ||
+      profile.width < 4 || profile.height < 4 || profile.frame_rate < 15 || profile.frame_rate > 60 ||
       profile.bit_rate < 2'000'000 || profile.bit_rate > 12'000'000) {
     Fail("argument-profile", "video profile is outside the product bounds");
   }
@@ -985,8 +981,7 @@ void ParseOutputProfiles(ProductArguments& arguments, int first, int count, wcha
     output.height = ParseIndex(values[index + 2], "argument-output-height");
     output.frame_rate = ParseIndex(values[index + 3], "argument-output-fps");
     output.bit_rate = ParseIndex(values[index + 4], "argument-output-bitrate");
-    if (output.width < 2 || output.height < 2 || (output.width & 1) || (output.height & 1) ||
-        output.width > 2560 || output.height > 1440 || output.frame_rate == 0 ||
+    if (!piik::capture::ValidVideoSize(output.width, output.height) || output.frame_rate == 0 ||
         output.frame_rate > 60 || output.bit_rate < 1'000 || output.bit_rate > 12'000'000) {
       Fail("argument-output", "output profile exceeds codec bounds");
     }
