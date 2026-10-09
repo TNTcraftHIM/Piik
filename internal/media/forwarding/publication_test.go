@@ -9,13 +9,15 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/thirdparty/livekit/sendsidebwe"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
-	"github.com/livekit/livekit-server/pkg/sfu/bwe/sendsidebwe"
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
 	"github.com/livekit/livekit-server/pkg/sfu/pacer"
 	"github.com/livekit/protocol/logger"
 	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/twcc"
+	"github.com/pion/rtcp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
@@ -54,13 +56,83 @@ func TestPublicationEmptyProbeCannotIncreaseCapacity(t *testing.T) {
 			if signal != ccutils.ProbeSignalInconclusive || capacity > target-audio || bandwidth.target.Load() != target {
 				t.Fatalf("empty probe raised publication capacity: signal=%v capacity=%d target=%d", signal, capacity, bandwidth.target.Load())
 			}
-			if bandwidth.completedProbe.Id != ccutils.ProbeClusterIdInvalid {
-				t.Fatal("completed probe was retained after finalization")
-			}
 			break
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("empty probe did not finalize within the library settle bound")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestPublicationProbeUsesAcknowledgedCapacity(t *testing.T) {
+	for _, received := range []bool{true, false} {
+		t.Run(map[bool]string{true: "received", false: "no-feedback"}[received], func(t *testing.T) {
+			checkPublicationProbeCapacity(t, received)
+		})
+	}
+}
+
+func checkPublicationProbeCapacity(t *testing.T, received bool) {
+	t.Helper()
+	const target = int64(100_000)
+	const audio = int64(64_000)
+	bandwidth := &publicationBWE{SendSideBWE: sendsidebwe.NewSendSideBWE(sendsidebwe.SendSideBWEParams{
+		Config: sendsidebwe.DefaultSendSideBWEConfig, Logger: logger.GetDiscardLogger(),
+	})}
+	bandwidth.target.Store(target)
+	bandwidth.audio.Store(audio)
+	bandwidth.SetBWEListener(&publicationCapacityRecorder{})
+	// A real non-congesting probe after reset still carries the library's
+	// initial capacity. A successful 800 kbps probe cannot prove 100 Mbps.
+	start := time.Now().Add(-time.Second)
+	recorder := twcc.NewRecorder(42)
+	// Establish transport history before the idle interval. The initial packet
+	// has relative time zero, so include a subsequent packet as in a live stream.
+	for _, age := range []time.Duration{6 * time.Second, 5 * time.Second} {
+		previous := start.Add(-age).UnixMicro()
+		sequence := bandwidth.RecordPacketSendAndGetSequenceNumber(previous, 200, false, ccutils.ProbeClusterIdInvalid, false)
+		recorder.Record(42, sequence, previous+10_000)
+	}
+	for _, packet := range recorder.BuildFeedbackPacket() {
+		bandwidth.HandleTWCCFeedback(packet.(*rtcp.TransportLayerCC))
+	}
+	bandwidth.Reset()
+	info := ccutils.ProbeClusterInfo{Id: 1, CreatedAt: start, Goal: ccutils.ProbeClusterGoal{
+		AvailableBandwidthBps: int(target), DesiredBps: 800_000,
+		Duration: 200 * time.Millisecond, DesiredBytes: 20_000,
+	}}
+	bandwidth.ProbeClusterStarting(info)
+	for index := range 100 {
+		at := start.Add(time.Duration(index) * 2 * time.Millisecond).UnixMicro()
+		sequence := bandwidth.RecordPacketSendAndGetSequenceNumber(at, 200, false, info.Id, true)
+		recorder.Record(42, sequence, at+10_000)
+	}
+	info.Result = ccutils.ProbeClusterResult{StartTime: start.UnixNano(),
+		EndTime: start.Add(info.Goal.Duration).UnixNano(), PacketsProbe: 100, BytesProbe: 20_000, IsCompleted: true}
+	bandwidth.ProbeClusterDone(info)
+	if received {
+		for _, packet := range recorder.BuildFeedbackPacket() {
+			bandwidth.HandleTWCCFeedback(packet.(*rtcp.TransportLayerCC))
+		}
+	}
+	deadline := time.Now().Add(sendsidebwe.DefaultSendSideBWEConfig.CongestionDetector.ProbePacketGroup.SettleWaitMax + time.Second)
+	for {
+		signal, capacity, done := bandwidth.ProbeClusterFinalize()
+		if done {
+			if received {
+				// Allow the first-packet/time-window difference in the library's
+				// acknowledged rate, but never its untouched 100 Mbps initial value.
+				if signal != ccutils.ProbeSignalNotCongesting || capacity <= target-audio || capacity > 1_000_000-audio {
+					t.Fatalf("probe promoted unmeasured capacity: signal=%v committed=%d sent=%.0f", signal, capacity+audio, info.Result.Bitrate())
+				}
+			} else if signal != ccutils.ProbeSignalInconclusive || capacity != target-audio {
+				t.Fatalf("unacknowledged probe changed capacity: signal=%v committed=%d", signal, capacity+audio)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("probe did not finalize within the library settle bound")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}

@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/thirdparty/livekit/sendsidebwe"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/buffer"
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
-	"github.com/livekit/livekit-server/pkg/sfu/bwe/sendsidebwe"
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
 	"github.com/livekit/livekit-server/pkg/sfu/pacer"
 	"github.com/livekit/livekit-server/pkg/sfu/streamallocator"
@@ -423,8 +423,7 @@ func (transport *Transport) driveProbeLocked() {
 		}
 		if transport.probe.Result.EndTime != 0 {
 			if signal, capacity, finalized := transport.estimator.ProbeClusterFinalize(); finalized {
-				valid := sendsidebwe.DefaultSendSideBWEConfig.CongestionDetector.ProbeSignal.IsValid(transport.probe)
-				if valid && signal == ccutils.ProbeSignalNotCongesting && capacity > transport.target.Load() {
+				if signal == ccutils.ProbeSignalNotCongesting && capacity > transport.target.Load() {
 					transport.target.Store(capacity)
 				}
 				transport.probe = ccutils.ProbeClusterInfoInvalid

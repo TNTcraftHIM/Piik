@@ -24,3 +24,26 @@ pass, replace both local module directives with version pins, remove their sourc
 directories and the extra dependency test patterns in `scripts/check-go.mjs`.
 Until then, review updates against the named baselines; do not edit Go's shared
 module cache or apply build-time patches.
+
+## LiveKit Send-Side Bandwidth Estimation
+
+`livekit/sendsidebwe` retains only the eight source files from
+[LiveKit v1.13.6's package](https://github.com/livekit/livekit/tree/v1.13.6/pkg/sfu/bwe/sendsidebwe),
+with its original `LICENSE` and `NOTICE`. It uses the existing pinned LiveKit
+interfaces; the rest of LiveKit remains the normal Go dependency. There is no
+whole-module fork or build-time patch.
+
+Two measurement corrections are marked in the modified files: probe finalization
+returns the current acknowledged capacity and rejects invalid/empty feedback;
+probe timing begins with its first acknowledged packet, excluding pre-probe idle
+time. Piik's shared forwarding package uses this copy for both individual
+transports and publications. Its regression checks use real TWCC feedback and
+retain the no-feedback and idle-before-probe controls. The
+[media research owner](../../docs/research/node-local-media-design.md#send-queue-recovery)
+records the runtime evidence and remaining limits.
+
+The package notice collector still includes LiveKit's upstream license and
+notice through the other compiled LiveKit packages. When a maintained upstream
+version covers both corrections and the same regressions pass, remove this
+directory and restore the upstream imports. Review dependency bumps against the
+named baseline; do not evolve a separate congestion-control algorithm here.

@@ -136,6 +136,9 @@ func TestTransportConstrainedDormantRecovery(t *testing.T) {
 		}
 		link.SetRate(capacity)
 		state := transport.Output.State()
+		if state.VideoBudget > 6_000_000 {
+			t.Fatalf("probe promoted capacity beyond this fixture's link: %+v", state)
+		}
 		_, observed := transport.TargetBitrate()
 		high := !observed || state.Target == 1 || state.Prepare == 1 || !state.Paused && state.Current == 1
 		if elapsed >= 7*time.Second && elapsed < 12*time.Second {

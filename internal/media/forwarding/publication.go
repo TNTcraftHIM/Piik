@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/thirdparty/livekit/sendsidebwe"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/buffer"
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
-	"github.com/livekit/livekit-server/pkg/sfu/bwe/sendsidebwe"
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
 	"github.com/livekit/livekit-server/pkg/sfu/pacer"
 	"github.com/livekit/livekit-server/pkg/sfu/streamallocator"
@@ -561,12 +561,10 @@ func (context publicationAudioContext) WriteStream() webrtc.TrackLocalWriter { r
 // audio is conservative and does not claim that the estimator acknowledged it.
 type publicationBWE struct {
 	*sendsidebwe.SendSideBWE
-	listener       bwe.BWEListener
-	target         atomic.Int64
-	audio          atomic.Int64
-	observed       atomic.Bool
-	probeMu        sync.Mutex
-	completedProbe ccutils.ProbeClusterInfo
+	listener bwe.BWEListener
+	target   atomic.Int64
+	audio    atomic.Int64
+	observed atomic.Bool
 }
 
 func (bandwidth *publicationBWE) HandleTWCCFeedback(report *rtcp.TransportLayerCC) {
@@ -586,26 +584,10 @@ func (bandwidth *publicationBWE) OnCongestionStateChange(from, to bwe.Congestion
 	}
 	bandwidth.listener.OnCongestionStateChange(from, to, max(bandwidth.target.Load()-bandwidth.audio.Load(), 0))
 }
-func (bandwidth *publicationBWE) ProbeClusterDone(info ccutils.ProbeClusterInfo) {
-	bandwidth.probeMu.Lock()
-	defer bandwidth.probeMu.Unlock()
-	bandwidth.completedProbe = info
-	bandwidth.SendSideBWE.ProbeClusterDone(info)
-}
 func (bandwidth *publicationBWE) ProbeClusterFinalize() (ccutils.ProbeSignal, int64, bool) {
-	bandwidth.probeMu.Lock()
-	defer bandwidth.probeMu.Unlock()
 	signal, capacity, done := bandwidth.SendSideBWE.ProbeClusterFinalize()
-	if done {
-		valid := sendsidebwe.DefaultSendSideBWEConfig.CongestionDetector.ProbeSignal.IsValid(bandwidth.completedProbe)
-		bandwidth.completedProbe = ccutils.ProbeClusterInfoInvalid
-		if !valid {
-			// StreamAllocator may upgrade on Inconclusive too. Its capacity must
-			// never promote the estimator's initial sentinel after an empty probe.
-			signal = ccutils.ProbeSignalInconclusive
-		} else if signal == ccutils.ProbeSignalNotCongesting && capacity > bandwidth.target.Load() {
-			bandwidth.target.Store(capacity)
-		}
+	if done && signal == ccutils.ProbeSignalNotCongesting && capacity > bandwidth.target.Load() {
+		bandwidth.target.Store(capacity)
 	}
 	return signal, max(bandwidth.target.Load()-bandwidth.audio.Load(), 0), done
 }

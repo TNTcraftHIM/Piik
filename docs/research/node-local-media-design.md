@@ -386,7 +386,8 @@ fixes and demand hooks beyond a thin adapter; do not maintain both candidates.
 Keep the dependency behind a shared media package. For one video per connection,
 use the public provisional allocation primitives, with exact typed child state
 read by its parent; do not parse DebugInfo or run a second multi-track allocator.
-The candidate now uses LiveKit SendSideBWE and Prober through their public APIs.
+The candidate uses LiveKit SendSideBWE and Prober through their public APIs,
+with the [scoped measurement repair](../../internal/thirdparty/README.md#livekit-send-side-bandwidth-estimation).
 Packet sending uses the pinned [LiveKit transport's send-side BWE default](https://github.com/livekit/livekit/blob/v1.13.6/pkg/rtc/transport.go),
 `NoQueue`: an asynchronous writer without a second bitrate throttle on already
 encoded packets. Admission stays capped by the existing packet cache bound;
@@ -415,6 +416,19 @@ audio reservation. This follows the
 [upstream distinction between congestion events and completed probes](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/streamallocator/streamallocator.go),
 without introducing another estimator.
 
+Two upstream measurement defects also affect completed probes. The pinned
+[finalizer](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/bwe/sendsidebwe/congestion_detector.go)
+returns retained capacity, initially 100 Mbps, rather than the current probe's
+acknowledged rate; no feedback can also be classified as non-congesting. The
+[probe packet group](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/bwe/sendsidebwe/probe_packet_group.go)
+includes the transport's preceding idle interval in the new measurement window.
+An 800 kbps probe after five idle seconds therefore either promotes 100 Mbps or,
+with only the return-value correction, fails to restore the existing budget.
+The scoped repair returns only current probe evidence, marks invalid or
+unacknowledged probes inconclusive, and starts timing at the first acknowledged
+probe packet. Removing either correction fails the real-TWCC regression. These
+changes preserve upstream estimation, loss handling and probe scheduling.
+
 Real decode also exposed a packet-format mismatch at the shared writer:
 LiveKit 1.13.6 includes padding in its probe payload, while Pion SRTP serializes
 another block from `Header.PaddingSize`. An actual library probe therefore
@@ -427,13 +441,18 @@ packet as valid video. The primary owners are
 [LiveKit probe construction](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/downtrack.go)
 and [Pion packet serialization](https://github.com/pion/rtp/blob/v1.10.5/packet.go).
 
-The explicit `TestTransportConstrainedDormantRecovery` virtual-network trace uses real
-Pion RTP/TWCC through 6 Mbps -> 500 kbps -> 6 Mbps shaping. Three consecutive runs
-stop the upper output under that constraint and restore sustained 1.20 Mbps after
-release. The SDK latency-aware queue passes the same three controls but requires
-an extra adapter; it is not retained. Earlier flaky comparisons registered TWCC
-twice on the receiver, duplicating feedback; those results do not rank the queues.
-Product receivers already use the single default interceptor owner.
+The explicit `TestTransportConstrainedDormantRecovery` virtual-network trace uses
+real Pion RTP/TWCC through 6 Mbps -> 500 kbps -> 6 Mbps shaping. The repaired
+library restores sustained 1.20 Mbps video after release, with a budget assertion
+that rejects the unmeasured initial capacity. Earlier passing recovery traces
+could promote 100 Mbps and do not establish correct budgeting. The SDK
+latency-aware queue requires an extra adapter and is not retained. Earlier
+flaky comparisons also registered TWCC twice on the receiver, duplicating
+feedback; those results do not rank the queues. Product receivers already use
+the single default interceptor owner. A separate real Opus 320/96/320 kbps
+control retains audio decoding under the same impairment; video can still
+return to a lower output after the high audio rate resumes. That allocation
+boundary remains open rather than being reported as complete recovery.
 No reset, retry owner or minimum quality is added. These are bounded local traces,
 not a field diagnosis, success-rate or game-latency claim.
 Ordinary focused checks cover NACK repair, no-RR probe admission, zero-write
