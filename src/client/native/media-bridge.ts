@@ -4,6 +4,7 @@ import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
 import { observeDebugConnection } from "../lib/debug-webrtc";
 import type { ConnectionMetrics } from "../types";
 import { addRemoteIceCandidate, type SignalCandidate } from "../webrtc/nat-prediction";
+import { preferScreenAudioStereo } from "../webrtc/screen-audio-sdp";
 import {
   collectConnectionMetrics,
   decodedVideoFrames,
@@ -183,7 +184,7 @@ export class NativeMediaBridge {
       for (const candidate of this.pendingCandidates.splice(0)) {
         await addRemoteIceCandidate(this.peer, candidate);
       }
-      const answer = await this.peer.createAnswer();
+      const answer = preferScreenAudioStereo(await this.peer.createAnswer());
       if (!answer.sdp) {
         throw new Error("Native media bridge produced no SDP answer");
       }

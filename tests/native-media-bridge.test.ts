@@ -130,6 +130,31 @@ afterEach(() => {
 });
 
 describe("native media bridge", () => {
+  it("advertises the same Opus receive range on local preview as remote viewers", async () => {
+    const current = fixture();
+    current.peer().createAnswer.mockResolvedValueOnce({ type: "answer", sdp:
+      "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n" +
+      "m=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=rtpmap:111 opus/48000/2\r\n" +
+      "a=fmtp:111 minptime=10;useinbandfec=1\r\n",
+    });
+    const starting = current.bridge.start(true);
+    await vi.waitFor(() => expect(current.control.acceptSignal).toHaveBeenCalledWith(
+      "share_123456", current.bridge.connectionId, expect.objectContaining({
+        kind: "description", description: expect.objectContaining({
+          sdp: expect.stringContaining("stereo=1;maxaveragebitrate=510000"),
+        }),
+      }),
+    ));
+    expect(current.peer().setLocalDescription).toHaveBeenCalledWith(expect.objectContaining({
+      sdp: expect.stringContaining("stereo=1;maxaveragebitrate=510000"),
+    }));
+    current.peer().emitTrack({ kind: "video", stop: vi.fn() } as unknown as MediaStreamTrack);
+    current.peer().emitTrack({ kind: "audio", stop: vi.fn() } as unknown as MediaStreamTrack);
+    current.peer().setState("connected");
+    await expect(starting).resolves.toBe(current.bridge.stream);
+    current.bridge.dispose();
+  });
+
   it("releases an unstarted Browser reservation without sending an edge command", async () => {
     const current = fixture();
     current.bridge.dispose();
