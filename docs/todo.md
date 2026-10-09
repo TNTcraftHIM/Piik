@@ -72,9 +72,12 @@ Implementation needs a concrete useful result within the product model.
   Isolated local-address changes now preserve the same session under the actual
   Viewer recovery owner. Verify that bounded benefit through the complete App
   pipeline and physical networks; it does not establish another reachable NAT class.
-  The actual Native media overlay can retain the transport but its fixed-input
-  continuity controls expose forwarding pauses. Include the live encoder and
-  decoded picture continuity; do not treat the rate-control ablation as a fix.
+  Live-encoder/decoded-picture controls now separate shared forwarding queue
+  delay from the local playback leg losing its selected LAN address. The shared
+  send-queue repair passes constrained-link recovery; verify the App's local
+  Browser bridge during address changes. A loopback-only policy fails the Firefox
+  control; retain the current address policy and verify both Host and Viewer
+  lifecycle behavior before claiming complete App recovery.
   Product adoption still needs supported
   [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
   and RTCP/MTU boundaries, retained-flow recovery beyond the passing serial

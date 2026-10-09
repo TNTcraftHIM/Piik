@@ -656,27 +656,44 @@ acceptance. They do not resolve the gateway-only or prolonged-outage controls
 above. Supported dependencies, room grants and representative network evidence
 remain prerequisites for product adoption.
 
-The 2026-10-09 remote-socket overlay extends that comparison through the actual
-Native encoded source, sender, receiver and ordinary local playback. It leaves
-product files untouched and admits one fixture peer flow per engine. Unchanged
-ordinary/Tailcat controls pass, and both handoff directions can retain media
-after DERP closure. Stronger fresh-content checks expose a limit: two of three
-sender-handoff repetitions pause output for roughly two seconds while ICE stays
-connected; one remains paused at the fifteen-second observation boundary.
-The outgoing frame counter also stops as the sender estimate falls to about
-20 kbps. This locates those gaps at forwarding/adaptation, rather than proving
-that the underlay lost the connection.
+The remote-socket overlay extends that comparison through the actual Native
+encoded source, sender, receiver and local playback. It leaves product files
+untouched and admits one fixture peer flow per engine. Its fixed 8×8 input
+exposes forwarding pauses but cannot establish live encoder recovery; declaring
+those fixed bytes rate-controlled is only an ablation.
 
-The fixed 8×8 input deliberately has no live rate-controllable encoder. Declaring
-it rate-controlled removes the later forwarding pauses in three repetitions,
-but all three still miss the strict first fresh-content window and later deliver
-about 34–37 frames per second instead of the requested 50. This is an ablation,
-not a valid capture implementation or a proposed product switch. Actual Native
-capture already declares its live lowest output controllable and applies codec
-budgets; raw forwarding retains the framework's pause policy. Full App acceptance
-must include that encoder owner, local Browser decode and recovery, and useful
-picture continuity. A preserved ICE session alone does not establish a net
-handoff benefit. No production adaptation rule or timeout changed.
+The live control instead uses the Windows VP8 helper, Native output-plan owner
+and final FFmpeg decode. The top quarter of the input changes from red to blue
+after DERP closure, so buffered pictures cannot satisfy fresh-content acceptance.
+About one second of ordinary UDP loss can leave the former pacer sending old
+video from a queue of hundreds of packets. DownTrack frame counts precede actual
+paced writes and cannot prove delivery. The shared media assessment owns the
+[pacing comparison](./node-local-media-design.md#send-queue-recovery);
+it must pass constrained-bandwidth recovery as well as this short-loss control.
+
+Viewer address changes expose a separate confound: same-machine playback can
+select a LAN address that the experiment then removes. Restricting only the
+fixture receiver to loopback separates that leg from the remote underlay.
+With this control and the upstream default send queue, all six cases pass:
+unchanged ordinary/Tailcat paths, both address-change directions, and short
+ordinary/Tailcat loss. Each retains decoded fresh pictures in every post-DERP
+sample. These passes do not accept the default local-playback path or the
+complete App. Verify its Browser bridge
+and existing recovery owner before adopting a local-address policy.
+No additional NAT-reachability class, physical capture result or product
+Magicsock integration follows from these controls.
+
+A same-machine Windows Browser control rejects forcing the product bridge to
+loopback. Chrome 154 decodes from a Native sender bound to `127.0.0.1`, but
+Firefox 155 fails that connection; the same Firefox fixture decodes with the
+current wildcard bind and a non-loopback selected pair. Mozilla also keeps
+[ICE loopback disabled by default](https://searchfox.org/firefox-main/source/modules/libpref/init/all.js).
+These controls establish a compatibility limit, not its complete Browser cause
+or public-Site permission behavior. Keep the current address policy. The Host
+currently ends sharing when its required local bridge fails; the Viewer delegates
+that failure to its existing bounded connection-replacement owner. Complete App
+handoff acceptance must cover both, without treating the remote tunnel's survival
+as proof that local playback survived.
 
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
