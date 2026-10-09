@@ -510,8 +510,10 @@ a corrected SDP interpretation, not evidence that all Firefox sharing lost audio
 
 ## Media Capability Extension Assessment
 
-Proposal assessed 2026-10-04 for a possible 2.0 phase; this does not change the
-current contract or the profile decision above. Resolution enums are enforced
+Planning direction reviewed 2026-10-09 for 2.0; the design below is a proposal,
+not a replacement for the current contract or profile decision above. The owner
+reopened numeric media requests and capability negotiation as one coherent
+extension. Resolution enums are enforced
 by both signaling readers and Native control, while capture admission separately
 bounds dimensions. Native capture, forwarding and SFU declarations also admit
 specific encoded formats. Removing one validator would leave these consumers
@@ -535,21 +537,45 @@ These are different meanings. Keep explicit resource ceilings, but assess them
 separately from presets and device capability; arbitrary numbers are not the
 replacement contract.
 
-The smallest proposed extension separates UI presets from numeric media limits
-and uses existing WebRTC codec negotiation. The
-[Media Capture specification](https://www.w3.org/TR/mediacapture-streams/)
-distinguishes requested constraints, supported ranges and actual settings;
-[WebRTC capabilities](https://www.w3.org/TR/webrtc/#rtcrtpsender-interface)
-advertise optimistic codec support, not guaranteed hardware execution. Preserve
-actual encoder admission and validate dimensions, pixel counts, frame sizes and
-resource bounds at their existing owners.
+The proposed boundary follows the
+[Media Capture specification](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface):
+requested constraints, supported capabilities and actual settings have different
+owners. Capability ranges cannot describe every combination of resolution and
+frame rate; [WebRTC codec discovery](https://www.w3.org/TR/webrtc/#rtcrtpsender-interface)
+is optimistic and reserves no hardware resources. An advertised capability is
+therefore not proof that a particular encoder configuration can start.
+
+| Meaning | Proposed Piik owner and representation |
+| --- | --- |
+| Quick presets | UI-local labels mapping to numeric picture/audio requests; adding a label does not extend the wire |
+| Host intent | One validated numeric size, frame-rate and bitrate request, distinct from measured output |
+| Available capability | Existing capture/receive/forward adapters report supported operations and bounded formats; unknown descriptive formats are unavailable |
+| Applied configuration | The existing share owner commits an admitted result under its current generation; failed or stale changes do not become saved preferences |
+| Live output | Existing capture and receiver evidence; WebRTC/LiveKit still own network adaptation |
+
+Dimensions, pixel counts/rates, encoded-frame bytes, allocations and concurrent
+outputs remain bounded before resource use. Remote capability claims cannot raise
+local limits. Reject malformed values and unauthorized commands; unsupported
+well-formed requests need a scoped failure, not an unrelated room disconnect.
+Use the existing generation and route operation, not a capability polling loop,
+general constraint solver or second recovery owner. Numeric limits describe
+ceilings, not a promise of a constant rate or resolution. A receiver's limits
+constrain its edge or existing local output group, not every Viewer in the room.
 
 Codec support must distinguish encoding, decoding and encoded forwarding,
-including profile/packetization and SFU admission. AV1 and VP9 are candidates to
+including profile/packetization and SFU admission. Reuse SDP codec matching;
+describe only Native control and forwarding limits that it cannot express,
+instead of negotiating the same format twice. AV1 and VP9 are candidates to
 evaluate, not promised product formats. A late Viewer or relay that cannot
 receive the current encoded source needs an explicit policy; SDP negotiation
 alone cannot convert that source. Per-Viewer transcodes or room-wide codec
-switches are not implied by this proposal.
+switches are not implied by this proposal. This is also explicit in
+[mediasoup's producer/consumer capabilities](https://mediasoup.org/documentation/v3/mediasoup/rtp-parameters-and-capabilities/).
+[LiveKit's backup codec policy](https://github.com/livekit/client-sdk-js/blob/main/src/room/track/options.ts)
+uses another encoding or switches the publication; that compatibility has real
+CPU/bandwidth or continuity costs. Piik's embedded LiveKit components do not
+automatically provide its complete SDK policy. Keep H.264/VP8 as the initial
+compatibility path; admit a new format only with its whole-route evidence.
 
 Current discovery couples format to implementation (`hardwareH264` and
 `softwareVP8`), and Browser preference uses a VP8-specific fallback flag.
@@ -568,15 +594,46 @@ inherently require a major; breaking an existing public contract does. Evaluate
 the Browser/App/Server and mixed-peer flows before freezing a replacement
 contract; avoid a general compatibility framework.
 
-The 2026-10-07 candidate review does not recommend adding these extensions to
-the current release. A 4K path must change the three platform capture/decoder
-bounds, encoded-frame limits and SFU admission together; Windows H.264's current
-level ceiling also does not cover 4K60. The existing Main/High comparison shows
-a modest synthetic quality gain, but Firefox's receiver gap prevents treating
-it as a transparent upgrade. Keep the current formats and limits until a
-specific use case justifies that coordinated change. This is a scope
-recommendation, not a claim that 4K is impossible or that the current geometry
-should become a permanent protocol rule.
+### Audio And UI Proposal
+
+[#462](https://github.com/TNTcraftHIM/Piik/pull/462) requests 256/320 kbps Opus.
+The values are permitted by [RFC 7587](https://www.rfc-editor.org/rfc/rfc7587.html#section-6.1),
+whose receive-rate parameter spans 6,000..510,000 bit/s. This is a codec boundary,
+not a recommended default or proof of audible benefit. The current preset names
+also travel in authentication and Native commands: adding its two enum values
+causes the actual v1.9.2 readers to terminate those sessions. The PR's compatible
+release claim is therefore incorrect even though its audio use case is valid.
+
+For 2.0, prototype one numeric audio-bitrate ceiling through capture, sender,
+receiver and SFU; derive existing preset labels locally. Align receive admission
+with codec support instead of the largest UI shortcut. Keep the existing default
+while comparing actual Opus output and listening results for higher ceilings.
+[LiveKit's AudioPreset](https://docs.livekit.io/reference/client-sdk-js/interfaces/AudioPreset.html)
+likewise contains a numeric maximum bitrate; its
+[high-fidelity example](https://docs.livekit.io/transport/media/advanced/#hi-fi-audio)
+also considers stereo, source processing and redundancy. Raising bitrate alone
+does not establish studio quality, losslessness or multi-channel output.
+
+Keep Piik's compact presets and existing picture/sound settings disclosure.
+Expose custom numeric values with units and valid ranges there, without adding
+a permanent row for each new preset. Use supported-format selection for codecs,
+not an arbitrary text field. Preserve source aspect ratio without upscaling;
+distinguish selected limits from actual capture/decoded dimensions in existing
+details. Capability-related restrictions explain a real limitation briefly.
+The [OBS settings guide](https://obsproject.com/kb/obs-studio-overview#settings)
+supports a simple/default entry with further controls; Piik need not reproduce
+OBS's full output configuration. Existing visual/tooltip owners still apply,
+including narrow screens, both themes and visual mode.
+
+Start with numeric audio through the existing pipeline, then portrait/ultrawide
+geometry and 4K as a second concrete use case. A 4K path must review all platform
+capture/decoder bounds, encoded-frame limits and SFU admission; Windows H.264's
+current level ceiling does not cover 4K60. Admission and output must be tested
+at the actual profile, not inferred from a codec list. Check live changes,
+late/limited Viewers and relays, failure cleanup and resource rejection before
+freezing the 2.0 contract. Prefer a clear 1.x mismatch over a general legacy
+adapter. Future presets inside supported numeric semantics need no new enum;
+new formats still require actual implementation and an advertised capability.
 
 ## Implementation Boundary
 

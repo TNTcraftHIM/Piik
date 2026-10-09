@@ -11,9 +11,10 @@ Git/PRs own completed history.
 ## Now
 
 - [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
-  useful improvements and outstanding acceptance on 2026-10-07. Prepare one
-  coherent candidate and stop before publication. Preserve the existing product
-  model; evaluate held features against measurable benefit and total complexity
+  useful improvements and outstanding acceptance on 2026-10-07, and on 2026-10-09
+  chose to hold the maintenance changes for 2.0 rather than publish them separately.
+  Prepare one coherent candidate and stop before publication. Preserve the existing
+  product model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
@@ -43,17 +44,18 @@ Existing negative results narrow the next experiment; they do not freeze the
 whole candidate or require another version-number decision before other work.
 Implementation needs a concrete useful result within the product model.
 
-- [ ] **4K, additional codecs and audio presets.** The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
-  recommends retaining current limits. Assess concrete source/receiver cases
-  before accepting coordinated capture, forwarding and resource-bound changes;
-  keep UI presets separate from those bounds in any new design. Additional
-  formats must account for late Viewers and relays that cannot decode or forward
-  the published format; codec negotiation alone does not transcode it.
-  Review [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps Opus
-  presets under the same compatibility boundary: v1.9.2 rejects the new enums
-  in Viewer authentication and Native control, terminating those sessions.
-  Establish an audible benefit and a supported mixed-version policy before
-  adopting its additional controls; its current non-breaking claim is incorrect.
+- [ ] **Media parameters and capabilities for 2.0.** Follow the
+  [media assessment](./research/native-client-media.md#media-capability-extension-assessment):
+  separate UI presets, numeric requests, bounded implementation capabilities and
+  actual output. Prototype numeric audio bitrate first using
+  [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s use case, then
+  source-aspect-preserving geometry and 4K through the same owners. Preserve
+  safety limits and framework-owned adaptation. New codecs need complete
+  encode/decode/forward support and a late-Viewer policy before inclusion;
+  selecting a codec cannot transcode an existing publication. Confirm live
+  changes, relay/SFU paths, older 2.x capability subsets and explicit 1.x
+  mismatch before accepting the replacement contract. The current 1.x enums
+  remain; the PR is not a compatible enum-only extension of v1.9.2.
 - [ ] **Native Magicsock.** Go reuse is feasible, but the
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   have not established improved direct reachability. Seek a repeatable benefit
@@ -68,6 +70,15 @@ Implementation needs a concrete useful result within the product model.
   media-readiness authority. Research owns the experiments and their limits.
   No timeout change or transport integration is accepted; the P2P evidence work
   below owns the network/interop acceptance boundary.
+- [ ] **Small external test before 2.0.** First use the isolated transport
+  experiment on the same difficult network pairs as current Piik, measuring
+  direct success separately from relay delivery, first-picture time, recovery
+  and added resource cost. This evidence can precede other feature work.
+  A combined product test package requires room-scoped authorization/revocation,
+  mixed Browser/Native behavior and bounded recovery to pass first. Freeze and
+  identify each test build; do not describe the present Magicsock experiment as
+  a feature-complete product awaiting only acceptance. The final candidate then
+  receives the combined feature/UI and regression check.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
   identifies UDP/storage requirements but establishes no cost saving. Keep the
   existing P2P-only Demo until a provider and operating boundary are accepted.

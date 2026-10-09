@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-07
+Last updated: 2026-10-09
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -59,10 +59,13 @@ SQLite schema 2 and the 1440p ceiling. Hosted empty-room retention and capacity
 guidance preserve indefinite retention by default. The accepted Demo policy is
 one hour without authenticated participants; the private deployment retains the
 default. Operator records own activation, database and postflight evidence.
-The owner reopened 2.0 candidate preparation, including reassessment of 4K,
-codec expansion and Native Magicsock where demonstrated benefit justifies total
-complexity. These experiments do not yet change the accepted contract or product
-transport. Release remains subject to the owner's final acceptance.
+The owner is holding the unpublished maintenance changes for 2.0. Preparation
+includes separating media presets from numeric requests and bounded capabilities,
+with audio presets, 4K and additional codecs assessed through that boundary.
+Native Magicsock remains an isolated experiment with incomplete product
+integration and unresolved recovery cases. These proposals do not yet change
+the accepted contract or transport. A small external test is proposed before
+release; publication remains subject to the owner's final acceptance.
 Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns
 remaining work.
 
