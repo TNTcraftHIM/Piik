@@ -10,6 +10,7 @@ import { mkdir, mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { fittedCaptureSize, matchesCaptureSize } from "./media-gate-geometry";
 
 import {
   CdpConnection,
@@ -35,6 +36,11 @@ type GateMode = "local" | "one-link";
 type VideoCodec = "h264" | "vp8";
 
 const CODEC_PROBE = `(() => {
+  const fitSize = ${fittedCaptureSize.toString()}, matchesSize = ${matchesCaptureSize.toString()};
+  window.__piikGateFitsProfile = (width, height) => {
+    const video = document.querySelector('video'), source = window.__piikGateSourceSize;
+    return Boolean(video && source && matchesSize(video.videoWidth, video.videoHeight, fitSize(source, width, height)));
+  };
   const peers = [], BrowserPeer = RTCPeerConnection;
   const sockets = [], BrowserSocket = WebSocket;
   window.WebSocket = class extends BrowserSocket {
@@ -783,6 +789,10 @@ async function main(): Promise<void> {
       5_000,
     );
     stage = "pre-share-codec";
+    // Observe the source at the largest current ceiling before testing smaller
+    // ceilings. Native capture no longer pads/upscales every source to 16:9.
+    await clickHostControl(cdp, host, `document.querySelector('button.lr-chip[aria-label="1440p"]')`);
+    await clickHostControl(cdp, host, `document.querySelector('button[name="degradationPreference"][value="maintain-resolution"]')`);
     await clickHostControl(cdp, host, `document.querySelector('.lr-sharing-technical > summary')`);
     await clickHostControl(cdp, host,
       `([...document.querySelectorAll('button.lr-chip')].find((button) =>
@@ -906,13 +916,16 @@ async function main(): Promise<void> {
           deadline,
         ),
         (state) => state.connected && state.frames >= 30 &&
-          state.width === 1920 && state.height === 1080,
+          state.width >= 320 && state.width <= 2560 && state.height >= 240 && state.height <= 1440,
         40_000,
       );
       result.viewerConnected = viewerState.connected;
       result.viewerFrames = viewerState.frames;
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
+      await evaluate<void>(cdp, viewer,
+        `window.__piikGateSourceSize = ${JSON.stringify({ width: viewerState.width, height: viewerState.height })}`,
+        Date.now() + 5_000);
       await assertVideoCodec(cdp, viewer, actualCodec);
       if (mode === "one-link") {
         result.codecPreserved = true;
@@ -943,9 +956,7 @@ async function main(): Promise<void> {
           (deadline) => evaluate<boolean>(
             cdp!,
             viewer,
-            `(() => { const video = document.querySelector('video'); return Boolean(
-              video && video.videoWidth === ${width} && video.videoHeight === ${height}
-            ); })()`,
+            `window.__piikGateFitsProfile(${width}, ${height})`,
             deadline,
           ),
           Boolean,
@@ -993,7 +1004,7 @@ async function main(): Promise<void> {
           cdp!,
           viewer,
           `(() => { const video = document.querySelector('video'); return Boolean(
-            video && video.videoWidth === 2560 && video.videoHeight === 1440 &&
+            video && window.__piikGateFitsProfile(2560, 1440) &&
             video.getVideoPlaybackQuality().totalVideoFrames >= ${viewerState.frames + 10}
           ); })()`,
           deadline,
@@ -1004,8 +1015,8 @@ async function main(): Promise<void> {
       if (!result.liveQualityChanged) {
         throw new Error("Native quality change did not reach the Viewer");
       }
-      result.viewerWidth = 2560;
-      result.viewerHeight = 1440;
+      result.viewerWidth = viewerState.width;
+      result.viewerHeight = viewerState.height;
       await assertVideoCodec(cdp, viewer, actualCodec);
       const framesBeforePreference = await evaluate<number>(
         cdp,
@@ -1132,10 +1143,10 @@ async function main(): Promise<void> {
           deadline,
         ),
         (value) => value.frames >= framesBeforeResume + 10 &&
-          value.width === 854 && value.height === 480,
+          matchesCaptureSize(value.width, value.height, fittedCaptureSize(viewerState, 854, 480)),
         20_000,
       );
-      result.pausedQualityChanged = resumed.width === 854 && resumed.height === 480;
+      result.pausedQualityChanged = matchesCaptureSize(resumed.width, resumed.height, fittedCaptureSize(viewerState, 854, 480));
       result.mediaObjectPreserved = resumed.sameMedia;
       result.viewerWidth = resumed.width;
       result.viewerHeight = resumed.height;
@@ -1189,7 +1200,7 @@ async function main(): Promise<void> {
             `(() => {
               const video = document.querySelector('video');
               return Boolean(video && video.srcObject === window.__piikGateMedia &&
-                video.videoWidth === ${width} && video.videoHeight === ${height} &&
+                window.__piikGateFitsProfile(${width}, ${height}) &&
                 video.getVideoPlaybackQuality().totalVideoFrames >= ${before + 10});
             })()`, deadline,
           ), Boolean, 20_000);
@@ -1278,7 +1289,7 @@ async function main(): Promise<void> {
             const video = document.querySelector('video');
             return Boolean(
               video && video.srcObject === window.__piikGateMedia &&
-              video.videoWidth === 854 && video.videoHeight === 480 &&
+              video.videoWidth > 0 && video.videoWidth <= 854 && video.videoHeight > 0 && video.videoHeight <= 480 &&
               video.getVideoPlaybackQuality().totalVideoFrames >= ${framesBeforeSourceChange + 10}
             );
           })()`,
@@ -1386,7 +1397,7 @@ async function main(): Promise<void> {
             const video = document.querySelector('video');
             return Boolean(video && video.srcObject &&
               video.srcObject !== window.__piikGateMedia &&
-              video.videoWidth === 854 && video.videoHeight === 480);
+              video.videoWidth > 0 && video.videoWidth <= 854 && video.videoHeight > 0 && video.videoHeight <= 480);
           })()`,
           deadline,
         ),
@@ -1460,7 +1471,8 @@ async function main(): Promise<void> {
         result.remoteNatPath && result.remotePeerExited === true
       : mode === "one-link"
         ? result.publicViewerPage && result.publicViewerSignal && result.viewerConnected &&
-          result.viewerFrames >= 30 && result.viewerWidth === 1920 && result.viewerHeight === 1080 && result.codecPreserved
+          result.viewerFrames >= 30 && result.viewerWidth > 0 && result.viewerWidth <= 2560 &&
+          result.viewerHeight > 0 && result.viewerHeight <= 1440 && result.codecPreserved
         : result.viewerConnected && result.viewerFrames >= 30 &&
         result.qualityControlsEnabled && result.liveQualityChanged &&
         result.backgroundProfileRecovery !== false &&
@@ -1469,7 +1481,7 @@ async function main(): Promise<void> {
         result.codecPreserved &&
         result.pausedQualityChanged && result.mediaObjectPreserved &&
         result.nativeSourceChanged &&
-        result.viewerWidth === 854 && result.viewerHeight === 480 &&
+        result.viewerWidth > 0 && result.viewerWidth <= 854 && result.viewerHeight > 0 && result.viewerHeight <= 480 &&
         result.nativeQualityEvidence &&
         (crashGate
           ? result.appCrashEndedShare === true

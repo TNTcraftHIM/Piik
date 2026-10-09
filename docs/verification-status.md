@@ -11,7 +11,8 @@ implementation and obsolete package history.
 
 Windows App and Browser are the owner's primary acceptance targets. Current
 Go packages embed their Web assets and do not run a Node backend. The current
-contract is Browser/server v23, Native control v9 and capture v7.
+published contract is Browser/server v23, Native control v9 and capture v7;
+[status](./status.md#current-work) owns unpublished candidate changes.
 
 Bounded current checks cover:
 

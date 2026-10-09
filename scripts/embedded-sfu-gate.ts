@@ -12,6 +12,7 @@ import {
 import type { snapshot } from "./embedded-sfu-page";
 import { readAppEndpoint } from "./app-gate-endpoint";
 import { SOURCE_TITLE, sourceServer, startSourceBrowser, waitForCaptureWindow } from "./app-native-host-gate";
+import { fittedCaptureSize } from "./media-gate-geometry";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "embedded-media");
@@ -251,7 +252,7 @@ async function main(): Promise<void> {
       await until(secondHost, (value) => value.authenticated);
       await call(secondViewer, `gate.startViewer(${JSON.stringify(secondRoom)})`);
       await until(secondViewer, (value) => value.committed && value.audioKbps > 0);
-      await call(secondViewer, "gate.waitForFrames(1280, 720)");
+      await call(secondViewer, "gate.waitForFrames(1280, 720, 15, true)");
       await waitForSample(() => call<number>(secondViewer!, "gate.audioEnergy()", 3_000),
         (energy) => { result.secondRoom!.audioBefore = energy; return energy > 0; }, 5_000);
       const second = await call<Snapshot>(secondHost, "gate.snapshot()");
@@ -266,7 +267,7 @@ async function main(): Promise<void> {
       : null;
     const sourceBefore = await sourceSample();
     try {
-      result.high = await call(viewer, nativeArm ? "gate.waitForFrames(1280, 720, 300)" : "gate.waitForFrames(1280, 720)", nativeArm ? 32_000 : 25_000);
+      result.high = await call(viewer, nativeArm ? "gate.waitForFrames(1280, 720, 300, true)" : "gate.waitForFrames(1280, 720)", nativeArm ? 32_000 : 25_000);
     } finally {
       const sourceAfter = await sourceSample().catch(() => null);
       if (sourceBefore && sourceAfter) result.sourceDrawing = {
@@ -285,7 +286,7 @@ async function main(): Promise<void> {
     let previousEnergy = result.audioEnergy.high;
     for (const bitrate of [320_000, 96_000]) {
       if (!await call<boolean>(host, `gate.setAudioBitrate(${bitrate})`)) throw new Error("Numeric audio update failed");
-      const frames = await call<{ frames: number }>(viewer, "gate.waitForFrames(1280, 720)");
+      const frames = await call<{ frames: number }>(viewer, `gate.waitForFrames(${result.high!.width}, ${result.high!.height})`);
       const after = await call<Snapshot>(viewer, "gate.snapshot()");
       const energy = await call<number>(viewer, "gate.audioEnergy()", 3_000);
       const retained = after.connectionId === audioConnection && after.committed;
@@ -326,7 +327,8 @@ async function main(): Promise<void> {
       result.host = await call(host, "gate.snapshot()");
       throw new Error("Live profile update failed");
     }
-    result.low = await call(viewer, "gate.waitForFrames(854, 480)");
+    const lowSize = nativeArm ? fittedCaptureSize(result.high!, 854, 480) : { width: 854, height: 480 };
+    result.low = await call(viewer, `gate.waitForFrames(${lowSize.width}, ${lowSize.height}, 15, false, ${nativeArm ? 2 : 0})`);
     await waitForSample(() => call<number>(viewer!, "gate.audioEnergy()", 3_000),
       (energy) => { result.audioEnergy.low = energy; return energy > result.audioEnergy.high; }, 5_000);
     result.stage = "viewer-media-reload";
@@ -335,7 +337,7 @@ async function main(): Promise<void> {
     // still retains the old committed edge inside the reconnect grace period.
     await call(viewer, `gate.reconnectViewer(${JSON.stringify(room)}, true)`);
     await until(viewer, value => value.committed && value.connectionId !== retainedSubscription && value.audioKbps > 0);
-    await call(viewer, "gate.waitForFrames(854, 480)");
+    await call(viewer, `gate.waitForFrames(${result.low!.width}, ${result.low!.height})`);
     result.pageReloadRecovered = true;
     result.stage = "committed-subscription-recovery";
     const previousSubscription = await call<string>(viewer, "gate.failSubscription()");
@@ -344,7 +346,7 @@ async function main(): Promise<void> {
     await until(viewer, value => value.routeStatus === "failed");
     await call(viewer, `gate.reconnectViewer(${JSON.stringify(room)})`);
     await until(viewer, value => value.committed && value.connectionId !== previousSubscription && value.audioKbps > 0);
-    await call(viewer, "gate.waitForFrames(854, 480)");
+    await call(viewer, `gate.waitForFrames(${result.low!.width}, ${result.low!.height})`);
     await waitForSample(() => call<number>(viewer!, "gate.audioEnergy()", 3_000),
       energy => { result.audioEnergy.recovered = energy; return energy > 0; }, 5_000);
     result.viewer = await call(viewer, "gate.snapshot()");
@@ -360,7 +362,7 @@ async function main(): Promise<void> {
       if (!(await call<Snapshot>(host, "gate.snapshot()")).nativeShareStopped) throw new Error("First Native capture did not stop");
       result.secondRoom!.audioBefore = await call<number>(secondViewer, "gate.audioEnergy()");
       await cdp.call("Page.bringToFront", {}, secondViewer.sessionId, Date.now() + 3_000);
-      const continued = await call<{ frames: number }>(secondViewer, "gate.waitForFrames(1280, 720, 30)");
+      const continued = await call<{ frames: number }>(secondViewer, `gate.waitForFrames(${result.high!.width}, ${result.high!.height}, 30)`);
       result.secondRoom!.framesAfterFirstStopped = continued.frames;
       await waitForSample(() => call<number>(secondViewer!, "gate.audioEnergy()", 3_000),
         (energy) => { result.secondRoom!.audioAfter = energy; return energy > result.secondRoom!.audioBefore; }, 5_000);

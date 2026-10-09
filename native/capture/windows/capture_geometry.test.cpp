@@ -49,5 +49,19 @@ int main() {
               {240, 0, 1680, 1080});
   const RECT wide = FitFrameRect({2560, 1080}, monitor);
   assert(wide.left == 0 && wide.right == 1920 && wide.top > 0 && wide.bottom < 1080);
+  const auto expect_size = [&](SIZE content, SIZE expected) {
+    const SIZE actual = BoundedFrameSize(content, monitor);
+    assert(actual.cx == expected.cx && actual.cy == expected.cy);
+  };
+  expect_size({1080, 1920}, {606, 1080});
+  expect_size({3440, 1440}, {1920, 802});
+  expect_size({640, 480}, {640, 480});
+  expect_size({641, 481}, {640, 480});
+  expect_size({3840, 2160}, monitor);
+  expect_size(presentation(DISPLAYCONFIG_SCALING_STRETCHED), monitor);
+  try {
+    (void)BoundedFrameSize({}, monitor);
+    assert(false);
+  } catch (const std::invalid_argument&) {}
   std::cout << "Windows capture presentation geometry passed.\n";
 }

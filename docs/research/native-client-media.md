@@ -519,16 +519,42 @@ bounds dimensions. Native capture, forwarding and SFU declarations also admit
 specific encoded formats. Removing one validator would leave these consumers
 inconsistent.
 
-Source review also distinguishes output geometry from a quality limit. Windows
-`FrameConverter` fits content into the selected landscape raster with a black
-background, so its padding is encoded. Browser display capture instead requests
+Source review also distinguishes output geometry from a quality limit. The
+published Windows path fits content into the selected landscape raster with a
+black background, so its padding is encoded. Browser display capture instead requests
 landscape width/height ceilings; a portrait source can be reduced unnecessarily
 by the height ceiling. The shared TV uses `object-fit: contain` in a 16:9 stage,
 adding presentation space independently of encoded padding. For example, the
-Windows fit rule places 1080x1920 content at 608x1080 inside a 1920x1080 output.
+published Windows fit rule places 1080x1920 content at 608x1080 inside a 1920x1080 output.
 This is a code-derived result, not a new physical capture measurement. Evaluate
 orientation-independent limits and preservation of source aspect ratio together;
 adding numeric fields alone would retain the current geometry limitation.
+
+The candidate first changes the existing Windows output worker: it passes the
+source's fitted even dimensions to WebRTC, retaining the selected profile as a
+ceiling. A 640x480 source stays 640x480; portrait and ultrawide sources no longer
+require an encoded landscape canvas. The converter, adaptation owner, output
+generation and frame envelope are reused. Axis-specific limits still apply;
+this does not yet give portrait capture a transposed ceiling or add a 4K setting.
+Browser and other platform geometry remain separate pending work.
+
+Local synthetic-input controls exercised that production worker through four
+successive source sizes: 1080x1920, 3440x1440, 640x480 and 1920x1080. Under the
+1080p ceiling, H.264 and VP8 each produced 40 frames at 606x1080, 1920x802,
+640x480 and 1920x1080; Chrome decoded every frame at the declared dimensions.
+Separately, a codec-only control bypassed product profile admission and encoded
+1080x1920, 3440x1440 and 3840x2160 at 30 fps with the current Windows H.264
+encoder. Chrome decoded all 30 frames per size; observed levels were 4.0, 5.0
+and 5.1. This establishes local codec feasibility, not product 4K support,
+4K60, sustained performance or cross-device acceptance.
+
+The real Windows H.264 source also passed the existing App UI and two-Viewer
+gates: live/paused settings, background/window recovery, source replacement and
+retirement retained their expected owners. Native SFU passed 300 decoded frames
+at its original source aspect, reduction from 658x720 to 438x480, numeric audio
+changes, Viewer reload/recovery and cleanup. Gate expectations now derive from
+the observed source and selected ceilings, instead of requiring encoded 16:9
+padding. Physical game, macOS/Linux and orientation-change acceptance remain open.
 
 The restriction extends beyond resolution labels: shared readers also bound
 frame rate and bitrate, and Native's selectable profile admits four exact raster

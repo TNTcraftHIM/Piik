@@ -350,7 +350,7 @@ export async function setAudioBitrate(maxAudioBitrate: number): Promise<boolean>
   return true;
 }
 
-export async function waitForFrames(width: number, height: number, minimumFrames = 15) {
+export async function waitForFrames(width: number, height: number, minimumFrames = 15, withinCeiling = false, tolerance = 0) {
   if (!video) throw new Error("Viewer video is unavailable");
   const target = video;
   return await new Promise<{ frames: number; width: number; height: number }>((resolve, reject) => {
@@ -362,7 +362,10 @@ export async function waitForFrames(width: number, height: number, minimumFrames
     }, minimumFrames > 15 ? 30_000 : 20_000);
     const next = () => {
       callback = target.requestVideoFrameCallback(() => {
-        frames = target.videoWidth === width && target.videoHeight === height ? frames + 1 : 0;
+        const matches = withinCeiling
+          ? target.videoWidth >= 320 && target.videoHeight >= 240 && target.videoWidth <= width && target.videoHeight <= height
+          : Math.abs(target.videoWidth - width) <= tolerance && Math.abs(target.videoHeight - height) <= tolerance;
+        frames = matches ? frames + 1 : 0;
         if (frames < minimumFrames) return next();
         clearTimeout(timer);
         resolve({ frames, width: target.videoWidth, height: target.videoHeight });

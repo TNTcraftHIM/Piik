@@ -65,7 +65,9 @@ Numeric audio is implemented in the unpublished candidate: Browser/server v24
 and Native control v10 replace the preset field; capture v7 and SQLite schema 2
 remain unchanged. Matched candidate App/Web/Server builds are required;
 1.x participants are rejected by the existing compatibility checks.
-Geometry, 4K and additional codecs are still assessed through the media boundary.
+Windows output now preserves the source shape within the existing ceiling;
+axis-independent limits, other-platform geometry, 4K and additional codecs are
+still assessed through the media boundary.
 Native Magicsock remains an isolated experiment with incomplete product
 integration and unresolved recovery cases. These proposals do not yet change
 the accepted contract or transport. A small external test is proposed before

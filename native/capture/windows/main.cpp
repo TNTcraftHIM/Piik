@@ -1471,6 +1471,8 @@ class OutputWorker final {
         }
         std::optional<AdaptiveAccessUnit> output;
         try {
+          const auto size = piik::capture::BoundedFrameSize(input->presentation,
+              {static_cast<LONG>(profile_.width), static_cast<LONG>(profile_.height)});
           if (!encoder) {
             encoder = std::make_unique<AdaptiveEncoder>(
                 kind_, profile_, device_.Get(), create_, std::move(initial), layer_);
@@ -1486,7 +1488,8 @@ class OutputWorker final {
             }
             return converter->Convert(input->texture.Get(), input->width,
                                       input->height, input->presentation, input->color_space);
-          }, profile_.width, profile_.height, input->timestamp, work.recovery, work.bitrate);
+          }, static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy),
+             input->timestamp, work.recovery, work.bitrate);
         } catch (...) {
           // Device loss is current shared evidence; an old codec failure only
           // retires its activation. No retry occurs without a new activation.

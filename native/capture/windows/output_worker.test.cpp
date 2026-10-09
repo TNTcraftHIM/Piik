@@ -72,6 +72,7 @@ void CheckWorkerFailureGeneration(ID3D11Device* device, bool replace) {
   auto input = std::make_shared<CaptureInput>();
   input->width = 1280;
   input->height = 720;
+  input->presentation = {1280, 720};
   input->timestamp = 333'333;
   worker.Submit(input);
   assert(began.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
@@ -113,6 +114,36 @@ void CheckPrimaryFailureDetails() {
     rejected = error.stage() == "h264-decoder-create" && error.result() == CO_E_NOTINITIALIZED;
   }
   assert(rejected);
+}
+
+void CheckWorkerDimensions(ID3D11Device* device, SIZE content, SIZE expected) {
+  HANDLE read = nullptr, write = nullptr;
+  assert(CreatePipe(&read, &write, nullptr, 4096));
+  UniqueHandle input_pipe(read), output_pipe(write);
+  ProtocolWriter writer(write);
+  std::promise<void> output;
+  auto delivered = output.get_future();
+  OutputWorker worker(0, VideoProfile{}, OutputKind::h264, device, writer,
+      [](const VideoProfile&) -> std::unique_ptr<VideoEncoder> {
+        return std::make_unique<FixtureEncoder>(nullptr, std::shared_future<void>{});
+      }, nullptr, true, [&](const EncodedAccessUnit&) { output.set_value(); },
+      [&](std::exception_ptr error) { output.set_exception(error); });
+  auto frame = std::make_shared<CaptureInput>();
+  frame->width = static_cast<UINT32>(content.cx);
+  frame->height = static_cast<UINT32>(content.cy);
+  frame->presentation = content;
+  frame->timestamp = 333'333;
+  worker.Submit(frame);
+  assert(delivered.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+  delivered.get();
+  worker.Stop();
+  worker.Join();
+  std::array<BYTE, 35> packet{};
+  DWORD received = 0;
+  assert(ReadFile(read, packet.data(), static_cast<DWORD>(packet.size()), &received, nullptr));
+  assert(received == packet.size());
+  assert((packet[24] << 8 | packet[25]) == expected.cx);
+  assert((packet[26] << 8 | packet[27]) == expected.cy);
 }
 
 void CheckH264ProfileCompatibility() {
@@ -302,4 +333,7 @@ int main() {
   CheckAutoCadenceProbe(device.Get());
   CheckWorkerFailureGeneration(device.Get(), false);
   CheckWorkerFailureGeneration(device.Get(), true);
+  CheckWorkerDimensions(device.Get(), {1080, 1920}, {404, 720});
+  CheckWorkerDimensions(device.Get(), {3440, 1440}, {1280, 534});
+  CheckWorkerDimensions(device.Get(), {640, 480}, {640, 480});
 }

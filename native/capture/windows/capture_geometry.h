@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace piik::capture {
 
@@ -38,6 +39,20 @@ inline RECT FitFrameRect(SIZE content, SIZE output) {
   const LONG left = (output.cx - width) / 2;
   const LONG top = (output.cy - height) / 2;
   return {left, top, left + width, top + height};
+}
+
+// A quality profile is an output ceiling, not a canvas to pad or upscale into.
+// Keep even dimensions for NV12; WebRTC can further adapt this bounded source.
+inline SIZE BoundedFrameSize(SIZE content, SIZE ceiling) {
+  if (content.cx <= 0 || content.cy <= 0 || ceiling.cx < 2 || ceiling.cy < 2)
+    throw std::invalid_argument("Invalid capture presentation dimensions");
+  const double scale = std::min({1.0,
+      static_cast<double>(ceiling.cx) / content.cx,
+      static_cast<double>(ceiling.cy) / content.cy});
+  return {
+      std::max<LONG>(2, static_cast<LONG>(content.cx * scale) & ~1L),
+      std::max<LONG>(2, static_cast<LONG>(content.cy * scale) & ~1L),
+  };
 }
 
 }  // namespace piik::capture
