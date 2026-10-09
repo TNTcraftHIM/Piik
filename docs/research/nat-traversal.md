@@ -656,6 +656,28 @@ acceptance. They do not resolve the gateway-only or prolonged-outage controls
 above. Supported dependencies, room grants and representative network evidence
 remain prerequisites for product adoption.
 
+The 2026-10-09 remote-socket overlay extends that comparison through the actual
+Native encoded source, sender, receiver and ordinary local playback. It leaves
+product files untouched and admits one fixture peer flow per engine. Unchanged
+ordinary/Tailcat controls pass, and both handoff directions can retain media
+after DERP closure. Stronger fresh-content checks expose a limit: two of three
+sender-handoff repetitions pause output for roughly two seconds while ICE stays
+connected; one remains paused at the fifteen-second observation boundary.
+The outgoing frame counter also stops as the sender estimate falls to about
+20 kbps. This locates those gaps at forwarding/adaptation, rather than proving
+that the underlay lost the connection.
+
+The fixed 8×8 input deliberately has no live rate-controllable encoder. Declaring
+it rate-controlled removes the later forwarding pauses in three repetitions,
+but all three still miss the strict first fresh-content window and later deliver
+about 34–37 frames per second instead of the requested 50. This is an ablation,
+not a valid capture implementation or a proposed product switch. Actual Native
+capture already declares its live lowest output controllable and applies codec
+budgets; raw forwarding retains the framework's pause policy. Full App acceptance
+must include that encoder owner, local Browser decode and recovery, and useful
+picture continuity. A preserved ICE session alone does not establish a net
+handoff benefit. No production adaptation rule or timeout changed.
+
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
 required fresh bidirectional delivery after DERP closed. One side reporting a

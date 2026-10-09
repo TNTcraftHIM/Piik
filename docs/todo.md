@@ -72,6 +72,9 @@ Implementation needs a concrete useful result within the product model.
   Isolated local-address changes now preserve the same session under the actual
   Viewer recovery owner. Verify that bounded benefit through the complete App
   pipeline and physical networks; it does not establish another reachable NAT class.
+  The actual Native media overlay can retain the transport but its fixed-input
+  continuity controls expose forwarding pauses. Include the live encoder and
+  decoded picture continuity; do not treat the rate-control ablation as a fix.
   Product adoption still needs supported
   [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
   and RTCP/MTU boundaries, retained-flow recovery beyond the passing serial
