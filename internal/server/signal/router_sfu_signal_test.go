@@ -210,6 +210,20 @@ func TestEmbeddedSfuAuthenticatedWebSocketCarriesActualRTP(t *testing.T) {
 		}
 	})
 	applyRemote(viewer, subscriber, viewerConfig, false)
+	// SFU reserves its audio track for later source/microphone changes. Match
+	// the product Viewer's receive preference even while this fixture is silent.
+	for _, transceiver := range subscriber.GetTransceivers() {
+		if transceiver.Kind() != webrtc.RTPCodecTypeAudio {
+			continue
+		}
+		for _, codec := range transceiver.Receiver().GetParameters().Codecs {
+			if codec.MimeType == webrtc.MimeTypeOpus {
+				codec.SDPFmtpLine = "stereo=1;maxaveragebitrate=510000"
+				check(transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{codec}))
+				break
+			}
+		}
+	}
 	answer, err := subscriber.CreateAnswer(nil)
 	check(err)
 	sendDescription(viewer, viewerConfig, gather(subscriber, answer), nil)

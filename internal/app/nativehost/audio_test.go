@@ -150,6 +150,19 @@ func TestAudioEOFWaitsForExplicitSourceReplacement(t *testing.T) {
 	offer, err := session.PrepareLocalEdge("audio-edge")
 	check(err)
 	check(receiver.SetRemoteDescription(offer))
+	// A receive preference belongs to this answer, not the upstream offer.
+	for _, transceiver := range receiver.GetTransceivers() {
+		if transceiver.Kind() != webrtc.RTPCodecTypeAudio {
+			continue
+		}
+		for _, codec := range transceiver.Receiver().GetParameters().Codecs {
+			if codec.MimeType == webrtc.MimeTypeOpus {
+				codec.SDPFmtpLine = "stereo=1;maxaveragebitrate=510000"
+				check(transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{codec}))
+				break
+			}
+		}
+	}
 	go func() {
 		for {
 			select {
