@@ -9,7 +9,7 @@ import (
 	"github.com/pion/rtp"
 )
 
-const MaxAccessUnitBytes = 4 * 1024 * 1024
+const MaxAccessUnitBytes = 8 * 1024 * 1024
 
 // At the 1200-byte media MTU, this window covers a maximum-sized fragmented AU
 // with header headroom. It does not promise unlimited tiny-NAL packetization.

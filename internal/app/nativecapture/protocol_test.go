@@ -66,9 +66,9 @@ func TestReadFrameRejectsInvalidKindsFlagsAndBounds(t *testing.T) {
 	}
 }
 
-func TestMediaEnvelopeAcceptsFourMiBAndRejectsLargerFrames(t *testing.T) {
-	const limit = 4 * 1024 * 1024
-	frame := Frame{Kind: FrameH264, KeyFrame: true, Width: 2560, Height: 1440,
+func TestMediaEnvelopeAcceptsTheAccessUnitCeilingAndRejectsLargerFrames(t *testing.T) {
+	const limit = maxMediaBytes
+	frame := Frame{Kind: FrameH264, KeyFrame: true, Width: 3840, Height: 2160,
 		Duration: time.Second / 60, Data: make([]byte, limit)}
 	var output bytes.Buffer
 	if err := writeFrame(&output, frame); err != nil {
@@ -76,7 +76,7 @@ func TestMediaEnvelopeAcceptsFourMiBAndRejectsLargerFrames(t *testing.T) {
 	}
 	read, err := readFrame(bytes.NewReader(output.Bytes()))
 	if err != nil || len(read.Data) != limit || read.Width != frame.Width || read.Height != frame.Height {
-		t.Fatalf("4 MiB media envelope rejected: bytes=%d err=%v", len(read.Data), err)
+		t.Fatalf("ceiling-sized media envelope rejected: bytes=%d err=%v", len(read.Data), err)
 	}
 	frame.Data = append(frame.Data, 0)
 	var rejected bytes.Buffer
@@ -290,6 +290,7 @@ func TestVideoProfileUsesTheProductBounds(t *testing.T) {
 		{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 60, Bitrate: 8_000_000, Preference: "maintain-framerate"},
 		{Width: 2560, Height: 1440, Framerate: 60, Bitrate: 12_000_000, Preference: "balanced"},
+		{Width: 3840, Height: 2160, Framerate: 60, Bitrate: 40_000_000, Preference: "balanced"},
 	} {
 		if !profile.Valid() {
 			t.Fatalf("valid profile rejected: %+v", profile)
@@ -298,7 +299,8 @@ func TestVideoProfileUsesTheProductBounds(t *testing.T) {
 	for _, profile := range []VideoProfile{
 		{Width: 1920, Height: 1200, Framerate: 30, Bitrate: 5_000_000, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 14, Bitrate: 5_000_000, Preference: "balanced"},
-		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 12_000_001, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 40_000_001, Preference: "balanced"},
+		{Width: 4096, Height: 2160, Framerate: 30, Bitrate: 5_000_000, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 5_000_000, Preference: "unknown"},
 	} {
 		if profile.Valid() {

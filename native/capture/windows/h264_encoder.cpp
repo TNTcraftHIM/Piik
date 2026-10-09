@@ -14,7 +14,7 @@
 namespace piik::capture::windows {
 
 namespace {
-constexpr DWORD kMaxEncodedSampleBytes = 4 * 1024 * 1024;
+constexpr DWORD kMaxEncodedSampleBytes = 8 * 1024 * 1024;
 }
 
 bool VideoProfile::accepts_h264_profile_level_id(const std::string& value) const {

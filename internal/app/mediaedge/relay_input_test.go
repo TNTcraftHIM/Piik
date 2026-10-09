@@ -106,7 +106,7 @@ func TestRelayH264AllocationBounds(t *testing.T) {
 		{"1440p", "6742c033da00a002d640", 2560, 1440},
 		{"padded-1080p", "6742c033da01e0089f95", 1920, 1080},
 		{"portrait-within-bound", "6742c033da01100b5e5d", 1080, 1440},
-		{"4k", "6742c033da00f0010f90", 0, 0},
+		{"4k", "6742c033da00f0010f90", 3840, 2160},
 		{"portrait-overflow", "6742c033da008701e190", 0, 0},
 		{"padded-4k", "6742c033da00f00111f894", 0, 0},
 		{"large-cropped-storage", "6742c033da00f001e1f8034940", 0, 0},

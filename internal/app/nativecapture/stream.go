@@ -24,7 +24,7 @@ const (
 	maxPreviewBytes     = 192 * 1024
 	maxOutputs          = 6
 	minOutputBitrate    = 1_000 // Codec rate APIs use whole kbps.
-	maxOutputBitrate    = 12_000_000
+	maxOutputBitrate    = 40_000_000
 	maxSources          = 1024
 	maxSourceTitleBytes = 4096
 	// Leave room for the control envelope within loopback's 256 KiB message.
@@ -113,9 +113,10 @@ func (profile VideoProfile) Valid() bool {
 		(profile.Width == 854 && profile.Height == 480) ||
 			(profile.Width == 1280 && profile.Height == 720) ||
 			(profile.Width == 1920 && profile.Height == 1080) ||
-			(profile.Width == 2560 && profile.Height == 1440)
+			(profile.Width == 2560 && profile.Height == 1440) ||
+			(profile.Width == 3840 && profile.Height == 2160)
 	return validResolution && profile.Framerate >= 15 && profile.Framerate <= 60 &&
-		profile.Bitrate >= 2_000_000 && profile.Bitrate <= 12_000_000 &&
+		profile.Bitrate >= 2_000_000 && profile.Bitrate <= 40_000_000 &&
 		validVideoPreference(profile.Preference)
 }
 

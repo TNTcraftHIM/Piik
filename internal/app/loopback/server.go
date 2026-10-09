@@ -69,15 +69,17 @@ type Health struct {
 }
 
 type NativeMediaCapabilities struct {
-	ReceiverReuse         bool `json:"receiverReuse,omitempty"`
-	Video                 bool `json:"video"`
-	CaptureBorderControl  bool `json:"captureBorderControl,omitempty"`
-	Microphone            bool `json:"microphone,omitempty"`
-	ProcessAudio          bool `json:"processAudio"`
-	ProcessAudioExclusion bool `json:"processAudioExclusion,omitempty"`
-	SystemAudio           bool `json:"systemAudio"`
-	HardwareH264          bool `json:"hardwareH264"`
-	SoftwareVP8           bool `json:"softwareVP8"`
+	ReceiverReuse         bool   `json:"receiverReuse,omitempty"`
+	Video                 bool   `json:"video"`
+	CaptureBorderControl  bool   `json:"captureBorderControl,omitempty"`
+	MaxVideoWidth         uint32 `json:"maxVideoWidth,omitempty"`
+	MaxVideoHeight        uint32 `json:"maxVideoHeight,omitempty"`
+	Microphone            bool   `json:"microphone,omitempty"`
+	ProcessAudio          bool   `json:"processAudio"`
+	ProcessAudioExclusion bool   `json:"processAudioExclusion,omitempty"`
+	SystemAudio           bool   `json:"systemAudio"`
+	HardwareH264          bool   `json:"hardwareH264"`
+	SoftwareVP8           bool   `json:"softwareVP8"`
 }
 
 type Server struct {

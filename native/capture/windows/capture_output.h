@@ -13,7 +13,11 @@
 
 namespace piik::capture {
 
-constexpr DWORD kMaxProductAccessUnitBytes = 4 * 1024 * 1024;
+constexpr DWORD kMaxProductAccessUnitBytes = 8 * 1024 * 1024;
+// The product video bound the capture helper accepts and advertises. Decoders
+// mirror it as their own coded-picture limit.
+constexpr UINT32 kMaxProductVideoWidth = 3840;
+constexpr UINT32 kMaxProductVideoHeight = 2160;
 constexpr DWORD kMaxStatusBytes = 4 * 1024;
 enum class OutputKind : UINT8 { pcm = 1, h264 = 2, status = 3, vp8 = 4, begin = 5, unavailable = 6 };
 

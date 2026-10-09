@@ -109,10 +109,21 @@ The three recommended profiles are ceilings, not delivery guarantees:
 | `1080p30` | 1920x1080 at 30 fps | 5 Mbps |
 | `1080p60` | 1920x1080 at 60 fps | 8 Mbps |
 
-`1080p30` is the default. Advanced resolution includes 480p, 720p, 1080p, and
-1440p; frame rate, bitrate, and `maintain-resolution | balanced |
-maintain-framerate` remain independent controls. Display video uses the standard
+`1080p30` is the default. Advanced resolution includes 480p, 720p, 1080p, 1440p,
+and 2160p; frame rate, bitrate, and `maintain-resolution | balanced |
+maintain-framerate` remain independent controls. The bitrate ceiling is 40 Mbps,
+which the 2160p ceiling needs. Display video uses the standard
 `contentHint = "motion"` for game motion.
+
+A resolution is a ceiling on the encoded picture, never an upscale: the sender
+derives `scaleResolutionDownBy` from the actual source, so a source below the
+selected ceiling is sent at its own size. A 2160p selection therefore needs a
+2160p source to produce 2160p output.
+A connected App advertises the native capture bound it can encode
+(`maxVideoWidth`/`maxVideoHeight` in its health); the Host page offers only the
+resolutions inside that bound while App capture is active, and keeps every
+resolution selectable when no bound is advertised. A Browser-only Host is
+bounded by its source rather than by the App contract.
 Native H264 retains Constrained Baseline. Capture validates the coding-tool subset under
 RFC 6184, including equivalent Constrained Baseline constraint bytes, and reports
 the actual SPS profile/level; one vendor's byte spelling is not the contract.

@@ -53,10 +53,27 @@ export const QUALITY_RESOLUTIONS = {
   "720p": { width: 1280, height: 720, label: "720p" },
   "1080p": { width: 1920, height: 1080, label: "1080p" },
   "1440p": { width: 2560, height: 1440, label: "1440p" },
+  "2160p": { width: 3840, height: 2160, label: "2160p" },
 } as const satisfies Record<
   QualityResolution,
   { width: number; height: number; label: string }
 >;
+
+// A connected App advertises the native capture bound it can actually encode.
+// Without an advertised bound every product resolution stays selectable: the
+// Browser path is bounded by its source, not by this contract.
+export function availableQualityResolutions(
+  maxWidth?: number,
+  maxHeight?: number,
+): QualityResolution[] {
+  const resolutions = Object.keys(QUALITY_RESOLUTIONS) as QualityResolution[];
+  if (maxWidth === undefined || maxHeight === undefined) return resolutions;
+  return resolutions.filter(
+    (resolution) =>
+      QUALITY_RESOLUTIONS[resolution].width <= maxWidth &&
+      QUALITY_RESOLUTIONS[resolution].height <= maxHeight,
+  );
+}
 
 export const DEGRADATION_PREFERENCE_KEYS = {
   "maintain-resolution": "host.advanced.preference.resolution",

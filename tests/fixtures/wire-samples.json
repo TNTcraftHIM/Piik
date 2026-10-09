@@ -305,9 +305,15 @@
       "valid": false
     },
     {
+      "name": "set-quality-settings-2160p",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"2160p\",\"maxFramerate\":60,\"maxBitrate\":40000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "valid": true
+    },
+    {
       "name": "set-quality-settings-unknown-resolution",
       "schema": "client",
-      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"2160p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":\"4320p\",\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
       "valid": false
     },
     {

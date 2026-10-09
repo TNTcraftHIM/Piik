@@ -756,6 +756,16 @@ describe("client signaling protocol", () => {
         qualitySettings: { ...qualitySettings, resolution: "480p" },
       }).success,
     ).toBe(true);
+    expect(
+      clientMessageSchema.safeParse({
+        type: "set-quality-settings",
+        qualitySettings: {
+          ...qualitySettings,
+          resolution: "2160p",
+          maxBitrate: 40_000_000,
+        },
+      }).success,
+    ).toBe(true);
     for (const screenAudioQuality of [
       "saver",
       "music",
@@ -769,12 +779,12 @@ describe("client signaling protocol", () => {
       ).toBe(true);
     }
     for (const invalid of [
-      { ...qualitySettings, resolution: "2160p" },
+      { ...qualitySettings, resolution: "4320p" },
       { ...qualitySettings, maxFramerate: 14 },
       { ...qualitySettings, maxFramerate: 61 },
       { ...qualitySettings, maxFramerate: 30.5 },
       { ...qualitySettings, maxBitrate: 1_999_999 },
-      { ...qualitySettings, maxBitrate: 12_000_001 },
+      { ...qualitySettings, maxBitrate: 40_000_001 },
       { ...qualitySettings, maxBitrate: 5_000_000.5 },
       { ...qualitySettings, degradationPreference: "automatic" },
       legacyCodecQualitySettings,
@@ -1523,7 +1533,13 @@ describe("server signaling protocol", () => {
     expect(
       serverMessageSchema.safeParse({
         ...peerAssisted,
-        qualitySettings: { ...qualitySettings, maxBitrate: 20_000_000 },
+        qualitySettings: { ...qualitySettings, resolution: "2160p", maxBitrate: 40_000_000 },
+      }).success,
+    ).toBe(true);
+    expect(
+      serverMessageSchema.safeParse({
+        ...peerAssisted,
+        qualitySettings: { ...qualitySettings, maxBitrate: 40_000_001 },
       }).success,
     ).toBe(false);
     const missingMode = {

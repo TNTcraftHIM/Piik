@@ -127,6 +127,7 @@ import {
   QUALITY_PROFILES,
   DEGRADATION_PREFERENCE_KEYS,
   QUALITY_RESOLUTIONS,
+  availableQualityResolutions,
   qualitySettingsEqual,
   qualitySettingsLabel,
   resolveScreenAudioQuality,
@@ -134,7 +135,6 @@ import {
   setMediaPaused,
   videoQualitySettingsEqual,
   type DegradationPreference,
-  type QualityResolution,
   type QualitySettings,
   type ScreenAudioQuality,
 } from "../media/quality";
@@ -3799,8 +3799,13 @@ export function HostPage({
                   role="group"
                   aria-label={t("host.advanced.resolution")}
                 >
-                  {(
-                    Object.keys(QUALITY_RESOLUTIONS) as QualityResolution[]
+                  {availableQualityResolutions(
+                    nativeActive
+                      ? nativeClientRef.current?.health.nativeMedia.maxVideoWidth
+                      : undefined,
+                    nativeActive
+                      ? nativeClientRef.current?.health.nativeMedia.maxVideoHeight
+                      : undefined,
                   ).map((resolution) => (
                     <Chip
                       key={resolution}
@@ -3857,7 +3862,7 @@ export function HostPage({
                       <input
                         type="range"
                         min={2000000}
-                        max={12000000}
+                        max={40000000}
                         step={500000}
                         value={advancedQuality.maxBitrate}
                         disabled={phase === "starting" || switchingSource}
