@@ -392,15 +392,6 @@ func (media *Media) UpdatePublication(fence ResourceFence, connectionID string, 
 	metadata.Formats, metadata.RIDs = slices.Clone(metadata.Formats), slices.Clone(metadata.RIDs)
 	publication.metadata = metadata
 	publication.wakeDemand()
-	bitrate := uint32(0)
-	if metadata.Audio {
-		bitrate = metadata.AudioBitrate
-	}
-	for _, subscriber := range publication.subscribers {
-		if subscriber.transport != nil {
-			subscriber.transport.SetAudioBitrate(bitrate)
-		}
-	}
 	return nil
 }
 
@@ -578,9 +569,6 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 	})
 	if err != nil {
 		return webrtc.SessionDescription{}, err
-	}
-	if metadata.Audio {
-		transport.SetAudioBitrate(metadata.AudioBitrate)
 	}
 	publication.mu.Lock()
 	if publication.closed || publication.failure != nil || publication.subscribers[key] != subscriber || ctx.Err() != nil || lifetime.Err() != nil {

@@ -292,11 +292,8 @@ func (publication *Publication) RequiredActiveCount() int {
 	return publication.activeCount
 }
 
-func (publication *Publication) SetAudioBitrate(bitrate uint32) {
-	publication.bandwidth.audio.Store(int64(bitrate))
-}
 func (publication *Publication) VideoBudget() int64 {
-	return max(publication.bandwidth.target.Load()-publication.bandwidth.audio.Load(), 0)
+	return publication.bandwidth.target.Load()
 }
 func (publication *Publication) LowestLayerBudget() int64 {
 	remaining := publication.VideoBudget()
@@ -556,14 +553,12 @@ type publicationAudioContext struct {
 
 func (context publicationAudioContext) WriteStream() webrtc.TrackLocalWriter { return context.writer }
 
-// Opus uses its one existing encoder at an explicit fixed ceiling. Reserve its
-// bytes from allocator capacities. TWCC observes video; reserving unobserved
-// audio is conservative and does not claim that the estimator acknowledged it.
+// TWCC measures video and its probes. Audio shares the path but is not counted
+// in this estimate; subtracting it here would understate the video budget.
 type publicationBWE struct {
 	*sendsidebwe.SendSideBWE
 	listener bwe.BWEListener
 	target   atomic.Int64
-	audio    atomic.Int64
 	observed atomic.Bool
 }
 
@@ -582,14 +577,14 @@ func (bandwidth *publicationBWE) OnCongestionStateChange(from, to bwe.Congestion
 	if to == bwe.CongestionStateCongested && capacity > 0 && capacity < bandwidth.target.Load() {
 		bandwidth.target.Store(capacity)
 	}
-	bandwidth.listener.OnCongestionStateChange(from, to, max(bandwidth.target.Load()-bandwidth.audio.Load(), 0))
+	bandwidth.listener.OnCongestionStateChange(from, to, bandwidth.target.Load())
 }
 func (bandwidth *publicationBWE) ProbeClusterFinalize() (ccutils.ProbeSignal, int64, bool) {
 	signal, capacity, done := bandwidth.SendSideBWE.ProbeClusterFinalize()
 	if done && signal == ccutils.ProbeSignalNotCongesting && capacity > bandwidth.target.Load() {
 		bandwidth.target.Store(capacity)
 	}
-	return signal, max(bandwidth.target.Load()-bandwidth.audio.Load(), 0), done
+	return signal, bandwidth.target.Load(), done
 }
 
 type publicationPacer struct {

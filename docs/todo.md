@@ -57,9 +57,8 @@ Implementation needs a concrete useful result within the product model.
   limits and framework-owned adaptation. The
   [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)
   retain explicit receive-limit enforcement and the current 320 kbps sender
-  ceiling. A real-Opus impaired-network control retains decoding; verify video
-  allocation after restoring high audio rates. Physical listening, mobile and
-  field-network acceptance remain open.
+  ceiling. Physical listening, mobile and field-network acceptance remain open;
+  research owns the bounded real-Opus impairment and video-recovery control.
   New codecs need complete
   encode/decode/forward support and a late-Viewer policy before inclusion;
   selecting a codec cannot transcode an existing publication. Confirm live

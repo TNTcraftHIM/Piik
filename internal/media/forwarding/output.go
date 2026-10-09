@@ -38,7 +38,7 @@ type Output struct {
 type Snapshot struct {
 	Prepare, Target, Requested, Current int32
 	Paused                              bool
-	// VideoBudget is the current connection estimate after audio reservation.
+	// VideoBudget is the committed estimate for this connection's tracked video.
 	// It is codec input, not a claim that this bitrate is available or delivered.
 	VideoBudget int64
 }

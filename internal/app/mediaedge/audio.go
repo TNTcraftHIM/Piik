@@ -147,19 +147,7 @@ func (source *AudioSource) SetBitrate(bitrate int) error {
 	if closed {
 		return errors.New("native audio source is closed")
 	}
-	if err := source.encoder.SetBitrate(bitrate); err != nil {
-		return err
-	}
-	source.mu.Lock()
-	edges := make([]*Edge, 0, len(source.edges))
-	for edge := range source.edges {
-		edges = append(edges, edge)
-	}
-	source.mu.Unlock()
-	for _, edge := range edges {
-		edge.transport.SetAudioBitrate(uint32(bitrate))
-	}
-	return nil
+	return source.encoder.SetBitrate(bitrate)
 }
 
 func (source *AudioSource) configuredBitrate() uint32 {

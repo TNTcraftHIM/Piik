@@ -52,11 +52,9 @@ func (edge *Edge) QualitySample(now time.Time) (QualitySample, bool) {
 		return QualitySample{}, false
 	}
 	frames := framesNow - previous.frames
-	bytes := bytesNow - previous.videoBytes + audioBytes - previous.audioBytes
+	videoBytes := bytesNow - previous.videoBytes
+	bytes := videoBytes + audioBytes - previous.audioBytes
 	seconds := window.Seconds()
-	if edge.audioSource != nil && edge.audioSource.encoder == nil {
-		edge.transport.SetAudioBitrate(uint32(float64((audioBytes-previous.audioBytes)*8) / seconds))
-	}
 	bitrate := float64(bytes*8) / seconds
 	sample := QualitySample{
 		SampleTimestampMs:     now.UnixMilli(),
@@ -87,7 +85,9 @@ func (edge *Edge) QualitySample(now time.Time) (QualitySample, bool) {
 	sample.AvailableOutgoingKbps = float64(target) / 1000
 	reason := "none"
 	sample.State = "healthy"
-	if edge.transport.Output.IsDeficient() || float64(target) < bitrate {
+	// The estimator tracks video only. Keep total traffic in diagnostics, but
+	// compare its capacity with the corresponding video payload.
+	if edge.transport.Output.IsDeficient() || float64(target) < float64(videoBytes*8)/seconds {
 		reason = "bandwidth"
 		sample.State = "degraded"
 	}

@@ -2,11 +2,16 @@ package forwarding
 
 import (
 	"context"
+	"encoding/binary"
+	"math"
+	"math/rand/v2"
 	"os"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/ice/v4"
@@ -14,15 +19,24 @@ import (
 	"github.com/pion/logging"
 	"github.com/pion/transport/v4/vnet"
 	"github.com/pion/webrtc/v4"
+	rtmedia "github.com/pion/webrtc/v4/pkg/media"
+	"github.com/thesyncim/gopus"
 )
 
 // Explicit CPU-only network gate: synthetic VP8-shaped payload, actual Pion
-// ICE/DTLS/RTP/TWCC, and the production allocator/pacer/probe driver. No decoder,
+// ICE/DTLS/RTP/TWCC, and the production allocator/pacer/probe driver. The audio
+// case adds real Opus encode/decode and live bitrate changes. No video decoder,
 // capture device or physical network participates.
 func TestTransportConstrainedDormantRecovery(t *testing.T) {
 	if os.Getenv("PIIK_TRANSPORT_RECOVERY") == "" {
 		t.Skip("set PIIK_TRANSPORT_RECOVERY=1 for the bounded virtual-network gate")
 	}
+	t.Run("video-only", func(t *testing.T) { checkTransportRecovery(t, false) })
+	t.Run("numeric-audio", func(t *testing.T) { checkTransportRecovery(t, true) })
+}
+
+func checkTransportRecovery(t *testing.T, withAudio bool) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 32*time.Second)
 	defer cancel()
 	check := func(err error) {
@@ -58,8 +72,36 @@ func TestTransportConstrainedDormantRecovery(t *testing.T) {
 	sendSettings.SetNet(sendNet)
 	sendSettings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 	sendSettings.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	var audio *webrtc.TrackLocalStaticSample
+	var encoder *nativeaudio.Encoder
+	var audioTicks <-chan time.Time
+	var pcm []byte
+	if withAudio {
+		audio, err = webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeOpus, ClockRate: 48000, Channels: 2,
+			SDPFmtpLine: "minptime=10;useinbandfec=1",
+		}, "audio", "recovery")
+		check(err)
+		encoder, err = nativeaudio.NewEncoder(320_000)
+		check(err)
+		ticker := time.NewTicker(20 * time.Millisecond)
+		defer ticker.Stop()
+		audioTicks = ticker.C
+		pcm = make([]byte, nativeaudio.FrameBytes)
+		random := rand.New(rand.NewPCG(42, 1))
+		for frame := range nativeaudio.FrameSamples {
+			for channel := range nativeaudio.Channels {
+				value := 8000*math.Sin(2*math.Pi*float64(500+channel*1000)*float64(frame)/48000) + 4000*(random.Float64()*2-1)
+				binary.LittleEndian.PutUint16(pcm[(frame*2+channel)*2:], uint16(int16(value)))
+			}
+		}
+	}
+	var audioTrack webrtc.TrackLocal
+	if audio != nil {
+		audioTrack = audio
+	}
 	transport, err := NewTransport(TransportOptions{Source: source.Source, Settings: sendSettings,
-		ConnectionID: "recovery-child", InitialBitrate: 1_200_000})
+		ConnectionID: "recovery-child", InitialBitrate: 1_200_000, Audio: audioTrack})
 	check(err)
 	defer transport.Close()
 	receiveSettings := webrtc.SettingEngine{}
@@ -73,9 +115,39 @@ func TestTransportConstrainedDormantRecovery(t *testing.T) {
 	receiver, err := webrtc.NewAPI(webrtc.WithMediaEngine(media), webrtc.WithInterceptorRegistry(registry),
 		webrtc.WithSettingEngine(receiveSettings)).NewPeerConnection(webrtc.Configuration{})
 	check(err)
+	var readers sync.WaitGroup
+	defer readers.Wait()
 	defer receiver.Close()
-	var received atomic.Uint64
+	var received, audioDecoded, audioErrors atomic.Uint64
 	receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		readers.Add(1)
+		defer readers.Done()
+		if track.Kind() == webrtc.RTPCodecTypeAudio {
+			decoder, err := gopus.NewDecoder(gopus.DefaultDecoderConfig(48000, 2))
+			if err != nil {
+				audioErrors.Add(1)
+				return
+			}
+			pcm := make([]int16, nativeaudio.FrameSamples*nativeaudio.Channels)
+			for {
+				packet, _, err := track.ReadRTP()
+				if err != nil {
+					return
+				}
+				count, err := decoder.DecodeInt16(packet.Payload, pcm)
+				if err != nil || count != nativeaudio.FrameSamples {
+					audioErrors.Add(1)
+					continue
+				}
+				var energy int64
+				for _, sample := range pcm {
+					energy += int64(sample) * int64(sample)
+				}
+				if energy > int64(len(pcm))*100 {
+					audioDecoded.Add(1)
+				}
+			}
+		}
 		for {
 			packet, _, readErr := track.ReadRTP()
 			if readErr != nil {
@@ -116,12 +188,26 @@ func TestTransportConstrainedDormantRecovery(t *testing.T) {
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 	start, lastReport := time.Now(), time.Now()
-	var previousReceived uint64
-	var dormant, recovered bool
+	var previousReceived, previousAudio uint64
+	var dormant bool
+	var recoveredWindows, audioWindows int
 	minimum := int64(1_200_000)
-	for frame := 0; ; frame++ {
+	frame := 0
+	for {
 		select {
 		case <-ticker.C:
+		case <-audioTicks:
+			bitrate := 320_000
+			if elapsed := time.Since(start); elapsed >= 8*time.Second && elapsed < 16*time.Second {
+				bitrate = 96_000
+			}
+			if encoder.Bitrate() != bitrate {
+				check(encoder.SetBitrate(bitrate))
+			}
+			packet, err := encoder.Encode(pcm)
+			check(err)
+			check(audio.WriteSample(rtmedia.Sample{Data: packet, Duration: 20 * time.Millisecond}))
+			continue
 		case <-ctx.Done():
 			t.Fatal(ctx.Err())
 		}
@@ -156,6 +242,7 @@ func TestTransportConstrainedDormantRecovery(t *testing.T) {
 			copy(data, sfu.VP8KeyFrame8x8)
 			check(source.WriteFrame(layer, encoded.Frame{Data: data, PTS: pts, Duration: period}))
 		}
+		frame++
 		if now.Sub(lastReport) >= time.Second {
 			bytes := received.Load()
 			receivedBps := float64((bytes-previousReceived)*8) / now.Sub(lastReport).Seconds()
@@ -164,15 +251,23 @@ func TestTransportConstrainedDormantRecovery(t *testing.T) {
 				elapsed.Seconds(), capacity, state.VideoBudget, state.Target, state.Current, high, receivedBps,
 				transport.estimator.CongestionState(), transport.paddingReady, transport.probe.Id, transport.Egress())
 			transport.mu.Unlock()
-			if elapsed > 15*time.Second && state.Current == 1 && receivedBps > 800_000 {
-				recovered = true
+			if elapsed >= 20*time.Second && state.Current == 1 && receivedBps > 800_000 {
+				recoveredWindows++
 			}
+			decoded := audioDecoded.Load()
+			if withAudio {
+				t.Logf("audio decoded=%d errors=%d bitrate=%d", decoded-previousAudio, audioErrors.Load(), encoder.Bitrate())
+				if elapsed >= 20*time.Second && decoded-previousAudio >= 35 {
+					audioWindows++
+				}
+			}
+			previousAudio = decoded
 			lastReport, previousReceived = now, bytes
 		}
 	}
-	if !dormant || minimum >= 1_200_000 || !recovered {
-		t.Fatalf("missing real constrained/dormant/released recovery: dormant=%v minimum=%d recovered=%v state=%+v",
-			dormant, minimum, recovered, transport.Output.State())
+	if !dormant || minimum >= 1_200_000 || recoveredWindows < 5 || withAudio && (audioWindows < 5 || audioErrors.Load() != 0) {
+		t.Fatalf("missing constrained/dormant/released recovery: dormant=%v minimum=%d videoWindows=%d audioWindows=%d audioErrors=%d state=%+v",
+			dormant, minimum, recoveredWindows, audioWindows, audioErrors.Load(), transport.Output.State())
 	}
 	check(transport.Close())
 	if transport.prober.IsRunning() {

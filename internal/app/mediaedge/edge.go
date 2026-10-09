@@ -105,7 +105,6 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (_ *Edge, err
 	}
 	connection := transport.PC
 	log := slog.Default().With("connectionId", diagnostics.ID(options.ConnectionID), "rtcPeerId", diagnostics.ID(connection.ID()))
-	transport.SetAudioBitrate(options.Audio.configuredBitrate())
 	edge := &Edge{
 		connectionID:  options.ConnectionID,
 		engine:        engine,

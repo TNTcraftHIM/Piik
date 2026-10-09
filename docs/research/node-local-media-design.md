@@ -223,8 +223,8 @@ input anchor, not independently to each encoder's completion time.
 
 Local capture replacement keeps its RTP source and cumulative counters while
 rebasing only the input packetizers. It must not also restart the RTP projector.
-Unconnected edges reserve capacity without asking for output. Existing audio
-settings or observed relay-audio bytes reserve that portion of the PC budget.
+Unconnected edges reserve child slots without asking for output. Video capacity
+comes from its tracked traffic; untracked audio must not be subtracted again.
 
 Capture producers now implement the coordinated v5 multi-output boundary below;
 the packaged runtime has not been physically accepted. A bounded real libvpx
@@ -411,8 +411,8 @@ owns the decoded-picture and address-change boundary.
 Congestion callbacks could also promote the estimator's unmeasured 100 Mbps
 initial capacity while a probe was pending. Congestion now only reduces the
 committed budget; a valid completed non-congesting probe owns increases.
-Publication allocation and encoder input use that same committed capacity after
-audio reservation. This follows the
+Publication allocation and encoder input use that same committed video capacity.
+This follows the
 [upstream distinction between congestion events and completed probes](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/streamallocator/streamallocator.go),
 without introducing another estimator.
 
@@ -449,10 +449,22 @@ could promote 100 Mbps and do not establish correct budgeting. The SDK
 latency-aware queue requires an extra adapter and is not retained. Earlier
 flaky comparisons also registered TWCC twice on the receiver, duplicating
 feedback; those results do not rank the queues. Product receivers already use
-the single default interceptor owner. A separate real Opus 320/96/320 kbps
-control retains audio decoding under the same impairment; video can still
-return to a lower output after the high audio rate resumes. That allocation
-boundary remains open rather than being reported as complete recovery.
+the single default interceptor owner.
+
+Live audio changes exposed a related scope mismatch: Piik's TWCC tracks only
+video, but the adapter deducted audio from that measured capacity and included
+audio in expected probe usage. After restoring 320 kbps Opus, this could remove
+an already recovered video layer on a healthy 6 Mbps link. The adapter now uses
+the measured video capacity directly, matching the upstream allocator's
+video-only usage accounting. Native and SFU share this rule; quality reports
+compare video capacity with video payload while retaining total traffic in
+diagnostics. Opus rate and transport behavior are unchanged. The retained
+network gate exercises video-only and real Opus 320/96/320 kbps cases, requiring
+sustained high video and decoded audio after recovery. The former subtraction
+fails a matched trace but can be masked by later probe traffic; a passing
+recovery alone does not establish correct accounting. This is not proof of
+perceptual audio quality or behavior on every physical network.
+
 No reset, retry owner or minimum quality is added. These are bounded local traces,
 not a field diagnosis, success-rate or game-latency claim.
 Ordinary focused checks cover NACK repair, no-RR probe admission, zero-write

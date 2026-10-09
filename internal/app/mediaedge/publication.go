@@ -82,7 +82,6 @@ func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publ
 		return nil, err
 	}
 	publication.transport = transport
-	transport.SetAudioBitrate(options.Audio.configuredBitrate())
 	publication.signaling.connection = transport.PC
 	publication.signaling.audioSource = options.Audio
 	publication.signaling.localCandidates = newLocalCandidateGathering(socket, options.ICEServers, nil, options.Events.LocalCandidate)
@@ -208,7 +207,6 @@ func (publication *Publication) Media() PublicationMedia {
 		media.Layers[index] = PublicationLayer{RID: forwarding.PublicationRID(index, len(info.Layers)),
 			Width: layer.Width, Height: layer.Height, Bitrate: layer.Bitrate}
 	}
-	publication.transport.SetAudioBitrate(media.AudioBitrate)
 	return media
 }
 

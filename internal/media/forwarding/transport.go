@@ -55,7 +55,6 @@ type Transport struct {
 	mu           sync.Mutex
 	attached     bool
 	closed       bool
-	audioBitrate uint32
 	paddingReady bool
 	closeOnce    sync.Once
 	closeErr     error
@@ -274,6 +273,7 @@ func validateReplacement(current, next *Source) error {
 	return nil
 }
 
+// TargetBitrate reports capacity for TWCC-tracked video, not total link capacity.
 func (transport *Transport) TargetBitrate() (int, bool) {
 	return int(transport.target.Load()), transport.observed.Load()
 }
@@ -299,20 +299,8 @@ func (transport *Transport) Egress() EgressStats {
 	return transport.pacer.stats()
 }
 
-// SetAudioBitrate reserves the current audio owner's contribution to this PC's
-// shared estimate. Zero means no audio demand; the transport invents no profile.
-func (transport *Transport) SetAudioBitrate(bitrate uint32) {
-	transport.mu.Lock()
-	defer transport.mu.Unlock()
-	if !transport.closed {
-		transport.audioBitrate = bitrate
-		transport.refreshBudgetLocked()
-	}
-}
-
 func (transport *Transport) refreshBudgetLocked() {
-	remaining := transport.target.Load() - int64(transport.audioBitrate)
-	transport.Output.SetBudget(max(remaining, 0))
+	transport.Output.SetBudget(transport.target.Load())
 }
 
 func (transport *Transport) Close() error {
@@ -446,7 +434,6 @@ func (transport *Transport) driveProbeLocked() {
 	if delta <= 0 {
 		return
 	}
-	usage += int64(transport.audioBitrate)
 	goal := ccutils.ProbeClusterGoal{AvailableBandwidthBps: int(transport.target.Load()),
 		ExpectedUsageBps: int(usage), DesiredBps: int(usage + max(delta*config.ProbeOveragePct/100, config.ProbeMinBps)),
 		Duration: transport.estimator.ProbeDuration()}

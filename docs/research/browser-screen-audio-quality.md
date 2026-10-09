@@ -107,11 +107,10 @@ advancing decoded audio and successful cleanup. A direct Browser control now
 keeps requested 256/320 kbps below an explicit 192 kbps receive limit, while a
 510 kbps receiver permits both rates. A native real-Opus control through
 6 Mbps -> 500 kbps -> 6 Mbps shaping retains decoded audio during live
-320/96/320 kbps changes. It exposed the shared
-[probe measurement repairs](./node-local-media-design.md#send-queue-recovery),
-but video allocation after returning to the high audio rate still needs
-verification. These are local runtime checks; physical networks, mobile playback
-and listening remain open.
+320/96/320 kbps changes, with sustained high video after the shared
+[probe measurement and video-budget repairs](./node-local-media-design.md#send-queue-recovery).
+These are local runtime checks; physical networks, mobile playback and listening
+remain open.
 
 RFC 7587 gives an omitted receive bitrate a mode-dependent default, not an
 unrestricted value, and asks receivers to ignore out-of-range preferences.

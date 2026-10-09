@@ -70,9 +70,8 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 	check(err)
 	defer transport.Close()
 	transport.Output.SetMaxSpatialLayer(0)
-	transport.SetAudioBitrate(64_000)
-	if state := transport.Output.State(); state.VideoBudget != 936_000 {
-		t.Fatalf("audio reservation did not reach the video codec budget: %+v", state)
+	if state := transport.Output.State(); state.VideoBudget != 1_000_000 {
+		t.Fatalf("audio changed the video capacity estimate: %+v", state)
 	}
 	if len(source.GetDownTracks()) != 0 {
 		t.Fatal("unconnected transport claimed source output")
