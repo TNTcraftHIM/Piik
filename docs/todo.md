@@ -70,20 +70,11 @@ Implementation needs a concrete useful result within the product model.
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   have not established improved direct reachability. Seek a repeatable benefit
   before accepting room-scoped peer keys, flow admission and relay operation.
-  Isolated local-address changes now preserve the same session under the actual
-  Viewer recovery owner. Verify that bounded benefit through the complete App
-  pipeline and physical networks; it does not establish another reachable NAT class.
-  Live-encoder/decoded-picture controls now separate shared forwarding queue
-  delay from the local playback leg losing its selected LAN address. The shared
-  send-queue repair passes constrained-link recovery. The complete App controls
-  exposed a separate local Browser bridge limit. Fresh interface gathering and
-  bounded bridge renegotiation now preserve the local track in complete ordinary
-  Pion App controls, including Firefox Host and Viewer. Retain the existing
-  address policy: forcing loopback fails Firefox. Combined Native-engine/Browser
-  bridge controls pass both handoff directions in Chromium and Firefox; full App
-  authorization and room routing remain outside that fixture. Resolve the
-  intermittent FFmpeg decoded-content failure with a matched assembler/bitstream
-  control before claiming complete recovery through that transport.
+  Verify the measured local-address handoff benefit through the complete App,
+  mixed Browser/Native topology and physical networks. Current Native-engine,
+  Browser-bridge and decoded-picture controls do not cover App authorization or
+  room routing, and do not establish another reachable NAT class. Preserve the
+  existing local address policy; forcing loopback fails Firefox.
   Product adoption still needs supported
   [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
   and RTCP/MTU boundaries, retained-flow recovery beyond the passing serial

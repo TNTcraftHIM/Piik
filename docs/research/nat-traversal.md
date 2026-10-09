@@ -750,13 +750,18 @@ endpoint moves; Chromium retains its working loopback leg. Local HTTP replaces
 Native control only in this fixture; App authorization and the room controller
 are not exercised. No product timeout or address policy changes for this check.
 
-The matching FFmpeg matrix passed five of six cases. One source-address handoff
-kept decoded-frame counts advancing but lost the expected new colour; three
-focused repetitions then passed. Decoder errors and this intermittent result
-remain unresolved. The FFmpeg sink's direct SDK assembler differs from the
-product relay-input owner, so the observation needs a matched bitstream/assembler
-control before attributing it to product transport. Browser passes do not erase
-that failed control or establish universal continuity.
+The earlier FFmpeg matrix had one decoded-content failure. Matched synthetic
+bitstream/RTP replay identifies a receiver-fixture mismatch: its separate SDK
+assembler emits a truncated startup frame and can resume dependent frames after
+a sequence gap without their reference. Increasing that builder's window instead
+stalls recovery. On identical unchanged and source-handoff recordings, the
+product relay-input owner's independent-keyframe boundary produces only
+byte-matched source frames, with no decoder errors or corrupted colours.
+The fixture now reuses that owner. All six unchanged, address-change and loss
+controls pass with actual encoding/decoding and Linux race detection, without
+decoder errors or changes to product timeout, adaptation or recovery policy.
+The original failed run has no packet recording, so its exact cause remains
+unassigned; this correction does not establish universal media continuity.
 
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
