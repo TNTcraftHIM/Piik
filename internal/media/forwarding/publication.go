@@ -67,16 +67,14 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 	})}
 	publication.bandwidth.target.Store(int64(options.InitialBitrate))
 	publication.pacer = &publicationPacer{headers: make(map[uint32]publicationHeaders), boundedPacer: newBoundedPacer(
-		pacer.NewLeakyBucket(log, nil, 5*time.Millisecond, options.InitialBitrate), log, options.Source.maxPackets,
-	), bandwidth: publication.bandwidth}
+		pacer.NewNoQueue(log, nil), log, options.Source.maxPackets,
+	)}
 	publication.pacer.sender = pacer.NewBase(log, publication.bandwidth)
-	publication.bandwidth.pacer = publication.pacer
 	publication.allocator = streamallocator.NewStreamAllocator(streamallocator.StreamAllocatorParams{
 		Config: streamallocator.DefaultStreamAllocatorConfig, BWE: publication.bandwidth,
 		Pacer: publication.pacer, Logger: log,
 	}, true, true)
 	publication.allocator.Start()
-	publication.pacer.SetBitrate(options.InitialBitrate)
 	media := &webrtc.MediaEngine{}
 	codec := options.Source.Codec()
 	if err = media.RegisterCodec(codec, webrtc.RTPCodecTypeVideo); err != nil {
@@ -529,7 +527,11 @@ type publicationWriter struct {
 func (writer *publicationWriter) WriteRTP(header *rtp.Header, payload []byte) (int, error) {
 	written, err := writer.TrackLocalWriter.WriteRTP(header, payload)
 	if err == nil && written > 0 {
-		writer.bytes.Add(uint64(header.MarshalSize() + len(payload)))
+		size := header.MarshalSize() + len(payload)
+		if header.Padding {
+			size += int(header.PaddingSize)
+		}
+		writer.bytes.Add(uint64(size))
 		if writer.frames != nil && writer.primary && header.Marker && len(payload) > 0 {
 			writer.frames.Add(1)
 		}
@@ -563,7 +565,6 @@ type publicationBWE struct {
 	target         atomic.Int64
 	audio          atomic.Int64
 	observed       atomic.Bool
-	pacer          *publicationPacer
 	probeMu        sync.Mutex
 	completedProbe ccutils.ProbeClusterInfo
 }
@@ -578,11 +579,12 @@ func (bandwidth *publicationBWE) SetBWEListener(listener bwe.BWEListener) {
 	bandwidth.SendSideBWE.SetBWEListener(bandwidth)
 }
 func (bandwidth *publicationBWE) OnCongestionStateChange(from, to bwe.CongestionState, capacity int64) {
-	if capacity > 0 {
+	// As for an individual Transport, only a completed non-congesting probe
+	// can raise committed capacity. All consumers use that same accepted value.
+	if to == bwe.CongestionStateCongested && capacity > 0 && capacity < bandwidth.target.Load() {
 		bandwidth.target.Store(capacity)
-		bandwidth.pacer.SetBitrate(int(capacity))
 	}
-	bandwidth.listener.OnCongestionStateChange(from, to, max(capacity-bandwidth.audio.Load(), 0))
+	bandwidth.listener.OnCongestionStateChange(from, to, max(bandwidth.target.Load()-bandwidth.audio.Load(), 0))
 }
 func (bandwidth *publicationBWE) ProbeClusterDone(info ccutils.ProbeClusterInfo) {
 	bandwidth.probeMu.Lock()
@@ -601,18 +603,15 @@ func (bandwidth *publicationBWE) ProbeClusterFinalize() (ccutils.ProbeSignal, in
 			// StreamAllocator may upgrade on Inconclusive too. Its capacity must
 			// never promote the estimator's initial sentinel after an empty probe.
 			signal = ccutils.ProbeSignalInconclusive
-			capacity = min(capacity, bandwidth.target.Load())
 		} else if signal == ccutils.ProbeSignalNotCongesting && capacity > bandwidth.target.Load() {
 			bandwidth.target.Store(capacity)
-			bandwidth.pacer.SetBitrate(int(capacity))
 		}
 	}
-	return signal, max(capacity-bandwidth.audio.Load(), 0), done
+	return signal, max(bandwidth.target.Load()-bandwidth.audio.Load(), 0), done
 }
 
 type publicationPacer struct {
 	*boundedPacer
-	bandwidth *publicationBWE
 	headersMu sync.Mutex
 	headers   map[uint32]publicationHeaders
 }
@@ -634,13 +633,8 @@ func (queue *publicationPacer) Enqueue(packet *pacer.Packet) {
 	}
 	queue.boundedPacer.Enqueue(packet)
 }
-func (queue *publicationPacer) StartProbeCluster(info ccutils.ProbeClusterInfo) {
-	queue.boundedPacer.StartProbeCluster(info)
-	queue.SetBitrate(info.Goal.DesiredBps + int(queue.bandwidth.audio.Load()))
-}
 func (queue *publicationPacer) EndProbeCluster(id ccutils.ProbeClusterId) ccutils.ProbeClusterInfo {
 	info := queue.boundedPacer.EndProbeCluster(id)
 	queue.cancelProbes(id)
-	queue.SetBitrate(int(queue.bandwidth.target.Load()))
 	return info
 }

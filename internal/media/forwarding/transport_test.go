@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/livekit/livekit-server/pkg/sfu/bwe"
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
 	"github.com/livekit/livekit-server/pkg/sfu/pacer"
 	"github.com/livekit/protocol/logger"
@@ -342,6 +343,97 @@ func (writer *countingPacketWriter) WriteRTP(header *rtp.Header, payload []byte)
 }
 
 func (*countingPacketWriter) Write([]byte) (int, error) { panic("unexpected byte write") }
+
+func TestTransportDoesNotPromoteUnverifiedCongestionCapacity(t *testing.T) {
+	transport := &Transport{}
+	transport.target.Store(1_200_000)
+	// A pending probe can leave the framework's initial 100 Mbps estimate in
+	// state-change callbacks. It is not proof that the connection can send it.
+	transport.OnCongestionStateChange(bwe.CongestionStateNone, bwe.CongestionStateEarlyWarning, 100_000_000)
+	transport.OnCongestionStateChange(bwe.CongestionStateEarlyWarning, bwe.CongestionStateCongested, 100_000_000)
+	if bitrate, _ := transport.TargetBitrate(); bitrate != 1_200_000 {
+		t.Fatalf("congestion promoted an unverified capacity: %d", bitrate)
+	}
+	transport.OnCongestionStateChange(bwe.CongestionStateCongested, bwe.CongestionStateCongested, 500_000)
+	transport.OnCongestionStateChange(bwe.CongestionStateCongested, bwe.CongestionStateNone, 800_000)
+	if bitrate, _ := transport.TargetBitrate(); bitrate != 500_000 {
+		t.Fatalf("clearing congestion replaced the committed reduction without a probe: %d", bitrate)
+	}
+}
+
+type stalledPacketWriter struct {
+	ready, release chan struct{}
+	written        chan struct{}
+	once           sync.Once
+}
+
+func (writer *stalledPacketWriter) WriteRTP(header *rtp.Header, payload []byte) (int, error) {
+	writer.once.Do(func() { close(writer.ready); <-writer.release })
+	writer.written <- struct{}{}
+	return header.MarshalSize() + len(payload), nil
+}
+
+func (*stalledPacketWriter) Write([]byte) (int, error) { panic("unexpected byte write") }
+
+func TestSendQueuesDrainAfterBandwidthReduction(t *testing.T) {
+	for _, kind := range []string{"transport", "publication"} {
+		t.Run(kind, func(t *testing.T) {
+			codec := webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{
+				MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000,
+			}, PayloadType: 96}
+			source, err := NewSource(SourceOptions{ID: "queue", StreamID: "queue", Codec: codec,
+				Formats: []LayerFormat{{Width: 320, Height: 180, Bitrate: 500_000}}, MaxPackets: 500})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer source.Close()
+			options := TransportOptions{Source: source, ConnectionID: "queue", InitialBitrate: 500_000}
+			var queue *boundedPacer
+			if kind == "publication" {
+				publication, err := NewPublication(options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer publication.Close()
+				queue = publication.pacer.boundedPacer
+			} else {
+				transport, err := NewTransport(options)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer transport.Close()
+				queue = transport.pacer
+			}
+			writer := &stalledPacketWriter{ready: make(chan struct{}), release: make(chan struct{}), written: make(chan struct{}, 32)}
+			release := sync.OnceFunc(func() { close(writer.release) })
+			defer release()
+			for index := range 32 {
+				header := &rtp.Header{Version: 2, SSRC: 1, SequenceNumber: uint16(index)}
+				queue.Enqueue(&pacer.Packet{Header: header, HeaderSize: header.MarshalSize(),
+					Payload: make([]byte, 1200), WriteStream: writer})
+			}
+			select {
+			case <-writer.ready:
+			case <-time.After(2 * time.Second):
+				t.Fatal("transport did not reach the stalled writer")
+			}
+			// A short outage reduces the bandwidth estimate after these packets were
+			// encoded. The recovered writer must not spend tens of seconds sending old
+			// video before it can deliver a new frame.
+			queue.SetBitrate(8_000)
+			release()
+			deadline := time.NewTimer(2 * time.Second)
+			defer deadline.Stop()
+			for range 32 {
+				select {
+				case <-writer.written:
+				case <-deadline.C:
+					t.Fatalf("writable transport retained old video: pending=%d sent=%d", queue.pendingCount(), queue.stats().Packets)
+				}
+			}
+		})
+	}
+}
 
 func TestBoundedPacerReleasesPacketsAndIsolatesBlockedQueue(t *testing.T) {
 	log := logger.GetDiscardLogger()

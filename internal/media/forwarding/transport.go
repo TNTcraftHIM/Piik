@@ -136,11 +136,10 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 	})
 	transport.estimator.SetBWEListener(transport)
 	transport.prober = ccutils.NewProber(ccutils.ProberParams{Listener: transport, Logger: log})
-	// Use the pinned Pion pacer's 5 ms service cadence, with LiveKit packet
-	// ownership and a cap matching this connection's retransmission cache.
-	transport.pacer = newBoundedPacer(pacer.NewLeakyBucket(log, nil, 5*time.Millisecond, options.InitialBitrate),
+	// Match LiveKit's send-side BWE default: a reduced estimate must not throttle
+	// already-encoded frames into a stale backlog after the writer recovers.
+	transport.pacer = newBoundedPacer(pacer.NewNoQueue(log, nil),
 		log, options.Source.maxPackets)
-	transport.pacer.SetBitrate(options.InitialBitrate)
 	transport.pacer.sender = pacer.NewBase(log, transport.estimator)
 	transport.pacer.SetPacerProbeObserverListener(transport)
 	track, err := sfu.NewDownTrack(sfu.DownTrackParams{
@@ -312,11 +311,7 @@ func (transport *Transport) SetAudioBitrate(bitrate uint32) {
 }
 
 func (transport *Transport) refreshBudgetLocked() {
-	bitrate := int(transport.target.Load())
-	remaining := int64(bitrate) - int64(transport.audioBitrate)
-	if transport.probe.Id == ccutils.ProbeClusterIdInvalid || transport.probe.Result.EndTime != 0 {
-		transport.pacer.SetBitrate(bitrate)
-	}
+	remaining := transport.target.Load() - int64(transport.audioBitrate)
 	transport.Output.SetBudget(max(remaining, 0))
 }
 
@@ -357,9 +352,11 @@ func (transport *Transport) OnTransportCCFeedback(_ *sfu.DownTrack, packet *rtcp
 }
 
 // HandleTWCCFeedback invokes this synchronously under the transport's event
-// lock. Store the framework result without reentering that lock.
-func (transport *Transport) OnCongestionStateChange(_, _ bwe.CongestionState, capacity int64) {
-	if capacity > 0 {
+// lock. Congestion can reduce committed capacity; only a valid completed probe
+// can increase it. Warning/clear transitions can carry the estimator's initial
+// ceiling, especially while a probe is pending, rather than a new measurement.
+func (transport *Transport) OnCongestionStateChange(_, state bwe.CongestionState, capacity int64) {
+	if state == bwe.CongestionStateCongested && capacity > 0 && capacity < transport.target.Load() {
 		transport.target.Store(capacity)
 	}
 }
@@ -457,7 +454,6 @@ func (transport *Transport) driveProbeLocked() {
 	transport.probe = transport.prober.AddCluster(ccutils.ProbeClusterModeUniform, goal)
 	transport.estimator.ProbeClusterStarting(transport.probe)
 	transport.pacer.StartProbeCluster(transport.probe)
-	transport.pacer.SetBitrate(goal.DesiredBps)
 	transport.Output.SetProbeClusterId(transport.probe.Id)
 }
 
@@ -470,7 +466,6 @@ func (transport *Transport) stopProbeLocked() {
 	transport.estimator.ProbeClusterDone(transport.probe)
 	transport.prober.Reset(transport.probe)
 	transport.pacer.cancelProbes(transport.probe.Id)
-	transport.pacer.SetBitrate(int(transport.target.Load()))
 }
 
 // AddCluster returns the exact cluster synchronously. Initializing it there
@@ -522,12 +517,6 @@ type boundedPacer struct {
 func newBoundedPacer(packetPacer pacer.Pacer, log logger.Logger, limit int) *boundedPacer {
 	return &boundedPacer{Pacer: packetPacer, sender: pacer.NewBase(log, nil), recycle: pacer.NewBase(log, nil),
 		pending: make(map[*pacedPacket]struct{}), limit: limit}
-}
-
-func (queue *boundedPacer) SetBitrate(bitrate int) {
-	// Pion interceptor v0.1.47 gcc.LeakyBucketPacer.SetTargetBitrate uses 1.5
-	// pacing headroom. Codec/allocation budgets retain the unscaled BWE result.
-	queue.Pacer.SetBitrate(int(1.5 * float64(bitrate)))
 }
 
 func (queue *boundedPacer) Enqueue(packet *pacer.Packet) {

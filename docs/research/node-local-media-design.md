@@ -387,18 +387,55 @@ Keep the dependency behind a shared media package. For one video per connection,
 use the public provisional allocation primitives, with exact typed child state
 read by its parent; do not parse DebugInfo or run a second multi-track allocator.
 The candidate now uses LiveKit SendSideBWE and Prober through their public APIs.
-Pacing reuses the upstream queue with admission capped by the existing packet
-cache bound; canceled probe tickets remain charged until actually dequeued.
-The pinned Pion pacer's 1.5 headroom applies only to pacing, not codec or BWE
-budgets. Adapted probe lifecycle code retains Apache-2.0 attribution. Probe
+Packet sending uses the pinned [LiveKit transport's send-side BWE default](https://github.com/livekit/livekit/blob/v1.13.6/pkg/rtc/transport.go),
+`NoQueue`: an asynchronous writer without a second bitrate throttle on already
+encoded packets. Admission stays capped by the existing packet cache bound;
+canceled probe tickets remain charged until actually dequeued. Congestion
+estimation, probes and codec/allocation budgets retain their existing owners.
+Adapted probe lifecycle code retains Apache-2.0 attribution. Probe
 promotion requires the upstream validity criterion and non-congestion signal;
 an empty or inconclusive attempt cannot promote the estimator's initial ceiling.
 
+#### Send Queue Recovery
+
+A bounded writer-stall control exposes a limitation in the former SFU queue:
+after the estimate falls from 500 to 8 kbps, only three of 32 already-encoded
+packets drain in two seconds. The upstream unthrottled writer drains the same
+input once the writer resumes. A separate real Windows VP8 codec and
+Native forwarding control reproduces stale decoded pictures after roughly one
+second of ordinary UDP loss; the packet-count cap alone does not prevent this.
+The [Native transport experiment](./nat-traversal.md#integration-cost-and-recovery-controls)
+owns the decoded-picture and address-change boundary.
+
+Congestion callbacks could also promote the estimator's unmeasured 100 Mbps
+initial capacity while a probe was pending. Congestion now only reduces the
+committed budget; a valid completed non-congesting probe owns increases.
+Publication allocation and encoder input use that same committed capacity after
+audio reservation. This follows the
+[upstream distinction between congestion events and completed probes](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/streamallocator/streamallocator.go),
+without introducing another estimator.
+
+Real decode also exposed a packet-format mismatch at the shared writer:
+LiveKit 1.13.6 includes padding in its probe payload, while Pion SRTP serializes
+another block from `Header.PaddingSize`. An actual library probe therefore
+arrived with 255 bytes of apparent video payload plus 255 bytes of padding.
+The adapter now removes the already-included block only at the Pion write
+boundary; pacing and TWCC retain the intended packet size. Both publication
+and single-child forwarding use that boundary. The regression checks decoded
+RTP payload emptiness after SRTP delivery, rather than treating any received
+packet as valid video. The primary owners are
+[LiveKit probe construction](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/downtrack.go)
+and [Pion packet serialization](https://github.com/pion/rtp/blob/v1.10.5/packet.go).
+
 The explicit `TestTransportConstrainedDormantRecovery` virtual-network trace uses real
-Pion RTP/TWCC through 6 Mbps -> 500 kbps -> 6 Mbps shaping. It measured a minimum
-budget about 497 kbps, stopped the upper output, and restored sustained 1.20 Mbps
-after release. Recovery occurred about 4.4 seconds after release in the recorded
-run; this is a bounded local trace, not a success-rate or game-latency claim.
+Pion RTP/TWCC through 6 Mbps -> 500 kbps -> 6 Mbps shaping. Three consecutive runs
+stop the upper output under that constraint and restore sustained 1.20 Mbps after
+release. The SDK latency-aware queue passes the same three controls but requires
+an extra adapter; it is not retained. Earlier flaky comparisons registered TWCC
+twice on the receiver, duplicating feedback; those results do not rank the queues.
+Product receivers already use the single default interceptor owner.
+No reset, retry owner or minimum quality is added. These are bounded local traces,
+not a field diagnosis, success-rate or game-latency claim.
 Ordinary focused checks cover NACK repair, no-RR probe admission, zero-write
 termination and exact shutdown. Before runtime cutover, complete actual codec,
 Browser and physical recovery checks rather than inferring them from this trace.

@@ -30,19 +30,19 @@ func TestPublicationEmptyProbeCannotIncreaseCapacity(t *testing.T) {
 	})}
 	bandwidth.target.Store(target)
 	bandwidth.audio.Store(audio)
-	bandwidth.pacer = &publicationPacer{bandwidth: bandwidth, boundedPacer: newBoundedPacer(
-		pacer.NewLeakyBucket(log, nil, 5*time.Millisecond, int(target)), log, 500,
+	queue := &publicationPacer{boundedPacer: newBoundedPacer(
+		pacer.NewNoQueue(log, nil), log, 500,
 	)}
-	defer bandwidth.pacer.Stop()
+	defer queue.Stop()
 	info := ccutils.ProbeClusterInfo{Id: 1, CreatedAt: time.Now(), Goal: ccutils.ProbeClusterGoal{
 		AvailableBandwidthBps: int(target), ExpectedUsageBps: int(target - audio),
 		DesiredBps: int(target * 2), Duration: bandwidth.ProbeDuration(),
 	}}
 	info.Goal.DesiredBytes = int(float64(info.Goal.DesiredBps) * info.Goal.Duration.Seconds() / 8)
 	bandwidth.ProbeClusterStarting(info)
-	bandwidth.pacer.StartProbeCluster(info)
+	queue.StartProbeCluster(info)
 	time.Sleep(info.Goal.Duration)
-	info = bandwidth.pacer.EndProbeCluster(info.Id)
+	info = queue.EndProbeCluster(info.Id)
 	if info.Result.Bytes() != 0 || sendsidebwe.DefaultSendSideBWEConfig.CongestionDetector.ProbeSignal.IsValid(info) {
 		t.Fatal("fixture did not complete an empty invalid probe")
 	}
@@ -63,6 +63,29 @@ func TestPublicationEmptyProbeCannotIncreaseCapacity(t *testing.T) {
 			t.Fatal("empty probe did not finalize within the library settle bound")
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+type publicationCapacityRecorder struct{ capacity int64 }
+
+func (recorder *publicationCapacityRecorder) OnCongestionStateChange(_, _ bwe.CongestionState, capacity int64) {
+	recorder.capacity = capacity
+}
+
+func TestPublicationCongestionUsesCommittedCapacity(t *testing.T) {
+	recorder := &publicationCapacityRecorder{}
+	bandwidth := &publicationBWE{listener: recorder}
+	bandwidth.target.Store(1_200_000)
+	bandwidth.audio.Store(64_000)
+	bandwidth.OnCongestionStateChange(bwe.CongestionStateNone, bwe.CongestionStateEarlyWarning, 100_000_000)
+	bandwidth.OnCongestionStateChange(bwe.CongestionStateEarlyWarning, bwe.CongestionStateCongested, 100_000_000)
+	if bandwidth.target.Load() != 1_200_000 || recorder.capacity != 1_136_000 {
+		t.Fatalf("publication promoted an unverified capacity: target=%d allocation=%d", bandwidth.target.Load(), recorder.capacity)
+	}
+	bandwidth.OnCongestionStateChange(bwe.CongestionStateCongested, bwe.CongestionStateCongested, 500_000)
+	bandwidth.OnCongestionStateChange(bwe.CongestionStateCongested, bwe.CongestionStateNone, 800_000)
+	if bandwidth.target.Load() != 500_000 || recorder.capacity != 436_000 {
+		t.Fatalf("publication disagrees with its committed audio/video budget: target=%d allocation=%d", bandwidth.target.Load(), recorder.capacity)
 	}
 }
 
@@ -225,7 +248,10 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	if publication.bandwidth.CongestionState() != bwe.CongestionStateNone || !publication.Counters().Limited {
 		t.Fatalf("clear transport feedback hid the committed publication allocation deficit: state=%v counters=%+v low=%v high=%v", publication.bandwidth.CongestionState(), publication.Counters(), publication.tracks[0].IsDeficient(), publication.tracks[1].IsDeficient())
 	}
-	publication.bandwidth.OnCongestionStateChange(bwe.CongestionStateCongested, bwe.CongestionStateCongested, 1_000_000)
+	// Restore this allocation fixture's capacity explicitly. A congestion event
+	// cannot prove an increase; this test covers RID reuse, not bandwidth probing.
+	publication.bandwidth.target.Store(1_000_000)
+	publication.allocator.SetChannelCapacity(936_000)
 	check(publication.SetActiveCount(1))
 	if publication.RequiredActiveCount() != 1 {
 		t.Fatal("publication did not reduce its direct demand")
