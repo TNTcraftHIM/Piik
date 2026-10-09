@@ -37,6 +37,9 @@ type sessionEdge struct {
 	sourceConnectionID string
 }
 
+// One current upstream and one prepared route may overlap during a handoff.
+const receiverCapacity = 2
+
 // Session owns the native media implementation for one Browser Viewer. Room,
 // participant, route, and recovery authority remain in the Browser/server.
 type Session struct {
@@ -123,11 +126,16 @@ func (session *Session) AcceptOffer(
 	}
 	session.mu.Lock()
 	closed := session.closed
+	receiver := session.receivers[connectionID]
+	atCapacity := len(session.receivers) >= receiverCapacity && receiver == nil
 	session.mu.Unlock()
 	if closed {
 		return OfferResult{}, errors.New("native Viewer session is closed")
 	}
-	if receiver := session.receiver(connectionID); reuse && receiver != nil {
+	if atCapacity {
+		return OfferResult{}, errors.New("native Viewer receiver capacity reached")
+	}
+	if reuse && receiver != nil {
 		answer, reused, err := receiver.Renegotiate(offer, iceServers)
 		if err != nil {
 			return OfferResult{}, err
@@ -173,7 +181,7 @@ func (session *Session) AcceptOffer(
 		return OfferResult{}, err
 	}
 	session.mu.Lock()
-	if session.closed || session.receivers[connectionID] != nil {
+	if session.closed || session.receivers[connectionID] != nil || len(session.receivers) >= receiverCapacity {
 		session.mu.Unlock()
 		_ = receiver.Close()
 		return OfferResult{}, errors.New("native Viewer receiver is unavailable")
