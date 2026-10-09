@@ -710,6 +710,22 @@ establish complete App handoff; local playback composition remains an adoption
 boundary. Retain the existing failure owners and address policy until a bounded
 alternative passes both Browser and Host/Viewer controls.
 
+The local restart control exposed a separate address-cache defect: Pion ICE
+v4.4.0's [wildcard UDP mux](https://github.com/pion/ice/blob/v4.4.0/udp_mux.go)
+retains its own `stdnet.Net` interface snapshot across
+gatherings. After an interface address changes, both ICE restart and a new SFU
+connection sharing that mux can advertise the removed address. The shared mux
+adapter now takes a private current snapshot when gathering; it changes neither
+socket identity nor Pion's candidate filters and adds no monitor or timer.
+The isolated regression covers restart and a new connection; restoring the
+former constructor fails on the stale candidate. Firefox also resumes fresh
+rendered frames on the same track after a standard ICE restart, including from
+the failed state, while a separately bound loopback sibling keeps receiving.
+That browser control uses complete SDP through a lab-only restart entry point.
+It establishes the underlying repair, not product local-bridge recovery: the
+App's current local bridge still negotiates only once, and its existing failure
+owners remain unchanged.
+
 Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
 IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
 required fresh bidirectional delivery after DERP closed. One side reporting a

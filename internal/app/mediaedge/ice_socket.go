@@ -12,6 +12,7 @@ import (
 
 	"github.com/TNTcraftHIM/Piik/internal/app/portmapping"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/pion/ice/v4"
 	"github.com/pion/stun/v3"
 	"github.com/pion/webrtc/v4"
@@ -45,7 +46,7 @@ func (engine *Engine) newICESocket(servers []webrtc.ICEServer, mapping bool) (*i
 	socket := &iceSocket{
 		engine: engine, ctx: ctx, cancel: cancel,
 		localPort: connection.LocalAddr().(*net.UDPAddr).Port,
-		mux: ice.NewUDPMuxDefault(ice.UDPMuxParams{
+		mux: forwarding.NewUDPMux(ice.UDPMuxParams{
 			Logger: diagnostics.PionLoggerFactory().NewLogger("piik-ice"), UDPConn: connection,
 		}),
 	}

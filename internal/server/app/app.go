@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/TNTcraftHIM/Piik/internal/server/config"
 	"github.com/TNTcraftHIM/Piik/internal/server/room"
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
@@ -250,7 +251,7 @@ func (s *Server) start(ctx context.Context) (int, error) {
 			return 0, fmt.Errorf("Piik SFU listener failed: %w", listenErr)
 		}
 		factory := diagnostics.PionLoggerFactory()
-		s.mediaMux = ice.NewUDPMuxDefault(ice.UDPMuxParams{UDPConn: connection, Logger: factory.NewLogger("sfu-udp")})
+		s.mediaMux = forwarding.NewUDPMux(ice.UDPMuxParams{UDPConn: connection, Logger: factory.NewLogger("sfu-udp")})
 		settings := webrtc.SettingEngine{LoggerFactory: factory}
 		settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 		settings.SetICEUDPMux(s.mediaMux)

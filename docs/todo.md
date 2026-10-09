@@ -79,7 +79,10 @@ Implementation needs a concrete useful result within the product model.
   confirm that its local Browser bridge is a separate handoff limit, especially
   for Host preview. Resolve that composition within the existing owners before
   claiming complete App recovery. A loopback-only policy fails the Firefox
-  control; retain the current address policy.
+  control; retain the current address policy. Fresh interface gathering fixes
+  stale host candidates, and a lab-only standard ICE restart preserves the local
+  track. Product bridge renegotiation, its generation fence and bounded recovery
+  are still unimplemented; do not count that experiment as complete App recovery.
   Product adoption still needs supported
   [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
   and RTCP/MTU boundaries, retained-flow recovery beyond the passing serial
