@@ -16,12 +16,12 @@ import { NativeSfuPublisher } from "../src/client/native/native-sfu-publisher";
 import { defaultNativeCapturePath } from "../src/client/native/capture-selection";
 import { HostSfuRoute, type HostPublisherTransport } from "../src/client/media/host-sfu-route";
 import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route";
+import { fittedCaptureSize } from "./media-gate-geometry";
 
 const high: QualitySettings = {
   resolution: { width: 1280, height: 720 }, maxFramerate: 15, maxBitrate: 2_000_000,
   degradationPreference: "maintain-resolution", maxAudioBitrate: 64000,
 };
-const low: QualitySettings = { ...high, resolution: { width: 854, height: 480 } };
 const shareGeneration = crypto.randomUUID();
 const clientId = crypto.randomUUID();
 let socket: WebSocket | null = null;
@@ -193,12 +193,13 @@ async function connect(room: CreateRoomResponse, host: boolean): Promise<void> {
     roomId: room.roomId, clientId } as const;
   send(host
     ? { ...common, role: "host", token: room.hostToken, shareGeneration,
-        qualitySettings: high, routePolicy: { peerOnly: false, topologyOptimization: false, natPrediction: false } }
+        qualitySettings: profile, routePolicy: { peerOnly: false, topologyOptimization: false, natPrediction: false } }
     : { ...common, role: "viewer", viewerGrant: new URLSearchParams(new URL(room.inviteUrl).hash.slice(1)).get("v")! });
 }
 
-export async function startHost(nativeSource?: { title: string; port: number }, selectedCodec: "vp8" | "h264" = "vp8", display = false): Promise<CreateRoomResponse> {
+export async function startHost(nativeSource?: { title: string; port: number }, selectedCodec: "vp8" | "h264" = "vp8", display = false, size?: QualitySettings["resolution"]): Promise<CreateRoomResponse> {
   codec = selectedCodec;
+  profile = size ? { ...high, resolution: size, maxFramerate: 30, maxBitrate: 8_000_000 } : high;
   const response = await fetch("/api/rooms", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ codeEntryPolicy: "private" }),
@@ -215,7 +216,7 @@ export async function startHost(nativeSource?: { title: string; port: number }, 
       if (!stopping && event.type === "share-ended" && event.shareId === shareGeneration) failed("Native capture ended");
     });
     const started = await native.startShare({ shareId: shareGeneration, source: target,
-      codec, audio: true, profile: high, edgeCapacity: 2, ...path });
+      codec, audio: true, profile, edgeCapacity: 2, ...path });
     nativeShareStarted = true;
     source = new MediaStream();
     if (started.codec !== codec || !started.audio) throw new Error("Requested Native codec and Opus capture did not start");
@@ -223,8 +224,8 @@ export async function startHost(nativeSource?: { title: string; port: number }, 
     return room;
   }
   canvas = document.createElement("canvas");
-  canvas.width = 1280;
-  canvas.height = 720;
+  canvas.width = profile.resolution.width;
+  canvas.height = profile.resolution.height;
   canvas.style.cssText = "max-width:100%;width:640px";
   document.body.append(canvas);
   const context = canvas.getContext("2d")!;
@@ -237,10 +238,10 @@ export async function startHost(nativeSource?: { title: string; port: number }, 
     context.fillStyle = "#ffffff";
     context.font = "48px sans-serif";
     context.fillText(String(frame), 40, 240);
-  }, 1000 / 15);
+  }, 1000 / profile.maxFramerate);
   source = display ? await navigator.mediaDevices.getDisplayMedia({
-    video: { width: 1280, height: 720, frameRate: 15 }, audio: false,
-  }) : canvas.captureStream(15);
+    video: { ...profile.resolution, frameRate: profile.maxFramerate }, audio: false,
+  }) : canvas.captureStream(profile.maxFramerate);
   audio = new AudioContext();
   const gain = audio.createGain();
   gain.gain.value = 0.05;
@@ -377,11 +378,13 @@ export async function waitForFrames(width: number, height: number, minimumFrames
 
 export async function lowerProfile(): Promise<boolean> {
   if (!publisher) throw new Error("Publisher is unavailable");
+  const low = { ...profile, resolution: { width: 854, height: 480 } };
   if (native) await native.updateShare(shareGeneration, low);
   else {
     if (!canvas) throw new Error("Browser source is unavailable");
-    canvas.width = 854;
-    canvas.height = 480;
+    const size = fittedCaptureSize(canvas, low.resolution.width, low.resolution.height);
+    canvas.width = size.width;
+    canvas.height = size.height;
   }
   profile = low;
   send({ type: "set-quality-settings", qualitySettings: low });

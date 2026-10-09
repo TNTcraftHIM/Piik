@@ -530,13 +530,13 @@ This is a code-derived result, not a new physical capture measurement. Evaluate
 orientation-independent limits and preservation of source aspect ratio together;
 adding numeric fields alone would retain the current geometry limitation.
 
-The candidate first changes the existing Windows output worker: it passes the
+The candidate changes the existing Windows output worker: it passes the
 source's fitted even dimensions to WebRTC, retaining the selected profile as a
 ceiling. A 640x480 source stays 640x480; portrait and ultrawide sources no longer
 require an encoded landscape canvas. The converter, adaptation owner, output
 generation and frame envelope are reused. Axis-specific limits still apply;
-this does not yet give portrait capture a transposed ceiling or add a 4K setting.
-Browser and macOS geometry remain separate pending work.
+portrait capture can use explicit width/height ceilings but does not transpose
+the selected ceiling automatically. Browser evidence follows below.
 
 Linux uses the existing [GStreamer scaler](https://gstreamer.freedesktop.org/documentation/videoconvertscale/videoscale.html)
 with bounded even-dimension ranges instead of fixed output dimensions. Square
@@ -546,6 +546,15 @@ control changes portrait, ultrawide, small, odd-sized and square inputs within
 one pipeline, checks the output ceiling and image corners, and exercises the
 smallest derived output. Compilation and those regressions passed on Linux;
 Portal capture and hardware encoder resizing still need a physical device.
+
+macOS remains a concrete implementation gap: ScreenCaptureKit and VideoToolbox
+currently use the requested dimensions as a fixed canvas. The capture adapter
+also ignores per-frame content geometry. Apple's
+[capture sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos)
+distinguishes buffer dimensions, content rectangle and pixel scale; changing only
+the initial window size would not cover live resizing or Retina scale changes.
+Review that boundary under the existing capture/encoder owners, then verify
+portrait, small-source and resizing behavior with the macOS SDK and hardware.
 
 Local synthetic-input controls exercised that production worker through four
 successive source sizes: 1080x1920, 3440x1440, 640x480 and 1920x1080. Under the
@@ -620,6 +629,20 @@ pause/resume, source-audio changes and App-exit recovery. Reproduce with
 and `CHROME_PATH` set, then run `npm run gate:app-browser-fanout`.
 These local checks do not establish 4K60, physical 4K/game
 capture, sustained device performance, all Browser decoders or all route changes.
+
+The existing SFU gate accepts `PIIK_EMBEDDED_SFU_VIDEO_SIZE=WIDTHxHEIGHT` for a
+bounded 30 fps source; its default 720p15 control remains unchanged. Run
+`npm run gate:embedded-sfu` with `PIIK_EMBEDDED_SFU_GATE=true`,
+`PIIK_EMBEDDED_SFU_CODEC=h264` and `CHROME_PATH`; add
+`PIIK_EMBEDDED_SFU_DISPLAY=true` for actual tab capture. Synthetic 2160x3840 and
+real 3440x1440 tab sources passed decoded-picture delivery, aspect-preserving
+reduction, numeric audio updates, subscription/page recovery and retirement.
+The tab control also passed background capture, lower-layer demand, pause/resume
+and source replacement. A separate full-UI 2160x3840 control passed SFU-to-P2P
+commit and failed-P2P-to-SFU recovery through the room controller, keeping the
+old SFU picture during peer preparation. These checks use loopback and synthetic
+content; they do not establish physical 4K capture, every mixed Native/Browser
+handoff or cross-network performance.
 
 The proposed boundary follows the
 [Media Capture specification](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface):

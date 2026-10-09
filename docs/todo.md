@@ -49,7 +49,8 @@ Implementation needs a concrete useful result within the product model.
   separate UI presets, numeric requests, bounded implementation capabilities and
   actual output. Numeric audio and video controls are implemented; the assessment
   owns local capture, codec, derived-output and SFU evidence. Next verify
-  route changes, limited receivers and cross-browser/camera orientation behavior.
+  mixed Native/Browser route changes, limited receivers and cross-browser/camera
+  orientation behavior.
   Browser display capture, Browser relay and Browser-to-Native fanout now have
   bounded high-resolution evidence. macOS geometry and physical 4K/game capture
   remain open. Preserve safety
