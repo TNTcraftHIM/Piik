@@ -67,9 +67,12 @@ capture v7 and SQLite schema 2
 remain unchanged. Matched candidate App/Web/Server builds are required;
 1.x participants are rejected by the existing compatibility checks.
 Custom width/height controls retain the current implementation ceiling.
-Windows and Linux output now preserve source shape within that ceiling;
-axis-independent limits, Browser/macOS geometry, 4K and additional codecs are
-still assessed through the media boundary.
+Windows and Linux output now preserve source shape within that ceiling.
+Native admission now has axis-independent size, pixel-count and output-rate
+bounds for 4K30; local Windows encoding, decoding and derived-output checks pass.
+Browser H.264 4K30 also passes the existing SFU flow with a synthetic source.
+Browser/macOS geometry, 4K controls and whole-route/device acceptance, and
+additional codecs remain in the media assessment.
 Native Magicsock remains an isolated experiment with incomplete product
 integration and unresolved recovery cases. These proposals do not yet change
 the accepted contract or transport. A small external test is proposed before

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "video_bounds.h"
+
 #include <windows.h>
 
 #include <algorithm>
@@ -7,11 +9,6 @@
 #include <stdexcept>
 
 namespace piik::capture {
-
-inline bool ValidVideoSize(UINT32 width, UINT32 height) {
-  return width >= 2 && width <= 2560 && !(width & 1) &&
-         height >= 2 && height <= 1440 && !(height & 1);
-}
 
 inline SIZE DisplayedFrameSize(SIZE captured, SIZE desktop, SIZE target,
                                DISPLAYCONFIG_SCALING scaling,

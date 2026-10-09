@@ -128,7 +128,7 @@ The three recommended profiles are ceilings, not delivery guarantees:
 
 `1080p30` is the default. The 2.0 candidate carries numeric width/height ceilings;
 480p, 720p, 1080p and 1440p remain UI shortcuts. Advanced picture settings also
-accept custom even dimensions within the current 2560x1440 implementation bound.
+accept custom even dimensions within the current 2560x1440 UI bound.
 Width and height form one applied edit. Larger wire-valid requests do not
 authorize an adapter to exceed its local capture, codec or allocation limits.
 Frame rate, bitrate, and `maintain-resolution | balanced |
@@ -144,6 +144,14 @@ Received picture summaries are not decoder allocation limits. Before Native
 derivation, validate every H.264 sequence parameter set's supported format,
 coded storage and visible crop; a later small descriptor cannot authorize earlier
 large input.
+
+The candidate Native adapters admit even visible dimensions up to 3840 per
+axis and 3840x2160 total pixels. Their shared output-rate bound follows H.264
+Level 5.1: 983,040 16x16 macroblocks per second, with at most 60 fps. This admits
+landscape/portrait 4K30 and existing 1440p60, not 4K60. Decoder alignment has a
+separate coded-storage bound; reference-picture storage is bounded before
+Native derivation. These are admission limits, not a device performance promise.
+The UI remains within its previous ceiling pending whole-route acceptance.
 
 Framework-driven downscaling under bandwidth or device pressure is valid within
 the selected degradation preference. A low decoded resolution alone is not a

@@ -671,7 +671,11 @@ func TestQualitySettingsMapOnceIntoNativeMedia(t *testing.T) {
 	}
 	settings.Resolution = protocol.QualityResolution{Width: 3840, Height: 2160}
 	if nativeQualityProfile(settings).Valid() {
-		t.Fatal("unsupported resolution was accepted")
+		t.Fatal("unsupported 4K60 combination was accepted")
+	}
+	settings.MaxFramerate = 30
+	if !nativeQualityProfile(settings).Valid() {
+		t.Fatal("4K30 was rejected")
 	}
 }
 
@@ -685,7 +689,7 @@ func TestUpdateShareRequiresTheCurrentStrictProfile(t *testing.T) {
 	assertOperationFailure(t, session, strings.Replace(valid, `"maxAudioBitrate":128000`, `"maxAudioBitrate":510000`, 1))
 	assertOperationFailure(t, session, strings.Replace(valid,
 		`"resolution":{"width":1920,"height":1080}`,
-		`"resolution":{"width":3840,"height":2160}`, 1))
+		`"resolution":{"width":7680,"height":4320}`, 1))
 	if _, err := session.Handle(t.Context(), []byte(`{"version":10,"id":"request_options","type":"capture-options"}`)); err != nil {
 		t.Fatalf("unsupported media setting retired control: %v", err)
 	}

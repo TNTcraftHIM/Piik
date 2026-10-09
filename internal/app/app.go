@@ -629,7 +629,7 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 		capture:        capabilities,
 		capabilities: loopback.NativeMediaCapabilities{
 			MaxVideoResolution: protocol.QualityResolution{
-				Width: nativecapture.MaxVideoWidth, Height: nativecapture.MaxVideoHeight,
+				Width: nativecapture.MaxVideoDimension, Height: nativecapture.MaxVideoDimension,
 			},
 			MaxAudioBitrate:       nativeaudio.MaxSendBitrate,
 			ReceiverReuse:         true,

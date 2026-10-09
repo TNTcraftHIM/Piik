@@ -88,8 +88,7 @@ type OutputProfile struct {
 }
 
 func (profile OutputProfile) Valid() bool {
-	return ValidVideoSize(profile.Width, profile.Height) &&
-		profile.Framerate >= 1 && profile.Framerate <= 60 &&
+	return ValidVideoFormat(profile.Width, profile.Height, profile.Framerate) &&
 		profile.Bitrate >= minOutputBitrate && profile.Bitrate <= maxOutputBitrate
 }
 
@@ -111,8 +110,8 @@ func ScreenShareOutputs(profile VideoProfile) []OutputProfile {
 func (profile VideoProfile) Valid() bool {
 	// The source ceiling must also yield a valid half-size output. Preset labels
 	// belong to the UI, not the capture process's numeric resource boundary.
-	return ValidVideoSize(profile.Width, profile.Height) && profile.Width >= 4 && profile.Height >= 4 &&
-		profile.Framerate >= 15 && profile.Framerate <= 60 &&
+	return ValidVideoFormat(profile.Width, profile.Height, profile.Framerate) && profile.Width >= 4 && profile.Height >= 4 &&
+		profile.Framerate >= 15 &&
 		profile.Bitrate >= 2_000_000 && profile.Bitrate <= 12_000_000 &&
 		validVideoPreference(profile.Preference)
 }

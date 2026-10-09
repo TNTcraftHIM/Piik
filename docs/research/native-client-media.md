@@ -567,15 +567,13 @@ padding. Physical game, macOS/Linux and orientation-change acceptance remain ope
 
 The candidate's Native capture admission now shares the numeric dimension
 bounds already used by encoded outputs instead of duplicating the four UI
-presets. Even dimensions must fit within 2560x1440; a source ceiling must also
-yield a valid half-size output. Frame-rate, bitrate and output-count bounds
-remain unchanged. Candidate signaling and Native control now carry numeric
+presets. A source ceiling must also yield a valid half-size output. Bitrate and
+output-count bounds remain unchanged. Candidate signaling and Native control now carry numeric
 width/height ceilings, with custom input beside the existing UI shortcuts.
 Descriptive wire bounds are independent of the current implementation maximum;
-App discovery advertises that maximum, and Native rejects unsupported profiles
-as operation failures without retiring the control session. This does not yet
-admit product 4K. Removing an enum is not permission to allocate arbitrary media
-resources.
+App discovery advertises per-axis maxima, and Native rejects unsupported
+size/rate combinations as operation failures without retiring the control
+session. Removing an enum is not permission to allocate arbitrary media resources.
 
 The Windows H.264 UI gate applies a non-preset 960x600 ceiling during a live
 share and observes fitted output without replacing the Viewer media object.
@@ -583,6 +581,32 @@ Preset changes, paused updates, source recovery/replacement and subsequent
 sharing still pass. Value-based comparison prevents an identical deserialized
 size from turning an audio-only edit into a video update. Numeric preference
 round-trips and malformed/unsupported requests have separate boundary checks.
+
+Native bounds now admit 3840x2160 and 2160x3840 at 30 fps. The per-axis limit and
+pixel total remain independent; an arbitrary 3840-square picture is rejected.
+The output throughput ceiling uses H.264 Level 5.1's macroblock rate, including
+alignment for non-preset sizes. Coded padding and decoded reference buffers have
+their own pre-allocation bounds, following [H.264 Table A-1](https://www.itu.int/rec/T-REC-H.264)
+(also implemented in [FFmpeg's level table](https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/h264_levels.c)).
+The Windows decoder's advertised support remains
+[Level 5.1](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-decoder).
+An isolated Level 5.2 trial was rejected by this machine's hardware encoder at
+output-type setup; it did not reach the decoder. The candidate therefore keeps
+Level 5.1 and rejects 4K60 before allocating an encoder.
+
+Current production Windows code encoded and decoded 30 synthetic frames in each
+4K orientation, both with and without a D3D decoder manager. Retaining/uploading
+the decoded surface also passed. The normal Go/native encoded-input path then
+produced 1920x1080 and 1080x1920 derived outputs. Production H.264 and VP8 output
+workers also handled a 4K-to-1080p-to-4K synthetic source sequence, and Native
+VP8 derivation produced the lower output from the 4K input. The Browser H.264 SFU gate with
+a synthetic 3840x2160/30 source passed first-picture delivery, an explicit lower
+profile, audio-only edits with retained connections, subscription/page recovery
+and retirement. Windows native checks and Linux headless build/checks pass;
+macOS SDK and physical 4K capture are not verified here. The UI ceiling remains
+2560x1440 until combined capability controls and whole-route acceptance are
+complete. These checks do not establish 4K60, sustained device performance or
+universal portrait decoding support.
 
 The proposed boundary follows the
 [Media Capture specification](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface):

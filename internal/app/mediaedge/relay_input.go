@@ -151,9 +151,18 @@ func relayH264Size(nal []byte) (uint32, uint32, error) {
 	}
 	// Constrained Baseline uses 8-bit 4:2:0. Bound uncropped storage before
 	// allowing padding to be removed from the visible picture.
-	if sps.ChromaFormatIdc != 1 || sps.MaxNumRefFrames > 16 ||
-		width > nativecapture.MaxVideoWidth || height > nativecapture.MaxVideoHeight {
+	if sps.ChromaFormatIdc != 1 || !nativecapture.ValidCodedVideoSize(width, height) {
 		return 0, 0, errors.New("native H264 input storage exceeds its bound")
+	}
+	bufferedFrames := max(1, sps.MaxNumRefFrames)
+	if sps.VUI != nil && sps.VUI.BitstreamRestriction != nil {
+		bufferedFrames = max(bufferedFrames, sps.VUI.BitstreamRestriction.MaxDecFrameBuffering,
+			sps.VUI.BitstreamRestriction.MaxNumReorderFrames)
+	}
+	// Level 5.1 also bounds the decoded-picture buffer. A per-frame size check
+	// alone would let a larger picture multiply the old 16-reference allocation.
+	if bufferedFrames > 16 || width*height/256*uint64(bufferedFrames) > 184_320 {
+		return 0, 0, errors.New("native H264 input reference storage exceeds its bound")
 	}
 	if crop := sps.FrameCropping; crop != nil {
 		x := (uint64(crop.LeftOffset) + uint64(crop.RightOffset)) * 2

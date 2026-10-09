@@ -162,15 +162,25 @@ static void check_slot_profiles(void) {
       "--output", "1920", "1200", "30", "3000000"};
   const struct { char *width; char *height; gboolean valid; } sizes[] = {
       {"1920", "1200", TRUE}, {"720", "1280", TRUE}, {"4", "4", TRUE},
+      {"3840", "2160", TRUE}, {"2160", "3840", TRUE}, {"3000", "2764", TRUE},
       {"0", "720", FALSE}, {"2", "720", FALSE}, {"1280", "2", FALSE},
       {"1279", "720", FALSE}, {"1280", "719", FALSE},
-      {"2562", "1440", FALSE}, {"2560", "1442", FALSE}, {"3840", "2160", FALSE}};
+      {"3842", "2160", FALSE}, {"2160", "3842", FALSE},
+      {"3840", "2162", FALSE}, {"3000", "2766", FALSE}};
   for (guint index = 0; index < G_N_ELEMENTS(sizes); ++index) {
     numeric[11] = numeric[24] = sizes[index].width;
     numeric[13] = numeric[25] = sizes[index].height;
     run = (CaptureRun){0};
     g_assert_cmpint(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder), ==, sizes[index].valid);
   }
+  numeric[11] = numeric[24] = "3840";
+  numeric[13] = numeric[25] = "2160";
+  numeric[15] = numeric[26] = "60";
+  run = (CaptureRun){0};
+  g_assert_false(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder));
+  numeric[15] = "30"; // Reject an excessive derived output independently.
+  g_assert_false(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder));
+  g_assert_false(valid_video_format(G_MAXUINT, G_MAXUINT, G_MAXUINT));
 }
 
 static GstPadProbeReturn record_key_request(GstPad *pad, GstPadProbeInfo *info,

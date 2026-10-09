@@ -315,11 +315,13 @@ int main() {
   assert(profile.h264_level() == 51 && profile.profile_level_id() == "42c033");
   profile = VideoProfile{1920, 1080, 60, 8'000'000};
   assert(profile.h264_level() == 42);
-  for (const SIZE size : {SIZE{1920, 1200}, SIZE{720, 1280}, SIZE{4, 4}}) {
+  for (const SIZE size : {SIZE{1920, 1200}, SIZE{720, 1280}, SIZE{4, 4},
+                          SIZE{3840, 2160}, SIZE{2160, 3840}, SIZE{3000, 2764}}) {
     ValidateVideoProfile(VideoProfile{static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy), 30, 3'000'000});
   }
   for (const SIZE size : {SIZE{0, 720}, SIZE{2, 720}, SIZE{1280, 2}, SIZE{1279, 720},
-                          SIZE{1280, 719}, SIZE{2562, 1440}, SIZE{2560, 1442}, SIZE{3840, 2160}}) {
+                          SIZE{1280, 719}, SIZE{3842, 2160}, SIZE{2160, 3842},
+                          SIZE{3840, 2162}, SIZE{3000, 2766}}) {
     try {
       ValidateVideoProfile(VideoProfile{static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy), 30, 3'000'000});
       assert(false);
@@ -327,6 +329,14 @@ int main() {
       assert(error.stage() == "argument-profile");
     }
   }
+  assert(piik::capture::ValidVideoFormat(3840, 2160, 30));
+  assert(!piik::capture::ValidVideoFormat(3840, 2160, 31));
+  assert(!piik::capture::ValidVideoFormat(2160, 3840, 60));
+  assert(!piik::capture::ValidVideoFormat(UINT32_MAX, UINT32_MAX, UINT32_MAX));
+  assert(piik::capture::ValidCodedVideoSize(3840, 2176));
+  assert(piik::capture::ValidCodedVideoSize(2176, 3840));
+  assert(!piik::capture::ValidCodedVideoSize(3840, 3840));
+  assert(!piik::capture::ValidCodedVideoSize(UINT32_MAX, UINT32_MAX));
   CheckEncoderCandidates();
   CheckH264ProfileCompatibility();
   CheckPrimaryFailureDetails();

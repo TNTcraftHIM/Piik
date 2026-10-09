@@ -15,6 +15,8 @@ private let height = 720
 private let frameRate: Int32 = 30
 private let bitrate = 3_000_000
 private let maxPayloadBytes = 4_194_304
+private let maxVideoDimension = 3840
+private let maxVideoPixels = 3840 * 2160
 private let supportedH264Levels: Set<UInt8> = [
     0x1e, 0x1f, 0x20, 0x28, 0x29, 0x2a, 0x32, 0x33,
 ]
@@ -1341,8 +1343,15 @@ private func captureFilter(
 }
 
 private func validVideoSize(_ width: Int, _ height: Int) -> Bool {
-    width >= 2 && width <= 2560 && width % 2 == 0 &&
-        height >= 2 && height <= 1440 && height % 2 == 0
+    width >= 2 && width <= maxVideoDimension && width % 2 == 0 &&
+        height >= 2 && height <= maxVideoDimension && height % 2 == 0 &&
+        width * height <= maxVideoPixels
+}
+
+private func validVideoFormat(_ width: Int, _ height: Int, _ fps: Int32) -> Bool {
+    // Match the shared H.264 Level 5.1 receive ceiling, including numeric sizes.
+    validVideoSize(width, height) && fps >= 1 && fps <= 60 &&
+        ((width + 15) / 16) * ((height + 15) / 16) * Int(fps) <= 983_040
 }
 
 private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
@@ -1358,8 +1367,8 @@ private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
           arguments[22] == "--protocol-v7" else {
         throw CaptureFailure(description: "invalid video profile arguments")
     }
-    guard validVideoSize(width, height), width >= 4, height >= 4,
-          frameRate >= 15, frameRate <= 60,
+    guard validVideoFormat(width, height, frameRate), width >= 4, height >= 4,
+          frameRate >= 15,
           bitrate >= 2_000_000, bitrate <= 12_000_000 else {
         throw CaptureFailure(description: "video profile is outside the product bounds")
     }
@@ -1385,9 +1394,9 @@ private func outputProfiles(_ arguments: [String], start: Int = 23,
               let height = Int(arguments[index + 2]),
               let fps = Int32(arguments[index + 3]),
               let bitrate = Int(arguments[index + 4]),
-              validVideoSize(width, height),
-              width <= (source?.width ?? 2560), height <= (source?.height ?? 1440),
-              fps >= 1, fps <= (source?.frameRate ?? 60),
+              validVideoFormat(width, height, fps),
+              width <= (source?.width ?? maxVideoDimension), height <= (source?.height ?? maxVideoDimension),
+              fps <= (source?.frameRate ?? 60),
               bitrate >= 1000, bitrate <= (source?.bitrate ?? 12_000_000) else {
             throw CaptureFailure(description: "output profile is outside source bounds")
         }
@@ -1569,8 +1578,7 @@ private final class H264InputDecoder {
             try require(status, "decode-h264-format")
             guard let nextFormat else { throw CaptureFailure(description: "missing input format") }
             let dimensions = CMVideoFormatDescriptionGetDimensions(nextFormat)
-            guard dimensions.width >= 2, dimensions.width <= 2560,
-                  dimensions.height >= 2, dimensions.height <= 1440 else {
+            guard validVideoSize(Int(dimensions.width), Int(dimensions.height)) else {
                 throw CaptureFailure(description: "decoded input exceeds its dimension bound")
             }
             if let session, !VTDecompressionSessionCanAcceptFormatDescription(session, formatDescription: nextFormat) {

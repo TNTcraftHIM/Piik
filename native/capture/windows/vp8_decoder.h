@@ -1,5 +1,7 @@
 #pragma once
 
+#include "video_bounds.h"
+
 #include <vpx/vp8dx.h>
 #include <vpx/vpx_decoder.h>
 
@@ -37,7 +39,7 @@ class Vp8Decoder final {
       vpx_codec_stream_info_t info{};
       info.sz = sizeof(info);
       if (vpx_codec_peek_stream_info(vpx_codec_vp8_dx(), data.data(), static_cast<unsigned int>(data.size()), &info) != VPX_CODEC_OK ||
-          info.w < 2 || info.h < 2 || info.w > 2560 || info.h > 1440 || (info.w & 1) || (info.h & 1)) {
+          !ValidVideoSize(info.w, info.h)) {
         throw std::runtime_error("VP8 decoder input dimensions exceed the source bound");
       }
     }
@@ -48,7 +50,7 @@ class Vp8Decoder final {
     const auto* image = vpx_codec_get_frame(&codec_, &iterator);
     if (!image) return {};
     const uint32_t width = image->d_w, height = image->d_h;
-    if (width < 2 || height < 2 || width > 2560 || height > 1440 || (width & 1) || (height & 1) ||
+    if (!ValidVideoSize(width, height) ||
         image->fmt != VPX_IMG_FMT_I420 || image->stride[0] < static_cast<int>(width) ||
         image->stride[1] < static_cast<int>(width / 2) || image->stride[2] < static_cast<int>(width / 2)) {
       throw std::runtime_error("VP8 decoder output format is unsupported");

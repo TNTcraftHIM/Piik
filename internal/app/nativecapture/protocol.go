@@ -15,14 +15,32 @@ const (
 	maxMediaBytes       = encoded.MaxAccessUnitBytes
 	maxStatusBytes      = 4 * 1024
 	maxControlBytes     = 64
-	MaxVideoWidth       = 2560
-	MaxVideoHeight      = 1440
+	MaxVideoDimension   = 3840
+	MaxVideoPixels      = 3840 * 2160
+	// Coded pictures may include alignment outside the visible crop. Keep this
+	// separate from visible dimensions and within H.264 Level 5.1 storage.
+	MaxCodedVideoDimension = 4096
+	MaxCodedVideoPixels    = 36_864 * 16 * 16
 )
 
 // ValidVideoSize bounds the decoded picture in the current capture contract.
 func ValidVideoSize(width, height uint32) bool {
-	return width >= 2 && width <= MaxVideoWidth && width%2 == 0 &&
-		height >= 2 && height <= MaxVideoHeight && height%2 == 0
+	return width >= 2 && width <= MaxVideoDimension && width%2 == 0 &&
+		height >= 2 && height <= MaxVideoDimension && height%2 == 0 &&
+		uint64(width)*uint64(height) <= MaxVideoPixels
+}
+
+// ValidVideoFormat keeps both current encoders within the shared receive
+// ceiling (H.264 Level 5.1), including non-preset shapes and frame rates.
+func ValidVideoFormat(width, height, framerate uint32) bool {
+	return ValidVideoSize(width, height) && framerate >= 1 && framerate <= 60 &&
+		uint64((width+15)/16)*uint64((height+15)/16)*uint64(framerate) <= 983_040
+}
+
+func ValidCodedVideoSize(width, height uint64) bool {
+	return width >= 2 && width <= MaxCodedVideoDimension && width%2 == 0 &&
+		height >= 2 && height <= MaxCodedVideoDimension && height%2 == 0 &&
+		width*height <= MaxCodedVideoPixels
 }
 
 type FrameKind uint8

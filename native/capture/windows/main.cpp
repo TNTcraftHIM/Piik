@@ -966,8 +966,8 @@ DegradationPreference ParseDegradationPreference(const wchar_t* value) {
 }
 
 void ValidateVideoProfile(const VideoProfile& profile) {
-  if (!piik::capture::ValidVideoSize(profile.width, profile.height) ||
-      profile.width < 4 || profile.height < 4 || profile.frame_rate < 15 || profile.frame_rate > 60 ||
+  if (!piik::capture::ValidVideoFormat(profile.width, profile.height, profile.frame_rate) ||
+      profile.width < 4 || profile.height < 4 || profile.frame_rate < 15 ||
       profile.bit_rate < 2'000'000 || profile.bit_rate > 12'000'000) {
     Fail("argument-profile", "video profile is outside the product bounds");
   }
@@ -981,8 +981,8 @@ void ParseOutputProfiles(ProductArguments& arguments, int first, int count, wcha
     output.height = ParseIndex(values[index + 2], "argument-output-height");
     output.frame_rate = ParseIndex(values[index + 3], "argument-output-fps");
     output.bit_rate = ParseIndex(values[index + 4], "argument-output-bitrate");
-    if (!piik::capture::ValidVideoSize(output.width, output.height) || output.frame_rate == 0 ||
-        output.frame_rate > 60 || output.bit_rate < 1'000 || output.bit_rate > 12'000'000) {
+    if (!piik::capture::ValidVideoFormat(output.width, output.height, output.frame_rate) ||
+        output.bit_rate < 1'000 || output.bit_rate > 12'000'000) {
       Fail("argument-output", "output profile exceeds codec bounds");
     }
     if (arguments.mode == ProductArguments::Mode::video &&
@@ -1674,7 +1674,8 @@ ComPtr<ID3D11Texture2D> OwnDecodedTexture(const DeviceContext& device, IMFSample
     D3D11_TEXTURE2D_DESC description{};
     original->GetDesc(&description);
     if (description.Format != DXGI_FORMAT_NV12 || description.Width < width || description.Height < height ||
-        description.Width > 2560 || description.Height > 1440) Fail("decoded-texture-size", "decoder texture exceeds source bounds");
+        !piik::capture::ValidCodedVideoSize(description.Width, description.Height))
+      Fail("decoded-texture-size", "decoder texture exceeds source bounds");
     description.ArraySize = description.MipLevels = 1;
     description.Usage = D3D11_USAGE_DEFAULT;
     description.CPUAccessFlags = description.MiscFlags = 0;

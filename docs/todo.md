@@ -54,8 +54,11 @@ Implementation needs a concrete useful result within the product model.
   capture gate within current implementation limits. Next assess
   source-aspect-preserving geometry and 4K through the same owners. Windows and
   Linux outputs now fit the source without a fixed padded landscape canvas;
-  axis-independent limits, Browser/macOS geometry and product 4K
-  admission remain open. Preserve
+  Native axis-independent 4K30 admission and bounded Windows codec/derived-output
+  checks now pass, as does Browser H.264 4K30 over the existing SFU gate with a
+  synthetic source. Next align controls with combined size/rate limits and verify
+  Native/Browser mixed routes, source/live changes and limited receivers.
+  Browser/macOS geometry and physical 4K capture remain open. Preserve
   safety limits and framework-owned adaptation. The
   [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)
   retain explicit receive-limit enforcement and the current 320 kbps sender
