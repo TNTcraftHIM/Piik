@@ -89,10 +89,11 @@ Implementation needs a concrete useful result within the product model.
   accepted.
   Resolve key exchange and admission before ICE at the assigned-connection owner;
   research owns the supported pre-ICE dial/retirement checks and the isolated
-  gated counterfactual. A Go-only overlay verifies room-scoped key signaling;
-  a separate Native control fixture ties key revocation to its last owned flow.
-  Native key installation and flow retirement still need to follow those room
-  events. No product wire extension or Browser integration is implemented.
+  gated counterfactual. The Go-only room/Native composition verifies authorized
+  key exchange, same-parent replacement and invitation-driven retirement;
+  bootstrap addresses and event-to-control dispatch remain fixture inputs.
+  Integrate those boundaries at the existing Browser/App connection owners.
+  No product wire extension or Browser integration is implemented.
   Obtain supported direct-media and initial endpoint-discovery contracts;
   the isolated packet-policy overlay and bootstrap repair are not product APIs.
   Carry the repaired library ordering through the complete room/App composition;

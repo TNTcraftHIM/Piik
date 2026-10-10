@@ -968,10 +968,9 @@ candidate and retained-connection metadata, rejects unrelated peers/rooms and
 retired connection IDs, and cannot adopt a new connection from a key message.
 Ordinary invitation revocation still closes the authenticated Viewer session.
 The protocol/signaling race suites pass; removing the connection guard fails
-the scoped probe. This establishes metadata authorization only: Native key
-installation and flow retirement are not yet connected to those room events.
-The generated extension adds no server key registry and does not change the
-product wire format or Browser implementation.
+the scoped probe. This establishes metadata authorization. The generated
+extension adds no server key registry and does not change the product wire
+format or Browser implementation.
 
 A separate Native control check derives admission from its actual owned inbound
 flows. Closing one flow retains the shared peer's authorization while another
@@ -980,13 +979,22 @@ grant serialize without holding the flow-map lock through Tailcat callbacks.
 Stop and control-close cases pass under the race detector, including fresh
 sibling RTP before preparing a replacement. Counterfactuals that disconnect on
 every close or never disconnect fail those checks. This composes physical-flow
-cleanup with the Native session; keys still come from the local fixture, not
-the room signaling experiment above. Complete room-to-App authorization remains
-open.
+cleanup with the Native session; keys in that control remain local fixture inputs.
 
-This establishes a startup-order constraint, not a product integration or a Piik
-field defect. The Native media checks still use local grants; the candidate gate
-and unsupported dependency method are not accepted product mechanisms.
+The composed room/Native control passes actual room-authorized key exchange,
+SDP/candidates and RTP delivery, same-parent replacement after DERP closure,
+late old-receiver cleanup and invitation-driven final retirement. Rebuilding
+uses the current assignment to exchange the key before ICE; the subsequent SDP
+offer adopts the replacement ID. Trying to exchange a key on the new ID first
+is rejected. Thus pre-ICE preparation does not require giving metadata the power
+to adopt a connection. The fixture still supplies the tunnel bootstrap address
+and translates the room event into the Native stop command; complete Browser/App
+authorization and transport selection remain open. This check establishes
+packet reception and resource retirement, not decoded playback or field benefit.
+
+These checks establish startup-order and ownership constraints, not a product
+integration or a Piik field defect. The earlier candidate gate and unsupported
+dependency method are not accepted product mechanisms.
 The existing assigned-connection owner must resolve key exchange and admission
 before ICE starts. Accepting arbitrary keys, passing room credentials into Native
 control or enlarging its timeout is not an equivalent solution.
