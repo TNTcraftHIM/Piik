@@ -1161,15 +1161,30 @@ before the tunnel grant and with bootstrap unavailable. A tunnel-only control
 establishes media after delayed admission, then preserves a sibling and a new
 receiver through old cleanup. Candidate events continue during the delay:
 bypassing the readiness gate leaves the sender checking with no media. Linux
-race checks pass. These are bounded Native control/media checks, not complete
-rendered App recovery, direct-only policy or physical-network acceptance.
+race checks pass.
+
+A bounded Chromium 152 UI check also runs the optional composition through a
+Browser Host, two Native relays and a Browser Viewer. Changing decoded pixels
+advance at every hop, after the second relay's manual reconnect, and after each
+Native relay departs. Departure recovery respects the existing signaling grace;
+retired Native transport counts reach zero. Host stop projects waiting for a
+share, and the race-enabled fixture closes cleanly. This uses a synthetic source
+on one local network; ordinary ICE may win. It establishes coexistence and these
+recovery paths, not a tunnel-success rate, physical capture or complete App
+acceptance. Optional-path invitation revocation and overlapping-parent checks
+remain separate from the earlier tunnel-only UI evidence.
 
 This composition also exposes an upstream address-lookup mismatch: Pion's
 multi-mux enumerates current child addresses but `GetConn` only consults its
 construction-time table. A newly enumerated address therefore has no mux. The
 isolated correction resolves uncached addresses against those same child muxes,
 without another address cache or socket owner; the unchanged control fails.
-This preserves the ordinary socket's fresh-address contract in the experiment.
+A private Linux network namespace also replaces the real interface address
+while retaining the sockets and PeerConnections. ICE restart gathers only the
+new address and restores fresh phase-tagged audio/video. Removing only the
+multi-mux correction loses that candidate in the matched control. The race
+check preserves ordinary discovery; it does not exercise physical Wi-Fi handoff
+or prove the optional tunnel's recovery benefit.
 The copied dependency correction and socket-reservation method remain adoption
 requirements, not supported APIs or changes to the published Piik dependency.
 
