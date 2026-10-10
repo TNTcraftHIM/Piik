@@ -1119,6 +1119,26 @@ gathering still produces its observed candidate. There is no timeout extension
 or additional retry owner. Availability, public keys and handshake replies
 remain distinct from decoded-frame readiness and additional field reachability.
 
+A separate optional-path check uses Pion's public
+[`NewMultiUDPMuxDefault`](https://github.com/pion/ice/blob/v4.4.0/udp_mux_multi.go)
+to advertise ordinary UDP and one prepared Tailcat flow on the same
+PeerConnection. Fresh audio/video passes with either path unavailable, and
+normal ICE restart selects the remaining path in both directions. Making the
+unused tunnel available or closing it preserves the ordinary session and its
+ICE credentials. Windows and Linux race checks pass without an application
+path selector or changed ICE budgets. These local tests permit DERP and prepare
+the tunnel before ICE; they establish composition, not direct-media policy,
+NAT gain or cold-bootstrap independence.
+
+The current Native overlay still replaces its ordinary socket with the tunnel.
+`DialUDPPort` waits for remote admission, while Pion's stock multi-mux requires
+the sockets' addresses at construction. Simply combining them synchronously
+would let unavailable bootstrap delay otherwise usable ordinary ICE. A supported
+way to prepare an optional socket independently remains an adoption requirement;
+the earlier private `PrepareUDPPort` patch is not a supported upstream API.
+Do not replace this gap with two racing PeerConnections, a second recovery
+controller or a larger product timeout.
+
 `room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
 experimental fields. It accepts the Go fixture's twelve route/restart messages,
 rejects malformed capability/listener fields and removes scoped keys from both

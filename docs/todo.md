@@ -80,6 +80,8 @@ Implementation needs a concrete useful result within the product model.
   Obtain supported [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary),
   direct-media, endpoint-discovery and RTCP/MTU contracts plus a trusted relay
   configuration. Experimental dependency patches are not product APIs.
+  Preserve ordinary ICE when optional bootstrap is unavailable; the current
+  tunnel-only Native overlay does not yet satisfy that integration boundary.
   Preserve the local address policy (forcing loopback fails Firefox), existing
   recovery deadlines and single route/resource owners. DERP must not become
   another media fallback or bypass site/share policy. No new setting, timeout
