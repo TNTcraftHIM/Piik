@@ -1088,6 +1088,10 @@ and three Native Viewers across two App instances. When the middle Native Viewer
 leaves, the last Viewer changes to the first Native Viewer, receives a new scoped
 connection and resumes decoded, changing pixels; the departed participant retains
 no transport resources. The normal App control-session and origin limits remain.
+In the mixed Browser/Native chain, revoking a private room's invitation removes
+all Viewers and Native transport resources while the Host continues sharing.
+The old invitation remains rejected after rotation; a fresh invitation restores
+the chain and decoded media without retaining the retired transports.
 This is bounded local rendered acceptance, not physical capture, difficult-NAT
 reachability, sustained recovery or a healthy overlapping-parent handoff.
 
