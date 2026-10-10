@@ -73,12 +73,11 @@ Implementation needs a concrete useful result within the product model.
 - [ ] **Native Magicsock.** Go reuse is feasible, but the
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   have not established another reachable NAT class. Verify the measured local
-  address-handoff benefit through the complete App, mixed Browser/Native topology
-  and physical networks before adoption. Extend the isolated client-identity and
-  listener-binding checks to actual room handoffs between different participants;
-  the current two-listener fixture does not establish that complete lifecycle.
-  Complete Browser sender selection/binding, room-event dispatch, rendered acceptance and
-  recovery at the existing assigned-connection owners. Key exchange/admission
+  address-handoff benefit through the complete App and physical networks before
+  adoption. Bounded rendered Browser/Native chains cover reconnect and departure
+  with a different Native parent; healthy overlapping-parent handoffs, sustained
+  and difficult-network recovery remain open. Preserve the existing Browser
+  sender, room-event and assigned-connection owners. Key exchange/admission
   must precede receiver ICE; diagnostic replies are not media-readiness evidence, and inner
   checks may exhaust before the underlay recovers. Research owns the verified
   sender/receiver command, key/lifecycle and local RTP evidence and their limits.
@@ -88,12 +87,9 @@ Implementation needs a concrete useful result within the product model.
   Preserve the local address policy (forcing loopback fails Firefox), existing
   recovery deadlines and single route/resource owners. DERP must not become
   another media fallback or bypass site/share policy. No new setting, timeout
-  change or transport integration is accepted; the P2P evidence work below owns
-  network/interop acceptance.
-  Rendered local Browser/Native chains now cover reconnect and upstream departure;
-  the assessment owns the limits. Different Native-parent handoffs, sustained and
-  difficult-network recovery remain open. No product transport integration is
-  accepted; all experimental wire changes remain isolated.
+  change or product transport integration is accepted; all experimental wire
+  changes remain isolated. The P2P evidence work below owns network/interop
+  acceptance.
 - [ ] **Small external test before 2.0.** First use the isolated transport
   experiment on the same difficult network pairs as current Piik, measuring
   direct success separately from relay delivery, first-picture time, recovery

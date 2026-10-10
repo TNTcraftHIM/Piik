@@ -1083,9 +1083,21 @@ the second Native Viewer replaces its listener/client without accumulating
 resources. After the first Native Viewer leaves, the next Viewer changes to the
 Browser Host and both remaining Viewers resume decoded, changing pixels. Removing
 the second Native Viewer then restores an ordinary Browser-to-Browser route.
-All transport counters are zero at retirement. This is bounded local rendered
-acceptance, not physical capture, difficult-NAT reachability, sustained recovery
-or a handoff between two different Native parents.
+All transport counters are zero at retirement. A second rendered run uses H264
+and three Native Viewers across two App instances. When the middle Native Viewer
+leaves, the last Viewer changes to the first Native Viewer, receives a new scoped
+connection and resumes decoded, changing pixels; the departed participant retains
+no transport resources. The normal App control-session and origin limits remain.
+This is bounded local rendered acceptance, not physical capture, difficult-NAT
+reachability, sustained recovery or a healthy overlapping-parent handoff.
+
+Cold receiver preparation initially took about three seconds in this fixture.
+The local DERP region had no STUN service: two preauthorized registration controls
+took about four seconds without STUN and 15–16 ms with it. Reusing Piik's STUN
+server in the UI fixture reduced cold receive-offer responses to 21–25 ms. Keep
+unavailable-STUN controls separate from healthy startup measurements. This finding
+changes the test environment, not product timeouts or retry behavior; it does not
+predict public-network latency.
 
 Composition also exposed duplicate address discovery: the shared candidate
 collector still sent ordinary STUN probes through the injected virtual socket.
