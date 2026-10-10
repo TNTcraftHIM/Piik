@@ -121,6 +121,22 @@ participants. This mode has no media-server fallback, and the temporary address
 has no uptime guarantee. All modes need a working UDP media path.
 The [App guide](../../cmd/piik-app/README.md#modes) explains the connection setup.
 
+### Upgrading
+
+**Piik 2.0 and 1.x cannot be used together.** The App and the site it connects to
+need the same major version. Read the release notes on
+[GitHub](https://github.com/TNTcraftHIM/Piik/releases/latest) or
+[Gitee](https://gitee.com/TNTcraftHIM/Piik/releases) before upgrading.
+
+- **Local room or Public invite:** stop sharing, close the old App and extract
+  the complete new package. Start the new App and send a fresh invitation.
+- **An existing site:** the administrator updates the Server first, following
+  the [update guide](../operations/service-management.md). Then update the Apps
+  connecting to that site and refresh all sharing and viewing pages.
+
+Restarting an App or Server interrupts active shares. This upgrade does not
+change the room database schema.
+
 ## Share from an existing site
 
 You need an existing HTTPS site running Piik Server, provided by a friend or

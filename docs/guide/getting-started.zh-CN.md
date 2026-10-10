@@ -108,6 +108,19 @@ Linux 原生采集还需要[系统组件](../../native/capture/linux/README.md)�
 临时地址也不保证持续可用。所有模式都需要可用的 UDP 媒体路径。
 具体连接方式见 [App 指南](../../cmd/piik-app/README.zh-CN.md#运行模式)。
 
+### 版本升级
+
+**Piik 2.0 与 1.x 不能混用。** App 与连接的站点需要使用同一大版本。
+升级前，请先查看 [GitHub](https://github.com/TNTcraftHIM/Piik/releases/latest) 或
+[Gitee](https://gitee.com/TNTcraftHIM/Piik/releases) 上的版本说明。
+
+- **本地房间或公网邀请：** 停止分享并关闭旧 App，完整解压新版程序包，
+  启动后重新发送邀请链接。
+- **已有站点：** 管理员先按[更新指南](../operations/service-management.zh-CN.md)升级 Server，
+  然后更新连接该站点的 App，并刷新所有分享与观看页面。
+
+重启 App 或 Server 会中断正在进行的分享。本次升级不变更房间数据库结构。
+
 ## 使用已有站点分享
 
 需要先有一个运行 Piik Server 的 HTTPS 站点，可以使用朋友或管理员提供的地址。
