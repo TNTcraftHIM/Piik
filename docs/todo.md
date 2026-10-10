@@ -77,11 +77,11 @@ Implementation needs a concrete useful result within the product model.
   and physical networks before adoption. Extend the isolated client-identity and
   listener-binding checks to actual room handoffs between different participants;
   the current two-listener fixture does not establish that complete lifecycle.
-  Complete sender binding, room-event dispatch, rendered Browser acceptance and
+  Complete Browser sender selection/binding, room-event dispatch, rendered acceptance and
   recovery at the existing assigned-connection owners. Key exchange/admission
   must precede receiver ICE; diagnostic replies are not media-readiness evidence, and inner
   checks may exhaust before the underlay recovers. Research owns the verified
-  receive-command, key/lifecycle and local RTP evidence and their limits.
+  sender/receiver command, key/lifecycle and local RTP evidence and their limits.
   Obtain supported [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary),
   direct-media, endpoint-discovery and RTCP/MTU contracts plus a trusted relay
   configuration. Experimental dependency patches are not product APIs.

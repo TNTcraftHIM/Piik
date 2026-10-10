@@ -1053,14 +1053,28 @@ listener retirement checks cover cancellation and ordinary cleanup; the parent
 adapter also retains its already-authorized remote address so a late write fails
 normally when the dependency clears its endpoint.
 
+The isolated Native sender now prepares its listener through the existing
+Host/Viewer edge socket factory. Its offer returns metadata, and a strict
+connection-scoped control command binds the reply through that same edge.
+There is no additional control-level listener registry. The raw transport checks
+and Native overlay compile the same admission/socket adapters. Closing an edge
+revokes its listener; retiring the source releases its remaining children.
+`TestNativeSenderOwnsListener` carries a generated VP8 source through the actual
+Native receive/relay commands to two Native children. It checks fresh sibling
+RTP after one child retires, idempotent replies and rejection of another listener
+or a retired connection. Host/media-edge/Viewer/control race suites pass. This
+fixture still pumps events instead of running the Browser route owners; it is
+not physical Host capture or complete room-controller acceptance.
+
 The overlaid Browser NativeViewerPeer forwards the listener and returns scoped
 identity events while receive-offer is pending. Wrong share/connection and
 post-disposal events are ignored; there is no extra preparation timer or pending
 identity registry. Node-driven discovery, serializer, schema and lifecycle checks
-are separate from rendered media acceptance. Complete sender binding, room-event
-dispatch, actual multi-participant handoff and rendered Browser recovery remain
-open. The fixture still supplies parent binding and translates revocation into
-Native stop/listener retirement. Availability, public keys and handshake replies
+are separate from rendered media acceptance. Browser sender selection/binding,
+room-event dispatch, actual multi-participant handoff and rendered Browser
+recovery remain open. The composed room fixture still supplies parent binding
+and translates revocation into Native stop/listener retirement. Availability,
+public keys and handshake replies
 are not decoded-frame readiness or evidence of additional field reachability.
 
 `room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
