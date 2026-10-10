@@ -89,9 +89,9 @@ Implementation needs a concrete useful result within the product model.
   accepted.
   Resolve key exchange and admission before ICE at the assigned-connection owner;
   research owns the supported pre-ICE dial/retirement checks and the isolated
-  gated counterfactual. The Go-only room/Native composition verifies authorized
-  key exchange, same-parent replacement and invitation-driven retirement;
-  connection material now travels through that assigned-connection owner;
+  gated counterfactual. The Go-only room/Native composition verifies the
+  authenticated receiver key and listener metadata on the ordinary SDP offer,
+  same-parent replacement and invitation-driven retirement;
   trusted relay configuration and event-to-control dispatch remain fixture inputs.
   The isolated authenticated-session capability projection and Browser schema/
   diagnostic checks pass. Socket binding follows the individual Native request
@@ -100,9 +100,9 @@ Implementation needs a concrete useful result within the product model.
   and the actual NativeClient discovery/hello pass in a Node-driven local check;
   the isolated Viewer startup owner now preflights App discovery and carries its
   current identity through authentication/restart/reconnect. Rendered Browser
-  acceptance, Native metadata dispatch and transport consumption remain open;
-  full overlaid frontend type checking still exposes the unimplemented dispatch
-  boundary. Integrate these at the existing Browser/App connection owners.
+  acceptance, Native command binding and transport consumption remain open.
+  Full overlaid frontend type checking passes without extra signal variants.
+  Integrate the remaining work at the existing Browser/App connection owners.
   No product wire extension or complete Browser integration is implemented.
   Obtain supported direct-media and initial endpoint-discovery contracts;
   the isolated packet-policy overlay and bootstrap repair are not product APIs.

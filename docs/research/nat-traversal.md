@@ -986,15 +986,13 @@ dependency corrections remain. This removes the need for that extra startup API
 when key admission precedes media negotiation; it does not implement room-scoped
 key exchange or demonstrate higher direct reachability.
 
-An isolated Go signaling extension now carries bounded bootstrap metadata through
-the real room WebSocket and existing assigned-connection authorizer. It forwards
-candidate and retained-connection metadata, rejects unrelated peers/rooms and
-retired connection IDs, and cannot adopt a new connection from a key message.
-Ordinary invitation revocation still closes the authenticated Viewer session.
-The protocol/signaling race suites pass; removing the connection guard fails
-the scoped probe. This establishes metadata authorization. The generated
-extension adds no server key registry and does not change the product wire
-format or Browser implementation.
+The isolated signaling extension carries bounded listener metadata on the
+assigned parent's ordinary SDP offer. SDP/ICE remain the signal variants;
+there is no extra key-exchange message or router authorization branch. Actual
+room WebSocket checks reject unrelated peers/rooms, retired candidates and
+listener metadata on answers or ICE candidates. Ordinary invitation revocation
+still closes the authenticated Viewer session. Protocol/signaling race suites
+pass. The generated extension adds no server key registry or product wire change.
 
 A separate Native control check derives admission from its actual owned inbound
 flows. Closing one flow retains the shared peer's authorization while another
@@ -1008,13 +1006,13 @@ The pending-flow adapter also rejects a different admitted peer without consumin
 the assigned listener. The two-peer control reproduced the former premature
 close; the repair permits the expected peer or cancels through the same owner.
 
-The composed room/Native control passes actual room-authorized bootstrap exchange,
-SDP/candidates and RTP delivery, same-parent replacement after DERP closure,
-late old-receiver cleanup and invitation-driven final retirement. Rebuilding
-uses the current assignment to exchange the key before ICE; the subsequent SDP
-offer adopts the replacement ID. Trying to exchange a key on the new ID first
-is rejected. Thus pre-ICE preparation does not require giving metadata the power
-to adopt a connection. Listener metadata exchanges the node and discovery keys,
+The composed room/Native control receives the child's authenticated key through
+its assigned-parent projection. The parent prepares a listener before its offer;
+the child dials from that offer before creating its ICE agent. RTP delivery,
+same-parent replacement after DERP closure, late old-receiver cleanup and
+invitation-driven final retirement pass under the race detector. The ordinary
+offer adopts a replacement ID; the parent's updated assignment retires its
+listener while the Viewer stops receiving. Listener metadata carries the node and discovery keys,
 a nonzero shared key and a bounded port; it carries no relay URLs or region IDs.
 The dialer constructs the upstream address from received fields and a trusted
 local relay configuration. Strict shape checks and the existing route diagnostic
@@ -1049,9 +1047,9 @@ key on authentication, restart and reconnect; control loss or disabled Native
 reception clears it without initiating another recovery operation. Owner checks
 cover stale cleanup, completion after unmount and disabling Native during
 discovery. They exercise extracted page logic and the real signaling serializer,
-not rendered UI or Browser permissions. Full overlaid frontend type checking
-still fails where media consumers assume every signal is SDP/ICE. Native metadata
-dispatch and sender/receiver transport consumption remain unimplemented;
+not rendered UI or Browser permissions. Full overlaid frontend and lifecycle-test
+type checking now pass with the single offer field. Native command binding
+and sender/receiver transport consumption remain unimplemented;
 the scoped startup checks do not establish complete Browser integration.
 The key is availability metadata, not media-readiness authority.
 
