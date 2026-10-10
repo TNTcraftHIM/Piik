@@ -1057,7 +1057,11 @@ relay. Shared strict decoding rejects null or untrusted configuration fields;
 unavailable transport is an operation failure. Control retirement cancels a
 real pending dial. Same-parent overlap shares one client across two physical
 flows; final retirement releases it. Room/Native RTP and cancellation checks pass
-under the race detector. Sender binding, rendered Browser acceptance and complete
+under the race detector. Receiver reuse additionally requires identical listener
+metadata. The changed-port control fails without that check; with a shared
+client retained by a sibling, replacement receives fresh RTP and leaves the
+sibling working. Ordinary Native reuse/control race suites still pass.
+Sender binding, rendered Browser acceptance and complete
 recovery remain open. These checks do not establish complete Browser integration.
 The key is availability metadata, not media-readiness authority.
 
@@ -1073,6 +1077,15 @@ add a route-specific fallback to conceal this limit. The same test exposed a
 pending-listener close race: the dependency may clear its remote address before
 a final datagram write. Retaining the already-authorized address makes that
 write fail normally; the focused retirement and concurrent ICE checks pass.
+
+Last-receiver replacement exposes a separate recovery limit: recreating the
+client with the same key completes bootstrap but delivers no RTP within the
+unchanged five-second window. A tunnel-only generated-UDP control reproduces
+the failure without Piik or Pion; explicitly retiring the parent's peer before
+recreating the client passes. Allowing local relay data or re-advertising server
+endpoints on a known-key handshake does not repair it. The precise retained
+dependency state remains unisolated. Keep this opt-in negative control with the
+identity-scope work above; do not add a parent reset that would retire siblings.
 
 `room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
 experimental fields. It accepts the Go fixture's twelve route/restart messages,

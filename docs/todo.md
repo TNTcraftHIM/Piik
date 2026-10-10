@@ -77,8 +77,10 @@ Implementation needs a concrete useful result within the product model.
   and physical networks before adoption. Resolve the measured independent-parent
   identity collision: separate Tailcat clients with the same session key register
   duplicate relay connections even while local direct media passes.
-  Verify receiver reuse when the same connection ID receives changed listener
-  metadata; its existing UDP flow must not silently retain the previous listener.
+  Resolve same-key client recreation while the parent retains its peer: bootstrap
+  succeeds but both the UDP-only control and last-receiver replacement deliver
+  no datagrams within their unchanged bounds. Retiring the parent peer passes
+  the control; that is evidence, not permission to reset healthy sibling paths.
   Complete sender binding, room-event dispatch, rendered Browser acceptance and
   recovery at the existing assigned-connection owners. Key exchange/admission
   must precede ICE; diagnostic replies are not media-readiness evidence, and inner
