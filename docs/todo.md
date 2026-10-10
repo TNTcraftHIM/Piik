@@ -98,9 +98,12 @@ Implementation needs a concrete useful result within the product model.
   and its existing media owner. The isolated loopback correction cancels slow
   preparation when the control ends and joins cleanup. App session key production
   and the actual NativeClient discovery/hello pass in a Node-driven local check;
-  early Viewer-page discovery, reconnect updates and transport consumption remain
-  open. Integrate those boundaries at the existing Browser/App connection owners.
-  No product wire extension or Browser integration is implemented.
+  the isolated Viewer startup owner now preflights App discovery and carries its
+  current identity through authentication/restart/reconnect. Rendered Browser
+  acceptance, Native metadata dispatch and transport consumption remain open;
+  full overlaid frontend type checking still exposes the unimplemented dispatch
+  boundary. Integrate these at the existing Browser/App connection owners.
+  No product wire extension or complete Browser integration is implemented.
   Obtain supported direct-media and initial endpoint-discovery contracts;
   the isolated packet-policy overlay and bootstrap repair are not product APIs.
   Carry the repaired library ordering through the complete room/App composition;

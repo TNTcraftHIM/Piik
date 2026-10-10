@@ -1022,8 +1022,7 @@ owner keep connection material out of its output; complete protocol/signaling
 race suites and the direct-media composition pass.
 Trusted relay configuration and room-event dispatch to Native control remain
 fixture inputs. Complete Browser/App authorization and transport selection remain
-open: the current Native-capable Viewer chooses its backend on the SDP offer,
-so it does not yet advertise Native transport availability before negotiation.
+open: the product Native-capable Viewer chooses its backend on the SDP offer.
 This check establishes packet reception and resource retirement, not decoded
 playback or field benefit.
 
@@ -1043,8 +1042,17 @@ sessions have different keys, ordinary commands retain them, and retirement
 clears the advertised identity without affecting its sibling. Diagnostic export
 and console output exclude those keys; loopback/control race suites and the App
 composition build pass. This does not cover Browser local-network permission.
-The Viewer page still discovers Native on the offer rather than before room
-authentication, and sender/receiver transport consumption remains unimplemented.
+The isolated Browser overlay now preflights the existing Viewer connection
+promise before authentication only for App-launched pages. Missing App discovery
+retains Browser fallback. The existing signaling identity supplies the current
+key on authentication, restart and reconnect; control loss or disabled Native
+reception clears it without initiating another recovery operation. Owner checks
+cover stale cleanup, completion after unmount and disabling Native during
+discovery. They exercise extracted page logic and the real signaling serializer,
+not rendered UI or Browser permissions. Full overlaid frontend type checking
+still fails where media consumers assume every signal is SDP/ICE. Native metadata
+dispatch and sender/receiver transport consumption remain unimplemented;
+the scoped startup checks do not establish complete Browser integration.
 The key is availability metadata, not media-readiness authority.
 
 `room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
