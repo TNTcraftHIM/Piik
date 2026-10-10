@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-10
+Last updated: 2026-10-11
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -71,8 +71,8 @@ Custom width/height controls apply combined size and frame-rate limits, admittin
 The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
 owns local codec, derived-output, SFU, Browser/Native fanout and live-control
 evidence. The macOS geometry implementation still needs SDK compilation and
-hardware verification; cross-browser/device and route-change acceptance, and
-additional codecs remain open.
+hardware verification; cross-browser/device and route-change acceptance remain
+open. Additional codecs are not part of this candidate.
 Magicsock adoption is no-go for this candidate: its App-to-App augmentation does
 not improve the core App-to-Browser use case. The
 [assessment](./research/nat-traversal.md#integration-cost-and-recovery-controls)

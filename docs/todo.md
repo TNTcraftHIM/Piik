@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-10
+Last reviewed: 2026-10-11
 
 The current 2.0 preparation includes independent investigation across this
 ledger. Explicit owner holds remain in force; an investigation does not itself
@@ -58,8 +58,8 @@ Implementation needs a concrete useful result within the product model.
   separate UI presets, numeric requests, bounded implementation capabilities and
   actual output. Numeric audio and video controls are implemented; the assessment
   owns local capture, codec, derived-output, SFU and bounded mixed-route evidence.
-  Extend Browser interoperability and mixed-topology checks to limited receivers
-  and physical camera orientation behavior.
+  Remaining receiver acceptance needs physical limited decoders and camera
+  orientation behavior, beyond the bounded SDP-limit and mixed-route controls.
   Browser display capture, Browser relay and Browser-to-Native fanout now have
   bounded high-resolution evidence. macOS geometry SDK/hardware checks and
   physical 4K/game capture remain open. Preserve safety limits and
@@ -68,12 +68,12 @@ Implementation needs a concrete useful result within the product model.
   retain explicit receive-limit enforcement and the current 320 kbps sender
   ceiling. Physical listening, mobile and field-network acceptance remain open;
   research owns the bounded real-Opus impairment and video-recovery control.
-  New codecs need complete
-  encode/decode/forward support and a late-Viewer policy before inclusion;
-  selecting a codec cannot transcode an existing publication. Confirm live
-  changes, relay/SFU paths, older 2.x capability subsets and explicit 1.x
-  mismatch before accepting the replacement contract. The published 1.x enums
-  remain that major's baseline; the PR is not a compatible enum-only extension
+  Additional codecs are outside this candidate. Later inclusion needs complete
+  encode/decode/forward support and a late-Viewer policy;
+  selecting a codec cannot transcode an existing publication. Final package
+  acceptance must retain the verified live-change, relay/SFU and limited-receiver
+  behavior, and check explicit 1.x mismatch with packaged builds. The published
+  1.x enums remain that major's baseline; the PR is not a compatible enum-only extension
   of v1.9.2.
 - [ ] **2.0 candidate acceptance.** Finish the combined numeric-media UI,
   App/room lifecycle, ordinary Browser/Native routes and regression checks before
