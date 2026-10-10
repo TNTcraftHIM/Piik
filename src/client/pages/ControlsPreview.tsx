@@ -19,9 +19,9 @@ import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 
-import { QualityPresets, ResolutionControl } from "../components/living/QualityPresets";
+import { AudioBitrateControl, QualityPresets, ResolutionControl } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
-import { VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, type QualityProfileId, type QualityResolution } from "../media/quality";
+import { MAX_SCREEN_AUDIO_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, type QualityProfileId, type QualityResolution } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
 import { Tooltip } from "../components/living/Tooltip";
 import { StatusIndicator } from "../components/living/StatusIndicator";
@@ -58,6 +58,7 @@ export function ControlsPreview() {
   const [microphoneDevice, setMicrophoneDevice] = useState("");
   const [sharingSettings, setSharingSettings] = useState(false);
   const [resolution, setResolution] = useState<QualityResolution>(QUALITY_PROFILES["1080p30"].resolution);
+  const [audioBitrate, setAudioBitrate] = useState<number>(QUALITY_PROFILES["1080p30"].maxAudioBitrate);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
   const [majorUpdate, setMajorUpdate] = useState(true);
   const releaseVersion = majorUpdate ? "v2.0.0" : "v1.1.0";
@@ -127,7 +128,9 @@ export function ControlsPreview() {
             <LiveAudioExclusion load={previewApplications} value={excludedAudio} onChange={setExcludedAudio} disabled={!sound || paused} />
           </div><HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
             native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
-            voiceProcessing={voiceProcessing} onVoiceProcessing={setVoiceProcessing} /></>}
+            voiceProcessing={voiceProcessing} onVoiceProcessing={setVoiceProcessing} />
+            <AudioBitrateControl value={audioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
+              disabled={false} onChange={setAudioBitrate} /></>}
         />
       </section>
       <section id="option-preview" className="cp-card">

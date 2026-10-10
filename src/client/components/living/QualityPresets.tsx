@@ -1,10 +1,13 @@
-import { Fragment } from "react";
+import { Fragment, useRef } from "react";
+import { MIN_AUDIO_BITRATE } from "../../../shared/protocol";
 import {
   QUALITY_PROFILES, QUALITY_PROFILE_KEYS, QUALITY_RESOLUTIONS, qualityResolutionEqual,
   captureFramerateCeiling, VIDEO_CAPTURE_LIMITS, type VideoCaptureLimits, type QualityProfileId, type QualityResolution,
+  SCREEN_AUDIO_BITRATES, type ScreenAudioPreset,
 } from "../../media/quality";
-import { useCopy } from "../../ui/copy";
-import { Chip } from "./primitives";
+import { useCopy, type CopyKey } from "../../ui/copy";
+import { Glyph } from "../../ui/icons";
+import { Cap, Chip } from "./primitives";
 import { QualityTileGlyph } from "./QualityTileGlyph";
 import { Tooltip } from "./Tooltip";
 
@@ -40,6 +43,7 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
   onChange: (resolution: QualityResolution) => void;
 }) {
   const { t, vis } = useCopy();
+  const controls = useRef<HTMLDivElement>(null);
   const axes = ["width", "height"] as const;
   const reset = (container: HTMLElement) => {
     for (const axis of axes) container.querySelector<HTMLInputElement>(`input[name="${axis}"]`)!.value = String(value[axis]);
@@ -58,7 +62,7 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
     }
     if (!qualityResolutionEqual(value, next)) onChange(next);
   };
-  return <div className="lr-resolution-controls"
+  return <div className="lr-resolution-controls" ref={controls}
     onBlur={event => {
       if (!event.currentTarget.contains(event.relatedTarget)) apply(event.currentTarget);
     }}
@@ -73,7 +77,11 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
       {Object.entries(QUALITY_RESOLUTIONS).map(([label, resolution]) => <Chip key={label}
         selected={qualityResolutionEqual(value, resolution)}
         disabled={disabled || captureFramerateCeiling(resolution, limits) < 15}
-        title={label} hint="hint-quality" onClick={() => onChange(resolution)}>{label}</Chip>)}
+        title={label} hint="hint-quality" onClick={() => {
+          // Selecting even the current preset replaces an unsubmitted draft.
+          reset(controls.current!);
+          onChange(resolution);
+        }}>{label}</Chip>)}
     </div>
     <Tooltip kind="hint-quality" text={vis ? undefined : t("host.video.resolutionHint", {
       width: String(limits.maxVideoResolution.width), height: String(limits.maxVideoResolution.height),
@@ -89,6 +97,59 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
         </Fragment>)}
         <span aria-hidden="true">px</span>
       </span>
+    </Tooltip>
+  </div>;
+}
+
+const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioPreset, CopyKey> = {
+  saver: "host.advanced.audio.saver",
+  music: "host.advanced.audio.music",
+  "very-high": "host.advanced.audio.veryHigh",
+};
+
+export function AudioBitrateControl({ value, max, disabled, onChange }: {
+  value: number;
+  max: number;
+  disabled: boolean;
+  onChange: (bitrate: number) => void;
+}) {
+  const { t, vis } = useCopy();
+  return <div className="lr-door-group">
+    <span className="lr-door-glyph"><Glyph name="speaker" size={19} /><Cap k="host.advanced.audio" /></span>
+    <div className="lr-row-group" role="group" aria-label={t("host.advanced.audio")}>
+      {(Object.keys(SCREEN_AUDIO_BITRATES) as ScreenAudioPreset[]).map(preset => {
+        const bitrate = SCREEN_AUDIO_BITRATES[preset];
+        return <Chip key={preset} selected={value === bitrate} disabled={disabled || bitrate > max}
+          title={t("host.audio.title", { label: t(AUDIO_QUALITY_CAPTIONS[preset]), kbps: String(bitrate / 1_000) })}
+          hint="hint-audio-quality" onClick={() => onChange(bitrate)}>
+          <Cap k={AUDIO_QUALITY_CAPTIONS[preset]} /><small className="lr-audio-rate">{bitrate / 1_000}</small>
+        </Chip>;
+      })}
+    </div>
+    <Tooltip kind="hint-audio-quality" text={vis ? undefined : t("host.audio.bitrateHint", {
+      min: String(MIN_AUDIO_BITRATE / 1_000), max: String(max / 1_000),
+    })}>
+      <label className="lr-input lr-audio-bitrate">
+        <input type="number" inputMode="numeric" name="audioBitrate" key={value}
+          defaultValue={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
+          disabled={disabled} aria-label={t("host.advanced.audioBitrate")}
+          onBlur={event => {
+            const input = event.currentTarget;
+            if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) {
+              input.value = String(value / 1_000);
+              return;
+            }
+            if (input.valueAsNumber * 1_000 !== value) onChange(input.valueAsNumber * 1_000);
+          }}
+          onKeyDown={event => {
+            if (event.key !== "Enter" && event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.key === "Escape") event.currentTarget.value = String(value / 1_000);
+            event.currentTarget.blur();
+          }} />
+        <span>kbps</span>
+      </label>
     </Tooltip>
   </div>;
 }

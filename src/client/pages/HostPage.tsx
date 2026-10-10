@@ -10,7 +10,6 @@ import {
 import {
   DEFAULT_ROUTE_POLICY,
   MAX_VIEWER_PASSWORD_LENGTH,
-  MIN_AUDIO_BITRATE,
   viewerPasswordSchema,
   type CreateRoomResponse,
   type ClientMessage,
@@ -53,7 +52,7 @@ import type { ComicKind } from "../components/living/Comic";
 import type { HintKind } from "../ui/visual-kinds";
 import type { ComicTone } from "../components/living/comic-presentation";
 import { Tooltip } from "../components/living/Tooltip";
-import { QualityPresets, ResolutionControl } from "../components/living/QualityPresets";
+import { AudioBitrateControl, QualityPresets, ResolutionControl } from "../components/living/QualityPresets";
 import { RoomCodeInput, RoomCodeError } from "../components/living/RoomCodeInput";
 import { MetricCell } from "../components/living/Metrics";
 import {
@@ -135,12 +134,10 @@ import {
   qualitySettingsLabel,
   screenAudioBitrate,
   MAX_SCREEN_AUDIO_BITRATE,
-  SCREEN_AUDIO_BITRATES,
   setMediaPaused,
   videoQualitySettingsEqual,
   type DegradationPreference,
   type QualitySettings,
-  type ScreenAudioPreset,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
@@ -234,12 +231,6 @@ const PREFERENCE_PRESENTATION: Record<
     icon: "frames",
     hint: "host.advanced.preference.framerateHint",
   },
-};
-
-const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioPreset, CopyKey> = {
-  saver: "host.advanced.audio.saver",
-  music: "host.advanced.audio.music",
-  "very-high": "host.advanced.audio.veryHigh",
 };
 
 type ViewerQualityEvidence = Extract<
@@ -3992,79 +3983,9 @@ export function HostPage({
                   onVoiceProcessing={enabled => void changeMicrophone(microphoneEnabled, microphoneDevices.browser, enabled)}
                 />
               ) : null}
-              <div className="lr-door-group">
-                <span
-                  className="lr-door-glyph"
-                >
-                  <Glyph name="speaker" size={19} />
-                  <Cap k="host.advanced.audio" />
-                </span>
-                <div
-                  className="lr-row-group"
-                  role="group"
-                  aria-label={t("host.advanced.audio")}
-                >
-                  {(
-                    Object.keys(
-                      AUDIO_QUALITY_CAPTIONS,
-                    ) as ScreenAudioPreset[]
-                  ).map((audioQuality) => (
-                    <Chip
-                      key={audioQuality}
-                      selected={
-                        screenAudioBitrate(
-                          advancedQuality.maxAudioBitrate,
-                        ) === SCREEN_AUDIO_BITRATES[audioQuality]
-                      }
-                      disabled={phase === "starting" || switchingSource ||
-                        SCREEN_AUDIO_BITRATES[audioQuality] > audioBitrateCeiling}
-                      title={t("host.audio.title", {
-                        label: t(AUDIO_QUALITY_CAPTIONS[audioQuality]),
-                        kbps: String(
-                          SCREEN_AUDIO_BITRATES[audioQuality] / 1_000,
-                        ),
-                      })}
-                      hint="hint-audio-quality"
-                      onClick={() => changeMaxAudioBitrate(SCREEN_AUDIO_BITRATES[audioQuality])}
-                    >
-                      <Cap k={AUDIO_QUALITY_CAPTIONS[audioQuality]} />
-                      <small className="lr-audio-rate">
-                        {SCREEN_AUDIO_BITRATES[audioQuality] / 1_000}
-                      </small>
-                    </Chip>
-                  ))}
-                </div>
-                <Tooltip kind="hint-audio-quality" text={vis ? undefined : t("host.audio.bitrateHint", {
-                  min: String(MIN_AUDIO_BITRATE / 1_000), max: String(audioBitrateCeiling / 1_000),
-                })}>
-                  <label className="lr-input lr-audio-bitrate">
-                    <input type="number" inputMode="numeric"
-                      key={screenAudioBitrate(advancedQuality.maxAudioBitrate)}
-                      defaultValue={screenAudioBitrate(advancedQuality.maxAudioBitrate) / 1_000}
-                      min={MIN_AUDIO_BITRATE / 1_000}
-                      max={audioBitrateCeiling / 1_000} step={1}
-                      disabled={phase === "starting" || switchingSource}
-                      aria-label={t("host.advanced.audioBitrate")}
-                      onBlur={event => {
-                        const input = event.currentTarget;
-                        if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) {
-                          input.value = String(screenAudioBitrate(advancedQuality.maxAudioBitrate) / 1_000);
-                          return;
-                        }
-                        changeMaxAudioBitrate(input.valueAsNumber * 1_000);
-                      }}
-                      onKeyDown={event => {
-                        if (event.key === "Enter") event.currentTarget.blur();
-                        if (event.key === "Escape") {
-                          event.currentTarget.value = String(screenAudioBitrate(advancedQuality.maxAudioBitrate) / 1_000);
-                          event.currentTarget.blur();
-                          event.stopPropagation();
-                        }
-                      }} />
-                    <span>kbps</span>
-                  </label>
-                </Tooltip>
-              </div>
+              <AudioBitrateControl value={screenAudioBitrate(advancedQuality.maxAudioBitrate)}
+                max={audioBitrateCeiling} disabled={phase === "starting" || switchingSource}
+                onChange={changeMaxAudioBitrate} />
             </>}
             technical={<>
               <div className="lr-door-group">

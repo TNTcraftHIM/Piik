@@ -1822,7 +1822,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   margin: 10px auto 0;
 }
 .lr-stage-notices:empty { display: none; }
-.lr-sharing-settings { width: min(820px, 100%); margin: 0 auto; }
+.lr-sharing-settings { width: min(820px, 100%); margin: 0 auto; container: sharing-settings / inline-size; }
 .lr-sharing-panel {
   margin-top: 14px; padding: 22px; background: var(--paper);
   border: 1px solid var(--control-edge); border-radius: 24px; box-shadow: var(--control-shadow);
@@ -1851,7 +1851,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-sharing-technical > div { display: grid; gap: 18px; padding-top: 16px; }
 @keyframes lr-sharing-enter { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .lr-sharing-panel { animation: none; } }
-@media (max-width: 680px) {
+@container sharing-settings (max-width: 680px) {
   .lr-sharing-panel { padding: 16px; border-radius: 20px; }
   .lr-sharing-columns { grid-template-columns: 1fr; gap: 22px; }
   .lr-sharing-limits { grid-template-columns: 1fr; }
