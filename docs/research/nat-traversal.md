@@ -375,6 +375,27 @@ against that same endpoint pair and relay policy.
   restricted to explicitly installed Isolated Web Apps. It does not remove the
   installation requirement for an ordinary invitation page.
 
+#### Pion Renomination Preflight
+
+The current decision is not to enable automatic renomination. An isolated
+two-UDP-path control with pinned WebRTC v4.2.19/ICE v4.4.0 cut the selected socket
+after stable VP8 playback. Chromium 152 recovered video and reverse feedback
+without new SDP after about 5.6 seconds. Firefox 151.0.3 repeatedly resumed video
+after about 5.7 seconds but retained the failed outbound candidate: RTCP reception
+and echoed data stopped for the full 20-second observation while new video kept
+decoding. An explicit ICE restart on that same connection selected the surviving
+path and restored both reverse flows. The stock-ICE controls also recovered
+through restart.
+
+Both Browsers answered with only `trickle`; the enabled Pion call nevertheless
+sent the older nomination attribute. Thus receiving new frames alone cannot
+establish compatible path migration. In these fixtures, steady Binding requests
+also rose from 3 to 27-75 per five seconds, depending on interface enumeration.
+These are local transport controls, not physical-network success measurements or
+a defect in Piik's currently disabled feature. Reopen only for negotiated Browser
+support and bounded probe/recovery behavior; do not add UA exceptions, a second
+recovery loop or a Browser fork to enable this option.
+
 ### Integration Cost And Recovery Controls
 
 **Current decision: no-go for the 2.0 candidate.** This composition requires
