@@ -430,8 +430,21 @@ static void check_output_failure_isolation(gboolean post_error) {
   g_mutex_clear(&run->lock);
 }
 
+static void check_pipewire_target_identity(void) {
+  PiikPortalCapture portal = {.node_id = 42};
+  char *target = pipewire_target(&portal);
+  g_assert_cmpstr(target, ==, "path=42");
+  g_free(target);
+
+  portal.target_object = "9001";
+  target = pipewire_target(&portal);
+  g_assert_cmpstr(target, ==, "target-object=9001");
+  g_free(target);
+}
+
 int main(int argc, char **argv) {
   gst_init(&argc, &argv);
+  check_pipewire_target_identity();
   check_encoder_admission_and_control();
   check_bus_error_retains_primary_cause();
   check_slot_profiles();
