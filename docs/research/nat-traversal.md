@@ -1200,7 +1200,20 @@ rose from 39/65 to 96/122; final cumulative CPU times were 0.48/0.54 seconds and
 0.67/0.67 seconds respectively. These are bounded observations, not App budgets:
 the codec, Browser and relay run separately, and both controls link the same
 binary. Shared listeners and clients also prevent linear extrapolation to a
-room. Full App package size, sustained load and multi-peer cost remain unmeasured.
+room. A stripped Windows App build grows from 44.1 to 59.8 MiB with the isolated
+composition, using the same embedded UI and module selection. This excludes
+capture/tunnel helpers and ZIP compression. Sustained and multi-peer cost remain
+unmeasured.
+
+The isolated App overlay now installs that constructor in the actual process-level
+control factory. Its matched experimental wire identity rejects product builds,
+local CLI configuration selects the TLS bootstrap, and DERP media is disabled in
+the binary rather than by an optional environment setting. Actual Windows App
+and embedded-UI checks retain fresh decoded pixels and manual reconnect through
+ordinary ICE when the experimental bootstrap is unavailable. Two independent
+control sessions and process retirement also pass a race check. Successful
+bootstrap through the full App and a distributable test package remain open;
+these controls do not establish field success or physical capture compatibility.
 
 This composition also exposes an upstream address-lookup mismatch: Pion's
 multi-mux enumerates current child addresses but `GetConn` only consults its
