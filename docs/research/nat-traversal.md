@@ -1211,9 +1211,22 @@ local CLI configuration selects the TLS bootstrap, and DERP media is disabled in
 the binary rather than by an optional environment setting. Actual Windows App
 and embedded-UI checks retain fresh decoded pixels and manual reconnect through
 ordinary ICE when the experimental bootstrap is unavailable. Two independent
-control sessions and process retirement also pass a race check. Successful
-bootstrap through the full App and a distributable test package remain open;
-these controls do not establish field success or physical capture compatibility.
+control sessions and process retirement also pass a race check. The Linux full-App
+fixture also selects Magicsock with ordinary remote candidates withheld, renders
+generated Browser pixels through both Native sessions, and restores pictures on
+a new selected connection after manual Viewer reconnect. Closing its process-owned
+TLS bootstrap still leaves 300 new frames over ten seconds at 640x360/30, with
+changed decoded pixels; App retirement passes the race check. This is local
+integration evidence, not another reachable NAT class.
+
+A frozen Windows internal package includes the numeric-media candidate, matched
+experimental UI, helpers and notices, separate ordinary/experimental launchers
+and bilingual paired-test instructions. Final-package checks cover native discovery,
+two control sessions, unselected-origin denial, shutdown and Explorer ZIP members
+with extracted-file hashes. Its experimental launcher selects the
+[upstream public bootstrap](https://github.com/tailscale/tailcat#tailcat) for the
+future paired test; local acceptance used owned or unavailable bootstrap only.
+Physical capture, public-invitation operation and field benefit remain open.
 
 This composition also exposes an upstream address-lookup mismatch: Pion's
 multi-mux enumerates current child addresses but `GetConn` only consults its

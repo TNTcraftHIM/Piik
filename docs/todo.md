@@ -91,15 +91,14 @@ Implementation needs a concrete useful result within the product model.
   change or product transport integration is accepted; all experimental wire
   changes remain isolated. The P2P evidence work below owns network/interop
   acceptance.
-- [ ] **Small external test before 2.0.** The owner will arrange testers after
-  the internal package and paired comparison steps are ready. First use the isolated transport
+- [ ] **Small external test before 2.0.** The frozen Windows internal package and
+  paired comparison steps are ready; the owner will arrange testers. Use the isolated transport
   experiment on the same difficult network pairs as current Piik, measuring
   direct success separately from relay delivery, first-picture time, recovery
   and added resource cost. This evidence can precede other feature work.
-  A combined product test package requires room-scoped authorization/revocation,
-  mixed Browser/Native behavior and bounded recovery to pass first. Freeze and
-  identify each test build; do not describe the present Magicsock experiment as
-  a feature-complete product awaiting only acceptance. The final candidate then
+  Keep each test build frozen and identifiable. The combined local package and
+  bounded authorization/recovery evidence do not establish a feature-complete
+  product or additional real-network reachability. The final candidate then
   receives the combined feature/UI and regression check.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
   identifies UDP/storage requirements but establishes no cost saving. Keep the

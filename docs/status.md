@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-09
+Last updated: 2026-10-10
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -72,10 +72,12 @@ The [media assessment](./research/native-client-media.md#media-capability-extens
 owns local codec, derived-output, SFU, Browser/Native fanout and live-control
 evidence. macOS geometry, cross-browser/device and route-change acceptance, and
 additional codecs remain open.
-Native Magicsock remains an isolated experiment with incomplete product
-integration and unresolved recovery cases. These proposals do not yet change
-the accepted contract or transport. A small external test is proposed before
-release; publication remains subject to the owner's final acceptance.
+Native Magicsock remains an isolated experiment. Full-App local transport and
+reconnect checks pass, and a frozen Windows internal package is available for
+paired testing. Physical-network benefit, sustained recovery and supported
+dependency contracts remain open; this does not accept product integration.
+The owner will arrange external testers. Publication remains subject to final
+acceptance.
 Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns
 remaining work.
 
