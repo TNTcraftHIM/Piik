@@ -386,6 +386,16 @@ against that same endpoint pair and relay policy.
   interest does not establish interoperable product support. Evaluate only
   framework-owned negotiation and stock Browser builds, retaining authentication
   and ordinary fallback. A Browser field-trial flag is not an adoption path.
+- The July 2026 [WARP draft](https://datatracker.ietf.org/doc/html/draft-uberti-tsvwg-warp-00)
+  combines SPED, SCTP setup negotiation (SNAP) and DTLS 1.3. Its combined model
+  reduces media-and-data setup from six round trips to two; media alone starts
+  after four round trips in its baseline. These are handshake savings, not
+  evidence that previously unreachable NAT pairs connect. Pion's
+  [ICE v5 release candidate](https://github.com/pion/ice/releases/tag/v5.0.0-rc.6)
+  already contains SPED/DTLS 1.3 work, so an expired individual draft does not
+  imply abandoned implementation. Follow stable framework support and negotiated
+  stock-Browser interoperability before a latency comparison; this assessment
+  does not accept a prerelease transport upgrade or changes to ICE consent.
 
 #### Stable Pion Interoperability
 
