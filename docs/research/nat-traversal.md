@@ -1081,11 +1081,20 @@ write fail normally; the focused retirement and concurrent ICE checks pass.
 Last-receiver replacement exposes a separate recovery limit: recreating the
 client with the same key completes bootstrap but delivers no RTP within the
 unchanged five-second window. A tunnel-only generated-UDP control reproduces
-the failure without Piik or Pion; explicitly retiring the parent's peer before
-recreating the client passes. Allowing local relay data or re-advertising server
-endpoints on a known-key handshake does not repair it. The precise retained
-dependency state remains unisolated. Keep this opt-in negative control with the
-identity-scope work above; do not add a parent reset that would retire siblings.
+the failure without Piik or Pion. Keyless event counters isolate the first
+WireGuard response going to the old endpoint; the next normal handshake uses
+the new endpoint and delivers data after the original window. This is delayed
+recovery, not permanent loss. Allowing relay data or repeating endpoint
+advertisement alone does not meet the original bound.
+
+`tailcat-discovery-lifetime.patch` gives each new client engine a fresh discovery
+key while preserving its authorized node key. The authenticated meow updates an
+immutable peer snapshot, so existing Magicsock invalidation retires the cached
+path. Server discovery identity stays stable for published addresses. UDP-only
+and actual Native last-receiver replacement now pass without changing timeouts
+or resetting the parent's peer; sibling, revocation, listener and upstream
+admission checks pass under the race detector. This remains an isolated
+dependency candidate, not a supported API or a fix for duplicate relay identities.
 
 `room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
 experimental fields. It accepts the Go fixture's twelve route/restart messages,
