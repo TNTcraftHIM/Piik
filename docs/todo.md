@@ -16,13 +16,12 @@ Git/PRs own completed history.
   Prepare one coherent candidate and stop before publication. Preserve the existing
   product model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
-- [ ] **Linux Portal target identity (#470).** Review of the
-  [contributor fix](https://github.com/TNTcraftHIM/Piik/pull/470) and upstream
-  PipeWire confirms that the current fallback passes a node ID as an object
-  serial. Integrate the fix with attribution, retain serial targeting when
-  available, and use the node-ID selector otherwise. Run the Linux native
-  checks and verify a Portal that omits `pipewire-serial`; this fix is not yet
-  in the candidate.
+- [ ] **Linux Portal target identity acceptance (#470).** The
+  [contributor fix](https://github.com/TNTcraftHIM/Piik/pull/470) is integrated
+  with authorship retained: serial and node-ID targeting remain distinct.
+  Run the candidate's Linux native checks and verify a Portal that omits
+  `pipewire-serial`. Upstream source review confirms the property distinction;
+  contributor device evidence does not replace candidate acceptance.
 - [ ] **Reconcile open PRs with the final candidate.**
   [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps request and
   [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the

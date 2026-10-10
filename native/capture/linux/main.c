@@ -1136,6 +1136,13 @@ static void append_video_scale(GString *pipeline, const VideoProfile *profile) {
   g_string_append(pipeline, "pixel-aspect-ratio=1/1 ! ");
 }
 
+static char *pipewire_target(const PiikPortalCapture *portal) {
+  // target-object accepts a name or object serial; path accepts a node ID.
+  return portal->target_object != NULL
+      ? g_strdup_printf("target-object=%s", portal->target_object)
+      : g_strdup_printf("path=%u", portal->node_id);
+}
+
 static int capture_video(int count, char **values) {
   CaptureRun run = {.last_input_timestamp = GST_CLOCK_TIME_NONE};
   gboolean encoded = count > 1 && strcmp(values[1], "--encoded-video") == 0;
@@ -1168,10 +1175,14 @@ static int capture_video(int count, char **values) {
         "max-buffers=1 max-bytes=1048576 max-time=0 "
         "caps=video/x-h264,stream-format=byte-stream,alignment=au ! "
         "h264parse ! decodebin ! video/x-raw ! tee name=frames ");
-  } else g_string_append_printf(pipeline_text,
-      "pipewiresrc name=source fd=%d target-object=%s do-timestamp=true ! "
-      "videorate drop-only=true ! video/x-raw,framerate=%u/1 ! tee name=frames ",
-      portal.pipewire_fd, portal.target_object, run.profile.frame_rate);
+  } else {
+    char *target = pipewire_target(&portal);
+    g_string_append_printf(pipeline_text,
+        "pipewiresrc name=source fd=%d %s do-timestamp=true ! "
+        "videorate drop-only=true ! video/x-raw,framerate=%u/1 ! tee name=frames ",
+        portal.pipewire_fd, target, run.profile.frame_rate);
+    g_free(target);
+  }
   for (guint index = 0; index < run.output_count; ++index) {
     const VideoProfile *profile = &run.outputs[index].profile;
     g_string_append_printf(pipeline_text,
