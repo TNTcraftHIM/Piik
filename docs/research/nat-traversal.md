@@ -1202,8 +1202,7 @@ the codec, Browser and relay run separately, and both controls link the same
 binary. Shared listeners and clients also prevent linear extrapolation to a
 room. A stripped Windows App build grows from 44.1 to 59.8 MiB with the isolated
 composition, using the same embedded UI and module selection. This excludes
-capture/tunnel helpers and ZIP compression. Sustained and full-room cost remain
-open.
+capture/tunnel helpers and ZIP compression. Sustained cost remains open.
 
 The isolated App overlay now installs that constructor in the actual process-level
 control factory. Its matched experimental wire identity rejects product builds,
@@ -1230,6 +1229,13 @@ Web edges retain ordinary ICE. Both measurements include the same owned TLS
 bootstrap/STUN fixture and exclude separate Browser/codec processes. This is a
 bounded mixed-room cost and retirement check, not endurance, a 20-Viewer budget
 or a network-success comparison.
+
+A bounded full-room run with one Native and nineteen Web Viewers also retains
+changing 640x360/30 pictures: each ten-second observation advances 296–301 frames.
+The twenty-first code-only attempt receives the existing generic admission
+denial, a retained Viewer keeps receiving, and the App exits normally after
+all tabs close. The Go process peaks at 99.3 MiB RSS. These Viewers share one
+machine; this does not cover twenty Native peers or physical-network endurance.
 
 A frozen Windows internal package includes the numeric-media candidate, matched
 experimental UI, helpers and notices, separate ordinary/experimental launchers
