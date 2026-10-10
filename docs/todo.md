@@ -91,7 +91,8 @@ Implementation needs a concrete useful result within the product model.
   change or product transport integration is accepted; all experimental wire
   changes remain isolated. The P2P evidence work below owns network/interop
   acceptance.
-- [ ] **Small external test before 2.0.** First use the isolated transport
+- [ ] **Small external test before 2.0.** The owner will arrange testers after
+  the internal package and paired comparison steps are ready. First use the isolated transport
   experiment on the same difficult network pairs as current Piik, measuring
   direct success separately from relay delivery, first-picture time, recovery
   and added resource cost. This evidence can precede other feature work.

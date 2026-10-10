@@ -1184,10 +1184,23 @@ and advancing decoded pictures throughout. Final transport counts reach zero
 under the race detector. The fixture disables automatic quality tuning and
 changes advertised capacity to isolate overlapping ownership. This local synthetic
 check does not measure handoff latency, difficult-network success or tunnel selection.
-The optional composition separately passes the kernel-NAT unchanged-path control
-with zero relayed encrypted data, retaining fresh Native playback packets after DERP
-closes. This fixed-encoded-input check establishes direct transport through the
-virtual socket, not rendered App recovery or another reachable NAT class.
+The optional composition also passes the kernel-NAT real-codec controls with
+Chromium 152 and Firefox 151: unchanged paths, either endpoint's address change,
+and a short complete interruption. Ordinary Pion supplies unchanged/interruption
+controls. New blue content renders on the same track after DERP closes, with
+zero relayed encrypted data. Firefox renegotiates its local leg once when its
+endpoint moves; Chromium retains that leg. No timeout or address policy changes.
+These synthetic-source checks exercise the Native engine and Browser bridge,
+not complete App startup, physical roaming or another reachable NAT class.
+
+A non-race Chromium comparison also measures the isolated Go workers. One
+roughly 18-second, 640x360/30 connection used peak RSS of 64/65 MiB for ordinary
+sender/receiver workers and 72/72 MiB with the optional tunnel. Live goroutines
+rose from 39/65 to 96/122; final cumulative CPU times were 0.48/0.54 seconds and
+0.67/0.67 seconds respectively. These are bounded observations, not App budgets:
+the codec, Browser and relay run separately, and both controls link the same
+binary. Shared listeners and clients also prevent linear extrapolation to a
+room. Full App package size, sustained load and multi-peer cost remain unmeasured.
 
 This composition also exposes an upstream address-lookup mismatch: Pion's
 multi-mux enumerates current child addresses but `GetConn` only consults its
