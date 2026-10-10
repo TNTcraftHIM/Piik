@@ -125,9 +125,6 @@ gboolean piik_portal_capture_open(const char *restore_token,
     piik_portal_capture_close(capture);
     return FALSE;
   }
-  if (capture->target_object == NULL) {
-    capture->target_object = g_strdup_printf("%u", capture->node_id);
-  }
   capture->restore_token = xdp_session_get_restore_token(capture->session);
   return TRUE;
 }
