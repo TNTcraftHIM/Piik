@@ -414,8 +414,8 @@ packets drain in two seconds. The upstream unthrottled writer drains the same
 input once the writer resumes. A separate real Windows VP8 codec and
 Native forwarding control reproduces stale decoded pictures after roughly one
 second of ordinary UDP loss; the packet-count cap alone does not prevent this.
-The [Native transport experiment](./nat-traversal.md#integration-cost-and-recovery-controls)
-owns the decoded-picture and address-change boundary.
+The [ordinary media controls](./nat-traversal.md#recovery-ownership-and-forwarding)
+retain the decoded-picture and address-change evidence boundary.
 
 Congestion callbacks could also promote the estimator's unmeasured 100 Mbps
 initial capacity while a probe was pending. Congestion now only reduces the

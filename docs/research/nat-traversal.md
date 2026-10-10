@@ -336,13 +336,8 @@ hold endpoint pairs, NAT/filtering, IPv6, network transitions and relay policy
 constant, measuring direct success, relay use and first media separately.
 No new transport or universal success-rate claim is accepted by this review.
 
-The initial Go control carried Pion ICE/DTLS/SRTP over magicsock and delivered
-fresh media after both UDP endpoints changed without new SDP. Loopback and
-separate address-and-port-filtering NATs passed five race repetitions. The
-fixture supplied peer identities and endpoint updates; it did not prove automatic
-OS network-change detection, decoded playback or real-router behavior. Its
-seven-pair direct matrix matched Pion within four-second windows. Go reuse is
-feasible; product integration and network benefit require the controls below.
+The [retired Go experiment](#integration-cost-and-recovery-controls) establishes
+reuse feasibility and its cost, not a Browser-compatible reachability gain.
 
 ### Browser-Compatible Follow-Up
 
@@ -456,941 +451,191 @@ recovery loop or a Browser fork to enable this option.
 **Current decision: no-go for the 2.0 candidate.** This composition requires
 Native App transport at both ends of the enhanced edge. An App Host with a plain
 Browser Viewer still uses ordinary WebRTC; mixed relaying does not enhance that
-Browser edge. The owner therefore stopped integration and field-package work.
-Retain the isolated evidence, not a product dependency or a promised feature.
-Independently verified ordinary ICE/media repairs remain useful without this
-stack. Reopen only for a concrete Browser-compatible benefit or an explicitly
-accepted App-only scope; no additional reachable NAT class has been established.
+Browser edge. The owner stopped integration and field-package work. Reopen only
+for a concrete Browser-compatible benefit or an explicitly accepted App-only
+scope. The controls established no additional reachable NAT class.
 
-The isolated `spike/magicsock-assessment` branch retains the comparison probes.
-The nested modules are outside Piik's build. Local bootstrap, peer denial and
-synthetic SRTP media checks passed. Initial withdrawal checks observed stopped
-outbound media; the stronger authorization checks below found revocation defects.
-The raw magicsock direct-path matrix found the same reachable classes as fresh
-Pion ICE. Retired mapping-cache reproductions remain controls, not the baseline.
+The isolated experiment remains at `d67f0d6d` on
+`spike/magicsock-assessment`, outside Piik's production dependency graph.
+`git show d67f0d6d:scripts/tailcat-probe/README.md` retrieves its commands,
+fixture boundaries and opt-in dependency patches. The complete experimental
+observations remain in `git show 82e3f253:docs/research/nat-traversal.md`.
+Its internal package is retired, not a current 2.0 test deliverable.
 
-[Tailcat](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/README.md)
-provides an upstream Go reuse candidate: magicsock plus WireGuard, with DERP bootstrap
-and relay fallback. Its Browser path at that pin is relay-only. Tailscale's open
-[Browser P2P proposal](https://github.com/tailscale/tailscale/issues/21027) uses
-WebRTC because the Browser cannot expose raw UDP; it is not an implemented
-Browser Magicsock hole-puncher. In the isolated
-Linux kernel NAT comparison on 2026-10-05, both stacks connected directly through
-ordinary/ordinary and open/hard gateways in either direction. Neither delivered
-fresh direct payloads through ordinary/hard, hard/ordinary, hard/hard or blocked
-UDP pairs within the observation window. Tailcat delivered those cases while
-the fixture relay remained available. This demonstrates relay coverage, not
-an additional P2P reachability class or a field success rate.
+#### Reachability And Cost
 
-Relay policy remains a separate integration boundary. Tailcat's documented
-fallback may carry media through DERP during startup or recovery. Closing DERP
-or counting its packets in a fixture measures the path; neither enforces Piik's
-product policy. The reviewed Tailcat API does not expose a direct-only media
-policy that retains discovery. Disabling DERP also removes bootstrap/endpoint
-exchange, and polling a direct-path status cannot authorize each later packet.
+The October 5-10, 2026 controls used
+[Tailcat](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/README.md):
+Magicsock/WireGuard with DERP bootstrap and relay fallback. Its Browser path at
+that pin is relay-only. Tailscale's
+[Browser P2P proposal](https://github.com/tailscale/tailscale/issues/21027)
+uses WebRTC; it is not an implemented Browser Magicsock hole-puncher.
 
-An isolated packet-policy overlay separates discovery and fixed
-[WireGuard handshake messages](https://www.wireguard.com/protocol/#key-exchange-and-data-packets)
-from encapsulated data. Blocked UDP carries no media; a relay-allowed peer's
-incoming data is also rejected. Removing either direction's guard fails its
-corresponding control. The ordinary-NAT Pion fixture delivered fresh direct SRTP
-in an initial run but failed cold startup on a repeat, so it is not a passing
-acceptance gate.
-The relay counts encrypted data envelopes without recording keys or payloads;
-ordinary relay delivery validates that counter. The stricter variant that also
-blocks WireGuard handshakes leaves inner ICE connecting without media after
-20 seconds, even after the outer endpoint is known. Native control replacement,
-sibling continuity and final retirement pass with the media-only restriction
-on loopback. These checks do not establish Native startup through NAT.
-
-Without another preparation step, the complete Native Engine/receiver/playback
-fixture also fails cold startup through ordinary kernel NAT with this restriction,
-before any address move. Its relay-allowed control passes and retains fresh
-playback after DERP closes.
-Discovery traces show one direction's initial ping unanswered: one endpoint
-confirms direct access promptly, while the other confirms it around six seconds
-later. Native's eight initial ICE writes end around 1.4 seconds; a pending UDP
-flow may still be unaccepted then. The late direct path does not revive that
-exhausted generation. The late side can be either endpoint. A one-shot supported
-`Client.DiscoPing` before ICE returns the relay result in milliseconds and does
-not fix startup. Diagnostic replies and successful key admission therefore
-cannot stand in for bidirectional transport preparation.
-
-The producer/consumer review identifies a bootstrap contract mismatch:
-[Tailcat's initial endpoint advertisement](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/tailcat.go#L1570)
-uses CallMeMaybe without first sending direct UDP, while
-[magicsock's receiver](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/wgengine/magicsock/endpoint.go#L2146)
-assumes that send has already opened the peer's stateful firewall. A dependency
-candidate follows pings to newly learned endpoints with the existing endpoint
-advertisement. Identical advertisements do not cause another reply, and no
-timer, retry count or cryptographic check changes.
-
-With that candidate, three fresh Pion starts deliver direct SRTP within
-68–87 ms of their observation start; blocked-UDP and incoming-relay controls
-still enforce the media policy. The real Windows VP8 encoder, Native receiver
-and actual Chromium/Firefox bridge also retain fresh decoded pictures through
-both local-address handoff directions and subsequent DERP closure, within the
-unchanged observation bound. The Native fixture counts relayed data from before
-bootstrap, not only after direct-path discovery. These are isolated, generated-
-media checks; full App/room integration and physical networks remain open.
-
-A separate TCP preparation control restored startup at about seven seconds of
-extra cost but exceeded the spare time in the full handoff check. That extra
-flow is not retained; the library bootstrap candidate supersedes it. Fixed-frame
-or bare-Pion playback controls still expose the separate encoder and local-bridge
-boundaries described below.
-
-Authentication, key handling, retry timers and Pion budgets remain unchanged.
-The experiment narrows the missing direct-media preparation contract; it is not
-a supported upstream option, passing adoption gate or improvement to
-direct NAT reachability. Product adoption must preserve site/share policy,
-including P2P-only and SFU-only rooms, without silently adding another relay.
-
-Replacing one gateway mapping without notifying endpoints separated recovery
-from initial reachability. Neither established direct path delivered within
-20 seconds with the relay closed. Fresh Pion discovery/exchange recovered in
-about 0.6 seconds after it was started. Tailcat recovered delivery in about
-6.5 seconds through its retained relay; closing it immediately lost delivery
-again. Keeping traffic and discovery alive for 45 seconds allowed subsequent
-direct delivery after relay closure. Both gateway directions were checked.
-These timings have different detection/setup boundaries and are not a Piik
-startup or playback benchmark.
-
-The raw Bind adapter also has a composition cost: it consumes unwrapped STUN
-payloads, and its discovery retry can outlive Pion's initial check budget.
-Dropping the first discovery packet in each direction reproduced that failure;
-increasing only the fixture's ICE budget recovered media. The ordinary Pion
-loss control recovered without that override. Do not adopt packet prefixes,
-diagnostic Ping polling or wider product deadlines as integration shortcuts.
-
-Keep product integration conditional on a repeatable benefit on matched networks,
-with direct coverage, relay coverage, recovery and first picture measured
-separately. Go feasibility alone does not establish that benefit. The actual
-Native-engine controls below cover gateway mapping, prediction and IPv6;
-physical routers and the full mixed Piik topology remain outside the comparison.
-
-### Isolated Connection-Layer Acceptance
-
-The 2026-10-07 experiment through `f0ca8056` keeps Pion's ICE/DTLS/SRTP over
-Tailcat. Each physical connection owns a virtual UDP tuple and mux; its one-shot
-listener retires after admission. Connections to one authorized peer may share
-the tunnel. Closing or aborting one flow preserves healthy siblings. Initial
-revocation checks stopped outbound media and denied a fresh client; they did not
-prove that the old client's inbound traffic was rejected. These checks do not
-implement Piik room grants or endpoint exchange.
-
-Repeated lifecycle and Linux race checks cover overlapping media preparation,
-rollback, replacement, canceled preparation followed by retry, bounded datagrams
-and blocked-reader retirement. A 350 ms interruption of one flow preserved its
-sibling and recovered without replacing SDP. Piik's actual encoded source,
-LiveKit forwarder and pacer also carried a small VP8/Opus fixture over ordinary
-Pion and Tailcat, including TWCC and keyframe requests. Tailcat recovered an
-injected missing video packet through existing NACK handling after DERP closed.
-This is forwarding evidence, not throughput or room-controller acceptance.
-
-A 2026-10-09 inbound-only control found that opening or closing an unrelated
-Tailcat listener discards an accepted UDP flow's filter state. The unchanged
-control passes; both listener changes stop delivery. Continuous outbound media
-can recreate the reverse-flow entry, explaining why bidirectional checks alone
-miss this boundary. The isolated repair passes the previous filter to Tailscale's
-[existing shared-state API](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/wgengine/filter/filter.go#L218).
-Three race repetitions, the copied Tailcat listener suite and the combined
-revocation/isolation controls pass. The patch remains experimental; it neither
-changes Piik nor fixes the independent inner-ICE recovery failure below.
-
-Real Browser controls forward generated H.264/Opus and VP8/Opus through Browser
-WebRTC → Pion/Tailcat/Pion → Browser WebRTC without re-encoding. Both decode at
-640×360 and, with the combined dependency candidate, 1920×1080. The larger input
-requests 60 fps with a 6 Mbps ceiling and fixed dimensions; actual encoding
-cadence varies, so it establishes neither 1080p60 delivery nor a throughput
-advantage. Fresh picture/audio arrive in each two-second window across eight
-seconds after DERP closure and stop after revocation. At about 3.6–4.3 Mbps,
-reported RTP loss is zero and the largest Tailcat datagram is 1208 bytes, with
-no size rejection. This does not bound all RTCP workloads or establish physical
-capture, Browser-native Magicsock or complete Piik relay interoperability.
-
-The 1200-byte Native packetization envelope with TWCC and short MID/RID headers
-produced at most 1228-byte encrypted datagrams across Pion's three default SRTP
-profiles. Only four bytes remain below Tailcat's 1232-byte ceiling; larger
-headers and maximum compound RTCP remain integration checks. The small actual
-forwarder fixture does not establish those limits.
-
-A feedback control found a concrete mismatch: Pion's TWCC recorder generated
-a 1244-byte encrypted report and a 1268-byte compound batch. Ordinary Pion
-delivered both; the bounded adapter rejected them, and unwrapped Tailcat did
-not deliver either within two seconds. A 1144-byte report arrived before and
-after. Windows and Linux race checks repeated this result three times each.
-Pion ICE treats non-close socket write errors as packet loss, so `WriteRTCP`
-returning no error did not prove delivery. This does not establish how often
-Piik would produce these batches. Tailcat's
-[documented payload bound](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/tailcat.go#L574)
-needs a supported feedback-size boundary before integration; reducing RTP
-packetization alone does not bound RTCP. No product transport or custom packet
-fragmentation was added for this check.
-The related [Pion feedback-MTU report](https://github.com/pion/interceptor/issues/416)
-remains open as of 2026-10-07. Its out-of-order packet evidence does not establish
-the cause of any Piik field report; the pinned recorder has no byte-size option.
-
-A 2026-10-08 reordering control flushed twelve 100-arrival reports, then supplied
-one delayed packet. The recorder included already reported history and generated
-a 1248-byte encrypted report from that one new arrival. Shortening the feedback
-interval alone cannot bound its size. Windows and three Linux race repetitions
-passed the reproduction. The latest tagged
-[interceptor v0.1.49 recorder](https://github.com/pion/interceptor/blob/v0.1.49/pkg/twcc/twcc.go)
-is byte-identical to the pinned recorder; Tailcat's
-[October 7 revision](https://github.com/tailscale/tailcat/blob/52fbad323e9d352f1febb623e0975368e9a8cbdd/tailcat.go#L574) retains
-the same payload limit and Tailscale dependency. A dependency bump does not
-supply the missing per-report and compound-batch size boundary.
-
-A local upstream-layer repair candidate now bounds TWCC reports through the
-existing recorder split loop and sends them separately before encryption. Its
-fixed 1200-byte plaintext budget is experimental, not a supported upstream
-option. Unit checks preserve loss, reordered history, wrapped sequence numbers
-and arrival times; restoring either old recorder or writer fails its regression
-check. A real interceptor-to-Tailcat control delivered all 1500 statuses in two
-reports after DERP closed, with a largest encrypted datagram of 1212 bytes.
-Windows and three Linux race repetitions passed, as did the upstream TWCC suite
-with the candidate. The isolated probe retains the opt-in patch and reproduction;
-production dependencies are unchanged. This narrows one integration obstacle,
-not the missing direct-reachability benefit or a supported upstream MTU contract.
-
-The current Go feedback paths were also traced end to end. Pion's default NACK
-generator retains a 512-packet window and writes one report per media SSRC;
-a full-loss/wrapped-gap control with two SSRCs stays within 156 encrypted bytes.
-Normal sender/receiver reports are written separately per stream. Piik's SFU
-ingress callback forwards only PLI/FIR, and LiveKit's reachable XR response contains one
-DLRR block. No additional oversized producer was found in these paths; this
-does not bound arbitrary caller-created RTCP batches or future configurations.
-
-Kernel queue controls compare established Pion and Tailcat SRTP under delay,
-jitter, 5% loss and reordering with DERP closed. Both retained their session and
-resumed after a 350 ms blackout in three race repetitions, and after a separate
-nine-second blackout. Fresh tags and unique sequences exclude queued/duplicate
-success. These are bounded recovery checks, not decoded quality or field coverage.
-
-Kernel gateway rebinding retained full WebRTC: DERP restored fresh media in about
-6.4–6.5 seconds and ICE `connected` in 7.1–8.1 seconds, without new SDP. Its recorded
-disconnected interval was about two seconds, inside Piik's three-second grace;
-the nine-second blackout reached about four seconds disconnected. Actual Native
-Viewer-owner replays cancel grace or request one restart, clear recovery on
-connection and retain the receiver. They mock App events, so do not exercise the
-restart exchange over Tailcat or prove full integration. With DERP closed, neither
-gateway direction recovered within 20 seconds. Fresh media, ICE state and a
-unilateral direct address are separate facts. Underlay setup must fit the existing
-operation deadline. Local cold setup of about 3.3 seconds for Tailcat versus 0.2
-seconds for Pion disabled STUN/gateway mapping; it is not a WAN startup comparison.
-
-Actual ICE-restart controls on 2026-10-08 exposed a composition failure.
-After a nine-second kernel blackout, ordinary Pion resumed media, but default
-Tailcat sometimes exhausted eight inner Binding requests before outer discovery
-recovered about 2.4 seconds after restoration. Pion's
-[candidate-pair check budget](https://github.com/pion/ice/blob/v4.4.0/agent.go#L790)
-and Magicsock's
-[rate-limited discovery](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/wgengine/magicsock/endpoint.go#L1421)
-are independent: outer recovery does not restart exhausted inner checks.
-Keeping the accepted listener open did not help; a new ICE generation after
-underlay recovery delivered three fresh packets in about 63 ms. This distinguishes
-check scheduling from permanently retired resources. The isolated authorization
-and feedback patches retain this failure.
-
-The following counterfactuals preserve sockets, keys and NAT mappings. Unless
-noted, recovery starts after network restoration; none runs Piik's complete
-disconnect-grace, restart and rebuild schedule.
-
-| Tailcat recovery control | Observation |
+| Controlled question | Result and boundary |
 | --- | --- |
-| Increase only the fixture's Binding request budget to 64 | Media recovered in about 1.9 seconds inside the fixture's eight-second window. This does not accept a product timeout change. |
-| 16 Binding requests, three-second recovery window | Nine-second blackout recovered in about 1.9 seconds across three default-library repetitions; eleven seconds did not recover in budget. Other checked phases reached about 2.9 seconds. The authorization/feedback candidate reproduced both outcomes. |
-| One client-side `DiscoPing` before default-Pion restart | Failures remained even after a diagnostic reply; that reply does not prove bidirectional encrypted media readiness. |
-| One probe on each side before default-Pion restart | Nine- and eleven-second blackouts recovered in three race-detector repetitions, including both probes and SDP exchange inside three seconds. This requires an isolated, unsupported Server hook. |
-| Same bilateral probe begins while the network is still down | After eight seconds of blackout, restoration one or two seconds into the probe still left it waiting until its three-second deadline in repeated race checks. Post-restoration controls continued to pass. |
-| Lost bilateral probes, retain the existing media connection | In six race checks, both probes expired while WebRTC was already connected; a subsequent observation received fresh SRTP without new SDP, sockets or credentials. The separate three-second observation is not a product recovery extension. |
-| New flow confirms encrypted UDP in both directions before inner ICE | With the listener-state repair and actual Viewer owner, one of four nine-/eleven-second controls recovered; three timed out in the existing three-second preparation, before SDP. The bounded fixture echo changes where waiting occurs, not the underlying recovery limit. |
+| Does it reach more NAT classes than fresh ordinary ICE? | In the initial kernel-NAT matrix without a usable gateway mapping, both connected directly through ordinary/ordinary and open/hard gateways in either direction. Neither established direct media through the other tested hard/blocked combinations within the observation windows. DERP delivered otherwise unreachable cases, establishing relay coverage rather than additional P2P coverage. |
+| Does network-change handling help? | Some local-address changes recovered on the same session without new SDP. Gateway-only rebinding and longer interruptions had separate discovery/recovery failures. These results do not establish physical roaming, a universal recovery improvement or increased initial reachability. |
+| Does it coexist with ordinary ICE? | An isolated optional multi-mux composition retained ordinary media with bootstrap unavailable and used a delayed tunnel candidate when needed. It required dependency patches and readiness/cancellation integration; it is not a supported plug-in. |
+| What is the bounded cost? | Matched stripped Windows App builds grew from 44.1 to 59.8 MiB. A local four-Viewer full-App comparison peaked at 81.8/93.2 MiB RSS for ordinary/optional modes; final goroutines returned to the same baseline. Codec and Browser processes were separate. These are not sustained or per-room budgets. |
 
-These controls limit the bilateral proposal: a
-[`DiscoPing` call](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/tailcat.go#L2258)
-waits for its own diagnostic reply, not an ongoing connection-readiness event.
-Later network restoration cannot guarantee that a lost probe completes.
-The earlier passing phase therefore does not establish a universal recovery
-barrier, and probe expiry does not establish media failure or justify replacing
-healthy media. These controls use fixture SDP exchange; they do not diagnose the
-product's Trickle ICE or an existing user's failure.
+Closing DERP removes endpoint exchange as well as relay media. Later controls
+therefore retained discovery and counted encrypted relay traffic separately;
+a selected direct address alone was insufficient. Tests required fresh media
+and either no relayed data or continued delivery after relay closure. The
+Native mapping, prediction and dual-stack controls are retained
+[below](#gateway-and-address-family-controls).
 
-Manually phased replacement controls give ICE restart and inner-flow replacement
-three seconds each, retaining the tunnel, outer mappings and default Pion checks.
-Post-restoration controls pass after eight-, nine- and eleven-second blackouts;
-two Tailcat controls starting before restoration also pass two further race
-repetitions. These windows are stricter than a replacement receiver's actual
-15-second initial-connection deadline, not a reproduction of the Viewer schedule.
-A bounded repeated fixture preface prevents a lost first UDP packet from blocking
-listener acceptance before ICE. It is not product signaling or media-health proof.
+#### Integration Boundaries
 
-A separate fixture feeds kernel connection states into the actual
-`NativeCapableViewerPeer`. Each rebuild gets a new connection ID, as in the
-product, while preserving the parent's recovery budget. Renewing that budget
-on replacement hid the nine-second outage: three repetitions recovered only
-after a third automatic request, outside the two-request contract. The corrected
-owner and fixture retain the count across Native and Browser backend replacement.
+The experimental composition exposed costs that a future adoption must address
+without another retry owner, timeout extension or silent relay policy change:
 
-The actual-owner fixture now supports incremental SDP/candidate exchange,
-matching Piik's [Trickle ICE generation boundary](https://www.rfc-editor.org/rfc/rfc8838.html#section-13).
-With this enabled, ordinary Pion recovers two-, nine- and eleven-second outages
-in three runs each. Without it, the same eleven-second control still fails at
-the fixture's three-second gathering barrier while the network is unavailable.
-That negative control is a fixture limitation, not a product defect.
+- **Relay policy:** the reviewed upstream API has no direct-only media policy
+  retaining discovery. An isolated overlay filtered encrypted data in both
+  directions while allowing discovery/handshakes. This is not an accepted
+  product mechanism; disabled UDP must not silently become DERP media.
+- **Startup and recovery:** outer discovery can outlast the inner ICE check
+  budget. A diagnostic `DiscoPing` reply did not prove bidirectional media
+  readiness. Experiments with more checks, extra prefaces and readiness probes
+  did not establish a universal fix. Initial advertisement also needed an
+  isolated dependency correction to send direct probes before relying on the
+  peer's stateful firewall. Ordinary ICE must remain independently usable.
+- **Datagram bounds:** Tailcat's reviewed payload ceiling is 1232 bytes. Actual
+  encrypted TWCC reports reached 1244 bytes, with compound batches larger still;
+  ordinary Pion delivered them while the tunnel did not. A delayed packet could
+  grow a report despite a shorter feedback interval. The isolated recorder/writer
+  split preserves statuses, but is not a supported upstream option. The
+  [feedback-MTU issue](https://github.com/pion/interceptor/issues/416) and recorded
+  dependency patches own this finding; reducing RTP size alone is insufficient.
+- **Authorization:** the pinned Tailcat/WireGuard composition could retain a
+  revoked inbound peer or install it from a late authorization result. Scoped
+  experimental corrections passed revocation, unrelated-peer, sibling-media
+  and race controls. Piik's production transport does not use these dependencies;
+  the result is an adoption requirement, not a published Piik defect.
+- **Flow ownership:** unrelated listener changes could discard an existing
+  inbound filter entry. Duplicate client identities could collide at DERP;
+  close-before-initialization was not terminal. Isolated repairs preserved
+  filter state, used fresh parent-bound clients and joined canceled creation.
+  New media flows must retire through their existing connection owner.
+- **Optional candidate lifecycle:** stock multi-mux construction and supported
+  dialing do not independently provide the required delayed socket admission.
+  A private reservation API plus the existing candidate collector kept ordinary
+  ICE independent, advertised the tunnel only when ready, fenced cancellation
+  and delayed end-of-candidates. Its multi-mux also needed a correction for
+  newly enumerated child addresses. These remain experimental dependency changes.
 
-In the matched Trickle run with the isolated listener-state repair, Tailcat
-recovers two- and seven-second interruptions. Nine- and eleven-second outages
-exhaust recovery: the replacement sends eight inner Binding checks, receives
-none, and delivers no fresh SRTP during its initial deadline or a separate
-three-second observation after exhaustion. Both 16-check cases pass; one
-64-check replacement instead fails before SDP while awaiting its inner flow.
-Permanent loss exhausts the existing budget and disposal cancels recovery.
-No observation grants another attempt or extends a deadline. Native control
-and local decoding remain stubs, and events are sampled within 100 ms. These
-limits prevent claiming full App integration or diagnosing a field failure;
-the composition gap remains an adoption concern.
+#### Scope Of The Retained Evidence
 
-Bounded anonymous traces further localize two Tailcat encrypted-echo failures.
-The replacement flow is accepted and its client preface read at the server,
-but the reverse read expires after three seconds before SDP. The server selects
-its direct path near the end of that window; the client has selected its path
-about two seconds earlier. No filter-drop event was observed, which is not
-packet-delivery proof. Other timing phases recover. This supports a directional
-underlay scheduling limit; it does not establish a new authorization defect,
-a safe readiness barrier, or a reason to widen product deadlines.
+The isolated overlays exercised real Pion/LiveKit forwarding, H264/VP8 and Opus,
+Browser decoding, Native control and room authorization. Bounded rendered checks
+covered reconnect, invitation revocation, overlapping parent replacement,
+healthy siblings, denial at the room capacity limit and final resource cleanup.
+Generated changing pixels distinguished fresh output from retained frames.
+The final full-App controls could select the tunnel with ordinary remote
+candidates withheld, while ordinary Web edges retained ICE.
 
-Varying the existing [Pion Binding-request setting](https://github.com/pion/webrtc/blob/v4.2.19/settingengine.go#L506)
-can bridge a discovery delay, but repeated controls also fail before SDP during
-new-flow setup. Paired counters separately show the server receiving inner STUN
-while the client receives none. More checks cannot repair every setup failure;
-neither a new readiness owner nor a longer product deadline is accepted.
+Those checks established local composition and ownership behavior. They did
+not establish physical capture, difficult-network benefit, broad mobile support
+or sustained field reliability. The experiment's detailed intermediate controls,
+failed counterfactuals and package evidence remain in Git rather than this
+candidate's work ledger. Independent ordinary-media findings are retained here
+and in their existing owners.
 
-A retained-flow counterfactual reuses Pion's existing
-[UDP mux](https://github.com/pion/ice/blob/v4.4.0/udp_mux.go) after closing the old
-PeerConnection. It keeps the accepted Tailcat flow and replaces ICE/DTLS/SRTP,
-without another listener or preparation exchange. Setup falls from about 913 ms
-to 11–20 ms. Nine-/eleven-second recovery passes three of six default-check
-cases, four of six with 16 checks and six of six with 64. Removing flow creation
-alone therefore does not resolve recovery. Combined listener/revocation/TWCC
-patches pass Linux race checks for 64-check recovery, bounded exhaustion,
-retirement and sibling audio/video through serial replacements and rollback.
-Overlapping connections still use separate flows, and revocation stops both.
-This counterfactual does not accept retained flow as a product owner; the fresh
-flow alternative below avoids that extra lifetime.
+## Ordinary ICE And Media Recovery
 
-A preface-free alternative uses Tailcat's existing
-[UDP listener](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/listen.go)
-to reserve the address before SDP, allowing ICE to supply the first authenticated
-datagram. Each replacement owns a fresh flow; no old mux survives it. An
-unaccepted write returns a socket error instead of blocking ICE's event loop.
-In the combined dependency candidate, 64-check nine-/eleven-second controls
-each pass two Linux race repetitions under the actual Viewer owner. Setup takes
-12–15 ms; fresh media returns at about 14.2 seconds from blackout onset, within
-the unchanged two-request and initial-connection budgets. Permanent loss still
-exhausts recovery, and retirement closes pending work. Local race controls cover
-mutable deadlines, closing during ICE, peer rejection and continuous sibling
-audio/video. Default inner checks still fail in these restart-then-rebuild controls.
-This removes the fixture-preface and retained-flow lifetime requirements; it
-does not accept a product Binding limit, implement room grants or establish
-full App recovery acceptance of this alternative.
+These findings apply without Magicsock. They must remain part of candidate
+acceptance independently of the retired experiment.
 
-The sender's [restart capability](../standards/routing-transport.md#reconciliation)
-changes that schedule. Modeling the current Native sender's first-request
-replacement under the same Viewer owner on 2026-10-10, default checks recover both
-nine- and eleven-second outages at about 23.3 seconds after two replacements. Their first
-replacement still exhausts eight checks; the second starts after its existing
-15-second initial deadline. With 64 checks, these controls recover after one
-replacement at about 12.2 and 15.3 seconds respectively. Permanent loss exhausts
-two replacements at about 38.3 seconds, and disposal cancels pending recovery.
-This narrows the earlier failure claim to its tested sender behavior; it is not a universal Native failure
-or an accepted product tuning. Native control and decoding remain stubbed in
-this owner fixture, distinct from the decoded handoff checks below.
+### Interface Refresh And Local Browser Bridge
 
-Separate checks preserve continuous sibling audio/video through a local ICE
-restart, failed-flow retirement, both callers' pending cancellation/deadline,
-revocation during a Server probe and unknown-peer rejection. Canceling a probe
-ends the caller's wait, not upstream packets: existing five-second discovery and
-ten-second TSMP timers bound callback retention. These local checks do not prove
-impaired-network recovery.
+The local restart control reproduced an address-cache defect: Pion ICE v4.4.0's
+[wildcard UDP mux](https://github.com/pion/ice/blob/v4.4.0/udp_mux.go) retained its
+own `stdnet.Net` interface snapshot across gatherings. After an interface address
+changed, both ICE restart and a new SFU connection sharing that mux could
+advertise the removed address. The shared mux now takes a private current
+snapshot when gathering. Socket identity and Pion's candidate filters remain;
+no monitor or timer is added. The regression covers both restart and a new
+connection, and restoring the former constructor fails on the stale candidate.
+The [stable Pion update](#stable-pion-interoperability) still needs this adapter.
 
-The opt-in experiment retains the failing single-restart and blocking-probe
-assertions. It is not an all-green acceptance gate or a supported adapter. Do not
-widen product timeouts or add diagnostic Ping polling to hide these failures.
-Room-authorized integration and the complete recovery lifecycle remain unverified.
-
-A discovery-retained control on 2026-10-08 addresses a limit of closing DERP:
-closure also removes its endpoint exchange. The upstream relay's packet-class
-counters distinguish discovery from WireGuard traffic. A 500 ms window with
-connected WebRTC, at least three fresh tagged SRTP packets and no non-discovery
-relay packets proves direct media while keeping endpoint exchange available.
-Ordinary NAT passes that proof; blocked UDP correctly remains relay-only. Both
-orientations of the hard-NAT pair deliver through DERP without a proved direct
-window in 20 seconds. After either gateway mapping changes, media returns in
-about six seconds. Default-library repetitions do not prove direct recovery in
-20 seconds. The combined isolated candidate proves it once per direction at
-about 17 seconds, but neither of two further repetitions per direction does.
-This variation does not establish a repeatable candidate advantage or an extra
-reachable class. The control makes no explicit rediscovery call; its passing
-result validates the measurement and available-media baseline, not universal
-direct recovery. It does not run Piik's complete reconnect schedule.
-
-An actual local-address-change control on 2026-10-09 replaces one endpoint's
-IPv4 address, default route and public UDP mapping, allowing upstream network
-monitoring to react. Discovery stays available, without an explicit endpoint
-update or diagnostic Ping. With Piik's unchanged Viewer recovery owner and
-Trickle exchange, three repetitions per direction preserve Tailcat's same media
-session: direct delivery returns in 1.25–6.40 seconds with no owner restart.
-Both default inner checks and the isolated 64-check candidate pass this control.
-The ordinary Pion comparison requests one ICE restart and returns direct media
-in 9.14–9.24 seconds. Relay accounting separates first available media from
-direct delivery; another two seconds of fresh SRTP after DERP closes confirms it.
-
-The actual Native Engine's wildcard UDP socket is a separate baseline: both
-directions stop delivering after the address change without new SDP, and fresh
-Native discovery restores local playback on that same changed network. This
-avoids attributing only Pion's default per-interface socket behavior to Piik.
-These controls establish a bounded address-handoff benefit, not an additional
-initial NAT-reachability class, physical Wi-Fi roaming or complete App/decoder
-acceptance. They do not resolve the gateway-only or prolonged-outage controls
-above. Supported dependencies, room grants and representative network evidence
-remain prerequisites for product adoption.
-
-The remote-socket overlay extends that comparison through the actual Native
-encoded source, sender, receiver and local playback. It leaves product files
-untouched and binds the supplied socket to each connection-creation request.
-Its fixed 8×8 input exposes forwarding pauses but cannot establish live encoder
-recovery; declaring those fixed bytes rate-controlled is only an ablation.
-The fixed-frame Viewer-address handoff pauses with both the former and current
-socket adapters, including a matched control with isolated loopback playback.
-Under that same playback isolation, the real Windows VP8/FFmpeg control passes
-with the current adapter in all three checked cases: ordinary unchanged, source
-address change and Viewer address change. These controls separate the adapter
-change from the fixed-input recovery failure; they do not establish its complete
-cause or justify relaxing media acceptance.
-
-The live control instead uses the Windows VP8 helper, Native output-plan owner
-and final FFmpeg decode. The top quarter of the input changes from red to blue
-after DERP closure, so buffered pictures cannot satisfy fresh-content acceptance.
-About one second of ordinary UDP loss can leave the former pacer sending old
-video from a queue of hundreds of packets. DownTrack frame counts precede actual
-paced writes and cannot prove delivery. The shared media assessment owns the
-[pacing comparison](./node-local-media-design.md#send-queue-recovery);
-it must pass constrained-bandwidth recovery as well as this short-loss control.
-
-Viewer address changes expose a separate confound: same-machine playback can
-select a LAN address that the experiment then removes. Restricting only the
-fixture receiver to loopback separates that leg from the remote underlay.
-With this control and the upstream default send queue, all six cases pass:
-unchanged ordinary/Tailcat paths, both address-change directions, and short
-ordinary/Tailcat loss. Each retains decoded fresh pictures in every post-DERP
-sample. These passes do not accept the default local-playback path or the
-complete App. Verify its Browser bridge
-and existing recovery owner before adopting a local-address policy.
-No additional NAT-reachability class, physical capture result or product
-Magicsock integration follows from these controls.
-
-A same-machine Windows Browser control rejects forcing the product bridge to
-loopback. Chrome 154 decodes from a Native sender bound to `127.0.0.1`, but
-Firefox 155 fails that connection; the same Firefox fixture decodes with the
-current wildcard bind and a non-loopback selected pair. Mozilla also keeps
+Forcing the same-machine Browser bridge to loopback is not a portable solution.
+A Windows control decoded through `127.0.0.1` in Chrome 154 but failed in
+Firefox 155; Firefox decoded using the current wildcard bind and a non-loopback
+pair. Mozilla keeps
 [ICE loopback disabled by default](https://searchfox.org/firefox-main/source/modules/libpref/init/all.js).
-These controls establish a compatibility limit, not its complete Browser cause
-or public-Site permission behavior. Keep the current address policy. A terminal
-local-bridge failure ends the Host share or delegates Viewer recovery to its
-existing connection owner.
+These observations establish a compatibility limit, not every Browser permission
+or public-Site behavior. Keep the existing address policy.
 
-Before local-bridge recovery, complete App UI controls on 2026-10-10 confirmed
-this distinction in a disposable Linux network namespace, with automatic
-topology optimization disabled and no
-product source changes. Chromium 152 retains its loopback playback connection
-when the namespace's LAN address changes. Firefox 151 selects that LAN address:
-the Viewer resumes decoded pictures through the existing Browser fallback after
-the local connection fails, roughly 30 seconds later. A Firefox Host instead
-ends sharing on that preview failure, including a still-delivering downstream
-connection; the Chromium Host control continues. The Host source is generated
-VP8 delivered through the real capture-process interface, not physical capture.
-Acceptance checks fresh rendered frames at the end, not accumulated frames from
-before the interruption. All controls retire their App, Browsers and interfaces.
-These are ordinary-transport controls, not integrated Magicsock or physical
-roaming evidence. A faster remote tunnel alone cannot establish complete App
-handoff; both the network and Browser playback legs must recover.
+Complete App controls on October 10, 2026 reproduced the consequence in a
+disposable Linux namespace. Chromium 152 retained its loopback bridge after a
+LAN address change. Firefox 151 selected the removed LAN address: its Host
+ended an otherwise healthy share, while its Viewer eventually used Browser
+fallback. Fresh rendered frames, rather than accumulated frame counts, were
+used for acceptance. The source was generated VP8 through the real capture
+process boundary, not physical capture.
 
-The local restart control exposed a separate address-cache defect: Pion ICE
-v4.4.0's [wildcard UDP mux](https://github.com/pion/ice/blob/v4.4.0/udp_mux.go)
-retains its own `stdnet.Net` interface snapshot across
-gatherings. After an interface address changes, both ICE restart and a new SFU
-connection sharing that mux can advertise the removed address. The shared mux
-adapter now takes a private current snapshot when gathering; it changes neither
-socket identity nor Pion's candidate filters and adds no monitor or timer.
-The isolated regression covers restart and a new connection; restoring the
-former constructor fails on the stale candidate. Firefox also resumes fresh
-rendered frames on the same track after a standard ICE restart, including from
-the failed state, while a separately bound loopback sibling keeps receiving.
-Replacing only the Native PeerConnection while retaining the Browser connection
-instead reported connected without fresh decoded pictures in the same fixture;
-it is not the accepted recovery mechanism.
+The corrected existing bridge owner performs standard ICE restart after a
+three-second disconnect grace or immediately on failure. Initial and restart
+negotiations use complete SDP and fence answers by request ID. The eight-second
+negotiation bound includes up to five seconds of Native gathering; retirement
+cancels it. Existing Host/Viewer terminal owners handle failure, and paused
+sources need not produce frames to establish the transport connection.
+There is no second local candidate queue or recovery controller.
 
-The 2.0 candidate now uses the existing bridge owner for one standard ICE restart
-after a three-second disconnect grace, or immediately after failure. Initial and
-restart negotiations use complete local SDP with the request ID fencing the answer;
-there is no separate local trickle queue. The negotiation has an eight-second
-deadline, including a five-second Native gathering bound. Retirement cancels it;
-failure retains the existing Host/Viewer terminal owners. Paused sources need not
-produce new frames to prove a transport connection.
+Matched controls retained the same Firefox Host and Viewer tracks through the
+address change. Host sharing and downstream decoding continued; the Native
+Viewer recovered without a route replacement or Browser fallback. Chromium
+retained its working loopback leg. Replacing only the Native PeerConnection,
+while keeping the Browser connection, instead reported connected without fresh
+pictures in a counterfactual. The tests therefore support standard ICE restart,
+not unilateral reconstruction or a claim of physical roaming coverage.
 
-Matched complete App controls retain the same Firefox Host and Viewer media track
-through the namespace address change. The Host keeps sharing and decoding, its
-downstream Viewer keeps rendering, and the Native Viewer resumes fresh rendered
-frames without replacing its route or falling back to Browser reception.
-Chromium Host/Viewer controls retain their working loopback leg without a restart.
-These controls use ordinary Pion and generated media. They close the reproduced local
-bridge gap, not the remaining Magicsock composition, physical roaming or platform
-acceptance boundaries.
+### Recovery Ownership And Forwarding
 
-The aligned candidate also combines the real Native encoder/forwarder/receiver
-with the actual Browser bridge over the experimental Tailcat socket. The fresh
-flow adapter now replaces its synthetic preface: SDP starts before peer admission,
-and ICE supplies the first datagram. All six FFmpeg-decoded controls pass Linux
-race checks. Chromium 152 and Firefox 151 each pass an unchanged ordinary-Pion
-control and both Tailcat address-change directions. After DERP closes, new blue
-content keeps rendering on the same track. Firefox renegotiates its local leg
-once when that endpoint moves; Chromium retains its working loopback leg. Local
-HTTP replaces Native control only in this fixture; App authorization, room routing
-and prolonged-outage replacement are not exercised. No product timeout, address
-policy or inner Binding setting changes for these handoff checks.
+A real Viewer-owner fixture retained sockets and external conditions through
+interruption and replacement. It exposed recovery counts being renewed with a
+new Native/Browser backend, permitting an extra request. The corrected budget
+belongs to the parent opportunity, as specified by the existing
+[recovery owner](../standards/routing-transport.md#reconciliation).
+Trickle-exchange controls recovered ordinary Pion after two-, nine- and
+eleven-second interruptions in three runs each. A full-gathering fixture failed
+while the network was unavailable; that negative control was a fixture limit,
+not evidence for extending product deadlines.
 
-A separate Linux race check now passes those experimental flows through real
-Native control commands and the Viewer session's existing receiver owner.
-Closing a receiver releases its physical flow; replacement and a healthy sibling
-keep receiving fresh RTP after DERP closes, including after late cleanup for the
-old connection ID. Stopping reception or closing the control session releases
-both remaining flows. Omitting receiver retirement in the test overlay is
-detected. Keys are still pre-granted locally: this establishes resource cleanup,
-not room authorization, automatic App recovery or Browser decoding in this check.
+A separate live Windows VP8/Native forwarding control exposed stale decoded
+pictures after roughly one second of UDP loss: hundreds of already-encoded
+packets remained in the former throttled queue. Forwarder frame counts preceded
+actual paced writes and could not prove delivery. With the upstream default send
+queue and the local playback leg isolated, all six ordinary/experimental
+unchanged, address-change and short-loss controls retained fresh decoded
+content after relay closure. The
+[send-queue assessment](./node-local-media-design.md#send-queue-recovery)
+owns the constrained-bandwidth comparison and adopted correction. This is not
+proof that every brief blur or unmatched interruption shares that cause.
 
-The request-scoped adapter removes the former Engine-wide next-socket slot and
-temporary bootstrap receiver. A lazy factory reaches the existing physical
-socket owner only after input/capacity admission; reuse does not allocate again.
-Unsupported-codec failure, independent receiver retirement, control close and
-cancellation of a still-opening socket pass under the race detector. The Native
-engine, Host, Viewer and control package suites also pass with the overlay.
-The complete loopback WebSocket check exposes one additional integration gap:
-delayed socket preparation waits for its media owner, while deferred session
-close waits for that synchronous command. Client disconnect and server shutdown
-both leave it waiting in the unmodified owner. The isolated correction runs
-session close on control-context cancellation and joins it before releasing the
-capacity slot. Both cases, the direct-owner checks and loopback/control package
-suites pass under the race detector. This is an experimental slow-transport
-requirement, not an established published failure. The
-[authorization boundary](#peer-authorization-boundary) owns the subsequent
-Viewer startup and receive-command evidence; no new recovery loop or room
-resource registry is added.
+The same full-room work found a denied Viewer retaining its App control slot
+across repeated invitation generations. The
+[control-retirement assessment](./native-client-lifecycle.md#viewer-control-retirement)
+owns that independent repair and its rendered acceptance boundary.
 
-The earlier FFmpeg matrix had one decoded-content failure. Matched synthetic
-bitstream/RTP replay identifies a receiver-fixture mismatch: its separate SDK
-assembler emits a truncated startup frame and can resume dependent frames after
-a sequence gap without their reference. Increasing that builder's window instead
-stalls recovery. On identical unchanged and source-handoff recordings, the
-product relay-input owner's independent-keyframe boundary produces only
-byte-matched source frames, with no decoder errors or corrupted colours.
-The fixture now reuses that owner. All six unchanged, address-change and loss
-controls pass with actual encoding/decoding and Linux race detection, without
-decoder errors or changes to product timeout, adaptation or recovery policy.
-The original failed run has no packet recording, so its exact cause remains
-unassigned; this correction does not establish universal media continuity.
+### Gateway And Address-Family Controls
 
-Dual-stack namespace controls enabled STUN and alternately blocked IPv4 UDP or
-IPv6 forwarding. Both stacks used the working family; Tailcat's direct proof
-required fresh bidirectional delivery after DERP closed. One side reporting a
-direct address did not establish that both directions were direct. IPv4 TCP
-still supplied bootstrap, so this is not an IPv6-only or physical ISP check.
-These controls add no demonstrated direct-reachability advantage for Magicsock.
+The actual Native `mediaedge.Engine` Host/Viewer also ran through Linux kernel
+gateways with local playback and the unchanged TypeScript predictor. Three race
+repetitions required distinct generated VP8 RTP, excluding padding and duplicate
+packets. Without a gateway service, best-effort mapping did not block ordinary
+media behind discovery. Either usable IP family carried media when the other
+was blocked. Sequential-port NAT failed without prediction and used a predicted
+candidate when enabled, with the changing-port gateway on either endpoint;
+random-port NAT remained unreachable in the bounded controls. A real MiniUPnPd
+gateway made a hard/hard pair reachable with mapping enabled.
 
-The actual Native `mediaedge.Engine` Host/Viewer now runs through the same kernel
-gateways, including local playback and the unchanged TypeScript survey predictor.
-Three Linux race repetitions received ten distinct RTP packets containing the
-generated VP8 frame, excluding padding/duplicates. With no gateway service,
-mapping enabled did not hold ordinary media behind discovery: delivery took
-about 0.8 seconds. Either usable IP family also carried media. Sequential-port
-NAT failed without prediction and delivered through a predicted candidate when
-enabled, with the changing-port gateway on either endpoint; random-port NAT
-remained unreachable in the bounded checks. A real
-MiniUPnPd gateway made a hard/hard pair reachable when mapping was enabled.
-These are encoded-media checks, not capture, Browser decode or room admission.
-
-Tailcat's matched controls explicitly link its [optional portmapper feature](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/feature/portmapper/portmapper.go);
-clearing its disable flag alone does not register that optional feature. Gateway
-mapping then passed three race repetitions after DERP closure. The 20-second
-comparison distinguishes fresh direct SRTP from relay delivery and retains the
-same gateway filtering. Its relay bootstrap and Piik's local playback differ,
-so startup timings are not a first-picture benchmark.
-
-A 2026-10-08 fairness control found that Tailcat's single bootstrap region leaves
-`MappingVariesByDestIP` unknown even with three STUN addresses: upstream
-[netcheck](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/net/netcheck/netcheck.go)
-cancels the region's other probes after its first reply. A lab-only map projection
-gives those real addresses independent probe regions and pins the original relay;
-it is not a supported Tailcat option. Twelve Linux race cases verify classification
-on the actual media socket, keep media flowing until relay closure at 12 seconds,
-and require a fresh payload before the 20-second bound. Random/sequential pairs
-remain relay-only in both directions, with or without an absent-gateway mapping
-probe; an available gateway still establishes direct media. No extra direct path
-over Piik was found. Physical routers and field success rates remain unmeasured.
-Product dependencies and routing are unchanged.
-
-The experiment's README owns commands and fixture boundaries; raw output remains
-ignored. Further product work needs a measurable network benefit and accepted
-room authorization, resource and relay-operation owners, not more loopback
-successes.
-
-### Peer Authorization Boundary
-
-The 2026-10-08 three-peer control found that Tailcat forgets a revoked key but
-leaves its WireGuard session alive: fresh inbound UDP still arrives after
-`DisconnectClient` returns and `PeerKey` no longer recognizes it. A separate
-controlled race lets a late positive `AllowClient` result re-admit a revoked
-key. Both defects were independently reproduced; Tailcat's checked
-[October 7 source](https://github.com/tailscale/tailcat/blob/52fbad323e9d352f1febb623e0975368e9a8cbdd/tailcat.go)
-retains both mechanisms. Piik's current transport does not use this dependency.
-
-An opt-in Tailcat patch syncs the existing engine after releasing the backend
-lock and invalidates late results in its pending-hook map. Three Windows
-repetitions and three Linux race runs reject both traffic directions and new
-admission, preserve two healthy peers' media and permit a later explicit grant.
-Removing either correction fails its regression; upstream admission/disconnect
-checks pass. This repairs the Tailcat layer only.
-
-A deeper unit reproduction pauses WireGuard's lazy peer-config lookup, withdraws
-authority and calls `RemovePeer`, then releases the old result. `LookupPeer`
-still installs an active peer. Both the pinned `0a83b87f7908` and
-[October 2 revision](https://github.com/tailscale/wireguard-go/blob/18e99eba5393b8c9ea513ab7a1db1a12625422ca/device/device.go)
-reproduce it. An isolated patch on the newer version tracks in-flight config
-lookups at the peer table and starts lazy peers under that same lock. Removing
-a key retires only its pending calls; lookup replacement and close retire all.
-Tokens are reclaimed on completion without accumulating historical keys.
-An unrelated-key control rejects a global generation fence: it cancels valid
-concurrent admission. Scoped tokens preserve that admission, overlapping grants
-and cleanup; removing the retirement check reproduces stale installation.
-The full device suite and lock-order analyzer pass, including three Linux race
-runs. Combined media and TWCC checks pass on Windows and Linux; the Linux kernel
-NAT, dual-stack, rebinding and weak-network controls also pass. Supported dependency
-contracts and demonstrated network benefit remain open. The probe retains the
-isolated patches; Piik's production transport is unchanged.
-
-Admission ordering is also an integration constraint. Upstream
-[`Client.DialUDPPort`](https://github.com/tailscale/tailcat/blob/52fbad323e9d352f1febb623e0975368e9a8cbdd/tailcat.go)
-waits for the server to admit the client's key before returning a socket.
-Piik creates the receiver and its socket before returning a media answer.
-Authorizing that key only after receiving the answer would therefore introduce
-a circular wait. An isolated `PrepareUDPPort` patch reserves the local address
-without waiting for admission. Through real Native control, it can return the
-answer first and receive fresh RTP if the fixture holds remote ICE candidates
-until the grant completes. Both receiver/control retirement paths retain their
-cleanup checks; the pre-granted control uses the same client/server orientation.
-Without that experimental candidate gate, Native sends five ICE checks before
-the roughly one-second grant acknowledgment, reaches eight and receives no RTP
-within the unchanged bound. Complete-SDP and early-trickle controls both fail.
-The early-trickle counterfactual is opt-in and intentionally fails its media check.
-
-The simpler pre-ICE control uses supported `DialUDPPort` in both Native
-listener/dialer orientations. With keys already admitted, the real Native control
-session receives fresh RTP, replaces a flow without interrupting its sibling and
-retires all flows on stop or control close. All four Linux race cases and vet
-pass with `PrepareUDPPort` removed from the copied dependency, without an explicit
-diagnostic ping or an admission-dependent candidate gate. The other isolated
-dependency corrections remain. This removes the need for that extra startup API
-when key admission precedes media negotiation; it does not implement room-scoped
-key exchange or demonstrate higher direct reachability.
-
-The isolated signaling extension carries bounded listener metadata on the
-assigned parent's ordinary SDP offer. SDP/ICE remain the signal variants;
-there is no extra key-exchange message or router authorization branch. Actual
-room WebSocket checks reject unrelated peers/rooms, retired candidates and
-listener metadata on answers or ICE candidates. Ordinary invitation revocation
-still closes the authenticated Viewer session. Protocol/signaling race suites
-pass. The generated extension adds no server key registry or product wire change.
-
-A separate Native control check derives admission from its actual owned inbound
-flows. Closing one flow retains the shared peer's authorization while another
-flow remains; closing the last disconnects that peer. Final revocation and a new
-grant serialize without holding the flow-map lock through Tailcat callbacks.
-Stop and control-close cases pass under the race detector, including fresh
-sibling RTP before preparing a replacement. Counterfactuals that disconnect on
-every close or never disconnect fail those checks. This composes physical-flow
-cleanup with the Native session; keys in that control remain local fixture inputs.
-The pending-flow adapter also rejects a different admitted peer without consuming
-the assigned listener. The two-peer control reproduced the former premature
-close; the repair permits the expected peer or cancels through the same owner.
-
-The composed room/Native experiment separates session availability from actual
-transport identity. Native control advertises only availability in its ordinary
-ready response; authentication and existing assignments project that fact only
-to assigned parents. Restart/reconnect can clear it through the same owners.
-No persistent device key or room-wide key registry is added. App-launched Viewer
-startup uses its existing discovery promise; missing App retains Browser fallback.
-Late discovery, unmount, control replacement and stale close remain fenced.
-
-The parent reserves its listener and sends its bounded metadata with the ordinary
-SDP offer. The actual receive command creates or reuses the parent-bound Tailcat
-client and emits its public key through a connection-scoped Native event before
-dialing. An experimental `native-peer` signal returns that key to the exact
-assigned listener; its grant precedes receiver ICE. Parent-side binding checks
-the complete listener identity, is immutable after binding, and ends with that
-physical flow. Preparing and committed routes use the existing authorizer;
-reverse, unrelated, cross-room and retired-connection messages are rejected.
-Listener metadata accepts no relay URL or region. Trusted relay configuration
-remains local, and diagnostics exclude connection keys.
-
-On 2026-10-10 the previous session-wide key produced duplicate DERP registrations
-when two distinct parent-bound clients overlapped. Upstream
-[DERP registration](https://github.com/tailscale/tailscale/blob/main/derp/derpserver/derpserver.go)
-selects among duplicate connections; local direct RTP had hidden this conflict.
-The corrected adapter uses Tailcat's default fresh identity per client, sharing
-that client only across physical flows to the same parent address. Both the
-same-parent and independent-tunnel-parent controls now require zero duplicates
-and fresh RTP before and after old-flow retirement. These controls use one
-assigned room parent with two listener instances; they do not yet prove a full
-room-controller handoff between different participant parents.
-
-Fresh client identity also avoids the measured same-key recreation delay: the
-old first WireGuard response went to a cached endpoint and data arrived only on
-the next handshake. Last-receiver replacement now meets the original five-second
-media bound without resetting the parent, extending timeouts or patching client
-discovery lifetime. The superseded dependency patch is removed. Receiver reuse
-still requires identical listener metadata; a changed listener replaces the
-source/transport through its existing owner. Sibling and ordinary reuse checks
-retain their behavior.
-
-Control close cancels dialing and joins each pending construction before final
-client close: Tailcat's close-before-initialization is not terminal. Queued
-identity events lose authority with the flow. Native control, loopback and
-listener retirement checks cover cancellation and ordinary cleanup; the parent
-adapter also retains its already-authorized remote address so a late write fails
-normally when the dependency clears its endpoint.
-
-The isolated Native sender now prepares its listener through the existing
-Host/Viewer edge socket factory. Its offer returns metadata, and a strict
-connection-scoped control command binds the reply through that same edge.
-There is no additional control-level listener registry. The raw transport checks
-and Native overlay compile the same admission/socket adapters. Closing an edge
-revokes its listener; retiring the source releases its remaining children.
-`TestNativeSenderOwnsListener` carries a generated VP8 source through the actual
-Native receive/relay commands to two Native children. It checks fresh sibling
-RTP after one child retires, idempotent replies and rejection of another listener
-or a retired connection. Host/media-edge/Viewer/control race suites pass. This
-fixture still pumps events instead of running the Browser route owners; it is
-not physical Host capture or complete room-controller acceptance.
-
-The overlaid Browser NativeViewerPeer forwards the listener and returns scoped
-identity events while receive-offer is pending. Wrong share/connection and
-post-disposal events are ignored; there is no extra preparation timer or pending
-identity registry. The sender reads capability from the current preparation,
-assignment or recovery message, without a second capability cache. Existing
-Browser owners dispatch the reply to the listener's Native edge. Focused tests
-cover stale replies, deep-copied assignment capability and recovery after a
-capability change.
-
-An owned Linux/Chromium 152 run exercises the actual UI and room controller with
-a generated 640×360 VP8 canvas source and one outbound copy per participant:
-Browser Host → Native Viewer → Native Viewer → Browser Viewer. The inner Native
-pair uses Tailcat; the outer Browser links retain ordinary WebRTC. Reconnecting
-the second Native Viewer replaces its listener/client without accumulating
-resources. After the first Native Viewer leaves, the next Viewer changes to the
-Browser Host and both remaining Viewers resume decoded, changing pixels. Removing
-the second Native Viewer then restores an ordinary Browser-to-Browser route.
-All transport counters are zero at retirement. A second rendered run uses H264
-and three Native Viewers across two App instances. When the middle Native Viewer
-leaves, the last Viewer changes to the first Native Viewer, receives a new scoped
-connection and resumes decoded, changing pixels; the departed participant retains
-no transport resources. The normal App control-session and origin limits remain.
-In the mixed Browser/Native chain, revoking a private room's invitation removes
-all Viewers and Native transport resources while the Host continues sharing.
-The old invitation remains rejected after rotation; a fresh invitation restores
-the chain and decoded media without retaining the retired transports.
-With copy capacity two, four Native Viewers exercise the overlapping path:
-the Browser Host feeds Native A/B, and A initially feeds C/D. Controlled
-relay-capacity messages move D from A to B and back through the real controller.
-Holding D's first-frame acknowledgement leaves two Native client/flow pairs
-alive while its old displayed picture advances; releasing it commits the new
-parent and retires only the old pair. C keeps its connection and continues
-decoding. Final resource and race checks pass. This exercises transport ownership
-under a capacity change, not the quality-degradation trigger or its thresholds.
-This is bounded local rendered acceptance, not physical capture, difficult-NAT
-reachability or sustained recovery.
-
-Cold receiver preparation initially took about three seconds in this fixture.
-The local DERP region had no STUN service: two preauthorized registration controls
-took about four seconds without STUN and 15–16 ms with it. Reusing Piik's STUN
-server in the UI fixture reduced cold receive-offer responses to 21–25 ms. Keep
-unavailable-STUN controls separate from healthy startup measurements. This finding
-changes the test environment, not product timeouts or retry behavior; it does not
-predict public-network latency.
-
-Composition also exposed duplicate address discovery: the shared candidate
-collector still sent ordinary STUN probes through the injected virtual socket.
-The experimental socket boundary now leaves outer discovery to Tailcat. A local
-STUN control fails before this correction and passes after it; ordinary Native
-gathering still produces its observed candidate. There is no timeout extension
-or additional retry owner. Availability, public keys and handshake replies
-remain distinct from decoded-frame readiness and additional field reachability.
-
-A separate optional-path check uses Pion's public
-[`NewMultiUDPMuxDefault`](https://github.com/pion/ice/blob/v4.4.0/udp_mux_multi.go)
-to advertise ordinary UDP and one prepared Tailcat flow on the same
-PeerConnection. Fresh audio/video passes with either path unavailable, and
-normal ICE restart selects the remaining path in both directions. Making the
-unused tunnel available or closing it preserves the ordinary session and its
-ICE credentials. Windows and Linux race checks pass without an application
-path selector or changed ICE budgets. These local tests permit DERP and prepare
-the tunnel before ICE; they establish composition, not direct-media policy,
-NAT gain or cold-bootstrap independence.
-
-The default Native overlay replaces its ordinary socket with the tunnel.
-`DialUDPPort` waits for remote admission, while Pion's stock multi-mux requires
-the sockets' addresses at construction. Simply combining them synchronously
-would let unavailable bootstrap delay otherwise usable ordinary ICE. A supported
-way to prepare an optional socket independently remains an adoption requirement;
-the earlier private `PrepareUDPPort` patch is not a supported upstream API.
-Do not replace this gap with two racing PeerConnections, a second recovery
-controller or a larger product timeout.
-
-An isolated Linux race control combines that reservation patch with the same
-multi-mux: ordinary SRTP starts while remote admission is denied or bootstrap is
-unavailable, and continues through a delayed grant. For a tunnel-only pair,
-publishing its candidate only after admission establishes fresh audio/video in
-the same ICE generation. Ordinary candidates are available immediately;
-end-of-candidates follows the optional producer. Publishing the tunnel candidate
-early instead leaves both peers connecting with no media in the matched control.
-The candidate ordering uses [Trickle ICE](https://www.rfc-editor.org/rfc/rfc8838.html),
-without another PeerConnection, timeout extension or application retry loop.
-After ordinary ICE has nominated a pair, a late optional candidate is omitted;
-it may participate in a subsequent gathering. This raw fixture permits DERP and
-edits its own SDP; it does not establish direct-media policy or greater NAT coverage.
-
-The separate optional Native overlay now preserves the ordinary socket's STUN
-and mapping owner and adds its virtual socket to that same Pion connection.
-The receiver's existing candidate collector owns delayed advertisement, EOC and
-cancellation; its SDP answer cannot bypass that collector. The existing flow
-owner joins admission work on close. Native controls establish ordinary media
-before the tunnel grant and with bootstrap unavailable. A tunnel-only control
-establishes media after delayed admission, then preserves a sibling and a new
-receiver through old cleanup. Candidate events continue during the delay:
-bypassing the readiness gate leaves the sender checking with no media. Linux
-race checks pass.
-
-A bounded Chromium 152 UI check also runs the optional composition through a
-Browser Host, two Native relays and a Browser Viewer. Changing decoded pixels
-advance at every hop, after the second relay's manual reconnect, and after each
-Native relay departs. Departure recovery respects the existing signaling grace;
-retired Native transport counts reach zero. Host stop projects waiting for a
-share, and the race-enabled fixture closes cleanly. This uses a synthetic source
-on one local network; ordinary ICE may win. It establishes coexistence and these
-recovery paths, not a tunnel-success rate, physical capture or complete App
-acceptance. Optional invitation revocation also rejects old links, clears media
-resources and permits new Native reception across four grant generations. This
-check exposed and now covers the shared Viewer's
-[control-retirement gap](./native-client-lifecycle.md#viewer-control-retirement).
-A second optional UI check moves one Native Viewer between two Native parents
-in both directions through the real room controller. Holding candidate readiness
-within the unchanged operation deadline preserves the old video element, stream
-and advancing frames while both receiver flows exist. Releasing readiness commits
-the new parent and retires only the old flow; a sibling retains its connection
-and advancing decoded pictures throughout. Final transport counts reach zero
-under the race detector. The fixture disables automatic quality tuning and
-changes advertised capacity to isolate overlapping ownership. This local synthetic
-check does not measure handoff latency, difficult-network success or tunnel selection.
-The optional composition also passes the kernel-NAT real-codec controls with
-Chromium 152 and Firefox 151: unchanged paths, either endpoint's address change,
-and a short complete interruption. Ordinary Pion supplies unchanged/interruption
-controls. New blue content renders on the same track after DERP closes, with
-zero relayed encrypted data. Firefox renegotiates its local leg once when its
-endpoint moves; Chromium retains that leg. No timeout or address policy changes.
-These synthetic-source checks exercise the Native engine and Browser bridge,
-not complete App startup, physical roaming or another reachable NAT class.
-
-A non-race Chromium comparison also measures the isolated Go workers. One
-roughly 18-second, 640x360/30 connection used peak RSS of 64/65 MiB for ordinary
-sender/receiver workers and 72/72 MiB with the optional tunnel. Live goroutines
-rose from 39/65 to 96/122; final cumulative CPU times were 0.48/0.54 seconds and
-0.67/0.67 seconds respectively. These are bounded observations, not App budgets:
-the codec, Browser and relay run separately, and both controls link the same
-binary. Shared listeners and clients also prevent linear extrapolation to a
-room. A stripped Windows App build grows from 44.1 to 59.8 MiB with the isolated
-composition, using the same embedded UI and module selection. This excludes
-capture/tunnel helpers and ZIP compression. Sustained cost remains open.
-
-The isolated App overlay now installs that constructor in the actual process-level
-control factory. Its matched experimental wire identity rejects product builds,
-local CLI configuration selects the TLS bootstrap, and DERP media is disabled in
-the binary rather than by an optional environment setting. Actual Windows App
-and embedded-UI checks retain fresh decoded pixels and manual reconnect through
-ordinary ICE when the experimental bootstrap is unavailable. Two independent
-control sessions and process retirement also pass a race check. The Linux full-App
-fixture also selects Magicsock with ordinary remote candidates withheld, renders
-generated Browser pixels through both Native sessions, and restores pictures on
-a new selected connection after manual Viewer reconnect. Closing its process-owned
-TLS bootstrap still leaves 300 new frames over ten seconds at 640x360/30, with
-changed decoded pixels; App retirement passes the race check. This is local
-integration evidence, not another reachable NAT class.
-
-A non-race full-App comparison uses one Native and three plain-Browser Viewers
-with a generated 640x360/30 source. Each Viewer receives 300–301 new frames and
-changing pixels over its ten-second observation. Ordinary/optional runs peak
-at 81.8/93.2 MiB RSS and use 3.76/4.08 seconds of Go CPU during the roughly
-forty-second observation sequence. Live goroutines fall from 211/327 to 27 in
-both modes after tabs close, then the App exits normally. The optional run
-selects Magicsock on the Native pair with ordinary remote candidates withheld;
-Web edges retain ordinary ICE. Both measurements include the same owned TLS
-bootstrap/STUN fixture and exclude separate Browser/codec processes. This is a
-bounded mixed-room cost and retirement check, not endurance, a 20-Viewer budget
-or a network-success comparison.
-
-A bounded full-room run with one Native and nineteen Web Viewers also retains
-changing 640x360/30 pictures: each ten-second observation advances 296–301 frames.
-The twenty-first code-only attempt receives the existing generic admission
-denial, a retained Viewer keeps receiving, and the App exits normally after
-all tabs close. The Go process peaks at 99.3 MiB RSS. These Viewers share one
-machine; this does not cover twenty Native peers or physical-network endurance.
-
-A frozen Windows internal package includes the numeric-media candidate, matched
-experimental UI, helpers and notices, separate ordinary/experimental launchers
-and bilingual paired-test instructions. Final-package checks cover native discovery,
-two control sessions, unselected-origin denial, shutdown and Explorer ZIP members
-with extracted-file hashes. Its experimental launcher selects the
-[upstream public bootstrap](https://github.com/tailscale/tailcat#tailcat) for the
-future paired test; local acceptance used owned or unavailable bootstrap only.
-Physical capture, public-invitation operation and field benefit remain open.
-
-This composition also exposes an upstream address-lookup mismatch: Pion's
-multi-mux enumerates current child addresses but `GetConn` only consults its
-construction-time table. A newly enumerated address therefore has no mux. The
-isolated correction resolves uncached addresses against those same child muxes,
-without another address cache or socket owner; the unchanged control fails.
-A private Linux network namespace also replaces the real interface address
-while retaining the sockets and PeerConnections. ICE restart gathers only the
-new address and restores fresh phase-tagged audio/video. Removing only the
-multi-mux correction loses that candidate in the matched control. The race
-check preserves ordinary discovery; it does not exercise physical Wi-Fi handoff
-or prove the optional tunnel's recovery benefit.
-The copied dependency correction and socket-reservation method remain adoption
-requirements, not supported APIs or changes to the published Piik dependency.
-
-`room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
-experimental fields. It accepts the Go fixture's twelve route/restart messages,
-rejects malformed capability/listener fields and removes scoped keys from both
-console events and exported reports while retaining connection and keyframe
-evidence. The Go and Browser optional-map null checks agree. This is a Node-run
-producer/consumer check, not Browser UI or complete App transport acceptance.
-The product wire and diagnostic implementation remain unchanged.
-
-These transport checks establish startup-order and ownership constraints, not a
-product integration or the cause of unmatched field reports. The earlier candidate gate and unsupported
-dependency method are not accepted product mechanisms.
-The existing assigned-connection and candidate owners must order admission and
-advertisement so the usable tunnel receives live ICE checks; ordinary ICE need
-not wait for that optional producer. Accepting arbitrary keys, passing room credentials
-into Native control or enlarging its timeout is not an equivalent solution.
+These are encoded-media controls, not physical capture, Browser decode, complete
+room admission or a new field-success measurement. The matched Tailcat controls
+needed its optional portmapper module and a fair multi-region STUN projection;
+they still established no additional direct path. Existing mapping, prediction
+and IPv6 should be assessed against the same endpoints and relay policy before
+another mechanism is proposed.
 
 ## Native Mapping Cache And Retry Lifetimes
 
