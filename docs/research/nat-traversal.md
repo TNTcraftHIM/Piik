@@ -1202,8 +1202,8 @@ the codec, Browser and relay run separately, and both controls link the same
 binary. Shared listeners and clients also prevent linear extrapolation to a
 room. A stripped Windows App build grows from 44.1 to 59.8 MiB with the isolated
 composition, using the same embedded UI and module selection. This excludes
-capture/tunnel helpers and ZIP compression. Sustained and multi-peer cost remain
-unmeasured.
+capture/tunnel helpers and ZIP compression. Sustained and full-room cost remain
+open.
 
 The isolated App overlay now installs that constructor in the actual process-level
 control factory. Its matched experimental wire identity rejects product builds,
@@ -1218,6 +1218,18 @@ a new selected connection after manual Viewer reconnect. Closing its process-own
 TLS bootstrap still leaves 300 new frames over ten seconds at 640x360/30, with
 changed decoded pixels; App retirement passes the race check. This is local
 integration evidence, not another reachable NAT class.
+
+A non-race full-App comparison uses one Native and three plain-Browser Viewers
+with a generated 640x360/30 source. Each Viewer receives 300–301 new frames and
+changing pixels over its ten-second observation. Ordinary/optional runs peak
+at 81.8/93.2 MiB RSS and use 3.76/4.08 seconds of Go CPU during the roughly
+forty-second observation sequence. Live goroutines fall from 211/327 to 27 in
+both modes after tabs close, then the App exits normally. The optional run
+selects Magicsock on the Native pair with ordinary remote candidates withheld;
+Web edges retain ordinary ICE. Both measurements include the same owned TLS
+bootstrap/STUN fixture and exclude separate Browser/codec processes. This is a
+bounded mixed-room cost and retirement check, not endurance, a 20-Viewer budget
+or a network-success comparison.
 
 A frozen Windows internal package includes the numeric-media candidate, matched
 experimental UI, helpers and notices, separate ordinary/experimental launchers

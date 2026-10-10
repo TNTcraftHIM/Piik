@@ -74,10 +74,10 @@ evidence. macOS geometry, cross-browser/device and route-change acceptance, and
 additional codecs remain open.
 Native Magicsock remains an isolated experiment. Full-App local transport and
 reconnect checks pass, and a frozen Windows internal package is available for
-paired testing. Physical-network benefit, sustained recovery and supported
+engineering checks. The owner has not used it and will arrange paired testing
+once the main features form a coherent usable candidate. Physical-network benefit, sustained recovery and supported
 dependency contracts remain open; this does not accept product integration.
-The owner will arrange external testers. Publication remains subject to final
-acceptance.
+Publication remains subject to final acceptance.
 Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns
 remaining work.
 

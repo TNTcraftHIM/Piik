@@ -92,10 +92,14 @@ Implementation needs a concrete useful result within the product model.
   changes remain isolated. The P2P evidence work below owns network/interop
   acceptance.
 - [ ] **Small external test before 2.0.** The frozen Windows internal package and
-  paired comparison steps are ready; the owner will arrange testers. Use the isolated transport
-  experiment on the same difficult network pairs as current Piik, measuring
+  paired comparison steps are engineering evidence only. The owner has not used
+  that package and will arrange testers after the main features, especially
+  Magicsock, form a coherent usable candidate. Finish local App/room lifecycle,
+  mixed Browser/Native behavior, recovery, resource and dependency boundaries
+  before requesting that test. Use the candidate on the same difficult network
+  pairs as current Piik, measuring
   direct success separately from relay delivery, first-picture time, recovery
-  and added resource cost. This evidence can precede other feature work.
+  and added resource cost.
   Keep each test build frozen and identifiable. The combined local package and
   bounded authorization/recovery evidence do not establish a feature-complete
   product or additional real-network reachability. The final candidate then
