@@ -859,9 +859,16 @@ socket owner only after input/capacity admission; reuse does not allocate again.
 Unsupported-codec failure, independent receiver retirement, control close and
 cancellation of a still-opening socket pass under the race detector. The Native
 engine, Host, Viewer and control package suites also pass with the overlay.
-Actual control-WebSocket cancellation during slow transport preparation remains
-open: direct invocation and explicit session close do not cover the loopback
-command queue. The experiment has no new recovery loop or room resource registry.
+The complete loopback WebSocket check exposes one additional integration gap:
+delayed socket preparation waits for its media owner, while deferred session
+close waits for that synchronous command. Client disconnect and server shutdown
+both leave it waiting in the unmodified owner. The isolated correction runs
+session close on control-context cancellation and joins it before releasing the
+capacity slot. Both cases, the direct-owner checks and loopback/control package
+suites pass under the race detector. This is an experimental slow-transport
+requirement, not an established published failure. Browser-driven key production,
+discovery and transport consumption remain open; no new recovery loop or room
+resource registry is added.
 
 The earlier FFmpeg matrix had one decoded-content failure. Matched synthetic
 bitstream/RTP replay identifies a receiver-fixture mismatch: its separate SDK
