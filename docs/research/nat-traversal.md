@@ -742,9 +742,16 @@ remain prerequisites for product adoption.
 
 The remote-socket overlay extends that comparison through the actual Native
 encoded source, sender, receiver and local playback. It leaves product files
-untouched and admits one fixture peer flow per engine. Its fixed 8×8 input
-exposes forwarding pauses but cannot establish live encoder recovery; declaring
-those fixed bytes rate-controlled is only an ablation.
+untouched and binds the supplied socket to each connection-creation request.
+Its fixed 8×8 input exposes forwarding pauses but cannot establish live encoder
+recovery; declaring those fixed bytes rate-controlled is only an ablation.
+The fixed-frame Viewer-address handoff pauses with both the former and current
+socket adapters, including a matched control with isolated loopback playback.
+Under that same playback isolation, the real Windows VP8/FFmpeg control passes
+with the current adapter in all three checked cases: ordinary unchanged, source
+address change and Viewer address change. These controls separate the adapter
+change from the fixed-input recovery failure; they do not establish its complete
+cause or justify relaxing media acceptance.
 
 The live control instead uses the Windows VP8 helper, Native output-plan owner
 and final FFmpeg decode. The top quarter of the input changes from red to blue
@@ -845,6 +852,16 @@ old connection ID. Stopping reception or closing the control session releases
 both remaining flows. Omitting receiver retirement in the test overlay is
 detected. Keys are still pre-granted locally: this establishes resource cleanup,
 not room authorization, automatic App recovery or Browser decoding in this check.
+
+The request-scoped adapter removes the former Engine-wide next-socket slot and
+temporary bootstrap receiver. A lazy factory reaches the existing physical
+socket owner only after input/capacity admission; reuse does not allocate again.
+Unsupported-codec failure, independent receiver retirement, control close and
+cancellation of a still-opening socket pass under the race detector. The Native
+engine, Host, Viewer and control package suites also pass with the overlay.
+Actual control-WebSocket cancellation during slow transport preparation remains
+open: direct invocation and explicit session close do not cover the loopback
+command queue. The experiment has no new recovery loop or room resource registry.
 
 The earlier FFmpeg matrix had one decoded-content failure. Matched synthetic
 bitstream/RTP replay identifies a receiver-fixture mismatch: its separate SDK

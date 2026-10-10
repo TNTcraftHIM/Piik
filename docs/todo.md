@@ -94,7 +94,9 @@ Implementation needs a concrete useful result within the product model.
   connection material now travels through that assigned-connection owner;
   trusted relay configuration and event-to-control dispatch remain fixture inputs.
   The isolated authenticated-session capability projection and Browser schema/
-  diagnostic checks pass; App key production, early discovery and transport
+  diagnostic checks pass. Socket binding now follows the individual Native
+  request and its existing media owner; complete loopback cancellation during
+  slow preparation, App key production, early discovery and transport
   consumption remain open. Integrate those boundaries at the existing
   Browser/App connection owners.
   No product wire extension or Browser integration is implemented.
