@@ -91,7 +91,8 @@ Implementation needs a concrete useful result within the product model.
   research owns the supported pre-ICE dial/retirement checks and the isolated
   gated counterfactual. The Go-only room/Native composition verifies authorized
   key exchange, same-parent replacement and invitation-driven retirement;
-  bootstrap addresses and event-to-control dispatch remain fixture inputs.
+  connection material now travels through that assigned-connection owner;
+  trusted relay configuration and event-to-control dispatch remain fixture inputs.
   Integrate those boundaries at the existing Browser/App connection owners.
   No product wire extension or Browser integration is implemented.
   Obtain supported direct-media and initial endpoint-discovery contracts;

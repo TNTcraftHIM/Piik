@@ -962,7 +962,7 @@ dependency corrections remain. This removes the need for that extra startup API
 when key admission precedes media negotiation; it does not implement room-scoped
 key exchange or demonstrate higher direct reachability.
 
-An isolated Go signaling extension now carries one bounded public key through
+An isolated Go signaling extension now carries bounded bootstrap metadata through
 the real room WebSocket and existing assigned-connection authorizer. It forwards
 candidate and retained-connection metadata, rejects unrelated peers/rooms and
 retired connection IDs, and cannot adopt a new connection from a key message.
@@ -984,16 +984,24 @@ The pending-flow adapter also rejects a different admitted peer without consumin
 the assigned listener. The two-peer control reproduced the former premature
 close; the repair permits the expected peer or cancels through the same owner.
 
-The composed room/Native control passes actual room-authorized key exchange,
+The composed room/Native control passes actual room-authorized bootstrap exchange,
 SDP/candidates and RTP delivery, same-parent replacement after DERP closure,
 late old-receiver cleanup and invitation-driven final retirement. Rebuilding
 uses the current assignment to exchange the key before ICE; the subsequent SDP
 offer adopts the replacement ID. Trying to exchange a key on the new ID first
 is rejected. Thus pre-ICE preparation does not require giving metadata the power
-to adopt a connection. The fixture still supplies the tunnel bootstrap address
-and translates the room event into the Native stop command; complete Browser/App
-authorization and transport selection remain open. This check establishes
-packet reception and resource retirement, not decoded playback or field benefit.
+to adopt a connection. Listener metadata exchanges the node and discovery keys,
+a nonzero shared key and a bounded port; it carries no relay URLs or region IDs.
+The dialer constructs the upstream address from received fields and a trusted
+local relay configuration. Strict shape checks and the existing route diagnostic
+owner keep connection material out of its output; complete protocol/signaling
+race suites and the direct-media composition pass.
+Trusted relay configuration and room-event dispatch to Native control remain
+fixture inputs. Complete Browser/App authorization and transport selection remain
+open: the current Native-capable Viewer chooses its backend on the SDP offer,
+so it does not yet advertise Native transport availability before negotiation.
+This check establishes packet reception and resource retirement, not decoded
+playback or field benefit.
 
 These checks establish startup-order and ownership constraints, not a product
 integration or a Piik field defect. The earlier candidate gate and unsupported
