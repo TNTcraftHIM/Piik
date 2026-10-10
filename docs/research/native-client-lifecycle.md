@@ -37,6 +37,19 @@ waiting; later grants can be used by later connections without replacing healthy
 Browser media. These checks do not identify the original missing-window
 reporter's cause or establish other browsers' permission behavior.
 
+### Viewer Control Retirement
+
+A denied Viewer page can stay mounted or enter the Browser's
+[back/forward cache](https://web.dev/articles/bfcache). Chromium 152 retained its
+App control socket after invitation revocation; repeated entry eventually
+exhausted the App's two control slots and used Browser reception instead.
+The Viewer room owner now releases control on access loss and rejects discovery
+that completes after retirement. A rendered optional-transport fixture retained
+the denied pages across four invitation generations: each new generation used
+Native reception with changing decoded pixels, old grants remained rejected,
+and revocation cleared media resources. This is local synthetic-media evidence;
+it does not establish physical network or all Browser navigation behavior.
+
 ## Scope Decisions
 
 - Keep one strict loopback wire and one-share/one-session fence.

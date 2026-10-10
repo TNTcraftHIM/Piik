@@ -90,6 +90,7 @@ import {
   deriveViewerPresentation,
   reduceViewerPresentation,
   viewerFailureFromServerCode,
+  type ViewerFailureCode,
   type ViewerPresentationAction,
   type ViewerRouteKind,
 } from "../media/viewer-presentation";
@@ -483,11 +484,17 @@ export function ViewerPage({
     let nativeViewerAvailable = true;
     const nativeViewerSessionId = createOpaqueId();
 
+    const releaseNativeClient = (): void => {
+      const connecting = nativeClientPromise;
+      nativeClientPromise = null;
+      void connecting?.then((client) => client?.close());
+    };
+
     const acquireNativeClient = async (): Promise<NativeClient | null> => {
       if (!active || !launchedByClient || !nativeViewerAvailable) return null;
       if (!nativeClientPromise) {
         const connecting: Promise<NativeClient | null> = NativeClient.connect({ waitForPermission: false }).catch(() => null).then((client) => {
-          if (!client || !active) {
+          if (!client || !active || nativeClientPromise !== connecting) {
             if (nativeClientPromise === connecting) nativeClientPromise = null;
             client?.close();
             return null;
@@ -581,29 +588,11 @@ export function ViewerPage({
           if (!active) {
             return;
           }
-          messageAuthority.invalidate();
-          setAssignedRoute(null);
-          clearViewerSfuRoute();
-          clearPeerState(true);
-          clearParticipantPresence();
-          dispatchPresentation({
-            type: "access",
-            access: "denied",
-            failure: reason,
-          });
+          denyRoomAccess(reason);
         },
         onAccessRequired: () => {
           if (active) {
-            messageAuthority.invalidate();
-            setAssignedRoute(null);
-            clearViewerSfuRoute();
-            clearPeerState(true);
-            clearParticipantPresence();
-            dispatchPresentation({
-              type: "access",
-              access: "denied",
-              failure: "INVALID_TOKEN",
-            });
+            denyRoomAccess("INVALID_TOKEN");
           }
         },
         onMessage: (message) => {
@@ -1243,6 +1232,17 @@ export function ViewerPage({
       viewerRelay?.stop();
     }
 
+    function denyRoomAccess(failure: ViewerFailureCode): void {
+      messageAuthority.invalidate();
+      setAssignedRoute(null);
+      clearViewerSfuRoute();
+      clearPeerState(true);
+      clearParticipantPresence();
+      // A denied page can remain mounted or enter the back/forward cache.
+      releaseNativeClient();
+      dispatchPresentation({ type: "access", access: "denied", failure });
+    }
+
     function applyMediaAssignment(assignment: MediaAssignment, preserveUpstream = false): void {
       const nextAssignment = limitMediaAssignment(
         assignment,
@@ -1776,43 +1776,19 @@ export function ViewerPage({
         }
         viewerAuthorizationGeneration = null;
         clearViewerGrant(roomId);
-        setAssignedRoute(null);
-        clearViewerSfuRoute();
-        clearPeerState(true);
-        clearParticipantPresence();
-        dispatchPresentation({
-          type: "access",
-          access: "denied",
-          failure: "INVALID_TOKEN",
-        });
+        denyRoomAccess("INVALID_TOKEN");
         signal.stop();
         return;
       }
       if (message.type === "room-closed") {
-        setAssignedRoute(null);
-        clearViewerSfuRoute();
-        clearPeerState(true);
-        clearParticipantPresence();
-        dispatchPresentation({
-          type: "access",
-          access: "denied",
-          failure: "ROOM_CLOSED",
-        });
+        denyRoomAccess("ROOM_CLOSED");
         signal.stop();
         return;
       }
       if (message.type === "error") {
         const failure = viewerFailureFromServerCode(message.code);
         if (failure !== null && failure !== "SERVER_ERROR") {
-          setAssignedRoute(null);
-          clearViewerSfuRoute();
-          clearPeerState(true);
-          clearParticipantPresence();
-          dispatchPresentation({
-            type: "access",
-            access: "denied",
-            failure,
-          });
+          denyRoomAccess(failure);
         }
         if (message.code === "INVALID_TOKEN") {
           clearViewerGrant(roomId);
@@ -1866,7 +1842,7 @@ export function ViewerPage({
       viewerRelay?.dispose();
       viewerRelay = null;
       viewerRelaySourceKey = null;
-      void nativeClientPromise?.then((client) => client?.close());
+      releaseNativeClient();
     };
   }, [roomId, viewerGrant, viewerPasswordAttempt, launchedByClient, connectionAttemptProgress4]);
 

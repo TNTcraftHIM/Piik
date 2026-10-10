@@ -1171,8 +1171,12 @@ retired Native transport counts reach zero. Host stop projects waiting for a
 share, and the race-enabled fixture closes cleanly. This uses a synthetic source
 on one local network; ordinary ICE may win. It establishes coexistence and these
 recovery paths, not a tunnel-success rate, physical capture or complete App
-acceptance. Optional-path invitation revocation and overlapping-parent checks
-remain separate from the earlier tunnel-only UI evidence.
+acceptance. Optional invitation revocation also rejects old links, clears media
+resources and permits new Native reception across four grant generations. This
+check exposed and now covers the shared Viewer's
+[control-retirement gap](./native-client-lifecycle.md#viewer-control-retirement).
+Optional overlapping-parent checks remain separate from the earlier tunnel-only
+UI evidence.
 
 This composition also exposes an upstream address-lookup mismatch: Pion's
 multi-mux enumerates current child addresses but `GetConn` only consults its
@@ -1196,8 +1200,8 @@ evidence. The Go and Browser optional-map null checks agree. This is a Node-run
 producer/consumer check, not Browser UI or complete App transport acceptance.
 The product wire and diagnostic implementation remain unchanged.
 
-These checks establish startup-order and ownership constraints, not a product
-integration or a Piik field defect. The earlier candidate gate and unsupported
+These transport checks establish startup-order and ownership constraints, not a
+product integration or the cause of unmatched field reports. The earlier candidate gate and unsupported
 dependency method are not accepted product mechanisms.
 The existing assigned-connection and candidate owners must order admission and
 advertisement so the usable tunnel receives live ICE checks; ordinary ICE need

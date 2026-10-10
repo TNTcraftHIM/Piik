@@ -8,26 +8,28 @@ import { NativeCompatibilityError } from "../src/client/native/client";
 const source = ts.createSourceFile("ViewerPage.tsx", readFileSync(
   new URL("../src/client/pages/ViewerPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const owners = new Set(["nativeClientPromise", "nativeViewerAvailable", "acquireNativeClient"]);
+const owners = new Set(["nativeClientPromise", "nativeViewerAvailable", "acquireNativeClient", "releaseNativeClient"]);
 const declarations: string[] = [];
-let cleanup = "";
+let denyAccess = "";
 function collect(node: ts.Node): void {
   if (ts.isVariableDeclaration(node) && owners.has(node.name.getText(source))) {
     declarations.push(`let ${node.getText(source)};`);
   }
-  if (ts.isExpressionStatement(node) && node.getText(source).startsWith("void nativeClientPromise?.then")) {
-    cleanup = node.getText(source);
+  if (ts.isFunctionDeclaration(node) && node.name?.text === "denyRoomAccess") {
+    denyAccess = node.getText(source);
   }
   ts.forEachChild(node, collect);
 }
 collect(source);
-if (declarations.length !== owners.size || !cleanup) throw new Error("Viewer Native owner was not found");
+if (declarations.length !== owners.size || !denyAccess) throw new Error("Viewer Native owner was not found");
 const executable = ts.transpile(`
   let active = true;
   ${declarations.join("\n")}
+  ${denyAccess}
   globalThis.acquire = acquireNativeClient;
+  globalThis.deny = denyRoomAccess;
   globalThis.disable = () => { nativeViewerAvailable = false; };
-  globalThis.dispose = () => { active = false; ${cleanup} };
+  globalThis.dispose = () => { active = false; releaseNativeClient(); };
 `, { target: ts.ScriptTarget.ES2022 });
 
 function control() {
@@ -41,12 +43,18 @@ function control() {
 
 function fixture(launchedByClient = true) {
   const connect = vi.fn(async (): Promise<ReturnType<typeof control> | null> => null);
-  const context = createContext({ launchedByClient, NativeClient: { connect } });
+  const context = createContext({
+    launchedByClient, NativeClient: { connect },
+    messageAuthority: { invalidate: vi.fn() }, setAssignedRoute: vi.fn(),
+    clearViewerSfuRoute: vi.fn(), clearPeerState: vi.fn(), clearParticipantPresence: vi.fn(),
+    dispatchPresentation: vi.fn(),
+  });
   runInContext(executable, context);
   return {
     connect,
     acquire: context.acquire as () => Promise<ReturnType<typeof control> | null>,
     disable: context.disable as () => void,
+    deny: context.deny as (reason: string) => void,
     dispose: context.dispose as () => void,
   };
 }
@@ -65,6 +73,40 @@ it.each([false, true])("retries an absent or rejected App on the next offer: rej
   current.dispose();
   await Promise.resolve();
   expect(client.close).toHaveBeenCalledOnce();
+});
+
+it.each(["INVALID_TOKEN", "ROOM_CLOSED", "SESSION_REPLACED", "ROOM_ACCESS_DENIED"])(
+  "releases Native control on %s without waiting for the denied page to unmount", async (reason) => {
+    const current = fixture();
+    const client = control();
+    current.connect.mockResolvedValueOnce(client);
+    await current.acquire();
+    current.deny(reason);
+    await Promise.resolve();
+    expect(client.close).toHaveBeenCalledOnce();
+    current.dispose();
+    await Promise.resolve();
+    expect(client.close).toHaveBeenCalledOnce();
+  },
+);
+
+it("retires pending discovery after access loss without replacing or closing a newer connection", async () => {
+  const current = fixture();
+  const obsolete = control();
+  let resolve!: (value: typeof obsolete) => void;
+  current.connect.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+  const pending = current.acquire();
+  current.deny("INVALID_TOKEN");
+  const replacement = control();
+  current.connect.mockResolvedValueOnce(replacement);
+  await expect(current.acquire()).resolves.toBe(replacement);
+  resolve(obsolete);
+  await expect(pending).resolves.toBeNull();
+  expect(obsolete.close).toHaveBeenCalledOnce();
+  expect(replacement.close).not.toHaveBeenCalled();
+  await expect(current.acquire()).resolves.toBe(replacement);
+  expect(current.connect).toHaveBeenCalledTimes(2);
+  current.dispose();
 });
 
 it("keeps Browser fallback available after an App mismatch and retries on the next offer", async () => {

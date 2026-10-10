@@ -80,8 +80,8 @@ Implementation needs a concrete useful result within the product model.
   Obtain supported [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary),
   direct-media, endpoint-discovery and RTCP/MTU contracts plus a trusted relay
   configuration. Experimental dependency patches are not product APIs.
-  Extend optional-path acceptance to invitation revocation and overlapping-parent
-  transitions; bounded rendered chain/reconnect/departure checks pass. Preserve
+  Extend optional-path acceptance to overlapping-parent transitions; bounded
+  rendered chain/reconnect/departure and invitation-revocation checks pass. Preserve
   ordinary ICE when bootstrap is unavailable. The Native composition still needs
   a private socket-reservation API and a multi-mux address-lookup correction;
   verify physical interface changes and direct-only policy before adoption.

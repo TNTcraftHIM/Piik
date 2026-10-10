@@ -28,7 +28,8 @@ A capable, opted-in authenticated room session
 outlives its current publication. Stopping capture retires media, not chat;
 restoring an existing room joins it without starting capture. Entering the page
 alone does not create a room. Room close, lost authority and page teardown still
-retire the session. Connected Viewers may keep interacting while the Host page
+retire the session, including its App control connection and pending discovery.
+That retirement cannot wait for the denied page to unmount. Connected Viewers may keep interacting while the Host page
 is absent, provided the room service and their admitted sessions remain available.
 [Rooms and access](./rooms-access.md#room-interactions) owns interaction authority
 and retention; [status](../status.md#accepted-interaction-phase) owns release readiness.

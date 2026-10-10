@@ -9,7 +9,7 @@ import type { ViewerPeerEvents } from "../src/client/webrtc/viewer-peer";
 const source = ts.createSourceFile("ViewerPage.tsx", readFileSync(
   new URL("../src/client/pages/ViewerPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const owners = new Set(["ensurePeer", "reportActivePeerFailure"]);
+const owners = new Set(["ensurePeer", "reportActivePeerFailure", "noteReceiveFailure"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
   if (ts.isFunctionDeclaration(node) && node.name && owners.delete(node.name.text)) {
