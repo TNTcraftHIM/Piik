@@ -73,15 +73,17 @@ Implementation needs a concrete useful result within the product model.
   adoption. Bounded rendered Browser/Native chains cover reconnect, departure and
   overlapping Native-parent changes. Sustained and difficult-network recovery
   remain open. Preserve the existing Browser
-  sender, room-event and assigned-connection owners. Key exchange/admission
-  must precede receiver ICE; diagnostic replies are not media-readiness evidence, and inner
+  sender, room-event and assigned-connection owners. Order admission and candidate
+  delivery without exhausting inner checks; diagnostic replies are not media-readiness evidence, and inner
   checks may exhaust before the underlay recovers. Research owns the verified
   sender/receiver command, key/lifecycle and local RTP evidence and their limits.
   Obtain supported [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary),
   direct-media, endpoint-discovery and RTCP/MTU contracts plus a trusted relay
   configuration. Experimental dependency patches are not product APIs.
-  Preserve ordinary ICE when optional bootstrap is unavailable; the current
-  tunnel-only Native overlay does not yet satisfy that integration boundary.
+  Complete optional-path App and mixed-route acceptance while preserving ordinary
+  ICE when bootstrap is unavailable. The bounded Native composition still needs
+  a private socket-reservation API and a multi-mux address-lookup correction;
+  verify physical interface changes and direct-only policy before adoption.
   Preserve the local address policy (forcing loopback fails Firefox), existing
   recovery deadlines and single route/resource owners. DERP must not become
   another media fallback or bypass site/share policy. No new setting, timeout

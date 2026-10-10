@@ -1130,7 +1130,7 @@ path selector or changed ICE budgets. These local tests permit DERP and prepare
 the tunnel before ICE; they establish composition, not direct-media policy,
 NAT gain or cold-bootstrap independence.
 
-The current Native overlay still replaces its ordinary socket with the tunnel.
+The default Native overlay replaces its ordinary socket with the tunnel.
 `DialUDPPort` waits for remote admission, while Pion's stock multi-mux requires
 the sockets' addresses at construction. Simply combining them synchronously
 would let unavailable bootstrap delay otherwise usable ordinary ICE. A supported
@@ -1138,6 +1138,40 @@ way to prepare an optional socket independently remains an adoption requirement;
 the earlier private `PrepareUDPPort` patch is not a supported upstream API.
 Do not replace this gap with two racing PeerConnections, a second recovery
 controller or a larger product timeout.
+
+An isolated Linux race control combines that reservation patch with the same
+multi-mux: ordinary SRTP starts while remote admission is denied or bootstrap is
+unavailable, and continues through a delayed grant. For a tunnel-only pair,
+publishing its candidate only after admission establishes fresh audio/video in
+the same ICE generation. Ordinary candidates are available immediately;
+end-of-candidates follows the optional producer. Publishing the tunnel candidate
+early instead leaves both peers connecting with no media in the matched control.
+The candidate ordering uses [Trickle ICE](https://www.rfc-editor.org/rfc/rfc8838.html),
+without another PeerConnection, timeout extension or application retry loop.
+After ordinary ICE has nominated a pair, a late optional candidate is omitted;
+it may participate in a subsequent gathering. This raw fixture permits DERP and
+edits its own SDP; it does not establish direct-media policy or greater NAT coverage.
+
+The separate optional Native overlay now preserves the ordinary socket's STUN
+and mapping owner and adds its virtual socket to that same Pion connection.
+The receiver's existing candidate collector owns delayed advertisement, EOC and
+cancellation; its SDP answer cannot bypass that collector. The existing flow
+owner joins admission work on close. Native controls establish ordinary media
+before the tunnel grant and with bootstrap unavailable. A tunnel-only control
+establishes media after delayed admission, then preserves a sibling and a new
+receiver through old cleanup. Candidate events continue during the delay:
+bypassing the readiness gate leaves the sender checking with no media. Linux
+race checks pass. These are bounded Native control/media checks, not complete
+rendered App recovery, direct-only policy or physical-network acceptance.
+
+This composition also exposes an upstream address-lookup mismatch: Pion's
+multi-mux enumerates current child addresses but `GetConn` only consults its
+construction-time table. A newly enumerated address therefore has no mux. The
+isolated correction resolves uncached addresses against those same child muxes,
+without another address cache or socket owner; the unchanged control fails.
+This preserves the ordinary socket's fresh-address contract in the experiment.
+The copied dependency correction and socket-reservation method remain adoption
+requirements, not supported APIs or changes to the published Piik dependency.
 
 `room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
 experimental fields. It accepts the Go fixture's twelve route/restart messages,
@@ -1150,9 +1184,10 @@ The product wire and diagnostic implementation remain unchanged.
 These checks establish startup-order and ownership constraints, not a product
 integration or a Piik field defect. The earlier candidate gate and unsupported
 dependency method are not accepted product mechanisms.
-The existing assigned-connection owner must resolve key exchange and admission
-before receiver ICE starts. Accepting arbitrary keys, passing room credentials into Native
-control or enlarging its timeout is not an equivalent solution.
+The existing assigned-connection and candidate owners must order admission and
+advertisement so the usable tunnel receives live ICE checks; ordinary ICE need
+not wait for that optional producer. Accepting arbitrary keys, passing room credentials
+into Native control or enlarging its timeout is not an equivalent solution.
 
 ## Native Mapping Cache And Retry Lifetimes
 
