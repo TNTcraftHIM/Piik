@@ -63,6 +63,8 @@ class H264Decoder final {
     return windows::DecodedVideoColor(type.Get());
   }
 
+  RECT DisplayArea() const { return display_area_; }
+
   void Decode(const InputEnvelope& input, const Consumer& consume) {
     if (input.kind != 2 || input.data.empty() || input.data.size() > 4 * 1024 * 1024)
       throw std::runtime_error("Invalid H264 decoder input");
@@ -117,9 +119,31 @@ class H264Decoder final {
       if (subtype != MFVideoFormat_NV12) continue;
       UINT32 width = 0, height = 0;
       Check(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &width, &height), "output-size");
-      if (!ValidVideoSize(width, height)) {
-        throw std::runtime_error("H264 decoder output dimensions exceed the source bound");
+      if (!ValidCodedVideoSize(width, height)) {
+        throw std::runtime_error("H264 decoder output storage exceeds its bound");
       }
+      // MF_MT_FRAME_SIZE includes codec padding. The display aperture owns
+      // visible pixels, independently of the bounded decoder allocation.
+      MFVideoArea area{};
+      UINT32 area_bytes = 0;
+      HRESULT aperture = type->GetBlob(MF_MT_MINIMUM_DISPLAY_APERTURE,
+          reinterpret_cast<UINT8*>(&area), sizeof(area), &area_bytes);
+      if (aperture == MF_E_ATTRIBUTENOTFOUND)
+        aperture = type->GetBlob(MF_MT_GEOMETRIC_APERTURE,
+            reinterpret_cast<UINT8*>(&area), sizeof(area), &area_bytes);
+      if (aperture == MF_E_ATTRIBUTENOTFOUND) {
+        area = {{0, 0}, {0, 0}, {static_cast<LONG>(width), static_cast<LONG>(height)}};
+      } else {
+        Check(aperture, "display-aperture");
+        if (area_bytes != sizeof(area)) throw std::runtime_error("H264 display aperture is incomplete");
+      }
+      if (area.OffsetX.value < 0 || area.OffsetY.value < 0 ||
+          area.OffsetX.fract || area.OffsetY.fract ||
+          (area.OffsetX.value & 1) || (area.OffsetY.value & 1) ||
+          !ValidVideoSize(area.Area.cx, area.Area.cy) ||
+          area.OffsetX.value + area.Area.cx > static_cast<LONG>(width) ||
+          area.OffsetY.value + area.Area.cy > static_cast<LONG>(height))
+        throw std::runtime_error("H264 display aperture exceeds its picture bound");
       Check(decoder_->SetOutputType(0, type.Get(), 0), "set-output");
       UINT32 stride = 0;
       if (FAILED(type->GetUINT32(MF_MT_DEFAULT_STRIDE, &stride))) {
@@ -131,6 +155,8 @@ class H264Decoder final {
       width_ = width;
       height_ = height;
       stride_ = static_cast<LONG>(stride);
+      display_area_ = {area.OffsetX.value, area.OffsetY.value,
+          area.OffsetX.value + area.Area.cx, area.OffsetY.value + area.Area.cy};
       return;
     }
     throw std::runtime_error("H264 decoder has no NV12 output");
@@ -174,6 +200,7 @@ class H264Decoder final {
   UINT32 width_ = 0;
   UINT32 height_ = 0;
   LONG stride_ = 0;
+  RECT display_area_{};
   bool configured_ = false;
 };
 

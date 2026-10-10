@@ -3,8 +3,8 @@
 - Reviewed: 2026-10-06
 - Scope: platform capture, shared encoded sources, Pion transport and Browser
   decode; current behavior belongs to [media quality](../standards/media-quality.md)
-- Status: Windows physical native Host and Viewer gates passed; macOS and Linux adapters
-  compile and package but still require physical media gates
+- Status: Windows physical native Host and Viewer gates passed; current macOS
+  changes await SDK compilation, and macOS/Linux physical media gates remain open
 
 ## Windows Audio Exclusion
 
@@ -613,6 +613,26 @@ The Windows decoder's advertised support remains
 An isolated Level 5.2 trial was rejected by this machine's hardware encoder at
 output-type setup; it did not reach the decoder. The candidate therefore keeps
 Level 5.1 and rejects 4K60 before allocating an encoder.
+
+Decoder format checks must distinguish storage from visible content. On
+2026-10-11, the Windows decoder rejected a valid 3840x2160 picture stored in a
+3840x2176 surface because its output check applied the visible-pixel bound to
+codec padding. Media Foundation's [display aperture](https://learn.microsoft.com/en-us/windows/win32/medfound/picture-aspect-ratio)
+and CoreMedia's [clean aperture](https://developer.apple.com/documentation/coremedia/cmvideoformatdescriptiongetcleanaperture(_:originisattopleft:))
+own visible dimensions; both adapters now validate these separately from bounded
+coded storage. Windows copies the aperture while retaining the decoder surface,
+so downstream outputs receive the visible picture. The native regression checks
+right/bottom H.264 padding with real software decoding, visible edge pixels, and
+an offset NV12 aperture through the DXGI-buffer path. Oversized coded/reference
+storage remains rejected; the macOS SDK boundary above still applies.
+
+An additional nonzero left/top SPS crop exposed a local Media Foundation software
+decoder limit: its raw output omitted right/bottom picture pixels before Piik's
+surface copy. FFmpeg decoded the same generated frame correctly. Removing the
+input-size hint or changing output-aperture attributes did not restore them.
+The passing ordinary alignment-padding controls do not establish arbitrary SPS
+crop support on that decoder; no bitstream rewrite or replacement decoder is
+introduced for this unreported platform edge case.
 
 Current production Windows code encoded and decoded 30 synthetic frames in each
 4K orientation, both with and without a D3D decoder manager. Retaining/uploading

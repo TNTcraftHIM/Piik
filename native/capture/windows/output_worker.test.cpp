@@ -1,11 +1,14 @@
 // Exercise the production worker with a synthetic codec at its existing link
-// boundary. WARP supplies only the device-status API; no screen or audio is used.
+// boundary. WARP also checks decoded-surface copies; no screen or audio is used.
 #define wmain capture_main
 #include "main.cpp"
 #undef wmain
 
 #include <cassert>
+#include <filesystem>
+#include <fstream>
 #include <future>
+#include <iterator>
 
 namespace piik::capture::windows {
 class AdaptiveEncoder::Impl final {
@@ -309,6 +312,83 @@ void CheckSurfaceSample(ID3D11Device* device) {
   assert(time == 1'000'000 && duration == 333'333);
 }
 
+void CheckDecodedDisplayArea(ID3D11Device* device) {
+  Runtime runtime;
+  DeviceContext context;
+  context.device = device;
+  device->GetImmediateContext(&context.context);
+  auto check_red = [&](ID3D11Texture2D* texture) {
+    D3D11_TEXTURE2D_DESC description{};
+    texture->GetDesc(&description);
+    assert(description.Width == 3840 && description.Height == 2160 &&
+           description.Format == DXGI_FORMAT_NV12);
+    description.Usage = D3D11_USAGE_STAGING;
+    description.BindFlags = 0;
+    description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> staging;
+    Check(device->CreateTexture2D(&description, nullptr, &staging), "fixture-readback");
+    context.context->CopyResource(staging.Get(), texture);
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    Check(context.context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped), "fixture-map");
+    const auto* pixels = static_cast<const BYTE*>(mapped.pData);
+    for (UINT y : {0u, 1080u, 2159u}) {
+      for (UINT x : {0u, 1920u, 3839u}) {
+        const size_t uv = static_cast<size_t>(2160 + y / 2) * mapped.RowPitch + (x & ~1u);
+        if (pixels[static_cast<size_t>(y) * mapped.RowPitch + x] <= 60 ||
+            pixels[uv] >= 130 || pixels[uv + 1] <= 180)
+          std::cerr << "aperture pixel " << x << ',' << y << " YUV="
+                    << unsigned(pixels[static_cast<size_t>(y) * mapped.RowPitch + x]) << ','
+                    << unsigned(pixels[uv]) << ',' << unsigned(pixels[uv + 1]) << '\n';
+        assert(pixels[static_cast<size_t>(y) * mapped.RowPitch + x] > 60);
+        assert(pixels[uv] < 130 && pixels[uv + 1] > 180);
+      }
+    }
+    context.context->Unmap(staging.Get(), 0);
+  };
+
+  const auto path = std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() /
+      "fixtures" / "h264-padding" / "aperture.h264";
+  std::ifstream file(path, std::ios::binary);
+  assert(file);
+  piik::capture::InputEnvelope input;
+  input.kind = 2;
+  input.recovery = true;
+  input.width = 3840;
+  input.height = 2160;
+  input.duration = 10'000'000 / 24;
+  input.data = std::vector<uint8_t>(std::istreambuf_iterator<char>(file), {});
+  unsigned decoded = 0;
+  piik::capture::H264Decoder decoder(nullptr);
+  for (unsigned index = 0; index < 4; ++index) {
+    input.timestamp = (index + 1) * input.duration;
+    decoder.Decode(input, [&](IMFSample* sample, UINT32 width, UINT32 height, LONG stride) {
+      const auto area = decoder.DisplayArea();
+      assert(width == 3856 && height == 2176 && area.left == 0 && area.top == 0 &&
+             area.right == 3840 && area.bottom == 2160);
+      check_red(OwnDecodedTexture(context, sample, width, height, stride, area).Get());
+      ++decoded;
+    });
+  }
+  assert(decoded > 0);
+
+  // Exercise the DXGI-buffer path with known NV12 padding as well.
+  constexpr UINT width = 3872, height = 2176;
+  std::vector<BYTE> pixels(width * height * 3 / 2);
+  for (UINT y = 0; y < height; ++y) {
+    for (UINT x = 0; x < width; ++x) {
+      pixels[y * width + x] = x >= 16 && x < 3856 && y >= 8 && y < 2168 ? 81 : 41;
+      if (y < height / 2) {
+        const bool red = x >= 16 && x < 3856 && y >= 4 && y < 1084;
+        pixels[(height + y) * width + x] = red ? (x % 2 ? 240 : 90) : (x % 2 ? 110 : 240);
+      }
+    }
+  }
+  auto texture = UploadDecodedNV12(context, pixels.data(), width, height);
+  auto sample = CreateSurfaceSample(texture.Get(), 1'000'000, 416'666);
+  check_red(OwnDecodedTexture(context, sample.Get(), width, height, width,
+                            RECT{16, 8, 3856, 2168}).Get());
+}
+
 int main() {
   VideoProfile profile{2560, 1440, 60, 12'000'000};
   ValidateVideoProfile(profile);
@@ -345,6 +425,7 @@ int main() {
   Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,
                          D3D11_SDK_VERSION, &device, nullptr, nullptr), "fixture-warp");
   CheckSurfaceSample(device.Get());
+  CheckDecodedDisplayArea(device.Get());
   CheckAutoCadenceProbe(device.Get());
   CheckWorkerFailureGeneration(device.Get(), false);
   CheckWorkerFailureGeneration(device.Get(), true);

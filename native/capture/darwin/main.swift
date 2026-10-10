@@ -17,6 +17,8 @@ private let bitrate = 3_000_000
 private let maxPayloadBytes = 4_194_304
 private let maxVideoDimension = 3840
 private let maxVideoPixels = 3840 * 2160
+private let maxCodedVideoDimension = 4096
+private let maxCodedVideoPixels = 36_864 * 16 * 16
 private let supportedH264Levels: Set<UInt8> = [
     0x1e, 0x1f, 0x20, 0x28, 0x29, 0x2a, 0x32, 0x33,
 ]
@@ -1168,6 +1170,22 @@ private func geometrySelfTest() throws {
     guard VideoImage(buffer, attachments: outside) == nil else {
         throw CaptureFailure(description: "out-of-bounds capture content was accepted")
     }
+    // Generated Constrained Baseline: 3856x2176 storage, 3840x2160 visible.
+    // Exercise CoreMedia's SPS interpretation without allocating a decoder.
+    let sps = Data([0x67, 0x42, 0xc0, 0x33, 0xd9, 0x00, 0x3c, 0x40, 0x44,
+                    0x78, 0x98, 0x9c, 0x04, 0x40, 0x00, 0x00, 0x03, 0x00,
+                    0x40, 0x00, 0x00, 0x0c, 0x23, 0xc6, 0x0c, 0x92])
+    let pps = Data([0x68, 0xcb, 0x83, 0xcb, 0x20])
+    let format = try h264InputFormat(sps: sps, pps: pps)
+    guard CMVideoFormatDescriptionGetCleanAperture(format, originIsAtTopLeft: true) ==
+        CGRect(x: 0, y: 0, width: 3840, height: 2160) else {
+        throw CaptureFailure(description: "H.264 visible aperture self-test failed")
+    }
+    let oversized = Data([0x67, 0x42, 0xc0, 0x33, 0xda, 0x00, 0xf0, 0x01,
+                          0xe1, 0xf8, 0x03, 0x49, 0x40])
+    guard (try? h264InputFormat(sps: oversized, pps: pps)) == nil else {
+        throw CaptureFailure(description: "H.264 crop concealed oversized storage")
+    }
 }
 
 private final class AudioCaptureOutput: NSObject, SCStreamOutput, SCStreamDelegate {
@@ -1625,6 +1643,39 @@ private func readInput(done: StopSignal, outputs: [OutputProfile] = [],
     }
 }
 
+private func h264InputFormat(sps: Data, pps: Data) throws -> CMVideoFormatDescription {
+    var format: CMFormatDescription?
+    let status = sps.withUnsafeBytes { first in
+        pps.withUnsafeBytes { second in
+            let pointers = [first.bindMemory(to: UInt8.self).baseAddress!,
+                            second.bindMemory(to: UInt8.self).baseAddress!]
+            let sizes = [sps.count, pps.count]
+            return CMVideoFormatDescriptionCreateFromH264ParameterSets(
+                allocator: kCFAllocatorDefault, parameterSetCount: 2,
+                parameterSetPointers: pointers, parameterSetSizes: sizes,
+                nalUnitHeaderLength: 4, formatDescriptionOut: &format)
+        }
+    }
+    try require(status, "decode-h264-format")
+    guard let format else { throw CaptureFailure(description: "missing input format") }
+    let dimensions = CMVideoFormatDescriptionGetDimensions(format)
+    let width = Int(dimensions.width), height = Int(dimensions.height)
+    guard width >= 2, width <= maxCodedVideoDimension, width % 2 == 0,
+          height >= 2, height <= maxCodedVideoDimension, height % 2 == 0,
+          width * height <= maxCodedVideoPixels else {
+        throw CaptureFailure(description: "decoded input storage exceeds its bound")
+    }
+    // Encoded dimensions include padding; the clean aperture owns visible size.
+    let area = CMVideoFormatDescriptionGetCleanAperture(format, originIsAtTopLeft: true)
+    let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+    guard area.minX.isFinite, area.minY.isFinite, area.width.isFinite, area.height.isFinite,
+          area == area.integral, bounds.contains(area),
+          validVideoSize(Int(area.width), Int(area.height)) else {
+        throw CaptureFailure(description: "decoded input aperture exceeds its picture bound")
+    }
+    return format
+}
+
 private final class H264InputDecoder {
     private let encoders: EncoderGroup
     private let lock = NSLock()
@@ -1692,23 +1743,7 @@ private final class H264InputDecoder {
             guard recovery, !nextSPS.isEmpty, !nextPPS.isEmpty else {
                 throw CaptureFailure(description: "new H.264 input needs SPS, PPS and IDR")
             }
-            var nextFormat: CMFormatDescription?
-            let status = nextSPS.withUnsafeBytes { first in
-                nextPPS.withUnsafeBytes { second in
-                    let pointers = [first.bindMemory(to: UInt8.self).baseAddress!, second.bindMemory(to: UInt8.self).baseAddress!]
-                    let sizes = [nextSPS.count, nextPPS.count]
-                    return CMVideoFormatDescriptionCreateFromH264ParameterSets(
-                        allocator: kCFAllocatorDefault, parameterSetCount: 2,
-                        parameterSetPointers: pointers, parameterSetSizes: sizes,
-                        nalUnitHeaderLength: 4, formatDescriptionOut: &nextFormat)
-                }
-            }
-            try require(status, "decode-h264-format")
-            guard let nextFormat else { throw CaptureFailure(description: "missing input format") }
-            let dimensions = CMVideoFormatDescriptionGetDimensions(nextFormat)
-            guard validVideoSize(Int(dimensions.width), Int(dimensions.height)) else {
-                throw CaptureFailure(description: "decoded input exceeds its dimension bound")
-            }
+            let nextFormat = try h264InputFormat(sps: nextSPS, pps: nextPPS)
             if let session, !VTDecompressionSessionCanAcceptFormatDescription(session, formatDescription: nextFormat) {
                 VTDecompressionSessionInvalidate(session)
                 self.session = nil

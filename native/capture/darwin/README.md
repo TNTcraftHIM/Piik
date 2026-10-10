@@ -20,7 +20,8 @@ sh native/capture/darwin/build.sh /outside/repository/build
 ```
 
 `--geometry-self-test` checks content cropping, Retina scaling and rejection of
-invalid frame geometry without requiring a hardware encoder. `--self-test`
+invalid frame geometry, plus H.264 visible/coded-size admission, without requiring
+a hardware encoder. `--self-test`
 encodes successive landscape, portrait, ultrawide and small 420v buffers through
 one output worker, requiring the fitted dimensions and a constrained-baseline
 SPS/PPS/IDR after each size change. Neither needs Screen Recording permission.

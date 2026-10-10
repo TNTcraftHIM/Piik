@@ -1662,7 +1662,29 @@ ComPtr<ID3D11Texture2D> UploadDecodedNV12(const DeviceContext& device,
 }
 
 ComPtr<ID3D11Texture2D> OwnDecodedTexture(const DeviceContext& device, IMFSample* sample,
-                                         UINT32 width, UINT32 height, LONG stride) {
+                                         UINT32 width, UINT32 height, LONG stride,
+                                         const RECT& display_area) {
+  // Copy the visible aperture while taking ownership of the decoder's storage.
+  // Downstream converters receive ordinary unpadded NV12, on either decoder path.
+  auto copy_visible = [&](ID3D11Texture2D* original, UINT subresource) {
+    D3D11_TEXTURE2D_DESC description{};
+    original->GetDesc(&description);
+    if (description.Format != DXGI_FORMAT_NV12 || description.Width < width || description.Height < height ||
+        !piik::capture::ValidCodedVideoSize(description.Width, description.Height))
+      Fail("decoded-texture-size", "decoder texture exceeds source bounds");
+    description.Width = display_area.right - display_area.left;
+    description.Height = display_area.bottom - display_area.top;
+    description.ArraySize = description.MipLevels = 1;
+    description.Usage = D3D11_USAGE_DEFAULT;
+    description.CPUAccessFlags = description.MiscFlags = 0;
+    description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    ComPtr<ID3D11Texture2D> owned;
+    Check(device.device->CreateTexture2D(&description, nullptr, &owned), "decoded-owned-texture");
+    const D3D11_BOX source{static_cast<UINT>(display_area.left), static_cast<UINT>(display_area.top), 0,
+        static_cast<UINT>(display_area.right), static_cast<UINT>(display_area.bottom), 1};
+    device.context->CopySubresourceRegion(owned.Get(), 0, 0, 0, 0, original, subresource, &source);
+    return owned;
+  };
   ComPtr<IMFMediaBuffer> buffer;
   Check(sample->GetBufferByIndex(0, &buffer), "decoded-buffer");
   ComPtr<IMFDXGIBuffer> dxgi;
@@ -1671,19 +1693,7 @@ ComPtr<ID3D11Texture2D> OwnDecodedTexture(const DeviceContext& device, IMFSample
     UINT subresource = 0;
     Check(dxgi->GetResource(IID_PPV_ARGS(&original)), "decoded-dxgi-resource");
     Check(dxgi->GetSubresourceIndex(&subresource), "decoded-dxgi-subresource");
-    D3D11_TEXTURE2D_DESC description{};
-    original->GetDesc(&description);
-    if (description.Format != DXGI_FORMAT_NV12 || description.Width < width || description.Height < height ||
-        !piik::capture::ValidCodedVideoSize(description.Width, description.Height))
-      Fail("decoded-texture-size", "decoder texture exceeds source bounds");
-    description.ArraySize = description.MipLevels = 1;
-    description.Usage = D3D11_USAGE_DEFAULT;
-    description.CPUAccessFlags = description.MiscFlags = 0;
-    description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-    ComPtr<ID3D11Texture2D> owned;
-    Check(device.device->CreateTexture2D(&description, nullptr, &owned), "decoded-owned-texture");
-    device.context->CopySubresourceRegion(owned.Get(), 0, 0, 0, 0, original.Get(), subresource, nullptr);
-    return owned;
+    return copy_visible(original.Get(), subresource);
   }
   const DWORD size = width * height * 3 / 2;
   std::vector<BYTE> pixels(size);
@@ -1707,7 +1717,11 @@ ComPtr<ID3D11Texture2D> OwnDecodedTexture(const DeviceContext& device, IMFSample
     Check(buffer->Unlock(), "decoded-memory-unlock");
     if (!valid) Fail("decoded-memory-size", "NV12 output buffer is incomplete");
   }
-  return UploadDecodedNV12(device, pixels.data(), width, height);
+  auto uploaded = UploadDecodedNV12(device, pixels.data(), width, height);
+  if (display_area.left == 0 && display_area.top == 0 &&
+      display_area.right == static_cast<LONG>(width) && display_area.bottom == static_cast<LONG>(height))
+    return uploaded;
+  return copy_visible(uploaded.Get(), 0);
 }
 
 void RunEncodedVideo(ProductArguments arguments) {
@@ -1778,7 +1792,9 @@ void RunEncodedVideo(ProductArguments arguments) {
             Check(sample->GetSampleTime(&timestamp), "decoded-timestamp");
             Check(sample->GetSampleDuration(&duration), "decoded-duration");
             if (timestamp < 0 || duration <= 0) Fail("decoded-timing", "decoder did not preserve source timing");
-            submit(OwnDecodedTexture(device, sample, width, height, stride), width, height,
+            const auto area = h264->DisplayArea();
+            submit(OwnDecodedTexture(device, sample, width, height, stride, area),
+                   area.right - area.left, area.bottom - area.top,
                    static_cast<UINT64>(timestamp), static_cast<UINT64>(duration), h264->ColorSpace());
           });
         } else {
