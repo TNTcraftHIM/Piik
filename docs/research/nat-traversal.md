@@ -1007,94 +1007,61 @@ The pending-flow adapter also rejects a different admitted peer without consumin
 the assigned listener. The two-peer control reproduced the former premature
 close; the repair permits the expected peer or cancels through the same owner.
 
-The composed room/Native control receives the child's authenticated key through
-its assigned-parent projection. The parent prepares a listener before its offer;
-the child dials from that offer before creating its ICE agent. RTP delivery,
-same-parent replacement after DERP closure, late old-receiver cleanup and
-invitation-driven final retirement pass under the race detector. The ordinary
-offer adopts a replacement ID; the parent's updated assignment retires its
-listener while the Viewer stops receiving. Listener metadata carries the node and discovery keys,
-a nonzero shared key and a bounded port; it carries no relay URLs or region IDs.
-The dialer constructs the upstream address from received fields and a trusted
-local relay configuration. Strict shape checks and the existing route diagnostic
-owner keep connection material out of its output; complete protocol/signaling
-race suites and the direct-media composition pass.
-Trusted relay configuration and room-event dispatch to Native control remain
-fixture inputs. Complete Browser/App authorization and transport selection remain
-open: the product Native-capable Viewer chooses its backend on the SDP offer.
-This check establishes packet reception and resource retirement, not decoded
-playback or field benefit.
+The composed room/Native experiment separates session availability from actual
+transport identity. Native control advertises only availability in its ordinary
+ready response; authentication and existing assignments project that fact only
+to assigned parents. Restart/reconnect can clear it through the same owners.
+No persistent device key or room-wide key registry is added. App-launched Viewer
+startup uses its existing discovery promise; missing App retains Browser fallback.
+Late discovery, unmount, control replacement and stale close remain fenced.
 
-An isolated session-capability candidate addresses that timing boundary without
-a second exchange or room-wide key registry. Viewer authentication supplies its
-public Native receiver key; the existing preparing and committed assignments
-project it only to assigned parents. Public presence and unrelated participants
-receive none. The existing restart request can replace or clear the key only
-for the current physical connection; a retired request cannot change it.
-Invitation revocation removes it with the authenticated session. Browser-only
-and Native cases pass through real room WebSockets under the race detector.
-The explicitly configured experimental Native control generates its private key
-and supplies only the public half in the ordinary `ready` handshake. An
-unconfigured control advertises no experimental transport.
-There is no persisted device identity or additional query. A Node-driven real
-Browser `NativeClient` connects through loopback HTTP/WebSocket: independent
-sessions have different keys, ordinary commands retain them, and retirement
-clears the advertised identity without affecting its sibling. Diagnostic export
-and console output exclude those keys; loopback/control race suites and the App
-composition build pass. This does not cover Browser local-network permission.
-The isolated Browser overlay now preflights the existing Viewer connection
-promise before authentication only for App-launched pages. Missing App discovery
-retains Browser fallback. The existing signaling identity supplies the current
-key on authentication, restart and reconnect; control loss or disabled Native
-reception clears it without initiating another recovery operation. Owner checks
-cover stale cleanup, completion after unmount and disabling Native during
-discovery. They exercise extracted page logic and the real signaling serializer,
-not rendered UI or Browser permissions. The overlaid NativeViewerPeer and
-NativeClient forward the offer's listener to `receive-offer`; full frontend
-type checking passes. The actual command now creates the Tailcat flow lazily
-under its admitted Native receiver, using the control's key and locally trusted
-relay. Shared strict decoding rejects null or untrusted configuration fields;
-unavailable transport is an operation failure. Control retirement cancels a
-real pending dial. Same-parent overlap shares one client across two physical
-flows; final retirement releases it. Room/Native RTP and cancellation checks pass
-under the race detector. Receiver reuse additionally requires identical listener
-metadata. The changed-port control fails without that check; with a shared
-client retained by a sibling, replacement receives fresh RTP and leaves the
-sibling working. Ordinary Native reuse/control race suites still pass.
-Sender binding, rendered Browser acceptance and complete
-recovery remain open. These checks do not establish complete Browser integration.
-The key is availability metadata, not media-readiness authority.
+The parent reserves its listener and sends its bounded metadata with the ordinary
+SDP offer. The actual receive command creates or reuses the parent-bound Tailcat
+client and emits its public key through a connection-scoped Native event before
+dialing. An experimental `native-peer` signal returns that key to the exact
+assigned listener; its grant precedes receiver ICE. Parent-side binding checks
+the complete listener identity, is immutable after binding, and ends with that
+physical flow. Preparing and committed routes use the existing authorizer;
+reverse, unrelated, cross-room and retired-connection messages are rejected.
+Listener metadata accepts no relay URL or region. Trusted relay configuration
+remains local, and diagnostics exclude connection keys.
 
-The independent-parent control on 2026-10-10 exposes an identity-scope limit.
-It receives RTP on both local direct paths, but two parent-bound Tailcat clients
-using the same control key produce two duplicate relay registrations; the
-same-parent control produces none. Upstream
+On 2026-10-10 the previous session-wide key produced duplicate DERP registrations
+when two distinct parent-bound clients overlapped. Upstream
 [DERP registration](https://github.com/tailscale/tailscale/blob/main/derp/derpserver/derpserver.go)
-selects an active connection among duplicates, so local direct delivery does not
-prove reliable discovery/recovery across parents. Revisit connection identity or
-supported shared-underlay ownership before adoption; do not weaken overlap or
-add a route-specific fallback to conceal this limit. The same test exposed a
-pending-listener close race: the dependency may clear its remote address before
-a final datagram write. Retaining the already-authorized address makes that
-write fail normally; the focused retirement and concurrent ICE checks pass.
+selects among duplicate connections; local direct RTP had hidden this conflict.
+The corrected adapter uses Tailcat's default fresh identity per client, sharing
+that client only across physical flows to the same parent address. Both the
+same-parent and independent-tunnel-parent controls now require zero duplicates
+and fresh RTP before and after old-flow retirement. These controls use one
+assigned room parent with two listener instances; they do not yet prove a full
+room-controller handoff between different participant parents.
 
-Last-receiver replacement exposes a separate recovery limit: recreating the
-client with the same key completes bootstrap but delivers no RTP within the
-unchanged five-second window. A tunnel-only generated-UDP control reproduces
-the failure without Piik or Pion. Keyless event counters isolate the first
-WireGuard response going to the old endpoint; the next normal handshake uses
-the new endpoint and delivers data after the original window. This is delayed
-recovery, not permanent loss. Allowing relay data or repeating endpoint
-advertisement alone does not meet the original bound.
+Fresh client identity also avoids the measured same-key recreation delay: the
+old first WireGuard response went to a cached endpoint and data arrived only on
+the next handshake. Last-receiver replacement now meets the original five-second
+media bound without resetting the parent, extending timeouts or patching client
+discovery lifetime. The superseded dependency patch is removed. Receiver reuse
+still requires identical listener metadata; a changed listener replaces the
+source/transport through its existing owner. Sibling and ordinary reuse checks
+retain their behavior.
 
-`tailcat-discovery-lifetime.patch` gives each new client engine a fresh discovery
-key while preserving its authorized node key. The authenticated meow updates an
-immutable peer snapshot, so existing Magicsock invalidation retires the cached
-path. Server discovery identity stays stable for published addresses. UDP-only
-and actual Native last-receiver replacement now pass without changing timeouts
-or resetting the parent's peer; sibling, revocation, listener and upstream
-admission checks pass under the race detector. This remains an isolated
-dependency candidate, not a supported API or a fix for duplicate relay identities.
+Control close cancels dialing and joins each pending construction before final
+client close: Tailcat's close-before-initialization is not terminal. Queued
+identity events lose authority with the flow. Native control, loopback and
+listener retirement checks cover cancellation and ordinary cleanup; the parent
+adapter also retains its already-authorized remote address so a late write fails
+normally when the dependency clears its endpoint.
+
+The overlaid Browser NativeViewerPeer forwards the listener and returns scoped
+identity events while receive-offer is pending. Wrong share/connection and
+post-disposal events are ignored; there is no extra preparation timer or pending
+identity registry. Node-driven discovery, serializer, schema and lifecycle checks
+are separate from rendered media acceptance. Complete sender binding, room-event
+dispatch, actual multi-participant handoff and rendered Browser recovery remain
+open. The fixture still supplies parent binding and translates revocation into
+Native stop/listener retirement. Availability, public keys and handshake replies
+are not decoded-frame readiness or evidence of additional field reachability.
 
 `room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
 experimental fields. It accepts the Go fixture's twelve route/restart messages,
@@ -1108,7 +1075,7 @@ These checks establish startup-order and ownership constraints, not a product
 integration or a Piik field defect. The earlier candidate gate and unsupported
 dependency method are not accepted product mechanisms.
 The existing assigned-connection owner must resolve key exchange and admission
-before ICE starts. Accepting arbitrary keys, passing room credentials into Native
+before receiver ICE starts. Accepting arbitrary keys, passing room credentials into Native
 control or enlarging its timeout is not an equivalent solution.
 
 ## Native Mapping Cache And Retry Lifetimes

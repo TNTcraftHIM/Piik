@@ -74,15 +74,12 @@ Implementation needs a concrete useful result within the product model.
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   have not established another reachable NAT class. Verify the measured local
   address-handoff benefit through the complete App, mixed Browser/Native topology
-  and physical networks before adoption. Resolve the measured independent-parent
-  identity collision: separate Tailcat clients with the same session key register
-  duplicate relay connections even while local direct media passes.
-  Obtain supported client discovery-lifetime behavior: the isolated repair meets
-  the original reconnect bounds without resetting the parent peer, but remains
-  another dependency patch rather than a product-ready integration.
+  and physical networks before adoption. Extend the isolated client-identity and
+  listener-binding checks to actual room handoffs between different participants;
+  the current two-listener fixture does not establish that complete lifecycle.
   Complete sender binding, room-event dispatch, rendered Browser acceptance and
   recovery at the existing assigned-connection owners. Key exchange/admission
-  must precede ICE; diagnostic replies are not media-readiness evidence, and inner
+  must precede receiver ICE; diagnostic replies are not media-readiness evidence, and inner
   checks may exhaust before the underlay recovers. Research owns the verified
   receive-command, key/lifecycle and local RTP evidence and their limits.
   Obtain supported [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary),
