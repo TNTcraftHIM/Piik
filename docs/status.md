@@ -70,7 +70,8 @@ Custom width/height controls apply combined size and frame-rate limits, admittin
 4K30. Windows and Linux output preserve source shape within the selected ceiling.
 The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
 owns local codec, derived-output, SFU, Browser/Native fanout and live-control
-evidence. macOS geometry, cross-browser/device and route-change acceptance, and
+evidence. The macOS geometry implementation still needs SDK compilation and
+hardware verification; cross-browser/device and route-change acceptance, and
 additional codecs remain open.
 Magicsock adoption is no-go for this candidate: its App-to-App augmentation does
 not improve the core App-to-Browser use case. The

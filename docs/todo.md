@@ -61,9 +61,9 @@ Implementation needs a concrete useful result within the product model.
   Extend Browser interoperability and mixed-topology checks to limited receivers
   and physical camera orientation behavior.
   Browser display capture, Browser relay and Browser-to-Native fanout now have
-  bounded high-resolution evidence. macOS geometry and physical 4K/game capture
-  remain open. Preserve safety
-  limits and framework-owned adaptation. The
+  bounded high-resolution evidence. macOS geometry SDK/hardware checks and
+  physical 4K/game capture remain open. Preserve safety limits and
+  framework-owned adaptation. The
   [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)
   retain explicit receive-limit enforcement and the current 320 kbps sender
   ceiling. Physical listening, mobile and field-network acceptance remain open;

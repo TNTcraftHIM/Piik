@@ -14,13 +14,17 @@ machine's architecture:
 
 ```sh
 sh native/capture/darwin/build.sh /outside/repository/build
+/outside/repository/build/piik-capture --geometry-self-test
 /outside/repository/build/piik-capture --self-test
 /outside/repository/build/piik-capture --probe
 ```
 
-`--self-test` encodes one in-memory 420v frame through the same hardware-only
-VideoToolbox path and requires a constrained-baseline SPS/PPS/IDR. It needs no
-Screen Recording permission. Real source selection, capture, and recovery still
+`--geometry-self-test` checks content cropping, Retina scaling and rejection of
+invalid frame geometry without requiring a hardware encoder. `--self-test`
+encodes successive landscape, portrait, ultrawide and small 420v buffers through
+one output worker, requiring the fitted dimensions and a constrained-baseline
+SPS/PPS/IDR after each size change. Neither needs Screen Recording permission.
+Real source selection, window resizing, display-scale changes and recovery still
 require a physical macOS gate.
 
 The first source-list or capture request is subject to the normal macOS Screen

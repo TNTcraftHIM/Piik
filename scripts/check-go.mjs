@@ -193,6 +193,7 @@ function checkPlatformCapture() {
     throw new Error("Native capture probe returned an invalid contract");
   }
   if (process.platform === "darwin") {
+    run(executable, ["--geometry-self-test"]);
     if (probe.adapters.some(adapter => adapter.hardwareH264.length > 0)) {
       run(executable, ["--self-test"]);
     } else {

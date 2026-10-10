@@ -547,14 +547,22 @@ one pipeline, checks the output ceiling and image corners, and exercises the
 smallest derived output. Compilation and those regressions passed on Linux;
 Portal capture and hardware encoder resizing still need a physical device.
 
-macOS remains a concrete implementation gap: ScreenCaptureKit and VideoToolbox
-currently use the requested dimensions as a fixed canvas. The capture adapter
-also ignores per-frame content geometry. Apple's
-[capture sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos)
-distinguishes buffer dimensions, content rectangle and pixel scale; changing only
-the initial window size would not cover live resizing or Retina scale changes.
-Review that boundary under the existing capture/encoder owners, then verify
-portrait, small-source and resizing behavior with the macOS SDK and hardware.
+The macOS candidate now interprets ScreenCaptureKit's per-frame content rectangle,
+pixel scale and content scale, following Apple's
+[frame-metadata guidance](https://developer.apple.com/videos/play/wwdc2022/10155/).
+It retains the bounded capture surface, describes its content through CoreVideo's
+clean aperture and uses VideoToolbox's
+[source-aperture scaling](https://developer.apple.com/documentation/videotoolbox/kvtscalingmode_cropsourcetocleanaperture).
+Each existing output worker fits the unscaled source within its ceiling and
+replaces only its compression session when the fitted size changes. The frame
+envelope carries actual dimensions; declared output limits and room/route
+identity remain unchanged. Encoded-input derivation uses the same worker.
+
+This implementation has not yet been compiled with the macOS SDK or executed on
+macOS. The existing native check now includes content-geometry validation and
+extends hardware self-testing across successive source shapes. Run those checks
+on Apple silicon and Intel, then verify real window resizing, Retina transitions,
+cropped image fidelity and quiet-source recovery before accepting this boundary.
 
 Local synthetic-input controls exercised that production worker through four
 successive source sizes: 1080x1920, 3440x1440, 640x480 and 1920x1080. Under the
