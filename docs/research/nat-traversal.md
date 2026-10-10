@@ -1175,8 +1175,19 @@ acceptance. Optional invitation revocation also rejects old links, clears media
 resources and permits new Native reception across four grant generations. This
 check exposed and now covers the shared Viewer's
 [control-retirement gap](./native-client-lifecycle.md#viewer-control-retirement).
-Optional overlapping-parent checks remain separate from the earlier tunnel-only
-UI evidence.
+A second optional UI check moves one Native Viewer between two Native parents
+in both directions through the real room controller. Holding candidate readiness
+within the unchanged operation deadline preserves the old video element, stream
+and advancing frames while both receiver flows exist. Releasing readiness commits
+the new parent and retires only the old flow; a sibling retains its connection
+and advancing decoded pictures throughout. Final transport counts reach zero
+under the race detector. The fixture disables automatic quality tuning and
+changes advertised capacity to isolate overlapping ownership. This local synthetic
+check does not measure handoff latency, difficult-network success or tunnel selection.
+The optional composition separately passes the kernel-NAT unchanged-path control
+with zero relayed encrypted data, retaining fresh Native playback packets after DERP
+closes. This fixed-encoded-input check establishes direct transport through the
+virtual socket, not rendered App recovery or another reachable NAT class.
 
 This composition also exposes an upstream address-lookup mismatch: Pion's
 multi-mux enumerates current child addresses but `GetConn` only consults its
