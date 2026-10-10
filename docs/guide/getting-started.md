@@ -149,6 +149,13 @@ sharing to allow that fallback. The project's online site uses P2P only.
 ## Picture and sound settings
 
 Open **Sharing settings** below the picture to adjust picture and audio quality.
+
+- Choose a picture preset, or enter width and height under **Resolution ceiling**.
+  Piik preserves the source's proportions within that ceiling. Selecting 4K sets
+  the frame-rate ceiling to at most 30 fps.
+- Choose an audio preset, or enter an **Audio bitrate limit** from 6 to 320 kbps.
+  Picture and sound still adapt to the source, device and available bandwidth.
+
 Piik remembers your applied settings for the next visit. Browser-only use remembers
 them for the current site; opening Piik through an updated App also keeps them
 when your public-invite address changes.
