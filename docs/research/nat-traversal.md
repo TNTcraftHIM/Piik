@@ -980,6 +980,9 @@ Stop and control-close cases pass under the race detector, including fresh
 sibling RTP before preparing a replacement. Counterfactuals that disconnect on
 every close or never disconnect fail those checks. This composes physical-flow
 cleanup with the Native session; keys in that control remain local fixture inputs.
+The pending-flow adapter also rejects a different admitted peer without consuming
+the assigned listener. The two-peer control reproduced the former premature
+close; the repair permits the expected peer or cancels through the same owner.
 
 The composed room/Native control passes actual room-authorized key exchange,
 SDP/candidates and RTP delivery, same-parent replacement after DERP closure,
