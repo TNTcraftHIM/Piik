@@ -1092,8 +1092,16 @@ In the mixed Browser/Native chain, revoking a private room's invitation removes
 all Viewers and Native transport resources while the Host continues sharing.
 The old invitation remains rejected after rotation; a fresh invitation restores
 the chain and decoded media without retaining the retired transports.
+With copy capacity two, four Native Viewers exercise the overlapping path:
+the Browser Host feeds Native A/B, and A initially feeds C/D. Controlled
+relay-capacity messages move D from A to B and back through the real controller.
+Holding D's first-frame acknowledgement leaves two Native client/flow pairs
+alive while its old displayed picture advances; releasing it commits the new
+parent and retires only the old pair. C keeps its connection and continues
+decoding. Final resource and race checks pass. This exercises transport ownership
+under a capacity change, not the quality-degradation trigger or its thresholds.
 This is bounded local rendered acceptance, not physical capture, difficult-NAT
-reachability, sustained recovery or a healthy overlapping-parent handoff.
+reachability or sustained recovery.
 
 Cold receiver preparation initially took about three seconds in this fixture.
 The local DERP region had no STUN service: two preauthorized registration controls

@@ -74,9 +74,9 @@ Implementation needs a concrete useful result within the product model.
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   have not established another reachable NAT class. Verify the measured local
   address-handoff benefit through the complete App and physical networks before
-  adoption. Bounded rendered Browser/Native chains cover reconnect and departure
-  with a different Native parent; healthy overlapping-parent handoffs, sustained
-  and difficult-network recovery remain open. Preserve the existing Browser
+  adoption. Bounded rendered Browser/Native chains cover reconnect, departure and
+  overlapping Native-parent changes. Sustained and difficult-network recovery
+  remain open. Preserve the existing Browser
   sender, room-event and assigned-connection owners. Key exchange/admission
   must precede receiver ICE; diagnostic replies are not media-readiness evidence, and inner
   checks may exhaust before the underlay recovers. Research owns the verified
