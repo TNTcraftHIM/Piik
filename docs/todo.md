@@ -93,8 +93,12 @@ Implementation needs a concrete useful result within the product model.
   a separate Native control fixture ties key revocation to its last owned flow.
   Native key installation and flow retirement still need to follow those room
   events. No product wire extension or Browser integration is implemented.
-  Resolve direct-only media enforcement while retaining discovery; DERP must
-  not silently become another media fallback or bypass site/share route policy.
+  Obtain a supported direct-media policy that retains discovery/handshakes;
+  the isolated packet-policy control is not a product API. Resolve its cold-start
+  failures in Pion and Native fixtures: direct discovery can complete after
+  initial ICE checks are exhausted. One diagnostic ping before ICE does not fix it.
+  DERP must not silently become another media fallback or bypass site/share
+  route policy.
   Keep isolated dependency patches and
   recovery counterfactuals outside product routing; a diagnostic reply is not
   media-readiness authority. Research owns the experiments and their limits.

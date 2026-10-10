@@ -372,8 +372,38 @@ or counting its packets in a fixture measures the path; neither enforces Piik's
 product policy. The reviewed Tailcat API does not expose a direct-only media
 policy that retains discovery. Disabling DERP also removes bootstrap/endpoint
 exchange, and polling a direct-path status cannot authorize each later packet.
-Product adoption needs that separation or an accepted transport-policy change;
-it must not silently add a media relay to P2P-only rooms or bypass SFU-only sites.
+
+An isolated packet-policy overlay separates discovery and fixed
+[WireGuard handshake messages](https://www.wireguard.com/protocol/#key-exchange-and-data-packets)
+from encapsulated data. Blocked UDP carries no media; a relay-allowed peer's
+incoming data is also rejected. Removing either direction's guard fails its
+corresponding control. The ordinary-NAT Pion fixture delivered fresh direct SRTP
+in an initial run but failed cold startup on a repeat, so it is not a passing
+acceptance gate.
+The relay counts encrypted data envelopes without recording keys or payloads;
+ordinary relay delivery validates that counter. The stricter variant that also
+blocks WireGuard handshakes leaves inner ICE connecting without media after
+20 seconds, even after the outer endpoint is known. Native control replacement,
+sibling continuity and final retirement pass with the media-only restriction
+on loopback. These checks do not establish Native startup through NAT.
+
+The complete Native Engine/receiver/playback fixture also fails cold startup through
+ordinary kernel NAT with this restriction, before any address move. Its
+relay-allowed control passes and retains fresh playback after DERP closes.
+Discovery traces show one direction's initial ping unanswered: one endpoint
+confirms direct access promptly, while the other confirms it around six seconds
+later. Native's eight initial ICE writes end around 1.4 seconds; a pending UDP
+flow may still be unaccepted then. The late direct path does not revive that
+exhausted generation. The late side can be either endpoint. A one-shot supported
+`Client.DiscoPing` before ICE returns the relay result in milliseconds and does
+not fix startup. Diagnostic replies and successful key admission therefore
+cannot stand in for bidirectional transport preparation.
+
+Authentication, key handling, retry timers and Pion budgets remain unchanged.
+The experiment narrows the missing direct-media preparation contract; it is not
+a supported upstream option, passing adoption gate or improvement to
+direct NAT reachability. Product adoption must preserve site/share policy,
+including P2P-only and SFU-only rooms, without silently adding another relay.
 
 Replacing one gateway mapping without notifying endpoints separated recovery
 from initial reachability. Neither established direct path delivered within
