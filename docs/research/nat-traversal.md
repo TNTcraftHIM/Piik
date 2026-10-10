@@ -351,12 +351,17 @@ requiring every Viewer to install software. Existing IPv6, bounded gateway
 mapping and standard ICE can benefit those edges; a new transport must be judged
 against that same endpoint pair and relay policy.
 
-- The [2026 DCUtR measurement](https://arxiv.org/abs/2604.12484) covers 4.4 million
-  attempts across more than 85,000 networks. Its roughly 70% success is conditional
+- The [2026 DCUtR paper](https://arxiv.org/abs/2604.12484) covers 4.4 million
+  attempts across more than 85,000 networks, collected in December 2022 through
+  January 2023. Its roughly 70% success is conditional
   on relay reservation and address discovery; 97.6% of successful punches occur
   on the first attempt. These are libp2p results, not a Piik baseline. They justify
   separating preparation failures from hole-punch failures and measuring the
-  marginal benefit of retries, not copying a retry count or replacing ICE.
+  marginal benefit of retries, not copying a retry count or replacing ICE. Its
+  proposed role reversal and probabilistic port probing are future work, not
+  measured improvements in that campaign. Standard full ICE already checks in
+  both directions; a QUIC initiator-role proposal is not evidence for changing
+  Piik's Host authority or adding another retry owner.
 - [QUIC hole punching and migration](https://arxiv.org/abs/2408.01791) reports
   shorter connection/restoration latency than its TCP/re-punching controls.
   It does not demonstrate a drop-in improvement for Browser WebRTC. Current
@@ -374,6 +379,21 @@ against that same endpoint pair and relay policy.
 - [Direct Sockets](https://developer.chrome.com/docs/iwa/direct-sockets) is
   restricted to explicitly installed Isolated Web Apps. It does not remove the
   installation requirement for an ordinary invitation page.
+- [SPED](https://datatracker.ietf.org/doc/draft-hancke-webrtc-sped/) carries DTLS
+  handshake data in STUN so ICE and encryption setup can overlap. Its target is
+  setup latency and handshake loss recovery, not newly reachable NAT classes.
+  The March 2026 individual draft is expired as of this review; implementation
+  interest does not establish interoperable product support. Evaluate only
+  framework-owned negotiation and stock Browser builds, retaining authentication
+  and ordinary fallback. A Browser field-trial flag is not an adoption path.
+
+The 2026-10-10 upstream review found stable Pion WebRTC v4.2.23 / ICE v4.4.7
+beyond the current pins. The [ICE changes](https://github.com/pion/ice/compare/v4.4.0...v4.4.7)
+include STUN retransmission, gathering-generation ownership, Chromium mDNS
+compatibility and pre-created mux lifetime corrections. Inspect applicability
+and test the shared Native/SFU composition before adopting them: this range also
+changes STUN/transport package majors. A release-note match alone does not
+establish a Piik defect or a connectivity gain.
 
 #### Pion Renomination Preflight
 
