@@ -1145,10 +1145,12 @@ private func geometrySelfTest() throws {
         .contentRect: rect.dictionaryRepresentation,
         .scaleFactor: CGFloat(2), .contentScale: CGFloat(1),
     ]
+    // Core Video returns a lower-left origin; the surface crop starts 80 px
+    // from the top, so its lower edge is 720 - 80 - 600 = 40 px from the bottom.
     guard let image = VideoImage(buffer, attachments: attachments),
           try image.fitted(to: ceiling).width == 400,
           try image.fitted(to: ceiling).height == 600,
-          CVImageBufferGetCleanRect(buffer) == CGRect(x: 100, y: 80, width: 400, height: 600) else {
+          CVImageBufferGetCleanRect(buffer) == CGRect(x: 100, y: 40, width: 400, height: 600) else {
         throw CaptureFailure(description: "capture content geometry self-test failed")
     }
     var upscaled = attachments
