@@ -866,9 +866,10 @@ both leave it waiting in the unmodified owner. The isolated correction runs
 session close on control-context cancellation and joins it before releasing the
 capacity slot. Both cases, the direct-owner checks and loopback/control package
 suites pass under the race detector. This is an experimental slow-transport
-requirement, not an established published failure. Viewer-page startup and
-transport consumption remain open; no new recovery loop or room resource
-registry is added.
+requirement, not an established published failure. The
+[authorization boundary](#peer-authorization-boundary) owns the subsequent
+Viewer startup and receive-command evidence; no new recovery loop or room
+resource registry is added.
 
 The earlier FFmpeg matrix had one decoded-content failure. Matched synthetic
 bitstream/RTP replay identifies a receiver-fixture mismatch: its separate SDK
@@ -1032,8 +1033,9 @@ receive none. The existing restart request can replace or clear the key only
 for the current physical connection; a retired request cannot change it.
 Invitation revocation removes it with the authenticated session. Browser-only
 and Native cases pass through real room WebSockets under the race detector.
-The isolated Native control now generates the private key in its existing
-session and supplies only the public half in the ordinary `ready` handshake.
+The explicitly configured experimental Native control generates its private key
+and supplies only the public half in the ordinary `ready` handshake. An
+unconfigured control advertises no experimental transport.
 There is no persisted device identity or additional query. A Node-driven real
 Browser `NativeClient` connects through loopback HTTP/WebSocket: independent
 sessions have different keys, ordinary commands retain them, and retirement
@@ -1047,11 +1049,30 @@ key on authentication, restart and reconnect; control loss or disabled Native
 reception clears it without initiating another recovery operation. Owner checks
 cover stale cleanup, completion after unmount and disabling Native during
 discovery. They exercise extracted page logic and the real signaling serializer,
-not rendered UI or Browser permissions. Full overlaid frontend and lifecycle-test
-type checking now pass with the single offer field. Native command binding
-and sender/receiver transport consumption remain unimplemented;
-the scoped startup checks do not establish complete Browser integration.
+not rendered UI or Browser permissions. The overlaid NativeViewerPeer and
+NativeClient forward the offer's listener to `receive-offer`; full frontend
+type checking passes. The actual command now creates the Tailcat flow lazily
+under its admitted Native receiver, using the control's key and locally trusted
+relay. Shared strict decoding rejects null or untrusted configuration fields;
+unavailable transport is an operation failure. Control retirement cancels a
+real pending dial. Same-parent overlap shares one client across two physical
+flows; final retirement releases it. Room/Native RTP and cancellation checks pass
+under the race detector. Sender binding, rendered Browser acceptance and complete
+recovery remain open. These checks do not establish complete Browser integration.
 The key is availability metadata, not media-readiness authority.
+
+The independent-parent control on 2026-10-10 exposes an identity-scope limit.
+It receives RTP on both local direct paths, but two parent-bound Tailcat clients
+using the same control key produce two duplicate relay registrations; the
+same-parent control produces none. Upstream
+[DERP registration](https://github.com/tailscale/tailscale/blob/main/derp/derpserver/derpserver.go)
+selects an active connection among duplicates, so local direct delivery does not
+prove reliable discovery/recovery across parents. Revisit connection identity or
+supported shared-underlay ownership before adoption; do not weaken overlap or
+add a route-specific fallback to conceal this limit. The same test exposed a
+pending-listener close race: the dependency may clear its remote address before
+a final datagram write. Retaining the already-authorized address makes that
+write fail normally; the focused retirement and concurrent ICE checks pass.
 
 `room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
 experimental fields. It accepts the Go fixture's twelve route/restart messages,

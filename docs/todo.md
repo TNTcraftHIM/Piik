@@ -72,49 +72,27 @@ Implementation needs a concrete useful result within the product model.
   of v1.9.2.
 - [ ] **Native Magicsock.** Go reuse is feasible, but the
   [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
-  have not established improved direct reachability. Seek a repeatable benefit
-  before accepting room-scoped peer keys, flow admission and relay operation.
-  Verify the measured local-address handoff benefit through the complete App,
-  mixed Browser/Native topology and physical networks. Current Native-engine,
-  Browser-bridge and decoded-picture controls do not cover App authorization or
-  room routing, and do not establish another reachable NAT class. Preserve the
-  existing local address policy; forcing loopback fails Firefox.
-  Product adoption still needs supported
-  [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary)
-  and RTCP/MTU boundaries, complete recovery with fresh per-connection flows
-  beyond the isolated owner and decoded-handoff checks, including each sender's
-  recovery capability, and mixed Browser/Native verification. Inner checks can
-  exhaust before the underlay recovers; research distinguishes eventual recovery
-  from exhaustion by sender behavior. No new product setting or flow owner is
-  accepted.
-  Resolve key exchange and admission before ICE at the assigned-connection owner;
-  research owns the supported pre-ICE dial/retirement checks and the isolated
-  gated counterfactual. The Go-only room/Native composition verifies the
-  authenticated receiver key and listener metadata on the ordinary SDP offer,
-  same-parent replacement and invitation-driven retirement;
-  trusted relay configuration and event-to-control dispatch remain fixture inputs.
-  The isolated authenticated-session capability projection and Browser schema/
-  diagnostic checks pass. Socket binding follows the individual Native request
-  and its existing media owner. The isolated loopback correction cancels slow
-  preparation when the control ends and joins cleanup. App session key production
-  and the actual NativeClient discovery/hello pass in a Node-driven local check;
-  the isolated Viewer startup owner now preflights App discovery and carries its
-  current identity through authentication/restart/reconnect. Rendered Browser
-  acceptance, Native command binding and transport consumption remain open.
-  Full overlaid frontend type checking passes without extra signal variants.
-  Integrate the remaining work at the existing Browser/App connection owners.
+  have not established another reachable NAT class. Verify the measured local
+  address-handoff benefit through the complete App, mixed Browser/Native topology
+  and physical networks before adoption. Resolve the measured independent-parent
+  identity collision: separate Tailcat clients with the same session key register
+  duplicate relay connections even while local direct media passes.
+  Verify receiver reuse when the same connection ID receives changed listener
+  metadata; its existing UDP flow must not silently retain the previous listener.
+  Complete sender binding, room-event dispatch, rendered Browser acceptance and
+  recovery at the existing assigned-connection owners. Key exchange/admission
+  must precede ICE; diagnostic replies are not media-readiness evidence, and inner
+  checks may exhaust before the underlay recovers. Research owns the verified
+  receive-command, key/lifecycle and local RTP evidence and their limits.
+  Obtain supported [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary),
+  direct-media, endpoint-discovery and RTCP/MTU contracts plus a trusted relay
+  configuration. Experimental dependency patches are not product APIs.
+  Preserve the local address policy (forcing loopback fails Firefox), existing
+  recovery deadlines and single route/resource owners. DERP must not become
+  another media fallback or bypass site/share policy. No new setting, timeout
+  change or transport integration is accepted; the P2P evidence work below owns
+  network/interop acceptance.
   No product wire extension or complete Browser integration is implemented.
-  Obtain supported direct-media and initial endpoint-discovery contracts;
-  the isolated packet-policy overlay and bootstrap repair are not product APIs.
-  Carry the repaired library ordering through the complete room/App composition;
-  neither diagnostic replies nor isolated handoffs establish full recovery.
-  DERP must not silently become another media fallback or bypass site/share
-  route policy.
-  Keep isolated dependency patches and
-  recovery counterfactuals outside product routing; a diagnostic reply is not
-  media-readiness authority. Research owns the experiments and their limits.
-  No timeout change or transport integration is accepted; the P2P evidence work
-  below owns the network/interop acceptance boundary.
 - [ ] **Small external test before 2.0.** First use the isolated transport
   experiment on the same difficult network pairs as current Piik, measuring
   direct success separately from relay delivery, first-picture time, recovery
