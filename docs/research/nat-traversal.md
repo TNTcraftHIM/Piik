@@ -400,19 +400,29 @@ exhausted generation. The late side can be either endpoint. A one-shot supported
 not fix startup. Diagnostic replies and successful key admission therefore
 cannot stand in for bidirectional transport preparation.
 
-A separate startup control uses supported Tailcat TCP establishment inside the
-same tunnel before Native ICE, within the existing eight-second preparation
-deadline. The server checks the assigned peer key and both sides close the
-temporary TCP flow; media still uses UDP. With relayed data prohibited, ordinary
-NAT reaches actual Native receiver/local playback, while blocked UDP expires
-before Native emits SDP or ICE. Relay data counts remain zero throughout.
-Preparation costs about seven seconds in the repeated local runs. This exceeds
-the spare startup time in the existing handoff check: its fifteen seconds of
-post-start observation do not finish inside the unchanged twenty-second bound,
-although fresh playback continues after DERP closes. The startup check therefore
-does not establish migration acceptance or justify extending product deadlines.
-The extra listener and delay are integration costs, not an accepted product
-readiness mechanism or evidence of improved NAT reachability.
+The producer/consumer review identifies a bootstrap contract mismatch:
+[Tailcat's initial endpoint advertisement](https://github.com/tailscale/tailcat/blob/b4dc28e8aa8936f0a90a41ad8293a64e3d6b645f/tailcat.go#L1570)
+uses CallMeMaybe without first sending direct UDP, while
+[magicsock's receiver](https://github.com/tailscale/tailscale/blob/a0e471a35b8f/wgengine/magicsock/endpoint.go#L2146)
+assumes that send has already opened the peer's stateful firewall. A dependency
+candidate follows pings to newly learned endpoints with the existing endpoint
+advertisement. Identical advertisements do not cause another reply, and no
+timer, retry count or cryptographic check changes.
+
+With that candidate, three fresh Pion starts deliver direct SRTP within
+68–87 ms of their observation start; blocked-UDP and incoming-relay controls
+still enforce the media policy. The real Windows VP8 encoder, Native receiver
+and actual Chromium/Firefox bridge also retain fresh decoded pictures through
+both local-address handoff directions and subsequent DERP closure, within the
+unchanged observation bound. The Native fixture counts relayed data from before
+bootstrap, not only after direct-path discovery. These are isolated, generated-
+media checks; full App/room integration and physical networks remain open.
+
+A separate TCP preparation control restored startup at about seven seconds of
+extra cost but exceeded the spare time in the full handoff check. That extra
+flow is not retained; the library bootstrap candidate supersedes it. Fixed-frame
+or bare-Pion playback controls still expose the separate encoder and local-bridge
+boundaries described below.
 
 Authentication, key handling, retry timers and Pion budgets remain unchanged.
 The experiment narrows the missing direct-media preparation contract; it is not

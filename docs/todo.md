@@ -93,12 +93,10 @@ Implementation needs a concrete useful result within the product model.
   a separate Native control fixture ties key revocation to its last owned flow.
   Native key installation and flow retirement still need to follow those room
   events. No product wire extension or Browser integration is implemented.
-  Obtain a supported direct-media policy that retains discovery/handshakes;
-  the isolated packet-policy control is not a product API. Resolve its cold-start
-  preparation cost and full handoff boundary: direct discovery can finish after
-  initial ICE checks are exhausted, and the working isolated TCP preparation
-  consumes most of the existing preparation budget. Research owns the controls;
-  neither diagnostic replies nor startup alone establish recovery acceptance.
+  Obtain supported direct-media and initial endpoint-discovery contracts;
+  the isolated packet-policy overlay and bootstrap repair are not product APIs.
+  Carry the repaired library ordering through the complete room/App composition;
+  neither diagnostic replies nor isolated handoffs establish full recovery.
   DERP must not silently become another media fallback or bypass site/share
   route policy.
   Keep isolated dependency patches and
