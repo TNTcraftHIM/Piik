@@ -93,7 +93,10 @@ Implementation needs a concrete useful result within the product model.
   key exchange, same-parent replacement and invitation-driven retirement;
   connection material now travels through that assigned-connection owner;
   trusted relay configuration and event-to-control dispatch remain fixture inputs.
-  Integrate those boundaries at the existing Browser/App connection owners.
+  The isolated authenticated-session capability projection and Browser schema/
+  diagnostic checks pass; App key production, early discovery and transport
+  consumption remain open. Integrate those boundaries at the existing
+  Browser/App connection owners.
   No product wire extension or Browser integration is implemented.
   Obtain supported direct-media and initial endpoint-discovery contracts;
   the isolated packet-policy overlay and bootstrap repair are not product APIs.

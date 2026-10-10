@@ -1003,6 +1003,25 @@ so it does not yet advertise Native transport availability before negotiation.
 This check establishes packet reception and resource retirement, not decoded
 playback or field benefit.
 
+An isolated session-capability candidate addresses that timing boundary without
+a second exchange or room-wide key registry. Viewer authentication supplies its
+public Native receiver key; the existing preparing and committed assignments
+project it only to assigned parents. Public presence and unrelated participants
+receive none. The existing restart request can replace or clear the key only
+for the current physical connection; a retired request cannot change it.
+Invitation revocation removes it with the authenticated session. Browser-only
+and Native cases pass through real room WebSockets under the race detector.
+The actual App key producer and sender/receiver consumers are still unimplemented;
+advertised availability is a fixture input, not a new media-readiness authority.
+
+`room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
+experimental fields. It accepts the Go fixture's twelve route/restart messages,
+rejects malformed capability/listener fields and removes scoped keys from both
+console events and exported reports while retaining connection and keyframe
+evidence. The Go and Browser optional-map null checks agree. This is a Node-run
+producer/consumer check, not Browser UI or complete App transport acceptance.
+The product wire and diagnostic implementation remain unchanged.
+
 These checks establish startup-order and ownership constraints, not a product
 integration or a Piik field defect. The earlier candidate gate and unsupported
 dependency method are not accepted product mechanisms.
