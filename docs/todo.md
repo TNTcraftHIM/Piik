@@ -90,7 +90,10 @@ Implementation needs a concrete useful result within the product model.
   another media fallback or bypass site/share policy. No new setting, timeout
   change or transport integration is accepted; the P2P evidence work below owns
   network/interop acceptance.
-  No product wire extension or complete Browser integration is implemented.
+  Rendered local Browser/Native chains now cover reconnect and upstream departure;
+  the assessment owns the limits. Different Native-parent handoffs, sustained and
+  difficult-network recovery remain open. No product transport integration is
+  accepted; all experimental wire changes remain isolated.
 - [ ] **Small external test before 2.0.** First use the isolated transport
   experiment on the same difficult network pairs as current Piik, measuring
   direct success separately from relay delivery, first-picture time, recovery

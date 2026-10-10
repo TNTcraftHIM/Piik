@@ -1069,13 +1069,31 @@ not physical Host capture or complete room-controller acceptance.
 The overlaid Browser NativeViewerPeer forwards the listener and returns scoped
 identity events while receive-offer is pending. Wrong share/connection and
 post-disposal events are ignored; there is no extra preparation timer or pending
-identity registry. Node-driven discovery, serializer, schema and lifecycle checks
-are separate from rendered media acceptance. Browser sender selection/binding,
-room-event dispatch, actual multi-participant handoff and rendered Browser
-recovery remain open. The composed room fixture still supplies parent binding
-and translates revocation into Native stop/listener retirement. Availability,
-public keys and handshake replies
-are not decoded-frame readiness or evidence of additional field reachability.
+identity registry. The sender reads capability from the current preparation,
+assignment or recovery message, without a second capability cache. Existing
+Browser owners dispatch the reply to the listener's Native edge. Focused tests
+cover stale replies, deep-copied assignment capability and recovery after a
+capability change.
+
+An owned Linux/Chromium 152 run exercises the actual UI and room controller with
+a generated 640×360 VP8 canvas source and one outbound copy per participant:
+Browser Host → Native Viewer → Native Viewer → Browser Viewer. The inner Native
+pair uses Tailcat; the outer Browser links retain ordinary WebRTC. Reconnecting
+the second Native Viewer replaces its listener/client without accumulating
+resources. After the first Native Viewer leaves, the next Viewer changes to the
+Browser Host and both remaining Viewers resume decoded, changing pixels. Removing
+the second Native Viewer then restores an ordinary Browser-to-Browser route.
+All transport counters are zero at retirement. This is bounded local rendered
+acceptance, not physical capture, difficult-NAT reachability, sustained recovery
+or a handoff between two different Native parents.
+
+Composition also exposed duplicate address discovery: the shared candidate
+collector still sent ordinary STUN probes through the injected virtual socket.
+The experimental socket boundary now leaves outer discovery to Tailcat. A local
+STUN control fails before this correction and passes after it; ordinary Native
+gathering still produces its observed candidate. There is no timeout extension
+or additional retry owner. Availability, public keys and handshake replies
+remain distinct from decoded-frame readiness and additional field reachability.
 
 `room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
 experimental fields. It accepts the Go fixture's twelve route/restart messages,
