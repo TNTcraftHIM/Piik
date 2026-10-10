@@ -96,9 +96,10 @@ Implementation needs a concrete useful result within the product model.
   The isolated authenticated-session capability projection and Browser schema/
   diagnostic checks pass. Socket binding follows the individual Native request
   and its existing media owner. The isolated loopback correction cancels slow
-  preparation when the control ends and joins cleanup; App key production, early
-  discovery and transport consumption remain open. Integrate those boundaries
-  at the existing Browser/App connection owners.
+  preparation when the control ends and joins cleanup. App session key production
+  and the actual NativeClient discovery/hello pass in a Node-driven local check;
+  early Viewer-page discovery, reconnect updates and transport consumption remain
+  open. Integrate those boundaries at the existing Browser/App connection owners.
   No product wire extension or Browser integration is implemented.
   Obtain supported direct-media and initial endpoint-discovery contracts;
   the isolated packet-policy overlay and bootstrap repair are not product APIs.

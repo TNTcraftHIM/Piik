@@ -866,9 +866,9 @@ both leave it waiting in the unmodified owner. The isolated correction runs
 session close on control-context cancellation and joins it before releasing the
 capacity slot. Both cases, the direct-owner checks and loopback/control package
 suites pass under the race detector. This is an experimental slow-transport
-requirement, not an established published failure. Browser-driven key production,
-discovery and transport consumption remain open; no new recovery loop or room
-resource registry is added.
+requirement, not an established published failure. Viewer-page startup and
+transport consumption remain open; no new recovery loop or room resource
+registry is added.
 
 The earlier FFmpeg matrix had one decoded-content failure. Matched synthetic
 bitstream/RTP replay identifies a receiver-fixture mismatch: its separate SDK
@@ -1035,8 +1035,17 @@ receive none. The existing restart request can replace or clear the key only
 for the current physical connection; a retired request cannot change it.
 Invitation revocation removes it with the authenticated session. Browser-only
 and Native cases pass through real room WebSockets under the race detector.
-The actual App key producer and sender/receiver consumers are still unimplemented;
-advertised availability is a fixture input, not a new media-readiness authority.
+The isolated Native control now generates the private key in its existing
+session and supplies only the public half in the ordinary `ready` handshake.
+There is no persisted device identity or additional query. A Node-driven real
+Browser `NativeClient` connects through loopback HTTP/WebSocket: independent
+sessions have different keys, ordinary commands retain them, and retirement
+clears the advertised identity without affecting its sibling. Diagnostic export
+and console output exclude those keys; loopback/control race suites and the App
+composition build pass. This does not cover Browser local-network permission.
+The Viewer page still discovers Native on the offer rather than before room
+authentication, and sender/receiver transport consumption remains unimplemented.
+The key is availability metadata, not media-readiness authority.
 
 `room-browser.mjs` bundles the real Browser schemas and diagnostics with matching
 experimental fields. It accepts the Go fixture's twelve route/restart messages,
