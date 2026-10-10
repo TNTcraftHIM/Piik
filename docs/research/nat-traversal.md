@@ -369,8 +369,8 @@ against that same endpoint pair and relay policy.
   transport; it is not an arbitrary UDP socket for Magicsock.
 - [ICE renomination](https://datatracker.ietf.org/doc/draft-thatcher-tsvwg-renomination/)
   proposes changing the selected candidate pair without a full restart. It
-  remains an Internet-Draft. Pinned Pion WebRTC v4.2.19 already exposes
-  `SetICERenomination`; Piik does not enable it. Its ICE v4.4.0 implementation
+  remains an Internet-Draft. The tested Pion WebRTC v4.2.19 already exposed
+  `SetICERenomination`; Piik does not enable it. That ICE v4.4.0 implementation
   references an earlier draft and automatically probes and reselects candidate
   pairs. Verify wire-version agreement, Browser interoperability, probe cost and
   recovery benefit before enabling it. This targets path changes after connection,
@@ -387,13 +387,38 @@ against that same endpoint pair and relay policy.
   framework-owned negotiation and stock Browser builds, retaining authentication
   and ordinary fallback. A Browser field-trial flag is not an adoption path.
 
-The 2026-10-10 upstream review found stable Pion WebRTC v4.2.23 / ICE v4.4.7
-beyond the current pins. The [ICE changes](https://github.com/pion/ice/compare/v4.4.0...v4.4.7)
-include STUN retransmission, gathering-generation ownership, Chromium mDNS
-compatibility and pre-created mux lifetime corrections. Inspect applicability
-and test the shared Native/SFU composition before adopting them: this range also
-changes STUN/transport package majors. A release-note match alone does not
-establish a Piik defect or a connectivity gain.
+#### Stable Pion Interoperability
+
+The candidate uses Pion WebRTC v4.2.23 / ICE v4.4.7. The
+[upstream changes](https://github.com/pion/ice/compare/v4.4.0...v4.4.7) include
+STUN retransmission, gathering-generation ownership, Chromium mDNS compatibility
+and pre-created mux lifetime corrections. This updates the shared Native/SFU
+composition; ordinary Browser-to-Browser ICE remains Browser-owned.
+
+A controlled Chrome 152 check reproduced the
+[mDNS query incompatibility](https://github.com/pion/mdns/commit/5b0a717e4ff6e81300d54ce2fef53e635b95fe3c):
+after the Browser's initial announcement, a fresh v2.1.0 resolver could not resolve
+its generated `.local` candidate before the fixture's four-second deadline.
+v2.2.2 resolved the same name in about 12 ms; another fresh old resolver still
+timed out. The upstream repair sends separate A/AAAA questions without the
+unicast-response bit that Chromium rejects. This fixes an address-resolution
+boundary useful to App-to-Browser edges; it is not a field success-rate result
+or proof of the cause of an unmatched report. Peer-reflexive discovery can also
+let a connection succeed despite failed mDNS resolution.
+
+The package-major adaptations retain Pion's STUN transaction owner and SRTP
+buffer bounds/attributes. LiveKit forwarding and the existing ICE recovery
+owners remain unchanged. Chrome 152 and Firefox 151.0.3 recovered synthetic VP8,
+reverse RTCP and echoed data through ordinary ICE restart after the selected
+UDP path was cut. Shared forwarding, Native edges, SFU and STUN tests passed,
+including Linux race checks and a disposable-namespace interface-replacement
+control. No new automatic renomination, probing loop or retry budget is enabled.
+
+Keep Piik's fresh-interface mux and connection-owned STUN/mapping repairs: the
+newer framework still snapshots its default interface view and caches successful
+universal-mux observations. An upstream release-note match is not sufficient to
+remove these protections. Physical network/device coverage remains in
+[verification status](../verification-status.md#remaining-device-and-network-acceptance).
 
 #### Pion Renomination Preflight
 

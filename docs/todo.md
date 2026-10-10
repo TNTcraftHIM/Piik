@@ -215,9 +215,10 @@ asymmetric network restrictions. The
 [Browser-compatible assessment](./research/nat-traversal.md#browser-compatible-follow-up)
 owns current literature and applicability. Do not infer a benefit from another
 stack's success percentage or add a new retry/transport owner without evidence.
-Review the newer stable Pion ICE/WebRTC fixes against the pinned Native/SFU
-composition, especially gathering generations, STUN retransmission and mDNS;
-accept dependency changes only after focused interoperability/recovery controls.
+The candidate's stable Pion upgrade has local Browser resolution and
+interoperability/recovery evidence in that assessment. Include the upgraded
+Native/SFU composition in physical-network acceptance; local success is not a
+measured increase in field hole-punching success.
 The [renomination preflight](./research/nat-traversal.md#pion-renomination-preflight)
 rejects enabling the current automatic option: Firefox's recovered video did not
 restore reverse feedback. Keep standard ICE recovery while that boundary remains.

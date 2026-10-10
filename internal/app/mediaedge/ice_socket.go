@@ -14,7 +14,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/pion/ice/v4"
-	"github.com/pion/stun/v3"
+	"github.com/pion/stun/v4"
 	"github.com/pion/webrtc/v4"
 	"golang.org/x/sync/singleflight"
 )

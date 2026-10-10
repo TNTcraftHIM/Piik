@@ -21,16 +21,16 @@ require (
 	github.com/livekit/protocol v1.50.5-0.20260821144838-17c16cf496fd
 	github.com/livekit/server-sdk-go/v2 v2.14.0
 	github.com/netbirdio/go-nat v0.0.0-20260821095157-6b2c8c5c74e8
-	github.com/pion/ice/v4 v4.4.0
-	github.com/pion/interceptor v0.1.47
+	github.com/pion/ice/v4 v4.4.7
+	github.com/pion/interceptor v0.1.49
 	github.com/pion/logging v0.2.4
-	github.com/pion/rtcp v1.2.17
+	github.com/pion/rtcp v1.2.19
 	github.com/pion/rtp v1.10.5
-	github.com/pion/sdp/v3 v3.0.19
-	github.com/pion/stun/v3 v3.1.7
-	github.com/pion/transport/v4 v4.1.1
-	github.com/pion/turn/v5 v5.0.13
-	github.com/pion/webrtc/v4 v4.2.19
+	github.com/pion/sdp/v3 v3.0.20
+	github.com/pion/stun/v4 v4.0.1
+	github.com/pion/transport/v5 v5.1.1
+	github.com/pion/turn/v5 v5.1.2
+	github.com/pion/webrtc/v4 v4.2.23
 	github.com/thesyncim/gopus v0.1.1
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.56.0
@@ -96,12 +96,13 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/petermattis/goid v0.0.0-20260725062400-500c67a39b75 // indirect
-	github.com/pion/datachannel v1.6.2 // indirect
-	github.com/pion/dtls/v3 v3.1.5 // indirect
-	github.com/pion/mdns/v2 v2.1.0 // indirect
+	github.com/pion/datachannel v1.6.3 // indirect
+	github.com/pion/dtls/v3 v3.1.10 // indirect
+	github.com/pion/mdns/v2 v2.2.2 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/sctp v1.11.1 // indirect
-	github.com/pion/srtp/v3 v3.0.13 // indirect
+	github.com/pion/sctp v1.12.0 // indirect
+	github.com/pion/srtp/v3 v3.1.3 // indirect
+	github.com/pion/transport/v4 v4.1.1 // indirect
 	github.com/prometheus/client_golang v1.24.1 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect

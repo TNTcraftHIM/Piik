@@ -2,8 +2,8 @@ package forwarding
 
 import (
 	"github.com/pion/ice/v4"
-	"github.com/pion/transport/v4"
-	"github.com/pion/transport/v4/stdnet"
+	"github.com/pion/transport/v5"
+	"github.com/pion/transport/v5/stdnet"
 )
 
 // NewUDPMux retains Pion's socket and candidate policy, but reads current local

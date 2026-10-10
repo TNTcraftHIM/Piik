@@ -6,7 +6,7 @@ import (
 	"net"
 
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/pion/stun/v3"
+	"github.com/pion/stun/v4"
 )
 
 // Only in-flight discovery is shared. Completed observations must not survive

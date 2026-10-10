@@ -11,7 +11,7 @@ import (
 
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/rtp"
-	"github.com/pion/stun/v3"
+	"github.com/pion/stun/v4"
 	"github.com/pion/webrtc/v4"
 )
 

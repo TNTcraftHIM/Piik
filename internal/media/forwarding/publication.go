@@ -23,7 +23,7 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-	"github.com/pion/transport/v4/packetio"
+	"github.com/pion/transport/v5/packetio"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -110,7 +110,7 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 				return reader
 			}
 		}
-		input := packetio.NewBuffer()
+		input := &packetBuffer{Buffer: packetio.NewBuffer()}
 		limit := 1_000_000
 		if kind == packetio.RTCPBufferPacket {
 			limit = 100_000

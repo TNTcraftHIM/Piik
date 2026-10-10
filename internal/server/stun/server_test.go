@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pion/stun/v3"
+	"github.com/pion/stun/v4"
 )
 
 func TestThreeSTUNListenersWithoutRelayAndWithCompleteShutdown(t *testing.T) {

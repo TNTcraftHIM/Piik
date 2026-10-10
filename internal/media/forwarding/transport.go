@@ -23,7 +23,7 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-	"github.com/pion/transport/v4/packetio"
+	"github.com/pion/transport/v5/packetio"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -102,7 +102,7 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 			}
 		}
 		// Preserve stock Pion SRTP/SRTCP bounds for unclaimed streams, including audio.
-		input := packetio.NewBuffer()
+		input := &packetBuffer{Buffer: packetio.NewBuffer()}
 		limit := 1_000_000
 		if kind == packetio.RTCPBufferPacket {
 			limit = 100_000
