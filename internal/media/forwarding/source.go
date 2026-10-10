@@ -96,6 +96,19 @@ func (source *Source) TrackInfo() *livekit.TrackInfo {
 	return utils.CloneProto(source.currentTrackInfo.Load())
 }
 
+// ReceiverBase reads initial metadata before registering the subscriber. A
+// concurrent discovery notification can fall into that gap. Refresh after
+// registration; DownTrack's seen-layer setters retain the highest observation.
+func (source *Source) AddDownTrack(track sfu.TrackSender) error {
+	if err := source.ReceiverBase.AddDownTrack(track); err != nil {
+		return err
+	}
+	tracker := source.StreamTrackerManager()
+	track.UpTrackMaxPublishedLayerChange(tracker.GetMaxPublishedLayer())
+	track.UpTrackMaxTemporalLayerSeenChange(tracker.GetMaxTemporalLayerSeen())
+	return nil
+}
+
 func canonicalHeaderExtensions(extensions []webrtc.RTPHeaderExtensionParameter) []webrtc.RTPHeaderExtensionParameter {
 	result := slices.Clone(extensions)
 	slices.SortFunc(result, func(left, right webrtc.RTPHeaderExtensionParameter) int {

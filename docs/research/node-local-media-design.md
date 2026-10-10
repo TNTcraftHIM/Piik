@@ -212,6 +212,15 @@ The replaced local Group/
 Selection and receiving-PC sender-estimator registry are deleted, not retained
 as alternate implementations. There is no mirrored counter summing unused layers.
 
+Source subscription must retain layer discovery that happens during registration.
+LiveKit's `ReceiverBase.AddDownTrack` delivers initial layer metadata before
+registering the subscriber, leaving a notification gap. The shared Source
+refreshes that metadata after successful registration; DownTrack keeps its
+highest observed layers, so a concurrent newer notification cannot be undone.
+This boundary serves both Native outputs and SFU publication. A controlled
+discovery in that gap reproduces the failure without retries or network loss;
+it does not establish the cause of unmatched field reports.
+
 The parent reads child state at actual capture InputBegin. A controlled layer
 switch uses the existing DownTrack resync before outputs for that input, retaining
 its target; this prevents an old-layer packet winning the same presentation time.

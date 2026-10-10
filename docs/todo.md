@@ -16,10 +16,6 @@ Git/PRs own completed history.
   Prepare one coherent candidate and stop before publication. Preserve the existing
   product model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
-  Isolate the intermittent Linux race-suite no-output result in
-  `TestQualityDimensionsFollowAssignedSource`; focused repetitions and the next
-  full package run pass. No product cause is established; preserve its assertion
-  and timeout while collecting a matched failure.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure

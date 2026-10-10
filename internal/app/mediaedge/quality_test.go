@@ -53,8 +53,11 @@ func TestQualityDimensionsFollowAssignedSource(t *testing.T) {
 		}
 		time.Sleep(time.Second / 30)
 	}
-	_, _, format := edge.videoCounters()
-	t.Fatalf("quality dimensions still refer to original source: %dx%d", uint32(format>>32), uint32(format))
+	frames, _, format := edge.videoCounters()
+	available, rates := assigned.GetLayeredBitrate()
+	t.Fatalf("assigned quality: %dx%d, frames=%d, source=%t, state=%+v, layers=%v, rates=%v",
+		uint32(format>>32), uint32(format), frames, edge.transport.CurrentSource() == assigned.Source,
+		edge.transport.Output.State(), available, rates)
 }
 
 func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {

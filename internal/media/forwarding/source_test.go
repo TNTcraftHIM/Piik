@@ -2,6 +2,7 @@ package forwarding
 
 import (
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +14,67 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
+
+type subscribingSourceTrack struct {
+	*Output
+	publish func()
+	spatial atomic.Int32
+}
+
+func (track *subscribingSourceTrack) UpTrackMaxPublishedLayerChange(layer int32) {
+	if layer < 0 {
+		track.publish()
+	}
+	track.Output.UpTrackMaxPublishedLayerChange(layer)
+	track.spatial.Store(layer)
+}
+
+type observedSourceLayers struct {
+	sfu.StreamTrackerManagerListener
+	published chan struct{}
+}
+
+func (observer *observedSourceLayers) OnMaxPublishedLayerChanged(layer int32) {
+	observer.StreamTrackerManagerListener.OnMaxPublishedLayerChanged(layer)
+	observer.published <- struct{}{}
+}
+
+func TestSourceSubscriptionRetainsConcurrentLayerDiscovery(t *testing.T) {
+	source, err := NewSource(SourceOptions{ID: "screen", StreamID: "subscription",
+		Codec: webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{
+			MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000,
+		}, PayloadType: 96},
+		Formats: []LayerFormat{{Width: 8, Height: 8, Bitrate: 300_000}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(source.Close)
+	transport, err := NewTransport(TransportOptions{Source: source, ConnectionID: "joining", InitialBitrate: 1_000_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = transport.Close() })
+	observed := &observedSourceLayers{StreamTrackerManagerListener: source.ReceiverBase, published: make(chan struct{}, 1)}
+	source.StreamTrackerManager().SetListener(observed)
+	track := &subscribingSourceTrack{Output: transport.Output}
+	track.publish = func() {
+		// Discover a layer after reading the initial snapshot but before the
+		// subscriber is registered. Complete its real notification in that gap.
+		source.StreamTrackerManager().AddTracker(0)
+		select {
+		case <-observed.published:
+		case <-time.After(time.Second):
+			t.Fatal("source did not publish its discovered layer")
+		}
+	}
+	if err = source.AddDownTrack(track); err != nil {
+		t.Fatal(err)
+	}
+	if track.spatial.Load() != source.StreamTrackerManager().GetMaxPublishedLayer() {
+		t.Fatalf("subscriber retained the pre-discovery snapshot: %d", track.spatial.Load())
+	}
+}
 
 func TestSourceLayerBindingFeedbackAndClose(t *testing.T) {
 	codec := webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{
