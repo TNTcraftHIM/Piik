@@ -1,6 +1,6 @@
 # Browser And Native NAT Traversal
 
-Last reviewed: 2026-10-09
+Last reviewed: 2026-10-10
 
 This document owns evidence for improving direct ICE without adding a
 new relay or a custom transport. The current product contract remains standard
@@ -344,7 +344,47 @@ OS network-change detection, decoded playback or real-router behavior. Its
 seven-pair direct matrix matched Pion within four-second windows. Go reuse is
 feasible; product integration and network benefit require the controls below.
 
+### Browser-Compatible Follow-Up
+
+The product target remains App-to-Browser and Browser-to-Browser sharing without
+requiring every Viewer to install software. Existing IPv6, bounded gateway
+mapping and standard ICE can benefit those edges; a new transport must be judged
+against that same endpoint pair and relay policy.
+
+- The [2026 DCUtR measurement](https://arxiv.org/abs/2604.12484) covers 4.4 million
+  attempts across more than 85,000 networks. Its roughly 70% success is conditional
+  on relay reservation and address discovery; 97.6% of successful punches occur
+  on the first attempt. These are libp2p results, not a Piik baseline. They justify
+  separating preparation failures from hole-punch failures and measuring the
+  marginal benefit of retries, not copying a retry count or replacing ICE.
+- [QUIC hole punching and migration](https://arxiv.org/abs/2408.01791) reports
+  shorter connection/restoration latency than its TCP/re-punching controls.
+  It does not demonstrate a drop-in improvement for Browser WebRTC. Current
+  [WebTransport](https://www.w3.org/TR/webtransport/) targets Browser-to-server
+  transport; it is not an arbitrary UDP socket for Magicsock.
+- [ICE renomination](https://datatracker.ietf.org/doc/draft-thatcher-tsvwg-renomination/)
+  proposes changing the selected candidate pair without a full restart. It
+  remains an Internet-Draft. Pinned Pion WebRTC v4.2.19 already exposes
+  `SetICERenomination`; Piik does not enable it. Its ICE v4.4.0 implementation
+  references an earlier draft and automatically probes and reselects candidate
+  pairs. Verify wire-version agreement, Browser interoperability, probe cost and
+  recovery benefit before enabling it. This targets path changes after connection,
+  not a demonstrated increase in initial NAT reachability. Keep selection in the
+  framework; do not add a Piik path-selection loop.
+- [Direct Sockets](https://developer.chrome.com/docs/iwa/direct-sockets) is
+  restricted to explicitly installed Isolated Web Apps. It does not remove the
+  installation requirement for an ordinary invitation page.
+
 ### Integration Cost And Recovery Controls
+
+**Current decision: no-go for the 2.0 candidate.** This composition requires
+Native App transport at both ends of the enhanced edge. An App Host with a plain
+Browser Viewer still uses ordinary WebRTC; mixed relaying does not enhance that
+Browser edge. The owner therefore stopped integration and field-package work.
+Retain the isolated evidence, not a product dependency or a promised feature.
+Independently verified ordinary ICE/media repairs remain useful without this
+stack. Reopen only for a concrete Browser-compatible benefit or an explicitly
+accepted App-only scope; no additional reachable NAT class has been established.
 
 The isolated `spike/magicsock-assessment` branch retains the comparison probes.
 The nested modules are outside Piik's build. Local bootstrap, peer denial and

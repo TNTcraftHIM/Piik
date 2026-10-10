@@ -23,6 +23,15 @@ Git/PRs own completed history.
 
 ## Held By Owner
 
+- [ ] **Magicsock adoption: no-go for this candidate.** Its direct-path
+  augmentation requires App transport at both ends and does not improve the
+  core App-to-Browser edge. Stop product integration, combined packaging and
+  Magicsock field-test recruitment. Retain isolated evidence in Git; preserve
+  independently verified ordinary ICE/media repairs. The
+  [assessment](./research/nat-traversal.md#integration-cost-and-recovery-controls)
+  owns the rationale. Reopen only for a concrete Browser-compatible benefit
+  with acceptable complexity, or a newly accepted App-only product scope.
+
 - [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
   own the evidence for synchronous H264 initialization, native adaptation and
@@ -66,44 +75,10 @@ Implementation needs a concrete useful result within the product model.
   mismatch before accepting the replacement contract. The published 1.x enums
   remain that major's baseline; the PR is not a compatible enum-only extension
   of v1.9.2.
-- [ ] **Native Magicsock.** Go reuse is feasible, but the
-  [matched comparisons](./research/nat-traversal.md#integration-cost-and-recovery-controls)
-  have not established another reachable NAT class. Verify the measured local
-  address-handoff benefit through the complete App and physical networks before
-  adoption. Bounded rendered Browser/Native chains cover reconnect, departure and
-  overlapping Native-parent changes. Sustained and difficult-network recovery
-  remain open. Preserve the existing Browser
-  sender, room-event and assigned-connection owners. Order admission and candidate
-  delivery without exhausting inner checks; diagnostic replies are not media-readiness evidence, and inner
-  checks may exhaust before the underlay recovers. Research owns the verified
-  sender/receiver command, key/lifecycle and local RTP evidence and their limits.
-  Obtain supported [authorization/revocation](./research/nat-traversal.md#peer-authorization-boundary),
-  direct-media, endpoint-discovery and RTCP/MTU contracts plus a trusted relay
-  configuration. Experimental dependency patches are not product APIs.
-  Bounded optional-path checks cover rendered chain/reconnect/departure,
-  invitation revocation and overlapping-parent transitions in both directions. Preserve
-  ordinary ICE when bootstrap is unavailable. The Native composition still needs
-  a private socket-reservation API and a multi-mux address-lookup correction;
-  verify physical interface changes and direct-only policy before adoption.
-  Preserve the local address policy (forcing loopback fails Firefox), existing
-  recovery deadlines and single route/resource owners. DERP must not become
-  another media fallback or bypass site/share policy. No new setting, timeout
-  change or product transport integration is accepted; all experimental wire
-  changes remain isolated. The P2P evidence work below owns network/interop
-  acceptance.
-- [ ] **Small external test before 2.0.** The frozen Windows internal package and
-  paired comparison steps are engineering evidence only. The owner has not used
-  that package and will arrange testers after the main features, especially
-  Magicsock, form a coherent usable candidate. Finish local App/room lifecycle,
-  mixed Browser/Native behavior, recovery, resource and dependency boundaries
-  before requesting that test. Use the candidate on the same difficult network
-  pairs as current Piik, measuring
-  direct success separately from relay delivery, first-picture time, recovery
-  and added resource cost.
-  Keep each test build frozen and identifiable. The combined local package and
-  bounded authorization/recovery evidence do not establish a feature-complete
-  product or additional real-network reachability. The final candidate then
-  receives the combined feature/UI and regression check.
+- [ ] **2.0 candidate acceptance.** Finish the combined numeric-media UI,
+  App/room lifecycle, ordinary Browser/Native routes and regression checks before
+  asking the owner to arrange external testing. Keep each test build frozen and
+  identifiable; the retired Magicsock package is not the current candidate.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
   identifies UDP/storage requirements but establishes no cost saving. Keep the
   existing P2P-only Demo until a provider and operating boundary are accepted.
@@ -234,11 +209,12 @@ to connection generations without raw endpoints. Verify survey responses and
 P2P/SFU handoffs, including background direct attempts behind working SFU media.
 The [iroh/Tailscale comparison](./research/nat-traversal.md#iroh-and-tailscale-comparison)
 records the isolated Go media/migration experiment and Browser/relay limits.
-Before adopting magicsock in the product, establish a benefit on matched network
-pairs and define room-authorized peer keys, endpoint exchange, MTU/resource limits
-and mixed Browser/Native behavior. Keep the experiment isolated from the
-production [routing contract](./standards/routing-transport.md); Go reuse already
-works, so a Rust alternative needs a concrete Go limitation.
+Prioritize one-App-to-Browser and Browser-to-Browser controls using existing
+ICE, IPv6 and gateway mapping, with changing interfaces, lost mappings and
+asymmetric network restrictions. The
+[Browser-compatible assessment](./research/nat-traversal.md#browser-compatible-follow-up)
+owns current literature and applicability. Do not infer a benefit from another
+stack's success percentage or add a new retry/transport owner without evidence.
 
 ## Parked Product Work
 

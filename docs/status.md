@@ -72,11 +72,11 @@ The [media assessment](./research/native-client-media.md#media-capability-extens
 owns local codec, derived-output, SFU, Browser/Native fanout and live-control
 evidence. macOS geometry, cross-browser/device and route-change acceptance, and
 additional codecs remain open.
-Native Magicsock remains an isolated experiment. Full-App local transport and
-reconnect checks pass, and a frozen Windows internal package is available for
-engineering checks. The owner has not used it and will arrange paired testing
-once the main features form a coherent usable candidate. Physical-network benefit, sustained recovery and supported
-dependency contracts remain open; this does not accept product integration.
+Magicsock adoption is no-go for this candidate: its App-to-App augmentation does
+not improve the core App-to-Browser use case. The
+[assessment](./research/nat-traversal.md#integration-cost-and-recovery-controls)
+owns the retained experiment and product decision. Its package is retired;
+independent ordinary ICE and media repairs remain in the candidate.
 Publication remains subject to final acceptance.
 Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns
 remaining work.
