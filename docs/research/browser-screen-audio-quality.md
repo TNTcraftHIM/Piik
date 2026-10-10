@@ -103,12 +103,17 @@ live 320/96 kbps changes retained the same subscription, with advancing decoded
 audio energy and video frames. Video profile changes, reload, recovery and
 retirement also passed; the Browser run measured stereo separation. An ordinary
 Browser relay forwarded received tracks to two children at 320 kbps, with
-advancing decoded audio and successful cleanup. A direct Browser control now
-keeps requested 256/320 kbps below an explicit 192 kbps receive limit, while a
-510 kbps receiver permits both rates. Native and SFU adapter controls reject
-an insufficient 192 kbps answer before binding it; retiring or correcting that
-preparation leaves the original source and healthy sibling delivering media.
-These controls do not establish the complete room-route response to rejection.
+advancing decoded audio and successful cleanup. Direct Browser controls keep
+requested 256/320 kbps below an explicit 192 kbps receive limit, while a
+510 kbps receiver permits both rates. The full Browser room also retains both
+receiving tracks and advancing decoded audio/video through 320/96/320 kbps edits;
+only the limited child's sender is capped at 192 kbps.
+Native and SFU adapter controls reject an insufficient answer before binding it.
+In a full-UI SFU-only room, that rejection exhausts only the limited Viewer's
+route and retires its connection. The Host, healthy sibling and subsequent
+capable Viewer continue; the service Debug event retains the receive-limit
+cause. Stop retires the remaining media. These are controlled SDP-limit checks,
+not physical low-capability decoder measurements.
 A native real-Opus control through
 6 Mbps -> 500 kbps -> 6 Mbps shaping retains decoded audio during live
 320/96/320 kbps changes, with sustained high video after the shared
