@@ -95,8 +95,10 @@ Implementation needs a concrete useful result within the product model.
   events. No product wire extension or Browser integration is implemented.
   Obtain a supported direct-media policy that retains discovery/handshakes;
   the isolated packet-policy control is not a product API. Resolve its cold-start
-  failures in Pion and Native fixtures: direct discovery can complete after
-  initial ICE checks are exhausted. One diagnostic ping before ICE does not fix it.
+  preparation cost and full handoff boundary: direct discovery can finish after
+  initial ICE checks are exhausted, and the working isolated TCP preparation
+  consumes most of the existing preparation budget. Research owns the controls;
+  neither diagnostic replies nor startup alone establish recovery acceptance.
   DERP must not silently become another media fallback or bypass site/share
   route policy.
   Keep isolated dependency patches and

@@ -387,9 +387,10 @@ blocks WireGuard handshakes leaves inner ICE connecting without media after
 sibling continuity and final retirement pass with the media-only restriction
 on loopback. These checks do not establish Native startup through NAT.
 
-The complete Native Engine/receiver/playback fixture also fails cold startup through
-ordinary kernel NAT with this restriction, before any address move. Its
-relay-allowed control passes and retains fresh playback after DERP closes.
+Without another preparation step, the complete Native Engine/receiver/playback
+fixture also fails cold startup through ordinary kernel NAT with this restriction,
+before any address move. Its relay-allowed control passes and retains fresh
+playback after DERP closes.
 Discovery traces show one direction's initial ping unanswered: one endpoint
 confirms direct access promptly, while the other confirms it around six seconds
 later. Native's eight initial ICE writes end around 1.4 seconds; a pending UDP
@@ -398,6 +399,20 @@ exhausted generation. The late side can be either endpoint. A one-shot supported
 `Client.DiscoPing` before ICE returns the relay result in milliseconds and does
 not fix startup. Diagnostic replies and successful key admission therefore
 cannot stand in for bidirectional transport preparation.
+
+A separate startup control uses supported Tailcat TCP establishment inside the
+same tunnel before Native ICE, within the existing eight-second preparation
+deadline. The server checks the assigned peer key and both sides close the
+temporary TCP flow; media still uses UDP. With relayed data prohibited, ordinary
+NAT reaches actual Native receiver/local playback, while blocked UDP expires
+before Native emits SDP or ICE. Relay data counts remain zero throughout.
+Preparation costs about seven seconds in the repeated local runs. This exceeds
+the spare startup time in the existing handoff check: its fifteen seconds of
+post-start observation do not finish inside the unchanged twenty-second bound,
+although fresh playback continues after DERP closes. The startup check therefore
+does not establish migration acceptance or justify extending product deadlines.
+The extra listener and delay are integration costs, not an accepted product
+readiness mechanism or evidence of improved NAT reachability.
 
 Authentication, key handling, retry timers and Pion budgets remain unchanged.
 The experiment narrows the missing direct-media preparation contract; it is not
