@@ -13,6 +13,7 @@ import { nativeCaptureTargetKey } from "../src/client/native/capture-selection";
 import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
 import { reconcileBoundedMediaChildren } from "../src/client/webrtc/media-assignment";
 import { debugError, debugEvent, debugOperation } from "../src/client/lib/debug";
+import { ApiError } from "../src/client/lib/api";
 import { hostActionErrorNotice, hostFailureCode, isCapturePermissionFailure } from "../src/client/pages/host-page-notices";
 
 // Exercise the actual page owners without mounting capture hardware or a Browser.
@@ -25,7 +26,8 @@ const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "lo
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
   "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "changeMicrophone", "toggleSharingPause",
-  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setStatusNotice", "setNoticeError", "setNoticeErrorKey", "endSharing", "hostTerminationKey", "copyRoomLink", "isCurrentRoomAuthority"]);
+  "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setStatusNotice", "setNoticeError", "setNoticeErrorKey", "endSharing", "disposeResources", "hostTerminationKey", "copyRoomLink", "isCurrentRoomAuthority",
+  "handleRoomAccessFailure", "replaceCurrentRoom", "forgetRoom", "endRoomSession"]);
 
 const functions: string[] = [];
 function collect(node: ts.Node): void {
@@ -87,7 +89,7 @@ function fixture(launchedByClient = true) {
     setCopiedRoomLink: vi.fn(), setPhase: vi.fn(), roomInitializationRef: ref(Promise.resolve()), roomRef: ref(null),
 
     createRoom: vi.fn(async () => { throw new Error("must not create an empty room"); }),
-    readPreferredRoomId: () => null, disposeResources: vi.fn(), ApiError: class extends Error {},
+    readPreferredRoomId: () => null, disposeResources: vi.fn(), ApiError,
     NativeMediaBridge: vi.fn(function (_shareId: string, _client: unknown, _onFailed: () => void) { return bridge; }), manualVideoCodecPreference: vi.fn(),
     phase: "live", qualitySettingsRef: ref<QualitySettings>(original), advancedQualityRef: ref<QualitySettings>(original),
     qualityChangeRef: ref<object | null>(null), pendingQualityChangeRef: ref<QualitySettings | null>(null),
@@ -130,14 +132,16 @@ function fixture(launchedByClient = true) {
   const start = context.startSharing;
   const startChild = context.startPeer;
   const openPicker = context.openCaptureSourcePicker;
+  const dispose = context.disposeResources as (notifyServer: boolean, keepRoomSession?: boolean) => void;
   const writeNoticeError = context.setNoticeError;
   state.setNoticeError.mockImplementation(writeNoticeError);
   context.setNoticeError = state.setNoticeError;
   context.startSharing = state.startSharing;
   context.startPeer = state.startPeer;
   context.openCaptureSourcePicker = state.openCaptureSourcePicker;
+  context.disposeResources = state.disposeResources;
   return { ...state, peer, client, route, track, bridge, physical: () => physical,
-    context, startChild, openPicker: openPicker as () => Promise<void>,
+    context, startChild, dispose, openPicker: openPicker as () => Promise<void>,
     closePicker: context.closeCaptureSourcePicker as () => void,
     releaseUnused: context.releaseUnusedNativeClient as () => void,
     disposeNative: context.disposeNativeShare as (expectedShare?: string) => void,
@@ -153,6 +157,22 @@ function fixture(launchedByClient = true) {
       routePolicy: {}, routeRevision: 1, endpointMediaCopyCapacity: 2 }, 1, true, null),
     switchSource: () => context.switchNativeSource(client, {}, false, {}),
   };
+}
+
+function useRealResourceDisposal(current: ReturnType<typeof fixture>): void {
+  current.peersRef.current.clear();
+  Object.assign(current.hostSfuRouteRef, { current: null });
+  Object.assign(current.context, {
+    codecProbeAbortRef: ref(null), VP8_ONLY_VIDEO_CODEC: { primary: "vp8" },
+    setResolvedVideoCodec: vi.fn(), setHostSfuQualityWarning: vi.fn(),
+    setInteractionSession: vi.fn(), browserVideoPoolRef: ref(null),
+    setMicrophonePending: vi.fn(), retiringStreamRef: ref(null), iceConfigRef: ref(null),
+    setStream: vi.fn(), setPeerSnapshots: vi.fn(), setParticipantPresence: vi.fn(),
+    viewerQualityEvidenceStore: { clear: vi.fn(), getSnapshot: () => new Map() },
+    cancelViewerQualityEvidenceRender: vi.fn(), setViewerQualityEvidence: vi.fn(),
+    setSignalStatus: vi.fn(), sharingPausedRef: ref(false), setSharingPaused: vi.fn(),
+  });
+  current.disposeResources.mockImplementation(current.dispose);
 }
 
 describe("Camera replacement ownership", () => {
@@ -211,6 +231,7 @@ describe("Host room ownership", () => {
     class Signal {
       interactions = {};
       stop = vi.fn();
+      stopSharing = vi.fn();
       constructor(public identity: { roomId: string; token: string; roomOnly?: true; shareGeneration?: string },
         public events: {
           onMessage(message: unknown): void;
@@ -220,7 +241,7 @@ describe("Host room ownership", () => {
       ownsHostRoom(roomId: string, token: string) { return this.identity.roomId === roomId && this.identity.token === token; }
       wantsHostPublication(generation: string) { return this.identity.shareGeneration === generation && this.identity.roomOnly !== true; }
     }
-    const forgetRoom = vi.fn(() => { Object.assign(current.roomRef, { current: null }); return true; });
+    const forgetRoom = vi.fn(current.context.forgetRoom);
     Object.assign(current.roomRef, { current: room });
     Object.assign(current.signalRef, { current: null });
     current.generationRef.current = 1;
@@ -230,7 +251,7 @@ describe("Host room ownership", () => {
       getStableClientId: () => "host-client", defaultHostDisplayName: () => "Host", readDisplayName: () => "Host",
       setDisplayName: vi.fn(), setDisplayNameDraft: vi.fn(), setDisplayNameError: vi.fn(),
       setInteractionSession: vi.fn(), setSignalStatus: vi.fn(), forgetRoom,
-      onAuthorizationRequired: vi.fn(),
+      onAuthorizationRequired: vi.fn(), clearHostRoom: vi.fn(), writePreferredRoom: vi.fn(),
       hostServerErrorNotice: (code: string) => code,
     });
     return { ...current, room, signals, forgetRoom, connect: (value = room) => current.context.connectRoomSignal(value) as Signal };
@@ -268,6 +289,105 @@ describe("Host room ownership", () => {
       kind: "key", key: "host.roomInvalid", vars: undefined,
       target: "television", comic: "room-not-found", tone: "bad",
     });
+  });
+
+  it.each(["INVALID_TOKEN", "HOST_ALREADY_CONNECTED", "room-closed", "terminated", "access-required"])(
+    "retires idle native selection and its late results on %s", async event => {
+      for (const stage of ["ready", "discovery", "enumeration"]) {
+        const current = roomFixture();
+        useRealResourceDisposal(current);
+        current.context.phase = "idle";
+        current.activeGenerationRef.current = null;
+        current.shareGenerationRef.current = null;
+        current.nativeShareGenerationRef.current = null;
+        const discovery = deferred<typeof current.client>();
+        const enumeration = deferred<never[]>();
+        if (stage === "discovery") {
+          current.nativeClientRef.current = null;
+          current.NativeClient.connect.mockReturnValueOnce(discovery.promise);
+        } else if (stage === "enumeration") current.client.sources.mockReturnValueOnce(enumeration.promise);
+        const signal = current.connect();
+        const selecting = current.openPicker();
+        if (stage === "ready") await selecting;
+        else await vi.waitFor(() => expect(stage === "discovery"
+          ? current.NativeClient.connect : current.client.sources).toHaveBeenCalledOnce());
+        expect(current.nativeSourceRequestRef.current).not.toBeNull();
+
+        if (event === "terminated") signal.events.onTerminated("SIGNAL_TERMINATED");
+        else if (event === "access-required") signal.events.onAccessRequired();
+        else signal.events.onMessage(event === "room-closed" ? { type: event } : { type: "error", code: event });
+        expect(current.nativeSourceRequestRef.current).toBeNull();
+        expect(current.nativeSourcePathRef.current).toBeNull();
+        expect(current.nativeClientConnectRef.current).toBeNull();
+        discovery.resolve(current.client);
+        enumeration.resolve([]);
+        await selecting;
+        expect(current.nativeClientRef.current).toBeNull();
+        expect(current.client.close).toHaveBeenCalledOnce();
+        expect(current.setNativeSources).toHaveBeenLastCalledWith(null);
+        expect(current.createRoom).not.toHaveBeenCalled();
+        if (stage === "discovery") expect(current.client.sources).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it.each([false, true])("retires a room rejected by an access update (sharing=%s)", async sharing => {
+    const current = roomFixture();
+    useRealResourceDisposal(current);
+    current.context.phase = sharing ? "live" : "idle";
+    current.nativeModeRef.current = sharing;
+    if (!sharing) {
+      current.activeGenerationRef.current = null;
+      current.shareGenerationRef.current = null;
+      current.nativeShareGenerationRef.current = null;
+      current.streamRef.current = null;
+    }
+    const signal = current.connect();
+    await current.openPicker();
+    current.context.handleRoomAccessFailure(new ApiError("Room not found", 404), current.room);
+    expect(current.roomRef.current).toBeNull();
+    expect(current.signalRef.current).toBeNull();
+    expect(signal.stop).toHaveBeenCalledOnce();
+    expect(current.activeGenerationRef.current).toBeNull();
+    expect(current.track.stop).toHaveBeenCalledTimes(sharing ? 1 : 0);
+    expect(current.client.close).toHaveBeenCalledOnce();
+    expect(current.setNativeSources).toHaveBeenLastCalledWith(null);
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({
+      key: "host.roomInvalid", target: "television", comic: "room-not-found", tone: "bad",
+    }));
+  });
+
+  it("retires the room session when a replacement fails after capture was stopped", async () => {
+    const current = roomFixture();
+    useRealResourceDisposal(current);
+    const response = deferred<never>();
+    current.context.replaceOwnedRoom = vi.fn(() => response.promise);
+    const signal = current.connect();
+    const replacing = current.context.replaceCurrentRoom();
+    current.context.endSharing({ key: "host.stopNotice" });
+    expect(signal.stop).not.toHaveBeenCalled();
+    expect(current.signalRef.current).toBe(signal);
+    response.reject(new ApiError("Room not found", 404));
+    await replacing;
+    expect(current.roomRef.current).toBeNull();
+    expect(current.signalRef.current).toBeNull();
+    expect(signal.stop).toHaveBeenCalledOnce();
+    expect(current.createRoom).not.toHaveBeenCalled();
+    expect(current.roomMutationRef.current).toBeNull();
+  });
+
+  it("ignores an old room's failed access update after another room owns the session", () => {
+    const current = roomFixture();
+    useRealResourceDisposal(current);
+    const replacement = { ...current.room, hostToken: "replacement-token" };
+    Object.assign(current.roomRef, { current: replacement });
+    const signal = current.connect(replacement);
+    current.context.handleRoomAccessFailure(new ApiError("Room not found", 404), current.room);
+    expect(current.roomRef.current).toBe(replacement);
+    expect(current.signalRef.current).toBe(signal);
+    expect(signal.stop).not.toHaveBeenCalled();
+    expect(current.client.close).not.toHaveBeenCalled();
+    expect(current.setNoticeValue).not.toHaveBeenCalled();
   });
 
   it.each(["INVALID_TOKEN", "HOST_ALREADY_CONNECTED", "room-closed", "terminated", "access-required"])(
@@ -643,7 +763,8 @@ describe("Host quality ownership", () => {
     current.nativeModeRef.current = true;
     await current.openPicker();
     expect(current.nativeSourceRequestRef.current).not.toBeNull();
-    current.disposeResources.mockImplementation(() => current.disposeNative());
+    useRealResourceDisposal(current);
+    Object.assign(current.signalRef, { current: null });
     current.context.endSharing({ key: "host.notice.stopped" });
     expect(current.nativeSourceRequestRef.current).toBeNull();
     expect(current.nativeSourcePathRef.current).toBeNull();

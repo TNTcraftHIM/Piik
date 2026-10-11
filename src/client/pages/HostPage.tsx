@@ -900,6 +900,7 @@ export function HostPage({
   }
 
   function disposeResources(notifyServer: boolean, keepRoomSession = false): void {
+    closeCaptureSourcePicker();
     sourceSwitchRef.current = null;
     qualityChangeRef.current = null;
     pendingQualityChangeRef.current = null;
@@ -1023,7 +1024,6 @@ export function HostPage({
     }
     activeGenerationRef.current = null;
     generationRef.current += 1;
-    closeCaptureSourcePicker();
     const currentRoom = roomRef.current;
     if (notifyServer && currentRoom) {
       writePreferredRoom(currentRoom.roomId);
@@ -1031,6 +1031,21 @@ export function HostPage({
     disposeResources(notifyServer, keepRoomSession);
     setStatusNotice(message, comic, tone);
     setPhase("ended");
+  }
+
+  function endRoomSession(
+    message: StatusNoticeMessage,
+    comic: ComicKind,
+    tone: ComicTone = "bad",
+    idlePhase: "error" | "ended" = "error",
+  ): void {
+    if (activeGenerationRef.current !== null) {
+      endSharing(message, false, comic, tone, false);
+    } else {
+      disposeResources(false);
+      setStatusNotice(message, comic, tone);
+      setPhase(idlePhase);
+    }
   }
 
   async function replaceCurrentRoom(): Promise<void> {
@@ -1120,9 +1135,7 @@ export function HostPage({
           }
         }
         if (forgetRoom(activeRoom)) {
-          // endSharing already stated the recovery path; the raw room error
-          // would only overwrite it with the same 404 in server wording.
-          endSharing({ key: "host.roomInvalid" }, false, "room-not-found", "bad", false);
+          endRoomSession({ key: "host.roomInvalid" }, "room-not-found");
           return;
         }
       }
@@ -2532,24 +2545,12 @@ export function HostPage({
         },
         onTerminated: (reason) => {
           if (signalRef.current !== signal || !isCurrentRoomAuthority(activeRoom)) return;
-          if (activeGenerationRef.current !== null) {
-            endSharing({ key: hostTerminationKey(reason) }, false, "signal-failed", "bad", false);
-          } else {
-            disposeResources(false);
-            setStatusNotice({ key: hostTerminationKey(reason) }, "signal-failed", "bad");
-            setPhase("error");
-          }
+          endRoomSession({ key: hostTerminationKey(reason) }, "signal-failed");
           if (reason === "SESSION_REPLACED") forgetRoom(activeRoom, true);
         },
         onAccessRequired: () => {
           if (signalRef.current !== signal || !isCurrentRoomAuthority(activeRoom)) return;
-          if (activeGenerationRef.current !== null) {
-            endSharing({ key: "gate.expired" }, false, "access-denied", "bad", false);
-          } else {
-            disposeResources(false);
-            setStatusNotice({ key: "gate.expired" }, "access-denied", "bad");
-            setPhase("error");
-          }
+          endRoomSession({ key: "gate.expired" }, "access-denied");
           onAuthorizationRequired?.();
         },
         onMessage: (message) => {
@@ -2573,8 +2574,7 @@ export function HostPage({
               // Capture may still be awaiting permission. Its ready path owns
               // creation/publication; room recovery must not start it early.
               if (!localShareActive) {
-                setStatusNotice({ key: "host.roomInvalid" }, "room-not-found", "bad");
-                setPhase("error");
+                endRoomSession({ key: "host.roomInvalid" }, "room-not-found");
               }
               return;
             }
@@ -2586,35 +2586,16 @@ export function HostPage({
           }
           if (message.type === "error" && message.code === "INVALID_TOKEN") {
             forgetRoom(activeRoom);
-            if (localShareActive) {
-              endSharing({ key: "host.roomInvalid" }, false, "room-not-found", "bad", false);
-            } else {
-              disposeResources(false);
-              forgetRoom(activeRoom);
-              setStatusNotice({ key: "host.roomInvalid" }, "room-not-found", "bad");
-              setPhase("error");
-            }
+            endRoomSession({ key: "host.roomInvalid" }, "room-not-found");
             return;
           }
           if (message.type === "room-closed") {
             if (!forgetRoom(activeRoom)) return;
-            if (localShareActive) {
-              endSharing({ key: "host.roomClosed" }, false, "room-closed", "off", false);
-            } else {
-              disposeResources(false);
-              setStatusNotice({ key: "host.roomClosed" }, "room-closed", "off");
-              setPhase("ended");
-            }
+            endRoomSession({ key: "host.roomClosed" }, "room-closed", "off", "ended");
             return;
           }
           if (message.type === "error" && message.code === "HOST_ALREADY_CONNECTED") {
-            if (localShareActive) {
-              endSharing(hostServerErrorNotice(message.code), false, "signal-failed", "bad", false);
-            } else {
-              disposeResources(false);
-              setStatusNotice(hostServerErrorNotice(message.code), "signal-failed", "bad");
-              setPhase("error");
-            }
+            endRoomSession(hostServerErrorNotice(message.code), "signal-failed");
             return;
           }
           const reauthenticated =
@@ -3285,7 +3266,8 @@ export function HostPage({
       onAuthorizationRequired?.();
     }
     if (error instanceof ApiError && error.status === 404) {
-      forgetRoom(activeRoom);
+      if (forgetRoom(activeRoom)) endRoomSession({ key: "host.roomInvalid" }, "room-not-found");
+      return;
     }
     if (!isCurrentRoomAuthority(activeRoom) && roomRef.current !== null) {
       return;
