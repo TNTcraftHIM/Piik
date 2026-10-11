@@ -30,7 +30,7 @@ export function QualityPresets({ selected, limits = VIDEO_CAPTURE_LIMITS, disabl
           aria-pressed={selected === id} aria-label={caption}
           disabled={disabled || !supportsCaptureProfile(profile, limits)} onClick={() => onSelect(id)}>
           <QualityTileGlyph resolution={`${profile.resolution.height}p`} framerate={profile.maxFramerate} />
-          <small>{vis ? `${profile.resolution.height}·${profile.maxFramerate}` : caption}</small>
+          <small>{vis ? `${profile.resolution.height} ${profile.maxFramerate}` : caption}</small>
         </button>
       </Tooltip>;
     })}
