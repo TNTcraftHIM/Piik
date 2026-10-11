@@ -1184,10 +1184,15 @@ private func geometrySelfTest() throws {
         CGRect(x: 0, y: 0, width: 3840, height: 2160) else {
         throw CaptureFailure(description: "H.264 visible aperture self-test failed")
     }
-    let oversized = Data([0x67, 0x42, 0xc0, 0x33, 0xda, 0x00, 0xf0, 0x01,
-                          0xe1, 0xf8, 0x03, 0x49, 0x40])
+    // Uncropped 4096x2160 exceeds the visible-picture budget. Raw SPS storage
+    // and reference counts are validated by Go before reaching this process;
+    // CoreMedia can fold SPS cropping into its reported format dimensions.
+    let oversized = Data([0x67, 0x42, 0xc0, 0x33, 0xdc, 0x01, 0x00, 0x01,
+                          0x0f, 0xb0, 0x16, 0xa0, 0x20, 0x20, 0x28, 0x00,
+                          0x00, 0x03, 0x00, 0x08, 0x00, 0x00, 0x03, 0x00,
+                          0x14, 0x78, 0xc1, 0x9c])
     guard (try? h264InputFormat(sps: oversized, pps: pps)) == nil else {
-        throw CaptureFailure(description: "H.264 crop concealed oversized storage")
+        throw CaptureFailure(description: "H.264 oversized visible picture was accepted")
     }
 }
 
@@ -1660,14 +1665,16 @@ private func h264InputFormat(sps: Data, pps: Data) throws -> CMVideoFormatDescri
     }
     try require(status, "decode-h264-format")
     guard let format else { throw CaptureFailure(description: "missing input format") }
+    // Go owns raw SPS storage/reference admission. CoreMedia may report a
+    // crop-normalized format; check that description and its aperture here.
     let dimensions = CMVideoFormatDescriptionGetDimensions(format)
     let width = Int(dimensions.width), height = Int(dimensions.height)
     guard width >= 2, width <= maxCodedVideoDimension, width % 2 == 0,
           height >= 2, height <= maxCodedVideoDimension, height % 2 == 0,
           width * height <= maxCodedVideoPixels else {
-        throw CaptureFailure(description: "decoded input storage exceeds its bound")
+        throw CaptureFailure(description: "decoded input format dimensions exceed their bound")
     }
-    // Encoded dimensions include padding; the clean aperture owns visible size.
+    // The clean aperture owns visible size when the format retains padding.
     let area = CMVideoFormatDescriptionGetCleanAperture(format, originIsAtTopLeft: true)
     let bounds = CGRect(x: 0, y: 0, width: width, height: height)
     guard area.minX.isFinite, area.minY.isFinite, area.width.isFinite, area.height.isFinite,

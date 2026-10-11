@@ -40,7 +40,7 @@ function run(command, args, cwd, environment = process.env) {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
-    fail(`${command} failed: ${(result.stderr || result.stdout).trim()}`);
+    fail(`${command} failed: ${[result.stdout, result.stderr].filter(Boolean).join("\n").trim()}`);
   }
   return result.stdout.trim();
 }

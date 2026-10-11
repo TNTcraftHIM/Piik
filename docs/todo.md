@@ -27,7 +27,7 @@ Git/PRs own completed history.
   [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the
   numeric-media candidate; neither PR has been merged. 4K60 is included in
   candidate admission, alongside the tested wider video control range, and still
-  needs route/device acceptance. Preserve
+  needs physical device/network acceptance. Preserve
   contributor credit and explain the disposition at integration. Rewrite
   [#459](https://github.com/TNTcraftHIM/Piik/pull/459)'s earlier maintenance scope
   and compatibility claims around the final 2.0 result before integration.
@@ -76,18 +76,18 @@ Implementation needs a concrete useful result within the product model.
   resource budgets intact; opening an output range still needs end-to-end evidence.
   The inherited menu-only source range is replaced by 1..60 fps / 0.1..50 Mbps,
   with coherent lower-output bounds and actual-progress preflight. Local
-  production-codec, source-change and Browser loopback checks pass; full-route
-  acceptance must include the low-rate settings as well as 4K60.
+  production-codec, source-change, Browser loopback, Native Host and SFU checks
+  cover both rate bounds. Preserve these checks in final package acceptance.
   Keep the audio sender ceiling backed by the existing packet-size evidence.
   Numeric audio and video controls are implemented; the assessment
   owns local capture, codec, derived-output, SFU and bounded mixed-route evidence.
   Remaining receiver acceptance needs physical limited decoders and camera
   orientation behavior, beyond the bounded SDP-limit and mixed-route controls.
-  Browser display capture, Browser relay and Browser-to-Native fanout now have
-  bounded high-resolution evidence. macOS geometry SDK/hardware checks and
-  physical 4K/game capture remain open. Repeat live Native-to-Browser, derived
-  relay and SFU checks at 4K60; local codec and Browser loopback success does not
-  establish sustained full-route performance. Preserve safety limits and
+  Browser display capture, Browser relay, Browser-to-Native fanout and SFU have
+  bounded high-resolution continuity evidence. macOS geometry SDK/hardware
+  checks and physical 4K/game capture remain open. The fanout controls did not
+  establish sustained 60 fps; retain that performance limit when arranging
+  device/network acceptance. Preserve safety limits and
   framework-owned adaptation. The
   [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)
   retain explicit receive-limit enforcement and the current 320 kbps sender

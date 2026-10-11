@@ -38,7 +38,7 @@ function run(command, args, options = {}) {
   if (result.error) throw result.error;
   if (result.status !== 0) {
     const detail = options.capture
-      ? (result.stderr || result.stdout).trim()
+      ? [result.stdout, result.stderr].filter(Boolean).join("\n").trim()
       : "";
     throw new Error(`${basename(command)} failed${detail ? `: ${detail}` : ""}`);
   }

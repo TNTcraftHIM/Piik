@@ -39,7 +39,9 @@ fallback transport or new configuration surface; Local LAN remains unchanged.
 On 2026-10-11, local Chromium gathered a server-reflexive candidate from each
 destination independently and from the combined list. Some `701` error events
 coexisted with valid candidates, so an error event alone cannot establish complete
-discovery failure. Native regression checks confirm a healthy destination returns
+discovery failure. The pinned Pion STUN client also received and decoded
+`XOR-MAPPED-ADDRESS` from each destination; the fallback is not Browser-only.
+Native regression checks confirm a healthy destination returns
 without waiting for silent UDP or unresolved DNS, and cancellation retires the
 survey. These controls do not reproduce the reporter's network or establish its
 final connection cause. The [WebRTC event specification](https://www.w3.org/TR/webrtc/#rtcicecandidateerrorevent)

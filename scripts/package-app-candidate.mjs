@@ -36,7 +36,7 @@ function run(command, args, cwd) {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
-    fail(`${basename(command)} failed: ${(result.stderr || result.stdout).trim()}`);
+    fail(`${basename(command)} failed: ${[result.stdout, result.stderr].filter(Boolean).join("\n").trim()}`);
   }
   if (result.stderr) process.stderr.write(result.stderr);
   return result.stdout.trim();

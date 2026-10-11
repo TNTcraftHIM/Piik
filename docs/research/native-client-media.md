@@ -1,6 +1,6 @@
 # Native App Media Evidence
 
-- Reviewed: 2026-10-06
+- Reviewed: 2026-10-11
 - Scope: platform capture, shared encoded sources, Pion transport and Browser
   decode; current behavior belongs to [media quality](../standards/media-quality.md)
 - Status: Windows physical native Host and Viewer gates passed; current macOS
@@ -776,10 +776,20 @@ The Windows Native Host gate now exercises the actual numeric UI at 1 fps /
 same Viewer stream through those changes, 4K/custom ceilings, pause, source
 replacement and Viewer recovery. Its generated window is smaller than 4K;
 this establishes ceiling application and continuity, not physical 4K capture.
-The Browser H.264 and VP8 SFU controls use actual 3840x2160 synthetic input at
-60 fps, decode high and lower outputs, retain the connection across both rate
-bounds and audio updates, and recover subscriptions after reload. Positive
-output does not establish sustained 60 fps on arbitrary devices or networks.
+The Browser H.264 and VP8 SFU controls request 60 fps from actual 3840x2160
+synthetic input, decode high and lower outputs, retain the connection across
+both rate bounds and audio updates, and recover subscriptions after reload.
+Native WGC-to-SFU controls also pass both codecs and rate changes with the same
+connection; their source is smaller than 4K. Positive output does not establish
+sustained 60 fps on arbitrary devices or networks.
+
+A 3840x2160/60 Browser-to-Native fanout control failed the existing 30 fps
+performance threshold: its source produced about 32..33 fps and the two Viewers
+about 27 fps. A separate functional continuation retained that negative result
+and passed live quality changes, pause/resume, source-audio replacement and
+App-exit recovery. That run measured about 41 and 37 fps at the Viewers, still
+below the requested 60 fps. The controls establish continuity on this machine,
+not sustained 4K60 cadence; they do not justify custom quality floors or resets.
 
 The current Linux candidate also passes C11 compilation with warnings as errors
 and the headless GStreamer regressions, including low/high rate admission,
