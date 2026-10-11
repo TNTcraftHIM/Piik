@@ -163,26 +163,7 @@ export function LauncherForm({
         })}
       </div>
 
-      {mode === "local" && lan && (lan.addresses.length !== 1 || !lan.selected) ? (
-        <fieldset className="lr-client-lan">
-          <legend className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanAddress")}</legend>
-          {lan.addresses.length === 0 ? (
-            <Pill icon="wifiOff" tone="warn" comic="signal-offline" label={t("client.launch.lanUnavailable")} />
-          ) : <>
-            {vis ? null : <p className="lr-client-lan-hint">{t("client.launch.lanHint")}</p>}
-            <div className="lr-client-lan-options">
-              {lan.addresses.map(({ address, name }) => (
-                <label key={address} className={`lr-btn lr-client-lan-option${lan.selected === address ? " is-on" : ""}`}>
-                  <input type="radio" name="lan-address" value={address}
-                    checked={lan.selected === address} onChange={() => lan.onChange(address)} />
-                  <span><strong>{name}</strong><small>{address}</small></span>
-                </label>
-              ))}
-            </div>
-          </>}
-        </fieldset>
-      ) : null}
-
+      <div className="lr-client-room-settings">
         <details className="lr-client-access-options">
           <summary>
             <Glyph name="key" size={17} />
@@ -198,6 +179,28 @@ export function LauncherForm({
             {t("client.launch.localAccessHint")}
           </p>
         </details>
+        {mode === "local" && lan && (lan.addresses.length !== 1 || !lan.selected) ? (
+          <details className="lr-client-access-options" open={!lan.selected || undefined}>
+            <summary>
+              <Glyph name="users" size={17} />
+              <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanAddress")}</span>
+              <Glyph name="chevron" size={15} />
+            </summary>
+            {lan.addresses.length === 0 ? (
+              <Pill icon="wifiOff" tone="warn" comic="signal-offline" label={t("client.launch.lanUnavailable")} />
+            ) : <div className="lr-capture-device lr-client-lan">
+              <select value={lan.selected} aria-label={t("client.launch.lanAddress")}
+                aria-describedby={`${accessHintId}-lan`} onChange={event => lan.onChange(event.target.value)}>
+                <option value="" disabled>{t("client.launch.chooseAddress")}</option>
+                {lan.addresses.map(({ address, name }) => (
+                  <option key={address} value={address}>{address} · {name}</option>
+                ))}
+              </select>
+              <small id={`${accessHintId}-lan`} className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanHint")}</small>
+            </div>}
+          </details>
+        ) : null}
+      </div>
 
       <Btn
         icon="arrowRight"
@@ -216,7 +219,7 @@ export function LauncherForm({
         </p>}
         <p>
           <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.credit")}</span>
-          {vis && <span aria-hidden="true">MIT · TNTcraft</span>}
+          {vis && <span aria-hidden="true">TNTcraft & contributors</span>}
         </p>
         <div className="lr-client-project-links">
           <a href="https://piik.tv/" target="_blank" rel="noopener noreferrer" aria-label={t("client.launch.website")}>

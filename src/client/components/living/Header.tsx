@@ -123,10 +123,12 @@ export function AppHeader({
   led,
   homeHref = "/",
   diagnosticControl,
+  showAppConnection = true,
 }: {
   led?: React.ReactNode;
   homeHref?: string;
   diagnosticControl?: React.ReactNode;
+  showAppConnection?: boolean;
 }) {
   const { t } = useCopy();
   return (
@@ -140,7 +142,7 @@ export function AppHeader({
       </a>
       <span className="lr-top-right">
         {led}
-        {homeHref !== "/client" && <AppConnectionButton />}
+        {homeHref !== "/client" && showAppConnection && <AppConnectionButton />}
         <HeaderControls diagnosticControl={diagnosticControl} />
       </span>
     </header>

@@ -98,7 +98,7 @@ See the [App guide](../../cmd/piik-app/README.md) for package and runtime detail
 
 | Mode | When to choose it | What to keep in mind |
 | --- | --- | --- |
-| **Local room** | Friends are on the same local network. | If several entries appear under **Local invitation address**, choose the interface and IP on your friends' network. Your computer must be reachable from theirs. A local site passphrase is optional. |
+| **Local room** | Friends are on the same local network. | With multiple interfaces, expand **Local invitation address** and select the interface and IP on your friends' network. Your computer must be reachable from theirs. A local site passphrase is optional. |
 | **Public invite** | Friends are elsewhere and you want a temporary invitation. | Needs Internet access. The public address lasts for this App run. |
 
 For Local room and Public invite, expand **Site passphrase** to set an optional
@@ -108,10 +108,13 @@ access passphrase.
 **App** at the top. Check the address on the local confirmation page, then choose
 **Allow access**. Enter any site passphrase on the site itself. Allow local-network
 access if the browser asks. No room mode needs to be selected in the launcher.
+You can also choose **Connect Piik App** inside the **Start sharing** source
+selector; its list updates as soon as the connection completes.
 
 The same browser remembers this connection. On later visits, **Start sharing**
 offers **Apps / Windows** and **Screens** from the running App. In another browser,
-in a private window or after clearing site data, connect again. The launcher
+in a private window or after clearing site data, connect again. The same exact
+site already approved by App needs no repeat confirmation. The launcher
 shows the approved site and lets you revoke it. Approving a different site
 replaces the previous one and ends that site's App connections.
 

@@ -55,15 +55,20 @@ export function AppLauncherPage() {
   const [target, setTarget] = useState<string>();
   const [siteBusy, setSiteBusy] = useState(false);
   const [siteError, setSiteError] = useState<string>();
-  const [approved, setApproved] = useState(false);
   const requestedSite = new URLSearchParams(window.location.search).get("site");
-  const approvalCurrent = approved && site === requestedSite;
   const validSite = requestedSite && (() => {
     try {
       const url = new URL(requestedSite);
       return ["http:", "https:"].includes(url.protocol) && url.origin === requestedSite;
     } catch { return false; }
   })();
+  const approvalCurrent = validSite && site === requestedSite;
+
+  useEffect(() => {
+    // The App's saved exact origin owns permission, including repeat connections.
+    // The requesting page still verifies authorized health before using App.
+    if (approvalCurrent) window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
+  }, [approvalCurrent, requestedSite]);
 
   useEffect(() => {
     let current = true;
@@ -204,10 +209,6 @@ export function AppLauncherPage() {
       }
       if (!response.ok || !result.success) throw new Error("App approval failed");
       setSite(result.data.site);
-      if (requestedSite && result.data.site === requestedSite) {
-        setApproved(true);
-        window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
-      }
     } catch {
       setSiteError(t("client.connect.saveFailed"));
     } finally { setSiteBusy(false); }

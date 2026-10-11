@@ -40,6 +40,11 @@ available to its approved Site before either mode starts. A Site's explicit App
 action discovers the local approval page, where the user confirms its exact
 origin. The launcher shows and revokes that approval. Activating a page supplies
 native capability without restarting its room or healthy media session.
+The source selector exposes that same connection action before sharing; a
+successful connection refreshes its current list. An already approved exact
+origin needs no repeat confirmation, but the page still verifies authorized App
+health. Closing the selector cancels its pending connection action. Existing
+Browser shares retain their capture implementation until sharing ends.
 Viewer links opened at that activated origin may use the same running App
 without changing the Viewer UI. Starting a share offers the
 Browser picker and any exact App-owned native windows. It never chooses a

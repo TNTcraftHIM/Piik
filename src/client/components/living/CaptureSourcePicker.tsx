@@ -10,6 +10,7 @@ import { Pill } from "./primitives";
 import { CameraSources, useCameraSources } from "./CameraSources";
 import { CaptureSourceCard } from "./CaptureSourceCard";
 import { AudioExclusionSelect } from "./AudioExclusionSelect";
+import { AppConnectionButton } from "./AppConnectionButton";
 import type { loadCameraPreviews } from "../../media/camera-previews";
 
 const SOURCE_TABS = ["browser", "camera", "window", "display"] as const;
@@ -45,6 +46,7 @@ export function CaptureSourcePicker({
   onPreview,
   onRefresh,
   onCancel,
+  onAppConnected,
   browserAvailable = true,
   cameraAvailable = !!onCamera,
   initialTab = "window",
@@ -70,6 +72,7 @@ export function CaptureSourcePicker({
   ) => Promise<string | null>;
   onRefresh: () => void;
   onCancel: () => void;
+  onAppConnected?: () => void;
   browserAvailable?: boolean;
   cameraAvailable?: boolean;
   initialTab?: SourceTab;
@@ -323,6 +326,13 @@ export function CaptureSourcePicker({
               : null}
           </div>
           </>}
+
+          {onAppConnected && (nativeSources.kind === "browser" || nativeSources.kind === "unavailable") && (
+            <div className="lr-source-app-connection">
+              <AppConnectionButton sourcePicker onConnected={onAppConnected} />
+              {vis ? null : <small>{t("client.connect.captureHint")}</small>}
+            </div>
+          )}
 
           {nativeTab &&
           nativeSources.kind === "ready" &&

@@ -4,7 +4,10 @@ import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
 
-export function AppConnectionButton() {
+export function AppConnectionButton({ sourcePicker = false, onConnected }: {
+  sourcePicker?: boolean;
+  onConnected?: () => void;
+} = {}) {
   const { t, vis } = useCopy();
   const [state, setState] = useState<"idle" | "busy" | "unavailable" | "incompatible">("idle");
   const pending = useRef<{ controller: AbortController; popup: Window | null } | null>(null);
@@ -26,14 +29,19 @@ export function AppConnectionButton() {
       approving = true;
       // The approval message only asks us to recheck the App-owned permission.
       const health = await native?.discoverNativeHealth({ signal }).catch(() => null);
-      if (health && !signal.aborted) activateClient();
+      if (signal.aborted) return;
       finish(health ? "idle" : "unavailable");
+      if (health) {
+        activateClient();
+        onConnected?.();
+      }
     };
     let approvalOrigin = "";
     const finish = (result: typeof state) => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("focus", onFocus);
       attempt.controller.abort();
+      attempt.popup?.close();
       if (pending.current === attempt) { pending.current = null; setState(result); }
     };
     const onFocus = () => {
@@ -50,24 +58,24 @@ export function AppConnectionButton() {
       if (signal.aborted) return;
       const url = await native.discoverNativeConnect(signal);
       if (signal.aborted) return;
-      if (!url) { attempt.popup.close(); finish("unavailable"); return; }
+      if (!url) { finish("unavailable"); return; }
       approvalOrigin = new URL(url).origin;
       attempt.popup.location.replace(url);
     } catch (error) {
-      attempt.popup.close();
       if (!signal.aborted) finish(native && error instanceof native.NativeCompatibilityError ? "incompatible" : "unavailable");
     }
   }
 
   const label = t(state === "incompatible" ? "native.incompatible" :
-    state === "unavailable" ? "client.connect.unavailable" : "client.connect.action");
+    state === "unavailable" ? "client.connect.unavailable" : sourcePicker ? "client.connect.captureHint" : "client.connect.action");
   return <Tooltip kind="hint-client-site"
-    text={vis ? undefined : label} place="below" align="end">
-    <button type="button" className="lr-btn" aria-label={label} aria-busy={state === "busy" || undefined}
+    text={vis ? undefined : label} place={sourcePicker ? "above" : "below"} align={sourcePicker ? "center" : "end"}>
+    <button type="button" className={sourcePicker ? "lr-source-picker-refresh lr-source-app-connect" : "lr-btn"}
+      aria-label={sourcePicker ? t("client.connect.action") : label} aria-busy={state === "busy" || undefined}
       onClick={() => void connect()} disabled={state === "busy"}>
       <Glyph name={state === "busy" ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
         size={16} className={state === "busy" ? "lr-spin" : undefined} />
-      {vis ? null : <span className="lr-cap">App</span>}
+      {vis ? null : <span className="lr-cap">{sourcePicker ? t("client.connect.action") : "App"}</span>}
     </button>
   </Tooltip>;
 }

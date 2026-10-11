@@ -103,6 +103,7 @@ import { deriveHostStatus, deriveParticipantStatus, type HostPhase } from "../ui
 import {
   clearHostRoom,
   getStableClientId,
+  isClientActivated,
   type HostRoomIdentity,
   type HostRoomState,
   mergeAuthenticatedHostRoom,
@@ -1406,7 +1407,7 @@ export function HostPage({
     const request = {};
     nativeSourceRequestRef.current = request;
     nativeSourcePathRef.current = null;
-    if (!launchedByClient || (phase === "live" && !nativeModeRef.current)) {
+    if (!isClientActivated() || (phase === "live" && !nativeModeRef.current)) {
       setNativeSources({ kind: "browser" });
       return;
     }
@@ -3598,6 +3599,7 @@ export function HostPage({
   return (
     <div className="lr-app">
       <AppHeader
+        showAppConnection={!sourcePickerOpen}
         led={
           <LedStrip
             state={hostStatus.connection.tone}
@@ -3646,6 +3648,9 @@ export function HostPage({
                 onPreview={loadNativeSourcePreview}
                 onRefresh={openCaptureSourcePicker}
                 onCancel={closeCaptureSourcePicker}
+                onAppConnected={phase !== "live" ? () => {
+                  if (nativeSourceRequestRef.current) void openCaptureSourcePicker();
+                } : undefined}
                 browserAvailable={!nativeActive && !!navigator.mediaDevices?.getDisplayMedia}
                 cameraAvailable={!nativeActive && !!navigator.mediaDevices?.getUserMedia}
                 selectionDisabled={roomMutating || switchingSource || changingQuality}

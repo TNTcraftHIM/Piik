@@ -544,6 +544,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   scrollbar-gutter: stable;
 }
 .lr-source-picker-body > [role="status"] { text-align: center; }
+.lr-source-app-connection { display: grid; justify-items: center; gap: 6px; margin-top: 12px; }
+.lr-source-app-connection small { color: #9aa8bb; font-size: 12px; text-align: center; }
+.lr-source-app-connect { display: flex; gap: 8px; width: auto; padding: 0 12px; margin: 0; }
 .lr-source-picker-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
@@ -1586,17 +1589,9 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 .lr-client-access input {
   min-width: 0;
 }
-.lr-client-lan { width: min(460px, 100%); min-width: 0; margin: 0; padding: 0; border: 0; }
-.lr-client-lan legend { padding: 0; font-size: 14px; font-weight: 750; }
-.lr-client-lan-hint { margin: 5px 0 10px; color: var(--muted); font-size: 12px; }
-.lr-client-lan-options { display: grid; gap: 8px; max-height: 192px; overflow-y: auto; padding: 3px; }
-.lr-client-lan-option { width: 100%; min-width: 0; height: auto; min-height: 52px; grid-template-columns: auto minmax(0, 1fr); justify-content: stretch; white-space: normal; border-radius: var(--control-radius); cursor: pointer; }
-.lr-client-lan-option input { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; accent-color: var(--action); }
-.lr-client-lan-option span { display: grid; min-width: 0; gap: 3px; text-align: left; }
-.lr-client-lan-option strong { font-size: 13px; overflow-wrap: anywhere; }
-.lr-client-lan-option small { font: 12px var(--mono); }
-.lr-client-lan-option:has(:focus-visible) { outline: 3px solid var(--action); outline-offset: 1px; }
-.lr-client-access-options { width: min(460px, 100%); min-width: 0; }
+.lr-client-room-settings { display: grid; width: min(460px, 100%); grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); align-items: start; gap: 12px; }
+.lr-client-room-settings .lr-client-lan { padding: 8px 0 0; }
+.lr-client-access-options { width: 100%; min-width: 0; }
 .lr-client-access-options > summary {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   width: fit-content; max-width: 100%; min-height: 40px; margin: 0 auto; padding: 8px 12px;

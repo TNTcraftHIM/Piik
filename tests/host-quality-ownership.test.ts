@@ -71,7 +71,7 @@ function fixture(launchedByClient = true) {
   const route = { updateProfile: vi.fn(async () => true), resyncAuthoritative: vi.fn(async (): Promise<void> => undefined) };
   const state = {
     debugError, debugEvent, debugOperation, NativeCompatibilityError, NativeRequestError, NativeMediaBridgeError, isCapturePermissionFailure, hostFailureCode, DOMException,
-    launchedByClient, hostRoomSessionAvailable: false,
+    launchedByClient, isClientActivated: vi.fn(() => launchedByClient), hostRoomSessionAvailable: false,
     NativeClient: { connect: vi.fn(async (): Promise<typeof client | null> => null) },
     nativeClientConnectRef: ref<Promise<typeof client | null> | null>(null),
     ownNativeClient: vi.fn(), setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
@@ -939,6 +939,24 @@ describe("Host quality ownership", () => {
     current.nativeClientRef.current = current.client;
     current.requestShare();
     expect(current.openCaptureSourcePicker).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes a waiting picker after App approval without changing a live Browser share", async () => {
+    const current = fixture(false);
+    current.context.phase = "idle";
+    await current.openPicker();
+    expect(current.setNativeSources).toHaveBeenLastCalledWith({ kind: "browser" });
+    expect(current.client.sources).not.toHaveBeenCalled();
+
+    current.isClientActivated.mockReturnValue(true);
+    await current.openPicker();
+    expect(current.setNativeSources).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "ready" }));
+    expect(current.client.sources).toHaveBeenCalledOnce();
+
+    current.context.phase = "live";
+    await current.openPicker();
+    expect(current.setNativeSources).toHaveBeenLastCalledWith({ kind: "browser" });
+    expect(current.client.sources).toHaveBeenCalledOnce();
   });
 
   it("shows App incompatibility in the picker and clears it on a successful refresh", async () => {
