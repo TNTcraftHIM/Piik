@@ -24,7 +24,7 @@ const (
 	maxPreviewBytes     = 192 * 1024
 	maxOutputs          = 6
 	minOutputBitrate    = 1_000 // Codec rate APIs use whole kbps.
-	MaxVideoBitrate     = 12_000_000
+	MaxVideoBitrate     = 50_000_000
 	maxSources          = 1024
 	maxSourceTitleBytes = 4096
 	// Leave room for the control envelope within loopback's 256 KiB message.
@@ -98,7 +98,7 @@ func ScreenShareOutputs(profile VideoProfile) []OutputProfile {
 	return []OutputProfile{
 		{
 			Width: profile.Width / 4 * 2, Height: profile.Height / 4 * 2,
-			Framerate: profile.Framerate, Bitrate: max(150_000, profile.Bitrate/4),
+			Framerate: profile.Framerate, Bitrate: min(profile.Bitrate, max(150_000, profile.Bitrate/4)),
 		},
 		{
 			Width: profile.Width, Height: profile.Height,
@@ -111,8 +111,7 @@ func (profile VideoProfile) Valid() bool {
 	// The source ceiling must also yield a valid half-size output. Preset labels
 	// belong to the UI, not the capture process's numeric resource boundary.
 	return ValidVideoFormat(profile.Width, profile.Height, profile.Framerate) && profile.Width >= 4 && profile.Height >= 4 &&
-		profile.Framerate >= 15 &&
-		profile.Bitrate >= 2_000_000 && profile.Bitrate <= MaxVideoBitrate &&
+		profile.Bitrate >= 100_000 && profile.Bitrate <= MaxVideoBitrate &&
 		validVideoPreference(profile.Preference)
 }
 

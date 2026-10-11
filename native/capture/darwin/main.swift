@@ -1517,8 +1517,7 @@ private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
         throw CaptureFailure(description: "invalid video profile arguments")
     }
     guard validVideoFormat(width, height, frameRate), width >= 4, height >= 4,
-          frameRate >= 15,
-          bitrate >= 2_000_000, bitrate <= 12_000_000 else {
+          bitrate >= 100_000, bitrate <= 50_000_000 else {
         throw CaptureFailure(description: "video profile is outside the product bounds")
     }
     return VideoProfile(
@@ -1546,7 +1545,7 @@ private func outputProfiles(_ arguments: [String], start: Int = 23,
               validVideoFormat(width, height, fps),
               width <= (source?.width ?? maxVideoDimension), height <= (source?.height ?? maxVideoDimension),
               fps <= (source?.frameRate ?? 60),
-              bitrate >= 1000, bitrate <= (source?.bitrate ?? 12_000_000) else {
+              bitrate >= 1000, bitrate <= (source?.bitrate ?? 50_000_000) else {
             throw CaptureFailure(description: "output profile is outside source bounds")
         }
         result.append(OutputProfile(width: width, height: height, fps: fps, bitrate: bitrate))

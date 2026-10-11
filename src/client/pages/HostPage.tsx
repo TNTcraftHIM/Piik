@@ -52,7 +52,7 @@ import type { ComicKind } from "../components/living/Comic";
 import type { HintKind } from "../ui/visual-kinds";
 import type { ComicTone } from "../components/living/comic-presentation";
 import { Tooltip } from "../components/living/Tooltip";
-import { AudioBitrateControl, QualityPresets, ResolutionControl } from "../components/living/QualityPresets";
+import { AudioBitrateControl, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
 import { RoomCodeInput, RoomCodeError } from "../components/living/RoomCodeInput";
 import { MetricCell } from "../components/living/Metrics";
 import {
@@ -130,8 +130,6 @@ import {
   videoCaptureLimits,
   captureFramerateCeiling,
   supportsCaptureProfile,
-  MIN_VIDEO_FRAMERATE,
-  MIN_VIDEO_BITRATE,
   qualityResolutionEqual,
   qualitySettingsEqual,
   qualitySettingsLabel,
@@ -3596,7 +3594,6 @@ export function HostPage({
     ? nativeClientRef.current?.health.nativeMedia.maxAudioBitrate ?? MAX_SCREEN_AUDIO_BITRATE
     : MAX_SCREEN_AUDIO_BITRATE);
   const videoLimits = videoCaptureLimits(nativeActive ? nativeClientRef.current?.health.nativeMedia : undefined);
-  const framerateCeiling = captureFramerateCeiling(advancedQuality.resolution, videoLimits);
 
   return (
     <div className="lr-app">
@@ -3850,65 +3847,8 @@ export function HostPage({
                     maxFramerate: Math.min(advancedQualityRef.current.maxFramerate, captureFramerateCeiling(resolution, videoLimits)),
                   })} />
               </div>
-              <div className="lr-sharing-limits">
-                <div className="lr-door-group">
-                  <span
-                    className="lr-door-glyph"
-                  >
-                    <Glyph name="frames" size={19} />
-                    <Cap k="host.advanced.framerate" />
-                  </span>
-                  <Tooltip kind="hint-metric-fps" text={vis ? undefined : t("host.advanced.framerate")} className="lr-slider-hint">
-                    <span className="lr-slider">
-                      <input
-                        type="range"
-                        min={MIN_VIDEO_FRAMERATE}
-                        max={Math.max(MIN_VIDEO_FRAMERATE, framerateCeiling)}
-                        step={1}
-                        value={advancedQuality.maxFramerate}
-                        disabled={phase === "starting" || switchingSource || framerateCeiling < MIN_VIDEO_FRAMERATE}
-                        aria-label={t("host.advanced.framerate")}
-                        onChange={(event) =>
-                          changeAdvancedQuality({
-                            maxFramerate: Number(event.target.value),
-                          })
-                        }
-                      />
-                      <output>{advancedQuality.maxFramerate} fps</output>
-                    </span>
-                    </Tooltip>
-                </div>
-                <div className="lr-door-group">
-                  <span
-                    className="lr-door-glyph"
-                  >
-                    <Glyph name="gauge" size={19} />
-                    <Cap k="host.advanced.bitrate" />
-                  </span>
-                  <Tooltip kind="hint-metric-bitrate" text={vis ? undefined : t("host.advanced.bitrate")} className="lr-slider-hint">
-                    <span className="lr-slider">
-                      <input
-                        type="range"
-                        min={MIN_VIDEO_BITRATE}
-                        max={Math.max(MIN_VIDEO_BITRATE, videoLimits.maxVideoBitrate)}
-                        step={500000}
-                        value={advancedQuality.maxBitrate}
-                        disabled={phase === "starting" || switchingSource || videoLimits.maxVideoBitrate < MIN_VIDEO_BITRATE}
-                        aria-label={t("host.advanced.bitrate")}
-                        onChange={(event) =>
-                          changeAdvancedQuality({
-                            maxBitrate: Number(event.target.value),
-                          })
-                        }
-                      />
-                      <output>
-                        {(advancedQuality.maxBitrate / 1_000_000).toFixed(1)}{" "}
-                        Mbps
-                      </output>
-                    </span>
-                    </Tooltip>
-                </div>
-              </div>
+              <VideoRateControls value={advancedQuality} limits={videoLimits}
+                disabled={phase === "starting" || switchingSource} onChange={changeAdvancedQuality} />
               <div className="lr-door-group">
                 <span
                   className="lr-door-glyph"

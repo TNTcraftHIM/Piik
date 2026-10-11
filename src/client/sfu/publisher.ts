@@ -440,7 +440,8 @@ export class SfuPublisher {
     const height = settings?.height ?? ceiling.height;
     const scale = Math.max(1, width / ceiling.width, height / ceiling.height);
     // LiveKit 2.22.1 publishUtils: screen share uses half size, same FPS,
-    // and quarter bitrate with a 150 kbps floor. WebRTC budgets the entire PC.
+    // and quarter bitrate with a 150 kbps floor, bounded by the source ceiling.
+    // WebRTC budgets the entire PC.
     const high = {
       rid: this.layerCount === 2 ? "h" : "q",
       active: this.activeCount >= this.layerCount,
@@ -454,7 +455,7 @@ export class SfuPublisher {
             rid: "q",
             active: this.activeCount > 0,
             scaleResolutionDownBy: 2 * scale,
-            maxBitrate: Math.max(150_000, Math.floor(profile.maxBitrate / 4)),
+            maxBitrate: Math.min(profile.maxBitrate, Math.max(150_000, Math.floor(profile.maxBitrate / 4))),
             maxFramerate: profile.maxFramerate,
           },
           high,

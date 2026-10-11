@@ -745,27 +745,36 @@ may exceed local support, but cannot authorize larger local allocations.
 This separation also appears in
 [mediasoup RTP parameters and capabilities](https://mediasoup.org/documentation/v3/mediasoup/rtp-parameters-and-capabilities/).
 
-The operating-range review on 2026-10-11 found that the current 15 fps / 2 Mbps
-source minimum and 12 Mbps maximum retain the earlier menu range; they are not
+The operating-range review found that the inherited 15 fps / 2 Mbps
+source minimum and 12 Mbps maximum retained the earlier menu range; they were not
 codec limits. [LiveKit's screen-share presets](https://github.com/livekit/client-sdk-js/blob/main/src/room/track/options.ts)
 include 720p5 at 800 kbps. [YouTube's H.264 live-ingest guidance](https://support.google.com/youtube/answer/2853702?hl=en)
 recommends 50 Mbps for 4K60, but its ingest/re-encoding workload is not a Piik
 WebRTC operating policy. These references motivate testing both ends of the
 range, rather than inheriting the old controls or copying another service's cap.
 
-An offline Windows control used the production H.264 encoder and retained-surface
-decoder with synthetic frames. It requested 720p5 at 800 kbps, 720p15 at 1 Mbps,
-and 4K60 at 40 and 50 Mbps. Every case was rejected by product profile admission;
-the codec-only path encoded and decoded all 30 frames per case. This establishes
-local codec feasibility, not sustained bitrate/quality, complete-route support
-or a new accepted control range. The ignored control and output are in
-`build/candidate-review/four-k60/operating-range.cpp` and `operating-range.jsonl`.
+The candidate now admits 1..60 integer fps and 0.1..50 Mbps. Its lower-output
+construction caps the usual 150 kbps floor by the source ceiling, in both Browser
+SFU and Native. Browser and Native preflight require positive encoded progress;
+the old one-frame tolerance could otherwise pass zero output at 1 fps.
+An earlier raw H.264 encode/decode control established local feasibility beyond
+the old range. Production Windows output-worker checks now cover H.264/VP8 at
+720p1/100 kbps, 720p5/800 kbps and 4K60/50 Mbps, including source-size replacement.
+Native encoded input also produced the expected half-size output at the low and
+high bounds. Each derivation retained its existing input-format generation;
+source changes still retire and replan that optional output through its owner.
+Browser loopback with the real sender controls also delivered decoded progress
+at all three settings and after replacing the 1 fps source. The 1 fps H.264
+preflight passed; the 4K60 preflight selected VP8 on this machine even though
+explicit H.264 delivered frames. Admission is not a sustained-cadence guarantee.
 
-Before widening source controls, check the existing Browser SFU and Native
-lower-output construction together: both use a quarter bitrate with a 150 kbps
-floor. A lower source setting must not produce a derived output whose ceiling
-exceeds that source. Preserve frame-byte, allocation, output-count and receiver
-limits; do not replace the old menu ceiling with unbounded resource permission.
+A uniform-noise 4K1/50 Mbps stress input reached the retained 4 MiB access-unit
+guard in both Native codecs; VP8 produced a 6,199,837-byte frame. The output was
+rejected rather than expanding allocation limits. Large bitrate/low-cadence
+requests are not permission for unbounded frames. These local controls establish
+useful operation and bounded failure, not sustained field quality or complete-route
+performance. Ignored controls and results are under
+`build/candidate-review/four-k60/` (`range-worker.cpp`, `range-browser.js`).
 
 [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-availableoutgoingbitrate)
 describe estimated available capacity, not a configured send-rate ceiling;

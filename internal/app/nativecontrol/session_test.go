@@ -699,8 +699,8 @@ func TestUpdateShareRequiresTheCurrentStrictProfile(t *testing.T) {
 	for _, replace := range [][2]string{
 		{`"width":1920`, `"width":32768`}, {`"width":1920`, `"width":1921`},
 		{`"maxFramerate":30`, `"maxFramerate":120`}, {`"maxFramerate":30`, `"maxFramerate":30.5`},
-		{`"maxFramerate":30`, `"maxFramerate":4294967326`}, {`"maxFramerate":30`, `"maxFramerate":1`},
-		{`"maxBitrate":5000000`, `"maxBitrate":40000000`}, {`"maxBitrate":5000000`, `"maxBitrate":1000`},
+		{`"maxFramerate":30`, `"maxFramerate":4294967326`}, {`"maxFramerate":30`, `"maxFramerate":0.5`},
+		{`"maxBitrate":5000000`, `"maxBitrate":50000001`}, {`"maxBitrate":5000000`, `"maxBitrate":1000`},
 	} {
 		assertOperationFailure(t, session, strings.Replace(valid, replace[0], replace[1], 1))
 	}

@@ -2,8 +2,8 @@ import { Fragment, useRef } from "react";
 import { MIN_AUDIO_BITRATE } from "../../../shared/protocol";
 import {
   QUALITY_PROFILES, QUALITY_PROFILE_KEYS, QUALITY_RESOLUTIONS, qualityResolutionEqual,
-  captureFramerateCeiling, supportsCaptureProfile, MIN_VIDEO_FRAMERATE,
-  VIDEO_CAPTURE_LIMITS, type VideoCaptureLimits, type QualityProfileId, type QualityResolution,
+  captureFramerateCeiling, supportsCaptureProfile, MIN_VIDEO_FRAMERATE, MIN_VIDEO_BITRATE,
+  VIDEO_CAPTURE_LIMITS, type VideoCaptureLimits, type QualityProfile, type QualityProfileId, type QualityResolution,
   SCREEN_AUDIO_BITRATES, type ScreenAudioPreset,
 } from "../../media/quality";
 import { useCopy, type CopyKey } from "../../ui/copy";
@@ -108,6 +108,72 @@ const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioPreset, CopyKey> = {
   "very-high": "host.advanced.audio.veryHigh",
 };
 
+function QualityNumberInput({ value, min, max, step, unit, name, label, disabled, onChange }: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  name: string;
+  label: string;
+  disabled: boolean;
+  onChange: (value: number) => void;
+}) {
+  return <label className="lr-input lr-quality-number">
+    <input type="number" inputMode={step < 1 ? "decimal" : "numeric"} name={name} key={value}
+      defaultValue={value} min={min} max={max} step={step} disabled={disabled} aria-label={label}
+      onBlur={event => {
+        const input = event.currentTarget;
+        if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) {
+          input.value = String(value);
+          return;
+        }
+        if (input.valueAsNumber !== value) onChange(input.valueAsNumber);
+      }}
+      onKeyDown={event => {
+        if (event.key !== "Enter" && event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.key === "Escape") event.currentTarget.value = String(value);
+        event.currentTarget.blur();
+      }} />
+    <span>{unit}</span>
+  </label>;
+}
+
+export function VideoRateControls({ value, limits, disabled, onChange }: {
+  value: QualityProfile;
+  limits: VideoCaptureLimits;
+  disabled: boolean;
+  onChange: (value: Partial<Pick<QualityProfile, "maxFramerate" | "maxBitrate">>) => void;
+}) {
+  const { t, vis } = useCopy();
+  const fpsMax = captureFramerateCeiling(value.resolution, limits);
+  const controls = [
+    { name: "maxFramerate", label: "host.advanced.framerate", icon: "frames", hint: "hint-metric-fps",
+      value: value.maxFramerate, min: MIN_VIDEO_FRAMERATE, max: fpsMax, step: 1, unit: "fps",
+      change: (maxFramerate: number) => onChange({ maxFramerate }) },
+    { name: "maxBitrate", label: "host.advanced.bitrate", icon: "gauge", hint: "hint-metric-bitrate",
+      value: value.maxBitrate / 1_000_000, min: MIN_VIDEO_BITRATE / 1_000_000,
+      max: limits.maxVideoBitrate / 1_000_000, step: 0.1, unit: "Mbps",
+      change: (mbps: number) => onChange({ maxBitrate: Math.round(mbps * 1_000_000) }) },
+  ] as const;
+  return <div className="lr-sharing-limits">
+    {controls.map(control => <div className="lr-door-group" key={control.name}>
+      <span className="lr-door-glyph"><Glyph name={control.icon} size={19} /><Cap k={control.label} /></span>
+      <Tooltip kind={control.hint} text={vis ? undefined : t(control.label)} className="lr-slider-hint">
+        <span className="lr-quality-rate">
+          <input type="range" min={control.min} max={Math.max(control.min, control.max)} step={control.step}
+            value={control.value} disabled={disabled || control.max < control.min} aria-label={t(control.label)}
+            onChange={event => control.change(event.currentTarget.valueAsNumber)} />
+          <QualityNumberInput {...control} label={t(control.label)} disabled={disabled || control.max < control.min}
+            onChange={control.change} />
+        </span>
+      </Tooltip>
+    </div>)}
+  </div>;
+}
+
 export function AudioBitrateControl({ value, max, disabled, onChange }: {
   value: number;
   max: number;
@@ -130,27 +196,9 @@ export function AudioBitrateControl({ value, max, disabled, onChange }: {
     <Tooltip kind="hint-audio-quality" text={vis ? undefined : t("host.audio.bitrateHint", {
       min: String(MIN_AUDIO_BITRATE / 1_000), max: String(max / 1_000),
     })}>
-      <label className="lr-input lr-audio-bitrate">
-        <input type="number" inputMode="numeric" name="audioBitrate" key={value}
-          defaultValue={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
-          disabled={disabled} aria-label={t("host.advanced.audioBitrate")}
-          onBlur={event => {
-            const input = event.currentTarget;
-            if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) {
-              input.value = String(value / 1_000);
-              return;
-            }
-            if (input.valueAsNumber * 1_000 !== value) onChange(input.valueAsNumber * 1_000);
-          }}
-          onKeyDown={event => {
-            if (event.key !== "Enter" && event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            if (event.key === "Escape") event.currentTarget.value = String(value / 1_000);
-            event.currentTarget.blur();
-          }} />
-        <span>kbps</span>
-      </label>
+      <QualityNumberInput value={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
+        name="audioBitrate" unit="kbps" label={t("host.advanced.audioBitrate")}
+        disabled={disabled} onChange={kbps => onChange(kbps * 1_000)} />
     </Tooltip>
   </div>;
 }

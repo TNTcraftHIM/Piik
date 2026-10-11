@@ -268,6 +268,9 @@ void CheckAutoCadenceProbe(ID3D11Device* device) {
   assert(probe(std::chrono::milliseconds(220), false, deadline, true));
   // Sustained slow encoding still fails after warmup.
   assert(!probe(std::chrono::milliseconds(300), false, deadline));
+  profile.frame_rate = 1;
+  assert(!probe(std::chrono::milliseconds(0), true, deadline));
+  assert(probe(std::chrono::milliseconds(0), false, deadline));
   bool expired = false;
   try {
     probe(std::chrono::milliseconds(0), false, EncoderClock::time_point::min());
@@ -400,6 +403,21 @@ void CheckDecodedDisplayArea(ID3D11Device* device) {
 int main() {
   VideoProfile profile{2560, 1440, 60, 12'000'000};
   ValidateVideoProfile(profile);
+  for (const auto& requested : {VideoProfile{1280, 720, 1, 100'000},
+                               VideoProfile{1280, 720, 5, 800'000},
+                               VideoProfile{3840, 2160, 60, 50'000'000}}) {
+    ValidateVideoProfile(requested);
+  }
+  for (const auto& requested : {VideoProfile{1280, 720, 0, 100'000},
+                               VideoProfile{1280, 720, 1, 99'999},
+                               VideoProfile{3840, 2160, 60, 50'000'001}}) {
+    try {
+      ValidateVideoProfile(requested);
+      assert(false);
+    } catch (const GateFailure& error) {
+      assert(error.stage() == "argument-profile");
+    }
+  }
   for (const SIZE size : {SIZE{1920, 1200}, SIZE{720, 1280}, SIZE{4, 4},
                           SIZE{3840, 2160}, SIZE{2160, 3840}, SIZE{3000, 2764}}) {
     ValidateVideoProfile(VideoProfile{static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy), 60, 3'000'000});

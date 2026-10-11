@@ -235,6 +235,7 @@ export function h264ProbeSustainsTarget(
     const encoded = current.framesEncoded - baseline.framesEncoded;
     const source = current.sourceFrames - baseline.sourceFrames;
     return (
+      source > 0 && encoded > 0 &&
       source + frameLag >= expectedFrames &&
       encoded + frameLag >= expectedFrames &&
       encoded + frameLag >= source
@@ -242,12 +243,12 @@ export function h264ProbeSustainsTarget(
   }
   if (
     current.encodedFramesPerSecond === null ||
-    current.sourceFramesPerSecond === null ||
-    current.sourceFramesPerSecond <= 0
+    current.sourceFramesPerSecond === null
   ) {
     return null;
   }
   return (
+    current.sourceFramesPerSecond > 0 && current.encodedFramesPerSecond > 0 &&
     current.sourceFramesPerSecond + frameLag >= targetFrameRate &&
     current.encodedFramesPerSecond + frameLag >= targetFrameRate &&
     current.encodedFramesPerSecond + frameLag >=

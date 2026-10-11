@@ -67,7 +67,9 @@ capture v7 and SQLite schema 2
 remain unchanged. Matched candidate App/Web/Server builds are required;
 1.x participants are rejected by the existing compatibility checks.
 Custom width/height controls apply combined size and frame-rate limits, admitting
-4K60. Windows and Linux output preserve source shape within the selected ceiling.
+4K60. Advanced video controls now span 1..60 fps and 0.1..50 Mbps while retaining
+the three recommended presets. Windows and Linux output preserve source shape
+within the selected ceiling.
 The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
 owns local codec, derived-output, SFU, Browser/Native fanout and live-control
 evidence. The macOS geometry implementation still needs SDK compilation and

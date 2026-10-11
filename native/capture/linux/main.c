@@ -402,7 +402,7 @@ static gboolean parse_outputs(int count, char **values, guint start, CaptureRun 
         !parse_uint(values[offset + 1], 2, kMaxVideoDimension, &output->profile.width) ||
         !parse_uint(values[offset + 2], 2, kMaxVideoDimension, &output->profile.height) ||
         !parse_uint(values[offset + 3], 1, 60, &output->profile.frame_rate) ||
-        !parse_uint(values[offset + 4], 1000, 12000000, &output->profile.bit_rate) ||
+        !parse_uint(values[offset + 4], 1000, 50000000, &output->profile.bit_rate) ||
         !valid_video_format(output->profile.width, output->profile.height,
                             output->profile.frame_rate)) return FALSE;
   }
@@ -454,8 +454,8 @@ static gboolean parse_profile(int count, char **values, CaptureRun *run,
       !parse_uint(values[9], 0, 63, encoder_index) ||
       !parse_uint(values[11], 1, 16384, &profile->width) ||
       !parse_uint(values[13], 1, 16384, &profile->height) ||
-      !parse_uint(values[15], 15, 60, &profile->frame_rate) ||
-      !parse_uint(values[17], 2000000, 12000000, &profile->bit_rate)) {
+      !parse_uint(values[15], 1, 60, &profile->frame_rate) ||
+      !parse_uint(values[17], 100000, 50000000, &profile->bit_rate)) {
     return FALSE;
   }
   if (!valid_video_format(profile->width, profile->height, profile->frame_rate) ||

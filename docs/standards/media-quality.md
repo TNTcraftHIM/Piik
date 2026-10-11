@@ -138,13 +138,18 @@ rate in the same quality operation when the larger size requires a lower limit.
 Larger wire-valid requests do not
 authorize an adapter to exceed its local capture, codec or allocation limits.
 Numeric requests use representational bounds rather than the current control
-ranges. Current capture still admits integer 15..60 fps and 2..12 Mbps, further
-limited by picture size. These are current product controls, not universal codec
+ranges. Candidate capture admits integer 1..60 fps and 0.1..50 Mbps, further
+limited by picture size. Advanced controls accept typed values alongside sliders;
+the three recommended profiles and default remain unchanged. These are useful
+product controls, not universal codec
 limits or a minimum for framework-driven output. Codec and resource budgets
 apply separately. App descriptions may advertise stronger capabilities;
 controls use their intersection with local support. An unsupported request is
 an operation failure, not malformed signaling. An unsupported saved preference
 does not seed capture or overwrite its stored value with a fallback.
+Derived outputs must stay within their source bitrate ceiling, including when
+that ceiling is below a usual lower-output floor. Codec preflight must observe
+real encoded progress; cadence tolerance alone cannot make zero output pass.
 Frame rate, bitrate, and `maintain-resolution | balanced |
 maintain-framerate` retain their controls. Display video uses the standard
 `contentHint = "motion"` for game motion.

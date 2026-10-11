@@ -31,7 +31,7 @@ static void fixture_encoder_class_init(FixtureEncoderClass *klass) {
   object_class->set_property = fixture_set_property;
   object_class->get_property = fixture_get_property;
   g_object_class_install_property(object_class, 1,
-      g_param_spec_uint("bitrate", "Bitrate", "Bitrate in bps", 1000, 12000000,
+      g_param_spec_uint("bitrate", "Bitrate", "Bitrate in bps", 1000, 50000000,
                         3000000, G_PARAM_READWRITE | GST_PARAM_MUTABLE_PLAYING));
 }
 
@@ -177,9 +177,18 @@ static void check_slot_profiles(void) {
   numeric[13] = numeric[25] = "2160";
   numeric[15] = numeric[26] = "60";
   run = (CaptureRun){0};
-  g_assert_false(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder));
+  g_assert_true(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder));
   numeric[15] = "30"; // Reject an excessive derived output independently.
   g_assert_false(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder));
+  const struct { char *fps; char *bitrate; gboolean valid; } rates[] = {
+      {"1", "100000", TRUE}, {"5", "800000", TRUE}, {"60", "50000000", TRUE},
+      {"0", "100000", FALSE}, {"1", "99999", FALSE}, {"60", "50000001", FALSE}};
+  for (guint index = 0; index < G_N_ELEMENTS(rates); ++index) {
+    numeric[15] = numeric[26] = rates[index].fps;
+    numeric[17] = numeric[27] = rates[index].bitrate;
+    run = (CaptureRun){0};
+    g_assert_cmpint(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder), ==, rates[index].valid);
+  }
   g_assert_false(valid_video_format(G_MAXUINT, G_MAXUINT, G_MAXUINT));
 }
 

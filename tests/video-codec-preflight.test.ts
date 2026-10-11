@@ -59,6 +59,16 @@ describe("H264 sender preflight", () => {
     expect(h264ProbeSustainsTarget(baseline, current, 30)).toBe(false);
   });
 
+  it("requires real progress even when one frame is within the cadence tolerance", () => {
+    for (const [source, encoded, expected] of [[0, 0, false], [1, 0, false], [0, 1, false], [1, 1, true]] as const) {
+      expect(h264ProbeSustainsTarget(sample(), sample({ timestamp: 2_000,
+        sourceFrames: 10 + source, framesEncoded: 10 + encoded }), 1)).toBe(expected);
+      expect(h264ProbeSustainsTarget(sample(), sample({ timestamp: 2_000,
+        sourceFrames: null, framesEncoded: null,
+        sourceFramesPerSecond: source, encodedFramesPerSecond: encoded }), 1)).toBe(expected);
+    }
+  });
+
   it("waits for enough source progress before deciding", () => {
     const baseline = sample();
     const current = sample({

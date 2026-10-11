@@ -27,8 +27,8 @@ Git/PRs own completed history.
   [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps request and
   [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the
   numeric-media candidate; neither PR has been merged. 4K60 is included in
-  candidate admission and still needs route/device acceptance; 40 Mbps needs
-  separate evidence and is not accepted scope. Preserve
+  candidate admission, alongside the tested wider video control range, and still
+  needs route/device acceptance. Preserve
   contributor credit and explain the disposition at integration. Rewrite
   [#459](https://github.com/TNTcraftHIM/Piik/pull/459)'s earlier maintenance scope
   and compatibility claims around the final 2.0 result before integration.
@@ -75,10 +75,11 @@ Implementation needs a concrete useful result within the product model.
   actual output. Numeric request, capability and observation boundaries are now
   separate from implementation admission. Keep receiver, codec/alignment and
   resource budgets intact; opening an output range still needs end-to-end evidence.
-  Review the inherited video operating range: the 15 fps / 2 Mbps source minimum
-  prevents low-rate source requests, while 12 Mbps can constrain 4K60 motion quality.
-  The assessment now has local codec controls beyond both ends; widening the
-  controls still needs complete-route evidence and coherent lower-output limits.
+  The inherited menu-only source range is replaced by 1..60 fps / 0.1..50 Mbps,
+  with coherent lower-output bounds and actual-progress preflight. Local
+  production-codec, source-change and Browser loopback checks pass; full-route
+  acceptance must include the low-rate settings as well as 4K60. The Linux native
+  build and range tests remain pending.
   Keep the audio sender ceiling backed by the existing packet-size evidence.
   Numeric audio and video controls are implemented; the assessment
   owns local capture, codec, derived-output, SFU and bounded mixed-route evidence.

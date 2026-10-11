@@ -23,8 +23,8 @@ export type {
 
 export type QualityProfile = QualitySettings;
 export const STARTUP_VIDEO_ENCODED_FRAMES = 5;
-export const MIN_VIDEO_FRAMERATE = 15;
-export const MIN_VIDEO_BITRATE = 2_000_000;
+export const MIN_VIDEO_FRAMERATE = 1;
+export const MIN_VIDEO_BITRATE = 100_000;
 export interface VideoCaptureLimits {
   maxVideoResolution: QualityResolution;
   maxVideoPixels: number;
@@ -40,7 +40,7 @@ export const VIDEO_CAPTURE_LIMITS: VideoCaptureLimits = {
   maxVideoPixels: 3840 * 2160,
   maxVideoMacroblocksPerSecond: 2_073_600,
   maxVideoFramerate: 60,
-  maxVideoBitrate: 12_000_000,
+  maxVideoBitrate: 50_000_000,
 };
 
 export function videoCaptureLimits(advertised?: Partial<VideoCaptureLimits>): VideoCaptureLimits {

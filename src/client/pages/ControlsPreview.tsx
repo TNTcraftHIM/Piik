@@ -19,9 +19,9 @@ import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 
-import { AudioBitrateControl, QualityPresets, ResolutionControl } from "../components/living/QualityPresets";
+import { AudioBitrateControl, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
-import { MAX_SCREEN_AUDIO_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, type QualityProfileId, type QualityResolution } from "../media/quality";
+import { MAX_SCREEN_AUDIO_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, matchingQualityProfileId, type QualityProfile } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
 import { Tooltip } from "../components/living/Tooltip";
 import { StatusIndicator } from "../components/living/StatusIndicator";
@@ -57,8 +57,7 @@ export function ControlsPreview() {
   const [voiceProcessing, setVoiceProcessing] = useState(true);
   const [microphoneDevice, setMicrophoneDevice] = useState("");
   const [sharingSettings, setSharingSettings] = useState(false);
-  const [resolution, setResolution] = useState<QualityResolution>(QUALITY_PROFILES["1080p30"].resolution);
-  const [audioBitrate, setAudioBitrate] = useState<number>(QUALITY_PROFILES["1080p30"].maxAudioBitrate);
+  const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
   const [majorUpdate, setMajorUpdate] = useState(true);
   const releaseVersion = majorUpdate ? "v2.0.0" : "v1.1.0";
@@ -66,7 +65,6 @@ export function ControlsPreview() {
   const [launchSite, setLaunchSite] = useState("");
   const [launchPassword, setLaunchPassword] = useState("");
   const [launchLan, setLaunchLan] = useState("192.0.2.10");
-  const [preset, setPreset] = useState<QualityProfileId | null>("1080p30");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
   const [includeCredential, setIncludeCredential] = useState(true);
@@ -119,9 +117,12 @@ export function ControlsPreview() {
           <Btn id="host-stop-share" icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />
         </div>
         <SharingSettings id="preview-sharing-settings" open={sharingSettings}
-          presets={<QualityPresets selected={preset} onSelect={id => { setPreset(id); setResolution(QUALITY_PROFILES[id].resolution); }} />}
-          picture={<ResolutionControl value={resolution} limits={VIDEO_CAPTURE_LIMITS} disabled={false}
-            onChange={value => { setResolution(value); setPreset(null); }} />}
+          presets={<QualityPresets selected={matchingQualityProfileId(quality)}
+            onSelect={id => setQuality(current => ({ ...QUALITY_PROFILES[id], maxAudioBitrate: current.maxAudioBitrate }))} />}
+          picture={<><ResolutionControl value={quality.resolution} limits={VIDEO_CAPTURE_LIMITS} disabled={false}
+            onChange={resolution => setQuality(current => ({ ...current, resolution }))} />
+            <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={false}
+              onChange={change => setQuality(current => ({ ...current, ...change }))} /></>}
           audio={<><div className="lr-door-group lr-source-audio-settings">
             <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.systemAudio")}
               hint={sound ? "hint-stop-audio" : "hint-share-audio"} />
@@ -129,8 +130,8 @@ export function ControlsPreview() {
           </div><HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
             native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
             voiceProcessing={voiceProcessing} onVoiceProcessing={setVoiceProcessing} />
-            <AudioBitrateControl value={audioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
-              disabled={false} onChange={setAudioBitrate} /></>}
+            <AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
+              disabled={false} onChange={maxAudioBitrate => setQuality(current => ({ ...current, maxAudioBitrate }))} /></>}
         />
       </section>
       <section id="option-preview" className="cp-card">

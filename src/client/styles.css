@@ -1176,8 +1176,11 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-input:focus-within { border-color: var(--action); outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-input input { min-width: 0; flex: 1; height: 100%; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; }
 .lr-input input[type="password"]:not(:placeholder-shown) { letter-spacing: .25em; }
-.lr-input.lr-audio-bitrate { width: 160px; max-width: 100%; font-family: var(--mono); }
-.lr-audio-bitrate span { color: var(--muted); font-size: 12px; }
+.lr-input.lr-quality-number { width: 160px; max-width: 100%; font-family: var(--mono); }
+.lr-quality-number span { color: var(--muted); font-size: 12px; }
+.lr-quality-rate { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
+.lr-quality-rate > input { flex: 1; min-width: 0; width: 0; height: 32px; accent-color: var(--action); }
+.lr-quality-rate .lr-quality-number { flex: 0 0 132px; min-height: 40px; padding: 6px 10px; }
 .lr-input.lr-video-size { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 4px; padding-inline: 8px; width: 252px; max-width: 100%; font-family: var(--mono); }
 .lr-resolution-controls { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .lr-video-size input { width: 100%; padding: 0; text-align: center; appearance: textfield; }
@@ -1835,7 +1838,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-sharing-section .lr-door-group { gap: 8px; }
 .lr-sharing-panel .lr-sharing-section .lr-door-glyph { color: var(--muted); }
 .lr-sharing-section .lr-door-glyph .lr-cap { white-space: normal; }
-.lr-sharing-limits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.lr-sharing-limits { display: grid; grid-template-columns: 1fr; gap: 16px; }
 .lr-sharing-panel .lr-slider { width: 100%; }
 .lr-sharing-panel .lr-slider output { min-width: 9ch; }
 .lr-sharing-section .lr-tiles { gap: 8px; }
@@ -1854,8 +1857,12 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 @container sharing-settings (max-width: 680px) {
   .lr-sharing-panel { padding: 16px; border-radius: 20px; }
   .lr-sharing-columns { grid-template-columns: 1fr; gap: 22px; }
-  .lr-sharing-limits { grid-template-columns: 1fr; }
   .lr-sharing-section + .lr-sharing-section { padding: 20px 0 0; border-inline-start: 0; border-top: 1px solid var(--wall-2); }
+}
+@container sharing-settings (max-width: 260px) {
+  .lr-quality-rate { flex-direction: column-reverse; align-items: stretch; gap: 2px; }
+  .lr-quality-rate > input { flex: auto; width: 100%; margin-inline: 0; }
+  .lr-quality-rate .lr-quality-number { flex: auto; width: 100%; }
 }
 .lr-host-share-controls {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px;

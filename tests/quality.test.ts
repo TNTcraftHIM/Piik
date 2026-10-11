@@ -73,7 +73,7 @@ describe("realtime quality controls", () => {
     expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["720p"], limited)).toBe(60);
     expect(videoCaptureLimits({ maxVideoResolution: { width: 8192, height: 8192 },
       maxVideoPixels: 8192 * 8192, maxVideoMacroblocksPerSecond: 9_000_000,
-      maxVideoFramerate: 120, maxVideoBitrate: 40_000_000 })).toEqual(videoCaptureLimits());
+      maxVideoFramerate: 120, maxVideoBitrate: 100_000_000 })).toEqual(videoCaptureLimits());
     const slower = videoCaptureLimits({ maxVideoFramerate: 30, maxVideoBitrate: 5_000_000 });
     expect(supportsCaptureProfile(QUALITY_PROFILES["1080p30"], slower)).toBe(true);
     expect(supportsCaptureProfile(QUALITY_PROFILES["1080p60"], slower)).toBe(false);
@@ -83,7 +83,8 @@ describe("realtime quality controls", () => {
     const { stream, videoTrack } = createVideoStream();
     const getDisplayMedia = vi.fn(async () => stream);
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
-    for (const change of [{ maxFramerate: 120 }, { maxFramerate: 30.5 }, { maxBitrate: 40_000_000 },
+    for (const change of [{ maxFramerate: 120 }, { maxFramerate: 30.5 }, { maxFramerate: 0 },
+      { maxBitrate: 99_999 }, { maxBitrate: 50_000_001 },
       { resolution: { width: 32768, height: 32768 } }, { maxAudioBitrate: 510_000 }]) {
       const requested = { ...QUALITY_PROFILES["1080p30"], ...change };
       expect(supportsCaptureProfile(requested)).toBe(false);
@@ -94,12 +95,24 @@ describe("realtime quality controls", () => {
     expect(videoTrack.applyConstraints).not.toHaveBeenCalled();
   });
 
+  it("admits useful low-rate and high-rate requests without changing presets", async () => {
+    const { stream, videoTrack } = createVideoStream();
+    for (const [maxFramerate, maxBitrate] of [[1, 100_000], [5, 800_000], [60, 50_000_000]]) {
+      const profile = { ...QUALITY_PROFILES["1080p30"], maxFramerate, maxBitrate };
+      expect(supportsCaptureProfile(profile)).toBe(true);
+      await applyCaptureProfile(stream, profile);
+      expect(videoTrack.applyConstraints).toHaveBeenLastCalledWith(expect.objectContaining({
+        frameRate: { ideal: maxFramerate, max: maxFramerate },
+      }));
+    }
+  });
+
   it("requests 4K60 in either orientation through the existing capture controls", async () => {
     const { stream, videoTrack } = createVideoStream();
     const getDisplayMedia = vi.fn(async () => stream);
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
     for (const resolution of [QUALITY_RESOLUTIONS["4K"], { width: 2160, height: 3840 }]) {
-      const profile = { ...QUALITY_PROFILES["1080p60"], resolution };
+      const profile = { ...QUALITY_PROFILES["1080p60"], resolution, maxBitrate: 50_000_000 };
       expect(supportsCaptureProfile(profile)).toBe(true);
       await captureDisplay(profile);
       expect(getDisplayMedia).toHaveBeenLastCalledWith(expect.objectContaining({

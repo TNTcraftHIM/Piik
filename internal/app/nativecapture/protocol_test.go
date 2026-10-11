@@ -286,6 +286,9 @@ func TestCaptureTargetIdentityAndAudioScope(t *testing.T) {
 
 func TestVideoProfileUsesTheProductBounds(t *testing.T) {
 	for _, profile := range []VideoProfile{
+		{Width: 1280, Height: 720, Framerate: 1, Bitrate: 100_000, Preference: "balanced"},
+		{Width: 1280, Height: 720, Framerate: 5, Bitrate: 800_000, Preference: "balanced"},
+		{Width: 3840, Height: 2160, Framerate: 60, Bitrate: 50_000_000, Preference: "balanced"},
 		{Width: 854, Height: 480, Framerate: 15, Bitrate: 2_000_000, Preference: "maintain-resolution"},
 		{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 60, Bitrate: 8_000_000, Preference: "maintain-framerate"},
@@ -303,7 +306,7 @@ func TestVideoProfileUsesTheProductBounds(t *testing.T) {
 			t.Fatalf("valid profile rejected: %+v", profile)
 		}
 		for _, output := range ScreenShareOutputs(profile) {
-			if !output.Valid() {
+			if !output.Valid() || output.Bitrate > profile.Bitrate {
 				t.Fatalf("valid source profile produced an invalid output: %+v", output)
 			}
 		}
@@ -321,8 +324,9 @@ func TestVideoProfileUsesTheProductBounds(t *testing.T) {
 		{Width: 3840, Height: 2160, Framerate: 61, Bitrate: 3_000_000, Preference: "balanced"},
 		{Width: 2160, Height: 3840, Framerate: 120, Bitrate: 3_000_000, Preference: "balanced"},
 		{Width: ^uint32(0), Height: ^uint32(0), Framerate: ^uint32(0), Bitrate: 3_000_000, Preference: "balanced"},
-		{Width: 1920, Height: 1080, Framerate: 14, Bitrate: 5_000_000, Preference: "balanced"},
-		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 12_000_001, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 0, Bitrate: 5_000_000, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 99_999, Preference: "balanced"},
+		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 50_000_001, Preference: "balanced"},
 		{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 5_000_000, Preference: "unknown"},
 	} {
 		if profile.Valid() {
