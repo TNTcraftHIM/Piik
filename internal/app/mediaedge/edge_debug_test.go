@@ -12,10 +12,8 @@ import (
 
 func TestLocalMediaCandidateCountsExcludePrivateFields(t *testing.T) {
 	var output bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	defer slog.SetDefault(previous)
-	logLocalMediaCandidateCounts(webrtc.StatsReport{
+	logger := slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logLocalMediaCandidateCounts(logger, webrtc.StatsReport{
 		"private-local": webrtc.ICECandidateStats{
 			ID: "private-local", Type: webrtc.StatsTypeLocalCandidate,
 			CandidateType: webrtc.ICECandidateTypeHost, Protocol: "udp",

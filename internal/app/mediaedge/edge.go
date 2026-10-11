@@ -432,7 +432,7 @@ func (edge *Edge) Close() error {
 	edge.pendingCandidates = nil
 	edge.mu.Unlock()
 	if edge.local && slog.Default().Enabled(edge.engine.ctx, slog.LevelDebug) {
-		logLocalMediaCandidateCounts(edge.connection.GetStats())
+		logLocalMediaCandidateCounts(slog.Default(), edge.connection.GetStats())
 	}
 	err := edge.transport.Close()
 	edge.socket.close()
@@ -444,7 +444,7 @@ func (edge *Edge) Close() error {
 	return err
 }
 
-func logLocalMediaCandidateCounts(report webrtc.StatsReport) {
+func logLocalMediaCandidateCounts(logger *slog.Logger, report webrtc.StatsReport) {
 	for _, direction := range []webrtc.StatsType{webrtc.StatsTypeLocalCandidate, webrtc.StatsTypeRemoteCandidate} {
 		for _, kind := range []webrtc.ICECandidateType{webrtc.ICECandidateTypeHost, webrtc.ICECandidateTypeSrflx, webrtc.ICECandidateTypePrflx, webrtc.ICECandidateTypeRelay} {
 			udp, tcp := 0, 0
@@ -460,7 +460,7 @@ func logLocalMediaCandidateCounts(report webrtc.StatsReport) {
 					tcp++
 				}
 			}
-			slog.Debug("piik-client", "event", "media-candidate-counts", "local", true,
+			logger.Debug("piik-client", "event", "media-candidate-counts", "local", true,
 				"direction", string(direction), "type", kind.String(), "udp", udp, "tcp", tcp)
 		}
 	}
