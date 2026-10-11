@@ -680,7 +680,7 @@ These local checks do not establish 4K60, physical 4K/game
 capture, sustained device performance, all Browser decoders or all route changes.
 
 The existing SFU gate accepts `PIIK_EMBEDDED_SFU_VIDEO_SIZE=WIDTHxHEIGHT` for a
-bounded 30 fps source; its default 720p15 control remains unchanged. Run
+bounded 60 fps / 50 Mbps source; its default 720p15 control remains unchanged. Run
 `npm run gate:embedded-sfu` with `PIIK_EMBEDDED_SFU_GATE=true`,
 `PIIK_EMBEDDED_SFU_CODEC=h264` and `CHROME_PATH`; add
 `PIIK_EMBEDDED_SFU_DISPLAY=true` for actual tab capture. Synthetic 2160x3840 and
@@ -770,6 +770,23 @@ ordinary senders and the shared encoding pool, for both H.264 and VP8. This
 bounded check does not cover room routing or physical-network recovery. The 1 fps H.264
 preflight passed; the 4K60 preflight selected VP8 on this machine even though
 explicit H.264 delivered frames. Admission is not a sustained-cadence guarantee.
+
+The Windows Native Host gate now exercises the actual numeric UI at 1 fps /
+100 kbps and 60 fps / 50 Mbps with both codecs. Fresh decoded frames retain the
+same Viewer stream through those changes, 4K/custom ceilings, pause, source
+replacement and Viewer recovery. Its generated window is smaller than 4K;
+this establishes ceiling application and continuity, not physical 4K capture.
+The Browser H.264 and VP8 SFU controls use actual 3840x2160 synthetic input at
+60 fps, decode high and lower outputs, retain the connection across both rate
+bounds and audio updates, and recover subscriptions after reload. Positive
+output does not establish sustained 60 fps on arbitrary devices or networks.
+
+The current Linux candidate also passes C11 compilation with warnings as errors
+and the headless GStreamer regressions, including low/high rate admission,
+source geometry, retirement and distinct Portal node-ID/serial targeting.
+This uses GStreamer 1.28.3 and libportal 0.9.1 on an isolated Alpine runner;
+its probe correctly reports no capture without a desktop session. Actual
+Portal capture and platform packaging remain separate checks.
 
 A uniform-noise 4K1/50 Mbps stress input reached the retained 4 MiB access-unit
 guard in both Native codecs; VP8 produced a 6,199,837-byte frame. The output was

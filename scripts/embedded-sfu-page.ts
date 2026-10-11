@@ -199,7 +199,7 @@ async function connect(room: CreateRoomResponse, host: boolean): Promise<void> {
 
 export async function startHost(nativeSource?: { title: string; port: number }, selectedCodec: "vp8" | "h264" = "vp8", display = false, size?: QualitySettings["resolution"]): Promise<CreateRoomResponse> {
   codec = selectedCodec;
-  profile = size ? { ...high, resolution: size, maxFramerate: 30, maxBitrate: 8_000_000 } : high;
+  profile = size ? { ...high, resolution: size, maxFramerate: 60, maxBitrate: 50_000_000 } : high;
   const response = await fetch("/api/rooms", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ codeEntryPolicy: "private" }),
@@ -342,13 +342,20 @@ export async function audioEnergy(): Promise<number> {
   return await probe();
 }
 
-export async function setAudioBitrate(maxAudioBitrate: number): Promise<boolean> {
-  const next = { ...profile, maxAudioBitrate };
+async function applyProfile(next: QualitySettings): Promise<boolean> {
   if (native) await native.updateShare(shareGeneration, next);
   if (!await hostRoute!.updateProfile(next)) return false;
   profile = next;
   send({ type: "set-quality-settings", qualitySettings: next });
   return true;
+}
+
+export async function setAudioBitrate(maxAudioBitrate: number): Promise<boolean> {
+  return await applyProfile({ ...profile, maxAudioBitrate });
+}
+
+export async function setVideoRates(maxFramerate: number, maxBitrate: number): Promise<boolean> {
+  return await applyProfile({ ...profile, maxFramerate, maxBitrate });
 }
 
 export async function waitForFrames(width: number, height: number, minimumFrames = 15, withinCeiling = false, tolerance = 0) {

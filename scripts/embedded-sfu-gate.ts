@@ -104,6 +104,7 @@ async function main(): Promise<void> {
     low: null as { frames: number; width: number; height: number } | null,
     audioEnergy: { high: 0, low: 0, recovered: 0 },
     audioUpdates: [] as Array<{ bitrate: number; frames: number; connectionRetained: boolean; energy: number }>,
+    videoRateUpdates: [] as Array<{ fps: number; bitrate: number; frames: number; connectionRetained: boolean }>,
     audioDiagnostics: null as unknown,
     secondRoom: twoRooms ? { connected: false, framesAfterFirstStopped: 0, audioBefore: 0, audioAfter: 0, stopped: false } : null,
     host: null as Snapshot | null, viewer: null as Snapshot | null,
@@ -297,6 +298,17 @@ async function main(): Promise<void> {
       if (!retained || energy <= previousEnergy) throw new Error("Audio update interrupted the current media connection");
       previousEnergy = energy;
     }
+    result.stage = "numeric-video-rate-update";
+    const videoRates = [[1, 100_000], requestedSize ? [60, 50_000_000] : [15, 2_000_000]];
+    for (const [fps, bitrate] of videoRates) {
+      if (!await call<boolean>(host, `gate.setVideoRates(${fps}, ${bitrate})`)) throw new Error("Numeric video rate update failed");
+      const frames = await call<{ frames: number }>(viewer,
+        `gate.waitForFrames(${result.high!.width}, ${result.high!.height}, 3)`);
+      const after = await call<Snapshot>(viewer, "gate.snapshot()");
+      const retained = after.connectionId === audioConnection && after.committed;
+      result.videoRateUpdates.push({ fps, bitrate, frames: frames.frames, connectionRetained: retained });
+      if (!retained) throw new Error("Video rate update replaced the current media connection");
+    }
     if (displayArm) {
       result.stage = "display-background";
       if (result.host!.capture?.displaySurface !== "browser" || result.host!.visibility !== "hidden") {
@@ -413,6 +425,7 @@ async function main(): Promise<void> {
     (nativeArm || result.stereoSeparationDb?.every(db => db > 20) === true) &&
     result.viewer.audioKbps > 0 && result.audioEnergy.high > 0 && result.audioEnergy.low > result.audioEnergy.high &&
     result.high !== null && result.low !== null && result.audioEnergy.recovered > 0 &&
+    result.videoRateUpdates.length === 2 && result.videoRateUpdates.every(update => update.connectionRetained) &&
     result.publicationRetired && result.subscriptionRecovered && result.pageReloadRecovered && result.cleanup && result.nativeShareStopped &&
     (!displayArm || result.displayLifecycle?.hiddenFrames === 150 && result.displayLifecycle.lowLayerDecoded &&
       result.displayLifecycle.resumed && result.displayLifecycle.replaced) &&

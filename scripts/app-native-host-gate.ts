@@ -84,6 +84,7 @@ interface GateResult {
   liveQualityChanged: boolean;
   fourKQualityChanged: boolean;
   customQualityChanged: boolean;
+  rateQualityChanges: number;
   pausedQualityChanged: boolean;
   backgroundProfileRecovery: boolean | null;
   sourceWindowRecovery: boolean | null;
@@ -636,6 +637,7 @@ async function main(): Promise<void> {
     liveQualityChanged: false,
     fourKQualityChanged: false,
     customQualityChanged: false,
+    rateQualityChanges: 0,
     pausedQualityChanged: false,
     backgroundProfileRecovery: mode === "local" && sourceKind === "window" ? false : null,
     sourceWindowRecovery: mode === "local" && sourceKind === "window" ? false : null,
@@ -986,7 +988,7 @@ async function main(): Promise<void> {
         `(() => {
           const resolution = document.querySelector('button.lr-chip[aria-label="1440p"]');
           const preference = document.querySelector('button[name="degradationPreference"][value="maintain-framerate"]');
-          const sliders = [...document.querySelectorAll('.lr-slider input[type="range"]')];
+          const sliders = [...document.querySelectorAll('.lr-quality-rate input[type="range"]')];
           return Boolean(
             resolution && preference && !resolution.disabled && !preference.disabled &&
             sliders.length === 2 && sliders.every((slider) => !slider.disabled)
@@ -1025,7 +1027,7 @@ async function main(): Promise<void> {
       stage = "native-4k-preset";
       await clickHostControl(cdp, host, `document.querySelectorAll('button.lr-tile')[2]`);
       await waitForValue(deadline => evaluate<boolean>(cdp!, host,
-        `document.querySelector('.lr-slider input[type="range"]')?.value === '60' &&
+        `document.querySelector('input[name="maxFramerate"]')?.value === '60' &&
           document.querySelector('.lr-sharing-panel')?.getAttribute('aria-busy') === 'false'`,
         deadline), Boolean, 20_000);
       stage = "native-4k-controls";
@@ -1034,7 +1036,7 @@ async function main(): Promise<void> {
       await evaluate<void>(cdp, host,
         `document.querySelector('button.lr-chip[aria-label="4K"]')?.click()`, Date.now() + 5_000);
       await waitForValue(deadline => evaluate<boolean>(cdp!, host, `(() => {
-        const fps = document.querySelector('.lr-slider input[type="range"]');
+        const fps = document.querySelector('input[name="maxFramerate"]');
         const width = document.querySelector('.lr-video-size input[name="width"]');
         const height = document.querySelector('.lr-video-size input[name="height"]');
         return fps?.max === '60' && fps.value === '60' && width?.value === '3840' && height?.value === '2160';
@@ -1064,6 +1066,31 @@ async function main(): Promise<void> {
             video.getVideoPlaybackQuality().totalVideoFrames >= ${framesBeforeCustom + 10});
         })()`, deadline), Boolean, 20_000);
       await assertVideoCodec(cdp, viewer, actualCodec);
+      stage = "native-rate-range";
+      for (const [fps, mbps] of [[1, 0.1], [60, 50]]) {
+        for (const [name, value] of [["maxFramerate", fps], ["maxBitrate", mbps]] as const) {
+          await evaluate<void>(cdp, host, `(() => {
+            const input = document.querySelector('input[name="${name}"]');
+            if (!input || input.disabled) throw new Error('Rate control is unavailable');
+            input.focus(); input.value = '${value}';
+            if (!input.validity.valid) throw new Error('Rate control rejected the candidate range');
+            input.blur();
+          })()`, Date.now() + 5_000);
+          await waitForValue(deadline => evaluate<boolean>(cdp!, host,
+            `document.querySelector('input[name="${name}"]')?.value === '${value}' &&
+              document.querySelector('.lr-sharing-panel')?.getAttribute('aria-busy') === 'false'`,
+            deadline), Boolean, 20_000);
+        }
+        const before = await evaluate<number>(cdp, viewer,
+          `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`, Date.now() + 5_000);
+        await waitForValue(deadline => evaluate<boolean>(cdp!, viewer, `(() => {
+          const video = document.querySelector('video');
+          return Boolean(video && video.srcObject === window.__piikGateMedia &&
+            video.getVideoPlaybackQuality().totalVideoFrames >= ${before + 3});
+        })()`, deadline), Boolean, 20_000);
+        await assertVideoCodec(cdp, viewer, actualCodec);
+        result.rateQualityChanges += 1;
+      }
       const framesBeforePreference = await evaluate<number>(
         cdp,
         viewer,
@@ -1521,6 +1548,7 @@ async function main(): Promise<void> {
           result.viewerHeight > 0 && result.viewerHeight <= 1440 && result.codecPreserved
         : result.viewerConnected && result.viewerFrames >= 30 &&
         result.qualityControlsEnabled && result.liveQualityChanged && result.fourKQualityChanged && result.customQualityChanged &&
+        result.rateQualityChanges === 2 &&
         result.backgroundProfileRecovery !== false &&
         result.sourceWindowRecovery !== false &&
         result.livePresetChanges === 2 &&

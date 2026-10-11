@@ -19,9 +19,9 @@ Git/PRs own completed history.
 - [ ] **Linux Portal target identity acceptance (#470).** The
   [contributor fix](https://github.com/TNTcraftHIM/Piik/pull/470) is integrated
   with authorship retained: serial and node-ID targeting remain distinct.
-  Run the candidate's Linux native checks and verify a Portal that omits
-  `pipewire-serial`. Upstream source review confirms the property distinction;
-  contributor device evidence does not replace candidate acceptance.
+  Candidate compilation and headless targeting checks pass. Verify an actual
+  Portal that omits `pipewire-serial`; the headless check does not exercise
+  desktop capture.
 - [ ] **Reconcile open PRs with the final candidate.**
   [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps request and
   [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the
@@ -77,8 +77,7 @@ Implementation needs a concrete useful result within the product model.
   The inherited menu-only source range is replaced by 1..60 fps / 0.1..50 Mbps,
   with coherent lower-output bounds and actual-progress preflight. Local
   production-codec, source-change and Browser loopback checks pass; full-route
-  acceptance must include the low-rate settings as well as 4K60. The Linux native
-  build and range tests remain pending.
+  acceptance must include the low-rate settings as well as 4K60.
   Keep the audio sender ceiling backed by the existing packet-size evidence.
   Numeric audio and video controls are implemented; the assessment
   owns local capture, codec, derived-output, SFU and bounded mixed-route evidence.
