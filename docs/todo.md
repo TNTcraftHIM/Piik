@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-11
+Last reviewed: 2026-10-12
 
 The current 2.0 preparation includes independent investigation across this
 ledger. Explicit owner holds remain in force; an investigation does not itself
@@ -13,9 +13,10 @@ Git/PRs own completed history.
 - [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
   useful improvements and outstanding acceptance on 2026-10-07, and on 2026-10-09
   chose to hold the maintenance changes for 2.0 rather than publish them separately.
-  Prepare one coherent candidate and stop before publication. Preserve the existing
-  product model; evaluate held features against measurable benefit and total complexity
-  before accepting a changed contract.
+  Complete final packaged lifecycle and device/network acceptance, then present
+  the frozen candidate and its bilingual release notes for owner review before
+  publication. Retain explicit 1.x mismatch checks. The retired Magicsock package
+  is not the current candidate; preserve the existing product model and held scope.
 - [ ] **Linux Portal target identity acceptance (#470).** The
   [contributor fix](https://github.com/TNTcraftHIM/Piik/pull/470) is integrated
   with authorship retained: serial and node-ID targeting remain distinct.
@@ -27,10 +28,10 @@ Git/PRs own completed history.
   [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the
   numeric-media candidate; neither PR has been merged. 4K60 is included in
   candidate admission, alongside the tested wider video control range, and still
-  needs physical device/network acceptance. Preserve
-  contributor credit and explain the disposition at integration. Rewrite
-  [#459](https://github.com/TNTcraftHIM/Piik/pull/459)'s earlier maintenance scope
-  and compatibility claims around the final 2.0 result before integration.
+  needs physical device/network acceptance. Preserve contributor credit and
+  explain the disposition at integration. Keep
+  [#459](https://github.com/TNTcraftHIM/Piik/pull/459)'s candidate scope and
+  bilingual upgrade instructions aligned with the accepted result.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
@@ -68,46 +69,19 @@ Existing negative results narrow the next experiment; they do not freeze the
 whole candidate or require another version-number decision before other work.
 Implementation needs a concrete useful result within the product model.
 
-- [ ] **Media parameters and capabilities for 2.0.** Follow the
-  [media assessment](./research/native-client-media.md#media-capability-extension-assessment):
-  separate UI presets, numeric requests, bounded implementation capabilities and
-  actual output. Numeric request, capability and observation boundaries are now
-  separate from implementation admission. Keep receiver, codec/alignment and
-  resource budgets intact; opening an output range still needs end-to-end evidence.
-  The inherited menu-only source range is replaced by 1..60 fps / 0.1..50 Mbps,
-  with coherent lower-output bounds and actual-progress preflight. Local
-  production-codec, source-change, Browser loopback, Native Host and SFU checks
-  cover both rate bounds. Preserve these checks in final package acceptance.
-  Keep the audio sender ceiling backed by the existing packet-size evidence.
-  Numeric audio and video controls are implemented; the assessment
-  owns local capture, codec, derived-output, SFU and bounded mixed-route evidence.
-  Remaining receiver acceptance needs physical limited decoders and camera
-  orientation behavior, beyond the bounded SDP-limit and mixed-route controls.
-  Browser display capture, Browser relay, Browser-to-Native fanout and SFU have
-  bounded high-resolution continuity evidence. macOS geometry hardware
-  checks and physical 4K/game capture remain open; both macOS package targets
-  now pass SDK compilation and startup. The fanout controls did not
-  establish sustained 60 fps; retain that performance limit when arranging
-  device/network acceptance. Preserve safety limits and
-  framework-owned adaptation. The
-  [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)
-  retain explicit receive-limit enforcement and the current 320 kbps sender
-  ceiling. Physical listening, mobile and field-network acceptance remain open;
-  research owns the bounded real-Opus impairment and video-recovery control.
-  Validate the existing mono/stereo and Windows HDR-to-SDR paths under the
-  [fidelity boundary](./research/media-fidelity.md); surround delivery and
-  end-to-end HDR are outside this candidate. Additional codecs are also outside
-  this candidate. Later inclusion needs complete
-  encode/decode/forward support and a late-Viewer policy;
-  selecting a codec cannot transcode an existing publication. Final package
-  acceptance must retain the verified live-change, relay/SFU and limited-receiver
-  behavior, and check explicit 1.x mismatch with packaged builds. The published
-  1.x enums remain that major's baseline; the PR is not a compatible enum-only extension
-  of v1.9.2.
-- [ ] **2.0 candidate acceptance.** Finish the combined numeric-media UI,
-  App/room lifecycle, ordinary Browser/Native routes and regression checks before
-  asking the owner to arrange external testing. Keep each test build frozen and
-  identifiable; the retired Magicsock package is not the current candidate.
+- [ ] **Numeric-media device acceptance.** The implemented candidate and bounded
+  local evidence are owned by the
+  [media assessment](./research/native-client-media.md#media-capability-extension-assessment).
+  Retain live changes, source replacement, relay/SFU, limited-receiver and
+  low/high-rate controls in final package acceptance. Remaining physical checks
+  include limited decoders, camera orientation, macOS geometry and 4K/game capture;
+  local fanout controls do not establish sustained physical 4K60. Complete physical
+  listening, mobile and field-network checks for the
+  [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment),
+  preserving their packet and receive limits. Validate existing mono/stereo and
+  Windows HDR-to-SDR under the [fidelity boundary](./research/media-fidelity.md).
+  Additional codecs, surround delivery and end-to-end HDR remain outside this
+  candidate; product boundaries belong to the media-quality owner.
 - [ ] **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
   identifies UDP/storage requirements but establishes no cost saving. Keep the
   existing P2P-only Demo until a provider and operating boundary are accepted.
@@ -116,11 +90,10 @@ Implementation needs a concrete useful result within the product model.
   existing device selector. Keep it outside this candidate until a concrete
   use case justifies that boundary and physical latency/echo/background checks.
   This proposal does not reopen room voice.
-- [ ] **Passive App attachment acceptance.** The two-choice launcher and explicit
-  local Site approval replace the third mode, using the existing native runtime.
-  Include first connection, saved approval, replacement/revocation and Local
-  coexistence in final packaged acceptance. Browser permission and cross-platform
-  checks must not be inferred from the local development preview.
+- [ ] **Passive App attachment acceptance.** Preserve the verified first
+  connection, saved approval, replacement/revocation and Local coexistence in
+  final packaged acceptance. Check Browser permission and cross-platform behavior;
+  local approval controls do not establish those physical-device outcomes.
 
 ## Awaiting Device Or Reporter Evidence
 
