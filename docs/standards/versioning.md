@@ -237,11 +237,11 @@ first-parent commits since the previous stable tag. Standalone website and
 documentation phases need no product release notes. The first release uses
 only its launch commit's product introduction; private development history is
 not a launch changelog. Missing, empty, duplicate or visibly encoding-damaged
-sections fail validation before packaging/publication. GitHub Actions shows the generated text in its
-run summary. A manual candidate with an explicit version also previews it, so
-prepare its commit text before dispatching a release rehearsal. A manual
-candidate with no product changes may still be built; its summary reports that
-there are no product release notes, and publication remains disabled.
+sections fail PR and publishing validation. GitHub Actions shows the generated
+release text in its publishing run summary. Manual candidates validate and build
+the requested revision without requiring release copy in branch checkpoints;
+their version labels artifacts and never enables publication. The PR body remains
+the review surface until integration preserves it in the squash commit.
 
 Supply multiline PR/release copy through a UTF-8 file and read back the stored
 body before integration. A terminal preview alone does not prove that Chinese
