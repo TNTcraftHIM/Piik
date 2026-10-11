@@ -54,11 +54,14 @@ afterEach(() => {
 
 describe("realtime quality controls", () => {
   it("bounds custom size, orientation and frame rate together before capture", () => {
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"])).toBe(30);
-    expect(captureFramerateCeiling({ width: 2160, height: 3840 })).toBe(30);
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"])).toBe(60);
+    expect(captureFramerateCeiling({ width: 2160, height: 3840 })).toBe(60);
     expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["1440p"])).toBe(60);
     expect(captureFramerateCeiling({ width: 1440, height: 2560 })).toBe(60);
-    expect(captureFramerateCeiling({ width: 3840, height: 2100 })).toBe(31);
+    expect(captureFramerateCeiling({ width: 3840, height: 2100 })).toBe(60);
+    const level51 = videoCaptureLimits({ maxVideoMacroblocksPerSecond: 983_040 });
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"], level51)).toBe(30);
+    expect(captureFramerateCeiling({ width: 2160, height: 3840 }, level51)).toBe(30);
     for (const size of [{ width: 3840, height: 3840 }, { width: 1921, height: 1080 },
       { width: 4.5, height: 4 }, { width: Infinity, height: 4 }, { width: 2, height: 4 }]) {
       expect(captureFramerateCeiling(size)).toBe(0);
@@ -89,6 +92,26 @@ describe("realtime quality controls", () => {
     }
     expect(getDisplayMedia).not.toHaveBeenCalled();
     expect(videoTrack.applyConstraints).not.toHaveBeenCalled();
+  });
+
+  it("requests 4K60 in either orientation through the existing capture controls", async () => {
+    const { stream, videoTrack } = createVideoStream();
+    const getDisplayMedia = vi.fn(async () => stream);
+    vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
+    for (const resolution of [QUALITY_RESOLUTIONS["4K"], { width: 2160, height: 3840 }]) {
+      const profile = { ...QUALITY_PROFILES["1080p60"], resolution };
+      expect(supportsCaptureProfile(profile)).toBe(true);
+      await captureDisplay(profile);
+      expect(getDisplayMedia).toHaveBeenLastCalledWith(expect.objectContaining({
+        video: expect.objectContaining({
+          width: expect.objectContaining({ max: resolution.width }),
+          height: expect.objectContaining({ max: resolution.height }),
+          frameRate: expect.objectContaining({ max: 60 }),
+        }),
+      }));
+      await applyCaptureProfile(stream, profile);
+      expect(videoTrack.applyConstraints).toHaveBeenCalled();
+    }
   });
 
   it("keeps exactly three recommended profiles with 1080p30 as the default", () => {

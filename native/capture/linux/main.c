@@ -379,9 +379,9 @@ static gboolean valid_video_size(guint width, guint height) {
 }
 
 static gboolean valid_video_format(guint width, guint height, guint fps) {
-  // Match the shared H.264 Level 5.1 receive ceiling, including numeric sizes.
+  // Match the shared H.264 Level 5.2 receive ceiling, including numeric sizes.
   return valid_video_size(width, height) && fps >= 1 && fps <= 60 &&
-         (guint64)((width + 15) / 16) * ((height + 15) / 16) * fps <= 983040;
+         (guint64)((width + 15) / 16) * ((height + 15) / 16) * fps <= 2073600;
 }
 
 static gboolean parse_outputs(int count, char **values, guint start, CaptureRun *run) {

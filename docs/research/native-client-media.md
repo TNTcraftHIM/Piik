@@ -592,27 +592,48 @@ App discovery advertises size, pixel-count, macroblock-rate, frame-rate and bitr
 size/rate combinations as operation failures without retiring the control
 session. Removing an enum is not permission to allocate arbitrary media resources.
 
-The Windows H.264 UI gate switches from 1080p60 to the 4K ceiling with the
-30 fps limit, then applies a non-preset 960x600 ceiling during the live share.
-It observes fitted output without replacing the Viewer media object. The
-captured window is smaller than 4K, so this verifies settings/lifecycle, not
-physical 4K capture.
+The Windows H.264 UI gate switches from 1080p60 to the 4K ceiling, then applies
+a non-preset 960x600 ceiling during the live share. Its earlier 30 fps run
+observed fitted output without replacing the Viewer media object. The gate now
+expects the 60 fps control and needs rerunning. The captured window is smaller
+than 4K, so this verifies settings/lifecycle, not physical 4K capture.
 Preset changes, paused updates, source recovery/replacement and subsequent
 sharing still pass. Value-based comparison prevents an identical deserialized
 size from turning an audio-only edit into a video update. Numeric preference
 round-trips and malformed/unsupported requests have separate boundary checks.
 
-Native bounds now admit 3840x2160 and 2160x3840 at 30 fps. The per-axis limit and
+Native bounds admit 3840x2160 and 2160x3840 at 60 fps. The per-axis limit and
 pixel total remain independent; an arbitrary 3840-square picture is rejected.
-The output throughput ceiling uses H.264 Level 5.1's macroblock rate, including
+The output throughput ceiling uses H.264 Level 5.2's macroblock rate, including
 alignment for non-preset sizes. Coded padding and decoded reference buffers have
 their own pre-allocation bounds, following [H.264 Table A-1](https://www.itu.int/rec/T-REC-H.264)
 (also implemented in [FFmpeg's level table](https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/h264_levels.c)).
-The Windows decoder's advertised support remains
-[Level 5.1](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-decoder).
-An isolated Level 5.2 trial was rejected by this machine's hardware encoder at
-output-type setup; it did not reach the decoder. The candidate therefore keeps
-Level 5.1 and rejects 4K60 before allocating an encoder.
+Level 5.2 raises throughput without raising Level 5.1's coded-frame or
+reference-picture storage bounds.
+
+A 2026-10-11 control corrected the earlier 4K30 conclusion: explicitly forcing
+Level 5.2 failed this hardware encoder's output-type setup, but leaving the
+level unset encoded the same 4K60 inputs as Constrained Baseline Level 5.2.
+[Microsoft recommends automatic level selection](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-encoder).
+The production configuration follows that advice and validates actual SPS tools
+and level through 5.2, retaining stable SPS identity and recovery-unit checks.
+Local Media Foundation hardware/software decode delivered all 60 frames in both
+4K orientations, with a passing 1080p60 control. Chrome also decoded all 60
+production-encoder frames per orientation; production H.264 and VP8 workers
+passed a 4K-to-1080p-to-4K source sequence at the 60 fps setting. The normal
+Go/native encoded-input path also derived lower outputs from these inputs.
+This disproves a blanket 4K30
+restriction; the combined encode/decode fixture does not establish sustained
+60 fps on every device. Microsoft's older decoder documentation lists
+[Level 5.1](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-decoder),
+so local success is not a cross-device guarantee.
+
+A separate Chrome 152 canvas/PeerConnection control decoded 3840x2160 near
+60 fps with both H.264 and VP8. Its H.264 SDP advertised Level 3.1, consistent
+with [WebRTC's built-in capability list](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/video_coding/codecs/h264/h264.cc).
+That static label alone does not establish a device's observed limit. Piik does
+not add an independent quality ladder or infer universal decoder support from
+codec matching; limited receivers and real routes still need acceptance.
 
 Decoder format checks must distinguish storage from visible content. On
 2026-10-11, the Windows decoder rejected a valid 3840x2160 picture stored in a
@@ -829,8 +850,7 @@ including narrow screens, both themes and visual mode.
 
 Start with numeric audio through the existing pipeline, then portrait/ultrawide
 geometry and 4K as a second concrete use case. A 4K path must review all platform
-capture/decoder bounds, encoded-frame limits and SFU admission; Windows H.264's
-current level ceiling does not cover 4K60. Admission and output must be tested
+capture/decoder bounds, encoded-frame limits and SFU admission. Admission and output must be tested
 at the actual profile, not inferred from a codec list. Check live changes,
 late/limited Viewers and relays, failure cleanup and resource rejection before
 freezing the 2.0 contract. Prefer a clear 1.x mismatch over a general legacy

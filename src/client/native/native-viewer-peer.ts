@@ -831,5 +831,5 @@ function nativeH264Format(fmtp: string): boolean {
   return ((idc === 0x42 && (constraints & 0x4f) === 0x40) ||
     (idc === 0x4d && (constraints & 0x8f) === 0x80) ||
     (idc === 0x58 && (constraints & 0xcf) === 0xc0)) &&
-    [10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51].includes(level);
+    [10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51, 52].includes(level);
 }

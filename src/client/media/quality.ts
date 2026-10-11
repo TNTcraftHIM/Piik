@@ -34,11 +34,11 @@ export interface VideoCaptureLimits {
 }
 
 // Current output boundary, independent of descriptive wire bounds and UI presets.
-// The common H.264 Level 5.1 path admits 4K30 and 1440p60 in either orientation.
+// H.264 Level 5.2 admits 4K60 in either orientation; actual output still adapts.
 export const VIDEO_CAPTURE_LIMITS: VideoCaptureLimits = {
   maxVideoResolution: { width: 3840, height: 3840 },
   maxVideoPixels: 3840 * 2160,
-  maxVideoMacroblocksPerSecond: 983_040,
+  maxVideoMacroblocksPerSecond: 2_073_600,
   maxVideoFramerate: 60,
   maxVideoBitrate: 12_000_000,
 };

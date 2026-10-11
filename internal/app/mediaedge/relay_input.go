@@ -159,7 +159,7 @@ func relayH264Size(nal []byte) (uint32, uint32, error) {
 		bufferedFrames = max(bufferedFrames, sps.VUI.BitstreamRestriction.MaxDecFrameBuffering,
 			sps.VUI.BitstreamRestriction.MaxNumReorderFrames)
 	}
-	// Level 5.1 also bounds the decoded-picture buffer. A per-frame size check
+	// Level 5.2 also bounds the decoded-picture buffer. A per-frame size check
 	// alone would let a larger picture multiply the old 16-reference allocation.
 	if bufferedFrames > 16 || width*height/256*uint64(bufferedFrames) > 184_320 {
 		return 0, 0, errors.New("native H264 input reference storage exceeds its bound")

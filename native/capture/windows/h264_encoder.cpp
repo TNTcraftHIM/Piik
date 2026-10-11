@@ -17,12 +17,19 @@ namespace {
 constexpr DWORD kMaxEncodedSampleBytes = 4 * 1024 * 1024;
 }
 
-bool VideoProfile::accepts_h264_profile_level_id(const std::string& value) const {
+bool SupportsH264ProfileLevelId(const std::string& value) {
   if (value.size() != 6) return false;
   UINT32 parsed = 0;
   const auto end = value.data() + value.size();
   const auto result = std::from_chars(value.data(), end, parsed, 16);
-  if (result.ec != std::errc{} || result.ptr != end || (parsed & 0xff) != h264_level()) return false;
+  if (result.ec != std::errc{} || result.ptr != end) return false;
+  switch (parsed & 0xff) {
+    case 10: case 11: case 12: case 13: case 20: case 21: case 22:
+    case 30: case 31: case 32: case 40: case 41: case 42: case 50: case 51: case 52:
+      break;
+    default:
+      return false;
+  }
   const auto idc = parsed >> 16;
   const auto constraints = (parsed >> 8) & 0xff;
   // RFC 6184 Table 5: these are the same Constrained Baseline tools, not
@@ -359,8 +366,8 @@ ComPtr<IMFMediaType> CreateOutputType(
         "output-type-interlace");
   Check(type->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base),
         "output-type-profile");
-  Check(type->SetUINT32(MF_MT_MPEG2_LEVEL, profile.h264_level()),
-        "output-type-level");
+  // MF recommends automatic level selection. Forcing a valid level can still
+  // make hardware reject the type; validate the actual SPS instead.
   return type;
 }
 
@@ -412,8 +419,6 @@ void ValidateMediaTypes(
                  "output-type-bitrate");
   RequireTypeU32(output.Get(), MF_MT_MPEG2_PROFILE,
                  eAVEncH264VProfile_Base, "output-type-profile");
-  RequireTypeU32(output.Get(), MF_MT_MPEG2_LEVEL, profile.h264_level(),
-                 "output-type-level");
 
   UINT32 width = 0;
   UINT32 height = 0;
@@ -703,8 +708,8 @@ EncodedAccessUnit LiveEncoder::Encode(
       Fail("bitstream-annexb", "live output is not Annex-B H264");
     }
     if (nal.profile_level_id) {
-      if (!profile_.accepts_h264_profile_level_id(*nal.profile_level_id)) {
-        Fail("bitstream-profile", "hardware MFT changed the requested H.264 profile level");
+      if (!SupportsH264ProfileLevelId(*nal.profile_level_id)) {
+        Fail("bitstream-profile", "hardware MFT emitted unsupported H.264 coding tools or level");
       }
       if (profile_level_id_ && *profile_level_id_ != *nal.profile_level_id) {
         Fail("bitstream-profile-change", "hardware MFT changed SPS profile");

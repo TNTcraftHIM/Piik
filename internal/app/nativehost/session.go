@@ -1226,7 +1226,7 @@ func decodeCaptureState(payload []byte) (CaptureState, error) {
 	}
 	original := state.Outputs[min(1, len(state.Outputs)-1)]
 	if state.State == "active" &&
-		((state.Codec == "h264" && !validH264ProfileLevelID(state.ProfileLevelID)) ||
+		((state.Codec == "h264" && !nativecapture.SupportedH264ProfileLevelID(state.ProfileLevelID)) ||
 			(state.Codec == "vp8" && state.ProfileLevelID != "") ||
 			state.Width != original.Width ||
 			state.Height != original.Height ||
@@ -1246,19 +1246,6 @@ func (state CaptureState) applyBackend(options *nativecapture.VideoOptions) {
 	}
 	if state.EncoderIndex != nil {
 		options.EncoderIndex = *state.EncoderIndex
-	}
-}
-
-func validH264ProfileLevelID(value string) bool {
-	level, valid := encoded.H264ConstrainedBaselineLevel(value)
-	if !valid {
-		return false
-	}
-	switch level {
-	case 30, 31, 32, 40, 41, 42, 50, 51:
-		return true
-	default:
-		return false
 	}
 }
 

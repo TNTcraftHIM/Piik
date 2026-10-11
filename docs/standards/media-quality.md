@@ -139,7 +139,9 @@ Larger wire-valid requests do not
 authorize an adapter to exceed its local capture, codec or allocation limits.
 Numeric requests use representational bounds rather than the current control
 ranges. Current capture still admits integer 15..60 fps and 2..12 Mbps, further
-limited by picture size. App descriptions may advertise stronger capabilities;
+limited by picture size. These are current product controls, not universal codec
+limits or a minimum for framework-driven output. Codec and resource budgets
+apply separately. App descriptions may advertise stronger capabilities;
 controls use their intersection with local support. An unsupported request is
 an operation failure, not malformed signaling. An unsupported saved preference
 does not seed capture or overwrite its stored value with a fallback.
@@ -149,6 +151,8 @@ maintain-framerate` retain their controls. Display video uses the standard
 Native H264 retains Constrained Baseline. Capture validates the coding-tool subset under
 RFC 6184, including equivalent Constrained Baseline constraint bytes, and reports
 the actual SPS profile/level; one vendor's byte spelling is not the contract.
+The platform encoder selects its level from the requested format. Validate the
+actual supported level instead of forcing a calculated minimum into the encoder.
 Native ingress and relay accept only a negotiated profile/packetization compatible
 with their unchanged encoded downstream source. A codec name alone is not enough;
 same-source renegotiation must preserve that boundary before altering the live peer.
@@ -159,8 +163,8 @@ large input.
 
 The candidate Native adapters admit even visible dimensions up to 3840 per
 axis and 3840x2160 total pixels. Their shared output-rate bound follows H.264
-Level 5.1: 983,040 16x16 macroblocks per second, with at most 60 fps. This admits
-landscape/portrait 4K30 and existing 1440p60, not 4K60. Decoder alignment has a
+Level 5.2: 2,073,600 16x16 macroblocks per second, with at most 60 fps. This admits
+landscape/portrait 4K60 and existing 1440p60. Decoder alignment has a
 separate coded-storage bound; reference-picture storage is bounded before
 Native derivation. These are admission limits, not a device performance promise.
 App discovery reports size, pixel-count, frame-rate and bitrate limits through the
@@ -377,6 +381,14 @@ detector, periodic quality controller, manual SFU layer selector, or
 application-defined whole-room lowest-common-denominator target.
 
 ## Screen Audio
+
+The candidate supports mono and stereo Opus content through the existing audio
+track. Mono inputs remain valid; Browser and Native mixing use a stereo output.
+A stereo receive preference or two-channel declaration does not prove distinct
+source channels. [Fidelity evidence](../research/media-fidelity.md#stereo) owns
+decoded-channel checks. Surround delivery is outside the candidate; it needs
+capture, channel-layout, mixing, codec and playback support, not only a channel
+count setting.
 
 Display audio uses `contentHint = "music"`. The 2.0 candidate keeps 64/128/192 kbps
 shortcuts and the 128 kbps default, with a custom numeric ceiling in the same

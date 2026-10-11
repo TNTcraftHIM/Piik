@@ -607,9 +607,9 @@ RunEvidence RunEncoder(const Adapter& adapter, const DeviceContext& device,
     Fail("codec-runtime-bitrate-effect",
          "live bitrate update did not lower and restore encoded output");
   }
-  if (!kDefaultVideoProfile.accepts_h264_profile_level_id(*observed_profile)) {
-    Fail("bitstream-pinned-fmtp",
-         "SPS profile-level-id differs from the native media contract");
+  if (!SupportsH264ProfileLevelId(*observed_profile)) {
+    Fail("bitstream-profile",
+         "SPS uses unsupported H.264 coding tools or level");
   }
   return evidence;
 }

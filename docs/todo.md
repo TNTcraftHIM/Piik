@@ -26,8 +26,9 @@ Git/PRs own completed history.
 - [ ] **Reconcile open PRs with the final candidate.**
   [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps request and
   [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the
-  numeric-media candidate; neither PR has been merged. The latter's 4K60 and
-  40 Mbps expansion needs separate evidence and is not accepted scope. Preserve
+  numeric-media candidate; neither PR has been merged. 4K60 is included in
+  candidate admission and still needs route/device acceptance; 40 Mbps needs
+  separate evidence and is not accepted scope. Preserve
   contributor credit and explain the disposition at integration. Rewrite
   [#459](https://github.com/TNTcraftHIM/Piik/pull/459)'s earlier maintenance scope
   and compatibility claims around the final 2.0 result before integration.
@@ -74,21 +75,26 @@ Implementation needs a concrete useful result within the product model.
   actual output. Numeric request, capability and observation boundaries are now
   separate from implementation admission. Keep receiver, codec/alignment and
   resource budgets intact; opening an output range still needs end-to-end evidence.
-  Assess higher audio output against packet-duration/size and receiver support;
-  removing the current 320 kbps sender guard alone is not sufficient. Numeric
-  audio and video controls are implemented; the assessment
+  Retain the current audio sender ceiling and bounded video controls; extending
+  their operating range needs a concrete use case and end-to-end evidence.
+  Numeric audio and video controls are implemented; the assessment
   owns local capture, codec, derived-output, SFU and bounded mixed-route evidence.
   Remaining receiver acceptance needs physical limited decoders and camera
   orientation behavior, beyond the bounded SDP-limit and mixed-route controls.
   Browser display capture, Browser relay and Browser-to-Native fanout now have
   bounded high-resolution evidence. macOS geometry SDK/hardware checks and
-  physical 4K/game capture remain open. Preserve safety limits and
+  physical 4K/game capture remain open. Repeat live Native-to-Browser, derived
+  relay and SFU checks at 4K60; local codec and Browser loopback success does not
+  establish sustained full-route performance. Preserve safety limits and
   framework-owned adaptation. The
   [audio controls](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment)
   retain explicit receive-limit enforcement and the current 320 kbps sender
   ceiling. Physical listening, mobile and field-network acceptance remain open;
   research owns the bounded real-Opus impairment and video-recovery control.
-  Additional codecs are outside this candidate. Later inclusion needs complete
+  Validate the existing mono/stereo and Windows HDR-to-SDR paths under the
+  [fidelity boundary](./research/media-fidelity.md); surround delivery and
+  end-to-end HDR are outside this candidate. Additional codecs are also outside
+  this candidate. Later inclusion needs complete
   encode/decode/forward support and a late-Viewer policy;
   selecting a codec cannot transcode an existing publication. Final package
   acceptance must retain the verified live-change, relay/SFU and limited-receiver

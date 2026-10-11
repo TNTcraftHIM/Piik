@@ -17,10 +17,10 @@ const (
 	maxControlBytes              = 64
 	MaxVideoDimension            = 3840
 	MaxVideoPixels               = 3840 * 2160
-	MaxVideoMacroblocksPerSecond = 983_040
+	MaxVideoMacroblocksPerSecond = 2_073_600
 	MaxVideoFramerate            = 60
 	// Coded pictures may include alignment outside the visible crop. Keep this
-	// separate from visible dimensions and within H.264 Level 5.1 storage.
+	// separate from visible dimensions and within H.264 Level 5.2 storage.
 	MaxCodedVideoDimension = 4096
 	MaxCodedVideoPixels    = 36_864 * 16 * 16
 )
@@ -33,7 +33,7 @@ func ValidVideoSize(width, height uint32) bool {
 }
 
 // ValidVideoFormat keeps both current encoders within the shared receive
-// ceiling (H.264 Level 5.1), including non-preset shapes and frame rates.
+// ceiling (H.264 Level 5.2), including non-preset shapes and frame rates.
 func ValidVideoFormat(width, height, framerate uint32) bool {
 	return ValidVideoSize(width, height) && framerate >= 1 && framerate <= MaxVideoFramerate &&
 		uint64((width+15)/16)*uint64((height+15)/16)*uint64(framerate) <= MaxVideoMacroblocksPerSecond
@@ -43,6 +43,21 @@ func ValidCodedVideoSize(width, height uint64) bool {
 	return width >= 2 && width <= MaxCodedVideoDimension && width%2 == 0 &&
 		height >= 2 && height <= MaxCodedVideoDimension && height%2 == 0 &&
 		width*height <= MaxCodedVideoPixels
+}
+
+// SupportedH264ProfileLevelID bounds capture and receive to the same coding
+// tools. Automatic encoders may select a lower level for a smaller output.
+func SupportedH264ProfileLevelID(value string) bool {
+	level, valid := encoded.H264ConstrainedBaselineLevel(value)
+	if !valid {
+		return false
+	}
+	switch level {
+	case 10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51, 52:
+		return true
+	default:
+		return false
+	}
 }
 
 type FrameKind uint8

@@ -62,6 +62,13 @@ preset contract. Candidate numeric requests and supported limits are owned by
 [media quality](../standards/media-quality.md#screen-audio); these measurements
 do not establish audible improvement or accept a public release.
 
+For scope review on 2026-10-11, [RFC 7587](https://www.rfc-editor.org/rfc/rfc7587.html#section-3.1.1)
+recommends 64..128 kbps for fullband stereo music with 20 ms frames, and
+[LiveKit's high-quality stereo preset](https://github.com/livekit/client-sdk-js/blob/main/src/room/track/options.ts)
+uses 128 kbps. These support retaining the current default; they are neither
+codec maxima nor proof of quality for every source. Higher custom settings
+remain subject to the measured packet and receiver bounds below.
+
 The existing Go Opus encoder accepted live 128/192/256/320/96/128 kbps changes
 without replacement. A 48 kHz stereo tone/noise input continued decoding into
 960 samples per channel; the existing deterministic tests also verify stereo

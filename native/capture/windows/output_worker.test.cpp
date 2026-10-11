@@ -151,11 +151,19 @@ void CheckWorkerDimensions(ID3D11Device* device, SIZE content, SIZE expected) {
 
 void CheckH264ProfileCompatibility() {
   const VideoProfile profile;
-  for (const auto* value : {"42c01f", "42e01f", "42E01F", "4d801f", "58c01f"})
-    assert(profile.accepts_h264_profile_level_id(value));
+  for (const auto* value : {"42c01f", "42e01f", "42E01F", "4d801f", "58c01f",
+                           "42c00a", "42c016", "42e01e", "42c02a", "42c033", "42c034"})
+    assert(SupportsH264ProfileLevelId(value));
   for (const auto* value : {"42001f", "4d001f", "64001f", "42e11f", "42e01", "42e01fg",
-                           "42e0gg", "42e034", "42e01e", " 42c01"})
-    assert(!profile.accepts_h264_profile_level_id(value));
+                           "42e0gg", "42e035", "42e03c", "42e000", " 42c01"})
+    assert(!SupportsH264ProfileLevelId(value));
+  Runtime runtime;
+  for (const auto size : {SIZE{1280, 720}, SIZE{3840, 2160}, SIZE{2160, 3840}}) {
+    const auto type = CreateOutputType(VideoProfile{
+        static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy), 60, 12'000'000});
+    UINT32 level = 0;
+    assert(type->GetUINT32(MF_MT_MPEG2_LEVEL, &level) == MF_E_ATTRIBUTENOTFOUND);
+  }
 
   HANDLE read = nullptr, write = nullptr;
   assert(CreatePipe(&read, &write, nullptr, 4096));
@@ -392,12 +400,9 @@ void CheckDecodedDisplayArea(ID3D11Device* device) {
 int main() {
   VideoProfile profile{2560, 1440, 60, 12'000'000};
   ValidateVideoProfile(profile);
-  assert(profile.h264_level() == 51 && profile.profile_level_id() == "42c033");
-  profile = VideoProfile{1920, 1080, 60, 8'000'000};
-  assert(profile.h264_level() == 42);
   for (const SIZE size : {SIZE{1920, 1200}, SIZE{720, 1280}, SIZE{4, 4},
                           SIZE{3840, 2160}, SIZE{2160, 3840}, SIZE{3000, 2764}}) {
-    ValidateVideoProfile(VideoProfile{static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy), 30, 3'000'000});
+    ValidateVideoProfile(VideoProfile{static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy), 60, 3'000'000});
   }
   for (const SIZE size : {SIZE{0, 720}, SIZE{2, 720}, SIZE{1280, 2}, SIZE{1279, 720},
                           SIZE{1280, 719}, SIZE{3842, 2160}, SIZE{2160, 3842},
@@ -410,8 +415,9 @@ int main() {
     }
   }
   assert(piik::capture::ValidVideoFormat(3840, 2160, 30));
-  assert(!piik::capture::ValidVideoFormat(3840, 2160, 31));
-  assert(!piik::capture::ValidVideoFormat(2160, 3840, 60));
+  assert(piik::capture::ValidVideoFormat(3840, 2160, 60));
+  assert(piik::capture::ValidVideoFormat(2160, 3840, 60));
+  assert(!piik::capture::ValidVideoFormat(3840, 2160, 61));
   assert(!piik::capture::ValidVideoFormat(UINT32_MAX, UINT32_MAX, UINT32_MAX));
   assert(piik::capture::ValidCodedVideoSize(3840, 2176));
   assert(piik::capture::ValidCodedVideoSize(2176, 3840));

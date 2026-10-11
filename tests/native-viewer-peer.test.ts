@@ -272,7 +272,8 @@ it("admits one active sending H264 or VP8 video section, not unrelated SDP codec
 it.each([
   ["42e01f", "1", true], ["42c01f", "1", true],
   ["4de01f", "1", true], ["58c01f", "1", true],
-  ["42e00b", "1", true], ["42e033", "1", true], ["42e034", "1", false],
+  ["42e00b", "1", true], ["42e033", "1", true], ["42e034", "1", true],
+  ["42e03c", "1", false],
   ["4d001f", "1", false], ["64001f", "1", false], ["42001f", "1", false],
   ["42e11f", "1", false], ["42e035", "1", false], ["42e03c", "1", false],
   ["42e01f=invalid", "1", false],

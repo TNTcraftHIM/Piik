@@ -56,27 +56,11 @@ struct VideoProfile final {
     if (preference == DegradationPreference::framerate) return 0;
     return 50;
   }
-  UINT32 h264_level() const {
-    const UINT64 macroblocks =
-        ((static_cast<UINT64>(width) + 15) / 16) *
-        ((static_cast<UINT64>(height) + 15) / 16);
-    const UINT64 macroblocks_per_second = macroblocks * frame_rate;
-    if (macroblocks <= 3'600 && macroblocks_per_second <= 108'000) return 31;
-    if (macroblocks <= 8'192 && macroblocks_per_second <= 245'760) return 40;
-    if (macroblocks <= 8'704 && macroblocks_per_second <= 522'240) return 42;
-    if (macroblocks <= 22'080 && macroblocks_per_second <= 589'824) return 50;
-    return 51;
-  }
-  std::string profile_level_id() const {
-    std::ostringstream output;
-    output << "42c0" << std::hex << std::setfill('0') << std::setw(2)
-           << h264_level();
-    return output.str();
-  }
-  bool accepts_h264_profile_level_id(const std::string& value) const;
 };
 
 constexpr VideoProfile kDefaultVideoProfile{};
+inline constexpr char kH264ProfileLevelId[] = "42c034";
+bool SupportsH264ProfileLevelId(const std::string& value);
 
 struct Runtime final {
   Runtime() {

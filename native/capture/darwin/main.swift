@@ -20,7 +20,8 @@ private let maxVideoPixels = 3840 * 2160
 private let maxCodedVideoDimension = 4096
 private let maxCodedVideoPixels = 36_864 * 16 * 16
 private let supportedH264Levels: Set<UInt8> = [
-    0x1e, 0x1f, 0x20, 0x28, 0x29, 0x2a, 0x32, 0x33,
+    0x0a, 0x0b, 0x0c, 0x0d, 0x14, 0x15, 0x16,
+    0x1e, 0x1f, 0x20, 0x28, 0x29, 0x2a, 0x32, 0x33, 0x34,
 ]
 
 private enum DegradationPreference: String {
@@ -1497,9 +1498,9 @@ private func validVideoSize(_ width: Int, _ height: Int) -> Bool {
 }
 
 private func validVideoFormat(_ width: Int, _ height: Int, _ fps: Int32) -> Bool {
-    // Match the shared H.264 Level 5.1 receive ceiling, including numeric sizes.
+    // Match the shared H.264 Level 5.2 receive ceiling, including numeric sizes.
     validVideoSize(width, height) && fps >= 1 && fps <= 60 &&
-        ((width + 15) / 16) * ((height + 15) / 16) * Int(fps) <= 983_040
+        ((width + 15) / 16) * ((height + 15) / 16) * Int(fps) <= 2_073_600
 }
 
 private func videoProfile(_ arguments: [String]) throws -> VideoProfile {

@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/pion/rtcp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
@@ -465,15 +465,5 @@ func forwardableH264(fmtp string) bool {
 			packetization = strings.TrimSpace(value)
 		}
 	}
-	level, valid := encoded.H264ConstrainedBaselineLevel(profile)
-	if !valid || packetization != "1" {
-		return false
-	}
-	// Receiving may include smaller Browser encodes than native capture presets.
-	switch level {
-	case 10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51:
-		return true
-	default:
-		return false
-	}
+	return packetization == "1" && nativecapture.SupportedH264ProfileLevelID(profile)
 }

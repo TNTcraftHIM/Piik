@@ -508,7 +508,7 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
 
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override {
     if (kind_ == OutputKind::vp8) return {webrtc::SdpVideoFormat("VP8")};
-    return {webrtc::SdpVideoFormat("H264", {{"profile-level-id", ceiling_.profile_level_id()},
+    return {webrtc::SdpVideoFormat("H264", {{"profile-level-id", kH264ProfileLevelId},
         {"packetization-mode", "1"}, {"level-asymmetry-allowed", "1"}})};
   }
   std::unique_ptr<webrtc::VideoEncoder> Create(const webrtc::Environment& env,

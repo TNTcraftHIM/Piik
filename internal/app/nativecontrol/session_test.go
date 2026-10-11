@@ -670,14 +670,14 @@ func TestQualitySettingsMapOnceIntoNativeMedia(t *testing.T) {
 		t.Fatalf("numeric size outside UI presets was not preserved: %+v", profile)
 	}
 	settings.Resolution = protocol.QualityResolution{Width: 3840, Height: 2160}
-	if nativeQualityProfile(settings).Valid() {
-		t.Fatal("unsupported 4K60 combination was accepted")
+	if !nativeQualityProfile(settings).Valid() {
+		t.Fatal("4K60 was rejected")
 	}
 	settings.MaxFramerate = 30
 	if !nativeQualityProfile(settings).Valid() {
 		t.Fatal("4K30 was rejected")
 	}
-	for _, fps := range []protocol.Num{30.5, 120, 0x1_0000_0000 + 30} {
+	for _, fps := range []protocol.Num{30.5, 61, 120, 0x1_0000_0000 + 30} {
 		settings.MaxFramerate = fps
 		if nativeQualityProfile(settings).Valid() {
 			t.Fatalf("unsupported fps %v was narrowed into a valid profile", fps)
