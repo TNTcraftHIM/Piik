@@ -10,8 +10,12 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/pion/ice/v4"
+	"github.com/pion/interceptor"
+	"github.com/pion/logging"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
+	"github.com/pion/transport/v5/vnet"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -178,9 +182,27 @@ func TestLargeRecoveryUsesTheDefaultPacketWindow(t *testing.T) {
 	if len(packets) <= 500 || len(packets) > encoded.MaxPacketWindow {
 		t.Fatal("fixture does not exercise the packet window boundary")
 	}
+	// Isolate packet-window capacity from host UDP receive-buffer overflow.
+	// The production sender, SRTP transport and frame assembler still run here.
+	router, err := vnet.NewRouter(&vnet.RouterConfig{CIDR: "10.0.0.0/24",
+		QueueSize: encoded.MaxPacketWindow, LoggerFactory: logging.NewDefaultLoggerFactory()})
+	check(err)
+	sendNet, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"10.0.0.1"}})
+	check(err)
+	receiveNet, err := vnet.NewNet(&vnet.NetConfig{StaticIPs: []string{"10.0.0.2"}})
+	check(err)
+	check(router.AddNet(sendNet))
+	check(router.AddNet(receiveNet))
+	check(router.Start())
+	defer router.Stop()
 	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true, InitialBitrate: 12_000_000})
 	check(err)
 	defer engine.Close()
+	engine.listenPacket = sendNet.ListenPacket
+	engine.bindAddress = "10.0.0.1:0"
+	engine.settings.SetNet(sendNet)
+	engine.settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+	engine.settings.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	source, err := engine.NewSource("h264", 1, 1, nil)
 	check(err)
 	defer source.Close()
@@ -189,7 +211,17 @@ func TestLargeRecoveryUsesTheDefaultPacketWindow(t *testing.T) {
 	edge, err := engine.NewEdge(source, EdgeOptions{ConnectionID: "large-recovery"})
 	check(err)
 	defer edge.Close()
-	receiver := newReceiver(t)
+	media := &webrtc.MediaEngine{}
+	check(media.RegisterDefaultCodecs())
+	registry := &interceptor.Registry{}
+	check(webrtc.RegisterDefaultInterceptors(media, registry))
+	settings := webrtc.SettingEngine{}
+	settings.SetNet(receiveNet)
+	settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+	settings.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	receiver, err := webrtc.NewAPI(webrtc.WithMediaEngine(media), webrtc.WithInterceptorRegistry(registry),
+		webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
+	check(err)
 	defer receiver.Close()
 	var complete atomic.Bool
 	receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
