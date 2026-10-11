@@ -7,6 +7,7 @@ import {
   captureDisplay,
   captureFramerateCeiling,
   videoCaptureLimits,
+  supportsCaptureProfile,
   configureScreenAudioSender,
   configureVideoSender,
   matchingQualityProfileId,
@@ -68,7 +69,26 @@ describe("realtime quality controls", () => {
     expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["1080p"], limited)).toBe(30);
     expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["720p"], limited)).toBe(60);
     expect(videoCaptureLimits({ maxVideoResolution: { width: 8192, height: 8192 },
-      maxVideoPixels: 8192 * 8192, maxVideoMacroblocksPerSecond: 9_000_000 })).toEqual(videoCaptureLimits());
+      maxVideoPixels: 8192 * 8192, maxVideoMacroblocksPerSecond: 9_000_000,
+      maxVideoFramerate: 120, maxVideoBitrate: 40_000_000 })).toEqual(videoCaptureLimits());
+    const slower = videoCaptureLimits({ maxVideoFramerate: 30, maxVideoBitrate: 5_000_000 });
+    expect(supportsCaptureProfile(QUALITY_PROFILES["1080p30"], slower)).toBe(true);
+    expect(supportsCaptureProfile(QUALITY_PROFILES["1080p60"], slower)).toBe(false);
+  });
+
+  it("rejects unsupported requests before changing capture or asking for permission", async () => {
+    const { stream, videoTrack } = createVideoStream();
+    const getDisplayMedia = vi.fn(async () => stream);
+    vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
+    for (const change of [{ maxFramerate: 120 }, { maxFramerate: 30.5 }, { maxBitrate: 40_000_000 },
+      { resolution: { width: 32768, height: 32768 } }, { maxAudioBitrate: 510_000 }]) {
+      const requested = { ...QUALITY_PROFILES["1080p30"], ...change };
+      expect(supportsCaptureProfile(requested)).toBe(false);
+      await expect(captureDisplay(requested)).rejects.toThrow("not supported");
+      await expect(applyCaptureProfile(stream, requested)).rejects.toThrow("not supported");
+    }
+    expect(getDisplayMedia).not.toHaveBeenCalled();
+    expect(videoTrack.applyConstraints).not.toHaveBeenCalled();
   });
 
   it("keeps exactly three recommended profiles with 1080p30 as the default", () => {

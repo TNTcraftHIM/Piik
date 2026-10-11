@@ -11,7 +11,6 @@ import {
   ApiError,
   authenticateSiteAccess,
   getRuntimeCapabilities,
-  getOptionalRuntimeCapabilities,
   getSiteAccess,
   type SiteAccessStatus,
 } from "./lib/api";
@@ -202,20 +201,9 @@ function RouteLoader() {
   );
 }
 
-// Invitation and room-code entry share discovery without making an invitation
-// pass through site authentication. Resolve before mounting media: changing the
-// negotiated flag later would restart an already healthy Viewer session.
 function ViewerEntry({ route }: { route: ViewerRoute }) {
-  const [progressSupported, setProgressSupported] = useState<boolean | null>(null);
-  useEffect(() => {
-    let active = true;
-    void getOptionalRuntimeCapabilities().then(capabilities => {
-      if (active) setProgressSupported(capabilities?.connectionAttemptProgress4 === true);
-    });
-    return () => { active = false; };
-  }, []);
-  return progressSupported === null ? <RouteLoader /> : (
-    <ViewerPage {...route} connectionAttemptProgress4={progressSupported}
+  return (
+    <ViewerPage {...route}
       launchedByClient={clientLaunchBootstrap?.launchedByClient} />
   );
 }
@@ -403,7 +391,6 @@ function SiteAccessGate({
         sfuAvailable={capabilities?.sfu === true}
         sfuOnly={capabilities?.sfuOnly === true}
         natPredictionAvailable={capabilities?.natPrediction === true}
-        connectionAttemptProgress4={capabilities?.connectionAttemptProgress4 === true}
         onAuthorizationRequired={() =>
           setAccess({ kind: "required", error: t("gate.expired") })
         }

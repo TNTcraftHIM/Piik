@@ -81,6 +81,12 @@ execute unknown commands. A more tolerant reader does not update already-release
 readers: do not emit a new reaction to legacy pages merely because current pages
 can skip it. Verify both readers before calling a change additive.
 
+In the unpublished 2.0 contract, numeric media descriptions and retry progress
+are independent of current implementation limits and retry policy. Extending
+those policies does not require another count-specific capability flag.
+Representation acceptance still requires local operation/resource admission;
+it is not a promise that every same-major peer can produce a new media format.
+
 Native discovery distinguishes an incompatible Piik App from an absent App and
 reports protocol numbers to local diagnostics; the source picker offers update/
 refresh guidance and Browser operation. Do not reload, reinstall or interrupt

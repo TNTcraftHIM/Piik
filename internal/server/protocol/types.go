@@ -120,8 +120,7 @@ func (v *QualityResolution) UnmarshalJSON(data []byte) error {
 	if err := present.require("width", "height"); err != nil {
 		return err
 	}
-	if !inRangeInt(v.Width, 4, 8192) || v.Width%2 != 0 ||
-		!inRangeInt(v.Height, 4, 8192) || v.Height%2 != 0 {
+	if !inRangeInt(v.Width, 1, 0xffff_ffff) || !inRangeInt(v.Height, 1, 0xffff_ffff) {
 		return errors.New("resolution is out of range")
 	}
 	return nil
@@ -130,7 +129,7 @@ func (v *QualityResolution) UnmarshalJSON(data []byte) error {
 // QualitySettings mirrors qualitySettingsSchema.
 type QualitySettings struct {
 	Resolution            QualityResolution `json:"resolution"`
-	MaxFramerate          Int               `json:"maxFramerate"`
+	MaxFramerate          Num               `json:"maxFramerate"`
 	MaxBitrate            Int               `json:"maxBitrate"`
 	DegradationPreference string            `json:"degradationPreference"`
 	MaxAudioBitrate       Int               `json:"maxAudioBitrate,omitempty"`
@@ -151,10 +150,10 @@ func (v *QualitySettings) UnmarshalJSON(data []byte) error {
 	if err := present.optional("maxAudioBitrate"); err != nil {
 		return err
 	}
-	if !inRangeInt(v.MaxFramerate, 15, 60) {
+	if v.MaxFramerate <= 0 || !inRangeNum(v.MaxFramerate, 0, MaxSafeInteger) {
 		return errors.New("maxFramerate is out of range")
 	}
-	if !inRangeInt(v.MaxBitrate, 2_000_000, 12_000_000) {
+	if !inRangeInt(v.MaxBitrate, 1, 0xffff_ffff) {
 		return errors.New("maxBitrate is out of range")
 	}
 	if !enumOf(v.DegradationPreference, degradationPreferences...) {
@@ -186,12 +185,11 @@ func (v *RoutePolicy) UnmarshalJSON(data []byte) error {
 
 // RuntimeCapabilities mirrors runtimeCapabilitiesSchema.
 type RuntimeCapabilities struct {
-	ConnectionAttemptProgress4 bool `json:"connectionAttemptProgress4,omitempty"`
-	Sfu                        bool `json:"sfu"`
-	SfuOnly                    bool `json:"sfuOnly,omitempty"`
-	NatPrediction              bool `json:"natPrediction"`
-	RoomInteractions           bool `json:"roomInteractions,omitempty"`
-	HostRoomSession            bool `json:"hostRoomSession,omitempty"`
+	Sfu              bool `json:"sfu"`
+	SfuOnly          bool `json:"sfuOnly,omitempty"`
+	NatPrediction    bool `json:"natPrediction"`
+	RoomInteractions bool `json:"roomInteractions,omitempty"`
+	HostRoomSession  bool `json:"hostRoomSession,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -204,14 +202,13 @@ func (v *RuntimeCapabilities) UnmarshalJSON(data []byte) error {
 	if present == nil {
 		return errors.New("runtime capabilities must be an object")
 	}
-	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "hostRoomSession", "natPrediction", "connectionAttemptProgress4"); err != nil {
+	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "hostRoomSession", "natPrediction"); err != nil {
 
 		return err
 	}
 	for key, target := range map[string]*bool{
 		"sfu": &v.Sfu, "sfuOnly": &v.SfuOnly, "natPrediction": &v.NatPrediction,
-		"connectionAttemptProgress4": &v.ConnectionAttemptProgress4,
-		"roomInteractions":           &v.RoomInteractions, "hostRoomSession": &v.HostRoomSession,
+		"roomInteractions": &v.RoomInteractions, "hostRoomSession": &v.HostRoomSession,
 	} {
 		if value, ok := present[key]; ok {
 			if err := json.Unmarshal(value, target); err != nil {
@@ -510,8 +507,8 @@ func (v *ConnectionAttempt) UnmarshalJSON(data []byte) error {
 	if !inRangeInt(v.Current, 1, int64(v.Total)) {
 		return errors.New("connectionAttempt.current is out of range")
 	}
-	if v.Total != 3 && v.Total != 4 {
-		return errors.New("connectionAttempt.total must be 3 or 4")
+	if !inRangeInt(v.Total, 1, MaxSafeInteger) {
+		return errors.New("connectionAttempt.total is out of range")
 	}
 	return nil
 }
@@ -997,11 +994,11 @@ func (v *ViewerQualityEvidenceMetrics) UnmarshalJSON(data []byte) error {
 		value            *Int
 		minimum, maximum int64
 	}{
-		{v.Width, 1, 16_384}, {v.Height, 1, 16_384},
-		{v.PacketsReceivedDelta, 0, 1_000_000}, {v.PacketsLostDelta, 0, 1_000_000},
-		{v.FramesDecodedDelta, 0, 10_000}, {v.FramesDroppedDelta, 0, 10_000},
+		{v.Width, 1, MaxSafeInteger}, {v.Height, 1, MaxSafeInteger},
+		{v.PacketsReceivedDelta, 0, MaxSafeInteger}, {v.PacketsLostDelta, 0, MaxSafeInteger},
+		{v.FramesDecodedDelta, 0, MaxSafeInteger}, {v.FramesDroppedDelta, 0, MaxSafeInteger},
 		{v.FreezeCountDelta, 0, MaxSafeInteger}, {v.PauseCountDelta, 0, MaxSafeInteger},
-		{v.AudioConcealmentEventsDelta, 0, 10_000},
+		{v.AudioConcealmentEventsDelta, 0, MaxSafeInteger},
 	} {
 		if bound.value != nil && !inRangeInt(*bound.value, bound.minimum, bound.maximum) {
 			return errors.New("viewer quality evidence integer is out of range")
@@ -1011,15 +1008,15 @@ func (v *ViewerQualityEvidenceMetrics) UnmarshalJSON(data []byte) error {
 		value            *Num
 		minimum, maximum float64
 	}{
-		{v.FramesPerSecond, 0, 240}, {v.BitrateKbps, 0, 100_000},
-		{v.RttMs, 0, 60_000}, {v.JitterMs, 0, 60_000},
-		{v.DecodeMsPerFrame, 0, 60_000},
+		{v.FramesPerSecond, 0, MaxSafeInteger}, {v.BitrateKbps, 0, MaxSafeInteger},
+		{v.RttMs, 0, MaxSafeInteger}, {v.JitterMs, 0, MaxSafeInteger},
+		{v.DecodeMsPerFrame, 0, MaxSafeInteger},
 		{v.FreezeDurationMsDelta, 0, MaxSafeInteger},
 		{v.PauseDurationMsDelta, 0, MaxSafeInteger},
-		{v.AudioBitrateKbps, 0, 10_000}, {v.AudioPacketLossPercent, 0, 100},
-		{v.AudioJitterMs, 0, 60_000},
-		{v.AudioVideoPlayoutDeltaMs, -60_000, 60_000},
-		{v.VideoJitterBufferDelayMs, 0, 60_000}, {v.AudioJitterBufferDelayMs, 0, 60_000},
+		{v.AudioBitrateKbps, 0, MaxSafeInteger}, {v.AudioPacketLossPercent, 0, 100},
+		{v.AudioJitterMs, 0, MaxSafeInteger},
+		{v.AudioVideoPlayoutDeltaMs, -MaxSafeInteger, MaxSafeInteger},
+		{v.VideoJitterBufferDelayMs, 0, MaxSafeInteger}, {v.AudioJitterBufferDelayMs, 0, MaxSafeInteger},
 		{v.AudioConcealedSamplesPercent, 0, 100},
 	} {
 		if bound.value != nil && !inRangeNum(*bound.value, bound.minimum, bound.maximum) {
@@ -1103,11 +1100,11 @@ func (v *SenderQualityDiagnostics) UnmarshalJSON(data []byte) error {
 		value            *Num
 		minimum, maximum float64
 	}{
-		{v.FramesPerSecond, 0, 240}, {v.BitrateKbps, 0, 100_000},
-		{v.CaptureFramesPerSecond.Value, 0, 240},
-		{v.MediaSourceFramesPerSecond.Value, 0, 240},
-		{v.AvailableOutgoingKbps.Value, 0, 100_000},
-		{v.RttMs.Value, 0, 60_000}, {v.PacketLossPercent.Value, 0, 100},
+		{v.FramesPerSecond, 0, MaxSafeInteger}, {v.BitrateKbps, 0, MaxSafeInteger},
+		{v.CaptureFramesPerSecond.Value, 0, MaxSafeInteger},
+		{v.MediaSourceFramesPerSecond.Value, 0, MaxSafeInteger},
+		{v.AvailableOutgoingKbps.Value, 0, MaxSafeInteger},
+		{v.RttMs.Value, 0, MaxSafeInteger}, {v.PacketLossPercent.Value, 0, 100},
 	} {
 		if bound.value != nil && !inRangeNum(*bound.value, bound.minimum, bound.maximum) {
 			return errors.New("sender quality diagnostic number is out of range")
@@ -1117,7 +1114,7 @@ func (v *SenderQualityDiagnostics) UnmarshalJSON(data []byte) error {
 		value   *Int
 		maximum int64
 	}{
-		{v.Width.Value, 16_384}, {v.Height.Value, 16_384},
+		{v.Width.Value, MaxSafeInteger}, {v.Height.Value, MaxSafeInteger},
 		{v.VideoEncodingCount.Value, MaxSafeInteger},
 		{v.ActiveVideoEncodingCount.Value, MaxSafeInteger},
 	} {

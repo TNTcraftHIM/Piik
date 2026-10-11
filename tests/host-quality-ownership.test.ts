@@ -4,7 +4,7 @@ import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import {
   QUALITY_PROFILES, qualitySettingsEqual, qualitySettingsLabel, qualityResolutionEqual,
-  screenAudioBitrate, videoQualitySettingsEqual,
+  screenAudioBitrate, videoQualitySettingsEqual, supportsCaptureProfile, videoCaptureLimits, MAX_SCREEN_AUDIO_BITRATE,
   type QualitySettings,
 } from "../src/client/media/quality";
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
@@ -109,6 +109,7 @@ function fixture(launchedByClient = true) {
     applyCaptureProfile: vi.fn(async (_stream: unknown, profile: QualitySettings) => { physical = profile; }),
     captureDetails: () => ({}),
     qualitySettingsEqual, qualityResolutionEqual, videoQualitySettingsEqual, screenAudioBitrate, qualitySettingsLabel,
+    supportsCaptureProfile, videoLimits: videoCaptureLimits(), audioBitrateCeiling: MAX_SCREEN_AUDIO_BITRATE,
     say: (key: string) => key, syncHostSfuQualityWarning: () => null,
     NativeSenderPeer, discardPreparedHostChild: vi.fn(), removePeer: vi.fn(), startPeer: vi.fn(async () => undefined),
     nativePreviewTailRef: ref(Promise.resolve()), setSwitchingSource: vi.fn(),
@@ -225,7 +226,6 @@ describe("Host room ownership", () => {
     current.generationRef.current = 1;
     Object.assign(current.context, {
       SignalingClient: Signal, hostRoomSessionAvailable: true, roomInteractionsAvailable: true,
-      connectionAttemptProgress4:true,
       visRef: ref(false), hostClientIdRef: ref(null), displayNameRef: ref("Host"),
       getStableClientId: () => "host-client", defaultHostDisplayName: () => "Host", readDisplayName: () => "Host",
       setDisplayName: vi.fn(), setDisplayNameDraft: vi.fn(), setDisplayNameError: vi.fn(),
@@ -426,6 +426,27 @@ describe("Host room-link copy feedback", () => {
 });
 
 describe("Host quality ownership", () => {
+  it("rejects unsupported settings without changing capture, room or saved intent", async () => {
+    const current = fixture();
+    await current.change({ ...original, maxFramerate: 120, maxBitrate: 40_000_000 });
+    expect(current.qualitySettingsRef.current).toEqual(original);
+    expect(current.applyCaptureProfile).not.toHaveBeenCalled();
+    expect(current.signalRef.current.setHostQualitySettings).not.toHaveBeenCalled();
+    expect(current.context.savePreferredQuality).not.toHaveBeenCalled();
+    expect(current.advancedQualityRef.current).toEqual(original);
+  });
+
+  it("ignores an unsupported App preference without erasing it", async () => {
+    const current = fixture();
+    current.activeGenerationRef.current = null;
+    const preference = { read: vi.fn(async () => ({ ...original, maxFramerate: 120 })), save: vi.fn() };
+    current.context.AppQualityPreference = { connect: vi.fn(async () => preference) };
+    await current.context.loadAppQualityPreference(new AbortController().signal);
+    expect(current.qualitySettingsRef.current).toEqual(original);
+    expect(preference.save).not.toHaveBeenCalled();
+    expect(current.NativeClient.connect).not.toHaveBeenCalled();
+  });
+
   it("restores App preferences without acquiring media or changing a room", async () => {
     const current = fixture();
     current.activeGenerationRef.current = null;

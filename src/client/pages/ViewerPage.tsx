@@ -130,7 +130,6 @@ interface ViewerPageProps {
   viewerGrant?: string;
   invalidGrant?: boolean;
   launchedByClient?: boolean;
-  connectionAttemptProgress4?: boolean;
 }
 
 type ViewerQualityEvidence = Extract<
@@ -170,7 +169,6 @@ export function ViewerPage({
   viewerGrant,
   invalidGrant = false,
   launchedByClient = false,
-  connectionAttemptProgress4 = false,
 }: ViewerPageProps) {
   const { lang, t, vis, titleFrames } = useCopy();
   const viewerClientId = useMemo(
@@ -576,7 +574,6 @@ export function ViewerPage({
           : {}),
         displayName: displayNameRef.current,
         viewerPresence: true,
-        ...(connectionAttemptProgress4 ? { connectionAttemptProgress4: true } : {}),
       },
       {
         onStatus: (status) => {
@@ -1844,7 +1841,7 @@ export function ViewerPage({
       viewerRelaySourceKey = null;
       releaseNativeClient();
     };
-  }, [roomId, viewerGrant, viewerPasswordAttempt, launchedByClient, connectionAttemptProgress4]);
+  }, [roomId, viewerGrant, viewerPasswordAttempt, launchedByClient]);
 
   useEffect(() => {
     const video = videoRef.current;

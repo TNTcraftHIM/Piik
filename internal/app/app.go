@@ -633,6 +633,8 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 			},
 			MaxVideoPixels:               nativecapture.MaxVideoPixels,
 			MaxVideoMacroblocksPerSecond: nativecapture.MaxVideoMacroblocksPerSecond,
+			MaxVideoFramerate:            nativecapture.MaxVideoFramerate,
+			MaxVideoBitrate:              nativecapture.MaxVideoBitrate,
 			MaxAudioBitrate:              nativeaudio.MaxSendBitrate,
 			ReceiverReuse:                true,
 			Video:                        summary.Video,

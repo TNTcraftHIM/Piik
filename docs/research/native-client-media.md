@@ -588,7 +588,7 @@ presets. A source ceiling must also yield a valid half-size output. Bitrate and
 output-count bounds remain unchanged. Candidate signaling and Native control now carry numeric
 width/height ceilings, with custom input beside the existing UI shortcuts.
 Descriptive wire bounds are independent of the current implementation maximum;
-App discovery advertises axis, pixel-count and macroblock-rate limits, and Native rejects unsupported
+App discovery advertises size, pixel-count, macroblock-rate, frame-rate and bitrate limits, and Native rejects unsupported
 size/rate combinations as operation failures without retiring the control
 session. Removing an enum is not permission to allocate arbitrary media resources.
 
@@ -706,7 +706,7 @@ ceilings without a fixed aspect ratio or rotation listener, following the Media
 Capture distinction below. Synthetic devices do not establish physical phone
 orientation behavior.
 
-The proposed boundary follows the
+The boundary follows the
 [Media Capture specification](https://www.w3.org/TR/mediacapture-streams/#constrainable-interface):
 requested constraints, supported capabilities and actual settings have different
 owners. Capability ranges cannot describe every combination of resolution and
@@ -714,7 +714,27 @@ frame rate; [WebRTC codec discovery](https://www.w3.org/TR/webrtc/#rtcrtpsender-
 is optimistic and reserves no hardware resources. An advertised capability is
 therefore not proof that a particular encoder configuration can start.
 
-| Meaning | Proposed Piik owner and representation |
+Wire representation follows the platform types for dimensions/bitrates and a
+positive finite frame rate; current capture admission remains narrower. This
+allows a reader to reject an unsupported operation without rejecting its room
+or control session. Fractional rates must not be silently truncated by Native's
+integer capture API. SFU metadata passes the same representation boundary and
+then its existing bounded admission before allocation. Capability descriptions
+may exceed local support, but cannot authorize larger local allocations.
+This separation also appears in
+[mediasoup RTP parameters and capabilities](https://mediasoup.org/documentation/v3/mediasoup/rtp-parameters-and-capabilities/).
+
+[WebRTC statistics](https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-availableoutgoingbitrate)
+describe estimated available capacity, not a configured send-rate ceiling;
+[Pion exposes it as a floating-point observation](https://github.com/pion/ice/blob/main/stats.go).
+Local in-memory Native control checks reproduced a 100 Mbps observation ceiling
+closing the entire connection. The corrected readers preserve high valid
+estimates, normalize invalid optional measurements and discard invalid quality
+samples without granting them control authority. Shared Go/TypeScript fixtures
+also cover sender, publication and receiver evidence. This establishes boundary
+behavior, not the cause of an unmatched field report or an improvement to ICE.
+
+| Meaning | Piik owner and representation |
 | --- | --- |
 | Quick presets | UI-local labels mapping to numeric picture/audio requests; adding a label does not extend the wire |
 | Host intent | One validated numeric size, frame-rate and bitrate request, distinct from measured output |

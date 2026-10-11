@@ -137,6 +137,12 @@ Width and height form one applied edit. A size change caps the requested frame
 rate in the same quality operation when the larger size requires a lower limit.
 Larger wire-valid requests do not
 authorize an adapter to exceed its local capture, codec or allocation limits.
+Numeric requests use representational bounds rather than the current control
+ranges. Current capture still admits integer 15..60 fps and 2..12 Mbps, further
+limited by picture size. App descriptions may advertise stronger capabilities;
+controls use their intersection with local support. An unsupported request is
+an operation failure, not malformed signaling. An unsupported saved preference
+does not seed capture or overwrite its stored value with a fallback.
 Frame rate, bitrate, and `maintain-resolution | balanced |
 maintain-framerate` retain their controls. Display video uses the standard
 `contentHint = "motion"` for game motion.
@@ -157,10 +163,17 @@ Level 5.1: 983,040 16x16 macroblocks per second, with at most 60 fps. This admit
 landscape/portrait 4K30 and existing 1440p60, not 4K60. Decoder alignment has a
 separate coded-storage bound; reference-picture storage is bounded before
 Native derivation. These are admission limits, not a device performance promise.
-App discovery reports axis, pixel-count and output-rate limits through the
+App discovery reports size, pixel-count, frame-rate and bitrate limits through the
 existing native health description. Controls use the intersection with local
 implementation limits; a remote claim cannot raise those limits. Whole-route
 and physical-device acceptance remain separate from available controls.
+
+Quality observations have independent numeric bounds. A valid capacity estimate
+above the requested send rate remains evidence; invalid optional measurements
+become unavailable. Invalid Native quality samples are discarded without closing
+media control. Required identity, generation and state evidence must still pass
+before a sample can influence route decisions. SFU encoding descriptions likewise
+do not grant resources: the SFU admits supported formats before allocating them.
 
 Framework-driven downscaling under bandwidth or device pressure is valid within
 the selected degradation preference. A low decoded resolution alone is not a

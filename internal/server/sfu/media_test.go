@@ -30,6 +30,25 @@ func TestMediaOnePublicationTwoSubscribersAndExactRetirement(t *testing.T) {
 	}
 }
 
+func TestUnsupportedPublicationDescriptionDoesNotAllocate(t *testing.T) {
+	service := NewMedia(MediaOptions{})
+	defer service.Close()
+	fence := ResourceFence{RoomID: "1234", ShareGeneration: "share_12345678", PublicationGeneration: "publication_12345678"}
+	for _, format := range []forwarding.LayerFormat{
+		{Width: 32768, Height: 32768, Bitrate: 5_000_000},
+		{Width: 1920, Height: 1080, Bitrate: 200_000_000},
+		{Width: 0xffff_ffff, Height: 0xffff_ffff, Bitrate: 0xffff_ffff},
+	} {
+		metadata := PublicationMedia{Codec: "vp8", RIDs: []string{""}, Formats: []forwarding.LayerFormat{format}}
+		if err := service.PreparePublication(fence, "publisher_12345678", metadata); err == nil {
+			t.Fatal("unsupported format was admitted")
+		}
+		if service.HasPublication(fence, "publisher_12345678") {
+			t.Fatal("unsupported format allocated a publication")
+		}
+	}
+}
+
 func TestMediaDemandBootstrapsWaitingSubscriberAndStopsAfterExactClose(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()

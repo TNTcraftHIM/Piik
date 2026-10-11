@@ -756,6 +756,13 @@ export class NativeClient {
     }
     const event = nativeEventSchema.safeParse(value);
     if (!event.success) {
+      // A rejected observation has no control authority. Drop it without
+      // retiring healthy media; its identity/state must still pass to be used.
+      if (value && typeof value === "object" && "type" in value &&
+        (value.type === "edge-quality" || value.type === "publication-quality")) {
+        debugError("native", "quality-sample-invalid", event.error);
+        return;
+      }
       debugError("native", "protocol-failed", event.error, { stage: "event-invalid" });
       this.failConnection();
       return;

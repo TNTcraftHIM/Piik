@@ -2,6 +2,7 @@ import {
   DEFAULT_QUALITY_SETTINGS,
   MIN_AUDIO_BITRATE,
   MAX_AUDIO_BITRATE,
+  qualitySettingsSchema,
   type DegradationPreference,
   type QualityResolution,
   type QualitySettings,
@@ -22,10 +23,14 @@ export type {
 
 export type QualityProfile = QualitySettings;
 export const STARTUP_VIDEO_ENCODED_FRAMES = 5;
+export const MIN_VIDEO_FRAMERATE = 15;
+export const MIN_VIDEO_BITRATE = 2_000_000;
 export interface VideoCaptureLimits {
   maxVideoResolution: QualityResolution;
   maxVideoPixels: number;
   maxVideoMacroblocksPerSecond: number;
+  maxVideoFramerate: number;
+  maxVideoBitrate: number;
 }
 
 // Current output boundary, independent of descriptive wire bounds and UI presets.
@@ -34,6 +39,8 @@ export const VIDEO_CAPTURE_LIMITS: VideoCaptureLimits = {
   maxVideoResolution: { width: 3840, height: 3840 },
   maxVideoPixels: 3840 * 2160,
   maxVideoMacroblocksPerSecond: 983_040,
+  maxVideoFramerate: 60,
+  maxVideoBitrate: 12_000_000,
 };
 
 export function videoCaptureLimits(advertised?: Partial<VideoCaptureLimits>): VideoCaptureLimits {
@@ -46,6 +53,8 @@ export function videoCaptureLimits(advertised?: Partial<VideoCaptureLimits>): Vi
     maxVideoPixels: Math.min(local.maxVideoPixels, advertised?.maxVideoPixels ?? local.maxVideoPixels),
     maxVideoMacroblocksPerSecond: Math.min(local.maxVideoMacroblocksPerSecond,
       advertised?.maxVideoMacroblocksPerSecond ?? local.maxVideoMacroblocksPerSecond),
+    maxVideoFramerate: Math.min(local.maxVideoFramerate, advertised?.maxVideoFramerate ?? local.maxVideoFramerate),
+    maxVideoBitrate: Math.min(local.maxVideoBitrate, advertised?.maxVideoBitrate ?? local.maxVideoBitrate),
   };
 }
 
@@ -53,8 +62,21 @@ export function captureFramerateCeiling(size: QualityResolution, limits = VIDEO_
   if (![size.width, size.height].every(value => Number.isInteger(value) && value >= 4 && value % 2 === 0)
     || size.width > limits.maxVideoResolution.width || size.height > limits.maxVideoResolution.height
     || size.width * size.height > limits.maxVideoPixels) return 0;
-  return Math.min(60, Math.floor(limits.maxVideoMacroblocksPerSecond /
+  return Math.floor(Math.min(limits.maxVideoFramerate, limits.maxVideoMacroblocksPerSecond /
     (Math.ceil(size.width / 16) * Math.ceil(size.height / 16))));
+}
+
+export function supportsCaptureProfile(profile: QualityProfile, limits = VIDEO_CAPTURE_LIMITS,
+  maxAudioBitrate = MAX_SCREEN_AUDIO_BITRATE): boolean {
+  return qualitySettingsSchema.safeParse(profile).success &&
+    Number.isInteger(profile.maxFramerate) && profile.maxFramerate >= MIN_VIDEO_FRAMERATE &&
+    profile.maxFramerate <= captureFramerateCeiling(profile.resolution, limits) &&
+    profile.maxBitrate >= MIN_VIDEO_BITRATE && profile.maxBitrate <= limits.maxVideoBitrate &&
+    screenAudioBitrate(profile.maxAudioBitrate) <= maxAudioBitrate;
+}
+
+function requireCaptureProfile(profile: QualityProfile): void {
+  if (!supportsCaptureProfile(profile)) throw new Error("Capture quality is not supported by this implementation");
 }
 
 export const QUALITY_PROFILES = {
@@ -211,6 +233,7 @@ export function qualitySettingsLabel(settings: QualitySettings): string {
 }
 
 function captureConstraints(profile: QualityProfile): MediaTrackConstraints {
+  requireCaptureProfile(profile);
   const resolution = profile.resolution;
   return {
     // A ceiling must not ask the Browser to fill both axes by cropping a source.
@@ -261,6 +284,7 @@ export type BrowserCaptureSource = "browser" | "camera";
 
 export async function captureBrowserSource(profile: QualityProfile, source: BrowserCaptureSource, deviceId = ""): Promise<MediaStream> {
   if (source !== "camera") return captureDisplay(profile);
+  requireCaptureProfile(profile);
   const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
     video: cameraCaptureConstraints(profile.resolution, profile.maxFramerate, deviceId) });
   const track = stream.getVideoTracks()[0];

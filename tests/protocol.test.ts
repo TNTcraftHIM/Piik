@@ -51,17 +51,6 @@ const qualitySettings = {
 } as const;
 
 describe("runtime capabilities", () => {
-  it("keeps progress opt-in optional and strict for either signaling role", () => {
-    for (const role of ["host", "viewer"] as const) {
-      const identity = { type: "authenticate", protocol: SIGNALING_PROTOCOL, roomId,
-        clientId: "client_12345678", role, ...(role === "host" ? { token } : {}) };
-      expect(clientMessageSchema.safeParse(identity).success).toBe(true);
-      for (const connectionAttemptProgress4 of [true, false, null, 4, "true"]) {
-        expect(clientMessageSchema.safeParse({ ...identity, connectionAttemptProgress4 }).success)
-          .toBe(connectionAttemptProgress4 === true);
-      }
-    }
-  });
   it("defaults missing capabilities off and ignores unknown descriptors", () => {
     expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false, roomInteractions: false, hostRoomSession: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, extra: { enabled: true } }))
@@ -70,8 +59,6 @@ describe("runtime capabilities", () => {
       .toEqual({ sfu: false, natPrediction: true, roomInteractions: false, hostRoomSession: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, natPrediction: true }))
       .toEqual({ sfu: true, natPrediction: true, roomInteractions: false, hostRoomSession: false });
-    expect(runtimeCapabilitiesSchema.parse({ connectionAttemptProgress4: true }))
-      .toEqual({ sfu: false, natPrediction: false, connectionAttemptProgress4: true, roomInteractions: false, hostRoomSession: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, sfuOnly: true }).sfuOnly).toBe(true);
 
   });
@@ -79,7 +66,7 @@ describe("runtime capabilities", () => {
   it("rejects malformed known capabilities and non-object responses", () => {
     for (const value of [null, [], true, { sfu: null }, { sfu: "true" },
       { natPrediction: null }, { natPrediction: 1 }, { sfuOnly: null }, { sfuOnly: "true" },
-      { connectionAttemptProgress4: null }, { connectionAttemptProgress4: 4 }]) {
+    ]) {
       expect(runtimeCapabilitiesSchema.safeParse(value).success).toBe(false);
     }
   });
@@ -138,6 +125,23 @@ const qualityEvidence = {
 } as const;
 
 describe("client signaling protocol", () => {
+  it("keeps full observations with wide numeric values within the message budget", () => {
+    for (const floating of [Number.MAX_SAFE_INTEGER, 1.2345678901234567e-100]) {
+      const metrics = Object.fromEntries(Object.entries(qualityEvidence.metrics).map(([key, value]) => [key,
+        typeof value !== "number" ? value : key.endsWith("Percent") ? 99.99999999999999 :
+          ["width", "height", "packetsReceivedDelta", "packetsLostDelta", "framesDecodedDelta",
+            "framesDroppedDelta", "freezeCountDelta", "pauseCountDelta", "audioConcealmentEventsDelta"].includes(key)
+            ? Number.MAX_SAFE_INTEGER : floating,
+      ]));
+      const message = { ...qualityEvidence, sequence: Number.MAX_SAFE_INTEGER,
+        guard: { connectionId: "a".repeat(128), routeRevision: MAX_MEDIA_ROUTE_REVISION,
+          presentationEpoch: Number.MAX_SAFE_INTEGER },
+        metrics: { ...metrics, audioCodec: `audio/${"a".repeat(32)}` } };
+      expect(clientMessageSchema.safeParse(message).success).toBe(true);
+      expect(Buffer.byteLength(JSON.stringify(message))).toBeLessThanOrEqual(MAX_VIEWER_QUALITY_EVIDENCE_BYTES);
+    }
+  });
+
   it("uses the current strict signaling generation", () => {
     expect(SIGNALING_PROTOCOL).toBe("piik-v24");
   });
@@ -752,7 +756,7 @@ describe("client signaling protocol", () => {
     ).toBe(false);
   });
 
-  it("accepts only strict, bounded quality settings", () => {
+  it("separates numeric requests from capture implementation limits", () => {
     expect(DEFAULT_QUALITY_SETTINGS).not.toHaveProperty("videoCodec");
     expect(
       clientMessageSchema.safeParse({
@@ -782,13 +786,23 @@ describe("client signaling protocol", () => {
         }).success,
       ).toBe(true);
     }
-    for (const invalid of [
-      { ...qualitySettings, resolution: "2160p" },
+    for (const next of [
+      { ...qualitySettings, resolution: { width: 16384, height: 8192 } },
+      { ...qualitySettings, resolution: { width: 1921, height: 1081 } },
       { ...qualitySettings, maxFramerate: 14 },
       { ...qualitySettings, maxFramerate: 61 },
       { ...qualitySettings, maxFramerate: 30.5 },
       { ...qualitySettings, maxBitrate: 1_999_999 },
       { ...qualitySettings, maxBitrate: 12_000_001 },
+    ]) expect(clientMessageSchema.safeParse({ type: "set-quality-settings", qualitySettings: next }).success).toBe(true);
+    for (const invalid of [
+      { ...qualitySettings, resolution: "2160p" },
+      { ...qualitySettings, resolution: { width: 0x1_0000_0000, height: 1080 } },
+      { ...qualitySettings, maxFramerate: 0 },
+      { ...qualitySettings, maxFramerate: Infinity },
+      { ...qualitySettings, maxFramerate: Number.MAX_SAFE_INTEGER + 1 },
+      { ...qualitySettings, maxBitrate: 0 },
+      { ...qualitySettings, maxBitrate: 0x1_0000_0000 },
       { ...qualitySettings, maxBitrate: 5_000_000.5 },
       { ...qualitySettings, degradationPreference: "automatic" },
       legacyCodecQualitySettings,
@@ -1543,7 +1557,7 @@ describe("server signaling protocol", () => {
     expect(
       serverMessageSchema.safeParse({
         ...peerAssisted,
-        qualitySettings: { ...qualitySettings, maxBitrate: 20_000_000 },
+        qualitySettings: { ...qualitySettings, maxBitrate: 0x1_0000_0000 },
       }).success,
     ).toBe(false);
     const missingMode = {
@@ -1575,7 +1589,7 @@ describe("server signaling protocol", () => {
       childPeerId: "child_12345678", connectionId: "connection_12345678",
       transport: "direct", qualityProbe: false,
     };
-    for (const total of [3, 4]) {
+    for (const total of [1, 3, 4, 5, 20]) {
       for (let current = 1; current <= total; current++) {
         expect(preparedRouteCandidateSchema.safeParse({
           ...candidate, connectionAttempt: { current, total },
@@ -1584,7 +1598,7 @@ describe("server signaling protocol", () => {
     }
     for (const connectionAttempt of [
       { current: 0, total: 3 }, { current: 4, total: 3 },
-      { current: 5, total: 4 }, { current: 1, total: 5 }, { current: 1.5, total: 3 },
+      { current: 5, total: 4 }, { current: 1, total: 0 }, { current: 1, total: Number.MAX_SAFE_INTEGER + 1 }, { current: 1.5, total: 3 },
     ]) {
       expect(preparedRouteCandidateSchema.safeParse({
         ...candidate, connectionAttempt,

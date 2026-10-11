@@ -76,6 +76,8 @@ type NativeMediaCapabilities struct {
 	MaxVideoResolution           protocol.QualityResolution `json:"maxVideoResolution,omitzero"`
 	MaxVideoPixels               int                        `json:"maxVideoPixels,omitempty"`
 	MaxVideoMacroblocksPerSecond int                        `json:"maxVideoMacroblocksPerSecond,omitempty"`
+	MaxVideoFramerate            int                        `json:"maxVideoFramerate,omitempty"`
+	MaxVideoBitrate              int                        `json:"maxVideoBitrate,omitempty"`
 	MaxAudioBitrate              int                        `json:"maxAudioBitrate,omitempty"`
 	ReceiverReuse                bool                       `json:"receiverReuse,omitempty"`
 	Video                        bool                       `json:"video"`

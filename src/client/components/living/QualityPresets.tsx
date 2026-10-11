@@ -2,7 +2,8 @@ import { Fragment, useRef } from "react";
 import { MIN_AUDIO_BITRATE } from "../../../shared/protocol";
 import {
   QUALITY_PROFILES, QUALITY_PROFILE_KEYS, QUALITY_RESOLUTIONS, qualityResolutionEqual,
-  captureFramerateCeiling, VIDEO_CAPTURE_LIMITS, type VideoCaptureLimits, type QualityProfileId, type QualityResolution,
+  captureFramerateCeiling, supportsCaptureProfile, MIN_VIDEO_FRAMERATE,
+  VIDEO_CAPTURE_LIMITS, type VideoCaptureLimits, type QualityProfileId, type QualityResolution,
   SCREEN_AUDIO_BITRATES, type ScreenAudioPreset,
 } from "../../media/quality";
 import { useCopy, type CopyKey } from "../../ui/copy";
@@ -27,7 +28,7 @@ export function QualityPresets({ selected, limits = VIDEO_CAPTURE_LIMITS, disabl
         text={vis ? undefined : t("host.quality.title", { label: caption, mbps: (profile.maxBitrate / 1_000_000).toFixed(0) })}>
         <button type="button" className={`lr-tile${selected === id ? " is-selected" : ""}`}
           aria-pressed={selected === id} aria-label={caption}
-          disabled={disabled || profile.maxFramerate > captureFramerateCeiling(profile.resolution, limits)} onClick={() => onSelect(id)}>
+          disabled={disabled || !supportsCaptureProfile(profile, limits)} onClick={() => onSelect(id)}>
           <QualityTileGlyph resolution={`${profile.resolution.height}p`} framerate={profile.maxFramerate} />
           <small>{vis ? `${profile.resolution.height}·${profile.maxFramerate}` : caption}</small>
         </button>
@@ -56,7 +57,7 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
       return;
     }
     const next = { width: width.valueAsNumber, height: height.valueAsNumber };
-    if (captureFramerateCeiling(next, limits) < 15) {
+    if (captureFramerateCeiling(next, limits) < MIN_VIDEO_FRAMERATE) {
       reset(container);
       return;
     }
@@ -76,7 +77,7 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
     <div className="lr-row-group" role="group" aria-label={t("host.advanced.resolution")}>
       {Object.entries(QUALITY_RESOLUTIONS).map(([label, resolution]) => <Chip key={label}
         selected={qualityResolutionEqual(value, resolution)}
-        disabled={disabled || captureFramerateCeiling(resolution, limits) < 15}
+        disabled={disabled || captureFramerateCeiling(resolution, limits) < MIN_VIDEO_FRAMERATE}
         title={label} hint="hint-quality" onClick={() => {
           // Selecting even the current preset replaces an unsubmitted draft.
           reset(controls.current!);

@@ -27,12 +27,12 @@ func (value *SfuMedia) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if !enumOf(value.Codec, "h264", "vp8") || len(value.Layers) < 1 || len(value.Layers) > 3 ||
-		!inRangeInt(value.AudioBitrate, 0, 510_000) || value.Audio && value.AudioBitrate == 0 {
+		!inRangeInt(value.AudioBitrate, 0, MaxAudioBitrate) || value.Audio && value.AudioBitrate == 0 {
 		return errors.New("invalid SFU media")
 	}
 	for index, layer := range value.Layers {
 		if len(layer.RID) > 16 || layer.RID == "" && len(value.Layers) != 1 ||
-			!inRangeInt(layer.Width, 1, 8192) || !inRangeInt(layer.Height, 1, 8192) || !inRangeInt(layer.Bitrate, 1, 100_000_000) {
+			!inRangeInt(layer.Width, 1, 0xffff_ffff) || !inRangeInt(layer.Height, 1, 0xffff_ffff) || !inRangeInt(layer.Bitrate, 1, 0xffff_ffff) {
 			return errors.New("invalid SFU layer")
 		}
 		for _, previous := range value.Layers[:index] {

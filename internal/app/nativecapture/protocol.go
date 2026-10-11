@@ -18,6 +18,7 @@ const (
 	MaxVideoDimension            = 3840
 	MaxVideoPixels               = 3840 * 2160
 	MaxVideoMacroblocksPerSecond = 983_040
+	MaxVideoFramerate            = 60
 	// Coded pictures may include alignment outside the visible crop. Keep this
 	// separate from visible dimensions and within H.264 Level 5.1 storage.
 	MaxCodedVideoDimension = 4096
@@ -34,7 +35,7 @@ func ValidVideoSize(width, height uint32) bool {
 // ValidVideoFormat keeps both current encoders within the shared receive
 // ceiling (H.264 Level 5.1), including non-preset shapes and frame rates.
 func ValidVideoFormat(width, height, framerate uint32) bool {
-	return ValidVideoSize(width, height) && framerate >= 1 && framerate <= 60 &&
+	return ValidVideoSize(width, height) && framerate >= 1 && framerate <= MaxVideoFramerate &&
 		uint64((width+15)/16)*uint64((height+15)/16)*uint64(framerate) <= MaxVideoMacroblocksPerSecond
 }
 

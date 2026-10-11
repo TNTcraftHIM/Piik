@@ -11,6 +11,7 @@ import {
   type ViewerQualityEvidenceMetrics,
 } from "../../shared/protocol";
 import { packetLossPercentFromDeltas } from "../../shared/packet-loss";
+import { boundedNumber, boundedInteger, boundedSignedNumber } from "../../shared/quality-evidence";
 import {
   EMPTY_METRICS,
   type ConnectionMetrics,
@@ -41,29 +42,6 @@ type ViewerQualityEvidenceWindow = Pick<
   "windowMs" | "metrics"
 >;
 
-function boundedNumber(value: number | null, maximum: number): number | null {
-  return value !== null && Number.isFinite(value) && value >= 0 && value <= maximum
-    ? value
-    : null;
-}
-
-function boundedSignedNumber(
-  value: number | null,
-  absoluteMaximum: number,
-): number | null {
-  return value !== null &&
-    Number.isFinite(value) &&
-    Math.abs(value) <= absoluteMaximum
-    ? value
-    : null;
-}
-
-function boundedInteger(value: number | null, maximum: number): number | null {
-  return value !== null && Number.isInteger(value) && value >= 0 && value <= maximum
-    ? value
-    : null;
-}
-
 function boundedString(
   value: string | null,
   maximumLength: number,
@@ -87,8 +65,8 @@ export function qualityEvidenceWindowFromMetrics(
     return null;
   }
 
-  const boundedWidth = boundedInteger(metrics.frameWidth, 16_384);
-  const boundedHeight = boundedInteger(metrics.frameHeight, 16_384);
+  const boundedWidth = boundedInteger(metrics.frameWidth);
+  const boundedHeight = boundedInteger(metrics.frameHeight);
   const width = boundedWidth !== null && boundedWidth >= 1 ? boundedWidth : null;
   const height =
     boundedHeight !== null && boundedHeight >= 1 ? boundedHeight : null;
@@ -99,40 +77,19 @@ export function qualityEvidenceWindowFromMetrics(
   const candidate: ViewerQualityEvidenceMetrics = {
     natTraversalPath: metrics.natTraversalPath,
     ...dimensions,
-    framesPerSecond: boundedNumber(metrics.framesPerSecond, 240),
-    bitrateKbps: boundedNumber(metrics.bitrateKbps, 100_000),
-    packetsReceivedDelta: boundedInteger(
-      metrics.intervalPacketsReceived,
-      1_000_000,
-    ),
-    packetsLostDelta: boundedInteger(metrics.intervalPacketsLost, 1_000_000),
-    rttMs: boundedNumber(metrics.rttMs, 60_000),
-    jitterMs: boundedNumber(metrics.jitterMs, 60_000),
-    framesDecodedDelta: boundedInteger(
-      metrics.intervalFramesDecoded,
-      10_000,
-    ),
-    framesDroppedDelta: boundedInteger(
-      metrics.intervalFramesDropped,
-      10_000,
-    ),
-    decodeMsPerFrame: boundedNumber(metrics.intervalDecodeMs, 60_000),
-    freezeCountDelta: boundedInteger(
-      metrics.intervalFreezeCount,
-      Number.MAX_SAFE_INTEGER,
-    ),
-    freezeDurationMsDelta: boundedNumber(
-      metrics.intervalFreezeDurationMs,
-      Number.MAX_SAFE_INTEGER,
-    ),
-    pauseCountDelta: boundedInteger(
-      metrics.intervalPauseCount,
-      Number.MAX_SAFE_INTEGER,
-    ),
-    pauseDurationMsDelta: boundedNumber(
-      metrics.intervalPauseDurationMs,
-      Number.MAX_SAFE_INTEGER,
-    ),
+    framesPerSecond: boundedNumber(metrics.framesPerSecond),
+    bitrateKbps: boundedNumber(metrics.bitrateKbps),
+    packetsReceivedDelta: boundedInteger(metrics.intervalPacketsReceived),
+    packetsLostDelta: boundedInteger(metrics.intervalPacketsLost),
+    rttMs: boundedNumber(metrics.rttMs),
+    jitterMs: boundedNumber(metrics.jitterMs),
+    framesDecodedDelta: boundedInteger(metrics.intervalFramesDecoded),
+    framesDroppedDelta: boundedInteger(metrics.intervalFramesDropped),
+    decodeMsPerFrame: boundedNumber(metrics.intervalDecodeMs),
+    freezeCountDelta: boundedInteger(metrics.intervalFreezeCount),
+    freezeDurationMsDelta: boundedNumber(metrics.intervalFreezeDurationMs),
+    pauseCountDelta: boundedInteger(metrics.intervalPauseCount),
+    pauseDurationMsDelta: boundedNumber(metrics.intervalPauseDurationMs),
     codec: boundedString(
       metrics.codec,
       64,
@@ -148,32 +105,20 @@ export function qualityEvidenceWindowFromMetrics(
       128,
       /^[a-z0-9-]+=[a-z0-9]+(?:; [a-z0-9-]+=[a-z0-9]+)*$/,
     ),
-    audioBitrateKbps: boundedNumber(metrics.audioBitrateKbps, 10_000),
+    audioBitrateKbps: boundedNumber(metrics.audioBitrateKbps),
     audioPacketLossPercent: boundedNumber(
       metrics.audioPacketLossPercent,
       100,
     ),
-    audioJitterMs: boundedNumber(metrics.audioJitterMs, 60_000),
-    audioVideoPlayoutDeltaMs: boundedSignedNumber(
-      metrics.audioVideoPlayoutDeltaMs,
-      60_000,
-    ),
-    videoJitterBufferDelayMs: boundedNumber(
-      metrics.videoJitterBufferDelayMs,
-      60_000,
-    ),
-    audioJitterBufferDelayMs: boundedNumber(
-      metrics.audioJitterBufferDelayMs,
-      60_000,
-    ),
+    audioJitterMs: boundedNumber(metrics.audioJitterMs),
+    audioVideoPlayoutDeltaMs: boundedSignedNumber(metrics.audioVideoPlayoutDeltaMs),
+    videoJitterBufferDelayMs: boundedNumber(metrics.videoJitterBufferDelayMs),
+    audioJitterBufferDelayMs: boundedNumber(metrics.audioJitterBufferDelayMs),
     audioConcealedSamplesPercent: boundedNumber(
       metrics.audioConcealedSamplesPercent,
       100,
     ),
-    audioConcealmentEventsDelta: boundedInteger(
-      metrics.intervalAudioConcealmentEvents,
-      10_000,
-    ),
+    audioConcealmentEventsDelta: boundedInteger(metrics.intervalAudioConcealmentEvents),
     audioCodec: boundedString(
       metrics.audioCodec,
       64,

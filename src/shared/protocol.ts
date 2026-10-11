@@ -174,10 +174,12 @@ export const roleSchema = z.enum(["host", "viewer"]);
 export type Role = z.infer<typeof roleSchema>;
 
 // Describes a requested ceiling, not encoder availability or an allocation.
-// Match the existing media-description bound; adapters retain their own limits.
+// WebRTC uses unsigned-long dimensions/bitrates and a double frame rate.
+// Alignment, usable ranges and allocation budgets belong to the media adapter.
+export const positiveUint32Schema = z.number().int().positive().max(0xffff_ffff);
 export const qualityResolutionSchema = z.object({
-  width: z.number().int().min(4).max(8192).multipleOf(2),
-  height: z.number().int().min(4).max(8192).multipleOf(2),
+  width: positiveUint32Schema,
+  height: positiveUint32Schema,
 }).strict();
 export type QualityResolution = z.infer<typeof qualityResolutionSchema>;
 
@@ -197,8 +199,8 @@ export const maxAudioBitrateSchema = z.number().int().min(MIN_AUDIO_BITRATE).max
 export const qualitySettingsSchema = z
   .object({
     resolution: qualityResolutionSchema,
-    maxFramerate: z.number().int().min(15).max(60),
-    maxBitrate: z.number().int().min(2_000_000).max(12_000_000),
+    maxFramerate: z.number().positive().max(Number.MAX_SAFE_INTEGER),
+    maxBitrate: positiveUint32Schema,
     degradationPreference: degradationPreferenceSchema,
     maxAudioBitrate: maxAudioBitrateSchema.optional(),
   })
@@ -227,7 +229,6 @@ export const DEFAULT_ROUTE_POLICY = {
 } as const satisfies RoutePolicy;
 
 export const runtimeCapabilitiesSchema = z.object({
-  connectionAttemptProgress4: z.boolean().optional(),
   sfu: z.boolean().default(false),
   sfuOnly: z.boolean().optional(),
   natPrediction: z.boolean().default(false),
@@ -345,12 +346,12 @@ export const sfuMediaSchema = z.object({
   codec: z.enum(["h264", "vp8"]),
   layers: z.array(z.object({
     rid: z.string().max(16),
-    width: z.number().int().min(1).max(8192),
-    height: z.number().int().min(1).max(8192),
-    bitrate: z.number().int().min(1).max(100_000_000),
+    width: positiveUint32Schema,
+    height: positiveUint32Schema,
+    bitrate: positiveUint32Schema,
   }).strict()).min(1).max(3),
   audio: z.boolean(),
-  audioBitrate: z.number().int().min(0).max(510_000),
+  audioBitrate: z.number().int().min(0).max(MAX_AUDIO_BITRATE),
 }).strict().refine((media) =>
   (!media.audio || media.audioBitrate > 0) &&
   new Set(media.layers.map((layer) => layer.rid)).size === media.layers.length &&
@@ -385,8 +386,8 @@ export const preparedRouteCandidateSchema = z
     transport: z.enum(["direct", "sfu"]),
     qualityProbe: z.boolean(),
     connectionAttempt: z.object({
-      current: z.number().int().min(1).max(4),
-      total: z.union([z.literal(3), z.literal(4)]),
+      current: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      total: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     }).strict().refine(({ current, total }) => current <= total).optional(),
   })
   .strict();
@@ -602,17 +603,14 @@ const nullableEvidenceNumber = (maximum: number) =>
 const nullableSignedEvidenceNumber = (absoluteMaximum: number) =>
   z.number().finite().min(-absoluteMaximum).max(absoluteMaximum).nullable();
 
-const nullableEvidenceInteger = (maximum: number) =>
-  z.number().int().min(0).max(maximum).nullable();
-
-const nullableSafeEvidenceNumber = z
+export const nullableSafeEvidenceNumber = z
   .number()
   .finite()
   .min(0)
   .max(Number.MAX_SAFE_INTEGER)
   .nullable();
 
-const nullableSafeEvidenceInteger = z
+export const nullableSafeEvidenceInteger = z
   .number()
   .int()
   .min(0)
@@ -622,17 +620,17 @@ const nullableSafeEvidenceInteger = z
 export const viewerQualityEvidenceMetricsSchema = z
   .object({
     natTraversalPath: z.enum(NAT_TRAVERSAL_PATHS),
-    width: z.number().int().min(1).max(16_384).nullable(),
-    height: z.number().int().min(1).max(16_384).nullable(),
-    framesPerSecond: nullableEvidenceNumber(240),
-    bitrateKbps: nullableEvidenceNumber(100_000),
-    packetsReceivedDelta: nullableEvidenceInteger(1_000_000),
-    packetsLostDelta: nullableEvidenceInteger(1_000_000),
-    rttMs: nullableEvidenceNumber(60_000),
-    jitterMs: nullableEvidenceNumber(60_000),
-    framesDecodedDelta: nullableEvidenceInteger(10_000),
-    framesDroppedDelta: nullableEvidenceInteger(10_000),
-    decodeMsPerFrame: nullableEvidenceNumber(60_000),
+    width: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).nullable(),
+    height: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).nullable(),
+    framesPerSecond: nullableSafeEvidenceNumber,
+    bitrateKbps: nullableSafeEvidenceNumber,
+    packetsReceivedDelta: nullableSafeEvidenceInteger,
+    packetsLostDelta: nullableSafeEvidenceInteger,
+    rttMs: nullableSafeEvidenceNumber,
+    jitterMs: nullableSafeEvidenceNumber,
+    framesDecodedDelta: nullableSafeEvidenceInteger,
+    framesDroppedDelta: nullableSafeEvidenceInteger,
+    decodeMsPerFrame: nullableSafeEvidenceNumber,
     freezeCountDelta: nullableSafeEvidenceInteger,
     freezeDurationMsDelta: nullableSafeEvidenceNumber,
     pauseCountDelta: nullableSafeEvidenceInteger,
@@ -652,14 +650,14 @@ export const viewerQualityEvidenceMetricsSchema = z
       .max(128)
       .regex(/^[a-z0-9-]+=[a-z0-9]+(?:; [a-z0-9-]+=[a-z0-9]+)*$/)
       .nullable(),
-    audioBitrateKbps: nullableEvidenceNumber(10_000),
+    audioBitrateKbps: nullableSafeEvidenceNumber,
     audioPacketLossPercent: nullableEvidenceNumber(100),
-    audioJitterMs: nullableEvidenceNumber(60_000),
-    audioVideoPlayoutDeltaMs: nullableSignedEvidenceNumber(60_000),
-    videoJitterBufferDelayMs: nullableEvidenceNumber(60_000),
-    audioJitterBufferDelayMs: nullableEvidenceNumber(60_000),
+    audioJitterMs: nullableSafeEvidenceNumber,
+    audioVideoPlayoutDeltaMs: nullableSignedEvidenceNumber(Number.MAX_SAFE_INTEGER),
+    videoJitterBufferDelayMs: nullableSafeEvidenceNumber,
+    audioJitterBufferDelayMs: nullableSafeEvidenceNumber,
     audioConcealedSamplesPercent: nullableEvidenceNumber(100),
-    audioConcealmentEventsDelta: nullableEvidenceInteger(10_000),
+    audioConcealmentEventsDelta: nullableSafeEvidenceInteger,
     audioCodec: z
       .string()
       .max(64)
@@ -703,20 +701,16 @@ const senderQualityDiagnosticsSchema = z
   .object({
     natTraversalPath: z.enum(NAT_TRAVERSAL_PATHS),
     reason: z.enum(["none", "bandwidth", "cpu"]).nullable(),
-    framesPerSecond: nullableEvidenceNumber(240),
-    bitrateKbps: nullableEvidenceNumber(100_000),
-    captureFramesPerSecond: nullableEvidenceNumber(240).optional(),
-    mediaSourceFramesPerSecond: nullableEvidenceNumber(240).optional(),
-    width: nullableEvidenceInteger(16_384).optional(),
-    height: nullableEvidenceInteger(16_384).optional(),
-    videoEncodingCount: nullableEvidenceInteger(
-      Number.MAX_SAFE_INTEGER,
-    ).optional(),
-    activeVideoEncodingCount: nullableEvidenceInteger(
-      Number.MAX_SAFE_INTEGER,
-    ).optional(),
-    availableOutgoingKbps: nullableEvidenceNumber(100_000).optional(),
-    rttMs: nullableEvidenceNumber(60_000).optional(),
+    framesPerSecond: nullableSafeEvidenceNumber,
+    bitrateKbps: nullableSafeEvidenceNumber,
+    captureFramesPerSecond: nullableSafeEvidenceNumber.optional(),
+    mediaSourceFramesPerSecond: nullableSafeEvidenceNumber.optional(),
+    width: nullableSafeEvidenceInteger.optional(),
+    height: nullableSafeEvidenceInteger.optional(),
+    videoEncodingCount: nullableSafeEvidenceInteger.optional(),
+    activeVideoEncodingCount: nullableSafeEvidenceInteger.optional(),
+    availableOutgoingKbps: nullableSafeEvidenceNumber.optional(),
+    rttMs: nullableSafeEvidenceNumber.optional(),
     packetLossPercent: nullableEvidenceNumber(100).optional(),
   })
   .strict();
@@ -831,7 +825,6 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       qualitySettings: qualitySettingsSchema.optional(),
       routePolicy: routePolicySchema.default(DEFAULT_ROUTE_POLICY),
       viewerPresence: z.literal(true).optional(),
-      connectionAttemptProgress4: z.literal(true).optional(),
       displayName: displayNameSchema.optional(),
     })
     .strict()
@@ -855,7 +848,6 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       viewerPassword: viewerPasswordSchema.optional(),
       displayName: displayNameSchema.optional(),
       viewerPresence: z.literal(true).optional(),
-      connectionAttemptProgress4: z.literal(true).optional(),
     })
     .strict(),
 ]);

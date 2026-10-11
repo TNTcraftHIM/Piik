@@ -643,6 +643,12 @@ func (session *Session) startShare(
 }
 
 func nativeQualityProfile(settings qualitySettings) nativehost.QualityProfile {
+	// The wire can express more than this integer capture API. Never truncate a
+	// fractional rate or wrap a wider value into an apparently supported profile.
+	if settings.MaxFramerate < 1 || settings.MaxFramerate > 0xffff_ffff ||
+		settings.MaxFramerate != protocol.Num(uint32(settings.MaxFramerate)) {
+		return nativehost.QualityProfile{}
+	}
 	audioBitrate := int(settings.MaxAudioBitrate)
 	if audioBitrate == 0 {
 		audioBitrate = int(protocol.DefaultQualitySettings.MaxAudioBitrate)

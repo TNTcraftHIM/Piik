@@ -16,6 +16,21 @@ Git/PRs own completed history.
   Prepare one coherent candidate and stop before publication. Preserve the existing
   product model; evaluate held features against measurable benefit and total complexity
   before accepting a changed contract.
+- [ ] **Linux Portal target identity (#470).** Review of the
+  [contributor fix](https://github.com/TNTcraftHIM/Piik/pull/470) and upstream
+  PipeWire confirms that the current fallback passes a node ID as an object
+  serial. Integrate the fix with attribution, retain serial targeting when
+  available, and use the node-ID selector otherwise. Run the Linux native
+  checks and verify a Portal that omits `pipewire-serial`; this fix is not yet
+  in the candidate.
+- [ ] **Reconcile open PRs with the final candidate.**
+  [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps request and
+  [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the
+  numeric-media candidate; neither PR has been merged. The latter's 4K60 and
+  40 Mbps expansion needs separate evidence and is not accepted scope. Preserve
+  contributor credit and explain the disposition at integration. Rewrite
+  [#459](https://github.com/TNTcraftHIM/Piik/pull/459)'s earlier maintenance scope
+  and compatibility claims around the final 2.0 result before integration.
 - [ ] **Independent Gitee mirror recovery.** Implementation and local acceptance
   are complete. Integrate through the next owner-approved publishing merge and
   verify the separate workflow with its original CI artifacts. Mirror failure
@@ -56,7 +71,12 @@ Implementation needs a concrete useful result within the product model.
 - [ ] **Media parameters and capabilities for 2.0.** Follow the
   [media assessment](./research/native-client-media.md#media-capability-extension-assessment):
   separate UI presets, numeric requests, bounded implementation capabilities and
-  actual output. Numeric audio and video controls are implemented; the assessment
+  actual output. Numeric request, capability and observation boundaries are now
+  separate from implementation admission. Keep receiver, codec/alignment and
+  resource budgets intact; opening an output range still needs end-to-end evidence.
+  Assess higher audio output against packet-duration/size and receiver support;
+  removing the current 320 kbps sender guard alone is not sufficient. Numeric
+  audio and video controls are implemented; the assessment
   owns local capture, codec, derived-output, SFU and bounded mixed-route evidence.
   Remaining receiver acceptance needs physical limited decoders and camera
   orientation behavior, beyond the bounded SDP-limit and mixed-route controls.

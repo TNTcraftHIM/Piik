@@ -5,6 +5,7 @@ import {
 } from "../../shared/protocol";
 import type { PeerSnapshot } from "../types";
 import type { ConnectionMetrics } from "../types";
+import { boundedNumber, boundedInteger } from "../../shared/quality-evidence";
 
 let senderEvidenceGeneration = 0;
 const connectionGenerations = new Map<string, number>();
@@ -50,8 +51,10 @@ function nativeQualityState(
   if (
     (metrics.nativeEdgeQualityState !== "healthy" &&
       metrics.nativeEdgeQualityState !== "degraded") ||
-    metrics.sampleWindowMs === null ||
-    metrics.sampleTimestampMs === null ||
+    metrics.sampleWindowMs === null || !Number.isFinite(metrics.sampleWindowMs) ||
+    metrics.sampleWindowMs < 1_000 || metrics.sampleWindowMs > 5_000 ||
+    boundedNumber(metrics.sampleTimestampMs) === null ||
+    boundedInteger(frames) === null ||
     frames === null ||
     frames <= 0
   ) {
@@ -62,6 +65,22 @@ function nativeQualityState(
     return "unknown";
   }
   return metrics.nativeEdgeQualityState;
+}
+
+function senderDiagnostics(metrics: ConnectionMetrics, state: "unknown" | "healthy" | "degraded") {
+  return {
+    natTraversalPath: metrics.natTraversalPath,
+    reason: state === "unknown" ? null : metrics.qualityLimitationReason,
+    framesPerSecond: boundedNumber(metrics.framesPerSecond),
+    bitrateKbps: boundedNumber(metrics.bitrateKbps),
+    captureFramesPerSecond: boundedNumber(metrics.captureFramesPerSecond),
+    mediaSourceFramesPerSecond: boundedNumber(metrics.mediaSourceFramesPerSecond),
+    width: boundedInteger(metrics.frameWidth),
+    height: boundedInteger(metrics.frameHeight),
+    availableOutgoingKbps: boundedNumber(metrics.availableOutgoingKbps),
+    rttMs: boundedNumber(metrics.rttMs),
+    packetLossPercent: boundedNumber(metrics.packetLossPercent, 100),
+  };
 }
 
 export function senderQualityEvidenceFromSnapshot(
@@ -99,20 +118,7 @@ export function senderQualityEvidenceFromSnapshot(
     sampleTimestampMs,
     routeRevision,
     state,
-    diagnostics: {
-      natTraversalPath: snapshot.metrics.natTraversalPath,
-      reason:
-        state === "unknown" ? null : snapshot.metrics.qualityLimitationReason,
-      framesPerSecond: snapshot.metrics.framesPerSecond,
-      bitrateKbps: snapshot.metrics.bitrateKbps,
-      captureFramesPerSecond: snapshot.metrics.captureFramesPerSecond,
-      mediaSourceFramesPerSecond: snapshot.metrics.mediaSourceFramesPerSecond,
-      width: snapshot.metrics.frameWidth,
-      height: snapshot.metrics.frameHeight,
-      availableOutgoingKbps: snapshot.metrics.availableOutgoingKbps,
-      rttMs: snapshot.metrics.rttMs,
-      packetLossPercent: snapshot.metrics.packetLossPercent,
-    },
+    diagnostics: senderDiagnostics(snapshot.metrics, state),
   });
   if (!parsed.success) {
     return null;
@@ -121,7 +127,7 @@ export function senderQualityEvidenceFromSnapshot(
     if (!emitUnknownOnce(unknownConnections, snapshot.connectionId)) {
       return null;
     }
-    if (rawSampleTimestampMs !== null) {
+    if (rawSampleTimestampMs !== null && boundedNumber(rawSampleTimestampMs) !== null) {
       connectionSampleTimestamps.set(
         snapshot.connectionId,
         rawSampleTimestampMs,
@@ -163,19 +169,9 @@ export function sfuPublisherQualityEvidenceFromMetrics(
     state,
     sampleTimestampMs,
     diagnostics: {
-      natTraversalPath: metrics.natTraversalPath,
-      reason: state === "unknown" ? null : metrics.qualityLimitationReason,
-      framesPerSecond: metrics.framesPerSecond,
-      bitrateKbps: metrics.bitrateKbps,
-      captureFramesPerSecond: metrics.captureFramesPerSecond,
-      mediaSourceFramesPerSecond: metrics.mediaSourceFramesPerSecond,
-      width: metrics.frameWidth,
-      height: metrics.frameHeight,
-      videoEncodingCount: metrics.videoEncodingCount,
-      activeVideoEncodingCount: metrics.activeVideoEncodingCount,
-      availableOutgoingKbps: metrics.availableOutgoingKbps,
-      rttMs: metrics.rttMs,
-      packetLossPercent: metrics.packetLossPercent,
+      ...senderDiagnostics(metrics, state),
+      videoEncodingCount: boundedInteger(metrics.videoEncodingCount),
+      activeVideoEncodingCount: boundedInteger(metrics.activeVideoEncodingCount),
     },
   });
   if (!parsed.success) {
@@ -185,7 +181,7 @@ export function sfuPublisherQualityEvidenceFromMetrics(
     if (!emitUnknownOnce(unknownPublications, publicationGeneration)) {
       return null;
     }
-    if (rawSampleTimestampMs !== null) {
+    if (rawSampleTimestampMs !== null && boundedNumber(rawSampleTimestampMs) !== null) {
       publicationSampleTimestamps.set(
         publicationGeneration,
         rawSampleTimestampMs,

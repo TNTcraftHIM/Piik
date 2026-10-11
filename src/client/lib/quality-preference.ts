@@ -3,6 +3,7 @@ import {
   qualitySettingsSchema,
   type QualitySettings,
 } from "../../shared/protocol";
+import { supportsCaptureProfile } from "../media/quality";
 
 const STORAGE_KEY = "piik:quality-preference:v1";
 
@@ -10,7 +11,7 @@ export function readPreferredQuality(): QualitySettings {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     const result = qualitySettingsSchema.safeParse(stored ? JSON.parse(stored) : null);
-    if (result.success) return result.data;
+    if (result.success && supportsCaptureProfile(result.data)) return result.data;
   } catch {
     // Storage may be unavailable; sharing still works with session settings.
   }

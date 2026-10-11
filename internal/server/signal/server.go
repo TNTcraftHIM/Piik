@@ -699,51 +699,48 @@ func (s *Server) handleMessage(sess *session, encoded []byte) {
 // fields authenticate() and authenticationErrorCode() read. Empty strings
 // and nil pointers are absent keys.
 type authRequest struct {
-	role                       protocol.Role
-	roomID                     string
-	clientID                   string
-	token                      string
-	viewerGrant                string
-	viewerPassword             string
-	shareGeneration            string
-	sharingPaused              bool
-	qualitySettings            *protocol.QualitySettings
-	routePolicy                protocol.RoutePolicy
-	viewerPresence             bool
-	connectionAttemptProgress4 bool
-	displayName                *string
-	roomOnly                   bool
-	roomSession                bool
+	role            protocol.Role
+	roomID          string
+	clientID        string
+	token           string
+	viewerGrant     string
+	viewerPassword  string
+	shareGeneration string
+	sharingPaused   bool
+	qualitySettings *protocol.QualitySettings
+	routePolicy     protocol.RoutePolicy
+	viewerPresence  bool
+	displayName     *string
+	roomOnly        bool
+	roomSession     bool
 }
 
 func authRequestOf(message protocol.ClientMessage) (authRequest, bool) {
 	switch m := message.(type) {
 	case protocol.AuthenticateHostMessage:
 		return authRequest{
-			role:                       protocol.RoleHost,
-			roomID:                     m.RoomID,
-			clientID:                   m.ClientID,
-			token:                      m.Token,
-			shareGeneration:            m.ShareGeneration,
-			sharingPaused:              m.SharingPaused != nil && *m.SharingPaused,
-			qualitySettings:            m.QualitySettings,
-			routePolicy:                m.RoutePolicy,
-			viewerPresence:             m.ViewerPresence,
-			connectionAttemptProgress4: m.ConnectionAttemptProgress4,
-			displayName:                displayNameString(m.DisplayName),
-			roomOnly:                   m.RoomOnly,
-			roomSession:                m.RoomSession,
+			role:            protocol.RoleHost,
+			roomID:          m.RoomID,
+			clientID:        m.ClientID,
+			token:           m.Token,
+			shareGeneration: m.ShareGeneration,
+			sharingPaused:   m.SharingPaused != nil && *m.SharingPaused,
+			qualitySettings: m.QualitySettings,
+			routePolicy:     m.RoutePolicy,
+			viewerPresence:  m.ViewerPresence,
+			displayName:     displayNameString(m.DisplayName),
+			roomOnly:        m.RoomOnly,
+			roomSession:     m.RoomSession,
 		}, true
 	case protocol.AuthenticateViewerMessage:
 		return authRequest{
-			role:                       protocol.RoleViewer,
-			roomID:                     m.RoomID,
-			clientID:                   m.ClientID,
-			viewerGrant:                m.ViewerGrant,
-			viewerPassword:             m.ViewerPassword,
-			viewerPresence:             m.ViewerPresence,
-			connectionAttemptProgress4: m.ConnectionAttemptProgress4,
-			displayName:                displayNameString(m.DisplayName),
+			role:           protocol.RoleViewer,
+			roomID:         m.RoomID,
+			clientID:       m.ClientID,
+			viewerGrant:    m.ViewerGrant,
+			viewerPassword: m.ViewerPassword,
+			viewerPresence: m.ViewerPresence,
+			displayName:    displayNameString(m.DisplayName),
 		}, true
 	}
 	return authRequest{}, false
@@ -893,14 +890,13 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 	}
 	displayName := authenticatedDisplayName(request)
 	authenticated := &authenticatedSession{
-		roomID:                     roomID,
-		role:                       participant.Role,
-		peerID:                     participant.PeerID,
-		shareGeneration:            shareGeneration,
-		displayName:                displayName,
-		viewerPresence:             request.viewerPresence,
-		connectionAttemptProgress4: request.connectionAttemptProgress4,
-		roomSession:                request.roomSession,
+		roomID:          roomID,
+		role:            participant.Role,
+		peerID:          participant.PeerID,
+		shareGeneration: shareGeneration,
+		displayName:     displayName,
+		viewerPresence:  request.viewerPresence,
+		roomSession:     request.roomSession,
 	}
 	sess.authenticated = authenticated
 	if participant.Role == protocol.RoleViewer {

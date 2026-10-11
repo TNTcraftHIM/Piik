@@ -35,6 +35,10 @@ describe("native App private wire", () => {
     const nativeMedia = { ...health.nativeMedia, maxVideoResolution: { width: 3840, height: 3840 },
       maxVideoPixels: 3840 * 2160, maxVideoMacroblocksPerSecond: 983_040 };
     expect(nativeHealthSchema.parse({ ...health, nativeMedia }).nativeMedia).toMatchObject(nativeMedia);
+    const stronger = { ...nativeMedia, maxVideoResolution: { width: 32768, height: 32768 },
+      maxVideoPixels: 32768 ** 2, maxVideoFramerate: 120, maxVideoBitrate: 100_000_000,
+      maxAudioBitrate: 960_000 };
+    expect(nativeHealthSchema.parse({ ...health, nativeMedia: stronger }).nativeMedia).toMatchObject(stronger);
     expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoPixels: 0 } }).success).toBe(false);
     expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoMacroblocksPerSecond: -1 } }).success).toBe(false);
   });
@@ -807,5 +811,48 @@ describe("native App private wire", () => {
         reason: null,
       }).success,
     ).toBe(true);
+  });
+
+  it.each(["edge-quality", "publication-quality"] as const)("isolates %s observations from control lifetime", async (type) => {
+    class Socket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static latest: Socket;
+      readyState = Socket.OPEN;
+      protocol = `piik-client-v10.${health.instanceToken}`;
+      close = vi.fn(() => { this.readyState = Socket.CLOSING; this.dispatchEvent(new Event("close")); });
+      constructor() { super(); Socket.latest = this; queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
+      emit(value: unknown) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) })); }
+      send(payload: string) {
+        const request = JSON.parse(payload);
+        this.emit({ version: 10, id: request.id, type: request.type === "hello" ? "ready" : "pong" });
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(health)));
+    const client = (await NativeClient.connect())!;
+    const received = vi.fn();
+    client.onEvent(received);
+    const event = { version: 10, type, shareId: "share_123456", connectionId: "connection_123456",
+      sampleTimestampMs: 10_000, sampleWindowMs: 2_000, rtpStatsId: "rtp-1", trackIdentifier: "screen",
+      state: "healthy", reason: "none", framesPerSecond: 480, bitrateKbps: 120_000,
+      availableOutgoingKbps: 1_000_000, width: 1920, height: 1080,
+      ...(type === "edge-quality" ? { intervalFramesEncoded: 60 } : {
+        publicationGeneration: "publication_123456", codec: "vp8", videoEncodingCount: 2,
+        activeVideoEncodingCount: 2, rid: "h", intervalFramesSent: 60, audioBitrateKbps: 192,
+      }),
+    };
+    Socket.latest.emit(event);
+    expect(received).toHaveBeenLastCalledWith(event);
+    Socket.latest.emit({ ...event, framesPerSecond: -1, availableOutgoingKbps: "invalid" });
+    expect(received).toHaveBeenLastCalledWith({ ...event, framesPerSecond: null, availableOutgoingKbps: null });
+    // Invalid identity/state never becomes evidence, but cannot retire media.
+    Socket.latest.emit({ ...event, shareId: "bad", state: "degraded", reason: "none" });
+    expect(received).toHaveBeenCalledTimes(2);
+    await expect(client.ping()).resolves.toBeUndefined();
+    expect(Socket.latest.close).not.toHaveBeenCalled();
+    Socket.latest.emit({ version: 10, type: "edge-state", shareId: "bad" });
+    expect(Socket.latest.close).toHaveBeenCalledWith(1008, "invalid Client message");
   });
 });

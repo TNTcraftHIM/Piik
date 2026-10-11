@@ -24,7 +24,7 @@ const (
 	maxPreviewBytes     = 192 * 1024
 	maxOutputs          = 6
 	minOutputBitrate    = 1_000 // Codec rate APIs use whole kbps.
-	maxOutputBitrate    = 12_000_000
+	MaxVideoBitrate     = 12_000_000
 	maxSources          = 1024
 	maxSourceTitleBytes = 4096
 	// Leave room for the control envelope within loopback's 256 KiB message.
@@ -89,7 +89,7 @@ type OutputProfile struct {
 
 func (profile OutputProfile) Valid() bool {
 	return ValidVideoFormat(profile.Width, profile.Height, profile.Framerate) &&
-		profile.Bitrate >= minOutputBitrate && profile.Bitrate <= maxOutputBitrate
+		profile.Bitrate >= minOutputBitrate && profile.Bitrate <= MaxVideoBitrate
 }
 
 // ScreenShareOutputs follows LiveKit 2.22.1's screen-share simulcast construction,
@@ -112,7 +112,7 @@ func (profile VideoProfile) Valid() bool {
 	// belong to the UI, not the capture process's numeric resource boundary.
 	return ValidVideoFormat(profile.Width, profile.Height, profile.Framerate) && profile.Width >= 4 && profile.Height >= 4 &&
 		profile.Framerate >= 15 &&
-		profile.Bitrate >= 2_000_000 && profile.Bitrate <= 12_000_000 &&
+		profile.Bitrate >= 2_000_000 && profile.Bitrate <= MaxVideoBitrate &&
 		validVideoPreference(profile.Preference)
 }
 

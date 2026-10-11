@@ -38,7 +38,7 @@ func TestQualityPreferencePersistsWithoutChangingAppConfiguration(t *testing.T) 
 		t.Fatal("preference changed strict App configuration")
 	}
 	invalid := quality
-	invalid.Resolution.Width = 8194
+	invalid.Resolution.Width = 0x1_0000_0000
 	if p.Save(invalid) == nil || *p.Read() != quality {
 		t.Fatal("invalid choice changed preference")
 	}

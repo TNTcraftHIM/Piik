@@ -299,7 +299,7 @@
       "name": "set-quality-settings-framerate-below-floor",
       "schema": "client",
       "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":14,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
-      "valid": false
+      "valid": true
     },
     {
       "name": "set-quality-settings-fractional-bitrate",
@@ -1157,25 +1157,25 @@
       "name": "set-quality-settings-too-wide",
       "schema": "client",
       "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":8194,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
-      "valid": false
+      "valid": true
     },
     {
       "name": "set-quality-settings-too-tall",
       "schema": "client",
       "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":8194},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
-      "valid": false
+      "valid": true
     },
     {
       "name": "set-quality-settings-too-small",
       "schema": "client",
       "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":2,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
-      "valid": false
+      "valid": true
     },
     {
       "name": "set-quality-settings-odd-size",
       "schema": "client",
       "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1919,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
-      "valid": false
+      "valid": true
     },
     {
       "name": "set-quality-settings-fractional-size",
@@ -1199,6 +1199,84 @@
       "name": "set-quality-settings-ui-label-on-wire",
       "schema": "client",
       "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080,\"label\":\"1080p\"},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-higher-rate",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":120,\"maxBitrate\":40000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "valid": true
+    },
+    {
+      "name": "set-quality-settings-fractional-framerate",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":29.97,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "valid": true
+    },
+    {
+      "name": "set-quality-settings-zero-framerate",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":0,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-unrepresentable-bitrate",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":4294967296,\"degradationPreference\":\"maintain-resolution\"}}",
+      "valid": false
+    },
+    {
+      "name": "set-quality-settings-unrepresentable-size",
+      "schema": "client",
+      "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":4294967296,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\"}}",
+      "valid": false
+    },
+    {
+      "name": "sender-quality-evidence-high-observations",
+      "schema": "client",
+      "json": "{\"type\":\"sender-quality-evidence\",\"childPeerId\":\"viewer_12345678\",\"connectionId\":\"connection_12345678\",\"rtpStatsId\":\"rtp-stats-1\",\"trackIdentifier\":\"track-1\",\"sampleTimestampMs\":2000,\"routeRevision\":3,\"state\":\"degraded\",\"diagnostics\":{\"natTraversalPath\":\"ordinary\",\"reason\":\"bandwidth\",\"framesPerSecond\":480,\"bitrateKbps\":200000,\"rttMs\":70000,\"width\":32768,\"height\":32768,\"availableOutgoingKbps\":1000000}}",
+      "valid": true
+    },
+    {
+      "name": "sender-quality-evidence-unrepresentable-observation",
+      "schema": "client",
+      "json": "{\"type\":\"sender-quality-evidence\",\"childPeerId\":\"viewer_12345678\",\"connectionId\":\"connection_12345678\",\"rtpStatsId\":\"rtp-stats-1\",\"trackIdentifier\":\"track-1\",\"sampleTimestampMs\":2000,\"routeRevision\":3,\"state\":\"degraded\",\"diagnostics\":{\"natTraversalPath\":\"ordinary\",\"reason\":\"bandwidth\",\"framesPerSecond\":480,\"bitrateKbps\":9007199254740992,\"rttMs\":70000,\"width\":32768,\"height\":32768,\"availableOutgoingKbps\":1000000}}",
+      "valid": false
+    },
+    {
+      "name": "sfu-publisher-quality-evidence-high-observations",
+      "schema": "client",
+      "json": "{\"type\":\"sfu-publisher-quality-evidence\",\"publicationGeneration\":\"publication_generation_12345678\",\"routeRevision\":4,\"state\":\"healthy\",\"sampleTimestampMs\":2000,\"diagnostics\":{\"natTraversalPath\":\"ordinary\",\"reason\":\"none\",\"framesPerSecond\":480,\"bitrateKbps\":200000,\"captureFramesPerSecond\":30,\"mediaSourceFramesPerSecond\":null,\"width\":32768,\"height\":32768,\"videoEncodingCount\":1,\"activeVideoEncodingCount\":1,\"availableOutgoingKbps\":1000000,\"rttMs\":70000,\"packetLossPercent\":0.1}}",
+      "valid": true
+    },
+    {
+      "name": "sfu-publisher-quality-evidence-unrepresentable-observation",
+      "schema": "client",
+      "json": "{\"type\":\"sfu-publisher-quality-evidence\",\"publicationGeneration\":\"publication_generation_12345678\",\"routeRevision\":4,\"state\":\"healthy\",\"sampleTimestampMs\":2000,\"diagnostics\":{\"natTraversalPath\":\"ordinary\",\"reason\":\"none\",\"framesPerSecond\":480,\"bitrateKbps\":9007199254740992,\"captureFramesPerSecond\":30,\"mediaSourceFramesPerSecond\":null,\"width\":32768,\"height\":32768,\"videoEncodingCount\":1,\"activeVideoEncodingCount\":1,\"availableOutgoingKbps\":1000000,\"rttMs\":70000,\"packetLossPercent\":0.1}}",
+      "valid": false
+    },
+    {
+      "name": "viewer-quality-evidence-high-observations",
+      "schema": "client",
+      "json": "{\"type\":\"viewer-quality-evidence\",\"guard\":{\"connectionId\":\"connection_12345678\",\"routeRevision\":0,\"presentationEpoch\":0},\"sequence\":0,\"windowMs\":2000,\"metrics\":{\"natTraversalPath\":\"ordinary\",\"width\":32768,\"height\":32768,\"framesPerSecond\":480,\"bitrateKbps\":200000,\"packetsReceivedDelta\":1500,\"packetsLostDelta\":2,\"rttMs\":70000,\"jitterMs\":3.5,\"framesDecodedDelta\":120,\"framesDroppedDelta\":1,\"decodeMsPerFrame\":2.4,\"freezeCountDelta\":0,\"freezeDurationMsDelta\":0,\"pauseCountDelta\":0,\"pauseDurationMsDelta\":0,\"codec\":\"video/H264\",\"codecProfile\":\"profile-level-id=42e01f\",\"codecParameters\":\"packetization-mode=1; level-asymmetry-allowed=1\",\"audioBitrateKbps\":20000,\"audioPacketLossPercent\":0.2,\"audioJitterMs\":2.5,\"audioVideoPlayoutDeltaMs\":-70000,\"videoJitterBufferDelayMs\":24,\"audioJitterBufferDelayMs\":18,\"audioConcealedSamplesPercent\":1,\"audioConcealmentEventsDelta\":3,\"audioCodec\":\"audio/opus\"}}",
+      "valid": true
+    },
+    {
+      "name": "viewer-quality-evidence-unrepresentable-observation",
+      "schema": "client",
+      "json": "{\"type\":\"viewer-quality-evidence\",\"guard\":{\"connectionId\":\"connection_12345678\",\"routeRevision\":0,\"presentationEpoch\":0},\"sequence\":0,\"windowMs\":2000,\"metrics\":{\"natTraversalPath\":\"ordinary\",\"width\":32768,\"height\":32768,\"framesPerSecond\":480,\"bitrateKbps\":9007199254740992,\"packetsReceivedDelta\":1500,\"packetsLostDelta\":2,\"rttMs\":70000,\"jitterMs\":3.5,\"framesDecodedDelta\":120,\"framesDroppedDelta\":1,\"decodeMsPerFrame\":2.4,\"freezeCountDelta\":0,\"freezeDurationMsDelta\":0,\"pauseCountDelta\":0,\"pauseDurationMsDelta\":0,\"codec\":\"video/H264\",\"codecProfile\":\"profile-level-id=42e01f\",\"codecParameters\":\"packetization-mode=1; level-asymmetry-allowed=1\",\"audioBitrateKbps\":20000,\"audioPacketLossPercent\":0.2,\"audioJitterMs\":2.5,\"audioVideoPlayoutDeltaMs\":-70000,\"videoJitterBufferDelayMs\":24,\"audioJitterBufferDelayMs\":18,\"audioConcealedSamplesPercent\":1,\"audioConcealmentEventsDelta\":3,\"audioCodec\":\"audio/opus\"}}",
+      "valid": false
+    },
+    {
+      "name": "sfu-numeric-description-above-implementation",
+      "schema": "client",
+      "json": "{\"type\":\"sfu-signal\",\"revision\":9,\"publicationGeneration\":\"publication_12345678\",\"connectionId\":\"connection_12345678\",\"kind\":\"description\",\"description\":{\"type\":\"offer\",\"sdp\":\"v=0\\\\r\\\\n\"},\"media\":{\"codec\":\"vp8\",\"layers\":[{\"rid\":\"\",\"width\":32768,\"height\":32768,\"bitrate\":200000000}],\"audio\":false,\"audioBitrate\":128000}}",
+      "valid": true
+    },
+    {
+      "name": "sfu-unrepresentable-description",
+      "schema": "client",
+      "json": "{\"type\":\"sfu-signal\",\"revision\":9,\"publicationGeneration\":\"publication_12345678\",\"connectionId\":\"connection_12345678\",\"kind\":\"description\",\"description\":{\"type\":\"offer\",\"sdp\":\"v=0\\\\r\\\\n\"},\"media\":{\"codec\":\"vp8\",\"layers\":[{\"rid\":\"\",\"width\":4294967296,\"height\":32768,\"bitrate\":200000000}],\"audio\":false,\"audioBitrate\":128000}}",
       "valid": false
     }
   ],

@@ -38,6 +38,35 @@ function report(
 }
 
 describe("native sender quality evidence", () => {
+  it.each(["direct", "publication"])("preserves %s observations independently of control evidence", (path) => {
+    invalidateSenderQualityEvidence();
+    const metrics = {
+      ...EMPTY_METRICS, sampleTimestampMs: 1_000, sampleWindowMs: 2_000,
+      rtpStatsId: "outbound-1", trackIdentifier: "track-1", intervalFramesEncoded: 960,
+      nativeEdgeQualityState: "healthy" as const, qualityLimitationReason: "none",
+      availableOutgoingKbps: 1_000_000, bitrateKbps: 120_000, framesPerSecond: 480,
+      rttMs: NaN, packetLossPercent: 101,
+    };
+    const emit = () => path === "direct"
+      ? senderQualityEvidenceFromSnapshot({
+        peerId: "viewer_12345678", connectionId: "connection_12345678",
+        connectionState: "connected", iceConnectionState: "connected", error: null, metrics,
+      }, 2)
+      : sfuPublisherQualityEvidenceFromMetrics(metrics, 2, "publication_12345678");
+    expect(emit()?.state).toBe("unknown");
+    metrics.sampleTimestampMs += 2_000;
+    expect(emit()).toMatchObject({ state: "healthy", diagnostics: {
+      availableOutgoingKbps: 1_000_000, bitrateKbps: 120_000, framesPerSecond: 480,
+      rttMs: null, packetLossPercent: null,
+    } });
+    metrics.sampleTimestampMs += 2_000;
+    metrics.intervalFramesEncoded = NaN;
+    expect(emit()?.state).toBe("unknown");
+    metrics.intervalFramesEncoded = 960;
+    metrics.sampleTimestampMs += 2_000;
+    expect(emit()?.state).toBe("healthy");
+  });
+
   it("uses actual Native publication sent frames without inventing encoder work", () => {
     invalidateSenderQualityEvidence();
     const metrics = {

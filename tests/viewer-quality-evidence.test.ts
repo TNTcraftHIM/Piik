@@ -270,12 +270,12 @@ describe("viewer quality evidence", () => {
       natTraversalPath: "predicted",
       width: null,
       height: null,
-      bitrateKbps: null,
+      bitrateKbps: 200_000,
       packetsLostDelta: null,
-      rttMs: null,
-      audioBitrateKbps: null,
+      rttMs: 70_000,
+      audioBitrateKbps: 20_000,
       audioPacketLossPercent: null,
-      audioVideoPlayoutDeltaMs: null,
+      audioVideoPlayoutDeltaMs: -70_000,
       audioCodec: null,
       codecParameters: null,
     });
@@ -287,6 +287,15 @@ describe("viewer quality evidence", () => {
     expect(JSON.stringify(bounded)).not.toContain("useinbandfec=1");
     expect(JSON.stringify(bounded)).not.toContain("192.0.2.10");
     expect(JSON.stringify(bounded)).not.toContain("203.0.113.20");
+    expect(qualityEvidenceWindowFromMetrics(receiveMetrics({
+      framesPerSecond: Infinity,
+      bitrateKbps: Number.MAX_SAFE_INTEGER + 1,
+      audioVideoPlayoutDeltaMs: NaN,
+      intervalFramesDecoded: 1.5,
+    }))?.metrics).toMatchObject({
+      framesPerSecond: null, bitrateKbps: null,
+      audioVideoPlayoutDeltaMs: null, framesDecodedDelta: null,
+    });
   });
 
   it("baselines each presentation epoch and keeps rate limits across it", () => {

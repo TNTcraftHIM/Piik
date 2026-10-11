@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { sfuMediaSchema, maxAudioBitrateSchema, qualityResolutionSchema } from "../../shared/protocol";
+import { sfuMediaSchema, positiveUint32Schema, qualityResolutionSchema,
+  nullableSafeEvidenceNumber, nullableSafeEvidenceInteger } from "../../shared/protocol";
 
 export const NATIVE_CLIENT_PROTOCOL = 10;
 export const NATIVE_CLIENT_PORT_START = 39_721;
@@ -33,10 +34,12 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
     .regex(/^[A-Za-z0-9_-]+$/),
   nativeMedia: z
     .object({
-      maxAudioBitrate: maxAudioBitrateSchema.optional(),
+      maxAudioBitrate: positiveUint32Schema.optional(),
       maxVideoResolution: qualityResolutionSchema.optional(),
-      maxVideoPixels: z.number().int().min(16).max(8192 * 8192).optional(),
+      maxVideoPixels: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
       maxVideoMacroblocksPerSecond: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+      maxVideoFramerate: z.number().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+      maxVideoBitrate: positiveUint32Schema.optional(),
       receiverReuse: z.boolean().default(false),
       video: z.boolean().default(false),
       processAudio: z.boolean().default(false),
@@ -270,25 +273,20 @@ export const nativeEventSchema = z.discriminatedUnion("type", [
       rtpStatsId: z.string().min(1).max(256),
       trackIdentifier: z.string().min(1).max(256),
       codec: nativeVideoCodecSchema,
-      videoEncodingCount: z.number().int().min(1).max(3),
-      activeVideoEncodingCount: z.number().int().min(0).max(3),
+      videoEncodingCount: nullableSafeEvidenceInteger.catch(null),
+      activeVideoEncodingCount: nullableSafeEvidenceInteger.catch(null),
       rid: z.string().max(16),
       intervalFramesSent: z
         .number()
         .int()
         .nonnegative()
         .max(Number.MAX_SAFE_INTEGER),
-      framesPerSecond: z.number().finite().nonnegative().max(240),
-      width: z.number().int().nonnegative().max(16_384),
-      height: z.number().int().nonnegative().max(16_384),
-      bitrateKbps: z.number().finite().nonnegative().max(100_000),
-      audioBitrateKbps: z.number().finite().nonnegative().max(1_000),
-      availableOutgoingKbps: z
-        .number()
-        .finite()
-        .nonnegative()
-        .max(100_000)
-        .nullable(),
+      framesPerSecond: nullableSafeEvidenceNumber.catch(null),
+      width: nullableSafeEvidenceInteger.catch(null),
+      height: nullableSafeEvidenceInteger.catch(null),
+      bitrateKbps: nullableSafeEvidenceNumber.catch(null),
+      audioBitrateKbps: nullableSafeEvidenceNumber.catch(null),
+      availableOutgoingKbps: nullableSafeEvidenceNumber.catch(null),
       state: z.enum(["unknown", "healthy", "degraded"]),
       reason: z.enum(["none", "bandwidth"]).nullable(),
     })
@@ -385,11 +383,11 @@ export const nativeEventSchema = z.discriminatedUnion("type", [
         .int()
         .nonnegative()
         .max(Number.MAX_SAFE_INTEGER),
-      framesPerSecond: z.number().finite().nonnegative().max(240),
-      bitrateKbps: z.number().finite().nonnegative().max(100_000),
-      availableOutgoingKbps: z.number().finite().nonnegative().max(100_000),
-      width: z.number().int().nonnegative().max(16_384),
-      height: z.number().int().nonnegative().max(16_384),
+      framesPerSecond: nullableSafeEvidenceNumber.catch(null),
+      bitrateKbps: nullableSafeEvidenceNumber.catch(null),
+      availableOutgoingKbps: nullableSafeEvidenceNumber.catch(null),
+      width: nullableSafeEvidenceInteger.catch(null),
+      height: nullableSafeEvidenceInteger.catch(null),
     })
     .strict()
     .superRefine((event, context) => {

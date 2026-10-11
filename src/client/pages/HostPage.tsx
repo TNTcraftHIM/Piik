@@ -129,6 +129,9 @@ import {
   DEGRADATION_PREFERENCE_KEYS,
   videoCaptureLimits,
   captureFramerateCeiling,
+  supportsCaptureProfile,
+  MIN_VIDEO_FRAMERATE,
+  MIN_VIDEO_BITRATE,
   qualityResolutionEqual,
   qualitySettingsEqual,
   qualitySettingsLabel,
@@ -342,7 +345,6 @@ interface HostPageProps {
   sfuAvailable?: boolean;
   sfuOnly?: boolean;
   natPredictionAvailable?: boolean;
-  connectionAttemptProgress4?: boolean;
   launchedByClient?: boolean;
   onAuthorizationRequired?: () => void;
 }
@@ -365,7 +367,6 @@ export function HostPage({
   sfuAvailable = false,
   sfuOnly = false,
   natPredictionAvailable = false,
-  connectionAttemptProgress4 = false,
   launchedByClient = false,
   onAuthorizationRequired,
 }: HostPageProps = {}) {
@@ -1631,7 +1632,7 @@ export function HostPage({
     pendingAppQualityPreferenceRef.current = null;
     if (pending) preference.save(pending);
     const saved = await preference.read();
-    if (!signal.aborted && saved && !qualityPreferenceEditedRef.current &&
+    if (!signal.aborted && saved && supportsCaptureProfile(saved) && !qualityPreferenceEditedRef.current &&
       qualitySettingsRef.current === initial && activeGenerationRef.current === null &&
       roomMutationRef.current === null) {
       commitQuality(saved);
@@ -1676,6 +1677,12 @@ export function HostPage({
   }
 
   async function changeQuality(nextProfile: QualitySettings): Promise<void> {
+    if (!supportsCaptureProfile(nextProfile, videoLimits, audioBitrateCeiling)) {
+      advancedQualityRef.current = qualitySettingsRef.current;
+      setAdvancedQuality(qualitySettingsRef.current);
+      setNoticeError(new Error("Capture quality is not supported by this implementation"), "quality");
+      return;
+    }
     qualityPreferenceEditedRef.current = true;
     advancedQualityRef.current = nextProfile;
     setAdvancedQuality(nextProfile);
@@ -2516,7 +2523,6 @@ export function HostPage({
         qualitySettings: qualitySettingsRef.current,
         routePolicy: routePolicyRef.current,
         viewerPresence: true,
-        ...(connectionAttemptProgress4 ? { connectionAttemptProgress4: true } : {}),
         displayName: initialDisplayName,
       },
       {
@@ -3590,7 +3596,7 @@ export function HostPage({
     ? nativeClientRef.current?.health.nativeMedia.maxAudioBitrate ?? MAX_SCREEN_AUDIO_BITRATE
     : MAX_SCREEN_AUDIO_BITRATE);
   const videoLimits = videoCaptureLimits(nativeActive ? nativeClientRef.current?.health.nativeMedia : undefined);
-  const framerateCeiling = Math.max(15, captureFramerateCeiling(advancedQuality.resolution, videoLimits));
+  const framerateCeiling = captureFramerateCeiling(advancedQuality.resolution, videoLimits);
 
   return (
     <div className="lr-app">
@@ -3856,11 +3862,11 @@ export function HostPage({
                     <span className="lr-slider">
                       <input
                         type="range"
-                        min={15}
-                        max={framerateCeiling}
+                        min={MIN_VIDEO_FRAMERATE}
+                        max={Math.max(MIN_VIDEO_FRAMERATE, framerateCeiling)}
                         step={1}
                         value={advancedQuality.maxFramerate}
-                        disabled={phase === "starting" || switchingSource}
+                        disabled={phase === "starting" || switchingSource || framerateCeiling < MIN_VIDEO_FRAMERATE}
                         aria-label={t("host.advanced.framerate")}
                         onChange={(event) =>
                           changeAdvancedQuality({
@@ -3883,11 +3889,11 @@ export function HostPage({
                     <span className="lr-slider">
                       <input
                         type="range"
-                        min={2000000}
-                        max={12000000}
+                        min={MIN_VIDEO_BITRATE}
+                        max={Math.max(MIN_VIDEO_BITRATE, videoLimits.maxVideoBitrate)}
                         step={500000}
                         value={advancedQuality.maxBitrate}
-                        disabled={phase === "starting" || switchingSource}
+                        disabled={phase === "starting" || switchingSource || videoLimits.maxVideoBitrate < MIN_VIDEO_BITRATE}
                         aria-label={t("host.advanced.bitrate")}
                         onChange={(event) =>
                           changeAdvancedQuality({

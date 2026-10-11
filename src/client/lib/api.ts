@@ -99,20 +99,6 @@ export async function getRuntimeCapabilities(signal?: AbortSignal): Promise<Runt
   return parsed.data;
 }
 
-// Viewer progress is optional feedback: unavailable capability discovery must
-// not prevent viewing. Host policy discovery remains required.
-export async function getOptionalRuntimeCapabilities(): Promise<RuntimeCapabilities | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2_000);
-  try {
-    return await getRuntimeCapabilities(controller.signal);
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export async function authenticateSiteAccess(
   password: string,
 ): Promise<SiteAccessStatus> {
