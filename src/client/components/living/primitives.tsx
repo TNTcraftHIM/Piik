@@ -24,7 +24,8 @@ function blockSoftDisabledClick(event: MouseEvent<HTMLButtonElement>): void {
 
 // Pointer activations blur the trigger so the comic is not pinned open by
 // focus after the action completes; keyboard clicks (detail 0) keep focus,
-// so the panel persists for genuine keyboard use.
+// so the panel persists for genuine keyboard use. Run the action first:
+// leaving an enclosing field group may otherwise commit a superseded draft.
 function blurAfterPointerClick(event: MouseEvent<HTMLButtonElement>): void {
   if (event.detail !== 0) event.currentTarget.blur();
 }
@@ -100,8 +101,8 @@ export function Btn({
           ? blockSoftDisabledClick
           : wrapped
             ? (event) => {
-                blurAfterPointerClick(event);
                 onClick?.();
+                blurAfterPointerClick(event);
               }
             : onClick
       }
@@ -162,8 +163,8 @@ export function Chip({
           ? blockSoftDisabledClick
           : wrapped
             ? (event) => {
-                blurAfterPointerClick(event);
                 onClick?.();
+                blurAfterPointerClick(event);
               }
             : onClick
       }
@@ -283,8 +284,8 @@ export function SwitchItem({
           softDisabled
             ? blockSoftDisabledClick
             : (event) => {
-                if (wrapped) blurAfterPointerClick(event);
                 onChange(!checked);
+                if (wrapped) blurAfterPointerClick(event);
               }
         }
       />
