@@ -1,4 +1,4 @@
-// Run in a freshly opened local /film/ page using agent-browser eval --stdin.
+// Bundle this check, then run it in a fresh local /film/ page with agent-browser.
 // This exercises the real document/module; it does not mock its scene renderer.
 // First click #language with agent-browser to grant native audio user activation.
 (async () => {
@@ -63,7 +63,7 @@
     seek(time);
     assert(scene().includes(`scene-${name}`), `The product sequence must show ${name}`);
   }
-  const {BEAT,BAR,DOWNLOAD_AT,DURATION} = await import('./score.js');
+  const {BEAT,BAR,DOWNLOAD_AT,DURATION} = await import('../site/film/score.js');
   for (const [bar, feature] of [[19.5, 'free'], [20.5, 'p2p'], [21.5, 'encode'], [23, 'devices']]) {
     seek(bar * BAR);
     const visible = [...el('scene-features').children].filter(node => node.style.display !== 'none');
@@ -315,6 +315,9 @@
       await at('website',0,lang);
       const downloadedAgain = await at('website',4.5*BEAT,lang);
       assert(Math.hypot(downloadedAgain.x-downloaded.x, downloadedAgain.y-downloaded.y)<.01, 'The website scroll and click must survive reverse seeking');
+      await at('launch',0,lang);
+      assert(doc.querySelector('[role="radio"][aria-checked="true"]').getAttribute('aria-label') ===
+        (lang === 'en' ? 'Public invite' : '公网邀请'), 'The launcher must start with Public invite selected');
       await at('launch',5*BEAT,lang);
       assert(doc.querySelector('.lr-room') && !doc.querySelector('.lr-room-chip'), 'Opening Piik must show the ready page before a room has been created');
       await at('share',3*BEAT,lang);
@@ -338,12 +341,12 @@
         'The viewer wide shot must include current playback, room interactions and the room code');
       for (const [scene,beat,selector] of [
         ['desktop',2.5,'#desktop-app'],
-        ['launch',1.5,'[role="radio"]'], ['launch',4,'button[type="submit"]'],
+        ['launch',1.5,'[role="radio"][aria-checked="true"]'], ['launch',4,'button[type="submit"]'],
         ['share',1.5,'.lr-entry-action button'], ['share',4,'.lr-source-option'],
         ['invite',1.5,'.lr-invite-url'], ['invite',4,'#chat-draft'], ['invite',6,'#chat-send'],
       ]) {
         const p = await at(scene,beat*BEAT,lang);
-        const element = doc.querySelectorAll(selector)[selector==='[role="radio"]'?1:0];
+        const element = doc.querySelector(selector);
         const target = selector==='.lr-invite-url' ? element.closest('.lr-row').querySelector('button') : element;
         const b = target.getBoundingClientRect();
         assert(p.visible && p.x>=b.left && p.x<=b.right && p.y>=b.top && p.y<=b.bottom, 'Clicks must land on visible controls');
@@ -385,7 +388,7 @@
   document.body.append(hero);
   try {
     await loaded;
-    const {HERO_KINDS,HERO_CUT,heroFrame} = await import('../assets/activities.js');
+    const {HERO_KINDS,HERO_CUT,heroFrame} = await import('../site/assets/activities.js');
     const doc = hero.contentDocument, win = hero.contentWindow;
     assert(!doc.getElementById('montage-cheer'), 'The homepage and README hero must omit the film reaction caption');
     const animations = doc.getAnimations();

@@ -116,10 +116,16 @@ ffmpeg -i Funkorama.mp3 -vn -t 76.039604 \
 
 ## Focused check
 
+Bundle the check's source helpers locally; production serves hashed assets:
+
+```sh
+npx esbuild scripts/check-website-film.js --bundle --format=esm --minify --outfile=build/check-website-film.js
+```
+
 Open a fresh local film page in a named `agent-browser` session and run
 `agent-browser --session <session> click '#language'` to grant the user gesture
 required by native audio. Then evaluate
-[`scripts/check-website-film.js`](../../scripts/check-website-film.js) using
+the resulting `build/check-website-film.js` using
 `agent-browser --session <session> eval --stdin`. The browser check covers lazy
 audio, playback/seek/replay, language links, obsolete play promises, native media
 pause, audio failure/ending, bilingual headline bounds, unobscured scenario

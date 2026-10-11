@@ -47,7 +47,7 @@ import { point } from "./cursor";
 import "../../../src/client/styles.css";
 import "./ui.css";
 
-type Shot = "desktop" | "local" | "link" | "idle" | "picker" | "host" | "copied" | "chat" | "draft" | "sent" | "viewer";
+type Shot = "desktop" | "link" | "idle" | "picker" | "host" | "copied" | "chat" | "draft" | "sent" | "viewer";
 const noop = () => {};
 const roomId = "9527";
 const inviteUrl = `https://invite.piik.example/r/${roomId}`;
@@ -179,7 +179,7 @@ function Screen({ shot }: { shot: Shot }) {
       <div className="desktop-taskbar"><img src="../../assets/favicon.svg" width="34" height="34" alt="" /></div>
     </main>
   );
-  const launcher = shot === "local" || shot === "link";
+  const launcher = shot === "link";
   const chat = shot === "chat" || shot === "draft" || shot === "sent";
   const live = shot === "host" || shot === "copied" || shot === "viewer" || chat;
   const hostStatus = deriveHostStatus({
@@ -436,8 +436,6 @@ window.addEventListener("message", (event) => {
       : data.scene === "launch"
       ? t >= cues.launch + BEAT / 2
         ? "idle"
-        : t < cues.mode + BEAT / 4
-        ? "local"
         : "link"
       : data.scene === "share"
         ? t < cues.share + BEAT / 4
@@ -513,7 +511,7 @@ function paint(data: Frame) {
     document.getElementById("desktop-app")!.style.transform = `scale(${1 - .04 * press})`;
   }
   if (data.scene === "launch") {
-    const mode = center(document.querySelectorAll<HTMLElement>('[role="radio"]')[1]);
+    const mode = center(document.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]'));
     target = mode;
     clickAt = cues.mode;
     hideAt = cues.launch + BEAT / 2;

@@ -118,7 +118,7 @@ go build -o build/dev/piik-app.exe ./cmd/piik-app
 ./build/dev/piik-app.exe
 ```
 
-这些命令只构建 App。体验浏览器采集时，选择 **本地房间** 或配置好的站点。
+这些命令只构建 App。体验浏览器采集时，选择 **本地房间**，或直接打开 Piik 站点。
 原生采集和 **公网邀请** 需要各自的辅助程序，可用 `--capture-process` / `--tunnel-process`
 指定已构建的程序，或按[打包](#打包)步骤生成完整程序包。
 

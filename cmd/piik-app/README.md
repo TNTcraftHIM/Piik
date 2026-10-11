@@ -146,7 +146,7 @@ go build -o build/dev/piik-app.exe ./cmd/piik-app
 ./build/dev/piik-app.exe
 ```
 
-These commands build the App only. Choose **Local room** or a configured Site
+These commands build the App only. Choose **Local room** or open a Piik Site
 for Browser capture. Native capture and **Public invite** need their helpers;
 use `--capture-process` / `--tunnel-process` to select built helpers, or follow
 [packaging](#packaging) for a complete bundle.
