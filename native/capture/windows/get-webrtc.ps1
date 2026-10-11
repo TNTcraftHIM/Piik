@@ -56,6 +56,7 @@ if ($sdkNoticeHash -ne $notice.sha256 -or
 }
 $msvcPath = Join-Path $toolchainPath $pins.msvc.directory
 return @{
+    ToolchainVersion = [version](Split-Path -Leaf $msvcPath)
     Include = Join-Path $sdkPath 'include'
     Library = Join-Path $sdkPath 'lib\webrtc.lib'
     RuntimeLibraries = Join-Path $msvcPath 'lib\x64'

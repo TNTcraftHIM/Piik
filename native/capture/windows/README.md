@@ -83,7 +83,10 @@ the old fixed one-frame VBV override is removed so later bitrate increases are
 not trapped by the original buffer limit.
 
 The build caches the pinned WebRTC SDK and matching official MSVC linker/runtime
-libraries under `build/encoder-pool`. The SDK supplies libvpx, replacing the
+libraries under `build/encoder-pool`. A newer installed MSVC keeps its own linker
+and runtime; older installations use that pinned minimum, following
+[Microsoft's binary compatibility rule](https://learn.microsoft.com/en-us/cpp/porting/binary-compat-2015-2017).
+The SDK supplies libvpx, replacing the
 separate source build. Only statically linked code and required notices enter
 the package, not the SDK/toolchain or another runtime service.
 
