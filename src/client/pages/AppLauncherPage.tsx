@@ -74,8 +74,9 @@ export function AppLauncherPage() {
     let current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let checkedRelease = false;
+    let restoredSettings = false;
     let reading = false;
-    const readState = (restoreSettings = false) => {
+    const readState = () => {
       if (reading || !current) return;
       reading = true;
       clearTimeout(timer);
@@ -86,10 +87,11 @@ export function AppLauncherPage() {
       })
       .then((state) => {
         if (!current) return;
-        if (restoreSettings) {
+        if (!restoredSettings) {
           setMode(state.defaultMode);
           setLocalAccessPassword(state.localAccessPassword);
           setLan(state.lan);
+          restoredSettings = true;
         }
         setVersion(state.version);
         setTarget(state.target);
@@ -97,7 +99,8 @@ export function AppLauncherPage() {
         setSite(state.site);
         setAppDebug(state.debug);
         setDebug(state.debug === true);
-        if (state.detail) setError({ kind: "launch", detail: state.detail });
+        setError(previous => state.detail ? { kind: "launch", detail: state.detail }
+          : previous?.kind === "load" ? null : previous);
         setLoading(false);
         if (state.starting) timer = setTimeout(() => void readState(), 750);
         if (checkedRelease) return;
@@ -118,7 +121,7 @@ export function AppLauncherPage() {
         setLoading(false);
       }).finally(() => { reading = false; });
     };
-    void readState(true);
+    void readState();
     const refresh = () => { void readState(); };
     window.addEventListener("focus", refresh);
     return () => {
