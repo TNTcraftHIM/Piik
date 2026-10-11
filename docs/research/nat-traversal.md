@@ -43,9 +43,29 @@ discovery failure. The pinned Pion STUN client also received and decoded
 `XOR-MAPPED-ADDRESS` from each destination; the fallback is not Browser-only.
 Native regression checks confirm a healthy destination returns
 without waiting for silent UDP or unresolved DNS, and cancellation retires the
-survey. These controls do not reproduce the reporter's network or establish its
+survey. A Browser control with two failing DNS destinations still exposes the
+healthy MiWiFi result after 55 ms. A bound, deliberately silent UDP fixture
+beside a healthy fixture exposes the latter's synthetic srflx result after 4 ms,
+while gathering remains incomplete at 15 seconds. Closed-port controls did not
+produce the same result; a closed port is not a silent-drop fixture. The
+[upstream candidate path](https://webrtc.googlesource.com/src/+/refs/heads/main/p2p/base/stun_port.cc)
+emits successful mappings separately from gathering completion. These controls
+do not reproduce the reporter's network or establish its
 final connection cause. The [WebRTC event specification](https://www.w3.org/TR/webrtc/#rtcicecandidateerrorevent)
 owns error semantics; compare the attempt's gathered and selected candidates too.
+
+The follow-up also found a separate Native provenance gap on Sites with extra
+ordinary STUN destinations. All `nsN` results were eligible for prediction,
+while Browser observations were restricted to the configured three-URL survey.
+Native candidate markers now identify their requested destination, independent
+of response order. Both Native adapters filter prediction evidence against the
+same survey set and still forward every ordinary candidate. The Viewer retains
+the offer's actual destination list with its candidate batch, so a later config
+update cannot reinterpret an in-flight response. Controlled tests cover
+out-of-order results, an unrelated fourth destination, repeated mappings and
+stalled DNS.
+This does not identify the public-invitation report's cause, whose configured
+set already contains exactly three destinations.
 
 ### SFU Behind Server NAT
 

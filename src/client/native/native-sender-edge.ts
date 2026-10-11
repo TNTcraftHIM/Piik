@@ -158,7 +158,7 @@ export class NativeSenderEdge {
         if (event.candidate) {
           this.localIceCandidates.add(
             event.candidate,
-            isNativeNatSurveyCandidate(event.candidate),
+            isNativeNatSurveyCandidate(event.candidate, this.iceConfig.iceServers, this.iceConfig.natPredictionStunUrls),
           );
         } else {
           this.localIceCandidates.complete();

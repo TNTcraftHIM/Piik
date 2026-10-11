@@ -101,6 +101,8 @@ func (socket *iceSocket) close() {
 type mappedAddress struct {
 	address string
 	port    int
+	// One-based position in the requested STUN list, independent of response order.
+	serverIndex int
 }
 
 func (socket *iceSocket) surveySTUN(
@@ -114,8 +116,11 @@ func (socket *iceSocket) surveySTUN(
 	resolver := net.DefaultResolver
 	results := make(chan mappedAddress)
 	var pending sync.WaitGroup
+	index := 0
 	for _, server := range servers {
 		for _, rawURL := range server.URLs {
+			index++
+			serverIndex := index
 			uri, err := stun.ParseURI(rawURL)
 			if err != nil || uri.Scheme != stun.SchemeTypeSTUN ||
 				uri.Proto != stun.ProtoTypeUDP || uri.Port < 1 || uri.Port > 65_535 {
@@ -144,7 +149,7 @@ func (socket *iceSocket) surveySTUN(
 					"localPort", socket.localPort, "mappedAddress", diagnostics.ID(mapped.IP.String()), "mappedPort", mapped.Port,
 					"durationMs", time.Since(started).Milliseconds())
 				select {
-				case results <- mappedAddress{address: mapped.IP.String(), port: mapped.Port}:
+				case results <- mappedAddress{address: mapped.IP.String(), port: mapped.Port, serverIndex: serverIndex}:
 				case <-surveyContext.Done():
 				}
 			}()

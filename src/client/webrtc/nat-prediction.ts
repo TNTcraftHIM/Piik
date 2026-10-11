@@ -10,8 +10,18 @@ type ConcreteSignalCandidate = NonNullable<SignalCandidate>;
 
 export function isNativeNatSurveyCandidate(
   candidate: SignalCandidate,
+  iceServers: readonly RTCIceServer[] | undefined,
+  auxiliaryStunUrls: readonly string[] = [],
 ): boolean {
-  return candidate !== null && /^candidate:ns\d+\s/i.test(candidate.candidate);
+  const index = candidate && /^candidate:ns([1-9]\d*)\s/i.exec(candidate.candidate)?.[1];
+  if (!index) return false;
+  // App identifies the requested destination, never its response order. Extra
+  // ordinary STUN servers remain useful candidates but are not survey evidence.
+  const urls = iceServersWithNatPrediction(iceServers, true, auxiliaryStunUrls)
+    .flatMap(urlsOf).filter(url => /^stun:/i.test(url));
+  const url = urls[Number(index) - 1];
+  const normalized = url ? normalizedStunUrl(url) : null;
+  return normalized !== null && natPredictionSurveyUrls(iceServers, auxiliaryStunUrls).has(normalized);
 }
 
 const BASE_STUN_PORT = 3478;

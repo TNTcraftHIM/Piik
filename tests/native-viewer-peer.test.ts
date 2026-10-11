@@ -16,6 +16,52 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it("uses the offer's STUN destinations for prediction while the next ICE config changes", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
+  vi.stubGlobal("RTCPeerConnection", class { close() {} });
+  vi.spyOn(NativeMediaBridge.prototype, "start").mockResolvedValue({} as MediaStream);
+  let onEvent!: (event: NativeClientEvent) => void;
+  const client = {
+    receiveOffer: vi.fn(async () => ({ answer: { type: "answer", sdp: "v=0\r\n" }, audio: false, codec: "vp8" })),
+    onEvent: (handler: typeof onEvent) => { onEvent = handler; return () => {}; },
+    onClose: () => () => {},
+    closeReceiver: vi.fn(async () => {}), closeEdge: vi.fn(async () => {}),
+  } as unknown as NativeClient;
+  const original = {
+    iceServers: [{ urls: ["stun:site.example:3478", "stun:other.example:3478"] }],
+    natPredictionStunUrls: ["stun:site.example:3479", "stun:site.example:3480"],
+  };
+  const sent: SignalPayload[] = [];
+  const peer = new NativeCapableViewerPeer(original, {
+    sendSignal: (_parent, payload) => { sent.push(payload); return true; },
+    sendRestartRequest: () => true, onStream: () => {}, onUpdate: () => {},
+  }, { natPredictionEnabled: true }, async () => client, () => {}, "session", 2);
+  const emit = (index: number, port: number) => onEvent({
+    version: 10, type: "edge-candidate", shareId: "session", connectionId: "current",
+    candidate: { candidate: `candidate:ns${index} 1 udp 1 203.0.113.7 ${port} typ srflx` },
+  });
+  const candidates = () => sent.flatMap(payload => payload.kind === "candidate" ? [payload.candidate] : []);
+  try {
+    await peer.acceptSignal("parent", {
+      kind: "description", connectionId: "current",
+      description: { type: "offer", sdp: "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 VP8/90000\r\n" },
+    });
+    peer.updateIceConfig({
+      ...original, iceServers: [{ urls: ["stun:other.example:3478", "stun:site.example:3478"] }],
+    });
+    emit(3, 40006);
+    emit(2, 40003); // Ordinary extra destination must not complete a predicted sequence.
+    emit(1, 40000);
+    expect(candidates()).toHaveLength(3);
+    emit(4, 40012);
+    expect(candidates()).toHaveLength(12); // Four ordinary candidates plus the bounded eight predictions.
+  } finally {
+    peer.dispose();
+  }
+});
+
 it("retires queued candidates when disposed during their delivery", async () => {
   vi.stubGlobal("window", globalThis);
   vi.stubGlobal("MediaStream", class { getTracks() { return []; } });

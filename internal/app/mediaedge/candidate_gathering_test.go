@@ -4,10 +4,12 @@ import (
 	"context"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/pion/stun/v4"
 	"github.com/pion/turn/v5"
 	"github.com/pion/webrtc/v4"
 )
@@ -135,6 +137,9 @@ func TestSurveyHealthySTUNDoesNotWaitForSlowDNS(t *testing.T) {
 		if mapped.port != socket.localPort {
 			t.Fatal("STUN did not use the shared media socket")
 		}
+		if mapped.serverIndex != 2 {
+			t.Fatal("failed DNS shifted the responding destination's identity")
+		}
 	case <-time.After(time.Second):
 		t.Fatal("healthy STUN waited for the broken DNS target")
 	}
@@ -145,6 +150,63 @@ func TestSurveyHealthySTUNDoesNotWaitForSlowDNS(t *testing.T) {
 		}
 	case <-time.After(stunSurveyTimeout + time.Second):
 		t.Fatal("DNS resolution ignored the survey deadline")
+	}
+}
+
+func TestSurveyCandidateIdentitySurvivesResponseOrder(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	socket := testICESocket(t, engine)
+	var releaseSlow atomic.Bool
+	slow := bindingServer(t, func(request *stun.Message, sender *net.UDPAddr, listener *net.UDPConn) {
+		if releaseSlow.Load() {
+			answerBinding(request, sender, listener, 40000)
+		}
+	})
+	fast := bindingServer(t, func(request *stun.Message, sender *net.UDPAddr, listener *net.UDPConn) {
+		answerBinding(request, sender, listener, 40003)
+	})
+	candidates := make(chan *webrtc.ICECandidateInit, 4)
+	gathering := newLocalCandidateGathering(socket, []webrtc.ICEServer{{URLs: []string{
+		"turn:unused.invalid:3478", "stun:" + slow.String(), "stun:" + fast.String(),
+	}}}, nil, func(candidate *webrtc.ICECandidateInit) { candidates <- candidate })
+	t.Cleanup(gathering.close)
+	gathering.start()
+	for _, want := range []struct{ foundation, port string }{{"candidate:ns2", "40003"}, {"candidate:ns1", "40000"}} {
+		select {
+		case candidate := <-candidates:
+			if candidate == nil {
+				t.Fatal("survey ended before both destinations responded")
+			}
+			fields := strings.Fields(candidate.Candidate)
+			if fields[0] != want.foundation || fields[5] != want.port {
+				t.Fatalf("candidate lost its destination: %s; want %+v", candidate.Candidate, want)
+			}
+			releaseSlow.Store(true)
+		case <-time.After(2 * time.Second):
+			t.Fatal("STUN response did not arrive")
+		}
+	}
+}
+
+func TestSurveyDuplicateMappingRemainsOneOrdinaryCandidate(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	socket := testICESocket(t, engine)
+	servers := []webrtc.ICEServer{{URLs: []string{localSurveyServer(t), localSurveyServer(t)}}}
+	var observations []mappedAddress
+	socket.surveySTUN(t.Context(), servers, func(mapped mappedAddress) {
+		observations = append(observations, mapped)
+	})
+	if len(observations) != 1 || observations[0].port != socket.localPort ||
+		(observations[0].serverIndex != 1 && observations[0].serverIndex != 2) {
+		t.Fatalf("duplicate destination mappings became independent evidence: %+v", observations)
 	}
 }
 

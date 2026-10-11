@@ -196,7 +196,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
   private parentPeerId: string | null = null;
   private connectionId: string | null = null;
   private bridge: NativeMediaBridge | null = null;
-  private localCandidates: NatPredictionCandidateBatch | null = null;
+  private localCandidates: { batch: NatPredictionCandidateBatch; iceConfig: IceConfig } | null = null;
   private unsubscribe: (() => void) | null = null;
   private unsubscribeClose: (() => void) | null = null;
   private snapshot: PeerSnapshot | null = null;
@@ -336,7 +336,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
     this.disposed = true;
     this.clearTimers();
     this.disposeBridge();
-    this.localCandidates?.discard();
+    this.localCandidates?.batch.discard();
     this.localCandidates = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
@@ -366,7 +366,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
     if (identityChanged) {
       const previous = this.connectionId;
       this.disposeBridge();
-      this.localCandidates?.discard();
+      this.localCandidates?.batch.discard();
       if (previous) {
         await this.client.closeReceiver(this.sessionId, previous).catch(
           () => undefined,
@@ -377,7 +377,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
     } else if (!retainSource) {
       this.disposeBridge();
     }
-    this.localCandidates?.discard();
+    this.localCandidates?.batch.discard();
     if (!retainSource) {
       this.state = "connecting";
       this.failureNotified = false;
@@ -427,7 +427,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
     const candidates = predictionEnabled
       ? new NatPredictionCandidateBatch(sendCandidate)
       : null;
-    this.localCandidates = candidates;
+    this.localCandidates = candidates ? { batch: candidates, iceConfig: nativeIceConfig } : null;
     this.emit();
     const pending = { bridge: retainSource ? this.bridge : null, bridgeFailed: false };
     this.pendingOffer = pending;
@@ -531,12 +531,13 @@ class NativeViewerPeer implements ViewerMediaPeer {
     }
     if (event.type === "edge-candidate") {
       if (this.localCandidates) {
+        const { batch, iceConfig } = this.localCandidates;
         if (event.candidate) {
-          this.localCandidates.add(
+          batch.add(
             event.candidate,
-            isNativeNatSurveyCandidate(event.candidate),
+            isNativeNatSurveyCandidate(event.candidate, iceConfig.iceServers, iceConfig.natPredictionStunUrls),
           );
-        } else this.localCandidates.complete();
+        } else batch.complete();
       } else if (this.parentPeerId && this.connectionId) {
         this.events.sendSignal(this.parentPeerId, {
           kind: "candidate",

@@ -117,7 +117,6 @@ func (gathering *localCandidateGathering) start() {
 					}
 				})
 			}()
-			index := 0
 			var observed []mappedAddress
 			for survey != nil || mapping != nil {
 				select {
@@ -135,11 +134,10 @@ func (gathering *localCandidateGathering) start() {
 						survey = nil
 						continue
 					}
-					index++
 					mid := "0"
 					line := uint16(0)
 					gathering.emitCandidate(&webrtc.ICECandidateInit{
-						Candidate: "candidate:ns" + strconv.Itoa(index) +
+						Candidate: "candidate:ns" + strconv.Itoa(mapped.serverIndex) +
 							" 1 udp " + strconv.Itoa(surveyCandidatePriority) + " " +
 							mapped.address + " " +
 							strconv.Itoa(mapped.port) + " typ srflx raddr 0.0.0.0 rport " +

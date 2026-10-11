@@ -45,6 +45,10 @@ function rtcCandidate(port: number): RTCIceCandidate {
 
 describe("NAT prediction ICE adapter", () => {
   it("uses only explicit Native survey candidates as prediction evidence", () => {
+    const iceConfig = {
+      iceServers: [{ urls: ["stun:share.example.test:3478", "stun:other.example.test:3478"] }],
+      natPredictionStunUrls: ["stun:share.example.test:3479", "stun:share.example.test:3480"],
+    };
     const survey = candidate(40_000);
     if (survey) {
       survey.candidate = survey.candidate.replace(
@@ -53,9 +57,13 @@ describe("NAT prediction ICE adapter", () => {
       );
     }
 
-    expect(isNativeNatSurveyCandidate(survey)).toBe(true);
-    expect(isNativeNatSurveyCandidate(candidate(40_000))).toBe(false);
-    expect(isNativeNatSurveyCandidate(hostCandidate())).toBe(false);
+    const eligible = (value: SignalCandidate) => isNativeNatSurveyCandidate(value, iceConfig.iceServers, iceConfig.natPredictionStunUrls);
+    expect(eligible(survey)).toBe(true);
+    for (const [index, expected] of [[2, false], [3, true], [4, true], [5, false], [0, false]] as const) {
+      expect(eligible({ candidate: `candidate:ns${index} 1 udp 1 203.0.113.7 40000 typ srflx` })).toBe(expected);
+    }
+    expect(eligible(candidate(40_000))).toBe(false);
+    expect(eligible(hostCandidate())).toBe(false);
   });
 
   it("keeps unexpected ordinary-candidate failures visible", async () => {
