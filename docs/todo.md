@@ -75,8 +75,11 @@ Implementation needs a concrete useful result within the product model.
   actual output. Numeric request, capability and observation boundaries are now
   separate from implementation admission. Keep receiver, codec/alignment and
   resource budgets intact; opening an output range still needs end-to-end evidence.
-  Retain the current audio sender ceiling and bounded video controls; extending
-  their operating range needs a concrete use case and end-to-end evidence.
+  Review the inherited video operating range: the 15 fps / 2 Mbps source minimum
+  prevents low-rate source requests, while 12 Mbps can constrain 4K60 motion quality.
+  The assessment now has local codec controls beyond both ends; widening the
+  controls still needs complete-route evidence and coherent lower-output limits.
+  Keep the audio sender ceiling backed by the existing packet-size evidence.
   Numeric audio and video controls are implemented; the assessment
   owns local capture, codec, derived-output, SFU and bounded mixed-route evidence.
   Remaining receiver acceptance needs physical limited decoders and camera
