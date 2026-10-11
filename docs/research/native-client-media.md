@@ -764,7 +764,10 @@ Native encoded input also produced the expected half-size output at the low and
 high bounds. Each derivation retained its existing input-format generation;
 source changes still retire and replan that optional output through its owner.
 Browser loopback with the real sender controls also delivered decoded progress
-at all three settings and after replacing the 1 fps source. The 1 fps H.264
+at all three settings and after replacing the 1 fps source. At 1 fps / 100 kbps,
+the production Browser HostPeer also delivered to two local receivers through
+ordinary senders and the shared encoding pool, for both H.264 and VP8. This
+bounded check does not cover room routing or physical-network recovery. The 1 fps H.264
 preflight passed; the 4K60 preflight selected VP8 on this machine even though
 explicit H.264 delivered frames. Admission is not a sustained-cadence guarantee.
 
@@ -774,7 +777,8 @@ rejected rather than expanding allocation limits. Large bitrate/low-cadence
 requests are not permission for unbounded frames. These local controls establish
 useful operation and bounded failure, not sustained field quality or complete-route
 performance. Ignored controls and results are under
-`build/candidate-review/four-k60/` (`range-worker.cpp`, `range-browser.js`).
+`build/candidate-review/four-k60/` (`range-worker.cpp`, `range-browser.js`,
+`low-rate-pool.js`).
 
 [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-availableoutgoingbitrate)
 describe estimated available capacity, not a configured send-rate ceiling;
