@@ -72,8 +72,8 @@ the three recommended presets. Windows and Linux output preserve source shape
 within the selected ceiling.
 The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
 owns local codec, derived-output, SFU, Browser/Native fanout and live-control
-evidence. The macOS geometry implementation still needs SDK compilation and
-hardware verification; cross-browser/device and route-change acceptance remain
+evidence. Both macOS architectures pass SDK compilation and packaged startup;
+physical geometry verification, cross-device and route-change acceptance remain
 open. Additional codecs are not part of this candidate.
 Magicsock adoption is no-go for this candidate: its App-to-App augmentation does
 not improve the core App-to-Browser use case. The
@@ -81,6 +81,9 @@ not improve the core App-to-Browser use case. The
 owns the retained experiment and product decision. Its package is retired;
 independent ordinary ICE and media repairs remain in the candidate.
 Publication remains subject to final acceptance.
+The candidate App now waits for approved Sites independently of Local/public
+room startup. Its two-choice launcher retains one exact Site approval and
+revocation, using the existing loopback and native-session owners.
 Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns
 remaining work.
 

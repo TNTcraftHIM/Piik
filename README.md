@@ -71,8 +71,8 @@ device and adjust your voice volume.
 
 Piik follows your system language: Chinese or English, with English as the fallback.
 Use **中 / EN / ✦** in the header to switch language or try the visual mode.
-The App offers a local room, a temporary public link, or a connection to your own
-site. Keep the App running while sharing through it.
+The App can create a local room or temporary public invitation, and stays
+available to supply capture for an approved site. Keep it running while sharing.
 
 Download a ZIP beginning with **`piik-app`**. The filename also identifies the platform:
 

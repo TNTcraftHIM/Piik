@@ -18,6 +18,7 @@ import {
   nativeAckResponseSchema,
   nativeEventSchema,
   nativeDiscoveryIdentitySchema,
+  nativeConnectSchema,
   nativeHealthSchema,
   NATIVE_CLIENT_PORT_END,
   NATIVE_CLIENT_PORT_START,
@@ -46,6 +47,7 @@ const REQUEST_TIMEOUT_MS = 8_000;
 
 interface NativeDiscoveryOptions {
   waitForPermission?: boolean;
+  signal?: AbortSignal;
 }
 
 async function ungrantedLocalPermission(): Promise<PermissionState | null> {
@@ -111,8 +113,31 @@ export class NativeRequestError extends Error {
 }
 
 export async function discoverNativeHealth(
-  { waitForPermission = true }: NativeDiscoveryOptions = {},
+  options: NativeDiscoveryOptions = {},
 ): Promise<NativeHealth | null> {
+  const health = await discoverNative("health", body => nativeHealthSchema.parse(body), options);
+  if (health) debugEvent("native", "discovered", { capabilities: health.nativeMedia });
+  return health;
+}
+
+/** A local approval address is not permission to use native media. */
+export async function discoverNativeConnect(signal?: AbortSignal): Promise<string | null> {
+  return discoverNative("connect-discovery", body => {
+    const { connectURL } = nativeConnectSchema.parse(body);
+    const url = new URL(connectURL);
+    if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port ||
+        url.username || url.password || url.pathname !== "/client" || url.search || url.hash) {
+      throw new Error("Invalid local App approval address");
+    }
+    url.searchParams.set("site", window.location.origin);
+    return url.toString();
+  }, { signal });
+}
+
+async function discoverNative<T>(
+  path: "health" | "connect-discovery", read: (body: unknown) => T,
+  { waitForPermission = true, signal }: NativeDiscoveryOptions,
+): Promise<T | null> {
   if (!waitForPermission) {
     const permission = await ungrantedLocalPermission();
     if (permission) {
@@ -129,9 +154,9 @@ export async function discoverNativeHealth(
       length: NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1,
     }, async (_, index) => {
       const port = NATIVE_CLIENT_PORT_START + index;
-      const response = await fetch(`http://127.0.0.1:${port}/health`, {
+      const response = await fetch(`http://127.0.0.1:${port}/${path}`, {
         cache: "no-store",
-        signal: controller.signal,
+        signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
         targetAddressSpace: "loopback",
       } as RequestInit);
       if (!response.ok) throw new Error("Piik App discovery was not accepted");
@@ -143,9 +168,7 @@ export async function discoverNativeHealth(
       if (identity.data.protocol !== NATIVE_CLIENT_PROTOCOL) {
         throw new NativeCompatibilityError(identity.data.protocol);
       }
-      const health = nativeHealthSchema.parse(body);
-      debugEvent("native", "discovered", { capabilities: health.nativeMedia });
-      return health;
+      return read(body);
     }));
   } catch (error) {
     const incompatible = error instanceof AggregateError

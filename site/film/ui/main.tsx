@@ -208,7 +208,7 @@ function Screen({ shot }: { shot: Shot }) {
             mode={shot}
             onModeChange={noop}
             site=""
-            onSiteChange={noop}
+            onRemoveSite={noop}
             localAccessPassword=""
             onLocalAccessPasswordChange={noop}
             onSubmit={(event) => event.preventDefault()}

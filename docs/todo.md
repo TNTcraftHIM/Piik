@@ -84,8 +84,9 @@ Implementation needs a concrete useful result within the product model.
   Remaining receiver acceptance needs physical limited decoders and camera
   orientation behavior, beyond the bounded SDP-limit and mixed-route controls.
   Browser display capture, Browser relay, Browser-to-Native fanout and SFU have
-  bounded high-resolution continuity evidence. macOS geometry SDK/hardware
-  checks and physical 4K/game capture remain open. The fanout controls did not
+  bounded high-resolution continuity evidence. macOS geometry hardware
+  checks and physical 4K/game capture remain open; both macOS package targets
+  now pass SDK compilation and startup. The fanout controls did not
   establish sustained 60 fps; retain that performance limit when arranging
   device/network acceptance. Preserve safety limits and
   framework-owned adaptation. The
@@ -115,11 +116,11 @@ Implementation needs a concrete useful result within the product model.
   existing device selector. Keep it outside this candidate until a concrete
   use case justifies that boundary and physical latency/echo/background checks.
   This proposal does not reopen room voice.
-- [ ] **Passive App attachment: design hold.** Site mode authorizes one selected
-  origin and supplies native media without starting a local room server. A
-  passive replacement needs an accepted site-consent/discovery flow; it must not
-  admit arbitrary sites or add another runtime owner. Keep Site mode until that
-  decision; removal of the Demo prefill does not authorize changing site trust.
+- [ ] **Passive App attachment acceptance.** The two-choice launcher and explicit
+  local Site approval replace the third mode, using the existing native runtime.
+  Include first connection, saved approval, replacement/revocation and Local
+  coexistence in final packaged acceptance. Browser permission and cross-platform
+  checks must not be inferred from the local development preview.
 
 ## Awaiting Device Or Reporter Evidence
 

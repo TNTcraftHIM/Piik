@@ -53,9 +53,10 @@ The App and Hosted Piik run the same server core, so the local package is
 one executable carrying the built Browser assets plus the optional capture and
 tunnel sidecars; [the App README](../../cmd/piik-app/README.md) owns
 that layout. In Local mode the App runs the server in its own process with
-explicit local configuration. In Site mode it starts no server, and the system
-Browser opens the saved Site while the same process remains its loopback
-native-media owner. The system Browser remains the UI.
+explicit local configuration. While waiting for an approved Site it starts no
+room server; the same process remains the Site's loopback native-media owner.
+The persistent launcher owns local approval and room startup independently.
+The system Browser remains the UI.
 
 Official Go process APIs require every started child to be waited and provide a
 bounded `WaitDelay` for cancellation and stuck I/O. That guidance now covers the

@@ -272,7 +272,8 @@ design. All-UDP-blocked networks currently end in bounded failure.
 App Local mode runs this graph without SFU, NAT prediction, or default STUN.
 One-link mode tunnels only HTTP/WebSocket control and adds public STUN to the
 same Browser/Native P2P edges. Reachable peers form one mixed relay tree; an
-unreachable path adds no route type or score. Site mode uses Site transport.
+unreachable path adds no route type or score. App-enabled Site pages use that
+Site's transport configuration.
 
 A Native Host reserves one loopback edge for Browser preview; it consumes no
 route-copy capacity or gateway mapping. Direct children and the admitted Native

@@ -43,7 +43,7 @@ checks, a copyable failure summary and browser diagnostics. The summary contains
 the Web version, message and error code, without invitation links or source names.
 
 - **App disconnected or request timed out:** check that the App is running and
-  responding, open this site from the App, then refresh. Allow local network
+  responding, then click **App** at the top of the site to connect. Allow local network
   access if the browser asks. A timeout alone does not establish a graphics fault.
 - **App could not start the selected source:** try an ordinary window or screen,
   then compare with the **Browser** source picker. On Windows, try **Auto** or
@@ -83,9 +83,9 @@ See [Server deployment](../operations/self-hosting.md) for the configuration.
 
 ## App windows or screens are missing
 
-Keep Piik App running on the computer where you are sharing. Open the current
-site from the App; for a hosted site, use the App's **Site** mode with that
-site's address. If the browser asks for local-network access, allow it, then
+Keep Piik App running on the computer where you are sharing. Click **App** at
+the top of the site, then confirm its address on the local approval page.
+If the browser asks for local-network access, allow it, then
 refresh the source list. If access was previously blocked, review this site's
 browser permissions first.
 
@@ -93,7 +93,7 @@ The source picker distinguishes these outcomes:
 
 | Message | Next step |
 | --- | --- |
-| Cannot connect to Piik App | Confirm the App is running and opened this site. Close unused Piik tabs using the App, then refresh the list; up to two pages can use the App's native capture or viewing at once. |
+| Cannot connect to Piik App | Confirm the App is running and this site is approved. Close unused Piik tabs using the App, then refresh the list; up to two pages can use the App's native capture or viewing at once. |
 | Piik App and this page are incompatible | Update Piik App and reload the page. |
 | Piik App capture is currently unavailable | Check the App diagnostics for capture or encoder availability. Review your encoding setting or use browser capture. |
 | Could not read the screen and window list | Refresh to retry. If it keeps failing, export both the App and browser Debug reports. |

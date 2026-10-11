@@ -171,6 +171,8 @@ export function ViewerPage({
   launchedByClient = false,
 }: ViewerPageProps) {
   const { lang, t, vis, titleFrames } = useCopy();
+  const clientActivationRef = useRef(launchedByClient);
+  clientActivationRef.current = launchedByClient;
   const viewerClientId = useMemo(
     () => getStableClientId("viewer", roomId),
     [roomId],
@@ -489,7 +491,7 @@ export function ViewerPage({
     };
 
     const acquireNativeClient = async (): Promise<NativeClient | null> => {
-      if (!active || !launchedByClient || !nativeViewerAvailable) return null;
+      if (!active || !clientActivationRef.current || !nativeViewerAvailable) return null;
       if (!nativeClientPromise) {
         const connecting: Promise<NativeClient | null> = NativeClient.connect({ waitForPermission: false }).catch(() => null).then((client) => {
           if (!client || !active || nativeClientPromise !== connecting) {
@@ -514,7 +516,7 @@ export function ViewerPage({
       events: ViewerPeerEvents,
       options: ViewerPeerOptions,
     ): ViewerMediaPeer {
-      if (!launchedByClient) {
+      if (!clientActivationRef.current) {
         return new ViewerPeer(iceConfig, events, options);
       }
       return new NativeCapableViewerPeer(
@@ -1841,7 +1843,7 @@ export function ViewerPage({
       viewerRelaySourceKey = null;
       releaseNativeClient();
     };
-  }, [roomId, viewerGrant, viewerPasswordAttempt, launchedByClient]);
+  }, [roomId, viewerGrant, viewerPasswordAttempt]);
 
   useEffect(() => {
     const video = videoRef.current;

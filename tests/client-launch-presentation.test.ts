@@ -38,6 +38,28 @@ function browser(saved: string[] = [], blocked = false) {
 }
 
 describe("App presentation handoff authority", () => {
+  it.each([false, true])("activates the current page after approval, including blocked storage: %s", async (blocked) => {
+    const env = browser([], blocked);
+    const events = new EventTarget();
+    Object.assign(env.page, {
+      addEventListener: events.addEventListener.bind(events),
+      removeEventListener: events.removeEventListener.bind(events),
+      dispatchEvent: events.dispatchEvent.bind(events),
+    });
+    const { isClientActivated, activateClient, watchClientActivation } = await import("../src/client/lib/session");
+    const changed = vi.fn();
+    const release = watchClientActivation(changed);
+    expect(isClientActivated()).toBe(false);
+    activateClient();
+    expect(isClientActivated()).toBe(true);
+    expect(changed).toHaveBeenCalledOnce();
+    expect(env.page.location.href).toBe("https://site.example/");
+    expect(env.values.get("piik:client-launch:v1")).toBe(blocked ? undefined : "1");
+    release();
+    activateClient();
+    expect(changed).toHaveBeenCalledOnce();
+  });
+
   it.each([
     { name: "old launcher preserves saved choices", saved: ["zh", "vis", "dark"], fields: "", selection: "zh:true", theme: "dark", result: ["zh", "vis", "dark"] },
     { name: "old launcher supplies only temporary first-use defaults", saved: [], fields: "", selection: "en:false", theme: "light", result: [null, null, null] },

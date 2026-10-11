@@ -55,6 +55,11 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
 });
 export type NativeHealth = z.infer<typeof nativeHealthSchema>;
 
+export const nativeConnectSchema = nativeDiscoveryIdentitySchema.extend({
+  protocol: z.literal(NATIVE_CLIENT_PROTOCOL),
+  connectURL: z.string().url().max(256),
+});
+
 const nativeWindowTargetSchema = z
   .object({
     kind: z.literal("window"),

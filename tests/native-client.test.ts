@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { discoverNativeHealth, NativeClient, NativeCompatibilityError, notifyNativePresentation } from "../src/client/native/client";
+import { discoverNativeConnect, discoverNativeHealth, NativeClient, NativeCompatibilityError, notifyNativePresentation } from "../src/client/native/client";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 
 import {
@@ -30,6 +30,45 @@ describe("native App private wire", () => {
     instanceToken: "a".repeat(43),
     nativeMedia: { video: true, hardwareH264: true },
   };
+
+  it("discovers only a local approval page without opening native control", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/r/9527") });
+    const socket = vi.fn();
+    vi.stubGlobal("WebSocket", socket);
+    const fetcher = vi.fn(async (url: string) => url === `http://127.0.0.1:${health.port}/connect-discovery`
+      ? new Response(JSON.stringify({ ...health, connectURL: "http://127.0.0.1:54321/client" }))
+      : new Response(null, { status: 404 }));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(discoverNativeConnect()).resolves.toBe("http://127.0.0.1:54321/client?site=https%3A%2F%2Fpiik.example");
+    expect(fetcher.mock.calls.every(([url]) => url.endsWith("/connect-discovery"))).toBe(true);
+    expect(socket).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "https://untrusted.example/client", "http://localhost:54321/client", "http://127.0.0.1:54321/other",
+    "http://user@127.0.0.1:54321/client", "http://127.0.0.1:54321/client?site=https://other.example",
+  ])("rejects an unsafe App approval address: %s", async (connectURL) => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url === `http://127.0.0.1:${health.port}/connect-discovery`
+      ? new Response(JSON.stringify({ ...health, connectURL })) : new Response(null, { status: 404 })));
+    await expect(discoverNativeConnect()).resolves.toBeNull();
+  });
+
+  it("cancels the whole approval scan with its caller", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      const signal = init.signal!;
+      signals.push(signal);
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    })));
+    const controller = new AbortController();
+    const result = discoverNativeConnect(controller.signal);
+    controller.abort();
+    await expect(result).resolves.toBeNull();
+    expect(signals).toHaveLength(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
+    expect(signals.every(signal => signal.aborted)).toBe(true);
+  });
 
   it("reads numeric video capability descriptions and rejects malformed limits", () => {
     const nativeMedia = { ...health.nativeMedia, maxVideoResolution: { width: 3840, height: 3840 },

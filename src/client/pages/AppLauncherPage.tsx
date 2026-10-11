@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { z } from "zod";
 
 import { BrandMark } from "../components/living/BrandMark";
+import { HintComic } from "../components/living/hints";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { AppHeader } from "../components/living/Header";
@@ -11,7 +12,6 @@ import { hasCopyPreference, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { currentThemePreference } from "../ui/theme";
 import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
-import { browserDebugEnabled } from "../lib/debug";
 import {
   checkReleaseUpdate,
   type ReleaseUpdateNotice,
@@ -20,7 +20,10 @@ import {
 const launcherStateSchema = z.object({
   site: z.string(),
   localAccessPassword: z.string(),
-  defaultMode: z.enum(["local", "link", "site"]),
+  defaultMode: z.enum(["local", "link"]),
+  target: z.string().optional(),
+  starting: z.boolean().optional(),
+  detail: z.string().optional(),
   revision: z.string(),
   version: z.string().default("development"),
   packageTarget: z.string().optional(),
@@ -43,27 +46,57 @@ export function AppLauncherPage() {
   const [error, setError] = useState<{ kind: "load" | "launch"; detail?: string } | null>(null);
   const [appDebug, setAppDebug] = useState<boolean | undefined>();
   const [debug, setDebug] = useState(false);
+  const [debugBusy, setDebugBusy] = useState(false);
+  const [debugError, setDebugError] = useState(false);
+  const [reload, setReload] = useState(0);
   const [lan, setLan] = useState<z.infer<typeof launcherStateSchema>["lan"]>();
   const [update, setUpdate] = useState<ReleaseUpdateNotice | null>(null);
   const [version, setVersion] = useState<string>();
+  const [target, setTarget] = useState<string>();
+  const [siteBusy, setSiteBusy] = useState(false);
+  const [siteError, setSiteError] = useState<string>();
+  const [approved, setApproved] = useState(false);
+  const requestedSite = new URLSearchParams(window.location.search).get("site");
+  const approvalCurrent = approved && site === requestedSite;
+  const validSite = requestedSite && (() => {
+    try {
+      const url = new URL(requestedSite);
+      return ["http:", "https:"].includes(url.protocol) && url.origin === requestedSite;
+    } catch { return false; }
+  })();
 
   useEffect(() => {
     let current = true;
-    void fetch("/api/client-launcher", { cache: "no-store" })
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let checkedRelease = false;
+    let reading = false;
+    const readState = (restoreSettings = false) => {
+      if (reading || !current) return;
+      reading = true;
+      clearTimeout(timer);
+      void fetch("/api/client-launcher", { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error();
         return launcherStateSchema.parse(await response.json());
       })
       .then((state) => {
         if (!current) return;
-        setMode(state.defaultMode);
+        if (restoreSettings) {
+          setMode(state.defaultMode);
+          setLocalAccessPassword(state.localAccessPassword);
+          setLan(state.lan);
+        }
         setVersion(state.version);
+        setTarget(state.target);
+        setStarting(state.starting === true);
         setSite(state.site);
-        setLocalAccessPassword(state.localAccessPassword);
         setAppDebug(state.debug);
-        setDebug(state.debug === true || browserDebugEnabled);
-        setLan(state.lan);
+        setDebug(state.debug === true);
+        if (state.detail) setError({ kind: "launch", detail: state.detail });
         setLoading(false);
+        if (state.starting) timer = setTimeout(() => void readState(), 750);
+        if (checkedRelease) return;
+        checkedRelease = true;
         void checkReleaseUpdate({
           version: state.version,
           revision: state.revision,
@@ -76,19 +109,36 @@ export function AppLauncherPage() {
       .catch(() => {
         if (!current) return;
         setError({ kind: "load" });
+        setStarting(false);
         setLoading(false);
-      });
+      }).finally(() => { reading = false; });
+    };
+    void readState(true);
+    const refresh = () => { void readState(); };
+    window.addEventListener("focus", refresh);
     return () => {
       current = false;
+      clearTimeout(timer);
+      window.removeEventListener("focus", refresh);
     };
-  }, []);
+  }, [reload]);
 
-  async function launch(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    if (starting || (mode === "site" && !site.trim()) ||
-      (mode === "local" && lan !== undefined && !lan.selected)) return;
-    setStarting(true);
-    setError(null);
+  async function enableDebug(): Promise<void> {
+    if (debugBusy) return;
+    setDebugBusy(true);
+    setDebugError(false);
+    try {
+      const response = await fetch("/api/client-launcher/debug", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!response.ok) throw new Error();
+      setAppDebug(true);
+      setDebug(true);
+    } catch { setDebugError(true); }
+    finally { setDebugBusy(false); }
+  }
+
+  function launchURL(target: string): string {
     const theme = currentThemePreference();
     const presentation: ClientLaunchPresentation = {
       lang, vis, theme,
@@ -97,6 +147,15 @@ export function AppLauncherPage() {
         ...(theme !== null ? ["theme" as const] : []),
       ],
     };
+    return clientLaunchURL(target, presentation, debug);
+  }
+
+  async function launch(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (starting ||
+      (mode === "local" && lan !== undefined && !lan.selected)) return;
+    setStarting(true);
+    setError(null);
     try {
       const response = await fetch("/api/client-launcher/launch", {
         method: "POST",
@@ -106,9 +165,14 @@ export function AppLauncherPage() {
           language: consoleLanguage(lang, vis),
           ...(appDebug !== undefined && debug ? { debug: true } : {}),
           ...(mode === "local" && lan ? { lanAddress: lan.selected } : {}),
-          ...(mode === "site" ? { site } : { localAccessPassword }),
+          localAccessPassword,
         }),
       });
+      if (response.status === 409) {
+        setLoading(true);
+        setReload(value => value + 1);
+        return;
+      }
       if (!response.ok) {
         const failure = launcherErrorSchema.safeParse(await response.json().catch(() => null));
         setError({ kind: "launch", detail: failure.success ? failure.data.detail : undefined });
@@ -116,11 +180,37 @@ export function AppLauncherPage() {
         return;
       }
       const result = launcherResultSchema.parse(await response.json());
-      window.location.replace(clientLaunchURL(result.target, presentation, debug));
+      window.location.replace(launchURL(result.target));
     } catch {
       setError({ kind: "launch" });
       setStarting(false);
     }
+  }
+
+  async function changeSite(nextSite: string): Promise<void> {
+    if (siteBusy) return;
+    setSiteBusy(true);
+    setSiteError(undefined);
+    try {
+      const response = await fetch("/api/client-launcher/site", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ site: nextSite, expectedSite: site }),
+      });
+      const result = z.object({ site: z.string() }).safeParse(await response.json().catch(() => null));
+      if (result.success) setSite(result.data.site);
+      if (response.status === 409 && result.success) {
+        setSiteError(t("client.connect.changed"));
+        return;
+      }
+      if (!response.ok || !result.success) throw new Error("App approval failed");
+      setSite(result.data.site);
+      if (requestedSite && result.data.site === requestedSite) {
+        setApproved(true);
+        window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
+      }
+    } catch {
+      setSiteError(t("client.connect.saveFailed"));
+    } finally { setSiteBusy(false); }
   }
 
   return (
@@ -128,11 +218,12 @@ export function AppLauncherPage() {
       <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
         <Btn icon="cpu" title="client.launch.debugHint" cap="client.launch.debug"
           pressed={debug} tone={debug ? "on" : undefined} hint="debug-start"
-          disabled={appDebug || loading || starting || error !== null}
-          onClick={() => setDebug((value) => !value)} />
+          disabled={appDebug || debugBusy || loading || starting || !!target || error !== null}
+          onClick={() => void enableDebug()} />
       )} />
       <main className="lr-client-launch">
-        {loading || starting ? (
+        {debugError && <Pill icon="alert" tone="bad" comic="warning" alert label={t("client.launch.debugFailed")} />}
+        {loading || (starting && !requestedSite) ? (
           <LoadingStatus label={starting ? "client.launch.starting" : "common.loading"} />
         ) : error ? (
           <div className="lr-client-launch-panel">
@@ -155,6 +246,23 @@ export function AppLauncherPage() {
               onClick={() => window.location.reload()}
             />}
           </div>
+        ) : requestedSite ? (
+          <section className="lr-client-approval">
+            <BrandMark size={68} motion="once" />
+            {vis && <HintComic kind="hint-client-site" />}
+            <h1 className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.approved" : "client.connect.approveTitle")}</h1>
+            <div className="lr-client-approval-origin">{requestedSite}</div>
+            <p className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.return" : "client.connect.approveHint")}</p>
+            {!approvalCurrent && site && site !== requestedSite && <p>{t("client.connect.replace", { site })}</p>}
+            {!validSite && <Pill icon="alert" tone="bad" label={t("client.connect.invalid")} comic="signal-failed" />}
+            {siteError && <p role="alert">{siteError}</p>}
+            <div className="lr-client-approval-actions">
+              <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"}
+                onClick={() => window.close()} />
+              {!approvalCurrent && <Btn icon="check" title="client.connect.approve" cap="client.connect.approve" tone="primary"
+                hint="hint-client-site" disabled={!validSite || siteBusy} onClick={() => void changeSite(requestedSite)} />}
+            </div>
+          </section>
         ) : (
           <LauncherForm
             version={version}
@@ -162,7 +270,11 @@ export function AppLauncherPage() {
             site={site}
             localAccessPassword={localAccessPassword}
             onModeChange={setMode}
-            onSiteChange={setSite}
+            onRemoveSite={() => void changeSite("")}
+            siteBusy={siteBusy}
+            siteError={siteError}
+            target={target}
+            onOpen={(event) => { event.currentTarget.href = launchURL(event.currentTarget.href); }}
             onLocalAccessPasswordChange={setLocalAccessPassword}
             lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
             onSubmit={launch}

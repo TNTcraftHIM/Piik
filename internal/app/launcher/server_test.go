@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"runtime"
 	"strings"
 	"testing"
@@ -40,7 +42,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 		Debug               *bool  `json:"debug"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
-		state.Site != "https://share.example" || state.DefaultMode != ModeSite ||
+		state.Site != "https://share.example" || state.DefaultMode != ModeLink ||
 		state.Version != "development" || state.Revision != "" || state.LocalAccessPassword != "" || state.Debug == nil || *state.Debug {
 		t.Fatalf("launcher state = %d, %+v", response.StatusCode, state)
 	}
@@ -48,7 +50,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 	result := make(chan *http.Response, 1)
 	requestErr := make(chan error, 1)
 	go func() {
-		response, err := http.Post(
+		response, err := localPost(
 			origin+"/api/client-launcher/launch",
 			"application/json",
 			bytes.NewBufferString(`{"mode":"link","language":"vis","debug":true}`),
@@ -148,7 +150,7 @@ func TestLauncherLANChoicesUseCurrentAddressesAndTheExplicitPreference(t *testin
 				}
 			}
 			if err := json.NewDecoder(response.Body).Decode(&state); err != nil || response.StatusCode != http.StatusOK ||
-				state.DefaultMode != ModeSite || state.LAN == nil || state.LAN.Addresses == nil ||
+				state.DefaultMode != ModeLink || state.LAN == nil || state.LAN.Addresses == nil ||
 				state.LAN.Selected != test.selected || len(state.LAN.Addresses) != len(test.addresses) {
 				t.Fatalf("LAN choices = %+v, status %d, %v", state, response.StatusCode, err)
 			}
@@ -164,7 +166,7 @@ func TestLauncherLANChoicesUseCurrentAddressesAndTheExplicitPreference(t *testin
 func TestLauncherPassesTheChosenLANAddressToTheApp(t *testing.T) {
 	server := startFixture(t, "")
 	server.SetResult("http://localhost:8787/#piik-client=1", nil)
-	response, err := http.Post(strings.TrimSuffix(server.URL(), "/client")+"/api/client-launcher/launch",
+	response, err := localPost(strings.TrimSuffix(server.URL(), "/client")+"/api/client-launcher/launch",
 		"application/json", strings.NewReader(`{"mode":"local","language":"en","lanAddress":"192.168.1.4"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -206,7 +208,7 @@ func TestLauncherPreservesAnOptionalLocalPassword(t *testing.T) {
 				t.Fatal(err)
 			}
 			go func() {
-				response, err := http.Post(
+				response, err := localPost(
 					origin+"/api/client-launcher/launch",
 					"application/json",
 					bytes.NewReader(payload),
@@ -251,25 +253,6 @@ func TestLauncherRequiresTheEmbeddedBrowserBuild(t *testing.T) {
 	}
 }
 
-func TestLauncherNormalizesSiteSelection(t *testing.T) {
-	for input, want := range map[string]string{
-		" Share.Example:443/ ":     "https://share.example",
-		"https://Share.Example/":   "https://share.example",
-		"http://192.168.1.4:8787/": "http://192.168.1.4:8787",
-	} {
-		t.Run(input, func(t *testing.T) {
-			payload, err := json.Marshal(Selection{Mode: ModeSite, Language: "en", Site: input})
-			if err != nil {
-				t.Fatal(err)
-			}
-			selection, err := decodeSelection(bytes.NewReader(payload))
-			if err != nil || selection.Site != want {
-				t.Fatalf("site selection = %+v, %v; want %q", selection, err, want)
-			}
-		})
-	}
-}
-
 func TestLauncherRejectsInvalidSelections(t *testing.T) {
 	for name, payload := range map[string]string{
 		"unknown":          `{"mode":"other","language":"en"}`,
@@ -294,7 +277,7 @@ func TestLauncherRejectsInvalidSelections(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			server := startFixture(t, "")
 			origin := strings.TrimSuffix(server.URL(), "/client")
-			response, err := http.Post(
+			response, err := localPost(
 				origin+"/api/client-launcher/launch",
 				"application/json",
 				bytes.NewBufferString(payload),
@@ -331,7 +314,7 @@ func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
 	}
 	_ = response.Body.Close()
 	server.SetResult("", errors.New("public tunnel failed: token=private-secret "+strings.Repeat("network unavailable ", 200)))
-	response, err = http.Post(origin+"/api/client-launcher/launch", "application/json",
+	response, err = localPost(origin+"/api/client-launcher/launch", "application/json",
 		strings.NewReader(`{"mode":"link","language":"en"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -410,4 +393,15 @@ func startFixtureWithBuildAndPassword(
 	}
 	t.Cleanup(func() { _ = server.Close() })
 	return server
+}
+
+func localPost(target, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodPost, target, body)
+	if err != nil {
+		return nil, err
+	}
+	address, _ := url.Parse(target)
+	req.Header.Set("Origin", address.Scheme+"://"+address.Host)
+	req.Header.Set("Content-Type", contentType)
+	return (&http.Client{Timeout: 3 * time.Second}).Do(req)
 }

@@ -24,12 +24,11 @@ publication are separate steps in [deployment](../../docs/deployment.md).
 
 ## Modes
 
-- With no mode argument, the App opens a small launcher in the system
-  Browser. It selects Local, a temporary public HTTPS invitation, or a saved
-  Site, then enters the normal Host page.
-- The launcher remembers the last mode confirmed with **Open Piik** and the saved
-  Site address. Without a saved mode, it selects Site when an address is saved,
-  otherwise Public invite; it waits for confirmation before starting.
+- With no mode argument, the App opens its launcher and waits for use by an
+  approved Site. Choose **Local room** or **Public invite** to start a room
+  service on this device and enter the normal Host page.
+- The launcher remembers the last mode confirmed with **Open Piik**. Without a
+  saved Local/Public choice, it selects Public invite and waits for confirmation.
   The mode preference is stored beside the settings in `client.json.mode`;
   [App configuration](../../docs/standards/configuration.md#piik-app-configuration)
   covers saved preferences and custom paths.
@@ -49,14 +48,18 @@ media-server forwarding (SFU) or TURN relay fallback. The
 
 For Local invitations, the App automatically selects a sole active address or
 sole private IPv4. If several addresses remain possible, choose an interface
-and IP in the launcher. Public invite and Site mode need no LAN selection.
+and IP in the launcher. Public invite and use through a Site need no LAN selection.
 When bypassing the launcher with `--local`, use `--lan-address <address>` to
 resolve an ambiguous choice. The selected address is checked again at startup;
 it affects Local invitation links, while ICE selects media paths independently.
 
-Site mode uses the configured Site's rooms and any enabled SFU fallback.
-An App-opened Site remembers native activation, so later pages there may reuse
-the running App. Browser capture remains available without the App; see the
+To use a Piik Site, keep the App running and click **App** at the top of the Site.
+Confirm its address on the local approval page. The App remembers one approved
+Site, which the launcher can open or revoke. Approving another replaces it and
+ends the previous Site's App connections; Local rooms remain independent.
+The browser remembers activation, so later visits reuse the running App with
+that Site's rooms and any enabled SFU fallback. Browser capture remains available
+without the App; see the
 [entry workflow](../../docs/standards/presentation-lifecycle.md#product-surface).
 
 The Host page offers Browser and Camera capture alongside available native
@@ -111,7 +114,7 @@ For codec-specific failures, see [Windows H264 troubleshooting](../../docs/guide
 
 ### Diagnostics
 
-Enable **Debug launch** in the mode selector before opening Piik, reproduce the
+Enable **Debug launch** in the launcher before starting a room or connecting a Site, reproduce the
 problem, then press `D` in the interactive terminal to export a local ZIP.
 Use `--debug` for failures before the selector opens. Exporting does not stop
 the share or upload the archive. For Browser diagnostics, click the **Debug**

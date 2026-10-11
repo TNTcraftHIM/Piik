@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net"
@@ -22,7 +23,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
-	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
@@ -226,7 +226,7 @@ func TestLauncherRetainsItsRuntimeFailureDuringCancellation(t *testing.T) {
 			go func() {
 				defer close(requestDone)
 				client := &http.Client{Timeout: 3 * time.Second}
-				response, err := client.Post(strings.TrimSuffix(target, "/client")+"/api/client-launcher/launch",
+				response, err := postLocalLauncher(client, strings.TrimSuffix(target, "/client")+"/api/client-launcher/launch",
 					"application/json", strings.NewReader(`{"mode":"link","language":"en"}`))
 				if err != nil {
 					if !cancelBeforeFailure {
@@ -304,7 +304,9 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 			done := make(chan error, 1)
 			go func() {
 				if mode == "site" {
-					done <- runSite("https://share.example", options, control)
+					options.SiteSet = true
+					config.Site = "https://share.example"
+					done <- runLauncher(ctx, options, configPath, config, control, func(*Options, appconfig.Config) error { return nil })
 				} else {
 					done <- runLauncher(ctx, options, configPath, config, control, func(*Options, appconfig.Config) error { return nil })
 				}
@@ -369,7 +371,9 @@ func TestBrowserOpenFailureKeepsTheAppAvailable(t *testing.T) {
 			done := make(chan error, 1)
 			go func() {
 				if mode == "site" {
-					done <- runSite("https://share.example", options, control)
+					options.SiteSet = true
+					config.Site = "https://share.example"
+					done <- runLauncher(ctx, options, configPath, config, control, func(*Options, appconfig.Config) error { return nil })
 				} else {
 					done <- runLauncher(ctx, options, configPath, config, control,
 						func(*Options, appconfig.Config) error { return nil })
@@ -404,20 +408,22 @@ func TestBrowserOpenFailureKeepsTheAppAvailable(t *testing.T) {
 			if mode == "launcher" {
 				client := &http.Client{Timeout: 3 * time.Second}
 				origin := strings.TrimSuffix(view.entry, "/client")
-				response, err := client.Post(origin+"/api/client-launcher/launch", "application/json",
-					strings.NewReader(`{"mode":"site","language":"en","site":"https://share.example"}`))
+
+				response, err := postLocalLauncher(client, origin+"/api/client-launcher/site", "application/json",
+					strings.NewReader(`{"site":"https://share.example","expectedSite":""}`))
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer response.Body.Close()
-				var result struct{ Target string }
-				if json.NewDecoder(response.Body).Decode(&result) != nil || response.StatusCode != http.StatusOK ||
-					result.Target != launchURL("https://share.example") {
-					t.Fatalf("manual launch failed: status=%d, target=%q", response.StatusCode, result.Target)
+				var result struct{ Site string }
+				if json.NewDecoder(response.Body).Decode(&result) != nil || response.StatusCode != http.StatusOK || result.Site != "https://share.example" {
+					t.Fatalf("manual approval failed: status=%d, site=%q", response.StatusCode, result.Site)
 				}
-				if saved, err := launcher.LoadMode(configPath); err != nil || saved != launcher.ModeSite {
-					t.Fatalf("manual selection was not saved: %q, %v", saved, err)
+				saved, err := appconfig.LoadOrCreate(configPath)
+				if err != nil || saved.Site != result.Site {
+					t.Fatalf("approval was not saved: %v", err)
 				}
+
 			}
 		})
 	}
@@ -742,4 +748,15 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 			}
 		})
 	}
+}
+
+func postLocalLauncher(client *http.Client, target, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodPost, target, body)
+	if err != nil {
+		return nil, err
+	}
+	address, _ := url.Parse(target)
+	req.Header.Set("Origin", address.Scheme+"://"+address.Host)
+	req.Header.Set("Content-Type", contentType)
+	return client.Do(req)
 }

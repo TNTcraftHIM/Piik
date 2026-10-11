@@ -27,10 +27,8 @@ func TestSavedModeSurvivesRelaunchWithoutChangingLegacyConfig(t *testing.T) {
 		site   string
 		want   Mode
 	}{
-		{ModeSite, config.Site, ModeSite},
 		{ModeLocal, config.Site, ModeLocal},
 		{ModeLink, config.Site, ModeLink},
-		{ModeSite, "", ModeLink},
 	} {
 		if err := SaveMode(path, test.chosen); err != nil {
 			t.Fatal(err)

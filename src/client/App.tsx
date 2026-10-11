@@ -4,6 +4,7 @@ import {
   lazy,
   useEffect,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -20,6 +21,8 @@ import {
   readViewerRoute,
   watchViewerInvites,
   takeClientLaunchBootstrap,
+  watchClientActivation,
+  isClientActivated,
   type ViewerRoute,
 } from "./lib/session";
 import { AppHeader } from "./components/living/Header";
@@ -99,16 +102,17 @@ function readableError(error: unknown, t: (key: "gate.connectFailed") => string)
 
 export function App() {
   const { lang, vis } = useCopy();
+  const launchedByClient = useSyncExternalStore(watchClientActivation, isClientActivated);
   useEffect(installBrowserDebug, []);
   useEffect(() => {
-    if (appRoute.kind !== "client" && !clientLaunchBootstrap?.launchedByClient) return;
+    if (appRoute.kind !== "client" && !launchedByClient) return;
     const controller = new AbortController();
     void import("./native/client")
       .then(({ notifyNativePresentation }) =>
         notifyNativePresentation(consoleLanguage(lang, vis), controller.signal))
       .catch(() => undefined);
     return () => controller.abort();
-  }, [lang, vis]);
+  }, [lang, vis, launchedByClient]);
 
   return (
     <RouteBoundary>
@@ -193,7 +197,7 @@ function AppRoute() {
 function RouteLoader() {
   return (
     <div className="lr-app">
-      <AppHeader />
+      <AppHeader homeHref={appRoute.kind === "client" ? "/client" : undefined} />
       <main className="lr-join">
         <LoadingStatus label="common.loading" />
       </main>
@@ -202,9 +206,10 @@ function RouteLoader() {
 }
 
 function ViewerEntry({ route }: { route: ViewerRoute }) {
+  const launchedByClient = useSyncExternalStore(watchClientActivation, isClientActivated);
   return (
     <ViewerPage {...route}
-      launchedByClient={clientLaunchBootstrap?.launchedByClient} />
+      launchedByClient={launchedByClient} />
   );
 }
 
@@ -266,6 +271,7 @@ function SiteAccessGate({
   viewerRoute?: ViewerRoute;
 }) {
   const { t, vis } = useCopy();
+  const launchedByClient = useSyncExternalStore(watchClientActivation, isClientActivated);
   const [access, setAccess] = useState<AccessState>({ kind: "checking" });
   const [capabilities, setCapabilities] =
     useState<RuntimeCapabilities | null>(null);
@@ -387,7 +393,7 @@ function SiteAccessGate({
       <HostPage
         roomInteractionsAvailable={capabilities?.roomInteractions === true}
         hostRoomSessionAvailable={capabilities?.hostRoomSession === true}
-        launchedByClient={clientLaunchBootstrap?.launchedByClient}
+        launchedByClient={launchedByClient}
         sfuAvailable={capabilities?.sfu === true}
         sfuOnly={capabilities?.sfuOnly === true}
         natPredictionAvailable={capabilities?.natPrediction === true}

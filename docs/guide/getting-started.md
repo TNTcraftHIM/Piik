@@ -100,20 +100,20 @@ See the [App guide](../../cmd/piik-app/README.md) for package and runtime detail
 | --- | --- | --- |
 | **Local room** | Friends are on the same local network. | If several entries appear under **Local invitation address**, choose the interface and IP on your friends' network. Your computer must be reachable from theirs. A local site passphrase is optional. |
 | **Public invite** | Friends are elsewhere and you want a temporary invitation. | Needs Internet access. The public address lasts for this App run. |
-| **Connect to Site** | Your group already has a Piik site. | Enter its address; the App adds capture capabilities to the site's sharing page. |
 
 For Local room and Public invite, expand **Site passphrase** to set an optional
 access passphrase.
 
-For **Connect to Site**, enter a domain such as `demo.piik.tv` or paste the full
-site address, then choose **Open Piik**. HTTPS is added when omitted; for an HTTP
-site, include `http://`. Enter the site's passphrase on the page that opens if asked.
-After opening the site through the App once, the same browser remembers that
-entry. Keep the App running with that site configured and you can visit the
-address directly. **Start sharing** opens the selector; choose **Apps / Windows**
-or **Screens** for App capture. Allow local-network access if the browser asks.
-In another browser, in a private window, or after clearing site data, enter through
-the App again. For a different site, update the address in the App first.
+**Already have a Piik site?** Keep the App running, open the site and click
+**App** at the top. Check the address on the local confirmation page, then choose
+**Allow access**. Enter any site passphrase on the site itself. Allow local-network
+access if the browser asks. No room mode needs to be selected in the launcher.
+
+The same browser remembers this connection. On later visits, **Start sharing**
+offers **Apps / Windows** and **Screens** from the running App. In another browser,
+in a private window or after clearing site data, connect again. The launcher
+shows the approved site and lets you revoke it. Approving a different site
+replaces the previous one and ends that site's App connections.
 
 **A page that opens does not guarantee a video connection.** Public invite gives
 your room a temporary web address; picture and sound still travel between

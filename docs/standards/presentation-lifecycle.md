@@ -34,10 +34,14 @@ is absent, provided the room service and their admitted sessions remain availabl
 [Rooms and access](./rooms-access.md#room-interactions) owns interaction authority
 and retention; [status](../status.md#accepted-interaction-phase) owns release readiness.
 
-Piik App opens this same application in the system Browser. Its small
-startup surface selects Local, temporary public invitation, or a configured
-Site before entering the Host workspace. Viewer links opened at that activated
-origin may use the same running App without changing the Viewer UI. Starting a share offers the
+Piik App opens this same application in the system Browser. Its startup surface
+offers Local and temporary public invitation; the running App is already
+available to its approved Site before either mode starts. A Site's explicit App
+action discovers the local approval page, where the user confirms its exact
+origin. The launcher shows and revokes that approval. Activating a page supplies
+native capability without restarting its room or healthy media session.
+Viewer links opened at that activated origin may use the same running App
+without changing the Viewer UI. Starting a share offers the
 Browser picker and any exact App-owned native windows. It never chooses a
 window automatically. A reproduced Browser-window, capture, or background
 failure is required before introducing an embedded Web runtime.

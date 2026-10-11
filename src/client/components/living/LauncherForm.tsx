@@ -1,4 +1,4 @@
-import { useId, type FormEvent, type ReactNode } from "react";
+import { useId, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
@@ -6,7 +6,7 @@ import { Btn, Pill } from "./primitives";
 import type { HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
-export type AppMode = "local" | "link" | "site";
+export type AppMode = "local" | "link";
 
 const MODES: Array<{
   mode: AppMode;
@@ -16,13 +16,6 @@ const MODES: Array<{
   comic: HintKind;
 }> = [
   {
-    mode: "local",
-    icon: "users",
-    label: "client.launch.local",
-    hint: "client.launch.localHint",
-    comic: "hint-client-local",
-  },
-  {
     mode: "link",
     icon: "globe",
     label: "client.launch.link",
@@ -30,11 +23,11 @@ const MODES: Array<{
     comic: "hint-client-link",
   },
   {
-    mode: "site",
-    icon: "server",
-    label: "client.launch.site",
-    hint: "client.launch.siteHint",
-    comic: "hint-client-site",
+    mode: "local",
+    icon: "users",
+    label: "client.launch.local",
+    hint: "client.launch.localHint",
+    comic: "hint-client-local",
   },
 ];
 
@@ -43,7 +36,11 @@ export function LauncherForm({
   mode,
   onModeChange,
   site,
-  onSiteChange,
+  onRemoveSite,
+  siteBusy,
+  siteError,
+  target,
+  onOpen,
   localAccessPassword,
   onLocalAccessPasswordChange,
   lan,
@@ -54,7 +51,11 @@ export function LauncherForm({
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
   site: string;
-  onSiteChange: (site: string) => void;
+  onRemoveSite: () => void;
+  siteBusy?: boolean;
+  siteError?: string;
+  target?: string;
+  onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
   localAccessPassword: string;
   onLocalAccessPasswordChange: (password: string) => void;
   lan?: {
@@ -87,14 +88,33 @@ export function LauncherForm({
   );
   return (
     <form className="lr-client-launch-panel" onSubmit={onSubmit}>
-      <BrandMark size={68} motion="once" />
-      <WelcomeLine />
-      <h1 className={vis ? "visually-hidden" : "lr-client-launch-title"}>
-        {t("client.launch.title")}
-      </h1>
+      <header className="lr-client-launch-heading">
+        <BrandMark size={64} motion="once" />
+        <div>
+          <h1 className="lr-client-launch-title">Piik<span className="lr-client-brand-dot">.</span> <small>App</small></h1>
+          <WelcomeLine />
+        </div>
+      </header>
 
       {children}
 
+      <section className="lr-client-standby" aria-label={t("client.connect.standby")}>
+        <span className="lr-client-standby-icon" aria-hidden="true"><Glyph name="window" size={24} /></span>
+        <div className="lr-client-standby-copy">
+          <strong className={vis ? "visually-hidden" : undefined}>{t("client.connect.standby")}</strong>
+          <p className={vis ? "visually-hidden" : undefined}>{t("client.connect.standbyHint")}</p>
+          {site && <div className="lr-client-approved-site">
+            <a href={`${site}/#piik-client=1`} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true"> ↗</span></a>
+            <Btn icon="x" title="client.connect.remove" hint="hint-client-site" disabled={siteBusy} onClick={onRemoveSite} />
+          </div>}
+          {siteError && <p role="alert">{siteError}</p>}
+        </div>
+      </section>
+
+      {target ? <a className="lr-btn lr-client-resume" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>
+        <Glyph name="arrowRight" size={20} />{vis ? null : t("client.launch.go")}
+      </a> : <>
+      <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
       <div
         className="lr-client-modes"
         role="radiogroup"
@@ -163,27 +183,6 @@ export function LauncherForm({
         </fieldset>
       ) : null}
 
-      {mode === "site" ? (
-        <label className="lr-input lr-client-site">
-          <Glyph name="link" size={18} />
-          {/* The App normalizes bare domains; type="url" would block submission first. */}
-          <input
-            type="text"
-            value={site}
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            inputMode="url"
-            placeholder="piik.example.com"
-            aria-label={t("client.launch.siteAddress")}
-            onChange={(event) => {
-              onSiteChange(event.target.value);
-            }}
-          />
-        </label>
-      ) : null}
-
-      {mode !== "site" ? (
         <details className="lr-client-access-options">
           <summary>
             <Glyph name="key" size={17} />
@@ -199,7 +198,6 @@ export function LauncherForm({
             {t("client.launch.localAccessHint")}
           </p>
         </details>
-      ) : null}
 
       <Btn
         icon="arrowRight"
@@ -208,9 +206,9 @@ export function LauncherForm({
         tone="primary"
         type="submit"
         hint={MODES.find((choice) => choice.mode === mode)?.comic}
-        disabled={(mode === "site" && !site.trim()) ||
-          (mode === "local" && lan !== undefined && !lan.selected)}
+        disabled={mode === "local" && lan !== undefined && !lan.selected}
       />
+      </>}
       <div className="lr-client-about">
         {version && <p className="lr-client-version">
           <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version })}</span>

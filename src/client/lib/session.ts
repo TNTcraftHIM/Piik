@@ -12,6 +12,31 @@ import { withBrowserDebug } from "./debug";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const CLIENT_LAUNCH_STORAGE_KEY = "piik:client-launch:v1";
+const CLIENT_ACTIVATION_EVENT = "piik-client-activation";
+let clientActivatedInPage = false;
+
+export function isClientActivated(): boolean {
+  try { return clientActivatedInPage || window.localStorage.getItem(CLIENT_LAUNCH_STORAGE_KEY) === "1"; }
+  catch { return clientActivatedInPage; }
+}
+
+export function activateClient(): void {
+  clientActivatedInPage = true;
+  try { window.localStorage.setItem(CLIENT_LAUNCH_STORAGE_KEY, "1"); } catch { /* Optional persistence. */ }
+  window.dispatchEvent(new Event(CLIENT_ACTIVATION_EVENT));
+}
+
+export function watchClientActivation(changed: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === CLIENT_LAUNCH_STORAGE_KEY || event.key === null) changed();
+  };
+  window.addEventListener(CLIENT_ACTIVATION_EVENT, changed);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(CLIENT_ACTIVATION_EVENT, changed);
+    window.removeEventListener("storage", onStorage);
+  };
+}
 const HOST_ROOM_STORAGE_KEY = "piik:host-room:v1";
 const HOST_ROOM_PREFERENCE_STORAGE_KEY = "piik:host-room-preference:v1";
 const hostRoomStorageSchema = createRoomResponseSchema.pick({
@@ -139,6 +164,7 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   const present = keys.some((key) => params.has(key)) || query.has("piik-preferences");
   const accessValue = params.get("client-access");
   const launchedFromFragment = params.get("piik-client") === "1";
+  if (launchedFromFragment) clientActivatedInPage = true;
   const lang = params.get("piik-lang");
   const mode = params.get("piik-mode");
   const theme = params.get("piik-theme");

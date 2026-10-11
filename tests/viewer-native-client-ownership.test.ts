@@ -44,7 +44,7 @@ function control() {
 function fixture(launchedByClient = true) {
   const connect = vi.fn(async (): Promise<ReturnType<typeof control> | null> => null);
   const context = createContext({
-    launchedByClient, NativeClient: { connect },
+    clientActivationRef: { current: launchedByClient }, NativeClient: { connect },
     messageAuthority: { invalidate: vi.fn() }, setAssignedRoute: vi.fn(),
     clearViewerSfuRoute: vi.fn(), clearPeerState: vi.fn(), clearParticipantPresence: vi.fn(),
     dispatchPresentation: vi.fn(),

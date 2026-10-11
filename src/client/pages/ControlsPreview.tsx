@@ -250,8 +250,8 @@ export function ControlsPreview() {
         </button>
       </div>
       <div className="lr-client-launch">
-        <LauncherForm version="v1.0.0" mode={launchMode} onModeChange={setLaunchMode}
-          site={launchSite} onSiteChange={setLaunchSite}
+        <LauncherForm version="2.0 preview" mode={launchMode} onModeChange={setLaunchMode}
+          site={launchSite} onRemoveSite={() => setLaunchSite("")}
           lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
             { address: "192.0.2.10", name: "Wi-Fi" },
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },

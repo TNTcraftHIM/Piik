@@ -87,7 +87,7 @@ var consoleCopy = map[string][3]string{
 	"local":        {"Local network", "局域网", "□"},
 	"link":         {"Public link", "公网链接", "↗"},
 	"site":         {"Piik Site", "Piik 站点", "@"},
-	"setup":        {"Choose a mode in the browser", "在浏览器中选择模式", "?"},
+	"setup":        {"App is ready", "App 已就绪", "?"},
 	"starting":     {"Starting", "正在启动", "…"},
 	"ready":        {"Ready", "已就绪", "✓"},
 	"stopping":     {"Stopping", "正在退出", "→"},

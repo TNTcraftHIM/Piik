@@ -108,30 +108,32 @@ schema field. The user settings are:
 
 | Setting | Contract |
 | --- | --- |
-| `site` | Saved Piik Site origin. The launcher or `--site` updates it. |
+| `site` | One approved Piik Site origin. Local confirmation or explicit `--site` updates it; the launcher can revoke it. |
 | `localAccessPassword` | Empty by default. Optional password for the App's Local room authority, with the same exact-match behavior as `SITE_ACCESS_PASSWORD`. It is separate from a hosted site's password. |
 
-Site input in the launcher and `--site` defaults to HTTPS when the scheme is
-omitted; explicit HTTP or HTTPS is preserved. The App saves the normalized origin
-and still rejects credentials, room paths, queries and fragments. It does not
-probe protocols or downgrade a failed HTTPS connection to HTTP.
+The Site's App button requests local confirmation for the page's exact origin.
+The `--site` automation input defaults to HTTPS when the scheme is omitted;
+explicit HTTP or HTTPS is preserved. Both save the normalized origin and reject
+credentials, room paths, queries and fragments. The App does not probe protocols
+or downgrade a failed HTTPS connection to HTTP.
 
 The launcher remembers the last mode confirmed with the launch button. This
 optional preference lives beside the configuration as `client.json.mode` (or
 `<custom-config-path>.mode`); removing it restores the initial selection without
-changing saved settings. Older App versions ignore this file. Without a valid
-preference, a saved Site is selected when present; otherwise the public
+changing saved settings. Without a valid Local/Public preference, the public
 invitation link is selected. Choosing a mode does not start it until confirmed.
 Local mode remains available for the same network.
 Selecting Local or Public Link, including through the CLI, preserves the saved
-Site and its allowed App origin; only an explicit Site edit replaces it.
+Site and its allowed App origin; only local approval/revocation or `--site`
+changes it. The Site can use native capabilities while the App waits in its
+launcher; it does not need a Local room service.
 For Local mode, the launcher selects a sole active address or sole private IPv4
 address automatically. With several choices it shows interface names and IPs;
 an ambiguous choice must be selected before launch. `--lan-address` preselects
 an active address. Selection applies to this launch and is revalidated at startup.
 It sets the local invitation origin; HTTP still listens on the existing wildcard
-listener and ICE remains free to use available media interfaces. Public Link and
-Site mode require no local address selection.
+listener and ICE remains free to use available media interfaces. Public Link
+and use through an approved Site require no local address selection.
 
 Command-line options select entry and local runtime behavior:
 
@@ -165,10 +167,12 @@ Diagnostics are local and opt-in. Enable them **before** reproducing the problem
 | Browser Host/Viewer | Click the **Debug** chip icon after the theme control and confirm the reload, or add `?debug=1` before any invitation fragment | The same control becomes a download arrow for the web report |
 | Hosted Server | Start with `--debug`, `PIIK_DEBUG=server` or `PIIK_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
 
-App **Debug launch** enables App and Browser collection for that run before
-starting the selected mode. It records Native capability results and subsequent
-capture, connection and local-server activity. Use `--debug` for failures before
-the mode selector opens. This choice does not change the saved App configuration.
+App **Debug launch** starts App collection immediately, including while waiting
+for a Site. Pages subsequently opened from the launcher also collect Browser
+logs; already-open Site pages use their own Debug control. It records Native
+capability results and subsequent capture, connection and local-server activity.
+Use `--debug` for failures before the launcher opens. This choice does not change
+the saved App configuration.
 When bypassing the mode selector, `--debug` and `PIIK_DEBUG=client` enable backend
 collection; enable the Browser control separately for browser-side diagnosis.
 

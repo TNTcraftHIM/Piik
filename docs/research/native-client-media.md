@@ -3,8 +3,8 @@
 - Reviewed: 2026-10-11
 - Scope: platform capture, shared encoded sources, Pion transport and Browser
   decode; current behavior belongs to [media quality](../standards/media-quality.md)
-- Status: Windows physical native Host and Viewer gates passed; current macOS
-  changes await SDK compilation, and macOS/Linux physical media gates remain open
+- Status: Windows physical native Host and Viewer gates passed; both macOS
+  architectures compile and pass packaged startup; macOS/Linux physical media gates remain open
 
 ## Windows Audio Exclusion
 
@@ -558,11 +558,12 @@ replaces only its compression session when the fitted size changes. The frame
 envelope carries actual dimensions; declared output limits and room/route
 identity remain unchanged. Encoded-input derivation uses the same worker.
 
-This implementation has not yet been compiled with the macOS SDK or executed on
-macOS. The existing native check now includes content-geometry validation and
-extends hardware self-testing across successive source shapes. Run those checks
-on Apple silicon and Intel, then verify real window resizing, Retina transitions,
-cropped image fidelity and quiet-source recovery before accepting this boundary.
+The candidate passes macOS SDK compilation and packaged startup on Apple silicon
+and Intel in [CI run 38128668158](https://github.com/TNTcraftHIM/Piik/actions/runs/38128668158).
+The native check includes content-geometry validation and successive-shape
+hardware self-tests when an encoder is available. Runner checks do not replace
+real window resizing, Retina transitions, cropped image fidelity or quiet-source
+recovery on a physical Mac.
 
 Local synthetic-input controls exercised that production worker through four
 successive source sizes: 1080x1920, 3440x1440, 640x480 and 1920x1080. Under the
@@ -645,7 +646,7 @@ coded storage. Windows copies the aperture while retaining the decoder surface,
 so downstream outputs receive the visible picture. The native regression checks
 right/bottom H.264 padding with real software decoding, visible edge pixels, and
 an offset NV12 aperture through the DXGI-buffer path. Oversized coded/reference
-storage remains rejected; the macOS SDK boundary above still applies.
+storage remains rejected; the physical macOS boundary above still applies.
 
 An additional nonzero left/top SPS crop exposed a local Media Foundation software
 decoder limit: its raw output omitted right/bottom picture pixels before Piik's

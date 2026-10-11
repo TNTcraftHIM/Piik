@@ -8,6 +8,7 @@ import { useCopy } from "../../ui/copy";
 import { LanguageControl } from "./LanguageControl";
 import { useTheme } from "../../ui/theme";
 import { Glyph } from "../../ui/icons";
+import { AppConnectionButton } from "./AppConnectionButton";
 
 export type LedState = "live" | "busy" | "warn" | "bad" | "off";
 
@@ -139,6 +140,7 @@ export function AppHeader({
       </a>
       <span className="lr-top-right">
         {led}
+        {homeHref !== "/client" && <AppConnectionButton />}
         <HeaderControls diagnosticControl={diagnosticControl} />
       </span>
     </header>

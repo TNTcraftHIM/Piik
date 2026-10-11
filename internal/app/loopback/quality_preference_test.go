@@ -72,7 +72,7 @@ func TestQualityPreferenceRequiresCurrentOriginAndInstanceWithoutClaimingControl
 	}
 	server.mu.Lock()
 	defer server.mu.Unlock()
-	if server.claimed != 0 {
+	if len(server.connections) != 0 {
 		t.Fatal("preference claimed media control")
 	}
 }
