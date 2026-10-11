@@ -141,8 +141,9 @@ topologies and makes a saved Site unavailable while another room source runs.
 10. Local mode is one explicit server composition: static current assets,
     memory-only rooms, peer-assisted media, no SQLite or SFU, and localhost plus
     current LAN IPv4 origins. It uses no public discovery by default. Public-link
-    mode adds its temporary HTTPS origin, one ordinary public STUN destination,
-    and two bounded public survey destinations. Site mode consumes that Site's
+    mode adds its temporary HTTPS origin and the bounded public STUN discovery
+    and survey configuration in [ADR-0009](0009-optional-nat-prediction.md).
+    Site mode consumes that Site's
     configured STUN survey. Both feed the same connection-local prediction
     adapter; Native additionally owns its UDP socket and best-effort port mapping.
 11. One App configuration owns the optional Site origin and an optional,

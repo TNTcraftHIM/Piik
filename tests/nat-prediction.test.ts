@@ -149,6 +149,16 @@ describe("NAT prediction ICE adapter", () => {
     expect(natPredictionSurveyUrls(servers)).toEqual(new Set());
   });
 
+  it("retains ordinary fallback discovery independently of prediction", () => {
+    const urls = ["stun:primary.test:3478", "stun:fallback-a.test:3478", "stun:fallback-b.test:3478"];
+    const servers = [{ urls }];
+    const auxiliary = urls.slice(1);
+    for (const enabled of [false, true]) {
+      expect(iceServersWithNatPrediction(servers, enabled, auxiliary)).toEqual(servers);
+    }
+    expect(natPredictionSurveyUrls(servers, auxiliary)).toEqual(new Set(urls));
+  });
+
   it.each([
     ["stun:Share.TEST", "stun:share.test:3478"],
     ["STUN:Share.TEST:03478", "stun:share.test:3478"],

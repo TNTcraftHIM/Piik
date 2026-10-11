@@ -155,6 +155,8 @@ of a reporter's cause; research owns the completed experiments and their limits.
 - [ ] **No available media route.** Compare the same endpoints/networks before
   assigning a regression since v1.4. Obtain paired Host/Viewer/App reports and
   distinguish route allocation, ICE, first-frame admission and route rejection.
+  Retest the public-invitation STUN report with ordinary discovery redundancy;
+  its endpoint timeout results lack paired ICE traces and the prediction setting.
   [#443](https://github.com/TNTcraftHIM/Piik/issues/443) lacks a connected Native
   edge and its paired Viewer/App transport report;
   [#448](https://github.com/TNTcraftHIM/Piik/issues/448) only reaches route allocation.

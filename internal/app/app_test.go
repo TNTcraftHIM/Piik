@@ -712,9 +712,9 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 		{name: "local"},
 		{
 			name: "link", link: true,
-			stunURLs: []string{publicSTUNURL},
+			stunURLs: []string{publicSTUNURL, publicFallbackSTUNURLA, publicFallbackSTUNURLB},
 			natPredictionSTUNURLs: []string{
-				publicNATPredictionSTUNURLA, publicNATPredictionSTUNURLB,
+				publicFallbackSTUNURLA, publicFallbackSTUNURLB,
 			},
 		},
 	} {

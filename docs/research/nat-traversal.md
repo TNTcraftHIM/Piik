@@ -1,6 +1,6 @@
 # Browser And Native NAT Traversal
 
-Last reviewed: 2026-10-10
+Last reviewed: 2026-10-11
 
 This document owns evidence for improving direct ICE without adding a
 new relay or a custom transport. The current product contract remains standard
@@ -15,10 +15,9 @@ WebRTC ICE with STUN discovery and bounded SFU fallback.
 - A STUN operator observes the client's source address, source port, request
   time and protocol metadata. It never receives the DTLS-SRTP media path. An
   external STUN endpoint is therefore a metadata dependency, not a media relay.
-- The current `STUN_URLS` wire already accepts a bounded list. Adding an
-  auxiliary STUN destination needs no client compatibility surface, but it has
-  no product value until a valid Browser observation or prediction consumer
-  exists.
+- The current `STUN_URLS` wire already accepts a bounded list. Independent
+  ordinary endpoints can preserve discovery when one destination is unreachable;
+  additional observations alone do not establish better hole punching.
 
 On 2026-08-31, Chrome 151 on Windows gathered a host plus IPv4 srflx candidate
 through the self-hosted STUN endpoint and independently through Cloudflare's
@@ -26,6 +25,25 @@ official STUN endpoint while the machine used TUN and fake-IP DNS. With both
 configured, Chromium emitted one deduplicated srflx candidate. No raw address or
 port was retained. This proves endpoint reachability and candidate
 deduplication; it does not classify the NAT or prove another direct path.
+
+### Public-Link Discovery Redundancy
+
+A v1.9.2 report describes working chat but failed media, with only MiWiFi STUN
+responding on the reporter's network. It supplies neither paired ICE traces nor
+the share's prediction setting. The code confirms a narrower configuration gap:
+disabling prediction also removed both fallback discovery destinations, leaving
+Cloudflare alone. The candidate keeps all three existing destinations in ordinary
+ICE and reuses that set for prediction. It adds no provider, polling, URL ranking,
+fallback transport or new configuration surface; Local LAN remains unchanged.
+
+On 2026-10-11, local Chromium gathered a server-reflexive candidate from each
+destination independently and from the combined list. Some `701` error events
+coexisted with valid candidates, so an error event alone cannot establish complete
+discovery failure. Native regression checks confirm a healthy destination returns
+without waiting for silent UDP or unresolved DNS, and cancellation retires the
+survey. These controls do not reproduce the reporter's network or establish its
+final connection cause. The [WebRTC event specification](https://www.w3.org/TR/webrtc/#rtcicecandidateerrorevent)
+owns error semantics; compare the attempt's gathered and selected candidates too.
 
 ### SFU Behind Server NAT
 
@@ -88,10 +106,11 @@ supports an opt-in mechanism, not a default or a participant-wide classifier.
 
 ## Current Decision
 
-An ordinary STUN endpoint remains the discovery service. A Site may enable
-same-host STUN-only listeners on 3479 and 3480. Public-link App mode supplies
-one ordinary public endpoint plus two public survey destinations; pure LAN mode
-supplies none. Available authorities expose the same per-share Host switch,
+Ordinary STUN remains the discovery service. A Site may enable same-host
+STUN-only listeners on 3479 and 3480. Public-link App mode supplies three ordinary
+public destinations and reuses them for prediction, so disabling prediction
+does not remove discovery redundancy; pure LAN mode supplies none.
+Available authorities expose the same per-share Host switch,
 which defaults on and remains locked while sharing.
 
 The accepted adapter is deliberately connection-local and additive. It waits for a

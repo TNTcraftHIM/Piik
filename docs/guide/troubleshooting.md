@@ -259,6 +259,12 @@ Routers and providers differ in how they map addresses and admit incoming traffi
 some combinations make direct connections difficult. Firewalls and browser
 policies can also block media. The message alone does not identify the cause.
 
+STUN helps discover an address for direct connections; it does not relay the
+picture. An unreachable STUN service can therefore leave chat working while
+media fails. On self-hosted sites, administrators should check that `STUN_URLS`
+points to reachable UDP services; an HTTP reverse proxy does not forward STUN.
+Compare the diagnostic reports from both peers before assigning the cause.
+
 Try these in order, stopping when the picture arrives:
 
 1. **Retry the viewing page.** Choose **Reconnect** if it is available. If it is

@@ -33,10 +33,10 @@ import (
 )
 
 const (
-	DefaultLocalPort            = 8787
-	publicSTUNURL               = "stun:stun.cloudflare.com:3478"
-	publicNATPredictionSTUNURLA = "stun:stun.miwifi.com:3478"
-	publicNATPredictionSTUNURLB = "stun:stun.chat.bilibili.com:3478"
+	DefaultLocalPort       = 8787
+	publicSTUNURL          = "stun:stun.cloudflare.com:3478"
+	publicFallbackSTUNURLA = "stun:stun.miwifi.com:3478"
+	publicFallbackSTUNURLB = "stun:stun.chat.bilibili.com:3478"
 	// localShutdownTimeout bounds the ordered Local stop. The packaged smoke
 	// allows 10 s between the stop request and the exit, so it stays well
 	// inside that budget.
@@ -653,12 +653,14 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 // has a public path, so only --link configures public STUN and the bounded NAT
 // prediction survey. Native edges receive ICE configuration from that authority;
 // serverconfig.Local deliberately does not inherit Hosted environment settings.
+// All three destinations also serve ordinary discovery: disabling prediction
+// must not make public-link ICE depend on a single STUN operator.
 func localSTUNURLs(link bool) (stunURLs []string, natPredictionSTUNURLs []string) {
 	if !link {
 		return nil, nil
 	}
-	return []string{publicSTUNURL},
-		[]string{publicNATPredictionSTUNURLA, publicNATPredictionSTUNURLB}
+	return []string{publicSTUNURL, publicFallbackSTUNURLA, publicFallbackSTUNURLB},
+		[]string{publicFallbackSTUNURLA, publicFallbackSTUNURLB}
 }
 
 // endLocalServer is step 1 of the ADR-0010 item 12 unwind: every room ends,

@@ -25,9 +25,10 @@ connection acquisition reuses the route controller's existing opportunity ledger
    switch defaults on, remains Host-controllable, locks while sharing, and is not
    persisted beyond that share generation.
 2. An enabled Site derives ports 3479 and 3480 from its first ordinary STUN
-   authority on UDP 3478. Public-link App mode instead supplies one ordinary
-   public STUN destination and two fixed public survey destinations; pure LAN
-   mode supplies none. The same share switch and ICE configuration cover every
+   authority on UDP 3478. Public-link App mode supplies three ordinary public
+   STUN destinations, reusing the same set for its prediction survey; disabling
+   prediction retains ordinary discovery redundancy. Pure LAN mode supplies
+   none. The same share switch and ICE configuration cover every
    Browser or Native P2P edge. SFU PeerConnections remain unchanged.
 3. For one ICE gathering generation, the adapter observes only UDP `srflx`
    candidates belonging to the exact three-destination survey set. Browser
@@ -84,8 +85,9 @@ Negative:
 
 - the Browser may still reject synthetic candidates or the NAT may not have a
   matching mapping;
-- enabled P2P connections perform two extra STUN transactions and
-  may add connectivity checks for up to eight adjacent UDP ports;
+- Hosted prediction adds two survey destinations; public-link Apps reuse their
+  ordinary destinations. Prediction may add connectivity checks for up to eight
+  adjacent UDP ports;
 - two endpoint-dependent NATs remain sensitive to candidate scheduling and
   intervening mappings, so room-wide coverage is not a success guarantee; and
 - enabled acquisition can occupy up to four ordinary operation windows when

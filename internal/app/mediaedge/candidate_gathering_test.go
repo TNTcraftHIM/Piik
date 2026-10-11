@@ -169,3 +169,42 @@ func TestSurveyReturnsWhenEveryDestinationAlreadyFailed(t *testing.T) {
 		t.Fatalf("completed failure retained its survey timer: %v", elapsed)
 	}
 }
+
+func TestSurveyHealthySTUNDoesNotWaitForSilentDestination(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	socket := testICESocket(t, engine)
+	silent, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = silent.Close() })
+	servers := []webrtc.ICEServer{{URLs: []string{
+		"stun:" + silent.LocalAddr().String(), localSurveyServer(t),
+	}}}
+	observations := make(chan mappedAddress, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		socket.surveySTUN(ctx, servers, func(mapped mappedAddress) { observations <- mapped })
+	}()
+	select {
+	case mapped := <-observations:
+		if mapped.port != socket.localPort {
+			t.Fatal("fallback STUN did not observe the media socket")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("healthy fallback waited for the silent STUN destination")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("retired survey kept waiting for the silent destination")
+	}
+}
