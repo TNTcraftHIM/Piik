@@ -108,6 +108,14 @@ Piik Server 是一个内置网页界面的独立程序。
 [翻译教程](./docs/guide/translating.zh-CN.md)开始，也可以从
 [项目目录说明](./docs/standards/engineering.md#repository-layout)了解代码结构。
 
+## 特别感谢
+
+- [@fovepig](https://github.com/fovepig)：在 [#462](https://github.com/TNTcraftHIM/Piik/pull/462) 提出更高音频码率的方案。
+- [@ddddd-ren](https://github.com/ddddd-ren)：在 [#469](https://github.com/TNTcraftHIM/Piik/pull/469) 提出 4K 分享的方案。
+- [@AkazaAkali](https://github.com/AkazaAkali)：在 [#470](https://github.com/TNTcraftHIM/Piik/pull/470) 提供 Linux PipeWire 采集修复。
+
+也感谢所有反馈问题、参与测试、改进翻译与文档，以及贡献代码的朋友。
+
 ## 许可
 
 Piik 自有代码采用 [MIT 许可](./LICENSE)，依赖保留各自的[许可与声明](./licenses/README.md)。
