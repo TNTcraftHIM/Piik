@@ -40,16 +40,19 @@ validate release notes without packaging or publication; manual `app_checks`
 dispatch remains available for candidates.
 Writing a new version back to main is unnecessary and prohibited.
 
-For a complete publisher rehearsal, dispatch with `app_checks: true` and an
+For a complete package rehearsal, dispatch with `app_checks: true` and an
 explicit `candidate_version` such as `v1.0.0`. This builds genuine Server and
 native App artifacts under one revision and version without tagging or
 publishing. Prepare its [release-note section](../standards/versioning.md#release-notes)
-and inspect the generated preview in the run summary. For a local preview, run
-`node scripts/release-notes.mjs v1.0.0 FULL_SOURCE_SHA` from the checkout with
-full history and tags. Download that run's artifacts and pass their directory, version and
-full revision to `scripts/publish-release.mjs --dry-run` (put the flag after
-the three positional arguments). An omitted candidate version keeps the usual
-development/exact-tag identity.
+in the candidate PR and review that rendered body; branch checkpoints need no
+release copy. The publishing run generates the final notes from accepted squash
+commits. To preview that aggregate locally after integration, run
+`node scripts/release-notes.mjs VERSION FULL_SOURCE_SHA` from the checkout with
+full history and tags. Download the candidate run's artifacts and pass their
+directory, version and full revision to `scripts/publish-release.mjs --dry-run`
+(put the flag after the three positional arguments). This validates package
+identity and checksums without publishing or aggregating branch commit messages.
+An omitted candidate version keeps the usual development/exact-tag identity.
 
 Enable GitHub's built-in release immutability for formal publication where
 available. Upload all assets to the draft before publishing. A failed upload can
