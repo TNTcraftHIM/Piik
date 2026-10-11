@@ -492,33 +492,21 @@ selectable only through real codec output and the normal library allocation.
 Configured ceilings are conservative and do not replace bandwidth probing;
 no cache of historical layer rates or additional polling owner is introduced.
 
-### Capture Contract For The Next Implementation
+### Capture Boundary
 
-Use the existing LiveKit 2.22.1 screen-share construction as the initial output
-set: original plus half-size at the same FPS, quarter bitrate with its 150 kbps
-floor. Align derived NV12 dimensions down to even values. The group supports up
-to three outputs, but this step does not invent a third product preset.
+Output construction follows the [media-quality owner](../standards/media-quality.md):
+original plus a half-size output at the same FPS, with lower bitrate bounded by
+the source ceiling. Derived NV12 dimensions round down to even values. The
+group's bounded output slots do not add product presets.
 
-The private capture command/probe contract advances to v5. Video arguments retain
-the source profile and append one `--output WIDTH HEIGHT FPS BITRATE` per output,
-ordered low to high. All current producers/readers change together, without v4
-fallback. Output profiles are codec bounds, not user preset choices.
-
-SMED v2 has a 32-byte big-endian header: magic[0:4], version[4], kind[5], flags[6],
-layer[7], timestamp100ns[8:16], duration100ns[16:24], width[24:26], height[26:28],
-payload length[28:32]. Video carries its output dimensions. PCM/status dimensions
-and layer are zero. Kind 5 is a zero-payload input-frame begin with dimensions/
-layer/flags zero and a valid source timestamp/duration; it precedes all outputs
-for that input even when the active prefix is zero. Kind 6 reports an unavailable
-output layer with a bounded UTF-8 diagnostic, zero timing/dimensions/flags.
-
-Both pipe directions use this envelope. Kind 7 carries one bounded ASCII control
-command (at most 64 bytes), with all other header fields zero: `Q`, `K layer`
-(`-1` means all outputs), `A activeCount`, `B layer bitrate`. Reuse the existing
-command grammar instead of mixing a line reader with binary video on stdin. Keyframe
-requests consumed at encode start are restored on failure; requests arriving
-during encoding must not be erased when an older keyframe completes. Control
-wakeup is I/O work, not another media-quality scheduler.
+The current [capture reader](../../internal/app/nativecapture/protocol.go) owns
+frame layout, kind-specific validation and allocation limits; [status](../status.md)
+owns the matched bundle's protocol versions. Both pipe directions use that framed
+boundary. Input-frame events precede per-output results, including when no output
+is active; a lower-output failure remains distinct from loss of the source.
+Keyframe requests consumed at encode start are restored on failure; requests
+arriving during encoding must survive an older keyframe completing. Control wakeup
+is I/O work, not another media-quality scheduler.
 
 Every slot owns its encoder/converter. Windows must retain one safe copy of the
 WGC input surface shared by slot workers, not reuse a returned frame-pool texture.
