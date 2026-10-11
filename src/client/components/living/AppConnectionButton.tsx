@@ -68,9 +68,9 @@ export function AppConnectionButton({ sourcePicker = false, onConnected }: {
 
   const label = t(state === "incompatible" ? "native.incompatible" :
     state === "unavailable" ? "client.connect.unavailable" : sourcePicker ? "client.connect.captureHint" : "client.connect.action");
-  return <Tooltip kind="hint-client-site"
+  return <Tooltip kind={state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
     text={vis ? undefined : label} place={sourcePicker ? "above" : "below"} align={sourcePicker ? "center" : "end"}>
-    <button type="button" className={sourcePicker ? "lr-source-picker-refresh lr-source-app-connect" : "lr-btn"}
+    <button type="button" className={sourcePicker ? "lr-source-picker-refresh lr-source-app-connect" : "lr-btn lr-app-connect"}
       aria-label={sourcePicker ? t("client.connect.action") : label} aria-busy={state === "busy" || undefined}
       onClick={() => void connect()} disabled={state === "busy"}>
       <Glyph name={state === "busy" ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}

@@ -546,7 +546,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-source-picker-body > [role="status"] { text-align: center; }
 .lr-source-app-connection { display: grid; justify-items: center; gap: 6px; margin-top: 12px; }
 .lr-source-app-connection small { color: #9aa8bb; font-size: 12px; text-align: center; }
-.lr-source-app-connect { display: flex; gap: 8px; width: auto; padding: 0 12px; margin: 0; }
+.lr-source-app-connect { display: flex; gap: 8px; width: auto; padding: 0 12px; margin: 0; border-radius: 999px; }
 .lr-source-picker-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
@@ -996,6 +996,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   background: var(--paper);
   color: var(--ink);
   white-space: nowrap;
+  text-decoration: none;
   box-shadow: var(--control-shadow);
   transition: transform 260ms var(--spring), background-color 140ms ease, border-color 140ms ease;
 }
@@ -1008,6 +1009,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-btn.is-danger:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--danger) 10%, var(--paper)); }
 .lr-btn.is-on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 .lr-btn .lr-cap { margin-left: 2px; font-size: 12.5px; font-weight: 600; }
+.lr-app-connect { min-width: 40px; height: 40px; }
 .lr-cap { font-size: 12.5px; font-weight: 600; color: inherit; white-space: nowrap; }
 
 /* Sharing and local playback have distinct owners, but one control grammar. */
@@ -1594,14 +1596,11 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 .lr-client-access-options { width: 100%; min-width: 0; }
 .lr-client-access-options > summary {
   display: flex; align-items: center; justify-content: center; gap: 8px;
-  width: fit-content; max-width: 100%; min-height: 40px; margin: 0 auto; padding: 8px 12px;
-  border-radius: 12px; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer;
-  list-style: none; transition: background-color 140ms ease, color 140ms ease;
+  width: fit-content; max-width: 100%; height: auto; min-height: 40px; margin: 0 auto; padding: 8px 12px;
+  font-size: 12.5px; font-weight: 600; cursor: pointer; list-style: none;
 }
 .lr-client-access-options > summary::-webkit-details-marker { display: none; }
-.lr-client-access-options > summary:is(:hover, :focus-visible) { background: var(--control-hover); color: var(--ink); }
-.lr-client-access-options > summary:focus-visible { outline: 3px solid var(--action); outline-offset: 2px; }
-.lr-client-access-options > summary > svg:last-child { transition: transform 160ms ease; }
+.lr-client-access-options > summary > svg:last-child { transition: transform 180ms var(--spring); }
 .lr-client-access-options[open] > summary > svg:last-child { transform: rotate(180deg); }
 .lr-client-access-set { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); }
 .lr-client-access-options .lr-client-access { width: 100%; margin-top: 8px; }
@@ -2212,7 +2211,7 @@ html[data-theme="dark"] .lr-tiles .lr-tile:not(.is-selected) small { color: #8ba
    each stroke. Reduced motion and ordinary controls use the unanimated SVG. */
 @media (prefers-reduced-motion: no-preference) {
   .lr-glyph-draw:not(.lr-spin),
-  button:is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) .lr-glyph:not(.lr-glyph-draw):not(.lr-spin) {
+  :is(button, a):is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) .lr-glyph:not(.lr-glyph-draw):not(.lr-spin) {
     & > :is(path, circle, rect, line) {
       stroke-dasharray: 1;
       stroke-dashoffset: 1;

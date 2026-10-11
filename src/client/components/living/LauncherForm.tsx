@@ -111,8 +111,8 @@ export function LauncherForm({
         </div>
       </section>
 
-      {target ? <a className="lr-btn lr-client-resume" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>
-        <Glyph name="arrowRight" size={20} />{vis ? null : t("client.launch.go")}
+      {target ? <a className="lr-btn is-primary" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>
+        <Glyph name="arrowRight" size={19} />{vis ? null : <span className="lr-cap">{t("client.launch.go")}</span>}
       </a> : <>
       <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
       <div
@@ -165,7 +165,7 @@ export function LauncherForm({
 
       <div className="lr-client-room-settings">
         <details className="lr-client-access-options">
-          <summary>
+          <summary className="lr-btn">
             <Glyph name="key" size={17} />
             <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.accessSettings")}</span>
             {localAccessPassword && <span className="lr-client-access-set">
@@ -181,7 +181,7 @@ export function LauncherForm({
         </details>
         {mode === "local" && lan && (lan.addresses.length !== 1 || !lan.selected) ? (
           <details className="lr-client-access-options" open={!lan.selected || undefined}>
-            <summary>
+            <summary className="lr-btn">
               <Glyph name="users" size={17} />
               <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanAddress")}</span>
               <Glyph name="chevron" size={15} />

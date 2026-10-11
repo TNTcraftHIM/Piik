@@ -121,7 +121,7 @@ export function Glyph({
 
   useEffect(() => {
     const graphic = graphicRef.current;
-    if (!draw || !graphic?.closest("button:is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay)")) return;
+    if (!draw || !graphic?.closest(":is(button, a):is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay)")) return;
     return bindSvgReplayOnPointerEnter(graphic);
   }, [draw]);
 
