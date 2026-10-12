@@ -386,6 +386,46 @@ No new transport or universal success-rate claim is accepted by this review.
 The [retired Go experiment](#integration-cost-and-recovery-controls) establishes
 reuse feasibility and its cost, not a Browser-compatible reachability gain.
 
+### Coordinated Native Punching Assessment
+
+The October 12, 2026 scope includes optional Native transport at both ends when
+it provides a measured gain. Background App availability makes this usable;
+ordinary Browser peers must retain their existing connection path.
+
+The current adapter already predicts on both ends of an eligible edge, but each
+end independently supplies at most eight adjacent candidates from one media
+socket. It does not coordinate probing order or open a pool of local sockets.
+Completing the ordinary-ICE and Magicsock controls therefore does not establish
+the limit of coordinated Native hole punching.
+
+Mature implementations provide a concrete comparison:
+
+- [frp's strategy table](https://github.com/fatedier/frp/blob/2542d11a6201c0f2bbe3b1d93031fc1e83201056/pkg/nathole/analysis.go)
+  separates predictable-port, role/timing and probabilistic strategies. One
+  strategy pairs 256 local listeners with 1,000 remote port guesses. Those are
+  upstream operating budgets, not accepted Piik defaults or a success guarantee.
+- [EasyTier's Native implementation](https://github.com/EasyTier/EasyTier/blob/1649ec00135e12103e05bf543e0ed313d7e190f8/easytier-core/src/connectivity/hole_punch/udp/client.rs)
+  uses socket arrays and coordinated peer requests, with separate predictable
+  and random-port paths. Its implementation is evidence that these are real
+  mechanisms, not evidence that replacing Piik's media stack improves coverage.
+
+The next comparison should isolate ordered bilateral prediction from bounded
+multi-socket probing, against both stock ICE and Piik's existing predictor.
+Keep the same NAT/filtering, deadline, loss and relay policy; include both peer
+directions, unrelated mapping traffic, random allocation and blocked UDP.
+Measure authenticated bidirectional media, time to first picture and resource
+cost. A contacted socket alone is not a successful WebRTC connection.
+
+A future adapter should feed the existing connection's ICE owner, preserving
+ordinary candidate timing, instead of adding another media tunnel or route
+controller. Socket adoption through supported Pion APIs is an open integration
+question. Scope any extra work to the authorized peer and connection generation,
+bound sockets/packets/time, and retire losers on success, cancellation or
+revocation. Mapping observations must not become persistent NAT labels or skip
+ordinary paths. Random-port overlap assumptions do not establish a solution for
+two independently random endpoint-dependent NATs or a network that blocks UDP.
+No new product transport, probing budget or success-rate claim is accepted here.
+
 ### Browser-Compatible Follow-Up
 
 The product target remains App-to-Browser and Browser-to-Browser sharing without

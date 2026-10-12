@@ -176,6 +176,16 @@ experiments and their limits.
 
 ## Next: P2P Connection And Feedback Evidence
 
+- [ ] **Coordinated Native prediction and bounded multi-socket comparison.**
+  Evaluate the optional two-App scope against stock ICE and Piik's current
+  single-socket predictor, following the
+  [assessment](./research/nat-traversal.md#coordinated-native-punching-assessment).
+  Separate predictable-port coordination from probabilistic port overlap;
+  compare equal time/resource budgets and verify authenticated media, cancellation
+  and ordinary-path independence. Reuse mature mechanisms where supported;
+  do not adopt a new tunnel or assume another project's success rate. Current
+  Magicsock controls do not close this separate question.
+
 For the transport assessment, measure connection success, time to first picture and
 failure causes on representative networks, especially App and P2P-only sites.
 Use existing Debug provenance and selected-path events under the
