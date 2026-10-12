@@ -47,13 +47,14 @@ describe("network laboratory evidence", () => {
   });
 
   it("rejects frozen/silent media and counter resets on replacement peers", () => {
-    const before = { frames: 50, stats: [{ id: "audio", peerId: 0, type: "inbound-rtp", kind: "audio",
+    const before = { frames: 50, pictureHash: 100, stats: [{ id: "audio", peerId: 0, type: "inbound-rtp", kind: "audio",
       totalAudioEnergy: 1, totalSamplesDuration: 2 }] } as unknown as MediaSample;
     expect(() => checkContinuity(before, { ...before, frames: 100 })).toThrow();
-    const after = { ...before, frames: 100, stats: [{ ...before.stats[0]!, totalAudioEnergy: 2, totalSamplesDuration: 5 }] };
+    const after = { ...before, frames: 100, pictureHash: 200, stats: [{ ...before.stats[0]!, totalAudioEnergy: 2, totalSamplesDuration: 5 }] };
     expect(() => checkContinuity(before, after)).not.toThrow();
     expect(() => checkContinuity(before, { ...after, stats: [{ ...after.stats[0]!, peerId: 1 }] })).toThrow();
     expect(() => checkContinuity(before, { ...after, frames: 50 })).toThrow();
+    expect(() => checkContinuity(before, { ...after, pictureHash: 100 })).toThrow();
   });
 
   it("requires feedback on the same WAN transport, not a healthy loopback or sibling", () => {

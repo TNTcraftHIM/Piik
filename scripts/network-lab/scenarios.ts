@@ -54,6 +54,9 @@ export function checkFaultHit(fault: Fault, faultDrops: number): void {
 
 export function checkContinuity(before: MediaSample, after: MediaSample): void {
   if (after.frames - before.frames < 30) throw new Error("Decoded video did not continue");
+  if (before.pictureHash === null || after.pictureHash === null || before.pictureHash === after.pictureHash) {
+    throw new Error("Rendered synthetic picture did not change");
+  }
   const audible = after.stats.some(row => {
     if (row.type !== "inbound-rtp" || row.kind !== "audio") return false;
     const previous = before.stats.find(other => other.id === row.id && other.peerId === row.peerId);

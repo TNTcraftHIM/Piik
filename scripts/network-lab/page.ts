@@ -5,6 +5,8 @@ export const pageProbe = String.raw`(() => {
   const peers=[], sockets=[], events=[], errors=[], controls=[];
   let route=null;
   const PC=RTCPeerConnection, WS=WebSocket;
+  const picture=document.createElement('canvas');picture.width=64;picture.height=36;
+  const pictureContext=picture.getContext('2d',{willReadFrequently:true});
   const record=(list,value)=>{ list.push(value); if(list.length>240)list.shift(); };
   window.addEventListener('unhandledrejection', e=>record(errors,String(e.reason)));
   window.RTCPeerConnection=class extends PC { constructor(...args){super(...args);const peerId=peers.push(this)-1;
@@ -82,8 +84,14 @@ export const pageProbe = String.raw`(() => {
       }
     }
     const video=document.querySelector('video');
+    let pictureHash=null;
+    if(video?.videoWidth&&video.readyState>=2){
+      pictureContext.drawImage(video,0,0,64,36);let hash=2166136261;
+      for(const byte of pictureContext.getImageData(0,0,64,36).data)hash=Math.imul(hash^byte,16777619);
+      pictureHash=hash>>>0;
+    }
     return{at:performance.now(),width:video?.videoWidth||0,height:video?.videoHeight||0,
-      frames:video?.getVideoPlaybackQuality().totalVideoFrames||0,route,stats,events:[...events],errors:[...errors],controls:[...controls],
+      frames:video?.getVideoPlaybackQuality().totalVideoFrames||0,pictureHash,route,stats,events:[...events],errors:[...errors],controls:[...controls],
       sharing:!!document.querySelector('button[aria-label="Stop sharing"]'),
       controlOpen:sockets.some(s=>s.url.includes('/control')&&s.readyState===WS.OPEN),
       peerStates:peers.map(p=>p.connectionState),text:document.body.innerText.slice(-2000)};
@@ -95,6 +103,7 @@ export interface MediaSample {
   width: number;
   height: number;
   frames: number;
+  pictureHash: number | null;
   route: string | null;
   stats: Array<Record<string, string | number>>;
   events: Array<{ at: number; type: string; scope?: string; state?: string; reason?: string; phase?: string; route?: string;

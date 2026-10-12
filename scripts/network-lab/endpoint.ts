@@ -77,6 +77,11 @@ export async function endpointWorker(): Promise<void> {
           await click(app ? 'button[aria-label^="H264"]' : 'button[aria-label^="VP8"]');
           await click('button[aria-label="720p"]');
           await click("button.lr-tv-big.is-action");
+          // Selecting Browser before App discovery completes intentionally uses
+          // Browser fanout. An App scenario waits for the real control session.
+          if (app) await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
+            `Boolean(document.querySelector('.lr-source-picker-refresh:not(:disabled)')) && networkLab.sample().then(value => value.controlOpen)`,
+            deadline), Boolean, 10_000);
           await click('button[data-source-tab="browser"]');
           await click(".lr-source-option.is-browser");
           await waitForSample(sample, value => value.sharing && value.width > 0, 30_000);
