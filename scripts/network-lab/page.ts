@@ -3,25 +3,39 @@
 export const pageProbe = String.raw`(() => {
   localStorage.setItem('piik:ui-lang','en'); localStorage.setItem('piik:ui-mode','text');
   const peers=[], sockets=[], events=[], errors=[], controls=[];
+  let route=null;
   const PC=RTCPeerConnection, WS=WebSocket;
   const record=(list,value)=>{ list.push(value); if(list.length>240)list.shift(); };
   window.addEventListener('unhandledrejection', e=>record(errors,String(e.reason)));
-  window.RTCPeerConnection=class extends PC { constructor(...args){super(...args); peers.push(this);} };
+  window.RTCPeerConnection=class extends PC { constructor(...args){super(...args);const peerId=peers.push(this)-1;
+    this.addEventListener('icecandidate',e=>record(events,{at:performance.now(),type:'ice-candidate',peerId,candidate:e.candidate?.candidate}));
+    this.addEventListener('icecandidateerror',e=>record(events,{at:performance.now(),type:'ice-error',peerId,code:e.errorCode,reason:e.errorText,url:e.url}));
+  } };
   window.WebSocket=class extends WS {
     constructor(...args){ super(...args); sockets.push(this);
+      const scope=this.url.includes('/control')?'app':'room';
+      for(const type of ['open','close','error'])this.addEventListener(type,()=>record(events,{at:performance.now(),type:'ws-'+type,scope}));
       this.addEventListener('message', event=>{
         let message; try{message=JSON.parse(event.data);}catch{return;}
-        record(events,{at:performance.now(),type:message.type,state:message.state,reason:message.reason,
-          phase:message.phase,route:message.route?.kind});
+        if(message.type==='route-update'&&message.phase==='active')route=message.assignment.upstream.kind;
+        const value={at:performance.now(),type:message.type,state:message.state,reason:message.reason,scope,
+          phase:message.phase,route:message.assignment?.upstream?.kind,connectionId:message.connectionId};
+        for(const key of ['localType','remoteType','natTraversalPath','sampleWindowMs','intervalFramesEncoded',
+          'framesPerSecond','bitrateKbps','availableOutgoingKbps','width','height'])if(message[key]!==undefined)value[key]=message[key];
+        record(events,value);
       });
     }
-    send(raw){if(this.url.includes('/control')){try{record(controls,JSON.parse(raw).type);}catch{}}super.send(raw);}
+    send(raw){if(this.url.includes('/control')){try{const m=JSON.parse(raw);record(controls,{type:m.type,connectionId:m.connectionId});}catch{}}super.send(raw);}
   };
   navigator.mediaDevices.getDisplayMedia=async()=>{
     const canvas=document.createElement('canvas'); canvas.width=1280; canvas.height=720;
     const ctx=canvas.getContext('2d');let frame=0;
     const draw=()=>{ctx.fillStyle='#19292f';ctx.fillRect(0,0,1280,720);
-      ctx.fillStyle='#68dab3';ctx.fillRect((frame*11)%1150,80,130,250);
+      // Deterministic moving detail puts real pressure on a constrained encoder.
+      for(let y=0;y<12;y++)for(let x=0;x<20;x++){
+        ctx.fillStyle='hsl('+((x*37+y*19+frame*3)%360)+' 65% 55%)';
+        ctx.fillRect((x*64+frame*7)%1280,y*60,45,42);
+      }
       ctx.fillStyle='#fff';ctx.font='70px sans-serif';ctx.fillText(String(frame++),80,540);};
     draw();const timer=setInterval(draw,1000/30),stream=canvas.captureStream(30);
     const video=stream.getVideoTracks()[0],stop=video.stop.bind(video);
@@ -32,13 +46,26 @@ export const pageProbe = String.raw`(() => {
     sound.stop=()=>{if(stopped)return;stopped=true;osc.stop();void ac.close();stopSound();};
     stream.addTrack(sound);return stream;
   };
-  window.networkLab={async sample(){
+  window.networkLab={async signalProbe(){
+    const socket=sockets.findLast(s=>!s.url.includes('/control')&&s.readyState===WS.OPEN);
+    if(!socket)return false;
+    return new Promise(resolve=>{
+      const finish=value=>{clearTimeout(timer);socket.removeEventListener('message',receive);resolve(value);};
+      const receive=event=>{try{if(JSON.parse(event.data).type==='route-diagnostic-snapshot')finish(true);}catch{}};
+      const timer=setTimeout(()=>finish(false),1800);socket.addEventListener('message',receive);
+      socket.send(JSON.stringify({type:'request-route-diagnostic'}));
+    });
+  },async sample(){
     const stats=[];
-    for(const peer of peers){if(peer.connectionState==='closed')continue;
+    for(const [peerId,peer] of peers.entries()){if(peer.connectionState==='closed')continue;
       const report=await peer.getStats();
       for(const row of report.values()){
+        if(row.type==='candidate-pair')stats.push({type:'pair-state',peerId,state:row.state,
+          requestsSent:row.requestsSent,responsesReceived:row.responsesReceived,localCandidateId:row.localCandidateId,remoteCandidateId:row.remoteCandidateId});
+        if(row.type==='local-candidate'||row.type==='remote-candidate')stats.push({type:row.type,id:row.id,peerId,
+          address:row.address,port:row.port,protocol:row.protocol,candidateType:row.candidateType});
         if(row.type==='inbound-rtp'||row.type==='outbound-rtp'||row.type==='remote-inbound-rtp'){
-          const selected={type:row.type,kind:row.kind};
+          const selected={type:row.type,kind:row.kind,id:row.id,peerId};
           for(const key of ['framesDecoded','framesReceived','framesEncoded','framesDropped','framesPerSecond',
             'frameWidth','frameHeight','bytesReceived','bytesSent','packetsLost','packetsReceived','nackCount',
             'pliCount','totalDecodeTime','jitterBufferDelay','jitterBufferEmittedCount','totalAudioEnergy',
@@ -48,15 +75,15 @@ export const pageProbe = String.raw`(() => {
         }
         if(row.type==='candidate-pair'&&row.nominated&&row.state==='succeeded'){
           const local=report.get(row.localCandidateId),remote=report.get(row.remoteCandidateId);
-          stats.push({type:'selected-pair',rtt:row.currentRoundTripTime,bwe:row.availableOutgoingBitrate,
+          stats.push({type:'selected-pair',peerId,rtt:row.currentRoundTripTime,bwe:row.availableOutgoingBitrate,
             localType:local?.candidateType,remoteType:remote?.candidateType,protocol:remote?.protocol,
-            localAddress:local?.address,remoteAddress:remote?.address});
+            localAddress:local?.address,remoteAddress:remote?.address,localPort:local?.port,remotePort:remote?.port});
         }
       }
     }
     const video=document.querySelector('video');
     return{at:performance.now(),width:video?.videoWidth||0,height:video?.videoHeight||0,
-      frames:video?.getVideoPlaybackQuality().totalVideoFrames||0,stats,events:[...events],errors:[...errors],controls:[...controls],
+      frames:video?.getVideoPlaybackQuality().totalVideoFrames||0,route,stats,events:[...events],errors:[...errors],controls:[...controls],
       sharing:!!document.querySelector('button[aria-label="Stop sharing"]'),
       controlOpen:sockets.some(s=>s.url.includes('/control')&&s.readyState===WS.OPEN),
       peerStates:peers.map(p=>p.connectionState),text:document.body.innerText.slice(-2000)};
@@ -68,10 +95,12 @@ export interface MediaSample {
   width: number;
   height: number;
   frames: number;
+  route: string | null;
   stats: Array<Record<string, string | number>>;
-  events: Array<{ at: number; type: string; state?: string; reason?: string; phase?: string; route?: string }>;
+  events: Array<{ at: number; type: string; scope?: string; state?: string; reason?: string; phase?: string; route?: string;
+    connectionId?: string; [key: string]: string | number | undefined }>;
   errors: string[];
-  controls: string[];
+  controls: Array<{ type: string; connectionId?: string }>;
   sharing: boolean;
   controlOpen: boolean;
   peerStates: string[];

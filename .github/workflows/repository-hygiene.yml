@@ -111,7 +111,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
         run: |
           sudo apt-get update
-          sudo apt-get install -y nftables iproute2
+          sudo apt-get install -y nftables iproute2 tcpdump
           mkdir -p build/network-lab/bin
           CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-server ./cmd/piik-server
           CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-app ./cmd/piik-app

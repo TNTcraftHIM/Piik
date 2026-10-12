@@ -46,6 +46,23 @@ export function hasPicture(sample: MediaSample): boolean {
     sample.stats.some(row => row.type === "inbound-rtp" && row.kind === "video" && Number(row.framesDecoded) >= 15);
 }
 
+export function checkFaultHit(fault: Fault, faultDrops: number): void {
+  if (["peer-block", "udp-block", "stun-primary", "signaling"].includes(fault) && faultDrops < 1) {
+    throw new Error(`No packets hit the ${fault} rule; outcome cannot validate this fault`);
+  }
+}
+
+export function checkContinuity(before: MediaSample, after: MediaSample): void {
+  if (after.frames - before.frames < 30) throw new Error("Decoded video did not continue");
+  const audible = after.stats.some(row => {
+    if (row.type !== "inbound-rtp" || row.kind !== "audio") return false;
+    const previous = before.stats.find(other => other.id === row.id && other.peerId === row.peerId);
+    return previous && Number(row.totalAudioEnergy) > Number(previous.totalAudioEnergy) &&
+      Number(row.totalSamplesDuration) > Number(previous.totalSamplesDuration);
+  });
+  if (!audible) throw new Error("Decoded audio energy and sample duration did not advance");
+}
+
 export function checkCalibration(before: ProbeResult, after: ProbeResult, fault: Fault): void {
   if (before.received !== before.sent || before.mappings.length !== 3 ||
       before.mappings.some(mapping => !mapping.address.startsWith("198.51.100."))) {

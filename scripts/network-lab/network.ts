@@ -101,14 +101,17 @@ table inet lab_filter {
     this.exec(router, "tc", ["qdisc", "replace", "dev", "wan0", "root", "netem", ...impairment]);
   }
 
-  counters(index: number): unknown {
+  counters(index: number): { firewall: unknown; queue: unknown; faultDrops: number } {
+    const firewall = JSON.parse(this.exec(this.router(index), "nft", ["-j", "list", "table", "inet", "lab_filter"]));
+    const faultDrops = firewall.nftables.reduce((total: number, entry: { rule?: { chain: string; expr: Array<{ counter?: { packets: number } }> } }) =>
+      total + (entry.rule?.chain === "faults" ? entry.rule.expr.reduce((n, expression) => n + (expression.counter?.packets ?? 0), 0) : 0), 0);
     return {
-      firewall: JSON.parse(this.exec(this.router(index), "nft", ["-j", "list", "table", "inet", "lab_filter"])),
+      firewall, faultDrops,
       queue: JSON.parse(this.exec(this.router(index), "tc", ["-j", "-s", "qdisc", "show", "dev", "wan0"])),
     };
   }
 
-  async close(): Promise<{ namespacesRemoved: boolean; hostNetworkUnchanged: boolean }> {
+  async close(): Promise<{ namespacesRemoved: boolean; hostNetworkUnchanged: boolean; linksRemoved: boolean }> {
     const failures: string[] = [];
     for (const namespace of [...this.namespaces].reverse()) {
       try {
@@ -129,6 +132,7 @@ table inet lab_filter {
     const remaining = command("ip", ["netns", "list"]);
     return {
       namespacesRemoved: failures.length === 0 && !remaining.includes(this.prefix),
+      linksRemoved: !JSON.parse(command("ip", ["-j", "link", "show"])).some((link: { ifname: string }) => this.pendingLinks.has(link.ifname)),
       hostNetworkUnchanged: command("ip", ["-j", "route", "show", "table", "all"]) === this.originalRoutes &&
         command("nft", ["-s", "list", "ruleset"]) === this.originalRules,
     };
