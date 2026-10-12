@@ -42,7 +42,9 @@ it.each(["success", "receiver-fails", "sender-fails", "browser", "timeout", "dis
       if (outcome === "timeout") await vi.advanceTimersByTimeAsync(3_500);
       expect(await result).toBe(outcome === "success");
       expect(source.preparePunch).toHaveBeenCalledOnce();
+      expect(source.preparePunch.mock.calls[0][4]).toBeUndefined();
       if (outcome === "success") {
+        expect(target.preparePunch.mock.calls[0][4]).toBe(2);
         expect(receiver.commit()).toBe(true);
         expect(source.closePunch).not.toHaveBeenCalled();
         expect(target.closePunch).not.toHaveBeenCalled();

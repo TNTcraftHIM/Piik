@@ -773,7 +773,17 @@ func connectedReceiver(
 	connectionID string,
 ) (*Edge, *webrtc.PeerConnection, <-chan *rtp.Packet) {
 	t.Helper()
-	edge, err := engine.NewEdge(source, EdgeOptions{ConnectionID: connectionID})
+	connected := make(chan struct{}, 1)
+	edge, err := engine.NewEdge(source, EdgeOptions{ConnectionID: connectionID, Events: EdgeEvents{
+		ConnectionState: func(state webrtc.PeerConnectionState, _ *SelectedPair) {
+			if state == webrtc.PeerConnectionStateConnected {
+				select {
+				case connected <- struct{}{}:
+				default:
+				}
+			}
+		},
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -796,6 +806,9 @@ func connectedReceiver(
 	})
 
 	connectEdgeToReceiver(t, edge, receiver)
+	// Pion publishes Connected before our callback activates the media output.
+	// A one-frame test must await that callback, not race it with its only frame.
+	waitSignal(t, connected, "media activation")
 	return edge, receiver, packets
 }
 

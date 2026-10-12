@@ -178,9 +178,10 @@ experiments and their limits.
 
 - [ ] **Coordinated Native retry acceptance.**
   The optional two-App preparation is integrated into the existing retry owner;
-  production Engine virtual-network checks carry media and reverse feedback.
-  Complete candidate signaling, decoded-picture and retirement acceptance,
-  following the
+  production Engine virtual-network checks carry media and reverse feedback;
+  actual App signaling checks cover ineligible preparation and ordinary decoded
+  media continuation. Verify successful preparation through a difficult network
+  and decoded-picture continuity on that path, following the
   [assessment](./research/nat-traversal.md#coordinated-native-punching-assessment).
   Preserve the first ordinary attempt, immediate Browser decline and fixed
   operation deadlines. The owner will arrange a small difficult-network beta

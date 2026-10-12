@@ -18,6 +18,7 @@ const BUILD_ROOT = join(ROOT, "build/go-check");
 const LAN_ADDRESS = "192.0.2.1";
 
 const initialAudio = process.env.PIIK_CLIENT_GATE_AUDIO !== "false";
+const punchRetry = process.env.PIIK_CLIENT_PUNCH_GATE === "true";
 const captureSize = parseVideoGateSize(process.env.PIIK_CLIENT_GATE_VIDEO_SIZE || "1920x1080");
 const probe = String.raw`(() => {
   localStorage.setItem('piik:ui-lang', 'en');
@@ -30,12 +31,27 @@ const probe = String.raw`(() => {
     catch (error) { errors.push(String(error)); throw error; }
   };
   const PC = RTCPeerConnection, WS = WebSocket;
+  let rejectFirstEdge = ${punchRetry};
   window.RTCPeerConnection = class extends PC { constructor(...args) { super(...args); pcs.push(this); } };
   window.WebSocket = class extends WS {
     constructor(...args) { super(...args); if (String(args[0]).includes('/control')) {
       sockets.push(this);
     } }
-    send(raw) { if (this.url.includes('/control')) { const value = JSON.parse(raw); requests.push(value.type); } super.send(raw); }
+    send(raw) {
+      if (this.url.includes('/control')) {
+        const value = JSON.parse(raw); requests.push(value.type);
+        // Fail one candidate through the ordinary operation-error boundary.
+        // The real room controller must authorize the next preparation.
+        if (rejectFirstEdge && value.type === 'prepare-edge') {
+          rejectFirstEdge = false;
+          queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({
+            version:value.version, id:value.id, type:'request-failed', code:'operation-failed',
+          })})));
+          return;
+        }
+      }
+      super.send(raw);
+    }
   };
   let audio = ${initialAudio}, captures = 0;
   navigator.mediaDevices.getDisplayMedia = async () => {
@@ -136,6 +152,8 @@ async function startRoomServer(
       LISTEN_HOST: "127.0.0.1",
       PUBLIC_BASE_URL: `http://${LAN_ADDRESS}:${port}`,
       ALLOWED_ORIGINS: origins.join(","),
+      ...(punchRetry ? { STUN_URLS: "stun:127.0.0.1:3478", STUN_LISTEN_HOST: "127.0.0.1",
+        NAT_PREDICTION_ENABLED: "true" } : {}),
     },
   });
   child.stdout.resume();
@@ -252,6 +270,17 @@ async function main(): Promise<void> {
       (s) => matchesCaptureSize(s.width, s.height, captureSize) && s.outbound===0, 30000);
     checks.host = await read(host);
     checks.viewers = await Promise.all(viewers.map(read));
+    if (punchRetry) {
+      // Loopback mappings are deliberately ineligible. Both real App controls
+      // must prepare, decline and continue ordinary ICE without losing media.
+      const source = checks.host as Awaited<ReturnType<typeof read>>;
+      const target = (checks.viewers as Awaited<ReturnType<typeof read>>[])[0];
+      if (!source.requests.includes("prepare-punch") || !target.requests.includes("prepare-punch") ||
+        source.requests.includes("run-punch") || target.requests.includes("run-punch")) {
+        throw new Error("Authorized retry did not decline its ineligible Native preparation");
+      }
+      checks.nativePreparationDeclined = true;
+    }
     if ((checks.host as any).outbound !== 1 || !(checks.viewers as any[]).every((v) => v.outbound === 0)) {
       throw new Error("Shared encode count did not match the Native fanout");
     }
@@ -310,7 +339,7 @@ async function main(): Promise<void> {
     const cleanup = await cleanupRun({cdp, native:app, chrome, server, profile, ports:[appPort,debugPort,...(nativePort?[nativePort]:[])]});
     const result = {passed: error===null && Object.values(cleanup).every(Boolean) && relayCleanup.nativeExited && relayCleanup.portsClosed, stage, checks, error, cleanup};
     await mkdir(BUILD_ROOT,{recursive:true});
-    await writeFile(join(BUILD_ROOT,"browser-fanout.json"), JSON.stringify(result,null,2));
+    await writeFile(join(BUILD_ROOT,punchRetry ? "browser-fanout-punch.json" : "browser-fanout.json"), JSON.stringify(result,null,2));
     process.stdout.write(JSON.stringify(result)+"\n");
     if (!result.passed) process.exitCode=1;
   }

@@ -85,8 +85,9 @@ owns the retained experiment and adoption boundary. Its package is retired;
 independent ordinary ICE and media repairs remain in the candidate.
 An independent bounded Native UDP preparation now augments existing retries
 under ADR-0009. Production Engine checks cover socket adoption, video and reverse
-feedback in a sequential-NAT fixture. It is awaiting complete candidate
-acceptance and the owner's field beta; it does not establish a public success
+feedback in a sequential-NAT fixture. Actual App control/signaling checks cover
+ineligible preparation continuing to decoded Browser video. Successful paths
+still need the owner's field beta; this does not establish a public success
 rate or remove Browser-only operation.
 The original candidate packages pass their identity/checksum checks; Windows
 Local startup/retirement, saved Site approval/revocation and explicit 1.x

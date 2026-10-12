@@ -12,7 +12,7 @@ type preparePunchRequest struct {
 	ShareID            string      `json:"shareId"`
 	ConnectionID       string      `json:"connectionId"`
 	SourceConnectionID string      `json:"sourceConnectionId,omitempty"`
-	EdgeCapacity       int         `json:"edgeCapacity"`
+	EdgeCapacity       *int        `json:"edgeCapacity,omitempty"`
 	ICEServers         []iceServer `json:"iceServers"`
 	Secret             string      `json:"secret"`
 }
@@ -40,7 +40,7 @@ func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, co
 		var request preparePunchRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID, request.ConnectionID) ||
 			(request.SourceConnectionID != "" && !validIdentities(request.SourceConnectionID)) ||
-			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity {
+			(request.EdgeCapacity != nil && (*request.EdgeCapacity < 1 || *request.EdgeCapacity > maxEdgeCapacity || request.SourceConnectionID != "")) {
 			return nil, protocolViolation("native connection preparation is invalid")
 		}
 		key, err := hex.DecodeString(request.Secret)
@@ -52,14 +52,20 @@ func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, co
 			return nil, err
 		}
 		var preparation *mediaedge.PunchPreparation
-		if host := session.current(request.ShareID); host != nil && request.SourceConnectionID == "" {
-			preparation, err = host.BeginPunch(request.ConnectionID, servers, request.Secret)
-		} else {
-			viewer, viewerErr := session.ensureViewer(request.ShareID, request.EdgeCapacity)
+		if request.EdgeCapacity != nil {
+			// Only a receiving request may establish a Viewer role. A late sender
+			// request must not replace its retired Host/relay source with a Viewer.
+			viewer, viewerErr := session.ensureViewer(request.ShareID, *request.EdgeCapacity)
 			if viewerErr != nil {
 				return nil, viewerErr
 			}
+			preparation, err = viewer.BeginPunch(request.ConnectionID, "", servers, request.Secret)
+		} else if host := session.current(request.ShareID); host != nil && request.SourceConnectionID == "" {
+			preparation, err = host.BeginPunch(request.ConnectionID, servers, request.Secret)
+		} else if viewer := session.currentViewer(request.ShareID); viewer != nil && request.SourceConnectionID != "" {
 			preparation, err = viewer.BeginPunch(request.ConnectionID, request.SourceConnectionID, servers, request.Secret)
+		} else {
+			return nil, errors.New("native media source does not exist")
 		}
 		if err != nil {
 			return nil, err

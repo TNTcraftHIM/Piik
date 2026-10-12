@@ -459,9 +459,19 @@ bounded composition, not a physical difficult-network success-rate improvement.
 The candidate's send window is 800 ms within a 1.1-second hard bound; the earlier
 isolated experiment's shorter window is not its product timing.
 
-Real signaling, decoded-picture acceptance and cross-device checks remain part
-of candidate acceptance. Random-port overlap assumptions do not establish a
-solution for two independently random endpoint-dependent NATs or blocked UDP.
+The Windows Browser-to-App fanout gate also exercises the actual room retry,
+both Native control preparations and ordinary ICE continuation when the mapping
+is ineligible. Two Viewers decode about 30 fps; live quality, pause/resume, source
+audio changes and App-exit fallback remain usable. Run the existing
+`gate:app-browser-fanout` entry with `PIIK_CLIENT_BROWSER_FANOUT_GATE=true`,
+`PIIK_CLIENT_PUNCH_GATE=true` and `CHROME_PATH` set. This arm uses loopback STUN
+listeners on UDP 3478/3479/3480 and injects one candidate rejection; it does not
+contact public STUN services.
+
+Successful coordinated preparation through a real difficult network, decoded
+pictures on that path and cross-device behavior remain field-beta checks.
+Random-port overlap assumptions do not establish a solution for two independently
+random endpoint-dependent NATs or blocked UDP.
 
 ### Browser-Compatible Follow-Up
 

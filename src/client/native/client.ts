@@ -423,9 +423,10 @@ export class NativeClient {
   }
 
   async preparePunch(shareId: string, connectionId: string, iceConfig: IceConfig,
-    secret: string, edgeCapacity: number, sourceConnectionId?: string): Promise<PunchPrediction | null> {
+    secret: string, edgeCapacity?: number, sourceConnectionId?: string): Promise<PunchPrediction | null> {
     const response = await this.request("prepare-punch", {
-      shareId, connectionId, secret, edgeCapacity,
+      shareId, connectionId, secret,
+      ...(edgeCapacity !== undefined ? { edgeCapacity } : {}),
       ...(sourceConnectionId ? { sourceConnectionId } : {}),
       iceServers: iceConfig.iceServers.map(server => ({ urls: Array.isArray(server.urls) ? server.urls : [server.urls] })),
     }, punchPreparedResponseSchema);

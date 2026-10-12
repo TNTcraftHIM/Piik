@@ -6,7 +6,7 @@ const PREPARATION_TIMEOUT_MS = 3_500;
 
 export interface NativePunchControl {
   preparePunch(shareId: string, connectionId: string, ice: IceConfig, secret: string,
-    edgeCapacity: number, sourceConnectionId?: string): Promise<PunchPrediction | null>;
+    edgeCapacity?: number, sourceConnectionId?: string): Promise<PunchPrediction | null>;
   runPunch(shareId: string, connectionId: string, remote: PunchPrediction): Promise<boolean>;
   closePunch(shareId: string, connectionId: string): Promise<void>;
 }
@@ -39,7 +39,7 @@ export class NativePunchSender {
     return new Promise(resolve => {
       this.finishResult = resolve;
       this.timer = setTimeout(() => this.finish(false), PREPARATION_TIMEOUT_MS);
-      this.prediction = this.control.preparePunch(this.shareId, this.connectionId, this.ice, secret, 3, this.sourceConnectionId)
+      this.prediction = this.control.preparePunch(this.shareId, this.connectionId, this.ice, secret, undefined, this.sourceConnectionId)
         .catch(() => null);
       if (!this.send({ kind: "punch", connectionId: this.connectionId, punch: { phase: "prepare", secret } })) {
         this.finish(false);
