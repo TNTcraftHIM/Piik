@@ -495,7 +495,7 @@ recovery loop or a Browser fork to enable this option.
 
 ### Integration Cost And Recovery Controls
 
-**Current candidate excludes Magicsock; optional-helper experiments are reopened.**
+**Current candidate excludes Magicsock; optional-helper adoption needs a matched gain.**
 This composition requires Native App transport at both ends of the enhanced
 edge. Those participants can still use the existing Browser UI and local media
 bridge; Native transport does not require a separate desktop interface. A
@@ -511,12 +511,42 @@ background availability alone is not reachability evidence or acceptance of
 DERP media fallback. Add it to the release candidate only after a matched benefit
 and the integration boundaries below are established.
 
-The isolated experiment remains at `d67f0d6d` on
+The isolated experiment remains at `cc6f9d0d` on
 `spike/magicsock-assessment`, outside Piik's production dependency graph.
-`git show d67f0d6d:scripts/tailcat-probe/README.md` retrieves its commands,
-fixture boundaries and opt-in dependency patches. The complete experimental
+The `scripts/magicsock-probe/README.md` and `scripts/tailcat-probe/README.md`
+files at that commit own rerun commands, fixture boundaries and opt-in
+dependency patches. The complete earlier experimental
 observations remain in `git show 82e3f253:docs/research/nat-traversal.md`.
 Its internal package is retired, not a current 2.0 test deliverable.
+
+#### Current Stable Direct-Transport Control
+
+On October 12, 2026, the isolated raw-Bind module was refreshed to
+[Tailscale v1.104.1](https://github.com/tailscale/tailscale/releases/tag/v1.104.1)
+and the candidate's Pion WebRTC v4.2.23 / ICE v4.4.7. The seven virtual-router
+pairs, with relay disabled, produced the same results with four- and
+twenty-second direct observation windows. Both stacks had the
+same result in both stacks: cone/cone, restricted/restricted and cone/hard in
+either direction connected; restricted/hard in either direction and hard/hard
+did not. These are stock-stack mechanism controls, not Piik's complete gateway
+mapping/prediction composition or physical success-rate measurements.
+
+Warmed Magicsock carried ICE/DTLS and audio/video SRTP, including two observed
+address changes without new SDP. But losing the first discovery packet in each
+direction during cold startup exhausted inner ICE after about 1.7 seconds;
+three repeats confirmed the failure. Stock Pion under the equivalent initial
+discovery loss connected in about 0.6 seconds. Extending only the fixture's ICE
+check budget let the nested composition connect after about 5.3 seconds. This
+identifies a composition cost, not an accepted timeout increase or universal
+claim that Magicsock is slower.
+
+Raw Bind also consumed bare inner STUN, requiring a test-only packet prefix.
+After peer removal it could still deliver UDP without peer identity; raw
+reception is not authentication. A product adapter would need supported
+framing and existing room/cryptographic authorization, not just another socket.
+The refreshed full probe suite and longer-window matrix passed, including
+controls that expect connection failure. They do not establish a new reason
+to include Magicsock in this candidate.
 
 #### Reachability And Cost
 

@@ -75,14 +75,18 @@ owns local codec, derived-output, SFU, Browser/Native fanout and live-control
 evidence. Both macOS architectures pass SDK compilation and packaged startup;
 physical geometry verification, cross-device and route-change acceptance remain
 open. Additional codecs are not part of this candidate.
-Magicsock remains outside the candidate. Its optional background-App scope is
-under reassessment: participants can retain the Web UI, but enhanced edges need
-Native transport at both ends. Easier activation does not establish a reachability
-gain or resolve its integration costs. The
+Magicsock remains outside the candidate. Refreshed stable-version controls found
+no additional direct reachability and retained discovery/inner-ICE timing costs.
+Participants can retain the Web UI, but enhanced edges need Native transport at
+both ends. Easier activation does not establish a reachability gain or resolve
+its integration costs. The
 [assessment](./research/nat-traversal.md#integration-cost-and-recovery-controls)
 owns the retained experiment and adoption boundary. Its package is retired;
 independent ordinary ICE and media repairs remain in the candidate.
-Publication remains subject to final acceptance.
+The original candidate packages pass their identity/checksum checks; Windows
+Local startup/retirement, saved Site approval/revocation and explicit 1.x
+rejection have packaged acceptance evidence. Publication remains subject to
+the owner's final acceptance.
 The candidate App now waits for approved Sites independently of Local/public
 room startup. Its two-choice launcher retains one exact Site approval and
 revocation, using the existing loopback and native-session owners.

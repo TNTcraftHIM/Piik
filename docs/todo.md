@@ -13,12 +13,13 @@ Git/PRs own completed history.
 - [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
   useful improvements and outstanding acceptance on 2026-10-07, and on 2026-10-09
   chose to hold the maintenance changes for 2.0 rather than publish them separately.
-  Complete the remaining packaged Windows App/Browser lifecycle acceptance,
-  then present the frozen candidate and its bilingual release notes for owner
-  review before publication. Retain explicit 1.x mismatch checks. Broader device
-  coverage below does not override the owner's platform deferrals or require a
+  Present the frozen candidate and its bilingual release notes for owner review
+  before publication. Packaged Windows Local startup/retirement, saved Site
+  approval/revocation and both directions of 1.x compatibility rejection have
+  passed. Broader device coverage below does not override the owner's platform
+  deferrals or require a
   statistical NAT campaign. The retired Magicsock package is not the current
-  candidate; preserve the existing product model during the reopened experiments.
+  candidate; preserve the existing product model in independent transport experiments.
 - [ ] **Reconcile open PRs with the final candidate.**
   [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps request and
   [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the
@@ -33,18 +34,6 @@ Git/PRs own completed history.
   After the owner-approved merge, check Actions event dispatch, cross-run artifact
   access and secret injection. Keep mirror failure visible without blocking
   product CI or Website delivery; do not rebuild an existing release for recovery.
-
-- [ ] **NAT best effort and optional background App assistance.**
-  The owner authorized renewed Magicsock/alternative experiments with one-time
-  Site approval and subsequent reuse. Keep the Web UI and distinguish it from
-  transport ownership: enhanced edges need App transport at both ends;
-  Browser-only endpoints retain ordinary ICE. Verify the STUN fallback report
-  and correct confirmed discovery/recovery gaps independently. Compare current
-  transports on matched networks before adding a helper to the release candidate.
-  Retain isolated evidence; the
-  [assessment](./research/nat-traversal.md#integration-cost-and-recovery-controls)
-  owns measured benefit, datagram/discovery/authorization costs and relay policy;
-  easier activation alone does not resolve those boundaries.
 
 ## Held By Owner
 
@@ -196,6 +185,12 @@ to connection generations without raw endpoints. Verify survey responses and
 P2P/SFU handoffs, including background direct attempts behind working SFU media.
 The [iroh/Tailscale comparison](./research/nat-traversal.md#iroh-and-tailscale-comparison)
 records the isolated Go media/migration experiment and Browser/relay limits.
+The reopened optional background-App assessment includes current stable
+Magicsock/Pion controls; no additional direct reachability was established.
+Keep Magicsock outside the candidate. A future matched difficult-network
+comparison may reopen adoption, subject to the recorded discovery, datagram,
+authorization and relay-policy boundaries. Saved Site approval alone is not
+evidence for a transport benefit.
 Prioritize one-App-to-Browser and Browser-to-Browser controls using existing
 ICE, IPv6 and gateway mapping, with changing interfaces, lost mappings and
 asymmetric network restrictions. The
