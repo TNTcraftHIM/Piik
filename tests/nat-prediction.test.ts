@@ -66,6 +66,29 @@ describe("NAT prediction ICE adapter", () => {
     expect(eligible(hostCandidate())).toBe(false);
   });
 
+  it.each([
+    { surveyPorts: [40_000, 40_003, 40_006], predictions: MAX_NAT_PREDICTION_CANDIDATES },
+    { surveyPorts: [40_000, 40_000, 40_000], predictions: 0 },
+  ])("retains survey identity before mapping deduplication: $surveyPorts", ({ surveyPorts, predictions }) => {
+    const iceServers = [{ urls: ["stun:share.example.test:3478", "stun:other.example.test:3478"] }];
+    const auxiliary = ["stun:share.example.test:3479", "stun:share.example.test:3480"];
+    const send = vi.fn<(candidate: SignalCandidate) => void>();
+    const batch = new NatPredictionCandidateBatch(send);
+    // A faster ordinary destination shares the first survey mapping. All
+    // destinations reach ICE, but only the actual survey can prove a pattern.
+    const observations = [[2, 40_000], [1, surveyPorts[0]], [3, surveyPorts[1]], [4, surveyPorts[2]]];
+    for (const [index, port] of observations) {
+      const observation = candidate(port!)!;
+      observation.candidate = observation.candidate.replace("candidate:base", `candidate:ns${index}`);
+      batch.add(observation, isNativeNatSurveyCandidate(observation, iceServers, auxiliary));
+    }
+    batch.complete();
+    const emitted = send.mock.calls.map(([value]) => value);
+    expect(emitted.filter(value => /^candidate:ns/.test(value?.candidate ?? ""))).toHaveLength(4);
+    expect(emitted.filter(value => /^candidate:s[pm]/.test(value?.candidate ?? ""))).toHaveLength(predictions);
+    expect(emitted.at(-1)).toBeNull();
+  });
+
   it("keeps unexpected ordinary-candidate failures visible", async () => {
     const error = new Error("candidate rejected");
     const connection = {

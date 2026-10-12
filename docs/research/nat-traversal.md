@@ -1,6 +1,6 @@
 # Browser And Native NAT Traversal
 
-Last reviewed: 2026-10-11
+Last reviewed: 2026-10-12
 
 This document owns evidence for improving direct ICE without adding a
 new relay or a custom transport. The current product contract remains standard
@@ -64,6 +64,12 @@ the offer's actual destination list with its candidate batch, so a later config
 update cannot reinterpret an in-flight response. Controlled tests cover
 out-of-order results, an unrelated fourth destination, repeated mappings and
 stalled DNS.
+The Native collector must also retain each destination's observation until that
+eligibility filter. Deduplicating mapped endpoints first let a faster ordinary
+destination hide an equal survey response. The corrected collector preserves
+both identities; the existing predictor still deduplicates eligible mappings,
+so repeated equal mappings cannot establish a three-point pattern. ICE retains
+ownership of actual remote endpoint connectivity.
 This does not identify the public-invitation report's cause, whose configured
 set already contains exactly three destinations.
 
@@ -489,7 +495,7 @@ recovery loop or a Browser fork to enable this option.
 
 ### Integration Cost And Recovery Controls
 
-**Current candidate excludes Magicsock; product integration remains held.**
+**Current candidate excludes Magicsock; optional-helper experiments are reopened.**
 This composition requires Native App transport at both ends of the enhanced
 edge. Those participants can still use the existing Browser UI and local media
 bridge; Native transport does not require a separate desktop interface. A
@@ -502,7 +508,8 @@ permissions, or the integration costs below. Reassess adoption against that
 optional-helper scope, preserving ordinary ICE when the helper is absent or
 unavailable. The controls established no additional reachable NAT class;
 background availability alone is not reachability evidence or acceptance of
-DERP media fallback. Field packaging remains held pending the adoption decision.
+DERP media fallback. Add it to the release candidate only after a matched benefit
+and the integration boundaries below are established.
 
 The isolated experiment remains at `d67f0d6d` on
 `spike/magicsock-assessment`, outside Piik's production dependency graph.

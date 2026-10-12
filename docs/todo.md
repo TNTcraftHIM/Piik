@@ -18,7 +18,7 @@ Git/PRs own completed history.
   review before publication. Retain explicit 1.x mismatch checks. Broader device
   coverage below does not override the owner's platform deferrals or require a
   statistical NAT campaign. The retired Magicsock package is not the current
-  candidate; preserve the existing product model and held scope.
+  candidate; preserve the existing product model during the reopened experiments.
 - [ ] **Reconcile open PRs with the final candidate.**
   [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps request and
   [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the
@@ -34,18 +34,19 @@ Git/PRs own completed history.
   access and secret injection. Keep mirror failure visible without blocking
   product CI or Website delivery; do not rebuild an existing release for recovery.
 
-## Held By Owner
-
-- [ ] **Magicsock adoption: reassess optional background App assistance.**
-  The owner clarified that App standby is intended to support Magicsock while
-  keeping the Web UI. Separate interface choice from transport ownership:
-  enhanced edges still need App transport at both ends; Browser-only endpoints
-  retain ordinary ICE. Product integration, combined packaging and field-test
-  recruitment remain held pending the adoption decision. Retain isolated
-  evidence and independent ordinary ICE/media repairs. The
+- [ ] **NAT best effort and optional background App assistance.**
+  The owner authorized renewed Magicsock/alternative experiments with one-time
+  Site approval and subsequent reuse. Keep the Web UI and distinguish it from
+  transport ownership: enhanced edges need App transport at both ends;
+  Browser-only endpoints retain ordinary ICE. Verify the STUN fallback report
+  and correct confirmed discovery/recovery gaps independently. Compare current
+  transports on matched networks before adding a helper to the release candidate.
+  Retain isolated evidence; the
   [assessment](./research/nat-traversal.md#integration-cost-and-recovery-controls)
   owns measured benefit, datagram/discovery/authorization costs and relay policy;
   easier activation alone does not resolve those boundaries.
+
+## Held By Owner
 
 - [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)

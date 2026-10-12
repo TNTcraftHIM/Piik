@@ -3,6 +3,7 @@ package mediaedge
 import (
 	"context"
 	"net"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -192,21 +193,58 @@ func TestSurveyCandidateIdentitySurvivesResponseOrder(t *testing.T) {
 	}
 }
 
-func TestSurveyDuplicateMappingRemainsOneOrdinaryCandidate(t *testing.T) {
-	engine, err := NewEngine(EngineOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = engine.Close() })
-	socket := testICESocket(t, engine)
-	servers := []webrtc.ICEServer{{URLs: []string{localSurveyServer(t), localSurveyServer(t)}}}
-	var observations []mappedAddress
-	socket.surveySTUN(t.Context(), servers, func(mapped mappedAddress) {
-		observations = append(observations, mapped)
-	})
-	if len(observations) != 1 || observations[0].port != socket.localPort ||
-		(observations[0].serverIndex != 1 && observations[0].serverIndex != 2) {
-		t.Fatalf("duplicate destination mappings became independent evidence: %+v", observations)
+func TestSurveyPreservesDestinationsWithDuplicateMapping(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		ports [4]int
+	}{{"predictable-survey", [4]int{40000, 40000, 40003, 40006}}, {"one-mapping", [4]int{40000, 40000, 40000, 40000}}} {
+		t.Run(test.name, func(t *testing.T) {
+			engine, err := NewEngine(EngineOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = engine.Close() })
+			socket := testICESocket(t, engine)
+			var releaseSurvey atomic.Bool
+			var urls []string
+			want := make(map[string]string)
+			for index, port := range test.ports {
+				listener := bindingServer(t, func(request *stun.Message, sender *net.UDPAddr, listener *net.UDPConn) {
+					// ns2 is an extra ordinary destination. Its response arrives
+					// before the survey group ns1/ns3/ns4, sharing ns1's mapping.
+					if index == 1 || releaseSurvey.Load() {
+						answerBinding(request, sender, listener, port)
+					}
+				})
+				urls = append(urls, "stun:"+listener.String())
+				want["candidate:ns"+strconv.Itoa(index+1)] = strconv.Itoa(port)
+			}
+			candidates := make(chan *webrtc.ICECandidateInit, 5)
+			gathering := newLocalCandidateGathering(socket, []webrtc.ICEServer{{URLs: urls}}, nil,
+				func(candidate *webrtc.ICECandidateInit) { candidates <- candidate })
+			t.Cleanup(gathering.close)
+			gathering.start()
+			gathering.addPion(nil)
+			for {
+				select {
+				case candidate := <-candidates:
+					if candidate == nil {
+						if len(want) != 0 {
+							t.Fatalf("mapping deduplication lost destination observations: %v", want)
+						}
+						return
+					}
+					fields := strings.Fields(candidate.Candidate)
+					if want[fields[0]] != fields[5] || (!releaseSurvey.Load() && fields[0] != "candidate:ns2") {
+						t.Fatalf("unexpected destination observation: %s", candidate.Candidate)
+					}
+					delete(want, fields[0])
+					releaseSurvey.Store(true)
+				case <-time.After(2 * time.Second):
+					t.Fatal("survey did not complete")
+				}
+			}
+		})
 	}
 }
 

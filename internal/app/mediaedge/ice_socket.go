@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
-	"strconv"
 	"sync"
 	"time"
 
@@ -159,18 +158,14 @@ func (socket *iceSocket) surveySTUN(
 		pending.Wait()
 		close(results)
 	}()
-	seen := map[string]struct{}{}
 	for {
 		select {
 		case value, ok := <-results:
 			if !ok {
 				return
 			}
-			key := value.address + ":" + strconv.Itoa(value.port)
-			if _, found := seen[key]; found {
-				continue
-			}
-			seen[key] = struct{}{}
+			// The consumer selects survey destinations before deduplicating
+			// mappings. An ordinary response must not hide a survey observation.
 			emit(value)
 		case <-surveyContext.Done():
 			return
