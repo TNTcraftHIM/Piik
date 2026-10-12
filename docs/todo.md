@@ -10,19 +10,11 @@ Git/PRs own completed history.
 
 ## Now
 
-- [ ] **Controlled network laboratory.** Complete the owned
-  [acceptance contract](./research/network-lab.md#acceptance-contract): real
-  isolated App/Browser paths, calibrated impairments, NAT/recovery/SFU scenarios,
-  repeatable reports, negative controls and cancellation cleanup. Establish this
-  evidence before further NAT mechanism changes. Model results do not replace
-  physical-network beta or establish a public success percentage.
-- [ ] **Warm-source first-video allocation.** The network laboratory's App/App
-  outage test loses video after transport replacement. A separate real-RTP
-  reproduction confirms that a measured raw source above a new transport's
-  initial budget can pause before TWCC establishes capacity. Correct startup
-  allocation at the shared forwarding owner, preserve observed congestion
-  limits, then rerun outage, constrained-link and healthy-sibling acceptance.
-  This mechanism does not yet establish every field disconnect's cause.
+- [ ] **Intermittent RTP clock-check timeout.** Two Linux CI runs timed out waiting
+  for the second packet in the existing timestamp/generation checks. Local
+  repetitions and explicit source pauses did not reproduce the timeout. Retain
+  the assertions and inspect the added source/allocation/egress diagnostics on
+  recurrence before assigning a product cause or changing forwarding.
 
 - [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
   useful improvements and outstanding acceptance on 2026-10-07, and on 2026-10-09

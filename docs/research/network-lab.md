@@ -70,7 +70,10 @@ The fast layer already uses Pion vnet in `internal/app/mediaedge` and
 media, not every Browser/OS behavior. The process layer uses Linux namespaces,
 kernel NAT/firewall rules and traffic shaping. Neither layer establishes
 Windows/macOS driver behavior, physical radio scheduling, mobile suspension or
-the distribution of real-world NATs.
+the distribution of real-world NATs. The current process matrix uses desktop
+Chrome and a Linux App with Browser-generated H264 ingress; it does not exercise
+physical capture, other Browser engines, real gateway mapping or the public
+invitation provider.
 
 Actual packets/counters must corroborate each impairment. DevTools accepting a
 network-emulation request is insufficient: an earlier Piik check observed RTP
@@ -118,9 +121,19 @@ The manual CI workflow's `network_lab` input runs this same entry point and neve
 publishes. Reports and bounded synthetic-traffic captures are under ignored
 `build/network-lab/results/`; CI retains them for seven days.
 
-The process layer is still under validation. Listed scenarios are implementation
-targets until their reports pass the acceptance contract. In particular, App
-Host checks must use the real H264 Browser-to-App ingress and App WAN sender;
+The [full process acceptance](https://github.com/TNTcraftHIM/Piik/actions/runs/38300988699)
+on 2026-10-13 passed all 19 scenarios and five negative controls, including
+resource cleanup and unchanged host networking. Sixteen scenarios produced
+advancing decoded audio/video; blocked UDP and the two random-mapping profiles
+produced bounded unavailability. A passing failure observation is not a
+successful connection or an Internet success-rate measurement.
+The [paired comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38301455274)
+also passed eight trials across two seeds with alternating enhancement on/off
+order. All four ordinary App/App trials delivered media; all four random-mapping
+trials exhausted their routes. This validates comparison/reporting and establishes
+no enhancement gain for that random-mapping profile.
+
+App Host checks must use the real H264 Browser-to-App ingress and App WAN sender;
 launching an App alongside a Browser-only VP8 share is not an App-path test.
 
 Each router uses destination-aware connection tracking for filtering. Independent
@@ -143,4 +156,7 @@ both initial and recovered media windows; a Browser WAN fallback cannot validate
 Native recovery. Rate calibration requires offered traffic above the configured
 ceiling, so a slow test process cannot impersonate a constrained network.
 Recovery timing begins when the impairment is removed, including subsequent
-calibration and sampling time.
+calibration and sampling time. `firstPictureMs` starts at Viewer navigation and
+ends at the first sample with at least 15 decoded frames; sampling is every
+500 ms. Recovery checks poll every second. These are sampled media-admission
+times, not exact first-packet timestamps or one-way media latency.
