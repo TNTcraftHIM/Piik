@@ -1158,33 +1158,28 @@ UINT32 WindowsBuild() {
   }
   RTL_OSVERSIONINFOW version = {};
   version.dwOSVersionInfoSize = sizeof(version);
-  if (get_version(&version) < 0 || version.dwMajorVersion != 10) {
-    Fail("windows-version", "unsupported Windows version");
+  if (get_version(&version) < 0) {
+    Fail("windows-version", "could not read Windows version");
   }
   return version.dwBuildNumber;
 }
 
 void WriteCapabilityProbe() {
-  constexpr UINT32 kCreateForWindowMinimumBuild = 18'362;
-  constexpr UINT32 kProcessLoopbackMinimumBuild = 19'041;
   const UINT32 build = WindowsBuild();
   bool window_capture = false;
-  if (build >= kCreateForWindowMinimumBuild) {
-    try {
-      window_capture =
-          winrt::Windows::Graphics::Capture::GraphicsCaptureSession::IsSupported();
-    } catch (const winrt::hresult_error&) {
-      window_capture = false;
-    }
+  try {
+    using namespace winrt::Windows::Graphics::Capture;
+    // Probe the entry points used by capture and previews, not their OS versions.
+    window_capture = GraphicsCaptureSession::IsSupported() &&
+        winrt::Windows::Foundation::Metadata::ApiInformation::IsMethodPresent(
+            L"Windows.Graphics.Capture.Direct3D11CaptureFramePool", L"CreateFreeThreaded") &&
+        !!winrt::get_activation_factory<GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
+  } catch (const winrt::hresult_error&) {
+    window_capture = false;
   }
-  const bool process_audio =
-      build >= kProcessLoopbackMinimumBuild &&
-      piik::capture::ProcessAudioAvailable();
+  const bool process_audio = piik::capture::ProcessAudioAvailable();
   const bool system_audio = piik::capture::SystemAudioAvailable();
-  // Process loopback was backported to Windows 10 2004. Probe each mode;
-  // the documented 20348 minimum must not hide a working exclusion interface.
-  const bool process_audio_exclusion = build >= kProcessLoopbackMinimumBuild &&
-      piik::capture::ProcessAudioAvailable(true);
+  const bool process_audio_exclusion = piik::capture::ProcessAudioAvailable(true);
 
   std::vector<Adapter> adapters = EnumerateAdapters();
   std::ostringstream output;

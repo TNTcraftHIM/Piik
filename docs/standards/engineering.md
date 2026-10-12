@@ -95,6 +95,10 @@ An unusable optional metric should become unavailable without discarding valid
 evidence or closing media control. Identity, generation, authority and required
 state consistency remain strict; never clamp a measurement into an invented fact.
 
+Detect optional platform features through bounded capability checks and actual
+operation results, not OS/browser version allowlists. Keep API availability,
+permission and successful execution distinct; version data is diagnostic context.
+
 Preserve meaningful authorization and resource bounds; prove that a producer's
 valid aggregate output fits its consumer, including serialization overhead.
 A per-item limit alone does not establish that contract.

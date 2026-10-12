@@ -2,7 +2,7 @@
 
 - Status: accepted for Browser capture and the Windows App audio paths
 - Date: 2026-08-21
-- Last updated: 2026-10-06
+- Last updated: 2026-10-12
 
 ## Context
 
@@ -40,9 +40,9 @@ platform probe and physical gate report it.
    [Native App media](../research/native-client-media.md).
 7. Windows App screen sharing can optionally exclude one selected process tree
    through WASAPI's exclusion mode after successful activation of that mode.
-   Probe Windows 10 build 19041+ to include backported implementations, following
-   the same capability boundary as application capture. Microsoft's documented
-   minimum remains 20348; a Windows version alone does not establish support.
+   Probe inclusion and exclusion independently without a Windows build-number
+   gate. Successful activation establishes availability; unsupported activation
+   leaves that capability unavailable.
    This mode spans all render endpoints; it is not restricted to the
    default playback device. Reuse source enumeration and the existing PCM/mixed
    output. Generic Browser capture and arbitrary unrelated process sets are not

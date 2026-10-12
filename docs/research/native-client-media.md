@@ -32,10 +32,10 @@ application's process tree or simultaneous playback across several output device
 device acceptance boundaries. [ADR-0008](../adr/0008-window-scoped-audio-capture.md)
 owns the platform choice.
 
-The capability check now attempts exclusion activation on Windows 10 2004+
-instead of rejecting all builds below 20348. Microsoft documents 20348 as the
-minimum, while OBS documents application loopback on Windows 10 2004+; the
-activation result, not an OS label, controls availability. Physical Windows 10
+The capability check attempts inclusion and exclusion activation independently,
+without an OS-version gate. Microsoft documents 20348 as the minimum, while OBS
+documents application loopback on Windows 10 2004+; the activation result, not
+an OS label, controls availability. Physical Windows 10
 exclusion remains unverified. A session regression check changes exclusion and
 source-audio off/on while video preparation is deliberately unavailable: the
 capture stream, encoded source, audio output and connected edge remain the same.
