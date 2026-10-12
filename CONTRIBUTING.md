@@ -121,6 +121,10 @@ does not establish coverage.
   result. A manual diagnostic may locate a failure, but is not retained as pass
   evidence. Existing `PIIK_CLIENT_*` gate environment names retain their current
   contract; renaming the tools does not change those overrides.
+- `gate:network-lab` runs the opt-in [controlled network laboratory](./docs/research/network-lab.md).
+  It requires a disposable Linux runner with namespace administration. Its own
+  routers contain all firewall and traffic-shaping changes; do not run it on a
+  production service or treat its model results as a public success rate.
 - On Windows, execute App/Server and Go test binaries only from stable
   project build paths. Go's temporary compiler/cache files are not firewall
   identities; do not run network tests with a changing temporary executable

@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-12
+Last reviewed: 2026-10-13
 
 The current 2.0 preparation includes independent investigation across this
 ledger. Explicit owner holds remain in force; an investigation does not itself
@@ -9,6 +9,13 @@ only that evidence claim, not unrelated work. Product modules own behavior;
 Git/PRs own completed history.
 
 ## Now
+
+- [ ] **Controlled network laboratory.** Complete the owned
+  [acceptance contract](./research/network-lab.md#acceptance-contract): real
+  isolated App/Browser paths, calibrated impairments, NAT/recovery/SFU scenarios,
+  repeatable reports, negative controls and cancellation cleanup. Establish this
+  evidence before further NAT mechanism changes. Model results do not replace
+  physical-network beta or establish a public success percentage.
 
 - [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
   useful improvements and outstanding acceptance on 2026-10-07, and on 2026-10-09

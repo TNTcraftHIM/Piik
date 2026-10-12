@@ -25,6 +25,7 @@
     "../site/film/ui/website.ts",
     "access-privacy-gate.ts",
     "browser-local-pool-probe.ts",
+    "network-lab.ts",
     "app-browser-fanout-gate.ts",
     "app-media-gate.ts",
     "app-native-host-gate.ts",

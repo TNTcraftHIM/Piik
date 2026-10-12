@@ -21,6 +21,7 @@
     "check:container": "node scripts/check-container.mjs",
     "check:native": "node scripts/check-go.mjs --capture-only",
     "gate:app-media": "tsx scripts/app-media-gate.ts",
+    "gate:network-lab": "tsx scripts/network-lab.ts",
     "gate:app-native-host": "tsx scripts/app-native-host-gate.ts",
     "gate:app-browser-fanout": "tsx scripts/app-browser-fanout-gate.ts",
     "gate:embedded-sfu": "tsx scripts/embedded-sfu-gate.ts",

@@ -17,6 +17,12 @@ on:
         description: Optional candidate version (vMAJOR.MINOR.PATCH); never publishes
         required: false
         type: string
+      network_lab:
+        description: Run the isolated Linux network laboratory (never publishes)
+        required: false
+        default: none
+        type: choice
+        options: [none, smoke, full]
 
 permissions:
   contents: read
@@ -101,6 +107,29 @@ jobs:
           PIIK_BUILD_VERSION: ${{ steps.release.outputs.version }}
           VITE_PIIK_VERSION: ${{ steps.release.outputs.version }}
           VITE_PIIK_REVISION: ${{ github.sha }}
+      - name: Prepare isolated network laboratory
+        if: github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nftables iproute2
+          mkdir -p build/network-lab/bin
+          CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-server ./cmd/piik-server
+          CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-app ./cmd/piik-app
+      - name: Run isolated network laboratory
+        if: github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
+        timeout-minutes: 35
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+          PIIK_NETWORK_LAB_SUITE: ${{ inputs.network_lab }}
+        run: sudo --preserve-env=PATH,CHROME_PATH "$(command -v node)" --import tsx scripts/network-lab.ts --suite "$PIIK_NETWORK_LAB_SUITE"
+      - name: Save network laboratory evidence
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: network-lab-${{ github.sha }}
+          path: build/network-lab/results/
+          if-no-files-found: error
+          retention-days: 7
 
   release-server:
     needs: validate
