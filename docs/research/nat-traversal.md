@@ -489,12 +489,20 @@ recovery loop or a Browser fork to enable this option.
 
 ### Integration Cost And Recovery Controls
 
-**Current decision: no-go for the 2.0 candidate.** This composition requires
-Native App transport at both ends of the enhanced edge. An App Host with a plain
-Browser Viewer still uses ordinary WebRTC; mixed relaying does not enhance that
-Browser edge. The owner stopped integration and field-package work. Reopen only
-for a concrete Browser-compatible benefit or an explicitly accepted App-only
-scope. The controls established no additional reachable NAT class.
+**Current candidate excludes Magicsock; product integration remains held.**
+This composition requires Native App transport at both ends of the enhanced
+edge. Those participants can still use the existing Browser UI and local media
+bridge; Native transport does not require a separate desktop interface. A
+Browser-only endpoint continues to use ordinary WebRTC.
+
+The background-App proposal is an optional transport helper for the same Web
+workflow. The existing standby and saved Site approval can reduce repeated
+setup, but do not remove first-use authorization, Browser local-network
+permissions, or the integration costs below. Reassess adoption against that
+optional-helper scope, preserving ordinary ICE when the helper is absent or
+unavailable. The controls established no additional reachable NAT class;
+background availability alone is not reachability evidence or acceptance of
+DERP media fallback. Field packaging remains held pending the adoption decision.
 
 The isolated experiment remains at `d67f0d6d` on
 `spike/magicsock-assessment`, outside Piik's production dependency graph.

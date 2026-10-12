@@ -36,14 +36,16 @@ Git/PRs own completed history.
 
 ## Held By Owner
 
-- [ ] **Magicsock adoption: no-go for this candidate.** Its direct-path
-  augmentation requires App transport at both ends and does not improve the
-  core App-to-Browser edge. Stop product integration, combined packaging and
-  Magicsock field-test recruitment. Retain isolated evidence in Git; preserve
-  independently verified ordinary ICE/media repairs. The
+- [ ] **Magicsock adoption: reassess optional background App assistance.**
+  The owner clarified that App standby is intended to support Magicsock while
+  keeping the Web UI. Separate interface choice from transport ownership:
+  enhanced edges still need App transport at both ends; Browser-only endpoints
+  retain ordinary ICE. Product integration, combined packaging and field-test
+  recruitment remain held pending the adoption decision. Retain isolated
+  evidence and independent ordinary ICE/media repairs. The
   [assessment](./research/nat-traversal.md#integration-cost-and-recovery-controls)
-  owns the rationale. Reopen only for a concrete Browser-compatible benefit
-  with acceptable complexity, or a newly accepted App-only product scope.
+  owns measured benefit, datagram/discovery/authorization costs and relay policy;
+  easier activation alone does not resolve those boundaries.
 
 - [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
   [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
