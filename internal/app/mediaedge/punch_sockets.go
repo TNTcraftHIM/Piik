@@ -12,15 +12,16 @@ import (
 	"github.com/pion/stun/v4"
 )
 
-// A bounded, authenticated preflight on eight fresh sockets. All readers stop
-// before the single winner transfers to the existing Pion connection owner.
-func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error), remote *net.UDPAddr, secret []byte) (net.PacketConn, error) {
-	if remote == nil || remote.IP.To4() == nil || remote.Port < 1 || remote.Port > 65535 || len(secret) != 32 {
-		return nil, errors.New("invalid peer or generation secret")
-	}
-	ctx, cancel := context.WithTimeout(ctx, 1100*time.Millisecond)
-	defer cancel()
+// A bounded, authenticated preflight on eight fresh sockets, or the one retained
+// observation socket when its mapping was stable. This function owns retained.
+// All readers stop before the winner transfers to the existing Pion owner.
+func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error), remote *net.UDPAddr, secret []byte, retained net.PacketConn) (net.PacketConn, error) {
 	var sockets []net.PacketConn
+	count := 8
+	if retained != nil {
+		sockets = append(sockets, retained)
+		count = 1
+	}
 	winner := -1
 	defer func() {
 		for i, connection := range sockets {
@@ -29,7 +30,12 @@ func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error)
 			}
 		}
 	}()
-	for range 8 {
+	if remote == nil || remote.IP.To4() == nil || remote.Port < 1 || remote.Port > 65535 || len(secret) != 32 {
+		return nil, errors.New("invalid peer or generation secret")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 1100*time.Millisecond)
+	defer cancel()
+	for len(sockets) < count {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -38,6 +44,8 @@ func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error)
 			return nil, err
 		}
 		sockets = append(sockets, connection)
+	}
+	for _, connection := range sockets {
 		deadline, _ := ctx.Deadline()
 		if err := connection.SetDeadline(deadline); err != nil {
 			return nil, err

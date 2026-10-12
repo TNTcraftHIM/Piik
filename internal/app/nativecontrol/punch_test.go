@@ -46,3 +46,22 @@ func TestPunchPreparationPreservesMediaRole(t *testing.T) {
 		}
 	})
 }
+
+func TestPunchRequiresExplicitMappingStep(t *testing.T) {
+	for _, step := range []string{"", `,"step":null`, `,"step":0`} {
+		t.Run(step, func(t *testing.T) {
+			session := New("", nativecapture.Capabilities{}, false)
+			t.Cleanup(func() { _ = session.Close() })
+			payload := []byte(`{"version":10,"id":"run_request","type":"run-punch","shareId":"share_id",` +
+				`"connectionId":"connection","prediction":{"address":"198.51.100.1","port":5000` + step + `}}`)
+			result, err := session.Handle(t.Context(), payload)
+			if step != `,"step":0` {
+				if err == nil {
+					t.Fatal("missing or null step accepted as a stable observation")
+				}
+			} else if _, failed := result.(requestFailedResponse); err != nil || !failed {
+				t.Fatalf("valid observation should reach the absent media session: %#v, %v", result, err)
+			}
+		})
+	}
+}

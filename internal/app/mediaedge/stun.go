@@ -46,6 +46,10 @@ func (socket *iceSocket) querySTUN(ctx context.Context, server *net.UDPAddr) (*s
 	}
 	defer socket.mux.RemoveConnByUfrag(key)
 	defer connection.Close()
+	return querySTUNBinding(ctx, connection, server, request)
+}
+
+func querySTUNBinding(ctx context.Context, connection net.PacketConn, server *net.UDPAddr, request *stun.Message) (*stun.XORMappedAddress, error) {
 	client, err := stun.NewClient(&stunConnection{PacketConn: connection, server: server},
 		stun.WithLoggerFactory(diagnostics.PionLoggerFactory()))
 	if err != nil {
@@ -82,7 +86,7 @@ func (socket *iceSocket) querySTUN(ctx context.Context, server *net.UDPAddr) (*s
 }
 
 // Pion's STUN client owns transaction matching and retransmission. This view
-// only addresses its packets on the existing media mux.
+// only addresses its packets to the current discovery destination.
 type stunConnection struct {
 	net.PacketConn
 	server *net.UDPAddr

@@ -366,6 +366,26 @@ when hole punching fails; neither statistic transfers to our user population.
 | Switch between direct and relay paths | Iroh manages QUIC paths; Piik hands off WebRTC edges through one room-route operation. These are different contracts. |
 | Relay data over TLS/TCP when direct UDP fails | Iroh and Tailscale provide this. Piik currently has optional SFU/UDP, while App public invitations remain P2P-only. This is a coverage difference, not a missing prediction formula. |
 
+Reviewing [Tailscale v1.104.1's DISCO messages](https://github.com/tailscale/tailscale/blob/v1.104.1/disco/disco.go)
+and [endpoint handling](https://github.com/tailscale/tailscale/blob/v1.104.1/wgengine/magicsock/endpoint.go)
+gives a more specific ownership comparison:
+
+| DISCO behavior | Piik application |
+| --- | --- |
+| `CallMeMaybe` sends recently observed endpoints and requests return traffic after outbound probes. | Current-generation room signaling and Trickle ICE already exchange candidates. Optional Native preparation coordinates its bounded sends through that same signaling owner. A second discovery protocol adds no established benefit. |
+| Authenticated Ping/Pong ties responses to transactions and learns actual peer endpoints. | ICE already owns authenticated checks, triggered checks and peer-reflexive discovery. Native preparation additionally requires the current operation's key and actual response before socket adoption. Do not maintain a parallel peer-address database. |
+| Endpoint trust expires; fresh observations replace stale advertised addresses. | Existing connection-owned discovery, gateway refresh and ICE recovery own freshness. Preserve their generations and retirement instead of adding another keepalive/retry timer. |
+| Peers can coordinate even when their mappings behave differently. | The candidate incorrectly declined preparation whenever either side observed a stable mapping. Retaining that side's actual observation socket lets it participate alongside a sequentially mapped peer. This is the concrete gap adopted below. |
+
+These are mechanism correspondences, not proof that the two stacks have equal
+reachability. [ICE's peer-reflexive processing](https://www.rfc-editor.org/rfc/rfc8445.html#section-7.2.5.3)
+can discover an endpoint different from the advertised candidates; it must
+remain the owner of that discovery and nomination. Extending the preflight to
+accept arbitrary authenticated reply ports would also require mutual winner
+selection, duplicating ICE. The current extension keeps one expected peer tuple
+and leaves ordinary ICE usable when the finite preparation fails. It adds no
+DERP service, media wrapper or new dependency.
+
 [Tailscale magicsock](https://github.com/tailscale/tailscale/blob/main/wgengine/magicsock/magicsock.go)
 is implemented in Go and is integrated with WireGuard, peer discovery, network
 maps and DERP. Its language is not an obstacle, but it is not an interchangeable
@@ -458,6 +478,21 @@ commit, resource limits, stale signaling and Browser decline. These establish
 bounded composition, not a physical difficult-network success-rate improvement.
 The candidate's send window is 800 ms within a 1.1-second hard bound; the earlier
 isolated experiment's shorter window is not its product timing.
+
+Stable observations now use the exact survey socket in that same preparation;
+reopening a socket would invalidate the observed address. Mixed stable/sequential
+fixtures previously declined at observation and now carry production SRTP and
+reverse SRTCP in both directions, including 250 ms of start skew. Stable/stable
+and sequential/sequential controls also pass. This removes an eligibility gap;
+it does not prove those pairs could never connect through ordinary ICE. Three
+equal observations, especially against different ports on one STUN IP, do not
+establish endpoint-independent mapping for every destination. Wrong-generation
+responses remain rejected, and no-response paths remain bounded. Raw survey I/O
+has the survey deadline and cancellation interruption; Pion's reader and
+retransmitter and the cancellation callback finish before a socket transfers.
+Blocked initial/retransmission writes and unused stable-socket retirement have
+regression coverage. The shared wire decoder requires an explicit zero step;
+missing/null fields cannot silently select this behavior.
 
 The Windows Browser-to-App fanout gate also exercises the actual room retry,
 both Native control preparations and ordinary ICE continuation when the mapping

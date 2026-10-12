@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
 type preparePunchRequest struct {
@@ -19,9 +20,9 @@ type preparePunchRequest struct {
 
 type runPunchRequest struct {
 	requestEnvelope
-	ShareID      string                    `json:"shareId"`
-	ConnectionID string                    `json:"connectionId"`
-	Prediction   mediaedge.PunchPrediction `json:"prediction"`
+	ShareID      string                   `json:"shareId"`
+	ConnectionID string                   `json:"connectionId"`
+	Prediction   protocol.PunchPrediction `json:"prediction"`
 }
 
 type punchPreparedResponse struct {
@@ -84,7 +85,8 @@ func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, co
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID, request.ConnectionID) {
 			return nil, protocolViolation("native connection probe is invalid")
 		}
-		if _, err := request.Prediction.Target(); err != nil {
+		prediction := mediaedge.PunchPrediction(request.Prediction)
+		if _, err := prediction.Target(); err != nil {
 			return nil, err
 		}
 		media := session.currentMedia(request.ShareID)
@@ -96,7 +98,7 @@ func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, co
 			return nil, errors.New("connection preparation was retired")
 		}
 		go func() {
-			result := punchCompleteResponse{response(envelope, "punch-complete"), preparation.Run(request.Prediction)}
+			result := punchCompleteResponse{response(envelope, "punch-complete"), preparation.Run(prediction)}
 			complete(result, nil)
 			session.emit(result)
 		}()

@@ -71,10 +71,14 @@ connection acquisition reuses the route controller's existing opportunity ledger
    prepare an authenticated Native socket at both ends before creating its one
    PeerConnection. It reuses the current peer/session/connection authorization
    and the same share switch; Browser peers decline immediately. Each Engine
-   permits one preparation: an ordered three-destination observation, then at
-   most eight temporary sockets aimed at one bounded sequential-port estimate,
-   with at most 64 requests and 64 authenticated replies. The observation socket
-   closes before those sockets open. The page waits at most 3.5 seconds; the App
+   permits one preparation: an ordered three-destination observation, then
+   checks against one bounded peer endpoint. Three equal observations retain
+   that exact socket; a positive sequential observation closes it before opening
+   at most eight temporary sockets. These cases can pair in either direction;
+   neither observation establishes a permanent NAT classification. The bound
+   remains 64 requests and 64 authenticated replies. Survey readers, writers
+   and cancellation callbacks retire before socket reuse or transfer. The page
+   waits at most 3.5 seconds; the App
    expires unconsumed work after five seconds. Mutual success and the existing
    SDP offer commit one proved socket and peer tuple to Pion. Other sockets and
    workers retire before reuse. Missing observations or unsuccessful preparation

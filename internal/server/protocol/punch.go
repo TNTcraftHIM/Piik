@@ -23,7 +23,7 @@ func (v *PunchPrediction) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	address, err := netip.ParseAddr(v.Address)
-	if err != nil || !address.Is4() || v.Port < 1024 || v.Port > 65535 || v.Step < 1 || v.Step > 16 || v.Port+4*v.Step > 65535 {
+	if err != nil || !address.Is4() || v.Port < 1024 || v.Port > 65535 || v.Step < 0 || v.Step > 16 || v.Port+4*v.Step > 65535 {
 		return errors.New("invalid mapping observation")
 	}
 	return nil

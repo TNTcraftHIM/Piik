@@ -327,7 +327,7 @@ const iceCandidateSchema = z
 export const punchPredictionSchema = z.object({
   address: z.ipv4(),
   port: z.number().int().min(1024).max(65535),
-  step: z.number().int().min(1).max(16),
+  step: z.number().int().min(0).max(16),
 }).strict().refine(({ port, step }) => port + 4 * step <= 65535);
 export type PunchPrediction = z.infer<typeof punchPredictionSchema>;
 

@@ -44,6 +44,18 @@
   },
   "clientMessages": [
     {
+      "name": "signal-punch-stable-mapping",
+      "schema": "client",
+      "json": "{\"type\":\"signal\",\"targetPeerId\":\"viewer_12345678\",\"payload\":{\"kind\":\"punch\",\"connectionId\":\"connection_12345678\",\"punch\":{\"phase\":\"ready\",\"prediction\":{\"address\":\"198.51.100.1\",\"port\":65535,\"step\":0}}}}",
+      "valid": true
+    },
+    {
+      "name": "signal-punch-negative-step",
+      "schema": "client",
+      "json": "{\"type\":\"signal\",\"targetPeerId\":\"viewer_12345678\",\"payload\":{\"kind\":\"punch\",\"connectionId\":\"connection_12345678\",\"punch\":{\"phase\":\"start\",\"prediction\":{\"address\":\"198.51.100.1\",\"port\":40000,\"step\":-1}}}}",
+      "valid": false
+    },
+    {
       "name": "send-unregistered-reaction",
       "schema": "client",
       "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"future-effect\"}}",

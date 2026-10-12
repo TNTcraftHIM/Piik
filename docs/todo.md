@@ -186,7 +186,9 @@ experiments and their limits.
   Preserve the first ordinary attempt, immediate Browser decline and fixed
   operation deadlines. The owner will arrange a small difficult-network beta
   after packaging; compare the same peers with the share's enhancement switch
-  enabled/disabled. Random-port overlap remains separate and unproven.
+  enabled/disabled, including mixed stable/sequential observations in both
+  directions. Local coverage does not establish their field benefit. Random-port
+  overlap remains separate and unproven.
 
 For the transport assessment, measure connection success, time to first picture and
 failure causes on representative networks, especially App and P2P-only sites.

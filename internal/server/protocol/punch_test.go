@@ -12,6 +12,7 @@ func TestPunchSignalStrictBoundedRoundTrip(t *testing.T) {
 		`{"phase":"prepare","secret":"` + strings.Repeat("42", 32) + `"}`,
 		`{"phase":"ready"}`, `{"phase":"ready","prediction":` + prediction + `}`,
 		`{"phase":"start","prediction":` + prediction + `}`,
+		`{"phase":"start","prediction":{"address":"198.51.100.1","port":65535,"step":0}}`,
 		`{"phase":"complete","connected":false}`, `{"phase":"complete","connected":true}`,
 	} {
 		raw := `{"kind":"punch","connectionId":"connection_123456","punch":` + body + `}`
@@ -32,6 +33,7 @@ func TestPunchSignalStrictBoundedRoundTrip(t *testing.T) {
 		`{"phase":"start","prediction":{"address":"::1","port":40000,"step":1}}`,
 		`{"phase":"start","prediction":{"address":"198.51.100.1","port":65535,"step":1}}`,
 		`{"phase":"start","prediction":{"address":"198.51.100.1","port":40000,"step":17}}`,
+		`{"phase":"start","prediction":{"address":"198.51.100.1","port":40000,"step":-1}}`,
 	} {
 		var payload PunchSignal
 		if err := json.Unmarshal([]byte(body), &payload); err == nil {

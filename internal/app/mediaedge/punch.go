@@ -7,13 +7,14 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/stun/v4"
 	"github.com/pion/webrtc/v4"
 )
 
-// PunchPrediction is a transient sequential mapping observation, not a NAT
+// PunchPrediction is a transient mapping observation, not a NAT
 // classification. Only an authenticated peer in the current route may supply it.
 type PunchPrediction struct {
 	Address string `json:"address"`
@@ -24,7 +25,7 @@ type PunchPrediction struct {
 func (prediction PunchPrediction) Target() (*net.UDPAddr, error) {
 	address, err := netip.ParseAddr(prediction.Address)
 	if err != nil || !address.Is4() || !address.IsGlobalUnicast() || address.IsPrivate() ||
-		address.IsLinkLocalUnicast() || prediction.Step < 1 || prediction.Step > 16 ||
+		address.IsLinkLocalUnicast() || prediction.Step < 0 || prediction.Step > 16 ||
 		prediction.Port < 1024 || prediction.Port > 65535 {
 		return nil, errors.New("unsupported peer mapping observation")
 	}
@@ -57,6 +58,34 @@ type PunchPreparation struct {
 type PunchedSocket struct {
 	net.PacketConn
 	remote *net.UDPAddr
+}
+
+// STUN owns its reader only until Client.Close joins it. Retain the UDP socket
+// across sequential observations, then either close it or use its stable mapping.
+type punchSurveySocket struct {
+	net.PacketConn
+	closed atomic.Bool
+}
+
+func (socket *punchSurveySocket) Close() error {
+	if socket.closed.Swap(true) {
+		return nil
+	}
+	return socket.SetReadDeadline(time.Now())
+}
+
+func (socket *punchSurveySocket) ReadFrom(buffer []byte) (int, net.Addr, error) {
+	if socket.closed.Load() {
+		return 0, nil, net.ErrClosed
+	}
+	return socket.PacketConn.ReadFrom(buffer)
+}
+
+func (socket *punchSurveySocket) WriteTo(buffer []byte, address net.Addr) (int, error) {
+	if socket.closed.Load() {
+		return 0, net.ErrClosed
+	}
+	return socket.PacketConn.WriteTo(buffer, address)
 }
 
 func (engine *Engine) BeginPunch(connectionID string, source *Source, servers []webrtc.ICEServer, secret string) (*PunchPreparation, error) {
@@ -93,8 +122,8 @@ func (engine *Engine) BeginPunch(connectionID string, source *Source, servers []
 	return preparation, nil
 }
 
-// Prepare observes three destinations in order before any peer checks on this
-// disposable socket. The ordinary initial ICE attempt never enters this path.
+// Prepare observes three destinations in order before any peer checks. A stable
+// mapping retains this socket. The ordinary initial ICE attempt never enters here.
 func (preparation *PunchPreparation) Prepare() (*PunchPrediction, error) {
 	if !preparation.workMu.TryLock() {
 		return nil, errors.New("connection preparation is busy")
@@ -105,11 +134,36 @@ func (preparation *PunchPreparation) Prepare() (*PunchPrediction, error) {
 	}
 	ctx, cancel := context.WithTimeout(preparation.ctx, 1500*time.Millisecond)
 	defer cancel()
-	socket, err := preparation.engine.newICESocket(nil, false)
+	socket, err := preparation.engine.listenPacket("udp", preparation.engine.bindAddress)
 	if err != nil {
 		return nil, err
 	}
-	defer socket.close()
+	defer func() {
+		if socket != nil {
+			_ = socket.Close()
+		}
+	}()
+	deadline, _ := ctx.Deadline()
+	if err := socket.SetDeadline(deadline); err != nil {
+		return nil, err
+	}
+	// Pion's initial and retransmission writes are synchronous. Bound both I/O
+	// directions, and join cancellation before this socket can change owners.
+	surveySocket := socket
+	deadlineDone := make(chan struct{})
+	stopDeadline := context.AfterFunc(ctx, func() {
+		defer close(deadlineDone)
+		_ = surveySocket.SetDeadline(time.Now())
+	})
+	stopSurvey := func() {
+		if stopDeadline != nil {
+			if !stopDeadline() {
+				<-deadlineDone
+			}
+			stopDeadline = nil
+		}
+	}
+	defer stopSurvey()
 	var observations []*stun.XORMappedAddress
 	seen := make(map[string]bool)
 	for _, server := range preparation.servers {
@@ -127,9 +181,13 @@ func (preparation *PunchPreparation) Prepare() (*PunchPrediction, error) {
 				continue
 			}
 			seen[address.String()] = true
-			mapped, mappingErr := socket.querySTUN(ctx, address)
+			mapped, mappingErr := querySTUNBinding(ctx, &punchSurveySocket{PacketConn: socket}, address,
+				stun.MustBuild(stun.TransactionID, stun.BindingRequest))
 			if mappingErr != nil {
 				return nil, mappingErr
+			}
+			if err := socket.SetReadDeadline(deadline); err != nil {
+				return nil, err
 			}
 			observations = append(observations, mapped)
 			if len(observations) == 3 {
@@ -137,10 +195,25 @@ func (preparation *PunchPreparation) Prepare() (*PunchPrediction, error) {
 				prediction := PunchPrediction{Address: third.IP.String(), Port: third.Port, Step: third.Port - second.Port}
 				_, valid := prediction.Target()
 				if valid != nil || !first.IP.Equal(second.IP) || !second.IP.Equal(third.IP) || second.Port-first.Port != prediction.Step {
-					return nil, errors.New("no sequential mapping observation")
+					return nil, errors.New("no usable mapping observation")
 				}
-				if !preparation.transition("survey", "ready") {
+				stopSurvey()
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				if err := socket.SetDeadline(time.Time{}); err != nil {
+					return nil, err
+				}
+				preparation.mu.Lock()
+				defer preparation.mu.Unlock()
+				if preparation.ctx.Err() != nil || preparation.stage != "survey" {
 					return nil, errors.New("connection preparation was retired")
+				}
+				preparation.stage = "ready"
+				if prediction.Step == 0 {
+					// A stable observed endpoint is usable only with this exact socket.
+					preparation.socket = &PunchedSocket{PacketConn: socket}
+					socket = nil
 				}
 				return &prediction, nil
 			}
@@ -158,9 +231,16 @@ func (preparation *PunchPreparation) Run(remote PunchPrediction) bool {
 	if err != nil || !preparation.transition("ready", "running") {
 		return false
 	}
+	preparation.mu.Lock()
+	var retained net.PacketConn
+	if preparation.socket != nil {
+		retained = preparation.socket.PacketConn
+		preparation.socket = nil
+	}
+	preparation.mu.Unlock()
 	winner, err := punchSocketArray(preparation.ctx, func() (net.PacketConn, error) {
 		return preparation.engine.listenPacket("udp", preparation.engine.bindAddress)
-	}, target, preparation.secret)
+	}, target, preparation.secret, retained)
 	preparation.mu.Lock()
 	defer preparation.mu.Unlock()
 	if err != nil || preparation.ctx.Err() != nil || preparation.stage != "running" {
