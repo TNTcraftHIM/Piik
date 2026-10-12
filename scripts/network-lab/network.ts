@@ -108,6 +108,9 @@ table inet lab_filter {
   router(index: number): string { return `${this.prefix}-nat${index}`; }
   publicIP(index: number): string { return this.udpAddresses.get(index) ?? `198.51.100.${11 + index}`; }
   ipv6(index: number): string { return `2001:db8:72:${index + 1}:0:0:0:2`; }
+  localAddresses(index: number): string[] {
+    return [`10.71.${index + 1}.2`, new URL(`http://[${this.ipv6(index)}]`).hostname.slice(1, -1)];
+  }
 
   remapUDP(index: number): { before: string; after: string } {
     const router = this.router(index), before = this.publicIP(index), after = `198.51.100.${51 + index}`;

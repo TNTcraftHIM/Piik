@@ -36,6 +36,7 @@ export interface ProbeResult {
   received: number;
   receivedBytes: number;
   durationMs: number;
+  sendDurationMs: number;
   rttMs: number[];
   mappings: Array<{ destination: string; address: string; port: number }>;
 }
@@ -96,7 +97,7 @@ export async function preparePeerProbe() {
 export async function udpProbe(load: boolean, ipv6 = false): Promise<ProbeResult> {
   const socket = createSocket(ipv6 ? "udp6" : "udp4"), start = performance.now();
   const destinations = ipv6 ? [{ host: SITE_IPV6, port: 41001 }] : targets;
-  const result: ProbeResult = { sent: 0, received: 0, receivedBytes: 0, durationMs: 0, rttMs: [], mappings: [] };
+  const result: ProbeResult = { sent: 0, received: 0, receivedBytes: 0, durationMs: 0, sendDurationMs: 0, rttMs: [], mappings: [] };
   const seen = new Set<number>();
   socket.on("message", (data, remote) => {
     if (data.length !== 1200 || data.readUInt32BE(0) !== 0x50494c42) return;
@@ -112,6 +113,7 @@ export async function udpProbe(load: boolean, ipv6 = false): Promise<ProbeResult
   socket.bind(0, ipv6 ? "::" : "0.0.0.0"); await once(socket, "listening");
   try {
     const count = load ? 1000 : 12;
+    const sendingAt = performance.now();
     for (let i = 0; i < count; i++) {
       const target = destinations[load ? 0 : i % destinations.length]!;
       const packet = Buffer.alloc(1200); packet.writeUInt32BE(0x50494c42, 0);
@@ -119,6 +121,7 @@ export async function udpProbe(load: boolean, ipv6 = false): Promise<ProbeResult
       await new Promise<void>((resolve, reject) => socket.send(packet, target.port, target.host, error => error ? reject(error) : resolve()));
       await delay(load ? 1 : 20);
     }
+    result.sendDurationMs = performance.now() - sendingAt;
     await delay(load ? 1000 : 600);
     result.durationMs = performance.now() - start;
     return result;

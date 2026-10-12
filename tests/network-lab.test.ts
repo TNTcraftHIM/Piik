@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios, summarizeTrials } from "../scripts/network-lab/scenarios";
+import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios, summarizeTrials } from "../scripts/network-lab/scenarios";
 import { checkMediaFeedback, checkMediaPath, packetFlows, type PacketFlow } from "../scripts/network-lab/packets";
 import type { MediaSample } from "../scripts/network-lab/page";
 import type { ProbeResult } from "../scripts/network-lab/udp";
 
-const baseline: ProbeResult = { sent: 12, received: 12, receivedBytes: 14400, durationMs: 850,
+const baseline: ProbeResult = { sent: 12, received: 12, receivedBytes: 14400, durationMs: 850, sendDurationMs: 250,
   rttMs: [1, 2, 1], mappings: ["198.51.100.1:41001", "198.51.100.1:41002", "198.51.100.2:41001"].map(destination =>
     ({ destination, address: "198.51.100.11", port: 45678 })) };
 
@@ -33,6 +33,25 @@ describe("network laboratory evidence", () => {
     expect(() => checkCalibration({ ...baseline, mappings: [] }, baseline, "none")).toThrow();
     expect(() => checkCalibration({ ...baseline, received: 11 }, baseline, "none")).toThrow();
     expect(() => checkCalibration({ ...baseline, mappings: baseline.mappings.map(value => ({ ...value, address: "10.71.1.2" })) }, baseline, "none")).toThrow();
+  });
+
+  it("does not mistake a slow calibration sender for network shaping", () => {
+    const slow = { ...baseline, sent: 1000, received: 1000, receivedBytes: 1_200_000, sendDurationMs: 10_000, durationMs: 11_000 };
+    expect(() => checkCalibration(baseline, slow, "rate")).toThrow("sender");
+    expect(() => checkCalibration(baseline, { ...slow, received: 120, receivedBytes: 144_000, sendDurationMs: 1000, durationMs: 2000 }, "rate")).not.toThrow();
+  });
+
+  it("requires a current Native receiver and the actual playback bridge", () => {
+    const sample = { controlOpen: true, playbackPeerId: 0,
+      controls: [{ type: "receive-offer", connectionId: "current" }],
+      events: [{ scope: "app", type: "edge-state", connectionId: "current", state: "connected" }],
+      stats: [{ type: "selected-pair", peerId: 0, remoteAddress: "127.0.0.1" }],
+    } as unknown as MediaSample;
+    expect(() => checkAppPath(sample, "receive-offer", ["10.71.2.2"])).not.toThrow();
+    expect(() => checkAppPath({ ...sample, events: [...sample.events, { ...sample.events[0]!, state: "failed" }] }, "receive-offer", ["10.71.2.2"])).toThrow();
+    expect(() => checkAppPath({ ...sample, controls: [...sample.controls, { type: "close-receiver", connectionId: "current" }] }, "receive-offer", ["10.71.2.2"])).toThrow();
+    expect(() => checkAppPath({ ...sample, playbackPeerId: 1 }, "receive-offer", ["10.71.2.2"])).toThrow();
+    expect(() => checkAppPath({ ...sample, stats: [{ ...sample.stats[0]!, remoteAddress: "198.51.100.11" }] }, "receive-offer", ["10.71.2.2"])).toThrow();
   });
 
   it("checks mapping observations rather than trusting a NAT configuration name", () => {

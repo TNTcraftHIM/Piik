@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { cleanupRun, withDeadline } from "./browser-gate-harness";
 import { endpointWorker } from "./network-lab/endpoint";
 import { command, LabNetwork, SITE_IP, SITE_IPV6, SITE_ORIGIN } from "./network-lab/network";
-import { checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios, summarizeTrials, type Scenario, type TrialSummary } from "./network-lab/scenarios";
+import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios, summarizeTrials, type Scenario, type TrialSummary } from "./network-lab/scenarios";
 import { echoWorker, type ProbeResult } from "./network-lab/udp";
 import type { MediaSample } from "./network-lab/page";
 import { checkMediaFeedback, checkMediaPath, readPacketFlows, type PacketFlow } from "./network-lab/packets";
@@ -87,6 +87,11 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     samples.push(sample); return sample;
   };
   const addresses = () => endpoints.map((_, index) => scenario.ipv6 ? network.ipv6(index) : network.publicIP(index));
+  const checkAppPaths = () => {
+    const current = samples.at(-1)!;
+    if (scenario.host === "app") checkAppPath(current.host, "prepare-edge", network.localAddresses(0));
+    if (scenario.viewer === "app") checkAppPath(current.viewer, "receive-offer", network.localAddresses(1));
+  };
   const proveMedia = (flows: PacketFlow[], peers = addresses()) => {
     if (scenario.sfu) { checkMediaFeedback(flows, peers[0]!, SITE_IP); checkMediaFeedback(flows, SITE_IP, peers[1]!); }
     else checkMediaPath(flows, peers[0]!, peers[1]!, scenario.sibling ? [peers[2]!] : []);
@@ -179,6 +184,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
       await delay(3000, undefined, { signal });
       const { viewer: next, sibling: healthy } = await sampleAll();
       checkContinuity(first, next);
+      checkAppPaths();
       mediaWindows.push({ name: "baseline", startMs: steadyStart, endMs: Date.now(), addresses: addresses() });
       if (values.negative === "frozen-picture") {
         stage("negative-control");
@@ -191,8 +197,6 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
         throw new Error("Frozen synthetic picture incorrectly passed");
       }
       if (scenario.sfu && next.route !== "sfu") throw new Error("Expected SFU route, but media used another path");
-      if (scenario.host === "app") checkAppPath(samples.at(-1)!.host, "prepare-edge");
-      if (scenario.viewer === "app") checkAppPath(next, "receive-offer");
       if (scenario.duringShare) {
         stage("impairment");
         setFault(scenario.fault);
@@ -221,6 +225,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
           result.addressChange = network.remapUDP(faultIndex);
           if (!await endpoints[0]!.call("signal-probe")) throw new Error("UDP address change interrupted TCP signaling");
         }
+        const restoredAt = performance.now();
         setFault("none");
         result.restoredCounters = counters();
         const restoredProbe = await endpoints[faultIndex]!.call<ProbeResult>("probe");
@@ -228,7 +233,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
         checkCalibration(before, restoredProbe, "none");
         if (scenario.remap && restoredProbe.mappings.some(mapping => mapping.address !== network.publicIP(faultIndex))) throw new Error("UDP mappings retained the old public address");
         stage("recovery");
-        const restoredAt = performance.now(); let recovered = false;
+        let recovered = false;
         while (performance.now() - restoredAt < 60_000) {
           signal.throwIfAborted();
           const previous = samples.at(-1)!.viewer;
@@ -242,6 +247,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
         await delay(3000, undefined, { signal });
         const { viewer: recoveredNext } = await sampleAll();
         checkContinuity(recoveredFirst, recoveredNext);
+        checkAppPaths();
         mediaWindows.push({ name: "recovered", startMs: recoveredStart, endMs: Date.now(), addresses: addresses() });
         if (scenario.fault === "signaling" && !await endpoints[0]!.call("signal-probe")) throw new Error("Signaling roundtrip did not recover");
       }
@@ -301,13 +307,6 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     await writeFile(join(output, "result.json"), JSON.stringify(result, null, 2) + "\n");
   }
   return result;
-}
-
-function checkAppPath(sample: MediaSample, action: "prepare-edge" | "receive-offer"): void {
-  const connected = sample.controls.some(control => control.type === action && control.connectionId &&
-    sample.events.some(event => event.scope === "app" && event.type === "edge-state" &&
-      event.connectionId === control.connectionId && event.state === "connected"));
-  if (!sample.controlOpen || !connected) throw new Error(`Missing successful App ${action} path`);
 }
 
 async function main(): Promise<void> {

@@ -136,3 +136,9 @@ keep normal Browser privacy behavior and obtain IPv6 reflexive candidates throug
 STUN. The App may use its ordinary IPv6 host candidates. Continuity checks require
 changing decoded pictures and advancing audio energy; cadence and dimensions are
 measured separately, without imposing a new minimum on WebRTC adaptation.
+App checks require current Native connection state and a local Browser bridge in
+both initial and recovered media windows; a Browser WAN fallback cannot validate
+Native recovery. Rate calibration requires offered traffic above the configured
+ceiling, so a slow test process cannot impersonate a constrained network.
+Recovery timing begins when the impairment is removed, including subsequent
+calibration and sampling time.

@@ -86,6 +86,8 @@ export const pageProbe = String.raw`(() => {
       }
     }
     const video=document.querySelector('video');
+    const playbackTrack=video?.srcObject?.getVideoTracks?.()[0];
+    const playbackPeerId=playbackTrack?peers.findIndex(peer=>peer.getReceivers().some(receiver=>receiver.track===playbackTrack)):-1;
     let pictureHash=null;
     if(video?.videoWidth&&video.readyState>=2){
       pictureContext.drawImage(video,0,0,64,36);let hash=2166136261;
@@ -93,7 +95,7 @@ export const pageProbe = String.raw`(() => {
       pictureHash=hash>>>0;
     }
     return{at:performance.now(),width:video?.videoWidth||0,height:video?.videoHeight||0,
-      frames:video?.getVideoPlaybackQuality().totalVideoFrames||0,pictureHash,route,natPrediction,stats,events:[...events],errors:[...errors],controls:[...controls],
+      frames:video?.getVideoPlaybackQuality().totalVideoFrames||0,pictureHash,playbackPeerId,route,natPrediction,stats,events:[...events],errors:[...errors],controls:[...controls],
       sharing:!!document.querySelector('button[aria-label="Stop sharing"]'),
       controlOpen:sockets.some(s=>s.url.includes('/control')&&s.readyState===WS.OPEN),
       peerStates:peers.map(p=>p.connectionState),text:document.body.innerText.slice(-2000)};
@@ -106,6 +108,7 @@ export interface MediaSample {
   height: number;
   frames: number;
   pictureHash: number | null;
+  playbackPeerId: number;
   route: string | null;
   natPrediction: boolean | null;
   stats: Array<Record<string, string | number>>;

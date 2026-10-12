@@ -92,6 +92,22 @@ export function hasPicture(sample: MediaSample): boolean {
     sample.stats.some(row => row.type === "inbound-rtp" && row.kind === "video" && Number(row.framesDecoded) >= 15);
 }
 
+export function checkAppPath(sample: MediaSample, action: "prepare-edge" | "receive-offer", localAddresses: readonly string[]): void {
+  const connected = sample.controls.some((control, index) => control.type === action && control.connectionId &&
+    !sample.controls.slice(index + 1).some(later => later.connectionId === control.connectionId &&
+      ["close-edge", "close-receiver"].includes(later.type)) &&
+    sample.events.findLast(event => event.scope === "app" && event.type === "edge-state" &&
+      event.connectionId === control.connectionId)?.state === "connected");
+  const local = (row: MediaSample["stats"][number]) => localAddresses.includes(String(row.remoteAddress)) ||
+    ["127.0.0.1", "::1", "0:0:0:0:0:0:0:1"].includes(String(row.remoteAddress));
+  const pairs = sample.stats.filter(row => row.type === "selected-pair");
+  const browserWAN = pairs.some(row => !local(row));
+  const playbackBridge = action !== "receive-offer" || pairs.some(row => row.peerId === sample.playbackPeerId && local(row));
+  if (!sample.controlOpen || !connected || browserWAN || !playbackBridge) {
+    throw new Error(`Missing current App ${action} path; Browser fallback cannot validate Native media`);
+  }
+}
+
 export function checkFaultHit(fault: Fault, faultDrops: number): void {
   if (["peer-block", "udp-block", "stun-primary", "signaling"].includes(fault) && faultDrops < 1) {
     throw new Error(`No packets hit the ${fault} rule; outcome cannot validate this fault`);
@@ -128,6 +144,9 @@ export function checkCalibration(before: ProbeResult, after: ProbeResult, fault:
   } else if (fault === "loss") {
     if (after.received === 0 || after.received >= after.sent) throw new Error("Configured loss was not observed");
   } else if (fault === "rate") {
+    if (!(after.sendDurationMs > 0) || after.sent * 1200 * 8000 / after.sendDurationMs < 1_800_000) {
+      throw new Error("Calibration sender did not exceed the configured rate ceiling");
+    }
     if (after.receivedBytes === 0 || after.receivedBytes * 8000 / after.durationMs > 900_000) {
       throw new Error("Configured rate ceiling was not observed");
     }
