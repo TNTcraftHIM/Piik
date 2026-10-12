@@ -6,14 +6,18 @@ export interface Scenario {
   id: string;
   host: "browser" | "app";
   viewer: "browser" | "app";
-  nat: NatMode;
+  nat: readonly [NatMode, NatMode];
   fault: Fault;
   sfu: boolean;
-  expected: "media" | "unavailable";
+  expected: "media" | "unavailable" | "observed";
   duringShare?: boolean;
+  ipv6?: boolean;
+  faultEndpoint?: 0 | 1;
+  direction?: "uplink" | "downlink";
+  sibling?: boolean;
 }
 
-const baseline = { nat: "preserve", fault: "none", sfu: false, expected: "media" } as const;
+const baseline = { nat: ["preserve", "preserve"], fault: "none", sfu: false, expected: "media" } as const;
 export const scenarios: readonly Scenario[] = [
   { ...baseline, id: "browser-browser", host: "browser", viewer: "browser" },
   { ...baseline, id: "app-browser", host: "app", viewer: "browser" },
@@ -27,6 +31,12 @@ export const scenarios: readonly Scenario[] = [
   { ...baseline, id: "bandwidth-recovery", host: "browser", viewer: "browser", fault: "rate", duringShare: true },
   { ...baseline, id: "media-outage", host: "app", viewer: "app", fault: "udp-block", duringShare: true },
   { ...baseline, id: "signaling-outage", host: "browser", viewer: "browser", fault: "signaling", duringShare: true },
+  { ...baseline, id: "random-nat", host: "app", viewer: "app", nat: ["random", "random"], expected: "observed" },
+  { ...baseline, id: "asymmetric-nat", host: "browser", viewer: "app", nat: ["random", "preserve"], expected: "observed" },
+  { ...baseline, id: "ipv6-browser", host: "browser", viewer: "browser", ipv6: true, fault: "peer-block" },
+  { ...baseline, id: "ipv6-app", host: "app", viewer: "app", ipv6: true, fault: "peer-block" },
+  { ...baseline, id: "healthy-sibling", host: "browser", viewer: "browser", sibling: true,
+    fault: "rate", faultEndpoint: 1, direction: "downlink", duringShare: true },
 ];
 
 export function selectScenarios(suite: string, names?: string): Scenario[] {
@@ -74,7 +84,9 @@ export function checkCalibration(before: ProbeResult, after: ProbeResult, fault:
   if (fault === "udp-block") {
     if (after.received !== 0) throw new Error("Blocked UDP still reached the probe");
   } else if (fault === "delay") {
-    if (after.received === 0 || Math.min(...after.rttMs) < 65) throw new Error("Configured delay was not observed");
+    const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
+    // Normal jitter has tails; its minimum is not the configured delay.
+    if (after.received === 0 || median(after.rttMs) - median(before.rttMs) < 65) throw new Error("Configured delay was not observed");
   } else if (fault === "loss") {
     if (after.received === 0 || after.received >= after.sent) throw new Error("Configured loss was not observed");
   } else if (fault === "rate") {
@@ -82,4 +94,11 @@ export function checkCalibration(before: ProbeResult, after: ProbeResult, fault:
       throw new Error("Configured rate ceiling was not observed");
     }
   } else if (after.received !== after.sent) throw new Error("Control path unexpectedly lost calibration packets");
+}
+
+export function checkMapping(probe: ProbeResult, mode: NatMode): void {
+  const ports = new Set(probe.mappings.map(value => value.port));
+  if (probe.mappings.length !== 3 || (mode === "preserve" ? ports.size !== 1 : ports.size < 2)) {
+    throw new Error(`Observed mappings do not match the configured ${mode} SNAT behavior`);
+  }
 }

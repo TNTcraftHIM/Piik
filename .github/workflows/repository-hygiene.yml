@@ -115,18 +115,34 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
         run: |
           sudo apt-get update
-          sudo apt-get install -y nftables iproute2 tcpdump
+          sudo apt-get install -y nftables iproute2 tcpdump bison flex libmnl-dev libcap-dev
           mkdir -p build/network-lab/bin
           CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-server ./cmd/piik-server
           CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-app ./cmd/piik-app
+      # The runner's iproute2 6.1 lacks netem's seed parameter. Keep this tool
+      # local to the opt-in lab; do not replace system networking utilities.
+      - name: Check out laboratory traffic-control tool
+        if: github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
+        uses: actions/checkout@v6
+        with:
+          repository: iproute2/iproute2
+          ref: d2a8ffe85ac64f91ee2aa7679a5046f321b54127 # v6.17.0
+          path: build/network-lab/iproute2
+          persist-credentials: false
+      - name: Build laboratory traffic-control tool
+        if: github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
+        run: |
+          make -C build/network-lab/iproute2 -j2 SUBDIRS='lib tc netem' TC_CONFIG_NO_XT=y
+          echo "$GITHUB_WORKSPACE/build/network-lab/iproute2/tc" >> "$GITHUB_PATH"
       - name: Run isolated network laboratory
         if: github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
         timeout-minutes: 35
         env:
           CHROME_PATH: /usr/bin/google-chrome
+          TC_LIB_DIR: ${{ github.workspace }}/build/network-lab/iproute2/netem
           PIIK_NETWORK_LAB_SUITE: ${{ inputs.network_lab }}
           PIIK_NETWORK_LAB_CASES: ${{ inputs.network_cases }}
-        run: sudo --preserve-env=PATH,CHROME_PATH "$(command -v node)" --import tsx scripts/network-lab.ts --suite "$PIIK_NETWORK_LAB_SUITE" --cases "$PIIK_NETWORK_LAB_CASES"
+        run: sudo --preserve-env=PATH,CHROME_PATH,TC_LIB_DIR "$(command -v node)" --import tsx scripts/network-lab.ts --suite "$PIIK_NETWORK_LAB_SUITE" --cases "$PIIK_NETWORK_LAB_CASES"
       - name: Save network laboratory evidence
         if: always() && github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
         uses: actions/upload-artifact@v7

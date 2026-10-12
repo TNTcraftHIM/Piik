@@ -4,6 +4,7 @@ import { readlinkSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 
 export const SITE_IP = "198.51.100.1";
+export const SITE_IPV6 = "2001:db8:71::1";
 export const SITE_ORIGIN = `http://${SITE_IP}:9000`;
 export type NatMode = "preserve" | "random";
 export type Fault = "none" | "peer-block" | "udp-block" | "stun-primary" | "delay" | "loss" | "rate" | "signaling";
@@ -19,7 +20,9 @@ export class LabNetwork {
   readonly prefix = `piiklab-${randomBytes(4).toString("hex")}`;
   readonly namespaces: string[] = [];
   private readonly pendingLinks = new Set<string>();
+  private readonly shaped = new Set<string>();
   private readonly originalRoutes = command("ip", ["-j", "route", "show", "table", "all"]);
+  private readonly originalRoutes6 = command("ip", ["-6", "-j", "route", "show", "table", "all"]);
   private readonly originalRules = command("nft", ["-s", "list", "ruleset"]);
   readonly wan = `${this.prefix}-wan`;
 
@@ -47,12 +50,13 @@ export class LabNetwork {
     }
   }
 
-  setup(modes: NatMode[]): void {
+  setup(modes: readonly NatMode[], ipv6 = false): void {
     this.add(this.wan);
     this.exec(this.wan, "ip", ["link", "add", "internet", "type", "bridge"]);
     this.exec(this.wan, "ip", ["addr", "add", `${SITE_IP}/24`, "dev", "internet"]);
     this.exec(this.wan, "ip", ["addr", "add", "198.51.100.2/24", "dev", "internet"]);
     this.exec(this.wan, "ip", ["link", "set", "internet", "up"]);
+    if (ipv6) this.exec(this.wan, "ip", ["-6", "addr", "add", `${SITE_IPV6}/64`, "dev", "internet", "nodad"]);
     for (const [index, mode] of modes.entries()) {
       const n = index + 1, endpoint = this.endpoint(index), router = this.router(index);
       this.add(endpoint); this.add(router);
@@ -64,6 +68,16 @@ export class LabNetwork {
       this.exec(router, "ip", ["addr", "add", `${this.publicIP(index)}/24`, "dev", "wan0"]);
       this.exec(endpoint, "ip", ["route", "add", "default", "via", `10.71.${n}.1`]);
       this.exec(router, "sysctl", ["-qw", "net.ipv4.ip_forward=1"]);
+      if (ipv6) {
+        const wan = `2001:db8:71::${11 + index}`, lan = `2001:db8:72:${n}::1`;
+        this.exec(router, "sysctl", ["-qw", "net.ipv6.conf.all.forwarding=1"]);
+        this.exec(router, "ip", ["-6", "addr", "add", `${wan}/64`, "dev", "wan0", "nodad"]);
+        this.exec(router, "ip", ["-6", "addr", "add", `${lan}/64`, "dev", "lan0", "nodad"]);
+        this.exec(endpoint, "ip", ["-6", "addr", "add", `${this.ipv6(index)}/64`, "dev", "eth0", "nodad"]);
+        this.exec(endpoint, "ip", ["-6", "route", "add", "default", "via", lan]);
+        this.exec(router, "ip", ["-6", "route", "add", "default", "via", SITE_IPV6]);
+        this.exec(this.wan, "ip", ["-6", "route", "add", `2001:db8:72:${n}::/64`, "via", wan]);
+      }
       this.exec(router, "nft", [`
 table ip lab_nat {
  chain postrouting { type nat hook postrouting priority srcnat; policy accept;
@@ -85,13 +99,15 @@ table inet lab_filter {
 }
 `]);
     }
+    if (ipv6) this.exec(this.wan, "sysctl", ["-qw", "net.ipv6.conf.all.forwarding=1"]);
   }
 
   endpoint(index: number): string { return `${this.prefix}-end${index}`; }
   router(index: number): string { return `${this.prefix}-nat${index}`; }
   publicIP(index: number): string { return `198.51.100.${11 + index}`; }
+  ipv6(index: number): string { return `2001:db8:72:${index + 1}:0:0:0:2`; }
 
-  setFault(index: number, fault: Fault, seed: number): void {
+  setFault(index: number, fault: Fault, seed: number, direction: "uplink" | "downlink" = "uplink"): void {
     const router = this.router(index);
     this.exec(router, "nft", ["flush", "chain", "inet", "lab_filter", "faults"]);
     const rules: Partial<Record<Fault, string>> = {
@@ -101,10 +117,21 @@ table inet lab_filter {
       signaling: `ip daddr ${SITE_IP} tcp dport 9000 counter drop`,
     };
     if (rules[fault]) this.exec(router, "nft", [`add rule inet lab_filter faults ${rules[fault]}`]);
-    const impairment = fault === "delay" ? ["delay", "100ms", "20ms", "distribution", "normal"]
+    // netem change/replace retains omitted attributes (including RATE). A new
+    // scenario phase owns a fresh qdisc, not the previous phase's hidden state.
+    for (const device of ["wan0", "lan0"]) {
+      if (!this.shaped.has(`${router}/${device}`)) continue;
+      this.exec(router, "tc", ["qdisc", "del", "dev", device, "root"]);
+      this.shaped.delete(`${router}/${device}`);
+    }
+    const impairment = fault === "delay" ? ["delay", "100ms", "20ms", "distribution", "normal", "seed", String(seed)]
       : fault === "loss" ? ["loss", "random", "5%", "seed", String(seed)]
-      : fault === "rate" ? ["rate", "600kbit", "limit", "30"] : ["delay", "0ms"];
-    this.exec(router, "tc", ["qdisc", "replace", "dev", "wan0", "root", "netem", ...impairment]);
+      : fault === "rate" ? ["rate", "600kbit", "limit", "30"] : null;
+    if (impairment) {
+      const device = direction === "uplink" ? "wan0" : "lan0";
+      this.exec(router, "tc", ["qdisc", "add", "dev", device, "root", "netem", ...impairment]);
+      this.shaped.add(`${router}/${device}`);
+    }
   }
 
   counters(index: number): { firewall: unknown; queue: unknown; faultDrops: number } {
@@ -113,7 +140,7 @@ table inet lab_filter {
       total + (entry.rule?.chain === "faults" ? entry.rule.expr.reduce((n, expression) => n + (expression.counter?.packets ?? 0), 0) : 0), 0);
     return {
       firewall, faultDrops,
-      queue: JSON.parse(this.exec(this.router(index), "tc", ["-j", "-s", "qdisc", "show", "dev", "wan0"])),
+      queue: JSON.parse(this.exec(this.router(index), "tc", ["-j", "-s", "qdisc", "show"])),
     };
   }
 
@@ -142,6 +169,7 @@ table inet lab_filter {
       namespacesRemoved: failures.length === 0 && !remaining.includes(this.prefix),
       linksRemoved: !JSON.parse(command("ip", ["-j", "link", "show"])).some((link: { ifname: string }) => this.pendingLinks.has(link.ifname)),
       hostNetworkUnchanged: command("ip", ["-j", "route", "show", "table", "all"]) === this.originalRoutes &&
+        command("ip", ["-6", "-j", "route", "show", "table", "all"]) === this.originalRoutes6 &&
         command("nft", ["-s", "list", "ruleset"]) === this.originalRules,
     };
   }

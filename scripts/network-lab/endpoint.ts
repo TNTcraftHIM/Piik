@@ -34,11 +34,11 @@ export async function endpointWorker(): Promise<void> {
   try {
     for await (const line of createInterface({ input: process.stdin })) {
       const request = JSON.parse(line) as { id: number; action: string; origin?: string; app?: boolean;
-        url?: string; output?: string; load?: boolean; peer?: { address: string; port: number } };
+        url?: string; output?: string; load?: boolean; ipv6?: boolean; peer?: { address: string; port: number } };
       try {
         let result: unknown;
         if (request.action === "probe") {
-          result = await udpProbe(request.load === true);
+          result = await udpProbe(request.load === true, request.ipv6 === true);
         } else if (request.action === "peer-prepare") {
           rendezvous?.close(); rendezvous = await preparePeerProbe(); result = rendezvous.mapping;
         } else if (request.action === "peer-probe") {

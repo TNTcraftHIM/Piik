@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { checkCalibration, checkContinuity, checkFaultHit, hasPicture, selectScenarios } from "../scripts/network-lab/scenarios";
-import { checkMediaFeedback, packetFlows, type PacketFlow } from "../scripts/network-lab/packets";
+import { checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios } from "../scripts/network-lab/scenarios";
+import { checkMediaFeedback, checkMediaPath, packetFlows, type PacketFlow } from "../scripts/network-lab/packets";
 import type { MediaSample } from "../scripts/network-lab/page";
 import type { ProbeResult } from "../scripts/network-lab/udp";
 
@@ -21,6 +21,14 @@ describe("network laboratory evidence", () => {
     expect(() => checkCalibration({ ...baseline, mappings: [] }, baseline, "none")).toThrow();
     expect(() => checkCalibration({ ...baseline, received: 11 }, baseline, "none")).toThrow();
     expect(() => checkCalibration({ ...baseline, mappings: baseline.mappings.map(value => ({ ...value, address: "10.71.1.2" })) }, baseline, "none")).toThrow();
+  });
+
+  it("checks mapping observations rather than trusting a NAT configuration name", () => {
+    expect(() => checkMapping(baseline, "preserve")).not.toThrow();
+    expect(() => checkMapping(baseline, "random")).toThrow();
+    const random = { ...baseline, mappings: baseline.mappings.map((value, index) => ({ ...value, port: value.port + index })) };
+    expect(() => checkMapping(random, "random")).not.toThrow();
+    expect(() => checkMapping(random, "preserve")).toThrow();
   });
 
   it("does not confuse a connected transport or stale video dimensions with decoded media", () => {
@@ -66,6 +74,12 @@ describe("network laboratory evidence", () => {
     expect(() => checkMediaFeedback([media, { ...feedback, source: "127.0.0.1" }], media.source, media.destination)).toThrow();
     expect(() => checkMediaFeedback([media, { ...feedback, destinationPort: 5001 }], media.source, media.destination)).toThrow();
     expect(() => checkMediaFeedback([media, feedback], media.source, media.destination)).not.toThrow();
+    const onward = { ...media, source: media.destination, destination: "198.51.100.13" };
+    const reverse = { ...feedback, source: onward.destination, destination: onward.source };
+    expect(checkMediaPath([media, feedback, onward, reverse], media.source, onward.destination, [media.destination])).toEqual([
+      media.source, media.destination, onward.destination,
+    ]);
+    expect(() => checkMediaPath([media, feedback, onward], media.source, onward.destination, [media.destination])).toThrow();
   });
 
   it("reads clear RTP/RTCP headers from a bounded capture and rejects truncation", () => {
@@ -77,6 +91,8 @@ describe("network laboratory evidence", () => {
     expect(packetFlows(capture)[0]).toMatchObject({ source: "198.51.100.11", destination: "198.51.100.12", sourcePort: 5000, destinationPort: 6000, kind: "rtp" });
     capture[24 + 16 + 43] = 201;
     expect(packetFlows(capture)[0]?.kind).toBe("rtcp");
+    expect(packetFlows(capture, { startMs: 2000, endMs: 5000 })).toEqual([]);
+    expect(packetFlows(capture, { startMs: 500, endMs: 1500 })).toHaveLength(1);
     expect(() => packetFlows(capture.subarray(0, -1))).toThrow();
   });
 });

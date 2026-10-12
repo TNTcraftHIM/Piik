@@ -81,7 +81,9 @@ to make an experiment pass.
 ## Running The Process Layer
 
 Use an isolated Linux machine or VM with Node/Go from the repository toolchain,
-Google Chrome, `iproute2`, `nftables` and `tcpdump`. Namespace administration
+Google Chrome, current `iproute2` with netem `seed` support, `nftables` and
+`tcpdump`. CI builds a pinned iproute2 6.17 traffic-control binary locally because
+the runner's distribution package lacks that option. Namespace administration
 requires root. Windows/macOS can run the model/unit layer; they need a Linux VM
 for this process layer. Root on a production host is not an equivalent setup.
 
@@ -98,6 +100,10 @@ Set `CHROME_PATH` to the installed Chrome executable before running. `--list`
 lists scenarios without root; `--suite full`, `--cases browser-browser,app-app`,
 `--repeat 3` and `--seed 42` select reproducible inputs. Netem seeds do not make
 browser scheduling, kernel port allocation or real-time timings deterministic.
+Each fault phase replaces its owned qdisc completely: netem's in-place change
+retains some omitted attributes, including a previous rate limit. Restoration
+therefore checks the resulting rules and independent UDP reachability as well as
+the resumed media. Recovery has its own picture/audio/feedback observation window.
 The manual CI workflow's `network_lab` input runs this same entry point and never
 publishes. Reports and bounded synthetic-traffic captures are under ignored
 `build/network-lab/results/`; CI retains them for seven days.

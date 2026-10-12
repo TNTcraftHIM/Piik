@@ -14,7 +14,7 @@ export interface PacketFlow {
 
 // Read the bounded Ethernet pcap produced by this lab, not arbitrary capture
 // formats. Only clear transport headers are inspected (RFC 5761); no decryption.
-export function packetFlows(data: Buffer): PacketFlow[] {
+export function packetFlows(data: Buffer, window?: { startMs: number; endMs: number }): PacketFlow[] {
   if (data.length < 24 || data.readUInt32LE(0) !== 0xa1b2c3d4 || data.readUInt32LE(20) !== 1) {
     throw new Error("Expected little-endian Ethernet pcap with microsecond timestamps");
   }
@@ -25,6 +25,7 @@ export function packetFlows(data: Buffer): PacketFlow[] {
     const size = data.readUInt32LE(offset + 8);
     if (size > 96 || offset + 16 + size > data.length) throw new Error("Invalid laboratory capture length");
     const frame = data.subarray(offset + 16, offset + 16 + size); offset += 16 + size;
+    if (window && (timestamp < window.startMs || timestamp > window.endMs)) continue;
     if (frame.length < 14) throw new Error("Truncated Ethernet header");
     const etherType = frame.readUInt16BE(12);
     let ipLength: number, source: string, destination: string;
@@ -53,8 +54,8 @@ export function packetFlows(data: Buffer): PacketFlow[] {
   return [...flows.values()];
 }
 
-export async function readPacketFlows(path: string): Promise<PacketFlow[]> {
-  return packetFlows(await readFile(path));
+export async function readPacketFlows(path: string, window?: { startMs: number; endMs: number }): Promise<PacketFlow[]> {
+  return packetFlows(await readFile(path), window);
 }
 
 export function checkMediaFeedback(flows: PacketFlow[], source: string, destination: string): void {
@@ -63,4 +64,17 @@ export function checkMediaFeedback(flows: PacketFlow[], source: string, destinat
     reply.sourcePort === flow.destinationPort && reply.destinationPort === flow.sourcePort && reply.packets > 1 && reply.lastMs > flow.firstMs))) {
     throw new Error(`Missing WAN media/feedback pair: ${source} -> ${destination}`);
   }
+}
+
+/** A relay is allowed only when every hop has matching reverse feedback. */
+export function checkMediaPath(flows: PacketFlow[], source: string, destination: string, relays: string[] = []): string[] {
+  try { checkMediaFeedback(flows, source, destination); return [source, destination]; } catch {}
+  for (const relay of relays) {
+    try {
+      checkMediaFeedback(flows, source, relay);
+      checkMediaFeedback(flows, relay, destination);
+      return [source, relay, destination];
+    } catch {}
+  }
+  throw new Error(`Missing complete WAN media/feedback path: ${source} -> ${destination}`);
 }
