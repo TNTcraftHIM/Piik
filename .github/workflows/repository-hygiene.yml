@@ -23,6 +23,10 @@ on:
         default: none
         type: choice
         options: [none, smoke, full]
+      network_cases:
+        description: Optional comma-separated laboratory cases (empty runs the selected suite)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -121,7 +125,8 @@ jobs:
         env:
           CHROME_PATH: /usr/bin/google-chrome
           PIIK_NETWORK_LAB_SUITE: ${{ inputs.network_lab }}
-        run: sudo --preserve-env=PATH,CHROME_PATH "$(command -v node)" --import tsx scripts/network-lab.ts --suite "$PIIK_NETWORK_LAB_SUITE"
+          PIIK_NETWORK_LAB_CASES: ${{ inputs.network_cases }}
+        run: sudo --preserve-env=PATH,CHROME_PATH "$(command -v node)" --import tsx scripts/network-lab.ts --suite "$PIIK_NETWORK_LAB_SUITE" --cases "$PIIK_NETWORK_LAB_CASES"
       - name: Save network laboratory evidence
         if: always() && github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
         uses: actions/upload-artifact@v7

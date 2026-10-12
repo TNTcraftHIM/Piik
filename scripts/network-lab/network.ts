@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readlinkSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 
 export const SITE_IP = "198.51.100.1";
 export const SITE_ORIGIN = `http://${SITE_IP}:9000`;
@@ -70,6 +71,11 @@ table ip lab_nat {
  }
 }
 table inet lab_filter {
+ chain input { type filter hook input priority filter; policy accept;
+  # Do not confirm unsolicited UDP as a router-local connection. Its reverse
+  # tuple can otherwise steal the peer's later SNAT mapping before hole punching.
+  iifname "wan0" meta l4proto udp ct state new counter drop
+ }
  chain faults {}
  chain forward { type filter hook forward priority filter; policy drop;
   jump faults
@@ -122,6 +128,8 @@ table inet lab_filter {
           try { if (readlinkSync(`/proc/${pid}/ns/net`) === identity) process.kill(Number(pid), "SIGKILL"); }
           catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT" && (error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
         }
+        for (let attempt = 0; attempt < 20 && command("ip", ["netns", "pids", namespace]); attempt++) await delay(25);
+        if (command("ip", ["netns", "pids", namespace])) failures.push(`${namespace}:processes`);
         command("ip", ["netns", "delete", namespace]);
       } catch { failures.push(namespace); }
     }

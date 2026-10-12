@@ -20,12 +20,14 @@ const { values } = parseArgs({ options: { worker: { type: "string" }, suite: { t
 
 class Endpoint {
   private id = 0;
+  private failure: Error | null = null;
   private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
   readonly process: ChildProcessWithoutNullStreams;
   constructor(namespace: string, readonly profile: string, private readonly signal: AbortSignal) {
     this.process = spawn("ip", ["netns", "exec", namespace, process.execPath, "--import", "tsx", ENTRY, "--worker", "endpoint"],
       { cwd: ROOT, env: { ...labEnvironment(), PIIK_NETWORK_LAB_PROFILE: profile }, stdio: "pipe" });
     this.process.stderr.on("data", data => process.stderr.write(data));
+    this.process.stdin.on("error", error => this.fail(error));
     createInterface({ input: this.process.stdout }).on("line", line => {
       try {
         const reply = JSON.parse(line), pending = this.pending.get(reply.id);
@@ -37,9 +39,10 @@ class Endpoint {
     this.process.on("error", error => this.fail(error));
     this.process.on("exit", (code, signal) => this.fail(new Error(`Endpoint exited (${code ?? signal})`)));
   }
-  private fail(error: Error): void { for (const item of this.pending.values()) item.reject(error); this.pending.clear(); }
+  private fail(error: Error): void { this.failure = error; for (const item of this.pending.values()) item.reject(error); this.pending.clear(); }
   async call<T>(action: string, args: Record<string, unknown> = {}, timeout = 45_000): Promise<T> {
     const id = ++this.id;
+    if (this.failure) throw this.failure;
     const observeAbort = !["close", "logs", "screenshot"].includes(action);
     if (observeAbort) this.signal.throwIfAborted();
     const abort = () => this.pending.get(id)?.reject(new Error("Laboratory run cancelled"));
@@ -73,11 +76,16 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
     echo = spawn("ip", ["netns", "exec", network.wan, process.execPath, "--import", "tsx", ENTRY, "--worker", "echo"],
       { cwd: ROOT, env: labEnvironment(), stdio: "pipe" });
     echo.stderr.on("data", data => process.stderr.write(data));
+    echo.stdin.on("error", () => {});
     await withDeadline(() => once(echo!.stdout, "data"), Date.now() + 10_000);
     for (let i = 0; i < 2; i++) endpoints.push(new Endpoint(network.endpoint(i),
       await mkdtemp(join(tmpdir(), "piik-client-media-")), signal));
     result.stage = "calibration";
     const before = await endpoints[0]!.call<ProbeResult>("probe");
+    const mappings = await Promise.all(endpoints.map(endpoint => endpoint.call<{ address: string; port: number }>("peer-prepare")));
+    const reachability = await Promise.all(endpoints.map((endpoint, index) => endpoint.call<{ replies: number }>("peer-probe", { peer: mappings[1 - index] })));
+    result.peerCalibration = { mappings, reachability };
+    if (scenario.nat === "preserve" && reachability.some(probe => probe.replies < 5)) throw new Error("Baseline UDP rendezvous failed independently of Piik");
     network.setFault(0, scenario.fault, seed);
     const after = await endpoints[0]!.call<ProbeResult>("probe", { load: ["rate", "loss"].includes(scenario.fault) });
     checkCalibration(before, after, scenario.fault);
@@ -178,12 +186,17 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
       if (capture && capture.exitCode !== null) { result.captureError = "Capture ended before observation completed"; result.passed = false; }
       result.serviceCleanup = await Promise.all([echo, server, capture].map(child => cleanupRun({
         chrome: null, native: null, cdp: null, server: child, profile: null, ports: [],
-      })));
-      result.cleanup = await network.close();
+      }).catch(error => ({ error: String(error) }))));
+      result.cleanup = await network.close().catch(error => ({ error: String(error) }));
       // If a worker died, the parent still owns its profile and removes it only
       // after namespace processes have stopped, using the same guarded cleanup.
       result.profileCleanup = await Promise.all(endpoints.map(async endpoint => {
-        if (!await access(endpoint.profile).then(() => true, () => false)) return true;
+        const exists = await access(endpoint.profile).then(() => true, error => {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+          throw error;
+        });
+        if (!exists) return true;
+        if (!(result.cleanup as { namespacesRemoved?: boolean }).namespacesRemoved) return false;
         return (await cleanupRun({ chrome: null, native: null, cdp: null, server: null,
           profile: endpoint.profile, ports: [] })).profileRemoved;
       }));

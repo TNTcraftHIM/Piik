@@ -21,6 +21,9 @@ Reviewed on 2026-10-13:
 - [CellReplay, NSDI 2025](https://www.usenix.org/conference/nsdi25/presentation/sentosa)
   shows that replay can be workload-sensitive. Synthetic delay/loss profiles are
   named impairments, not validated replicas of a carrier or Wi-Fi network.
+- [MirrorNet, NSDI 2026](https://www.usenix.org/conference/nsdi26/presentation/miao)
+  reinforces checking control, data and traffic together. Piik needs that
+  consistency, not a large WAN orchestration platform.
 - [RFC 4787](https://www.rfc-editor.org/rfc/rfc4787) separates UDP mapping from
   filtering. Describe both; a random-port Linux SNAT rule alone does not prove a
   named consumer-router NAT type.
@@ -74,3 +77,32 @@ network-emulation request is insufficient: an earlier Piik check observed RTP
 outside the requested limits. Keep negative controls, finite deadlines and
 resource limits as part of the laboratory rather than changing product recovery
 to make an experiment pass.
+
+## Running The Process Layer
+
+Use an isolated Linux machine or VM with Node/Go from the repository toolchain,
+Google Chrome, `iproute2`, `nftables` and `tcpdump`. Namespace administration
+requires root. Windows/macOS can run the model/unit layer; they need a Linux VM
+for this process layer. Root on a production host is not an equivalent setup.
+
+```sh
+npm ci
+npm run build:web
+mkdir -p build/network-lab/bin
+CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-server ./cmd/piik-server
+CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-app ./cmd/piik-app
+sudo --preserve-env=PATH,CHROME_PATH "$(command -v node)" --import tsx scripts/network-lab.ts --suite smoke
+```
+
+Set `CHROME_PATH` to the installed Chrome executable before running. `--list`
+lists scenarios without root; `--suite full`, `--cases browser-browser,app-app`,
+`--repeat 3` and `--seed 42` select reproducible inputs. Netem seeds do not make
+browser scheduling, kernel port allocation or real-time timings deterministic.
+The manual CI workflow's `network_lab` input runs this same entry point and never
+publishes. Reports and bounded synthetic-traffic captures are under ignored
+`build/network-lab/results/`; CI retains them for seven days.
+
+The process layer is still under validation. Listed scenarios are implementation
+targets until their reports pass the acceptance contract. In particular, App
+Host checks must use the real H264 Browser-to-App ingress and App WAN sender;
+launching an App alongside a Browser-only VP8 share is not an App-path test.

@@ -34,6 +34,41 @@ export interface ProbeResult {
   mappings: Array<{ destination: string; address: string; port: number }>;
 }
 
+/** Survey and peer rendezvous retain one socket, independently of ICE/Piik. */
+export async function preparePeerProbe() {
+  const socket = createSocket("udp4"), result = { requests: 0, replies: 0, errors: [] as string[] };
+  let closed = false, peer: { address: string; port: number } | null = null;
+  const close = () => { if (!closed) { closed = true; socket.close(); } };
+  socket.on("error", error => result.errors.push(error.message));
+  socket.on("message", (data, remote) => {
+    if (data.length !== 8 || data.readUInt32BE(0) !== 0x50495052 || !peer || remote.address !== peer.address) return;
+    if (data[4] === 1) { result.replies++; return; }
+    result.requests++;
+    const reply = Buffer.from(data); reply[4] = 1;
+    socket.send(reply, remote.port, remote.address, () => {});
+  });
+  socket.bind(0, "0.0.0.0"); await once(socket, "listening");
+  try {
+    const observed = once(socket, "message", { signal: AbortSignal.timeout(2000) });
+    const request = Buffer.alloc(1200); request.writeUInt32BE(0x50494c42, 0);
+    socket.send(request, targets[0]!.port, targets[0]!.host, () => {});
+    const [reply] = await observed as [Buffer];
+    if (reply.length !== 1200 || reply.readUInt32BE(0) !== 0x50494c42) throw new Error("Invalid rendezvous survey response");
+    return { mapping: { address: [...reply.subarray(18, 22)].join("."), port: reply.readUInt16BE(16) }, close,
+      async run(destination: { address: string; port: number }) {
+        peer = destination;
+        try {
+          for (let attempt = 0; attempt < 20; attempt++) {
+            const packet = Buffer.alloc(8); packet.writeUInt32BE(0x50495052, 0); packet[5] = attempt;
+            socket.send(packet, peer.port, peer.address, () => {}); await delay(100);
+          }
+          await delay(300); return result;
+        } finally { close(); }
+      },
+    };
+  } catch (error) { close(); throw error; }
+}
+
 export async function udpProbe(load: boolean): Promise<ProbeResult> {
   const socket = createSocket("udp4"), start = performance.now();
   const result: ProbeResult = { sent: 0, received: 0, receivedBytes: 0, durationMs: 0, rttMs: [], mappings: [] };

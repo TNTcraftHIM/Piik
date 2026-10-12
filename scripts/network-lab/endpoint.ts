@@ -7,7 +7,7 @@ import { CdpConnection, cleanupRun, createPage, evaluate, fetchJsonBefore, launc
   waitForVersion, type PageHandle } from "../browser-gate-harness";
 import { readAppEndpoint } from "../app-gate-endpoint";
 import { pageProbe, type MediaSample } from "./page";
-import { udpProbe } from "./udp";
+import { preparePeerProbe, udpProbe } from "./udp";
 
 export async function endpointWorker(): Promise<void> {
   let chrome: ChildProcessWithoutNullStreams | null = null, app: ChildProcessWithoutNullStreams | null = null;
@@ -15,12 +15,14 @@ export async function endpointWorker(): Promise<void> {
   const profile = process.env.PIIK_NETWORK_LAB_PROFILE;
   if (!profile) throw new Error("Parent-owned browser profile is required");
   const ports: number[] = [];
+  let rendezvous: Awaited<ReturnType<typeof preparePeerProbe>> | null = null;
   const logs: Record<string, string> = {};
   const log = (name: string, data: Buffer) => { logs[name] = ((logs[name] ?? "") + data).slice(-64_000); };
   let closed = false;
   const cleanup = async () => {
     if (closed) return;
     closed = true;
+    rendezvous?.close();
     return cleanupRun({ chrome, native: app, cdp, server: null, profile, ports });
   };
   const sample = () => evaluate<MediaSample>(cdp!, page!, "networkLab.sample()", Date.now() + 5000);
@@ -32,11 +34,16 @@ export async function endpointWorker(): Promise<void> {
   try {
     for await (const line of createInterface({ input: process.stdin })) {
       const request = JSON.parse(line) as { id: number; action: string; origin?: string; app?: boolean;
-        url?: string; output?: string; load?: boolean };
+        url?: string; output?: string; load?: boolean; peer?: { address: string; port: number } };
       try {
         let result: unknown;
         if (request.action === "probe") {
           result = await udpProbe(request.load === true);
+        } else if (request.action === "peer-prepare") {
+          rendezvous?.close(); rendezvous = await preparePeerProbe(); result = rendezvous.mapping;
+        } else if (request.action === "peer-probe") {
+          if (!rendezvous) throw new Error("Survey must precede peer probing");
+          result = await rendezvous.run(request.peer!);
         } else if (request.action === "start") {
           const origin = new URL(request.origin!).origin;
           await waitForSample(deadline => fetchJsonBefore<{ status: string }>(`${origin}/healthz`, deadline),
@@ -65,7 +72,9 @@ export async function endpointWorker(): Promise<void> {
           result = true;
         } else if (request.action === "share") {
           await click('button[aria-controls="host-advanced-door"]');
-          await click('button[aria-label^="VP8"]');
+          // Browser-to-App encoded fanout is the production H264 path. VP8
+          // deliberately stays in the Browser and must not masquerade as App WAN.
+          await click(app ? 'button[aria-label^="H264"]' : 'button[aria-label^="VP8"]');
           await click('button[aria-label="720p"]');
           await click("button.lr-tv-big.is-action");
           await click('button[data-source-tab="browser"]');
