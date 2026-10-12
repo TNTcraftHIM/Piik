@@ -111,6 +111,19 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 	if state := output.State(); !state.Paused || state.Target != -1 || state.Prepare != 0 || state.VideoBudget != 60_000 {
 		t.Fatalf("below-lowest budget cannot request codec adaptation: %+v", state)
 	}
+	// A new child's seed cannot veto a warm source's first video. Once feedback
+	// arrives, the same source must obey the real connection's allocation again.
+	observed := false
+	output.feedbackObserved = func() bool { return observed }
+	output.Reconcile()
+	if state := output.State(); state.Paused || state.Target < 0 {
+		t.Fatalf("warm source could not establish first feedback: %+v", state)
+	}
+	observed = true
+	output.Reconcile()
+	if state := output.State(); !state.Paused {
+		t.Fatalf("bootstrap bypassed observed raw-source limits: %+v", state)
+	}
 	receiver.controlled = true
 	output.Reconcile()
 	if state := output.State(); state.Paused || state.Target != 0 {

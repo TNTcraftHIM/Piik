@@ -93,6 +93,7 @@ npm run build:web
 mkdir -p build/network-lab/bin
 CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-server ./cmd/piik-server
 CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-app ./cmd/piik-app
+CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/stun ./scripts/network-lab/stun
 sudo --preserve-env=PATH,CHROME_PATH "$(command -v node)" --import tsx scripts/network-lab.ts --suite smoke
 ```
 
@@ -129,3 +130,9 @@ mapping, not every consumer NAT implementation. Address-change cases replace
 only the isolated router's UDP public address and conntrack entries while
 proving that TCP signaling stays usable; both old and new media windows retain
 their respective addresses for packet/feedback checks.
+IPv6 cases provide a Pion-based external STUN endpoint as well as IPv4 embedded
+STUN. Browser mDNS host names cannot resolve across these routed networks;
+keep normal Browser privacy behavior and obtain IPv6 reflexive candidates through
+STUN. The App may use its ordinary IPv6 host candidates. Continuity checks require
+changing decoded pictures and advancing audio energy; cadence and dimensions are
+measured separately, without imposing a new minimum on WebRTC adaptation.

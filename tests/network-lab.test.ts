@@ -72,6 +72,7 @@ describe("network laboratory evidence", () => {
     expect(() => checkContinuity(before, { ...before, frames: 100 })).toThrow();
     const after = { ...before, frames: 100, pictureHash: 200, stats: [{ ...before.stats[0]!, totalAudioEnergy: 2, totalSamplesDuration: 5 }] };
     expect(() => checkContinuity(before, after)).not.toThrow();
+    expect(() => checkContinuity(before, { ...after, frames: 51 })).not.toThrow();
     expect(() => checkContinuity(before, { ...after, stats: [{ ...after.stats[0]!, peerId: 1 }] })).toThrow();
     expect(() => checkContinuity(before, { ...after, frames: 50 })).toThrow();
     expect(() => checkContinuity(before, { ...after, pictureHash: 100 })).toThrow();

@@ -153,6 +153,7 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 		return nil, err
 	}
 	transport.Output = NewOutput(track, int64(options.InitialBitrate))
+	transport.Output.feedbackObserved = transport.observed.Load
 	track.Receiver().(*outputReceiver).output = transport.Output
 	transport.Output.onActivity = transport.mediaActivity
 	transport.Output.onDemandChanged = options.OnDemandChanged

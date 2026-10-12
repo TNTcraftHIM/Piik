@@ -8,7 +8,7 @@ import { parseArgs } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import { cleanupRun, withDeadline } from "./browser-gate-harness";
 import { endpointWorker } from "./network-lab/endpoint";
-import { command, LabNetwork, SITE_IP, SITE_ORIGIN } from "./network-lab/network";
+import { command, LabNetwork, SITE_IP, SITE_IPV6, SITE_ORIGIN } from "./network-lab/network";
 import { checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios, summarizeTrials, type Scenario, type TrialSummary } from "./network-lab/scenarios";
 import { echoWorker, type ProbeResult } from "./network-lab/udp";
 import type { MediaSample } from "./network-lab/page";
@@ -69,6 +69,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
   const network = new LabNetwork(), samples: Array<{ elapsedMs: number; host: MediaSample; viewer: MediaSample; sibling?: MediaSample }> = [];
   const started = performance.now(), endpoints: Endpoint[] = [];
   let server: ChildProcessWithoutNullStreams | null = null, echo: ChildProcessWithoutNullStreams | null = null;
+  let stun: ChildProcessWithoutNullStreams | null = null;
   let capture: ChildProcessWithoutNullStreams | null = null;
   let serverLog = "", captureLog = "";
   const mediaWindows: Array<{ name: string; startMs: number; endMs: number; addresses: string[] }> = [];
@@ -99,6 +100,13 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     echo.stderr.on("data", data => process.stderr.write(data));
     echo.stdin.on("error", () => {});
     await withDeadline(() => once(echo!.stdout, "data"), Date.now() + 10_000);
+    if (scenario.ipv6) {
+      stun = spawn("ip", ["netns", "exec", network.wan, resolve("build/network-lab/bin/stun"), `[${SITE_IPV6}]:3478`],
+        { env: labEnvironment(), stdio: "pipe" });
+      stun.stderr.on("data", data => { serverLog = (serverLog + data).slice(-32_000); });
+      stun.stdin.on("error", () => {});
+      await withDeadline(() => once(stun!.stdout, "data"), Date.now() + 5000);
+    }
     for (let i = 0; i < (scenario.sibling ? 3 : 2); i++) endpoints.push(new Endpoint(network.endpoint(i),
       await mkdtemp(join(tmpdir(), "piik-client-media-")), signal));
     stage("calibration");
@@ -129,7 +137,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     server = spawn("ip", ["netns", "exec", network.wan, resolve("build/network-lab/bin/piik-server")], {
       cwd: output, stdio: "pipe", env: { ...labEnvironment(), PIIK_ENV: "development", ROOM_DATABASE_PATH: ":memory:",
         LISTEN_HOST: SITE_IP, PORT: "9000", PUBLIC_BASE_URL: SITE_ORIGIN, ALLOWED_ORIGINS: SITE_ORIGIN,
-        STUN_URLS: `stun:${SITE_IP}:3478,stun:${SITE_IP}:3479,stun:${SITE_IP}:3480`, STUN_LISTEN_HOST: SITE_IP,
+        STUN_URLS: `stun:${SITE_IP}:3478,stun:${SITE_IP}:3479,stun:${SITE_IP}:3480${scenario.ipv6 ? `,stun:[${SITE_IPV6}]:3478` : ""}`, STUN_LISTEN_HOST: SITE_IP,
         NAT_PREDICTION_ENABLED: "true", ...(scenario.sfu ? { SFU_UDP_PORT: "7882", SFU_LISTEN_HOST: SITE_IP, SFU_PUBLIC_IP: SITE_IP } : {}) },
     });
     server.stdout.on("data", data => { serverLog = (serverLog + data).slice(-32_000); });
@@ -226,7 +234,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
           const previous = samples.at(-1)!.viewer;
           await delay(1000, undefined, { signal });
           const { viewer } = await sampleAll();
-          if (hasPicture(viewer) && viewer.frames - previous.frames >= 15) { recovered = true; break; }
+          if (hasPicture(viewer) && viewer.frames > previous.frames) { recovered = true; break; }
         }
         result.recoveryMs = recovered ? performance.now() - restoredAt : null;
         if (!recovered) throw new Error("Media did not resume within the recovery observation window");
@@ -252,8 +260,9 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
         endpoint.call("screenshot", { output: join(output, `failure-${index}.png`) }, 5000).catch(() => {})));
       result.endpointCleanup = await Promise.all(endpoints.map(endpoint => endpoint.call("close", {}, 30_000).catch(error => ({ error: String(error) }))));
       echo?.stdin.end();
+      stun?.stdin.end();
       if (capture && capture.exitCode !== null) { result.captureError = "Capture ended before observation completed"; result.passed = false; }
-      result.serviceCleanup = await Promise.all([echo, server, capture].map(child => cleanupRun({
+      result.serviceCleanup = await Promise.all([echo, stun, server, capture].map(child => cleanupRun({
         chrome: null, native: null, cdp: null, server: child, profile: null, ports: [],
       }).catch(error => ({ error: String(error) }))));
       result.cleanup = await network.close().catch(error => ({ error: String(error) }));

@@ -19,15 +19,16 @@ import (
 // another scheduler. Do not attach a StreamAllocator to the same DownTrack.
 type Output struct {
 	*sfu.DownTrack
-	mu              sync.Mutex
-	writeMu         sync.Mutex
-	budget          int64
-	current         int32
-	allocation      sfu.VideoAllocation
-	hasAllocation   bool
-	closed          bool
-	onActivity      func()
-	onDemandChanged func()
+	mu               sync.Mutex
+	writeMu          sync.Mutex
+	budget           int64
+	current          int32
+	allocation       sfu.VideoAllocation
+	hasAllocation    bool
+	closed           bool
+	feedbackObserved func() bool
+	onActivity       func()
+	onDemandChanged  func()
 }
 
 // Snapshot is read by the parent at its input-frame boundary. Current means
@@ -78,10 +79,11 @@ func (output *Output) reconcileLocked() {
 			break
 		}
 	}
-	if !measured {
+	if !measured || (output.feedbackObserved != nil && !output.feedbackObserved()) {
 		if len(available) > 0 {
-			// A real layer can deliver before its bitrate window exists. The
-			// library bootstrap also establishes the target for PLI recovery.
+			// Source history is not this new connection's capacity. Bootstrap
+			// through the library until video can establish real feedback;
+			// pausing against the initial estimate would prevent that feedback.
 			output.allocation = output.AllocateOptimal(false, false)
 			output.hasAllocation = true
 		}

@@ -99,7 +99,9 @@ export function checkFaultHit(fault: Fault, faultDrops: number): void {
 }
 
 export function checkContinuity(before: MediaSample, after: MediaSample): void {
-  if (after.frames - before.frames < 30) throw new Error("Decoded video did not continue");
+  // Liveness is separate from quality: WebRTC may legitimately reduce cadence
+  // under jitter/loss. Preserve the measured cadence rather than imposing a floor.
+  if (after.frames <= before.frames) throw new Error("Decoded video did not continue");
   if (before.pictureHash === null || after.pictureHash === null || before.pictureHash === after.pictureHash) {
     throw new Error("Rendered synthetic picture did not change");
   }
