@@ -63,10 +63,11 @@ describe("network laboratory evidence", () => {
   });
 
   it("does not confuse a connected transport or stale video dimensions with decoded media", () => {
-    const sample = { width: 1280, height: 720, frames: 30, stats: [] } as unknown as MediaSample;
+    const sample = { width: 1280, height: 720, frames: 30, playbackPeerId: 0, stats: [] } as unknown as MediaSample;
     expect(hasPicture(sample)).toBe(false);
-    expect(hasPicture({ ...sample, stats: [{ type: "inbound-rtp", kind: "video", framesDecoded: 30 }] })).toBe(true);
-    expect(hasPicture({ ...sample, stats: [{ type: "inbound-rtp", kind: "audio", framesDecoded: 30 }] })).toBe(false);
+    expect(hasPicture({ ...sample, stats: [{ type: "inbound-rtp", kind: "video", peerId: 0, framesDecoded: 30 }] })).toBe(true);
+    expect(hasPicture({ ...sample, stats: [{ type: "inbound-rtp", kind: "audio", peerId: 0, framesDecoded: 30 }] })).toBe(false);
+    expect(hasPicture({ ...sample, stats: [{ type: "inbound-rtp", kind: "video", peerId: 1, framesDecoded: 30 }] })).toBe(false);
   });
 
   it("rejects misspelled or duplicated scenarios and lists every transport pairing", () => {
@@ -86,7 +87,7 @@ describe("network laboratory evidence", () => {
   });
 
   it("rejects frozen/silent media and counter resets on replacement peers", () => {
-    const before = { frames: 50, pictureHash: 100, stats: [{ id: "audio", peerId: 0, type: "inbound-rtp", kind: "audio",
+    const before = { frames: 50, pictureHash: 100, playbackPeerId: 0, stats: [{ id: "audio", peerId: 0, type: "inbound-rtp", kind: "audio",
       totalAudioEnergy: 1, totalSamplesDuration: 2 }] } as unknown as MediaSample;
     expect(() => checkContinuity(before, { ...before, frames: 100 })).toThrow();
     const after = { ...before, frames: 100, pictureHash: 200, stats: [{ ...before.stats[0]!, totalAudioEnergy: 2, totalSamplesDuration: 5 }] };

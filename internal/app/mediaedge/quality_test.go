@@ -7,6 +7,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/pion/rtcp"
 )
 
 type qualityAllocationReceiver struct{ sfu.TrackReceiver }
@@ -103,6 +104,8 @@ func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {
 
 	// Real library allocation remains deficient after selecting a layer that
 	// fits the link; steady low delivery must not cancel quality convergence.
+	// This fixture supplies observed capacity, beyond first-feedback bootstrap.
+	edge.transport.OnTransportCCFeedback(nil, &rtcp.TransportLayerCC{})
 	output := edge.transport.Output
 	output.SetReceiver(qualityAllocationReceiver{TrackReceiver: output.Receiver()})
 	output.UpTrackMaxPublishedLayerChange(1)

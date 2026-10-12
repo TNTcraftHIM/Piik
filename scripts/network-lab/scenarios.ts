@@ -89,7 +89,8 @@ export function selectScenarios(suite: string, names?: string): Scenario[] {
 
 export function hasPicture(sample: MediaSample): boolean {
   return sample.width > 0 && sample.height > 0 && sample.frames >= 15 &&
-    sample.stats.some(row => row.type === "inbound-rtp" && row.kind === "video" && Number(row.framesDecoded) >= 15);
+    sample.stats.some(row => row.type === "inbound-rtp" && row.kind === "video" &&
+      row.peerId === sample.playbackPeerId && Number(row.framesDecoded) >= 15);
 }
 
 export function checkAppPath(sample: MediaSample, action: "prepare-edge" | "receive-offer", localAddresses: readonly string[]): void {
@@ -122,7 +123,7 @@ export function checkContinuity(before: MediaSample, after: MediaSample): void {
     throw new Error("Rendered synthetic picture did not change");
   }
   const audible = after.stats.some(row => {
-    if (row.type !== "inbound-rtp" || row.kind !== "audio") return false;
+    if (row.type !== "inbound-rtp" || row.kind !== "audio" || row.peerId !== after.playbackPeerId) return false;
     const previous = before.stats.find(other => other.id === row.id && other.peerId === row.peerId);
     return previous && Number(row.totalAudioEnergy) > Number(previous.totalAudioEnergy) &&
       Number(row.totalSamplesDuration) > Number(previous.totalSamplesDuration);
