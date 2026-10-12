@@ -483,7 +483,7 @@ func TestCaptureTimestampsDriveTheRTPClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = source.Close() })
-	_, receiver, packets := connectedReceiver(t, engine, source, "timed-edge")
+	edge, receiver, packets := connectedReceiver(t, engine, source, "timed-edge")
 	t.Cleanup(func() { _ = receiver.Close() })
 	accessUnit := sfu.VP8KeyFrame8x8
 	start := 10 * time.Second
@@ -492,18 +492,18 @@ func TestCaptureTimestampsDriveTheRTPClock(t *testing.T) {
 	if err = writeSourceFrame(source, accessUnit, start, frameDuration); err != nil {
 		t.Fatal(err)
 	}
-	first := waitPacket(t, packets)
+	first := waitPacket(t, packets, edge)
 	if err = writeSourceFrame(source, accessUnit, start+frameDuration, frameDuration); err != nil {
 		t.Fatal(err)
 	}
-	second := waitPacket(t, packets)
+	second := waitPacket(t, packets, edge)
 	if got := second.Timestamp - first.Timestamp; got < 2_999 || got > 3_001 {
 		t.Fatalf("steady timestamp delta = %d", got)
 	}
 	if err = writeSourceFrame(source, accessUnit, start+5*time.Second, frameDuration); err != nil {
 		t.Fatal(err)
 	}
-	third := waitPacket(t, packets)
+	third := waitPacket(t, packets, edge)
 	if got := third.Timestamp - second.Timestamp; got < 446_999 || got > 447_001 {
 		t.Fatalf("sparse timestamp delta = %d", got)
 	}
@@ -519,19 +519,19 @@ func TestNewCaptureGenerationKeepsTheRTPClockContinuous(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, receiver, packets := connectedReceiver(t, engine, source, "generation-edge")
+	edge, receiver, packets := connectedReceiver(t, engine, source, "generation-edge")
 	t.Cleanup(func() { _ = receiver.Close() })
 	accessUnit := sfu.VP8KeyFrame8x8
 	frameDuration := time.Second / 30
 	if err = writeSourceFrame(source, accessUnit, 50*time.Second, frameDuration); err != nil {
 		t.Fatal(err)
 	}
-	first := waitPacket(t, packets)
+	first := waitPacket(t, packets, edge)
 	source.BeginGeneration()
 	if err = writeSourceFrame(source, accessUnit, 100*time.Millisecond, frameDuration); err != nil {
 		t.Fatal(err)
 	}
-	second := waitPacket(t, packets)
+	second := waitPacket(t, packets, edge)
 	if got := second.Timestamp - first.Timestamp; got < 2_999 || got > 3_001 {
 		t.Fatalf("generation timestamp delta = %d", got)
 	}
@@ -915,12 +915,16 @@ func waitSignal(t *testing.T, signal <-chan struct{}, label string) {
 	}
 }
 
-func waitPacket(t *testing.T, packets <-chan *rtp.Packet) *rtp.Packet {
+func waitPacket(t *testing.T, packets <-chan *rtp.Packet, edges ...*Edge) *rtp.Packet {
 	t.Helper()
 	select {
 	case packet := <-packets:
 		return packet
 	case <-time.After(5 * time.Second):
+		for _, edge := range edges {
+			t.Logf("edge=%s output=%+v egress=%+v source=%+v", edge.State(),
+				edge.transport.Output.State(), edge.transport.Egress(), edge.source.media.DebugInfo())
+		}
 		t.Fatal("timed out waiting for RTP")
 		return nil
 	}
