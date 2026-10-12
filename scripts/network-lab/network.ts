@@ -7,7 +7,7 @@ export const SITE_IP = "198.51.100.1";
 export const SITE_IPV6 = "2001:db8:71::1";
 export const SITE_ORIGIN = `http://${SITE_IP}:9000`;
 export type NatMode = "preserve" | "random";
-export type Fault = "none" | "peer-block" | "udp-block" | "stun-primary" | "delay" | "loss" | "rate" | "signaling";
+export type Fault = "none" | "peer-block" | "udp-block" | "ipv4-block" | "stun-primary" | "delay" | "loss" | "rate" | "signaling";
 
 export function command(program: string, args: string[], input?: string): string {
   return execFileSync(program, args, { encoding: "utf8", timeout: 10_000,
@@ -134,6 +134,7 @@ add rule ip lab_nat postrouting oifname "wan0" snat to ${before}
     const rules: Partial<Record<Fault, string>> = {
       "peer-block": "ip daddr 198.51.100.11-198.51.100.30 udp dport 1-65535 counter drop",
       "udp-block": "meta l4proto udp counter drop",
+      "ipv4-block": "meta nfproto ipv4 meta l4proto udp counter drop",
       "stun-primary": `ip daddr ${SITE_IP} udp dport 3478 counter drop`,
       signaling: `ip daddr ${SITE_IP} tcp dport 9000 counter drop`,
     };

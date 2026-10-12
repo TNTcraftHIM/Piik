@@ -133,7 +133,9 @@ their respective addresses for packet/feedback checks.
 IPv6 cases provide a Pion-based external STUN endpoint as well as IPv4 embedded
 STUN. Browser mDNS host names cannot resolve across these routed networks;
 keep normal Browser privacy behavior and obtain IPv6 reflexive candidates through
-STUN. The App may use its ordinary IPv6 host candidates. Continuity checks require
+STUN. The App may use its ordinary IPv6 host candidates. IPv6 cases block IPv4
+UDP and independently verify that block; they do not require a Browser to try a
+blocked IPv4 candidate before selecting working IPv6. Continuity checks require
 changing decoded pictures and advancing audio energy; cadence and dimensions are
 measured separately, without imposing a new minimum on WebRTC adaptation.
 App checks require current Native connection state and a local Browser bridge in

@@ -67,8 +67,8 @@ export const scenarios: readonly Scenario[] = [
   { ...baseline, id: "signaling-outage", host: "browser", viewer: "browser", fault: "signaling", duringShare: true },
   { ...baseline, id: "random-nat", host: "app", viewer: "app", nat: ["random", "random"], expected: "observed" },
   { ...baseline, id: "asymmetric-nat", host: "browser", viewer: "app", nat: ["random", "preserve"], expected: "observed" },
-  { ...baseline, id: "ipv6-browser", host: "browser", viewer: "browser", ipv6: true, fault: "peer-block" },
-  { ...baseline, id: "ipv6-app", host: "app", viewer: "app", ipv6: true, fault: "peer-block" },
+  { ...baseline, id: "ipv6-browser", host: "browser", viewer: "browser", ipv6: true, fault: "ipv4-block" },
+  { ...baseline, id: "ipv6-app", host: "app", viewer: "app", ipv6: true, fault: "ipv4-block" },
   { ...baseline, id: "healthy-sibling", host: "browser", viewer: "browser", sibling: true,
     fault: "rate", faultEndpoint: 1, direction: "downlink", duringShare: true },
   { ...baseline, id: "remap-browser", host: "browser", viewer: "browser", fault: "udp-block", duringShare: true, remap: true },
@@ -110,7 +110,7 @@ export function checkAppPath(sample: MediaSample, action: "prepare-edge" | "rece
 }
 
 export function checkFaultHit(fault: Fault, faultDrops: number): void {
-  if (["peer-block", "udp-block", "stun-primary", "signaling"].includes(fault) && faultDrops < 1) {
+  if (["peer-block", "udp-block", "ipv4-block", "stun-primary", "signaling"].includes(fault) && faultDrops < 1) {
     throw new Error(`No packets hit the ${fault} rule; outcome cannot validate this fault`);
   }
 }
@@ -136,7 +136,7 @@ export function checkCalibration(before: ProbeResult, after: ProbeResult, fault:
       before.mappings.some(mapping => !mapping.address.startsWith("198.51.100."))) {
     throw new Error("Baseline probe did not traverse the expected NAT and all three destinations");
   }
-  if (fault === "udp-block") {
+  if (fault === "udp-block" || fault === "ipv4-block") {
     if (after.received !== 0) throw new Error("Blocked UDP still reached the probe");
   } else if (fault === "delay") {
     const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;

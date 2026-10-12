@@ -22,10 +22,11 @@ describe("network laboratory evidence", () => {
     expect(summary[1]).toMatchObject({ trials: 1, checksPassed: 0, failures: 1, unavailable: 1, firstPictureMs: { count: 0, min: null } });
   });
   it("rejects absent impairments rather than blessing an unaffected media path", () => {
-    for (const fault of ["udp-block", "delay", "loss", "rate"] as const) {
+    for (const fault of ["udp-block", "ipv4-block", "delay", "loss", "rate"] as const) {
       expect(() => checkCalibration(baseline, { ...baseline, durationMs: 20 }, fault)).toThrow();
     }
     expect(() => checkCalibration(baseline, { ...baseline, received: 0, receivedBytes: 0, rttMs: [] }, "udp-block")).not.toThrow();
+    expect(() => checkCalibration(baseline, { ...baseline, received: 0, receivedBytes: 0, rttMs: [] }, "ipv4-block")).not.toThrow();
     expect(() => checkCalibration(baseline, { ...baseline, rttMs: [100, 95, 120] }, "delay")).not.toThrow();
   });
 
@@ -80,7 +81,7 @@ describe("network laboratory evidence", () => {
   });
 
   it("requires the actual blackhole rule to see traffic", () => {
-    for (const fault of ["peer-block", "udp-block", "stun-primary", "signaling"] as const) {
+    for (const fault of ["peer-block", "udp-block", "ipv4-block", "stun-primary", "signaling"] as const) {
       expect(() => checkFaultHit(fault, 0)).toThrow();
       expect(() => checkFaultHit(fault, 3)).not.toThrow();
     }
