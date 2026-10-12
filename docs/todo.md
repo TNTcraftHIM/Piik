@@ -16,6 +16,13 @@ Git/PRs own completed history.
   repeatable reports, negative controls and cancellation cleanup. Establish this
   evidence before further NAT mechanism changes. Model results do not replace
   physical-network beta or establish a public success percentage.
+- [ ] **Warm-source first-video allocation.** The network laboratory's App/App
+  outage test loses video after transport replacement. A separate real-RTP
+  reproduction confirms that a measured raw source above a new transport's
+  initial budget can pause before TWCC establishes capacity. Correct startup
+  allocation at the shared forwarding owner, preserve observed congestion
+  limits, then rerun outage, constrained-link and healthy-sibling acceptance.
+  This mechanism does not yet establish every field disconnect's cause.
 
 - [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
   useful improvements and outstanding acceptance on 2026-10-07, and on 2026-10-09

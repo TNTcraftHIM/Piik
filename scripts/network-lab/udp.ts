@@ -18,6 +18,11 @@ export async function echoWorker(ipv6 = false): Promise<void> {
         remote.address.split(".").forEach((part, index) => reply[18 + index] = Number(part));
         reply.write(remote.address, 32, 64, "utf8");
         socket.send(reply, remote.port, remote.address, () => {});
+        // A separate filtering probe contacts only the first address/port. Send
+        // back from the other two without any preceding outbound permission.
+        if (data[24] === 1 && socket === sockets[0]) {
+          for (const alternate of sockets.slice(1, 3)) alternate.send(reply, remote.port, remote.address, () => {});
+        }
       });
       socket.bind(port, host); await once(socket, "listening");
     }
@@ -33,6 +38,24 @@ export interface ProbeResult {
   durationMs: number;
   rttMs: number[];
   mappings: Array<{ destination: string; address: string; port: number }>;
+}
+
+export async function filteringProbe() {
+  const socket = createSocket("udp4"), received = new Set<string>();
+  socket.on("message", (data, remote) => {
+    if (data.length === 1200 && data.readUInt32BE(0) === 0x50494c42) received.add(`${remote.address}:${remote.port}`);
+  });
+  socket.bind(0, "0.0.0.0"); await once(socket, "listening");
+  try {
+    const packet = Buffer.alloc(1200); packet.writeUInt32BE(0x50494c42); packet[24] = 1;
+    for (let i = 0; i < 3; i++) {
+      await new Promise<void>((resolve, reject) => socket.send(packet, targets[0]!.port, targets[0]!.host, error => error ? reject(error) : resolve()));
+      await delay(100);
+    }
+    await delay(600);
+    const [sameEndpoint, changedPort, changedAddress] = targets.map(target => received.has(`${target.host}:${target.port}`));
+    return { sameEndpoint, changedPort, changedAddress };
+  } finally { socket.close(); }
 }
 
 /** Survey and peer rendezvous retain one socket, independently of ICE/Piik. */

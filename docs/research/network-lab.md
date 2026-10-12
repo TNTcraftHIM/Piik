@@ -81,8 +81,8 @@ to make an experiment pass.
 ## Running The Process Layer
 
 Use an isolated Linux machine or VM with Node/Go from the repository toolchain,
-Google Chrome, current `iproute2` with netem `seed` support, `nftables` and
-`tcpdump`. CI builds a pinned iproute2 6.17 traffic-control binary locally because
+Google Chrome, current `iproute2` with netem `seed` support, `nftables`,
+`conntrack` and `tcpdump`. CI builds a pinned iproute2 6.17 traffic-control binary locally because
 the runner's distribution package lacks that option. Namespace administration
 requires root. Windows/macOS can run the model/unit layer; they need a Linux VM
 for this process layer. Root on a production host is not an equivalent setup.
@@ -100,6 +100,11 @@ Set `CHROME_PATH` to the installed Chrome executable before running. `--list`
 lists scenarios without root; `--suite full`, `--cases browser-browser,app-app`,
 `--repeat 3` and `--seed 42` select reproducible inputs. Netem seeds do not make
 browser scheduling, kernel port allocation or real-time timings deterministic.
+`--prediction compare --repeat 3` pairs the existing Host enhancement switch on
+and off with the same inputs and alternates run order. `distributions.json`
+reports trial/failure counts and nearest-rank timing summaries for validated
+media trials; unavailable and timed-out attempts never become zero-millisecond
+successes. Small trial counts are observations, not population estimates.
 `--verify` (CI `network_lab: verify`) runs negative controls against the actual
 runner: missing fault, frozen picture, partially failed setup, and cancellation
 during calibration or sharing. Each must fail for its intended reason and leave
@@ -116,3 +121,11 @@ The process layer is still under validation. Listed scenarios are implementation
 targets until their reports pass the acceptance contract. In particular, App
 Host checks must use the real H264 Browser-to-App ingress and App WAN sender;
 launching an App alongside a Browser-only VP8 share is not an App-path test.
+
+Each router uses destination-aware connection tracking for filtering. Independent
+probes check responses from the contacted endpoint, another port and another
+address before sharing. The preserve/random SNAT cases describe observed port
+mapping, not every consumer NAT implementation. Address-change cases replace
+only the isolated router's UDP public address and conntrack entries while
+proving that TCP signaling stays usable; both old and new media windows retain
+their respective addresses for packet/feedback checks.

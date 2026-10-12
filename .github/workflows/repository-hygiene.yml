@@ -27,6 +27,17 @@ on:
         description: Optional comma-separated laboratory cases (empty runs the selected suite)
         required: false
         type: string
+      network_prediction:
+        description: NAT enhancement setting (compare runs paired on/off trials)
+        required: false
+        default: 'on'
+        type: choice
+        options: ['on', 'off', compare]
+      network_repeat:
+        description: Repetitions per laboratory case (1..20)
+        required: false
+        default: '1'
+        type: string
 
 permissions:
   contents: read
@@ -115,7 +126,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
         run: |
           sudo apt-get update
-          sudo apt-get install -y nftables iproute2 tcpdump bison flex libmnl-dev libcap-dev
+          sudo apt-get install -y nftables iproute2 tcpdump conntrack bison flex libmnl-dev libcap-dev
           mkdir -p build/network-lab/bin
           CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-server ./cmd/piik-server
           CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-app ./cmd/piik-app
@@ -142,11 +153,13 @@ jobs:
           TC_LIB_DIR: ${{ github.workspace }}/build/network-lab/iproute2/netem
           PIIK_NETWORK_LAB_SUITE: ${{ inputs.network_lab }}
           PIIK_NETWORK_LAB_CASES: ${{ inputs.network_cases }}
+          PIIK_NETWORK_LAB_PREDICTION: ${{ inputs.network_prediction }}
+          PIIK_NETWORK_LAB_REPEAT: ${{ inputs.network_repeat }}
         run: |
           if [ "$PIIK_NETWORK_LAB_SUITE" = verify ]; then
             sudo --preserve-env=PATH,CHROME_PATH,TC_LIB_DIR "$(command -v node)" --import tsx scripts/network-lab.ts --verify
           else
-            sudo --preserve-env=PATH,CHROME_PATH,TC_LIB_DIR "$(command -v node)" --import tsx scripts/network-lab.ts --suite "$PIIK_NETWORK_LAB_SUITE" --cases "$PIIK_NETWORK_LAB_CASES"
+            sudo --preserve-env=PATH,CHROME_PATH,TC_LIB_DIR "$(command -v node)" --import tsx scripts/network-lab.ts --suite "$PIIK_NETWORK_LAB_SUITE" --cases "$PIIK_NETWORK_LAB_CASES" --prediction "$PIIK_NETWORK_LAB_PREDICTION" --repeat "$PIIK_NETWORK_LAB_REPEAT"
           fi
       - name: Save network laboratory evidence
         if: always() && github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''

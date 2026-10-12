@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios } from "../scripts/network-lab/scenarios";
+import { checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios, summarizeTrials } from "../scripts/network-lab/scenarios";
 import { checkMediaFeedback, checkMediaPath, packetFlows, type PacketFlow } from "../scripts/network-lab/packets";
 import type { MediaSample } from "../scripts/network-lab/page";
 import type { ProbeResult } from "../scripts/network-lab/udp";
@@ -9,6 +9,18 @@ const baseline: ProbeResult = { sent: 12, received: 12, receivedBytes: 14400, du
     ({ destination, address: "198.51.100.11", port: 45678 })) };
 
 describe("network laboratory evidence", () => {
+  it("keeps failed trials in counts without treating missing latency as zero", () => {
+    const scenario = selectScenarios("smoke")[0]!;
+    const trial = { scenario, prediction: true, seed: 1, passed: true, outcome: "media" as const };
+    const summary = summarizeTrials([
+      { ...trial, firstPictureMs: 200 }, { ...trial, firstPictureMs: 400 },
+      { ...trial, passed: false, outcome: "timeout", firstPictureMs: null },
+      { ...trial, prediction: false, passed: false, outcome: "unavailable" },
+    ]);
+    expect(summary[0]).toMatchObject({ trials: 3, checksPassed: 2, failures: 1, timeouts: 1,
+      firstPictureMs: { count: 2, min: 200, median: 200, p95: 400, max: 400 }, recoveryMs: { count: 0, median: null } });
+    expect(summary[1]).toMatchObject({ trials: 1, checksPassed: 0, failures: 1, unavailable: 1, firstPictureMs: { count: 0, min: null } });
+  });
   it("rejects absent impairments rather than blessing an unaffected media path", () => {
     for (const fault of ["udp-block", "delay", "loss", "rate"] as const) {
       expect(() => checkCalibration(baseline, { ...baseline, durationMs: 20 }, fault)).toThrow();

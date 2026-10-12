@@ -21,6 +21,7 @@ export class LabNetwork {
   readonly namespaces: string[] = [];
   private readonly pendingLinks = new Set<string>();
   private readonly shaped = new Set<string>();
+  private readonly udpAddresses = new Map<number, string>();
   private readonly originalRoutes = command("ip", ["-j", "route", "show", "table", "all"]);
   private readonly originalRoutes6 = command("ip", ["-6", "-j", "route", "show", "table", "all"]);
   private readonly originalRules = command("nft", ["-s", "list", "ruleset"]);
@@ -105,8 +106,24 @@ table inet lab_filter {
 
   endpoint(index: number): string { return `${this.prefix}-end${index}`; }
   router(index: number): string { return `${this.prefix}-nat${index}`; }
-  publicIP(index: number): string { return `198.51.100.${11 + index}`; }
+  publicIP(index: number): string { return this.udpAddresses.get(index) ?? `198.51.100.${11 + index}`; }
   ipv6(index: number): string { return `2001:db8:72:${index + 1}:0:0:0:2`; }
+
+  remapUDP(index: number): { before: string; after: string } {
+    const router = this.router(index), before = this.publicIP(index), after = `198.51.100.${51 + index}`;
+    if (this.udpAddresses.has(index)) throw new Error("UDP address has already changed");
+    this.exec(router, "ip", ["addr", "add", `${after}/24`, "dev", "wan0"]);
+    this.exec(router, "nft", [`
+flush chain ip lab_nat postrouting
+add rule ip lab_nat postrouting oifname "wan0" meta l4proto udp snat to ${after}
+add rule ip lab_nat postrouting oifname "wan0" snat to ${before}
+`]);
+    // Only this isolated router's UDP mappings change; the real TCP signaling
+    // connection retains its original address and connection tracking entry.
+    this.exec(router, "conntrack", ["-D", "-p", "udp"]);
+    this.udpAddresses.set(index, after);
+    return { before, after };
+  }
 
   setFault(index: number, fault: Fault, seed: number, direction: "uplink" | "downlink" = "uplink"): void {
     const router = this.router(index);

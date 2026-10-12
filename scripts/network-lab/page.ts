@@ -3,7 +3,7 @@
 export const pageProbe = String.raw`(() => {
   localStorage.setItem('piik:ui-lang','en'); localStorage.setItem('piik:ui-mode','text');
   const peers=[], sockets=[], events=[], errors=[], controls=[];
-  let route=null,freezeCapture=()=>{};
+  let route=null,natPrediction=null,freezeCapture=()=>{};
   const PC=RTCPeerConnection, WS=WebSocket;
   const picture=document.createElement('canvas');picture.width=64;picture.height=36;
   const pictureContext=picture.getContext('2d',{willReadFrequently:true});
@@ -19,6 +19,7 @@ export const pageProbe = String.raw`(() => {
       for(const type of ['open','close','error'])this.addEventListener(type,()=>record(events,{at:performance.now(),type:'ws-'+type,scope}));
       this.addEventListener('message', event=>{
         let message; try{message=JSON.parse(event.data);}catch{return;}
+        if(typeof message.routePolicy?.natPrediction==='boolean')natPrediction=message.routePolicy.natPrediction;
         if(message.type==='route-update'&&message.phase==='active')route=message.assignment.upstream.kind;
         const value={at:performance.now(),type:message.type,state:message.state,reason:message.reason,scope,
           phase:message.phase,route:message.assignment?.upstream?.kind,connectionId:message.connectionId};
@@ -92,7 +93,7 @@ export const pageProbe = String.raw`(() => {
       pictureHash=hash>>>0;
     }
     return{at:performance.now(),width:video?.videoWidth||0,height:video?.videoHeight||0,
-      frames:video?.getVideoPlaybackQuality().totalVideoFrames||0,pictureHash,route,stats,events:[...events],errors:[...errors],controls:[...controls],
+      frames:video?.getVideoPlaybackQuality().totalVideoFrames||0,pictureHash,route,natPrediction,stats,events:[...events],errors:[...errors],controls:[...controls],
       sharing:!!document.querySelector('button[aria-label="Stop sharing"]'),
       controlOpen:sockets.some(s=>s.url.includes('/control')&&s.readyState===WS.OPEN),
       peerStates:peers.map(p=>p.connectionState),text:document.body.innerText.slice(-2000)};
@@ -106,6 +107,7 @@ export interface MediaSample {
   frames: number;
   pictureHash: number | null;
   route: string | null;
+  natPrediction: boolean | null;
   stats: Array<Record<string, string | number>>;
   events: Array<{ at: number; type: string; scope?: string; state?: string; reason?: string; phase?: string; route?: string;
     connectionId?: string; [key: string]: string | number | undefined }>;

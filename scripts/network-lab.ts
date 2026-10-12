@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { cleanupRun, withDeadline } from "./browser-gate-harness";
 import { endpointWorker } from "./network-lab/endpoint";
 import { command, LabNetwork, SITE_IP, SITE_ORIGIN } from "./network-lab/network";
-import { checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios, type Scenario } from "./network-lab/scenarios";
+import { checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios, summarizeTrials, type Scenario, type TrialSummary } from "./network-lab/scenarios";
 import { echoWorker, type ProbeResult } from "./network-lab/udp";
 import type { MediaSample } from "./network-lab/page";
 import { checkMediaFeedback, checkMediaPath, readPacketFlows, type PacketFlow } from "./network-lab/packets";
@@ -18,6 +18,7 @@ import { verifyLaboratory } from "./network-lab/verify";
 const ROOT = resolve(import.meta.dirname, ".."), ENTRY = resolve(import.meta.filename);
 const { values } = parseArgs({ options: { worker: { type: "string" }, suite: { type: "string", default: "smoke" },
   cases: { type: "string" }, repeat: { type: "string", default: "1" }, seed: { type: "string", default: "1" },
+  prediction: { type: "string", default: "on" },
   ipv6: { type: "boolean" }, list: { type: "boolean" }, verify: { type: "boolean" }, negative: { type: "string" } } });
 
 class Endpoint {
@@ -64,15 +65,15 @@ function labEnvironment(): NodeJS.ProcessEnv {
   return { PATH: process.env.PATH, CHROME_PATH: process.env.CHROME_PATH, LANG: "C.UTF-8", TMPDIR: process.env.TMPDIR };
 }
 
-async function runCase(scenario: Scenario, seed: number, output: string, signal: AbortSignal): Promise<Record<string, unknown>> {
+async function runCase(scenario: Scenario, seed: number, prediction: boolean, output: string, signal: AbortSignal): Promise<TrialSummary & Record<string, unknown>> {
   const network = new LabNetwork(), samples: Array<{ elapsedMs: number; host: MediaSample; viewer: MediaSample; sibling?: MediaSample }> = [];
   const started = performance.now(), endpoints: Endpoint[] = [];
   let server: ChildProcessWithoutNullStreams | null = null, echo: ChildProcessWithoutNullStreams | null = null;
   let capture: ChildProcessWithoutNullStreams | null = null;
   let serverLog = "", captureLog = "";
-  const mediaWindows: Array<{ name: string; startMs: number; endMs: number }> = [];
+  const mediaWindows: Array<{ name: string; startMs: number; endMs: number; addresses: string[] }> = [];
   const pcapPath = join(output, "wan.pcap");
-  const result: Record<string, unknown> = { scenario, seed, passed: false, stage: "setup", samples };
+  const result: TrialSummary & Record<string, unknown> = { scenario, seed, prediction, passed: false, stage: "setup", samples };
   const stage = (name: string) => {
     result.stage = name; process.stdout.write(JSON.stringify({ case: scenario.id, stage: name }) + "\n");
   };
@@ -84,11 +85,11 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
     const sample = { elapsedMs: performance.now() - started, host: host!, viewer: viewer!, sibling };
     samples.push(sample); return sample;
   };
-  const proveMedia = (flows: PacketFlow[]) => {
-    if (scenario.sfu) { checkMediaFeedback(flows, network.publicIP(0), SITE_IP); checkMediaFeedback(flows, SITE_IP, network.publicIP(1)); }
-    else if (scenario.ipv6) checkMediaFeedback(flows, network.ipv6(0), network.ipv6(1));
-    else checkMediaPath(flows, network.publicIP(0), network.publicIP(1), scenario.sibling ? [network.publicIP(2)] : []);
-    if (scenario.sibling) checkMediaPath(flows, network.publicIP(0), network.publicIP(2), [network.publicIP(1)]);
+  const addresses = () => endpoints.map((_, index) => scenario.ipv6 ? network.ipv6(index) : network.publicIP(index));
+  const proveMedia = (flows: PacketFlow[], peers = addresses()) => {
+    if (scenario.sfu) { checkMediaFeedback(flows, peers[0]!, SITE_IP); checkMediaFeedback(flows, SITE_IP, peers[1]!); }
+    else checkMediaPath(flows, peers[0]!, peers[1]!, scenario.sibling ? [peers[2]!] : []);
+    if (scenario.sibling) checkMediaPath(flows, peers[0]!, peers[2]!, [peers[1]!]);
   };
   try {
     signal.throwIfAborted();
@@ -104,6 +105,9 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
     const baselines = await Promise.all(endpoints.map(endpoint => endpoint.call<ProbeResult>("probe")));
     result.mappingCalibration = baselines;
     baselines.forEach((probe, index) => checkMapping(probe, scenario.nat[index] ?? "preserve"));
+    const filtering = await Promise.all(endpoints.map(endpoint => endpoint.call<{ sameEndpoint: boolean; changedPort: boolean; changedAddress: boolean }>("filter-probe")));
+    result.filteringCalibration = filtering;
+    if (filtering.some(probe => !probe.sameEndpoint || probe.changedPort || probe.changedAddress)) throw new Error("Observed NAT filtering differs from the configured endpoint-dependent filter");
     const before = baselines[faultIndex]!;
     const pair = endpoints.slice(0, 2);
     const mappings = await Promise.all(pair.map(endpoint => endpoint.call<{ address: string; port: number }>("peer-prepare")));
@@ -143,7 +147,7 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
     } }, Date.now() + 5000);
     stage("share");
     await endpoints[0]!.call("navigate", { url: SITE_ORIGIN + (scenario.host === "app" ? "/#piik-client=1" : "/") });
-    const invitation = await endpoints[0]!.call<string>("share");
+    const invitation = await endpoints[0]!.call<string>("share", { prediction });
     const joinedAt = performance.now();
     await endpoints[1]!.call("navigate", { url: invitation + (scenario.viewer === "app" ? "&piik-client=1" : "") });
     if (scenario.sibling) await endpoints[2]!.call("navigate", { url: invitation });
@@ -167,7 +171,7 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
       await delay(3000, undefined, { signal });
       const { viewer: next, sibling: healthy } = await sampleAll();
       checkContinuity(first, next);
-      mediaWindows.push({ name: "baseline", startMs: steadyStart, endMs: Date.now() });
+      mediaWindows.push({ name: "baseline", startMs: steadyStart, endMs: Date.now(), addresses: addresses() });
       if (values.negative === "frozen-picture") {
         stage("negative-control");
         await endpoints[0]!.call("freeze-picture");
@@ -205,11 +209,16 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
           checkContinuity(healthy, samples.at(-1)!.sibling!);
           if (samples.at(-1)!.sibling!.height < healthy.height) throw new Error("Weak Viewer reduced its healthy sibling's resolution");
         }
+        if (scenario.remap) {
+          result.addressChange = network.remapUDP(faultIndex);
+          if (!await endpoints[0]!.call("signal-probe")) throw new Error("UDP address change interrupted TCP signaling");
+        }
         setFault("none");
         result.restoredCounters = counters();
         const restoredProbe = await endpoints[faultIndex]!.call<ProbeResult>("probe");
         result.restoredCalibration = restoredProbe;
         checkCalibration(before, restoredProbe, "none");
+        if (scenario.remap && restoredProbe.mappings.some(mapping => mapping.address !== network.publicIP(faultIndex))) throw new Error("UDP mappings retained the old public address");
         stage("recovery");
         const restoredAt = performance.now(); let recovered = false;
         while (performance.now() - restoredAt < 60_000) {
@@ -225,7 +234,7 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
         await delay(3000, undefined, { signal });
         const { viewer: recoveredNext } = await sampleAll();
         checkContinuity(recoveredFirst, recoveredNext);
-        mediaWindows.push({ name: "recovered", startMs: recoveredStart, endMs: Date.now() });
+        mediaWindows.push({ name: "recovered", startMs: recoveredStart, endMs: Date.now(), addresses: addresses() });
         if (scenario.fault === "signaling" && !await endpoints[0]!.call("signal-probe")) throw new Error("Signaling roundtrip did not recover");
       }
     }
@@ -272,7 +281,7 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
       result.mediaWindows = [];
       for (const window of mediaWindows) {
         const selected = await readPacketFlows(pcapPath, window);
-        proveMedia(selected);
+        proveMedia(selected, window.addresses);
         (result.mediaWindows as unknown[]).push({ ...window, flows: selected });
       }
     } catch (error) { result.captureError = String(error); result.passed = false; }
@@ -299,27 +308,32 @@ async function main(): Promise<void> {
   if (!process.env.CHROME_PATH) throw new Error("CHROME_PATH is required");
   if (values.negative && !["missing-fault", "frozen-picture", "partial-setup"].includes(values.negative)) throw new Error("Unknown negative control");
   const repeat = Number(values.repeat), seed = Number(values.seed);
-  if (!Number.isInteger(repeat) || repeat < 1 || repeat > 20 || !Number.isInteger(seed) || seed < 1 || seed > 0xffff_ffff) throw new Error("Invalid repeat (1..20) or seed (uint32)");
-  for (const tool of ["ip", "tc", "nft", "sysctl", "tcpdump"]) command("which", [tool]);
+  if (!Number.isInteger(repeat) || repeat < 1 || repeat > 20 || !Number.isInteger(seed) || seed < 1 || seed + repeat - 1 > 0xffff_ffff) throw new Error("Invalid repeat (1..20) or seed (uint32)");
+  if (!["on", "off", "compare"].includes(values.prediction!)) throw new Error("Prediction must be on, off or compare");
+  for (const tool of ["ip", "tc", "nft", "sysctl", "tcpdump", ...(selected.some(scenario => scenario.remap) ? ["conntrack"] : [])]) command("which", [tool]);
   const output = resolve("build/network-lab/results", new Date().toISOString().replaceAll(/[:.]/g, "-"));
   await mkdir(output, { recursive: true });
   process.stdout.write(JSON.stringify({ report: output }) + "\n");
   const identity = { revision: command("git", ["rev-parse", "HEAD"]), kernel: command("uname", ["-a"]),
-    node: process.version, iproute: command("ip", ["-Version"]), tc: command("tc", ["-Version"]), nftables: command("nft", ["--version"]), selected, repeat, seed };
+    node: process.version, iproute: command("ip", ["-Version"]), tc: command("tc", ["-Version"]), nftables: command("nft", ["--version"]), selected, repeat, seed, prediction: values.prediction };
   await writeFile(join(output, "environment.json"), JSON.stringify(identity, null, 2) + "\n");
-  const results: Array<Record<string, unknown>> = [];
+  const results: Array<TrialSummary & Record<string, unknown>> = [];
   const controller = new AbortController();
   const interrupted = () => controller.abort(new Error("Laboratory run cancelled"));
   process.once("SIGINT", interrupted); process.once("SIGTERM", interrupted);
   for (let iteration = 0; iteration < repeat; iteration++) for (const scenario of selected) {
-    if (controller.signal.aborted) break;
-    const directory = join(output, `${scenario.id}-${iteration + 1}`); await mkdir(directory);
-    process.stdout.write(JSON.stringify({ starting: scenario.id, iteration: iteration + 1 }) + "\n");
-    const result = await runCase(scenario, seed + iteration, directory, controller.signal); results.push(result);
-    process.stdout.write(JSON.stringify({ case: scenario.id, passed: result.passed, stage: result.stage, error: result.error }) + "\n");
+    const variants = values.prediction === "compare" ? (iteration % 2 === 0 ? [false, true] : [true, false]) : [values.prediction === "on"];
+    for (const prediction of variants) {
+      if (controller.signal.aborted) break;
+      const directory = join(output, `${scenario.id}-${iteration + 1}-${prediction ? "on" : "off"}`); await mkdir(directory);
+      process.stdout.write(JSON.stringify({ starting: scenario.id, iteration: iteration + 1, prediction }) + "\n");
+      const result = await runCase(scenario, seed + iteration, prediction, directory, controller.signal); results.push(result);
+      process.stdout.write(JSON.stringify({ case: scenario.id, passed: result.passed, stage: result.stage, error: result.error, prediction }) + "\n");
+    }
   }
   process.off("SIGINT", interrupted); process.off("SIGTERM", interrupted);
   await writeFile(join(output, "summary.json"), JSON.stringify(results.map(({ samples: _samples, ...result }) => result), null, 2) + "\n");
+  await writeFile(join(output, "distributions.json"), JSON.stringify(summarizeTrials(results), null, 2) + "\n");
   if (controller.signal.aborted || results.some(result => result.passed !== true)) process.exitCode = 1;
 }
 

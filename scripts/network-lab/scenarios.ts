@@ -15,6 +15,40 @@ export interface Scenario {
   faultEndpoint?: 0 | 1;
   direction?: "uplink" | "downlink";
   sibling?: boolean;
+  remap?: boolean;
+}
+
+export interface TrialSummary {
+  scenario: Scenario;
+  seed: number;
+  prediction: boolean;
+  passed: boolean;
+  outcome?: "media" | "unavailable" | "timeout";
+  firstPictureMs?: number | null;
+  recoveryMs?: number | null;
+}
+
+export function summarizeTrials(trials: readonly TrialSummary[]) {
+  const groups = new Map<string, TrialSummary[]>();
+  for (const trial of trials) {
+    const key = JSON.stringify([trial.scenario.id, trial.prediction]);
+    const group = groups.get(key) ?? []; group.push(trial); groups.set(key, group);
+  }
+  const distribution = (values: number[]) => {
+    values.sort((a, b) => a - b);
+    return { count: values.length, min: values[0] ?? null, median: values[Math.ceil(values.length / 2) - 1] ?? null,
+      p95: values[Math.ceil(values.length * 0.95) - 1] ?? null, max: values.at(-1) ?? null };
+  };
+  return [...groups.values()].map(group => ({
+    scenario: group[0]!.scenario.id, prediction: group[0]!.prediction, trials: group.length,
+    checksPassed: group.filter(trial => trial.passed).length,
+    failures: group.filter(trial => !trial.passed).length,
+    media: group.filter(trial => trial.passed && trial.outcome === "media").length,
+    unavailable: group.filter(trial => trial.outcome === "unavailable").length,
+    timeouts: group.filter(trial => trial.outcome === "timeout").length,
+    firstPictureMs: distribution(group.flatMap(trial => trial.passed && typeof trial.firstPictureMs === "number" ? [trial.firstPictureMs] : [])),
+    recoveryMs: distribution(group.flatMap(trial => trial.passed && typeof trial.recoveryMs === "number" ? [trial.recoveryMs] : [])),
+  }));
 }
 
 const baseline = { nat: ["preserve", "preserve"], fault: "none", sfu: false, expected: "media" } as const;
@@ -37,6 +71,8 @@ export const scenarios: readonly Scenario[] = [
   { ...baseline, id: "ipv6-app", host: "app", viewer: "app", ipv6: true, fault: "peer-block" },
   { ...baseline, id: "healthy-sibling", host: "browser", viewer: "browser", sibling: true,
     fault: "rate", faultEndpoint: 1, direction: "downlink", duringShare: true },
+  { ...baseline, id: "remap-browser", host: "browser", viewer: "browser", fault: "udp-block", duringShare: true, remap: true },
+  { ...baseline, id: "remap-app", host: "app", viewer: "app", fault: "udp-block", duringShare: true, remap: true },
 ];
 
 export function selectScenarios(suite: string, names?: string): Scenario[] {
