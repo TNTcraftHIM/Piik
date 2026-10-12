@@ -6,6 +6,7 @@ import type {
   QualitySettings,
   SignalPayload,
   SfuSignalMessage,
+  PunchPrediction,
 } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import {
@@ -35,6 +36,8 @@ import {
   sourceListResponseSchema,
   microphoneListResponseSchema,
   sourcePreviewResponseSchema,
+  punchPreparedResponseSchema,
+  punchCompleteResponseSchema,
   type NativeAdapter,
   type NativeClientEvent,
   type NativeHealth,
@@ -395,12 +398,14 @@ export class NativeClient {
     connectionId: string,
     iceConfig: IceConfig,
     sourceConnectionId?: string,
+    punched = false,
   ): Promise<RTCSessionDescriptionInit> {
     const response = await this.request(
       "prepare-edge",
       {
         shareId,
         connectionId,
+        ...(punched ? { punched: true } : {}),
         ...(sourceConnectionId ? { sourceConnectionId } : {}),
         iceServers: iceConfig.iceServers.map((server) => ({
           urls: Array.isArray(server.urls) ? server.urls : [server.urls],
@@ -415,6 +420,24 @@ export class NativeClient {
       throw new Error("Native edge identity changed");
     }
     return { type: "offer", sdp: response.sdp };
+  }
+
+  async preparePunch(shareId: string, connectionId: string, iceConfig: IceConfig,
+    secret: string, edgeCapacity: number, sourceConnectionId?: string): Promise<PunchPrediction | null> {
+    const response = await this.request("prepare-punch", {
+      shareId, connectionId, secret, edgeCapacity,
+      ...(sourceConnectionId ? { sourceConnectionId } : {}),
+      iceServers: iceConfig.iceServers.map(server => ({ urls: Array.isArray(server.urls) ? server.urls : [server.urls] })),
+    }, punchPreparedResponseSchema);
+    return response.prediction;
+  }
+
+  async runPunch(shareId: string, connectionId: string, prediction: PunchPrediction): Promise<boolean> {
+    return (await this.request("run-punch", { shareId, connectionId, prediction }, punchCompleteResponseSchema)).connected;
+  }
+
+  async closePunch(shareId: string, connectionId: string): Promise<void> {
+    await this.request("close-punch", { shareId, connectionId }, nativeAckResponseSchema);
   }
 
   async preparePublication(
@@ -551,6 +574,7 @@ export class NativeClient {
     offer: RTCSessionDescriptionInit,
     iceConfig: IceConfig,
     edgeCapacity: number,
+    punched = false,
   ): Promise<{
     answer: { type: "answer"; sdp: string };
     audio: boolean;
@@ -567,6 +591,7 @@ export class NativeClient {
         connectionId,
         ...(this.health.nativeMedia.receiverReuse ? { reuseReceiver: true } : {}),
         edgeCapacity,
+        ...(punched ? { punched: true } : {}),
         iceServers: iceConfig.iceServers.map((server) => ({
           urls: Array.isArray(server.urls) ? server.urls : [server.urls],
         })),
@@ -618,7 +643,7 @@ export class NativeClient {
     payload: SignalPayload,
     offerId?: string,
   ): Promise<void> {
-    if (payload.connectionId !== connectionId) return;
+    if (payload.connectionId !== connectionId || payload.kind === "punch") return;
     if (payload.kind === "description") {
       if (payload.description.type !== "answer") return;
       await this.request(

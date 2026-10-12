@@ -67,6 +67,21 @@ connection acquisition reuses the route controller's existing opportunity ledger
    recovery follows the normal route-failed path. A prepared candidate remains owned by the route
    operation and is reported failed to that operation instead of starting a
    separate ICE-restart loop.
+6. In the 2.0 candidate, a server-issued retry (never the first attempt) may
+   prepare an authenticated Native socket at both ends before creating its one
+   PeerConnection. It reuses the current peer/session/connection authorization
+   and the same share switch; Browser peers decline immediately. Each Engine
+   permits one preparation: an ordered three-destination observation, then at
+   most eight temporary sockets aimed at one bounded sequential-port estimate,
+   with at most 64 requests and 64 authenticated replies. The observation socket
+   closes before those sockets open. The page waits at most 3.5 seconds; the App
+   expires unconsumed work after five seconds. Mutual success and the existing
+   SDP offer commit one proved socket and peer tuple to Pion. Other sockets and
+   workers retire before reuse. Missing observations or unsuccessful preparation
+   resume ordinary ICE within that same route operation; a lost commit fails
+   only that operation. No route deadline, copy capacity or media protocol is
+   replaced. This is a bounded Native extension, not a Magicsock tunnel or a
+   mechanism for random-port NATs or blocked UDP.
 
 ## Consequences
 
@@ -74,8 +89,8 @@ Positive:
 
 - Sites with their own listeners and self-contained public-link Apps can use
   the same bounded mechanism while pure Browser/LAN operation stays unchanged;
-- normal ICE remains immediately available, so an unavailable auxiliary STUN
-  listener or unsuccessful prediction cannot delay direct or SFU fallback;
+- the first ordinary ICE attempt remains immediately available; optional Native
+  preparation occupies only part of an existing retry's unchanged deadline;
 - prediction is bounded to one connection generation and one small candidate
   set; and
 - selected-foundation attribution can validate actual field benefit without

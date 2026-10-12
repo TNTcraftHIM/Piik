@@ -761,6 +761,7 @@ export function ViewerPage({
                         };
                       },
                     },
+                    (candidate?.connectionAttempt?.current ?? 1) > 1,
                   ),
           }
         : null;

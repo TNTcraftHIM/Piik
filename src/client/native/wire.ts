@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { sfuMediaSchema, positiveUint32Schema, qualityResolutionSchema,
+import { sfuMediaSchema, positiveUint32Schema, qualityResolutionSchema, punchPredictionSchema,
   nullableSafeEvidenceNumber, nullableSafeEvidenceInteger } from "../../shared/protocol";
 
 export const NATIVE_CLIENT_PROTOCOL = 10;
@@ -125,6 +125,13 @@ const responseBase = {
   id: opaqueIdentifierSchema,
 };
 
+export const punchPreparedResponseSchema = z.object({
+  ...responseBase, type: z.literal("punch-prepared"), prediction: punchPredictionSchema.nullable(),
+}).strict();
+export const punchCompleteResponseSchema = z.object({
+  ...responseBase, type: z.literal("punch-complete"), connected: z.boolean(),
+}).strict();
+
 const nativeVideoCodecSchema = z.enum(["h264", "vp8"]);
 export type NativeVideoCodec = z.infer<typeof nativeVideoCodecSchema>;
 
@@ -242,6 +249,7 @@ export const nativeAckResponseSchema = z
       "edge-answer-accepted",
       "edge-candidate-accepted",
       "edge-closed",
+	  "punch-closed",
       "receive-candidate-accepted",
       "receiver-closed",
       "receive-stopped",

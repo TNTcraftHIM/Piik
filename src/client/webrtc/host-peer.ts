@@ -436,7 +436,7 @@ export class HostPeer {
   }
 
   async acceptSignal(payload: SignalPayload): Promise<void> {
-    if (this.disposed || payload.connectionId !== this.connectionId) {
+    if (this.disposed || payload.connectionId !== this.connectionId || payload.kind === "punch") {
       return;
     }
 

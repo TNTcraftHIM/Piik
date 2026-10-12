@@ -60,6 +60,8 @@ type outboundMediaSession interface {
 	SetAnswer(string, webrtc.SessionDescription, string) error
 	AddCandidate(string, *webrtc.ICECandidateInit) error
 	CloseEdge(string)
+	Punch(string) *mediaedge.PunchPreparation
+	ClosePunch(string)
 }
 
 func New(
@@ -109,6 +111,10 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		}
 	}()
 	switch envelope.Type {
+	case "prepare-punch", "run-punch", "close-punch":
+		result, returnedErr = session.handlePunch(envelope, payload, complete)
+		asynchronous = result == nil && returnedErr == nil
+		return result, returnedErr
 	case "prepare-publication", "publication-media", "publication-answer", "publication-candidate", "publication-layers", "close-publication":
 		return session.handlePublication(envelope, payload)
 	case "capture-options":
@@ -675,13 +681,14 @@ func (session *Session) prepareEdge(
 	}
 	var offer webrtc.SessionDescription
 	if host := session.current(request.ShareID); host != nil && request.SourceConnectionID == "" {
-		offer, err = host.PrepareEdge(request.ConnectionID, servers)
+		offer, err = host.PrepareEdge(request.ConnectionID, servers, request.Punched)
 	} else if viewer := session.currentViewer(request.ShareID); viewer != nil &&
 		identityPattern.MatchString(request.SourceConnectionID) {
 		offer, err = viewer.PrepareEdge(
 			request.SourceConnectionID,
 			request.ConnectionID,
 			servers,
+			request.Punched,
 		)
 	} else {
 		return nil, errors.New("native media source does not exist")
@@ -743,6 +750,7 @@ func (session *Session) receiveOffer(
 		webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: request.SDP},
 		servers,
 		request.ReuseReceiver,
+		request.Punched,
 	)
 	if err != nil {
 		return nil, err

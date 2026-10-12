@@ -176,17 +176,16 @@ experiments and their limits.
 
 ## Next: P2P Connection And Feedback Evidence
 
-- [ ] **Coordinated Native socket adoption without delaying ordinary ICE.**
-  The isolated eight-socket Go experiment now carries bidirectional authenticated
-  SRTP and feedback under bounded sequential-NAT interference. Complete the
-  optional two-App integration assessment against Piik's actual trickle timing,
+- [ ] **Coordinated Native retry acceptance.**
+  The optional two-App preparation is integrated into the existing retry owner;
+  production Engine virtual-network checks carry media and reverse feedback.
+  Complete candidate signaling, decoded-picture and retirement acceptance,
   following the
   [assessment](./research/nat-traversal.md#coordinated-native-punching-assessment).
-  Pion's WebRTC API has no late-socket adoption surface; do not replace that
-  boundary with a second route/retry owner or stall ordinary Browser peers.
-  Verify real signaling skew, decoded media, generation retirement and field
-  benefit before admission. Random-port overlap remains separate and unproven;
-  keep this prototype outside the candidate while integration is unresolved.
+  Preserve the first ordinary attempt, immediate Browser decline and fixed
+  operation deadlines. The owner will arrange a small difficult-network beta
+  after packaging; compare the same peers with the share's enhancement switch
+  enabled/disabled. Random-port overlap remains separate and unproven.
 
 For the transport assessment, measure connection success, time to first picture and
 failure causes on representative networks, especially App and P2P-only sites.

@@ -44,6 +44,7 @@ export class NativeSenderPeer implements HostMediaPeer {
     events: NativeSenderPeerEvents,
     codec: NativeVideoCodec,
     private readonly source?: NativeSenderSource,
+    retry = false,
   ) {
     this.connectionId = connectionId;
     this.snapshot = {
@@ -139,6 +140,7 @@ export class NativeSenderPeer implements HostMediaPeer {
         },
       },
       this.source?.connectionId,
+      retry,
     );
     this.events = events;
   }

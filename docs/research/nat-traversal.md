@@ -392,7 +392,7 @@ The October 12, 2026 scope includes optional Native transport at both ends when
 it provides a measured gain. Background App availability makes this usable;
 ordinary Browser peers must retain their existing connection path.
 
-The current adapter already predicts on both ends of an eligible edge, but each
+The ordinary adapter already predicts on both ends of an eligible edge, but each
 end independently supplies at most eight adjacent candidates from one media
 socket. It does not coordinate probing order or open a pool of local sockets.
 Completing the ordinary-ICE and Magicsock controls therefore does not establish
@@ -442,19 +442,26 @@ trickle. The payload is synthetic RTP, not a decoded picture. Random allocation,
 real signaling delay, first-picture latency, Browser interoperation and actual
 Piik operation retirement still need acceptance before product adoption.
 
-A future adapter should feed the existing connection's ICE owner, preserving
-ordinary candidate timing, instead of adding another media tunnel or route
-controller. Socket adoption through supported Pion APIs is an open integration
-question: Pion's WebRTC API does not expose ICE's `AddVirtualCandidate`, and
-`MultiUDPMux` starts ordinary checks on its preallocated sockets without providing
-coordinated ordering or loser removal. Delaying ordinary ICE to reproduce the
-fixture's barrier is not an accepted integration. Scope any extra work to the
-authorized peer and connection generation,
-bound sockets/packets/time, and retire losers on success, cancellation or
-revocation. Mapping observations must not become persistent NAT labels or skip
-ordinary paths. Random-port overlap assumptions do not establish a solution for
-two independently random endpoint-dependent NATs or a network that blocks UDP.
-No new product transport, probing budget or success-rate claim is accepted here.
+The 2.0 candidate now adopts the winning socket before constructing Pion, only
+on an existing server-issued retry. Pion's WebRTC API does not expose ICE's
+`AddVirtualCandidate`; this avoids a private late-socket API, a second route
+owner and a delay to the first ordinary attempt. Browser peers decline this
+Native preparation and continue ordinary ICE. The authorized phases and resource
+bounds are owned by [ADR-0009](../adr/0009-optional-nat-prediction.md).
+
+The production Engine's virtual-network regression carries VP8 SRTP into its
+actual Receiver and returns SRTCP key-frame feedback after socket transfer,
+including 250 ms of peer-start skew. It retains the proved remote tuple rather
+than replacing it with a later, destination-dependent STUN mapping. Other
+controls cover early/late cancellation, source/Engine retirement, premature
+commit, resource limits, stale signaling and Browser decline. These establish
+bounded composition, not a physical difficult-network success-rate improvement.
+The candidate's send window is 800 ms within a 1.1-second hard bound; the earlier
+isolated experiment's shorter window is not its product timing.
+
+Real signaling, decoded-picture acceptance and cross-device checks remain part
+of candidate acceptance. Random-port overlap assumptions do not establish a
+solution for two independently random endpoint-dependent NATs or blocked UDP.
 
 ### Browser-Compatible Follow-Up
 

@@ -324,12 +324,29 @@ const iceCandidateSchema = z
   })
   .strict();
 
+export const punchPredictionSchema = z.object({
+  address: z.ipv4(),
+  port: z.number().int().min(1024).max(65535),
+  step: z.number().int().min(1).max(16),
+}).strict().refine(({ port, step }) => port + 4 * step <= 65535);
+export type PunchPrediction = z.infer<typeof punchPredictionSchema>;
+
+export const punchSignalSchema = z.discriminatedUnion("phase", [
+  z.object({ phase: z.literal("prepare"), secret: z.string().regex(/^[0-9a-f]{64}$/) }).strict(),
+  z.object({ phase: z.literal("ready"), prediction: punchPredictionSchema.optional() }).strict(),
+  z.object({ phase: z.literal("start"), prediction: punchPredictionSchema }).strict(),
+  z.object({ phase: z.literal("complete"), connected: z.boolean() }).strict(),
+]);
+export type PunchSignal = z.infer<typeof punchSignalSchema>;
+
 export const signalPayloadSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("punch"), connectionId: opaqueIdSchema, punch: punchSignalSchema }).strict(),
   z
     .object({
       kind: z.literal("description"),
       connectionId: opaqueIdSchema,
       description: sessionDescriptionSchema,
+      punched: z.literal(true).optional(),
     })
     .strict(),
   z

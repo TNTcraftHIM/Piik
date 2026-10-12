@@ -39,7 +39,7 @@ func TestOfferReuseKeepsSourceAndChildOwnership(t *testing.T) {
 		t.Cleanup(func() { _ = session.Close() })
 		for _, audio := range []bool{false, true, false} {
 			input := offer(audio)
-			result, err := session.AcceptOffer("upstream", input, nil, reuse)
+			result, err := session.AcceptOffer("upstream", input, nil, reuse, false)
 			if err != nil || result.Reused || result.Audio != audio {
 				t.Fatalf("new media shape: %+v, %v", result, err)
 			}
@@ -51,7 +51,7 @@ func TestOfferReuseKeepsSourceAndChildOwnership(t *testing.T) {
 				t.Fatal(err)
 			}
 			child := session.edge("local-playback")
-			result, err = session.AcceptOffer("upstream", input, nil, reuse)
+			result, err = session.AcceptOffer("upstream", input, nil, reuse, false)
 			if err != nil || result.Reused != reuse {
 				t.Fatalf("repeat offer: %+v, %v", result, err)
 			}
@@ -106,31 +106,31 @@ func TestReceiverCapacityPreservesCurrentAndPreparedSources(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = session.Close() })
 	for _, id := range []string{"active", "candidate"} {
-		if _, err = session.AcceptOffer(id, offer, nil, false); err != nil {
+		if _, err = session.AcceptOffer(id, offer, nil, false, false); err != nil {
 			t.Fatal(err)
 		}
 	}
 	active, candidate := session.receiver("active"), session.receiver("candidate")
-	if _, err = session.AcceptOffer("excess", offer, nil, false); err == nil {
+	if _, err = session.AcceptOffer("excess", offer, nil, false, false); err == nil {
 		t.Fatal("a third receiver bypassed the active/candidate bound")
 	}
 	if session.receiver("active") != active || session.receiver("candidate") != candidate || session.receiver("excess") != nil {
 		t.Fatal("capacity rejection changed an existing receiver")
 	}
-	if result, err := session.AcceptOffer("active", offer, nil, true); err != nil || !result.Reused {
+	if result, err := session.AcceptOffer("active", offer, nil, true, false); err != nil || !result.Reused {
 		t.Fatalf("existing receiver could not renegotiate at capacity: %v", err)
 	}
 	if _, err = session.PrepareLocalEdge("active", "local-preview", "preview-offer", false); err != nil {
 		t.Fatalf("capacity rejection stopped local playback preparation: %v", err)
 	}
-	if _, err = session.AcceptOffer("candidate", offer, nil, false); err != nil {
+	if _, err = session.AcceptOffer("candidate", offer, nil, false, false); err != nil {
 		t.Fatalf("existing receiver could not be replaced at capacity: %v", err)
 	}
 	if session.receiver("active") != active || session.receiver("candidate") == candidate || session.edge("local-preview") == nil {
 		t.Fatal("receiver replacement changed the active source or its playback")
 	}
 	session.CloseReceiver("candidate")
-	if _, err = session.AcceptOffer("replacement", offer, nil, false); err != nil {
+	if _, err = session.AcceptOffer("replacement", offer, nil, false, false); err != nil {
 		t.Fatalf("retired receiver did not release its slot: %v", err)
 	}
 }

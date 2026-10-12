@@ -29,6 +29,7 @@ type EdgeOptions struct {
 	ICEServers   []webrtc.ICEServer
 	Audio        *AudioSource
 	Local        bool
+	Punched      bool
 	Events       EdgeEvents
 }
 
@@ -74,7 +75,18 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (_ *Edge, err
 			return nil, err
 		}
 	}
-	socket, err := engine.newICESocket(options.ICEServers, !options.Local)
+	var socket *iceSocket
+	if options.Punched && !options.Local {
+		connection := engine.TakePunchedSocket(options.ConnectionID, source)
+		if connection == nil {
+			err = errors.New("prepared connection is unavailable")
+		} else {
+			socket, err = engine.adoptICESocket(connection, options.ICEServers, true)
+		}
+	} else {
+		engine.ClosePunch(options.ConnectionID)
+		socket, err = engine.newICESocket(options.ICEServers, !options.Local)
+	}
 	if err != nil {
 		source.releaseReservation(options.Local)
 		if options.Audio != nil {
@@ -311,6 +323,9 @@ func (edge *Edge) SetAnswer(answer webrtc.SessionDescription, offerID string) er
 		}
 	}
 	if err := edge.connection.SetRemoteDescription(answer); err != nil {
+		return err
+	}
+	if err := edge.socket.addPunchedPeer(edge.connection); err != nil {
 		return err
 	}
 	edge.mu.Lock()

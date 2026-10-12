@@ -67,6 +67,7 @@ type Engine struct {
 	publications map[*Publication]struct{}
 	sockets      map[*iceSocket]struct{}
 	closed       bool
+	punch        *PunchPreparation
 }
 
 func NewEngine(options EngineOptions) (*Engine, error) {
@@ -229,6 +230,7 @@ func (engine *Engine) Close() error {
 		sockets = append(sockets, socket)
 	}
 	engine.mu.Unlock()
+	engine.ClosePunch("")
 	closeEdges(edges)
 	for _, publication := range publications {
 		_ = publication.Close()

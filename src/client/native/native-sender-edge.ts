@@ -7,16 +7,18 @@ import {
   type SignalCandidate,
 } from "../webrtc/nat-prediction";
 import type { NativeClientEvent } from "./wire";
+import { NativePunchSender, punchIceConfig, type NativePunchControl } from "./native-punch";
 
 const MAX_PENDING_CANDIDATES = 64;
 
-export interface NativeEdgeControl {
+export interface NativeEdgeControl extends NativePunchControl {
   updateShare(shareId: string, profile: QualitySettings): Promise<void>;
   prepareEdge(
     shareId: string,
     connectionId: string,
     iceConfig: IceConfig,
     sourceConnectionId?: string,
+    punched?: boolean,
   ): Promise<RTCSessionDescriptionInit>;
   acceptSignal(
     shareId: string,
@@ -48,6 +50,7 @@ export class NativeSenderEdge {
   private offerSent = false;
   private disposed = false;
   private connected = false;
+  private punch: NativePunchSender | null = null;
 
   constructor(
     readonly peerId: string,
@@ -58,6 +61,7 @@ export class NativeSenderEdge {
     private readonly control: NativeEdgeControl,
     private readonly events: NativeSenderEdgeEvents,
     private readonly sourceConnectionId?: string,
+    private readonly retry = false,
   ) {
     const predictionEnabled =
       natPredictionEnabled &&
@@ -84,12 +88,23 @@ export class NativeSenderEdge {
     if (this.disposed || this.unsubscribe) return false;
     this.unsubscribe = this.control.onEvent((event) => this.onEvent(event));
     try {
+      let punched = false;
+      const survey = this.retry && this.localIceCandidates ? punchIceConfig(this.iceConfig) : null;
+      if (survey) {
+        this.punch = new NativePunchSender(this.control, this.shareId, this.connectionId, survey,
+          payload => this.events.sendSignal(this.peerId, payload), this.sourceConnectionId);
+        punched = await this.punch.start();
+        if (this.disposed) return false;
+      }
       const offer = await this.control.prepareEdge(
         this.shareId,
         this.connectionId,
         this.iceConfig,
         this.sourceConnectionId,
+        punched,
       );
+      this.punch?.dispose();
+      this.punch = null;
       if (
         this.disposed ||
         offer.type !== "offer" ||
@@ -98,6 +113,7 @@ export class NativeSenderEdge {
           kind: "description",
           connectionId: this.connectionId,
           description: { type: "offer", sdp: offer.sdp },
+          ...(punched ? { punched: true } : {}),
         })
       ) {
         this.dispose();
@@ -116,6 +132,10 @@ export class NativeSenderEdge {
 
   async acceptSignal(payload: SignalPayload): Promise<void> {
     if (this.disposed || payload.connectionId !== this.connectionId) return;
+    if (payload.kind === "punch") {
+      this.punch?.accept(payload.punch);
+      return;
+    }
     await this.control.acceptSignal(
       this.shareId,
       this.connectionId,
@@ -131,6 +151,8 @@ export class NativeSenderEdge {
     if (this.disposed) return;
     this.disposed = true;
     this.connected = false;
+    this.punch?.dispose();
+    this.punch = null;
     this.pendingCandidates.length = 0;
     this.localIceCandidates?.discard();
     this.unsubscribe?.();

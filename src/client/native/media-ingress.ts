@@ -124,6 +124,7 @@ export class NativeMediaIngress {
   }
 
   private async sendSignal(payload: SignalPayload): Promise<void> {
+    if (payload.kind === "punch") return;
     if (payload.kind === "candidate") {
       if (!this.receiverReady) {
         if (this.pendingCandidates.length >= MAX_PENDING_CANDIDATES) throw new Error("Native candidate queue is full");

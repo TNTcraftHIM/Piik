@@ -120,6 +120,7 @@ func (session *Session) AcceptOffer(
 	offer webrtc.SessionDescription,
 	iceServers []webrtc.ICEServer,
 	reuse bool,
+	punched bool,
 ) (OfferResult, error) {
 	if connectionID == "" || len(connectionID) > 256 {
 		return OfferResult{}, errors.New("native Viewer receiver identity is invalid")
@@ -144,12 +145,20 @@ func (session *Session) AcceptOffer(
 			return OfferResult{Answer: answer, Audio: receiver.HasAudio(), Codec: receiver.Codec(), Reused: true}, nil
 		}
 	}
+	var punchedSocket *mediaedge.PunchedSocket
+	if punched {
+		punchedSocket = session.engine.TakePunchedSocket(connectionID, nil)
+		if punchedSocket == nil {
+			return OfferResult{}, errors.New("prepared connection is unavailable")
+		}
+	}
 	session.CloseReceiver(connectionID)
 	receiver, answer, err := session.engine.NewReceiver(mediaedge.ReceiverOptions{
-		Offer:        offer,
-		ICEServers:   iceServers,
-		EdgeCapacity: session.edgeCapacity,
-		Relay:        session.relay,
+		Offer:         offer,
+		ICEServers:    iceServers,
+		EdgeCapacity:  session.edgeCapacity,
+		Relay:         session.relay,
+		PunchedSocket: punchedSocket,
 		Events: mediaedge.ReceiverEvents{
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit, current func() bool) {
 				session.emit(Event{
@@ -224,15 +233,16 @@ func (session *Session) PrepareLocalEdge(
 		}
 		return current.edge.CreateLocalOffer(session.ctx, offerID, true)
 	}
-	return session.prepareEdge(sourceConnectionID, connectionID, nil, offerID)
+	return session.prepareEdge(sourceConnectionID, connectionID, nil, offerID, false)
 }
 
 func (session *Session) PrepareEdge(
 	sourceConnectionID string,
 	connectionID string,
 	iceServers []webrtc.ICEServer,
+	punched bool,
 ) (webrtc.SessionDescription, error) {
-	return session.prepareEdge(sourceConnectionID, connectionID, iceServers, "")
+	return session.prepareEdge(sourceConnectionID, connectionID, iceServers, "", punched)
 }
 
 func (session *Session) prepareEdge(
@@ -240,6 +250,7 @@ func (session *Session) prepareEdge(
 	connectionID string,
 	iceServers []webrtc.ICEServer,
 	localOfferID string,
+	punched bool,
 ) (webrtc.SessionDescription, error) {
 	local := localOfferID != ""
 	receiver := session.receiver(sourceConnectionID)
@@ -261,6 +272,7 @@ func (session *Session) prepareEdge(
 		ICEServers:   iceServers,
 		Audio:        receiver.AudioSource(),
 		Local:        local,
+		Punched:      punched,
 		Events: mediaedge.EdgeEvents{
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
 				session.emit(Event{
@@ -329,6 +341,7 @@ func (session *Session) AddCandidate(connectionID string, candidate *webrtc.ICEC
 }
 
 func (session *Session) CloseReceiver(connectionID string) {
+	session.engine.ClosePunch(connectionID)
 	session.mu.Lock()
 	receiver := session.receivers[connectionID]
 	delete(session.receivers, connectionID)
@@ -349,6 +362,7 @@ func (session *Session) CloseReceiver(connectionID string) {
 }
 
 func (session *Session) CloseEdge(connectionID string) {
+	session.engine.ClosePunch(connectionID)
 	session.mu.Lock()
 	edge := session.edges[connectionID].edge
 	delete(session.edges, connectionID)

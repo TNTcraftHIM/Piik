@@ -128,6 +128,12 @@ export class ViewerPeer implements ViewerMediaPeer {
     if (this.disposed) {
       return;
     }
+    if (payload.kind === "punch") {
+      if (payload.punch.phase === "prepare") this.events.sendSignal(parentPeerId, {
+        kind: "punch", connectionId: payload.connectionId, punch: { phase: "ready" },
+      });
+      return;
+    }
     if (payload.kind === "description") {
       if (payload.description.type !== "offer") {
         return;

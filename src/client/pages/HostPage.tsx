@@ -2107,6 +2107,7 @@ export function HostPage({
                 events,
                 videoCodecRef.current.primary,
                 nativeMediaIngressRef.current?.source,
+                (candidate.connectionAttempt?.current ?? 1) > 1,
               );
             }
           : undefined,
@@ -2178,7 +2179,7 @@ export function HostPage({
     const peerEvents: {
       sendSignal: (
         targetPeerId: string,
-        payload: Extract<SignalPayload, { kind: "description" | "candidate" }>,
+        payload: SignalPayload,
       ) => boolean;
       onUpdate: (snapshot: PeerSnapshot) => void;
     } = {

@@ -3,6 +3,7 @@ package mediaedge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -32,6 +33,7 @@ type iceSocket struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	closeOnce   sync.Once
+	punchedPeer *net.UDPAddr
 }
 
 func (engine *Engine) newICESocket(servers []webrtc.ICEServer, mapping bool) (*iceSocket, error) {
@@ -41,6 +43,12 @@ func (engine *Engine) newICESocket(servers []webrtc.ICEServer, mapping bool) (*i
 	if err != nil {
 		return nil, errors.New("native media UDP socket is unavailable")
 	}
+	return engine.adoptICESocket(connection, servers, mapping)
+}
+
+// Adoption happens before the one PeerConnection is constructed. Discovery and
+// media then keep this exact socket, including any authenticated punched tuple.
+func (engine *Engine) adoptICESocket(connection net.PacketConn, servers []webrtc.ICEServer, mapping bool) (*iceSocket, error) {
 	ctx, cancel := context.WithCancel(engine.ctx)
 	socket := &iceSocket{
 		engine: engine, ctx: ctx, cancel: cancel,
@@ -48,6 +56,9 @@ func (engine *Engine) newICESocket(servers []webrtc.ICEServer, mapping bool) (*i
 		mux: forwarding.NewUDPMux(ice.UDPMuxParams{
 			Logger: diagnostics.PionLoggerFactory().NewLogger("piik-ice"), UDPConn: connection,
 		}),
+	}
+	if prepared, ok := connection.(*PunchedSocket); ok {
+		socket.punchedPeer = prepared.remote
 	}
 	if engine.portMapping && mapping && len(stunServers(servers)) > 0 {
 		socket.portMapping = portmapping.Start(socket.localPort)
@@ -77,6 +88,16 @@ func (socket *iceSocket) newPeerConnection() (*webrtc.PeerConnection, error) {
 		webrtc.WithInterceptorRegistry(socket.engine.interceptors),
 		webrtc.WithSettingEngine(socket.settings()),
 	).NewPeerConnection(webrtc.Configuration{})
+}
+
+func (socket *iceSocket) addPunchedPeer(connection *webrtc.PeerConnection) error {
+	if socket.punchedPeer == nil {
+		return nil
+	}
+	mid := "0"
+	return connection.AddICECandidate(webrtc.ICECandidateInit{SDPMid: &mid,
+		Candidate: fmt.Sprintf("candidate:sp0 1 udp 1694498815 %s %d typ srflx", socket.punchedPeer.IP, socket.punchedPeer.Port),
+	})
 }
 
 func (socket *iceSocket) close() {

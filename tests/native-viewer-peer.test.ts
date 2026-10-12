@@ -16,6 +16,52 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it.each(["commit", "expired", "rpc-expired"])("scopes optional connection preparation to its route: %s", async outcome => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
+  vi.stubGlobal("RTCPeerConnection", class { close() {} });
+  vi.spyOn(NativeMediaBridge.prototype, "start").mockResolvedValue({} as MediaStream);
+  const client = {
+    preparePunch: vi.fn(async () => ({ address: "198.51.100.1", port: 40000, step: 1 })),
+    runPunch: vi.fn(async () => true), closePunch: vi.fn(async () => undefined),
+    receiveOffer: vi.fn(async () => ({ answer: { type: "answer", sdp: "answer" }, audio: false, codec: "vp8" })),
+    onEvent: () => () => {}, onClose: () => () => {},
+    closeReceiver: vi.fn(async () => {}), closeEdge: vi.fn(async () => {}),
+  } as unknown as NativeClient;
+  const unavailable = vi.fn(), exhausted = vi.fn(() => true), sent = vi.fn(() => true);
+  const peer = new NativeCapableViewerPeer({
+    iceServers: [{ urls: ["stun:site.example:3478"] }],
+    natPredictionStunUrls: ["stun:site.example:3479", "stun:site.example:3480"],
+  }, { sendSignal: sent, sendRestartRequest: () => true, onStream: () => {}, onUpdate: () => {}, onRecoveryExhausted: exhausted },
+  { natPredictionEnabled: true, recoveryOwner: "route" }, async () => client, unavailable, "session", 2);
+  const prepare: SignalPayload = { kind: "punch", connectionId: "current", punch: { phase: "prepare", secret: "42".repeat(32) } };
+  try {
+    await peer.acceptSignal("parent", prepare);
+    await vi.advanceTimersByTimeAsync(0);
+    await peer.acceptSignal("parent", { kind: "punch", connectionId: "current", punch: {
+      phase: "start", prediction: { address: "198.51.100.2", port: 50000, step: 1 },
+    } });
+    await vi.advanceTimersByTimeAsync(0);
+    if (outcome === "expired") await vi.advanceTimersByTimeAsync(3_500);
+    if (outcome === "rpc-expired") vi.mocked(client.receiveOffer).mockRejectedValueOnce(new Error("prepared socket expired"));
+    await peer.acceptSignal("parent", {
+      kind: "description", connectionId: "current", punched: true,
+      description: { type: "offer", sdp: "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 VP8/90000\r\n" },
+    });
+    expect(unavailable).not.toHaveBeenCalled();
+    if (outcome === "commit") {
+      expect(exhausted).not.toHaveBeenCalled();
+      expect(client.receiveOffer).toHaveBeenCalledWith("session", "current", expect.anything(), expect.anything(), 2, true);
+      await peer.acceptSignal("parent", prepare);
+      expect(client.preparePunch).toHaveBeenCalledOnce();
+    } else {
+      expect(exhausted).toHaveBeenCalledExactlyOnceWith("parent", "current");
+      if (outcome === "expired") expect(client.receiveOffer).not.toHaveBeenCalled();
+    }
+  } finally { peer.dispose(); }
+});
+
 it("uses the offer's STUN destinations for prediction while the next ICE config changes", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("window", globalThis);

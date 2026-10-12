@@ -54,6 +54,11 @@ share generation:
   attempts show retry 1/3, 2/3 and 3/3 on pages supporting that progress format.
   Retries use the same serial controller and normal operation deadlines;
   waiting Viewers and untried parents receive their opportunities first.
+  A retry may use bounded two-App socket preparation under ADR-0009 before its
+  one Pion connection. The first attempt and Browser-only transport stay ordinary;
+  failed optional preparation cannot disable the App for the session. Socket
+  ownership transfers only after mutual success; cancellation joins workers
+  before freeing their slot.
   It is not a participant capability, route score, or SFU preference. Candidate
   generation and selected-pair diagnostics retain only
   `ordinary | predicted | unknown` provenance.

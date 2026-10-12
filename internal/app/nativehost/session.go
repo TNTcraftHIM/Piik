@@ -234,8 +234,9 @@ func (session *Session) HasAudio() bool {
 func (session *Session) PrepareEdge(
 	connectionID string,
 	iceServers []webrtc.ICEServer,
+	punched bool,
 ) (webrtc.SessionDescription, error) {
-	return session.prepareEdge(connectionID, iceServers, "")
+	return session.prepareEdge(connectionID, iceServers, "", punched)
 }
 
 func (session *Session) PrepareLocalEdge(
@@ -249,13 +250,14 @@ func (session *Session) PrepareLocalEdge(
 		}
 		return edge.CreateLocalOffer(session.ctx, offerID, true)
 	}
-	return session.prepareEdge(connectionID, nil, offerID)
+	return session.prepareEdge(connectionID, nil, offerID, false)
 }
 
 func (session *Session) prepareEdge(
 	connectionID string,
 	iceServers []webrtc.ICEServer,
 	localOfferID string,
+	punched bool,
 ) (webrtc.SessionDescription, error) {
 	session.mu.Lock()
 	if session.closed || session.edges[connectionID] != nil {
@@ -268,6 +270,7 @@ func (session *Session) prepareEdge(
 		ICEServers:   iceServers,
 		Audio:        session.audioSource,
 		Local:        localOfferID != "",
+		Punched:      punched,
 		Events: mediaedge.EdgeEvents{
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
 				session.emit(Event{
@@ -649,6 +652,7 @@ func (session *Session) disableCaptureLayer(stream *nativecapture.Stream, layer 
 }
 
 func (session *Session) CloseEdge(connectionID string) {
+	session.engine.ClosePunch(connectionID)
 	session.mu.Lock()
 	edge := session.edges[connectionID]
 	delete(session.edges, connectionID)

@@ -116,6 +116,7 @@ type prepareEdgeRequest struct {
 	ConnectionID       string      `json:"connectionId"`
 	SourceConnectionID string      `json:"sourceConnectionId,omitempty"`
 	ICEServers         []iceServer `json:"iceServers"`
+	Punched            bool        `json:"punched,omitempty"`
 }
 
 type prepareLocalEdgeRequest struct {
@@ -138,6 +139,7 @@ type receiveOfferRequest struct {
 	ICEServers    []iceServer `json:"iceServers"`
 	SDP           string      `json:"sdp"`
 	ReuseReceiver bool        `json:"reuseReceiver,omitempty"`
+	Punched       bool        `json:"punched,omitempty"`
 }
 
 type receiveCandidateRequest struct {

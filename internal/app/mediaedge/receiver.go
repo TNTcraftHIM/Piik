@@ -28,6 +28,8 @@ type ReceiverOptions struct {
 	EdgeCapacity int
 	Events       ReceiverEvents
 	Relay        *RelayOptions
+	// A consumed preparation transfers ownership even if offer validation fails.
+	PunchedSocket *PunchedSocket
 }
 
 // Receiver owns one inbound WebRTC connection and exposes its encoded media as
@@ -51,6 +53,13 @@ type Receiver struct {
 }
 
 func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrtc.SessionDescription, err error) {
+	if options.PunchedSocket != nil {
+		defer func() {
+			if err != nil {
+				_ = options.PunchedSocket.Close()
+			}
+		}()
+	}
 	if options.Offer.Type != webrtc.SDPTypeOffer || options.Offer.SDP == "" {
 		return nil, webrtc.SessionDescription{}, errors.New("native media receiver input is invalid")
 	}
@@ -59,7 +68,12 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 		return nil, webrtc.SessionDescription{}, err
 	}
 	var prepareMapping func() int
-	socket, err := engine.newICESocket(options.ICEServers, true)
+	var socket *iceSocket
+	if options.PunchedSocket != nil {
+		socket, err = engine.adoptICESocket(options.PunchedSocket, options.ICEServers, true)
+	} else {
+		socket, err = engine.newICESocket(options.ICEServers, true)
+	}
 	if err != nil {
 		return nil, webrtc.SessionDescription{}, err
 	}
@@ -76,6 +90,10 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 		return nil, webrtc.SessionDescription{}, err
 	}
 	if err = connection.SetRemoteDescription(options.Offer); err != nil {
+		_ = connection.Close()
+		return nil, webrtc.SessionDescription{}, err
+	}
+	if err = socket.addPunchedPeer(connection); err != nil {
 		_ = connection.Close()
 		return nil, webrtc.SessionDescription{}, err
 	}

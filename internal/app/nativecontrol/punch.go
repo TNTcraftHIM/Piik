@@ -1,0 +1,109 @@
+package nativecontrol
+
+import (
+	"encoding/hex"
+	"errors"
+
+	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
+)
+
+type preparePunchRequest struct {
+	requestEnvelope
+	ShareID            string      `json:"shareId"`
+	ConnectionID       string      `json:"connectionId"`
+	SourceConnectionID string      `json:"sourceConnectionId,omitempty"`
+	EdgeCapacity       int         `json:"edgeCapacity"`
+	ICEServers         []iceServer `json:"iceServers"`
+	Secret             string      `json:"secret"`
+}
+
+type runPunchRequest struct {
+	requestEnvelope
+	ShareID      string                    `json:"shareId"`
+	ConnectionID string                    `json:"connectionId"`
+	Prediction   mediaedge.PunchPrediction `json:"prediction"`
+}
+
+type punchPreparedResponse struct {
+	responseEnvelope
+	Prediction *mediaedge.PunchPrediction `json:"prediction"`
+}
+
+type punchCompleteResponse struct {
+	responseEnvelope
+	Connected bool `json:"connected"`
+}
+
+func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, complete func(any, error)) (any, error) {
+	switch envelope.Type {
+	case "prepare-punch":
+		var request preparePunchRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID, request.ConnectionID) ||
+			(request.SourceConnectionID != "" && !validIdentities(request.SourceConnectionID)) ||
+			request.EdgeCapacity < 1 || request.EdgeCapacity > maxEdgeCapacity {
+			return nil, protocolViolation("native connection preparation is invalid")
+		}
+		key, err := hex.DecodeString(request.Secret)
+		if err != nil || len(key) != 32 {
+			return nil, protocolViolation("native connection preparation key is invalid")
+		}
+		servers, err := pionICEServers(request.ICEServers)
+		if err != nil {
+			return nil, err
+		}
+		var preparation *mediaedge.PunchPreparation
+		if host := session.current(request.ShareID); host != nil && request.SourceConnectionID == "" {
+			preparation, err = host.BeginPunch(request.ConnectionID, servers, request.Secret)
+		} else {
+			viewer, viewerErr := session.ensureViewer(request.ShareID, request.EdgeCapacity)
+			if viewerErr != nil {
+				return nil, viewerErr
+			}
+			preparation, err = viewer.BeginPunch(request.ConnectionID, request.SourceConnectionID, servers, request.Secret)
+		}
+		if err != nil {
+			return nil, err
+		}
+		// Reserve before launching work, so a subsequent close cannot be undone
+		// by a late worker. This is independent of the capture mutation slot.
+		go func() {
+			prediction, err := preparation.Prepare()
+			result := punchPreparedResponse{response(envelope, "punch-prepared"), prediction}
+			complete(result, err)
+			session.emit(result)
+		}()
+		return nil, nil
+	case "run-punch":
+		var request runPunchRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID, request.ConnectionID) {
+			return nil, protocolViolation("native connection probe is invalid")
+		}
+		if _, err := request.Prediction.Target(); err != nil {
+			return nil, err
+		}
+		media := session.currentMedia(request.ShareID)
+		if media == nil {
+			return nil, errors.New("native media session does not exist")
+		}
+		preparation := media.Punch(request.ConnectionID)
+		if preparation == nil {
+			return nil, errors.New("connection preparation was retired")
+		}
+		go func() {
+			result := punchCompleteResponse{response(envelope, "punch-complete"), preparation.Run(request.Prediction)}
+			complete(result, nil)
+			session.emit(result)
+		}()
+		return nil, nil
+	case "close-punch":
+		var request closeEdgeRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID, request.ConnectionID) {
+			return nil, protocolViolation("native connection retirement is invalid")
+		}
+		if media := session.currentMedia(request.ShareID); media != nil {
+			media.ClosePunch(request.ConnectionID)
+		}
+		return response(envelope, "punch-closed"), nil
+	}
+	return nil, protocolViolation("unknown connection preparation request")
+}

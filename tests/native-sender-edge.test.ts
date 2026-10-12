@@ -7,13 +7,16 @@ import {
 } from "../src/client/native/native-sender-edge";
 import type { NativeClientEvent } from "../src/client/native/wire";
 
-function fixture(natPrediction = false, extraStun = false) {
+function fixture(natPrediction = false, extraStun = false, retry = false) {
   let listener: ((event: NativeClientEvent) => void) | null = null;
   const prepareEdge = vi.fn<NativeEdgeControl["prepareEdge"]>(async () => ({
     type: "offer",
     sdp: "v=0\r\n",
   }));
   const control: NativeEdgeControl = {
+    preparePunch: vi.fn(async () => null),
+    runPunch: vi.fn(async () => false),
+    closePunch: vi.fn(async () => undefined),
     updateShare: vi.fn(async () => undefined),
     prepareEdge,
     acceptSignal: vi.fn(async () => undefined),
@@ -50,6 +53,7 @@ function fixture(natPrediction = false, extraStun = false) {
       sendSignal,
       onState: (state) => states.push(state),
     },
+    undefined, retry,
   );
   return {
     edge,
@@ -62,6 +66,22 @@ function fixture(natPrediction = false, extraStun = false) {
 }
 
 describe("native sender edge adapter", () => {
+  it("keeps initial ICE immediate and falls through immediately for a Browser retry", async () => {
+    const initial = fixture(true);
+    expect(await initial.edge.start()).toBe(true);
+    expect(initial.control.preparePunch).not.toHaveBeenCalled();
+    initial.edge.dispose();
+
+    const retry = fixture(true, false, true);
+    const started = retry.edge.start();
+    expect(retry.sent[0].kind).toBe("punch");
+    await retry.edge.acceptSignal({ kind: "punch", connectionId: "edge_12345678", punch: { phase: "ready" } });
+    expect(await started).toBe(true);
+    expect(retry.control.runPunch).not.toHaveBeenCalled();
+    expect(retry.control.prepareEdge).toHaveBeenCalledWith("share_1234567", "edge_12345678", expect.anything(), undefined, false);
+    expect(retry.sent.find(signal => signal.kind === "description")).not.toHaveProperty("punched");
+    retry.edge.dispose();
+  });
   it.each([null, { candidate: "candidate:1 1 udp 1 127.0.0.1 9 typ host" }])(
     "keeps connected media when trickle signaling is unavailable: %j", async (candidate) => {
       const current = fixture();

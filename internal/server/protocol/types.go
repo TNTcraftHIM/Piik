@@ -414,16 +414,26 @@ type SignalPayload struct {
 	ConnectionID string
 	Description  *SessionDescription
 	Candidate    *IceCandidate
+	Punch        *PunchSignal
+	Punched      bool
 }
 
 // MarshalJSON implements json.Marshaler.
 func (v SignalPayload) MarshalJSON() ([]byte, error) {
+	if v.Kind == "punch" {
+		return marshalJSON(struct {
+			Kind         string       `json:"kind"`
+			ConnectionID string       `json:"connectionId"`
+			Punch        *PunchSignal `json:"punch"`
+		}{v.Kind, v.ConnectionID, v.Punch})
+	}
 	if v.Kind == "description" {
 		return marshalJSON(struct {
 			Kind         string              `json:"kind"`
 			ConnectionID string              `json:"connectionId"`
 			Description  *SessionDescription `json:"description"`
-		}{v.Kind, v.ConnectionID, v.Description})
+			Punched      bool                `json:"punched,omitempty"`
+		}{v.Kind, v.ConnectionID, v.Description, v.Punched})
 	}
 	return marshalJSON(struct {
 		Kind         string        `json:"kind"`
@@ -440,11 +450,30 @@ func (v *SignalPayload) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch kind {
+	case "punch":
+		var body struct {
+			Kind         string       `json:"kind"`
+			ConnectionID string       `json:"connectionId"`
+			Punch        *PunchSignal `json:"punch"`
+		}
+		present, err := decodeObject(data, &body)
+		if err != nil {
+			return err
+		}
+		if err = present.require("kind", "connectionId", "punch"); err != nil {
+			return err
+		}
+		if !ValidOpaqueID(body.ConnectionID) || body.Punch == nil {
+			return errors.New("invalid connection preparation signal")
+		}
+		*v = SignalPayload{Kind: kind, ConnectionID: body.ConnectionID, Punch: body.Punch}
+		return nil
 	case "description":
 		var body struct {
 			Kind         string              `json:"kind"`
 			ConnectionID string              `json:"connectionId"`
 			Description  *SessionDescription `json:"description"`
+			Punched      bool                `json:"punched,omitempty"`
 		}
 		present, err := decodeObject(data, &body)
 		if err != nil {
@@ -456,7 +485,10 @@ func (v *SignalPayload) UnmarshalJSON(data []byte) error {
 		if !ValidOpaqueID(body.ConnectionID) {
 			return errors.New("connectionId is not an opaque id")
 		}
-		*v = SignalPayload{Kind: kind, ConnectionID: body.ConnectionID, Description: body.Description}
+		if _, exists := present["punched"]; exists && !body.Punched {
+			return errors.New("punched must be true when present")
+		}
+		*v = SignalPayload{Kind: kind, ConnectionID: body.ConnectionID, Description: body.Description, Punched: body.Punched}
 		return nil
 	case "candidate":
 		var body struct {

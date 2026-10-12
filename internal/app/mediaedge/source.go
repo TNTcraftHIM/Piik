@@ -695,6 +695,7 @@ func (source *Source) Close() error {
 	}
 	source.mu.Unlock()
 	// Close transports before waiting on their possible writes into this group.
+	source.engine.closeSourcePunch(source)
 	closeEdges(edges)
 	for _, publication := range publications {
 		_ = publication.Close()

@@ -125,6 +125,8 @@ type peerSignalInput struct {
 	connectionID    string
 	signalKind      string
 	descriptionType string
+	punchPhase      string
+	punched         bool
 }
 
 // peerSignalDebugInput supplies signal provenance; optional fields are empty.
@@ -564,6 +566,9 @@ const candidateConnectionIDPrefix = "route_"
 func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorization {
 	rm, _ := r.rooms.Get(input.roomID)
 	if rm == nil || rm.controller == nil {
+		if input.signalKind == "punch" || input.punched {
+			return signalAuthorizationDenied
+		}
 		return signalAuthorizationUnassigned
 	}
 	controller := rm.controller
@@ -584,16 +589,32 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 			}
 			if hasParent && hasChild &&
 				parent.SessionID == parentSession &&
-				child.SessionID == childSession &&
-				(input.signalKind == "candidate" ||
+				child.SessionID == childSession {
+				if input.signalKind == "punch" || input.punched {
+					if current.ConnectionAttempt == nil || current.ConnectionAttempt.Current <= 1 {
+						return signalAuthorizationDenied
+					}
+					if (input.punched && parentToChild && input.descriptionType == "offer") ||
+						(parentToChild && (input.punchPhase == "prepare" || input.punchPhase == "start")) ||
+						(childToParent && (input.punchPhase == "ready" || input.punchPhase == "complete")) {
+						return signalAuthorizationProbe
+					}
+					return signalAuthorizationDenied
+				}
+				if input.signalKind == "candidate" ||
 					(parentToChild && input.descriptionType == "offer") ||
-					(childToParent && input.descriptionType == "answer")) {
-				return signalAuthorizationProbe
+					(childToParent && input.descriptionType == "answer") {
+					return signalAuthorizationProbe
+				}
 			}
 			return signalAuthorizationDenied
 		}
 	}
 
+	// Preparation is never an active-edge capability or an unassigned signal.
+	if input.signalKind == "punch" || input.punched {
+		return signalAuthorizationDenied
+	}
 	childPeerID := childForPair(snapshot, input.sourcePeerID, input.targetPeerID)
 	if childPeerID == "" {
 		return signalAuthorizationUnassigned

@@ -1618,6 +1618,10 @@ func (s *Server) routePeerAssistedSignal(sess *session, source *authenticatedSes
 	if payload.Kind == "description" && payload.Description != nil {
 		descriptionType = payload.Description.Type
 	}
+	punchPhase := ""
+	if payload.Punch != nil {
+		punchPhase = payload.Punch.Phase
+	}
 	candidateAuthorized := s.router.peerSignalAuthorization(peerSignalInput{
 		roomID:          source.roomID,
 		sourcePeerID:    source.peerID,
@@ -1627,6 +1631,8 @@ func (s *Server) routePeerAssistedSignal(sess *session, source *authenticatedSes
 		connectionID:    payload.ConnectionID,
 		signalKind:      payload.Kind,
 		descriptionType: descriptionType,
+		punchPhase:      punchPhase,
+		punched:         payload.Punched,
 	})
 	debugInput := peerSignalDebugInput{
 		roomID:          source.roomID,
