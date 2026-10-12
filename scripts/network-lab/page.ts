@@ -3,7 +3,7 @@
 export const pageProbe = String.raw`(() => {
   localStorage.setItem('piik:ui-lang','en'); localStorage.setItem('piik:ui-mode','text');
   const peers=[], sockets=[], events=[], errors=[], controls=[];
-  let route=null;
+  let route=null,freezeCapture=()=>{};
   const PC=RTCPeerConnection, WS=WebSocket;
   const picture=document.createElement('canvas');picture.width=64;picture.height=36;
   const pictureContext=picture.getContext('2d',{willReadFrequently:true});
@@ -40,6 +40,7 @@ export const pageProbe = String.raw`(() => {
       }
       ctx.fillStyle='#fff';ctx.font='70px sans-serif';ctx.fillText(String(frame++),80,540);};
     draw();const timer=setInterval(draw,1000/30),stream=canvas.captureStream(30);
+    freezeCapture=()=>clearInterval(timer);
     const video=stream.getVideoTracks()[0],stop=video.stop.bind(video);
     video.stop=()=>{clearInterval(timer);stop();};
     const ac=new AudioContext(),osc=ac.createOscillator(),dest=ac.createMediaStreamDestination();
@@ -48,7 +49,7 @@ export const pageProbe = String.raw`(() => {
     sound.stop=()=>{if(stopped)return;stopped=true;osc.stop();void ac.close();stopSound();};
     stream.addTrack(sound);return stream;
   };
-  window.networkLab={async signalProbe(){
+  window.networkLab={freezeCapture:()=>freezeCapture(),async signalProbe(){
     const socket=sockets.findLast(s=>!s.url.includes('/control')&&s.readyState===WS.OPEN);
     if(!socket)return false;
     return new Promise(resolve=>{

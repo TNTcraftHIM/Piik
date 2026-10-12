@@ -88,6 +88,8 @@ export async function endpointWorker(): Promise<void> {
           result = await evaluate<string>(cdp!, page!, "document.querySelector('.lr-invite-url').value", Date.now() + 5000);
         } else if (request.action === "sample") {
           result = await sample();
+        } else if (request.action === "freeze-picture") {
+          result = await evaluate(cdp!, page!, "networkLab.freezeCapture()", Date.now() + 5000);
         } else if (request.action === "signal-probe") {
           result = await evaluate(cdp!, page!, "networkLab.signalProbe()", Date.now() + 5000);
         } else if (request.action === "logs") {

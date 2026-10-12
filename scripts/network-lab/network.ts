@@ -50,7 +50,7 @@ export class LabNetwork {
     }
   }
 
-  setup(modes: readonly NatMode[], ipv6 = false): void {
+  setup(modes: readonly NatMode[], ipv6 = false, failSetup = false): void {
     this.add(this.wan);
     this.exec(this.wan, "ip", ["link", "add", "internet", "type", "bridge"]);
     this.exec(this.wan, "ip", ["addr", "add", `${SITE_IP}/24`, "dev", "internet"]);
@@ -61,6 +61,7 @@ export class LabNetwork {
       const n = index + 1, endpoint = this.endpoint(index), router = this.router(index);
       this.add(endpoint); this.add(router);
       this.wire(endpoint, "eth0", router, "lan0");
+      if (failSetup) throw new Error("Injected partial network setup failure");
       this.wire(router, "wan0", this.wan, `port${n}`);
       this.exec(this.wan, "ip", ["link", "set", `port${n}`, "master", "internet"]);
       this.exec(endpoint, "ip", ["addr", "add", `10.71.${n}.2/24`, "dev", "eth0"]);

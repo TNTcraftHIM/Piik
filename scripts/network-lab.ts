@@ -13,11 +13,12 @@ import { checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPict
 import { echoWorker, type ProbeResult } from "./network-lab/udp";
 import type { MediaSample } from "./network-lab/page";
 import { checkMediaFeedback, checkMediaPath, readPacketFlows, type PacketFlow } from "./network-lab/packets";
+import { verifyLaboratory } from "./network-lab/verify";
 
 const ROOT = resolve(import.meta.dirname, ".."), ENTRY = resolve(import.meta.filename);
 const { values } = parseArgs({ options: { worker: { type: "string" }, suite: { type: "string", default: "smoke" },
   cases: { type: "string" }, repeat: { type: "string", default: "1" }, seed: { type: "string", default: "1" },
-  ipv6: { type: "boolean" }, list: { type: "boolean" } } });
+  ipv6: { type: "boolean" }, list: { type: "boolean" }, verify: { type: "boolean" }, negative: { type: "string" } } });
 
 class Endpoint {
   private id = 0;
@@ -72,8 +73,11 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
   const mediaWindows: Array<{ name: string; startMs: number; endMs: number }> = [];
   const pcapPath = join(output, "wan.pcap");
   const result: Record<string, unknown> = { scenario, seed, passed: false, stage: "setup", samples };
+  const stage = (name: string) => {
+    result.stage = name; process.stdout.write(JSON.stringify({ case: scenario.id, stage: name }) + "\n");
+  };
   const faultIndex = scenario.faultEndpoint ?? 0;
-  const setFault = (fault: Scenario["fault"]) => network.setFault(faultIndex, fault, seed, scenario.direction);
+  const setFault = (fault: Scenario["fault"]) => network.setFault(faultIndex, values.negative === "missing-fault" ? "none" : fault, seed, scenario.direction);
   const counters = () => network.counters(faultIndex);
   const sampleAll = async () => {
     const [host, viewer, sibling] = await Promise.all(endpoints.map(endpoint => endpoint.call<MediaSample>("sample")));
@@ -88,7 +92,7 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
   };
   try {
     signal.throwIfAborted();
-    network.setup([...scenario.nat, ...(scenario.sibling ? ["preserve" as const] : [])], scenario.ipv6);
+    network.setup([...scenario.nat, ...(scenario.sibling ? ["preserve" as const] : [])], scenario.ipv6, values.negative === "partial-setup");
     echo = spawn("ip", ["netns", "exec", network.wan, process.execPath, "--import", "tsx", ENTRY, "--worker", "echo", ...(scenario.ipv6 ? ["--ipv6"] : [])],
       { cwd: ROOT, env: labEnvironment(), stdio: "pipe" });
     echo.stderr.on("data", data => process.stderr.write(data));
@@ -96,7 +100,7 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
     await withDeadline(() => once(echo!.stdout, "data"), Date.now() + 10_000);
     for (let i = 0; i < (scenario.sibling ? 3 : 2); i++) endpoints.push(new Endpoint(network.endpoint(i),
       await mkdtemp(join(tmpdir(), "piik-client-media-")), signal));
-    result.stage = "calibration";
+    stage("calibration");
     const baselines = await Promise.all(endpoints.map(endpoint => endpoint.call<ProbeResult>("probe")));
     result.mappingCalibration = baselines;
     baselines.forEach((probe, index) => checkMapping(probe, scenario.nat[index] ?? "preserve"));
@@ -117,7 +121,7 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
     checkCalibration(before, after, scenario.fault);
     // Load probes are calibration traffic, never competing with measured media.
     if (scenario.duringShare) setFault("none");
-    result.stage = "startup";
+    stage("startup");
     server = spawn("ip", ["netns", "exec", network.wan, resolve("build/network-lab/bin/piik-server")], {
       cwd: output, stdio: "pipe", env: { ...labEnvironment(), PIIK_ENV: "development", ROOM_DATABASE_PATH: ":memory:",
         LISTEN_HOST: SITE_IP, PORT: "9000", PUBLIC_BASE_URL: SITE_ORIGIN, ALLOWED_ORIGINS: SITE_ORIGIN,
@@ -137,13 +141,13 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
       if (capture!.exitCode !== null) throw new Error(`Packet capture failed: ${captureLog}`);
       await delay(50, undefined, { signal });
     } }, Date.now() + 5000);
-    result.stage = "share";
+    stage("share");
     await endpoints[0]!.call("navigate", { url: SITE_ORIGIN + (scenario.host === "app" ? "/#piik-client=1" : "/") });
     const invitation = await endpoints[0]!.call<string>("share");
     const joinedAt = performance.now();
     await endpoints[1]!.call("navigate", { url: invitation + (scenario.viewer === "app" ? "&piik-client=1" : "") });
     if (scenario.sibling) await endpoints[2]!.call("navigate", { url: invitation });
-    result.stage = "first-picture";
+    stage("first-picture");
     let connected = false, exhausted = false;
     while (performance.now() - joinedAt < 110_000) {
       signal.throwIfAborted();
@@ -157,18 +161,28 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
     result.outcome = connected ? "media" : exhausted ? "unavailable" : "timeout";
     if (result.outcome === "timeout" || (scenario.expected !== "observed" && result.outcome !== scenario.expected)) throw new Error(`Expected ${scenario.expected}, observed ${result.outcome}; ${serverLog.slice(-1000)}`);
     if (connected) {
-      result.stage = "continuity";
+      stage("continuity");
       const first = samples.at(-1)!.viewer;
       const steadyStart = Date.now();
       await delay(3000, undefined, { signal });
       const { viewer: next, sibling: healthy } = await sampleAll();
       checkContinuity(first, next);
       mediaWindows.push({ name: "baseline", startMs: steadyStart, endMs: Date.now() });
+      if (values.negative === "frozen-picture") {
+        stage("negative-control");
+        await endpoints[0]!.call("freeze-picture");
+        // Drain already encoded frames before measuring the deliberately static source.
+        await delay(2000, undefined, { signal });
+        const frozen = await endpoints[1]!.call<MediaSample>("sample");
+        await delay(3000, undefined, { signal });
+        checkContinuity(frozen, (await sampleAll()).viewer);
+        throw new Error("Frozen synthetic picture incorrectly passed");
+      }
       if (scenario.sfu && next.route !== "sfu") throw new Error("Expected SFU route, but media used another path");
       if (scenario.host === "app") checkAppPath(samples.at(-1)!.host, "prepare-edge");
       if (scenario.viewer === "app") checkAppPath(next, "receive-offer");
       if (scenario.duringShare) {
-        result.stage = "impairment";
+        stage("impairment");
         setFault(scenario.fault);
         const impairedAt = performance.now();
         let healthyWindow = healthy, healthyAt = impairedAt;
@@ -196,7 +210,7 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
         const restoredProbe = await endpoints[faultIndex]!.call<ProbeResult>("probe");
         result.restoredCalibration = restoredProbe;
         checkCalibration(before, restoredProbe, "none");
-        result.stage = "recovery";
+        stage("recovery");
         const restoredAt = performance.now(); let recovered = false;
         while (performance.now() - restoredAt < 60_000) {
           signal.throwIfAborted();
@@ -220,7 +234,7 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
     if (!scenario.duringShare) checkFaultHit(scenario.fault, counters().faultDrops);
     await endpoints[0]!.call("stop");
     signal.throwIfAborted();
-    result.passed = true; result.stage = "done";
+    result.passed = true; stage("done");
   } catch (error) { result.error = error instanceof Error ? error.message : String(error); }
   finally {
     try {
@@ -254,7 +268,7 @@ async function runCase(scenario: Scenario, seed: number, output: string, signal:
     if (capture) try {
       const flows = await readPacketFlows(pcapPath); result.packetFlows = flows;
       if (!captureLog.includes("0 packets dropped by kernel")) throw new Error(`Capture loss prevents a complete observation: ${captureLog}`);
-      if (result.outcome === "media") proveMedia(flows);
+      if (result.outcome === "media" && !signal.aborted) proveMedia(flows);
       result.mediaWindows = [];
       for (const window of mediaWindows) {
         const selected = await readPacketFlows(pcapPath, window);
@@ -283,11 +297,13 @@ async function main(): Promise<void> {
   if (values.list) { process.stdout.write(JSON.stringify(selected, null, 2) + "\n"); return; }
   if (process.platform !== "linux" || process.getuid?.() !== 0) throw new Error("Network lab requires an isolated Linux runner and root for owned namespaces");
   if (!process.env.CHROME_PATH) throw new Error("CHROME_PATH is required");
+  if (values.negative && !["missing-fault", "frozen-picture", "partial-setup"].includes(values.negative)) throw new Error("Unknown negative control");
   const repeat = Number(values.repeat), seed = Number(values.seed);
   if (!Number.isInteger(repeat) || repeat < 1 || repeat > 20 || !Number.isInteger(seed) || seed < 1 || seed > 0xffff_ffff) throw new Error("Invalid repeat (1..20) or seed (uint32)");
   for (const tool of ["ip", "tc", "nft", "sysctl", "tcpdump"]) command("which", [tool]);
   const output = resolve("build/network-lab/results", new Date().toISOString().replaceAll(/[:.]/g, "-"));
   await mkdir(output, { recursive: true });
+  process.stdout.write(JSON.stringify({ report: output }) + "\n");
   const identity = { revision: command("git", ["rev-parse", "HEAD"]), kernel: command("uname", ["-a"]),
     node: process.version, iproute: command("ip", ["-Version"]), tc: command("tc", ["-Version"]), nftables: command("nft", ["--version"]), selected, repeat, seed };
   await writeFile(join(output, "environment.json"), JSON.stringify(identity, null, 2) + "\n");
@@ -310,4 +326,5 @@ async function main(): Promise<void> {
 if (values.worker === "endpoint") await endpointWorker();
 else if (values.worker === "echo") await echoWorker(values.ipv6);
 else if (values.worker) throw new Error("Unknown network lab worker");
+else if (values.verify) await verifyLaboratory(ENTRY);
 else await main();

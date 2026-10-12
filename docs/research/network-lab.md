@@ -100,6 +100,10 @@ Set `CHROME_PATH` to the installed Chrome executable before running. `--list`
 lists scenarios without root; `--suite full`, `--cases browser-browser,app-app`,
 `--repeat 3` and `--seed 42` select reproducible inputs. Netem seeds do not make
 browser scheduling, kernel port allocation or real-time timings deterministic.
+`--verify` (CI `network_lab: verify`) runs negative controls against the actual
+runner: missing fault, frozen picture, partially failed setup, and cancellation
+during calibration or sharing. Each must fail for its intended reason and leave
+no owned resources; an unrelated process failure is not a passing control.
 Each fault phase replaces its owned qdisc completely: netem's in-place change
 retains some omitted attributes, including a previous rate limit. Restoration
 therefore checks the resulting rules and independent UDP reachability as well as
