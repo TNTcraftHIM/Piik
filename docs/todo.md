@@ -176,15 +176,17 @@ experiments and their limits.
 
 ## Next: P2P Connection And Feedback Evidence
 
-- [ ] **Coordinated Native prediction and bounded multi-socket comparison.**
-  Evaluate the optional two-App scope against stock ICE and Piik's current
-  single-socket predictor, following the
+- [ ] **Coordinated Native socket adoption without delaying ordinary ICE.**
+  The isolated eight-socket Go experiment now carries bidirectional authenticated
+  SRTP and feedback under bounded sequential-NAT interference. Complete the
+  optional two-App integration assessment against Piik's actual trickle timing,
+  following the
   [assessment](./research/nat-traversal.md#coordinated-native-punching-assessment).
-  Separate predictable-port coordination from probabilistic port overlap;
-  compare equal time/resource budgets and verify authenticated media, cancellation
-  and ordinary-path independence. Reuse mature mechanisms where supported;
-  do not adopt a new tunnel or assume another project's success rate. Current
-  Magicsock controls do not close this separate question.
+  Pion's WebRTC API has no late-socket adoption surface; do not replace that
+  boundary with a second route/retry owner or stall ordinary Browser peers.
+  Verify real signaling skew, decoded media, generation retirement and field
+  benefit before admission. Random-port overlap remains separate and unproven;
+  keep this prototype outside the candidate while integration is unresolved.
 
 For the transport assessment, measure connection success, time to first picture and
 failure causes on representative networks, especially App and P2P-only sites.

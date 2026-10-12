@@ -409,17 +409,47 @@ Mature implementations provide a concrete comparison:
   and random-port paths. Its implementation is evidence that these are real
   mechanisms, not evidence that replacing Piik's media stack improves coverage.
 
-The next comparison should isolate ordered bilateral prediction from bounded
-multi-socket probing, against both stock ICE and Piik's existing predictor.
-Keep the same NAT/filtering, deadline, loss and relay policy; include both peer
-directions, unrelated mapping traffic, random allocation and blocked UDP.
-Measure authenticated bidirectional media, time to first picture and resource
-cost. A contacted socket alone is not a successful WebRTC connection.
+An isolated Go prototype now compares ordinary ICE, the current eight-candidate
+prediction policy, an ordered first tuple, a coordinated eight-socket pool and
+ordinary ICE over eight preallocated sockets. The pool authenticates generation-
+specific STUN transactions, closes its losing sockets and passes its actual
+winning socket to stock Pion WebRTC. Success requires bidirectional SRTP payload
+delivery and reverse RTCP feedback. All strategies share a four-second overall
+deadline; no relay, OS socket or external network is used in these controls.
+The retained implementation is commit `807c7390` on
+`spike/magicsock-assessment`, under `scripts/magicsock-probe/native_punch.go`
+and its tests; it is not part of the product module.
+
+In Pion's sequential endpoint-dependent NAT fixture, coordinated first sends
+connect the otherwise timing-sensitive bilateral tuple. Three unrelated mappings
+after observation defeat that simple first-tuple guess; the pool still connects.
+The current candidate policy can also occasionally win through favorable check
+scheduling. This is evidence for more deliberate coordination, not a newly proven
+unreachable NAT class or a public success-rate claim. Merely preallocating sockets
+does not establish the same benefit. Six unrelated mappings and blocked peer UDP
+defeat this pool's bounded prediction.
+
+The pool uses eight sockets, at most 64 requests plus 64 authenticated replies,
+one predicted remote endpoint, approximately 200 ms of overlapping sends and a
+500 ms cleanup deadline. Cancellation, allocation failure, wrong-generation
+credentials, first-packet loss and winner adoption have explicit controls.
+100 ms of peer-start skew succeeds in the fixture; 350 ms exceeds its overlap
+and fails cleanly. These are experimental budgets, not product defaults.
+
+The policy comparator follows the current TS emission order, but surveys run
+sequentially before ICE; production surveys run concurrently while candidates
+trickle. The payload is synthetic RTP, not a decoded picture. Random allocation,
+real signaling delay, first-picture latency, Browser interoperation and actual
+Piik operation retirement still need acceptance before product adoption.
 
 A future adapter should feed the existing connection's ICE owner, preserving
 ordinary candidate timing, instead of adding another media tunnel or route
 controller. Socket adoption through supported Pion APIs is an open integration
-question. Scope any extra work to the authorized peer and connection generation,
+question: Pion's WebRTC API does not expose ICE's `AddVirtualCandidate`, and
+`MultiUDPMux` starts ordinary checks on its preallocated sockets without providing
+coordinated ordering or loser removal. Delaying ordinary ICE to reproduce the
+fixture's barrier is not an accepted integration. Scope any extra work to the
+authorized peer and connection generation,
 bound sockets/packets/time, and retire losers on success, cancellation or
 revocation. Mapping observations must not become persistent NAT labels or skip
 ordinary paths. Random-port overlap assumptions do not establish a solution for
