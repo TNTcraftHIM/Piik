@@ -63,7 +63,7 @@ export class LabNetwork {
       this.exec(router, "ip", ["addr", "add", `${this.publicIP(index)}/24`, "dev", "wan0"]);
       this.exec(endpoint, "ip", ["route", "add", "default", "via", `10.71.${n}.1`]);
       this.exec(router, "sysctl", ["-qw", "net.ipv4.ip_forward=1"]);
-      this.exec(router, "nft", ["-f", "-"], `
+      this.exec(router, "nft", [`
 table ip lab_nat {
  chain postrouting { type nat hook postrouting priority srcnat; policy accept;
   oifname "wan0" snat to ${this.publicIP(index)}${mode === "random" ? " fully-random" : ""}
@@ -77,7 +77,7 @@ table inet lab_filter {
   ct state established,related counter accept
  }
 }
-`);
+`]);
     }
   }
 
@@ -94,8 +94,7 @@ table inet lab_filter {
       "stun-primary": `ip daddr ${SITE_IP} udp dport 3478 counter drop`,
       signaling: `ip daddr ${SITE_IP} tcp dport 9000 counter drop`,
     };
-    if (rules[fault]) this.exec(router, "nft", ["-f", "-"],
-      `add rule inet lab_filter faults ${rules[fault]}\n`);
+    if (rules[fault]) this.exec(router, "nft", [`add rule inet lab_filter faults ${rules[fault]}`]);
     const impairment = fault === "delay" ? ["delay", "100ms", "20ms", "distribution", "normal"]
       : fault === "loss" ? ["loss", "random", "5%", "seed", String(seed)]
       : fault === "rate" ? ["rate", "600kbit", "limit", "30"] : ["delay", "0ms"];
