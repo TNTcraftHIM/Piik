@@ -525,10 +525,10 @@ On October 12, 2026, the isolated raw-Bind module was refreshed to
 [Tailscale v1.104.1](https://github.com/tailscale/tailscale/releases/tag/v1.104.1)
 and the candidate's Pion WebRTC v4.2.23 / ICE v4.4.7. The seven virtual-router
 pairs, with relay disabled, produced the same results with four- and
-twenty-second direct observation windows. Both stacks had the
-same result in both stacks: cone/cone, restricted/restricted and cone/hard in
-either direction connected; restricted/hard in either direction and hard/hard
-did not. These are stock-stack mechanism controls, not Piik's complete gateway
+twenty-second direct observation windows. In both stacks, cone/cone,
+restricted/restricted and cone/hard in either direction connected;
+restricted/hard in either direction and hard/hard did not. These are
+stock-stack mechanism controls, not Piik's complete gateway
 mapping/prediction composition or physical success-rate measurements.
 
 Warmed Magicsock carried ICE/DTLS and audio/video SRTP, including two observed
