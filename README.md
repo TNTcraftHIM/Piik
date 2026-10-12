@@ -116,14 +116,6 @@ See [ways to contribute](./CONTRIBUTING.md#ways-to-help) or
 [help translate Piik](./docs/guide/translating.md). Use the
 [repository layout](./docs/standards/engineering.md#repository-layout) to find your way around.
 
-## Special thanks
-
-- [@fovepig](https://github.com/fovepig) for proposing higher audio bitrates in [#462](https://github.com/TNTcraftHIM/Piik/pull/462).
-- [@ddddd-ren](https://github.com/ddddd-ren) for proposing 4K sharing in [#469](https://github.com/TNTcraftHIM/Piik/pull/469).
-- [@AkazaAkali](https://github.com/AkazaAkali) for the Linux PipeWire capture fix in [#470](https://github.com/TNTcraftHIM/Piik/pull/470).
-
-Thanks to everyone who reports issues, tests Piik, improves its translations and docs, or contributes code.
-
 ## License
 
 Piik-owned code is [MIT licensed](./LICENSE). Dependencies retain their own

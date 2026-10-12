@@ -22,8 +22,10 @@ Git/PRs own completed history.
 - [ ] **Reconcile open PRs with the final candidate.**
   [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps request and
   [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the
-  numeric-media candidate; neither PR has been merged. Preserve contributor
-  credit, the physical-evidence limits below, and explain the disposition at integration. Keep
+  numeric-media candidate; neither PR has been merged. Credit their authors and
+  #470's author in the final squash's `Co-authored-by` trailers, and verify GitHub
+  attribution after integration. Preserve the physical-evidence limits below
+  and explain the disposition at integration. Keep
   [#459](https://github.com/TNTcraftHIM/Piik/pull/459)'s candidate scope and
   bilingual upgrade instructions aligned with the accepted result.
 - [ ] **Gitee mirror workflow activation.** The production verifier passes with
