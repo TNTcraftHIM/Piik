@@ -52,7 +52,7 @@ import type { ComicKind } from "../components/living/Comic";
 import type { HintKind } from "../ui/visual-kinds";
 import type { ComicTone } from "../components/living/comic-presentation";
 import { Tooltip } from "../components/living/Tooltip";
-import { AudioBitrateControl, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
+import { AudioBitrateControl, PicturePreferenceControl, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
 import { RoomCodeInput, RoomCodeError } from "../components/living/RoomCodeInput";
 import { MetricCell } from "../components/living/Metrics";
 import {
@@ -74,7 +74,7 @@ import {
   SwitchItem,
 } from "../components/living/primitives";
 import { hasPeerRouteEvidence } from "../components/status-badge-model";
-import { Glyph, type GlyphName } from "../ui/icons";
+import { Glyph } from "../ui/icons";
 import { say, useCopy, type CopyKey } from "../ui/copy";
 import { resolveMediaFailure, type MediaFailure } from "../ui/media-failure";
 import {
@@ -127,7 +127,6 @@ import {
   type BrowserCaptureSource,
   matchingQualityProfileId,
   QUALITY_PROFILES,
-  DEGRADATION_PREFERENCE_KEYS,
   videoCaptureLimits,
   captureFramerateCeiling,
   supportsCaptureProfile,
@@ -138,7 +137,6 @@ import {
   MAX_SCREEN_AUDIO_BITRATE,
   setMediaPaused,
   videoQualitySettingsEqual,
-  type DegradationPreference,
   type QualitySettings,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
@@ -216,24 +214,6 @@ type NoticeValue = (
 };
 
 type StatusNoticeMessage = string | { key: CopyKey; vars?: Record<string, string>; failureCode?: string };
-
-const PREFERENCE_PRESENTATION: Record<
-  DegradationPreference,
-  { icon: GlyphName; hint: CopyKey }
-> = {
-  "maintain-resolution": {
-    icon: "mountain",
-    hint: "host.advanced.preference.resolutionHint",
-  },
-  balanced: {
-    icon: "balance",
-    hint: "host.advanced.preference.balancedHint",
-  },
-  "maintain-framerate": {
-    icon: "frames",
-    hint: "host.advanced.preference.framerateHint",
-  },
-};
 
 type ViewerQualityEvidence = Extract<
   ServerMessage,
@@ -3835,50 +3815,14 @@ export function HostPage({
                 })} />
               <VideoRateControls value={advancedQuality} limits={videoLimits}
                 disabled={phase === "starting" || switchingSource} onChange={changeAdvancedQuality} />
-              <div className="lr-door-group">
-                <span
-                  className="lr-door-glyph"
-                >
-                  <Glyph name="mountain" size={19} />
-                  <Cap k="host.advanced.preference" />
-                </span>
-                <div
-                  className="lr-row-group"
-                  role="group"
-                  aria-label={t("host.advanced.preference")}
-                >
-                  {(
-                    Object.keys(
-                      PREFERENCE_PRESENTATION,
-                    ) as DegradationPreference[]
-                  ).map((preference) => (
-                    <Chip
-                      key={preference}
-                      name="degradationPreference"
-                      value={preference}
-                      selected={
-                        advancedQuality.degradationPreference === preference
-                      }
-                      disabled={phase === "starting" || switchingSource}
-                      title={`${t(DEGRADATION_PREFERENCE_KEYS[preference])} · ${t(PREFERENCE_PRESENTATION[preference].hint)}`}
-                      hint={preference === "maintain-resolution" ? "hint-prefer-resolution" : preference === "maintain-framerate" ? "hint-prefer-framerate" : "hint-degrade-pref"}
-                      onClick={() =>
-                        changeAdvancedQuality({
-                          degradationPreference: preference,
-                        })
-                      }
-                    >
-                      <Glyph
-                        name={PREFERENCE_PRESENTATION[preference].icon}
-                        size={18}
-                      />
-                      <Cap k={DEGRADATION_PREFERENCE_KEYS[preference]} />
-                    </Chip>
-                  ))}
-                </div>
-              </div>
+              <PicturePreferenceControl value={advancedQuality.degradationPreference}
+                disabled={phase === "starting" || switchingSource}
+                onChange={degradationPreference => changeAdvancedQuality({ degradationPreference })} />
             </>}
             audio={<>
+              <AudioBitrateControl value={screenAudioBitrate(advancedQuality.maxAudioBitrate)}
+                max={audioBitrateCeiling} disabled={phase === "starting" || switchingSource}
+                onChange={changeMaxAudioBitrate} />
               {phase === "live" && nativeActive && nativeSourceSelectionRef.current?.target.kind === "display" &&
                 nativeClientRef.current?.health.nativeMedia.microphone && nativeClientRef.current.health.nativeMedia.processAudioExclusion ? (
                 <div className="lr-door-group lr-source-audio-settings">
@@ -3915,9 +3859,6 @@ export function HostPage({
                   onVoiceProcessing={enabled => void changeMicrophone(microphoneEnabled, microphoneDevices.browser, enabled)}
                 />
               ) : null}
-              <AudioBitrateControl value={screenAudioBitrate(advancedQuality.maxAudioBitrate)}
-                max={audioBitrateCeiling} disabled={phase === "starting" || switchingSource}
-                onChange={changeMaxAudioBitrate} />
             </>}
             technical={<>
               <div className="lr-door-group">

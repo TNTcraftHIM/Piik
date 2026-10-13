@@ -1,16 +1,22 @@
-import { Fragment, useRef, type ReactNode } from "react";
+import { Fragment, useRef, type CSSProperties, type ReactNode } from "react";
 import { MIN_AUDIO_BITRATE } from "../../../shared/protocol";
 import {
-  QUALITY_PROFILES, QUALITY_PROFILE_KEYS, QUALITY_RESOLUTIONS, qualityResolutionEqual,
+  QUALITY_PROFILES, QUALITY_PROFILE_KEYS, QUALITY_RESOLUTIONS, DEGRADATION_PREFERENCE_KEYS, qualityResolutionEqual,
   captureFramerateCeiling, supportsCaptureProfile, MIN_VIDEO_FRAMERATE, MIN_VIDEO_BITRATE,
   VIDEO_CAPTURE_LIMITS, type VideoCaptureLimits, type QualityProfile, type QualityProfileId, type QualityResolution,
-  SCREEN_AUDIO_BITRATES, type ScreenAudioPreset,
+  SCREEN_AUDIO_BITRATES, type ScreenAudioPreset, type DegradationPreference,
 } from "../../media/quality";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Cap, Chip } from "./primitives";
 import { QualityTileGlyph } from "./QualityTileGlyph";
 import { Tooltip } from "./Tooltip";
+
+const PRESET_LABELS: Record<QualityProfileId, CopyKey> = {
+  "720p30": "host.quality.light",
+  "1080p30": "host.quality.hd",
+  "1080p60": "host.quality.highFps",
+};
 
 export function QualityPresets({ selected, limits = VIDEO_CAPTURE_LIMITS, disabled = false, busy = false, onSelect }: {
   selected: QualityProfileId | null;
@@ -27,9 +33,10 @@ export function QualityPresets({ selected, limits = VIDEO_CAPTURE_LIMITS, disabl
       return <Tooltip key={id} kind="hint-quality" align={index === 0 ? "start" : "center"}
         text={vis ? undefined : t("host.quality.title", { label: caption, mbps: (profile.maxBitrate / 1_000_000).toFixed(0) })}>
         <button type="button" className={`lr-tile${selected === id ? " is-selected" : ""}`}
-          aria-pressed={selected === id} aria-label={caption}
+          aria-pressed={selected === id} aria-label={`${t(PRESET_LABELS[id])} · ${caption}`}
           disabled={disabled || !supportsCaptureProfile(profile, limits)} onClick={() => onSelect(id)}>
           <QualityTileGlyph resolution={`${profile.resolution.height}p`} framerate={profile.maxFramerate} />
+          {vis ? null : <strong>{t(PRESET_LABELS[id])}</strong>}
           <small>{vis ? `${profile.resolution.height} ${profile.maxFramerate}` : caption}</small>
         </button>
       </Tooltip>;
@@ -161,30 +168,42 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
   const fpsMax = captureFramerateCeiling(value.resolution, limits);
   const controls = [
     { name: "maxFramerate", label: "host.advanced.framerate", icon: "frames", hint: "hint-metric-fps",
-      value: value.maxFramerate, min: MIN_VIDEO_FRAMERATE, max: fpsMax, step: 1, unit: "fps",
+      value: value.maxFramerate, min: MIN_VIDEO_FRAMERATE, max: fpsMax, sliderMax: 60, step: 1, unit: "fps",
       change: (maxFramerate: number) => onChange({ maxFramerate }) },
     { name: "maxBitrate", label: "host.advanced.bitrate", icon: "gauge", hint: "hint-metric-bitrate",
       value: value.maxBitrate / 1_000_000, min: MIN_VIDEO_BITRATE / 1_000_000,
-      max: limits.maxVideoBitrate / 1_000_000, step: 0.1, unit: "Mbps",
+      max: limits.maxVideoBitrate / 1_000_000, sliderMax: 20, step: 0.1, unit: "Mbps",
       change: (mbps: number) => onChange({ maxBitrate: Math.round(mbps * 1_000_000) }) },
   ] as const;
   return <div className="lr-sharing-limits">
-    {controls.map(control => <QualityNumberControl key={control.name} {...control}
-      className="lr-quality-rate" label={t(control.label)}
-      disabled={disabled || control.max < control.min} onChange={control.change}>
-      {(input, select) => <>
-        <div className="lr-quality-heading">
-          <span className="lr-door-glyph"><Glyph name={control.icon} size={19} /><Cap k={control.label} /></span>
-          <Tooltip kind={control.hint} text={vis ? undefined : `${t(control.label)}: ${control.min}–${control.max} ${control.unit}`}>
-            {input}
-          </Tooltip>
-        </div>
-        <input type="range" min={control.min} max={Math.max(control.min, control.max)} step={control.step}
-          value={control.value} disabled={disabled || control.max < control.min} aria-label={t(control.label)}
-          onChange={event => select(event.currentTarget.valueAsNumber)}
-          onClick={event => select(event.currentTarget.valueAsNumber)} />
-      </>}
-    </QualityNumberControl>)}
+    {controls.map(control => {
+      // The slider is a common-range shortcut, not the capture admission limit.
+      const sliderMax = Math.max(control.min, Math.min(control.sliderMax, control.max));
+      return <QualityNumberControl key={control.name} {...control}
+        className="lr-quality-rate" label={t(control.label)}
+        disabled={disabled || control.max < control.min} onChange={control.change}>
+        {(input, select) => <>
+          <div className="lr-quality-heading">
+            <span className="lr-door-glyph"><Glyph name={control.icon} size={19} /><Cap k={control.label} /></span>
+            <Tooltip kind={control.hint} text={vis ? undefined : t("host.video.inputHint", {
+              min: String(control.min), max: String(control.max), unit: control.unit,
+            })}>
+              {input}
+            </Tooltip>
+          </div>
+          <input type="range" min={control.min} max={sliderMax} step={control.step}
+            value={Math.min(control.value, sliderMax)} disabled={disabled || control.max < control.min}
+            style={{ "--range-fill": `${100 * (Math.min(control.value, sliderMax) - control.min) / (sliderMax - control.min || 1)}%` } as CSSProperties}
+            aria-label={`${t(control.label)} · ${t("host.video.commonRange")}`}
+            onChange={event => select(event.currentTarget.valueAsNumber)}
+            onClick={event => select(event.currentTarget.valueAsNumber)} />
+          <div className="lr-quality-range-labels" aria-hidden="true">
+            <span>{control.min}</span>
+            <span>{sliderMax} {control.unit}</span>
+          </div>
+        </>}
+      </QualityNumberControl>;
+    })}
   </div>;
 }
 
@@ -196,7 +215,7 @@ export function AudioBitrateControl({ value, max, disabled, onChange }: {
 }) {
   const { t, vis } = useCopy();
   return <QualityNumberControl value={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
-    name="audioBitrate" unit="kbps" label={t("host.advanced.audioBitrate")} className="lr-door-group"
+    name="audioBitrate" unit="kbps" label={t("host.advanced.audioBitrate")} className="lr-door-group lr-audio-quality"
     disabled={disabled} onChange={kbps => onChange(kbps * 1_000)}>
     {(input, select) => <>
       <div className="lr-quality-heading">
@@ -217,4 +236,25 @@ export function AudioBitrateControl({ value, max, disabled, onChange }: {
       </div>
     </>}
   </QualityNumberControl>;
+}
+
+export function PicturePreferenceControl({ value, disabled, onChange }: {
+  value: DegradationPreference; disabled: boolean; onChange: (value: DegradationPreference) => void;
+}) {
+  const { t } = useCopy();
+  const choices = [
+    { value: "maintain-resolution", icon: "mountain", hint: "host.advanced.preference.resolutionHint", comic: "hint-prefer-resolution" },
+    { value: "balanced", icon: "balance", hint: "host.advanced.preference.balancedHint", comic: "hint-degrade-pref" },
+    { value: "maintain-framerate", icon: "frames", hint: "host.advanced.preference.framerateHint", comic: "hint-prefer-framerate" },
+  ] as const;
+  return <div className="lr-door-group lr-picture-preference">
+    <span className="lr-door-glyph"><Glyph name="mountain" size={19} /><Cap k="host.advanced.preference" /></span>
+    <div className="lr-row-group" role="group" aria-label={t("host.advanced.preference")}>
+      {choices.map(choice => <Chip key={choice.value} name="degradationPreference" value={choice.value}
+        selected={value === choice.value} disabled={disabled} onClick={() => onChange(choice.value)}
+        title={`${t(DEGRADATION_PREFERENCE_KEYS[choice.value])} · ${t(choice.hint)}`} hint={choice.comic}>
+        <Glyph name={choice.icon} size={18} /><Cap k={DEGRADATION_PREFERENCE_KEYS[choice.value]} />
+      </Chip>)}
+    </div>
+  </div>;
 }

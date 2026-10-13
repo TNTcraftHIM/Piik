@@ -19,7 +19,7 @@ import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 
-import { AudioBitrateControl, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
+import { AudioBitrateControl, PicturePreferenceControl, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import { MAX_SCREEN_AUDIO_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
@@ -124,16 +124,19 @@ export function ControlsPreview() {
               maxFramerate: Math.min(current.maxFramerate, captureFramerateCeiling(resolution)),
             }))} />
             <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={false}
-              onChange={change => setQuality(current => ({ ...current, ...change }))} /></>}
-          audio={<><div className="lr-door-group lr-source-audio-settings">
+              onChange={change => setQuality(current => ({ ...current, ...change }))} />
+            <PicturePreferenceControl value={quality.degradationPreference} disabled={false}
+              onChange={degradationPreference => setQuality(current => ({ ...current, degradationPreference }))} /></>}
+          audio={<><AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
+              disabled={false} onChange={maxAudioBitrate => setQuality(current => ({ ...current, maxAudioBitrate }))} />
+          <div className="lr-door-group lr-source-audio-settings">
             <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.systemAudio")}
               hint={sound ? "hint-stop-audio" : "hint-share-audio"} />
             <LiveAudioExclusion load={previewApplications} value={excludedAudio} onChange={setExcludedAudio} disabled={!sound || paused} />
           </div><HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
             native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
             voiceProcessing={voiceProcessing} onVoiceProcessing={setVoiceProcessing} />
-            <AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
-              disabled={false} onChange={maxAudioBitrate => setQuality(current => ({ ...current, maxAudioBitrate }))} /></>}
+          </>}
         />
       </section>
       <section id="option-preview" className="cp-card">

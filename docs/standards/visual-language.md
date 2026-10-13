@@ -156,9 +156,13 @@ the television, above the couch. Its disclosure groups quality presets and pictu
 parameters with sound and microphone settings; presets remain available before
 sharing starts. Separate the less frequent connection/codec options in a nested
 disclosure. Expand in page flow, pushing later content down instead of covering
-the picture or participants. Use two content groups on wide screens and stack
-them on narrow screens; avoid another permanent row of settings cards. Keep
-shared presentation separate from the existing setting/resource owners.
+the picture or participants. Keep picture and sound in distinct sections; place
+related adjustments side by side where space permits and stack them on narrow
+screens. Avoid another permanent row of settings cards. Numeric quality inputs
+retain the accepted capability range; sliders offer a labelled common range for
+quick adjustment. A higher typed value remains visible and must not be reduced
+merely by opening or focusing its slider. Shared presentation stays separate
+from the existing setting/resource owners.
 The microphone comic depicts Host commentary gain;
 the Viewer's listening-volume comic remains a different action.
 

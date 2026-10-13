@@ -1,8 +1,12 @@
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import * as jsxRuntime from "react/jsx-runtime";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
+import { VideoRateControls } from "../src/client/components/living/QualityPresets";
+import { QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS } from "../src/client/media/quality";
 
 // Exercise the private draft owner without adding a DOM runtime to unit tests.
 // Real pointer/focus ordering is also checked in the existing Browser preview.
@@ -42,6 +46,28 @@ function editor() {
 }
 
 describe("Numeric quality editing group", () => {
+  it.each([
+    { fps: 144, mbps: 80, maxFps: 240, maxMbps: 240, sliderFps: 60, sliderMbps: 20 },
+    { fps: 15, mbps: 5, maxFps: 30, maxMbps: 10, sliderFps: 30, sliderMbps: 10 },
+  ])("keeps common sliders separate from accepted input limits ($maxFps fps, $maxMbps Mbps)", test => {
+    const onChange = vi.fn();
+    const html = renderToStaticMarkup(createElement(VideoRateControls, {
+      value: { ...QUALITY_PROFILES["1080p30"], maxFramerate: test.fps, maxBitrate: test.mbps * 1_000_000 },
+      limits: { ...VIDEO_CAPTURE_LIMITS, maxVideoFramerate: test.maxFps, maxVideoBitrate: test.maxMbps * 1_000_000 },
+      disabled: false, onChange,
+    }));
+    const inputs = html.match(/<input\b[^>]*>/g)!;
+    const numbers = inputs.filter(input => input.includes('type="number"'));
+    const sliders = inputs.filter(input => input.includes('type="range"'));
+    for (const [index, value, max, sliderMax] of [[0, test.fps, test.maxFps, test.sliderFps], [1, test.mbps, test.maxMbps, test.sliderMbps]] as const) {
+      expect(numbers[index]).toContain(`max="${max}"`);
+      expect(numbers[index]).toContain(`value="${value}"`);
+      expect(sliders[index]).toContain(`max="${sliderMax}"`);
+      expect(sliders[index]).toContain(`value="${Math.min(value, sliderMax)}"`);
+    }
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("preserves a draft through group navigation or cancelled selection, then commits on leaving", () => {
     const current = editor();
     current.input.value = "256";

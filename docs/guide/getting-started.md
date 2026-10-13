@@ -169,11 +169,12 @@ sharing to allow that fallback. The project's online site uses P2P only.
 
 Open **Sharing settings** below the picture to adjust picture and audio quality.
 
-- Choose a picture preset, or enter width and height under **Resolution ceiling**.
+- Choose a picture preset, or enter width and height under **Resolution limit**.
   Piik preserves the source's proportions within that ceiling, including portrait
   and ultrawide pictures.
-- Use the sliders or enter a **Frame rate ceiling** from 1 to 240 fps and a
-  **Video bitrate ceiling** from 0.1 to 240 Mbps. The frame-rate limit depends
+- Sliders cover common values up to 60 fps and 20 Mbps. You can also enter an
+  **FPS limit** from 1 to 240 fps and a **Bitrate limit** from 0.1 to 240 Mbps.
+  The frame-rate limit depends
   on picture size: for example, 1080p240, 1440p144 and 4K60 are accepted requests.
 - Choose an audio preset, or enter an **Audio bitrate limit** from 6 to 320 kbps.
 

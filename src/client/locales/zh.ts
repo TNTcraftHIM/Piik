@@ -354,6 +354,9 @@ export const zh = {
   "host.viewerOverview": "全员连接数据",
 
   "host.quality": "视频预设",
+  "host.quality.light": "轻量",
+  "host.quality.hd": "高清",
+  "host.quality.highFps": "高帧率",
   "host.quality.720p30": "720p 30\u00a0帧",
   "host.quality.1080p30": "1080p 30\u00a0帧",
   "host.quality.1080p60": "1080p 60\u00a0帧",
@@ -377,6 +380,8 @@ export const zh = {
   "host.advanced.audioBitrate": "音频码率上限",
   "host.video.width": "宽度上限（像素）",
   "host.video.height": "高度上限（像素）",
+  "host.video.commonRange": "常用范围",
+  "host.video.inputHint": "拖动选择常用值，也可直接输入 {min}–{max} {unit}。",
   "host.video.resolutionHint": "宽 ≤ {width}，高 ≤ {height} 像素；总像素 ≤ {pixels}。保留来源比例，帧率上限随尺寸调整。",
   "host.audio.bitrateHint": "音频码率上限：{min}–{max} kbps。",
   "host.advanced.audio.saver": "普通",

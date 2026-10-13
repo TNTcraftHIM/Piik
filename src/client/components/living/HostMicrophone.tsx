@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type CSSProperties } from "react";
 import { Btn, SwitchItem } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { Glyph } from "../../ui/icons";
@@ -43,6 +43,7 @@ export function HostMicrophoneSettings({ enabled, disabled, volume, onVolume, de
       </label>
       <Tooltip kind="hint-microphone-volume" text={vis ? undefined : t("host.microphone.settings")}>
         <input id={id} type="range" min={0} max={200} step={1} value={percent} disabled={disabled}
+          style={{ "--range-fill": `${percent / 2}%` } as CSSProperties}
           aria-label={t("host.microphone.volume")} aria-valuetext={`${percent}%`}
           onChange={event => onVolume(Number(event.target.value) / 100)} />
       </Tooltip>
