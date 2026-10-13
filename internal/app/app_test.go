@@ -260,6 +260,33 @@ func TestLauncherRetainsItsRuntimeFailureDuringCancellation(t *testing.T) {
 				}
 			}
 			resume()
+			if !cancelBeforeFailure {
+				select {
+				case <-requestDone:
+				case <-time.After(2 * time.Second):
+					t.Fatal("launcher did not report its failed room")
+				}
+				response, err := http.Get(strings.TrimSuffix(target, "/client") + "/api/client-launcher")
+				if err != nil {
+					t.Fatalf("room failure retired the App approval UI: %v", err)
+				}
+				var state struct {
+					Target, Detail string
+					Starting       bool
+				}
+				err = json.NewDecoder(response.Body).Decode(&state)
+				response.Body.Close()
+				if err != nil || state.Target != "" || state.Starting || !strings.Contains(state.Detail, "local server port is unavailable") {
+					t.Fatalf("failed room was not reflected in the live launcher: %+v, %v", state, err)
+				}
+				select {
+				case err := <-done:
+					joined = true
+					t.Fatalf("room failure retired the resident App: %v", err)
+				default:
+				}
+				cancel()
+			}
 			select {
 			case err := <-done:
 				joined = true

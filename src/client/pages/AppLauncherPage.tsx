@@ -228,25 +228,22 @@ export function AppLauncherPage() {
         {debugError && <Pill icon="alert" tone="bad" comic="warning" alert label={t("client.launch.debugFailed")} />}
         {loading || (starting && !requestedSite) ? (
           <LoadingStatus label={starting ? "client.launch.starting" : "common.loading"} />
-        ) : error ? (
+        ) : error?.kind === "load" ? (
           <div className="lr-client-launch-panel">
             <Pill
               icon="alert"
               tone="bad"
-              label={t(error.kind === "load" ? "client.launch.loadFailed" : "client.launch.error")}
+              label={t("client.launch.loadFailed")}
               alert
               comic="signal-failed"
             />
-            {error.kind === "launch" ? <>
-              {error.detail && <p className="lr-client-launch-detail">{error.detail}</p>}
-              <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.reopen")}</p>
-            </> : <Btn
+            <Btn
               icon="refresh"
               title="common.refresh"
               cap="common.refresh"
               hint="page-refresh"
               onClick={() => window.location.reload()}
-            />}
+            />
           </div>
         ) : requestedSite ? (
           <section className="lr-client-approval">
@@ -267,6 +264,11 @@ export function AppLauncherPage() {
         ) : (
           <LauncherForm
             version={version}
+            roomError={error?.kind === "launch" ? <>
+              <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
+              {error.detail && <p className="lr-client-launch-detail">{error.detail}</p>}
+              <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.reopen")}</p>
+            </> : undefined}
             mode={mode}
             site={site}
             localAccessPassword={localAccessPassword}

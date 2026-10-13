@@ -21,6 +21,16 @@ PR; maintainers can help identify what still needs verification.
 讨论时请结合实际场景提出建议，尊重不同意见；分享截图或日志前移除隐私内容。
 无法运行的检查请如实说明，便于维护者协助验证。
 
+Review contributions by their practical value, evidence and fit with the product,
+not their line count. A small fix that identifies and resolves a real defect is
+valuable. Duplicate work already independently resolved, personal preferences or
+low-value changes may be declined; merging is not an attribution mechanism.
+Retain authorship for accepted contributions and credit substantive discoveries
+accurately, without attributing independently written code to a PR author.
+评审看实际价值、证据和产品定位，不看代码行数。发现并解决真实问题的小修复同样值得接纳；
+已经独立解决的重复工作、个人偏好或收益很低的改动可以不合并，不为增加贡献者名单而合并。
+保留已接纳贡献的作者信息，如实说明有价值的问题发现；独立编写的代码不应冒记为他人共同编写。
+
 ## Lean Workflow
 
 This is the default for an ordinary scoped implementation or bug fix.

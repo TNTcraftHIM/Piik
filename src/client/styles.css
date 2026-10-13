@@ -1212,6 +1212,8 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 }
 .lr-input:is(.lr-quality-number, .lr-video-size):hover:not(:has(:disabled)) { border-color: var(--ink); background: var(--control-hover); }
 .lr-input:is(.lr-quality-number, .lr-video-size):has(:disabled) { opacity: .55; }
+.lr-input:is(.lr-quality-number, .lr-video-size):has([aria-invalid="true"]) { border-color: var(--danger); }
+.lr-quality-validation { color: var(--danger); font-size: 12px; line-height: 1.5; }
 .lr-input.lr-quality-number { width: 110px; gap: 6px; }
 .lr-quality-number input, .lr-video-size input { font-size: 13px; font-weight: 650; appearance: textfield; }
 .lr-quality-number input { text-align: right; }

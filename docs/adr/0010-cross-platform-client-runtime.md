@@ -165,8 +165,12 @@ topologies and makes a saved Site unavailable while another room source runs.
 12. Local authority shutdown first ends every in-memory room through the current
     `room-closed` path, then closes signaling and HTTP. The App cancels the
     server context, calls that end-then-close sequence under one bounded
-    timeout, and only then closes the public tunnel and the loopback service. It
-    does not restart a vanished authority.
+    timeout, and only then closes the public tunnel. Interactive room failure
+    leaves the resident App, approved Site sessions and approval UI available;
+    the launcher invalidates the failed room's target and reports its error.
+    Process exit additionally retires the loopback service. Explicit CLI room
+    launches still return their failure to the caller. Neither path restarts a
+    vanished authority.
 13. App assembly consumes the immutable application release from the same full
     Git revision and an explicit supported target. The Go binary embeds that
     release's built Browser assets and the package `REVISION` records the same

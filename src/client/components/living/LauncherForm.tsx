@@ -47,6 +47,7 @@ export function LauncherForm({
   onSubmit,
   children,
   version,
+  roomError,
 }: {
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
@@ -66,6 +67,7 @@ export function LauncherForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   children?: ReactNode;
   version?: string;
+  roomError?: ReactNode;
 }) {
   const { vis, t } = useCopy();
   const accessHintId = useId();
@@ -111,7 +113,7 @@ export function LauncherForm({
         </div>
       </section>
 
-      {target ? <a className="lr-btn is-primary" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>
+      {roomError ?? (target ? <a className="lr-btn is-primary" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>
         <Glyph name="arrowRight" size={19} />{vis ? null : <span className="lr-cap">{t("client.launch.go")}</span>}
       </a> : <>
       <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
@@ -211,7 +213,7 @@ export function LauncherForm({
         hint={MODES.find((choice) => choice.mode === mode)?.comic}
         disabled={mode === "local" && lan !== undefined && !lan.selected}
       />
-      </>}
+      </>)}
       <div className="lr-client-about">
         {version && <p className="lr-client-version">
           <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version })}</span>

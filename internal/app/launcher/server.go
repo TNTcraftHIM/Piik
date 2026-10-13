@@ -77,18 +77,16 @@ type Server struct {
 	enableDebug         func() error
 	selection           chan Selection
 	resultReady         chan struct{}
-	handled             chan struct{}
 	done                chan error
 	ready               chan struct{}
 
-	mu          sync.Mutex
-	selected    bool
-	resultSet   bool
-	target      string
-	resultErr   error
-	closeOnce   sync.Once
-	resultOnce  sync.Once
-	handledOnce sync.Once
+	mu         sync.Mutex
+	selected   bool
+	resultSet  bool
+	target     string
+	resultErr  error
+	closeOnce  sync.Once
+	resultOnce sync.Once
 }
 
 // Start serves the launcher page and its API on a loopback port. assets is the
@@ -130,7 +128,6 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 		enableDebug:         options.EnableDebug,
 		selection:           make(chan Selection, 1),
 		resultReady:         make(chan struct{}),
-		handled:             make(chan struct{}),
 		done:                make(chan error, 1),
 		ready:               make(chan struct{}),
 	}
@@ -156,10 +153,6 @@ func (server *Server) Selection() <-chan Selection {
 	return server.selection
 }
 
-func (server *Server) Handled() <-chan struct{} {
-	return server.handled
-}
-
 func (server *Server) Done() <-chan error {
 	return server.done
 }
@@ -175,17 +168,16 @@ func (server *Server) Begin() bool {
 }
 
 func (server *Server) SetResult(target string, resultErr error) {
-	server.resultOnce.Do(func() {
-		if resultErr == nil && !validTarget(target) {
-			resultErr = errors.New("App target is invalid")
-		}
-		server.mu.Lock()
-		server.resultSet = true
-		server.target = target
-		server.resultErr = resultErr
-		server.mu.Unlock()
-		close(server.resultReady)
-	})
+	if resultErr == nil && !validTarget(target) {
+		resultErr = errors.New("App target is invalid")
+	}
+	server.mu.Lock()
+	server.resultSet = true
+	server.target = target
+	server.resultErr = resultErr
+	server.mu.Unlock()
+	// Readiness completes once; a later room failure invalidates the old target.
+	server.resultOnce.Do(func() { close(server.resultReady) })
 }
 
 func (server *Server) Close() error {
@@ -371,19 +363,15 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 	select {
 	case server.selection <- selection:
 	case <-request.Context().Done():
-		server.markHandled()
 		return
 	case <-server.ctx.Done():
-		server.markHandled()
 		return
 	}
 	select {
 	case <-server.resultReady:
 	case <-request.Context().Done():
-		server.markHandled()
 		return
 	case <-server.ctx.Done():
-		server.markHandled()
 		return
 	}
 	server.mu.Lock()
@@ -393,11 +381,9 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 		writeJSON(response, http.StatusServiceUnavailable, map[string]string{
 			"error": "Piik App could not start", "detail": errorDetail(resultErr),
 		})
-		server.markHandled()
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]string{"target": target})
-	server.markHandled()
 }
 
 func errorDetail(err error) string {
@@ -410,10 +396,6 @@ func errorDetail(err error) string {
 		return string(detail[:2048]) + "..."
 	}
 	return string(detail)
-}
-
-func (server *Server) markHandled() {
-	server.handledOnce.Do(func() { close(server.handled) })
 }
 
 func (server *Server) requestAllowed(request *http.Request) bool {

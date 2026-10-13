@@ -71,12 +71,25 @@ export const scenarios: readonly Scenario[] = [
   { ...baseline, id: "sequential-app", host: "app", viewer: "app", nat: ["sequential", "sequential"], expected: "observed", enhancedExpected: "media" },
   { ...baseline, id: "sequential-browser", host: "browser", viewer: "browser", nat: ["sequential", "sequential"], expected: "observed" },
   { ...baseline, id: "sequential-mixed", host: "app", viewer: "browser", nat: ["sequential", "sequential"], expected: "observed" },
+  { ...baseline, id: "sequential-browser-app", host: "browser", viewer: "app", nat: ["sequential", "sequential"], expected: "observed" },
   { ...baseline, id: "ipv6-browser", host: "browser", viewer: "browser", ipv6: true, fault: "ipv4-block" },
   { ...baseline, id: "ipv6-app", host: "app", viewer: "app", ipv6: true, fault: "ipv4-block" },
   { ...baseline, id: "healthy-sibling", host: "browser", viewer: "browser", sibling: true,
     fault: "rate", faultEndpoint: 1, direction: "downlink", duringShare: true },
   { ...baseline, id: "remap-browser", host: "browser", viewer: "browser", fault: "udp-block", duringShare: true, remap: true },
   { ...baseline, id: "remap-app", host: "app", viewer: "app", fault: "udp-block", duringShare: true, remap: true },
+  // Preserve each direction: Browser capture and Native reception have different
+  // owners from Native capture and Browser reception, even on the same network.
+  ...([
+    { host: "app", viewer: "browser" }, { host: "browser", viewer: "app" }, { host: "app", viewer: "app" },
+  ] as const).flatMap(pair => [
+    { ...baseline, ...pair, id: `stun-backup-${pair.host}-${pair.viewer}`, fault: "stun-primary" as const },
+    { ...baseline, ...pair, id: `signaling-outage-${pair.host}-${pair.viewer}`, fault: "signaling" as const, duringShare: true },
+  ]),
+  ...([{ host: "app", viewer: "browser" }, { host: "browser", viewer: "app" }] as const).flatMap(pair => [
+    { ...baseline, ...pair, id: `ipv6-${pair.host}-${pair.viewer}`, ipv6: true, fault: "ipv4-block" as const },
+    { ...baseline, ...pair, id: `remap-${pair.host}-${pair.viewer}`, fault: "udp-block" as const, duringShare: true, remap: true },
+  ]),
 ];
 
 export function selectScenarios(suite: string, names?: string): Scenario[] {

@@ -282,59 +282,6 @@ export function CaptureSourcePicker({
           id={`${pickerId}-panel`}
           aria-labelledby={`${pickerId}-${activeTab}`}
         >
-          {activeTab === "camera" ? <CameraSources {...cameraSources} selected={initialCamera}
-            disabled={selectionDisabled} onSelect={id => onCamera?.(id)} /> : <>
-          <div className="lr-source-picker-list">
-            {browserCapture ? (
-              <button
-                type="button"
-                className="lr-source-option is-browser"
-                aria-label={t("host.sourcePicker.browser")}
-                disabled={selectionDisabled || !tabAvailable(activeTab)}
-                onClick={onBrowser}
-              >
-                <span className="lr-source-option-icon" aria-hidden="true">
-                  <Glyph name={SOURCE_ICONS[activeTab]} size={23} />
-                </span>
-                {vis ? (
-                  <span className="visually-hidden">
-                    {t(`host.sourcePicker.tab.${activeTab}`)}
-                  </span>
-                ) : (
-                  <span className="lr-source-option-copy">
-                    <strong>{t("host.sourcePicker.browser")}</strong>
-                    <small>{t("host.sourcePicker.browserHint")}</small>
-                  </span>
-                )}
-              </button>
-            ) : null}
-
-            {nativeTab && !browserCapture
-              ? sources.map((target) => (
-                  <CaptureSourceOption
-                    key={nativeCaptureTargetKey(target)}
-                    target={target}
-                    disabled={
-                      selectionDisabled || exclusionUnavailable || (audioLocked && shareAudio && !supportsAudio(target))
-                    }
-                    onPreview={onPreview}
-                    onSelect={() =>
-                      onNative(target, shareAudio && supportsAudio(target),
-                        supportsCaptureBorder && showCaptureBorder, target.kind === "display" ? excludeAudio : undefined)
-                    }
-                  />
-                ))
-              : null}
-          </div>
-          </>}
-
-          {onAppConnected && (nativeSources.kind === "browser" || nativeSources.kind === "unavailable") && (
-            <div className="lr-source-app-connection">
-              <AppConnectionButton sourcePicker onConnected={onAppConnected} />
-              {vis ? null : <small>{t("client.connect.captureHint")}</small>}
-            </div>
-          )}
-
           {nativeTab &&
           nativeSources.kind === "ready" &&
           (supportsCaptureBorder || sources.length > 0) ? (
@@ -389,6 +336,61 @@ export function CaptureSourcePicker({
               ) : null}
             </div>
           ) : null}
+
+          {activeTab === "camera" ? <CameraSources {...cameraSources} selected={initialCamera}
+            disabled={selectionDisabled} onSelect={id => onCamera?.(id)} /> : <>
+          <div className="lr-source-picker-list">
+            {browserCapture ? (
+              <button
+                type="button"
+                className="lr-source-option is-browser"
+                aria-label={t("host.sourcePicker.browser")}
+                disabled={selectionDisabled || !tabAvailable(activeTab)}
+                onClick={onBrowser}
+              >
+                <span className="lr-source-option-icon" aria-hidden="true">
+                  <Glyph name={SOURCE_ICONS[activeTab]} size={23} />
+                </span>
+                {vis ? (
+                  <span className="visually-hidden">
+                    {t(`host.sourcePicker.tab.${activeTab}`)}
+                  </span>
+                ) : (
+                  <span className="lr-source-option-copy">
+                    <strong>{t("host.sourcePicker.browser")}</strong>
+                    <small>{t("host.sourcePicker.browserHint")}</small>
+                  </span>
+                )}
+              </button>
+            ) : null}
+
+            {nativeTab && !browserCapture
+              ? sources.map((target) => (
+                  <CaptureSourceOption
+                    key={nativeCaptureTargetKey(target)}
+                    target={target}
+                    disabled={
+                      selectionDisabled || exclusionUnavailable || (audioLocked && shareAudio && !supportsAudio(target))
+                    }
+                    onPreview={onPreview}
+                    onSelect={() =>
+                      onNative(target, shareAudio && supportsAudio(target),
+                        supportsCaptureBorder && showCaptureBorder, target.kind === "display" ? excludeAudio : undefined)
+                    }
+                  />
+                ))
+              : null}
+          </div>
+          </>}
+
+          {onAppConnected && (nativeSources.kind === "browser" || nativeSources.kind === "unavailable") && (
+            <div className="lr-source-app-connection">
+              <AppConnectionButton sourcePicker onConnected={onAppConnected} />
+              {vis ? null : <small>{t("client.connect.captureHint")}</small>}
+            </div>
+          )}
+
+
 
           {issueKey ? (
             <Pill icon="alert" label={t(issueKey)} comic="warning" />

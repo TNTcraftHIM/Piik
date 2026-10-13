@@ -26,8 +26,10 @@ function editor() {
   const inside = {};
   const container = { contains: (node: unknown) => node === inside };
   const onChange = vi.fn();
+  const setInvalid = vi.fn();
   const render = runInNewContext(executable, {
     exports: {}, require: () => jsxRuntime, useRef: () => ({ current: input }), Number,
+    useState: () => [false, setInvalid], useId: () => "validation", useCopy: () => ({ t: vi.fn() }),
   });
   let choose!: (next: number) => void;
   let key!: (event: unknown) => void;
@@ -42,7 +44,7 @@ function editor() {
   const blur = (relatedTarget: unknown = null) => result.props.onBlur({ currentTarget: container, relatedTarget });
   const press = (value: string) => key({ key: value, currentTarget: { blur: () => blur() },
     preventDefault() {}, stopPropagation() {} });
-  return { input, inside, onChange, choose, blur, press };
+  return { input, inside, onChange, choose, blur, press, setInvalid };
 }
 
 describe("Numeric quality editing group", () => {
@@ -126,12 +128,16 @@ describe("Numeric quality editing group", () => {
     if (key === "Escape") expect(current.input.value).toBe("128");
   });
 
-  it.each(["", "321"])("restores an empty or invalid draft (%s) without applying it", value => {
+  it.each(["", "321"])("marks an invalid draft (%s) without losing or applying it", value => {
     const current = editor();
     current.input.value = value;
     current.input.validity.valid = value === "";
     current.blur();
-    expect(current.input.value).toBe("128");
+    expect(current.input.value).toBe(value);
+    expect(current.setInvalid).toHaveBeenLastCalledWith(true);
     expect(current.onChange).not.toHaveBeenCalled();
+    current.choose(128);
+    expect(current.input.value).toBe("128");
+    expect(current.setInvalid).toHaveBeenLastCalledWith(false);
   });
 });

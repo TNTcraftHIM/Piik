@@ -236,6 +236,7 @@ func runLauncher(
 	configureDiagnostics func(*Options, appconfig.Config) error,
 ) (returnedErr error) {
 	automatic := explicitMode(options)
+	directRoom := automatic && (options.Local || options.Link || config.Site == "")
 	initialOptions := options
 	initialConfig := config
 	mode, err := launcher.LoadMode(configPath)
@@ -304,9 +305,28 @@ func runLauncher(
 		// capabilities immediately; the launcher can start a Local room later.
 		openSite(initialConfig.Site, options)
 	}
+	// An interactive room is a child of the resident App. Its failure must not
+	// retire an unrelated Site's native sessions or its approval page. Explicit
+	// CLI launches still return their outcome to the caller. Register this before
+	// the runtime join so its cleanup and error are complete before we wait.
+	defer func() {
+		if directRoom || returnedErr == nil || ctx.Err() != nil {
+			return
+		}
+		launch.SetResult("", returnedErr)
+		options.console.show(consoleView{state: "setup", entry: launch.URL(), problem: diagnostics.SafeText(returnedErr.Error())})
+		slog.Debug("piik-client", "event", "local-room-stopped", diagnostics.Error(returnedErr))
+		select {
+		case <-ctx.Done():
+		case err := <-control.Done():
+			returnedErr = errors.Join(returnedErr, err)
+		case err := <-launch.Done():
+			returnedErr = errors.Join(returnedErr, err)
+		}
+	}()
 
 	var selection launcher.Selection
-	if automatic && (options.Local || options.Link || initialConfig.Site == "") {
+	if directRoom {
 		selection = launcher.Selection{Mode: launcher.ModeLocal, LocalAccessPassword: initialConfig.LocalAccessPassword}
 		if options.Link {
 			selection.Mode = launcher.ModeLink
@@ -343,20 +363,12 @@ func runLauncher(
 	})
 	if err != nil {
 		err = fmt.Errorf("Piik App configuration could not be saved: %w", err)
-		launch.SetResult("", err)
-		if !automatic {
-			<-launch.Handled()
-		}
 		return err
 	}
 	if err = configureDiagnostics(&options, selectedConfig); err != nil {
-		launch.SetResult("", err)
-		if !automatic {
-			<-launch.Handled()
-		}
 		return err
 	}
-	if !automatic {
+	if !directRoom {
 		options.DisableBrowser = true
 	}
 	ready := make(chan string, 1)
@@ -384,10 +396,6 @@ func runLauncher(
 	case target := <-ready:
 		launch.SetResult(target, nil)
 	case <-runtimeDone:
-		launch.SetResult("", runtimeErr)
-		if !automatic {
-			<-launch.Handled()
-		}
 		return nil
 	case <-ctx.Done():
 		launch.SetResult("", ctx.Err())

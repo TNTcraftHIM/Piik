@@ -88,6 +88,37 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 	}
 }
 
+func TestRoomFailureInvalidatesReadyTargetButKeepsSiteApprovalAvailable(t *testing.T) {
+	server := startFixture(t, "https://share.example")
+	server.changeSite = func(site string) (string, error) { return site, nil }
+	origin := strings.TrimSuffix(server.URL(), "/client")
+	server.Begin()
+	server.SetResult("http://localhost:8787/#piik-client=1", nil)
+	server.SetResult("", errors.New("public invitation link stopped"))
+	response, err := http.Get(origin + "/api/client-launcher")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var state struct {
+		Target, Detail, Site string
+		Starting             bool
+	}
+	if json.NewDecoder(response.Body).Decode(&state) != nil || state.Target != "" || state.Starting ||
+		state.Detail != "public invitation link stopped" || state.Site != "https://share.example" {
+		t.Fatalf("failed room state = %+v", state)
+	}
+	response, err = localPost(origin+"/api/client-launcher/site", "application/json",
+		strings.NewReader(`{"site":"","expectedSite":"https://share.example"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("failed room blocked approval revocation: %d", response.StatusCode)
+	}
+}
+
 func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
 	const version = "v1.2.3"
 	const revision = "0123456789abcdef0123456789abcdef01234567"

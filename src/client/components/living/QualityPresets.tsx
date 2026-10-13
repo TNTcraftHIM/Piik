@@ -1,4 +1,4 @@
-import { Fragment, useRef, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { MIN_AUDIO_BITRATE } from "../../../shared/protocol";
 import {
   QUALITY_PROFILES, QUALITY_PROFILE_KEYS, QUALITY_RESOLUTIONS, DEGRADATION_PREFERENCE_KEYS, qualityResolutionEqual,
@@ -52,22 +52,26 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
 }) {
   const { t, vis } = useCopy();
   const controls = useRef<HTMLDivElement>(null);
+  const [invalid, setInvalid] = useState(false);
+  const errorId = useId();
   const axes = ["width", "height"] as const;
   const reset = (container: HTMLElement) => {
+    setInvalid(false);
     for (const axis of axes) container.querySelector<HTMLInputElement>(`input[name="${axis}"]`)!.value = String(value[axis]);
   };
   const apply = (container: HTMLElement) => {
     const width = container.querySelector<HTMLInputElement>('input[name="width"]')!;
     const height = container.querySelector<HTMLInputElement>('input[name="height"]')!;
     if (![width, height].every(input => input.validity.valid && Number.isFinite(input.valueAsNumber))) {
-      reset(container);
+      setInvalid(true);
       return;
     }
     const next = { width: width.valueAsNumber, height: height.valueAsNumber };
     if (captureFramerateCeiling(next, limits) < MIN_VIDEO_FRAMERATE) {
-      reset(container);
+      setInvalid(true);
       return;
     }
+    setInvalid(false);
     if (!qualityResolutionEqual(value, next)) onChange(next);
   };
   return <div className="lr-resolution-controls" ref={controls}
@@ -91,14 +95,20 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
           role="group" aria-label={t("host.advanced.resolution")}>
           {axes.map((axis, index) => <Fragment key={axis}>
             {index === 1 ? <span aria-hidden="true">×</span> : null}
-            <input type="number" inputMode="numeric" name={axis} defaultValue={value[axis]}
+            <input type="number" inputMode="numeric" name={axis} defaultValue={value[axis]} required
               min={4} max={limits.maxVideoResolution[axis]} step={2} disabled={disabled}
+              aria-invalid={invalid || undefined} aria-describedby={invalid ? errorId : undefined}
+              onInput={() => setInvalid(false)}
               aria-label={t(axis === "width" ? "host.video.width" : "host.video.height")} />
           </Fragment>)}
           <span aria-hidden="true">px</span>
         </span>
       </Tooltip>
     </div>
+    {invalid && <small id={errorId} className="lr-quality-validation" role="alert">{t("host.video.resolutionInvalid", {
+      width: String(limits.maxVideoResolution.width), height: String(limits.maxVideoResolution.height),
+      pixels: limits.maxVideoPixels.toLocaleString("en-US"),
+    })}</small>}
     <div className="lr-row-group" role="group" aria-label={t("host.advanced.resolution")}>
       {Object.entries(QUALITY_RESOLUTIONS).map(([label, resolution]) => <Chip key={label}
         selected={qualityResolutionEqual(value, resolution)}
@@ -131,8 +141,11 @@ function QualityNumberControl({ value, min, max, step, unit, name, label, disabl
   className: string;
   children: (input: ReactNode, select: (value: number) => void) => ReactNode;
 }) {
+  const { t } = useCopy();
+  const [invalid, setInvalid] = useState(false);
+  const errorId = useId();
   const input = useRef<HTMLInputElement>(null);
-  const reset = () => { input.current!.value = String(value); };
+  const reset = () => { input.current!.value = String(value); setInvalid(false); };
   const select = (next: number) => {
     // A preset or slider replaces the draft, including a choice of the current value.
     reset();
@@ -140,7 +153,9 @@ function QualityNumberControl({ value, min, max, step, unit, name, label, disabl
   };
   const number = <label className="lr-input lr-quality-number">
     <input ref={input} type="number" inputMode={step < 1 ? "decimal" : "numeric"} name={name} key={value}
-      defaultValue={value} min={min} max={max} step={step} disabled={disabled} aria-label={label}
+      defaultValue={value} min={min} max={max} step={step} disabled={disabled} required aria-label={label}
+      aria-invalid={invalid || undefined} aria-describedby={invalid ? errorId : undefined}
+      onInput={() => setInvalid(false)}
       onKeyDown={event => {
         if (event.key !== "Enter" && event.key !== "Escape") return;
         event.preventDefault();
@@ -153,9 +168,14 @@ function QualityNumberControl({ value, min, max, step, unit, name, label, disabl
   return <div className={className} onBlur={event => {
     if (event.currentTarget.contains(event.relatedTarget)) return;
     const field = input.current!;
-    if (!field.validity.valid || !Number.isFinite(field.valueAsNumber)) reset();
-    else if (field.valueAsNumber !== value) onChange(field.valueAsNumber);
-  }}>{children(number, select)}</div>;
+    const valid = field.validity.valid && Number.isFinite(field.valueAsNumber);
+    setInvalid(!valid);
+    if (valid && field.valueAsNumber !== value) onChange(field.valueAsNumber);
+  }}>{children(number, select)}
+    {invalid && <small id={errorId} className="lr-quality-validation" role="alert">{t("host.quality.invalidNumber", {
+      min: String(min), max: String(max), step: String(step), unit,
+    })}</small>}
+  </div>;
 }
 
 export function VideoRateControls({ value, limits, disabled, onChange }: {
