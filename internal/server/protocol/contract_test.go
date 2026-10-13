@@ -158,6 +158,12 @@ func assertServerMessage(t *testing.T, name string, data []byte, want bool) {
 }
 
 func TestFutureReactionEventsKeepPayloadAndAuthorityBounds(t *testing.T) {
+	for _, role := range []string{"host", "viewer", "", "HOST", "admin"} {
+		assertServerMessage(t, "sender role "+role, []byte(
+			`{"type":"room-interaction","id":"event_future_1234","requestId":"request_future_1234","occurredAt":1,`+
+				`"sender":{"peerId":"sender_peer_1234","role":"`+role+`","displayName":"Friend"},"payload":{"kind":"reaction","reaction":"future-effect"}}`),
+			role == RoleHost || role == RoleViewer)
+	}
 	for _, payload := range []string{
 		`{"kind":"reaction","reaction":""}`,
 		`{"kind":"reaction","reaction":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,

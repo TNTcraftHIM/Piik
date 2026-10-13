@@ -125,6 +125,9 @@ func (sender *InteractionSender) UnmarshalJSON(data []byte) error {
 	if !ValidOpaqueID(value.PeerID) {
 		return errors.New("invalid sender peerId")
 	}
+	if !enumOf(value.Role, RoleHost, RoleViewer) {
+		return errors.New("invalid sender role")
+	}
 	*sender = InteractionSender(value)
 	return nil
 }

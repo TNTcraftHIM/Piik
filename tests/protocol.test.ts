@@ -33,6 +33,10 @@ it("accepts bounded future reaction events while keeping commands and known prop
     sender: { peerId: "sender_peer_1234", role: "viewer", displayName: "Friend" },
     payload: { kind: "reaction", reaction: "future-effect", targetPeerId: "target_peer_1234" } };
   expect(serverMessageSchema.safeParse(event).success).toBe(true);
+  for (const role of ["host", "viewer", "", "HOST", "admin"]) {
+    expect(serverMessageSchema.safeParse({ ...event, sender: { ...event.sender, role } }).success)
+      .toBe(role === "host" || role === "viewer");
+  }
   expect(clientMessageSchema.safeParse({ type: "send-room-interaction", requestId: event.requestId, payload: event.payload }).success).toBe(false);
   for (const payload of [
     { kind: "reaction", reaction: "" }, { kind: "reaction", reaction: "a".repeat(33) },
