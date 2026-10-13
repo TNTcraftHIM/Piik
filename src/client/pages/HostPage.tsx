@@ -621,7 +621,7 @@ export function HostPage({
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
   const nativeClientRef = useRef<NativeClient | null>(null);
-  const nativeClientConnectRef = useRef<Promise<NativeClient | null> | null>(null);
+  const nativeClientConnectRef = useRef<{ promise: Promise<NativeClient | null>; controller: AbortController } | null>(null);
   const nativeShareGenerationRef = useRef<string | null>(null);
   const serverShareGenerationRef = useRef<string | null>(null);
   const nativeMediaBridgeRef = useRef<NativeMediaBridge | null>(null);
@@ -767,6 +767,7 @@ export function HostPage({
       disposeNativeShare();
       nativeClientCloseCleanupRef.current?.();
       nativeClientCloseCleanupRef.current = null;
+      nativeClientConnectRef.current?.controller.abort();
       nativeClientConnectRef.current = null;
       nativeClientRef.current?.close();
       nativeClientRef.current = null;
@@ -1346,6 +1347,7 @@ export function HostPage({
     nativeClientCloseCleanupRef.current = client.onClose(() => {
       if (nativeClientRef.current !== client) return;
       nativeClientRef.current = null;
+      nativeClientConnectRef.current?.controller.abort();
       nativeClientConnectRef.current = null;
       nativeClientCloseCleanupRef.current = null;
       if (nativeSourceRequestRef.current) {
@@ -1365,16 +1367,18 @@ export function HostPage({
       nativeClientCloseCleanupRef.current?.();
       nativeClientCloseCleanupRef.current = null;
       nativeClientRef.current = null;
+      nativeClientConnectRef.current?.controller.abort();
       nativeClientConnectRef.current = null;
     }
     client.close();
   }
 
   function acquireNativeClient(): Promise<NativeClient | null> {
-    if (nativeClientConnectRef.current) return nativeClientConnectRef.current;
-    const connecting: Promise<NativeClient | null> = nativeShareCleanupRef.current.then(() =>
+    if (nativeClientConnectRef.current) return nativeClientConnectRef.current.promise;
+    const controller = new AbortController();
+    const promise: Promise<NativeClient | null> = nativeShareCleanupRef.current.then(() =>
       nativeClientConnectRef.current === connecting
-        ? nativeClientRef.current ?? NativeClient.connect()
+        ? nativeClientRef.current ?? NativeClient.connect({ signal: controller.signal })
         : null,
     ).catch((error) => {
       debugError("native", "discovery-failed", error);
@@ -1390,8 +1394,9 @@ export function HostPage({
     }).finally(() => {
       if (nativeClientConnectRef.current === connecting) nativeClientConnectRef.current = null;
     });
+    const connecting = { promise, controller };
     nativeClientConnectRef.current = connecting;
-    return connecting;
+    return promise;
   }
 
   function releaseUnusedNativeClient(): void {
@@ -1399,6 +1404,7 @@ export function HostPage({
     // needs to keep it after startup. Merely visiting the page owns no session.
     if (nativeSourceRequestRef.current || nativeShareGenerationRef.current ||
       (activeGenerationRef.current !== null && roomMutationRef.current !== null)) return;
+    nativeClientConnectRef.current?.controller.abort();
     nativeClientConnectRef.current = null;
     const client = nativeClientRef.current;
     if (client) discardNativeClient(client);

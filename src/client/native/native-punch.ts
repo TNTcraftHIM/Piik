@@ -40,7 +40,12 @@ export class NativePunchSender {
       this.finishResult = resolve;
       this.timer = setTimeout(() => this.finish(false), PREPARATION_TIMEOUT_MS);
       this.prediction = this.control.preparePunch(this.shareId, this.connectionId, this.ice, secret, undefined, this.sourceConnectionId)
-        .catch(() => null);
+        .catch(() => null).then(prediction => {
+          // Once this side cannot prepare, a remote reply cannot make the
+          // optional path usable. Leave the remaining operation time to ICE.
+          if (!prediction) this.finish(false);
+          return prediction;
+        });
       if (!this.send({ kind: "punch", connectionId: this.connectionId, punch: { phase: "prepare", secret } })) {
         this.finish(false);
       }

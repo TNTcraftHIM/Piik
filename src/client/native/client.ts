@@ -141,6 +141,7 @@ async function discoverNative<T>(
   path: "health" | "connect-discovery", read: (body: unknown) => T,
   { waitForPermission = true, signal }: NativeDiscoveryOptions,
 ): Promise<T | null> {
+  if (signal?.aborted) return null;
   if (!waitForPermission) {
     const permission = await ungrantedLocalPermission();
     if (permission) {
@@ -148,6 +149,7 @@ async function discoverNative<T>(
       return null;
     }
   }
+  if (signal?.aborted) return null;
   const controller = new AbortController();
   // The first request may wait for browser permission. One shared deadline
   // bounds the scan; a silent port must not hide an App on another port.
@@ -198,7 +200,7 @@ export async function notifyNativePresentation(
   signal: AbortSignal,
 ): Promise<void> {
   if (signal.aborted) return;
-  const health = await discoverNativeHealth();
+  const health = await discoverNativeHealth({ signal });
   if (!health || signal.aborted) return;
   await fetch(`http://127.0.0.1:${health.port}/presentation`, {
     method: "POST",
@@ -228,49 +230,49 @@ export class NativeClient {
   }
 
   static async connect(options?: NativeDiscoveryOptions): Promise<NativeClient | null> {
+    const signal = options?.signal;
     const health = await discoverNativeHealth(options);
-    if (!health) return null;
+    if (!health || signal?.aborted) return null;
     const socket = new WebSocket(`ws://127.0.0.1:${health.port}/control`, [
       `${NATIVE_CLIENT_SUBPROTOCOL}.${health.instanceToken}`,
     ]);
-    const opened = await new Promise<boolean>((resolveOpen) => {
-      const timer = window.setTimeout(
-        () => resolveOpen(false),
-        REQUEST_TIMEOUT_MS,
-      );
-      socket.addEventListener(
-        "open",
-        () => {
-          window.clearTimeout(timer);
-          resolveOpen(
-            socket.protocol ===
-              `${NATIVE_CLIENT_SUBPROTOCOL}.${health.instanceToken}`,
-          );
-        },
-        { once: true },
-      );
-      socket.addEventListener(
-        "error",
-        () => {
-          window.clearTimeout(timer);
-          resolveOpen(false);
-        },
-        { once: true },
-      );
-    });
-    if (!opened) {
-      debugEvent("native", "unavailable", { stage: "control" });
-      socket.close();
-      return null;
-    }
     const client = new NativeClient(health, socket);
+    // Acquisition owns discovery, the WebSocket handshake and hello together.
+    // Once returned, the caller owns the live client independently of this signal.
+    const abort = () => client.close();
+    signal?.addEventListener("abort", abort, { once: true });
     try {
+      const opened = await new Promise<boolean>((resolveOpen) => {
+        const finish = (value: boolean) => {
+          window.clearTimeout(timer);
+          socket.removeEventListener("open", onOpen);
+          socket.removeEventListener("error", fail);
+          socket.removeEventListener("close", fail);
+          signal?.removeEventListener("abort", fail);
+          resolveOpen(value);
+        };
+        const onOpen = () => finish(socket.protocol === `${NATIVE_CLIENT_SUBPROTOCOL}.${health.instanceToken}`);
+        const fail = () => finish(false);
+        const timer = window.setTimeout(fail, REQUEST_TIMEOUT_MS);
+        socket.addEventListener("open", onOpen);
+        socket.addEventListener("error", fail);
+        socket.addEventListener("close", fail);
+        signal?.addEventListener("abort", fail, { once: true });
+      });
+      if (!opened || client.closed || signal?.aborted) {
+        if (!signal?.aborted) debugEvent("native", "unavailable", { stage: "control" });
+        client.close();
+        return null;
+      }
       await client.request("hello", {}, readyResponseSchema);
+      if (client.closed || signal?.aborted) { client.close(); return null; }
       debugEvent("native", "connected");
       return client;
     } catch {
       client.close();
       return null;
+    } finally {
+      signal?.removeEventListener("abort", abort);
     }
   }
 

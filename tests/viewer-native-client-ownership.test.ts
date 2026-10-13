@@ -8,7 +8,7 @@ import { NativeCompatibilityError } from "../src/client/native/client";
 const source = ts.createSourceFile("ViewerPage.tsx", readFileSync(
   new URL("../src/client/pages/ViewerPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const owners = new Set(["nativeClientPromise", "nativeViewerAvailable", "acquireNativeClient", "releaseNativeClient"]);
+const owners = new Set(["nativeClientConnection", "nativeViewerAvailable", "acquireNativeClient", "releaseNativeClient"]);
 const declarations: string[] = [];
 let denyAccess = "";
 function collect(node: ts.Node): void {
@@ -42,9 +42,9 @@ function control() {
 }
 
 function fixture(launchedByClient = true) {
-  const connect = vi.fn(async (): Promise<ReturnType<typeof control> | null> => null);
+  const connect = vi.fn(async (_options: { signal: AbortSignal; waitForPermission: boolean }): Promise<ReturnType<typeof control> | null> => null);
   const context = createContext({
-    clientActivationRef: { current: launchedByClient }, NativeClient: { connect },
+    clientActivationRef: { current: launchedByClient }, NativeClient: { connect }, AbortController,
     messageAuthority: { invalidate: vi.fn() }, setAssignedRoute: vi.fn(),
     clearViewerSfuRoute: vi.fn(), clearPeerState: vi.fn(), clearParticipantPresence: vi.fn(),
     dispatchPresentation: vi.fn(),
@@ -64,7 +64,7 @@ it.each([false, true])("retries an absent or rejected App on the next offer: rej
   if (reject) current.connect.mockRejectedValueOnce(new Error("App unavailable"));
   await expect(current.acquire()).resolves.toBeNull();
   expect(current.connect).toHaveBeenCalledOnce();
-  expect(current.connect).toHaveBeenCalledWith({ waitForPermission: false });
+  expect(current.connect).toHaveBeenCalledWith({ waitForPermission: false, signal: expect.any(AbortSignal) });
   const client = control();
   current.connect.mockResolvedValue(client);
   await expect(current.acquire()).resolves.toBe(client);
@@ -96,10 +96,13 @@ it("retires pending discovery after access loss without replacing or closing a n
   let resolve!: (value: typeof obsolete) => void;
   current.connect.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
   const pending = current.acquire();
+  const obsoleteSignal = current.connect.mock.calls[0]![0].signal;
   current.deny("INVALID_TOKEN");
+  expect(obsoleteSignal.aborted).toBe(true);
   const replacement = control();
   current.connect.mockResolvedValueOnce(replacement);
   await expect(current.acquire()).resolves.toBe(replacement);
+  expect(current.connect.mock.calls[1]![0].signal.aborted).toBe(false);
   resolve(obsolete);
   await expect(pending).resolves.toBeNull();
   expect(obsolete.close).toHaveBeenCalledOnce();

@@ -47,8 +47,9 @@ health. Closing the selector cancels its pending connection action. Existing
 Browser shares retain their capture implementation until sharing ends.
 App-created Local/public-invite Host pages open at their automatically approved
 loopback origin. The shared App button reflects verified authorized health,
-including on returning to an activated page; a remembered activation alone
-cannot show readiness. Idle verification holds no media session or polling loop.
+including activation through another entry and return to an activated page;
+a remembered activation alone cannot show readiness. Idle verification holds
+no media session or polling loop.
 Viewer links opened at that activated origin may use the same running App
 without changing the Viewer UI. Starting a share offers the
 Browser picker and any exact App-owned native windows. It never chooses a
@@ -76,8 +77,9 @@ blocks Browser selection or overrides an explicitly chosen tab. Refresh remains
 reachable after failed App discovery; pending attempts are shared, completed failures
 do not suppress later discovery. Cancelling the selector or ending a share
 releases its unused control session; an obsolete operation cannot install or
-retire another operation's media. Camera thumbnails own only temporary preview
-inputs; leaving their tab or picker retires them. An active shared camera is
+retire another operation's media. Cancellation covers discovery and the opening
+handshake, not just a connection returned later. Camera thumbnails own only
+temporary preview inputs; leaving their tab or picker retires them. An active shared camera is
 borrowed, never reopened or stopped by preview. Optional native ingress uses an already
 available connection without another scan. If it is not ready at Browser
 startup, that share keeps Browser senders.

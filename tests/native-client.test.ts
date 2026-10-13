@@ -82,6 +82,48 @@ describe("native App private wire", () => {
     expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoMacroblocksPerSecond: -1 } }).success).toBe(false);
   });
 
+  it.each(["opening", "hello", "close"])("retires App acquisition during %s without waiting for its timeout", async stage => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
+    const sockets: Socket[] = [];
+    class Socket extends EventTarget {
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      readyState = 0;
+      protocol = `piik-client-v10.${health.instanceToken}`;
+      close = vi.fn(() => { this.readyState = Socket.CLOSING; });
+      send = vi.fn();
+      constructor() { super(); sockets.push(this); }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    const controller = new AbortController();
+    const settled = vi.fn();
+    const connecting = NativeClient.connect({ signal: controller.signal }).then(settled);
+    await vi.advanceTimersByTimeAsync(0);
+    const socket = sockets[0]!;
+    expect(socket).toBeDefined();
+    if (stage === "hello") {
+      socket.readyState = Socket.OPEN;
+      socket.dispatchEvent(new Event("open"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(socket.send).toHaveBeenCalledOnce();
+    }
+    if (stage === "close") {
+      socket.readyState = 3;
+      socket.dispatchEvent(new Event("close"));
+    } else controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toHaveBeenCalledExactlyOnceWith(null);
+    expect(vi.getTimerCount()).toBe(0);
+    if (stage !== "close") expect(socket.close).toHaveBeenCalledOnce();
+    // An obsolete opening event cannot start a hello or revive acquisition.
+    socket.dispatchEvent(new Event("open"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.send).toHaveBeenCalledTimes(stage === "hello" ? 1 : 0);
+    await connecting;
+  });
+
   it("binds a local answer to its prepare request across an ICE restart", async () => {
     const requests: Record<string, unknown>[] = [];
     class Socket extends EventTarget {
@@ -106,7 +148,9 @@ describe("native App private wire", () => {
     vi.stubGlobal("WebSocket", Socket);
     vi.stubGlobal("window", { setTimeout, clearTimeout });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
-    const client = (await NativeClient.connect())!;
+    const controller = new AbortController();
+    const client = (await NativeClient.connect({ signal: controller.signal }))!;
+    controller.abort(); // Acquisition cancellation no longer owns this accepted client.
     try {
       let lastOffer = "";
       for (const restart of [false, true]) {

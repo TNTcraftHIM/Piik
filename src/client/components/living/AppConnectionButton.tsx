@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { activateClient, isClientActivated } from "../../lib/session";
+import { activateClient, isClientActivated, watchClientActivation } from "../../lib/session";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
@@ -34,7 +34,8 @@ export function AppConnectionButton({ sourcePicker = false, onConnected }: {
     const onFocus = () => { void refresh().catch(() => undefined); };
     onFocus();
     window.addEventListener("focus", onFocus);
-    return () => { healthCheck.current?.abort(); window.removeEventListener("focus", onFocus); };
+    const unwatch = watchClientActivation(onFocus);
+    return () => { healthCheck.current?.abort(); window.removeEventListener("focus", onFocus); unwatch(); };
   }, [sourcePicker]);
   useEffect(() => () => { pending.current?.controller.abort(); pending.current?.popup?.close(); }, []);
 

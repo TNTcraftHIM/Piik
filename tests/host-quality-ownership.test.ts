@@ -72,10 +72,10 @@ function fixture(launchedByClient = true) {
     stopReceive: vi.fn(async () => undefined), stopShare: vi.fn(async () => undefined) };
   const route = { updateProfile: vi.fn(async () => true), resyncAuthoritative: vi.fn(async (): Promise<void> => undefined) };
   const state = {
-    debugError, debugEvent, debugOperation, NativeCompatibilityError, NativeRequestError, NativeMediaBridgeError, isCapturePermissionFailure, hostFailureCode, DOMException,
+    debugError, debugEvent, debugOperation, NativeCompatibilityError, NativeRequestError, NativeMediaBridgeError, isCapturePermissionFailure, hostFailureCode, DOMException, AbortController,
     launchedByClient, isClientActivated: vi.fn(() => launchedByClient), hostRoomSessionAvailable: false,
-    NativeClient: { connect: vi.fn(async (): Promise<typeof client | null> => null) },
-    nativeClientConnectRef: ref<Promise<typeof client | null> | null>(null),
+    NativeClient: { connect: vi.fn(async (_options?: { signal: AbortSignal }): Promise<typeof client | null> => null) },
+    nativeClientConnectRef: ref<{ promise: Promise<typeof client | null>; controller: AbortController } | null>(null),
     ownNativeClient: vi.fn(), setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
     videoCodecRef: ref({ primary: "h264" }),
     videoCodecModeRef: ref("h264"), MAX_ENDPOINT_MEDIA_CHILDREN: 2,
@@ -1205,7 +1205,10 @@ describe("Host quality ownership", () => {
     current.NativeClient.connect.mockReturnValueOnce(discovery.promise);
     const opening = current.openPicker();
     await vi.waitFor(() => expect(current.NativeClient.connect).toHaveBeenCalledOnce());
+    const signal = current.NativeClient.connect.mock.calls[0]![0]!.signal;
+    expect(signal.aborted).toBe(false);
     current.closePicker();
+    expect(signal.aborted).toBe(true);
     discovery.resolve(current.client);
     await opening;
     expect(current.client.close).toHaveBeenCalledOnce();

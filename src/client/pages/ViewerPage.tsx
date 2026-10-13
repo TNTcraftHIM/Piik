@@ -480,35 +480,38 @@ export function ViewerPage({
     });
     setRelayChildEvidence(relayChildEvidenceStore.getSnapshot());
     let sfuTransportConnected = false;
-    let nativeClientPromise: Promise<NativeClient | null> | null = null;
+    let nativeClientConnection: { promise: Promise<NativeClient | null>; controller: AbortController } | null = null;
     let nativeViewerAvailable = true;
     const nativeViewerSessionId = createOpaqueId();
 
     const releaseNativeClient = (): void => {
-      const connecting = nativeClientPromise;
-      nativeClientPromise = null;
-      void connecting?.then((client) => client?.close());
+      const connecting = nativeClientConnection;
+      nativeClientConnection = null;
+      connecting?.controller.abort();
+      void connecting?.promise.then((client) => client?.close());
     };
 
     const acquireNativeClient = async (): Promise<NativeClient | null> => {
       if (!active || !clientActivationRef.current || !nativeViewerAvailable) return null;
-      if (!nativeClientPromise) {
-        const connecting: Promise<NativeClient | null> = NativeClient.connect({ waitForPermission: false }).catch(() => null).then((client) => {
-          if (!client || !active || nativeClientPromise !== connecting) {
-            if (nativeClientPromise === connecting) nativeClientPromise = null;
+      if (!nativeClientConnection) {
+        const controller = new AbortController();
+        const promise = NativeClient.connect({ waitForPermission: false, signal: controller.signal }).catch(() => null).then((client) => {
+          if (!client || !active || nativeClientConnection !== connecting) {
+            if (nativeClientConnection === connecting) nativeClientConnection = null;
             client?.close();
             return null;
           }
           client.onClose(() => {
-            if (nativeClientPromise === connecting) nativeClientPromise = null;
+            if (nativeClientConnection === connecting) nativeClientConnection = null;
           });
           return client;
         });
-        nativeClientPromise = connecting;
+        const connecting = { promise, controller };
+        nativeClientConnection = connecting;
       }
-      const connecting = nativeClientPromise;
-      const client = await connecting;
-      return active && nativeViewerAvailable && nativeClientPromise === connecting ? client : null;
+      const connecting = nativeClientConnection;
+      const client = await connecting.promise;
+      return active && nativeViewerAvailable && nativeClientConnection === connecting ? client : null;
     };
 
     function createViewerMediaPeer(

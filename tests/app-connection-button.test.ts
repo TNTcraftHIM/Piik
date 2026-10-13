@@ -43,6 +43,10 @@ function mount(activated = false) {
   const operation = runInNewContext(executable, {
     window, pending, healthCheck, setState, activateClient, onConnected, AbortController, URL,
     sourcePicker: false, isClientActivated: () => activated,
+    watchClientActivation: (changed: () => void) => {
+      window.addEventListener("activation", changed);
+      return () => window.removeEventListener("activation", changed);
+    },
     require: (path: string) => {
       if (path !== "../../native/client") throw new Error(`Unexpected dependency: ${path}`);
       return native;
@@ -53,7 +57,8 @@ function mount(activated = false) {
       source: popup, origin: new URL(approval).origin, data: { type: "piik-app-approved", site }, ...overrides,
     }));
   }
-  return { ...operation, popup, window, native, pending, setState, activateClient, onConnected, message };
+  const activateElsewhere = () => { activated = true; window.dispatchEvent(new Event("activation")); };
+  return { ...operation, popup, window, native, pending, setState, activateClient, activateElsewhere, onConnected, message };
 }
 
 describe("App connection approval", () => {
@@ -162,6 +167,20 @@ describe("App connection approval", () => {
     await settle();
     expect(page.setState).toHaveBeenLastCalledWith("idle");
     page.cleanup();
+  });
+
+  it("reflects another App entry's activation without needing a focus change", async () => {
+    const page = mount();
+    await settle();
+    expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
+    page.activateElsewhere();
+    await settle();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.window.open).not.toHaveBeenCalled();
+    page.cleanup();
+    page.activateElsewhere();
+    await settle();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
   });
 
   it("does not let an earlier health check overwrite a newer approval", async () => {

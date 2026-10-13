@@ -15,7 +15,7 @@ export class AppQualityPreference {
 
   static async connect(signal: AbortSignal): Promise<AppQualityPreference | null> {
     if (signal.aborted) return null;
-    const health = await discoverNativeHealth();
+    const health = await discoverNativeHealth({ signal });
     return health?.qualityPreference && !signal.aborted
       ? new AppQualityPreference(health, signal) : null;
   }

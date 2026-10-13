@@ -106,3 +106,25 @@ it("ignores late success after sender cancellation", async () => {
   sender.accept({ phase: "complete", connected: true });
   expect(await result).toBe(false);
 });
+
+it.each(["unavailable", "rejected"])("continues ordinary ICE as soon as local preparation is %s", async outcome => {
+  vi.useFakeTimers();
+  const source = control();
+  if (outcome === "unavailable") source.preparePunch.mockResolvedValue(null);
+  else source.preparePunch.mockRejectedValue(new Error("discovery unavailable"));
+  const sent = vi.fn(() => true);
+  const sender = new NativePunchSender(source, "share", "connection", ice, sent);
+  const continued = vi.fn();
+  try {
+    const result = sender.start().then(continued);
+    await flush(); // The remote side has not answered and no timeout has elapsed.
+    expect(continued).toHaveBeenCalledExactlyOnceWith(false);
+    expect(source.closePunch).toHaveBeenCalledWith("share", "connection");
+    expect(vi.getTimerCount()).toBe(0);
+    sender.accept({ phase: "ready", prediction });
+    await flush();
+    expect(source.runPunch).not.toHaveBeenCalled();
+    expect(sent).toHaveBeenCalledOnce();
+    await result;
+  } finally { sender.dispose(); }
+});

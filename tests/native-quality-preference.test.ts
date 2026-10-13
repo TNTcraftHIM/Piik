@@ -22,6 +22,7 @@ describe("App quality preference transport", () => {
     controller.abort();
     expect(await AppQualityPreference.connect(controller.signal)).toBeNull();
     expect(discoverNativeHealth).toHaveBeenCalledOnce();
+    expect(discoverNativeHealth).toHaveBeenCalledWith({ signal: controller.signal });
     expect(fetcher).not.toHaveBeenCalled();
   });
 
