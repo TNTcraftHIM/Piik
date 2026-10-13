@@ -9,6 +9,7 @@ export interface Scenario {
   nat: readonly [NatMode, NatMode];
   fault: Fault;
   sfu: boolean;
+  sfuOnly?: boolean;
   expected: "media" | "unavailable" | "observed";
   enhancedExpected?: "media" | "unavailable";
   duringShare?: boolean;
@@ -62,6 +63,7 @@ export const scenarios: readonly Scenario[] = [
   { ...baseline, id: "lossy-browser", host: "browser", viewer: "browser", fault: "loss" },
   { ...baseline, id: "stun-backup", host: "browser", viewer: "browser", fault: "stun-primary" },
   { ...baseline, id: "sfu-fallback", host: "browser", viewer: "browser", fault: "peer-block", sfu: true },
+  { ...baseline, id: "sfu-outage", host: "browser", viewer: "browser", fault: "udp-block", sfu: true, sfuOnly: true, duringShare: true },
   { ...baseline, id: "blocked-media", host: "browser", viewer: "browser", fault: "udp-block", expected: "unavailable" },
   { ...baseline, id: "bandwidth-recovery", host: "browser", viewer: "browser", fault: "rate", duringShare: true },
   { ...baseline, id: "media-outage", host: "app", viewer: "app", fault: "udp-block", duringShare: true },

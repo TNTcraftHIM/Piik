@@ -11,6 +11,7 @@ import (
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/pion/rtcp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
@@ -463,20 +464,7 @@ func selectReceiverVideoCodec(connection *webrtc.PeerConnection) (string, error)
 			if name == "h264" && !forwardableH264(parameters.SDPFmtpLine) {
 				continue
 			}
-			preferences := []webrtc.RTPCodecParameters{parameters}
-			for _, repair := range negotiated {
-				if !strings.EqualFold(repair.MimeType, webrtc.MimeTypeRTX) {
-					continue
-				}
-				for _, field := range strings.Split(repair.SDPFmtpLine, ";") {
-					key, value, _ := strings.Cut(strings.TrimSpace(field), "=")
-					if key == "apt" && strings.TrimSpace(value) == strconv.Itoa(int(parameters.PayloadType)) {
-						preferences = append(preferences, repair)
-						break
-					}
-				}
-			}
-			if err := transceiver.SetCodecPreferences(preferences); err != nil {
+			if err := transceiver.SetCodecPreferences(forwarding.WithRTX(parameters, negotiated)); err != nil {
 				return "", err
 			}
 			return name, nil

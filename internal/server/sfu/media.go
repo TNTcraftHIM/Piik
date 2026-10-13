@@ -348,7 +348,7 @@ func (media *Media) AcceptPublisherOffer(fence ResourceFence, connectionID strin
 		if transceiver.Kind() == webrtc.RTPCodecTypeAudio {
 			selected[0].SDPFmtpLine = "minptime=10;useinbandfec=1;stereo=1;usedtx=0;maxaveragebitrate=" + strconv.Itoa(protocol.MaxAudioBitrate)
 		}
-		if err = transceiver.SetCodecPreferences(selected[:1]); err != nil {
+		if err = transceiver.SetCodecPreferences(forwarding.WithRTX(selected[0], parameters.Codecs)); err != nil {
 			return webrtc.SessionDescription{}, err
 		}
 	}

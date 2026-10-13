@@ -243,6 +243,12 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 		t.Fatal(ctx.Err())
 	}
 	check(publisher.SetRemoteDescription(*publication.pc.LocalDescription()))
+	parameters := publication.pc.GetTransceivers()[0].Receiver().GetParameters()
+	if len(parameters.Codecs) != 2 || parameters.Codecs[0].MimeType != capability.MimeType ||
+		parameters.Codecs[1].MimeType != webrtc.MimeTypeRTX ||
+		parameters.Codecs[1].SDPFmtpLine != fmt.Sprintf("apt=%d", parameters.Codecs[0].PayloadType) {
+		t.Fatalf("publisher lost its selected codec/repair pair: %v", parameters.Codecs)
+	}
 	mid := publisher.GetTransceivers()[0].Mid()
 	headerExtensions := videoSender.GetParameters().HeaderExtensions
 	stopSamples := make(chan struct{})

@@ -144,6 +144,19 @@ Browser/Browser and App/Browser exhausted their routes with either setting in
 this profile. This establishes one complete product path through sequential
 kernel NAT, not a field success rate or general benefit for Browser participants.
 
+The [mixed-endpoint recovery comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38433591403)
+passed eighteen trials: three address-change runs per endpoint pair and three
+ordinary Browser/App and App/App connections each. Browser/App recovery took
+about 4.9 seconds, including the three-second continuity window, compared with
+13..32 seconds [before the repair](https://github.com/TNTcraftHIM/Piik/actions/runs/38430143831).
+The Native receiver had removed RTX during codec selection. Packet captures
+showed repeated old primary packets before the fix and negotiated RTX without
+repeated primary sequence numbers afterward. Pion's existing
+[RFC 4588](https://www.rfc-editor.org/rfc/rfc4588) repair handles reception;
+no new recovery timer or relaxed replay check was added. The other endpoint pairs
+retained their prior recovery range. These controlled observations establish a
+media-recovery repair, not a change in NAT reachability or Internet success rate.
+
 App Host checks must use the real H264 Browser-to-App ingress and App WAN sender;
 launching an App alongside a Browser-only VP8 share is not an App-path test.
 
@@ -153,8 +166,8 @@ address before sharing. Preserve, random and sequential SNAT describe observed
 mapping, not every consumer NAT implementation. Sequential cases use nftables'
 number generator and a typed port map: new UDP flows advance through ports
 40000..44095, with the same destination-dependent filter. Calibration must
-observe three consecutive mappings before Piik starts. App/App, Browser/Browser
-and App/Browser cases compare the existing enhancement switch; this switch also
+observe three consecutive mappings before Piik starts. All four endpoint pairs
+compare the existing enhancement switch; this switch also
 changes the retry budget, so aggregate differences do not isolate one mechanism.
 The recorded Native preparation and adoption results distinguish its use from
 ordinary ICE. Address-change cases replace only the isolated router's UDP public

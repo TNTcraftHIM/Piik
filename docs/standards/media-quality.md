@@ -219,6 +219,10 @@ its resources even when a Browser operation remains pending. The result stays
 fixed for the current share and is reconsidered for a new share.
 ADR-0007 owns probe and negotiation mechanics.
 
+Codec selection preserves the negotiated repair stream associated with the
+selected primary codec. Native and SFU receivers use standard Pion RTX/NACK;
+codec restrictions must not strip recovery or disable SRTP replay protection.
+
 The Browser chooses the concrete encoder implementation. A reported H.264 codec
 does not by itself prove hardware acceleration, and Web content cannot select a
 specific MFT, NVENC, AMF, or QSV implementation.
