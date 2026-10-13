@@ -119,6 +119,8 @@ in a private window or after clearing site data, connect again. The same exact
 site already approved by App needs no repeat confirmation. The launcher
 shows the approved site; **×** beside its address revokes access. Approving a different site
 replaces the previous one and ends that site's App connections.
+To use your App with a friend's new public-invitation address, connect and approve
+that address again. Sharing-quality settings saved in App survive the address change.
 
 **A page that opens does not guarantee a video connection.** Public invite gives
 your room a temporary web address; picture and sound still travel between

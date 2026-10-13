@@ -156,6 +156,13 @@ repeated primary sequence numbers afterward. Pion's existing
 no new recovery timer or relaxed replay check was added. The other endpoint pairs
 retained their prior recovery range. These controlled observations establish a
 media-recovery repair, not a change in NAT reachability or Internet success rate.
+The [shared-receiver acceptance](https://github.com/TNTcraftHIM/Piik/actions/runs/38439642180)
+adds three SFU-only outage trials, three SFU fallback trials and three further
+Browser/App address-change trials. All delivered media and cleaned up their
+resources. SFU outage recovery took about 4.9 seconds; repeated Browser/App
+recovery ranged from 4.9 to 11.1 seconds, so 4.9 seconds is not a guaranteed bound.
+The SFU-only fixture verifies the locked server-media control and disabled
+NAT policy; it does not attempt to enable a hidden P2P setting.
 
 App Host checks must use the real H264 Browser-to-App ingress and App WAN sender;
 launching an App alongside a Browser-only VP8 share is not an App-path test.

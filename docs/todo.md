@@ -10,12 +10,6 @@ Git/PRs own completed history.
 
 ## Now
 
-- [ ] **Shared receiver repair acceptance.** Native address-change recovery now
-  retains standard RTX and passes the repeated process comparison. The sibling
-  SFU receiver also stripped RTX when selecting its primary codec; verify the
-  shared selection correction through SFU publication, media outage and cleanup
-  before closing this item.
-
 - [ ] **Intermittent RTP clock-check timeout.** Linux CI intermittently times out
   waiting for the second packet in the existing timestamp/generation checks.
   Local repetitions and explicit source pauses did not reproduce the timeout.
