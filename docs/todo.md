@@ -10,6 +10,12 @@ Git/PRs own completed history.
 
 ## Now
 
+- [ ] **NAT laboratory follow-up.** Compare bounded prediction and Native
+  preparation through sequential kernel NAT, inspect retry/socket retirement,
+  and retain only verified improvements within ADR-0009's resource and ownership
+  bounds. Authenticated observed-address learning alone does not establish that
+  both ends selected the same socket pair.
+
 - [ ] **Intermittent RTP clock-check timeout.** Two Linux CI runs timed out waiting
   for the second packet in the existing timestamp/generation checks. Local
   repetitions and explicit source pauses did not reproduce the timeout. Retain

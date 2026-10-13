@@ -23,12 +23,14 @@ export const pageProbe = String.raw`(() => {
         if(message.type==='route-update'&&message.phase==='active')route=message.assignment.upstream.kind;
         const value={at:performance.now(),type:message.type,state:message.state,reason:message.reason,scope,
           phase:message.phase,route:message.assignment?.upstream?.kind,connectionId:message.connectionId};
+        if(message.type==='punch-prepared')value.predictionStep=message.prediction?.step;
+        if(message.type==='punch-complete')value.connected=message.connected;
         for(const key of ['localType','remoteType','natTraversalPath','sampleWindowMs','intervalFramesEncoded',
           'framesPerSecond','bitrateKbps','availableOutgoingKbps','width','height'])if(message[key]!==undefined)value[key]=message[key];
         record(events,value);
       });
     }
-    send(raw){if(this.url.includes('/control')){try{const m=JSON.parse(raw);record(controls,{type:m.type,connectionId:m.connectionId});}catch{}}super.send(raw);}
+    send(raw){if(this.url.includes('/control')){try{const m=JSON.parse(raw);record(controls,{type:m.type,connectionId:m.connectionId,punched:m.punched});}catch{}}super.send(raw);}
   };
   navigator.mediaDevices.getDisplayMedia=async()=>{
     const canvas=document.createElement('canvas'); canvas.width=1280; canvas.height=720;

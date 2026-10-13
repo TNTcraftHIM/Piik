@@ -67,6 +67,9 @@ export const scenarios: readonly Scenario[] = [
   { ...baseline, id: "signaling-outage", host: "browser", viewer: "browser", fault: "signaling", duringShare: true },
   { ...baseline, id: "random-nat", host: "app", viewer: "app", nat: ["random", "random"], expected: "observed" },
   { ...baseline, id: "asymmetric-nat", host: "browser", viewer: "app", nat: ["random", "preserve"], expected: "observed" },
+  { ...baseline, id: "sequential-app", host: "app", viewer: "app", nat: ["sequential", "sequential"], expected: "observed" },
+  { ...baseline, id: "sequential-browser", host: "browser", viewer: "browser", nat: ["sequential", "sequential"], expected: "observed" },
+  { ...baseline, id: "sequential-mixed", host: "app", viewer: "browser", nat: ["sequential", "sequential"], expected: "observed" },
   { ...baseline, id: "ipv6-browser", host: "browser", viewer: "browser", ipv6: true, fault: "ipv4-block" },
   { ...baseline, id: "ipv6-app", host: "app", viewer: "app", ipv6: true, fault: "ipv4-block" },
   { ...baseline, id: "healthy-sibling", host: "browser", viewer: "browser", sibling: true,
@@ -158,5 +161,12 @@ export function checkMapping(probe: ProbeResult, mode: NatMode): void {
   const ports = new Set(probe.mappings.map(value => value.port));
   if (probe.mappings.length !== 3 || (mode === "preserve" ? ports.size !== 1 : ports.size < 2)) {
     throw new Error(`Observed mappings do not match the configured ${mode} SNAT behavior`);
+  }
+  if (mode === "sequential") {
+    const ordered = [...ports].sort((a, b) => a - b);
+    if (ordered.length !== 3 || ordered[0]! < 40000 || ordered[2]! >= 60000 ||
+      ordered[1]! !== ordered[0]! + 1 || ordered[2]! !== ordered[1]! + 1) {
+      throw new Error("Sequential SNAT did not allocate consecutive ports across three destinations");
+    }
   }
 }
