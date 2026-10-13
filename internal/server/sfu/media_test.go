@@ -36,7 +36,7 @@ func TestUnsupportedPublicationDescriptionDoesNotAllocate(t *testing.T) {
 	fence := ResourceFence{RoomID: "1234", ShareGeneration: "share_12345678", PublicationGeneration: "publication_12345678"}
 	for _, format := range []forwarding.LayerFormat{
 		{Width: 32768, Height: 32768, Bitrate: 5_000_000},
-		{Width: 1920, Height: 1080, Bitrate: 200_000_000},
+		{Width: 1920, Height: 1080, Bitrate: 240_000_001},
 		{Width: 0xffff_ffff, Height: 0xffff_ffff, Bitrate: 0xffff_ffff},
 	} {
 		metadata := PublicationMedia{Codec: "vp8", RIDs: []string{""}, Formats: []forwarding.LayerFormat{format}}
@@ -46,6 +46,38 @@ func TestUnsupportedPublicationDescriptionDoesNotAllocate(t *testing.T) {
 		if service.HasPublication(fence, "publisher_12345678") {
 			t.Fatal("unsupported format allocated a publication")
 		}
+	}
+}
+
+func TestPublicationAdmitsSupportedBitrateCeilings(t *testing.T) {
+	service := NewMedia(MediaOptions{})
+	defer service.Close()
+	fence := ResourceFence{RoomID: "1234", ShareGeneration: "share_12345678", PublicationGeneration: "publication_12345678"}
+	metadata := PublicationMedia{Codec: "h264", RIDs: []string{""},
+		Formats: []forwarding.LayerFormat{{Width: 1920, Height: 1080, Bitrate: 240_000_000}}}
+	if err := service.PreparePublication(fence, "publisher_12345678", metadata); err != nil {
+		t.Fatalf("prepare supported publisher: %v", err)
+	}
+	publication, err := service.publication(fence, "publisher_12345678")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc := publication.pc
+	for _, bitrate := range []uint32{5_000_000, 100_000_001, 240_000_000} {
+		metadata.Formats[0].Bitrate = bitrate
+		if err := service.UpdatePublication(fence, "publisher_12345678", metadata); err != nil {
+			t.Fatalf("update supported ceiling %d: %v", bitrate, err)
+		}
+		if publication.pc != pc || publication.metadata.Formats[0].Bitrate != bitrate {
+			t.Fatal("quality update replaced the publication or lost its bitrate ceiling")
+		}
+	}
+	metadata.Formats[0].Bitrate++
+	if err := service.UpdatePublication(fence, "publisher_12345678", metadata); err == nil {
+		t.Fatal("unsupported update was admitted")
+	}
+	if publication.pc != pc || publication.metadata.Formats[0].Bitrate != 240_000_000 {
+		t.Fatal("rejected update changed the existing publication")
 	}
 }
 

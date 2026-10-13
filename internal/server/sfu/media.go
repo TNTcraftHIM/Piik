@@ -128,8 +128,9 @@ func validPublicationMedia(metadata PublicationMedia) bool {
 	}
 	for index, format := range metadata.Formats {
 		// These are this SFU's admission bounds, not the descriptive wire format.
+		// Forward the full current Browser/Native bitrate range without transcoding.
 		if format.Width == 0 || format.Width > 8192 || format.Height == 0 || format.Height > 8192 ||
-			format.Bitrate == 0 || format.Bitrate > 100_000_000 ||
+			format.Bitrate == 0 || format.Bitrate > 240_000_000 ||
 			len(metadata.RIDs[index]) > 16 ||
 			(metadata.RIDs[index] == "" && len(metadata.RIDs) != 1) ||
 			slices.Contains(metadata.RIDs[:index], metadata.RIDs[index]) {
