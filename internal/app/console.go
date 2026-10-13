@@ -80,6 +80,7 @@ type console struct {
 	plain    consoleModel
 	opening  bool
 	openURL  func(string) error
+	entry    string
 }
 
 var consoleCopy = map[string][3]string{
@@ -149,7 +150,23 @@ func (console *console) send(message tea.Msg) {
 	fmt.Fprintln(os.Stdout, console.plain.content(false))
 }
 
-func (console *console) show(view consoleView)       { console.send(view) }
+func (console *console) show(view consoleView) {
+	console.mu.Lock()
+	if view.entry != "" {
+		console.entry = view.entry
+	}
+	console.mu.Unlock()
+	console.send(view)
+}
+
+func (console *console) reopenBrowser() {
+	console.mu.Lock()
+	target := console.entry
+	console.mu.Unlock()
+	if target != "" {
+		console.openBrowser(target)
+	}
+}
 func (console *console) setLanguage(language string) { console.send(consoleLanguage(language)) }
 
 // One OS handoff may remain pending, but never blocks App readiness or exit.

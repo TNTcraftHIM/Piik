@@ -52,6 +52,10 @@ export const zh = {
   "common.name.viewerDefault": "观众",
   "common.name.hostDefault": "房主",
 
+  "client.app.quit": "退出 Piik App",
+  "client.app.quitConfirm": "退出 Piik App 会结束分享、房间和公网邀请。确定退出吗？",
+  "client.app.stopped": "Piik App 已退出",
+  "client.app.quitFailed": "退出失败，点击重试",
   "client.launch.title": "打开 Piik",
   "client.launch.version": "当前版本 {version}",
   "client.launch.credit": "免费开源 · TNTcraft 与贡献者",

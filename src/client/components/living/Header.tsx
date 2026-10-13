@@ -1,4 +1,5 @@
 // App header: brand mark, LED connection state, language selection and theme.
+import { AppQuitButton } from "./AppQuitButton";
 import { useState } from "react";
 import { browserDebugEnabled, debugError, downloadBrowserDebug, withBrowserDebug } from "../../lib/debug";
 import { BrandMark } from "./BrandMark";
@@ -107,6 +108,7 @@ export function HeaderControls({ diagnosticControl }: { diagnosticControl?: Reac
   );
   return (
     <span className="lr-top-right lr-header-controls">
+      <AppQuitButton />
       <LanguageControl />
       <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
         {themeButton}

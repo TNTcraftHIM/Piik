@@ -54,6 +54,7 @@ type Options struct {
 	LocalAccessPassword string
 	Debug               bool
 	LANAddress          string
+	Quit                context.CancelFunc
 }
 
 var listLANAddresses = lan.List
@@ -83,6 +84,7 @@ type Server struct {
 	resultSet   bool
 	target      string
 	resultErr   error
+	quit        context.CancelFunc
 	closeOnce   sync.Once
 	resultOnce  sync.Once
 	handledOnce sync.Once
@@ -123,6 +125,7 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 		revision:            strings.TrimSpace(options.Revision),
 		debug:               options.Debug,
 		lanAddress:          options.LANAddress,
+		quit:                options.Quit,
 		selection:           make(chan Selection, 1),
 		resultReady:         make(chan struct{}),
 		handled:             make(chan struct{}),
@@ -197,6 +200,21 @@ func (server *Server) ServeHTTP(response http.ResponseWriter, request *http.Requ
 	}
 	response.Header().Set("X-Content-Type-Options", "nosniff")
 	switch request.URL.Path {
+	case "/api/client-launcher/quit":
+		if request.Method != http.MethodPost {
+			response.Header().Set("Allow", "POST")
+			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if server.quit == nil || !sameOrigin(request.Header.Get("Origin"), "http://"+request.Host) {
+			http.Error(response, "forbidden", http.StatusForbidden)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+		if flush, ok := response.(http.Flusher); ok {
+			flush.Flush()
+		}
+		server.quit()
 	case "/api/client-launcher":
 		server.handleState(response, request)
 	case "/api/client-launcher/launch":

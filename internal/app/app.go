@@ -67,6 +67,7 @@ type Options struct {
 	TunnelProcess  string
 	Ready          func(string)
 	console        *console
+	quit           context.CancelFunc
 	logger         *slog.Logger
 }
 
@@ -74,6 +75,15 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 	ctx, cancel := context.WithCancel(ctx)
 	options.Debug = options.Debug || debugEnabled(os.Getenv("PIIK_DEBUG"))
 	options.console = newConsole(cancel, options.DisableBrowser)
+	options.quit = cancel
+	if !options.DisableBrowser {
+		closeTray, err := startTray(ctx, options.console.reopenBrowser)
+		if err != nil {
+			slog.Warn("Piik tray unavailable", diagnostics.Error(err))
+		} else {
+			defer closeTray()
+		}
+	}
 	var recorder *diagnostics.Recorder
 	var restoreLogger func()
 	defer func() {
@@ -163,6 +173,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		NativeMedia:    nativeMedia.capabilities,
 		NewControl:     nativeMedia.controlFactory(),
 		Presentation:   options.console.setLanguage,
+		Quit:           cancel,
 	})
 	if err != nil {
 		return fmt.Errorf("Piik App native control could not start: %w", err)
@@ -242,7 +253,7 @@ func runLauncher(
 			DefaultMode: mode,
 			Site:        config.Site, Version: buildVersion(), Revision: BuildRevision,
 			LocalAccessPassword: config.LocalAccessPassword,
-			Debug:               options.Debug, LANAddress: options.LANAddress,
+			Debug:               options.Debug, LANAddress: options.LANAddress, Quit: options.quit,
 		},
 	)
 	if err != nil {

@@ -35,6 +35,7 @@ type Options struct {
 	NativeMedia    NativeMediaCapabilities
 	NewControl     func() ControlSession
 	Presentation   func(language string)
+	Quit           context.CancelFunc
 }
 
 type ControlSession interface {
@@ -66,6 +67,7 @@ type Health struct {
 	Port          int                     `json:"port"`
 	InstanceToken string                  `json:"instanceToken"`
 	NativeMedia   NativeMediaCapabilities `json:"nativeMedia"`
+	AppQuit       bool                    `json:"appQuit,omitempty"`
 }
 
 type NativeMediaCapabilities struct {
@@ -90,6 +92,7 @@ type Server struct {
 	nativeMedia    NativeMediaCapabilities
 	newControl     func() ControlSession
 	presentation   func(string)
+	quit           context.CancelFunc
 	done           chan error
 
 	mu          sync.Mutex
@@ -133,6 +136,7 @@ func Start(parent context.Context, options Options) (*Server, error) {
 		nativeMedia:    options.NativeMedia,
 		newControl:     options.NewControl,
 		presentation:   options.Presentation,
+		quit:           options.Quit,
 		done:           make(chan error, 1),
 		connections:    make(map[*websocket.Conn]struct{}),
 	}
@@ -214,11 +218,49 @@ func (server *Server) ServeHTTP(response http.ResponseWriter, request *http.Requ
 		server.handleHealth(response, request)
 	case "/control":
 		server.handleControl(response, request)
+	case "/quit":
+		server.handleQuit(response, request)
 	case "/presentation":
 		server.handlePresentation(response, request)
 	default:
 		http.NotFound(response, request)
 	}
+}
+
+// Only an explicitly allowed loopback page may stop this local process.
+func (server *Server) quitOrigin(origin string) bool {
+	parsed, err := url.Parse(origin)
+	return err == nil && parsed.Scheme == "http" && parsed.Path == "" && parsed.RawQuery == "" && parsed.Fragment == "" &&
+		(parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "localhost") &&
+		(server.allowedOrigin(origin) || server.localOrigin(origin))
+}
+
+func (server *Server) handleQuit(response http.ResponseWriter, request *http.Request) {
+	if server.quit == nil || !server.quitOrigin(request.Header.Get("Origin")) {
+		http.Error(response, "forbidden", http.StatusForbidden)
+		return
+	}
+	if request.Method == http.MethodOptions {
+		response.Header().Set("Access-Control-Allow-Methods", "POST")
+		response.Header().Set("Access-Control-Allow-Headers", "Authorization")
+		allowPrivateNetwork(response, request)
+		response.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if request.Method != http.MethodPost {
+		response.Header().Set("Allow", "POST, OPTIONS")
+		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if request.Header.Get("Authorization") != "Bearer "+server.endpoint.InstanceToken {
+		http.Error(response, "forbidden", http.StatusForbidden)
+		return
+	}
+	response.WriteHeader(http.StatusNoContent)
+	if flush, ok := response.(http.Flusher); ok {
+		flush.Flush()
+	}
+	server.quit()
 }
 
 func (server *Server) handlePresentation(response http.ResponseWriter, request *http.Request) {
@@ -270,6 +312,7 @@ func (server *Server) handleHealth(response http.ResponseWriter, request *http.R
 		Port:          server.endpoint.Port,
 		InstanceToken: server.endpoint.InstanceToken,
 		NativeMedia:   server.nativeMedia,
+		AppQuit:       server.quit != nil && server.quitOrigin(request.Header.Get("Origin")),
 	})
 }
 

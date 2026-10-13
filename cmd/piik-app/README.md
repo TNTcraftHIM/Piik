@@ -87,7 +87,10 @@ The terminal shows the current mode, entry links and startup state; its language
 follows the launcher and App-enabled pages.
 Press `o` to reopen the Browser, or `q` / Ctrl+C to end Local
 rooms and stop the local server and temporary public link. Plain-text output
-uses Ctrl+C. The App keeps running after a Site tab closes.
+uses Ctrl+C. The App keeps running after a Site tab closes. On Linux desktops supporting
+StatusNotifier, activate the tray icon (including Plasma’s configured double-click
+action) to reopen the current page. Local launcher and Host pages provide
+**Quit Piik App**; confirming ends the App, its rooms and sharing.
 When launched in its own Windows console, a startup or runtime error leaves the
 error visible until Enter is pressed. Normal shutdown, existing terminals and
 redirected or automated runs exit directly.

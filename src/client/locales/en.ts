@@ -52,6 +52,10 @@ export const en: Record<CopyKey, string> = {
   "common.name.viewerDefault": "Viewer",
   "common.name.hostDefault": "Host",
 
+  "client.app.quit": "Quit Piik App",
+  "client.app.quitConfirm": "Quit Piik App and end sharing, rooms and public invitations?",
+  "client.app.stopped": "Piik App stopped",
+  "client.app.quitFailed": "Could not quit; retry",
   "client.launch.title": "Open Piik",
   "client.launch.version": "Installed version {version}",
   "client.launch.credit": "Free and open source · TNTcraft & contributors",

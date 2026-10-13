@@ -44,7 +44,13 @@ failure is required before introducing an embedded Web runtime.
 Opening the system Browser is an asynchronous convenience action. One pending
 OS handoff is allowed; a slow or failed handler cannot block readiness or App
 exit. The console retains the entry address and reports the underlying error.
-The App does not terminate the user's browser to enforce a handoff deadline.
+The App does not terminate the user's browser to enforce a handoff deadline. Linux App exposes a
+StatusNotifier tray item on supported desktops; activation reopens the current
+launcher or Host entry rather than the retired launcher address. Closing the
+Browser leaves the App running. Local launcher and Host pages expose an explicit
+App exit action with confirmation; exit cancels the owning runtime and closes
+capture, rooms, the temporary invitation and tray registration. Remote Viewer
+pages cannot stop the local App. Terminal controls remain available.
 
 Server and App share one control layout and vocabulary. Deployment capabilities
 may fix a control on or off, but do not remove its place in the interface;

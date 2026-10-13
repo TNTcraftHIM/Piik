@@ -16,6 +16,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/coder/websocket v1.8.15
 	github.com/go-logr/logr v1.4.4
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/livekit/livekit-server v1.13.6
 	github.com/livekit/mediatransportutil v0.0.0-20260821083140-f234b534b095
 	github.com/livekit/protocol v1.50.5-0.20260821144838-17c16cf496fd
