@@ -454,7 +454,7 @@ func (publication *mediaPublication) consumeTrack(track *webrtc.TrackRemote, rec
 	go publication.readRTCP(track, receiver, source, layer)
 	defer publication.readers.Done()
 	for {
-		packet, _, err := track.ReadRTP()
+		packet, _, err := forwarding.ReadRTP(track)
 		if err != nil {
 			return
 		}

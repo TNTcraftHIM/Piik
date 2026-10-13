@@ -8,10 +8,56 @@ import (
 	"time"
 
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/livekit/livekit-server/pkg/sfu/buffer"
+	"github.com/livekit/mediatransportutil/pkg/codec"
+	"github.com/livekit/protocol/livekit"
+	"github.com/livekit/protocol/logger"
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 )
+
+// A recovered budget must not admit VP8 frames referencing discarded temporal
+// layers. Exercise the same library forwarder used by Native and SFU DownTracks.
+func TestVP8TemporalRecoveryRequiresDecodableFrames(t *testing.T) {
+	forwarder := sfu.NewForwarder(webrtc.RTPCodecTypeVideo, logger.GetLogger(), true, true, true, nil)
+	forwarder.DetermineCodec(webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000}, nil,
+		livekit.VideoLayer_MODE_UNUSED)
+	forwarder.SetMaxSpatialLayer(0)
+	forwarder.SetMaxPublishedLayer(0)
+	forwarder.SetMaxTemporalLayerSeen(2)
+	for index, step := range []struct {
+		name              string
+		target, tid, want int32
+		key, sync         bool
+	}{
+		{"start at base layer", 0, 0, 0, true, false},
+		{"dependent frame cannot raise layer", 2, 1, 0, false, false},
+		{"sync cannot skip an intermediate layer", 2, 2, 0, false, true},
+		{"first sync restores middle layer", 2, 1, 1, false, true},
+		{"highest dependent frame still waits", 2, 2, 1, false, false},
+		{"next sync restores highest layer", 2, 2, 2, false, true},
+		{"reduce at frame boundary", 0, 2, 0, false, false},
+		{"keyframe restores all layers without sync bit", 2, 0, 2, true, false},
+	} {
+		forwarder.SetMaxTemporalLayer(step.target)
+		forwarder.AllocateOptimal([]int32{0}, sfu.Bitrates{{100_000, 200_000, 300_000}}, false, false)
+		sequence := uint64(index + 1)
+		packet := &buffer.ExtPacket{
+			VideoLayer:        buffer.VideoLayer{Spatial: 0, Temporal: step.tid},
+			ExtSequenceNumber: sequence, ExtTimestamp: sequence * 3000, IsKeyFrame: step.key,
+			Packet: &rtp.Packet{Header: rtp.Header{Version: 2, Marker: true, SSRC: 1000,
+				SequenceNumber: uint16(sequence), Timestamp: uint32(sequence * 3000)}, Payload: []byte{0x10, 0}},
+			Payload: codec.VP8{S: true, T: true, TID: uint8(step.tid), Y: step.sync, IsKeyFrame: step.key},
+		}
+		if _, err := forwarder.GetTranslationParams(packet, 0); err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+		if got := forwarder.CurrentLayer().Temporal; got != step.want {
+			t.Fatalf("%s: temporal layer %d, want %d", step.name, got, step.want)
+		}
+	}
+}
 
 // Browser VP8 can produce L1T3 even with only one spatial encoding. Both
 // forwarding owners must retain its enhancement frames, not silently cap T0.

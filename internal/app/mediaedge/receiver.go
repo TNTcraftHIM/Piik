@@ -372,7 +372,7 @@ func (receiver *Receiver) consumeTrack(track *webrtc.TrackRemote, _ *webrtc.RTPR
 		receiver.videoSSRC = track.SSRC()
 		receiver.mu.Unlock()
 		for {
-			packet, _, err := track.ReadRTP()
+			packet, _, err := forwarding.ReadRTP(track)
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
 					return
@@ -386,7 +386,7 @@ func (receiver *Receiver) consumeTrack(track *webrtc.TrackRemote, _ *webrtc.RTPR
 	if track.Kind() == webrtc.RTPCodecTypeAudio && receiver.audioSource != nil &&
 		strings.EqualFold(track.Codec().MimeType, webrtc.MimeTypeOpus) {
 		for {
-			packet, _, err := track.ReadRTP()
+			packet, _, err := forwarding.ReadRTP(track)
 			if err != nil {
 				return
 			}

@@ -52,3 +52,15 @@ The retained detector also includes [upstream #4935](https://github.com/livekit/
 and its regression from v1.13.9, adapted to standard Go assertions. Reserved
 TWCC symbols carry no receive delta: skip their measurement rather than consuming
 the next packet's delta or indexing past the feedback array.
+
+## Pion Repaired-Packet Identity
+
+The shared [RTP receive adapter](../media/forwarding/codecs.go) uses the negotiated
+primary codec for packets Pion identifies as repaired. In Pion v4.2.23,
+[`receiveForRid`](https://github.com/pion/webrtc/blob/v4.2.23/rtpreceiver.go)
+initializes the codec before the first primary read initializes `PayloadType`;
+an earlier RTX packet can therefore be queued with payload type zero.
+Ordinary packet validation remains unchanged. A real simulcast/NACK regression
+fences that ordering without sleeps and fails when the correction is removed.
+Remove the adapter when a maintained upstream version passes that same control
+without it; no Pion source fork or second retransmission handler is retained.

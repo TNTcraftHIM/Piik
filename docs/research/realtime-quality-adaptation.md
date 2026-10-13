@@ -354,9 +354,9 @@ settings remained at 30 fps; the server process, kernel queues, and network
 device reported no contemporaneous resource or drop pressure. The deployed
 LiveKit Server 1.13.5 also predates the upstream simulcast RTX pairing repair:
 under the affected Pion integration, repair streams were not paired and
-retransmissions were silently dropped. LiveKit Server 1.13.6 is therefore the
-accepted patch baseline. This repairs loss recovery; it does not claim to
-prevent loss on the Host-to-SFU UDP path.
+retransmissions were silently dropped. LiveKit Server 1.13.6 established the
+RTX-repair baseline; `go.mod` owns the current dependency pin. This repairs loss
+recovery; it does not claim to prevent loss on the Host-to-SFU UDP path.
 
 The same later room also contained a separate interval in which the native
 bandwidth estimate stayed near 13 Mbps while the sender media-source cadence
