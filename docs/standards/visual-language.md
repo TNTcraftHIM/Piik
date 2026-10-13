@@ -329,7 +329,7 @@ support the task and use lighter icons or copy when another drawing adds noise.
 | Context | Illustration and literal content | Playful caption |
 | --- | --- | --- |
 | Page loading, site access check, App preparation | The shared wink mascot with the actual loading operation; no room or media-path claim | The current language's waiting pool |
-| Confirmed App readiness | The same wink mascot with the literal ready state; it does not imply an active share or working media route | None |
+| Confirmed App readiness | Wink mascot with literal readiness in dedicated feedback or its tooltip; an inline summary beside an existing main brand uses a status icon. Neither implies an active media route. | None |
 | Source listing/start/switch, room joining, media setup/recovery, waiting for the Host | The corresponding comic with the current status; only the existing state owner can declare waiting | The same waiting pool while the wait exists |
 | Error, limitation, pause, ended room or required user action | The corresponding comic and clear reason/action; settled movement keeps that verdict readable | None |
 | Small controls, tooltips and inline results | Existing action/status icon and contextual guidance when needed; retain direct actions | None |

@@ -133,14 +133,14 @@ export function AppHeader({
   const { t } = useCopy();
   return (
     <header className="lr-top">
-      <a
+      {homeHref !== "/client" && <a
         className="lr-brand"
         href={withBrowserDebug(homeHref)}
         aria-label={t("brand.home")}
       >
         <Glyph name="chevron" size={14} className="lr-home-arrow" />
         <BrandMark size={34} motion="once" />
-      </a>
+      </a>}
       <span className="lr-top-right">
         {led}
         {homeHref !== "/client" && showAppConnection && <AppConnectionButton />}

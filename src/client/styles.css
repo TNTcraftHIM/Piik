@@ -132,7 +132,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-home-arrow { transform: rotate(90deg); color: var(--muted); }
 
 .lr-top-right { display: inline-flex; gap: 10px; align-items: center; }
-.lr-top > .lr-top-right { min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+.lr-top > .lr-top-right { margin-left: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
 
 /* LED state strip */
 .lr-leds {
@@ -1574,6 +1574,9 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
   gap: 20px;
 }
 .lr-client-launch-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-bottom: 8px; width: min(380px, 100%); text-align: center; }
+.lr-client-launch-brand { display: flex; align-items: baseline; justify-content: center; gap: 14px; }
+/* The mascot's feet sit at y=29 in its 32-unit canvas; align them to the wordmark baseline. */
+.lr-client-launch-brand > svg { translate: 0 9.375%; }
 .lr-client-launch-title { font-size: 36px; line-height: 1.1; letter-spacing: -.04em; }
 .lr-client-launch-title small { margin-left: 6px; color: var(--muted); font-size: 15px; letter-spacing: 0; font-weight: 650; }
 .lr-client-brand-dot { color: #e77d38; }
