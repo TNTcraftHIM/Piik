@@ -246,8 +246,10 @@ jobs:
         include:
           - target: windows-amd64
             runner: windows-latest
+          # Native Linux capture links system libraries; keep both architectures
+          # on the same explicit build baseline instead of following latest.
           - target: linux-amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - target: linux-arm64
             runner: ubuntu-24.04-arm
           - target: darwin-arm64
