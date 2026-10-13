@@ -1039,7 +1039,8 @@ async function main(): Promise<void> {
         const fps = document.querySelector('input[name="maxFramerate"]');
         const width = document.querySelector('.lr-video-size input[name="width"]');
         const height = document.querySelector('.lr-video-size input[name="height"]');
-        return fps?.max === '60' && fps.value === '60' && width?.value === '3840' && height?.value === '2160';
+        return fps && Number(fps.max) >= 60 && fps.validity.valid && fps.value === '60' &&
+          width?.value === '3840' && height?.value === '2160';
       })()`, deadline), Boolean, 10_000);
       stage = "native-4k-decode";
       result.fourKQualityChanged = await waitForValue(deadline => evaluate<boolean>(cdp!, viewer, `(() => {
