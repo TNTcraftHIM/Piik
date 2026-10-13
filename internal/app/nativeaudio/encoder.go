@@ -8,15 +8,17 @@ import (
 )
 
 const (
-	SampleRate     = 48_000
-	Channels       = 2
-	FrameSamples   = 960
-	FrameBytes     = FrameSamples * Channels * 2
-	MaxPacketBytes = 4_000
+	SampleRate   = 48_000
+	Channels     = 2
+	FrameSamples = 960
+	FrameBytes   = FrameSamples * Channels * 2
+	// Opus RTP keeps each frame intact. Bound VBR peaks at the encoder, reserving
+	// 48 bytes for RTP, header extensions and SRTP within a 1200-byte datagram.
+	MaxPacketBytes = 1_152
 	DefaultBitrate = 128_000
 	MinBitrate     = 6_000
 	MaxBitrate     = 510_000
-	// The 20 ms sender leaves RTP/SRTP headroom within an ordinary 1200-byte packet.
+	// Keep the 20 ms target below the per-packet ceiling, including VBR headroom.
 	MaxSendBitrate    = 320_000
 	defaultComplexity = 5
 )

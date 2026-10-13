@@ -92,10 +92,19 @@ Two controls constrain the replacement design:
 - With native 20 ms frames, the tone/noise check produced maximum Opus payloads
   of 641 bytes at 256 kbps and 801 at 320 kbps. At 510 kbps, all 150 frames
   produced RTP packets larger than a 1200-byte packetizer budget. Pinned
-  [Pion's Opus payloader](https://github.com/pion/rtp/blob/v1.10.2/codecs/opus_packet.go)
+  [Pion's Opus payloader](https://github.com/pion/rtp/blob/v1.10.5/codecs/opus_packet.go)
   keeps each Opus payload intact. This is a packet-size result, not measured
   network loss; accepting the codec's maximum requires a transport/packet-duration
   decision. Do not equate the codec range with every route's safe operating range.
+- Silence/tone/noise/impulse transitions expose a separate peak: the former
+  gopus v0.1.1 encoder produces a 1234-byte payload at 320 kbps. Its single-stream
+  CELT path also ignores the output budget and fails with a smaller buffer.
+  [gopus v0.2.2](https://github.com/thesyncim/gopus/tree/v0.2.2) honors that budget;
+  the adapter now reserves packet overhead at the encoding boundary using
+  [Opus's instantaneous size limit](https://opus-codec.org/docs/opus_api-1.6/group__opus__encoder.html).
+  The retained regression decodes complete 20 ms frames across transients and
+  live bitrate changes. This does not diagnose any field interruption or change
+  the average bitrate controls, stereo format or route model.
 
 The [media extension proposal](./native-client-media.md#audio-and-ui-proposal)
 owns the UI and contract rationale. The candidate enforces a Browser sender's

@@ -1,6 +1,6 @@
 module github.com/TNTcraftHIM/Piik
 
-go 1.26.9
+go 1.27.2
 
 // Scoped NAT-PMP fixes; provenance and removal criteria: internal/thirdparty/README.md.
 replace github.com/netbirdio/go-nat => ./internal/thirdparty/go-nat
@@ -31,7 +31,7 @@ require (
 	github.com/pion/transport/v5 v5.1.1
 	github.com/pion/turn/v5 v5.1.2
 	github.com/pion/webrtc/v4 v4.2.23
-	github.com/thesyncim/gopus v0.1.1
+	github.com/thesyncim/gopus v0.2.2
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/mod v0.41.0

@@ -408,8 +408,11 @@ Display audio uses `contentHint = "music"`. The 2.0 candidate keeps 64/128/192 k
 shortcuts and the 128 kbps default, with a custom numeric ceiling in the same
 sound settings. Current Browser/native senders support 6..320 kbps; the numeric
 wire format uses Opus's 6..510 kbps bounds independently of those shortcuts.
-The current native 20 ms sender ceiling leaves packet-size headroom; a larger
-codec-valid request fails that operation without retiring native control.
+The native 20 ms encoder also bounds each Opus payload to 1152 bytes, leaving
+48 bytes for RTP/extensions/SRTP within a 1200-byte datagram. An average bitrate
+ceiling alone does not bound VBR peaks; Opus RTP keeps each encoded frame intact.
+A request above the current sender's bitrate ceiling fails that operation
+without retiring native control.
 An audio-only update retains capture, media connections and video startup state.
 
 Browser, Native and SFU receive answers request Opus stereo and the full Opus
