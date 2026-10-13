@@ -33,7 +33,8 @@ backup; Git and immutable artifacts own history.
 
 ## Build Host
 
-Start from a clean exact revision with Node.js 24, npm 11, and Go 1.26:
+Start from a clean exact revision using Node from [`.node-version`](../.node-version),
+npm from [`package.json`](../package.json), and Go from [`go.mod`](../go.mod):
 
 ```sh
 npm ci

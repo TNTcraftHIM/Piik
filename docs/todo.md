@@ -16,6 +16,14 @@ Git/PRs own completed history.
   Retain the assertions and correlate input-buffer, forwarder and egress
   diagnostics on recurrence before assigning a product cause or changing forwarding.
 
+- [ ] **Windows native media acceptance on the current desktop.** The default
+  720p SFU gate misses its sustained-frame threshold on both the previous and
+  current audio dependencies. A capture-only WGC control also receives about
+  3.8 fps from the same animated window, before encoding or transport. The
+  smaller-picture gate passes live audio changes and recovery; it does not
+  replace this throughput check. Retest with a normally presenting capture
+  source before assigning a product regression or relaxing the assertion.
+
 - [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
   useful improvements and outstanding acceptance on 2026-10-07, and on 2026-10-09
   chose to hold the maintenance changes for 2.0 rather than publish them separately.

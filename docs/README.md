@@ -34,7 +34,7 @@ Technical references keep one shared version.
 
 You can try the Browser application locally with Node from
 [.node-version](../.node-version), npm from
-[package.json](../package.json), and Go 1.26 from [go.mod](../go.mod).
+[package.json](../package.json), and Go from [go.mod](../go.mod).
 Run these commands from the repository root.
 
 Start the web UI:
