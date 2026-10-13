@@ -114,6 +114,9 @@ does not establish coverage.
 - `npm run check:go-race` checks port mapping, media-edge ownership and their
   scoped NAT dependencies with Go's race detector. It requires a supported cgo
   toolchain; CI runs it on Linux.
+- `npm run check:go-vuln` checks the App and Server entry points and their
+  dependencies against the Go vulnerability database. CI uses the Go version
+  declared in `go.mod`; update that owner for required toolchain security fixes.
 - `npm run check:native` runs only the current platform's capture compile/probe
   and deterministic native regressions. The Linux App packaging job includes
   its headless GStreamer output-profile and retirement test; this does not

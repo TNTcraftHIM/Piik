@@ -17,6 +17,7 @@
     "package:app-candidate": "node scripts/package-app-candidate.mjs",
     "check:go": "node scripts/check-go.mjs",
     "check:go-core": "node scripts/check-go.mjs --core",
+    "check:go-vuln": "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./cmd/piik-app ./cmd/piik-server",
     "check:go-race": "node scripts/check-go.mjs --race",
     "check:container": "node scripts/check-container.mjs",
     "check:native": "node scripts/check-go.mjs --capture-only",

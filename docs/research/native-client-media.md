@@ -119,7 +119,7 @@ The audio adapter uses `github.com/thesyncim/gopus` behind the private
 `nativeaudio` boundary. It accepts fixed 48 kHz stereo PCM16/20 ms frames,
 encodes into a caller-owned Opus buffer, and can be replaced without changing
 the media edge or control wire. The dependency is BSD-3-Clause licensed and
-requires Go 1.25; App CI uses Go 1.26.6.
+requires Go 1.25; App CI follows the toolchain declared in [go.mod](../../go.mod).
 
 ## Current Boundary
 
