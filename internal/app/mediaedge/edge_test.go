@@ -924,6 +924,10 @@ func waitPacket(t *testing.T, packets <-chan *rtp.Packet, edges ...*Edge) *rtp.P
 		for _, edge := range edges {
 			t.Logf("edge=%s output=%+v egress=%+v source=%+v", edge.State(),
 				edge.transport.Output.State(), edge.transport.Egress(), edge.source.media.DebugInfo())
+			t.Logf("forwarder=%+v", edge.transport.Output.DebugInfo())
+			for index, input := range edge.source.media.GetAllBuffers() {
+				t.Logf("input=%d stats=%+v", index, input.GetStats())
+			}
 		}
 		t.Fatal("timed out waiting for RTP")
 		return nil

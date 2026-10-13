@@ -16,11 +16,11 @@ Git/PRs own completed history.
   bounds. Authenticated observed-address learning alone does not establish that
   both ends selected the same socket pair.
 
-- [ ] **Intermittent RTP clock-check timeout.** Two Linux CI runs timed out waiting
-  for the second packet in the existing timestamp/generation checks. Local
-  repetitions and explicit source pauses did not reproduce the timeout. Retain
-  the assertions and inspect the added source/allocation/egress diagnostics on
-  recurrence before assigning a product cause or changing forwarding.
+- [ ] **Intermittent RTP clock-check timeout.** Linux CI intermittently times out
+  waiting for the second packet in the existing timestamp/generation checks.
+  Local repetitions and explicit source pauses did not reproduce the timeout.
+  Retain the assertions and correlate input-buffer, forwarder and egress
+  diagnostics on recurrence before assigning a product cause or changing forwarding.
 
 - [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
   useful improvements and outstanding acceptance on 2026-10-07, and on 2026-10-09
