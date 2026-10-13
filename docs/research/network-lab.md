@@ -110,7 +110,7 @@ reports trial/failure counts and nearest-rank timing summaries for validated
 media trials; unavailable and timed-out attempts never become zero-millisecond
 successes. Small trial counts are observations, not population estimates.
 `--verify` (CI `network_lab: verify`) runs negative controls against the actual
-runner: missing fault, frozen picture, partially failed setup, and cancellation
+runner: missing fault, frozen picture (before and after an impairment), partially failed setup, and cancellation
 during calibration or sharing. Each must fail for its intended reason and leave
 no owned resources; an unrelated process failure is not a passing control.
 Each fault phase replaces its owned qdisc completely: netem's in-place change
@@ -174,7 +174,11 @@ both initial and recovered media windows; a Browser WAN fallback cannot validate
 Native recovery. Rate calibration requires offered traffic above the configured
 ceiling, so a slow test process cannot impersonate a constrained network.
 Recovery timing begins when the impairment is removed, including subsequent
-calibration and sampling time. `firstPictureMs` starts at Viewer navigation and
+calibration and sampling time. Recovery requires a new advancing-picture sample
+followed by a full three-second audio/video continuity window and the current
+Native path where applicable. A buffered burst followed by another stall keeps
+the original 60-second observation deadline; it is not a successful recovery.
+`firstPictureMs` starts at Viewer navigation and
 ends at the first sample with at least 15 decoded frames; sampling is every
 500 ms. Recovery checks poll every second. These are sampled media-admission
 times, not exact first-packet timestamps or one-way media latency.

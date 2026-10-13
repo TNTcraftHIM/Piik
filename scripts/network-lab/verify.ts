@@ -13,6 +13,7 @@ export async function verifyLaboratory(entry: string): Promise<void> {
     { name: "partial-setup", cases: "browser-browser", error: /^Injected partial network setup failure$/ },
     { name: "missing-fault", cases: "stun-backup", error: /^No packets hit the stun-primary rule;/, media: true },
     { name: "frozen-picture", cases: "browser-browser", error: /^(Decoded video did not continue|Rendered synthetic picture did not change)$/, media: true },
+    { name: "frozen-recovery", cases: "bandwidth-recovery", error: /^Recovery observation expired: (Media did not resume|Decoded video did not continue|Rendered synthetic picture did not change|No decoded picture after restoration)$/, media: true },
     { name: "cancel-calibration", cases: "browser-browser,app-app", cancelAt: "calibration" },
     { name: "cancel-sharing", cases: "browser-browser,app-app", cancelAt: "continuity" },
   ];

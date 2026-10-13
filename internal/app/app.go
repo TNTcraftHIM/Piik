@@ -307,23 +307,24 @@ func runLauncher(
 	}
 	// An interactive room is a child of the resident App. Its failure must not
 	// retire an unrelated Site's native sessions or its approval page. Explicit
-	// CLI launches still return their outcome to the caller. Register this before
-	// the runtime join so its cleanup and error are complete before we wait.
-	defer func() {
-		if directRoom || returnedErr == nil || ctx.Err() != nil {
-			return
+	// CLI launches still return their outcome to the caller. Call only after the
+	// room has retired, so neither approval nor process exit depends on its work.
+	finishRoom := func(roomErr error) error {
+		if directRoom || roomErr == nil || ctx.Err() != nil {
+			return roomErr
 		}
-		launch.SetResult("", returnedErr)
-		options.console.show(consoleView{state: "setup", entry: launch.URL(), problem: diagnostics.SafeText(returnedErr.Error())})
-		slog.Debug("piik-client", "event", "local-room-stopped", diagnostics.Error(returnedErr))
+		launch.SetResult("", roomErr)
+		options.console.show(consoleView{state: "setup", entry: launch.URL(), problem: diagnostics.SafeText(roomErr.Error())})
+		slog.Debug("piik-client", "event", "local-room-stopped", diagnostics.Error(roomErr))
 		select {
 		case <-ctx.Done():
 		case err := <-control.Done():
-			returnedErr = errors.Join(returnedErr, err)
+			roomErr = errors.Join(roomErr, err)
 		case err := <-launch.Done():
-			returnedErr = errors.Join(returnedErr, err)
+			roomErr = errors.Join(roomErr, err)
 		}
-	}()
+		return roomErr
+	}
 
 	var selection launcher.Selection
 	if directRoom {
@@ -363,10 +364,10 @@ func runLauncher(
 	})
 	if err != nil {
 		err = fmt.Errorf("Piik App configuration could not be saved: %w", err)
-		return err
+		return finishRoom(err)
 	}
 	if err = configureDiagnostics(&options, selectedConfig); err != nil {
-		return err
+		return finishRoom(err)
 	}
 	if !directRoom {
 		options.DisableBrowser = true
@@ -386,30 +387,22 @@ func runLauncher(
 		runtimeErr = runLocal(runtimeContext, options, selectedConfig, control)
 		close(runtimeDone)
 	}()
-	defer func() {
-		cancelRuntime()
-		<-runtimeDone
-		returnedErr = errors.Join(returnedErr, runtimeErr)
-	}()
-
+	var exitErr error
 	select {
 	case target := <-ready:
 		launch.SetResult(target, nil)
+		select {
+		case <-runtimeDone:
+		case exitErr = <-launch.Done():
+		case <-ctx.Done():
+		}
 	case <-runtimeDone:
-		return nil
 	case <-ctx.Done():
 		launch.SetResult("", ctx.Err())
-		return nil
 	}
-
-	select {
-	case <-runtimeDone:
-		return nil
-	case err = <-launch.Done():
-		return err
-	case <-ctx.Done():
-		return nil
-	}
+	cancelRuntime()
+	<-runtimeDone
+	return finishRoom(errors.Join(exitErr, runtimeErr))
 }
 
 func applyMode(config appconfig.Config, options Options) (appconfig.Config, error) {

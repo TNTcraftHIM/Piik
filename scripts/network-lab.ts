@@ -227,6 +227,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
           if (!await endpoints[0]!.call("signal-probe")) throw new Error("UDP address change interrupted TCP signaling");
         }
         const restoredAt = performance.now();
+        if (values.negative === "frozen-recovery") await endpoints[0]!.call("freeze-picture");
         setFault("none");
         result.restoredCounters = counters();
         const restoredProbe = await endpoints[faultIndex]!.call<ProbeResult>("probe");
@@ -235,21 +236,36 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
         if (scenario.remap && restoredProbe.mappings.some(mapping => mapping.address !== network.publicIP(faultIndex))) throw new Error("UDP mappings retained the old public address");
         stage("recovery");
         let recovered = false;
+        let recoveryError = "Media did not resume";
+        let recoveryFirst: MediaSample | undefined, recoveryStart = 0;
         while (performance.now() - restoredAt < 60_000) {
           signal.throwIfAborted();
           const previous = samples.at(-1)!.viewer;
           await delay(1000, undefined, { signal });
           const { viewer } = await sampleAll();
-          if (hasPicture(viewer) && viewer.frames > previous.frames) { recovered = true; break; }
+          if (!recoveryFirst) {
+            if (hasPicture(viewer) && viewer.frames > previous.frames) {
+              recoveryFirst = viewer; recoveryStart = Date.now();
+            }
+            continue;
+          }
+          if (Date.now() - recoveryStart < 3000) continue;
+          try {
+            if (!hasPicture(viewer)) throw new Error("No decoded picture after restoration");
+            checkContinuity(recoveryFirst, viewer);
+            checkAppPaths();
+            recovered = true;
+            break;
+          } catch (error) {
+            recoveryError = error instanceof Error ? error.message : String(error);
+            // A buffered burst is not recovery. Keep the original deadline and
+            // require a complete media window, including Native path ownership.
+            recoveryFirst = undefined;
+          }
         }
         result.recoveryMs = recovered ? performance.now() - restoredAt : null;
-        if (!recovered) throw new Error("Media did not resume within the recovery observation window");
-        const recoveredFirst = samples.at(-1)!.viewer, recoveredStart = Date.now();
-        await delay(3000, undefined, { signal });
-        const { viewer: recoveredNext } = await sampleAll();
-        checkContinuity(recoveredFirst, recoveredNext);
-        checkAppPaths();
-        mediaWindows.push({ name: "recovered", startMs: recoveredStart, endMs: Date.now(), addresses: addresses() });
+        if (!recovered) throw new Error(`Recovery observation expired: ${recoveryError}`);
+        mediaWindows.push({ name: "recovered", startMs: recoveryStart, endMs: Date.now(), addresses: addresses() });
         if (scenario.fault === "signaling" && !await endpoints[0]!.call("signal-probe")) throw new Error("Signaling roundtrip did not recover");
       }
     }
@@ -315,7 +331,7 @@ async function main(): Promise<void> {
   if (values.list) { process.stdout.write(JSON.stringify(selected, null, 2) + "\n"); return; }
   if (process.platform !== "linux" || process.getuid?.() !== 0) throw new Error("Network lab requires an isolated Linux runner and root for owned namespaces");
   if (!process.env.CHROME_PATH) throw new Error("CHROME_PATH is required");
-  if (values.negative && !["missing-fault", "frozen-picture", "partial-setup"].includes(values.negative)) throw new Error("Unknown negative control");
+  if (values.negative && !["missing-fault", "frozen-picture", "frozen-recovery", "partial-setup"].includes(values.negative)) throw new Error("Unknown negative control");
   const repeat = Number(values.repeat), seed = Number(values.seed);
   if (!Number.isInteger(repeat) || repeat < 1 || repeat > 20 || !Number.isInteger(seed) || seed < 1 || seed + repeat - 1 > 0xffff_ffff) throw new Error("Invalid repeat (1..20) or seed (uint32)");
   if (!["on", "off", "compare"].includes(values.prediction!)) throw new Error("Prediction must be on, off or compare");

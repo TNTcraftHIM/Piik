@@ -30,6 +30,7 @@ function editor() {
   const render = runInNewContext(executable, {
     exports: {}, require: () => jsxRuntime, useRef: () => ({ current: input }), Number,
     useState: () => [false, setInvalid], useId: () => "validation", useCopy: () => ({ t: vi.fn() }),
+    useEffect: (effect: () => void) => effect(),
   });
   let choose!: (next: number) => void;
   let key!: (event: unknown) => void;

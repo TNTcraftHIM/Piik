@@ -1,4 +1,4 @@
-import { Fragment, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { MIN_AUDIO_BITRATE } from "../../../shared/protocol";
 import {
   QUALITY_PROFILES, QUALITY_PROFILE_KEYS, QUALITY_RESOLUTIONS, DEGRADATION_PREFERENCE_KEYS, qualityResolutionEqual,
@@ -54,6 +54,7 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
   const controls = useRef<HTMLDivElement>(null);
   const [invalid, setInvalid] = useState(false);
   const errorId = useId();
+  useEffect(() => setInvalid(false), [value.width, value.height]);
   const axes = ["width", "height"] as const;
   const reset = (container: HTMLElement) => {
     setInvalid(false);
@@ -145,6 +146,7 @@ function QualityNumberControl({ value, min, max, step, unit, name, label, disabl
   const [invalid, setInvalid] = useState(false);
   const errorId = useId();
   const input = useRef<HTMLInputElement>(null);
+  useEffect(() => setInvalid(false), [value, min, max, step]);
   const reset = () => { input.current!.value = String(value); setInvalid(false); };
   const select = (next: number) => {
     // A preset or slider replaces the draft, including a choice of the current value.

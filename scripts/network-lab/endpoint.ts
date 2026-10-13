@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { CdpConnection, cleanupRun, createPage, evaluate, fetchJsonBefore, launchChrome, reservePort, waitForSample,
@@ -51,7 +51,7 @@ export async function endpointWorker(): Promise<void> {
           await waitForSample(deadline => fetchJsonBefore<{ status: string }>(`${origin}/healthz`, deadline),
             value => value.status === "ok", 10_000);
           if (request.app) {
-            app = spawn(resolve("build/network-lab/bin/piik-app"), ["--site", origin, "--config", join(profile, "app.json")],
+            app = spawn(resolve("build/network-lab/bin/piik-app"), ["--site", origin, "--debug", "--config", join(profile, "app.json")],
               { stdio: "pipe", env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true", PIIK_LOG_DIR: join(profile, "logs") } });
             app.stderr.on("data", data => log("app", data));
             await once(app, "spawn");
@@ -101,6 +101,8 @@ export async function endpointWorker(): Promise<void> {
         } else if (request.action === "signal-probe") {
           result = await evaluate(cdp!, page!, "networkLab.signalProbe()", Date.now() + 5000);
         } else if (request.action === "logs") {
+          if (app) logs.app = await readFile(join(profile, "logs", "client.log"), "utf8")
+            .then(text => text.slice(-64_000), error => String(error));
           result = logs;
         } else if (request.action === "stop") {
           await click('button[aria-label="Stop sharing"]'); result = true;
