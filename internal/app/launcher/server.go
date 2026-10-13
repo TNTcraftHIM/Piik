@@ -360,13 +360,9 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 		return
 	}
 
-	select {
-	case server.selection <- selection:
-	case <-request.Context().Done():
-		return
-	case <-server.ctx.Done():
-		return
-	}
+	// Begin commits this one selection to the App, independently of the page.
+	// The single-slot queue cannot block: only the accepted request writes it.
+	server.selection <- selection
 	select {
 	case <-server.resultReady:
 	case <-request.Context().Done():

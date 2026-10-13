@@ -2,11 +2,13 @@ package launcher
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"runtime"
 	"strings"
@@ -116,6 +118,33 @@ func TestRoomFailureInvalidatesReadyTargetButKeepsSiteApprovalAvailable(t *testi
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("failed room blocked approval revocation: %d", response.StatusCode)
+	}
+}
+
+func TestLauncherRetainsAcceptedSelectionAfterRequestCancellation(t *testing.T) {
+	// Cancellation may race the handoff, but cannot discard an accepted launch.
+	for range 32 {
+		server := &Server{
+			ctx:         t.Context(),
+			selection:   make(chan Selection, 1),
+			resultReady: make(chan struct{}),
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		request := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/client-launcher/launch",
+			strings.NewReader(`{"mode":"link","language":"en"}`))
+		cancel()
+		server.handleLaunch(httptest.NewRecorder(), request)
+		select {
+		case selection := <-server.Selection():
+			if selection != (Selection{Mode: ModeLink, Language: "en"}) {
+				t.Fatalf("selection = %+v", selection)
+			}
+		default:
+			t.Fatal("cancelled Browser request left the App starting without a selection")
+		}
+		if server.Begin() {
+			t.Fatal("cancelled Browser request allowed a second launch")
+		}
 	}
 }
 
