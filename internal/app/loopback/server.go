@@ -419,7 +419,10 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 	helloContext, cancelHello := context.WithTimeout(claim.ctx, helloTimeout)
 	messageType, payload, err := connection.Read(helloContext)
 	cancelHello()
-	if err != nil || messageType != websocket.MessageText {
+	if err != nil {
+		return
+	}
+	if messageType != websocket.MessageText {
 		closeControl(connection, "hello frame required")
 		return
 	}
@@ -512,11 +515,13 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 		}
 		if message.Type == "ping" {
 			strict, strictErr := decodeRequest(payload)
-			if strictErr != nil || validatePing(strict) != nil ||
-				write(controlContext, controlMessage{
-					Version: ProtocolVersion, ID: message.ID, Type: "pong",
-				}) != nil {
+			if strictErr != nil || validatePing(strict) != nil {
 				closeControl(connection, "invalid control message")
+				return
+			}
+			if write(controlContext, controlMessage{
+				Version: ProtocolVersion, ID: message.ID, Type: "pong",
+			}) != nil {
 				return
 			}
 			continue
