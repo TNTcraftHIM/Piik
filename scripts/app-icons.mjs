@@ -105,7 +105,7 @@ function writeLinuxAssets(packageRoot, entries) {
       "Exec=piik-app",
       "TryExec=piik-app",
       "Icon=piik-app",
-      "Terminal=false",
+      "Terminal=true",
       "Categories=Network;Utility;",
       "StartupNotify=true",
       "",

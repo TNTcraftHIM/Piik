@@ -276,8 +276,9 @@ function verifyPlatformAssets(root, target) {
     if (!existsSync(desktop) || !existsSync(icon)) {
       fail("Linux App icon assets are missing");
     }
-    if (!readFileSync(desktop, "utf8").includes("Icon=piik-app\n")) {
-      fail("Linux desktop entry does not name its icon");
+    const entry = readFileSync(desktop, "utf8");
+    if (!entry.includes("Icon=piik-app\n") || !entry.includes("Terminal=true\n")) {
+      fail("Linux desktop entry must retain its icon and interactive terminal");
     }
     if (!readFileSync(icon).subarray(0, 8).equals(Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,

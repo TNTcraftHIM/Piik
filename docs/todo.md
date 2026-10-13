@@ -37,6 +37,11 @@ Git/PRs own completed history.
   and explain the disposition at integration. Keep
   [#459](https://github.com/TNTcraftHIM/Piik/pull/459)'s candidate scope and
   bilingual upgrade instructions aligned with the accepted result.
+  [#475](https://github.com/TNTcraftHIM/Piik/pull/475) identifies the Linux
+  desktop entry's missing terminal controls. The candidate restores the existing
+  terminal through the desktop entry; tray activation and Browser process-exit
+  authority remain separate, unaccepted additions. Credit the reported defect
+  without attributing this independent packaging correction as co-authored code.
 - [ ] **Gitee mirror workflow activation.** The production verifier passes with
   the original published CI artifacts, GitHub digests and anonymous Gitee downloads.
   After the owner-approved merge, check Actions event dispatch, cross-run artifact

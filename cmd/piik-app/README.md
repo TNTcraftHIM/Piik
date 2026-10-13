@@ -90,7 +90,8 @@ The terminal shows the current mode, entry links and startup state; its language
 follows the launcher and App-enabled pages.
 Press `o` to reopen the Browser, or `q` / Ctrl+C to end Local
 rooms and stop the local server and temporary public link. Plain-text output
-uses Ctrl+C. The App keeps running after a Site tab closes.
+uses Ctrl+C. The Linux desktop entry also opens this terminal. The App keeps
+running after a Site tab closes.
 When launched in its own Windows console, a startup or runtime error leaves the
 error visible until Enter is pressed. Normal shutdown, existing terminals and
 redirected or automated runs exit directly.
