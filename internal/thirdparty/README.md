@@ -47,3 +47,8 @@ notice through the other compiled LiveKit packages. When a maintained upstream
 version covers both corrections and the same regressions pass, remove this
 directory and restore the upstream imports. Review dependency bumps against the
 named baseline; do not evolve a separate congestion-control algorithm here.
+
+The retained detector also includes [upstream #4935](https://github.com/livekit/livekit/pull/4935)
+and its regression from v1.13.9, adapted to standard Go assertions. Reserved
+TWCC symbols carry no receive delta: skip their measurement rather than consuming
+the next packet's delta or indexing past the feedback array.
