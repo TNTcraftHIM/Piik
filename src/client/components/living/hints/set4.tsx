@@ -21,6 +21,7 @@ import {
 } from "../Comic";
 import type { ComicTheme } from "../Comic";
 import type { HintScene, Set4Kind } from "../../../ui/visual-kinds";
+import { BrandMark } from "../BrandMark";
 
 const INK = "var(--ink)";
 const WALL2 = "var(--wall-2)";
@@ -493,5 +494,6 @@ export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-nat-prediction": (props) => <HintNatPrediction {...props} />,
   "hint-nat-unavailable": (props) => <HintNatPrediction {...props} available={false} />,
   "hint-client-local": HintClientLocal,
+  "hint-app-ready": () => <g transform="translate(112 0)" color={INK}><BrandMark size={96} motion="loop" /></g>,
   "hint-client-site": HintClientSite,
 };

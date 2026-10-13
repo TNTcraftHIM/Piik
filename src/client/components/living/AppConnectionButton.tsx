@@ -117,7 +117,7 @@ export function AppConnectionButton({ sourcePicker = false, onConnected }: {
   const label = t(state === "ready" ? "client.connect.standby" : state === "incompatible" ? "native.incompatible" :
     state === "unavailable" ? "client.connect.unavailable" : sourcePicker ? "client.connect.captureHint" : "client.connect.action");
   const failed = state === "unavailable" || state === "incompatible";
-  return <><Tooltip kind={state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
+  return <><Tooltip kind={state === "ready" ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
     text={vis ? undefined : label} toggleOnClick={state === "ready"} disabled={helpOpen}
     place={sourcePicker ? "above" : "below"} align={sourcePicker ? "center" : "end"}>
     <button ref={trigger} type="button" className={`${sourcePicker ? "lr-source-picker-refresh lr-source-app-connect" : "lr-btn lr-app-connect"}${state === "ready" ? " is-ready" : ""}`}

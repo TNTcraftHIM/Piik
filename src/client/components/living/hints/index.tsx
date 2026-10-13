@@ -83,6 +83,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-nat-prediction",
   "hint-nat-unavailable",
   "hint-client-local",
+  "hint-app-ready",
   "hint-client-site",
   "hint-capture-browser",
   "hint-capture-camera",

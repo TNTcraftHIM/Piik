@@ -3,6 +3,7 @@ import { locales, type WelcomeEntry } from "../../locales";
 import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useRotatingText } from "../../ui/use-text-rotation";
+import { TEXT_ROTATION_INTERVAL_MS } from "../../ui/text-rotation";
 
 // Original 5x5 pseudo-letters; recurring ideas keep the same pixel word.
 const PIXEL_LETTERS = [
@@ -36,7 +37,8 @@ export function WelcomeLine({ still = false }: { still?: boolean }) {
   const element = useRef<HTMLParagraphElement>(null);
   const line = useRotatingText<WelcomeEntry>(locales[lang].playful.welcome, lang, element, still);
   if (!line) return null;
-  return <p ref={element} className={`lr-welcome${vis ? " is-cipher" : ""}`} aria-hidden={vis || undefined}>
-    {vis ? <WelcomeCipher symbols={line.symbols} /> : line.text}
+  return <p ref={element} className={`lr-welcome${vis ? " is-cipher" : ""}${still ? " is-still" : ""}`} aria-hidden={vis || undefined}>
+    {vis ? <WelcomeCipher symbols={line.symbols} /> : <span key={line.text} className="lr-welcome-text"
+      style={{ animationDuration: `${TEXT_ROTATION_INTERVAL_MS}ms` }}>{line.text}</span>}
   </p>;
 }

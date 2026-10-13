@@ -89,17 +89,14 @@ export function LauncherForm({
   return (
     <form className="lr-client-launch-panel" onSubmit={onSubmit}>
       <header className="lr-client-launch-heading">
-        <BrandMark size={64} motion="once" />
-        <div>
-          <h1 className="lr-client-launch-title">Piik<span className="lr-client-brand-dot">.</span> <small>App</small></h1>
-          <WelcomeLine />
-        </div>
+        <h1 className="lr-client-launch-title">Piik<span className="lr-client-brand-dot">.</span> <small>App</small></h1>
+        <WelcomeLine />
       </header>
 
       {children}
 
       <section className="lr-client-standby" aria-label={t("client.connect.standby")}>
-        <span className="lr-client-standby-icon" aria-hidden="true"><Glyph name="window" size={24} /></span>
+        <span className="lr-client-standby-icon" aria-hidden="true"><BrandMark size={34} motion="loop" /></span>
         <div className="lr-client-standby-copy">
           <strong className={vis ? "visually-hidden" : undefined}>{t("client.connect.standby")}</strong>
           <p className={vis ? "visually-hidden" : undefined}>{t("client.connect.standbyHint")}</p>

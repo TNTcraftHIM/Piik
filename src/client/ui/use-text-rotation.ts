@@ -15,7 +15,10 @@ export function useRotatingText<T>(
   const [selected, select] = useState({ cycle, value: cycle.first });
   useEffect(() => {
     if (frames.length < 2 || still) return;
-    return startTextRotation(() => select({ cycle, value: cycle.next() }), element?.current);
+    const surface = element?.current;
+    const stop = startTextRotation(() => select({ cycle, value: cycle.next() }), surface,
+      active => surface?.setAttribute("data-text-active", String(active)));
+    return () => { stop(); surface?.removeAttribute("data-text-active"); };
   }, [cycle, frames.length, element, still]);
   // Language/context changes display the new pool immediately, before effects.
   return selected.cycle === cycle ? selected.value : cycle.first;

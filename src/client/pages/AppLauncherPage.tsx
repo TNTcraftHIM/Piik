@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { z } from "zod";
 
-import { BrandMark } from "../components/living/BrandMark";
 import { HintComic } from "../components/living/hints";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
@@ -231,7 +230,6 @@ export function AppLauncherPage() {
           <LoadingStatus label={starting ? "client.launch.starting" : "common.loading"} />
         ) : error ? (
           <div className="lr-client-launch-panel">
-            <BrandMark size={68} motion="once" />
             <Pill
               icon="alert"
               tone="bad"
@@ -252,8 +250,7 @@ export function AppLauncherPage() {
           </div>
         ) : requestedSite ? (
           <section className="lr-client-approval">
-            <BrandMark size={68} motion="once" />
-            {vis && <HintComic kind="hint-client-site" />}
+            <HintComic kind="hint-client-site" />
             <h1 className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.approved" : "client.connect.approveTitle")}</h1>
             <div className="lr-client-approval-origin">{requestedSite}</div>
             <p className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.return" : "client.connect.approveHint")}</p>

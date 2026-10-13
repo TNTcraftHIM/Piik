@@ -318,9 +318,18 @@ not need a second mascot or decorative spinner. The header's brand mark remains
 navigation identity. Keep an actionable play symbol or an exact progress value
 when it helps the user proceed or understand the operation.
 
+Review the visible page as a composition, including open tooltips: give it one
+expressive focal illustration, rather than repeating the mascot in a heading,
+card and status. A small navigation mark may coexist with a contextual mascot;
+it is not another focal illustration. Remove decorative duplicates before
+changing the shared character or adding visibility state. This applies the
+[illustration guidance](https://atlassian.design/foundations/illustrations):
+support the task and use lighter icons or copy when another drawing adds noise.
+
 | Context | Illustration and literal content | Playful caption |
 | --- | --- | --- |
 | Page loading, site access check, App preparation | The shared wink mascot with the actual loading operation; no room or media-path claim | The current language's waiting pool |
+| Confirmed App readiness | The same wink mascot with the literal ready state; it does not imply an active share or working media route | None |
 | Source listing/start/switch, room joining, media setup/recovery, waiting for the Host | The corresponding comic with the current status; only the existing state owner can declare waiting | The same waiting pool while the wait exists |
 | Error, limitation, pause, ended room or required user action | The corresponding comic and clear reason/action; settled movement keeps that verdict readable | None |
 | Small controls, tooltips and inline results | Existing action/status icon and contextual guidance when needed; retain direct actions | None |
@@ -514,8 +523,11 @@ pseudo-lettering tied to the same line. Hide that visual cipher from assistive
 technology; the ordinary text sentence remains readable. Switching between text
 and visual mode preserves the selected welcome entry; rotation follows the
 [shared lifecycle](#playful-copy-lifecycle). The line never replaces an action,
-error, loading message or connection progress. Keep it on one line, apart from the actions; primary controls take
-precedence when space is tight.
+error, loading message or connection progress. Keep it on one line, apart from
+the actions; primary controls take precedence when space is tight. A clipped line
+may pan to its end within the shared reading interval; fitting text stays still.
+Pause with the copy's existing visibility owner. Reduced motion keeps the text
+stationary and manually scrollable instead of discarding the hidden words.
 
 ## Ownership And Incremental Review
 

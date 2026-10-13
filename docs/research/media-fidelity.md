@@ -1,6 +1,6 @@
 # Media Fidelity
 
-Reviewed 2026-10-03. [Media quality](../standards/media-quality.md) owns behavior;
+Reviewed 2026-10-13. [Media quality](../standards/media-quality.md) owns behavior;
 [TODO](../todo.md) owns remaining work. These synthetic checks do not establish
 all-device acceptance or full HDR support.
 
@@ -169,3 +169,41 @@ Full HDR requires a separate end-to-end decision for bit depth, codec support,
 color metadata, decoding and mixed Viewer capabilities. It is not a quality
 dropdown addition. Preserve ordinary SDR routing and existing compatibility
 with HDR-to-SDR; no full-HDR or surround implementation is claimed.
+
+## 2.0 Fidelity Reassessment
+
+Reviewed 2026-10-13 after the owner reopened HDR and multichannel consideration.
+Changing Piik's signaling contract does not by itself extend WebRTC codecs,
+capture formats or decoded outputs. Numeric quality limits and media formats
+have different compatibility boundaries.
+
+| Capability | Current evidence and additional work |
+| --- | --- |
+| Mono/stereo | Already carried by the existing Opus track, including microphone mixing, relay and SFU. Retain decoded-channel verification; a channel selector is unnecessary for these inputs. |
+| HDR source viewed as SDR | Windows native capture and thumbnails use the existing tone mapper. Physical HDR display acceptance remains open. Browser-owned capture may already have clipped highlights before Piik receives a frame. |
+| End-to-end HDR | Needs intact high-bit-depth capture, a supported HDR codec, color metadata and compatible decoding through every relay/output. Current native output uses 8-bit H.264/VP8. Mixed SDR viewers need a defined conversion owner; signaling an HDR flag cannot provide this. |
+| 5.1/7.1 surround | Needs channel-layout-preserving capture/mixing, multistream encoding, receiver admission and a stereo downmix boundary. Native PCM/Opus and the Browser microphone mix currently use two-channel output; adding a numeric channel count would silently overstate their capability. |
+
+The [W3C HDR interoperability discussion](https://github.com/w3c/webrtc-extensions/issues/253)
+documents Chrome decoding with VP9 profile 2 and color-space RTP metadata, while
+capture controls, interoperability tests and metadata standardization remain
+work areas. This supports a possible experiment, not universal Browser HDR.
+A local Windows Chrome 152 capability query advertised VP9 profile 2; it did
+not exercise HDR capture, encoding, display, Native reception or mixed viewers.
+
+[RFC 7587](https://www.rfc-editor.org/rfc/rfc7587.html#section-7)
+defines ordinary Opus RTP mono/stereo negotiation. Libwebrtc has a separate
+[multiopus implementation](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/audio_coding/codecs/opus/audio_encoder_multi_channel_opus_impl.cc)
+with stream counts and channel mapping. Chromium's
+[SDP handling](https://chromium.googlesource.com/chromium/src/third_party/+/refs/heads/main/blink/renderer/modules/peerconnection/rtc_peer_connection.cc)
+notes that the Browser does not generate multiopus itself. The same local
+capability query offered ordinary Opus with two channels and no multiopus.
+These facts do not establish that manual negotiation is impossible; they rule
+out assuming that an existing Opus connection automatically becomes surround.
+
+Recommendation: retain stereo and HDR-to-SDR for the current candidate. Do not
+reserve speculative wire fields or promise full HDR/surround. Reopen an isolated
+prototype when a concrete source/receiver pair justifies it; first verify actual
+decoded colors or channel separation and a mixed-capability relay path. Reuse
+SDP/RTP format negotiation where it suffices rather than creating a second codec
+negotiation protocol. This assessment adds no feature or new release requirement.

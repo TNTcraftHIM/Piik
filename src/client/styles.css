@@ -129,8 +129,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 .lr-brand:hover { background: var(--wall-2); }
 .lr-brand:active { transform: scale(.92); }
-.lr-brand-label { font-size: 12px; font-weight: 700; white-space: nowrap; }
-.lr-home-arrow { transform: rotate(180deg); }
+.lr-home-arrow { transform: rotate(90deg); color: var(--muted); }
 
 .lr-top-right { display: inline-flex; gap: 10px; align-items: center; }
 .lr-top > .lr-top-right { min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
@@ -1013,7 +1012,8 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-btn.is-on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 .lr-btn .lr-cap { margin-left: 2px; font-size: 12.5px; font-weight: 600; }
 .lr-app-connect { min-width: 40px; height: 40px; }
-.lr-app-connect.is-ready { color: var(--live); cursor: default; }
+.lr-app-connect.is-ready { cursor: default; }
+.lr-app-connect.is-ready > svg { color: var(--live); }
 .lr-app-connect.is-ready:hover { transform: none; }
 .lr-app-connect-help {
   position: fixed; inset: auto; margin: 0; padding: 16px;
@@ -1233,8 +1233,22 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 @media (pointer: coarse) {
   .lr-invite-url, .lr-quality-number input, .lr-video-size input { font-size: 16px; }
 }
-.lr-welcome { width: 100%; min-width: 0; max-width: 100%; margin: 0; overflow: hidden; color: inherit; font-size: 15px; font-weight: 600; line-height: 1.7; text-align: center; white-space: nowrap; text-overflow: ellipsis; }
-.lr-welcome:not(.is-cipher)::before { content: "✦"; color: #d7982b; margin-right: 8px; }
+.lr-welcome { width: 100%; min-width: 0; max-width: 100%; margin: 0; overflow-x: auto; scrollbar-width: none; color: inherit; font-size: 15px; font-weight: 600; line-height: 1.7; text-align: center; white-space: nowrap; container-type: inline-size; }
+.lr-welcome-text { display: block; width: max-content; min-width: 100%; }
+.lr-welcome-text::before { content: "✦"; color: #d7982b; margin-right: 8px; }
+@media (prefers-reduced-motion: no-preference) {
+  .lr-welcome:not(.is-still, .is-cipher) { overflow: clip; }
+  .lr-welcome:not(.is-still) .lr-welcome-text { animation: lr-welcome-read linear both; }
+  .lr-welcome[data-text-active="false"] .lr-welcome-text { animation-name: none; }
+}
+[data-comic-reduced-motion="true"] .lr-welcome { overflow-x: auto; }
+[data-comic-reduced-motion="true"] .lr-welcome-text { animation: none; }
+/* Fitting lines stay still. Longer lines reveal their end before the shared
+   copy clock advances; the keyed text restarts this CSS motion, not a timer. */
+@keyframes lr-welcome-read {
+  0%, 20% { transform: translateX(0); }
+  75%, 100% { transform: translateX(min(0px, calc(100cqw - 100%))); }
+}
 .lr-welcome-cipher { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; opacity: .72; white-space: nowrap; }
 .lr-welcome-cipher i { width: 3px; height: 3px; background: #d7982b; transform: rotate(45deg); }
 .lr-tv-overlay > .lr-welcome { position: absolute; top: clamp(20px, 3vw, 32px); left: 18px; right: 18px; width: auto; font-size: clamp(13px, 1.5vw, 16px); }
@@ -1559,12 +1573,10 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
   justify-items: center;
   gap: 20px;
 }
-.lr-client-launch-heading { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; width: min(380px, 100%); }
-.lr-client-launch-heading > div { min-width: 0; }
+.lr-client-launch-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-bottom: 8px; width: min(380px, 100%); text-align: center; }
 .lr-client-launch-title { font-size: 36px; line-height: 1.1; letter-spacing: -.04em; }
 .lr-client-launch-title small { margin-left: 6px; color: var(--muted); font-size: 15px; letter-spacing: 0; font-weight: 650; }
 .lr-client-brand-dot { color: #e77d38; }
-.lr-client-launch-heading .lr-welcome { text-align: left; margin-top: 8px; }
 .lr-client-standby { display: flex; align-items: flex-start; gap: 14px; width: 100%; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--ink) 20%, transparent); border-radius: 22px; background: var(--paper); }
 .lr-client-standby-icon { display: grid; flex: 0 0 44px; height: 44px; place-items: center; border-radius: 14px; background: var(--control-hover); color: var(--ink); }
 .lr-client-standby-copy { display: grid; flex: 1; gap: 6px; min-width: 0; }

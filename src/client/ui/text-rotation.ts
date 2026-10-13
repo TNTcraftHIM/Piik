@@ -16,7 +16,7 @@ export function createTextCycle<T>(frames: readonly T[]): () => T | undefined {
 }
 
 /** Hidden surfaces keep their entry and resume with a full reading interval. */
-export function startTextRotation(tick: () => void, element?: Element | null): () => void {
+export function startTextRotation(tick: () => void, element?: Element | null, onActivity?: (active: boolean) => void): () => void {
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let inView = !element;
   let retired = false;
@@ -25,7 +25,9 @@ export function startTextRotation(tick: () => void, element?: Element | null): (
     if (retired) return;
     window.clearInterval(timer);
     timer = undefined;
-    if (inView && document.visibilityState === "visible" && !reducedMotion.matches) {
+    const active = inView && document.visibilityState === "visible" && !reducedMotion.matches;
+    onActivity?.(active);
+    if (active) {
       timer = window.setInterval(tick, TEXT_ROTATION_INTERVAL_MS);
     }
   };
@@ -42,6 +44,7 @@ export function startTextRotation(tick: () => void, element?: Element | null): (
   sync();
   return () => {
     retired = true; // An already queued observer notification may still arrive.
+    onActivity?.(false);
     window.clearInterval(timer);
     document.removeEventListener("visibilitychange", sync);
     reducedMotion.removeEventListener("change", sync);
