@@ -64,7 +64,7 @@ export const zh = {
   "client.connect.standby": "App 已就绪",
   "client.connect.standbyHint": "打开 Piik 站点，点击顶部的 App 即可连接。",
   "client.connect.remove": "取消此站点的 App 授权",
-  "client.connect.approveTitle": "允许此站点使用 Piik App？",
+  "client.connect.approveTitle": "允许使用 Piik App？",
   "client.connect.approveHint": "此站点将可以使用本机的屏幕、窗口和麦克风。请确认你信任这个网址。",
   "client.connect.approve": "允许使用",
   "client.connect.replace": "将替换 {site}，并断开它的 App 连接。",
