@@ -165,8 +165,9 @@ static void check_slot_profiles(void) {
       {"3840", "2160", TRUE}, {"2160", "3840", TRUE}, {"3000", "2764", TRUE},
       {"0", "720", FALSE}, {"2", "720", FALSE}, {"1280", "2", FALSE},
       {"1279", "720", FALSE}, {"1280", "719", FALSE},
-      {"3842", "2160", FALSE}, {"2160", "3842", FALSE},
-      {"3840", "2162", FALSE}, {"3000", "2766", FALSE}};
+      {"5120", "1440", TRUE}, {"4096", "2304", TRUE},
+      {"8194", "100", FALSE}, {"5120", "2880", FALSE},
+      {"4096", "2306", FALSE}, {"6562", "1438", FALSE}};
   for (guint index = 0; index < G_N_ELEMENTS(sizes); ++index) {
     numeric[11] = numeric[24] = sizes[index].width;
     numeric[13] = numeric[25] = sizes[index].height;
@@ -182,7 +183,8 @@ static void check_slot_profiles(void) {
   g_assert_false(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder));
   const struct { char *fps; char *bitrate; gboolean valid; } rates[] = {
       {"1", "100000", TRUE}, {"5", "800000", TRUE}, {"60", "50000000", TRUE},
-      {"0", "100000", FALSE}, {"1", "99999", FALSE}, {"60", "50000001", FALSE}};
+      {"60", "240000000", TRUE}, {"65", "100000000", FALSE},
+      {"0", "100000", FALSE}, {"1", "99999", FALSE}, {"60", "240000001", FALSE}};
   for (guint index = 0; index < G_N_ELEMENTS(rates); ++index) {
     numeric[15] = numeric[26] = rates[index].fps;
     numeric[17] = numeric[27] = rates[index].bitrate;
@@ -190,6 +192,14 @@ static void check_slot_profiles(void) {
     g_assert_cmpint(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder), ==, rates[index].valid);
   }
   g_assert_false(valid_video_format(G_MAXUINT, G_MAXUINT, G_MAXUINT));
+  numeric[11] = numeric[24] = "1920";
+  numeric[13] = numeric[25] = "1080";
+  numeric[15] = numeric[26] = "240";
+  numeric[17] = numeric[27] = "240000000";
+  run = (CaptureRun){0};
+  g_assert_true(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder));
+  numeric[15] = numeric[26] = "241";
+  g_assert_false(parse_profile(G_N_ELEMENTS(numeric), numeric, &run, &encoder));
 }
 
 static GstPadProbeReturn record_key_request(GstPad *pad, GstPadProbeInfo *info,

@@ -548,7 +548,7 @@ describe("Host room-link copy feedback", () => {
 describe("Host quality ownership", () => {
   it("rejects unsupported settings without changing capture, room or saved intent", async () => {
     const current = fixture();
-    await current.change({ ...original, maxFramerate: 120, maxBitrate: 40_000_000 });
+    await current.change({ ...original, maxFramerate: 480, maxBitrate: 40_000_000 });
     expect(current.qualitySettingsRef.current).toEqual(original);
     expect(current.applyCaptureProfile).not.toHaveBeenCalled();
     expect(current.signalRef.current.setHostQualitySettings).not.toHaveBeenCalled();
@@ -559,7 +559,7 @@ describe("Host quality ownership", () => {
   it("ignores an unsupported App preference without erasing it", async () => {
     const current = fixture();
     current.activeGenerationRef.current = null;
-    const preference = { read: vi.fn(async () => ({ ...original, maxFramerate: 120 })), save: vi.fn() };
+    const preference = { read: vi.fn(async () => ({ ...original, maxFramerate: 480 })), save: vi.fn() };
     current.context.AppQualityPreference = { connect: vi.fn(async () => preference) };
     await current.context.loadAppQualityPreference(new AbortController().signal);
     expect(current.qualitySettingsRef.current).toEqual(original);

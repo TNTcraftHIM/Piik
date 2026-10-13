@@ -39,16 +39,14 @@ class H264Decoder final {
     }
     Microsoft::WRL::ComPtr<ICodecAPI> codec;
     Check(decoder_.As(&codec), "codec-api");
-    for (const auto& setting : {
-             std::pair<GUID, ULONG>{CODECAPI_AVLowLatencyMode, TRUE},
-             std::pair<GUID, ULONG>{CODECAPI_AVDecVideoMaxCodedWidth, kMaxCodedVideoDimension},
-             std::pair<GUID, ULONG>{CODECAPI_AVDecVideoMaxCodedHeight, kMaxCodedVideoDimension}}) {
-      VARIANT value;
-      VariantInit(&value);
-      value.vt = VT_UI4;
-      value.ulVal = setting.second;
-      Check(codec->SetValue(&setting.first, &value), "codec-setting");
-    }
+    VARIANT value;
+    VariantInit(&value);
+    value.vt = VT_UI4;
+    value.ulVal = TRUE;
+    Check(codec->SetValue(&CODECAPI_AVLowLatencyMode, &value), "codec-setting");
+    // Let the MFT own its supported dimensions. Setting both global axis
+    // ceilings preallocates a square and can fail even for a small input.
+    // Go validates SPS storage before this process; SelectOutput bounds its buffers.
   }
 
   ~H264Decoder() {

@@ -34,13 +34,15 @@ export interface VideoCaptureLimits {
 }
 
 // Current output boundary, independent of descriptive wire bounds and UI presets.
-// H.264 Level 5.2 admits 4K60 in either orientation; actual output still adapts.
+// H.264 Level 5.2 bounds frame area, processing rate and bitrate independently.
+// Keep a finite 240 fps scheduling budget; ultrawide/high-refresh inputs need
+// not fit a named preset. Actual output still depends on the source and encoder.
 export const VIDEO_CAPTURE_LIMITS: VideoCaptureLimits = {
-  maxVideoResolution: { width: 3840, height: 3840 },
-  maxVideoPixels: 3840 * 2160,
+  maxVideoResolution: { width: 8192, height: 8192 },
+  maxVideoPixels: 36_864 * 16 * 16,
   maxVideoMacroblocksPerSecond: 2_073_600,
-  maxVideoFramerate: 60,
-  maxVideoBitrate: 50_000_000,
+  maxVideoFramerate: 240,
+  maxVideoBitrate: 240_000_000,
 };
 
 export function videoCaptureLimits(advertised?: Partial<VideoCaptureLimits>): VideoCaptureLimits {
@@ -61,7 +63,8 @@ export function videoCaptureLimits(advertised?: Partial<VideoCaptureLimits>): Vi
 export function captureFramerateCeiling(size: QualityResolution, limits = VIDEO_CAPTURE_LIMITS): number {
   if (![size.width, size.height].every(value => Number.isInteger(value) && value >= 4 && value % 2 === 0)
     || size.width > limits.maxVideoResolution.width || size.height > limits.maxVideoResolution.height
-    || size.width * size.height > limits.maxVideoPixels) return 0;
+    || size.width * size.height > limits.maxVideoPixels
+    || Math.ceil(size.width / 16) * Math.ceil(size.height / 16) * 256 > VIDEO_CAPTURE_LIMITS.maxVideoPixels) return 0;
   return Math.floor(Math.min(limits.maxVideoFramerate, limits.maxVideoMacroblocksPerSecond /
     (Math.ceil(size.width / 16) * Math.ceil(size.height / 16))));
 }

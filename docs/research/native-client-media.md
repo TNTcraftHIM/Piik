@@ -754,8 +754,8 @@ recommends 50 Mbps for 4K60, but its ingest/re-encoding workload is not a Piik
 WebRTC operating policy. These references motivate testing both ends of the
 range, rather than inheriting the old controls or copying another service's cap.
 
-The candidate now admits 1..60 integer fps and 0.1..50 Mbps. Its lower-output
-construction caps the usual 150 kbps floor by the source ceiling, in both Browser
+The initial numeric candidate admitted 1..60 integer fps and 0.1..50 Mbps. Its
+lower-output construction caps the usual 150 kbps floor by the source ceiling, in both Browser
 SFU and Native. Browser and Native preflight require positive encoded progress;
 the old one-frame tolerance could otherwise pass zero output at 1 fps.
 An earlier raw H.264 encode/decode control established local feasibility beyond
@@ -807,6 +807,23 @@ useful operation and bounded failure, not sustained field quality or complete-ro
 performance. Ignored controls and results are under
 `build/candidate-review/four-k60/` (`range-worker.cpp`, `range-browser.js`,
 `low-rate-pool.js`).
+
+The 2026-10-13 extension uses the existing H.264 Level 5.2 budget instead of
+the earlier menu maximum: see [FFmpeg's level table](https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/h264_levels.c).
+The Windows production worker delivered H.264 and VP8 output for 1080p120/
+80 Mbps, 1440p144/100 Mbps and 1080p240/240 Mbps, including small-source changes
+and restoration. VP8 also delivered 5120x1440/60 at a 100 Mbps ceiling; this
+machine's hardware H.264 candidates rejected that width. These short synthetic
+checks establish useful output and retirement, not sustained cadence or bitrate.
+Browser WebRTC loopback also retained the requested sender limits and continued
+decoding all four sizes/rates with H.264 and VP8. These controls used synthetic
+canvas input; they do not establish screen-capture cadence or cross-device support.
+Setting both Windows decoder axis ceilings to 8192 made an existing 4K fixture
+fail at `BEGIN_STREAMING` with `E_OUTOFMEMORY`. Retaining platform provisioning
+defaults passed the same padding/visible-crop regression; SPS and output buffer
+guards remain in their existing owners. Raw H.264 1080p120/80 Mbps also decoded
+30/30 pictures. The higher-range changes still need other-platform SDK and
+physical-device acceptance. Local controls are in ignored `build/quality-polish/`.
 
 [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-availableoutgoingbitrate)
 describe estimated available capacity, not a configured send-rate ceiling;

@@ -138,7 +138,7 @@ rate in the same quality operation when the larger size requires a lower limit.
 Larger wire-valid requests do not
 authorize an adapter to exceed its local capture, codec or allocation limits.
 Numeric requests use representational bounds rather than the current control
-ranges. Candidate capture admits integer 1..60 fps and 0.1..50 Mbps, further
+ranges. Candidate capture admits integer 1..240 fps and 0.1..240 Mbps, further
 limited by picture size. Advanced controls accept typed values alongside sliders;
 the three recommended profiles and default remain unchanged. These are useful
 product controls, not universal codec
@@ -166,16 +166,21 @@ derivation, validate every H.264 sequence parameter set's supported format,
 coded storage and visible crop; a later small descriptor cannot authorize earlier
 large input.
 
-The candidate Native adapters admit even visible dimensions up to 3840 per
-axis and 3840x2160 total pixels. Their shared output-rate bound follows H.264
-Level 5.2: 2,073,600 16x16 macroblocks per second, with at most 60 fps. This admits
-landscape/portrait 4K60 and existing 1440p60. Decoder alignment has a
+Candidate capture admits even dimensions up to 8192 per axis and 36,864
+16x16 macroblocks per picture, including alignment. Its shared codec budget
+follows H.264 Level 5.2: 2,073,600 macroblocks per second and a 240 Mbps video
+bitrate ceiling; capture scheduling is separately bounded at 240 fps.
+This admits 1080p240, 1440p144, 5120x1440 at 60 fps and landscape/portrait
+4K60. It does not admit a full 8K picture. Decoder alignment has a
 separate coded-storage bound; reference-picture storage is bounded before
 Native derivation. These are admission limits, not a device performance promise.
 App discovery reports size, pixel-count, frame-rate and bitrate limits through the
 existing native health description. Controls use the intersection with local
 implementation limits; a remote claim cannot raise those limits. Whole-route
 and physical-device acceptance remain separate from available controls.
+Use platform decoder defaults for internal provisioning, rather than turning
+independent axis ceilings into a maximum-square preallocation. Encoded input
+and actual output storage remain bounded before use.
 
 Quality observations have independent numeric bounds. A valid capacity estimate
 above the requested send rate remains evidence; invalid optional measurements

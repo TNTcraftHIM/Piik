@@ -968,7 +968,7 @@ DegradationPreference ParseDegradationPreference(const wchar_t* value) {
 void ValidateVideoProfile(const VideoProfile& profile) {
   if (!piik::capture::ValidVideoFormat(profile.width, profile.height, profile.frame_rate) ||
       profile.width < 4 || profile.height < 4 ||
-      profile.bit_rate < 100'000 || profile.bit_rate > 50'000'000) {
+      profile.bit_rate < 100'000 || profile.bit_rate > piik::capture::kMaxVideoBitrate) {
     Fail("argument-profile", "video profile is outside the product bounds");
   }
 }
@@ -982,7 +982,7 @@ void ParseOutputProfiles(ProductArguments& arguments, int first, int count, wcha
     output.frame_rate = ParseIndex(values[index + 3], "argument-output-fps");
     output.bit_rate = ParseIndex(values[index + 4], "argument-output-bitrate");
     if (!piik::capture::ValidVideoFormat(output.width, output.height, output.frame_rate) ||
-        output.bit_rate < 1'000 || output.bit_rate > 50'000'000) {
+        output.bit_rate < 1'000 || output.bit_rate > piik::capture::kMaxVideoBitrate) {
       Fail("argument-output", "output profile exceeds codec bounds");
     }
     if (arguments.mode == ProductArguments::Mode::video &&

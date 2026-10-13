@@ -677,7 +677,7 @@ func TestQualitySettingsMapOnceIntoNativeMedia(t *testing.T) {
 	if !nativeQualityProfile(settings).Valid() {
 		t.Fatal("4K30 was rejected")
 	}
-	for _, fps := range []protocol.Num{30.5, 61, 120, 0x1_0000_0000 + 30} {
+	for _, fps := range []protocol.Num{30.5, 65, 120, 0x1_0000_0000 + 30} {
 		settings.MaxFramerate = fps
 		if nativeQualityProfile(settings).Valid() {
 			t.Fatalf("unsupported fps %v was narrowed into a valid profile", fps)
@@ -698,9 +698,9 @@ func TestUpdateShareRequiresTheCurrentStrictProfile(t *testing.T) {
 		`"resolution":{"width":7680,"height":4320}`, 1))
 	for _, replace := range [][2]string{
 		{`"width":1920`, `"width":32768`}, {`"width":1920`, `"width":1921`},
-		{`"maxFramerate":30`, `"maxFramerate":120`}, {`"maxFramerate":30`, `"maxFramerate":30.5`},
+		{`"maxFramerate":30`, `"maxFramerate":480`}, {`"maxFramerate":30`, `"maxFramerate":30.5`},
 		{`"maxFramerate":30`, `"maxFramerate":4294967326`}, {`"maxFramerate":30`, `"maxFramerate":0.5`},
-		{`"maxBitrate":5000000`, `"maxBitrate":50000001`}, {`"maxBitrate":5000000`, `"maxBitrate":1000`},
+		{`"maxBitrate":5000000`, `"maxBitrate":240000001`}, {`"maxBitrate":5000000`, `"maxBitrate":1000`},
 	} {
 		assertOperationFailure(t, session, strings.Replace(valid, replace[0], replace[1], 1))
 	}

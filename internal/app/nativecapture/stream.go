@@ -23,8 +23,8 @@ const (
 	captureStopTimeout  = time.Second
 	maxPreviewBytes     = 192 * 1024
 	maxOutputs          = 6
-	minOutputBitrate    = 1_000 // Codec rate APIs use whole kbps.
-	MaxVideoBitrate     = 50_000_000
+	minOutputBitrate    = 1_000       // Codec rate APIs use whole kbps.
+	MaxVideoBitrate     = 240_000_000 // H.264 Level 5.2 Constrained Baseline video bitrate.
 	maxSources          = 1024
 	maxSourceTitleBytes = 4096
 	// Leave room for the control envelope within loopback's 256 KiB message.

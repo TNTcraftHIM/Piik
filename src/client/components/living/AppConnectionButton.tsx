@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { activateClient } from "../../lib/session";
+import { activateClient, isClientActivated } from "../../lib/session";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
@@ -9,12 +9,38 @@ export function AppConnectionButton({ sourcePicker = false, onConnected }: {
   onConnected?: () => void;
 } = {}) {
   const { t, vis } = useCopy();
-  const [state, setState] = useState<"idle" | "busy" | "unavailable" | "incompatible">("idle");
+  const [state, setState] = useState<"idle" | "busy" | "ready" | "unavailable" | "incompatible">("idle");
   const pending = useRef<{ controller: AbortController; popup: Window | null } | null>(null);
+  const healthCheck = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (sourcePicker) return;
+    const refresh = async () => {
+      if (pending.current || !isClientActivated()) return;
+      healthCheck.current?.abort();
+      const current = healthCheck.current = new AbortController();
+      const native = await import("../../native/client");
+      if (current.signal.aborted) return;
+      try {
+        const health = await native.discoverNativeHealth({ signal: current.signal, waitForPermission: false });
+        if (!current.signal.aborted && !pending.current) setState(health ? "ready" : "idle");
+      } catch (error) {
+        if (!current.signal.aborted && !pending.current) {
+          setState(error instanceof native.NativeCompatibilityError ? "incompatible" : "idle");
+        }
+      }
+    };
+    // Launch/remembered activation is intent, not proof of current permission.
+    // Recheck on return without keeping a media session or a polling timer alive.
+    const onFocus = () => { void refresh().catch(() => undefined); };
+    onFocus();
+    window.addEventListener("focus", onFocus);
+    return () => { healthCheck.current?.abort(); window.removeEventListener("focus", onFocus); };
+  }, [sourcePicker]);
   useEffect(() => () => { pending.current?.controller.abort(); pending.current?.popup?.close(); }, []);
 
   async function connect(): Promise<void> {
     if (pending.current) return;
+    healthCheck.current?.abort();
     // Reserve the window during the click, before local-network discovery waits.
     const attempt = { controller: new AbortController(), popup: window.open("about:blank", "_blank") };
     if (!attempt.popup) { setState("unavailable"); return; }
@@ -30,7 +56,7 @@ export function AppConnectionButton({ sourcePicker = false, onConnected }: {
       // The approval message only asks us to recheck the App-owned permission.
       const health = await native?.discoverNativeHealth({ signal }).catch(() => null);
       if (signal.aborted) return;
-      finish(health ? "idle" : "unavailable");
+      finish(health ? "ready" : "unavailable");
       if (health) {
         activateClient();
         onConnected?.();
@@ -66,14 +92,15 @@ export function AppConnectionButton({ sourcePicker = false, onConnected }: {
     }
   }
 
-  const label = t(state === "incompatible" ? "native.incompatible" :
+  const label = t(state === "ready" ? "client.connect.standby" : state === "incompatible" ? "native.incompatible" :
     state === "unavailable" ? "client.connect.unavailable" : sourcePicker ? "client.connect.captureHint" : "client.connect.action");
   return <Tooltip kind={state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
-    text={vis ? undefined : label} place={sourcePicker ? "above" : "below"} align={sourcePicker ? "center" : "end"}>
-    <button type="button" className={sourcePicker ? "lr-source-picker-refresh lr-source-app-connect" : "lr-btn lr-app-connect"}
+    text={vis ? undefined : label} toggleOnClick={state === "ready"}
+    place={sourcePicker ? "above" : "below"} align={sourcePicker ? "center" : "end"}>
+    <button type="button" className={`${sourcePicker ? "lr-source-picker-refresh lr-source-app-connect" : "lr-btn lr-app-connect"}${state === "ready" ? " is-ready" : ""}`}
       aria-label={sourcePicker ? t("client.connect.action") : label} aria-busy={state === "busy" || undefined}
-      onClick={() => void connect()} disabled={state === "busy"}>
-      <Glyph name={state === "busy" ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
+      onClick={state === "ready" ? undefined : () => void connect()} disabled={state === "busy"}>
+      <Glyph name={state === "ready" ? "check" : state === "busy" ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
         size={16} className={state === "busy" ? "lr-spin" : undefined} />
       {vis ? null : <span className="lr-cap">{sourcePicker ? t("client.connect.action") : "App"}</span>}
     </button>

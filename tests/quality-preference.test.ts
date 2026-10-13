@@ -35,7 +35,7 @@ describe("sharing quality preference", () => {
   });
 
   it("uses supported defaults without overwriting a preference from a stronger implementation", () => {
-    const stored = JSON.stringify({ ...DEFAULT_QUALITY_SETTINGS, maxFramerate: 120, maxBitrate: 40_000_000 });
+    const stored = JSON.stringify({ ...DEFAULT_QUALITY_SETTINGS, maxFramerate: 480, maxBitrate: 40_000_000 });
     const setItem = vi.fn();
     vi.stubGlobal("window", { localStorage: { getItem: () => stored, setItem } });
     expect(readPreferredQuality()).toEqual(DEFAULT_QUALITY_SETTINGS);

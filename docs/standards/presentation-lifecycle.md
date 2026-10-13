@@ -45,6 +45,10 @@ successful connection refreshes its current list. An already approved exact
 origin needs no repeat confirmation, but the page still verifies authorized App
 health. Closing the selector cancels its pending connection action. Existing
 Browser shares retain their capture implementation until sharing ends.
+App-created Local/public-invite Host pages open at their automatically approved
+loopback origin. The shared App button reflects verified authorized health,
+including on returning to an activated page; a remembered activation alone
+cannot show readiness. Idle verification holds no media session or polling loop.
 Viewer links opened at that activated origin may use the same running App
 without changing the Viewer UI. Starting a share offers the
 Browser picker and any exact App-owned native windows. It never chooses a

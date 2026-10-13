@@ -405,12 +405,17 @@ int main() {
   ValidateVideoProfile(profile);
   for (const auto& requested : {VideoProfile{1280, 720, 1, 100'000},
                                VideoProfile{1280, 720, 5, 800'000},
-                               VideoProfile{3840, 2160, 60, 50'000'000}}) {
+                               VideoProfile{3840, 2160, 60, 50'000'000},
+                               VideoProfile{1920, 1080, 240, 240'000'000},
+                               VideoProfile{2560, 1440, 144, 100'000'000},
+                               VideoProfile{5120, 1440, 60, 100'000'000},
+                               VideoProfile{4096, 2304, 56, 80'000'000}}) {
     ValidateVideoProfile(requested);
   }
   for (const auto& requested : {VideoProfile{1280, 720, 0, 100'000},
                                VideoProfile{1280, 720, 1, 99'999},
-                               VideoProfile{3840, 2160, 60, 50'000'001}}) {
+                               VideoProfile{3840, 2160, 60, 240'000'001},
+                               VideoProfile{1920, 1080, 241, 100'000'000}}) {
     try {
       ValidateVideoProfile(requested);
       assert(false);
@@ -423,8 +428,8 @@ int main() {
     ValidateVideoProfile(VideoProfile{static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy), 60, 3'000'000});
   }
   for (const SIZE size : {SIZE{0, 720}, SIZE{2, 720}, SIZE{1280, 2}, SIZE{1279, 720},
-                          SIZE{1280, 719}, SIZE{3842, 2160}, SIZE{2160, 3842},
-                          SIZE{3840, 2162}, SIZE{3000, 2766}}) {
+                          SIZE{1280, 719}, SIZE{8194, 100}, SIZE{5120, 2880},
+                          SIZE{4096, 2306}, SIZE{6562, 1438}}) {
     try {
       ValidateVideoProfile(VideoProfile{static_cast<UINT32>(size.cx), static_cast<UINT32>(size.cy), 30, 3'000'000});
       assert(false);
@@ -435,7 +440,7 @@ int main() {
   assert(piik::capture::ValidVideoFormat(3840, 2160, 30));
   assert(piik::capture::ValidVideoFormat(3840, 2160, 60));
   assert(piik::capture::ValidVideoFormat(2160, 3840, 60));
-  assert(!piik::capture::ValidVideoFormat(3840, 2160, 61));
+  assert(!piik::capture::ValidVideoFormat(3840, 2160, 65));
   assert(!piik::capture::ValidVideoFormat(UINT32_MAX, UINT32_MAX, UINT32_MAX));
   assert(piik::capture::ValidCodedVideoSize(3840, 2176));
   assert(piik::capture::ValidCodedVideoSize(2176, 3840));

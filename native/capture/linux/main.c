@@ -19,8 +19,10 @@ enum {
   kMaxOutputs = 6,
   kMaxPayloadBytes = 4 * 1024 * 1024,
   kAudioFrameBytes = 960 * 2 * 2,
-  kMaxVideoDimension = 3840,
-  kMaxVideoPixels = 3840 * 2160,
+  kMaxVideoDimension = 8192,
+  kMaxVideoPixels = 36864 * 16 * 16,
+  kMaxVideoFramerate = 240,
+  kMaxVideoBitrate = 240000000,
 };
 
 typedef enum {
@@ -375,12 +377,12 @@ static gboolean parse_uint(const char *value, guint minimum, guint maximum,
 static gboolean valid_video_size(guint width, guint height) {
   return width >= 2 && width <= kMaxVideoDimension && width % 2 == 0 &&
          height >= 2 && height <= kMaxVideoDimension && height % 2 == 0 &&
-         (guint64)width * height <= kMaxVideoPixels;
+         (guint64)((width + 15) / 16) * ((height + 15) / 16) * 256 <= kMaxVideoPixels;
 }
 
 static gboolean valid_video_format(guint width, guint height, guint fps) {
   // Match the shared H.264 Level 5.2 receive ceiling, including numeric sizes.
-  return valid_video_size(width, height) && fps >= 1 && fps <= 60 &&
+  return valid_video_size(width, height) && fps >= 1 && fps <= kMaxVideoFramerate &&
          (guint64)((width + 15) / 16) * ((height + 15) / 16) * fps <= 2073600;
 }
 
@@ -401,8 +403,8 @@ static gboolean parse_outputs(int count, char **values, guint start, CaptureRun 
     if (strcmp(values[offset], "--output") != 0 ||
         !parse_uint(values[offset + 1], 2, kMaxVideoDimension, &output->profile.width) ||
         !parse_uint(values[offset + 2], 2, kMaxVideoDimension, &output->profile.height) ||
-        !parse_uint(values[offset + 3], 1, 60, &output->profile.frame_rate) ||
-        !parse_uint(values[offset + 4], 1000, 50000000, &output->profile.bit_rate) ||
+        !parse_uint(values[offset + 3], 1, kMaxVideoFramerate, &output->profile.frame_rate) ||
+        !parse_uint(values[offset + 4], 1000, kMaxVideoBitrate, &output->profile.bit_rate) ||
         !valid_video_format(output->profile.width, output->profile.height,
                             output->profile.frame_rate)) return FALSE;
   }
@@ -454,8 +456,8 @@ static gboolean parse_profile(int count, char **values, CaptureRun *run,
       !parse_uint(values[9], 0, 63, encoder_index) ||
       !parse_uint(values[11], 1, 16384, &profile->width) ||
       !parse_uint(values[13], 1, 16384, &profile->height) ||
-      !parse_uint(values[15], 1, 60, &profile->frame_rate) ||
-      !parse_uint(values[17], 100000, 50000000, &profile->bit_rate)) {
+      !parse_uint(values[15], 1, kMaxVideoFramerate, &profile->frame_rate) ||
+      !parse_uint(values[17], 100000, kMaxVideoBitrate, &profile->bit_rate)) {
     return FALSE;
   }
   if (!valid_video_format(profile->width, profile->height, profile->frame_rate) ||

@@ -74,6 +74,24 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
       if (event.key === "Escape") reset(event.currentTarget);
       event.target.blur();
     }}>
+    <div className="lr-quality-heading">
+      <span className="lr-door-glyph"><Glyph name="expand" size={19} /><Cap k="host.advanced.resolution" /></span>
+      <Tooltip kind="hint-quality" text={vis ? undefined : t("host.video.resolutionHint", {
+        width: String(limits.maxVideoResolution.width), height: String(limits.maxVideoResolution.height),
+        pixels: limits.maxVideoPixels.toLocaleString("en-US"),
+      })}>
+        <span className="lr-input lr-video-size" key={`${value.width}x${value.height}`}
+          role="group" aria-label={t("host.advanced.resolution")}>
+          {axes.map((axis, index) => <Fragment key={axis}>
+            {index === 1 ? <span aria-hidden="true">×</span> : null}
+            <input type="number" inputMode="numeric" name={axis} defaultValue={value[axis]}
+              min={4} max={limits.maxVideoResolution[axis]} step={2} disabled={disabled}
+              aria-label={t(axis === "width" ? "host.video.width" : "host.video.height")} />
+          </Fragment>)}
+          <span aria-hidden="true">px</span>
+        </span>
+      </Tooltip>
+    </div>
     <div className="lr-row-group" role="group" aria-label={t("host.advanced.resolution")}>
       {Object.entries(QUALITY_RESOLUTIONS).map(([label, resolution]) => <Chip key={label}
         selected={qualityResolutionEqual(value, resolution)}
@@ -84,21 +102,6 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
           onChange(resolution);
         }}>{label}</Chip>)}
     </div>
-    <Tooltip kind="hint-quality" text={vis ? undefined : t("host.video.resolutionHint", {
-      width: String(limits.maxVideoResolution.width), height: String(limits.maxVideoResolution.height),
-      pixels: limits.maxVideoPixels.toLocaleString("en-US"),
-    })}>
-      <span className="lr-input lr-video-size" key={`${value.width}x${value.height}`}
-        role="group" aria-label={t("host.advanced.resolution")}>
-        {axes.map((axis, index) => <Fragment key={axis}>
-          {index === 1 ? <span aria-hidden="true">×</span> : null}
-          <input type="number" inputMode="numeric" name={axis} defaultValue={value[axis]}
-            min={4} max={limits.maxVideoResolution[axis]} step={2} disabled={disabled}
-            aria-label={t(axis === "width" ? "host.video.width" : "host.video.height")} />
-        </Fragment>)}
-        <span aria-hidden="true">px</span>
-      </span>
-    </Tooltip>
   </div>;
 }
 
@@ -166,21 +169,22 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
       change: (mbps: number) => onChange({ maxBitrate: Math.round(mbps * 1_000_000) }) },
   ] as const;
   return <div className="lr-sharing-limits">
-    {controls.map(control => <div className="lr-door-group" key={control.name}>
-      <span className="lr-door-glyph"><Glyph name={control.icon} size={19} /><Cap k={control.label} /></span>
-      <Tooltip kind={control.hint} text={vis ? undefined : t(control.label)} className="lr-slider-hint">
-        <QualityNumberControl {...control} className="lr-quality-rate" label={t(control.label)}
-          disabled={disabled || control.max < control.min} onChange={control.change}>
-          {(input, select) => <>
-            <input type="range" min={control.min} max={Math.max(control.min, control.max)} step={control.step}
-              value={control.value} disabled={disabled || control.max < control.min} aria-label={t(control.label)}
-              onChange={event => select(event.currentTarget.valueAsNumber)}
-              onClick={event => select(event.currentTarget.valueAsNumber)} />
+    {controls.map(control => <QualityNumberControl key={control.name} {...control}
+      className="lr-quality-rate" label={t(control.label)}
+      disabled={disabled || control.max < control.min} onChange={control.change}>
+      {(input, select) => <>
+        <div className="lr-quality-heading">
+          <span className="lr-door-glyph"><Glyph name={control.icon} size={19} /><Cap k={control.label} /></span>
+          <Tooltip kind={control.hint} text={vis ? undefined : `${t(control.label)}: ${control.min}–${control.max} ${control.unit}`}>
             {input}
-          </>}
-        </QualityNumberControl>
-      </Tooltip>
-    </div>)}
+          </Tooltip>
+        </div>
+        <input type="range" min={control.min} max={Math.max(control.min, control.max)} step={control.step}
+          value={control.value} disabled={disabled || control.max < control.min} aria-label={t(control.label)}
+          onChange={event => select(event.currentTarget.valueAsNumber)}
+          onClick={event => select(event.currentTarget.valueAsNumber)} />
+      </>}
+    </QualityNumberControl>)}
   </div>;
 }
 
@@ -191,26 +195,26 @@ export function AudioBitrateControl({ value, max, disabled, onChange }: {
   onChange: (bitrate: number) => void;
 }) {
   const { t, vis } = useCopy();
-  return <div className="lr-door-group">
-    <span className="lr-door-glyph"><Glyph name="speaker" size={19} /><Cap k="host.advanced.audio" /></span>
-    <QualityNumberControl value={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
-      name="audioBitrate" unit="kbps" label={t("host.advanced.audioBitrate")} className="lr-door-group"
-      disabled={disabled} onChange={kbps => onChange(kbps * 1_000)}>
-      {(input, select) => <>
-        <div className="lr-row-group" role="group" aria-label={t("host.advanced.audio")}>
-          {(Object.keys(SCREEN_AUDIO_BITRATES) as ScreenAudioPreset[]).map(preset => {
-            const bitrate = SCREEN_AUDIO_BITRATES[preset];
-            return <Chip key={preset} selected={value === bitrate} disabled={disabled || bitrate > max}
-              title={t("host.audio.title", { label: t(AUDIO_QUALITY_CAPTIONS[preset]), kbps: String(bitrate / 1_000) })}
-              hint="hint-audio-quality" onClick={() => select(bitrate / 1_000)}>
-              <Cap k={AUDIO_QUALITY_CAPTIONS[preset]} /><small className="lr-audio-rate">{bitrate / 1_000}</small>
-            </Chip>;
-          })}
-        </div>
+  return <QualityNumberControl value={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
+    name="audioBitrate" unit="kbps" label={t("host.advanced.audioBitrate")} className="lr-door-group"
+    disabled={disabled} onChange={kbps => onChange(kbps * 1_000)}>
+    {(input, select) => <>
+      <div className="lr-quality-heading">
+        <span className="lr-door-glyph"><Glyph name="speaker" size={19} /><Cap k="host.advanced.audio" /></span>
         <Tooltip kind="hint-audio-quality" text={vis ? undefined : t("host.audio.bitrateHint", {
           min: String(MIN_AUDIO_BITRATE / 1_000), max: String(max / 1_000),
         })}>{input}</Tooltip>
-      </>}
-    </QualityNumberControl>
-  </div>;
+      </div>
+      <div className="lr-row-group" role="group" aria-label={t("host.advanced.audio")}>
+        {(Object.keys(SCREEN_AUDIO_BITRATES) as ScreenAudioPreset[]).map(preset => {
+          const bitrate = SCREEN_AUDIO_BITRATES[preset];
+          return <Chip key={preset} selected={value === bitrate} disabled={disabled || bitrate > max}
+            title={t("host.audio.title", { label: t(AUDIO_QUALITY_CAPTIONS[preset]), kbps: String(bitrate / 1_000) })}
+            hint="hint-audio-quality" onClick={() => select(bitrate / 1_000)}>
+            <Cap k={AUDIO_QUALITY_CAPTIONS[preset]} /><small className="lr-audio-rate">{bitrate / 1_000}</small>
+          </Chip>;
+        })}
+      </div>
+    </>}
+  </QualityNumberControl>;
 }

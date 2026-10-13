@@ -1010,6 +1010,8 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-btn.is-on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 .lr-btn .lr-cap { margin-left: 2px; font-size: 12.5px; font-weight: 600; }
 .lr-app-connect { min-width: 40px; height: 40px; }
+.lr-app-connect.is-ready { color: var(--live); cursor: default; }
+.lr-app-connect.is-ready:hover { transform: none; }
 .lr-cap { font-size: 12.5px; font-weight: 600; color: inherit; white-space: nowrap; }
 
 /* Sharing and local playback have distinct owners, but one control grammar. */
@@ -1181,16 +1183,23 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-input:focus-within { border-color: var(--action); outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-input input { min-width: 0; flex: 1; height: 100%; border: 0; outline: 0; background: transparent; font: inherit; font-size: 16px; }
 .lr-input input[type="password"]:not(:placeholder-shown) { letter-spacing: .25em; }
-.lr-input.lr-quality-number { width: 160px; max-width: 100%; font-family: var(--mono); }
-.lr-quality-number span { color: var(--muted); font-size: 12px; }
-.lr-quality-rate { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
-.lr-quality-rate > input { flex: 1; min-width: 0; width: 0; height: 32px; accent-color: var(--action); }
-.lr-quality-rate .lr-quality-number { flex: 0 0 132px; min-height: 40px; padding: 6px 10px; }
-.lr-input.lr-video-size { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 4px; padding-inline: 8px; width: 252px; max-width: 100%; font-family: var(--mono); }
+.lr-quality-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; min-width: 0; }
+.lr-quality-heading > .lr-comic-tip-wrap { margin-inline-start: auto; max-width: 100%; }
+.lr-input.lr-quality-number, .lr-input.lr-video-size {
+  height: 36px; padding: 0 10px; border-width: 1px; border-radius: 12px;
+  background: var(--wall); max-width: 100%; font-family: var(--mono);
+}
+.lr-input.lr-quality-number { width: 110px; gap: 6px; }
+.lr-quality-number input, .lr-video-size input { font-size: 13px; font-weight: 650; appearance: textfield; }
+.lr-quality-number input { text-align: right; }
+.lr-quality-number span, .lr-video-size span { color: var(--muted); font-size: 11px; }
+.lr-quality-number input::-webkit-inner-spin-button, .lr-quality-number input::-webkit-outer-spin-button,
+.lr-video-size input::-webkit-inner-spin-button, .lr-video-size input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.lr-quality-rate { display: grid; gap: 4px; width: 100%; min-width: 0; }
+.lr-quality-rate > input { min-width: 0; width: 100%; height: 28px; margin: 0; accent-color: var(--action); }
+.lr-input.lr-video-size { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 5px; width: 176px; }
 .lr-resolution-controls { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .lr-video-size input { width: 100%; padding: 0; text-align: center; appearance: textfield; }
-.lr-video-size input::-webkit-inner-spin-button, .lr-video-size input::-webkit-outer-spin-button { appearance: none; margin: 0; }
-.lr-video-size span { color: var(--muted); font-size: 12px; }
 .lr-welcome { width: 100%; min-width: 0; max-width: 100%; margin: 0; overflow: hidden; color: inherit; font-size: 15px; font-weight: 600; line-height: 1.7; text-align: center; white-space: nowrap; text-overflow: ellipsis; }
 .lr-welcome:not(.is-cipher)::before { content: "✦"; color: #d7982b; margin-right: 8px; }
 .lr-welcome-cipher { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; opacity: .72; white-space: nowrap; }
@@ -1873,11 +1882,6 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   .lr-sharing-panel { padding: 16px; border-radius: 20px; }
   .lr-sharing-columns { grid-template-columns: 1fr; gap: 22px; }
   .lr-sharing-section + .lr-sharing-section { padding: 20px 0 0; border-inline-start: 0; border-top: 1px solid var(--wall-2); }
-}
-@container sharing-settings (max-width: 260px) {
-  .lr-quality-rate { flex-direction: column-reverse; align-items: stretch; gap: 2px; }
-  .lr-quality-rate > input { flex: auto; width: 100%; margin-inline: 0; }
-  .lr-quality-rate .lr-quality-number { flex: auto; width: 100%; }
 }
 .lr-host-share-controls {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px;

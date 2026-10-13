@@ -15,9 +15,11 @@ private let height = 720
 private let frameRate: Int32 = 30
 private let bitrate = 3_000_000
 private let maxPayloadBytes = 4_194_304
-private let maxVideoDimension = 3840
-private let maxVideoPixels = 3840 * 2160
-private let maxCodedVideoDimension = 4096
+private let maxVideoDimension = 8192
+private let maxVideoPixels = 36_864 * 16 * 16
+private let maxVideoFramerate: Int32 = 240
+private let maxVideoBitrate = 240_000_000
+private let maxCodedVideoDimension = 8192
 private let maxCodedVideoPixels = 36_864 * 16 * 16
 private let supportedH264Levels: Set<UInt8> = [
     0x0a, 0x0b, 0x0c, 0x0d, 0x14, 0x15, 0x16,
@@ -1184,13 +1186,10 @@ private func geometrySelfTest() throws {
         CGRect(x: 0, y: 0, width: 3840, height: 2160) else {
         throw CaptureFailure(description: "H.264 visible aperture self-test failed")
     }
-    // Uncropped 4096x2160 exceeds the visible-picture budget. Raw SPS storage
+    // Uncropped 5120x2880 exceeds the visible-picture budget. Raw SPS storage
     // and reference counts are validated by Go before reaching this process;
     // CoreMedia can fold SPS cropping into its reported format dimensions.
-    let oversized = Data([0x67, 0x42, 0xc0, 0x33, 0xdc, 0x01, 0x00, 0x01,
-                          0x0f, 0xb0, 0x16, 0xa0, 0x20, 0x20, 0x28, 0x00,
-                          0x00, 0x03, 0x00, 0x08, 0x00, 0x00, 0x03, 0x00,
-                          0x14, 0x78, 0xc1, 0x9c])
+    let oversized = Data([0x67, 0x42, 0xc0, 0x34, 0xda, 0x00, 0x50, 0x00, 0x5a, 0x64])
     guard (try? h264InputFormat(sps: oversized, pps: pps)) == nil else {
         throw CaptureFailure(description: "H.264 oversized visible picture was accepted")
     }
@@ -1499,12 +1498,12 @@ private func captureFilter(
 private func validVideoSize(_ width: Int, _ height: Int) -> Bool {
     width >= 2 && width <= maxVideoDimension && width % 2 == 0 &&
         height >= 2 && height <= maxVideoDimension && height % 2 == 0 &&
-        width * height <= maxVideoPixels
+        ((width + 15) / 16) * ((height + 15) / 16) * 256 <= maxVideoPixels
 }
 
 private func validVideoFormat(_ width: Int, _ height: Int, _ fps: Int32) -> Bool {
     // Match the shared H.264 Level 5.2 receive ceiling, including numeric sizes.
-    validVideoSize(width, height) && fps >= 1 && fps <= 60 &&
+    validVideoSize(width, height) && fps >= 1 && fps <= maxVideoFramerate &&
         ((width + 15) / 16) * ((height + 15) / 16) * Int(fps) <= 2_073_600
 }
 
@@ -1522,7 +1521,7 @@ private func videoProfile(_ arguments: [String]) throws -> VideoProfile {
         throw CaptureFailure(description: "invalid video profile arguments")
     }
     guard validVideoFormat(width, height, frameRate), width >= 4, height >= 4,
-          bitrate >= 100_000, bitrate <= 50_000_000 else {
+          bitrate >= 100_000, bitrate <= maxVideoBitrate else {
         throw CaptureFailure(description: "video profile is outside the product bounds")
     }
     return VideoProfile(
@@ -1549,8 +1548,8 @@ private func outputProfiles(_ arguments: [String], start: Int = 23,
               let bitrate = Int(arguments[index + 4]),
               validVideoFormat(width, height, fps),
               width <= (source?.width ?? maxVideoDimension), height <= (source?.height ?? maxVideoDimension),
-              fps <= (source?.frameRate ?? 60),
-              bitrate >= 1000, bitrate <= (source?.bitrate ?? 50_000_000) else {
+              fps <= (source?.frameRate ?? maxVideoFramerate),
+              bitrate >= 1000, bitrate <= (source?.bitrate ?? maxVideoBitrate) else {
             throw CaptureFailure(description: "output profile is outside source bounds")
         }
         result.append(OutputProfile(width: width, height: height, fps: fps, bitrate: bitrate))

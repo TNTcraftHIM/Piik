@@ -54,15 +54,18 @@ afterEach(() => {
 
 describe("realtime quality controls", () => {
   it("bounds custom size, orientation and frame rate together before capture", () => {
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"])).toBe(60);
-    expect(captureFramerateCeiling({ width: 2160, height: 3840 })).toBe(60);
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["1440p"])).toBe(60);
-    expect(captureFramerateCeiling({ width: 1440, height: 2560 })).toBe(60);
-    expect(captureFramerateCeiling({ width: 3840, height: 2100 })).toBe(60);
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"])).toBe(64);
+    expect(captureFramerateCeiling({ width: 2160, height: 3840 })).toBe(64);
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["1440p"])).toBe(144);
+    expect(captureFramerateCeiling({ width: 1440, height: 2560 })).toBe(144);
+    expect(captureFramerateCeiling({ width: 3840, height: 2100 })).toBe(65);
+    expect(captureFramerateCeiling({ width: 5120, height: 1440 })).toBe(72);
+    expect(captureFramerateCeiling({ width: 1920, height: 1080 })).toBe(240);
     const level51 = videoCaptureLimits({ maxVideoMacroblocksPerSecond: 983_040 });
     expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"], level51)).toBe(30);
     expect(captureFramerateCeiling({ width: 2160, height: 3840 }, level51)).toBe(30);
     for (const size of [{ width: 3840, height: 3840 }, { width: 1921, height: 1080 },
+      { width: 8194, height: 100 }, { width: 6562, height: 1438 },
       { width: 4.5, height: 4 }, { width: Infinity, height: 4 }, { width: 2, height: 4 }]) {
       expect(captureFramerateCeiling(size)).toBe(0);
     }
@@ -70,10 +73,10 @@ describe("realtime quality controls", () => {
       maxVideoPixels: 1920 * 1080, maxVideoMacroblocksPerSecond: 245_760 });
     expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"], limited)).toBe(0);
     expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["1080p"], limited)).toBe(30);
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["720p"], limited)).toBe(60);
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["720p"], limited)).toBe(68);
     expect(videoCaptureLimits({ maxVideoResolution: { width: 8192, height: 8192 },
       maxVideoPixels: 8192 * 8192, maxVideoMacroblocksPerSecond: 9_000_000,
-      maxVideoFramerate: 120, maxVideoBitrate: 100_000_000 })).toEqual(videoCaptureLimits());
+      maxVideoFramerate: 480, maxVideoBitrate: 1_000_000_000 })).toEqual(videoCaptureLimits());
     const slower = videoCaptureLimits({ maxVideoFramerate: 30, maxVideoBitrate: 5_000_000 });
     expect(supportsCaptureProfile(QUALITY_PROFILES["1080p30"], slower)).toBe(true);
     expect(supportsCaptureProfile(QUALITY_PROFILES["1080p60"], slower)).toBe(false);
@@ -83,8 +86,8 @@ describe("realtime quality controls", () => {
     const { stream, videoTrack } = createVideoStream();
     const getDisplayMedia = vi.fn(async () => stream);
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
-    for (const change of [{ maxFramerate: 120 }, { maxFramerate: 30.5 }, { maxFramerate: 0 },
-      { maxBitrate: 99_999 }, { maxBitrate: 50_000_001 },
+    for (const change of [{ maxFramerate: 241 }, { maxFramerate: 30.5 }, { maxFramerate: 0 },
+      { maxBitrate: 99_999 }, { maxBitrate: 240_000_001 },
       { resolution: { width: 32768, height: 32768 } }, { maxAudioBitrate: 510_000 }]) {
       const requested = { ...QUALITY_PROFILES["1080p30"], ...change };
       expect(supportsCaptureProfile(requested)).toBe(false);
@@ -97,7 +100,8 @@ describe("realtime quality controls", () => {
 
   it("admits useful low-rate and high-rate requests without changing presets", async () => {
     const { stream, videoTrack } = createVideoStream();
-    for (const [maxFramerate, maxBitrate] of [[1, 100_000], [5, 800_000], [60, 50_000_000]]) {
+    for (const [maxFramerate, maxBitrate] of [[1, 100_000], [5, 800_000], [60, 50_000_000],
+      [120, 80_000_000], [144, 100_000_000], [240, 240_000_000]]) {
       const profile = { ...QUALITY_PROFILES["1080p30"], maxFramerate, maxBitrate };
       expect(supportsCaptureProfile(profile)).toBe(true);
       await applyCaptureProfile(stream, profile);

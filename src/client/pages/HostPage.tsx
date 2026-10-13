@@ -3822,19 +3822,11 @@ export function HostPage({
                 })} />
             }
             picture={<>
-              <div className="lr-door-group">
-                <span
-                  className="lr-door-glyph"
-                >
-                  <Glyph name="expand" size={19} />
-                  <Cap k="host.advanced.resolution" />
-                </span>
-                <ResolutionControl value={advancedQuality.resolution} limits={videoLimits}
-                  disabled={phase === "starting" || switchingSource}
-                  onChange={resolution => changeAdvancedQuality({ resolution,
-                    maxFramerate: Math.min(advancedQualityRef.current.maxFramerate, captureFramerateCeiling(resolution, videoLimits)),
-                  })} />
-              </div>
+              <ResolutionControl value={advancedQuality.resolution} limits={videoLimits}
+                disabled={phase === "starting" || switchingSource}
+                onChange={resolution => changeAdvancedQuality({ resolution,
+                  maxFramerate: Math.min(advancedQualityRef.current.maxFramerate, captureFramerateCeiling(resolution, videoLimits)),
+                })} />
               <VideoRateControls value={advancedQuality} limits={videoLimits}
                 disabled={phase === "starting" || switchingSource} onChange={changeAdvancedQuality} />
               <div className="lr-door-group">

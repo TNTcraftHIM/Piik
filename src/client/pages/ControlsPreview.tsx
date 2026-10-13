@@ -21,7 +21,7 @@ import { useTheaterMode } from "../components/living/use-theater-mode";
 
 import { AudioBitrateControl, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
-import { MAX_SCREEN_AUDIO_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, matchingQualityProfileId, type QualityProfile } from "../media/quality";
+import { MAX_SCREEN_AUDIO_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
 import { Tooltip } from "../components/living/Tooltip";
 import { StatusIndicator } from "../components/living/StatusIndicator";
@@ -120,7 +120,9 @@ export function ControlsPreview() {
           presets={<QualityPresets selected={matchingQualityProfileId(quality)}
             onSelect={id => setQuality(current => ({ ...QUALITY_PROFILES[id], maxAudioBitrate: current.maxAudioBitrate }))} />}
           picture={<><ResolutionControl value={quality.resolution} limits={VIDEO_CAPTURE_LIMITS} disabled={false}
-            onChange={resolution => setQuality(current => ({ ...current, resolution }))} />
+            onChange={resolution => setQuality(current => ({ ...current, resolution,
+              maxFramerate: Math.min(current.maxFramerate, captureFramerateCeiling(resolution)),
+            }))} />
             <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={false}
               onChange={change => setQuality(current => ({ ...current, ...change }))} /></>}
           audio={<><div className="lr-door-group lr-source-audio-settings">

@@ -15,13 +15,13 @@ const (
 	maxMediaBytes                = encoded.MaxAccessUnitBytes
 	maxStatusBytes               = 4 * 1024
 	maxControlBytes              = 64
-	MaxVideoDimension            = 3840
-	MaxVideoPixels               = 3840 * 2160
+	MaxVideoDimension            = 8192
+	MaxVideoPixels               = 36_864 * 16 * 16
 	MaxVideoMacroblocksPerSecond = 2_073_600
-	MaxVideoFramerate            = 60
+	MaxVideoFramerate            = 240 // Bound capture scheduling independently of codec throughput.
 	// Coded pictures may include alignment outside the visible crop. Keep this
 	// separate from visible dimensions and within H.264 Level 5.2 storage.
-	MaxCodedVideoDimension = 4096
+	MaxCodedVideoDimension = 8192
 	MaxCodedVideoPixels    = 36_864 * 16 * 16
 )
 
@@ -29,7 +29,7 @@ const (
 func ValidVideoSize(width, height uint32) bool {
 	return width >= 2 && width <= MaxVideoDimension && width%2 == 0 &&
 		height >= 2 && height <= MaxVideoDimension && height%2 == 0 &&
-		uint64(width)*uint64(height) <= MaxVideoPixels
+		uint64((width+15)/16)*uint64((height+15)/16)*256 <= MaxVideoPixels
 }
 
 // ValidVideoFormat keeps both current encoders within the shared receive

@@ -60,9 +60,9 @@ func TestRelayInputKeepsRecoveryAndEmitsACompleteQuietFrame(t *testing.T) {
 }
 
 func TestRelayInputRejectsUnsafeH264Configuration(t *testing.T) {
-	// Locally generated Constrained Baseline SPS: ID 0 is 4096x2160; ID 1 is
+	// Generated Constrained Baseline SPS: ID 0 is 5120x2880; ID 1 is
 	// 160x90. A decoder may use either, regardless of which arrived last.
-	const oversized = "6742c033dc0100010fb016a02020280000030008000003001478c19c"
+	const oversized = "6742c034da0050005a64"
 	const small = "6742c015570a37e4c05a8303035280000003008000000301478b17c0"
 	for _, test := range []struct {
 		name string
@@ -114,6 +114,9 @@ func TestRelayH264AllocationBounds(t *testing.T) {
 		{"portrait-4k", "6742c033da008701e190", 2160, 3840},
 		{"level-5.2-4k", "6742c034da00f0010f90", 3840, 2160},
 		{"level-5.2-portrait-4k", "6742c034da008701e190", 2160, 3840},
+		{"level-5.2-dci", "6742c034da0040004864", 4096, 2304},
+		{"level-5.2-ultrawide", "6742c034da005000b590", 5120, 1440},
+		{"level-5.2-portrait-ultrawide", "6742c034da0168028190", 1440, 5120},
 		{"padded-4k", "6742c033da00f00111f894", 3840, 2160},
 		{"4k-reference-buffer-limit", "6742c033f300780087c8", 3840, 2160},
 		{"4k-reference-buffer-overflow", "6742c033f380780087c8", 0, 0},

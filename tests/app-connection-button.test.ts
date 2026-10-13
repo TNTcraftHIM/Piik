@@ -9,24 +9,25 @@ const source = ts.createSourceFile("AppConnectionButton.tsx", readFileSync(
   new URL("../src/client/components/living/AppConnectionButton.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 let connect: string | undefined;
-let effect: string | undefined;
+const effects: string[] = [];
 function collect(node: ts.Node): void {
   if (ts.isFunctionDeclaration(node) && node.name?.text === "connect") connect = node.getText(source);
   if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect") {
-    effect = node.arguments[0]!.getText(source);
+    effects.push(node.arguments[0]!.getText(source));
   }
   ts.forEachChild(node, collect);
 }
 collect(source);
-if (!connect || !effect) throw new Error("Missing App connection operation or cleanup");
-const executable = ts.transpileModule(`${connect}\n({ connect, cleanup: (${effect})() });`, {
+if (!connect || !effects.length) throw new Error("Missing App connection operation or cleanup");
+const executable = ts.transpileModule(`${connect}\nconst cleanups = [${effects.map(effect => `(${effect})()`).join(",")}];
+  ({ connect, cleanup: () => cleanups.reverse().forEach(fn => fn?.()) });`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
-function mount() {
+function mount(activated = false) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }), location: { replace: vi.fn() } };
   const window = Object.assign(new EventTarget(), { open: vi.fn(() => popup), location: { origin: site } });
   const native = {
@@ -35,11 +36,13 @@ function mount() {
     NativeCompatibilityError: class extends Error {},
   };
   const pending = { current: null as { controller: AbortController } | null };
+  const healthCheck = { current: null as AbortController | null };
   const setState = vi.fn();
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    window, pending, setState, activateClient, onConnected, AbortController, URL,
+    window, pending, healthCheck, setState, activateClient, onConnected, AbortController, URL,
+    sourcePicker: false, isClientActivated: () => activated,
     require: (path: string) => {
       if (path !== "../../native/client") throw new Error(`Unexpected dependency: ${path}`);
       return native;
@@ -76,6 +79,7 @@ describe("App connection approval", () => {
     await settle();
     expect(page.activateClient).toHaveBeenCalledOnce();
     expect(page.onConnected).toHaveBeenCalledOnce();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.popup.closed).toBe(true);
     expect(page.pending.current).toBeNull();
     expect(page.native.discoverNativeConnect.mock.calls[0]![0].aborted).toBe(true);
@@ -143,6 +147,36 @@ describe("App connection approval", () => {
     expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
     await page.connect();
     expect(page.window.open).toHaveBeenCalledTimes(2);
+    page.cleanup();
+  });
+
+  it("verifies remembered activation without prompting and refreshes it on return", async () => {
+    const page = mount(true);
+    await settle();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledWith(expect.objectContaining({ waitForPermission: false }));
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.window.open).not.toHaveBeenCalled();
+    expect(page.activateClient).not.toHaveBeenCalled();
+    page.native.discoverNativeHealth.mockResolvedValue(null);
+    page.window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(page.setState).toHaveBeenLastCalledWith("idle");
+    page.cleanup();
+  });
+
+  it("does not let an earlier health check overwrite a newer approval", async () => {
+    const page = mount(true);
+    let complete!: (health: object | null) => void;
+    page.native.discoverNativeHealth.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    await settle();
+    await page.connect();
+    expect(page.native.discoverNativeHealth.mock.calls[0]![0].signal.aborted).toBe(true);
+    page.message();
+    await settle();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    complete(null);
+    await settle();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
     page.cleanup();
   });
 });
