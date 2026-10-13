@@ -221,6 +221,12 @@ This excludes one process and its children. Other apps remain audible, including
 those playing through other output devices.
 It does not mute your Piik microphone or prevent speaker sound reaching a microphone.
 
+If a virtual microphone remains audible with Piik's microphone off, temporarily
+turn off **System sound** to compare. If the voice disappears, check the mixer's
+playback output and monitoring, or capture only the desired application's window
+audio. Excluding a voice app does not also exclude a separate mixer that plays
+your processed voice, even through a virtual output device.
+
 While sharing, use **Sharing settings → Sound** to change system sound or the
 excluded app without stopping the share. If the app closes or restarts, source
 audio stops; refresh the application list and select it again.

@@ -95,6 +95,12 @@ experiments and their limits.
   [camera and microphone assessment](./research/camera-and-microphone.md)
   additionally owns levels, echo, device replacement/native mixing, OBS input
   A/V synchronization and phone camera permission/orientation/background limits.
+- [ ] **Virtual-microphone echo (#473).** The screenshot has Piik's microphone
+  off while screen audio excludes a different voice app. Process exclusion captures
+  other renderers across output devices, so a virtual mixer can still enter source
+  audio. Obtain the reporter's system-sound-off comparison and routing before
+  attributing the duplicate voice to Piik's mixer. The [audio guide](./guide/getting-started.md#exclude-a-voice-app-from-screen-audio)
+  explains this boundary; no automatic extra exclusion is planned.
 - [ ] **Native H.264 motion quality (#432).** Obtain matched source/decoded
   pictures and bitstream for the original 720p30 game comparison. Retain current
   codec parameters. The [evidence review](./research/native-client-media.md#native-h264-motion-quality)
