@@ -27,6 +27,7 @@ export const zh = {
   "debug.exportHint": "下载网页诊断，可能包含网络地址和设备信息",
   "debug.exportFailed": "诊断下载失败，请重试",
   "brand.home": "Piik 首页",
+  "brand.home.short": "首页",
 
   "common.roomCode": "房间号",
   "host.roomCodePending": "开始分享后生成房间号",
@@ -78,6 +79,8 @@ export const zh = {
   "client.connect.saveFailed": "未能完成连接更改，请重试。",
   "client.connect.invalid": "站点网址无效",
   "client.connect.unavailable": "未能连接 App。请保持 Piik App 运行，并允许浏览器打开新窗口和访问本地网络。",
+  "client.connect.download": "下载 App",
+  "client.connect.browserHint": "可继续使用浏览器分享和观看。",
   "client.launch.lanAddress": "局域网邀请地址",
   "client.launch.chooseAddress": "选择地址",
   "client.launch.lanHint": "选择与朋友处于同一网络的地址。",

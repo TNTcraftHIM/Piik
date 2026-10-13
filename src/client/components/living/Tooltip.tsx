@@ -59,6 +59,7 @@ export function Tooltip({
   place = "above",
   align = "center",
   toggleOnClick = false,
+  disabled = false,
   overflow,
   children,
 }: TooltipContent & {
@@ -71,6 +72,8 @@ export function Tooltip({
   align?: Align;
   /** For help-only buttons; action controls keep click and touch long-press. */
   toggleOnClick?: boolean;
+  /** Suppress guidance while the control's own disclosure is open. */
+  disabled?: boolean;
   children: ReactNode;
 }) {
   const defaults = getComicPresentation(kind);
@@ -94,7 +97,7 @@ export function Tooltip({
   // True while the current gesture is a touch, so contextmenu can tell a
   // long-press from a mouse right-click without reading vendor event fields.
   const touchGesture = useRef(false);
-  const enabled = kind !== undefined || overflowing;
+  const enabled = !disabled && (kind !== undefined || overflowing);
   const caption = [overflowing ? overflow?.text : undefined, text].filter(Boolean).join(" · ") || undefined;
   const interactionOpen = enabled && (hoverOpen || focusOpen || pressOpen);
   const trigger = isValidElement<{

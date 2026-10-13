@@ -29,19 +29,21 @@ const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}
 
 function mount(activated = false) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }), location: { replace: vi.fn() } };
-  const window = Object.assign(new EventTarget(), { open: vi.fn(() => popup), location: { origin: site } });
+  const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site } });
   const native = {
-    discoverNativeConnect: vi.fn(async (_signal: AbortSignal) => approval),
+    discoverNativeConnect: vi.fn(async (_signal: AbortSignal): Promise<string | null> => approval),
     discoverNativeHealth: vi.fn(async (_options: { signal: AbortSignal }): Promise<object | null> => ({})),
     NativeCompatibilityError: class extends Error {},
   };
   const pending = { current: null as { controller: AbortController } | null };
   const healthCheck = { current: null as AbortController | null };
+  const help = { current: { hidePopover: vi.fn(), matches: vi.fn(() => false) } };
+  const showHelp = vi.fn();
   const setState = vi.fn();
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    window, pending, healthCheck, setState, activateClient, onConnected, AbortController, URL,
+    window, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
     sourcePicker: false, isClientActivated: () => activated,
     watchClientActivation: (changed: () => void) => {
       window.addEventListener("activation", changed);
@@ -58,10 +60,33 @@ function mount(activated = false) {
     }));
   }
   const activateElsewhere = () => { activated = true; window.dispatchEvent(new Event("activation")); };
-  return { ...operation, popup, window, native, pending, setState, activateClient, activateElsewhere, onConnected, message };
+  return { ...operation, popup, window, native, pending, help, showHelp, setState, activateClient, activateElsewhere, onConnected, message };
 }
 
 describe("App connection approval", () => {
+  it("offers recovery without activation or a stranded popup when no App is found", async () => {
+    const page = mount();
+    page.native.discoverNativeConnect.mockResolvedValue(null);
+    await page.connect();
+    expect(page.setState).toHaveBeenLastCalledWith("unavailable");
+    expect(page.showHelp).toHaveBeenCalledOnce();
+    expect(page.popup.closed).toBe(true);
+    expect(page.pending.current).toBeNull();
+    expect(page.activateClient).not.toHaveBeenCalled();
+    page.cleanup();
+  });
+
+  it("offers recovery when the browser blocks the approval window", async () => {
+    const page = mount();
+    page.window.open.mockReturnValue(null);
+    await page.connect();
+    expect(page.setState).toHaveBeenLastCalledWith("unavailable");
+    expect(page.showHelp).toHaveBeenCalledOnce();
+    expect(page.native.discoverNativeConnect).not.toHaveBeenCalled();
+    expect(page.activateClient).not.toHaveBeenCalled();
+    page.cleanup();
+  });
+
   it("requires the exact window, origin and site, then verifies App health once", async () => {
     const page = mount();
     let complete!: (health: object) => void;

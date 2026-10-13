@@ -115,18 +115,22 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .lr-brand {
-  display: grid;
+  display: inline-flex;
   flex: none;
-  width: 44px; height: 44px;
-  place-items: center;
+  min-width: 44px; height: 44px;
+  align-items: center; justify-content: center; gap: 6px;
+  padding: 0 6px;
   border: 0;
   border-radius: 12px;
   background: transparent;
   color: var(--ink);
+  text-decoration: none;
   transition: background 160ms ease, color 160ms ease, transform 160ms var(--spring);
 }
 .lr-brand:hover { background: var(--wall-2); }
 .lr-brand:active { transform: scale(.92); }
+.lr-brand-label { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.lr-home-arrow { transform: rotate(180deg); }
 
 .lr-top-right { display: inline-flex; gap: 10px; align-items: center; }
 .lr-top > .lr-top-right { min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
@@ -1011,6 +1015,23 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-app-connect { min-width: 40px; height: 40px; }
 .lr-app-connect.is-ready { color: var(--live); cursor: default; }
 .lr-app-connect.is-ready:hover { transform: none; }
+.lr-app-connect-help {
+  position: fixed; inset: auto; margin: 0; padding: 16px;
+  width: min(300px, calc(100vw - 16px)); box-sizing: border-box;
+  color: var(--ink); background: var(--paper);
+  border: 1px solid var(--control-edge); border-radius: 20px;
+  box-shadow: var(--control-shadow), 0 12px 36px #101a2c33;
+  overflow: auto; overscroll-behavior: contain;
+}
+.lr-app-connect-help p { margin: 12px 0; font-size: 13px; line-height: 1.6; }
+.lr-app-connect-help:popover-open { animation: lr-language-open 180ms var(--spring); }
+.lr-app-connect-help.is-above { --language-offset: 5px; }
+.lr-app-connect-scene { width: min(220px, 100%); aspect-ratio: 10 / 3; margin-inline: auto; --comic-repeat: infinite; }
+.lr-app-connect-scene > svg { width: 100% !important; }
+.lr-app-connect-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.lr-app-connect-actions .lr-btn { min-height: 40px; }
+.lr-app-connect-help .lr-app-connect-optional { color: var(--muted); font-size: 12px; margin-bottom: 0; }
+@media (prefers-reduced-motion: reduce) { .lr-app-connect-help:popover-open { animation: none; } }
 .lr-cap { font-size: 12.5px; font-weight: 600; color: inherit; white-space: nowrap; }
 
 /* Sharing and local playback have distinct owners, but one control grammar. */

@@ -109,7 +109,8 @@ export function CaptureSourcePicker({
 
   useEffect(() => {
     const cancelOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented ||
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing ||
+          panelRef.current?.querySelector('[popover="auto"]:popover-open') ||
           !panelRef.current?.contains(event.target as Node | null)) return;
       event.preventDefault();
       onCancel();

@@ -110,12 +110,14 @@ access passphrase.
 access if the browser asks. No room mode needs to be selected in the launcher.
 You can also choose **Connect Piik App** inside the **Start sharing** source
 selector; its list updates as soon as the connection completes.
+If connection fails, the App button offers **Retry** and **Download App**.
+You can still share and watch in your browser.
 
 The same browser remembers this connection. On later visits, **Start sharing**
 offers **Apps / Windows** and **Screens** from the running App. In another browser,
 in a private window or after clearing site data, connect again. The same exact
 site already approved by App needs no repeat confirmation. The launcher
-shows the approved site and lets you revoke it. Approving a different site
+shows the approved site; **×** beside its address revokes access. Approving a different site
 replaces the previous one and ends that site's App connections.
 
 **A page that opens does not guarantee a video connection.** Public invite gives

@@ -130,7 +130,7 @@ export function AppHeader({
   diagnosticControl?: React.ReactNode;
   showAppConnection?: boolean;
 }) {
-  const { t } = useCopy();
+  const { t, vis } = useCopy();
   return (
     <header className="lr-top">
       <a
@@ -139,6 +139,8 @@ export function AppHeader({
         aria-label={t("brand.home")}
       >
         <BrandMark size={34} motion="once" />
+        {vis && <Glyph name="arrowRight" size={15} className="lr-home-arrow" />}
+        <span className={vis ? "visually-hidden" : "lr-brand-label"}>{t("brand.home.short")}</span>
       </a>
       <span className="lr-top-right">
         {led}

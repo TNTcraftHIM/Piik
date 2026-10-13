@@ -27,6 +27,7 @@ export const en: Record<CopyKey, string> = {
   "debug.exportHint": "Download browser diagnostics; may include network addresses and device details",
   "debug.exportFailed": "Could not download diagnostics; try again",
   "brand.home": "Piik home",
+  "brand.home.short": "Home",
 
   "common.roomCode": "Room code",
   "host.roomCodePending": "A room code appears when sharing starts",
@@ -78,6 +79,8 @@ export const en: Record<CopyKey, string> = {
   "client.connect.saveFailed": "Could not finish the connection change. Please try again.",
   "client.connect.invalid": "Invalid Site address",
   "client.connect.unavailable": "Could not connect to App. Keep Piik App running and allow popups and local-network access in your browser.",
+  "client.connect.download": "Download App",
+  "client.connect.browserHint": "You can share and watch in your browser.",
   "client.launch.lanAddress": "Local invitation address",
   "client.launch.chooseAddress": "Choose an address",
   "client.launch.lanHint": "Choose an address on the same network as your friends.",
