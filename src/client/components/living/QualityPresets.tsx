@@ -168,17 +168,23 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
   const fpsMax = captureFramerateCeiling(value.resolution, limits);
   const controls = [
     { name: "maxFramerate", label: "host.advanced.framerate", icon: "frames", hint: "hint-metric-fps",
-      value: value.maxFramerate, min: MIN_VIDEO_FRAMERATE, max: fpsMax, sliderMax: 60, step: 1, unit: "fps",
+      value: value.maxFramerate, min: MIN_VIDEO_FRAMERATE, max: fpsMax, step: 1, unit: "fps",
+      sliderMin: 15, sliderMax: 60, sliderStep: 5,
       change: (maxFramerate: number) => onChange({ maxFramerate }) },
     { name: "maxBitrate", label: "host.advanced.bitrate", icon: "gauge", hint: "hint-metric-bitrate",
       value: value.maxBitrate / 1_000_000, min: MIN_VIDEO_BITRATE / 1_000_000,
-      max: limits.maxVideoBitrate / 1_000_000, sliderMax: 20, step: 0.1, unit: "Mbps",
+      max: limits.maxVideoBitrate / 1_000_000, step: 0.1, unit: "Mbps",
+      sliderMin: 2, sliderMax: 12, sliderStep: 0.5,
       change: (mbps: number) => onChange({ maxBitrate: Math.round(mbps * 1_000_000) }) },
   ] as const;
   return <div className="lr-sharing-limits">
     {controls.map(control => {
-      // The slider is a common-range shortcut, not the capture admission limit.
-      const sliderMax = Math.max(control.min, Math.min(control.sliderMax, control.max));
+      // Keep the slider on its own steps; typed values must never be rounded by the DOM.
+      const sliderMax = Math.min(control.sliderMax, Math.floor(control.max / control.sliderStep) * control.sliderStep);
+      const hasCommonRange = sliderMax >= control.sliderMin;
+      const commonValue = Math.min(sliderMax, Math.max(control.sliderMin,
+        Math.round(control.value / control.sliderStep) * control.sliderStep));
+      const custom = !hasCommonRange || control.value !== commonValue;
       return <QualityNumberControl key={control.name} {...control}
         className="lr-quality-rate" label={t(control.label)}
         disabled={disabled || control.max < control.min} onChange={control.change}>
@@ -191,16 +197,37 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
               {input}
             </Tooltip>
           </div>
-          <input type="range" min={control.min} max={sliderMax} step={control.step}
-            value={Math.min(control.value, sliderMax)} disabled={disabled || control.max < control.min}
-            style={{ "--range-fill": `${100 * (Math.min(control.value, sliderMax) - control.min) / (sliderMax - control.min || 1)}%` } as CSSProperties}
-            aria-label={`${t(control.label)} · ${t("host.video.commonRange")}`}
-            onChange={event => select(event.currentTarget.valueAsNumber)}
-            onClick={event => select(event.currentTarget.valueAsNumber)} />
-          <div className="lr-quality-range-labels" aria-hidden="true">
-            <span>{control.min}</span>
-            <span>{sliderMax} {control.unit}</span>
-          </div>
+          {custom ? <div className="lr-quality-custom">
+            <span className="lr-quality-custom-label">
+              <Glyph name="pencil" size={16} />
+              <span className={vis ? "visually-hidden" : "lr-cap"}>{t("host.video.custom")}</span>
+            </span>
+            {hasCommonRange ? <Tooltip kind={control.hint} text={vis ? undefined : t("host.video.returnCommonHint", {
+              value: String(commonValue), unit: control.unit,
+            })}>
+              <button type="button" className="lr-btn" disabled={disabled}
+                aria-label={`${t(control.label)} · ${t("host.video.returnCommonHint", { value: String(commonValue), unit: control.unit })}`}
+                onClick={event => {
+                  const group = event.currentTarget.closest(".lr-quality-rate");
+                  select(commonValue);
+                  // The return button disappears; keep keyboard focus in this field.
+                  if (event.detail === 0) requestAnimationFrame(() => group?.querySelector<HTMLInputElement>('input[type="number"]')?.focus());
+                }}>
+                <Glyph name="sliders" size={17} /><Cap k="host.video.returnCommon" />
+              </button>
+            </Tooltip> : null}
+          </div> : <>
+            <input type="range" min={control.sliderMin} max={sliderMax} step={control.sliderStep}
+              value={control.value} disabled={disabled}
+              style={{ "--range-fill": `${100 * (control.value - control.sliderMin) / (sliderMax - control.sliderMin || 1)}%` } as CSSProperties}
+              aria-label={`${t(control.label)} · ${t("host.video.commonRange")}`}
+              onChange={event => select(event.currentTarget.valueAsNumber)}
+              onClick={event => select(event.currentTarget.valueAsNumber)} />
+            <div className="lr-quality-range-labels" aria-hidden="true">
+              <span>{control.sliderMin}</span>
+              <span>{sliderMax} {control.unit}</span>
+            </div>
+          </>}
         </>}
       </QualityNumberControl>;
     })}

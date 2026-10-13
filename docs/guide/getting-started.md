@@ -172,8 +172,10 @@ Open **Sharing settings** below the picture to adjust picture and audio quality.
 - Choose a picture preset, or enter width and height under **Resolution limit**.
   Piik preserves the source's proportions within that ceiling, including portrait
   and ultrawide pictures.
-- Sliders cover common values up to 60 fps and 20 Mbps. You can also enter an
+- Sliders cover 15–60 fps in steps of 5 and 2–12 Mbps in steps of 0.5. You can also enter an
   **FPS limit** from 1 to 240 fps and a **Bitrate limit** from 0.1 to 240 Mbps.
+  Values outside those slider steps show **Custom**; **Use common range**
+  selects the nearest available slider value.
   The frame-rate limit depends
   on picture size: for example, 1080p240, 1440p144 and 4K60 are accepted requests.
 - Choose an audio preset, or enter an **Audio bitrate limit** from 6 to 320 kbps.

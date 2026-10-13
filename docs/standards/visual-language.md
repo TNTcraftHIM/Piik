@@ -160,8 +160,11 @@ the picture or participants. Keep picture and sound in distinct sections; place
 related adjustments side by side where space permits and stack them on narrow
 screens. Avoid another permanent row of settings cards. Numeric quality inputs
 retain the accepted capability range; sliders offer a labelled common range for
-quick adjustment. A higher typed value remains visible and must not be reduced
-merely by opening or focusing its slider. Shared presentation stays separate
+quick adjustment. Values outside its range or steps show a custom-value row
+instead of an inaccurate slider position. Returning to the nearest available
+common step is an explicit action; rendering, focus or reopening never changes
+the value. Derive this presentation from the current value, without a second
+setting mode. Shared presentation stays separate
 from the existing setting/resource owners.
 The microphone comic depicts Host commentary gain;
 the Viewer's listening-volume comic remains a different action.

@@ -47,8 +47,9 @@ function editor() {
 
 describe("Numeric quality editing group", () => {
   it.each([
-    { fps: 144, mbps: 80, maxFps: 240, maxMbps: 240, sliderFps: 60, sliderMbps: 20 },
+    { fps: 30, mbps: 5, maxFps: 240, maxMbps: 240, sliderFps: 60, sliderMbps: 12 },
     { fps: 15, mbps: 5, maxFps: 30, maxMbps: 10, sliderFps: 30, sliderMbps: 10 },
+    { fps: 25, mbps: 5, maxFps: 29, maxMbps: 5.2, sliderFps: 25, sliderMbps: 5 },
   ])("keeps common sliders separate from accepted input limits ($maxFps fps, $maxMbps Mbps)", test => {
     const onChange = vi.fn();
     const html = renderToStaticMarkup(createElement(VideoRateControls, {
@@ -59,11 +60,40 @@ describe("Numeric quality editing group", () => {
     const inputs = html.match(/<input\b[^>]*>/g)!;
     const numbers = inputs.filter(input => input.includes('type="number"'));
     const sliders = inputs.filter(input => input.includes('type="range"'));
-    for (const [index, value, max, sliderMax] of [[0, test.fps, test.maxFps, test.sliderFps], [1, test.mbps, test.maxMbps, test.sliderMbps]] as const) {
+    for (const [index, value, max, sliderMin, sliderMax, step] of [
+      [0, test.fps, test.maxFps, 15, test.sliderFps, 5], [1, test.mbps, test.maxMbps, 2, test.sliderMbps, 0.5],
+    ] as const) {
       expect(numbers[index]).toContain(`max="${max}"`);
       expect(numbers[index]).toContain(`value="${value}"`);
+      expect(sliders[index]).toContain(`min="${sliderMin}"`);
       expect(sliders[index]).toContain(`max="${sliderMax}"`);
-      expect(sliders[index]).toContain(`value="${Math.min(value, sliderMax)}"`);
+      expect(sliders[index]).toContain(`step="${step}"`);
+      expect(sliders[index]).toContain(`value="${value}"`);
+    }
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { fps: 144, mbps: 80, maxFps: 240, maxMbps: 240, returnFps: 60, returnMbps: 12 },
+    { fps: 5, mbps: 0.5, maxFps: 240, maxMbps: 240, returnFps: 15, returnMbps: 2 },
+    { fps: 29, mbps: 5.1, maxFps: 240, maxMbps: 240, returnFps: 30, returnMbps: 5 },
+    { fps: 29, mbps: 5.2, maxFps: 29, maxMbps: 5.2, returnFps: 25, returnMbps: 5 },
+    { fps: 8, mbps: 0.5, maxFps: 10, maxMbps: 1, returnFps: null, returnMbps: null },
+  ])("preserves custom values without an inaccurate slider ($fps fps, $mbps Mbps)", test => {
+    const onChange = vi.fn();
+    const html = renderToStaticMarkup(createElement(VideoRateControls, {
+      value: { ...QUALITY_PROFILES["1080p30"], maxFramerate: test.fps, maxBitrate: test.mbps * 1_000_000 },
+      limits: { ...VIDEO_CAPTURE_LIMITS, maxVideoFramerate: test.maxFps, maxVideoBitrate: test.maxMbps * 1_000_000 },
+      disabled: false, onChange,
+    }));
+    const fields = html.split('<div class="lr-quality-rate">').slice(1);
+    expect(fields).toHaveLength(2);
+    for (const [index, value, nearest, unit] of [[0, test.fps, test.returnFps, "fps"], [1, test.mbps, test.returnMbps, "Mbps"]] as const) {
+      expect(fields[index]).toContain(`value="${value}"`);
+      expect(fields[index]).not.toContain('type="range"');
+      expect(fields[index]).toContain('class="lr-quality-custom"');
+      if (nearest === null) expect(fields[index]).not.toContain('<button');
+      else expect(fields[index]).toMatch(new RegExp(`<button[^>]*aria-label="[^"]*${nearest} ${unit}`));
     }
     expect(onChange).not.toHaveBeenCalled();
   });
