@@ -570,8 +570,26 @@ static void check_pipewire_target_identity(void) {
   g_free(target);
 }
 
+static void check_h264_profile_admission(void) {
+  const struct { guint profile; gboolean supported; } cases[] = {
+      {0x42c034, TRUE}, {0x42e034, TRUE}, {0x42c00a, TRUE},
+      {0x4d8034, TRUE}, {0x58c034, TRUE},
+      {0x4d0034, FALSE}, {0x640034, FALSE}, {0x42c035, FALSE}, {0x42c134, FALSE}};
+  for (guint index = 0; index < G_N_ELEMENTS(cases); ++index) {
+    const guint profile = cases[index].profile;
+    const guint8 bytes[] = {0, 0, 0, 1, 0x67, profile >> 16, profile >> 8, profile,
+                           0, 0, 0, 1, 0x68, 0x80, 0, 0, 1, 0x65, 0x80};
+    const NalSummary nal = inspect_h264(bytes, sizeof(bytes));
+    g_assert_true(nal.sps && nal.pps && nal.idr);
+    char expected[7] = {0};
+    if (cases[index].supported) g_snprintf(expected, sizeof(expected), "%06x", profile);
+    g_assert_cmpstr(nal.profile_level_id, ==, expected);
+  }
+}
+
 int main(int argc, char **argv) {
   gst_init(&argc, &argv);
+  check_h264_profile_admission();
   check_pipewire_target_identity();
   check_encoder_admission_and_control();
   check_bus_error_retains_primary_cause();

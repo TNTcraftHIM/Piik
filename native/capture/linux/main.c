@@ -551,9 +551,13 @@ static gboolean configure_encoder(VideoOutput *output) {
   return TRUE;
 }
 
-static gboolean supported_level(guint8 level) {
-  const guint8 levels[] = {0x1e, 0x1f, 0x20, 0x28,
-                           0x29, 0x2a, 0x32, 0x33};
+static gboolean supported_h264_profile(guint8 profile, guint8 constraints, guint8 level) {
+  // RFC 6184 Table 5: equivalent Constrained Baseline tools, as in the Go reader.
+  if (!((profile == 0x42 && (constraints & 0x4f) == 0x40) ||
+        (profile == 0x4d && (constraints & 0x8f) == 0x80) ||
+        (profile == 0x58 && (constraints & 0xcf) == 0xc0))) return FALSE;
+  const guint8 levels[] = {0x0a, 0x0b, 0x0c, 0x0d, 0x14, 0x15, 0x16,
+                           0x1e, 0x1f, 0x20, 0x28, 0x29, 0x2a, 0x32, 0x33, 0x34};
   for (guint index = 0; index < G_N_ELEMENTS(levels); ++index) {
     if (levels[index] == level) return TRUE;
   }
@@ -596,8 +600,8 @@ static NalSummary inspect_h264(const guint8 *data, gsize size) {
       summary.sps |= type == 7;
       summary.pps |= type == 8;
       summary.idr |= type == 5;
-      if (type == 7 && nal + 3 < size && data[nal + 1] == 0x42 &&
-          data[nal + 2] == 0xc0 && supported_level(data[nal + 3])) {
+      if (type == 7 && nal + 3 < size &&
+          supported_h264_profile(data[nal + 1], data[nal + 2], data[nal + 3])) {
         g_snprintf(summary.profile_level_id, sizeof(summary.profile_level_id),
                    "%02x%02x%02x", data[nal + 1], data[nal + 2],
                    data[nal + 3]);

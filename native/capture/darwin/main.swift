@@ -493,11 +493,19 @@ private func h264ParameterSets(_ format: CMFormatDescription) throws -> [Data] {
         result.append(Data(bytes: pointer, count: size))
     }
     let sps = result[0]
-    guard sps.count >= 4, sps[1] == 0x42, sps[2] == 0xc0,
-          supportedH264Levels.contains(sps[3]) else {
+    guard sps.count >= 4, supportedH264Profile(sps[1], sps[2], sps[3]) else {
         throw CaptureFailure(description: "H.264 profile is outside the product envelope")
     }
     return result
+}
+
+private func supportedH264Profile(_ profile: UInt8, _ constraints: UInt8, _ level: UInt8) -> Bool {
+    // RFC 6184 Table 5: equivalent Constrained Baseline tools, as in the Go reader.
+    supportedH264Levels.contains(level) && (
+        (profile == 0x42 && constraints & 0x4f == 0x40) ||
+        (profile == 0x4d && constraints & 0x8f == 0x80) ||
+        (profile == 0x58 && constraints & 0xcf == 0xc0)
+    )
 }
 
 private func annexB(_ sample: CMSampleBuffer, keyFrame: Bool) throws -> (payload: Data, recovery: Bool) {
@@ -1141,6 +1149,17 @@ private func selfTest() throws {
 }
 
 private func geometrySelfTest() throws {
+    let profiles: [(UInt32, Bool)] = [
+        (0x42c034, true), (0x42e034, true), (0x42c00a, true),
+        (0x4d8034, true), (0x58c034, true),
+        (0x4d0034, false), (0x640034, false), (0x42c035, false), (0x42c134, false),
+    ]
+    for (profile, expected) in profiles {
+        guard supportedH264Profile(UInt8(profile >> 16), UInt8((profile >> 8) & 0xff),
+                                   UInt8(profile & 0xff)) == expected else {
+            throw CaptureFailure(description: "H.264 profile admission self-test failed")
+        }
+    }
     let buffer = try syntheticPixelBuffer()
     let ceiling = OutputProfile(width: 1280, height: 720, fps: frameRate, bitrate: bitrate)
     let rect = CGRect(x: 50, y: 40, width: 200, height: 300)

@@ -485,9 +485,11 @@ Baseline alternatives. The original field quality cause remains unproven.
 
 One independent compatibility defect was confirmed: capture admission compared
 against `42c0` literally, rejecting equivalent Constrained Baseline SPS such as
-`42e0`. Windows validation and the shared Go capture-state reader now follow
+`42e0`. The three Native adapters and shared Go capture-state reader now follow
 [RFC 6184 Table 5](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.1), retaining
-the existing level bounds and rejecting actual Main/High. Windows active status
+the shared level bounds and rejecting actual Main/High. Linux's former output
+gate also omitted Level 5.2 and lower automatic levels; it now follows the same
+admission as its requested profiles. Windows active status
 reads the emitted SPS instead of synthesizing a vendor-specific value. This is
 not a profile upgrade or an explanation for `DXGI_ERROR_DEVICE_REMOVED`.
 
