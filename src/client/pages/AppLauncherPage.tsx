@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { z } from "zod";
 
+import { BrandMark } from "../components/living/BrandMark";
 import { HintComic } from "../components/living/hints";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
@@ -9,6 +10,7 @@ import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
 import { hasCopyPreference, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
+import { Glyph } from "../ui/icons";
 import { currentThemePreference } from "../ui/theme";
 import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
 import {
@@ -246,24 +248,31 @@ export function AppLauncherPage() {
             />
           </div>
         ) : requestedSite ? (
-          <section className="lr-client-approval">
-            <HintComic kind="hint-client-site" />
-            <h1 className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.approved" : "client.connect.approveTitle")}</h1>
-            <div className="lr-client-approval-origin">{requestedSite}</div>
-            <p className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.return" : "client.connect.approveHint")}</p>
-            {!approvalCurrent && site && site !== requestedSite && <p>{t("client.connect.replace", { site })}</p>}
+          <section className="lr-client-approval" aria-labelledby="site-approval-title">
+            <header className="lr-client-approval-heading">
+              {approvalCurrent ? <BrandMark size={48} motion="once" /> : <HintComic kind="hint-client-site" size={230} />}
+              <h1 id="site-approval-title" className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.approved" : "client.connect.approveTitle")}</h1>
+            </header>
+            <div className="lr-client-approval-site">
+              <div className="lr-client-approval-origin">
+                <Glyph name="globe" size={20} />
+                <strong>{requestedSite}</strong>
+                {approvalCurrent && <Glyph name="check" size={20} className="lr-client-approval-check" />}
+              </div>
+              <p className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.return" : "client.connect.approveHint")}</p>
+              {!approvalCurrent && site && site !== requestedSite && <p className="lr-client-approval-replace">{t("client.connect.replace", { site })}</p>}
+            </div>
             {!validSite && <Pill icon="alert" tone="bad" label={t("client.connect.invalid")} comic="signal-failed" />}
             {siteError && <p role="alert">{siteError}</p>}
             <div className="lr-client-approval-actions">
               <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"}
                 onClick={() => window.close()} />
               {!approvalCurrent && <Btn icon="check" title="client.connect.approve" cap="client.connect.approve" tone="primary"
-                hint="hint-client-site" disabled={!validSite || siteBusy} onClick={() => void changeSite(requestedSite)} />}
+                hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void changeSite(requestedSite)} />}
             </div>
           </section>
         ) : (
           <LauncherForm
-            version={version}
             roomError={error?.kind === "launch" ? <>
               <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
               {error.detail && <p className="lr-client-launch-detail">{error.detail}</p>}
@@ -286,6 +295,13 @@ export function AppLauncherPage() {
           </LauncherForm>
         )}
       </main>
+      <footer className="lr-client-footer">
+        <a className="lr-btn" href="https://github.com/TNTcraftHIM/Piik" target="_blank" rel="noopener noreferrer">GitHub<span aria-hidden="true"> ↗</span></a>
+        {version && <p className="lr-client-version">
+          <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version })}</span>
+          {vis && <span aria-hidden="true">{version}</span>}
+        </p>}
+      </footer>
     </div>
   );
 }

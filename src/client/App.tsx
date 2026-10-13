@@ -197,7 +197,7 @@ function AppRoute() {
 function RouteLoader() {
   return (
     <div className="lr-app">
-      <AppHeader homeHref={appRoute.kind === "client" ? "/client" : undefined} />
+      <AppHeader atHome={appRoute.kind === "host"} homeHref={appRoute.kind === "client" ? "/client" : undefined} />
       <main className="lr-join">
         <LoadingStatus label="common.loading" />
       </main>
@@ -406,7 +406,7 @@ function SiteAccessGate({
 
   return (
     <div className="lr-app">
-      <AppHeader />
+      <AppHeader atHome={surface === "host"} />
       <main className="lr-join">
         {access.kind === "checking" ? (
           <LoadingStatus label="gate.checking" />

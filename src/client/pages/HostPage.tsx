@@ -3568,6 +3568,7 @@ export function HostPage({
   return (
     <div className="lr-app">
       <AppHeader
+        atHome
         showAppConnection={!sourcePickerOpen}
         led={
           <LedStrip

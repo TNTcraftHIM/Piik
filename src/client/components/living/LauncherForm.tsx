@@ -46,7 +46,6 @@ export function LauncherForm({
   lan,
   onSubmit,
   children,
-  version,
   roomError,
 }: {
   mode: AppMode;
@@ -66,7 +65,6 @@ export function LauncherForm({
   };
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   children?: ReactNode;
-  version?: string;
   roomError?: ReactNode;
 }) {
   const { vis, t } = useCopy();
@@ -214,24 +212,6 @@ export function LauncherForm({
         disabled={mode === "local" && lan !== undefined && !lan.selected}
       />
       </>)}
-      <div className="lr-client-about">
-        {version && <p className="lr-client-version">
-          <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version })}</span>
-          {vis && <span aria-hidden="true">{version}</span>}
-        </p>}
-        <p>
-          <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.credit")}</span>
-          {vis && <span aria-hidden="true">TNTcraft & contributors</span>}
-        </p>
-        <div className="lr-client-project-links">
-          <a href="https://piik.tv/" target="_blank" rel="noopener noreferrer" aria-label={t("client.launch.website")}>
-            {vis ? "piik.tv" : t("client.launch.website")}<span aria-hidden="true"> ↗</span>
-          </a>
-          <a href="https://github.com/TNTcraftHIM/Piik" target="_blank" rel="noopener noreferrer" aria-label={t("client.launch.source")}>
-            {vis ? "GitHub" : t("client.launch.source")}<span aria-hidden="true"> ↗</span>
-          </a>
-        </div>
-      </div>
     </form>
   );
 }

@@ -124,11 +124,13 @@ export function AppHeader({
   homeHref = "/",
   diagnosticControl,
   showAppConnection = true,
+  atHome = false,
 }: {
   led?: React.ReactNode;
   homeHref?: string;
   diagnosticControl?: React.ReactNode;
   showAppConnection?: boolean;
+  atHome?: boolean;
 }) {
   const { t } = useCopy();
   return (
@@ -137,8 +139,9 @@ export function AppHeader({
         className="lr-brand"
         href={withBrowserDebug(homeHref)}
         aria-label={t("brand.home")}
+        aria-current={atHome ? "page" : undefined}
       >
-        <Glyph name="chevron" size={14} className="lr-home-arrow" />
+        {!atHome && <Glyph name="chevron" size={14} className="lr-home-arrow" />}
         <BrandMark size={34} motion="once" />
       </a>}
       <span className="lr-top-right">

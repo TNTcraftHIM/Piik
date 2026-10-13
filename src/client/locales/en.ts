@@ -54,9 +54,6 @@ export const en: Record<CopyKey, string> = {
 
   "client.launch.title": "Open Piik",
   "client.launch.version": "Installed version {version}",
-  "client.launch.credit": "Free and open source · TNTcraft & contributors",
-  "client.launch.website": "Official website",
-  "client.launch.source": "GitHub",
   "client.launch.local": "Local room",
   "client.launch.localHint": "Use on the same local network",
   "client.launch.link": "Public invite",
