@@ -176,7 +176,8 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     }
     result.firstPictureMs = connected ? performance.now() - joinedAt : null;
     result.outcome = connected ? "media" : exhausted ? "unavailable" : "timeout";
-    if (result.outcome === "timeout" || (scenario.expected !== "observed" && result.outcome !== scenario.expected)) throw new Error(`Expected ${scenario.expected}, observed ${result.outcome}; ${serverLog.slice(-1000)}`);
+    const expected = prediction ? scenario.enhancedExpected ?? scenario.expected : scenario.expected;
+    if (result.outcome === "timeout" || (expected !== "observed" && result.outcome !== expected)) throw new Error(`Expected ${expected}, observed ${result.outcome}; ${serverLog.slice(-1000)}`);
     if (connected) {
       stage("continuity");
       const first = samples.at(-1)!.viewer;

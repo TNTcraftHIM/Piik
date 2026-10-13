@@ -10,12 +10,6 @@ Git/PRs own completed history.
 
 ## Now
 
-- [ ] **NAT laboratory follow-up.** Compare bounded prediction and Native
-  preparation through sequential kernel NAT, inspect retry/socket retirement,
-  and retain only verified improvements within ADR-0009's resource and ownership
-  bounds. Authenticated observed-address learning alone does not establish that
-  both ends selected the same socket pair.
-
 - [ ] **Intermittent RTP clock-check timeout.** Linux CI intermittently times out
   waiting for the second packet in the existing timestamp/generation checks.
   Local repetitions and explicit source pauses did not reproduce the timeout.
@@ -189,11 +183,11 @@ experiments and their limits.
 ## Next: P2P Connection And Feedback Evidence
 
 - [ ] **Coordinated Native retry acceptance.**
-  The optional two-App preparation is integrated into the existing retry owner;
-  production Engine virtual-network checks carry media and reverse feedback;
-  actual App signaling checks cover ineligible preparation and ordinary decoded
-  media continuation. Verify successful preparation through a difficult network
-  and decoded-picture continuity on that path, following the
+  The optional two-App preparation is integrated into the existing retry owner.
+  The [process laboratory](./research/network-lab.md) covers successful adoption
+  through sequential kernel NAT; ordinary continuation when preparation is
+  ineligible also passes. Verify successful preparation through physical difficult
+  networks and decoded-picture continuity on that path, following the
   [assessment](./research/nat-traversal.md#coordinated-native-punching-assessment).
   Preserve the first ordinary attempt, immediate Browser decline and fixed
   operation deadlines. The owner will arrange a small difficult-network beta

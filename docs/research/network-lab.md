@@ -133,16 +133,34 @@ order. All four ordinary App/App trials delivered media; all four random-mapping
 trials exhausted their routes. This validates comparison/reporting and establishes
 no enhancement gain for that random-mapping profile.
 
+The [sequential-mapping comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38332289068)
+passed twelve trials across two seeds. Both enhanced App/App trials delivered
+1280x720 video and audio after about 23.7 seconds; both disabled controls exhausted
+their routes. Both Apps reported step-one observations, successful preparation
+and socket adoption for the same connection. Packet captures confirmed SRTP and
+reverse SRTCP on that tuple. The enhanced App/App case now requires media; its
+disabled control remains observational so an ordinary-ICE improvement can pass.
+Browser/Browser and App/Browser exhausted their routes with either setting in
+this profile. This establishes one complete product path through sequential
+kernel NAT, not a field success rate or general benefit for Browser participants.
+
 App Host checks must use the real H264 Browser-to-App ingress and App WAN sender;
 launching an App alongside a Browser-only VP8 share is not an App-path test.
 
 Each router uses destination-aware connection tracking for filtering. Independent
 probes check responses from the contacted endpoint, another port and another
-address before sharing. The preserve/random SNAT cases describe observed port
-mapping, not every consumer NAT implementation. Address-change cases replace
-only the isolated router's UDP public address and conntrack entries while
-proving that TCP signaling stays usable; both old and new media windows retain
-their respective addresses for packet/feedback checks.
+address before sharing. Preserve, random and sequential SNAT describe observed
+mapping, not every consumer NAT implementation. Sequential cases use nftables'
+number generator and a typed port map: new UDP flows advance through ports
+40000..44095, with the same destination-dependent filter. Calibration must
+observe three consecutive mappings before Piik starts. App/App, Browser/Browser
+and App/Browser cases compare the existing enhancement switch; this switch also
+changes the retry budget, so aggregate differences do not isolate one mechanism.
+The recorded Native preparation and adoption results distinguish its use from
+ordinary ICE. Address-change cases replace only the isolated router's UDP public
+address and conntrack entries while proving that TCP signaling stays usable;
+both old and new media windows retain their respective addresses for
+packet/feedback checks.
 IPv6 cases provide a Pion-based external STUN endpoint as well as IPv4 embedded
 STUN. Browser mDNS host names cannot resolve across these routed networks;
 keep normal Browser privacy behavior and obtain IPv6 reflexive candidates through

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-12
+Last updated: 2026-10-13
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -84,11 +84,11 @@ its integration costs. The
 owns the retained experiment and adoption boundary. Its package is retired;
 independent ordinary ICE and media repairs remain in the candidate.
 An independent bounded Native UDP preparation now augments existing retries
-under ADR-0009. Production Engine checks cover socket adoption, video and reverse
-feedback in a sequential-NAT fixture. Actual App control/signaling checks cover
-ineligible preparation continuing to decoded Browser video. Successful paths
-still need the owner's field beta; this does not establish a public success
-rate or remove Browser-only operation.
+under ADR-0009. Actual App process checks cover socket adoption, decoded media
+and reverse feedback through sequential kernel NAT, as well as ineligible
+preparation continuing ordinary ICE. The [network laboratory](./research/network-lab.md)
+owns paired outcomes and evidence limits. The owner's field beta remains open;
+this does not establish a public success rate or remove Browser-only operation.
 The original candidate packages pass their identity/checksum checks; Windows
 Local startup/retirement, saved Site approval/revocation and explicit 1.x
 rejection have packaged acceptance evidence. Publication remains subject to

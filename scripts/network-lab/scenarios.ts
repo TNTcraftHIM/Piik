@@ -10,6 +10,7 @@ export interface Scenario {
   fault: Fault;
   sfu: boolean;
   expected: "media" | "unavailable" | "observed";
+  enhancedExpected?: "media" | "unavailable";
   duringShare?: boolean;
   ipv6?: boolean;
   faultEndpoint?: 0 | 1;
@@ -67,7 +68,7 @@ export const scenarios: readonly Scenario[] = [
   { ...baseline, id: "signaling-outage", host: "browser", viewer: "browser", fault: "signaling", duringShare: true },
   { ...baseline, id: "random-nat", host: "app", viewer: "app", nat: ["random", "random"], expected: "observed" },
   { ...baseline, id: "asymmetric-nat", host: "browser", viewer: "app", nat: ["random", "preserve"], expected: "observed" },
-  { ...baseline, id: "sequential-app", host: "app", viewer: "app", nat: ["sequential", "sequential"], expected: "observed" },
+  { ...baseline, id: "sequential-app", host: "app", viewer: "app", nat: ["sequential", "sequential"], expected: "observed", enhancedExpected: "media" },
   { ...baseline, id: "sequential-browser", host: "browser", viewer: "browser", nat: ["sequential", "sequential"], expected: "observed" },
   { ...baseline, id: "sequential-mixed", host: "app", viewer: "browser", nat: ["sequential", "sequential"], expected: "observed" },
   { ...baseline, id: "ipv6-browser", host: "browser", viewer: "browser", ipv6: true, fault: "ipv4-block" },

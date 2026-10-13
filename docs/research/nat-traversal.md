@@ -456,11 +456,10 @@ credentials, first-packet loss and winner adoption have explicit controls.
 100 ms of peer-start skew succeeds in the fixture; 350 ms exceeds its overlap
 and fails cleanly. These are experimental budgets, not product defaults.
 
-The policy comparator follows the current TS emission order, but surveys run
-sequentially before ICE; production surveys run concurrently while candidates
-trickle. The payload is synthetic RTP, not a decoded picture. Random allocation,
-real signaling delay, first-picture latency, Browser interoperation and actual
-Piik operation retirement still need acceptance before product adoption.
+The isolated policy comparator follows TS emission order, but surveys run before
+ICE; ordinary production gathering trickles while STUN work is still running.
+Its synthetic RTP does not establish decoded pictures or complete control and
+signaling integration.
 
 The 2.0 candidate now adopts the winning socket before constructing Pion, only
 on an existing server-issued retry. Pion's WebRTC API does not expose ICE's
@@ -503,8 +502,11 @@ audio changes and App-exit fallback remain usable. Run the existing
 listeners on UDP 3478/3479/3480 and injects one candidate rejection; it does not
 contact public STUN services.
 
-Successful coordinated preparation through a real difficult network, decoded
-pictures on that path and cross-device behavior remain field-beta checks.
+The [process laboratory](./network-lab.md#running-the-process-layer) now verifies
+successful preparation and socket adoption through sequential Linux kernel NAT,
+including decoded picture/audio continuity and reverse feedback in actual App
+processes. Its Browser and mixed controls do not establish a gain in that profile.
+Physical difficult networks and cross-device behavior remain field-beta checks.
 Random-port overlap assumptions do not establish a solution for two independently
 random endpoint-dependent NATs or blocked UDP.
 
