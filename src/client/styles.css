@@ -942,7 +942,6 @@ html[data-theme="dark"] .lr-viewer-host-slot svg { color: #9bb0c5; }
 html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #33465c; }
 /* Touch only: the compact mono URL would auto-zoom iOS on focus under 16px,
    and the zoom never returns. Pointer devices keep the dense line. */
-@media (pointer: coarse) { .lr-invite-url { font-size: 16px; } }
 /* LCD room code */
 .lr-room-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
 .lr-lcd {
@@ -1200,6 +1199,9 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-input.lr-video-size { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 5px; width: 176px; }
 .lr-resolution-controls { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .lr-video-size input { width: 100%; padding: 0; text-align: center; appearance: textfield; }
+@media (pointer: coarse) {
+  .lr-invite-url, .lr-quality-number input, .lr-video-size input { font-size: 16px; }
+}
 .lr-welcome { width: 100%; min-width: 0; max-width: 100%; margin: 0; overflow: hidden; color: inherit; font-size: 15px; font-weight: 600; line-height: 1.7; text-align: center; white-space: nowrap; text-overflow: ellipsis; }
 .lr-welcome:not(.is-cipher)::before { content: "✦"; color: #d7982b; margin-right: 8px; }
 .lr-welcome-cipher { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; opacity: .72; white-space: nowrap; }

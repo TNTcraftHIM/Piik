@@ -824,8 +824,9 @@ Setting both Windows decoder axis ceilings to 8192 made an existing 4K fixture
 fail at `BEGIN_STREAMING` with `E_OUTOFMEMORY`. Retaining platform provisioning
 defaults passed the same padding/visible-crop regression; SPS and output buffer
 guards remain in their existing owners. Raw H.264 1080p120/80 Mbps also decoded
-30/30 pictures. The higher-range changes still need other-platform SDK and
-physical-device acceptance. Local controls are in ignored `build/quality-polish/`.
+30/30 pictures. Both macOS and Linux architectures pass SDK compilation and
+geometry/profile checks; higher-range physical-device acceptance remains open.
+Local controls are in ignored `build/quality-polish/`.
 
 [WebRTC statistics](https://www.w3.org/TR/webrtc-stats/#dom-rtcicecandidatepairstats-availableoutgoingbitrate)
 describe estimated available capacity, not a configured send-rate ceiling;
