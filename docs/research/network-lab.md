@@ -133,15 +133,15 @@ order. All four ordinary App/App trials delivered media; all four random-mapping
 trials exhausted their routes. This validates comparison/reporting and establishes
 no enhancement gain for that random-mapping profile.
 
-The [sequential-mapping comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38332289068)
-passed twelve trials across two seeds. Both enhanced App/App trials delivered
-1280x720 video and audio after about 23.7 seconds; both disabled controls exhausted
+The [sequential-mapping comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38433597605)
+passed sixteen trials across two seeds and all four endpoint pairs. Both enhanced
+App/App trials delivered video and audio after about 23.6 seconds; both disabled controls exhausted
 their routes. Both Apps reported step-one observations, successful preparation
 and socket adoption for the same connection. Packet captures confirmed SRTP and
 reverse SRTCP on that tuple. The enhanced App/App case now requires media; its
 disabled control remains observational so an ordinary-ICE improvement can pass.
-Browser/Browser and App/Browser exhausted their routes with either setting in
-this profile. This establishes one complete product path through sequential
+Browser/Browser and both mixed directions exhausted their routes with either
+setting in this profile. This establishes one complete product path through sequential
 kernel NAT, not a field success rate or general benefit for Browser participants.
 
 The [mixed-endpoint recovery comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38433591403)

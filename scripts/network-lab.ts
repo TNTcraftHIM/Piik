@@ -160,7 +160,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     } }, Date.now() + 5000);
     stage("share");
     await endpoints[0]!.call("navigate", { url: SITE_ORIGIN + (scenario.host === "app" ? "/#piik-client=1" : "/") });
-    const invitation = await endpoints[0]!.call<string>("share", { prediction });
+    const invitation = await endpoints[0]!.call<string>("share", { prediction, predictionLocked: scenario.sfuOnly === true });
     const joinedAt = performance.now();
     await endpoints[1]!.call("navigate", { url: invitation + (scenario.viewer === "app" ? "&piik-client=1" : "") });
     if (scenario.sibling) await endpoints[2]!.call("navigate", { url: invitation });
@@ -347,7 +347,8 @@ async function main(): Promise<void> {
   const interrupted = () => controller.abort(new Error("Laboratory run cancelled"));
   process.once("SIGINT", interrupted); process.once("SIGTERM", interrupted);
   for (let iteration = 0; iteration < repeat; iteration++) for (const scenario of selected) {
-    const variants = values.prediction === "compare" ? (iteration % 2 === 0 ? [false, true] : [true, false]) : [values.prediction === "on"];
+    const variants = scenario.sfuOnly ? [false] : values.prediction === "compare"
+      ? (iteration % 2 === 0 ? [false, true] : [true, false]) : [values.prediction === "on"];
     for (const prediction of variants) {
       if (controller.signal.aborted) break;
       const directory = join(output, `${scenario.id}-${iteration + 1}-${prediction ? "on" : "off"}`); await mkdir(directory);
