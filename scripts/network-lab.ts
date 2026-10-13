@@ -160,7 +160,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     } }, Date.now() + 5000);
     stage("share");
     await endpoints[0]!.call("navigate", { url: SITE_ORIGIN + (scenario.host === "app" ? "/#piik-client=1" : "/") });
-    const invitation = await endpoints[0]!.call<string>("share", { prediction, predictionLocked: scenario.sfuOnly === true });
+    const invitation = await endpoints[0]!.call<string>("share", { prediction, sfuOnly: scenario.sfuOnly === true });
     const joinedAt = performance.now();
     await endpoints[1]!.call("navigate", { url: invitation + (scenario.viewer === "app" ? "&piik-client=1" : "") });
     if (scenario.sibling) await endpoints[2]!.call("navigate", { url: invitation });
