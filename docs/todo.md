@@ -10,6 +10,14 @@ Git/PRs own completed history.
 
 ## Now
 
+- [ ] **Self-hosted sustained quality recovery.** A v1.9.2 report describes
+  resolution loss and stutter that clear after Viewer refresh. The report has no
+  paired diagnostics or confirmed media route; server decoding is not part of
+  Piik's forwarding SFU. Compare sustained Browser P2P and SFU uplink/downlink
+  recovery in the existing network laboratory, preserving the original
+  connection. Candidate queue, probe and repair fixes are relevant mechanisms,
+  not an established diagnosis of this report.
+
 - [ ] **Intermittent RTP clock-check timeout.** Linux CI intermittently times out
   waiting for the second packet in the existing timestamp/generation checks.
   Local repetitions and explicit source pauses did not reproduce the timeout.

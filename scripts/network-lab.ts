@@ -9,7 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { cleanupRun, withDeadline } from "./browser-gate-harness";
 import { endpointWorker } from "./network-lab/endpoint";
 import { command, LabNetwork, SITE_IP, SITE_IPV6, SITE_ORIGIN } from "./network-lab/network";
-import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios, summarizeTrials, type Scenario, type TrialSummary } from "./network-lab/scenarios";
+import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, checkQualityRecovery, hasPicture, selectScenarios, summarizeTrials, type Scenario, type TrialSummary } from "./network-lab/scenarios";
 import { echoWorker, type ProbeResult } from "./network-lab/udp";
 import type { MediaSample } from "./network-lab/page";
 import { checkMediaFeedback, checkMediaPath, readPacketFlows, type PacketFlow } from "./network-lab/packets";
@@ -87,6 +87,18 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     samples.push(sample); return sample;
   };
   const addresses = () => endpoints.map((_, index) => scenario.ipv6 ? network.ipv6(index) : network.publicIP(index));
+  const observeQuality = async (name: string, durationMs: number, baseline?: MediaSample) => {
+    stage(name);
+    const startMs = Date.now(), observed: MediaSample[] = [];
+    while (Date.now() - startMs < durationMs) {
+      await delay(1000, undefined, { signal });
+      observed.push((await sampleAll()).viewer);
+    }
+    const last = observed.at(-1)!;
+    checkQualityRecovery(baseline ?? last, observed.filter(sample => last.at - sample.at <= 12_000));
+    mediaWindows.push({ name, startMs, endMs: Date.now(), addresses: addresses() });
+    return last;
+  };
   const checkAppPaths = () => {
     const current = samples.at(-1)!;
     if (scenario.host === "app") checkAppPath(current.host, "prepare-edge", network.localAddresses(0));
@@ -152,7 +164,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
       origin: SITE_ORIGIN, app: index < 2 && (index === 0 ? scenario.host : scenario.viewer) === "app",
     })));
     capture = spawn("ip", ["netns", "exec", network.wan, "tcpdump", "-i", "internet", "-n", "-s", "96", "-U",
-      "-w", pcapPath, "-c", "100000", "udp"], { stdio: "pipe" });
+      "-w", pcapPath, "-c", scenario.qualityRecovery ? "500000" : "100000", "udp"], { stdio: "pipe" });
     capture.stderr.on("data", data => { captureLog = (captureLog + data).slice(-4000); });
     await withDeadline(async () => { while (!captureLog.includes("listening on")) {
       if (capture!.exitCode !== null) throw new Error(`Packet capture failed: ${captureLog}`);
@@ -198,13 +210,14 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
         throw new Error("Frozen synthetic picture incorrectly passed");
       }
       if (scenario.sfu && next.route !== "sfu") throw new Error("Expected SFU route, but media used another path");
+      const qualityBaseline = scenario.qualityRecovery ? await observeQuality("quality-baseline", 45_000) : undefined;
       if (scenario.duringShare) {
         stage("impairment");
         setFault(scenario.fault);
         const impairedAt = performance.now();
         let healthyWindow = healthy, healthyAt = impairedAt;
         if (scenario.fault === "signaling" && await endpoints[0]!.call("signal-probe")) throw new Error("Signaling remained reachable during blackhole");
-        while (performance.now() - impairedAt < 8000) {
+        while (performance.now() - impairedAt < (scenario.qualityRecovery ? 30_000 : 8000)) {
           signal.throwIfAborted();
           await sampleAll();
           if (healthyWindow && performance.now() - healthyAt >= 2000) {
@@ -267,6 +280,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
         if (!recovered) throw new Error(`Recovery observation expired: ${recoveryError}`);
         mediaWindows.push({ name: "recovered", startMs: recoveryStart, endMs: Date.now(), addresses: addresses() });
         if (scenario.fault === "signaling" && !await endpoints[0]!.call("signal-probe")) throw new Error("Signaling roundtrip did not recover");
+        if (qualityBaseline) await observeQuality("quality-restored", 90_000, qualityBaseline);
       }
     }
     await endpoints[1]!.call("screenshot", { output: join(output, "viewer.png") });

@@ -18,6 +18,7 @@ export interface Scenario {
   direction?: "uplink" | "downlink";
   sibling?: boolean;
   remap?: boolean;
+  qualityRecovery?: boolean;
 }
 
 export interface TrialSummary {
@@ -66,6 +67,14 @@ export const scenarios: readonly Scenario[] = [
   { ...baseline, id: "sfu-outage", host: "browser", viewer: "browser", fault: "udp-block", sfu: true, sfuOnly: true, duringShare: true },
   { ...baseline, id: "blocked-media", host: "browser", viewer: "browser", fault: "udp-block", expected: "unavailable" },
   { ...baseline, id: "bandwidth-recovery", host: "browser", viewer: "browser", fault: "rate", duringShare: true },
+  // Match the same Browser source through direct and SFU paths. A brief return
+  // of decoded frames cannot establish recovery from sustained low quality.
+  ...([
+    { id: "quality-peer", sfu: false, faultEndpoint: 1, direction: "downlink" },
+    { id: "quality-sfu-uplink", sfu: true, sfuOnly: true, faultEndpoint: 0, direction: "uplink" },
+    { id: "quality-sfu-downlink", sfu: true, sfuOnly: true, faultEndpoint: 1, direction: "downlink" },
+  ] as const).map(path => ({ ...baseline, ...path, host: "browser" as const, viewer: "browser" as const,
+    fault: "rate" as const, duringShare: true, qualityRecovery: true })),
   { ...baseline, id: "media-outage", host: "app", viewer: "app", fault: "udp-block", duringShare: true },
   { ...baseline, id: "signaling-outage", host: "browser", viewer: "browser", fault: "signaling", duringShare: true },
   { ...baseline, id: "random-nat", host: "app", viewer: "app", nat: ["random", "random"], expected: "observed" },
@@ -148,6 +157,19 @@ export function checkContinuity(before: MediaSample, after: MediaSample): void {
       Number(row.totalSamplesDuration) > Number(previous.totalSamplesDuration);
   });
   if (!audible) throw new Error("Decoded audio energy and sample duration did not advance");
+}
+
+// A fixture acceptance check, never a product quality floor. The source is a
+// fixed moving 720p canvas and the restored laboratory link is unconstrained.
+export function checkQualityRecovery(baseline: MediaSample, samples: readonly MediaSample[]): void {
+  if (baseline.width !== 1280 || baseline.height !== 720) throw new Error("Quality baseline never reached the source resolution");
+  const first = samples[0], last = samples.at(-1);
+  if (!first || !last || last.at - first.at < 10_000) throw new Error("Quality recovery needs a sustained ten-second observation");
+  if (samples.some(sample => sample.width !== baseline.width || sample.height !== baseline.height ||
+    sample.playbackPeerId !== baseline.playbackPeerId || sample.route !== baseline.route)) {
+    throw new Error("Source resolution did not recover on the retained connection");
+  }
+  checkContinuity(first, last);
 }
 
 export function checkCalibration(before: ProbeResult, after: ProbeResult, fault: Fault): void {

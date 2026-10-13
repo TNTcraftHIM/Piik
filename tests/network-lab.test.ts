@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, hasPicture, selectScenarios, summarizeTrials } from "../scripts/network-lab/scenarios";
+import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, checkQualityRecovery, hasPicture, selectScenarios, summarizeTrials } from "../scripts/network-lab/scenarios";
 import { checkMediaFeedback, checkMediaPath, packetFlows, type PacketFlow } from "../scripts/network-lab/packets";
 import type { MediaSample } from "../scripts/network-lab/page";
 import type { ProbeResult } from "../scripts/network-lab/udp";
@@ -102,6 +102,21 @@ describe("network laboratory evidence", () => {
     expect(() => checkContinuity(before, { ...after, stats: [{ ...after.stats[0]!, peerId: 1 }] })).toThrow();
     expect(() => checkContinuity(before, { ...after, frames: 50 })).toThrow();
     expect(() => checkContinuity(before, { ...after, pictureHash: 100 })).toThrow();
+  });
+
+  it("requires sustained source resolution on the retained path, not one good frame or a refreshed connection", () => {
+    const baseline = { width: 1280, height: 720, at: 0, route: "sfu", playbackPeerId: 0 } as MediaSample;
+    const samples = Array.from({ length: 12 }, (_, index) => ({ ...baseline, at: index * 1000,
+      frames: 50 + index * 30, pictureHash: index, stats: [{ id: "audio", peerId: 0, type: "inbound-rtp", kind: "audio",
+        totalAudioEnergy: index, totalSamplesDuration: index }] }));
+    expect(() => checkQualityRecovery(baseline, samples)).not.toThrow();
+    expect(() => checkQualityRecovery(baseline, samples.slice(-2))).toThrow("sustained");
+    expect(() => checkQualityRecovery({ ...baseline, height: 360 }, samples)).toThrow("baseline");
+    for (const change of [{ height: 360 }, { playbackPeerId: 1 }, { route: "peer" }]) {
+      expect(() => checkQualityRecovery(baseline, samples.map((sample, index) => index === 5 ? { ...sample, ...change } : sample)))
+        .toThrow("retained");
+    }
+    expect(() => checkQualityRecovery(baseline, samples.map(sample => ({ ...sample, pictureHash: 0 })))).toThrow("picture");
   });
 
   it("requires feedback on the same WAN transport, not a healthy loopback or sibling", () => {

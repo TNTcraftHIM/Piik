@@ -73,7 +73,8 @@ export const pageProbe = String.raw`(() => {
         if(row.type==='inbound-rtp'||row.type==='outbound-rtp'||row.type==='remote-inbound-rtp'){
           const selected={type:row.type,kind:row.kind,id:row.id,peerId};
           for(const key of ['framesDecoded','framesReceived','framesEncoded','framesDropped','framesPerSecond',
-            'frameWidth','frameHeight','bytesReceived','bytesSent','packetsLost','packetsReceived','nackCount',
+            'frameWidth','frameHeight','bytesReceived','bytesSent','packetsLost','packetsReceived','nackCount','qpSum',
+            'retransmittedPacketsReceived','retransmittedPacketsSent','freezeCount','totalFreezesDuration',
             'pliCount','totalDecodeTime','jitterBufferDelay','jitterBufferEmittedCount','totalAudioEnergy',
             'totalSamplesDuration','roundTripTime','reportsReceived','qualityLimitationReason','targetBitrate']){
             if(row[key]!==undefined)selected[key]=row[key];
