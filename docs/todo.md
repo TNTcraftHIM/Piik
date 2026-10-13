@@ -18,11 +18,12 @@ Git/PRs own completed history.
 
 - [ ] **Windows native media acceptance on the current desktop.** The default
   720p SFU gate misses its sustained-frame threshold on both the previous and
-  current audio dependencies. A capture-only WGC control also receives about
-  3.8 fps from the same animated window, before encoding or transport. The
-  smaller-picture gate passes live audio changes and recovery; it does not
-  replace this throughput check. Retest with a normally presenting capture
-  source before assigning a product regression or relaxing the assertion.
+  current audio dependencies. Capture-only WGC controls receive about 3.8 fps,
+  including an independent window repainting at about 40 fps, before encoding
+  or transport. This desktop currently exposes only a virtual display; its
+  capture slowdown has no confirmed driver cause. Retest the unchanged gate on
+  a physical display. The smaller-picture gate passes live audio changes and
+  recovery but does not replace this throughput check.
 
 - [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
   useful improvements and outstanding acceptance on 2026-10-07, and on 2026-10-09
