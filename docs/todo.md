@@ -10,14 +10,6 @@ Git/PRs own completed history.
 
 ## Now
 
-- [ ] **Self-hosted sustained quality recovery.** A v1.9.2 report describes
-  resolution loss and stutter that clear after Viewer refresh. The report has no
-  paired diagnostics or confirmed media route; server decoding is not part of
-  Piik's forwarding SFU. Compare sustained Browser P2P and SFU uplink/downlink
-  recovery in the existing network laboratory, preserving the original
-  connection. Candidate queue, probe and repair fixes are relevant mechanisms,
-  not an established diagnosis of this report.
-
 - [ ] **Intermittent RTP clock-check timeout.** Linux CI intermittently times out
   waiting for the second packet in the existing timestamp/generation checks.
   Local repetitions and explicit source pauses did not reproduce the timeout.
@@ -72,6 +64,15 @@ Git/PRs own completed history.
 These physical checks or reporter diagnoses remain unverified. A local repair or
 successful test is not proof of a reporter's cause; research owns the completed
 experiments and their limits.
+
+- [ ] **Self-hosted sustained quality loss (v1.9.2).** The report describes
+  resolution loss and stutter that clear after Viewer refresh, without paired
+  diagnostics, a confirmed route or codec. Six candidate
+  [sustained recovery trials](./research/network-lab.md#sustained-quality-recovery)
+  restore 720p on retained Browser P2P/SFU connections; recovery still takes
+  tens of seconds. Retest the affected setup with matched Host/Viewer/Server
+  reports before assigning its cause. Existing queue/probe repairs do not
+  establish a diagnosis, server CPU requirements or long-duration stability.
 
 - [ ] **Linux Portal target identity acceptance (#470).** The
   [contributor fix](https://github.com/TNTcraftHIM/Piik/pull/470) is integrated

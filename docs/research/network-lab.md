@@ -121,6 +121,16 @@ The manual CI workflow's `network_lab` input runs this same entry point and neve
 publishes. Reports and bounded synthetic-traffic captures are under ignored
 `build/network-lab/results/`; CI retains them for seven days.
 
+The `quality-peer`, `quality-sfu-uplink` and `quality-sfu-downlink` cases use the
+same moving 720p Browser source. They establish 45 seconds of baseline, constrain
+one direction to 600 kbps for 30 seconds, then observe 90 seconds beyond resumed media. The
+final observation must retain the original connection and source resolution for
+at least ten seconds, with advancing pictures and audio. This is an
+unconstrained-fixture recovery check, not a product resolution floor or proof of
+game quality. Frame cadence, bitrate, loss, repair, freezes and QP remain separate
+measurements. These longer cases cap captures at 500,000 packets, retaining only
+each packet's first 96 bytes; ordinary cases keep their 100,000-packet bound.
+
 The [full process acceptance](https://github.com/TNTcraftHIM/Piik/actions/runs/38300988699)
 on 2026-10-13 passed all 19 scenarios and five negative controls, including
 resource cleanup and unchanged host networking. Sixteen scenarios produced
@@ -202,3 +212,34 @@ the original 60-second observation deadline; it is not a successful recovery.
 ends at the first sample with at least 15 decoded frames; sampling is every
 500 ms. Recovery checks poll every second. These are sampled media-admission
 times, not exact first-packet timestamps or one-way media latency.
+
+## Sustained Quality Recovery
+
+The [2026-10-14 comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38446966925)
+passed two trials for each quality case on candidate `ea2c7268`, using Chrome
+154.0.8037.97 and the moving 720p30 VP8 source. All six retained their connection,
+restored source resolution and cleaned up. Times below start at impairment
+removal; resumed media includes the existing three-second continuity check.
+Source-resolution recovery is measured separately from resumed decoding.
+
+| Constrained path | Resumed media | Sustained 720p |
+| --- | --- | --- |
+| Browser P2P downlink | 4.9 s | 45.3–47.2 s |
+| Host-to-SFU uplink | 17.0–19.0 s | 28.1–29.1 s |
+| SFU-to-Viewer downlink | 11.9–13.0 s | 22.0 s |
+
+Final twenty-second windows delivered 29.3–29.4 decoded fps with no new freezes.
+The impaired SFU paths did pause, and the Browser encoder's bitrate/quantization
+recovered gradually after dimensions returned. These results do not establish
+instantaneous or perceptually lossless recovery. The forwarding SFU can pause
+when no received layer fits a child's capacity; it does not create a lower
+encoding for that child.
+
+The v1.9.2 report of persistent self-hosted degradation has no matched trace,
+codec or confirmed route. Piik already forwards encoded video without server
+decoding/transcoding. An opaque UDP relay changes transport feedback and delivery
+semantics; its reported improvement does not isolate CPU, network or an SFU cause.
+The [queue/probe repairs](./node-local-media-design.md#send-queue-recovery) address
+confirmed mechanisms present in v1.9.2, but this run is candidate acceptance,
+not a matched old/new reproduction of that report. It does not measure a cloud
+server's CPU requirement, H264 behavior, multi-Viewer load or hours-long stability.
