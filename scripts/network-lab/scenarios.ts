@@ -164,7 +164,7 @@ export function checkMapping(probe: ProbeResult, mode: NatMode): void {
   }
   if (mode === "sequential") {
     const ordered = [...ports].sort((a, b) => a - b);
-    if (ordered.length !== 3 || ordered[0]! < 40000 || ordered[2]! >= 60000 ||
+    if (ordered.length !== 3 || ordered[0]! < 40000 || ordered[2]! >= 44096 ||
       ordered[1]! !== ordered[0]! + 1 || ordered[2]! !== ordered[1]! + 1) {
       throw new Error("Sequential SNAT did not allocate consecutive ports across three destinations");
     }

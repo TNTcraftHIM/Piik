@@ -61,9 +61,10 @@ describe("network laboratory evidence", () => {
     const random = { ...baseline, mappings: baseline.mappings.map((value, index) => ({ ...value, port: value.port + index })) };
     expect(() => checkMapping(random, "random")).not.toThrow();
     expect(() => checkMapping(random, "preserve")).toThrow();
-    expect(() => checkMapping(random, "sequential")).not.toThrow();
+    const sequential = { ...baseline, mappings: baseline.mappings.map((value, index) => ({ ...value, port: 40000 + index })) };
+    expect(() => checkMapping(sequential, "sequential")).not.toThrow();
     expect(() => checkMapping(baseline, "sequential")).toThrow();
-    expect(() => checkMapping({ ...random, mappings: random.mappings.map((value, index) => ({ ...value, port: value.port + index })) }, "sequential")).toThrow();
+    expect(() => checkMapping({ ...sequential, mappings: sequential.mappings.map((value, index) => ({ ...value, port: value.port + index })) }, "sequential")).toThrow();
     expect(() => checkMapping({ ...random, mappings: random.mappings.map((value, index) => ({ ...value, port: 1024 + index })) }, "sequential")).toThrow();
   });
 

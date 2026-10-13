@@ -80,10 +80,11 @@ export class LabNetwork {
         this.exec(router, "ip", ["-6", "route", "add", "default", "via", SITE_IPV6]);
         this.exec(this.wan, "ip", ["-6", "route", "add", `2001:db8:72:${n}::/64`, "via", wan]);
       }
-      this.exec(router, "nft", [`
+      this.exec(router, "nft", ["-f", "-"], `
 table ip lab_nat {
+ ${mode === "sequential" ? `map ports { type integer : inet_service; elements = { ${Array.from({ length: 4096 }, (_, port) => `${port} : ${40000 + port}`).join(", ")} } }` : ""}
  chain postrouting { type nat hook postrouting priority srcnat; policy accept;
-  ${mode === "sequential" ? `oifname "wan0" meta l4proto udp snat to ${this.publicIP(index)}:numgen inc mod 20000 offset 40000` : ""}
+  ${mode === "sequential" ? `oifname "wan0" meta l4proto udp snat to ${this.publicIP(index)}:numgen inc mod 4096 map @ports` : ""}
   oifname "wan0" snat to ${this.publicIP(index)}${mode === "random" ? " fully-random" : ""}
  }
 }
@@ -100,7 +101,7 @@ table inet lab_filter {
   ct state established,related counter accept
  }
 }
-`]);
+`);
     }
     if (ipv6) this.exec(this.wan, "sysctl", ["-qw", "net.ipv6.conf.all.forwarding=1"]);
   }
