@@ -3,6 +3,7 @@ package mediaedge
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -118,6 +119,114 @@ func TestReceiverAdvertisesLocalStereoPreference(t *testing.T) {
 				}
 				if err = upstream.SetRemoteDescription(answer); err != nil {
 					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestReceiverRetainsRepairForOnlyTheSelectedCodec(t *testing.T) {
+	for _, name := range []string{"vp8", "h264"} {
+		t.Run(name, func(t *testing.T) {
+			engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = engine.Close() })
+			// An independent stock peer offers its normal primary/RTX pairs.
+			upstream, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = upstream.Close() })
+			transceiver, err := upstream.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo,
+				webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var preferences []webrtc.RTPCodecParameters
+			for _, codec := range transceiver.Sender().GetParameters().Codecs {
+				if strings.EqualFold(codec.MimeType, "video/"+name) &&
+					(name == "vp8" || strings.Contains(codec.SDPFmtpLine, "profile-level-id=42e01f") &&
+						strings.Contains(codec.SDPFmtpLine, "packetization-mode=1")) || codec.MimeType == webrtc.MimeTypeRTX {
+					preferences = append(preferences, codec)
+				}
+			}
+			if err = transceiver.SetCodecPreferences(preferences); err != nil {
+				t.Fatal(err)
+			}
+			for _, codec := range preferences {
+				if !strings.EqualFold(codec.MimeType, "video/"+name) {
+					continue
+				}
+				track, createErr := webrtc.NewTrackLocalStaticRTP(codec.RTPCodecCapability, "video", "upstream")
+				if createErr != nil {
+					t.Fatal(createErr)
+				}
+				if err = transceiver.Sender().ReplaceTrack(track); err != nil {
+					t.Fatal(err)
+				}
+				break
+			}
+			offer, err := upstream.CreateOffer(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = upstream.SetLocalDescription(offer); err != nil {
+				t.Fatal(err)
+			}
+			receiver, answer, err := engine.NewReceiver(ReceiverOptions{Offer: offer, EdgeCapacity: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = receiver.Close() })
+			for attempt := 0; attempt < 2; attempt++ {
+				var description sdp.SessionDescription
+				if err = description.UnmarshalString(answer.SDP); err != nil {
+					t.Fatal(err)
+				}
+				var codecs []sdp.Codec
+				all := description.GetCodecMap()
+				for _, media := range description.MediaDescriptions {
+					for _, payload := range media.MediaName.Formats {
+						id, _ := strconv.Atoi(payload)
+						codecs = append(codecs, all[uint8(id)])
+					}
+				}
+				if len(codecs) != 2 || receiver.Codec() != name {
+					t.Fatalf("answer must retain one %s primary and its repair codec: %v", name, codecs)
+				}
+				for _, codec := range codecs {
+					if strings.EqualFold(codec.Name, "rtx") {
+						continue
+					}
+					if !strings.EqualFold(codec.Name, receiver.Codec()) {
+						t.Fatalf("unexpected primary codec: %v", codec)
+					}
+					found := false
+					for _, repair := range codecs {
+						found = found || (strings.EqualFold(repair.Name, "rtx") && repair.Fmtp == fmt.Sprintf("apt=%d", codec.PayloadType))
+					}
+					if !found {
+						t.Fatal("answer retained repair for a different primary")
+					}
+				}
+				if err = upstream.SetRemoteDescription(answer); err != nil {
+					t.Fatal(err)
+				}
+				if attempt == 0 {
+					offer, err = upstream.CreateOffer(&webrtc.OfferOptions{ICERestart: true})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err = upstream.SetLocalDescription(offer); err != nil {
+						t.Fatal(err)
+					}
+					var reused bool
+					answer, reused, err = receiver.Renegotiate(offer, nil)
+					if err != nil || !reused {
+						t.Fatalf("restart replaced or failed the receiver: %v", err)
+					}
 				}
 			}
 		})

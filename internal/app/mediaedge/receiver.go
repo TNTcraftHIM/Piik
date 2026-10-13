@@ -454,7 +454,8 @@ func selectReceiverVideoCodec(connection *webrtc.PeerConnection) (string, error)
 		}
 		// Pion may fall back to a MIME-only match. Encoded fanout cannot advertise
 		// Constrained Baseline downstream after accepting a different profile.
-		for _, parameters := range transceiver.Receiver().GetParameters().Codecs {
+		negotiated := transceiver.Receiver().GetParameters().Codecs
+		for _, parameters := range negotiated {
 			name := strings.TrimPrefix(strings.ToLower(parameters.MimeType), "video/")
 			if _, supported := videoCodecs[name]; !supported {
 				continue
@@ -462,7 +463,20 @@ func selectReceiverVideoCodec(connection *webrtc.PeerConnection) (string, error)
 			if name == "h264" && !forwardableH264(parameters.SDPFmtpLine) {
 				continue
 			}
-			if err := transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{parameters}); err != nil {
+			preferences := []webrtc.RTPCodecParameters{parameters}
+			for _, repair := range negotiated {
+				if !strings.EqualFold(repair.MimeType, webrtc.MimeTypeRTX) {
+					continue
+				}
+				for _, field := range strings.Split(repair.SDPFmtpLine, ";") {
+					key, value, _ := strings.Cut(strings.TrimSpace(field), "=")
+					if key == "apt" && strings.TrimSpace(value) == strconv.Itoa(int(parameters.PayloadType)) {
+						preferences = append(preferences, repair)
+						break
+					}
+				}
+			}
+			if err := transceiver.SetCodecPreferences(preferences); err != nil {
 				return "", err
 			}
 			return name, nil

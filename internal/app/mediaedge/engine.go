@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -84,7 +85,18 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 
 	mediaEngine := &webrtc.MediaEngine{}
 	for _, codec := range []string{"h264", "vp8"} {
-		if err := mediaEngine.RegisterCodec(videoCodecs[codec], webrtc.RTPCodecTypeVideo); err != nil {
+		primary := videoCodecs[codec]
+		if err := mediaEngine.RegisterCodec(primary, webrtc.RTPCodecTypeVideo); err != nil {
+			return nil, err
+		}
+		// Keep the standard repair stream paired with its media codec. Reusing
+		// old primary sequence numbers cannot repair packets outside SRTP's
+		// replay window after a network outage (RFC 4588).
+		if err := mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+			RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeRTX,
+				ClockRate: videoClockRate, SDPFmtpLine: "apt=" + strconv.Itoa(int(primary.PayloadType))},
+			PayloadType: primary.PayloadType + 1,
+		}, webrtc.RTPCodecTypeVideo); err != nil {
 			return nil, err
 		}
 	}

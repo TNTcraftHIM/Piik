@@ -11,10 +11,11 @@ Git/PRs own completed history.
 ## Now
 
 - [ ] **Mixed-endpoint address-change recovery.** The expanded process laboratory
-  observed a brief picture burst followed by a stall on Browser Host/App Viewer
-  after changing the Host's public UDP address. Observe the full bounded recovery
-  window with Native diagnostics before assigning a product cause; retain audio,
-  advancing-picture, current-path and cleanup assertions.
+  recovers all four endpoint pairs, but Browser Host/App Viewer took 13..32 seconds
+  and the slow trial repeatedly retransmitted old primary packets. The Native
+  receiver omitted standard RTX registration and codec selection. Verify its
+  repair with the same process cases before claiming a recovery-time improvement;
+  retain audio, advancing-picture, current-path and cleanup assertions.
 
 - [ ] **Intermittent RTP clock-check timeout.** Linux CI intermittently times out
   waiting for the second packet in the existing timestamp/generation checks.
