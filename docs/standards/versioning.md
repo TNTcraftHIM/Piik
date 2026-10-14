@@ -149,6 +149,10 @@ Updates remain a manual action. Release prose stays on GitHub/Gitee; the App
 does not fetch or render remote Markdown or add a second changelog store.
 Direct download remains the primary action; reading notes is optional. Keep the
 major warning inline, without a confirmation dialog or mandatory website detour.
+The same notice offers the official website's download section as a manual
+alternative, including the verified Gitee mirror. API response time does not
+measure package-download throughput; do not add speed probes or automatic
+provider switching to an otherwise valid update check.
 
 Older installed Apps cannot acquire new warning UI from release metadata.
 Their historical download behavior is accepted; do not split release feeds or

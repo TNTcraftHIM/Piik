@@ -186,7 +186,8 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
           : !state.ready ? <><Glyph name="network" size={14} /><span className={vis ? "visually-hidden" : undefined}>{t("interaction.reconnecting")}</span></>
           : !vis && <span>{t("interaction.ephemeral")}</span>}
       </div>
-      {!settingsOpen && draft && <span className="lr-chat-count" aria-hidden="true">{Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>}
+      {!settingsOpen && <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft ? undefined : "hidden",
+        minWidth: `${String(MAX_CHAT_CODE_POINTS).length * 2 + 3}ch` }}>{Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>}
       </footer>
     </FloatingPanel>
     <div className="lr-interaction-couch" ref={area}>

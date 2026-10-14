@@ -1264,10 +1264,15 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-welcome-catalog li > span:first-child { display: block; }
 .lr-welcome-catalog .lr-welcome-cipher { margin-top: 6px; }
 .lr-input.lr-name-editor {
-  width: clamp(140px, 18vw, 200px);
+  flex: 1;
+  min-width: 0;
+  width: 0;
   height: 40px;
   border-radius: 999px;
 }
+.lr-group-name { width: 280px; max-width: 100%; flex-wrap: nowrap; }
+.lr-group-name > .lr-name-hint { flex: 1; width: 0; }
+.lr-group-name .lr-name-tag { width: 100%; }
 
 .lr-name-tag {
   display: inline-flex;
@@ -1626,6 +1631,7 @@ html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
 .lr-client-launch-detail { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font: 13px/1.6 var(--mono); }
 .lr-client-release { display: grid; justify-items: center; gap: 6px; max-width: 100%; }
 .lr-client-release .lr-client-project-links { flex-direction: column; align-items: center; gap: 4px; font-size: 12.5px; }
+.lr-client-release-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 20px; }
 .lr-client-release-warning { max-width: 42ch; color: var(--muted); font-size: 12px; line-height: 1.6; text-align: center; }
 .lr-client-update {
   gap: 7px;
@@ -1871,7 +1877,6 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   }
   .lr-viewer-action-cluster > .lr-comic-tip-wrap .lr-btn { width: 100%; }
   .lr-viewer-action-separator { display: none; }
-  .lr-input.lr-name-editor { width: min(136px, 40vw); }
   .lr-group-actions { display: flex; width: 100%; gap: 8px; min-width: 0; }
   .lr-host-diagnostics-slot,
   .lr-viewer-actions-slot {

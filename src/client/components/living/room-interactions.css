@@ -46,7 +46,7 @@
 .lr-chat-export { display: grid; justify-items: start; gap: 8px; padding-top: 16px; border-top: 1px solid var(--wall-2); }
 .lr-chat-export small { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .lr-chat-footer .lr-interaction-status { flex: 1 1 140px; min-width: 0; min-height: 0; margin: 0; overflow-wrap: anywhere; }
-.lr-chat-count { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; }
+.lr-chat-count { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .lr-interaction-status { display: flex; align-items: center; gap: 6px; min-height: 24px; margin-top: 6px; font-size: 11px; color: var(--muted); }
 .lr-person-menu { transform-origin: center bottom; }
 .lr-person-menu-body { flex: 1; min-height: 0; padding-top: 12px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
