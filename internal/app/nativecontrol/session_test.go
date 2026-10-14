@@ -123,6 +123,11 @@ func TestMain(tests *testing.M) {
 		runQuietCaptureFixture(directory)
 		os.Exit(0)
 	}
+	// Self-exec capture fixtures inherit this before their race runtime starts.
+	// Real native helpers have no race detector's default one-second exit sleep.
+	if err := os.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0"); err != nil {
+		panic(err)
+	}
 	os.Exit(tests.Run())
 }
 
