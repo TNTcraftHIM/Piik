@@ -23,6 +23,7 @@
     "check:native": "node scripts/check-go.mjs --capture-only",
     "gate:app-media": "tsx scripts/app-media-gate.ts",
     "gate:network-lab": "tsx scripts/network-lab.ts",
+    "gate:media-lifecycle": "tsx scripts/media-lifecycle-gate.ts",
     "gate:app-native-host": "tsx scripts/app-native-host-gate.ts",
     "gate:app-browser-fanout": "tsx scripts/app-browser-fanout-gate.ts",
     "gate:embedded-sfu": "tsx scripts/embedded-sfu-gate.ts",

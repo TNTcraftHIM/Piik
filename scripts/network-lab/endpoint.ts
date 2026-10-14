@@ -34,7 +34,7 @@ export async function endpointWorker(): Promise<void> {
   try {
     for await (const line of createInterface({ input: process.stdin })) {
       const request = JSON.parse(line) as { id: number; action: string; origin?: string; app?: boolean;
-        url?: string; output?: string; load?: boolean; ipv6?: boolean; prediction?: boolean; sfuOnly?: boolean; peer?: { address: string; port: number } };
+        url?: string; output?: string; delayMs?: number; load?: boolean; ipv6?: boolean; prediction?: boolean; sfuOnly?: boolean; peer?: { address: string; port: number } };
       try {
         let result: unknown;
         if (request.action === "probe") {
@@ -51,8 +51,8 @@ export async function endpointWorker(): Promise<void> {
           await waitForSample(deadline => fetchJsonBefore<{ status: string }>(`${origin}/healthz`, deadline),
             value => value.status === "ok", 10_000);
           if (request.app) {
-            app = spawn(resolve("build/network-lab/bin/piik-app"), ["--site", origin, "--debug", "--config", join(profile, "app.json")],
-              { stdio: "pipe", env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true", PIIK_LOG_DIR: join(profile, "logs") } });
+            app = spawn(resolve(`build/network-lab/bin/piik-app${process.platform === "win32" ? ".exe" : ""}`), ["--site", origin, "--debug", "--config", join(profile, "app.json")],
+              { stdio: "pipe", windowsHide: true, env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true", PIIK_LOG_DIR: join(profile, "logs") } });
             app.stderr.on("data", data => log("app", data));
             await once(app, "spawn");
             ports.push((await readAppEndpoint(app)).port); app.stdout.resume();
@@ -68,18 +68,33 @@ export async function endpointWorker(): Promise<void> {
           const version = await waitForVersion(debugPort, chrome);
           cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 10_000);
           await cdp.call("Browser.setPermission", { origin, permission: { name: "loopback-network" }, setting: "granted" }, undefined, Date.now() + 5000);
-          result = { browser: version.Browser, app: request.app === true };
+          result = { browser: version.Browser, app: request.app === true, appPort: request.app ? ports[0] : null };
         } else if (request.action === "navigate") {
-          page = await createPage(cdp!, request.url!, pageProbe);
+          if (page) {
+            const oldTimeOrigin = await evaluate<number>(cdp!, page!, "performance.timeOrigin", Date.now() + 5000);
+            const navigation = await cdp!.call<{ loaderId?: string; errorText?: string }>("Page.navigate", { url: request.url! }, page.sessionId, Date.now() + 5000);
+            if (navigation.errorText) throw new Error(navigation.errorText);
+            await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
+              `${navigation.loaderId ? `performance.timeOrigin !== ${oldTimeOrigin} && ` : ""}document.readyState === 'complete' && Boolean(window.networkLab)`, deadline), Boolean, 10_000);
+          } else page = await createPage(cdp!, request.url!, pageProbe);
+          result = true;
+        } else if (request.action === "reload") {
+          const oldTimeOrigin = await evaluate<number>(cdp!, page!, "performance.timeOrigin", Date.now() + 5000);
+          await cdp!.call("Page.reload", {}, page!.sessionId, Date.now() + 5000);
+          await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
+            `performance.timeOrigin !== ${oldTimeOrigin} && document.readyState === 'complete' && Boolean(window.networkLab)`, deadline), Boolean, 10_000);
           result = true;
         } else if (request.action === "share") {
-          await click('button[aria-controls="host-advanced-door"]');
+          const advanced = 'button[aria-controls="host-advanced-door"]';
+          await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
+            `Boolean(document.querySelector(${JSON.stringify(advanced)}))`, deadline), Boolean, 10_000);
+          if (await evaluate<boolean>(cdp!, page!, `document.querySelector(${JSON.stringify(advanced)}).getAttribute('aria-expanded') !== 'true'`, Date.now() + 5000)) await click(advanced);
           const prediction = 'button[role="switch"][aria-label^="Enhanced NAT traversal"]';
           if (request.sfuOnly) {
             if (request.prediction) throw new Error("SFU-only cannot request NAT enhancement");
             await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
               `Boolean(document.querySelector('button[role="switch"][aria-label^="Server media"][aria-disabled="true"][aria-checked="true"]')) && !document.querySelector(${JSON.stringify(prediction)})`, deadline), Boolean, 10_000);
-          } else {
+          } else if (request.prediction !== undefined) {
             await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
               `document.querySelector(${JSON.stringify(prediction)})?.getAttribute('aria-disabled') !== 'true' && Boolean(document.querySelector(${JSON.stringify(prediction)}))`, deadline), Boolean, 10_000);
             const checked = await evaluate<boolean>(cdp!, page!,
@@ -98,12 +113,22 @@ export async function endpointWorker(): Promise<void> {
             deadline), Boolean, 10_000);
           await click('button[data-source-tab="browser"]');
           await click(".lr-source-option.is-browser");
-          await waitForSample(sample, value => value.sharing && value.width > 0 && value.natPrediction === request.prediction, 30_000);
+          await waitForSample(sample, value => value.sharing && value.width > 0 &&
+            (request.prediction === undefined || value.natPrediction === request.prediction), 30_000);
           result = await evaluate<string>(cdp!, page!, "document.querySelector('.lr-invite-url').value", Date.now() + 5000);
         } else if (request.action === "sample") {
           result = await sample();
+        } else if (request.action === "delay-peer-signals") {
+          if (!Number.isInteger(request.delayMs) || request.delayMs! < 0 || request.delayMs! > 30_000) throw new Error("Invalid signal delay");
+          await evaluate(cdp!, page!, `networkLab.delayPeerSignals(${request.delayMs})`, Date.now() + 5000);
+          result = true;
+        } else if (request.action === "reset-playback-progress") {
+          await evaluate(cdp!, page!, "networkLab.resetPlaybackProgress()", Date.now() + 5000);
+          result = true;
         } else if (request.action === "freeze-picture") {
           result = await evaluate(cdp!, page!, "networkLab.freezeCapture()", Date.now() + 5000);
+        } else if (request.action === "resume-picture") {
+          result = await evaluate(cdp!, page!, "networkLab.resumeCapture()", Date.now() + 5000);
         } else if (request.action === "signal-probe") {
           result = await evaluate(cdp!, page!, "networkLab.signalProbe()", Date.now() + 5000);
         } else if (request.action === "logs") {

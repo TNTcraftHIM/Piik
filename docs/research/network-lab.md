@@ -223,6 +223,49 @@ ends at the first sample with at least 15 decoded frames; sampling is every
 500 ms. Recovery checks poll every second. These are sampled media-admission
 times, not exact first-packet timestamps or one-way media latency.
 
+## Local Media Lifecycle Gate
+
+`npm run gate:media-lifecycle -- --repeat 2` reuses the process layer's endpoint,
+synthetic picture/tone, stats and cleanup on loopback, without Linux namespaces
+or administrator permissions. Set `CHROME_PATH`, run `npm run build:web`, and
+build the current binaries with
+`go build -o build/network-lab/bin/ ./cmd/piik-server ./cmd/piik-app` first.
+`--list` lists cases; `--cases browser-browser,app-app` selects a subset.
+
+The four Browser/App directions exercise initial playback, a quiet source and
+repainting, stop/reshare, either page reloading, joining before sharing, and
+replacement during unfinished preparation. The last case releases real old SDP
+after the new share is playing. The SFU-only case covers the same steady
+lifecycle, and the two fallback cases delay real Peer signaling for 15 seconds
+to exercise SFU commitment followed by direct continuation. Video-frame callbacks
+check that the working route keeps presenting during that continuation.
+
+These are real local UI, room and media paths, not simulated route messages.
+App senders use Browser H.264 ingress and Native fanout; App receivers use the
+Native receive/playback bridge. Each local App has its own approved origin, and
+the gate checks the exact control origin and current Native edge. SFU fallback
+uses Browser publication/subscription here. This gate does not validate physical
+Native capture/publication, real NATs or Internet connection success rates.
+
+Reports under ignored `build/media-lifecycle/` record source identity, binary
+hashes, Browser versions, stage samples, screenshots and resource cleanup.
+First-picture timing starts after the stage's navigation/share action completes;
+it is not end-to-end startup time. `--negative frozen-picture --cases browser-browser` freezes
+the source after playback; it must fail specifically for non-progressing decoded
+picture. `--negative cancel --cases browser-browser` cancels after playback.
+Both must exit unsuccessfully with complete cleanup; an unrelated setup failure
+is not a passing negative control.
+Real link impairment and sustained resolution recovery remain in the namespace
+and Pion transport gates, rather than interpreting a CDP throttle as UDP shaping.
+
+On 2026-10-15, all seven cases passed twice on Windows with Chrome
+154.0.8037.98, including cleanup. The four SFU-to-Peer continuation windows
+had maximum presented-frame gaps of 76--118 ms on loopback; these are not WAN
+latency guarantees. Frozen-picture and cancellation controls failed for their
+intended reasons and cleaned up. The route regression separately covers a connected
+Peer reaching its operation deadline before a first frame: untried fallback must
+survive that deadline, while each attempted route retains its finite budget.
+
 ## Sustained Quality Recovery
 
 The [2026-10-14 comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38446966925)

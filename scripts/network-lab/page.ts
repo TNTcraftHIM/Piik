@@ -3,7 +3,18 @@
 export const pageProbe = String.raw`(() => {
   localStorage.setItem('piik:ui-lang','en'); localStorage.setItem('piik:ui-mode','text');
   const peers=[], sockets=[], events=[], errors=[], controls=[];
-  let route=null,natPrediction=null,freezeCapture=()=>{};
+  let route=null,natPrediction=null,freezeCapture=()=>{},resumeCapture=()=>{},peerSignalDelay=0,peerSignalReleaseAt=0;
+  let observedVideo=null,frameCallback=0,renderedFrames=0,lastFrameAt=0,maxFrameGapMs=0;
+  const observeVideo=video=>{
+    if(video===observedVideo)return;
+    observedVideo?.cancelVideoFrameCallback(frameCallback);observedVideo=video;
+    if(!video)return;
+    const frame=now=>{
+      if(video!==observedVideo)return;
+      if(lastFrameAt)maxFrameGapMs=Math.max(maxFrameGapMs,now-lastFrameAt);
+      lastFrameAt=now;renderedFrames++;frameCallback=video.requestVideoFrameCallback(frame);
+    };frameCallback=video.requestVideoFrameCallback(frame);
+  };
   const PC=RTCPeerConnection, WS=WebSocket;
   const picture=document.createElement('canvas');picture.width=64;picture.height=36;
   const pictureContext=picture.getContext('2d',{willReadFrequently:true});
@@ -30,7 +41,21 @@ export const pageProbe = String.raw`(() => {
         record(events,value);
       });
     }
-    send(raw){if(this.url.includes('/control')){try{const m=JSON.parse(raw);record(controls,{type:m.type,connectionId:m.connectionId,punched:m.punched});}catch{}}super.send(raw);}
+    send(raw){
+      let m;try{m=JSON.parse(raw);}catch{}
+      if(this.url.includes('/control')){
+        if(m)record(controls,{type:m.type,connectionId:m.connectionId,punched:m.punched});
+      }else if(m?.type==='signal'&&peerSignalDelay>0){
+        // Delay real signaling once; never invent SDP, route state or readiness.
+        if(!peerSignalReleaseAt)peerSignalReleaseAt=performance.now()+peerSignalDelay;
+        const remaining=peerSignalReleaseAt-performance.now();
+        if(remaining>0){
+          record(events,{at:performance.now(),type:'test-signal-delayed',connectionId:m.connectionId});
+          setTimeout(()=>{if(this.readyState===WS.OPEN)super.send(raw);},remaining);return;
+        }
+      }
+      super.send(raw);
+    }
   };
   navigator.mediaDevices.getDisplayMedia=async()=>{
     const canvas=document.createElement('canvas'); canvas.width=1280; canvas.height=720;
@@ -42,8 +67,9 @@ export const pageProbe = String.raw`(() => {
         ctx.fillRect((x*64+frame*7)%1280,y*60,45,42);
       }
       ctx.fillStyle='#fff';ctx.font='70px sans-serif';ctx.fillText(String(frame++),80,540);};
-    draw();const timer=setInterval(draw,1000/30),stream=canvas.captureStream(30);
-    freezeCapture=()=>clearInterval(timer);
+    draw();let timer=setInterval(draw,1000/30);const stream=canvas.captureStream(30);
+    freezeCapture=()=>{clearInterval(timer);timer=null;};
+    resumeCapture=()=>{if(!timer)timer=setInterval(draw,1000/30);};
     const video=stream.getVideoTracks()[0],stop=video.stop.bind(video);
     video.stop=()=>{clearInterval(timer);stop();};
     const ac=new AudioContext(),osc=ac.createOscillator(),dest=ac.createMediaStreamDestination();
@@ -52,7 +78,8 @@ export const pageProbe = String.raw`(() => {
     sound.stop=()=>{if(stopped)return;stopped=true;osc.stop();void ac.close();stopSound();};
     stream.addTrack(sound);return stream;
   };
-  window.networkLab={freezeCapture:()=>freezeCapture(),async signalProbe(){
+  window.networkLab={freezeCapture:()=>freezeCapture(),resumeCapture:()=>resumeCapture(),delayPeerSignals:ms=>{peerSignalDelay=ms;peerSignalReleaseAt=0;},
+    resetPlaybackProgress:()=>{renderedFrames=0;lastFrameAt=performance.now();maxFrameGapMs=0;},async signalProbe(){
     const socket=sockets.findLast(s=>!s.url.includes('/control')&&s.readyState===WS.OPEN);
     if(!socket)return false;
     return new Promise(resolve=>{
@@ -89,6 +116,7 @@ export const pageProbe = String.raw`(() => {
       }
     }
     const video=document.querySelector('video');
+    observeVideo(video);
     const playbackTrack=video?.srcObject?.getVideoTracks?.()[0];
     const playbackPeerId=playbackTrack?peers.findIndex(peer=>peer.getReceivers().some(receiver=>receiver.track===playbackTrack)):-1;
     let pictureHash=null;
@@ -99,8 +127,10 @@ export const pageProbe = String.raw`(() => {
     }
     return{at:performance.now(),width:video?.videoWidth||0,height:video?.videoHeight||0,
       frames:video?.getVideoPlaybackQuality().totalVideoFrames||0,pictureHash,playbackPeerId,route,natPrediction,stats,events:[...events],errors:[...errors],controls:[...controls],
+      playbackProgress:{renderedFrames,lastFrameAt,maxFrameGapMs:Math.max(maxFrameGapMs,lastFrameAt?performance.now()-lastFrameAt:0)},
       sharing:!!document.querySelector('button[aria-label="Stop sharing"]'),
       controlOpen:sockets.some(s=>s.url.includes('/control')&&s.readyState===WS.OPEN),
+      controlOrigins:sockets.filter(s=>s.url.includes('/control')&&s.readyState===WS.OPEN).map(s=>new URL(s.url).origin),
       peerStates:peers.map(p=>p.connectionState),text:document.body.innerText.slice(-2000)};
   }};
 })();`;
@@ -121,6 +151,8 @@ export interface MediaSample {
   controls: Array<{ type: string; connectionId?: string }>;
   sharing: boolean;
   controlOpen: boolean;
+  controlOrigins: string[];
+  playbackProgress: { renderedFrames: number; lastFrameAt: number; maxFrameGapMs: number };
   peerStates: string[];
   text: string;
 }

@@ -138,6 +138,10 @@ does not establish coverage.
   It requires a disposable Linux runner with namespace administration. Its own
   routers contain all firewall and traffic-shaping changes; do not run it on a
   production service or treat its model results as a public success rate.
+- `gate:media-lifecycle` reuses that laboratory's real Browser/App endpoints on
+  loopback for restart, replacement and P2P/SFU continuity. It needs Chrome and
+  current App/Server binaries, without namespace or firewall changes. Synthetic
+  capture keeps it separate from physical-device and real-NAT acceptance.
 - On Windows, execute App/Server and Go test binaries only from stable
   project build paths. Go's temporary compiler/cache files are not firewall
   identities; do not run network tests with a changing temporary executable

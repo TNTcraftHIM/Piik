@@ -26,6 +26,7 @@
     "access-privacy-gate.ts",
     "browser-local-pool-probe.ts",
     "network-lab.ts",
+    "media-lifecycle-gate.ts",
     "app-browser-fanout-gate.ts",
     "app-media-gate.ts",
     "app-native-host-gate.ts",

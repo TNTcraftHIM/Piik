@@ -3,11 +3,11 @@ import { once } from "node:events";
 import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import { cleanupRun, withDeadline } from "./browser-gate-harness";
 import { endpointWorker } from "./network-lab/endpoint";
+import { Endpoint } from "./network-lab/endpoint-client";
 import { command, LabNetwork, SITE_IP, SITE_IPV6, SITE_ORIGIN } from "./network-lab/network";
 import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, checkQualityRecovery, hasPicture, selectScenarios, summarizeTrials, type Scenario, type TrialSummary } from "./network-lab/scenarios";
 import { echoWorker, type ProbeResult } from "./network-lab/udp";
@@ -20,46 +20,6 @@ const { values } = parseArgs({ options: { worker: { type: "string" }, suite: { t
   cases: { type: "string" }, repeat: { type: "string", default: "1" }, seed: { type: "string", default: "1" },
   prediction: { type: "string", default: "on" },
   ipv6: { type: "boolean" }, list: { type: "boolean" }, verify: { type: "boolean" }, negative: { type: "string" } } });
-
-class Endpoint {
-  private id = 0;
-  private failure: Error | null = null;
-  private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
-  readonly process: ChildProcessWithoutNullStreams;
-  constructor(namespace: string, readonly profile: string, private readonly signal: AbortSignal) {
-    this.process = spawn("ip", ["netns", "exec", namespace, process.execPath, "--import", "tsx", ENTRY, "--worker", "endpoint"],
-      { cwd: ROOT, env: { ...labEnvironment(), PIIK_NETWORK_LAB_PROFILE: profile }, stdio: "pipe" });
-    this.process.stderr.on("data", data => process.stderr.write(data));
-    this.process.stdin.on("error", error => this.fail(error));
-    createInterface({ input: this.process.stdout }).on("line", line => {
-      try {
-        const reply = JSON.parse(line), pending = this.pending.get(reply.id);
-        if (!pending) return;
-        this.pending.delete(reply.id);
-        if (reply.error) pending.reject(new Error(reply.error)); else pending.resolve(reply.result);
-      } catch { this.fail(new Error("Invalid endpoint response")); }
-    });
-    this.process.on("error", error => this.fail(error));
-    this.process.on("exit", (code, signal) => this.fail(new Error(`Endpoint exited (${code ?? signal})`)));
-  }
-  private fail(error: Error): void { this.failure = error; for (const item of this.pending.values()) item.reject(error); this.pending.clear(); }
-  async call<T>(action: string, args: Record<string, unknown> = {}, timeout = 45_000): Promise<T> {
-    const id = ++this.id;
-    if (this.failure) throw this.failure;
-    const observeAbort = !["close", "logs", "screenshot"].includes(action);
-    if (observeAbort) this.signal.throwIfAborted();
-    const abort = () => this.pending.get(id)?.reject(new Error("Laboratory run cancelled"));
-    try {
-      return await withDeadline(() => new Promise<T>((resolveCall, reject) => {
-        this.pending.set(id, { resolve: value => resolveCall(value as T), reject });
-        if (observeAbort) this.signal.addEventListener("abort", abort, { once: true });
-        this.process.stdin.write(JSON.stringify({ id, action, ...args }) + "\n", error => {
-          if (error) { this.pending.delete(id); reject(error); }
-        });
-      }), Date.now() + timeout);
-    } finally { this.pending.delete(id); this.signal.removeEventListener("abort", abort); }
-  }
-}
 
 function labEnvironment(): NodeJS.ProcessEnv {
   return { PATH: process.env.PATH, CHROME_PATH: process.env.CHROME_PATH, LANG: "C.UTF-8", TMPDIR: process.env.TMPDIR };
@@ -125,7 +85,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
       await withDeadline(() => once(stun!.stdout, "data"), Date.now() + 5000);
     }
     for (let i = 0; i < (scenario.sibling ? 3 : 2); i++) endpoints.push(new Endpoint(network.endpoint(i),
-      await mkdtemp(join(tmpdir(), "piik-client-media-")), signal));
+      await mkdtemp(join(tmpdir(), "piik-client-media-")), signal, labEnvironment()));
     stage("calibration");
     const baselines = await Promise.all(endpoints.map(endpoint => endpoint.call<ProbeResult>("probe")));
     result.mappingCalibration = baselines;
