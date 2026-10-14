@@ -251,14 +251,21 @@ func TestControlSessionSharesOneBoundedSocketForResponsesAndEvents(t *testing.T)
 		Current: func() bool { return current }}
 	current = false
 	extension.events <- retired
+	prepared := make(chan struct{})
 	extension.events <- ControlEvent{
-		Value:   controlMessage{Version: ProtocolVersion, Type: "current-event"},
-		Current: func() bool { return true },
+		Value:       controlMessage{Version: ProtocolVersion, Type: "current-event"},
+		Current:     func() bool { return true },
+		BeforeWrite: func() { close(prepared) },
 	}
 	var currentEvent controlMessage
 	readControl(t, connection, &currentEvent)
 	if currentEvent.Type != "current-event" {
 		t.Fatalf("retired event escaped the delivery fence: %+v", currentEvent)
+	}
+	select {
+	case <-prepared:
+	default:
+		t.Fatal("response was visible before its operation released admission")
 	}
 	extension.events <- controlMessage{
 		Version: ProtocolVersion, ID: "event_123456", Type: "extension-event",

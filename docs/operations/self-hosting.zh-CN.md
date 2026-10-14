@@ -1,6 +1,6 @@
 # 部署 Piik Server
 
-[English](./self-hosting.md) · 简体中文 · [文档导航](../README.md)
+[English](./self-hosting.md) · 简体中文 · [文档导航](../guide/README.zh-CN.md)
 
 Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服务端程序**中。
 解压后即可运行，房间数据保存在 SQLite 中。

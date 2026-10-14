@@ -54,6 +54,9 @@ type ControlSession interface {
 type ControlEvent struct {
 	Value   any
 	Current func() bool
+	// BeforeWrite releases an operation's admission before its ACK can trigger
+	// the next command. It must not block on I/O or send another event.
+	BeforeWrite func()
 }
 
 type Endpoint struct {
@@ -442,6 +445,9 @@ func (server *Server) handleControl(response http.ResponseWriter, request *http.
 		if event, ok := value.(ControlEvent); ok {
 			if event.Current != nil && !event.Current() {
 				return nil
+			}
+			if event.BeforeWrite != nil {
+				event.BeforeWrite()
 			}
 			value = event.Value
 		}

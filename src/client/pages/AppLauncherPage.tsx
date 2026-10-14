@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
 
 import { BrandMark } from "../components/living/BrandMark";
@@ -56,6 +56,8 @@ export function AppLauncherPage() {
   const [target, setTarget] = useState<string>();
   const [siteBusy, setSiteBusy] = useState(false);
   const [siteError, setSiteError] = useState<string>();
+  // Background reads cannot replace a newer command's result or optimistic state.
+  const stateChanges = useRef({ revision: 0, pending: 0 });
   const requestedSite = new URLSearchParams(window.location.search).get("site");
   const validSite = requestedSite && (() => {
     try {
@@ -79,15 +81,21 @@ export function AppLauncherPage() {
     let reading = false;
     const readState = () => {
       if (reading || !current) return;
-      reading = true;
       clearTimeout(timer);
+      if (stateChanges.current.pending) {
+        timer = setTimeout(readState, 750);
+        return;
+      }
+      reading = true;
+      const revision = stateChanges.current.revision;
+      const fresh = () => current && revision === stateChanges.current.revision && !stateChanges.current.pending;
       void fetch("/api/client-launcher", { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error();
         return launcherStateSchema.parse(await response.json());
       })
       .then((state) => {
-        if (!current) return;
+        if (!fresh()) return;
         if (!restoredSettings) {
           setMode(state.defaultMode);
           setLocalAccessPassword(state.localAccessPassword);
@@ -116,11 +124,14 @@ export function AppLauncherPage() {
           .catch(() => undefined);
       })
       .catch(() => {
-        if (!current) return;
+        if (!fresh()) return;
         setError({ kind: "load" });
         setStarting(false);
         setLoading(false);
-      }).finally(() => { reading = false; });
+      }).finally(() => {
+        reading = false;
+        if (current && !fresh()) timer = setTimeout(readState, 750);
+      });
     };
     void readState();
     const refresh = () => { void readState(); };
@@ -132,8 +143,15 @@ export function AppLauncherPage() {
     };
   }, [reload]);
 
+  function beginStateChange(): () => void {
+    stateChanges.current.revision++;
+    stateChanges.current.pending++;
+    return () => { stateChanges.current.pending--; };
+  }
+
   async function enableDebug(): Promise<void> {
     if (debugBusy) return;
+    const finish = beginStateChange();
     setDebugBusy(true);
     setDebugError(false);
     try {
@@ -144,7 +162,7 @@ export function AppLauncherPage() {
       setAppDebug(true);
       setDebug(true);
     } catch { setDebugError(true); }
-    finally { setDebugBusy(false); }
+    finally { finish(); setDebugBusy(false); }
   }
 
   function launchURL(target: string): string {
@@ -163,6 +181,7 @@ export function AppLauncherPage() {
     event.preventDefault();
     if (starting ||
       (mode === "local" && lan !== undefined && !lan.selected)) return;
+    const finish = beginStateChange();
     setStarting(true);
     setError(null);
     try {
@@ -193,11 +212,12 @@ export function AppLauncherPage() {
     } catch {
       setError({ kind: "launch" });
       setStarting(false);
-    }
+    } finally { finish(); }
   }
 
   async function changeSite(nextSite: string): Promise<void> {
     if (siteBusy) return;
+    const finish = beginStateChange();
     setSiteBusy(true);
     setSiteError(undefined);
     try {
@@ -215,7 +235,7 @@ export function AppLauncherPage() {
       setSite(result.data.site);
     } catch {
       setSiteError(t("client.connect.saveFailed"));
-    } finally { setSiteBusy(false); }
+    } finally { finish(); setSiteBusy(false); }
   }
 
   return (

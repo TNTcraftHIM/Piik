@@ -8,11 +8,14 @@ import { z } from "zod";
 const source = ts.createSourceFile("AppLauncherPage.tsx", readFileSync(
   new URL("../src/client/pages/AppLauncherPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-let schema: string | undefined;
+const declarations: string[] = [];
 let effect: string | undefined;
 function collect(node: ts.Node): void {
-  if (ts.isVariableDeclaration(node) && node.name.getText(source) === "launcherStateSchema") {
-    schema = `const ${node.getText(source)};`;
+  if (ts.isVariableDeclaration(node) && /^launcher.*Schema$/.test(node.name.getText(source))) {
+    declarations.push(`const ${node.getText(source)};`);
+  }
+  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeSite", "enableDebug", "launch"].includes(node.name?.text ?? "")) {
+    declarations.push(node.getText(source));
   }
   if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect"
     && node.arguments[1]?.getText(source) === "[reload]") {
@@ -21,8 +24,8 @@ function collect(node: ts.Node): void {
   ts.forEachChild(node, collect);
 }
 collect(source);
-if (!schema || !effect) throw new Error("Missing App launcher state-read owner");
-const executable = ts.transpileModule(`${schema}\n(${effect})();`, {
+if (!effect) throw new Error("Missing App launcher state-read owner");
+const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: (${effect})(), changeSite, enableDebug, launch});`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -38,15 +41,35 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
   const setters = Object.fromEntries([
     "Mode", "LocalAccessPassword", "Lan", "Version", "Target", "Starting", "Site",
     "AppDebug", "Debug", "Error", "Loading", "Update",
+    "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
     state[name] = typeof value === "function" ? value(state[name]) : value;
   })]));
-  const window = new EventTarget();
+  const window = Object.assign(new EventTarget(), { location: { replace: vi.fn() } });
   const checkReleaseUpdate = vi.fn(async () => null);
-  const cleanup = runInNewContext(executable, {
-    ...setters, z, fetch, window, checkReleaseUpdate, setTimeout, clearTimeout,
-  }) as () => void;
-  return { state, setters, cleanup, checkReleaseUpdate, focus: () => window.dispatchEvent(new Event("focus")) };
+  const timers = new Map<number, () => void>();
+  let nextTimer = 0;
+  const actions = runInNewContext(executable, {
+    ...setters, z, fetch, window, checkReleaseUpdate,
+    stateChanges: { current: { revision: 0, pending: 0 } },
+    siteBusy: false, debugBusy: false, starting: false, site: saved.site,
+    mode: "link", lang: "en", vis: false, debug: false, appDebug: false, localAccessPassword: "",
+    consoleLanguage: () => "en", launchURL: (target: string) => target, t: (key: string) => key,
+    setTimeout: (callback: () => void, delay: number) => {
+      expect(delay).toBe(750);
+      timers.set(++nextTimer, callback);
+      return nextTimer;
+    },
+    clearTimeout: (id: number) => timers.delete(id),
+  }) as { cleanup(): void; changeSite(site: string): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
+  return { state, setters, ...actions, checkReleaseUpdate, focus: () => window.dispatchEvent(new Event("focus")),
+    retry: () => {
+      expect(timers.size).toBe(1);
+      const [id, callback] = [...timers][0]!;
+      timers.delete(id);
+      callback();
+    },
+  };
 }
 
 describe("App launcher state recovery", () => {
@@ -97,5 +120,56 @@ describe("App launcher state recovery", () => {
     expect(page.state).toEqual({});
     expect(page.checkReleaseUpdate).not.toHaveBeenCalled();
     for (const setter of Object.values(page.setters)) expect(setter).not.toHaveBeenCalled();
+  });
+
+  it.each(["site", "debug", "launch"] as const)("rejects stale read success and failure around a %s command", async (operation) => {
+    for (const failedRead of [false, true]) {
+      let resolveRead!: (value: ReturnType<typeof response>) => void;
+      let rejectRead!: (error: Error) => void;
+      const fetch = vi.fn(async (_url: string, options?: { method?: string }) => options?.method === "POST"
+        ? { ok: true, status: 200, json: async () => ({ site: "", target: "https://room.example" }) }
+        : response());
+      const page = mount(fetch);
+      await settle();
+      fetch.mockImplementationOnce(() => new Promise((resolve, reject) => { resolveRead = resolve; rejectRead = reject; }));
+      page.focus();
+      if (operation === "site") await page.changeSite("");
+      if (operation === "debug") await page.enableDebug();
+      if (operation === "launch") await page.launch({ preventDefault() {} });
+      const committed = { ...page.state };
+      if (failedRead) rejectRead(new Error("old read failed"));
+      else resolveRead(response());
+      await settle();
+      expect(page.state).toEqual(committed);
+      // One existing poll recovers the current App fact without restoring user edits.
+      page.state.LocalAccessPassword = "unsaved";
+      fetch.mockResolvedValueOnce(response({ ...saved, site: "", debug: true }));
+      page.retry();
+      await settle();
+      expect(page.state).toMatchObject({ Site: "", Debug: true, LocalAccessPassword: "unsaved" });
+      page.cleanup();
+    }
+  });
+
+  it("waits for all overlapping commands before reading again", async () => {
+    const pending: Array<(value: unknown) => void> = [];
+    const fetch = vi.fn((_url: string, options?: { method?: string }) => options?.method === "POST"
+      ? new Promise(resolve => pending.push(resolve)) : Promise.resolve(response()));
+    const page = mount(fetch);
+    await settle();
+    const approve = page.changeSite("");
+    const debug = page.enableDebug();
+    page.focus();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    pending[0]!({ ok: true, status: 200, json: async () => ({ site: "" }) });
+    await approve;
+    page.retry();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    pending[1]!({ ok: true });
+    await debug;
+    page.retry();
+    await settle();
+    expect(fetch).toHaveBeenCalledTimes(4);
+    page.cleanup();
   });
 });

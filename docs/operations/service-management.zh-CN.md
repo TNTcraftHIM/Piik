@@ -1,6 +1,6 @@
 # 服务管理
 
-[English](./service-management.md) · 简体中文 · [文档导航](../README.md)
+[English](./service-management.md) · 简体中文 · [文档导航](../guide/README.zh-CN.md)
 
 首次安装请从[部署指南](./self-hosting.zh-CN.md)开始。本页介绍 Linux 常驻服务与容器维护。
 

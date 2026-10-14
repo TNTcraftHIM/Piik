@@ -35,7 +35,16 @@ type punchCompleteResponse struct {
 	Connected bool `json:"connected"`
 }
 
-func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, complete func(any, error)) (any, error) {
+func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, complete func(any, error)) (value any, returnedErr error) {
+	var done chan struct{}
+	defer func() {
+		if done != nil && returnedErr != nil {
+			session.mu.Lock()
+			session.punchDone = nil
+			close(done)
+			session.mu.Unlock()
+		}
+	}()
 	switch envelope.Type {
 	case "prepare-punch":
 		var request preparePunchRequest
@@ -49,6 +58,10 @@ func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, co
 			return nil, protocolViolation("native connection preparation key is invalid")
 		}
 		servers, err := pionICEServers(request.ICEServers)
+		if err != nil {
+			return nil, err
+		}
+		done, err = session.beginPunchOperation()
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +90,8 @@ func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, co
 			prediction, err := preparation.Prepare()
 			result := punchPreparedResponse{response(envelope, "punch-prepared"), prediction}
 			complete(result, err)
-			session.emit(result)
+			session.mu.Lock()
+			session.finishOperation(&session.punchDone, done, result)
 		}()
 		return nil, nil
 	case "run-punch":
@@ -97,10 +111,16 @@ func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, co
 		if preparation == nil {
 			return nil, errors.New("connection preparation was retired")
 		}
+		var err error
+		done, err = session.beginPunchOperation()
+		if err != nil {
+			return nil, err
+		}
 		go func() {
 			result := punchCompleteResponse{response(envelope, "punch-complete"), preparation.Run(prediction)}
 			complete(result, nil)
-			session.emit(result)
+			session.mu.Lock()
+			session.finishOperation(&session.punchDone, done, result)
 		}()
 		return nil, nil
 	case "close-punch":
@@ -114,4 +134,17 @@ func (session *Session) handlePunch(envelope requestEnvelope, payload []byte, co
 		return response(envelope, "punch-closed"), nil
 	}
 	return nil, protocolViolation("unknown connection preparation request")
+}
+
+// Bound response workers as well as socket work. Keep this slot through response
+// delivery, independently of capture mutations; close-punch remains synchronous.
+func (session *Session) beginPunchOperation() (chan struct{}, error) {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed || session.punchDone != nil {
+		return nil, errors.New("connection preparation is unavailable or already active")
+	}
+	done := make(chan struct{})
+	session.punchDone = done
+	return done, nil
 }

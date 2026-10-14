@@ -1,6 +1,6 @@
 # Deploy Piik Server
 
-English · [简体中文](./self-hosting.zh-CN.md) · [Documentation](../README.md)
+English · [简体中文](./self-hosting.zh-CN.md) · [Documentation](../guide/README.md)
 
 Piik Server packages the web interface, room management and optional media
 forwarding in **one server binary**. Extract and run it; room data is stored in SQLite.

@@ -52,6 +52,7 @@ type Session struct {
 	viewer      *nativeviewer.Session
 	closed      bool
 	updateDone  chan struct{}
+	punchDone   chan struct{}
 	startID     string
 	startCancel context.CancelFunc
 }
@@ -499,7 +500,7 @@ func (session *Session) runHostOperation(host *nativehost.Session, request reque
 			result = operationFailure(request, err)
 		}
 		complete(result, err)
-		session.finishHostOperation(done, result)
+		session.finishOperation(&session.updateDone, done, result)
 	}()
 	return nil
 }
@@ -525,34 +526,28 @@ func (session *Session) beginShare(ctx context.Context, envelope requestEnvelope
 		complete(result, err)
 		session.mu.Lock()
 		session.startID, session.startCancel = "", nil
-		session.finishHostOperation(done, result)
+		session.finishOperation(&session.updateDone, done, result)
 	}()
 	return nil
 }
 
-// Caller holds mu. Release admission before an ACK can trigger the next
-// mutation; a backed-up event writer must never hold the stop mutex.
-func (session *Session) finishHostOperation(done chan struct{}, result any) {
+// Caller holds mu. Queue capacity and worker admission share the response
+// lifetime; the writer releases admission before the ACK can trigger a successor.
+func (session *Session) finishOperation(slot *chan struct{}, done chan struct{}, result any) {
 	close(done)
 	if session.closed {
-		session.updateDone = nil
+		*slot = nil
 		session.mu.Unlock()
 		return
-	}
-	select {
-	case session.events <- result:
-		session.updateDone = nil
-		session.mu.Unlock()
-		return
-	default:
-		session.mu.Unlock()
-	}
-	session.emit(result)
-	session.mu.Lock()
-	if session.updateDone == done {
-		session.updateDone = nil
 	}
 	session.mu.Unlock()
+	session.emit(loopback.ControlEvent{Value: result, BeforeWrite: func() {
+		session.mu.Lock()
+		if *slot == done {
+			*slot = nil
+		}
+		session.mu.Unlock()
+	}})
 }
 
 func (session *Session) validateAudioExclusion(source nativecapture.CaptureTarget, audio bool, excluded *nativecapture.CaptureTarget) error {

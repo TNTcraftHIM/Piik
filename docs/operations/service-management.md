@@ -1,6 +1,6 @@
 # Service Management
 
-English · [简体中文](./service-management.zh-CN.md) · [Documentation](../README.md)
+English · [简体中文](./service-management.zh-CN.md) · [Documentation](../guide/README.md)
 
 For first installation, use the [short self-hosting guide](./self-hosting.md).
 This reference covers a persistent Linux service and container maintenance.

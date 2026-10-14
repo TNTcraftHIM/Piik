@@ -24,6 +24,19 @@ import (
 
 // Production responses may arrive through Events while the command loop keeps
 // processing ICE, ping and stop. Tests wait only for this exact request ID.
+func deliveredControlValue(value any) any {
+	if event, ok := value.(loopback.ControlEvent); ok {
+		if event.Current != nil && !event.Current() {
+			return nil
+		}
+		if event.BeforeWrite != nil {
+			event.BeforeWrite()
+		}
+		return event.Value
+	}
+	return value
+}
+
 func awaitControlResponse(t *testing.T, session *Session, payload []byte) (any, error) {
 	t.Helper()
 	value, err := session.Handle(t.Context(), payload)
@@ -39,6 +52,7 @@ func awaitControlResponse(t *testing.T, session *Session, payload []byte) (any, 
 	for {
 		select {
 		case value := <-session.Events():
+			value = deliveredControlValue(value)
 			encoded, _ := json.Marshal(value)
 			var envelope responseEnvelope
 			_ = json.Unmarshal(encoded, &envelope)
@@ -279,6 +293,7 @@ func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing
 			for {
 				select {
 				case event := <-session.Events():
+					event = deliveredControlValue(event)
 					switch value := event.(type) {
 					case audioStateEvent:
 						stateSeen = value.Microphone && !value.SourceAudio
@@ -498,6 +513,7 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 				for {
 					select {
 					case value := <-session.Events():
+						value = deliveredControlValue(value)
 						if response, ok := value.(shareUpdatedResponse); ok && response.ID == id {
 							return value
 						}
