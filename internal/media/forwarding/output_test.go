@@ -68,12 +68,18 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 	defer output.Close()
 	output.SetMaxSpatialLayer(2)
 	output.SetMaxTemporalLayer(0)
-	output.UpTrackMaxPublishedLayerChange(2)
-	output.UpTrackMaxTemporalLayerSeenChange(0)
 	if state := output.State(); state.Target != -1 || state.Current != -1 {
 		t.Fatalf("unmeasured source pretended to have a target: %+v", state)
 	}
+	// LiveKit publishes layer discovery asynchronously. Availability can arrive
+	// first; allocation must use that observation without waiting for its notice.
 	receiver.available = []int32{0}
+	output.UpTrackLayersChange()
+	if state := output.State(); state.Target != 0 || state.Paused {
+		t.Fatalf("available source waited for its discovery notification: %+v", state)
+	}
+	output.UpTrackMaxPublishedLayerChange(2)
+	output.UpTrackMaxTemporalLayerSeenChange(0)
 	output.SetBudget(0)
 	if state := output.State(); !state.Paused || state.Prepare != -1 || state.VideoBudget != 0 {
 		t.Fatalf("bootstrap ignored an exhausted video budget: %+v", state)

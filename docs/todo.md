@@ -10,12 +10,6 @@ Git/PRs own completed history.
 
 ## Now
 
-- [ ] **Intermittent RTP clock-check timeout.** Linux CI intermittently times out
-  waiting for the second packet in the existing timestamp/generation checks.
-  Local repetitions and explicit source pauses did not reproduce the timeout.
-  Retain the assertions and correlate input-buffer, forwarder and egress
-  diagnostics on recurrence before assigning a product cause or changing forwarding.
-
 - [ ] **Windows native media acceptance on the current desktop.** The default
   720p SFU gate misses its sustained-frame threshold on both the previous and
   current audio dependencies. Capture-only WGC controls receive about 3.8 fps,

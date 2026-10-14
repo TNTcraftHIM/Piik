@@ -72,6 +72,11 @@ func (output *Output) reconcileLocked() {
 		return
 	}
 	available, rates := output.Receiver().GetLayeredBitrate()
+	if len(available) > 0 {
+		// Availability can precede LiveKit's asynchronous discovery notification.
+		// Apply that observed layer before allocation can invalidate its target.
+		output.DownTrack.UpTrackMaxPublishedLayerChange(slices.Max(available))
+	}
 	measured := false
 	for _, layer := range available {
 		if rates[layer][0] > 0 {
