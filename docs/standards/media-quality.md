@@ -240,8 +240,10 @@ dropper, with the Browser probe's warmup, one-second sample and 100 ms lag
 allowance. Cold-start lag is excluded from the measured window; the selection
 deadline still bounds warmup and hardware input/output waits. A candidate whose
 measured delivery falls outside that allowance is rejected and the next candidate
-is tried within the four-second budget. The probe retires before the live encoder
-is prepared and proved, so selection requires only one hardware session at a time.
+is tried within the four-second budget. A measured frame deficit beyond that
+allowance ends the probe immediately: remaining frames cannot change its result.
+The probe retires before the live encoder is prepared and proved, so selection
+requires only one hardware session at a time.
 Without a sustaining candidate, Auto starts the ordinary VP8 path directly, as manual VP8 does. A
 faster software encode never replaces a sustaining H264 encoder. Encoder readiness
 uses Media Foundation events rather than timer-based polling.

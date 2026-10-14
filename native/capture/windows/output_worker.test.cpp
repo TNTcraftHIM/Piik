@@ -227,9 +227,10 @@ void CheckEncoderCandidates() {
 
 class CadenceFixtureEncoder final : public VideoEncoder {
  public:
-  CadenceFixtureEncoder(std::chrono::milliseconds latency, bool dropped, bool cold_only)
+  CadenceFixtureEncoder(std::chrono::milliseconds latency, UINT32 dropped, bool cold_only,
+                        UINT32& calls)
       : VideoEncoder(OutputKind::h264, "cadence-fixture", "cadence-fixture"),
-        latency_(latency), dropped_(dropped), cold_only_(cold_only) {}
+        latency_(latency), dropped_(dropped), cold_only_(cold_only), calls_(calls) {}
 
   EncodedAccessUnit Encode(ID3D11Texture2D*, UINT64 timestamp, bool key,
       EncoderClock::time_point deadline) override {
@@ -237,15 +238,15 @@ class CadenceFixtureEncoder final : public VideoEncoder {
     ++calls_;
     RequireEncoderTime(deadline);
     // An empty unit stands for an input the pipeline did not encode.
-    return dropped_ ? EncodedAccessUnit{timestamp, key, {}} : EncodedAccessUnit{timestamp, key, {1, 2, 3}};
+    return calls_ <= dropped_ ? EncodedAccessUnit{timestamp, key, {}} : EncodedAccessUnit{timestamp, key, {1, 2, 3}};
   }
   void SetBitrate(UINT32) override {}
 
  private:
   std::chrono::milliseconds latency_;
-  bool dropped_;
+  UINT32 dropped_;
   bool cold_only_;
-  unsigned calls_ = 0;
+  UINT32& calls_;
 };
 
 void CheckAutoCadenceProbe(ID3D11Device* device) {
@@ -255,25 +256,33 @@ void CheckAutoCadenceProbe(ID3D11Device* device) {
   VideoProfile profile;
   profile.width = 64;
   profile.height = 64;
-  auto probe = [&](std::chrono::milliseconds latency, bool dropped,
+  UINT32 calls = 0;
+  auto probe = [&](std::chrono::milliseconds latency, UINT32 dropped,
                    EncoderClock::time_point deadline, bool cold_only = false) {
-    return SustainsEncodedCadence([=](const VideoProfile&) -> std::unique_ptr<VideoEncoder> {
-      return std::make_unique<CadenceFixtureEncoder>(latency, dropped, cold_only);
+    calls = 0;
+    return SustainsEncodedCadence([=, &calls](const VideoProfile&) -> std::unique_ptr<VideoEncoder> {
+      return std::make_unique<CadenceFixtureEncoder>(latency, dropped, cold_only, calls);
     }, device, profile, deadline);
   };
   const auto deadline = EncoderClock::now() + std::chrono::seconds(30);
   // Valid output at a fraction of the source rate is the driver defect Auto rejects.
-  assert(!probe(std::chrono::milliseconds(0), true, deadline));
+  assert(!probe(std::chrono::milliseconds(0), UINT32_MAX, deadline));
+  const UINT32 warmup = (profile.frame_rate + 1) / 2;
+  // Once missing frames exceed the allowance, even perfect remaining frames cannot pass.
+  assert(calls == warmup + CadenceLagFrames(profile.frame_rate) + 1);
+  // Exactly the allowed loss must still complete and pass the original measurement.
+  assert(probe(std::chrono::milliseconds(0), warmup + CadenceLagFrames(profile.frame_rate), deadline));
+  assert(calls == warmup + profile.frame_rate);
   // Cold startup must not reject an encoder that sustains the measured cadence.
-  assert(probe(std::chrono::milliseconds(220), false, deadline, true));
+  assert(probe(std::chrono::milliseconds(220), 0, deadline, true));
   // Sustained slow encoding still fails after warmup.
-  assert(!probe(std::chrono::milliseconds(300), false, deadline));
+  assert(!probe(std::chrono::milliseconds(300), 0, deadline));
   profile.frame_rate = 1;
-  assert(!probe(std::chrono::milliseconds(0), true, deadline));
-  assert(probe(std::chrono::milliseconds(0), false, deadline));
+  assert(!probe(std::chrono::milliseconds(0), UINT32_MAX, deadline));
+  assert(probe(std::chrono::milliseconds(0), 0, deadline));
   bool expired = false;
   try {
-    probe(std::chrono::milliseconds(0), false, EncoderClock::time_point::min());
+    probe(std::chrono::milliseconds(0), 0, EncoderClock::time_point::min());
   } catch (const GateFailure& error) {
     expired = error.stage() == "codec-probe-timeout";
   }

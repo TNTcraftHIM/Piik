@@ -1270,7 +1270,11 @@ bool SustainsEncodedCadence(const AdaptiveEncoder::Factory& create, ID3D11Device
         profile.bit_rate, deadline);
     RequireEncoderTime(deadline);
     if (frame >= warmup_frames && EncoderClock::now() > due + interval * lag) return false;
-    if (frame >= warmup_frames && output && !output->access_unit.bytes.empty()) ++delivered;
+    if (frame >= warmup_frames) {
+      if (output && !output->access_unit.bytes.empty()) ++delivered;
+      // Even perfect delivery of the remaining frames cannot recover this deficit.
+      if (frame - warmup_frames + 1 - delivered > lag) return false;
+    }
   }
   return delivered > 0 && delivered + lag >= sample_frames;
 }
