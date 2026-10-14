@@ -14,7 +14,7 @@ understand what Piik does, choose an entry and complete the first useful action.
 | --- | --- | --- |
 | README, English and Chinese | What is this, and how do I start? | Brand introduction and interface preview, features, getting started, self-hosting, contribution and license |
 | `site/`, for GitHub Pages | What does using it feel like, and how do I start? | Room illustration and primary download link, illustrated steps, online/App/existing-site walkthroughs, FAQ, platform downloads, self-hosting and documentation |
-| Getting-started guides | Which button or mode do I use? | Browser invitation, sharing, App setup and three mode choices |
+| Getting-started guides | Which button or mode do I use? | Browser invitation, sharing, App setup, room creation and Site approval |
 | Self-hosting guides | How do I put my own site online? | Run the binary, set the domain and HTTPS proxy, open ports and verify; service management remains a separate reference |
 | Developer and operations docs | How do I build or host it? | Existing configuration, deployment, architecture and diagnostic owners |
 

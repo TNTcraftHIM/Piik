@@ -236,6 +236,26 @@ Bidirectional room voice is not part of the product plan.
 Text, reactions and danmaku introduce no microphone capture, voice
 admission or additional media peers.
 
+## Detached Chat Window Assessment
+
+[Document Picture-in-Picture](https://developer.chrome.com/docs/web-platform/document-picture-in-picture)
+can place arbitrary HTML in an always-on-top window without installing a PWA or
+implementing an App window. This is a possible presentation enhancement, not an
+implemented feature. Reuse the existing room session and chat content; detaching
+must not reconnect signaling, duplicate participants or reset drafts/history.
+The current panel assumes the main document for visibility, focus, positioning
+and tooltips, so moving its DOM alone is insufficient. A prototype should check
+those owners, returning content on close, theme/language changes and coexistence
+with the existing video PiP. The browser owns window movement and sizing.
+
+The [specification](https://wicg.github.io/document-picture-in-picture/) requires
+a secure context and user activation; closing or navigating the opener closes
+the PiP window. Local API checks opened and closed a same-origin window, but do
+not establish full chat integration or placement over exclusive-fullscreen games.
+[Browser support](https://developer.mozilla.org/en-US/docs/Web/API/DocumentPictureInPicture#browser_compatibility)
+is incomplete, so unsupported pages would retain the existing in-page panel.
+This needs no new room protocol or major version; adoption remains a scope decision.
+
 ## Primary References And Rationale
 
 - [LiveKit media and data](https://docs.livekit.io/frontends/build/media-data/)

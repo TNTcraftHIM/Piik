@@ -61,6 +61,13 @@ baseline contract; introduce a small optional capability only for a concrete
 new feature. Do not add a version-range solver, general adapter framework,
 parallel authority writers or blanket old-client fallback paths.
 
+Keep the 2.x baseline long-lived. Substantial new functionality can remain a
+minor release when older peers retain established behavior and new behavior is
+explicitly opted into. A small feature can still be breaking if it unconditionally
+changes a strict message, existing semantics or durable authority. Review those
+boundaries before choosing the version; neither feature count nor a desire to
+avoid a major justifies mislabeling an incompatible release.
+
 ## Extending Interfaces
 
 Command/event JSON objects still reject unknown keys, and required fields reject
