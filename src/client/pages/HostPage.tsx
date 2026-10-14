@@ -1048,6 +1048,10 @@ export function HostPage({
         profile.roomPassword,
       );
       const replacement = hostRoomFromCreated(response);
+      if (roomMutationRef.current !== mutation) {
+        closeAbandonedRoom(replacement);
+        return;
+      }
       if (wasSharing) {
         endSharing({ key: "host.roomReplaced" }, false, "share-ended", "off", false);
       } else if (signalRef.current) {
@@ -1058,6 +1062,7 @@ export function HostPage({
         replacement,
         () => roomMutationRef.current === mutation,
       ))) {
+        closeAbandonedRoom(replacement);
         throw new Error("Host room is already open in another tab");
       }
       writePreferredRoom(replacement.roomId);
@@ -1072,6 +1077,7 @@ export function HostPage({
       }
       setPhase(wasSharing ? "ended" : "idle");
     } catch (error) {
+      if (roomMutationRef.current !== mutation) return;
       if (error instanceof ApiError && error.status === 404) {
         if (!wasSharing) {
           // A memory-only room can disappear after a server restart.
@@ -1098,6 +1104,7 @@ export function HostPage({
               replacement,
               () => roomMutationRef.current === mutation,
             ))) {
+              closeAbandonedRoom(replacement);
               throw new Error("Host room is already open in another tab");
             }
             writePreferredRoom(replacement.roomId);
@@ -1111,7 +1118,7 @@ export function HostPage({
             setPhase("idle");
             return;
           } catch (replacementError) {
-            setNoticeError(replacementError, "room");
+            if (roomMutationRef.current === mutation) setNoticeError(replacementError, "room");
             return;
           }
         }

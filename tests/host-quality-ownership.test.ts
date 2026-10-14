@@ -376,6 +376,63 @@ describe("Host room ownership", () => {
     expect(current.roomMutationRef.current).toBeNull();
   });
 
+  it.each(["replace", "missing-room"] as const)("retires an unclaimed %s result after page exit", async path => {
+    for (const stage of ["response", "claim", "accepted"] as const) {
+      const current = roomFixture();
+      current.context.phase = "idle";
+      current.activeGenerationRef.current = null;
+      const replacement = { ...current.room, roomId: "5678", hostToken: "replacement-token" };
+      const response = deferred<typeof replacement>();
+      const claim = deferred<void>();
+      const writeHostRoom = vi.fn(async (_room: unknown, owns: () => boolean) => {
+        await claim.promise;
+        return owns();
+      });
+      const closeAbandonedRoom = vi.fn();
+      const request = vi.fn(() => response.promise);
+      Object.assign(current.context, {
+        replaceOwnedRoom: path === "replace" ? request : async () => { throw new ApiError("Room not found", 404); },
+        createRoom: request, hostRoomFromCreated: (room: unknown) => room,
+        replaceViewerInvite: vi.fn(), writeHostRoom, closeAbandonedRoom,
+      });
+      const replacing = current.context.replaceCurrentRoom();
+      await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+      if (stage === "response") current.roomMutationRef.current = null;
+      response.resolve(replacement);
+      if (stage === "claim") {
+        await vi.waitFor(() => expect(writeHostRoom).toHaveBeenCalledOnce());
+        current.roomMutationRef.current = null;
+      }
+      claim.resolve();
+      await replacing;
+      if (stage === "accepted") {
+        expect(closeAbandonedRoom).not.toHaveBeenCalled();
+        expect(current.roomRef.current).toBe(replacement);
+        expect(current.setRoom).toHaveBeenCalledWith(replacement);
+      } else {
+        expect(closeAbandonedRoom).toHaveBeenCalledExactlyOnceWith(replacement);
+        expect(current.roomRef.current).toBe(current.room);
+        expect(current.setRoom).not.toHaveBeenCalled();
+        expect(current.setNoticeError).not.toHaveBeenCalled();
+        if (stage === "response") expect(writeHostRoom).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  it("does not recreate a missing room after its replacement operation was retired", async () => {
+    const current = roomFixture();
+    current.context.phase = "idle";
+    current.activeGenerationRef.current = null;
+    const response = deferred<never>();
+    current.context.replaceOwnedRoom = () => response.promise;
+    const replacing = current.context.replaceCurrentRoom();
+    current.roomMutationRef.current = null;
+    response.reject(new ApiError("Room not found", 404));
+    await replacing;
+    expect(current.createRoom).not.toHaveBeenCalled();
+    expect(current.setNoticeError).not.toHaveBeenCalled();
+  });
+
   it("ignores an old room's failed access update after another room owns the session", () => {
     const current = roomFixture();
     useRealResourceDisposal(current);
