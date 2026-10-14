@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-10-11
+Last updated: 2026-10-14
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -93,7 +93,7 @@ implementation and routine UI detail.
   periodic rebalance is accepted.
 - Browser video uses `motion`; each share chooses H.264 with VP8 fallback through
   an actual sender probe unless the Host explicitly selects VP8 or H264. Screen
-  audio retains its compact presets and 128 kbps default. The 2.0 candidate
+  audio retains its compact presets and 128 kbps default. The 2.0 contract
   separates numeric bitrate requests from those UI shortcuts; implementation
   limits and admission remain in the media-quality owner.
 - Viewer playback uses one native video element. Presentation and recovery are

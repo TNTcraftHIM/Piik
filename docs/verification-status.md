@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-03
+Last updated: 2026-10-14
 
 This file owns physical evidence limits that change how the product may be
 described. [Status](./status.md) owns the execution/deployment index.
@@ -10,9 +10,9 @@ implementation and obsolete package history.
 ## Current Evidence
 
 Windows App and Browser are the owner's primary acceptance targets. Current
-Go packages embed their Web assets and do not run a Node backend. The current
-published contract is Browser/server v23, Native control v9 and capture v7;
-[status](./status.md#current-work) owns unpublished candidate changes.
+Go packages embed their Web assets and do not run a Node backend.
+[Status](./status.md#accepted-release-contract) owns the accepted contract tuple
+and current release boundary; artifacts own the exact published build.
 
 Bounded current checks cover:
 

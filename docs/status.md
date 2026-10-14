@@ -8,7 +8,9 @@ and Git/PRs own completed history.
 
 ## Accepted Release Contract
 
-- Browser/server v23, Native control v9 and capture v7 form the published contract.
+- The 2.0 release boundary uses Browser/server v24, Native control v10 and
+  capture v7. App and Site must upgrade together; 1.x cannot participate in a
+  2.0 session. SQLite schema 2 is unchanged.
   [Versioning](./standards/versioning.md#public-compatibility-promise) owns
   compatibility between published Web/App/Server versions.
 - Hosted Server defaults to SQLite schema 2. Room authority has no inactivity
@@ -54,52 +56,31 @@ Release artifacts and operator deployment records own delivery completion;
 
 ## Current Work
 
-The public baseline retains Browser/server v23, Native control v9, capture v7,
-SQLite schema 2 and the 1440p ceiling. Hosted empty-room retention and capacity
-guidance preserve indefinite retention by default. The accepted Demo policy is
-one hour without authenticated participants; the private deployment retains the
-default. Operator records own activation, database and postflight evidence.
-The owner is holding the unpublished maintenance changes for 2.0. Preparation
-includes separating media presets from numeric requests and bounded capabilities.
-Numeric audio and video ceilings are implemented in the unpublished candidate:
-Browser/server v24 and Native control v10 replace the preset fields;
-capture v7 and SQLite schema 2
-remain unchanged. Matched candidate App/Web/Server builds are required;
-1.x participants are rejected by the existing compatibility checks.
-Custom width/height controls apply combined size and frame-rate limits, admitting
-4K60, ultrawide input and higher frame rates at smaller sizes. Advanced video
-controls span 1..240 fps and 0.1..240 Mbps while retaining
-the three recommended presets. Windows and Linux output preserve source shape
-within the selected ceiling.
+2.0 separates numeric media requests from presets and bounded runtime admission,
+retains successfully applied quality settings, and lets App serve an approved
+Site independently of Local/public room startup. It also adds detached chat on
+supporting desktop Browsers. Media, room authority and P2P-first routing keep
+their existing owners; [product standards](./standards/README.md) define the
+accepted behavior.
+
+Optional coordinated Native UDP preparation augments the existing retry owner.
+The [network laboratory](./research/network-lab.md) covers all Browser/App
+pairings, recovery, SFU policies and successful two-App preparation through
+sequential kernel NAT. These results do not establish a public success rate.
+Magicsock remains excluded: its [controlled comparison](./research/nat-traversal.md#integration-cost-and-recovery-controls)
+established no additional reachability worth its integration costs.
+
 The [media assessment](./research/native-client-media.md#media-capability-extension-assessment)
-owns local codec, derived-output, SFU, Browser/Native fanout and live-control
-evidence. Both macOS architectures pass SDK compilation and packaged startup;
-physical geometry verification, cross-device and route-change acceptance remain
-open. Additional codecs are not part of this candidate.
-Magicsock remains outside the candidate. Refreshed stable-version controls found
-no additional direct reachability and retained discovery/inner-ICE timing costs.
-Participants can retain the Web UI, but enhanced edges need Native transport at
-both ends. Easier activation does not establish a reachability gain or resolve
-its integration costs. The
-[assessment](./research/nat-traversal.md#integration-cost-and-recovery-controls)
-owns the retained experiment and adoption boundary. Its package is retired;
-independent ordinary ICE and media repairs remain in the candidate.
-An independent bounded Native UDP preparation now augments existing retries
-under ADR-0009. Actual App process checks cover socket adoption, decoded media
-and reverse feedback through sequential kernel NAT, as well as ineligible
-preparation continuing ordinary ICE. The [network laboratory](./research/network-lab.md)
-owns paired outcomes and evidence limits. A separate field beta is not required
-for the owner's final review; local acceptance does not establish a public
-success rate or remove Browser-only operation.
-The original candidate packages pass their identity/checksum checks; Windows
-Local startup/retirement, saved Site approval/revocation and explicit 1.x
-rejection have packaged acceptance evidence. Publication remains subject to
-the owner's final acceptance.
-The candidate App now waits for approved Sites independently of Local/public
-room startup. Its two-choice launcher retains one exact Site approval and
-revocation, using the existing loopback and native-session owners.
-Immutable release artifacts own delivery completion; [TODO](./todo.md#now) owns
-remaining work.
+owns bounded output and live-control evidence. Physical macOS/Linux capture,
+limited decoders and sustained game/4K use retain the limits in
+[verification status](./verification-status.md). Additional codecs, room voice,
+surround delivery and end-to-end HDR remain outside this phase.
+
+The owner authorized publication after final acceptance, without a separate
+field beta. Immutable release artifacts and operator records own exact delivery
+and postflight; [TODO](./todo.md#now) owns remaining product work. Hosted room
+retention stays indefinite by default. Demo uses one hour without authenticated
+participants; the private deployment keeps the default.
 
 ## Deployment
 

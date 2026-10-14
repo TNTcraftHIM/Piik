@@ -2,46 +2,20 @@
 
 Last reviewed: 2026-10-14
 
-The current 2.0 preparation includes independent investigation across this
-ledger. Explicit owner holds remain in force; an investigation does not itself
+Explicit owner holds remain in force; an investigation does not itself
 accept a new feature or architecture. A missing device or reporter trace blocks
 only that evidence claim, not unrelated work. Product modules own behavior;
 Git/PRs own completed history.
 
 ## Now
 
-- [ ] **2.0 candidate preparation and acceptance.** The owner reopened investigation,
-  useful improvements and outstanding acceptance on 2026-10-07, and on 2026-10-09
-  chose to hold the maintenance changes for 2.0 rather than publish them separately.
-  Present the frozen candidate and its bilingual release notes for owner review
-  before publication. Packaged Windows Local startup/retirement, saved Site
-  approval/revocation and both directions of 1.x compatibility rejection have
-  passed. The owner chose local acceptance followed by final review; a separate
-  field beta is not required. Broader device coverage below does not override
-  the owner's platform deferrals or require a statistical NAT campaign.
-  The retired Magicsock package is not the current
-  candidate; preserve the existing product model in independent transport experiments.
-- [ ] **Reconcile open PRs with the final candidate.**
-  [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps request and
-  [#469](https://github.com/TNTcraftHIM/Piik/pull/469)'s 4K request overlap the
-  numeric-media candidate; neither PR has been merged. Evaluate their original
-  contribution against work already independently identified, following
-  [contribution review](../CONTRIBUTING.md#ways-to-help); overlap alone does not
-  warrant merging or co-authorship. Retain #470's accepted authorship and verify
-  attribution after integration. Preserve the physical-evidence limits below
-  and explain the disposition at integration. Keep
-  [#459](https://github.com/TNTcraftHIM/Piik/pull/459)'s candidate scope and
-  bilingual upgrade instructions aligned with the accepted result.
-  [#475](https://github.com/TNTcraftHIM/Piik/pull/475) identifies the Linux
-  desktop entry's missing terminal controls. The candidate restores the existing
-  terminal through the desktop entry; tray activation and Browser process-exit
-  authority remain separate, unaccepted additions. Credit the reported defect
-  without attributing this independent packaging correction as co-authored code.
-- [ ] **Gitee mirror workflow activation.** The production verifier passes with
-  the original published CI artifacts, GitHub digests and anonymous Gitee downloads.
-  After the owner-approved merge, check Actions event dispatch, cross-run artifact
-  access and secret injection. Keep mirror failure visible without blocking
-  product CI or Website delivery; do not rebuild an existing release for recovery.
+The 2.0 implementation scope is complete. Final package checks and delivery follow
+[the release workflow](../CONTRIBUTING.md#full-integration-and-release-workflow)
+and [GitHub operations](./operations/github.md); their exact results and PR
+disposition belong to the release/PR records. The owner authorized publication
+after bounded local acceptance, without a separate field beta. Broader device
+coverage below does not override the owner's platform deferrals or require a
+statistical NAT campaign. Do not describe those unmatched reports as fixed.
 
 ## Held By Owner
 

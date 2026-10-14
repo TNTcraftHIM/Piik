@@ -130,7 +130,7 @@ The three recommended profiles are ceilings, not delivery guarantees:
 | `1080p30` | 1920x1080 at 30 fps | 5 Mbps |
 | `1080p60` | 1920x1080 at 60 fps | 8 Mbps |
 
-`1080p30` is the default. The 2.0 candidate carries numeric width/height ceilings;
+`1080p30` is the default. The 2.0 contract carries numeric width/height ceilings;
 480p, 720p, 1080p, 1440p and 4K are UI shortcuts. Advanced picture settings also
 accept custom even dimensions within the combined implementation bounds below.
 Width and height form one applied edit. A size change caps the requested frame
@@ -138,7 +138,7 @@ rate in the same quality operation when the larger size requires a lower limit.
 Larger wire-valid requests do not
 authorize an adapter to exceed its local capture, codec or allocation limits.
 Numeric requests use representational bounds rather than the current control
-ranges. Candidate capture admits integer 1..240 fps and 0.1..240 Mbps, further
+ranges. Current capture admits integer 1..240 fps and 0.1..240 Mbps, further
 limited by picture size. Advanced controls accept typed values alongside sliders;
 the three recommended profiles and default remain unchanged. These are useful
 product controls, not universal codec
@@ -398,15 +398,15 @@ application-defined whole-room lowest-common-denominator target.
 
 ## Screen Audio
 
-The candidate supports mono and stereo Opus content through the existing audio
+Piik supports mono and stereo Opus content through the existing audio
 track. Mono inputs remain valid; Browser and Native mixing use a stereo output.
 A stereo receive preference or two-channel declaration does not prove distinct
 source channels. [Fidelity evidence](../research/media-fidelity.md#stereo) owns
-decoded-channel checks. Surround delivery is outside the candidate; it needs
+decoded-channel checks. Surround delivery is outside the current scope; it needs
 capture, channel-layout, mixing, codec and playback support, not only a channel
 count setting.
 
-Display audio uses `contentHint = "music"`. The 2.0 candidate keeps 64/128/192 kbps
+Display audio uses `contentHint = "music"`. 2.0 keeps 64/128/192 kbps
 shortcuts and the 128 kbps default, with a custom numeric ceiling in the same
 sound settings. Current Browser/native senders support 6..320 kbps; the numeric
 wire format uses Opus's 6..510 kbps bounds independently of those shortcuts.
