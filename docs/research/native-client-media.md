@@ -391,6 +391,15 @@ all owned processes, profiles and ports were released. This closes that local
 throughput acceptance gap. It does not isolate the virtual driver's cause or
 establish physical HDR, game-load or other-device performance.
 
+The same capture-delivery limit recurred during the October 14 audio checks.
+At final local acceptance, the unchanged capture-only probe delivered about
+144 fps, and the default 720p Native VP8 and H.264 SFU gates passed their original
+throughput requirement, live audio/video changes, subscription and page-reload
+recovery, publication retirement and cleanup. The VP8 two-room check also kept
+the second room's picture and audio after the first stopped. No product or
+gate-threshold change was needed to clear this local acceptance failure; the
+intermittent platform cause and physical-device limits remain unproven.
+
 ## Native H.264 Motion Quality
 
 Issue [#432](https://github.com/TNTcraftHIM/Piik/issues/432) reports more visible
