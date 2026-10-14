@@ -40,6 +40,9 @@ connection acquisition reuses the route controller's existing opportunity ledger
    one media section and public address form an arithmetic port sequence, the
    adapter appends at most eight bounded candidates outward from both sequence
    endpoints: four above the high endpoint and four below the low endpoint.
+   Distinct components and exposed related addresses/ports stay in separate
+   groups; one public address does not establish a shared local socket.
+   Privacy-redacted bases remain bounded hypotheses, not verified socket identity.
    Every host and observed srflx candidate keeps normal Trickle ICE timing; no ordinary
    candidate is delayed, rejected, or replaced. A Browser that does not expose
    candidate source URLs keeps ordinary ICE without prediction. Rejection of a

@@ -196,9 +196,19 @@ function parseSrflxCandidate(
   ) {
     return null;
   }
+  const related = (name: string): string => {
+    const index = fields.findIndex(field => field.toLowerCase() === name);
+    return index < 0 ? "" : fields[index + 1] ?? "";
+  };
+  // One public IP can cover multiple local sockets. Do not spend this
+  // generation's prediction budget on a sequence mixed across their bases.
+  // Redacted/missing related fields retain the bounded Browser hypothesis.
   const groupKey = [
     candidate.sdpMid ?? "",
     candidate.sdpMLineIndex ?? "",
+    fields[1],
+    related("raddr"),
+    related("rport"),
     address,
   ].join("/");
   return { candidate, fields, address, port, groupKey };

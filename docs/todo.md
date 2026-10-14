@@ -9,13 +9,18 @@ Git/PRs own completed history.
 
 ## Now
 
-The 2.0 implementation scope is complete. Final package checks and delivery follow
+2.0 is published on GitHub. The current maintenance phase reviews optional App
+capabilities and bounded NAT correctness; it retains the published protocol and
+route owners. Integrate the verified phase through
 [the release workflow](../CONTRIBUTING.md#full-integration-and-release-workflow)
-and [GitHub operations](./operations/github.md); their exact results and PR
-disposition belong to the release/PR records. The owner authorized publication
-after bounded local acceptance, without a separate field beta. Broader device
-coverage below does not override the owner's platform deferrals or require a
-statistical NAT campaign. Do not describe those unmatched reports as fixed.
+after owner acceptance; the previous release approval does not authorize another
+publication. Broader device coverage below does not override the owner's
+platform deferrals or establish a diagnosis for unmatched reports.
+
+- [ ] **Complete the 2.0 Gitee mirror.** Restore usable mirror authorization and
+  finish uploading and anonymously verifying the original GitHub packages under
+  [GitHub operations](./operations/github.md). The release record owns exact
+  artifact and delivery results; do not rebuild or relabel the published release.
 
 ## Held By Owner
 

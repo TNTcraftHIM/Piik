@@ -271,6 +271,39 @@ describe("NAT prediction ICE adapter", () => {
     ]);
   });
 
+  it.each([
+    ["component", "base 1 udp", "base 2 udp"],
+    ["address", "raddr 192.0.2.7", "raddr 192.0.2.8"],
+    ["port", "rport 50000", "rport 50001"],
+  ] as const)("keeps the prediction budget when a different base %s interrupts the survey", (_, from, to) => {
+    const sent: SignalCandidate[] = [];
+    const batch = new NatPredictionCandidateBatch(value => sent.push(value));
+    const first = candidate(40_000)!;
+    const second = candidate(40_003)!;
+    const third = candidate(40_006)!;
+    const unrelated = { ...third, candidate: third.candidate.replace(from, to) };
+    batch.add(first);
+    batch.add(second);
+    batch.add(unrelated);
+    expect(sent).toEqual([first, second, unrelated]);
+
+    // A later observation from the original base can still use this
+    // generation's budget; the unrelated one must not consume it first.
+    batch.add(third);
+    expect(sent.filter(value => /^candidate:s[pm]/.test(value?.candidate ?? "")))
+      .toHaveLength(MAX_NAT_PREDICTION_CANDIDATES);
+    expect(sent.filter(value => !/^candidate:s[pm]/.test(value?.candidate ?? "")))
+      .toEqual([first, second, unrelated, third]);
+  });
+
+  it("retains bounded prediction when the Browser conceals related addresses", () => {
+    const concealed = [40_000, 40_003, 40_006].map(port => {
+      const value = candidate(port)!;
+      return { ...value, candidate: value.candidate.replace("raddr 192.0.2.7 rport 50000", "raddr 0.0.0.0 rport 0") };
+    });
+    expect(predictSrflxCandidates(concealed)).toHaveLength(MAX_NAT_PREDICTION_CANDIDATES);
+  });
+
   it("does not predict an unstable or incomplete mapping shape", () => {
     expect(predictSrflxCandidates([candidate(40_000), candidate(40_001)])).toEqual(
       [],

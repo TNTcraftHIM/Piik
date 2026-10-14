@@ -56,6 +56,10 @@ Release artifacts and operator deployment records own delivery completion;
 
 ## Current Work
 
+Post-release maintenance reviews optional App capabilities and NAT correctness
+within the existing connection owners. [TODO](./todo.md#now) owns integration and
+remaining mirror delivery; new publication awaits owner acceptance.
+
 2.0 separates numeric media requests from presets and bounded runtime admission,
 retains successfully applied quality settings, and lets App serve an approved
 Site independently of Local/public room startup. It also adds detached chat on
@@ -76,8 +80,8 @@ limited decoders and sustained game/4K use retain the limits in
 [verification status](./verification-status.md). Additional codecs, room voice,
 surround delivery and end-to-end HDR remain outside this phase.
 
-The owner authorized publication after final acceptance, without a separate
-field beta. Immutable release artifacts and operator records own exact delivery
+2.0 was published after final acceptance without a separate field beta.
+Immutable release artifacts and operator records own exact delivery
 and postflight; [TODO](./todo.md#now) owns remaining product work. Hosted room
 retention stays indefinite by default. Demo uses one hour without authenticated
 participants; the private deployment keeps the default.
@@ -109,8 +113,9 @@ public release on 2026-09-12. Source is public, main protection is active, and
 remains a separate deployment. Release descriptors and GitHub deployment records
 identify published artifacts and website revisions.
 
-Matching Server and registered App packages are published on GitHub and Gitee;
-anonymous mirror downloads match the original checksums. Public-repository CI
+GitHub owns the original Server and registered App packages. Gitee copies them
+without rebuilding; mirror completion requires anonymous checksum verification.
+[TODO](./todo.md#now) tracks outstanding mirror delivery. Public-repository CI
 and native packaging passed. App entry, update links
 and bounded two-build interoperability have acceptance evidence. Accepted
 product changes publish automatically; standalone website and documentation
