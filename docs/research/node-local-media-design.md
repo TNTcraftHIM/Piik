@@ -503,13 +503,17 @@ physical Host's low-resolution session.
 
 One publication boundary remains reproducible: with two declared encodings but
 only the rate-controlled lowest requested, 6 Mbps -> 120 kbps -> 6 Mbps leaves
-about 230 kbps of a 300 kbps output after recovery. The full SFU allocator probes
+about 215--230 kbps of a 300 kbps output after recovery. The full SFU allocator probes
 spatial deficiency, so it stops exploring once that single active RID fits its
 reduced encoding. Diagnostics now retain this within-output limitation, but
-that does not repair its probe demand. A correction must expose the local
-encoder's demand to the single probe owner; do not fabricate measured layer
-rates or add a parallel recovery controller. This separate publication control
-does not diagnose a direct P2P field session.
+that does not repair its probe demand. A matched isolated library extension
+adds the local encoder's unmet demand to that allocator's state and existing
+padding probe, restoring about 295 kbps. No additional estimator, probe loop or
+fabricated layer bitrate is needed. The pinned and inspected upstream allocator
+have no such input; this experiment is not retained in product code and does
+not justify copying the complete allocator into Piik. Integration must preserve
+that single probe owner. This separate publication control does not diagnose a
+direct P2P field session.
 
 Live audio changes exposed a related scope mismatch: Piik's TWCC tracks only
 video, but the adapter deducted audio from that measured capacity and included

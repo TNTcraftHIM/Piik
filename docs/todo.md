@@ -21,8 +21,10 @@ platform deferrals or establish a diagnosis for unmatched reports.
   current-output demand repairs against the affected Host. Local paced-sending,
   partial-recovery and stable-allocation controls pass; they do not prove the
   live report resolved. The publication's sole active rate-controlled RID still
-  stops probing below its ceiling: expose that demand to the existing probe
-  owner without a second controller or fabricated source measurements.
+  stops probing below its ceiling. An isolated extension restores it by exposing
+  codec demand to the existing allocator, but requires an upstream input absent
+  from the current dependency; choose a bounded integration without copying the
+  whole allocator, a second controller or fabricated source measurements.
   [Media evidence](./research/node-local-media-design.md#send-queue-recovery)
   owns the comparisons and remaining boundary.
 - [ ] **Sharing ends with `app/capture/failed` (v2.0.0).** A new report describes
