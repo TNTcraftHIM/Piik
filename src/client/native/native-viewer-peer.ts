@@ -104,19 +104,6 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
         return;
       }
       if (payload.kind === "description" && payload.description.type === "offer") {
-        const preparation = this.punch;
-        this.punch = null;
-        const committed = payload.punched && preparation?.peerId === parentPeerId &&
-          preparation.connectionId === payload.connectionId && preparation.commit();
-        if (!committed) {
-          preparation?.dispose();
-          if (payload.punched) {
-            // An expired optional preparation is a route failure, not evidence
-            // that the App's media capability is unavailable for this session.
-            this.events.onRecoveryExhausted?.(parentPeerId, payload.connectionId);
-            return;
-          }
-        }
         const nextIdentity = {
           parentPeerId,
           connectionId: payload.connectionId,
@@ -132,6 +119,20 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
             this.options = { ...this.options, recoveryBudget: createViewerRecoveryBudget() };
           }
           this.identity = nextIdentity;
+        }
+        const preparation = this.punch;
+        this.punch = null;
+        const committed = payload.punched && preparation?.peerId === parentPeerId &&
+          preparation.connectionId === payload.connectionId && preparation.commit();
+        if (!committed) {
+          preparation?.dispose();
+          if (payload.punched) {
+            // Adopt the offer identity before reporting failure: the route
+            // owner ignores reports from a peer that does not own this edge.
+            // Expiry does not disable the App's media capability.
+            this.events.onRecoveryExhausted?.(parentPeerId, payload.connectionId);
+            return;
+          }
         }
         if (!this.backend) {
           const client = offerHasNativeVideoCodec(payload.description.sdp)

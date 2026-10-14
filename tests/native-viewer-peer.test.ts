@@ -35,6 +35,8 @@ it.each(["commit", "expired", "rpc-expired"])("scopes optional connection prepar
     natPredictionStunUrls: ["stun:site.example:3479", "stun:site.example:3480"],
   }, { sendSignal: sent, sendRestartRequest: () => true, onStream: () => {}, onUpdate: () => {}, onRecoveryExhausted: exhausted },
   { natPredictionEnabled: true, recoveryOwner: "route" }, async () => client, unavailable, "session", 2);
+  // The page accepts a failure only while this peer owns that connection.
+  exhausted.mockImplementation(() => peer.hasConnectionId("current"));
   const prepare: SignalPayload = { kind: "punch", connectionId: "current", punch: { phase: "prepare", secret: "42".repeat(32) } };
   try {
     await peer.acceptSignal("parent", prepare);
@@ -57,6 +59,7 @@ it.each(["commit", "expired", "rpc-expired"])("scopes optional connection prepar
       expect(client.preparePunch).toHaveBeenCalledOnce();
     } else {
       expect(exhausted).toHaveBeenCalledExactlyOnceWith("parent", "current");
+      expect(exhausted.mock.results[0].value).toBe(true);
       if (outcome === "expired") expect(client.receiveOffer).not.toHaveBeenCalled();
     }
   } finally { peer.dispose(); }

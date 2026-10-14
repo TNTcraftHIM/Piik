@@ -146,7 +146,8 @@ export class ViewerAudio {
   private readonly onNativeVolume = (): void => {
     if (this.disposed || this.context) return;
     const { volume, muted } = this.video;
-    if (this.level === volume && this.muted === muted) return;
+    // sync() also mutes zero volume. Its queued event is not a user mute.
+    if (this.level === volume && (this.muted || this.level === 0) === muted) return;
     this.level = volume;
     this.muted = muted;
     this.onChange(this.snapshot);

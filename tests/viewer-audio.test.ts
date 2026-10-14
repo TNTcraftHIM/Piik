@@ -183,4 +183,27 @@ describe("Viewer local audio", () => {
     expect(video.muted).toBe(false);
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it.each(["absent", "failed"])("restores zero volume when the audio context is %s", (state) => {
+    vi.stubGlobal("AudioContext", state === "absent" ? undefined : class {
+      constructor() { throw new DOMException("Audio unavailable", "NotSupportedError"); }
+    });
+    const video = new PlaybackVideo();
+    const audio = new ViewerAudio(video as unknown as HTMLVideoElement, vi.fn());
+    audio.setLevel(0);
+    // HTMLMediaElement queues this for both volume and muted writes.
+    video.dispatchEvent(new Event("volumechange"));
+    audio.setLevel(0.5);
+    video.dispatchEvent(new Event("volumechange"));
+    expect(audio.snapshot).toEqual({ level: 0.5, muted: false, boostAvailable: false });
+    expect(video.muted).toBe(false);
+    audio.setMuted(true);
+    audio.setLevel(0);
+    video.dispatchEvent(new Event("volumechange"));
+    audio.setLevel(0.5);
+    video.dispatchEvent(new Event("volumechange"));
+    expect(audio.snapshot.muted).toBe(true);
+    expect(video.muted).toBe(true);
+    audio.dispose();
+  });
 });
