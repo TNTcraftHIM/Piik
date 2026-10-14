@@ -475,6 +475,14 @@ func (s *Server) Close(ctx context.Context) error {
 	return routeCloseError
 }
 
+// CloseStorage follows HTTP draining. A timed-out drain can leave admitted
+// mutations running, so database closure still takes the store's owning lock.
+func (s *Server) CloseStorage() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.store.Close()
+}
+
 // EndAllRooms closes rooms in store order.
 func (s *Server) EndAllRooms() error {
 	s.mu.Lock()

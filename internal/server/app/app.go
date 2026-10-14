@@ -384,7 +384,11 @@ func (s *Server) runShutdown(ctx context.Context, endRooms bool) error {
 	// The signaling server must be closed before the listener: its connections
 	// live on it.
 	failures = append(failures, s.stopServing(ctx))
-	failures = append(failures, s.store.Close())
+	if signaling != nil {
+		failures = append(failures, signaling.CloseStorage())
+	} else {
+		failures = append(failures, s.store.Close())
+	}
 	if joined := errors.Join(failures...); joined != nil {
 		return fmt.Errorf("Piik server shutdown failed: %w", joined)
 	}

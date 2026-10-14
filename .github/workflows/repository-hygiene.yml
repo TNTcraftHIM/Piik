@@ -116,7 +116,7 @@ jobs:
         run: npm run check:go-core
       - name: Check reachable Go vulnerabilities
         run: npm run check:go-vuln
-      - name: Check NAT and media ownership with the race detector
+      - name: Check concurrent resource ownership with the race detector
         run: npm run check:go-race
       - name: Type-check and test
         run: npm run typecheck && npm test

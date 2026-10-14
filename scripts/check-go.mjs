@@ -221,6 +221,7 @@ if (mode === "--race") {
   buildWebAssets();
   runGoTests(process.env.PIIK_GO?.trim() || "go", [
     "./internal/app/portmapping", "./internal/app/mediaedge",
+    "./internal/server/app",
     "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp",
   ], ["-race", "-count=1", "-timeout=2m"]);
 } else {
