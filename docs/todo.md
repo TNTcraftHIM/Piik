@@ -14,8 +14,8 @@ Git/PRs own completed history.
   720p SFU gate misses its sustained-frame threshold on both the previous and
   current audio dependencies. Capture-only WGC controls receive about 3.8 fps,
   including an independent window repainting at about 40 fps, before encoding
-  or transport. This desktop currently exposes only a virtual display; its
-  capture slowdown has no confirmed driver cause. Retest the unchanged gate on
+  or transport. The current capture session exposes only a virtual display;
+  its slowdown has no confirmed driver cause. Retest the unchanged gate on
   a physical display. The smaller-picture gate passes live audio changes and
   recovery but does not replace this throughput check.
 
@@ -25,9 +25,10 @@ Git/PRs own completed history.
   Present the frozen candidate and its bilingual release notes for owner review
   before publication. Packaged Windows Local startup/retirement, saved Site
   approval/revocation and both directions of 1.x compatibility rejection have
-  passed. Broader device coverage below does not override the owner's platform
-  deferrals or require a
-  statistical NAT campaign. The retired Magicsock package is not the current
+  passed. The owner chose local acceptance followed by final review; a separate
+  field beta is not required. Broader device coverage below does not override
+  the owner's platform deferrals or require a statistical NAT campaign.
+  The retired Magicsock package is not the current
   candidate; preserve the existing product model in independent transport experiments.
 - [ ] **Reconcile open PRs with the final candidate.**
   [#462](https://github.com/TNTcraftHIM/Piik/pull/462)'s 256/320 kbps request and
@@ -215,8 +216,8 @@ experiments and their limits.
   networks and decoded-picture continuity on that path, following the
   [assessment](./research/nat-traversal.md#coordinated-native-punching-assessment).
   Preserve the first ordinary attempt, immediate Browser decline and fixed
-  operation deadlines. The owner will arrange a small difficult-network beta
-  after packaging; compare the same peers with the share's enhancement switch
+  operation deadlines. Future field comparisons should use the same peers with
+  the share's enhancement switch
   enabled/disabled, including mixed stable/sequential observations in both
   directions. Local coverage does not establish their field benefit. Random-port
   overlap remains separate and unproven.
