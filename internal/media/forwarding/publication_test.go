@@ -125,6 +125,10 @@ func checkPublicationProbeCapacity(t *testing.T, received bool) {
 			} else if signal != ccutils.ProbeSignalInconclusive || capacity != target {
 				t.Fatalf("unacknowledged probe changed capacity: signal=%v committed=%d", signal, capacity)
 			}
+			bandwidth.OnCongestionStateChange(bwe.CongestionStateNone, bwe.CongestionStateCongested, target/2)
+			if bandwidth.target.Load() != target/2 {
+				t.Fatal("finalized probe suppressed ordinary media congestion")
+			}
 			return
 		}
 		if time.Now().After(deadline) {
@@ -142,7 +146,9 @@ func (recorder *publicationCapacityRecorder) OnCongestionStateChange(_, _ bwe.Co
 
 func TestPublicationCongestionUsesCommittedCapacity(t *testing.T) {
 	recorder := &publicationCapacityRecorder{}
-	bandwidth := &publicationBWE{listener: recorder}
+	bandwidth := &publicationBWE{listener: recorder, SendSideBWE: sendsidebwe.NewSendSideBWE(sendsidebwe.SendSideBWEParams{
+		Config: sendsidebwe.DefaultSendSideBWEConfig, Logger: logger.GetDiscardLogger(),
+	})}
 	bandwidth.target.Store(1_200_000)
 	bandwidth.OnCongestionStateChange(bwe.CongestionStateNone, bwe.CongestionStateEarlyWarning, 100_000_000)
 	bandwidth.OnCongestionStateChange(bwe.CongestionStateEarlyWarning, bwe.CongestionStateCongested, 100_000_000)
@@ -153,6 +159,24 @@ func TestPublicationCongestionUsesCommittedCapacity(t *testing.T) {
 	bandwidth.OnCongestionStateChange(bwe.CongestionStateCongested, bwe.CongestionStateNone, 800_000)
 	if bandwidth.target.Load() != 500_000 || recorder.capacity != 500_000 {
 		t.Fatalf("publication disagrees with its committed video budget: target=%d allocation=%d", bandwidth.target.Load(), recorder.capacity)
+	}
+	info := ccutils.ProbeClusterInfo{Id: 1, CreatedAt: time.Now()}
+	bandwidth.ProbeClusterStarting(info)
+	for _, ended := range []bool{false, true} {
+		if ended {
+			info.Result.EndTime = time.Now().UnixNano()
+			bandwidth.ProbeClusterDone(info)
+		}
+		bandwidth.OnCongestionStateChange(bwe.CongestionStateNone, bwe.CongestionStateCongested, 250_000)
+		if bandwidth.target.Load() != 500_000 || recorder.capacity != 500_000 {
+			t.Fatalf("probe congestion reached encoder/allocation budget (settling=%v): target=%d allocation=%d",
+				ended, bandwidth.target.Load(), recorder.capacity)
+		}
+	}
+	bandwidth.Reset()
+	bandwidth.OnCongestionStateChange(bwe.CongestionStateCongested, bwe.CongestionStateCongested, 250_000)
+	if bandwidth.target.Load() != 250_000 || recorder.capacity != 250_000 {
+		t.Fatal("retired publication probe suppressed ordinary congestion")
 	}
 }
 

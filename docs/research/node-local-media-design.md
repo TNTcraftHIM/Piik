@@ -418,9 +418,12 @@ The [ordinary media controls](./nat-traversal.md#recovery-ownership-and-forwardi
 retain the decoded-picture and address-change evidence boundary.
 
 Congestion callbacks could also promote the estimator's unmeasured 100 Mbps
-initial capacity while a probe was pending. Congestion now only reduces the
-committed budget; a valid completed non-congesting probe owns increases.
-Publication allocation and encoder input use that same committed video capacity.
+initial capacity while a probe was pending. Outside a recovery probe, congestion
+can reduce the committed budget; a valid completed non-congesting probe owns
+increases. Congestion during sending or settling ends exploration without cutting
+the established media budget. Both single-child transport and the publication's
+encoder-facing budget retain this rule; the upstream publication allocator's
+guard alone does not protect a separate encoder consumer.
 This follows the
 [upstream distinction between congestion events and completed probes](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/streamallocator/streamallocator.go),
 without introducing another estimator.
@@ -459,6 +462,20 @@ latency-aware queue requires an extra adapter and is not retained. Earlier
 flaky comparisons also registered TWCC twice on the receiver, duplicating
 feedback; those results do not rank the queues. Product receivers already use
 the single default interceptor owner.
+
+Partial recovery exposed a second adapter omission: a rate-controlled local
+output can remain below its own ceiling without needing another spatial layer.
+Probe demand now includes that unmet current-output demand, including when no
+higher output exists. Raw forwarding cannot change its encoder and keeps the
+existing layer-selection rule. In a matched retained-connection control,
+6 Mbps -> 120 kbps -> 800 kbps -> 6 Mbps, the former adapter stays near 74 kbps
+through the partial restoration; the corrected adapter restores its 300 kbps
+output before the 1.2 Mbps output fits. Both eventually restore the higher output.
+The retained network gate checks the intermediate phase as well as final recovery.
+A separate two-child control uses real Windows VP8 encoding and Browser decoding:
+the constrained child recovers after release while the healthy child retains its
+original dimensions. These checks do not establish the cause of an unmatched
+physical Host's low-resolution session.
 
 Live audio changes exposed a related scope mismatch: Piik's TWCC tracks only
 video, but the adapter deducted audio from that measured capacity and included

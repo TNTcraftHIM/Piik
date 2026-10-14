@@ -31,13 +31,18 @@ func TestTransportConstrainedDormantRecovery(t *testing.T) {
 	if os.Getenv("PIIK_TRANSPORT_RECOVERY") == "" {
 		t.Skip("set PIIK_TRANSPORT_RECOVERY=1 for the bounded virtual-network gate")
 	}
-	t.Run("video-only", func(t *testing.T) { checkTransportRecovery(t, false) })
-	t.Run("numeric-audio", func(t *testing.T) { checkTransportRecovery(t, true) })
+	t.Run("video-only", func(t *testing.T) { checkTransportRecovery(t, false, false) })
+	t.Run("numeric-audio", func(t *testing.T) { checkTransportRecovery(t, true, false) })
+	t.Run("within-lowest-output", func(t *testing.T) { checkTransportRecovery(t, false, true) })
 }
 
-func checkTransportRecovery(t *testing.T, withAudio bool) {
+func checkTransportRecovery(t *testing.T, withAudio, recoverLowest bool) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 32*time.Second)
+	duration, recoveredAt := 26*time.Second, 20*time.Second
+	if recoverLowest {
+		duration, recoveredAt = 50*time.Second, 44*time.Second
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), duration+6*time.Second)
 	defer cancel()
 	check := func(err error) {
 		t.Helper()
@@ -68,6 +73,9 @@ func checkTransportRecovery(t *testing.T, withAudio bool) {
 		Formats: []LayerFormat{{Width: 8, Height: 8, Bitrate: 300_000}, {Width: 16, Height: 16, Bitrate: 1_200_000}}, MaxPackets: 500})
 	check(err)
 	defer source.Close()
+	// The generated lowest output follows the supplied codec budget, as Native
+	// capture does. Raw SFU forwarding cannot change an upstream encoder's rate.
+	source.SetLowestLayerRateControlled(true)
 	sendSettings := webrtc.SettingEngine{}
 	sendSettings.SetNet(sendNet)
 	sendSettings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
@@ -190,7 +198,7 @@ func checkTransportRecovery(t *testing.T, withAudio bool) {
 	start, lastReport := time.Now(), time.Now()
 	var previousReceived, previousAudio uint64
 	var dormant bool
-	var recoveredWindows, audioWindows int
+	var recoveredWindows, audioWindows, lowestWindows int
 	minimum := int64(1_200_000)
 	frame := 0
 	for {
@@ -213,12 +221,18 @@ func checkTransportRecovery(t *testing.T, withAudio bool) {
 		}
 		now := time.Now()
 		elapsed := now.Sub(start)
-		if elapsed >= 26*time.Second {
+		if elapsed >= duration {
 			break
 		}
 		capacity := 6_000_000
 		if elapsed >= 4*time.Second && elapsed < 12*time.Second {
 			capacity = 500_000
+			if recoverLowest {
+				capacity = 120_000
+			}
+		}
+		if recoverLowest && elapsed >= 12*time.Second && elapsed < 28*time.Second {
+			capacity = 800_000
 		}
 		link.SetRate(capacity)
 		state := transport.Output.State()
@@ -251,19 +265,28 @@ func checkTransportRecovery(t *testing.T, withAudio bool) {
 				elapsed.Seconds(), capacity, state.VideoBudget, state.Target, state.Current, high, receivedBps,
 				transport.estimator.CongestionState(), transport.paddingReady, transport.probe.Id, transport.Egress())
 			transport.mu.Unlock()
-			if elapsed >= 20*time.Second && state.Current == 1 && receivedBps > 800_000 {
+			if elapsed >= recoveredAt && state.Current == 1 && receivedBps > 800_000 {
 				recoveredWindows++
+			}
+			// Partial recovery must restore the current output before the larger
+			// spatial output fits; only checking the final fast link misses this.
+			if recoverLowest && capacity == 800_000 && state.Current == 0 &&
+				state.VideoBudget >= 300_000 && state.VideoBudget < 1_200_000 && receivedBps > 250_000 {
+				lowestWindows++
 			}
 			decoded := audioDecoded.Load()
 			if withAudio {
 				t.Logf("audio decoded=%d errors=%d bitrate=%d", decoded-previousAudio, audioErrors.Load(), encoder.Bitrate())
-				if elapsed >= 20*time.Second && decoded-previousAudio >= 35 {
+				if elapsed >= recoveredAt && decoded-previousAudio >= 35 {
 					audioWindows++
 				}
 			}
 			previousAudio = decoded
 			lastReport, previousReceived = now, bytes
 		}
+	}
+	if recoverLowest && lowestWindows < 5 {
+		t.Fatalf("current output remained degraded after partial recovery: windows=%d minimum=%d", lowestWindows, minimum)
 	}
 	if !dormant || minimum >= 1_200_000 || recoveredWindows < 5 || withAudio && (audioWindows < 5 || audioErrors.Load() != 0) {
 		t.Fatalf("missing constrained/dormant/released recovery: dormant=%v minimum=%d videoWindows=%d audioWindows=%d audioErrors=%d state=%+v",

@@ -135,6 +135,29 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 	if state := output.State(); state.Paused || state.Target != 0 {
 		t.Fatalf("live lowest codec could not continue bitrate adaptation: %+v", state)
 	}
+	// An adapting encoder can be constrained inside its current logical layer.
+	// Restore that layer's own ceiling before probing a higher spatial output,
+	// including when there is no higher output at all.
+	receiver.rates[0][0] = 50_000
+	output.Reconcile()
+	for _, maximum := range []int32{2, 0} {
+		output.SetMaxSpatialLayer(maximum)
+		if delta, usage := output.probeDemand(); delta != 50_000 || usage != 50_000 {
+			t.Fatalf("current codec recovery skipped (maximum=%d): delta=%d usage=%d", maximum, delta, usage)
+		}
+	}
+	output.SetBudget(100_000)
+	if delta, _ := output.probeDemand(); delta != 0 {
+		t.Fatalf("satisfied codec ceiling retained probe demand: %d", delta)
+	}
+	receiver.controlled = false
+	output.SetBudget(60_000)
+	if delta, _ := output.probeDemand(); delta != 0 {
+		t.Fatalf("raw forwarding invented same-layer codec demand: %d", delta)
+	}
+	receiver.controlled = true
+	output.SetMaxSpatialLayer(2)
+	receiver.rates[0][0] = 100_000
 	output.SetBudget(0)
 	if state := output.State(); !state.Paused {
 		t.Fatalf("codec control overrode exhausted connection budget: %+v", state)

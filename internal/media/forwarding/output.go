@@ -156,13 +156,25 @@ func (output *Output) probeDemand() (int64, int64) {
 		return 0, 0
 	}
 	usage := output.BandwidthRequested()
+	// A live encoder can adapt below its current logical layer's ceiling. That
+	// unmet demand exists even without a higher layer; raw forwarding cannot
+	// consume it. Restore it before exploring a larger spatial output.
+	layers := buffer.GetVideoLayersForMimeType(output.Receiver().Mime(), output.Receiver().TrackInfo())
+	if controlled, ok := output.Receiver().(interface{ RateControlled(int32) bool }); ok {
+		for _, layer := range layers {
+			if layer.SpatialLayer == output.allocation.TargetLayer.Spatial && controlled.RateControlled(layer.SpatialLayer) &&
+				int64(layer.Bitrate) > output.budget {
+				return max(int64(layer.Bitrate)-usage, 0), usage
+			}
+		}
+	}
 	if transition, available := output.GetNextHigherTransition(false); available {
 		return transition.BandwidthDelta, usage
 	}
 	// Dormant ceilings are desired demand only. They never enter the receiver's
 	// measured bitrate table or authorize forwarding an unavailable layer.
 	next, desired := int32(buffer.DefaultMaxLayerSpatial+1), int64(0)
-	for _, layer := range buffer.GetVideoLayersForMimeType(output.Receiver().Mime(), output.Receiver().TrackInfo()) {
+	for _, layer := range layers {
 		if layer.SpatialLayer > output.allocation.TargetLayer.Spatial && layer.SpatialLayer <= output.MaxLayer().Spatial &&
 			layer.SpatialLayer < next && int64(layer.Bitrate) > output.budget {
 			next, desired = layer.SpatialLayer, int64(layer.Bitrate)

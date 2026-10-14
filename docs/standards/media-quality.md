@@ -342,6 +342,10 @@ directly and does not re-encode that preview through a Browser publisher.
 
 Native parents and the SFU share the media forwarding adapter. Each Native
 parent considers only its direct children and its admitted SFU publication.
+Recovery-probe traffic is exploration, not a reduction of committed media
+capacity. Allocation and encoder consumers retain the same budget through probe
+settling. A locally rate-controlled output has unmet demand within its current
+layer as well as demand for larger outputs; raw forwarding cannot synthesize it.
 Compatible children reuse an available encoded output; a missing lower output
 starts one shared decode/scale/encode group, while healthy forwarding retains
 the original input without starting a decoder. The group produces the highest

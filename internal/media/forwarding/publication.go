@@ -560,6 +560,7 @@ type publicationBWE struct {
 	listener bwe.BWEListener
 	target   atomic.Int64
 	observed atomic.Bool
+	probing  atomic.Bool
 }
 
 func (bandwidth *publicationBWE) HandleTWCCFeedback(report *rtcp.TransportLayerCC) {
@@ -571,10 +572,22 @@ func (bandwidth *publicationBWE) SetBWEListener(listener bwe.BWEListener) {
 	bandwidth.listener = listener
 	bandwidth.SendSideBWE.SetBWEListener(bandwidth)
 }
+
+func (bandwidth *publicationBWE) ProbeClusterStarting(info ccutils.ProbeClusterInfo) {
+	bandwidth.probing.Store(true)
+	bandwidth.SendSideBWE.ProbeClusterStarting(info)
+}
+
+func (bandwidth *publicationBWE) Reset() {
+	bandwidth.SendSideBWE.Reset()
+	bandwidth.probing.Store(false)
+}
+
 func (bandwidth *publicationBWE) OnCongestionStateChange(from, to bwe.CongestionState, capacity int64) {
 	// As for an individual Transport, only a completed non-congesting probe
-	// can raise committed capacity. All consumers use that same accepted value.
-	if to == bwe.CongestionStateCongested && capacity > 0 && capacity < bandwidth.target.Load() {
+	// can raise capacity. The allocator ignores congestion during a probe; the
+	// encoder-facing budget must retain that same value through settling.
+	if !bandwidth.probing.Load() && to == bwe.CongestionStateCongested && capacity > 0 && capacity < bandwidth.target.Load() {
 		bandwidth.target.Store(capacity)
 	}
 	bandwidth.listener.OnCongestionStateChange(from, to, bandwidth.target.Load())
@@ -583,6 +596,9 @@ func (bandwidth *publicationBWE) ProbeClusterFinalize() (ccutils.ProbeSignal, in
 	signal, capacity, done := bandwidth.SendSideBWE.ProbeClusterFinalize()
 	if done && signal == ccutils.ProbeSignalNotCongesting && capacity > bandwidth.target.Load() {
 		bandwidth.target.Store(capacity)
+	}
+	if done {
+		bandwidth.probing.Store(false)
 	}
 	return signal, bandwidth.target.Load(), done
 }

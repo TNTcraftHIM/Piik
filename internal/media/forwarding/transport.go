@@ -355,11 +355,13 @@ func (transport *Transport) OnTransportCCFeedback(_ *sfu.DownTrack, packet *rtcp
 }
 
 // HandleTWCCFeedback invokes this synchronously under the transport's event
-// lock. Congestion can reduce committed capacity; only a valid completed probe
-// can increase it. Warning/clear transitions can carry the estimator's initial
-// ceiling, especially while a probe is pending, rather than a new measurement.
+// lock. Like LiveKit's allocator, retain committed capacity while a recovery
+// probe is sending or settling; its congestion ends exploration in driveProbeLocked.
+// Outside that probe, congestion can reduce capacity; only a valid completed
+// probe can increase it. Warning/clear transitions are not capacity measurements.
 func (transport *Transport) OnCongestionStateChange(_, state bwe.CongestionState, capacity int64) {
-	if state == bwe.CongestionStateCongested && capacity > 0 && capacity < transport.target.Load() {
+	if transport.probe.Id == ccutils.ProbeClusterIdInvalid &&
+		state == bwe.CongestionStateCongested && capacity > 0 && capacity < transport.target.Load() {
 		transport.target.Store(capacity)
 	}
 }

@@ -302,6 +302,10 @@ after cancellation; a timeout constant or a close call alone proves no deadline.
 Keep the shared resources production retains while changing the external
 condition. New request/connection IDs alone do not prove that a dependency's
 cached observations, failure state or resource lease have been refreshed.
+For media adaptation, include partial capacity restoration on the retained
+connection, not only recovery to a fast link. Check capture, encoded output,
+actual send and remote decode separately. A dependency's algorithm does not
+prove its adapter preserves assumptions about pacing, measurement or ownership.
 For overlapping connections, preserve the actual shared local and remote
 endpoints; giving each fixture an independent listener can hide demultiplexing
 conflicts. Check both commit and rollback while the surviving media still flows.

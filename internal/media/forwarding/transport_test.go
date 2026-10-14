@@ -99,9 +99,10 @@ func testTransportVideoFeedbackAudioAndClose(t *testing.T, repair bool) {
 		}, webrtc.RTPCodecTypeAudio))
 	}
 	registry := &interceptor.Registry{}
-	check(webrtc.RegisterDefaultInterceptors(mediaEngine, registry))
 	reports := &receiverReportGate{}
+	// Inner writer also gates NACKs emitted by the default generator itself.
 	registry.Add(reports)
+	check(webrtc.RegisterDefaultInterceptors(mediaEngine, registry))
 	receiver, err := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(registry),
 		webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
 	check(err)
@@ -250,16 +251,25 @@ func testTransportVideoFeedbackAudioAndClose(t *testing.T, repair bool) {
 	check(receiver.WriteRTCP([]rtcp.Packet{&rtcp.TransportLayerNack{
 		MediaSSRC: videoSSRC, Nacks: []rtcp.NackPair{{PacketID: missingSequence}},
 	}}))
-	select {
-	case usedRTX := <-recovered:
-		if usedRTX != repair {
-			t.Fatalf("repair path disagrees with negotiation: RTX=%v", usedRTX)
-		}
-	case <-ctx.Done():
-		t.Fatal("delayed local admission loss did not recover through library NACK")
-	}
 	ticker := time.NewTicker(time.Second / 30)
 	defer ticker.Stop()
+	for repaired := false; !repaired; {
+		select {
+		case usedRTX := <-recovered:
+			if usedRTX != repair {
+				t.Fatalf("repair path disagrees with negotiation: RTX=%v", usedRTX)
+			}
+			repaired = true
+		case <-ticker.C:
+			// Pion checks its repair queue between primary reads. Keep the
+			// live delta stream flowing without superseding the missing keyframe.
+			for _, packet := range packetizer.Packetize(deltaFrame, 3000) {
+				check(source.WriteRTP(0, packet))
+			}
+		case <-ctx.Done():
+			t.Fatal("delayed local admission loss did not recover through library NACK")
+		}
+	}
 	for {
 		_, observed := transport.TargetBitrate()
 		if videoPackets.Load() >= 15 && audioPackets.Load() >= 15 && observed {
@@ -405,6 +415,24 @@ func TestTransportDoesNotPromoteUnverifiedCongestionCapacity(t *testing.T) {
 	transport.OnCongestionStateChange(bwe.CongestionStateCongested, bwe.CongestionStateNone, 800_000)
 	if bitrate, _ := transport.TargetBitrate(); bitrate != 500_000 {
 		t.Fatalf("clearing congestion replaced the committed reduction without a probe: %d", bitrate)
+	}
+	// A recovery probe deliberately exceeds the current media allocation. Its
+	// congestion, including late feedback while settling, cancels exploration
+	// without cutting the already committed capacity (LiveKit's allocator rule).
+	transport.probe = ccutils.ProbeClusterInfo{Id: 1}
+	for _, ended := range []bool{false, true} {
+		if ended {
+			transport.probe.Result.EndTime = 1
+		}
+		transport.OnCongestionStateChange(bwe.CongestionStateNone, bwe.CongestionStateCongested, 250_000)
+		if bitrate, _ := transport.TargetBitrate(); bitrate != 500_000 {
+			t.Fatalf("probe congestion cut committed media capacity (settling=%v): %d", ended, bitrate)
+		}
+	}
+	transport.probe = ccutils.ProbeClusterInfoInvalid
+	transport.OnCongestionStateChange(bwe.CongestionStateCongested, bwe.CongestionStateCongested, 250_000)
+	if bitrate, _ := transport.TargetBitrate(); bitrate != 250_000 {
+		t.Fatalf("post-probe media congestion did not reduce capacity: %d", bitrate)
 	}
 }
 

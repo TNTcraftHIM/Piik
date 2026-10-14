@@ -17,6 +17,20 @@ after owner acceptance; the previous release approval does not authorize another
 publication. Broader device coverage below does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
+- [ ] **Native quality recovery.** Verify the retained-connection budget and
+  current-output demand repairs against the affected Host. Review native
+  whole-frame packet bursts separately from already-paced SFU input; a bounded
+  shallow-queue control degrades without pacing despite sufficient average
+  capacity. Any queue correction must also pass the existing stalled-writer
+  recovery and retirement checks. [Media evidence](./research/node-local-media-design.md#send-queue-recovery)
+  owns local comparisons; they do not prove the live report resolved.
+- [ ] **State-dependent layout shifts.** Check nickname editing and the chat
+  character counter through their actual narrow/wide state transitions; retain
+  the shared control geometry rather than adding per-state offsets.
+- [ ] **Domestic connectivity guidance.** Review available public-invitation
+  tunnel alternatives and explain existing STUN discovery redundancy. Separate
+  signaling-provider availability, ICE connectivity and established-media quality;
+  do not add another provider framework without a concrete benefit.
 - [ ] **Gitee mirror upload reliability.** Investigate recurring upload timeouts
   from GitHub-hosted runners before changing retry budgets. Use the verified
   original-artifact recovery in [GitHub operations](./operations/github.md) when
