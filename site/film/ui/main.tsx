@@ -192,6 +192,9 @@ function Screen({ shot }: { shot: Shot }) {
   return (
     <div className="lr-app">
       <AppHeader
+        homeHref={launcher ? "/client" : "/"}
+        atHome={!viewer}
+        showAppConnection={shot !== "picker"}
         led={
           launcher ? undefined : (
             <LedStrip
