@@ -337,7 +337,10 @@ export function CaptureSourcePicker({
           ) : null}
 
           {activeTab === "camera" ? <CameraSources {...cameraSources} selected={initialCamera}
-            disabled={selectionDisabled} onSelect={id => onCamera?.(id)} /> : <>
+            disabled={selectionDisabled} onSelect={id => {
+              cameraSources.cancel();
+              onCamera?.(id);
+            }} /> : <>
           <div className="lr-source-picker-list">
             {browserCapture ? (
               <button

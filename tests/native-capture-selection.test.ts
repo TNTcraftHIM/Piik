@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { CaptureSourcePicker } from "../src/client/components/living/CaptureSourcePicker";
 import { AudioExclusionSelect } from "../src/client/components/living/AudioExclusionSelect";
+import { CameraSources } from "../src/client/components/living/CameraSources";
 import { setCopy, t } from "../src/client/ui/copy";
 
 import {
@@ -31,6 +32,18 @@ function target(
 describe("native capture source selection", () => {
   const game = target("My Game", "1");
   afterEach(() => setCopy({ lang: "en", vis: true }));
+
+  it("keeps enumerated cameras selectable while optional thumbnails load", () => {
+    const props = {
+      sources: [{ id: "front", label: "Front camera", preview: null }],
+      busy: true, error: null, selected: "", onSelect: () => {},
+    };
+    const html = renderToStaticMarkup(createElement(CameraSources, { ...props, disabled: false }));
+    expect(html).toContain('data-camera-source="front"');
+    expect(html).not.toContain('disabled=""');
+    expect(renderToStaticMarkup(createElement(CameraSources, { ...props, disabled: true })))
+      .toContain('disabled=""');
+  });
 
   it.each(["en", "zh", "vis"] as const)("keeps Browser capture reachable with an actionable App mismatch in %s", (mode) => {
     const lang = mode === "zh" ? "zh" : "en";

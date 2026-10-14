@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { discoverNativeConnect, discoverNativeHealth, NativeClient, NativeCompatibilityError, notifyNativePresentation } from "../src/client/native/client";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
+import { AppQualityPreference } from "../src/client/native/quality-preference";
 
 import {
   nativeEventSchema,
@@ -30,6 +31,17 @@ describe("native App private wire", () => {
     instanceToken: "a".repeat(43),
     nativeMedia: { video: true, hardwareH264: true },
   };
+
+  it.each(["prompt", "denied"])("background App preferences do not request local access when permission is %s", async (state) => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("navigator", { permissions: { query: vi.fn().mockResolvedValue({ state }) } });
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(health)));
+    vi.stubGlobal("fetch", fetcher);
+    const controller = new AbortController();
+    await notifyNativePresentation("en", controller.signal);
+    expect(await AppQualityPreference.connect(controller.signal)).toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
 
   it("discovers only a local approval page without opening native control", async () => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/r/9527") });
@@ -226,7 +238,7 @@ describe("native App private wire", () => {
   it.each([NATIVE_CLIENT_PROTOCOL - 1, NATIVE_CLIENT_PROTOCOL + 1])(
     "reports observed Piik App protocol %s without opening control or presentation",
     async (protocol) => {
-      vi.stubGlobal("window", { setTimeout, clearTimeout });
+      vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1/") });
       const socket = vi.fn();
       vi.stubGlobal("WebSocket", socket);
       const fetcher = vi.fn(async (url: string) => url === `http://127.0.0.1:${health.port}/health`
@@ -349,6 +361,7 @@ describe("native App private wire", () => {
     vi.stubGlobal("window", {
       setTimeout: globalThis.setTimeout,
       clearTimeout: globalThis.clearTimeout,
+      location: new URL("http://127.0.0.1/"),
     });
     const fetcher = vi.fn(async (url: string) => url.endsWith("/health")
       ? new Response(JSON.stringify({
@@ -362,10 +375,10 @@ describe("native App private wire", () => {
     const staleNotification = notifyNativePresentation("zh", stale.signal);
     stale.abort();
     await staleNotification;
-    expect(fetcher).toHaveBeenCalledTimes(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
-    expect(fetcher).toHaveBeenCalledWith("http://127.0.0.1:39721/health", expect.anything());
+    expect(fetcher).not.toHaveBeenCalled();
     const current = new AbortController();
     await notifyNativePresentation("vis", current.signal);
+    expect(fetcher).toHaveBeenCalledWith("http://127.0.0.1:39721/health", expect.anything());
     expect(fetcher).toHaveBeenLastCalledWith("http://127.0.0.1:39721/presentation", expect.objectContaining({
       method: "POST", body: JSON.stringify({language: "vis"}), signal: current.signal,
     }));

@@ -200,7 +200,7 @@ export async function notifyNativePresentation(
   signal: AbortSignal,
 ): Promise<void> {
   if (signal.aborted) return;
-  const health = await discoverNativeHealth({ signal });
+  const health = await discoverNativeHealth({ signal, waitForPermission: false });
   if (!health || signal.aborted) return;
   await fetch(`http://127.0.0.1:${health.port}/presentation`, {
     method: "POST",
