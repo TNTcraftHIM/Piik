@@ -469,7 +469,10 @@ quality metrics into media settings or a weighted/global route score.
 
 Native categorical evidence includes the media framework's committed allocation
 deficiency: fitting a reduced output into the available budget does not clear a
-continuing framework limitation. Publication evidence considers only requested
+continuing framework limitation, including a live encoder restricted within its
+current output. Source bitrate variation alone does not reduce a committed
+allocation or prove congestion; an unsuccessful recovery probe does not change
+the incumbent's quality category. Publication evidence considers only requested
 encodings, so an intentionally inactive encoding is not a bandwidth failure.
 Missing feedback or frame progress remains unknown. This category neither
 infers a physical bottleneck nor ranks routes by configured quality ceilings.

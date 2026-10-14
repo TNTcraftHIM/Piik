@@ -203,7 +203,10 @@ func TestOutputGroupsHonorOriginalTransportDemand(t *testing.T) {
 	output.SetBudget(200_000)
 	plan("limited budget", false)
 	output.SetBudget(2_000_000)
-	if state := output.State(); state.Target != 0 || state.Prepare != 1 {
+	// SetReceiver reset the framework's acquired layer. Its acquisition target
+	// may aim at the original, but only the low layer is actually available for
+	// requesting a frame; preparation is separate from accepted forwarding.
+	if state := output.State(); state.Requested != 0 || state.Current > 0 || state.Prepare != 1 {
 		t.Fatalf("higher budget did not prepare the dormant original: %+v", state)
 	}
 	plan("higher budget preparation", true)

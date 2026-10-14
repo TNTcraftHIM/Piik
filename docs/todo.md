@@ -18,12 +18,19 @@ publication. Broader device coverage below does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
 - [ ] **Native quality recovery.** Verify the retained-connection budget and
-  current-output demand repairs against the affected Host. Review native
-  whole-frame packet bursts separately from already-paced SFU input; a bounded
-  shallow-queue control degrades without pacing despite sufficient average
-  capacity. Any queue correction must also pass the existing stalled-writer
-  recovery and retirement checks. [Media evidence](./research/node-local-media-design.md#send-queue-recovery)
-  owns local comparisons; they do not prove the live report resolved.
+  current-output demand repairs against the affected Host. Local paced-sending,
+  partial-recovery and stable-allocation controls pass; they do not prove the
+  live report resolved. The publication's sole active rate-controlled RID still
+  stops probing below its ceiling: expose that demand to the existing probe
+  owner without a second controller or fabricated source measurements.
+  [Media evidence](./research/node-local-media-design.md#send-queue-recovery)
+  owns the comparisons and remaining boundary.
+- [ ] **Sharing ends with `app/capture/failed` (v2.0.0).** A new report describes
+  sharing stopping after a while, followed by "current sharing has ended" and
+  this error key. After the quality-recovery investigation, trace capture exit,
+  session retirement and error mapping; the key alone does not establish a
+  capture-device, encoder or connection cause. Compare the earlier quiet-game
+  reports below without assuming they share a cause.
 - [ ] **State-dependent layout shifts.** Check nickname editing and the chat
   character counter through their actual narrow/wide state transitions; retain
   the shared control geometry rather than adding per-state offsets.

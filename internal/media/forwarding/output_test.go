@@ -117,8 +117,8 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 	if state := output.State(); !state.Paused || state.Target != -1 || state.Prepare != 0 || state.VideoBudget != 60_000 {
 		t.Fatalf("below-lowest budget cannot request codec adaptation: %+v", state)
 	}
-	// A new child's seed cannot veto a warm source's first video. Once feedback
-	// arrives, the same source must obey the real connection's allocation again.
+	// A new child's seed cannot veto a warm source's first video. Receiving
+	// feedback alone is not congestion; a committed reduction constrains it again.
 	observed := false
 	output.feedbackObserved = func() bool { return observed }
 	output.Reconcile()
@@ -127,9 +127,14 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 	}
 	observed = true
 	output.Reconcile()
-	if state := output.State(); !state.Paused {
-		t.Fatalf("bootstrap bypassed observed raw-source limits: %+v", state)
+	if state := output.State(); state.Paused {
+		t.Fatalf("first feedback reinterpreted the seed as a capacity reduction: %+v", state)
 	}
+	output.SetBudget(50_000)
+	if state := output.State(); !state.Paused {
+		t.Fatalf("bootstrap bypassed a committed capacity reduction: %+v", state)
+	}
+	output.SetBudget(60_000)
 	receiver.controlled = true
 	output.Reconcile()
 	if state := output.State(); state.Paused || state.Target != 0 {
@@ -145,15 +150,24 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 		if delta, usage := output.probeDemand(); delta != 50_000 || usage != 50_000 {
 			t.Fatalf("current codec recovery skipped (maximum=%d): delta=%d usage=%d", maximum, delta, usage)
 		}
+		if !output.BandwidthLimited() {
+			t.Fatalf("same-layer encoder restriction was reported as healthy (maximum=%d)", maximum)
+		}
 	}
 	output.SetBudget(100_000)
 	if delta, _ := output.probeDemand(); delta != 0 {
 		t.Fatalf("satisfied codec ceiling retained probe demand: %d", delta)
 	}
+	if output.BandwidthLimited() {
+		t.Fatal("satisfied codec ceiling retained a bandwidth restriction")
+	}
 	receiver.controlled = false
 	output.SetBudget(60_000)
 	if delta, _ := output.probeDemand(); delta != 0 {
 		t.Fatalf("raw forwarding invented same-layer codec demand: %d", delta)
+	}
+	if output.BandwidthLimited() {
+		t.Fatal("raw forwarding invented a local encoder restriction")
 	}
 	receiver.controlled = true
 	output.SetMaxSpatialLayer(2)
@@ -179,6 +193,44 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 	if state := sibling.State(); state.Paused || state.Target != 2 || state.VideoBudget != 1_000_000 || receiver.rates[2][0] != 900_000 {
 		t.Fatalf("weak-child adaptation changed the shared high output: %+v", state)
 	}
+	// Frame complexity and RTP overhead can briefly exceed a nominal ceiling.
+	// A source measurement is not new evidence that this connection lost capacity.
+	// The layers' measurement windows can also become available independently.
+	receiver.rates[2][0] = 0
+	sibling.UpTrackBitrateAvailabilityChange()
+	if state := sibling.State(); state.Target != 2 {
+		t.Fatalf("unmeasured active layer was treated as unavailable: %+v", state)
+	}
+	receiver.rates[2][0] = 1_050_000
+	sibling.UpTrackBitrateReport(receiver.available, receiver.rates)
+	sibling.SetBudget(1_000_000)
+	if state := sibling.State(); state.Target != 2 || state.VideoBudget != 1_000_000 {
+		t.Fatalf("unchanged connection budget downgraded a healthy output: %+v", state)
+	}
+	sibling.SetBudget(1_020_000)
+	if state := sibling.State(); state.Target != 2 {
+		t.Fatalf("increased capacity downgraded an existing output: %+v", state)
+	}
+	sibling.SetBudget(800_000)
+	if state := sibling.State(); state.Target != 1 {
+		t.Fatalf("actual capacity reduction failed to constrain the output: %+v", state)
+	}
+	receiver.rates[1][0] = 850_000
+	sibling.UpTrackBitrateReport(receiver.available, receiver.rates)
+	sibling.SetBudget(800_000)
+	if state := sibling.State(); state.Target != 1 {
+		t.Fatalf("measured variation downgraded an already constrained output: %+v", state)
+	}
+	receiver.rates[1][0] = 300_000
+	receiver.rates[2][0] = 900_000
+	sibling.SetBudget(1_000_000)
+	if state := sibling.State(); state.Target != 2 {
+		t.Fatalf("increased capacity did not restore the high output: %+v", state)
+	}
+	sibling.SetMaxSpatialLayer(0)
+	if state := sibling.State(); state.Target != 0 {
+		t.Fatalf("stable allocation ignored a changed subscription limit: %+v", state)
+	}
 	receiver.rates[0][0] = 100_000
 	// A stopped upper output has no actual bitrate. Admission may prepare it,
 	// but the library must not select it until it is genuinely available again.
@@ -198,7 +250,9 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 		t.Fatalf("preparation exceeded child maximum: %+v", state)
 	}
 	output.SetMaxSpatialLayer(2)
-	output.current = 2 // Allocation-only fixture; the real RTP gate verifies emitted frames.
+	// Allocation-only fixture: put the accepted frame on a different layer so
+	// BeginFrame must fence it. The real RTP gate verifies emitted frames.
+	output.current = (output.State().Target + 1) % 3
 	before := output.State()
 	output.BeginFrame()
 	after := output.State()

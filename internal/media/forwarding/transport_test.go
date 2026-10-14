@@ -12,6 +12,7 @@ import (
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
 	"github.com/livekit/livekit-server/pkg/sfu/pacer"
+	packetpacer "github.com/livekit/mediatransportutil/pkg/pacer"
 	"github.com/livekit/protocol/logger"
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
@@ -383,11 +384,11 @@ func (gate *receiverReportGate) BindRTCPWriter(writer interceptor.RTCPWriter) in
 }
 
 type heldPacketPacer struct {
-	pacer.Pacer
-	packets []*pacer.Packet
+	packetpacer.Pacer
+	packets []*packetpacer.Packet
 }
 
-func (held *heldPacketPacer) Enqueue(packet *pacer.Packet) {
+func (held *heldPacketPacer) Enqueue(packet *packetpacer.Packet) {
 	held.packets = append(held.packets, packet)
 }
 
@@ -512,7 +513,7 @@ func TestSendQueuesDrainAfterBandwidthReduction(t *testing.T) {
 
 func TestBoundedPacerReleasesPacketsAndIsolatesBlockedQueue(t *testing.T) {
 	log := logger.GetDiscardLogger()
-	sender := pacer.NewPassThrough(log, nil)
+	sender := packetpacer.NewPassThrough(log)
 	held := &heldPacketPacer{Pacer: sender}
 	queue := newBoundedPacer(held, log, 2)
 	defer queue.Stop()
@@ -544,7 +545,7 @@ func TestBoundedPacerReleasesPacketsAndIsolatesBlockedQueue(t *testing.T) {
 	queue.Stop()
 	queue.Stop()
 	queue.Enqueue(packet())
-	// Upstream may still hold header-free tickets when it stops. Visiting one
+	// Upstream may still hold scheduling tickets when it stops. Visiting one
 	// after cancellation must neither send nor return the original a second time.
 	for _, proxy := range held.packets[1:] {
 		sender.Enqueue(proxy)
@@ -564,7 +565,7 @@ func TestBoundedPacerReleasesPacketsAndIsolatesBlockedQueue(t *testing.T) {
 
 func TestBoundedPacerCanceledProbesRetainAdmission(t *testing.T) {
 	log := logger.GetDiscardLogger()
-	sender := pacer.NewPassThrough(log, nil)
+	sender := packetpacer.NewPassThrough(log)
 	held := &heldPacketPacer{Pacer: sender}
 	queue := newBoundedPacer(held, log, 2)
 	defer queue.Stop()
@@ -606,7 +607,7 @@ func BenchmarkBoundedPacerAdmission(b *testing.B) {
 		b.Run(name, func(b *testing.B) {
 			var queue pacer.Pacer = pacer.NewPassThrough(log, nil)
 			if bounded {
-				queue = newBoundedPacer(queue, log, 500)
+				queue = newBoundedPacer(packetpacer.NewPassThrough(log), log, 500)
 			}
 			defer queue.Stop()
 			writer := &countingPacketWriter{}

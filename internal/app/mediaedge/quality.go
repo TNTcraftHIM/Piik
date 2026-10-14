@@ -85,9 +85,9 @@ func (edge *Edge) QualitySample(now time.Time) (QualitySample, bool) {
 	sample.AvailableOutgoingKbps = float64(target) / 1000
 	reason := "none"
 	sample.State = "healthy"
-	// The estimator tracks video only. Keep total traffic in diagnostics, but
-	// compare its capacity with the corresponding video payload.
-	if edge.transport.Output.IsDeficient() || float64(target) < float64(videoBytes*8)/seconds {
+	// Allocation and ordinary congestion own the limitation. A source bitrate
+	// spike or an unsuccessful recovery probe is not itself a new media limit.
+	if edge.transport.BandwidthLimited() {
 		reason = "bandwidth"
 		sample.State = "degraded"
 	}

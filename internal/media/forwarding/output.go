@@ -10,6 +10,7 @@ import (
 
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/buffer"
+	"github.com/livekit/livekit-server/pkg/sfu/bwe"
 	"github.com/livekit/protocol/livekit"
 	"github.com/pion/webrtc/v4"
 )
@@ -27,6 +28,7 @@ type Output struct {
 	hasAllocation    bool
 	closed           bool
 	feedbackObserved func() bool
+	congestionState  func() bwe.CongestionState
 	onActivity       func()
 	onDemandChanged  func()
 }
@@ -51,17 +53,19 @@ func NewOutput(track *sfu.DownTrack, budget int64) *Output {
 func (output *Output) SetBudget(budget int64) {
 	output.mu.Lock()
 	defer output.mu.Unlock()
-	output.budget = max(budget, 0)
-	output.reconcileLocked()
+	budget = max(budget, 0)
+	reduced := budget < output.budget
+	output.budget = budget
+	output.reconcileLocked(reduced)
 }
 
 func (output *Output) Reconcile() {
 	output.mu.Lock()
 	defer output.mu.Unlock()
-	output.reconcileLocked()
+	output.reconcileLocked(false)
 }
 
-func (output *Output) reconcileLocked() {
+func (output *Output) reconcileLocked(budgetReduced bool) {
 	defer output.notifyDemand()
 	if output.closed {
 		return
@@ -84,25 +88,49 @@ func (output *Output) reconcileLocked() {
 			break
 		}
 	}
-	if !measured || (output.feedbackObserved != nil && !output.feedbackObserved()) {
+	congestion := bwe.CongestionStateNone
+	if output.congestionState != nil {
+		congestion = output.congestionState()
+	}
+	stable := !budgetReduced && output.hasAllocation && !output.IsDeficient() && congestion != bwe.CongestionStateCongested
+	if !measured || (output.feedbackObserved != nil && !output.feedbackObserved()) || stable {
 		if len(available) > 0 {
 			// Source history is not this new connection's capacity. Bootstrap
 			// through the library until video can establish real feedback;
 			// pausing against the initial estimate would prevent that feedback.
-			output.allocation = output.AllocateOptimal(false, false)
+			// Stable streams also retain the library's optimal allocation, including
+			// while individual layers' bitrate windows are becoming available.
+			output.allocation = output.AllocateOptimal(false, congestion == bwe.CongestionStateEarlyWarning)
 			output.hasAllocation = true
 		}
 		return
 	}
 	output.ProvisionalAllocatePrepare()
 	remaining := output.budget
+	retained := buffer.InvalidLayer
+	if !budgetReduced && output.hasAllocation {
+		// Match the library's cooperative allocation: changed source measurements
+		// do not imply congestion. Retain a valid target; only a lower connection
+		// budget constrains it again. Larger outputs still need available headroom.
+		transition := output.ProvisionalAllocateGetCooperativeTransition(false)
+		if transition.From.IsValid() && transition.From == transition.To {
+			retained = transition.To
+			remaining -= output.BandwidthRequested()
+		} else {
+			output.ProvisionalAllocateReset()
+		}
+	}
 	maximum := output.MaxLayer()
 	controlled, ok := output.Receiver().(interface{ RateControlled(int32) bool })
 	keepLowest := ok && controlled.RateControlled(0) && slices.Contains(available, int32(0))
 	for spatial := int32(0); spatial <= maximum.Spatial; spatial++ {
 		for temporal := int32(0); temporal <= maximum.Temporal; temporal++ {
+			layer := buffer.VideoLayer{Spatial: spatial, Temporal: temporal}
+			if retained.IsValid() && !layer.GreaterThan(retained) {
+				continue
+			}
 			_, used := output.ProvisionalAllocate(remaining,
-				buffer.VideoLayer{Spatial: spatial, Temporal: temporal}, !(keepLowest && spatial == 0), false)
+				layer, !(keepLowest && spatial == 0), false)
 			remaining -= used
 		}
 	}
@@ -159,14 +187,8 @@ func (output *Output) probeDemand() (int64, int64) {
 	// A live encoder can adapt below its current logical layer's ceiling. That
 	// unmet demand exists even without a higher layer; raw forwarding cannot
 	// consume it. Restore it before exploring a larger spatial output.
-	layers := buffer.GetVideoLayersForMimeType(output.Receiver().Mime(), output.Receiver().TrackInfo())
-	if controlled, ok := output.Receiver().(interface{ RateControlled(int32) bool }); ok {
-		for _, layer := range layers {
-			if layer.SpatialLayer == output.allocation.TargetLayer.Spatial && controlled.RateControlled(layer.SpatialLayer) &&
-				int64(layer.Bitrate) > output.budget {
-				return max(int64(layer.Bitrate)-usage, 0), usage
-			}
-		}
+	if ceiling := controlledLayerCeiling(output.Receiver(), output.allocation.TargetLayer.Spatial); ceiling > output.budget {
+		return max(ceiling-usage, 0), usage
 	}
 	if transition, available := output.GetNextHigherTransition(false); available {
 		return transition.BandwidthDelta, usage
@@ -174,6 +196,7 @@ func (output *Output) probeDemand() (int64, int64) {
 	// Dormant ceilings are desired demand only. They never enter the receiver's
 	// measured bitrate table or authorize forwarding an unavailable layer.
 	next, desired := int32(buffer.DefaultMaxLayerSpatial+1), int64(0)
+	layers := buffer.GetVideoLayersForMimeType(output.Receiver().Mime(), output.Receiver().TrackInfo())
 	for _, layer := range layers {
 		if layer.SpatialLayer > output.allocation.TargetLayer.Spatial && layer.SpatialLayer <= output.MaxLayer().Spatial &&
 			layer.SpatialLayer < next && int64(layer.Bitrate) > output.budget {
@@ -181,6 +204,28 @@ func (output *Output) probeDemand() (int64, int64) {
 		}
 	}
 	return max(desired-usage, 0), usage
+}
+
+// BandwidthLimited includes a live encoder restricted inside its current layer.
+// Packet-rate variation alone is not an allocation or congestion decision.
+func (output *Output) BandwidthLimited() bool {
+	output.mu.Lock()
+	defer output.mu.Unlock()
+	return !output.closed && output.hasAllocation && (output.IsDeficient() ||
+		controlledLayerCeiling(output.Receiver(), output.allocation.TargetLayer.Spatial) > output.budget)
+}
+
+func controlledLayerCeiling(receiver sfu.TrackReceiver, spatial int32) int64 {
+	controlled, ok := receiver.(interface{ RateControlled(int32) bool })
+	if !ok || !controlled.RateControlled(spatial) {
+		return 0
+	}
+	for _, layer := range buffer.GetVideoLayersForMimeType(receiver.Mime(), receiver.TrackInfo()) {
+		if layer.SpatialLayer == spatial {
+			return int64(layer.Bitrate)
+		}
+	}
+	return 0
 }
 
 func (output *Output) WriteRTP(packet *buffer.ExtPacket, layer int32) int32 {
@@ -306,7 +351,7 @@ func (output *Output) replaceReceiver(receiver *outputReceiver) error {
 	output.mu.Lock()
 	output.current = -1
 	output.hasAllocation = false
-	output.reconcileLocked()
+	output.reconcileLocked(false)
 	output.mu.Unlock()
 	return nil
 }

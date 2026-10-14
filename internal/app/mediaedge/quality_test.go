@@ -61,7 +61,7 @@ func TestQualityDimensionsFollowAssignedSource(t *testing.T) {
 		edge.transport.Output.State(), available, rates)
 }
 
-func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {
+func TestQualitySampleUsesAllocationNotPacketRate(t *testing.T) {
 	engine, err := NewEngine(EngineOptions{
 		BindAddress: "127.0.0.1:0", IncludeLoopback: true,
 	})
@@ -76,7 +76,8 @@ func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {
 	edge, receiver, _ := connectedReceiver(t, engine, source, "limited-edge")
 	t.Cleanup(func() { _ = receiver.Close() })
 	edge.targetBitrate = func() (int, bool) { return 100_000, true }
-	// Encoded relay sources need no decoded dimensions to compare payload and capacity.
+	// Packet throughput can exceed a stale estimate without an allocation
+	// restriction. The counter window alone must not request route convergence.
 	started := time.Now()
 	if _, ok := edge.QualitySample(started); ok {
 		t.Fatal("first quality sample did not establish a baseline")
@@ -95,8 +96,8 @@ func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {
 	time.Sleep(time.Millisecond)
 
 	sample, ok := edge.QualitySample(started.Add(2 * time.Second))
-	if !ok || sample.State != "degraded" || sample.Reason == nil ||
-		*sample.Reason != "bandwidth" || sample.IntervalFramesEncoded != 60 ||
+	if !ok || sample.State != "healthy" || sample.Reason == nil ||
+		*sample.Reason != "none" || sample.IntervalFramesEncoded != 60 ||
 		sample.FramesPerSecond != 30 || sample.BitrateKbps != 4_000 ||
 		sample.AvailableOutgoingKbps != 100 {
 		t.Fatalf("quality sample = %+v, %v", sample, ok)
@@ -119,6 +120,7 @@ func TestQualitySampleUsesEstimatorCapacityAgainstEncodedPayload(t *testing.T) {
 	}{
 		{200_000, 100_000, 0, "degraded"},
 		{1_000_000, 900_000, 1, "healthy"},
+		{1_000_000, 1_050_000, 1, "healthy"},
 	} {
 		output.SetBudget(int64(check.budget))
 		edge.targetBitrate = func() (int, bool) { return check.budget, true }

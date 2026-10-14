@@ -19,6 +19,7 @@ import (
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
 	"github.com/livekit/livekit-server/pkg/sfu/pacer"
 	"github.com/livekit/livekit-server/pkg/sfu/streamallocator"
+	packetpacer "github.com/livekit/mediatransportutil/pkg/pacer"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
 	"github.com/pion/interceptor"
@@ -149,10 +150,7 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 	})
 	transport.estimator.SetBWEListener(transport)
 	transport.prober = ccutils.NewProber(ccutils.ProberParams{Listener: transport, Logger: log})
-	// Match LiveKit's send-side BWE default: a reduced estimate must not throttle
-	// already-encoded frames into a stale backlog after the writer recovers.
-	transport.pacer = newBoundedPacer(pacer.NewNoQueue(log, nil),
-		log, options.Source.maxPackets)
+	transport.pacer = newPacedQueue(log, options.Source.maxPackets, options.InitialBitrate)
 	transport.pacer.sender = pacer.NewBase(log, transport.estimator)
 	transport.pacer.SetPacerProbeObserverListener(transport)
 	track, err := sfu.NewDownTrack(sfu.DownTrackParams{
@@ -168,6 +166,7 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 	}
 	transport.Output = NewOutput(track, int64(options.InitialBitrate))
 	transport.Output.feedbackObserved = transport.observed.Load
+	transport.Output.congestionState = transport.estimator.CongestionState
 	track.Receiver().(*outputReceiver).output = transport.Output
 	transport.Output.onActivity = transport.mediaActivity
 	transport.Output.onDemandChanged = options.OnDemandChanged
@@ -293,6 +292,13 @@ func (transport *Transport) TargetBitrate() (int, bool) {
 	return int(transport.target.Load()), transport.observed.Load()
 }
 
+func (transport *Transport) BandwidthLimited() bool {
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	return transport.Output.BandwidthLimited() || (transport.probe.Id == ccutils.ProbeClusterIdInvalid &&
+		transport.estimator.CongestionState() == bwe.CongestionStateCongested)
+}
+
 func (transport *Transport) RequiredActiveCount() int {
 	state := transport.Output.State()
 	highest := state.Target
@@ -315,6 +321,9 @@ func (transport *Transport) Egress() EgressStats {
 }
 
 func (transport *Transport) refreshBudgetLocked() {
+	if transport.probe.Id == ccutils.ProbeClusterIdInvalid || transport.probe.Result.EndTime != 0 {
+		transport.pacer.SetBitrate(int(transport.target.Load()))
+	}
 	transport.Output.SetBudget(transport.target.Load())
 }
 
@@ -501,12 +510,14 @@ type EgressStats struct {
 	Packets, RTPBytes, DroppedPackets uint64
 }
 
-// LiveKit's queue has no capacity limit. Only these bounded tickets enter it;
-// the original packet remains ours until a ticket sends or Stop retires it.
+// The SDK owns packet timing; bounded tickets keep original packet ownership
+// here until a ticket sends or Stop retires it. SFU's unpaced writer assumes
+// already-paced input, which does not hold for locally encoded whole frames.
 type boundedPacer struct {
-	pacer.Pacer
+	packetpacer.Pacer
 	sender  *pacer.Base
 	recycle *pacer.Base
+	bitrate atomic.Int64
 	mu      sync.Mutex
 	pending map[*pacedPacket]struct{}
 	limit   int
@@ -517,9 +528,26 @@ type boundedPacer struct {
 	last    atomic.Int64
 }
 
-func newBoundedPacer(packetPacer pacer.Pacer, log logger.Logger, limit int) *boundedPacer {
+func newPacedQueue(log logger.Logger, limit, bitrate int) *boundedPacer {
+	// A 3 ms service interval spreads native frame bursts across shallow network
+	// queues; retain Pion's 1.5 pacing headroom. The SDK's 200 ms drain target
+	// prevents a stale low estimate from trapping already encoded frames for
+	// seconds; this is not a network latency promise.
+	queue := newBoundedPacer(packetpacer.NewPacerLeakyBucket(3*time.Millisecond,
+		int(float64(bitrate)*1.5), 200*time.Millisecond, log), log, limit)
+	queue.bitrate.Store(int64(bitrate))
+	return queue
+}
+
+func newBoundedPacer(packetPacer packetpacer.Pacer, log logger.Logger, limit int) *boundedPacer {
+	packetPacer.Start()
 	return &boundedPacer{Pacer: packetPacer, sender: pacer.NewBase(log, nil), recycle: pacer.NewBase(log, nil),
 		pending: make(map[*pacedPacket]struct{}), limit: limit}
+}
+
+func (queue *boundedPacer) SetBitrate(bitrate int) {
+	queue.bitrate.Store(int64(bitrate))
+	queue.Pacer.SetBitrate(int(float64(bitrate) * 1.5))
 }
 
 func (queue *boundedPacer) Enqueue(packet *pacer.Packet) {
@@ -532,10 +560,11 @@ func (queue *boundedPacer) Enqueue(packet *pacer.Packet) {
 	}
 	ticket := &pacedPacket{owner: queue, packet: packet}
 	queue.pending[ticket] = struct{}{}
-	proxy := pacer.PacketFactory.Get().(*pacer.Packet)
-	// The library uses the byte count to pace; it never owns a reference to the
-	// pooled payload/header that Stop can release before this ticket is visited.
-	*proxy = pacer.Packet{HeaderSize: packet.HeaderSize + len(packet.Payload), WriteStream: ticket}
+	// The SDK reads the cloned header and payload length, then writes through the
+	// ticket. Only our sender reads payload bytes or assigns TWCC identity;
+	// cancellation can release its pools before the scheduling ticket is visited.
+	header := packet.Header.Clone()
+	proxy := &packetpacer.Packet{Header: &header, Payload: packet.Payload, Writer: ticket.WriteRTP}
 	queue.mu.Unlock()
 	queue.Pacer.Enqueue(proxy)
 }
@@ -553,7 +582,7 @@ func (queue *boundedPacer) cancelProbes(id ccutils.ProbeClusterId) {
 		if ticket.packet != nil && ticket.packet.IsProbe && ticket.packet.ProbeClusterId == id {
 			packets = append(packets, ticket.packet)
 			ticket.packet = nil
-			// The header-free proxy still occupies the library queue. Keep its
+			// The scheduling proxy still occupies the library queue. Keep its
 			// admission slot charged until that proxy is actually dequeued.
 		}
 	}
@@ -570,9 +599,11 @@ func (queue *boundedPacer) SetPacerProbeObserverListener(listener pacer.PacerPro
 
 func (queue *boundedPacer) StartProbeCluster(info ccutils.ProbeClusterInfo) {
 	queue.sender.StartProbeCluster(info)
+	queue.Pacer.SetBitrate(int(float64(info.Goal.DesiredBps) * 1.5))
 }
 
 func (queue *boundedPacer) EndProbeCluster(id ccutils.ProbeClusterId) ccutils.ProbeClusterInfo {
+	queue.Pacer.SetBitrate(int(float64(queue.bitrate.Load()) * 1.5))
 	return queue.sender.EndProbeCluster(id)
 }
 

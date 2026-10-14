@@ -66,9 +66,10 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 		Config: sendsidebwe.DefaultSendSideBWEConfig, Logger: log,
 	})}
 	publication.bandwidth.target.Store(int64(options.InitialBitrate))
-	publication.pacer = &publicationPacer{headers: make(map[uint32]publicationHeaders), boundedPacer: newBoundedPacer(
-		pacer.NewNoQueue(log, nil), log, options.Source.maxPackets,
+	publication.pacer = &publicationPacer{headers: make(map[uint32]publicationHeaders), boundedPacer: newPacedQueue(
+		log, options.Source.maxPackets, options.InitialBitrate,
 	)}
+	publication.bandwidth.pacer = publication.pacer.boundedPacer
 	publication.pacer.sender = pacer.NewBase(log, publication.bandwidth)
 	publication.allocator = streamallocator.NewStreamAllocator(streamallocator.StreamAllocatorParams{
 		Config: streamallocator.DefaultStreamAllocatorConfig, BWE: publication.bandwidth,
@@ -315,7 +316,11 @@ func (publication *Publication) Counters() PublicationCounters {
 	defer publication.mu.Unlock()
 	stats := PublicationCounters{Frames: make([]uint64, len(publication.counters)),
 		AudioBytes: publication.audioBytes.Load(), TargetBitrate: publication.bandwidth.target.Load(),
-		Observed: publication.bandwidth.observed.Load(), Limited: publication.bandwidth.CongestionState() == bwe.CongestionStateCongested}
+		Observed: publication.bandwidth.observed.Load(), Limited: !publication.bandwidth.probing.Load() &&
+			publication.bandwidth.CongestionState() == bwe.CongestionStateCongested}
+	if publication.activeCount > 0 && controlledLayerCeiling(publication.source, 0) > publication.LowestLayerBudget() {
+		stats.Limited = true
+	}
 	for index := range publication.counters {
 		stats.Frames[index] = publication.counters[index].frames.Load()
 		stats.VideoBytes += publication.counters[index].bytes.Load()
@@ -557,6 +562,7 @@ func (context publicationAudioContext) WriteStream() webrtc.TrackLocalWriter { r
 // in this estimate; subtracting it here would understate the video budget.
 type publicationBWE struct {
 	*sendsidebwe.SendSideBWE
+	pacer    *boundedPacer
 	listener bwe.BWEListener
 	target   atomic.Int64
 	observed atomic.Bool
@@ -589,6 +595,9 @@ func (bandwidth *publicationBWE) OnCongestionStateChange(from, to bwe.Congestion
 	// encoder-facing budget must retain that same value through settling.
 	if !bandwidth.probing.Load() && to == bwe.CongestionStateCongested && capacity > 0 && capacity < bandwidth.target.Load() {
 		bandwidth.target.Store(capacity)
+		if bandwidth.pacer != nil {
+			bandwidth.pacer.SetBitrate(int(capacity))
+		}
 	}
 	bandwidth.listener.OnCongestionStateChange(from, to, bandwidth.target.Load())
 }
@@ -596,6 +605,9 @@ func (bandwidth *publicationBWE) ProbeClusterFinalize() (ccutils.ProbeSignal, in
 	signal, capacity, done := bandwidth.SendSideBWE.ProbeClusterFinalize()
 	if done && signal == ccutils.ProbeSignalNotCongesting && capacity > bandwidth.target.Load() {
 		bandwidth.target.Store(capacity)
+		if bandwidth.pacer != nil {
+			bandwidth.pacer.SetBitrate(int(capacity))
+		}
 	}
 	if done {
 		bandwidth.probing.Store(false)

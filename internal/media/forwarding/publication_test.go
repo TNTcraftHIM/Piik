@@ -13,7 +13,7 @@ import (
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
-	"github.com/livekit/livekit-server/pkg/sfu/pacer"
+	packetpacer "github.com/livekit/mediatransportutil/pkg/pacer"
 	"github.com/livekit/protocol/logger"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/twcc"
@@ -31,7 +31,7 @@ func TestPublicationEmptyProbeCannotIncreaseCapacity(t *testing.T) {
 	})}
 	bandwidth.target.Store(target)
 	queue := &publicationPacer{boundedPacer: newBoundedPacer(
-		pacer.NewNoQueue(log, nil), log, 500,
+		packetpacer.NewNoQueue(log), log, 500,
 	)}
 	defer queue.Stop()
 	info := ccutils.ProbeClusterInfo{Id: 1, CreatedAt: time.Now(), Goal: ccutils.ProbeClusterGoal{
@@ -361,6 +361,17 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	}
 	if publication.Counters().Limited {
 		t.Fatal("publication stayed limited after requested low output recovered and high was deactivated")
+	}
+	// A live encoder can be constrained inside its sole requested RID. The
+	// inactive high RID and a fitting measured rate must not hide that demand.
+	source.SetLowestLayerRateControlled(true)
+	publication.bandwidth.target.Store(80_000)
+	if !publication.Counters().Limited {
+		t.Fatal("publication hid the current encoder's unmet 90 kbps ceiling")
+	}
+	publication.bandwidth.target.Store(1_000_000)
+	if publication.Counters().Limited {
+		t.Fatal("publication kept a limitation after the encoder ceiling was satisfied")
 	}
 	check(publication.SetActiveCount(2))
 	for received[1].Load() <= high {
