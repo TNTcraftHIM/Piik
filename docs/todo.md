@@ -17,10 +17,10 @@ after owner acceptance; the previous release approval does not authorize another
 publication. Broader device coverage below does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
-- [ ] **Complete the 2.0 Gitee mirror.** Restore usable mirror authorization and
-  finish uploading and anonymously verifying the original GitHub packages under
-  [GitHub operations](./operations/github.md). The release record owns exact
-  artifact and delivery results; do not rebuild or relabel the published release.
+- [ ] **Gitee mirror upload reliability.** Investigate recurring upload timeouts
+  from GitHub-hosted runners before changing retry budgets. Use the verified
+  original-artifact recovery in [GitHub operations](./operations/github.md) when
+  needed; a failed mirror must not be reported as completed delivery.
 
 ## Held By Owner
 
