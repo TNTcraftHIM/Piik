@@ -241,7 +241,15 @@ If it recurs or never recovers, compare the following:
    rate under **Settings → Picture**, and check CPU/GPU load while the game runs.
    An affected viewer can compare another browser or a phone hotspot. Increasing
    bitrate does not necessarily help.
-3. **Save reports from the affected period.** Enable diagnostics on the host and
+3. **Check the actual codec.** Open the host's **Show connection details** and
+   read **Video codec**. On Windows, Auto may select VP8 when H264 is unavailable,
+   its check cannot finish, or it cannot sustain the selected frame rate.
+   Software encoding competes with the game for CPU time. For **Browser** capture,
+   follow the [graphics checks](#h264-sharing-fails-on-windows), or compare the App's
+   window/screen capture. The App tries available hardware encoders independently.
+   VP8 alone does not establish a GPU fault; forcing H264 after a failed check may
+   make performance worse.
+4. **Save reports from the affected period.** Enable diagnostics on the host and
    affected viewer pages before reproducing; App capture also needs an App report.
    Try **Reconnect** if the picture does not recover. Export before refreshing.
 

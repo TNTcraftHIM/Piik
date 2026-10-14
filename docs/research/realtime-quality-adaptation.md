@@ -175,17 +175,28 @@ This isolates the observed AMD failure to outer bitrate-control/frame-drop
 interaction, not a fixed MFT throughput ceiling. The page cannot enable the
 process feature, override Chromium's AMD workaround, or select a different MFT.
 
-Upstream status checked on 2026-09-28: Chromium main's
+Upstream status checked on 2026-10-14: Chromium main's
 [driver bug list](https://raw.githubusercontent.com/chromium/chromium/main/gpu/config/gpu_driver_bug_list.json)
 entry 449 still disables H.264 software bitrate control on AMD Windows without
 a driver-version exception
 ([crbug 417752242](https://issues.chromium.org/issues/417752242)).
+The [AMD override](https://raw.githubusercontent.com/chromium/chromium/main/media/gpu/windows/mf_video_encoder_switches.cc)
+also remains disabled by default in main and Chrome 154.0.8037.98.
 This source establishes the Browser workaround, not the state of every AMD
 driver or native device. The earlier measured low-cadence output supports keeping
 an actual-output gate rather than inferring compatibility from a device name.
 Windows native Auto likewise measures through its live pipeline, including the
 untrusted rate controller and frame dropper. Matching native AMD physical
 evidence remains pending.
+
+Chromium's separate [2026-10-06 MFVEA repair](https://chromium.googlesource.com/chromium/src/+/b12ee1f641ce7de36d6c5c97b1b3ee5d3f6090c9)
+recreates software rate control when the encoded dimensions change; its stated
+trigger is a VP9 rate controller failing when resolution increases. It neither
+removes the AMD H264 workaround above nor establishes restored cadence on the
+affected devices. Browser GPU preference can change the chosen hardware path,
+but integrated versus discrete GPU is not a reliable encoder-quality rule.
+Native selection already tries available adapter/encoder candidates; changing
+Chrome's preference does not select the App's capture device.
 
 Later exact Browser cohorts demonstrated why runtime evidence is useful:
 
