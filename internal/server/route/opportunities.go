@@ -105,16 +105,8 @@ func (c *Controller) viewerAttemptsStarted(peerID string) int {
 	return started
 }
 
-func (c *Controller) hasRemainingNatOpportunity(op *operation) bool {
-	if !isAvailabilityOperation(op.reason) || !op.peerAttemptStarted {
-		return false
-	}
-	for _, plan := range c.buildCandidates(op.childPeerID, false) {
-		if plan.Tuple.Kind == UpstreamPeer {
-			return true
-		}
-	}
-	return false
+func (c *Controller) hasRemainingAvailabilityOpportunity(op *operation) bool {
+	return isAvailabilityOperation(op.reason) && len(c.buildCandidates(op.childPeerID, false)) > 0
 }
 
 // consumeCandidateOpportunity exhausts the key at its best rank.
@@ -185,7 +177,10 @@ func (c *Controller) consumeAvailabilityOperation(op *operation) {
 	if !isAvailabilityOperation(op.reason) {
 		return
 	}
-	for _, plan := range op.candidates {
+	// A deadline can expire on a connected Peer before the suffix is reached.
+	// Consume only the visited prefix; an untried fallback remains eligible after
+	// rollback, under a new operation with its own unchanged deadline.
+	for _, plan := range op.candidates[:min(op.cursor+1, len(op.candidates))] {
 		if op.peerAttemptStarted && plan.Tuple.Kind == UpstreamPeer {
 			continue
 		}

@@ -771,7 +771,7 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 		if sfuBootstrap {
 			exhausted = failedBootstrapDemand != ""
 		} else {
-			exhausted = !backgroundConvergence && !bootstrapAvailable && !c.hasRemainingNatOpportunity(op)
+			exhausted = !backgroundConvergence && !bootstrapAvailable && !c.hasRemainingAvailabilityOpportunity(op)
 		}
 		if bootstrapAvailable {
 			c.stageSfuBootstrap(op)
@@ -878,7 +878,7 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 		if sfuBootstrap {
 			exhausted = failedBootstrapDemand != ""
 		} else {
-			exhausted = !backgroundConvergence && !bootstrapAvailable && !c.hasRemainingNatOpportunity(op)
+			exhausted = !backgroundConvergence && !bootstrapAvailable && !c.hasRemainingAvailabilityOpportunity(op)
 		}
 		if bootstrapAvailable {
 			c.stageSfuBootstrap(op)

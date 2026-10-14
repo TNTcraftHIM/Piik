@@ -171,6 +171,10 @@ same serial scheduler starts the next operation after rollback and resource
 release. Each operation retains its full original deadline; neither a failed
 candidate nor a retry extends a running operation. Untried parents precede
 repeat attempts, and waiting Viewers with fewer started Peer attempts go first.
+Operation expiry consumes only its visited candidate prefix. An untried suffix
+remains eligible after rollback; an untried SFU opportunity precedes repeated
+Peer attempts, without displacing a fresh Peer parent. Transport-connected
+progress cannot consume a fallback that was never attempted.
 The foreground SFU window is unchanged. SFU commitment carries the same
 remaining Peer budget into the existing round-robin direct continuations, not
 another retry ledger. No usable SFU route is interrupted by these attempts.

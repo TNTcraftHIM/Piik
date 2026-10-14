@@ -18,6 +18,15 @@ func (c *Controller) buildCandidates(childPeerID string, sfuOnly bool) []Candida
 			out = append(out, plan)
 		}
 	}
+	// Fresh Peer parents still lead. Once every eligible Peer has been tried,
+	// an unconsumed SFU opportunity must precede another NAT retry.
+	if len(out) > 1 && out[0].Tuple.Kind == UpstreamPeer && c.peerAttemptsStarted(childPeerID, out[0].Tuple.ParentPeerID) > 0 {
+		if index := slices.IndexFunc(out, func(plan CandidatePlan) bool { return plan.Tuple.Kind == UpstreamSfu }); index > 0 {
+			fallback := out[index]
+			copy(out[1:index+1], out[:index])
+			out[0] = fallback
+		}
+	}
 	return out
 }
 
