@@ -111,8 +111,8 @@ does not establish coverage.
   The server core is Go, so its acceptance runs here. It builds the Web UI first when
   that output is missing, because both binaries embed it. CI invokes these same
   package commands rather than rebuilding their steps in YAML.
-- `npm run check:go-race` checks port mapping, media-edge ownership, service
-  storage shutdown and scoped NAT dependencies with Go's race detector. It
+- `npm run check:go-race` checks port mapping, media-edge and native-control
+  ownership, loopback delivery, service storage shutdown and scoped NAT dependencies with Go's race detector. It
   requires a supported cgo toolchain; CI runs it on Linux.
 - `npm run check:go-vuln` checks the App and Server entry points and their
   dependencies against the Go vulnerability database. CI uses the Go version
