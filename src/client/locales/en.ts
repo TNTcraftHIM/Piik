@@ -157,7 +157,6 @@ export const en: Record<CopyKey, string> = {
   "interaction.close": "Hide chat window",
   "interaction.focus": "Show chat window",
   "floating.detach": "Always-on-top chat",
-  "floating.attach": "Return chat to page",
   "floating.detachFailed": "Could not open the chat window. Try again.",
   "floating.move": "Move window",
   "floating.moveHint": "Drag the title bar, use arrow keys to adjust, or choose a corner under Position.",

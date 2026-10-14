@@ -157,7 +157,6 @@ export const zh = {
   "interaction.close": "收起聊天窗口",
   "interaction.focus": "显示聊天窗口",
   "floating.detach": "置顶聊天窗口",
-  "floating.attach": "收回页面",
   "floating.detachFailed": "未能打开聊天窗口，请重试。",
   "floating.move": "移动窗口",
   "floating.moveHint": "拖动标题栏移动窗口；方向键可微调，也可以从「位置」选择角落。",

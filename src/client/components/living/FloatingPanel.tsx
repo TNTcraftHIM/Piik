@@ -260,13 +260,11 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
             </button>)}
           </div>
         </details>}
-        {detachable && (detached || panelWindowAPI(typeof window === "undefined" ? null : window)) &&
-          <Tooltip kind={detached ? "hint-chat-attach" : "hint-chat-detach"} place="below"
-            text={vis ? undefined : t(detached ? "floating.attach" : "floating.detach")}>
+        {detachable && !detached && panelWindowAPI(typeof window === "undefined" ? null : window) &&
+          <Tooltip kind="hint-chat-detach" place="below" text={vis ? undefined : t("floating.detach")}>
             <button type="button" className="lr-popover-close" disabled={openingWindow}
-              aria-label={t(detached ? "floating.attach" : "floating.detach")}
-              onClick={() => { if (detached) surfaceDocument?.defaultView?.close(); else void detach(); }}>
-              <Glyph name={detached ? "pipExit" : "pip"} size={18} />
+              aria-label={t("floating.detach")} onClick={() => { void detach(); }}>
+              <Glyph name="pip" size={18} />
             </button>
           </Tooltip>}
         {!detached && <button type="button" className="lr-popover-close" aria-label={t("common.close")} onClick={() => {

@@ -65,9 +65,9 @@ function ChatSettingsHint({ theme }: { theme: ComicTheme }) {
   </g>)}</>;
 }
 
-function ChatWindowHint({ theme, detach }: { theme: ComicTheme; detach: boolean }) {
+function ChatWindowHint({ theme }: { theme: ComicTheme }) {
   return <><InteractionMotion />{[0, 160].map((x, index) => {
-    const floating = index ? detach : !detach;
+    const floating = Boolean(index);
     return <g key={x}>
       <Frame x={x + 4} w={152} theme={theme} result={Boolean(index)} />
       <MiniTv x={x + 20} y={19} w={100} h={56} />
@@ -100,8 +100,7 @@ export const INTERACTION_SCENES: Record<InteractionHintKind, HintScene> = {
   "hint-chat-send": props => <ChatHint {...props} send />,
   "hint-chat-settings": props => <ChatSettingsHint {...props} />,
   "hint-chat-export": props => <ChatExportHint {...props} />,
-  "hint-chat-detach": props => <ChatWindowHint {...props} detach />,
-  "hint-chat-attach": props => <ChatWindowHint {...props} detach={false} />,
+  "hint-chat-detach": props => <ChatWindowHint {...props} />,
   "hint-chat-overlay-show": props => <OverlayHint {...props} show />,
   "hint-chat-overlay-hide": props => <OverlayHint {...props} show={false} />,
 };
