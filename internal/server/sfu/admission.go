@@ -8,36 +8,30 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
-// ResourceFence is SfuResourceFence. It is a comparable value, so the
-// TypeScript cloneFence/sameFence helpers are a plain copy and `==`.
+// ResourceFence identifies one publication generation within a room share.
 type ResourceFence struct {
 	RoomID                string
 	ShareGeneration       string
 	PublicationGeneration string
 }
 
-// SubscriptionFence is SfuSubscriptionFence, which extends SfuResourceFence.
-// The embedded value is the `{ ...fence, viewerPeerId }` spread the router
-// uses to derive one from a publication fence.
+// SubscriptionFence identifies one Viewer's connection to that publication.
 type SubscriptionFence struct {
 	ResourceFence
 	ViewerPeerID string
 	ConnectionID string
 }
 
-// Usage is SfuResourceUsage.
 type Usage struct {
 	Ingress int
 	Egress  int
 }
 
-// AdmissionOptions is SfuResourceAdmissionOptions.
 type AdmissionOptions struct {
 	IngressCapacity int
 	EgressCapacity  int
 }
 
-// resourceState is the TypeScript ResourceState union.
 type resourceState string
 
 const (
@@ -54,21 +48,19 @@ type subscriptionEntry struct {
 type publicationEntry struct {
 	fence ResourceFence
 	state resourceState
-	// Ordering site: subscriptions are only counted, looked up by viewer and
-	// state-scanned, so their iteration order is never observable. A plain map
-	// is enough here; the two maps above it are ordered.
+	// Subscriptions are counted and looked up by exact connection; their
+	// iteration order does not affect drain order.
 	subscriptions map[string]*subscriptionEntry
 }
 
-// roomPublications is RoomResources.publications. Ordering site: commitPublication
-// returns the drained generations and beginDrainRoom returns every generation in
-// insertion order, both of which the router turns into drain tasks.
+// Publication insertion order determines the router's physical drain order.
 type roomPublications = ordered.Map[string, *publicationEntry]
 
-// Admission is SfuResourceAdmission: the ingress/egress ledger for the embedded SFU. It is not safe for concurrent use; the signaling server calls it
-// under its global mutex, exactly as Node's single thread did.
+// Admission tracks reserved, committed and draining SFU capacity. The signaling
+// server serializes access under its mutex; capacity stays charged until physical
+// retirement is confirmed through CompleteDrain or CompleteSubscriptionDrain.
 type Admission struct {
-	// Ordering site: beginDrainAll walks the rooms in insertion order.
+	// BeginDrainAll also preserves room insertion order.
 	rooms           ordered.Map[string, *roomPublications]
 	ingressCapacity int
 	egressCapacity  int
@@ -76,9 +68,7 @@ type Admission struct {
 	egressInUse     int
 }
 
-// NewAdmission mirrors the SfuResourceAdmission constructor. An invalid
-// capacity panics where the TypeScript throws: the capacities come from a
-// constant and from validated configuration, so this is an assertion.
+// NewAdmission requires capacities from validated configuration.
 func NewAdmission(options AdmissionOptions) *Admission {
 	assertPositiveSafeInteger(options.IngressCapacity, "SFU ingress capacity")
 	assertPositiveSafeInteger(options.EgressCapacity, "SFU egress capacity")
@@ -145,8 +135,9 @@ func (admission *Admission) ReserveSubscription(fence SubscriptionFence) bool {
 	return true
 }
 
-// CommitPublication returns false as its second result where TypeScript returns
-// null; an empty slice with true is its empty array.
+// CommitPublication promotes the reserved publication and subscriptions and
+// returns older committed publications for physical retirement. The boolean
+// reports acceptance; a repeated commit succeeds without scheduling another drain.
 func (admission *Admission) CommitPublication(fence ResourceFence) ([]ResourceFence, bool) {
 	assertFence(fence)
 	room, _ := admission.rooms.Get(fence.RoomID)
@@ -366,8 +357,6 @@ func assertSubscriptionFence(fence SubscriptionFence) {
 	}
 }
 
-// Go's int makes the Number.isSafeInteger fractional case unrepresentable; only the
-// range checks survive.
 func assertPositiveSafeInteger(value int, name string) {
 	if value <= 0 || int64(value) > protocol.MaxSafeInteger {
 		panic(name + " must be a positive safe integer")
