@@ -270,7 +270,9 @@ policies can also block media. The message alone does not identify the cause.
 
 STUN helps discover an address for direct connections; it does not relay the
 picture. An unreachable STUN service can therefore leave chat working while
-media fails. On self-hosted sites, administrators should check that `STUN_URLS`
+media fails. App Public invite already uses multiple discovery services; one
+STUN error alone does not mean every path failed. On self-hosted sites,
+administrators should check that `STUN_URLS`
 points to reachable UDP services; an HTTP reverse proxy does not forward STUN.
 Compare the diagnostic reports from both peers before assigning the cause.
 

@@ -27,21 +27,11 @@ platform deferrals or establish a diagnosis for unmatched reports.
   whole allocator, a second controller or fabricated source measurements.
   [Media evidence](./research/node-local-media-design.md#send-queue-recovery)
   owns the comparisons and remaining boundary.
-- [ ] **Sharing ends with `app/capture/failed` (v2.0.0).** A new report describes
-  sharing stopping after a while, followed by "current sharing has ended" and
-  this error key. After the quality-recovery investigation, trace capture exit,
-  session retirement and error mapping; the key alone does not establish a
-  capture-device, encoder or connection cause. Compare the earlier quiet-game
-  reports below without assuming they share a cause.
-- [ ] **State-dependent layout shifts.** Check nickname editing and the chat
-  character counter through their actual narrow/wide state transitions; retain
-  the shared control geometry rather than adding per-state offsets.
-- [ ] **Domestic connectivity guidance.** Review available public-invitation
-  tunnel alternatives and explain existing STUN discovery redundancy. Separate
-  signaling-provider availability, ICE connectivity and established-media quality;
-  do not add another provider framework without a concrete benefit.
-- [ ] **Gitee mirror upload reliability.** Investigate recurring upload timeouts
-  from GitHub-hosted runners before changing retry budgets. Use the verified
+- [ ] **Gitee mirror transfer reliability.** Investigate recurring transfer timeouts
+  from GitHub-hosted runners before changing retry budgets. The latest failed
+  run records only a three-minute timeout, without identifying upload versus
+  download verification; the candidate now records operation and package progress.
+  Check the next authorized run before assigning its network cause. Use the verified
   original-artifact recovery in [GitHub operations](./operations/github.md) when
   needed; a failed mirror must not be reported as completed delivery.
 
@@ -180,8 +170,11 @@ experiments and their limits.
   obtain the next candidate/fallback result and final state; a rejected candidate
   alone is not the share outcome. [Native media research](./research/native-client-media.md#current-boundary)
   owns the hardware checks and limits.
-- [ ] **Share ends after entering a game.** Obtain version, capture path, codec
-  and paired diagnostics. Locate the first capture/output, preview-bridge,
+- [ ] **Native sharing ends unexpectedly.** The new v2.0.0 `app/capture/failed`
+  report and earlier game-entry interruptions need matched App diagnostics.
+  The error key alone identifies neither a driver nor a timeout. The local
+  Windows lifecycle gate passes; it does not reproduce the affected setup.
+  Obtain capture path, codec and paired diagnostics. Locate the first capture/output, preview-bridge,
   control or authority failure; distinguish source silence from target replacement,
   display-mode change and device loss. [Capture research](./research/native-client-lifecycle.md#quiet-sources-and-viewer-recovery)
   owns the quiet-source behavior; an encoder output deadline remains a candidate

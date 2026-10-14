@@ -220,6 +220,25 @@ for recoverable edge disconnects. Piik's four-start acquisition limit is not a
 four-reconnect limit after readiness. Restarting the Quick Tunnel process would
 allocate a new public address rather than repair the old invitation.
 
+### Alternative Invitation Providers
+
+Reviewed 2026-10-15. [frp](https://gofrp.org/en/docs/overview/) can expose HTTP(S)
+through a server the operator supplies; [cpolar](https://www.cpolar.com/docs)
+documents HTTPS tunnels, WebSocket forwarding and regional endpoints. Neither
+has been validated with Piik here. Their service location alone does not prove
+regional reliability, and HTTP tunneling does not provide a WebRTC media route.
+An alternative must preserve the public origin, TLS and signaling WebSocket;
+it also adds account/configuration or server ownership beyond Quick Tunnel's
+temporary, account-free link. Do not substitute its executable for cloudflared:
+the current process boundary expects Cloudflare's readiness and origin events.
+
+The existing Site path already separates public web hosting from App capture.
+Use a reachable Site when Quick Tunnel is unavailable, adding its SFU only when
+media fallback is needed. No second built-in provider is justified by current
+evidence. Ordinary STUN redundancy and its independent failure controls remain
+owned by [NAT research](./nat-traversal.md); changing the invitation provider
+does not repair blocked STUN or UDP.
+
 ## Major-Upgrade Delivery Assessment
 
 Reviewed 2026-10-06 against released update checkers and simulated v2.0.0

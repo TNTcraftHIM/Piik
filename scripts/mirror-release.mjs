@@ -40,6 +40,7 @@ async function fetchResponse(url, options, timeout) {
 
 async function request(path, method = "GET", body) {
   const multipart = body instanceof FormData;
+  console.log(`Gitee ${method} ${path}`);
   // A timed-out upload may already exist. Retry only reads; a script rerun
   // reconciles attachment identities before any subsequent write.
   const response = await fetchResponse(api + path, {
@@ -59,6 +60,7 @@ async function verifyDownload(uploaded, file) {
   if (uploaded?.size !== file.size || uploaded.browser_download_url !== expectedURL) {
     throw new Error(`Mirror attachment metadata mismatch: ${file.name}`);
   }
+  console.log(`Verify Gitee package: ${file.name} (${file.size} bytes)`);
   const response = await fetchResponse(expectedURL, {}, 180_000);
   if (!response.ok || !response.body) throw new Error(`Mirror attachment is not anonymously downloadable: ${file.name}`);
   const hash = createHash("sha256");
@@ -113,6 +115,7 @@ if (option === "--dry-run") {
     let uploaded = attachments.find((asset) => asset.name === file.name);
     if (!uploaded) {
       if (!release.prerelease) throw new Error("Published mirror is incomplete; publish a corrected new version");
+      console.log(`Upload Gitee package: ${file.name} (${file.size} bytes)`);
       const form = new FormData();
       form.append("file", await openAsBlob(file.path), file.name);
       uploaded = await request(`/releases/${release.id}/attach_files`, "POST", form);

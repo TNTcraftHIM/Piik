@@ -285,6 +285,14 @@ all game/driver recovery or the separate immediate share-start failure report.
 Some focus changes did not remain foreground throughout a sampling window;
 only recorded window states and receiver progress establish those transitions.
 
+On 2026-10-15, the actual Windows window-capture gate passed separately with
+Auto selecting H264 and with manual VP8. Both retained playback through live,
+paused and background profile changes, restored the source window, and shared
+again after source termination; all owned resources closed. This does not
+reproduce the new v2.0.0 `app/capture/failed` report. That key reports a failed
+Native source lifetime; the App's capture-process and share-ended diagnostics
+are needed to identify which capture, codec or stream operation failed.
+
 ## Keyframe Request Ownership
 
 A direct Native source delivers a requested physical output through its
