@@ -1,3 +1,4 @@
+// Modified by Piik: finish optional IPv6 work inside the caller's mapping budget.
 package pcp
 
 import (
@@ -13,12 +14,11 @@ import (
 // gives no context of its own.
 const externalAddressTimeout = 10 * time.Second
 
-// pinholeTimeout bounds every best-effort IPv6 pinhole operation. The IPv4
-// mapping is what the caller asked for, and it waits on the pinhole so the
-// outcome can be reported, so an unresponsive IPv6 server must not hold it for
-// the full RFC 6887 §8.1.1 mapping schedule. It is a variable so tests can
-// shorten it.
-var pinholeTimeout = 5 * time.Second
+// pinholeTimeout bounds optional IPv6 mapping, health and cleanup work. Keep
+// it inside Piik's three-second mapping budget: joining a silent IPv6 request
+// at the parent deadline can hide an already successful IPv4 result. This is
+// the same local-gateway budget as PCP discovery. Tests may shorten it.
+var pinholeTimeout = 2 * time.Second
 
 var (
 	// ErrNoNATFound is returned when no PCP-capable gateway can be found.

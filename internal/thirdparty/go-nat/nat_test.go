@@ -1,3 +1,4 @@
+// Modified by Piik: exercise optional IPv6 against the real caller budget.
 package nat
 
 import (
@@ -270,28 +271,18 @@ func TestDualStackReportsPinholeLeftOpenWhenRollbackFails(t *testing.T) {
 }
 
 func TestDualStackMappingDoesNotWaitOutAnUnresponsiveIPv6Server(t *testing.T) {
-	// Without a bound, the pinhole runs the full RFC 6887 retry schedule and a
-	// perfectly good IPv4 mapping waits ~30s behind it.
-	restore := pinholeTimeout
-	pinholeTimeout = 50 * time.Millisecond
-	t.Cleanup(func() { pinholeTimeout = restore })
-
 	ipv6 := &fakePCPMapper{unresponsive: true}
 	gateway := newNATWithPCPIPv6(&fakeNAT{port: 4242}, ipv6)
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		port, err := gateway.AddPortMapping(context.Background(), "tcp", 1234, "test", time.Minute)
-		if port != 4242 || err != nil {
-			t.Errorf("AddPortMapping() = (%d, %v), want (4242, nil)", port, err)
-		}
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("AddPortMapping is still waiting on the IPv6 pinhole")
+	// Use the production child timeout inside Piik's three-second mapping
+	// budget. A shorter test-only timeout hides the competing parent deadline.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	port, err := gateway.AddPortMapping(ctx, "tcp", 1234, "test", time.Minute)
+	if port != 4242 || err != nil {
+		t.Fatalf("AddPortMapping() = (%d, %v), want (4242, nil)", port, err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("optional IPv6 consumed the caller deadline before returning successful IPv4")
 	}
 
 	if got := gateway.(IPv6PinholeReporter).IPv6PinholeError(); !errors.Is(got, context.DeadlineExceeded) {

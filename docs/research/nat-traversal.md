@@ -226,7 +226,13 @@ Packet-level loopback regressions cover reassignment, renewal, deletion,
 cancellation and the existing PCPv6 combination. They do not establish physical
 router coverage or a higher field connection-success rate.
 
-Piik bounds a mapping caller's wait to three seconds. Connection retirement
+Piik bounds a mapping caller's wait to three seconds. Optional PCPv6 operations
+have a two-second bound in both gateway adapters, leaving time to return a
+successful IPv4 mapping before that caller deadline. Joining the optional work
+at the same deadline could otherwise discard IPv4 success and suppress renewal.
+The regression uses the real budgets with a silent IPv6 gateway; IPv6-only
+mapping retains the caller's full budget. This trades away late optional IPv6
+responses, not ordinary IPv6 ICE candidates. Connection retirement
 cancels both discovery and pending creation; a canceled owner cannot start a
 later mapping request. Cleanup has its own deadline because it must still run
 after cancellation. PCPv6 rollback can

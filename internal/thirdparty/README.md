@@ -7,7 +7,7 @@ upstream tests and focused regressions are built and tested by
 
 | Module | Source baseline | Local changes |
 | --- | --- | --- |
-| `go-nat` | [netbirdio/go-nat at 6b2c8c5c74e8](https://github.com/netbirdio/go-nat/tree/6b2c8c5c74e8331ed41811cfd2fdc4c3dd8c3ff0) | `natpmp.go` uses request contexts, remembers the assigned external port and sends lifetime-zero deletion; regression tests cover the real client and PCPv6 combination |
+| `go-nat` | [netbirdio/go-nat at 6b2c8c5c74e8](https://github.com/netbirdio/go-nat/tree/6b2c8c5c74e8331ed41811cfd2fdc4c3dd8c3ff0) | NAT-PMP honors contexts, assigned ports and deletion; optional PCPv6 finishes inside Piik's mapping budget so it cannot withhold successful IPv4; regressions retain both gateway paths |
 | `go-nat-pmp` | [jackpal/go-nat-pmp v1.0.2](https://github.com/jackpal/go-nat-pmp/tree/v1.0.2) | Context-aware request methods, deadline/cancellation through UDP I/O, adapted recorder/test caller, and a module manifest |
 
 Upstream source and tests are retained, excluding examples and CI configuration.
