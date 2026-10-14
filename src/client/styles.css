@@ -547,8 +547,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   scrollbar-gutter: stable;
 }
 .lr-source-picker-body > [role="status"] { text-align: center; }
-.lr-source-app-connection { display: grid; justify-items: center; gap: 6px; margin-top: 12px; }
-.lr-source-app-connection small { color: #9aa8bb; font-size: 12px; text-align: center; }
+.lr-source-app-connection { display: flex; justify-content: flex-end; margin-top: 12px; }
 .lr-source-app-connect { display: flex; gap: 8px; width: auto; padding: 0 12px; margin: 0; border-radius: 999px; }
 .lr-source-picker-list {
   display: grid;
@@ -1026,6 +1025,8 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-app-connect-help p { margin: 12px 0; font-size: 13px; line-height: 1.6; }
 .lr-app-connect-help:popover-open { animation: lr-language-open 180ms var(--spring); }
 .lr-app-connect-help.is-above { --language-offset: 5px; }
+.lr-app-connect-head { display: flex; align-items: flex-start; gap: 8px; }
+.lr-app-connect-close { flex: 0 0 auto; width: 32px; height: 32px; min-width: 32px; padding: 0; }
 .lr-app-connect-scene { width: min(220px, 100%); aspect-ratio: 10 / 3; margin-inline: auto; --comic-repeat: infinite; }
 .lr-app-connect-scene > svg { width: 100% !important; }
 .lr-app-connect-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }

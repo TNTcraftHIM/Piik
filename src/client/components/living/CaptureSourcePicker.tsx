@@ -101,8 +101,7 @@ export function CaptureSourcePicker({
   const browserCapture = activeTab === "browser";
   const cameraSources = useCameraSources(activeTab === "camera", activeCameraVideo, loadCameras);
   const supportsCaptureBorder = nativeTab && nativeSources.kind === "ready" && nativeSources.captureBorderControl === true;
-  const issueKey = nativeSources.kind === "incompatible" ? "native.incompatible"
-    : nativeSources.kind === "unavailable" ? "host.sourcePicker.unavailable" : !nativeTab ? null
+  const issueKey = !nativeTab ? null : nativeSources.kind === "incompatible" ? "native.incompatible"
     : (nativeSources.kind === "unsupported" || nativeSources.kind === "failed")
       ? `host.sourcePicker.${nativeSources.kind}` as const
       : null;
@@ -386,11 +385,8 @@ export function CaptureSourcePicker({
           {onAppConnected && (nativeSources.kind === "browser" || nativeSources.kind === "unavailable") && (
             <div className="lr-source-app-connection">
               <AppConnectionButton sourcePicker onConnected={onAppConnected} />
-              {vis ? null : <small>{t("client.connect.captureHint")}</small>}
             </div>
           )}
-
-
 
           {issueKey ? (
             <Pill icon="alert" label={t(issueKey)} comic="warning" />

@@ -115,11 +115,11 @@ export function AppConnectionButton({ sourcePicker = false, onConnected }: {
   }
 
   const label = t(state === "ready" ? "client.connect.standby" : state === "incompatible" ? "native.incompatible" :
-    state === "unavailable" ? "client.connect.unavailable" : sourcePicker ? "client.connect.captureHint" : "client.connect.action");
+    state === "unavailable" ? "client.connect.unavailable" : "client.connect.action");
   const failed = state === "unavailable" || state === "incompatible";
   return <><Tooltip kind={state === "ready" ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
     text={vis ? undefined : label} toggleOnClick={state === "ready"} disabled={helpOpen}
-    place={sourcePicker ? "above" : "below"} align={sourcePicker ? "center" : "end"}>
+    place={sourcePicker ? "above" : "below"} align="end">
     <button ref={trigger} type="button" className={`${sourcePicker ? "lr-source-picker-refresh lr-source-app-connect" : "lr-btn lr-app-connect"}${state === "ready" ? " is-ready" : ""}`}
       aria-label={sourcePicker ? t("client.connect.action") : label} aria-busy={state === "busy" || undefined}
       popoverTarget={failed ? helpId : undefined} aria-haspopup={failed ? "dialog" : undefined}
@@ -131,7 +131,7 @@ export function AppConnectionButton({ sourcePicker = false, onConnected }: {
       }} disabled={state === "busy"}>
       <Glyph name={state === "ready" ? "check" : state === "busy" ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
         size={16} className={state === "busy" ? "lr-spin" : undefined} />
-      {vis ? null : <span className="lr-cap">{sourcePicker ? t("client.connect.action") : "App"}</span>}
+      {vis ? null : <span className="lr-cap">App</span>}
     </button>
   </Tooltip>
     <div ref={help} id={helpId} popover="auto" role="dialog" aria-label={t("client.connect.action")} aria-describedby={`${helpId}-message`}
@@ -150,7 +150,13 @@ export function AppConnectionButton({ sourcePicker = false, onConnected }: {
         panel.style.top = `${Math.max(8, openAbove ? rect.top - panel.offsetHeight - 8 : rect.bottom + 8)}px`;
         panel.querySelector<HTMLButtonElement>("button")?.focus();
       }}>
-      <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && <Comic kind={state === "incompatible" ? "warning" : "signal-failed"} theme="paper" />}</div>
+      <div className="lr-app-connect-head">
+        <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && <Comic kind={state === "incompatible" ? "warning" : "signal-failed"} theme="paper" />}</div>
+        <button type="button" className="lr-btn lr-app-connect-close" aria-label={t("common.close")}
+          popoverTarget={helpId} popoverTargetAction="hide">
+          <Glyph name="x" size={16} />
+        </button>
+      </div>
       <p id={`${helpId}-message`} className={vis ? "visually-hidden" : undefined}>{label}</p>
       <div className="lr-app-connect-actions">
         <button type="button" className="lr-btn" aria-label={t("common.retry")} onClick={() => void connect()}>
