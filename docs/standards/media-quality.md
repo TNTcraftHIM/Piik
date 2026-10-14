@@ -221,7 +221,8 @@ ADR-0007 owns probe and negotiation mechanics.
 
 Codec selection preserves the negotiated repair stream associated with the
 selected primary codec. Native and SFU receivers use standard Pion RTX/NACK;
-codec restrictions must not strip recovery or disable SRTP replay protection.
+their shared outgoing transport also offers RTX, with LiveKit owning repair.
+Codec restrictions must not strip recovery or disable SRTP replay protection.
 
 The Browser chooses the concrete encoder implementation. A reported H.264 codec
 does not by itself prove hardware acceleration, and Web content cannot select a

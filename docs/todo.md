@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-14
+Last reviewed: 2026-10-15
 
 Explicit owner holds remain in force; an investigation does not itself
 accept a new feature or architecture. A missing device or reporter trace blocks
@@ -10,8 +10,8 @@ Git/PRs own completed history.
 ## Now
 
 2.0 is published on GitHub. The current maintenance phase reviews optional App
-capabilities and bounded NAT correctness; it retains the published protocol and
-route owners. Integrate the verified phase through
+capabilities, bounded NAT correctness and media recovery; it retains the published
+protocol and route owners. Integrate the verified phase through
 [the release workflow](../CONTRIBUTING.md#full-integration-and-release-workflow)
 after owner acceptance; the previous release approval does not authorize another
 publication. Broader device coverage below does not override the owner's

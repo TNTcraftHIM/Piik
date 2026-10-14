@@ -176,6 +176,14 @@ recovery ranged from 4.9 to 11.1 seconds, so 4.9 seconds is not a guaranteed bou
 The SFU-only fixture verifies the locked server-media control and disabled
 NAT policy; it does not attempt to enable a hidden P2P setting.
 
+The shared outgoing transport also needs RTX negotiation. A local UDP regression
+delays NACK feedback after one dropped video packet: primary-stream repair
+arrived after 16 later packets, but failed after 96, beyond Pion's default
+64-packet SRTP replay window. Offering the associated RTX codec lets LiveKit
+repair the delayed loss through its separate sequence space. A receiver declining
+RTX retains ordinary NACK within the primary replay window. This applies to
+Native and SFU outputs; it does not establish the cause of unmatched field stalls.
+
 App Host checks must use the real H264 Browser-to-App ingress and App WAN sender;
 launching an App alongside a Browser-only VP8 share is not an App-path test.
 

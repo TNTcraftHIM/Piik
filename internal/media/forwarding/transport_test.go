@@ -22,6 +22,16 @@ import (
 )
 
 func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
+	for _, repair := range []bool{true, false} {
+		name := "RTX"
+		if !repair {
+			name = "primary-only"
+		}
+		t.Run(name, func(t *testing.T) { testTransportVideoFeedbackAudioAndClose(t, repair) })
+	}
+}
+
+func testTransportVideoFeedbackAudioAndClose(t *testing.T, repair bool) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	check := func(err error) {
@@ -80,7 +90,14 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 		t.Fatal("initial configured acquisition demand was lost")
 	}
 	mediaEngine := &webrtc.MediaEngine{}
-	check(mediaEngine.RegisterDefaultCodecs())
+	if repair {
+		check(mediaEngine.RegisterDefaultCodecs())
+	} else {
+		check(mediaEngine.RegisterCodec(codec, webrtc.RTPCodecTypeVideo))
+		check(mediaEngine.RegisterCodec(webrtc.RTPCodecParameters{
+			RTPCodecCapability: audio.Codec(), PayloadType: 111,
+		}, webrtc.RTPCodecTypeAudio))
+	}
 	registry := &interceptor.Registry{}
 	check(webrtc.RegisterDefaultInterceptors(mediaEngine, registry))
 	reports := &receiverReportGate{}
@@ -93,13 +110,15 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 	firstVideo := make(chan *rtp.Packet, 1)
 	paddingPackets := make(chan *rtp.Packet, 8)
 	var recoveryTimestamp atomic.Uint32
-	recovered := make(chan struct{}, 1)
+	var missingSequence uint16
+	var videoSSRC uint32
+	recovered := make(chan bool, 1)
 	var readers sync.WaitGroup
 	receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		readers.Add(1)
 		defer readers.Done()
 		for {
-			packet, _, readErr := track.ReadRTP()
+			packet, attributes, readErr := track.ReadRTP()
 			if readErr != nil {
 				return
 			}
@@ -120,7 +139,7 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 				}
 				if packet.Timestamp == recoveryTimestamp.Load() {
 					select {
-					case recovered <- struct{}{}:
+					case recovered <- attributes.Get(webrtc.AttributeRtxPayloadType) != nil:
 					default:
 					}
 				}
@@ -171,6 +190,7 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 		case packet := <-firstVideo:
 			firstFrame = true
 			recoveryTimestamp.Store(packet.Timestamp + 3000)
+			missingSequence, videoSSRC = packet.SequenceNumber+1, packet.SSRC
 			for len(keyFrames) > 0 {
 				<-keyFrames
 			}
@@ -188,8 +208,9 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatalf("first-frame PLI never reached source; output=%+v statsPLI=%d", transport.Output.State(), transport.Output.GetTrackStats().Plis)
 	}
-	// Force exactly one local queue-admission loss. The following RTP packet
-	// exposes its sequence gap to the receiver's normal NACK generator.
+	// Force one local loss, then delay its feedback beyond the receiver's stock
+	// SRTP replay window. Repair must use its negotiated RTX sequence space.
+	// A peer declining RTX still supports ordinary NACK within that window.
 	transport.pacer.mu.Lock()
 	transport.pacer.limit = 0
 	transport.pacer.mu.Unlock()
@@ -206,13 +227,36 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 	transport.pacer.mu.Lock()
 	transport.pacer.limit = source.maxPackets
 	transport.pacer.mu.Unlock()
-	for _, packet := range packetizer.Packetize(sfu.VP8KeyFrame8x8, 3000) {
-		check(source.WriteRTP(0, packet))
+	deltaFrame := append([]byte(nil), sfu.VP8KeyFrame8x8...)
+	deltaFrame[0] |= 1
+	laterPackets := 96
+	if !repair {
+		laterPackets = 16
 	}
+	for range laterPackets {
+		before := videoPackets.Load()
+		for _, packet := range packetizer.Packetize(deltaFrame, 3000) {
+			check(source.WriteRTP(0, packet))
+		}
+		for videoPackets.Load() == before {
+			select {
+			case <-time.After(time.Millisecond):
+			case <-ctx.Done():
+				t.Fatal("media stopped while delaying loss feedback")
+			}
+		}
+	}
+	reports.allowNACK.Store(true)
+	check(receiver.WriteRTCP([]rtcp.Packet{&rtcp.TransportLayerNack{
+		MediaSSRC: videoSSRC, Nacks: []rtcp.NackPair{{PacketID: missingSequence}},
+	}}))
 	select {
-	case <-recovered:
+	case usedRTX := <-recovered:
+		if usedRTX != repair {
+			t.Fatalf("repair path disagrees with negotiation: RTX=%v", usedRTX)
+		}
 	case <-ctx.Done():
-		t.Fatal("local admission loss did not recover through library NACK")
+		t.Fatal("delayed local admission loss did not recover through library NACK")
 	}
 	ticker := time.NewTicker(time.Second / 30)
 	defer ticker.Stop()
@@ -263,10 +307,10 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("padding packet did not arrive")
 	}
-	// A muted library sender returns zero padding bytes despite a connected PC
+	// A stopped library writer returns zero padding bytes despite a connected PC
 	// and valid RR. Its probe must finish, and inconclusive feedback must not
 	// promote the BWE's internal initial-capacity sentinel into a codec budget.
-	transport.Output.Mute(true)
+	transport.Output.StopWriteAndGetState()
 	before, _ := transport.TargetBitrate()
 	reports.allow.Store(true)
 	seenProbe := false
@@ -299,7 +343,8 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 
 type receiverReportGate struct {
 	interceptor.NoOp
-	allow atomic.Bool
+	allow     atomic.Bool
+	allowNACK atomic.Bool
 }
 
 func (gate *receiverReportGate) NewInterceptor(string) (interceptor.Interceptor, error) {
@@ -313,6 +358,9 @@ func (gate *receiverReportGate) BindRTCPWriter(writer interceptor.RTCPWriter) in
 		}
 		var filtered []rtcp.Packet
 		for _, packet := range packets {
+			if _, nack := packet.(*rtcp.TransportLayerNack); nack && !gate.allowNACK.Load() {
+				continue
+			}
 			if _, report := packet.(*rtcp.ReceiverReport); !report {
 				filtered = append(filtered, packet)
 			}

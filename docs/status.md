@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -56,8 +56,8 @@ Release artifacts and operator deployment records own delivery completion;
 
 ## Current Work
 
-Post-release maintenance reviews optional App capabilities and NAT correctness
-within the existing connection owners. [TODO](./todo.md#now) owns integration and
+Post-release maintenance reviews optional App capabilities, NAT correctness and
+media recovery within the existing owners. [TODO](./todo.md#now) owns integration and
 remaining mirror delivery; new publication awaits owner acceptance.
 
 2.0 separates numeric media requests from presets and bounded runtime admission,

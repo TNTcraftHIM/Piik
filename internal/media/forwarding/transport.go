@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -75,6 +76,19 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 	codec := options.Source.Codec()
 	media := &webrtc.MediaEngine{}
 	if err = media.RegisterCodec(codec, webrtc.RTPCodecTypeVideo); err != nil {
+		return nil, err
+	}
+	// This connection offers one primary video codec and Opus (111). RTX needs
+	// its own payload type and sequence space so late repair survives SRTP replay checks.
+	repairPayload := webrtc.PayloadType(96)
+	if repairPayload == codec.PayloadType {
+		repairPayload++
+	}
+	if err = media.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeRTX,
+			ClockRate: codec.ClockRate, SDPFmtpLine: "apt=" + strconv.Itoa(int(codec.PayloadType))},
+		PayloadType: repairPayload,
+	}, webrtc.RTPCodecTypeVideo); err != nil {
 		return nil, err
 	}
 	if options.Audio != nil {
