@@ -87,7 +87,7 @@ export function TooltipPreviewPage() {
         <WelcomeLine still={reducedMotion} />
         <details id="welcome-preview" className="lr-welcome-catalog" open>
           <summary>{locales[lang].playful.welcome.length} {en ? "opening lines" : "句开场白"}</summary>
-          <p>{en ? "A line appears immediately, then changes every eight seconds while visible. Each language has its own pool. Pure visual mode uses that entry's pictograms and pixel lettering; switching modes keeps the same entry." : "短句立即出现，可见时每 8 秒换一条。各语言独立维护词库；纯视觉模式显示当前语句对应的图形与像素暗号，切换模式仍是同一句。"}</p>
+          <p>{en ? "One random line per entry, with no automatic rotation. Each language has its own pool. Pure visual mode uses that entry's pictograms and pixel lettering; switching modes keeps the same entry." : "每次进入随机一句，停留时不轮播。各语言独立维护词库；纯视觉模式显示当前语句对应的图形与像素暗号，切换模式仍是同一句。"}</p>
           <ol>{locales[lang].playful.welcome.map(({ text, symbols }) => <li key={text}><span>{text}</span><WelcomeCipher symbols={symbols} /></li>)}</ol>
         </details>
         <h2 id="comic-preview">语义规则 / Semantic grammar</h2>

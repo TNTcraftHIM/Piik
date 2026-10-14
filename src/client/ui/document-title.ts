@@ -16,9 +16,8 @@ export function useDocumentTitle(
   parts: Array<string | null | undefined>,
   variations: readonly string[],
   context: string,
-  still = false,
 ): string {
-  const decoration = useRotatingText(variations, context, undefined, still);
+  const decoration = useRotatingText(variations, context, { rotate: false });
   const title = composeDocumentTitle(...parts, decoration);
   useEffect(() => {
     document.title = title;

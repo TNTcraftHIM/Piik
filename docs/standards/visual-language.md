@@ -332,14 +332,15 @@ support the task and use lighter icons or copy when another drawing adds noise.
 
 | Context | Illustration and literal content | Playful caption |
 | --- | --- | --- |
-| Page loading, site access check, App preparation | The shared wink mascot with the actual loading operation; no room or media-path claim | The current language's waiting pool |
+| Page loading or site access check | The shared wink mascot with the actual loading operation; no room or media-path claim | None |
+| App room startup | The shared wink mascot with the actual operation | One secondary waiting caption |
 | Confirmed App readiness | Wink mascot with literal readiness in dedicated feedback or its tooltip; an inline summary beside an existing main brand uses a status icon. Neither implies an active media route. | None |
 | Source listing/start/switch, room joining, media setup/recovery, waiting for the Host | The corresponding comic with the current status; only the existing state owner can declare waiting | The same waiting pool while the wait exists |
 | Error, limitation, pause, ended room or required user action | The corresponding comic and clear reason/action; settled movement keeps that verdict readable | None |
 | Small controls, tooltips and inline results | Existing action/status icon and contextual guidance when needed; retain direct actions | None |
 
 The shared `LoadingStatus`, `StageOverlay` and `WaitingCaption` apply this
-composition; source selection reuses the caption beside its existing comic.
+composition. Routine loading does not opt into playful copy automatically.
 Do not infer waiting from a chosen drawing, mascot visibility or animation flag.
 Healthy playback stays visible during control reconnection; this rule does not
 create another overlay. An idle room awaiting a new share differs from a closed
@@ -351,20 +352,26 @@ hidden captions; viewport size does not become product state.
 
 ### Playful Copy Lifecycle
 
-The shared [rotation owner](../../src/client/ui/text-rotation.ts) supplies the
-clock and visibility policy; its React adapter and the static website consume
-the same rule. Locale files own the independent pools.
+Locale files own independent pools; the shared
+[selection and rotation owner](../../src/client/ui/text-rotation.ts) and its
+React adapter provide selection, timing and visibility. Keep one secondary
+playful line in an operational page's main content, with no duplicates in
+subpanels. Review the whole composition before adding another caption.
 
-Website/App welcome lines, waiting captions and playful title variations share
-one lifecycle. Show an entry immediately, then change it every eight seconds
-while visible. Draw without replacement until the current pool is exhausted.
-An ordinary rerender or metric update does not restart the cycle. A new semantic
-context or language starts from that context's current-language pool; never
-reuse a cross-language array index. Hidden surfaces stop advancing. On return,
-keep the current line for a full interval; reduced motion retains a static line.
-Unmount or an ended context retires timers and listeners. Empty pools omit the
-decoration; one-entry pools stay static. Real completion never waits for copy
-or an animation to finish. This cadence is a product choice, not measured progress.
+Website/App welcomes select one entry immediately and keep it during that visit.
+Tab titles retain one variation per actual activity, without a timer. Ordinary
+rerenders and metric updates do not draw another entry. A welcome's text/visual
+switch preserves its selected entry. Language changes use that language's pool,
+never a cross-language array index.
+
+Only App room startup and media waits rotate their secondary caption: show one
+immediately, then change it every fifteen visible seconds. Changes of the literal
+status within a continuous wait do not redraw the caption or reset its clock.
+Draw without replacement until the pool is exhausted. Hidden surfaces stop
+advancing; on return, keep the line for a full interval. Reduced motion retains
+a static line. Unmount or an ended wait retires timers and listeners. Empty pools
+omit the decoration; one-entry pools stay static. Real completion never waits
+for copy or animation. This cadence is a product choice, not measured progress.
 
 Each language maintains independent contextual pools without equal counts,
 paired translation keys or a fixed total. Contributors can add a locally natural
@@ -382,9 +389,9 @@ review; this copy policy does not require a mascot or a new tooltip everywhere.
 
 | Existing surface | Copy coverage |
 | --- | --- |
-| Website welcome, App launcher, sharing entry | The current language's welcome pool; the App's visual mode renders that entry's cipher. |
-| Loading, source selection and media waiting | A secondary waiting caption according to [feedback composition](#feedback-composition). |
-| Browser tab | Sharing, watching, starting, ready-to-share, not-started and waiting states may append their own variations; room identity, literal activity and warnings remain visible. |
+| Website welcome, App launcher, sharing entry | One welcome per entry; the App's visual mode renders that entry's cipher. |
+| App room startup and media waiting | One slowly rotating caption according to [feedback composition](#feedback-composition). Ordinary page loading and access checks use literal status only. |
+| Browser tab | Sharing, watching, starting, ready-to-share, not-started and waiting states may append one stable variation; room identity, literal activity and warnings remain visible. |
 | Error, pause, ended state, required action, tooltip, small control | Keep the existing literal message and contextual graphic; no rotating caption is added. |
 
 ## Panel Composition
@@ -525,11 +532,11 @@ Entry screens may carry one quiet, original welcome line in Chinese or English
 text mode. Pure-visual mode pairs familiar pictograms with static pixel
 pseudo-lettering tied to the same line. Hide that visual cipher from assistive
 technology; the ordinary text sentence remains readable. Switching between text
-and visual mode preserves the selected welcome entry; rotation follows the
+and visual mode preserves the selected welcome entry; selection follows the
 [shared lifecycle](#playful-copy-lifecycle). The line never replaces an action,
 error, loading message or connection progress. Keep it on one line, apart from
 the actions; primary controls take precedence when space is tight. A clipped line
-may pan to its end within the shared reading interval; fitting text stays still.
+may pan once to reveal its end; fitting text stays still.
 Pause with the copy's existing visibility owner. Reduced motion keeps the text
 stationary and manually scrollable instead of discarding the hidden words.
 
@@ -571,5 +578,5 @@ moving the pointer away.
 
 [Carbon loading guidance](https://carbondesignsystem.com/components/loading/usage/)
 supports avoiding competing indicators and keeping required user actions distinct
-from passive loading. Piik's immediate captions and eight-second cadence are its
+from passive loading. Piik's selected waiting captions and fifteen-second cadence are its
 own presentation choice.

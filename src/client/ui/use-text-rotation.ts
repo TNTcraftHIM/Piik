@@ -5,8 +5,9 @@ import { createTextCycle, startTextRotation } from "./text-rotation";
 export function useRotatingText<T>(
   frames: readonly T[],
   context: string,
-  element?: RefObject<HTMLElement | null>,
-  still = false,
+  { element, still = false, rotate = true }: {
+    element?: RefObject<HTMLElement | null>; still?: boolean; rotate?: boolean;
+  } = {},
 ): T | undefined {
   const cycle = useMemo(() => {
     const next = createTextCycle(frames);
@@ -14,12 +15,14 @@ export function useRotatingText<T>(
   }, [frames, context]);
   const [selected, select] = useState({ cycle, value: cycle.first });
   useEffect(() => {
-    if (frames.length < 2 || still) return;
+    if (still) return;
     const surface = element?.current;
-    const stop = startTextRotation(() => select({ cycle, value: cycle.next() }), surface,
+    const tick = rotate && frames.length > 1 ? () => select({ cycle, value: cycle.next() }) : undefined;
+    if (!tick && !surface) return;
+    const stop = startTextRotation(tick, surface,
       active => surface?.setAttribute("data-text-active", String(active)));
     return () => { stop(); surface?.removeAttribute("data-text-active"); };
-  }, [cycle, frames.length, element, still]);
+  }, [cycle, frames.length, element, still, rotate]);
   // Language/context changes display the new pool immediately, before effects.
   return selected.cycle === cycle ? selected.value : cycle.first;
 }

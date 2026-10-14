@@ -1241,13 +1241,13 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-welcome-text::before { content: "✦"; color: #d7982b; margin-right: 8px; }
 @media (prefers-reduced-motion: no-preference) {
   .lr-welcome:not(.is-still, .is-cipher) { overflow: clip; }
-  .lr-welcome:not(.is-still) .lr-welcome-text { animation: lr-welcome-read linear both; }
+  .lr-welcome:not(.is-still) .lr-welcome-text { animation: lr-welcome-read 8s linear both; }
   .lr-welcome[data-text-active="false"] .lr-welcome-text { animation-name: none; }
 }
 [data-comic-reduced-motion="true"] .lr-welcome { overflow-x: auto; }
 [data-comic-reduced-motion="true"] .lr-welcome-text { animation: none; }
-/* Fitting lines stay still. Longer lines reveal their end before the shared
-   copy clock advances; the keyed text restarts this CSS motion, not a timer. */
+/* Fitting lines stay still. Longer lines pan once to reveal their end;
+   changing language restarts this CSS motion, not a copy-rotation timer. */
 @keyframes lr-welcome-read {
   0%, 20% { transform: translateX(0); }
   75%, 100% { transform: translateX(min(0px, calc(100cqw - 100%))); }

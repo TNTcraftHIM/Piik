@@ -78,7 +78,7 @@ export function StageOverlay({
           </span>
         ) : <span className="lr-tv-msg">{message}</span>}
       </span>
-      {isWaiting && <WaitingCaption context={comic ?? "media"} still={still} />}
+      {isWaiting && <WaitingCaption still={still} />}
     </>
   );
   if (onActivate) {

@@ -1,4 +1,4 @@
-export const TEXT_ROTATION_INTERVAL_MS = 8_000;
+export const TEXT_ROTATION_INTERVAL_MS = 15_000;
 
 /** A local decoration cycle; changing product state creates a new cycle. */
 export function createTextCycle<T>(frames: readonly T[]): () => T | undefined {
@@ -16,7 +16,7 @@ export function createTextCycle<T>(frames: readonly T[]): () => T | undefined {
 }
 
 /** Hidden surfaces keep their entry and resume with a full reading interval. */
-export function startTextRotation(tick: () => void, element?: Element | null, onActivity?: (active: boolean) => void): () => void {
+export function startTextRotation(tick: (() => void) | undefined, element?: Element | null, onActivity?: (active: boolean) => void): () => void {
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let inView = !element;
   let retired = false;
@@ -27,7 +27,7 @@ export function startTextRotation(tick: () => void, element?: Element | null, on
     timer = undefined;
     const active = inView && document.visibilityState === "visible" && !reducedMotion.matches;
     onActivity?.(active);
-    if (active) {
+    if (active && tick) {
       timer = window.setInterval(tick, TEXT_ROTATION_INTERVAL_MS);
     }
   };

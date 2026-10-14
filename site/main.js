@@ -1,6 +1,6 @@
 import { mountBrands } from './assets/brand.js';
 import { initialLanguage, rememberLanguage } from './assets/language.js';
-import { createTextCycle, startTextRotation } from '../src/client/ui/text-rotation.ts';
+import { createTextCycle } from '../src/client/ui/text-rotation.ts';
 import { DEFAULT_RELEASE_API_URL, parseReleaseMetadata } from '../src/client/lib/release-update.ts';
 mountBrands();
 const architecturePickers = document.querySelectorAll('.download-architecture');
@@ -57,21 +57,13 @@ const film = document.getElementById('film-preview');
 const filmFrame = document.getElementById('website-film');
 const filmLink = document.querySelector('[data-film-link]');
 const welcomeLines = document.getElementById('welcome-lines')?.content.children;
-let stopWelcome = () => {};
-let syncWelcomeMotion = () => {};
 function syncWelcome() {
   if (!welcomeLines) return;
   const element = document.getElementById('welcome-line');
   const pool = Array.from(welcomeLines).filter(line => line.lang === root.lang);
-  const next = createTextCycle(pool);
-  const show = () => element.replaceChildren(...(pool.length ? [next().cloneNode(true)] : []));
+  const line = createTextCycle(pool)();
   element.hidden = pool.length === 0;
-  show();
-  syncWelcomeMotion = () => {
-    stopWelcome();
-    stopWelcome = pool.length > 1 && !reducedMotion() ? startTextRotation(show, element) : () => {};
-  };
-  syncWelcomeMotion();
+  element.replaceChildren(...(line ? [line.cloneNode(true)] : []));
 }
 function syncFilmPreferences() {
   const target = new URL(filmLink.href);
@@ -197,7 +189,6 @@ function syncMotionPreference() {
     button.disabled = still;
   });
   roomIllustration.src = './assets/living-room.svg' + (still ? '#still' : '');
-  syncWelcomeMotion();
 }
 motionControl.addEventListener('change', () => {
   preferStill = motionControl.checked;

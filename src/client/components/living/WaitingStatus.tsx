@@ -7,22 +7,24 @@ import { BrandLoader } from "./BrandMark";
 const NO_CAPTIONS: readonly string[] = [];
 
 /** Decoration beside a literal status; it never describes operation progress. */
-export function WaitingCaption({ context, still = false }: { context: string; still?: boolean }) {
+export function WaitingCaption({ still = false }: { still?: boolean }) {
   const { lang, vis } = useCopy();
   const captionRef = useRef<HTMLSpanElement>(null);
   const line = useRotatingText(vis ? NO_CAPTIONS : locales[lang].playful.waiting,
-    `${lang}:${context}`, captionRef, still);
+    lang, { element: captionRef, still });
   if (!line) return null;
   return <span className="lr-waiting-caption" ref={captionRef} aria-hidden="true">
     <span key={line}>{line}</span>
   </span>;
 }
 
-export function LoadingStatus({ label, still = false }: { label: CopyKey; still?: boolean }) {
+export function LoadingStatus({ label, still = false, waitingCaption = false }: {
+  label: CopyKey; still?: boolean; waitingCaption?: boolean;
+}) {
   const { t, vis } = useCopy();
   return <div className="lr-loading" role="status" aria-label={t(label)}>
     <BrandLoader still={still} />
     {vis ? null : <span>{t(label)}</span>}
-    <WaitingCaption context={label} still={still} />
+    {waitingCaption && <WaitingCaption still={still} />}
   </div>;
 }

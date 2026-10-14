@@ -229,7 +229,7 @@ export function AppLauncherPage() {
       <main className="lr-client-launch">
         {debugError && <Pill icon="alert" tone="bad" comic="warning" alert label={t("client.launch.debugFailed")} />}
         {loading || (starting && !requestedSite) ? (
-          <LoadingStatus label={starting ? "client.launch.starting" : "common.loading"} />
+          <LoadingStatus label={starting ? "client.launch.starting" : "common.loading"} waitingCaption={starting} />
         ) : error?.kind === "load" ? (
           <div className="lr-client-launch-panel">
             <Pill

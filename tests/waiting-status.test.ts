@@ -18,7 +18,7 @@ afterEach(() => {
 it.each(["zh", "en"] as const)("keeps %s waiting copy secondary to the actual operation", lang => {
   setCopy({ lang, vis: false });
   vi.spyOn(Math, "random").mockReturnValue(0);
-  const html = renderToStaticMarkup(createElement(LoadingStatus, { label: "client.launch.starting" }));
+  const html = renderToStaticMarkup(createElement(LoadingStatus, { label: "client.launch.starting", waitingCaption: true }));
   expect(html).toContain(`aria-label="${t(lang, "client.launch.starting")}"`);
   expect(html).toContain('class="lr-brand-loader"');
   expect(html).not.toContain("data-comic-motion");
@@ -26,12 +26,12 @@ it.each(["zh", "en"] as const)("keeps %s waiting copy secondary to the actual op
   expect(html).toContain(locales[lang].playful.waiting[0]);
 });
 
-it("uses the generic loading composition for site access checks", () => {
+it.each(["common.loading", "gate.checking"] as const)("keeps routine %s feedback literal", label => {
   setCopy({ lang: "en", vis: false });
-  const html = renderToStaticMarkup(createElement(LoadingStatus, { label: "viewer.msg.joining" }));
+  const html = renderToStaticMarkup(createElement(LoadingStatus, { label }));
   expect(html).toContain('class="lr-brand-loader"');
-  expect(html).toContain(t("en", "viewer.msg.joining"));
-  expect(html).toContain('class="lr-waiting-caption"');
+  expect(html).toContain(t("en", label));
+  expect(html).not.toContain('class="lr-waiting-caption"');
   expect(html).not.toContain('data-comic-motion="progress"');
 });
 
@@ -74,7 +74,7 @@ it("keeps a required action usable even if waiting was requested", () => {
 
 it("keeps the mascot in visual-mode loading without adding a network claim", () => {
   setCopy({ vis: true });
-  const html = renderToStaticMarkup(createElement(LoadingStatus, { label: "common.loading" }));
+  const html = renderToStaticMarkup(createElement(LoadingStatus, { label: "client.launch.starting", waitingCaption: true }));
   expect(html).toContain('class="lr-brand-loader"');
   expect(html).not.toContain("data-comic-motion");
   expect(html).not.toContain('class="lr-waiting-caption"');
@@ -114,7 +114,7 @@ it("omits an empty language pool without hiding the real status or filling from 
   try {
     setCopy({ lang: "zh", vis: false });
     expect(renderToStaticMarkup(createElement(WelcomeLine))).toBe("");
-    const loading = renderToStaticMarkup(createElement(LoadingStatus, { label: "common.loading" }));
+    const loading = renderToStaticMarkup(createElement(LoadingStatus, { label: "common.loading", waitingCaption: true }));
     expect(loading).toContain(t("zh", "common.loading"));
     expect(loading).not.toContain("lr-waiting-caption");
   } finally {
