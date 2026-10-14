@@ -236,25 +236,28 @@ Bidirectional room voice is not part of the product plan.
 Text, reactions and danmaku introduce no microphone capture, voice
 admission or additional media peers.
 
-## Detached Chat Window Assessment
+## Detached Chat Window
 
 [Document Picture-in-Picture](https://developer.chrome.com/docs/web-platform/document-picture-in-picture)
-can place arbitrary HTML in an always-on-top window without installing a PWA or
-implementing an App window. This is a possible presentation enhancement, not an
-implemented feature. Reuse the existing room session and chat content; detaching
-must not reconnect signaling, duplicate participants or reset drafts/history.
-The current panel assumes the main document for visibility, focus, positioning
-and tooltips, so moving its DOM alone is insufficient. A prototype should check
-those owners, returning content on close, theme/language changes and coexistence
-with the existing video PiP. The browser owns window movement and sizing.
+places the current chat panel in an always-on-top window without installing a
+PWA or implementing an App window. The candidate adopts one stable React portal:
+the same session, DOM, draft, reading position and controls remain in use.
+Visibility, focus, tooltip placement and dismissal follow the displaying document.
+Theme and language follow the opener. The browser owns window movement and sizing;
+closing the window returns the panel to the page. Room retirement disposes it,
+including a window request that completes after retirement.
 
 The [specification](https://wicg.github.io/document-picture-in-picture/) requires
 a secure context and user activation; closing or navigating the opener closes
-the PiP window. Local API checks opened and closed a same-origin window, but do
-not establish full chat integration or placement over exclusive-fullscreen games.
+the PiP window. It is useful for reading chat beside a windowed or borderless game;
+placement above exclusive fullscreen is not guaranteed. Transparent desktop
+backgrounds and mouse passthrough remain an
+[upstream request](https://github.com/WICG/document-picture-in-picture/issues/99),
+so CSS opacity is not offered as a misleading game-transparency control.
 [Browser support](https://developer.mozilla.org/en-US/docs/Web/API/DocumentPictureInPicture#browser_compatibility)
-is incomplete, so unsupported pages would retain the existing in-page panel.
-This needs no new room protocol or major version; adoption remains a scope decision.
+is incomplete, so unsupported pages retain the in-page panel. Video PiP and chat
+PiP may replace each other under the browser's single-window policy; no media
+or room owner changes. This needs no new room protocol or major version.
 
 ## Primary References And Rationale
 

@@ -280,7 +280,3 @@ restore reverse feedback. Keep standard ICE recovery while that boundary remains
     identifies pairing/revocation and native decoded-input ownership beyond the
     device selector. Reopen for a concrete use case that justifies this boundary
     and physical latency/echo/background checks. This does not reopen room voice.
-11. **Detached chat window.** The [Document PiP assessment](./research/room-interactions.md#detached-chat-window-assessment)
-    supports a presentation-only prototype using the current room session.
-    Implementation is not yet accepted; verify document-scoped focus, visibility,
-    tooltip and close behavior before adding it to a release.

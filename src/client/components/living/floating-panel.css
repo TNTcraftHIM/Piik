@@ -25,6 +25,13 @@
 @keyframes lr-floating-enter { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
 .lr-popover-close { display: grid; place-items: center; width: 36px; height: 36px; flex: none; background: transparent; color: var(--muted); border: 0; border-radius: 12px; cursor: pointer; }
 .lr-popover-close:is(:hover, :focus-visible) { background: var(--control-hover); color: var(--ink); }
+.lr-floating-error { padding: 8px 0; color: var(--danger); font-size: 12px; }
+/* The browser owns the detached frame, movement and resizing. */
+.lr-panel-window { background: var(--paper); }
+.lr-panel-window .lr-floating-panel { inset: 0 !important; width: 100% !important; height: 100dvh !important; max-width: none; max-height: none !important; padding: 12px; border: 0; border-radius: 0; box-shadow: none; animation: none; }
+.lr-panel-window .lr-floating-header { min-height: 40px; margin: -12px -12px 0; padding: 2px 8px 2px 14px; border-radius: 0; cursor: default; touch-action: auto; }
+.lr-panel-window .lr-chat-log { padding-block: 12px; }
+.lr-panel-window .lr-chat-footer { padding-right: 0; }
 [data-comic-reduced-motion] .lr-floating-panel:popover-open { animation: none; }
 @media (prefers-reduced-motion: reduce) { .lr-floating-panel:popover-open { animation: none; } }
 @media (max-width: 420px) {

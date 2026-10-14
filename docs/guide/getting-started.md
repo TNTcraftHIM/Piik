@@ -248,6 +248,12 @@ sofa to send messages. Select a person on the sofa to open their reaction menu:
 your own reactions appear above you; reactions sent to a friend fly towards them.
 The chat window can be moved and resized without rearranging the page.
 
+Supported desktop browsers show **Always-on-top chat** in the window's top-right
+corner, so you can read messages while playing. Keep the Piik page open; closing
+the small window returns chat to the page. Use a windowed or borderless game;
+exclusive fullscreen may cover the chat. The window cannot show the game through
+its background or let mouse clicks pass through.
+
 **On screen**, beside the message box or in the viewer's playback bar, shows new
 messages over the picture. It is off by default and only changes your own view.
 Open **Chat settings** in the chat window to adjust text size and opacity.

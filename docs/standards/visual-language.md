@@ -67,6 +67,10 @@ participant, stays open after sending and keeps its position when retargeted.
 One-shot settings and guidance retain their existing disclosures. Escape closes
 inner guidance first, then the most recently opened floating panel, then theater
 mode; an IME composition must not dismiss these surfaces.
+Detached chat uses the same content in the browser's own always-on-top frame.
+Its compact header offers return-to-page; in-page drag and resize controls yield
+to that frame instead of competing with it. Keep messages and text contrast
+primary; do not simulate transparent desktop content with a washed-out panel.
 
 Keep the application language control's segmented Chinese, English and visual
 shortcuts. When additional catalogs exist, insert one language menu

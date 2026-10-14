@@ -70,10 +70,9 @@ h1 { font-size: clamp(49px, 5.7vw, 76px); line-height: 1.06; margin-block: 22px 
 .hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px 24px; }
 .text-link { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; font-weight: 650; }
 .button { display: inline-flex; justify-content: center; align-items: center; gap: 29px; min-height: 54px; padding: 12px 25px; border: 2px solid var(--ink); border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 700; transition: transform .22s cubic-bezier(.2, .9, .3, 1.4); }
-.button svg { width: 22px; height: 22px; transition: transform .22s cubic-bezier(.2, .9, .3, 1.4); }
+.button svg { width: 22px; height: 22px; }
 .primary { background: var(--ink); color: var(--button-ink); box-shadow: 0 4px 0 color-mix(in srgb, var(--ink) 18%, transparent); }
 .button:not(:disabled):is(:hover, :focus-visible) { transform: translateY(-3px); box-shadow: 0 7px 0 color-mix(in srgb, var(--ink) 18%, transparent); }
-.button:not(:disabled):is(:hover, :focus-visible) svg { transform: translateY(3px); }
 .button:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 18%, transparent); }
 .hero-note { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 18px; }
 .film-actions { display:flex; align-items:center; flex-wrap:wrap; gap:0 20px; margin-top:18px; }
@@ -342,8 +341,8 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; }
-  .button:not(:disabled):is(:hover, :focus-visible, :active), .button:not(:disabled):is(:hover, :focus-visible) svg, .download-architecture input:enabled:is(:hover, :focus-visible, :active) + span { transform: none; }
+  .button:not(:disabled):is(:hover, :focus-visible, :active), .download-architecture input:enabled:is(:hover, :focus-visible, :active) + span { transform: none; }
 }
 html[data-reduced-motion] { scroll-behavior: auto; }
 html[data-reduced-motion] *, html[data-reduced-motion] *::before, html[data-reduced-motion] *::after { animation: none !important; transition: none !important; }
-html[data-reduced-motion] :is(.button, .button svg, .film-play, .project-tv, .download-architecture label > span) { transform: none !important; }
+html[data-reduced-motion] :is(.button, .film-play, .project-tv, .download-architecture label > span) { transform: none !important; }

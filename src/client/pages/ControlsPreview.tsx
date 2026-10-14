@@ -272,7 +272,7 @@ export function ControlsPreview() {
     </section>
     <section id="interaction-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">09</span><div><h2>{en ? "A little company" : "聊两句，丢个番茄。"}</h2>
-        <p>{en ? "Click a person for reactions. Drag or resize either window." : "点小人发表情；聊天与表情窗都能拖动、缩放。"}</p></div></header>
+        <p>{en ? "Click a person for reactions. Move or resize either panel; supported browsers can pop chat out into an always-on-top window." : "点小人发表情；聊天与表情窗都能拖动、缩放。支持的浏览器还可将聊天弹出为置顶小窗。"}</p></div></header>
       <InteractionControlsPreview />
     </section>
   </>;

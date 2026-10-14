@@ -23,7 +23,8 @@ export function RoomInteractions(props: Props) {
 type ConnectedProps = Props & { session: RoomInteractionSession };
 function ConnectedRoomInteractions(props: ConnectedProps) {
   const state = useSyncExternalStore(props.session.subscribe, props.session.getSnapshot);
-  return <InteractionPanel {...props} state={state} />;
+  // Disconnect retains admission; retirement clears it and disposes every chat surface.
+  return state.peerId ? <InteractionPanel {...props} state={state} /> : <Couch {...props} />;
 }
 
 function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
@@ -31,6 +32,8 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
 }) {
   const { t, vis } = useCopy();
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatDocument, setChatDocument] = useState<Document | null>(null);
+  const detached = Boolean(chatDocument && chatDocument !== document);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [effects, setEffects] = useState(true);
   const [target, setTarget] = useState<string | null>(null);
@@ -41,6 +44,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
   const area = useRef<HTMLDivElement>(null);
   const anchor = useRef<HTMLButtonElement | null>(null);
   const log = useRef<HTMLDivElement>(null);
+  const readingPosition = useRef(0);
   const id = useId();
   const menuId = `${id}-person`;
   const participants: Participant[] = [
@@ -77,31 +81,39 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
     anchor.current = trigger;
     setTarget(key);
   }
+  useLayoutEffect(() => {
+    // Moving a popover between documents resets its native scroll offset.
+    // Content owns reading position; following the latest message remains below.
+    if (log.current) log.current.scrollTop = readingPosition.current;
+  }, [chatDocument]);
   useEffect(() => {
     if (!chatOpen || !log.current) return;
+    const owner = log.current.ownerDocument;
+    const view = owner.defaultView;
+    if (!view) return;
     let active = true;
     let inView = false;
-    const sync = () => { if (active) setVisible(inView && document.visibilityState === "visible"); };
-    const observer = new IntersectionObserver(entries => {
+    const sync = () => { if (active) setVisible(inView && owner.visibilityState === "visible"); };
+    const observer = new view.IntersectionObserver(entries => {
       const entry = entries.at(-1);
       inView = Boolean(entry?.isIntersecting && entry.intersectionRatio > 0);
       sync();
     });
     observer.observe(log.current);
-    document.addEventListener("visibilitychange", sync);
+    owner.addEventListener("visibilitychange", sync);
     return () => {
       active = false;
       observer.disconnect();
-      document.removeEventListener("visibilitychange", sync);
+      owner.removeEventListener("visibilitychange", sync);
       setVisible(false);
     };
-  }, [chatOpen]);
+  }, [chatOpen, chatDocument]);
   useEffect(() => {
-    if (!chatOpen || !visible || !following || document.visibilityState !== "visible" ||
+    if (!chatOpen || !visible || !following || log.current?.ownerDocument.visibilityState !== "visible" ||
       !log.current?.getClientRects().length) return;
     setLastSeen(latest);
     log.current.scrollTop = log.current.scrollHeight;
-  }, [latest, chatOpen, visible, following]);
+  }, [latest, chatOpen, visible, following, chatDocument]);
 
   return <div className="lr-room-interactions">
     <div className="visually-hidden" role="log" aria-label={t("interaction.reactions")}
@@ -114,12 +126,17 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
         })}
       </p>)}
     </div>
-    <FloatingPanel id={id} trigger={`${id}-toggle`} icon="chat" className="lr-interaction-panel"
-      title={t(settingsOpen ? "interaction.settings" : "interaction.title")} onOpenChange={setChatOpen}>
+    <FloatingPanel id={id} trigger={`${id}-toggle`} icon="chat" className="lr-interaction-panel" detachable
+      title={t(settingsOpen ? "interaction.settings" : "interaction.title")}
+      onOpenChange={(open, owner) => { setChatOpen(open); setChatDocument(owner); }}>
       {settingsOpen && <RoomChatSettings session={session} />}
       <div className="lr-chat-history" hidden={settingsOpen}>
       <div className="lr-chat-log" role="log" aria-label={t("interaction.title")} aria-live="polite" aria-relevant="additions" tabIndex={0} ref={log}
-        onScroll={event => { const node = event.currentTarget; setFollowing(node.scrollHeight - node.scrollTop - node.clientHeight < 40); }}>
+        onScroll={event => {
+          const node = event.currentTarget;
+          readingPosition.current = node.scrollTop;
+          setFollowing(node.scrollHeight - node.scrollTop - node.clientHeight < 40);
+        }}>
         {state.messages.length === 0 ? <div className="lr-chat-empty">
           <span className="lr-chat-welcome" aria-hidden="true">{participants.slice(0, 2).map(person =>
             <PawnSvg key={person.peerId} identity={person.peerId} color={participantColor(person.peerId)} host={person.peerId === couch.host?.key} />)}
@@ -175,9 +192,11 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
     <div className="lr-interaction-couch" ref={area}>
       <Couch {...couch} participantAction={{ open: openReactions, target, controls: menuId }}
         footerAction={<span className="lr-interaction-chat-toggle">
-          <Btn id={`${id}-toggle`} icon="chat" title={chatOpen ? "interaction.close" : "interaction.open"} cap="interaction.open" expanded={chatOpen} controls={id}
-            hint={chatOpen ? "hint-close" : "hint-chat-open"}
-            tone={chatOpen ? "on" : undefined} popoverTarget={id} />
+          <Btn id={`${id}-toggle`} icon="chat" title={detached ? "interaction.focus" : chatOpen ? "interaction.close" : "interaction.open"}
+            cap="interaction.open" expanded={chatOpen} controls={detached ? undefined : id}
+            hint={detached ? "hint-chat-detach" : chatOpen ? "hint-close" : "hint-chat-open"}
+            tone={chatOpen ? "on" : undefined} popoverTarget={detached ? undefined : id}
+            onClick={detached ? () => chatDocument?.defaultView?.focus() : undefined} />
           {unread > 0 && <span className="lr-interaction-unread" aria-label={t("interaction.unread", { count: String(unread) })}>{unread}</span>}
         </span>} />
       {effects && state.reactions.map((reaction, index) => {
