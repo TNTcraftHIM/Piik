@@ -65,7 +65,7 @@ the next packet's delta or indexing past the feedback array.
 
 Until [upstream #5016](https://github.com/livekit/livekit/pull/5016) is available,
 the root module replaces LiveKit with the immutable
-[a7c4b2ae revision](https://github.com/TNTcraftHIM/livekit/commit/a7c4b2aee315a7aac5ed156a045c4238f9e39ad0),
+[f10692c6 revision](https://github.com/TNTcraftHIM/livekit/commit/f10692c6f232790ab95a063e24220531eeda6032),
 based on upstream `18df6ad4b694`. Its only changes are an optional local encoder
 demand input to `StreamAllocator` and regression tests. Native publication uses
 that input; ordinary forwarding leaves it unset. The existing allocator still

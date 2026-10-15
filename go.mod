@@ -139,4 +139,4 @@ require (
 )
 
 // Local-encoder demand hook pending upstream #5016; see internal/thirdparty/README.md.
-replace github.com/livekit/livekit-server => github.com/TNTcraftHIM/livekit v1.13.11-0.20261015172453-a7c4b2aee315
+replace github.com/livekit/livekit-server => github.com/TNTcraftHIM/livekit v1.13.11-0.20261015180525-f10692c6f232

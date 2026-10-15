@@ -596,7 +596,12 @@ never replaces measured bitrate or capacity. Piik now uses this input.
 Encoder demand must not mark ordinary tracks deficient: a real DownTrack
 allocation control reproduces a blocked layer upgrade despite spare capacity
 when the two meanings are combined. Demand is checked by the existing periodic
-event; track allocation retains its own state.
+event; track allocation retains its own state. Unmet encoder demand also uses
+the allocator's existing idle/congested recovery when output stops. Withdrawing
+the last demand stops its active padding probe; deficient tracks still retain
+theirs. Regression controls reproduce both omissions while preserving the
+pause, idle, probe-mode and capacity gates. Resetting BWE does not itself raise
+the encoder budget; measured probe feedback remains necessary.
 [Provenance and removal](../../internal/thirdparty/README.md#local-encoder-probe-demand)
 own the temporary pin. Piik does not copy the complete allocator or add a probe
 owner. `SetChannelCapacity` is not a substitute: it overrides capacity and
