@@ -380,8 +380,10 @@ pipeline each, including source restrictions, rate correction and resource
 feedback. Resolution/FPS adaptation keeps the capture and transport identities;
 actual output dimensions update forwarding metadata without resetting sibling
 stream trackers. H264 uses native NV12/MFT and WebRTC's parsed-QP adaptation;
-VP8 uses the library encoder. Other platform producers retain their current
-fixed-output implementation pending equivalent physical acceptance.
+VP8 uses the library encoder. Windows tunes the stock QP history and sampling
+for brief interruptions and low-frame-rate recovery; codec thresholds and the
+adaptation controller remain WebRTC-owned. Other platform producers retain their
+current fixed-output implementation pending equivalent physical acceptance.
 Each source groups compatible effective direct-child requests and keeps
 incompatible weak budgets independent. Per-group rates change in place; joining
 another group's output waits for accepted recovery and keeps the existing

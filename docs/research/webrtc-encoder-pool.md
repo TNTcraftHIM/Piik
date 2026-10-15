@@ -472,57 +472,52 @@ following integration addresses that independent requirement.
 
 ### Budget Restoration
 
-A 2026-10-15 Windows control isolates the production `AdaptiveEncoder` from
-network estimation: unchanged 1080p30 synthetic NV12 input, 5 Mbps budget,
-400 kbps pulses for one second at 15/25/35 seconds, and a 100-second run.
-Hardware H264 dropped to 720p after each pulse had ended and returned to 1080p
-about six seconds after each budget restoration. VP8 retained 1080p in the
-matched schedule. With a continuous 15-second constraint, H264 reached 360p
-and restored 1080p about 19 seconds after the budget returned, via 540p/720p.
-The original input and encoder pipeline remained alive; these are encoded
-dimensions, not decoded/perceptual or physical-network acceptance. One machine
-and synthetic scene do not establish a codec ranking or the field reports' cause.
+Transport allocation and encoder resolution recover separately. Replaying the
+[publication budget repair](./node-local-media-design.md#send-queue-recovery)
+through unchanged synthetic 1080p30 input restored full resolution where the old
+trace retained 360p. The adapter also reports its clamped encoder target through
+`OnSetEncoderTargetRate`, as
+[VideoSendStream does](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/video_send_stream_impl.cc#1016);
+that correction fixes zero-valued diagnostics, not adaptation policy.
 
-This confirms separate encoder recovery latency after allocation recovers;
-lowering a network threshold cannot directly repair it. The pinned WebRTC
-[quality scaler](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/utility/quality_scaler.cc)
-uses frame-drop/QP history and distinct down/up conditions. No extra Piik
-cooldown, forced resolution floor or pipeline reset follows from this control.
-The same trace exposed a missing statistics notification: the adapter now
-reports its clamped encoder target through `OnSetEncoderTargetRate`, as
-[VideoSendStream does](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/video_send_stream_impl.cc#1016).
-Previously diagnostics showed zero even while encoding at a positive budget.
-This corrects observation, not adaptation policy.
+The 2026-10-16 comparison isolates a second delay in the pinned WebRTC
+[quality scaler](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/utility/quality_scaler.cc).
+Its default down/up QP smoothers cover roughly two/ten seconds, and subsequent
+checks normally wait five seconds. Requiring 60 new frames further delays a
+low-cadence stream after each adaptation. Windows now supplies existing field
+trials for symmetric five-second smoothing, two-second base checks and 30
+required frames. Codec QP thresholds, drop handling and CPU adaptation retain
+their library defaults. There is no extra controller, quality floor or reset.
 
-A separate 60-second replay fed the [matched publication budgets](./node-local-media-design.md#send-queue-recovery)
-into the same production H264 encoder, unchanged synthetic 1080p30 NV12 input
-and 5 Mbps ceiling. The old budget trace left output at 640x360 through the end;
-the repaired trace restored 1920x1080 about 21 seconds after link release,
-roughly nine seconds after the transport budget recovered. Both final windows
-encoded about 30 fps with no CPU-limited adaptation. This replay isolates the
-effect of sampled budgets; it is not a coupled end-to-end media test, perceptual
-score, physical capture test or guarantee of instantaneous recovery.
+The controls use the same actual NV12/MFT H264 encoder and 1080p30 synthetic
+motion at a 5 Mbps ceiling. A direct-budget run constrains the encoder to
+400 kbps; the coupled run constrains a 12 Mbps Pion vnet link with 20 ms router
+delay to 400 kbps and feeds real TWCC allocation back to the encoder.
 
-Coupled Native P2P controls on the same date connected this production encoder
-to the live forwarding transport's budget, through Pion vnet ICE/DTLS/RTP and
-TWCC feedback. Synthetic 1080p30 NV12 input retained a 5 Mbps ceiling; a 12 Mbps
-link with 20 ms router delay was limited to 400 kbps. H264's healthy control
-retained 1080p. Three one-second limits at 30/40/50 seconds reduced received
-output to 540p: the codec budget regained at least 4.5 Mbps about 13 seconds
-after final release, while sustained 1080p returned after 21 seconds. A separate
-15-second constraint reached 360p; budget and 1080p returned about 6 and 32
-seconds after release. Timings require five consecutive one-second samples.
-The periodic run's 3,364 received picture AUs decoded in Chrome; parameter-set
-only samples are configuration, not pictures. Repeating that periodic case after
-the relay assembly correction reached 720p, restored budget / sustained 1080p
-after 18 / 26 seconds, and decoded all 3,294 received pictures. These separate
-runs establish neither a performance ranking nor an H264 recovery improvement.
-This validates received bitstreams, not Browser WebRTC playout, physical capture
-or perceptual quality. The encoder and connection were never replaced.
-VP8 controls additionally exposed the
-[Native relay assembly wait](./node-local-media-design.md#native-producer-boundary)
-rather than an allocation failure; its correction does not remove H264's
-separate encoder recovery latency.
+| Control | Previous settings | Selected settings |
+| --- | --- | --- |
+| Direct budget: three one-second limits | 720p after each pulse; 1080p about six seconds after release | Retained 1080p through all three pulses |
+| Direct budget: fifteen-second limit | 1080p 17 seconds after release | 1080p 11 seconds after release |
+| Coupled P2P: three one-second limits | Stable 1080p 26.6 seconds after final release | Stable 1080p 1.9 seconds after final release |
+| Coupled P2P: fifteen-second limit | Stable 1080p 22.3 seconds after release | Stable 1080p 22.2 seconds after release |
+| Coupled P2P: healthy link | Retained 1080p | Retained 1080p, about 30 fps, no router drops |
+
+Stable recovery requires five consecutive one-second samples at 1080p and at
+least 20 fps. The sustained coupled run did not improve total recovery time:
+its transport budget recovered after 7.0 seconds versus 2.8 seconds, while the
+following encoder delay shortened from 19.5 to 15.2 seconds. The constrained
+outputs reached 180p and 360p respectively; neither policy forces a minimum
+resolution. These single synthetic controls establish the selected behavior,
+not a network success rate, perceptual ranking or diagnosis of field reports.
+
+Chrome WebCodecs decoded all 2,871 and 3,425 received picture AUs in the selected
+sustained and periodic runs, preserving each reported dimension and timestamp.
+Parameter-set-only H264 packets are configuration, not pictures. The actual
+packaged capture helper also passed the existing VP8 and H264 640x360
+adapt/recover fixture with continuous ordered output. Encoder, source and
+PeerConnection identities remained intact. Browser WebRTC playout, physical
+capture and unrelated GPU drivers are outside these synthetic checks; page
+scripts cannot apply these native field trials to the user's Browser encoder.
 
 ### Compatible Output Groups
 

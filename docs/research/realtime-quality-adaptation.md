@@ -595,8 +595,8 @@ The [publication demand repair](./node-local-media-design.md#send-queue-recovery
 restores this input without changing congestion thresholds. Any later policy
 experiment must compare brief/repeated pulses with sustained congestion and
 low-cadence sources, measuring latency, loss, recovery and retained dimensions.
-This review does not authorize another adaptation controller or reopen the
-Browser hold.
+The [Native QP comparison](./webrtc-encoder-pool.md#budget-restoration) tunes
+that existing encoder owner; Browser internals expose a different API boundary.
 
 Production room 4521 supplied a separate network/source boundary. It used one
 stable Host-to-Viewer P2P edge with no reparent or SFU activity, yet Chromium

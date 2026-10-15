@@ -20,16 +20,10 @@ platform deferrals or establish a diagnosis for unmatched reports.
   When maintained upstream provides this input, pass the same recovery gate and
   remove the temporary replacement. [Provenance and removal](../internal/thirdparty/README.md#local-encoder-probe-demand)
   own that boundary; this local repair does not diagnose the unmatched field
-  reports below or remove the Browser encoder hold.
+  reports below.
 
 ## Held By Owner
 
-- [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.
-  [Comparisons and Chromium traces](./research/browser-local-encoding-pool.md#sustained-h264-recovery)
-  own the evidence for synchronous H264 initialization, native adaptation and
-  the unbuilt upstream repair candidate. Keep the verified Piik budget and
-  handoff repairs; do not add periodic resets, a quality floor or a Browser fork.
-  The field room's cause and all brief blur are not established as resolved.
 - [ ] **32-bit Windows/Linux Apps.** Deferred by the owner on 2026-10-02;
   no package or website option is planned. Browser use remains available where
   the OS/browser supports the required media APIs. Retain the isolated
@@ -48,9 +42,12 @@ experiments and their limits.
   v1.9.2 self-hosted Browser setup with matched Host/Viewer/Server diagnostics,
   route and codec. [Native controls](./research/node-local-media-design.md#send-queue-recovery)
   and [P2P/Browser trials](./research/network-lab.md#sustained-quality-recovery)
-  do not establish these reports' causes; Browser recovery can still take tens
-  of seconds after allocation recovers. Controlled repetition no longer depends
-  on reporter availability; matched reports are needed to attribute their cases.
+  do not establish these reports' causes. Windows native QP tuning improves the
+  [controlled recovery cases](./research/webrtc-encoder-pool.md#budget-restoration).
+  Browser recovery can still take tens of seconds or remain downscaled after
+  allocation recovers; its internal QP settings are not exposed to page scripts.
+  Controlled repetition no longer depends on reporter availability; matched
+  reports are needed to attribute their cases.
   Do not infer server CPU requirements from an unmatched report.
 
 - [ ] **Linux Portal target identity acceptance (#470).** The
@@ -75,12 +72,6 @@ experiments and their limits.
   plus passive App approval/revocation and Local coexistence. The linked
   verification owner retains the detailed evidence boundaries; this does not
   reopen additional codecs, surround or end-to-end HDR.
-- [ ] **Virtual-microphone echo (#473).** The screenshot has Piik's microphone
-  off while screen audio excludes a different voice app. Process exclusion captures
-  other renderers across output devices, so a virtual mixer can still enter source
-  audio. Obtain the reporter's system-sound-off comparison and routing before
-  attributing the duplicate voice to Piik's mixer. The [audio guide](./guide/getting-started.md#exclude-a-voice-app-from-screen-audio)
-  explains this boundary; no automatic extra exclusion is planned.
 - [ ] **Native H.264 motion quality (#432).** Obtain matched source/decoded
   pictures and bitstream for the original 720p30 game comparison. Retain current
   codec parameters. The [evidence review](./research/native-client-media.md#native-h264-motion-quality)
@@ -98,7 +89,7 @@ experiments and their limits.
   [#453](https://github.com/TNTcraftHIM/Piik/issues/453) need paired transport traces;
   the v1.6.3 timeout also needs share-start/SDP evidence.
   [#471](https://github.com/TNTcraftHIM/Piik/issues/471) needs ICE traces and the
-  enhancement setting after STUN redundancy changes.
+  discovery URLs after STUN redundancy and override changes.
   [#468](https://github.com/TNTcraftHIM/Piik/issues/468) needs the complete join/
   reauthentication trace on repaired connection-opportunity accounting.
   [#464](https://github.com/TNTcraftHIM/Piik/issues/464) needs matched SFU reports
@@ -136,11 +127,6 @@ experiments and their limits.
   distinguish quiet sources, target/display changes and device loss using
   [capture evidence](./research/native-client-lifecycle.md#quiet-sources-and-viewer-recovery).
   The error key alone identifies neither a driver nor a timeout.
-- [ ] **Windows launcher exit after opening the page.** A user reports that the
-  mode-selection page opens, then the App console reports
-  `Piik App could not open its launcher: exit status 0xc0000005`.
-  Retest the browser handoff and obtain the affected build and URL-handler
-  process/dump evidence if it still fails.
 - [ ] **System becomes very laggy after starting a share.** Obtain mode, actual
   codec, profile, display refresh rate and CPU/GPU use, distinguishing startup
   from sustained lag. Compare saturated GPU/game-FPS impact and multi-output
@@ -214,7 +200,3 @@ remains; do not add another retry/transport owner to bypass these limits.
     Viewer control. Keep this proposal separate from quality-recovery fixes.
     Reopen only for an accepted policy that preserves Host privacy, bounded SFU
     capacity and the existing automatic route owner.
-12. **App public-invitation STUN override.** Evaluate a user-supplied discovery
-    list for provider choice; self-hosted Sites already own `STUN_URLS`. Preserve
-    ordinary discovery redundancy and bounded survey requirements. Removing the
-    Host's NAT switch does not authorize another settings panel or provider policy.
