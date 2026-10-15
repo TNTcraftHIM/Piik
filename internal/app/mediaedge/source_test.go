@@ -1,6 +1,7 @@
 package mediaedge
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -8,10 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/streamtracker"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
 )
@@ -319,5 +322,84 @@ func TestSourceFormatAdaptationPreservesLiveLayers(t *testing.T) {
 	if !errors.Is(source.SetFormat(0, 640, 360), io.ErrClosedPipe) ||
 		!errors.Is(source.media.UpdateDimensions(0, 640, 360), sfu.ErrReceiverClosed) {
 		t.Fatal("closed source accepted new dimensions")
+	}
+}
+
+func TestRelayFormatAdaptationPreservesLiveLayers(t *testing.T) {
+	source, err := (&Engine{}).newSource("vp8", 2, 2, &RelayOptions{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = source.Close() })
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	check(source.SetRelayProfile(nativecapture.VideoProfile{
+		Width: 1280, Height: 720, Framerate: 30, Bitrate: 1_200_000, Preference: "balanced",
+	}))
+	check(source.SetFormat(0, 640, 360))
+	check(source.SetFormat(1, 1280, 720))
+	source.groups = make(map[int]*outputGroup)
+	group, err := source.newGroup(2)
+	check(err)
+	group.active = true
+	media := []*forwarding.EncodedSource{source.media, group.media}
+	// Warm both the received representation and an independent derived group.
+	// No capture process or connection is needed to exercise these real trackers.
+	packet := &rtp.Packet{Header: rtp.Header{Version: 2, Marker: true, PayloadType: vp8PayloadType},
+		Payload: append([]byte{0x10}, sfu.VP8KeyFrame8x8...)}
+	ticker := time.NewTicker(time.Second / 25)
+	defer ticker.Stop()
+	deadline := time.NewTimer(6 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case <-ticker.C:
+		case <-deadline.C:
+			t.Fatal("relay layers produced no measured bitrate")
+		}
+		packet.SequenceNumber++
+		packet.Timestamp += 3600
+		ready := true
+		for _, input := range media {
+			for layer := range 2 {
+				packet.SSRC = uint32(layer + 1)
+				check(input.Source.WriteRTP(layer, packet))
+			}
+			_, rates := input.GetLayeredBitrate()
+			ready = ready && rates[0][0] > 0 && rates[1][0] > 0
+		}
+		if ready {
+			break
+		}
+	}
+	// The first packet of a keyframe carries the new dimensions. Merely
+	// learning them must not reset either representation's bitrate history.
+	packet.Marker = false
+	for _, width := range []uint16{640, 1280} {
+		packet.SequenceNumber++
+		packet.Timestamp += 3600
+		binary.LittleEndian.PutUint16(packet.Payload[7:9], width)
+		binary.LittleEndian.PutUint16(packet.Payload[9:11], width*9/16)
+		check(source.WriteRTP(packet))
+		for _, input := range media {
+			for layer := range 2 {
+				tracker := input.StreamTrackerManager().GetTracker(int32(layer))
+				if tracker == nil || tracker.Status() != streamtracker.StreamStatusActive || tracker.BitrateTemporalCumulative()[0] == 0 {
+					t.Fatalf("received dimension update reset live layer %d", layer)
+				}
+			}
+			info := input.TrackInfo()
+			if info.Layers[1].Width != uint32(width) || info.Layers[1].Height != uint32(width)*9/16 ||
+				info.Layers[0].Width != 640 || info.Layers[0].Height != 360 {
+				t.Fatal("received dimensions did not update independently of derived output")
+			}
+		}
+	}
+	if source.relay.run != nil {
+		t.Fatal("dimension metadata alone started a decoder")
 	}
 }

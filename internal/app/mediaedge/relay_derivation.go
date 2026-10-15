@@ -68,7 +68,7 @@ type relayRun struct {
 }
 
 // Called with writeMu held. Declared ceilings are not measured input quality.
-func (source *Source) configureRelayFormats(reset bool) error {
+func (source *Source) configureRelayFormats() error {
 	source.mu.Lock()
 	defer source.mu.Unlock()
 	if source.closed {
@@ -87,12 +87,9 @@ func (source *Source) configureRelayFormats(reset bool) error {
 	}
 	if len(source.outputBitrates) != 2+source.capacity {
 		source.outputBitrates = make([]uint32, 2+source.capacity)
-		reset = true
 	}
 	for slot := range source.outputBitrates {
-		if reset || source.outputBitrates[slot] != 0 {
-			source.outputBitrates[slot] = lower.Bitrate
-		}
+		source.outputBitrates[slot] = lower.Bitrate
 	}
 	source.outputBitrates[1] = source.relayProfile.Bitrate
 	formats := []forwarding.LayerFormat{

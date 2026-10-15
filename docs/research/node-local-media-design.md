@@ -361,6 +361,18 @@ waiting for VP8/H264. This correction belongs to Native relay derivation;
 ordinary Browser P2P has its own receiver/jitter buffer. It does not establish
 the cause of an unmatched field report or fix encoder resolution hysteresis.
 
+Received-size updates exposed another Native relay boundary: `WriteRTP` called
+the full profile updater whenever an upstream keyframe changed dimensions.
+LiveKit's [track-info update](https://github.com/livekit/livekit/blob/c4733475fd9c/pkg/sfu/streamtrackermanager.go#L375)
+also reapplies mute state, resetting active trackers and their measured rates.
+The RTP regression reproduced this for both the original and a separate derived
+group. Received dimensions now use the same immutable metadata update as Native
+capture; each derived output publishes its own actual dimensions. Host profile
+changes retain their separate configuration path. The old implementation fails
+the warmed-stream regression; the repair preserves both layers' active status
+and bitrate history through down/up size changes. This removes a repeated loss
+of allocation evidence, not the upstream encoder's adaptation delay.
+
 ### Native Feedback Probe
 
 The explicit [GCC/TWCC probe](../../internal/app/mediaedge/testdata/gcc_feedback_probe.go)

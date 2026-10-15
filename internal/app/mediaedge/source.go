@@ -96,7 +96,7 @@ func (source *Source) SetRelayProfile(profile nativecapture.VideoProfile) error 
 		source.relay.cancel()
 		source.writeMu.Lock()
 		defer source.writeMu.Unlock()
-		return source.configureRelayFormats(true)
+		return source.configureRelayFormats()
 	}
 	return nil
 }
@@ -381,9 +381,11 @@ func (source *Source) WriteRTP(packet *rtp.Packet) error {
 		}
 		if size.Width > 0 && size.Height > 0 {
 			recovery = true
-			format := uint64(size.Width)<<32 | uint64(size.Height)
-			if source.formats[layer].Swap(format) != format {
-				_ = source.configureRelayFormats(false)
+			// Actual input dimensions do not replace the Host's profile or reset
+			// forwarding history. Derived dimensions belong to their own output.
+			if err := source.setFormat(layer, size.Width, size.Height); err != nil {
+				source.writeMu.Unlock()
+				return err
 			}
 		}
 	}
