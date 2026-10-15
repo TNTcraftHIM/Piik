@@ -1,23 +1,28 @@
-# Node-Local Media Design Proposal
+# Node-Local Media Design Evidence
 
-Date: 2026-09-07. [ADR-0013](../adr/0013-embedded-node-local-media.md) accepts the
-model and highest-demand policy. This file proposes implementation details, not
-a claim that the replacement has shipped. The work includes embedded STUN/SFU
-and a shared Native/SFU media module, not just Native encoding improvements.
+The initial experiments date from 2026-09-07. This document records their
+tradeoffs, the shared Native/SFU implementation boundaries and subsequent
+recovery evidence. [ADR-0013](../adr/0013-embedded-node-local-media.md) owns the
+accepted model; [media quality](../standards/media-quality.md) owns current
+behavior. The architecture is published. [Verification status](../verification-status.md)
+retains unresolved physical limits; controlled results do not establish a
+diagnosis for unmatched field reports.
 
 The 2026-09-08 [WebRTC encoder-pool review](./webrtc-encoder-pool.md) qualifies
-this candidate: fixed output construction and forwarding allocation do not
-include Browser encoder resource adaptation. The maximum-demand ownership model
-remains accepted; the implementation below is not an accepted quality-parity
-boundary. Review the proposed reuse point before adding compensating policies.
+the original fixed-output experiment: output construction and forwarding
+allocation do not include Browser encoder resource adaptation. The maximum-demand ownership model
+remains accepted; the implementation uses complete adaptive pipelines for
+incompatible child budgets, as specified in ADR-0013. Sharing an encoder alone
+does not establish quality parity.
 
 ## Recommendation From The Experiments
 
-Use one bounded output group with the maximum-demand envelope as the first
-integration candidate. Existing framework capacity/layer selection chooses what
-each child can receive; the group keeps outputs through the highest needed
-level active. Avoid an exact-demand warm pool, per-child encoder, arbitrary
-per-bandwidth representation or new optimization scheduler.
+The first comparison favored a bounded maximum-demand envelope over an
+exact-demand warm pool. Framework capacity/layer selection chooses what each
+child can receive; a group retains outputs through its highest needed level.
+The later adaptive-output boundary separates incompatible budgets while sharing
+equal effective requests. The original one-group experiment is not a limit on
+that implementation.
 
 This is a pragmatic initial policy, not proof that exact demand is inferior:
 
@@ -79,29 +84,6 @@ SFU simulcast ingest can carry several layers in one publication; its aggregate
 uplink budget must be respected. Encoding standby output locally and uploading
 all layers are distinct costs.
 
-## Minimal Lifecycle
-
-1. Source/share generation owns available encoded slots and at most one local
-   derivation group. Existing lifecycle closure retires all owned resources.
-2. Child join, departure or a framework-selected target change updates demand.
-   No room-wide survey, periodic rebalance or subtree demand recursion.
-3. A newly needed slot is activated through the codec's normal controls. Keep
-   the previous usable output until a decoder-safe target frame exists, subject
-   to the transport's real congestion budget; never enqueue unlimited old video.
-4. Target switching uses mature keyframe, RTP sequence/timestamp and codec
-   descriptor handling. Same output chunks can feed multiple child transports;
-   each transport still owns its packet headers and recovery.
-5. Reduced demand stops unused upper outputs through the framework's normal
-   deactivation semantics. Any debounce belongs to that owner, not another
-   Piik timer beside it. No application-selected timer values in this draft.
-6. Source replacement/failure/stop invalidates the same generation. No dormant
-   warm pool survives and no old callback can resurrect an encoder.
-
-Shared decode/scale must not block a ready encoded sibling. Each output's work
-and each child's transport use bounded queues; control never waits for all
-children to consume a frame. Queue/drop behavior must preserve codec dependencies
-through the media library, not drop arbitrary packets or overwrite media clocks.
-
 ### Complete-Frame Switch Boundary
 
 The first Native boundary uses complete encoded access units and one persistent
@@ -125,92 +107,30 @@ an explicitly controlled input-frame boundary is required. In particular,
 
 ## Reuse Map
 
-| Existing module / primary source | Reuse or learn | Integration limit |
+| Module / primary source | Responsibility | Boundary |
 | --- | --- | --- |
-| Piik `mediaedge.Source`, `Edge`, Native capture generations | Encoded-source ownership, Pion connections, existing share/route identity | Static RTP broadcast alone does not solve switching sequence spaces or codec descriptors |
-| [Pion GCC](https://github.com/pion/interceptor/blob/main/pkg/gcc/send_side_bwe.go) and RTP/RTCP interceptors | Existing mature feedback and bandwidth estimate | Current Piik path only observes GCC and uses a no-queue pacer; selection/pacing is not already implemented |
-| [LiveKit Dynacast manager](https://github.com/livekit/livekit/blob/v1.13.6/pkg/rtc/dynacast/dynacastmanagervideo.go) | Highest-needed activation and asymmetric demand handling | Apache-2.0; reference, not import the entire service or its downstream-node aggregation |
-| [LiveKit Simulcast selector](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/videolayerselector/simulcast.go), [RTPMunger](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/rtpmunger.go), [prober](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/ccutils/prober.go) | Keyframe switching, packet continuity, bounded recovery probes | Valuable source, but imports protocol/buffer/logger infrastructure; not a demonstrated tiny drop-in |
-| [libwebrtc VP8 adapter](https://github.com/webrtc-mirror/webrtc/blob/main/modules/video_coding/codecs/vp8/libvpx_vp8_encoder.cc) | Coordinated libvpx encoding, SetRates, active-stream keyframes, prepared scale buffers, separate codec and media timestamps | BSD-style; references many WebRTC types. Reuse the underlying libvpx API before copying a large wrapper |
-| [libwebrtc H264 adapter](https://github.com/webrtc-mirror/webrtc/blob/main/modules/video_coding/codecs/h264/h264_encoder_impl.cc) | Simulcast OpenH264 contexts, bitrate updates, scale-buffer reuse and keyframe/SPS discipline | Software reference, not proof that hardware multi-session cost is identical |
-| Existing MFT/VideoToolbox/GStreamer/libvpx boundaries; [libyuv](https://chromium.googlesource.com/libyuv/libyuv/+/refs/heads/main/README.md) | Keep working capture adapters; native conversion/scaling and codec control | Received-source decoding and GPU surface sharing remain real work; don't replace working capture wholesale |
-| [GStreamer tee](https://gstreamer.freedesktop.org/documentation/coreelements/tee.html) / [queue](https://gstreamer.freedesktop.org/documentation/coreelements/queue.html) | Shared frame ownership with branch isolation | Architecture reference; default queue sizes are not accepted latency budgets |
+| Piik `mediaedge.Source`, `Edge`, Native capture generations | Encoded-source ownership and existing share/route identity | The shared forwarding adapter owns transport integration; capture does not own routing |
+| Pion PeerConnections and RTP/RTCP interceptors | ICE, encryption, packetization and feedback | Each connection retains its packet and feedback identity |
+| [LiveKit media components](https://github.com/livekit/livekit/tree/v1.13.6/pkg/sfu) | Bandwidth estimation, allocation, layer selection, RTP projection and recovery probing | Narrow adapter; scoped upstream repairs and their removal gates live in [dependency provenance](../../internal/thirdparty/README.md) |
+| [libwebrtc encoder pipeline](./webrtc-encoder-pool.md) | Rate/resource adaptation for each shared local output | A complete pipeline owns its codec lifetime; a codec cache alone cannot provide equivalent adaptation |
+| MFT/VideoToolbox/GStreamer/libvpx capture adapters and [libyuv](https://chromium.googlesource.com/libyuv/libyuv/+/refs/heads/main/README.md) | Platform capture, conversion/scaling and encoding | Received-source decoding and GPU surface sharing remain real work; physical cost is platform-dependent |
+| [GStreamer tee](https://gstreamer.freedesktop.org/documentation/coreelements/tee.html) / [queue](https://gstreamer.freedesktop.org/documentation/coreelements/queue.html) | Shared frame ownership with branch isolation on Linux | Default queue sizes are not accepted latency budgets |
 
-inLive remains an embedded forwarding candidate, not the answer to derivation
-or a proved adaptation replacement. Its inspected layer sender is coupled to
-App, track, bitrate-controller and packet-map owners; don't copy it as an
-independent universal selector. No new dependency or upstream implementation
-source was copied in this design pass. Preserve upstream licenses/notices when
-an actual module is chosen; Piik's MIT does not replace them.
-
-Parallel inLive API inspection found work to validate before selecting it:
-publisher-demand change notification is not public; `AddRelayTrack` installs a
-no-op PLI callback; the layer sender has its own packet mapping rather than a
-standalone codec-neutral switch API. Its inspected timestamp expression subtracts
-the layer origin twice. Manager room removal/locking, failed-PC closing and
-logger injection also need focused reproductions. These are candidate-library
-risks, not claims about deployed Piik bugs or reasons to expand the Native
-module into an SFU fork.
-
-## Required Before Production
-
-- Select a bounded codec/representation and packet-switching adapter backed by
-  actual RTP decode, loss/recovery and congestion tests, not this local probe.
-  Native H264 hardware and 60 fps resource ceilings remain unmeasured here.
-- Prove behavior below the lowest nominal layer's bitrate and under encoder
-  overload. A fixed simulcast set alone is not complete adaptation. The selected
-  media component must still own usable bitrate/frame-rate reduction, recovery
-  and packet pacing; do not declare parity merely because three sizes decode.
-  One child must not mutate the base or all shared slots to solve its deficit.
-- Measure decode/scale/surface-copy cost on the real Native relay path and prove
-  a stalled derived output cannot block original high output. Browser preview
-  decoding is not automatically a reusable zero-copy Native frame source.
-- Preserve capability-based mixed Browser/Native behavior; no Browser RTP
-  passthrough promise, Browser WebCodecs transport replacement, AV1/VP9 or codec
-  change during a share.
-- Specify real low-input recovery through the single router, with fresh
-  candidate evidence. Do not add a score or assume current topology is optimal.
-- Implement ADR-0013 without claiming ADR-0007's runtime has already changed.
-  The current runtime
-  remains intact until its replacement is accepted and verified; no hidden
-  experimental production branch or compatibility layer.
-
-This is an implementation proposal with explicit unverified boundaries, not a
-completed feature or a promise that every codec/device benefits equally.
-
-## Implementation Sequence
-
-1. Establish the shared Native/SFU encoded-output boundary from current Native
-   packetization. Keep one per-child packetizer across representation changes;
-   prove source-timestamp, payload-descriptor and generation continuity before
-   adding codec control. Existing Native single-output delivery consumes the
-   common component immediately.
-2. Implement shared representation activation and safe frame-boundary switching
-   against that boundary, preserving current source and connection fences. Audit
-   an SFU library's public switching APIs in parallel, not as a prerequisite to
-   the Native quality module or a reason to build a fork prematurely.
-3. Connect Native decode/scale/encode groups and framework per-child estimation,
-   rate selection and pacing. Verify Host and relay independently, including
-   below-lowest-layer and constrained-encoder recovery.
-4. Integrate STUN/SFU with the existing Go room/signaling/config owners and match
-   Browser publication/subscription. Remove external-service integration in the
-   coordinated acceptance boundary, not through permanent dual backends.
-
-This is one phase with staged verification, not four independent production
-releases. Current STUN-only and single-output fanout probes are completed
-components, not acceptance of the complete phase.
+Upstream licenses and notices remain part of the packaged artifacts; Piik's MIT
+license does not replace them. [TODO](../todo.md) owns remaining work, and
+[verification status](../verification-status.md) separates controlled evidence
+from physical capture, game cadence and public-network acceptance.
 
 ## Current Implementation Boundary
 
 `internal/media/forwarding` owns the shared input buffers, typed single-video
 allocation and outgoing transport adapter. Native Source/Edge use it. Pion owns
-ICE, crypto and reports; unmodified LiveKit media components own send-side BWE,
+ICE, crypto and reports; LiveKit media components own send-side BWE,
 allocation primitives, RTP projection and video retransmission. A bounded pacing
 adapter owns packet admission/retirement; a single-video event driver adapts the
 upstream probe lifecycle without another congestion formula or application timer.
-The replaced local Group/
-Selection and receiving-PC sender-estimator registry are deleted, not retained
-as alternate implementations. There is no mirrored counter summing unused layers.
+The [dependency repair notes](../../internal/thirdparty/README.md) identify the
+scoped upstream corrections. There is no mirrored counter summing unused layers.
 
 Source subscription must retain layer discovery that happens during registration.
 LiveKit's `ReceiverBase.AddDownTrack` delivers initial layer metadata before
@@ -235,9 +155,7 @@ rebasing only the input packetizers. It must not also restart the RTP projector.
 Unconnected edges reserve child slots without asking for output. Video capacity
 comes from its tracked traffic; untracked audio must not be subtracted again.
 
-Capture producers now implement the coordinated v5 multi-output boundary below;
-the packaged runtime has not been physically accepted. A bounded real libvpx
-fixture supplies three outputs to the
+The initial multi-output experiment supplied three real libvpx outputs to the
 same Native source API: 96 encoded AUs, two unchanged Pion connections, 40 selected
 frames each, and 40/40 Chrome WebCodecs decodes at the expected dimensions and
 timestamps. [Recorded result](./data/node-local-group.json) excludes payloads.
@@ -246,9 +164,9 @@ This is not a live Browser WebRTC jitter-buffer, hardware or network-loss gate.
 Whole-source/engine teardown closes every snapshotted PC before awaiting shared
 write retirement; a deterministic held-write-lock test covers that ordering.
 Windows/Linux H264 producers mark independent recovery only with SPS/PPS/IDR;
-macOS prepends its format's parameter sets and verifies an IDR. The Windows
-sidecar compiles and links; Linux compiles in the retained 1 GB/2 vCPU VM.
-Updated macOS code still needs an SDK build. No desktop capture was started.
+macOS prepends its format's parameter sets and verifies an IDR. Current capture
+contract and acceptance boundaries are indexed by [status](../status.md);
+the initial fixture did not exercise desktop capture.
 
 The two-output packetization ablation measured 9.30-10.56 microseconds per 20 KiB
 AU versus 4.90-5.29 for one packetizer on this machine, with about 53 KiB versus
@@ -432,15 +350,14 @@ does not turn an App into a public STUN service.
 The application binds HTTP and every required UDP listener before opening the
 room database or accepting signaling. Failed startup returns all sockets;
 the existing Close/End owner retires STUN too. No service supervisor or second
-availability flag is needed. Deployment removes coturn in the final coordinated
-cutover, not while the media implementation is still under acceptance.
+availability flag is needed.
 
-The implementation candidate uses a thin Piik SFU with LiveKit **media-core
-components**, without its RTC room or service. A stock-Pion compile and actual
-ReceiverBase/DownTrack projection pass; two receiving PCs also demonstrate an
+The implementation uses a thin Piik SFU with LiveKit **media-core components**,
+without its RTC room or service. The initial stock-Pion/LiveKit comparison passed
+compilation and ReceiverBase/DownTrack projection; two receiving PCs demonstrated an
 unaffected high-output sibling and high/low/high allocation under forced budgets.
-That is not a measured-network congestion/retransmission pass. Compared with the
-current mediaedge API executable, the stripped Windows API closure grows from
+That comparison did not measure network congestion/retransmission. Relative to
+the then-current mediaedge API executable, the stripped Windows API closure grew from
 8,920,576 to 32,467,456 bytes. Narrow munger/selector imports still reach about
 300 non-standard packages and omit the complete projection/allocator, so they do
 not justify a separate partial extraction. inLive would require private-path
@@ -449,7 +366,7 @@ fixes and demand hooks beyond a thin adapter; do not maintain both candidates.
 Keep the dependency behind a shared media package. For one video per connection,
 use the public provisional allocation primitives, with exact typed child state
 read by its parent; do not parse DebugInfo or run a second multi-track allocator.
-The candidate uses LiveKit SendSideBWE and Prober through their public APIs,
+The adapter uses LiveKit SendSideBWE and Prober through their public APIs,
 with the [scoped measurement repair](../../internal/thirdparty/README.md#livekit-send-side-bandwidth-estimation).
 Packet timing uses the existing LiveKit SDK leaky-bucket pacer; the SFU writer
 retains RTP extensions, TWCC identity, probe accounting and packet-pool ownership.
@@ -654,8 +571,8 @@ perceptual audio quality or behavior on every physical network.
 No reset, retry owner or minimum quality is added. These are bounded local traces,
 not a field diagnosis, success-rate or game-latency claim.
 Ordinary focused checks cover NACK repair, no-RR probe admission, zero-write
-termination and exact shutdown. Before runtime cutover, complete actual codec,
-Browser and physical recovery checks rather than inferring them from this trace.
+termination and exact shutdown. These checks do not establish physical recovery
+outside the [verified boundaries](../verification-status.md).
 Desired maximum, available layers and current forwarding target remain distinct;
 Dynacast is not proof that stopping every currently unselected high layer alone
 provides recovery.

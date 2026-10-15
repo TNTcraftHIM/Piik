@@ -104,12 +104,11 @@ is introduced.
 - Replacing the external SFU changes Browser signaling/media integration and
   deployment. Cut over one coordinated current contract, delete replaced paths
   in that boundary, and preserve active-share/rollback rules from CONTRIBUTING.
-- The candidate implements this model through shared Pion/LiveKit media
-  components; ADR-0007 retains the earlier
-  production/runtime context and its unchanged Browser source/codec decisions.
-  Implementation is not acceptance of hardware, mixed peers, loss/recovery or
-  production cutover. Current product modules describe the candidate, while
-  status and deployment records keep production evidence separate.
+- Shared Pion/LiveKit media components implement this model; ADR-0007 retains
+  the earlier production/runtime context and its unchanged Browser source/codec
+  decisions. [Status](../status.md) indexes published behavior and deployment
+  evidence. Controlled implementation checks do not replace the remaining
+  [physical acceptance](../verification-status.md).
 - [TODO](../todo.md) owns remaining implementation and acceptance. Research owns
   measurements and library-selection evidence; no production switch is added
   merely because a probe passes.
@@ -119,5 +118,5 @@ is introduced.
 - [RTP simulcast design and tradeoffs, RFC 8853](https://www.rfc-editor.org/rfc/rfc8853)
 - [RTP switching and source projection, RFC 7667](https://www.rfc-editor.org/rfc/rfc7667)
 - [LiveKit demand envelope](https://github.com/livekit/livekit/blob/v1.13.6/pkg/rtc/dynacast/dynacastmanagervideo.go)
-- [Implementation proposal and reuse map](../research/node-local-media-design.md)
+- [Implementation evidence and reuse map](../research/node-local-media-design.md)
 - [Embedded media evaluation](../research/embedded-media.md)
