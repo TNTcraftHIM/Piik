@@ -62,9 +62,7 @@ func (source *Source) collectDemands(edges []*Edge, publications []*Publication)
 		required := publication.RequiredActiveCount()
 		active := required > 0
 		budget := publication.LowestLayerBudget()
-		if budget <= 0 {
-			budget = int64(ceiling)
-		}
+		// Zero is an exhausted residual allocation, not an unknown estimate.
 		demands = append(demands, outputDemand{consumer: publication.transport, active: active, lower: active,
 			original: required > 1,
 			budget:   uint32(max(1000, min(budget, int64(ceiling))))})

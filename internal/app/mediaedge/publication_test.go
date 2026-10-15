@@ -307,3 +307,82 @@ func TestPublicationQualityUsesHighestSentLayerCadence(t *testing.T) {
 		t.Fatal("publication did not aggregate actual written layer bytes")
 	}
 }
+
+func TestPublicationZeroRemainingBudgetDoesNotRestoreCeiling(t *testing.T) {
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	check(err)
+	defer engine.Close()
+	source, err := engine.NewSource("vp8", 1, 2, nil)
+	check(err)
+	defer source.Close()
+	check(source.SetFormat(0, 8, 8))
+	check(source.SetFormat(1, 8, 8))
+	check(source.ConfigureOutputs([]uint32{300_000, 8_000_000}))
+	source.SetLowestLayerRateControlled(true)
+	publication, err := engine.NewPublication(source, EdgeOptions{ConnectionID: "zero-budget"})
+	check(err)
+	media, registry := &webrtc.MediaEngine{}, &interceptor.Registry{}
+	check(media.RegisterDefaultCodecs())
+	for _, uri := range []string{"urn:ietf:params:rtp-hdrext:sdes:mid", "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"} {
+		check(media.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: uri}, webrtc.RTPCodecTypeVideo))
+	}
+	check(webrtc.RegisterDefaultInterceptors(media, registry))
+	settings := webrtc.SettingEngine{}
+	settings.SetIncludeLoopbackCandidate(true)
+	receiver, err := webrtc.NewAPI(webrtc.WithMediaEngine(media), webrtc.WithInterceptorRegistry(registry), webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
+	check(err)
+	defer receiver.Close()
+	receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		for {
+			if _, _, err := track.ReadRTP(); err != nil {
+				return
+			}
+		}
+	})
+	connectEdgeToReceiver(t, &publication.signaling, receiver)
+	period := time.Second / 30
+	start := time.Now()
+	// The upper encoding can exceed the initial 3 Mbps capacity once measured.
+	// Real RTP/allocation exercises that boundary; padded payload is not a decode test.
+	for frame := range 240 {
+		pts := time.Duration(frame) * period
+		budget := publication.LowestLayerBudget()
+		plan, err := source.BeginFrame(pts)
+		check(err)
+		if budget == 0 {
+			if current := publication.LowestLayerBudget(); current != 0 {
+				continue
+			}
+			if plan.Bitrates[0] != 1000 {
+				t.Fatalf("zero residual allocation restored encoder ceiling: %d", plan.Bitrates[0])
+			}
+			check(publication.SetActiveCount(1))
+			deadline := time.Now().Add(time.Second)
+			for publication.LowestLayerBudget() < 300_000 {
+				if time.Now().After(deadline) {
+					t.Fatal("inactive upper layer kept spending the publication budget")
+				}
+				time.Sleep(time.Millisecond)
+			}
+			restored, err := source.BeginFrame(pts + period)
+			check(err)
+			if restored.Bitrates[0] <= 1000 || restored.Bitrates[0] > 300_000 || restored.Active[1] {
+				t.Fatalf("restored allocation did not recover the same lower output: %+v", restored)
+			}
+			return
+		}
+		for layer, bitrate := range []uint32{plan.Bitrates[0], 8_000_000} {
+			data := make([]byte, max(len(sfu.VP8KeyFrame8x8), int(bitrate/8/30)))
+			copy(data, sfu.VP8KeyFrame8x8)
+			check(source.WriteVideo(layer, encoded.Frame{Data: data, PTS: pts, Duration: period, Recovery: true}))
+		}
+		time.Sleep(time.Until(start.Add(time.Duration(frame+1) * period)))
+	}
+	t.Fatal("fixture did not produce an exhausted residual allocation")
+}

@@ -65,12 +65,13 @@ the next packet's delta or indexing past the feedback array.
 
 Until [upstream #5016](https://github.com/livekit/livekit/pull/5016) is available,
 the root module replaces LiveKit with the immutable
-[c4733475 revision](https://github.com/TNTcraftHIM/livekit/commit/c4733475fd9c1547c89794fd83f31fcf4fc7e542),
+[a7c4b2ae revision](https://github.com/TNTcraftHIM/livekit/commit/a7c4b2aee315a7aac5ed156a045c4238f9e39ad0),
 based on upstream `18df6ad4b694`. Its only changes are an optional local encoder
 demand input to `StreamAllocator` and regression tests. Native publication uses
 that input; ordinary forwarding leaves it unset. The existing allocator still
-owns probe timing, congestion response and allocation. No allocator source is
-copied into Piik and no build-time patch is applied.
+owns probe timing, congestion response and allocation; encoder demand does not
+change track-deficiency state. No allocator source is copied into Piik and no
+build-time patch is applied.
 
 The explicit `TestPublicationConstrainedRecovery` gate and the upstream tests
 cover recovery and withdrawal without replacing measured source rates or

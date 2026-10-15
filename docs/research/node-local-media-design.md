@@ -586,13 +586,24 @@ Native publication exposed a separate boundary: the full allocator probes
 spatial deficiency, so it can stop exploring once a sole active RID fits at its
 reduced encoding. Single-output and two-declared-RID controls both reproduced it.
 [LiveKit #5016](https://github.com/livekit/livekit/pull/5016) adds explicit unmet
-encoder demand to that allocator's existing state/padding probe. Demand is
+encoder demand to that allocator's existing padding probe. Demand is
 withdrawn for inactive/retired or sufficiently allocated output; desired output
 never replaces measured bitrate or capacity. Piik now uses this input.
+Encoder demand must not mark ordinary tracks deficient: a real DownTrack
+allocation control reproduces a blocked layer upgrade despite spare capacity
+when the two meanings are combined. Demand is checked by the existing periodic
+event; track allocation retains its own state.
 [Provenance and removal](../../internal/thirdparty/README.md#local-encoder-probe-demand)
 own the temporary pin. Piik does not copy the complete allocator or add a probe
 owner. `SetChannelCapacity` is not a substitute: it overrides capacity and
 disables probing. A minimum-capacity setting would not prove measured recovery.
+
+Publication's residual budget can legitimately reach zero when upper outputs
+consume the available allocation. The native adapter must preserve that result,
+using its existing encoder minimum, instead of restoring the configured ceiling.
+Otherwise the low output can appear fully satisfied and suppress its recovery
+probe. A real RTP/allocation regression also checks that retiring the upper output
+returns budget to the same lower output without reconnecting.
 
 Matched 60-second controls retained one rate-controlled output, 30 generated
 frames/s and the same connection. Impairment lowered a 6 Mbps link to 120 kbps;
