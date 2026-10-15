@@ -152,7 +152,7 @@ func Load(env map[string]string) (Config, error) {
 			return Config{}, errors.New("ROOM_EMPTY_TIMEOUT_SECONDS must be an integer between 0 and 31536000")
 		}
 	}
-	stunURLs, err := parseStunURLList(env["STUN_URLS"], "STUN_URLS")
+	stunURLs, err := ParseSTUNURLs(env["STUN_URLS"], "STUN_URLS")
 	if err != nil {
 		return Config{}, err
 	}
@@ -335,8 +335,8 @@ func parseURLList(value string, name string) ([]string, error) {
 	return list, nil
 }
 
-// parseStunURLList validates the bounded ordinary-STUN list.
-func parseStunURLList(value string, name string) ([]string, error) {
+// ParseSTUNURLs validates a comma-separated discovery list for Server or App.
+func ParseSTUNURLs(value string, name string) ([]string, error) {
 	values, err := parseURLList(value, name)
 	if err != nil {
 		return nil, err

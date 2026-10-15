@@ -274,6 +274,10 @@ media fails. App Public invite already uses multiple discovery services; one
 STUN error alone does not mean every path failed. On self-hosted sites,
 administrators should check that `STUN_URLS`
 points to reachable UDP services; an HTTP reverse proxy does not forward STUN.
+App users who need different providers can set
+[`PIIK_STUN_URLS`](../standards/configuration.md#piik-app-configuration)
+before starting Public invite. This replaces every built-in discovery address;
+choose trusted services, since they see the participants' public IP addresses.
 Compare the diagnostic reports from both peers before assigning the cause.
 
 Try these in order, stopping when the picture arrives:

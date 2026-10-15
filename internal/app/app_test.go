@@ -739,10 +739,12 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 	for _, testCase := range []struct {
 		name                  string
 		link                  bool
+		override              string
 		stunURLs              []string
 		natPredictionSTUNURLs []string
 	}{
 		{name: "local"},
+		{name: "local ignores public override", override: "invalid"},
 		{
 			name: "link", link: true,
 			stunURLs: []string{publicSTUNURL, publicFallbackSTUNURLA, publicFallbackSTUNURLB},
@@ -750,9 +752,23 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 				publicFallbackSTUNURLA, publicFallbackSTUNURLB,
 			},
 		},
+		{
+			name: "custom discovery", link: true, override: "stun:chosen.test:3478",
+			stunURLs: []string{"stun:chosen.test:3478"},
+		},
+		{
+			name: "custom survey", link: true,
+			override:              "stun:a.test:3478, stun:b.test:3478, stun:c.test:3478",
+			stunURLs:              []string{"stun:a.test:3478", "stun:b.test:3478", "stun:c.test:3478"},
+			natPredictionSTUNURLs: []string{"stun:b.test:3478", "stun:c.test:3478"},
+		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			stunURLs, natPredictionSTUNURLs := localSTUNURLs(testCase.link)
+			t.Setenv("PIIK_STUN_URLS", testCase.override)
+			stunURLs, natPredictionSTUNURLs, err := localSTUNURLs(testCase.link)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if !slices.Equal(stunURLs, testCase.stunURLs) ||
 				!slices.Equal(natPredictionSTUNURLs, testCase.natPredictionSTUNURLs) {
 				t.Fatalf("Local STUN selection = %v, %v", stunURLs, natPredictionSTUNURLs)
@@ -769,11 +785,18 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !slices.Equal(config.STUNURLs, testCase.stunURLs) ||
-				config.NATPredictionEnabled != testCase.link {
+				config.NATPredictionEnabled != (len(testCase.natPredictionSTUNURLs) != 0) {
 				t.Fatalf("Local server config = %v, NAT prediction %t",
 					config.STUNURLs, config.NATPredictionEnabled)
 			}
 		})
+	}
+	for _, value := range []string{"turn:chosen.test:3478", "stun:a.test:3478,,stun:b.test:3478",
+		"stun:a:1,stun:b:2,stun:c:3,stun:d:4,stun:e:5,stun:f:6,stun:g:7"} {
+		t.Setenv("PIIK_STUN_URLS", value)
+		if _, _, err := localSTUNURLs(true); err == nil {
+			t.Fatalf("invalid public STUN list accepted: %q", value)
+		}
 	}
 }
 

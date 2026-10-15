@@ -111,6 +111,18 @@ schema field. The user settings are:
 | `site` | One approved Piik Site origin. Local confirmation or explicit `--site` updates it; the launcher can revoke it. |
 | `localAccessPassword` | Empty by default. Optional password for the App's Local room authority, with the same exact-match behavior as `SITE_ACCESS_PASSWORD`. It is separate from a hosted site's password. |
 
+For public invitations, the optional `PIIK_STUN_URLS` environment variable
+replaces all built-in STUN destinations. It accepts a comma-separated list of
+up to six `stun:` URLs, using the Server's URL validation. With three or more
+destinations, the second and third also supply NAT prediction observations;
+one or two use ordinary ICE only. Empty or unset retains the defaults. Local
+LAN mode ignores this setting, and an approved Site supplies its own ICE
+configuration. No settings panel or additional media transport is involved.
+
+For example, in PowerShell, set `$env:PIIK_STUN_URLS = 'stun:your-stun.example:3478'`
+before running `./piik-app.exe`. Use a service you trust: STUN sees participants'
+public network addresses, but does not receive shared media.
+
 The Site's App button requests local confirmation for the page's exact origin.
 The `--site` automation input defaults to HTTPS when the scheme is omitted;
 explicit HTTP or HTTPS is preserved. Both save the normalized origin and reject

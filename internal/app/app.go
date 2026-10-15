@@ -477,6 +477,10 @@ func openSite(site string, options Options) {
 func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	control *loopback.Server,
 ) (returnedErr error) {
+	stunURLs, natPredictionStunURLs, err := localSTUNURLs(options.Link)
+	if err != nil {
+		return err
+	}
 	view := consoleView{mode: "local", state: "starting", protected: config.LocalAccessPassword != ""}
 	if options.Link {
 		view.mode = "link"
@@ -524,7 +528,6 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		slog.Debug("piik-client", "event", "public-link-ready")
 	}
 
-	stunURLs, natPredictionStunURLs := localSTUNURLs(options.Link)
 	localConfig, err := serverconfig.Local(serverconfig.LocalOptions{
 		Port:                  options.Port,
 		PublicAddress:         selectedAddress,
@@ -703,14 +706,26 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 // has a public path, so only --link configures public STUN and the bounded NAT
 // prediction survey. Native edges receive ICE configuration from that authority;
 // serverconfig.Local deliberately does not inherit Hosted environment settings.
-// All three destinations also serve ordinary discovery: disabling prediction
-// must not make public-link ICE depend on a single STUN operator.
-func localSTUNURLs(link bool) (stunURLs []string, natPredictionSTUNURLs []string) {
+// An explicit App override replaces every public destination, including the
+// survey pair. With fewer than three servers only ordinary ICE is available.
+func localSTUNURLs(link bool) (stunURLs []string, natPredictionSTUNURLs []string, err error) {
 	if !link {
-		return nil, nil
+		return nil, nil, nil
 	}
-	return []string{publicSTUNURL, publicFallbackSTUNURLA, publicFallbackSTUNURLB},
-		[]string{publicFallbackSTUNURLA, publicFallbackSTUNURLB}
+	stunURLs, err = serverconfig.ParseSTUNURLs(os.Getenv("PIIK_STUN_URLS"), "PIIK_STUN_URLS")
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(stunURLs) == 0 {
+		stunURLs = []string{publicSTUNURL, publicFallbackSTUNURLA, publicFallbackSTUNURLB}
+	}
+	if len(stunURLs) >= 3 {
+		if len(stunURLs) > protocol.MaxIceServerURLs-protocol.MaxNatPredictionAuxiliaryStunURLs {
+			return nil, nil, errors.New("PIIK_STUN_URLS must contain at most 6 URLs")
+		}
+		natPredictionSTUNURLs = stunURLs[1:3]
+	}
+	return stunURLs, natPredictionSTUNURLs, nil
 }
 
 // endLocalServer is step 1 of the ADR-0010 item 12 unwind: every room ends,
