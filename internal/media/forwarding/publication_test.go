@@ -464,6 +464,12 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	if publication.bandwidth.CongestionState() != bwe.CongestionStateNone || !publication.Counters().Limited {
 		t.Fatalf("clear transport feedback hid the committed publication allocation deficit: state=%v counters=%+v low=%v high=%v", publication.bandwidth.CongestionState(), publication.Counters(), publication.tracks[0].IsDeficient(), publication.tracks[1].IsDeficient())
 	}
+	// Retire high output while allocation is paused, before the low-cache
+	// rollover below can queue frames for it.
+	check(publication.SetActiveCount(1))
+	if publication.RequiredActiveCount() != 1 {
+		t.Fatal("publication did not reduce its direct demand")
+	}
 	// A paused sender's recent packets can age out while capture continues.
 	// Recovery must still send a probe when those RTX payloads are unavailable.
 	if publication.tracks[0].WriteProbePackets(300, true) == 0 {
@@ -484,10 +490,6 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	// cannot prove an increase; this test covers RID reuse, not bandwidth probing.
 	publication.bandwidth.target.Store(1_000_000)
 	publication.allocator.SetChannelCapacity(1_000_000)
-	check(publication.SetActiveCount(1))
-	if publication.RequiredActiveCount() != 1 {
-		t.Fatal("publication did not reduce its direct demand")
-	}
 	// Drain packets already admitted by the pacer before observing inactive output.
 	for range 6 {
 		write()
