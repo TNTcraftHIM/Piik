@@ -459,9 +459,8 @@ Meaning must also survive without colour through objects, symbols and accessible
 localized names. Never show celebration or a completed live path as the verdict
 of a failed or unavailable operation.
 
-A missing optional feature is not a failed media path. For example, unavailable
-NAT prediction marks only extra candidate paths; ordinary P2P remains a neutral
-possibility. A rejected PiP request is failure; lack of PiP support is a limitation.
+A missing optional feature is not a failed media path. A rejected PiP request is
+failure; lack of PiP support is a limitation.
 
 ## Motion Grammar
 
