@@ -46,6 +46,14 @@ outside the tunnel. Both modes need a usable UDP media path and provide no
 media-server forwarding (SFU) or TURN relay fallback. The
 [routing reference](../../docs/standards/routing-transport.md) explains connection setup.
 
+Public invite uses Cloudflare, MiWiFi (Xiaomi) and Bilibili STUN services to
+discover reachable addresses. Each contacted operator can see your public IP,
+port and request timing; these requests contain no shared media, chat or room
+password. Disabling **Enhanced NAT traversal** retains this discovery list.
+The App currently offers no override for it. To choose your own STUN services,
+use a [self-hosted Site](../../docs/operations/self-hosting.md) configured with
+`STUN_URLS`; App Local rooms configure no public STUN.
+
 For Local invitations, the App automatically selects a sole active address or
 sole private IPv4. If several addresses remain possible, choose an interface
 and IP in the launcher. Public invite and use through a Site need no LAN selection.

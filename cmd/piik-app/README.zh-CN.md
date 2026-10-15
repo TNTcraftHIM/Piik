@@ -38,6 +38,12 @@ Apple 芯片或 Intel Mac，以及 macOS 13 或更新版本。构建程序包与
 没有媒体服务器转发（SFU）或 TURN 中继兜底。连接机制见
 [路由参考](../../docs/standards/routing-transport.md)。
 
+公网邀请使用 Cloudflare、小米和 Bilibili 的 STUN 服务发现可连接地址。
+被联系的服务商能看到你的公网 IP、端口和请求时间；这些请求不包含分享画面、声音、
+聊天或房间密码。关闭 **NAT 穿透增强** 仍会使用这份地址列表，App 目前不提供替换选项。
+如需自行选择 STUN 服务，可使用配置了 `STUN_URLS` 的
+[自部署站点](../../docs/operations/self-hosting.zh-CN.md)；App 本地房间不配置公共 STUN。
+
 本地邀请会自动选择唯一的活动地址或唯一的私有 IPv4 地址。仍有多个可能地址时，
 请在启动页选择网卡和 IP。公网邀请和搭配站点使用时无需选择局域网地址。
 通过 `--local` 跳过启动页时，可用 `--lan-address <address>` 指定地址来解决多地址歧义。
