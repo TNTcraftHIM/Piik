@@ -209,3 +209,8 @@ remains; do not add another retry/transport owner to bypass these limits.
     the use case and platform scope before a prototype; transport, input privacy
     and App-wide grant retirement need acceptance. No remote-control code,
     mobile controlled endpoint or language rewrite is currently planned.
+11. **Per-Viewer SFU preference (#477).** Existing `SFU_ONLY=true` is an operator
+    policy for the whole site; it does not provide the requested individual
+    Viewer control. Keep this proposal separate from quality-recovery fixes.
+    Reopen only for an accepted policy that preserves Host privacy, bounded SFU
+    capacity and the existing automatic route owner.

@@ -298,9 +298,13 @@ raw forwarding or silently dropping reference frames.
 The explicit `TestRelayDerivationFixture` uses the existing real 640x360 VP8
 fixture and the actual Windows encoded-input sidecar. It proves zero decoder
 startup for healthy raw forwarding, a shared 320x180 output for lower demand,
-live preference replacement without closing the healthy edge, and process
-retirement. This short synthetic codec run does not prove desktop capture,
-hardware H264, Browser decode, game quality or public-network recovery.
+live preference replacement, input-size round trips and process retirement
+without replacing either edge. Four 640x360/320x180 input transitions delivered
+five new pictures to both children within 0.47–0.53 seconds each; raw/derived
+sizes stayed paired at 640/320 or 320/160. A bounded recording decoded all 59/20
+complete received pictures in Chrome 152 WebCodecs. This synthetic codec check
+does not prove desktop capture, hardware H264, Browser WebRTC playout, game
+quality or public-network recovery.
 Cold outputs use the framework's existing four-second screen-share bitrate
 measurement window; the acceptance trace includes it rather than substituting
 configured bitrate for a measurement.

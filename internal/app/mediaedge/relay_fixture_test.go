@@ -29,22 +29,28 @@ func TestRelayDerivationFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer input.Close()
-	var row struct {
-		Layer   int
-		DataHex string
-	}
+	inputs := make(map[int][]byte)
 	decoder := json.NewDecoder(input)
 	for index := 0; index < 3; index++ {
+		var row struct {
+			Layer    int
+			DataHex  string
+			Recovery bool
+		}
 		if err = decoder.Decode(&row); err != nil {
 			t.Fatal(err)
 		}
-		if row.Layer == 2 {
-			break
+		if !row.Recovery {
+			t.Fatal("fixture must begin with independent pictures")
+		}
+		inputs[row.Layer], err = hex.DecodeString(row.DataHex)
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
-	data, err := hex.DecodeString(row.DataHex)
-	if err != nil || row.Layer != 2 {
-		t.Fatal("fixture has no first-frame high recovery output")
+	data := inputs[2]
+	if len(data) == 0 || len(inputs[1]) == 0 {
+		t.Fatal("fixture lacks recovery pictures at both input sizes")
 	}
 	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
 	if err != nil {
@@ -176,6 +182,37 @@ func TestRelayDerivationFixture(t *testing.T) {
 	source.relay.mu.Unlock()
 	if replacement == nil || replacement == run || frames[0] <= beforeChange[0] || frames[1] <= beforeChange[1] {
 		t.Fatal("live relay settings stopped healthy forwarding or failed to replace the derived output")
+	}
+	// Upstream adaptation changes actual dimensions, not the Host profile or
+	// either child's connection. Retire each old decoder before its replacement.
+	for _, layer := range []int{1, 2, 1, 2} {
+		old := replacement
+		data = inputs[layer]
+		before := frames
+		seen = [2]mediacodec.VideoSize{}
+		width := uint32(320)
+		if layer == 2 {
+			width = 640
+		}
+		for frame := 0; frame < 180; frame++ {
+			weak.transport.Output.SetBudget(300_000)
+			feed()
+			if seen[0].Width == width && seen[1].Width == width/2 && frames[0] >= before[0]+5 && frames[1] >= before[1]+5 {
+				break
+			}
+		}
+		source.relay.mu.Lock()
+		replacement = source.relay.run
+		source.relay.mu.Unlock()
+		if replacement == nil || replacement == old || seen[0].Width != width || seen[1].Width != width/2 ||
+			frames[0] < before[0]+5 || frames[1] < before[1]+5 {
+			t.Fatalf("input resize did not recover: width=%d sizes=%+v frames=%v->%v", width, seen, before, frames)
+		}
+		select {
+		case <-old.done:
+		default:
+			t.Fatal("input resize overlapped the old derivation")
+		}
 	}
 	run = replacement
 	if err = healthy.Close(); err != nil {
