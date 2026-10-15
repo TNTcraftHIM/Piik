@@ -43,9 +43,25 @@ func (input *relayVideoInput) push(packet *rtp.Packet) error {
 		return nil
 	}
 	if input.builder == nil || recovery && (!input.hasRecovery || packet.Timestamp != input.recoveryTimestamp) {
-		if input.builder != nil {
+		previous := input.builder
+		var depacketizer rtp.Depacketizer = &codecs.H264Packet{}
+		if input.codec == "vp8" {
+			depacketizer = &codecs.VP8Packet{}
+		}
+		var builder *samplebuilder.SampleBuilder
+		builder = samplebuilder.New(relayPacketLimit, depacketizer, videoClockRate,
+			samplebuilder.WithPacketDroppedHandler(func() {
+				// Old gaps cannot request another keyframe after its replacement
+				// has arrived. Loss in the current assembly still owns recovery.
+				if input.builder == builder && input.onPacketDropped != nil {
+					input.onPacketDropped()
+				}
+			}))
+		input.builder = builder
+		input.pending = false
+		if previous != nil {
 			for {
-				sample, _ := input.builder.ForcePopWithTimestamp()
+				sample, _ := previous.ForcePopWithTimestamp()
 				if sample == nil {
 					break
 				}
@@ -57,17 +73,6 @@ func (input *relayVideoInput) push(packet *rtp.Packet) error {
 				}
 			}
 		}
-		var depacketizer rtp.Depacketizer = &codecs.H264Packet{}
-		if input.codec == "vp8" {
-			depacketizer = &codecs.VP8Packet{}
-		}
-		input.builder = samplebuilder.New(relayPacketLimit, depacketizer, videoClockRate,
-			samplebuilder.WithPacketDroppedHandler(func() {
-				if input.onPacketDropped != nil {
-					input.onPacketDropped()
-				}
-			}))
-		input.pending = false
 	}
 	if recovery {
 		input.recoveryTimestamp, input.hasRecovery = packet.Timestamp, true

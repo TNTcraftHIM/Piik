@@ -149,6 +149,62 @@ func TestRelayInputKeepsReorderingAndQuietSource(t *testing.T) {
 	}
 }
 
+func TestRelayInputRetiredLossDoesNotRequestAnotherKeyFrame(t *testing.T) {
+	for _, codec := range []string{"vp8", "h264"} {
+		t.Run(codec, func(t *testing.T) {
+			requests := 0
+			input := relayVideoInput{codec: codec, onPacketDropped: func() { requests++ }}
+			key := append([]byte{0x10}, sfu.VP8KeyFrame8x8...)
+			delta, fragment := []byte{0x10, 1, 0}, []byte{0x10, 1, 0}
+			if codec == "h264" {
+				key = []byte{0x78}
+				for _, nal := range [][]byte{sfu.H264KeyFrame2x2[0], sfu.H264KeyFrame2x2[1], sfu.H264KeyFrame2x2IDR} {
+					key = append(key, byte(len(nal)>>8), byte(len(nal)))
+					key = append(key, nal...)
+				}
+				delta, fragment = []byte{0x61, 1, 0}, []byte{0x7c, 0x81, 1}
+			}
+			push := func(sequence uint16, timestamp uint32, marker bool, payload []byte) {
+				t.Helper()
+				if err := input.push(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: sequence, Timestamp: timestamp, Marker: marker}, Payload: payload}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			push(10, 0, true, key)
+			if sample, _ := input.pop(); sample == nil {
+				t.Fatal("no initial recovery")
+			}
+			push(11, 3000, false, fragment)
+			push(13, 6000, true, delta) // The previous frame's final packet was lost.
+			if sample, _ := input.pop(); sample != nil {
+				t.Fatal("incomplete frame escaped")
+			}
+			push(14, 9000, true, key)
+			if requests != 0 {
+				t.Fatalf("retiring old loss requested another keyframe %d times", requests)
+			}
+			sample, timestamp := input.pop()
+			if sample == nil || timestamp != 9000 {
+				t.Fatal("replacement keyframe did not recover immediately")
+			}
+			frame, err := input.frame(sample.Data)
+			if err != nil || !frame.KeyFrame || frame.Width == 0 || frame.Height == 0 {
+				t.Fatalf("replacement recovery lost its decoder configuration: %+v, %v", frame, err)
+			}
+			// A lost packet in a subsequent keyframe must still request recovery.
+			push(15, 12000, false, key)
+			for index := uint32(0); index < 40; index++ {
+				push(uint16(17+index), 15000+index*3000, true, delta)
+				for sample, _ := input.pop(); sample != nil; sample, _ = input.pop() {
+				}
+			}
+			if requests == 0 {
+				t.Fatal("loss in the current keyframe no longer requests recovery")
+			}
+		})
+	}
+}
+
 func TestRelayInputRejectsUnsafeH264Configuration(t *testing.T) {
 	// Generated Constrained Baseline SPS: ID 0 is 5120x2880; ID 1 is
 	// 160x90. A decoder may use either, regardless of which arrived last.

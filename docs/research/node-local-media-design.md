@@ -373,6 +373,22 @@ the warmed-stream regression; the repair preserves both layers' active status
 and bitrate history through down/up size changes. This removes a repeated loss
 of allocation evidence, not the upstream encoder's adaptation delay.
 
+Recovery-boundary cleanup must also retire its loss callback. Previously,
+discarding an old incomplete frame requested another keyframe after its
+replacement had arrived. LiveKit's [PLI handling](https://github.com/livekit/livekit/blob/c4733475fd9c/pkg/sfu/downtrack.go#L2074)
+pauses retransmission until a subsequent keyframe, so this stale request could
+interrupt current recovery. The callback now belongs to the current assembler
+identity; completed H264 configuration is still retained. VP8/H264 regressions
+fail before this change and verify that genuine loss in a later keyframe still
+requests recovery. No retransmission policy, encoder threshold or timer changed.
+Two serial 120-second Windows H264/Pion trials used the App's codec/RTX setup,
+1080p30 at 5 Mbps and a 12 Mbps, 20 ms path with 1% forward RTP loss for 30 seconds.
+Before repair, assembly loss notifications were 4 / 118 and longest complete-AU
+gaps were 0.41 / 1.15 seconds; after repair they were 0 / 0 and 0.40 / 0.41 seconds.
+All four retained 1080p. Chrome WebCodecs decoded all 3,562 pictures from the first
+repaired run. This isolates stale recovery feedback, not loss-free delivery,
+Browser WebRTC playout or an improvement percentage for public networks.
+
 ### Native Feedback Probe
 
 The explicit [GCC/TWCC probe](../../internal/app/mediaedge/testdata/gcc_feedback_probe.go)
