@@ -49,8 +49,8 @@ media-server forwarding (SFU) or TURN relay fallback. The
 Public invite uses Cloudflare, MiWiFi (Xiaomi) and Bilibili STUN services to
 discover reachable addresses. Each contacted operator can see your public IP,
 port and request timing; these requests contain no shared media, chat or room
-password. Disabling **Enhanced NAT traversal** retains this discovery list.
-The App currently offers no override for it. To choose your own STUN services,
+password. NAT enhancement uses the same destinations automatically.
+The App currently offers no STUN override. To choose your own STUN services,
 use a [self-hosted Site](../../docs/operations/self-hosting.md) configured with
 `STUN_URLS`; App Local rooms configure no public STUN.
 

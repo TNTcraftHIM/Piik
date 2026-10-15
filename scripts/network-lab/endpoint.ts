@@ -89,17 +89,10 @@ export async function endpointWorker(): Promise<void> {
           await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
             `Boolean(document.querySelector(${JSON.stringify(advanced)}))`, deadline), Boolean, 10_000);
           if (await evaluate<boolean>(cdp!, page!, `document.querySelector(${JSON.stringify(advanced)}).getAttribute('aria-expanded') !== 'true'`, Date.now() + 5000)) await click(advanced);
-          const prediction = 'button[role="switch"][aria-label^="Enhanced NAT traversal"]';
           if (request.sfuOnly) {
             if (request.prediction) throw new Error("SFU-only cannot request NAT enhancement");
             await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
-              `Boolean(document.querySelector('button[role="switch"][aria-label^="Server media"][aria-disabled="true"][aria-checked="true"]')) && !document.querySelector(${JSON.stringify(prediction)})`, deadline), Boolean, 10_000);
-          } else if (request.prediction !== undefined) {
-            await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
-              `document.querySelector(${JSON.stringify(prediction)})?.getAttribute('aria-disabled') !== 'true' && Boolean(document.querySelector(${JSON.stringify(prediction)}))`, deadline), Boolean, 10_000);
-            const checked = await evaluate<boolean>(cdp!, page!,
-              `document.querySelector(${JSON.stringify(prediction)}).getAttribute('aria-checked') === 'true'`, Date.now() + 5000);
-            if (checked !== request.prediction) await click(prediction);
+              `Boolean(document.querySelector('button[role="switch"][aria-label^="Server media"][aria-disabled="true"][aria-checked="true"]'))`, deadline), Boolean, 10_000);
           }
           // Browser-to-App encoded fanout is the production H264 path. VP8
           // deliberately stays in the Browser and must not masquerade as App WAN.

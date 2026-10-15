@@ -31,8 +31,8 @@ The page advertises this site policy and hides inapplicable P2P preferences.
 
 ## Per-Share Route Policy
 
-On a P2P-first site, the Host chooses route policy before sharing and it remains fixed for that
-share generation:
+On a P2P-first site, the Host chooses privacy and topology preferences before
+sharing. The server-validated route policy remains fixed for that share generation:
 
 - when SFU is available, default hybrid mode keeps P2P first and permits the
   bounded SFU suffix;
@@ -44,8 +44,9 @@ share generation:
   availability routing is unchanged;
 - NAT traversal enhancement requires an exact three-destination STUN survey:
   a Site may use self-hosted 3478/3479/3480, Public Link uses its bounded public survey, and
-  pure LAN supplies none. Its default-on Host switch augments Browser and Native
-  P2P edges. This gate leaves ordinary ICE and Native gateway mapping enabled.
+  pure LAN supplies none. Current pages automatically use this capability for
+  Browser and Native P2P edges, without a Host-facing switch. SFU-only policy
+  excludes it. Ordinary ICE and Native gateway mapping remain independent.
   Each Native connection uses one media socket for IPv4 and, where available, IPv6
   direct connections; its STUN survey and best-effort gateway mapping use IPv4.
   Availability and background direct acquisition share a bounded budget of

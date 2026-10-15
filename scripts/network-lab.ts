@@ -77,8 +77,12 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     echo.stderr.on("data", data => process.stderr.write(data));
     echo.stdin.on("error", () => {});
     await withDeadline(() => once(echo!.stdout, "data"), Date.now() + 10_000);
-    if (scenario.ipv6) {
-      stun = spawn("ip", ["netns", "exec", network.wan, resolve("build/network-lab/bin/stun"), `[${SITE_IPV6}]:3478`],
+    // Keep ordinary discovery identical in on/off trials. When the Site does
+    // not supply prediction, the lab STUN service supplies its two extra URLs.
+    const stunAddresses = [...(!prediction ? [`${SITE_IP}:3479`, `${SITE_IP}:3480`] : []),
+      ...(scenario.ipv6 ? [`[${SITE_IPV6}]:3478`] : [])];
+    if (stunAddresses.length) {
+      stun = spawn("ip", ["netns", "exec", network.wan, resolve("build/network-lab/bin/stun"), ...stunAddresses],
         { env: labEnvironment(), stdio: "pipe" });
       stun.stderr.on("data", data => { serverLog = (serverLog + data).slice(-32_000); });
       stun.stdin.on("error", () => {});
@@ -115,7 +119,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
       cwd: output, stdio: "pipe", env: { ...labEnvironment(), PIIK_ENV: "development", ROOM_DATABASE_PATH: ":memory:",
         LISTEN_HOST: SITE_IP, PORT: "9000", PUBLIC_BASE_URL: SITE_ORIGIN, ALLOWED_ORIGINS: SITE_ORIGIN,
         STUN_URLS: `stun:${SITE_IP}:3478,stun:${SITE_IP}:3479,stun:${SITE_IP}:3480${scenario.ipv6 ? `,stun:[${SITE_IPV6}]:3478` : ""}`, STUN_LISTEN_HOST: SITE_IP,
-        NAT_PREDICTION_ENABLED: "true", ...(scenario.sfu ? { SFU_UDP_PORT: "7882", SFU_LISTEN_HOST: SITE_IP, SFU_PUBLIC_IP: SITE_IP, SFU_ONLY: String(!!scenario.sfuOnly) } : {}) },
+        NAT_PREDICTION_ENABLED: String(prediction), ...(scenario.sfu ? { SFU_UDP_PORT: "7882", SFU_LISTEN_HOST: SITE_IP, SFU_PUBLIC_IP: SITE_IP, SFU_ONLY: String(!!scenario.sfuOnly) } : {}) },
     });
     server.stdout.on("data", data => { serverLog = (serverLog + data).slice(-32_000); });
     server.stderr.on("data", data => { serverLog = (serverLog + data).slice(-32_000); });

@@ -1,6 +1,6 @@
 // This laboratory-only external STUN endpoint uses the same mature Binding
-// implementation as Piik. It supplies IPv6 discovery without changing product
-// configuration or disabling the browser's mDNS privacy behavior.
+// implementation as Piik. It keeps ordinary discovery available in prediction
+// on/off and IPv6 trials without adding product configuration.
 package main
 
 import (
@@ -21,18 +21,22 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) != 2 {
-		return fmt.Errorf("expected one IPv6 listen address")
+	if len(os.Args) < 2 {
+		return fmt.Errorf("expected STUN listen addresses")
 	}
-	connection, err := net.ListenPacket("udp6", os.Args[1])
-	if err != nil {
-		return err
+	var connections []turn.PacketConnConfig
+	for _, address := range os.Args[1:] {
+		connection, err := net.ListenPacket("udp", address)
+		if err != nil {
+			return err
+		}
+		defer connection.Close()
+		connections = append(connections, turn.PacketConnConfig{PacketConn: connection})
 	}
-	defer connection.Close()
 	logger := logging.NewDefaultLoggerFactory()
 	logger.Writer = io.Discard
 	server, err := turn.NewServer(turn.ServerConfig{
-		PacketConnConfigs: []turn.PacketConnConfig{{PacketConn: connection}},
+		PacketConnConfigs: connections,
 		LoggerFactory:     logger,
 	})
 	if err != nil {

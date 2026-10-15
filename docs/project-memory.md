@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-10-14
+Last updated: 2026-10-16
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -69,8 +69,8 @@ implementation and routine UI detail.
   authority; live participants, routes, and media remain process-only.
 - Media is automatic and distributed. Ordinary peers are STUN-only and prefer
   direct/peer UDP. A deployment may enable same-host auxiliary STUN for bounded,
-  room-wide, connection-local NAT prediction; its Host switch defaults on when
-  available, and anonymous provenance distinguishes ordinary from predicted
+  room-wide, connection-local NAT prediction; current pages use it automatically
+  when available, and anonymous provenance distinguishes ordinary from predicted
   selected paths. The configuration default remains stock ICE. The only
   application fallback is one bounded embedded SFU/UDP
   publication; Piik configures no TURN or TCP media route. Hosted operators may

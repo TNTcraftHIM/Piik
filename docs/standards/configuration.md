@@ -32,7 +32,7 @@ service secret store or an untracked access-restricted environment file.
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated advertised `stun:` discovery URLs; at least one is required in production. These are not local bind addresses and may use an unproxied DNS name separate from the Web origin. |
 | `STUN_LISTEN_HOST` | Hosted IPv4 STUN bind address, default `0.0.0.0` when `STUN_URLS` is configured; independent of HTTP `LISTEN_HOST`. Local App construction creates no STUN listeners. |
-| `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478. Hosted startup binds UDP 3479/3480 before advertising the capability. When unavailable, the visible NAT switch is locked off; ordinary ICE remains. Firewall reachability remains an operator requirement. |
+| `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478. Hosted startup binds UDP 3479/3480 before advertising the capability. Current pages use it automatically on P2P-first sites; ordinary ICE remains available without it. Firewall reachability remains an operator requirement. |
 
 ### Room capacity
 
@@ -277,8 +277,8 @@ contract.
 
 When `NAT_PREDICTION_ENABLED=true`, the server derives
 `stun:<same-hostname>:3479` and `:3480` from the first ordinary STUN authority
-on UDP 3478. The Host sees a pre-share switch that defaults on and may disable
-it. The capability adds no media route or third-party service. It needs both
+on UDP 3478. Current pages use the advertised capability automatically unless
+the site requires SFU-only media. It adds no media route or third-party service. It needs both
 cloud security-group rules and the host firewall. Piik
 binds every required UDP listener before opening room persistence or accepting
 signaling; a bind failure rolls back all newly owned sockets. Close and End

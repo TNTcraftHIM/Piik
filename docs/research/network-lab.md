@@ -104,8 +104,9 @@ Set `CHROME_PATH` to the installed Chrome executable before running. `--list`
 lists scenarios without root; `--suite full`, `--cases browser-browser,app-app`,
 `--repeat 3` and `--seed 42` select reproducible inputs. Netem seeds do not make
 browser scheduling, kernel port allocation or real-time timings deterministic.
-`--prediction compare --repeat 3` pairs the existing Host enhancement switch on
-and off with the same inputs and alternates run order. `distributions.json`
+`--prediction compare --repeat 3` pairs the isolated Site capability on and off
+with the same inputs and alternates run order. Ordinary STUN destinations stay
+available in both cases through the existing lab STUN service. `distributions.json`
 reports trial/failure counts and nearest-rank timing summaries for validated
 media trials; unavailable and timed-out attempts never become zero-millisecond
 successes. Small trial counts are observations, not population estimates.
@@ -194,7 +195,7 @@ mapping, not every consumer NAT implementation. Sequential cases use nftables'
 number generator and a typed port map: new UDP flows advance through ports
 40000..44095, with the same destination-dependent filter. Calibration must
 observe three consecutive mappings before Piik starts. All four endpoint pairs
-compare the existing enhancement switch; this switch also
+compare the enhancement capability; this capability also
 changes the retry budget, so aggregate differences do not isolate one mechanism.
 The recorded Native preparation and adoption results distinguish its use from
 ordinary ICE. Address-change cases replace only the isolated router's UDP public

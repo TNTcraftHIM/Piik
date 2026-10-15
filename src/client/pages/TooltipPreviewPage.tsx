@@ -15,7 +15,7 @@ import { EMPTY_METRICS } from "../types";
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
   { label: "说明 / Neutral", kind: "hint-volume", tone: "off", motion: "demo", text: "playback.volume" },
   { label: "成功 / Success", kind: "hint-copy-code", tone: "live", motion: "still", text: "common.copied" },
-  { label: "受限 / Limited", kind: "hint-nat-unavailable", tone: "warn", motion: "still", text: "host.advanced.route.natPredictionUnavailable" },
+  { label: "受限 / Limited", kind: "hint-route-p2p-required", tone: "warn", motion: "still", text: "host.advanced.route.peerOnlyRequired" },
   { label: "App incompatible", kind: "warning", tone: "warn", motion: "still", text: "native.incompatible" },
   { label: "Fullscreen waiting", kind: "hint-fullscreen-unavailable", tone: "warn", motion: "still", text: "playback.fullscreenWaiting" },
   { label: "Fullscreen failed", kind: "hint-fullscreen-unavailable", tone: "bad", motion: "still", text: "playback.fullscreenFailed" },

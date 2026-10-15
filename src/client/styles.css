@@ -1503,8 +1503,7 @@ html[data-theme="dark"] .lr-meter-cell svg { color: #7d92a8; }
    animation still renders clipped. */
 .lr-door-reveal.is-open > div { overflow: visible; transition: overflow 0s 260ms; }
 .lr-door-group { display: grid; gap: 10px; }
-.lr-door-glyph { display: flex; align-items: center; gap: 10px; color: #53676a; }
-html[data-theme="dark"] .lr-door-glyph { color: #7d92a8; }
+.lr-door-glyph { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .lr-door-glyph .lr-cap { font-size: 13px; }
 .lr-switch-item { display: inline-flex; align-items: center; gap: 9px; }
 
@@ -1874,7 +1873,6 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-sharing-section h2 { display: flex; align-items: center; gap: 8px; font-size: 16px; }
 .lr-sharing-section h2 .lr-cap { font-size: inherit; }
 .lr-sharing-section .lr-door-group { gap: 8px; }
-.lr-sharing-panel .lr-sharing-section .lr-door-glyph { color: var(--muted); }
 .lr-sharing-section .lr-door-glyph .lr-cap { white-space: normal; }
 .lr-sharing-limits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
 .lr-sharing-panel .lr-slider { width: 100%; }
@@ -1904,7 +1902,7 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-sharing-technical > summary:is(:hover, :focus-visible) { color: var(--ink); background: var(--control-hover); }
 .lr-sharing-technical > summary > svg { vertical-align: middle; margin-inline-end: 6px; }
 .lr-sharing-technical > div { display: grid; gap: 18px; padding-top: 16px; }
-.lr-sharing-technical .lr-row-group:has(.lr-switch-item) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.lr-sharing-technical .lr-row-group:has(.lr-switch-item) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .lr-sharing-technical .lr-switch-item .lr-cap { white-space: normal; }
 @keyframes lr-sharing-enter { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .lr-sharing-panel { animation: none; } }

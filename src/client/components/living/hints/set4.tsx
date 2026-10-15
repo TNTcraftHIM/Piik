@@ -428,57 +428,6 @@ ${rmBlock(
   </>
 );
 
-/* hint-nat-prediction: [one direct path] -> [a small bounded fan of
-   alternate direct paths]. The scene describes extra direct chances without
-   suggesting a media relay. When unavailable, cross only the extra paths;
-   the ordinary path stays neutral rather than promising a connection. */
-const HintNatPrediction = ({ theme, available = true }: { theme: ComicTheme; available?: boolean }) => (
-  <>
-    <style>{`
-.vls-nat-path{stroke-dasharray:1;animation:vlsNatPath var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-nat-dots{animation:vlsNatDots var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-nat-unavailable{transform-box:fill-box;transform-origin:center;animation:vlsNatUnavailable var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-@keyframes vlsNatPath{0%,8%{stroke-dashoffset:1}30%,100%{stroke-dashoffset:0}}
-@keyframes vlsNatDots{0%,32%,100%{opacity:.35}44%{opacity:1}}
-@keyframes vlsNatUnavailable{0%,36%,100%{transform:none}12%{transform:scale(1.15) rotate(-8deg)}}
-${rmBlock(
-  ["vls-nat-path", "vls-nat-dots"],
-  [[".vls-nat-path", "stroke-dashoffset:0"], [".vls-nat-dots", "opacity:1"]],
-)}
-${rmBlock(["vls-nat-unavailable"], [[".vls-nat-unavailable", "transform:none"]], false)}
-`}</style>
-    <Frame x={4} w={152} theme={theme} />
-    <Frame x={164} w={152} theme={theme} result />
-    <Pawn x={42} yb={76} s={9} />
-    <Pawn x={118} yb={76} s={9} color={SKY} />
-    <path
-      d="M51 60 Q80 42 109 60"
-      stroke={FAINT}
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      fill="none"
-    />
-    <g className="vls-nat-dots" fill={FAINT}>
-      <circle cx={71} cy={52} r={2} />
-      <circle cx={82} cy={48} r={2} />
-      <circle cx={93} cy={52} r={2} />
-    </g>
-    <Pawn x={202} yb={76} s={9} eyes />
-    <Pawn x={278} yb={76} s={9} color={SKY} eyes />
-    <path d="M211 68 Q240 56 269 68" fill="none" stroke={FAINT} strokeWidth={2.5} strokeLinecap="round" />
-    <g className={available ? "vls-nat-path" : undefined} fill="none"
-      stroke={available ? INK : FAINT} strokeWidth={2.5} strokeLinecap="round"
-      strokeDasharray={available ? undefined : "4 4"}>
-      <path d="M211 58 Q240 10 269 58" pathLength={available ? 1 : undefined} />
-      <path d="M211 58 Q240 30 269 58" pathLength={available ? 1 : undefined} />
-    </g>
-    {available ? <Spark x={240} y={24} /> : <>
-      <circle cx={240} cy={39} r={11} fill={theme === "paper" ? "var(--paper)" : "#0d1526"} />
-      <RedX cx={240} cy={39} arm={7} className="vls-nat-unavailable" />
-    </>}
-  </>
-);
-
 export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-topology": HintTopology,
   "hint-close": HintClose,
@@ -491,8 +440,6 @@ export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-route-p2p": HintRouteP2p,
   "hint-route-p2p-required": HintRouteP2pRequired,
   "hint-route-sfu": HintRouteSfu,
-  "hint-nat-prediction": (props) => <HintNatPrediction {...props} />,
-  "hint-nat-unavailable": (props) => <HintNatPrediction {...props} available={false} />,
   "hint-client-local": HintClientLocal,
   "hint-app-ready": () => <g transform="translate(112 0)" color={INK}><BrandMark size={96} motion="loop" /></g>,
   "hint-client-site": HintClientSite,

@@ -2,6 +2,7 @@
 
 - Status: accepted as an optional Site and App capability
 - Date: 2026-09-02
+- Updated: 2026-10-16 (automatic use of available capability)
 
 ## Context
 
@@ -19,16 +20,18 @@ connection acquisition reuses the route controller's existing opportunity ledger
 
 ## Decision
 
-1. `NAT_PREDICTION_ENABLED` defaults to `false`. A disabled deployment shows the
-   Host control locked off and the server rejects NAT prediction in the room
-   policy. An enabled deployment exposes `Enhanced NAT traversal`; the pre-share
-   switch defaults on, remains Host-controllable, locks while sharing, and is not
-   persisted beyond that share generation.
+1. `NAT_PREDICTION_ENABLED` defaults to `false` and owns the operator's auxiliary
+   listener capability. Current pages automatically request the enhancement when
+   that capability is available on a P2P-first site; there is no Host-facing
+   switch. The server validates and broadcasts the accepted share policy to all
+   participants. SFU-only policy excludes it. The published 2.x `natPrediction`
+   field retains its meaning, including older pages' per-share preferences;
+   removing a UI control does not change that wire contract.
 2. An enabled Site derives ports 3479 and 3480 from its first ordinary STUN
    authority on UDP 3478. Public-link App mode supplies three ordinary public
    STUN destinations, reusing the same set for its prediction survey; disabling
    prediction retains ordinary discovery redundancy. Pure LAN mode supplies
-   none. The same share switch and ICE configuration cover every
+   none. The same accepted share policy and ICE configuration cover every
    Browser or Native P2P edge. SFU PeerConnections remain unchanged.
 3. For one ICE gathering generation, the adapter observes only UDP `srflx`
    candidates belonging to the exact three-destination survey set. Browser
@@ -73,7 +76,7 @@ connection acquisition reuses the route controller's existing opportunity ledger
 6. In the 2.0 candidate, a server-issued retry (never the first attempt) may
    prepare an authenticated Native socket at both ends before creating its one
    PeerConnection. It reuses the current peer/session/connection authorization
-   and the same share switch; Browser peers decline immediately. Each Engine
+   and the same share policy; Browser peers decline immediately. Each Engine
    permits one preparation: an ordered three-destination observation, then
    checks against one bounded peer endpoint. Three equal observations retain
    that exact socket; a positive sequential observation closes it before opening

@@ -138,8 +138,9 @@ Ordinary STUN remains the discovery service. A Site may enable same-host
 STUN-only listeners on 3479 and 3480. Public-link App mode supplies three ordinary
 public destinations and reuses them for prediction, so disabling prediction
 does not remove discovery redundancy; pure LAN mode supplies none.
-Available authorities expose the same per-share Host switch,
-which defaults on and remains locked while sharing.
+Current pages automatically request that capability on P2P-first sites. The
+server's accepted share policy keeps Host, Viewer and relay behavior aligned;
+the published 2.x field still accepts older pages' per-share preferences.
 
 The accepted adapter is deliberately connection-local and additive. It waits for a
 clear three-point arithmetic `srflx` shape in one ICE generation, and appends a
@@ -150,7 +151,7 @@ route-controller input, or SFU preference. Browser candidates are filtered by
 their reported STUN URL. Native uses Pion's STUN client over its ordinary UDP
 mux, so every fresh observation and subsequent media packet uses one socket.
 Only explicitly marked Native survey observations feed prediction;
-the independently mapped-port candidate does not. The switch applies to Host,
+the independently mapped-port candidate does not. The policy applies to Host,
 Viewer upstream, and Viewer relay P2P connections. Its exact scope is recorded in
 [ADR-0009](../adr/0009-optional-nat-prediction.md).
 

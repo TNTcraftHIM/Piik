@@ -1663,7 +1663,7 @@ export function HostPage({
     setResolvedVideoCodec(null);
   }
 
-  function changeRoutePolicy(patch: Partial<RoutePolicy>): void {
+  function changeRoutePolicy(patch: Partial<Pick<RoutePolicy, "peerOnly" | "topologyOptimization">>): void {
     if (phase === "starting" || phase === "live") {
       return;
     }
@@ -3892,25 +3892,6 @@ export function HostPage({
                       label={t("host.advanced.route.topo")}
                       note={t("host.advanced.route.topoHint")}
                       hint="hint-topology"
-                    />
-                    <SwitchItem
-                      checked={routePolicy.natPrediction}
-                      disabled={
-                        !natPredictionAvailable || phase === "starting" || phase === "live"
-                      }
-                      locked={!natPredictionAvailable}
-                      onChange={(checked) =>
-                        changeRoutePolicy({ natPrediction: checked })
-                      }
-                      label={t("host.advanced.route.natPrediction")}
-                      note={t(
-                        natPredictionAvailable
-                          ? "host.advanced.route.natPredictionHint"
-                          : "host.advanced.route.natPredictionUnavailable",
-                      )}
-                      hint={
-                        natPredictionAvailable ? "hint-nat-prediction" : "hint-nat-unavailable"
-                      }
                     />
                     <SwitchItem
                       checked={routePolicy.peerOnly}

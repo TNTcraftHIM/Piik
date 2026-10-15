@@ -40,7 +40,7 @@ Apple 芯片或 Intel Mac，以及 macOS 13 或更新版本。构建程序包与
 
 公网邀请使用 Cloudflare、小米和 Bilibili 的 STUN 服务发现可连接地址。
 被联系的服务商能看到你的公网 IP、端口和请求时间；这些请求不包含分享画面、声音、
-聊天或房间密码。关闭 **NAT 穿透增强** 仍会使用这份地址列表，App 目前不提供替换选项。
+聊天或房间密码。NAT 增强会自动使用同一组地址，App 目前不提供 STUN 地址替换选项。
 如需自行选择 STUN 服务，可使用配置了 `STUN_URLS` 的
 [自部署站点](../../docs/operations/self-hosting.zh-CN.md)；App 本地房间不配置公共 STUN。
 

@@ -100,8 +100,6 @@ export type Set4Kind =
   | "hint-route-p2p"
   | "hint-route-p2p-required"
   | "hint-route-sfu"
-  | "hint-nat-prediction"
-  | "hint-nat-unavailable"
   | "hint-client-local"
   | "hint-app-ready"
   | "hint-client-site";
