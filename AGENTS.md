@@ -6,6 +6,11 @@
   [`ponytail` skill](./.agents/skills/ponytail/SKILL.md) before coding, review,
   or design work. It is required guidance for the smallest correct result;
   project authority and delivery constraints remain owned here.
+- Apply Piik's [Stop That Shit](./.agents/skills/stop-that-shit/SKILL.md) to
+  implementation, debugging and review. Its task-proportionate effort and
+  verification rules take precedence over generic skill workflow mandates,
+  including automatic test creation. Complete useful work without speculative
+  defenses or repeated validation loops.
 - Within higher-priority instructions, the latest explicit user decision defines
   the task. Review, research, implementation, deployment, and cleanup grant only
   the authority inherent in that task type.
