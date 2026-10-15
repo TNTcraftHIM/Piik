@@ -24,6 +24,11 @@ await cp(source, output, {
     !path.endsWith("README.md"),
 });
 await cp(new URL("../LICENSE", import.meta.url), new URL("LICENSE", output));
+// App, website and reader guides share the same brand artwork and raster exports.
+for (const name of ["favicon.svg", "favicon.png", "favicon.ico"]) {
+  await cp(new URL(`../public/${name}`, import.meta.url),
+    new URL(name.endsWith(".ico") ? name : `assets/${name}`, output));
+}
 const [{ locales }, { Glyph }] = await Promise.all([
   "../src/client/locales/index.ts",
   "../src/client/ui/icons.tsx",

@@ -221,6 +221,12 @@ carries that same full Git revision as the package `REVISION`. App/Site
 interoperability follows the
 [public compatibility contract](../../docs/standards/versioning.md#public-compatibility-promise).
 
+For a native Host smoke run, launch the App and select a window in the Host
+page, then open its invitation on another device. Choose the mode for that
+network as described [above](#modes).
+
+### Desktop Icons
+
 The Windows App embeds the shared Piik mark through the
 `cmd/piik-app/piik_windows_amd64.syso` resource; the platform
 suffix keeps that Windows resource out of Linux and macOS builds.
@@ -228,9 +234,16 @@ Linux packages include the standard `share/applications` desktop entry and
 hicolor icon. macOS packages include a thin `Piik App.app` launcher
 with an ICNS resource; the raw Go executable remains available beside it.
 
-For a native Host smoke run, launch the App and select a window in the Host
-page, then open its invitation on another device. Choose the mode for that
-network as described [above](#modes).
+The editable badge is [public/favicon.svg](../../public/favicon.svg).
+Export it at 16/24/32/48/64/128/256 px as PNG entries in `cmd/piik-app/piik.ico`;
+the package builder derives Linux and macOS icons from those entries. Keep the
+website exports in sync: `public/favicon.png` at 96 px, and `public/favicon.ico`
+with 16/32/48 px entries. Check actual small sizes on light and dark backgrounds.
+Then regenerate the Windows resource from the repository root:
+
+```sh
+go run github.com/akavel/rsrc@v0.10.2 -ico cmd/piik-app/piik.ico -arch amd64 -o cmd/piik-app/piik_windows_amd64.syso
+```
 
 ## Gates
 

@@ -4003,8 +4003,8 @@ export function HostPage({
         </div>
 
         <div className="lr-deck">
-          <Row>
-            <RowGroup>
+          <div className="lr-row lr-host-summary-row">
+            <div className="lr-row-group lr-host-room-slot">
               <FieldCap k="common.roomCode" />
               {room ? <>
                 <RoomChip
@@ -4019,8 +4019,7 @@ export function HostPage({
                   />
                 ) : null}
               </> : <RoomCodePlaceholder />}
-            </RowGroup>
-            <span className="lr-spacer" />
+            </div>
             <div className="lr-host-personal-controls">
               <div className="lr-row-group lr-group-name lr-host-identity-slot">
                 {editingDisplayName ? (
@@ -4129,7 +4128,7 @@ export function HostPage({
               </div>
 
             </div>
-          </Row>
+          </div>
 
           {room ? (
             <Row label={t("host.policy")}>

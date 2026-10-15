@@ -108,6 +108,16 @@ bundles. Their HTML references come from the same build, including imported
 dependencies; fixed filenames must not mix a new page with cached old controls
 or styles. Publish the complete output together.
 
+Favicons share the [App artwork and exports](../../cmd/piik-app/README.md#desktop-icons).
+The website build copies the public SVG/PNG/ICO assets for the homepage, film
+and documentation, keeping their URLs stable.
+
+[Google's favicon guidance](https://developers.google.com/search/docs/appearance/favicon-in-search)
+requires a crawlable homepage and icon, and supports one favicon per hostname.
+The PNG/ICO links make the brand available to search crawlers; indexing and
+display are not guaranteed. A repository under `github.com` cannot set its own
+search favicon independently of GitHub.
+
 ## Documentation Build
 
 `site/docs/` configures VitePress; its isolated package and lockfile keep document

@@ -14,6 +14,12 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
+- [ ] **Website preference controls.** Align the website's language and
+  light/dark appearance controls with the product UI's control styling,
+  selected-state motion and input behavior. Preserve the website's own language
+  choices and system-theme option; follow the shared
+  [visual language](./standards/visual-language.md).
+
 - [ ] **Native quality recovery.** Verify the retained-connection budget and
   current-output demand repairs against the affected Host. Local paced-sending,
   partial-recovery and stable-allocation controls pass; they do not prove the

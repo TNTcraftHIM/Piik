@@ -32,7 +32,8 @@
 .vp-doc p, .vp-doc li { line-height: 1.85; }
 .vp-doc summary { cursor: pointer; font-weight: 600; }
 .vp-doc a { text-underline-offset: 3px; }
-.vp-doc :is(p, a, td) { overflow-wrap: anywhere; }
+.vp-doc :is(p, a) { overflow-wrap: anywhere; }
+.vp-doc td { overflow-wrap: break-word; }
 .docs-license { margin-top: 24px; color: var(--vp-c-text-2); font-size: 12px; }
 .docs-license a { text-decoration: underline; text-underline-offset: 3px; }
 html[data-reduced-motion] .identity * { animation: none !important; }

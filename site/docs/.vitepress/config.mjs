@@ -25,7 +25,11 @@ export default defineConfig({
   cacheDir: '../../build/docs-cache',
   tempDir: '../../build/docs-temp',
   title: 'Piik',
-  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}../assets/favicon.svg` }]],
+  head: [
+    ['link', { rel: 'icon', href: `${base}../favicon.ico` }],
+    ['link', { rel: 'icon', type: 'image/png', sizes: '96x96', href: `${base}../assets/favicon.png` }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', sizes: 'any', href: `${base}../assets/favicon.svg` }],
+  ],
   description: 'Piik guides, troubleshooting and self-hosting.',
   cleanUrls: false,
   appearance: true,

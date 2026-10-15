@@ -304,15 +304,15 @@ function Screen({ shot }: { shot: Shot }) {
             />
           </div>
           <div className="lr-deck">
-            <div className={`lr-row${viewer ? " lr-viewer-summary-row" : ""}`}>
-              <div className={`lr-row-group${viewer ? " lr-viewer-room-slot" : ""}`}>
+            <div className={`lr-row ${viewer ? "lr-viewer-summary-row" : "lr-host-summary-row"}`}>
+              <div className={`lr-row-group ${viewer ? "lr-viewer-room-slot" : "lr-host-room-slot"}`}>
                 <FieldCap k="common.roomCode" />
                 {viewer ? <Lcd code={roomId} /> : live ? <>
                   <RoomChip roomId={roomId} onReplace={noop} />
                   <RoomAdmissionBadge policy="private" passwordEnabled={false} />
                 </> : <RoomCodePlaceholder />}
               </div>
-              {viewer ? <div className="lr-row-group lr-viewer-host-slot"><Glyph name="tv" size={18} /><b>{name}</b></div> : <span className="lr-spacer" />}
+              {viewer && <div className="lr-row-group lr-viewer-host-slot"><Glyph name="tv" size={18} /><b>{name}</b></div>}
               <div className={viewer ? "lr-viewer-personal-controls" : "lr-host-personal-controls"}>
                 <div className={`lr-row-group lr-group-name ${viewer ? "lr-viewer-self-slot" : "lr-host-identity-slot"}`}>
                   <NameTag name={viewer ? names[0] : name} identity={viewer ? guests[0] : host} />

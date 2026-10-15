@@ -1,7 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-  <style>svg { color: #22303e; } @media (prefers-color-scheme: dark) { svg { color: #dde8f3; } }</style>
-  <path d="m11 4 5 4 5-4"/>
-  <rect x="4" y="8" width="24" height="18" rx="4"/>
-  <circle cx="11.5" cy="16.5" r="1.25" fill="currentColor" stroke="none"/>
-  <path d="M19 17c1.5-1.8 3.2-1.8 4.7 0M10 29l2-3m10 3-2-3"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="tile" x1="20" y1="6" x2="109" y2="128" gradientUnits="userSpaceOnUse"><stop stop-color="#344a57"/><stop offset="1" stop-color="#1b2b38"/></linearGradient>
+    <linearGradient id="case" x1="64" y1="39" x2="64" y2="99" gradientUnits="userSpaceOnUse"><stop stop-color="#fbfcf7"/><stop offset="1" stop-color="#dce9e3"/></linearGradient>
+    <linearGradient id="screen" x1="36" y1="46" x2="91" y2="90" gradientUnits="userSpaceOnUse"><stop stop-color="#e7f4ed"/><stop offset="1" stop-color="#c9e3dc"/></linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#tile)"/>
+  <rect x=".5" y=".5" width="127" height="127" rx="27.5" stroke="#ffffff" stroke-opacity=".12"/>
+  <g stroke="#dce9e3" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m47 23 17 14 17-14"/>
+    <path d="m46 97-6 11m42-11 6 11"/>
+  </g>
+  <rect x="23" y="41" width="82" height="60" rx="16" fill="#101d27" fill-opacity=".28"/>
+  <rect x="22" y="37" width="84" height="61" rx="16" fill="url(#case)"/>
+  <rect x="29" y="44" width="70" height="47" rx="10" fill="url(#screen)"/>
+  <path d="M39 45h50a9 9 0 0 1 9 9" stroke="#ffffff" stroke-opacity=".65" stroke-linecap="round"/>
+  <circle cx="47" cy="66" r="4" fill="#22303e"/>
+  <path d="M73 68q7-9 14 0" stroke="#22303e" stroke-width="5" stroke-linecap="round"/>
+  <path d="m104 29 2.4 6.6L113 38l-6.6 2.4L104 47l-2.4-6.6L95 38l6.6-2.4Z" fill="#f2c05c"/>
 </svg>

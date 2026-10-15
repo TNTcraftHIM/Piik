@@ -233,6 +233,10 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
   .guide-body { gap: 24px; }
   .footer-identity p { display: none; }
 }
+@media (max-width: 900px) {
+  .download-cards { grid-template-columns: 1fr; max-width: 500px; margin: auto; gap: 15px; }
+  .guide-body { grid-template-columns: 1fr; }
+}
 @media (max-width: 740px) {
   .wrap { width: calc(100% - 40px); }
   .site-header { min-height: 83px; gap: 0 14px; flex-wrap:wrap; padding-top:12px; }
@@ -268,14 +272,13 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
   .download-section { padding-block: 48px; }
   .start-section { padding-block: 12px 48px; }
   .section-heading > p:last-child:not(.eyebrow) { font-size: 14px; }
-  .download-cards { grid-template-columns: 1fr; max-width: 500px; margin: auto; gap: 15px; }
   .download-card { padding: 23px; }
   .download-architecture label > span { min-height: 44px; }
   .platform-mark { margin-bottom: 14px; }
   .guide > summary { padding: 20px 18px; gap: 12px; }
   .guide-heading { font-size: 18px; }
   .guide-number { width: 32px; height: 32px; border-radius: 10px; }
-  .guide-body { grid-template-columns: 1fr; padding: 0 20px 22px; gap: 20px; }
+  .guide-body { padding: 0 20px 22px; gap: 20px; }
   .guide-note { padding: 18px; }
   .guide-links { gap: 8px; }
   .guide-links a { padding: 8px 13px; }

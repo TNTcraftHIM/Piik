@@ -178,13 +178,25 @@ runtime/tunnel/cloudflared[.exe] # 支持 --link 的程序包
 App 内嵌所用应用发布产物的浏览器资源，程序内的完整 Git 版本与包内 `REVISION` 一致。
 App 与站点之间的互操作遵循[公开兼容规则](../../docs/standards/versioning.md#public-compatibility-promise)。
 
+执行原生房主冒烟检查时，启动 App，在房主页面选择一个窗口，再用另一台设备打开邀请。
+按[运行模式](#运行模式)说明选择适合该网络的模式。
+
+### 桌面图标
+
 Windows App 通过 `cmd/piik-app/piik_windows_amd64.syso` 资源内嵌共享的 Piik 标识；
 平台后缀使该 Windows 资源不参与 Linux 和 macOS 构建。
 Linux 程序包包含标准的 `share/applications` 桌面入口与 hicolor 图标。
 macOS 程序包包含一个带 ICNS 资源的轻量 `Piik App.app` 启动器，原始 Go 程序仍保留在它旁边。
 
-执行原生房主冒烟检查时，启动 App，在房主页面选择一个窗口，再用另一台设备打开邀请。
-按[运行模式](#运行模式)说明选择适合该网络的模式。
+图标源文件为 [public/favicon.svg](../../public/favicon.svg)。
+将它按 16/24/32/48/64/128/256 px 导出为 PNG 图层，写入 `cmd/piik-app/piik.ico`；
+打包脚本从这些图层生成 Linux 和 macOS 图标。同时更新网站导出：96 px 的
+`public/favicon.png`，以及包含 16/32/48 px 图层的 `public/favicon.ico`。
+检查深浅背景下的实际小尺寸效果，然后在仓库根目录重新生成 Windows 资源：
+
+```sh
+go run github.com/akavel/rsrc@v0.10.2 -ico cmd/piik-app/piik.ico -arch amd64 -o cmd/piik-app/piik_windows_amd64.syso
+```
 
 ## 验证入口
 

@@ -186,6 +186,16 @@ selection tasks visually interchangeable.
 The brand mascot keeps its own identity, separate from ordinary participants.
 Participant characters should leave room for that distinctive presence.
 
+The App badge and favicons derive from [one SVG](../../public/favicon.svg):
+a dark navy tile, warm white television frame, quiet mint screen and small gold
+sparkle. This palette stays fixed across system themes. Keep the badge
+recognisable at 16–48 px; larger exports may retain subtle depth without adding
+detail. Inline brand marks keep the same wink identity with their existing
+outline and motion. Their stroke inherits the local surface's text colour:
+dark ink on light surfaces, light ink on dark surfaces, including deliberately
+light panels within a dark page. Gold sparkles remain a brand accent in both
+forms. Do not assign black/white outlines independently at each call site.
+
 | Meaning | Representation |
 | --- | --- |
 | The person using the pictured action | Green pawn (`YOU` / `--you`), in every panel |
