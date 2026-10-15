@@ -9,6 +9,23 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+// Each outgoing connection offers one primary video codec and Opus (111).
+// RTX keeps late repair outside the primary stream's SRTP replay window.
+func registerVideoCodec(media *webrtc.MediaEngine, codec webrtc.RTPCodecParameters) error {
+	if err := media.RegisterCodec(codec, webrtc.RTPCodecTypeVideo); err != nil {
+		return err
+	}
+	repairPayload := webrtc.PayloadType(96)
+	if repairPayload == codec.PayloadType {
+		repairPayload++
+	}
+	return media.RegisterCodec(webrtc.RTPCodecParameters{
+		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeRTX,
+			ClockRate: codec.ClockRate, SDPFmtpLine: "apt=" + strconv.Itoa(int(codec.PayloadType))},
+		PayloadType: repairPayload,
+	}, webrtc.RTPCodecTypeVideo)
+}
+
 // ReadRTP restores repaired packets using the negotiated codec. Pion v4.2.23
 // can queue RTX before a RID track's first primary read initializes PayloadType,
 // even though Codec is already known. Do not rewrite ordinary packets: their

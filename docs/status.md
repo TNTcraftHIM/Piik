@@ -57,8 +57,8 @@ Release artifacts and operator deployment records own delivery completion;
 ## Current Work
 
 Post-release maintenance reviews optional App capabilities, NAT correctness and
-media recovery within the existing owners. [TODO](./todo.md#now) owns integration and
-mirror automation reliability; new publication awaits owner acceptance.
+media recovery within the existing owners. The owner authorized publication
+after final acceptance; [TODO](./todo.md#now) owns the remaining recovery boundary.
 
 2.0 separates numeric media requests from presets and bounded runtime admission,
 retains successfully applied quality settings, and lets App serve an approved
@@ -115,7 +115,8 @@ identify published artifacts and website revisions.
 
 GitHub owns the original Server and registered App packages. Gitee copies them
 without rebuilding; mirror completion requires anonymous checksum verification.
-[TODO](./todo.md#now) tracks mirror automation reliability. Public-repository CI
+Mirror reads retry complete transfers; ambiguous uploads are reconciled by
+inventory before another attempt. Public-repository CI
 and native packaging passed. App entry, update links
 and bounded two-build interoperability have acceptance evidence. Accepted
 product changes publish automatically; standalone website and documentation

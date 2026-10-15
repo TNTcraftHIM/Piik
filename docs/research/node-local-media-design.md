@@ -410,6 +410,16 @@ an empty or inconclusive attempt cannot promote the estimator's initial ceiling.
 
 #### Send Queue Recovery
 
+Delayed loss repair needs negotiated RTX on both single-child forwarding and
+Native SFU publication. Reusing the primary sequence space causes sufficiently
+late retransmissions to fail SRTP replay checks. A real Pion simulcast control
+drops a packet, delivers 96 newer packets, then requests repair; it fails without
+RTX and passes with the shared codec registration. Simulcast repair also carries
+the matching MID and [repaired stream identifier](https://www.rfc-editor.org/rfc/rfc8852.html#section-3)
+on its repair SSRC. Removing those headers independently fails the same control.
+Pion and LiveKit continue to own replay protection and retransmission; no replay
+window relaxation or second repair loop is needed.
+
 A bounded writer-stall control exposes a limitation in the former SFU queue:
 after the estimate falls from 500 to 8 kbps, only three of 32 already-encoded
 packets drain in two seconds. The upstream unthrottled writer drains the same

@@ -46,7 +46,15 @@ describe("Gitee mirror publication", () => {
   async function mirror(options: { existing?: "pending" | "published" | "unknown"; corrupt?: boolean;
     wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean;
     stale?: boolean; supersededDuringUpload?: boolean;
-    fault?: { method: string; remaining: number; status: number | "timeout" } } = {}) {
+    downloadFault?: { remaining: number; name: "TimeoutError" | "TypeError" };
+    fault?: { method: string; remaining: number; status: number | "timeout" | "body-timeout" } } = {}) {
+    const interrupted = (bytes: Uint8Array, error: Error) => {
+      let started = false;
+      return new Response(new ReadableStream({ pull(controller) {
+        if (started) controller.error(error);
+        else { started = true; controller.enqueue(bytes.slice(0, 2)); }
+      } }));
+    };
     const mutations: string[] = [];
     const attachments = sourceAssets.map(({ name, size }) => ({ name, size, browser_download_url: download + name }));
     const present = options.existing === "pending" ? attachments.slice(0, 1) : options.missing ? [] : attachments;
@@ -71,6 +79,11 @@ describe("Gitee mirror publication", () => {
       if (url.startsWith(download)) {
         expect(init?.headers).toBeUndefined();
         const file = url.slice(download.length);
+        if (options.downloadFault && options.downloadFault.remaining > 0) {
+          options.downloadFault.remaining--;
+          return interrupted(readFileSync(join(directory, file)), options.downloadFault.name === "TypeError"
+            ? new TypeError("terminated") : new DOMException("Timed out", "TimeoutError"));
+        }
         return new Response(options.corrupt ? "corrupt" : readFileSync(join(directory, file)));
       }
       expect(init?.headers).toHaveProperty("Authorization", "Bearer fixture-mirror-token");
@@ -81,6 +94,9 @@ describe("Gitee mirror publication", () => {
       if (options.fault?.method === method && options.fault.remaining > 0) {
         options.fault.remaining--;
         if (options.fault.status === "timeout") throw new DOMException("Timed out", "TimeoutError");
+        if (options.fault.status === "body-timeout") {
+          return interrupted(new TextEncoder().encode('{"id":42}'), new DOMException("Timed out", "TimeoutError"));
+        }
         return new Response(null, { status: options.fault.status });
       }
       if (path.startsWith("/releases/tags/")) return options.existing
@@ -152,7 +168,7 @@ describe("Gitee mirror publication", () => {
     expect(await mirror({ existing: "published", stale: true })).toEqual({ mutations: [], failure: undefined });
   });
 
-  it.each([503, "timeout"] as const)("retries transient read failures (%s) within a fixed bound", async (status) => {
+  it.each([503, "timeout", "body-timeout"] as const)("retries transient read failures (%s) within a fixed bound", async (status) => {
     const fault = { method: "GET", remaining: 2, status };
     expect((await mirror({ existing: "published", fault })).failure).toBeUndefined();
     expect(fault.remaining).toBe(0);
@@ -161,15 +177,27 @@ describe("Gitee mirror publication", () => {
     expect(fault.remaining).toBe(1);
   });
 
+  it.each(["TimeoutError", "TypeError"] as const)("restarts interrupted downloads from byte zero (%s)", async (name) => {
+    const downloadFault = { remaining: 2, name };
+    expect((await mirror({ existing: "published", downloadFault })).failure).toBeUndefined();
+    downloadFault.remaining = 4;
+    const failed = await mirror({ downloadFault });
+    expect(failed.failure).toBeDefined();
+    expect(downloadFault.remaining).toBe(1);
+    expect(failed.mutations).not.toContain("PATCH /releases/42");
+  });
+
   it("does not repeat forbidden reads or ambiguous writes", async () => {
     const denied = { method: "GET", remaining: 2, status: 403 };
     expect((await mirror({ fault: denied })).failure).toContain("HTTP 403");
     expect(denied.remaining).toBe(1);
-    const write = { method: "POST", remaining: 2, status: "timeout" as const };
-    const result = await mirror({ fault: write });
-    expect(result.failure).toBeDefined();
-    expect(result.mutations).toEqual(["POST /releases"]);
-    expect(write.remaining).toBe(1);
+    for (const status of ["timeout", "body-timeout"] as const) {
+      const write = { method: "POST", remaining: 2, status };
+      const result = await mirror({ fault: write });
+      expect(result.failure).toBeDefined();
+      expect(result.mutations).toEqual(["POST /releases"]);
+      expect(write.remaining).toBe(1);
+    }
   });
 
   it.each([{ wrongSource: true }, { wrongDigest: true }, { existing: "unknown" as const }])

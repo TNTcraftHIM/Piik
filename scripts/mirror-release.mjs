@@ -24,16 +24,26 @@ function requireLatestSource() {
   }
 }
 
-async function fetchResponse(url, options, timeout) {
+async function fetchResponse(url, options, timeout, consume) {
   const attempts = (options.method ?? "GET") === "GET" ? 3 : 1;
   for (let attempt = 1; ; attempt++) {
+    const signal = AbortSignal.timeout(timeout);
+    let response;
     try {
-      const response = await fetch(url, { ...options, signal: AbortSignal.timeout(timeout) });
-      if (attempt === attempts || ![408, 429, 500, 502, 503, 504].includes(response.status)) return response;
-      await response.body?.cancel();
+      response = await fetch(url, { ...options, signal });
+      // Receiving headers is not a completed read. Keep JSON decoding and the
+      // entire anonymous package/hash verification inside the same retry bound.
+      if (attempt === attempts || ![408, 429, 500, 502, 503, 504].includes(response.status)) {
+        return await consume(response);
+      }
     } catch (error) {
-      if (attempt === attempts || !(error instanceof TypeError || error?.name === "TimeoutError")) throw error;
+      if (attempt === attempts || !(signal.aborted || error instanceof TypeError || error?.name === "TimeoutError")) {
+        throw new Error(`Gitee ${options.method ?? "GET"} ${new URL(url).pathname}: ${error.message}`);
+      }
+    } finally {
+      if (response?.body && !response.bodyUsed) await response.body.cancel().catch(() => {});
     }
+    console.log(`Retry Gitee read ${new URL(url).pathname}: ${attempt + 1}/${attempts}`);
     await delay(attempt * 1_000);
   }
 }
@@ -43,15 +53,16 @@ async function request(path, method = "GET", body) {
   console.log(`Gitee ${method} ${path}`);
   // A timed-out upload may already exist. Retry only reads; a script rerun
   // reconciles attachment identities before any subsequent write.
-  const response = await fetchResponse(api + path, {
+  return fetchResponse(api + path, {
     method, redirect: "error",
     headers: { Accept: "application/json", Authorization: `Bearer ${token}`,
       ...(!body || multipart ? {} : { "Content-Type": "application/json" }) },
     body: body ? multipart ? body : JSON.stringify(body) : undefined,
-  }, multipart ? 180_000 : 20_000);
-  if (response.status === 404 && method === "GET") return null;
-  if (!response.ok) throw new Error(`Gitee ${method} ${path}: HTTP ${response.status}`);
-  return response.json();
+  }, multipart ? 180_000 : 20_000, async response => {
+    if (response.status === 404 && method === "GET") return null;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  });
 }
 
 // Verify anonymously: credentials are never forwarded to attachment redirects.
@@ -61,18 +72,19 @@ async function verifyDownload(uploaded, file) {
     throw new Error(`Mirror attachment metadata mismatch: ${file.name}`);
   }
   console.log(`Verify Gitee package: ${file.name} (${file.size} bytes)`);
-  const response = await fetchResponse(expectedURL, {}, 180_000);
-  if (!response.ok || !response.body) throw new Error(`Mirror attachment is not anonymously downloadable: ${file.name}`);
-  const hash = createHash("sha256");
-  let size = 0;
-  for await (const chunk of response.body) {
-    size += chunk.length;
-    if (size > file.size) throw new Error(`Mirror attachment size mismatch: ${file.name}`);
-    hash.update(chunk);
-  }
-  if (size !== file.size || hash.digest("hex") !== file.sha256) {
-    throw new Error(`Mirror attachment checksum mismatch: ${file.name}`);
-  }
+  await fetchResponse(expectedURL, {}, 180_000, async response => {
+    if (!response.ok || !response.body) throw new Error(`Mirror attachment is not anonymously downloadable: ${file.name}`);
+    const hash = createHash("sha256");
+    let size = 0;
+    for await (const chunk of response.body) {
+      size += chunk.length;
+      if (size > file.size) throw new Error(`Mirror attachment size mismatch: ${file.name}`);
+      hash.update(chunk);
+    }
+    if (size !== file.size || hash.digest("hex") !== file.sha256) {
+      throw new Error(`Mirror attachment checksum mismatch: ${file.name}`);
+    }
+  });
 }
 
 if (option === "--dry-run") {

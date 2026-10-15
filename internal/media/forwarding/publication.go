@@ -28,6 +28,7 @@ import (
 )
 
 const publicationRIDExtension = "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
+const publicationRepairRIDExtension = "urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id"
 
 // Publication sends existing representations over one simulcast connection.
 // LiveKit's allocator owns all track allocations and probes on the shared BWE.
@@ -78,12 +79,12 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 	publication.allocator.Start()
 	media := &webrtc.MediaEngine{}
 	codec := options.Source.Codec()
-	if err = media.RegisterCodec(codec, webrtc.RTPCodecTypeVideo); err != nil {
+	if err = registerVideoCodec(media, codec); err != nil {
 		return nil, err
 	}
 	for _, uri := range []string{
 		"http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01",
-		"urn:ietf:params:rtp-hdrext:sdes:mid", publicationRIDExtension,
+		"urn:ietf:params:rtp-hdrext:sdes:mid", publicationRIDExtension, publicationRepairRIDExtension,
 	} {
 		if err = media.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: uri}, webrtc.RTPCodecTypeVideo); err != nil {
 			return nil, err
@@ -492,10 +493,13 @@ type publicationTrack struct {
 func (track *publicationTrack) ID() string  { return string(track.id) }
 func (track *publicationTrack) RID() string { return track.rid }
 func (track *publicationTrack) Bind(context webrtc.TrackLocalContext) (webrtc.RTPCodecParameters, error) {
-	var extension, midExtension uint8
+	var extension, repairExtension, midExtension uint8
 	for _, header := range context.HeaderExtensions() {
 		if header.URI == publicationRIDExtension {
 			extension = uint8(header.ID)
+		}
+		if header.URI == publicationRepairRIDExtension {
+			repairExtension = uint8(header.ID)
 		}
 		if header.URI == "urn:ietf:params:rtp-hdrext:sdes:mid" {
 			midExtension = uint8(header.ID)
@@ -507,6 +511,10 @@ func (track *publicationTrack) Bind(context webrtc.TrackLocalContext) (webrtc.RT
 	track.pacer.headersMu.Lock()
 	track.pacer.headers[uint32(context.SSRC())] = publicationHeaders{rid: track.rid, extension: extension,
 		mid: track.transceiver.Mid(), midExtension: midExtension, counters: track.counters}
+	if ssrc := context.SSRCRetransmission(); ssrc != 0 {
+		track.pacer.headers[uint32(ssrc)] = publicationHeaders{rid: track.rid, extension: repairExtension,
+			mid: track.transceiver.Mid(), midExtension: midExtension, counters: track.counters}
+	}
 	track.pacer.headersMu.Unlock()
 	return track.DownTrack.Bind(context)
 }
@@ -625,7 +633,7 @@ func (queue *publicationPacer) Enqueue(packet *pacer.Packet) {
 	queue.headersMu.Lock()
 	headers := queue.headers[packet.Header.SSRC]
 	queue.headersMu.Unlock()
-	if headers.extension != 0 {
+	if headers.extension != 0 && headers.rid != "" {
 		_ = packet.Header.SetExtension(headers.extension, []byte(headers.rid))
 	}
 	if headers.midExtension != 0 {

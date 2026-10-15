@@ -181,7 +181,7 @@ func TestPublicationCongestionUsesCommittedCapacity(t *testing.T) {
 }
 
 func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 12*time.Second)
 	defer cancel()
 	check := func(err error) {
 		t.Helper()
@@ -217,12 +217,18 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	check(mediaEngine.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: publicationRIDExtension}, webrtc.RTPCodecTypeVideo))
 	check(mediaEngine.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: "urn:ietf:params:rtp-hdrext:sdes:mid"}, webrtc.RTPCodecTypeVideo))
 	registry := &interceptor.Registry{}
+	reports := &receiverReportGate{}
+	registry.Add(reports)
 	check(webrtc.RegisterDefaultInterceptors(mediaEngine, registry))
 	receiver, err := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(registry), webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
 	check(err)
 	defer receiver.Close()
 	var received [3]atomic.Uint32
 	var invalid atomic.Bool
+	var lastSequence, lowSSRC, missingSequence atomic.Uint32
+	var repaired atomic.Bool
+	deltaFrame := append([]byte(nil), sfu.VP8KeyFrame8x8...)
+	deltaFrame[0] |= 1
 	receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		index := 2
 		if track.Kind() == webrtc.RTPCodecTypeVideo {
@@ -236,7 +242,7 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 			}
 		}
 		for {
-			packet, _, readErr := track.ReadRTP()
+			packet, attributes, readErr := ReadRTP(track)
 			if readErr != nil {
 				return
 			}
@@ -246,9 +252,16 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 			if index < 2 {
 				var vp8 codecs.VP8Packet
 				payload, decodeErr := vp8.Unmarshal(packet.Payload)
-				if decodeErr != nil || !bytes.Equal(payload, sfu.VP8KeyFrame8x8) {
+				if decodeErr != nil || !(bytes.Equal(payload, sfu.VP8KeyFrame8x8) || bytes.Equal(payload, deltaFrame)) {
 					invalid.Store(true)
 					return
+				}
+			}
+			if index == 0 {
+				lastSequence.Store(uint32(packet.SequenceNumber))
+				lowSSRC.Store(packet.SSRC)
+				if uint32(packet.SequenceNumber) == missingSequence.Load() && attributes.Get(webrtc.AttributeRtxPayloadType) != nil {
+					repaired.Store(true)
 				}
 			}
 			received[index].Add(1)
@@ -287,12 +300,13 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 		t.Fatal("publication did not attach exactly one output per encoding")
 	}
 	frame := 0
+	frameData := sfu.VP8KeyFrame8x8
 	write := func() {
 		frame++
 		pts := time.Duration(frame) * time.Second / 30
 		check(source.BeginFrame(pts, time.Now()))
 		for layer := 0; layer < 2; layer++ {
-			check(source.WriteFrame(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 30, Recovery: true}))
+			check(source.WriteFrame(layer, encoded.Frame{Data: frameData, PTS: pts, Duration: time.Second / 30, Recovery: bytes.Equal(frameData, sfu.VP8KeyFrame8x8)}))
 		}
 		check(audio.WriteSample(media.Sample{Data: []byte{0xf8, 0xff, 0xfe}, Duration: 20 * time.Millisecond}))
 	}
@@ -310,6 +324,48 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	if counters := publication.Counters(); counters.Frames[0] == 0 || counters.Frames[1] == 0 || counters.AudioBytes == 0 {
 		t.Fatalf("successful RTP writes were not accounted per encoding: %+v", counters)
 	}
+	// Lose a real simulcast packet, then delay its NACK beyond SRTP's replay
+	// window. The publishing path needs the same negotiated repair as P2P.
+	missingSequence.Store(uint32(uint16(lastSequence.Load() + 1)))
+	publication.pacer.mu.Lock()
+	publication.pacer.limit = 0
+	publication.pacer.mu.Unlock()
+	write()
+	for publication.pacer.stats().DroppedPackets < 2 {
+		select {
+		case <-time.After(time.Millisecond):
+		case <-ctx.Done():
+			t.Fatal("publication loss was not exercised")
+		}
+	}
+	publication.pacer.mu.Lock()
+	publication.pacer.limit = source.maxPackets
+	publication.pacer.mu.Unlock()
+	frameData = deltaFrame
+	for range 96 {
+		before := received[0].Load()
+		write()
+		for received[0].Load() == before {
+			select {
+			case <-time.After(time.Millisecond):
+			case <-ctx.Done():
+				t.Fatal("publication stopped before delayed feedback")
+			}
+		}
+	}
+	reports.allow.Store(true)
+	check(receiver.WriteRTCP([]rtcp.Packet{&rtcp.TransportLayerNack{
+		MediaSSRC: lowSSRC.Load(), Nacks: []rtcp.NackPair{{PacketID: uint16(missingSequence.Load())}},
+	}}))
+	for !repaired.Load() {
+		write()
+		select {
+		case <-time.After(10 * time.Millisecond):
+		case <-ctx.Done():
+			t.Fatal("publication did not recover delayed loss through negotiated RTX")
+		}
+	}
+	frameData = sfu.VP8KeyFrame8x8
 	// Once real bitrate measurements exist, one shared capacity update must
 	// constrain the sum of both video RID allocations.
 	for {

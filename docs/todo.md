@@ -13,8 +13,8 @@ Git/PRs own completed history.
 capabilities, bounded NAT correctness and media recovery; it retains the published
 protocol and route owners. Integrate the verified phase through
 [the release workflow](../CONTRIBUTING.md#full-integration-and-release-workflow)
-after owner acceptance; the previous release approval does not authorize another
-publication. Broader device coverage below does not override the owner's
+after final checks under the owner's current release authorization. Broader
+device coverage below does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
 - [ ] **Native quality recovery.** Verify the retained-connection budget and
@@ -27,14 +27,6 @@ platform deferrals or establish a diagnosis for unmatched reports.
   whole allocator, a second controller or fabricated source measurements.
   [Media evidence](./research/node-local-media-design.md#send-queue-recovery)
   owns the comparisons and remaining boundary.
-- [ ] **Gitee mirror transfer reliability.** Investigate recurring transfer timeouts
-  from GitHub-hosted runners before changing retry budgets. The latest failed
-  run records only a three-minute timeout, without identifying upload versus
-  download verification; the candidate now records operation and package progress.
-  Check the next authorized run before assigning its network cause. Use the verified
-  original-artifact recovery in [GitHub operations](./operations/github.md) when
-  needed; a failed mirror must not be reported as completed delivery.
-
 ## Held By Owner
 
 - [ ] **Browser-internal encoder work.** Paused by the owner on 2026-10-01.

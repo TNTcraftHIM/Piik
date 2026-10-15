@@ -95,6 +95,12 @@ mirror success. A mirror failure stays visible in its own failed workflow; an
 unfinished Gitee release remains a preview.
 
 Rerun **Gitee mirror** to verify existing files and upload only missing ones.
+Read retries cover the complete JSON or attachment body, not just response
+headers. A partial attachment is discarded and its checksum starts again on
+the next bounded attempt. Uploads and other mutations are not blindly retried
+after an ambiguous timeout; rerunning inventories existing attachments first.
+Operation and package progress identify which transfer failed without recording
+tokens. A successful retry does not by itself identify the earlier network cause.
 For a separate retry, dispatch it on `main` with the **original CI run ID**:
 
 ```sh
