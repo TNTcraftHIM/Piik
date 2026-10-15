@@ -151,7 +151,9 @@ jobs:
       - name: Run isolated network laboratory
         id: network_lab
         if: github.event_name == 'workflow_dispatch' && inputs.network_lab != 'none' && inputs.network_lab != ''
-        timeout-minutes: 45
+        # A paired full matrix includes 71 trials plus negative controls.
+        # Individual connection/recovery deadlines stay owned by the runner.
+        timeout-minutes: 60
         env:
           CHROME_PATH: /usr/bin/google-chrome
           TC_LIB_DIR: ${{ github.workspace }}/build/network-lab/iproute2/netem
