@@ -416,7 +416,8 @@ func (transport *Transport) driveProbeLocked() {
 		return
 	}
 	if transport.probe.Id != ccutils.ProbeClusterIdInvalid {
-		if transport.probe.Result.EndTime == 0 && (!transport.paddingReady ||
+		demand, _ := transport.Output.probeDemand()
+		if transport.probe.Result.EndTime == 0 && (!transport.paddingReady || demand <= 0 ||
 			transport.estimator.CongestionState() != bwe.CongestionStateNone || transport.estimator.ProbeClusterIsGoalReached() ||
 			time.Since(transport.probe.CreatedAt) >= transport.probe.Goal.Duration) {
 			transport.stopProbeLocked()

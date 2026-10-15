@@ -28,11 +28,12 @@ func TestTransportVideoFeedbackAudioAndClose(t *testing.T) {
 		if !repair {
 			name = "primary-only"
 		}
-		t.Run(name, func(t *testing.T) { testTransportVideoFeedbackAudioAndClose(t, repair) })
+		t.Run(name, func(t *testing.T) { testTransportVideoFeedbackAudioAndClose(t, repair, false) })
 	}
+	t.Run("withdrawn-demand", func(t *testing.T) { testTransportVideoFeedbackAudioAndClose(t, true, true) })
 }
 
-func testTransportVideoFeedbackAudioAndClose(t *testing.T, repair bool) {
+func testTransportVideoFeedbackAudioAndClose(t *testing.T, repair, withdrawDemand bool) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	check := func(err error) {
@@ -321,27 +322,63 @@ func testTransportVideoFeedbackAudioAndClose(t *testing.T, repair bool) {
 	// A stopped library writer returns zero padding bytes despite a connected PC
 	// and valid RR. Its probe must finish, and inconclusive feedback must not
 	// promote the BWE's internal initial-capacity sentinel into a codec budget.
-	transport.Output.StopWriteAndGetState()
+	if !withdrawDemand {
+		transport.Output.StopWriteAndGetState()
+	}
 	before, _ := transport.TargetBitrate()
 	reports.allow.Store(true)
 	seenProbe := false
+	withdrawn := false
 	for {
 		transport.mediaActivity()
 		transport.mu.Lock()
 		active := transport.probe.Id != ccutils.ProbeClusterIdInvalid
-		transport.mu.Unlock()
 		seenProbe = seenProbe || active
+		if withdrawDemand && !withdrawn && active && transport.probe.Result.EndTime == 0 {
+			// A live profile change can remove the unmet source demand without
+			// replacing this transport or its current allocation.
+			err := source.UpdateFormats([]LayerFormat{
+				{Width: 8, Height: 8, Bitrate: 300_000}, {Width: 16, Height: 16, Bitrate: 600_000},
+			})
+			delta, _ := transport.Output.probeDemand()
+			transport.driveProbeLocked()
+			ended := transport.probe.Result.EndTime != 0 && !transport.prober.IsRunning()
+			transport.mu.Unlock()
+			check(err)
+			if delta != 0 || !ended {
+				t.Fatalf("withdrawn source demand retained a probe: demand=%d ended=%v", delta, ended)
+			}
+			withdrawn = true
+			continue
+		}
+		transport.mu.Unlock()
 		if seenProbe && !active && !transport.prober.IsRunning() {
 			break
 		}
 		select {
 		case <-time.After(5 * time.Millisecond):
 		case <-ctx.Done():
-			t.Fatal("zero-write probe did not retire within its library duration/settle bound")
+			t.Fatal("probe did not retire within its library duration/settle bound")
 		}
 	}
-	if after, _ := transport.TargetBitrate(); after != before {
+	if after, _ := transport.TargetBitrate(); !withdrawDemand && after != before {
 		t.Fatalf("zero-write probe manufactured a budget: before=%d after=%d", before, after)
+	}
+	if withdrawDemand && !withdrawn {
+		t.Fatal("profile change did not exercise an active probe")
+	}
+	if withdrawn {
+		beforePackets := videoPackets.Load()
+		for videoPackets.Load() == beforePackets {
+			for _, packet := range packetizer.Packetize(sfu.VP8KeyFrame8x8, 3000) {
+				check(source.WriteRTP(0, packet))
+			}
+			select {
+			case <-ticker.C:
+			case <-ctx.Done():
+				t.Fatal("withdrawing probe demand interrupted existing video")
+			}
+		}
 	}
 	check(transport.Close())
 	check(transport.Close())
