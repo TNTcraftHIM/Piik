@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-15
+Last reviewed: 2026-10-16
 
 Explicit owner holds remain in force; an investigation does not itself
 accept a new feature or architecture. A missing device or reporter trace blocks
@@ -21,10 +21,6 @@ platform deferrals or establish a diagnosis for unmatched reports.
   remove the temporary replacement. [Provenance and removal](../internal/thirdparty/README.md#local-encoder-probe-demand)
   own that boundary; this local repair does not diagnose the unmatched field
   reports below or remove the Browser encoder hold.
-- [ ] **Mobile App connection entry.** Review the shared App button against
-  supported desktop packages so mobile Browsers are not led to an unavailable
-  App workflow. Keep Browser sharing available; a future Android App remains
-  an idea, not an accepted platform expansion.
 
 ## Held By Owner
 

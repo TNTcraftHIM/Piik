@@ -5,10 +5,23 @@ import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
 import { Comic } from "./Comic";
 
-export function AppConnectionButton({ sourcePicker = false, onConnected }: {
+interface AppConnectionProps {
   sourcePicker?: boolean;
   onConnected?: () => void;
-} = {}) {
+}
+
+export function AppConnectionButton(props: AppConnectionProps) {
+  // This is a desktop-package entry, not a test of Browser capture support.
+  // iPad's desktop UA still identifies a touch-capable Mac platform.
+  if (typeof navigator !== "undefined" && (
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  )) return null;
+  const button = <AppConnectionControl {...props} />;
+  return props.sourcePicker ? <div className="lr-source-app-connection">{button}</div> : button;
+}
+
+function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnectionProps) {
   const { t, vis } = useCopy();
   const [state, setState] = useState<"idle" | "busy" | "ready" | "unavailable" | "incompatible">("idle");
   const [helpOpen, setHelpOpen] = useState(false);

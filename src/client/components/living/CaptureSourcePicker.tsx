@@ -386,9 +386,7 @@ export function CaptureSourcePicker({
           </>}
 
           {onAppConnected && (nativeSources.kind === "browser" || nativeSources.kind === "unavailable") && (
-            <div className="lr-source-app-connection">
-              <AppConnectionButton sourcePicker onConnected={onAppConnected} />
-            </div>
+            <AppConnectionButton sourcePicker onConnected={onAppConnected} />
           )}
 
           {issueKey ? (

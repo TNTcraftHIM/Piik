@@ -43,9 +43,11 @@ promise game-overlay transparency, click-through or exclusive-fullscreen coverag
 
 Piik App opens this same application in the system Browser. Its startup surface
 offers Local and temporary public invitation; the running App is already
-available to its approved Site before either mode starts. A Site's explicit App
-action discovers the local approval page, where the user confirms its exact
-origin. The launcher shows and revokes that approval. Activating a page supplies
+available to its approved Site before either mode starts. The desktop App entry
+is omitted on known mobile platforms; Browser and camera actions retain their
+own capability checks. A Site's explicit App action discovers the local approval
+page, where the user confirms its exact origin. The launcher shows and revokes
+that approval. Activating a page supplies
 native capability without restarting its room or healthy media session.
 The source selector exposes that same connection action before sharing; a
 successful connection refreshes its current list. An already approved exact
