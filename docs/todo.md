@@ -21,6 +21,10 @@ platform deferrals or establish a diagnosis for unmatched reports.
   Do not copy the whole allocator, add another controller, fabricate source
   measurements or force a minimum bitrate. This remains an unresolved local
   defect, separate from the field reports below.
+- [ ] **Mobile App connection entry.** Review the shared App button against
+  supported desktop packages so mobile Browsers are not led to an unavailable
+  App workflow. Keep Browser sharing available; a future Android App remains
+  an idea, not an accepted platform expansion.
 
 ## Held By Owner
 

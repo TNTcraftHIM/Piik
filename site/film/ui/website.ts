@@ -1,12 +1,11 @@
 // The actual homepage, driven by the film's existing time and inert sandbox.
 import "../../main.js";
+import { applyTheme } from "../../../src/client/ui/theme";
 import { BEAT } from "../score.js";
 import { point } from "./cursor";
 
 const language = document.getElementById("language")!;
-const theme = document.getElementById("theme") as HTMLSelectElement;
-theme.value = "light";
-theme.dispatchEvent(new Event("change"));
+applyTheme("light");
 document.documentElement.style.scrollBehavior = "auto";
 document.documentElement.style.overflow = "hidden";
 document.body.style.pointerEvents = "none";

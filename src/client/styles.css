@@ -1,6 +1,8 @@
 @import "./components/living/pawn.css";
 @import "./components/living/brand-mark.css";
 @import "./components/living/language-control.css";
+@import "./components/living/button.css";
+@import "./ui/glyph.css";
 
 /* Piik living-room UI — the production design system.
    The stage is a TV on the wall, viewers are pawns on the couch, connection
@@ -955,32 +957,6 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 
 /* ---------- buttons & chips ---------- */
 
-.lr-btn {
-  display: inline-grid;
-  grid-auto-flow: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: 52px; height: 52px;
-  padding: 0 14px;
-  border: 2px solid var(--control-edge);
-  border-radius: 999px;
-  background: var(--paper);
-  color: var(--ink);
-  white-space: nowrap;
-  text-decoration: none;
-  box-shadow: var(--control-shadow);
-  transition: transform 260ms var(--spring), background-color 140ms ease, border-color 140ms ease;
-}
-.lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: translateY(-2px); }
-.lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-primary):not(.is-on):not(.is-danger) { background: var(--control-hover); border-color: var(--ink); }
-.lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(2px) scale(.95); box-shadow: none; transition-duration: 80ms; }
-.lr-btn.is-primary { border-color: var(--action-deep); background: var(--action-deep); color: #fff; }
-.lr-btn.is-primary:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--action-deep) 88%, #000); }
-.lr-btn.is-danger { border-color: var(--danger); color: color-mix(in srgb, var(--danger) 70%, var(--ink)); }
-.lr-btn.is-danger:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--danger) 10%, var(--paper)); }
-.lr-btn.is-on { border-color: var(--ink); background: var(--ink); color: var(--paper); }
-.lr-btn .lr-cap { margin-left: 2px; font-size: 12.5px; font-weight: 600; }
 .lr-app-connect { min-width: 40px; height: 40px; }
 .lr-app-connect.is-ready { cursor: default; }
 .lr-app-connect.is-ready > svg { color: var(--live); }
@@ -2235,7 +2211,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
     transition-duration: 0.01ms !important;
   }
   .lr-tv-static { animation: none; opacity: .35; }
-  .lr-btn, .lr-chip, .lr-tile, .lr-toggle button, .lr-lang > button, .lr-language-menu button, .lr-source-option, .lr-source-picker-refresh, .lr-source-picker-close { transform: none !important; }
+  .lr-chip, .lr-tile, .lr-toggle button, .lr-lang > button, .lr-language-menu button, .lr-source-option, .lr-source-picker-refresh, .lr-source-picker-close { transform: none !important; }
   .lr-sharing-panel input[type="range"]::-webkit-slider-thumb { transform: none !important; }
   .lr-sharing-panel input[type="range"]::-moz-range-thumb { transform: none !important; }
   .lr-route-edge.is-pending { animation: none; }
@@ -2270,34 +2246,6 @@ html[data-theme="dark"] .lr-tiles .lr-tile:not(.is-selected) small { color: #8ba
 
 @media (max-width: 640px) {
   .lr-tv-screen .lr-comic-tip { max-width: min(62vw, var(--tooltip-max-width, calc(100vw - 16px))); }
-}
-
-/* ---------- glyph draw-in (一笔一划) ---------- */
-
-@keyframes lr-glyph-in { to { stroke-dashoffset: 0; } }
-@keyframes lr-glyph-pop {
-  0% { opacity: 0; transform: scale(.3); }
-  100% { opacity: 1; transform: scale(1); }
-}
-/* Drawing is reserved for primary actions and explicit state-entry feedback.
-   Both finish in one beat regardless of stroke count; pathLength=1 normalizes
-   each stroke. Reduced motion and ordinary controls use the unanimated SVG. */
-@media (prefers-reduced-motion: no-preference) {
-  .lr-glyph-draw:not(.lr-spin),
-  :is(button, a):is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) .lr-glyph:not(.lr-glyph-draw):not(.lr-spin) {
-    & > :is(path, circle, rect, line) {
-      stroke-dasharray: 1;
-      stroke-dashoffset: 1;
-      animation: lr-glyph-in 280ms cubic-bezier(.45, .05, .35, 1) both;
-    }
-    &.is-solid > :is(path, circle, rect), & > :is([fill="currentColor"], [fill^="#"]) {
-      stroke-dasharray: none;
-      stroke-dashoffset: 0;
-      transform-box: fill-box;
-      transform-origin: center;
-      animation-name: lr-glyph-pop;
-    }
-  }
 }
 
 /* append-sink: workflow agents append new rules ABOVE this line. */

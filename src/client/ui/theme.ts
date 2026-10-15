@@ -1,8 +1,6 @@
 // Light/dark theme with system default, persistence, and no-flash startup.
 // index.html applies the stored/system theme before first paint. Until the user
 // chooses explicitly, this module continues following system changes.
-import { useSyncExternalStore } from "react";
-
 export type Theme = "light" | "dark";
 
 const THEME_STORAGE_KEY = "piik:ui-theme";
@@ -83,16 +81,11 @@ export function initTheme(preference?: Theme | null, explicitChoice = true): voi
   }
 }
 
-export function useTheme(): { theme: Theme; toggle: () => void } {
-  const theme = useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    () => state.theme,
-  );
-  return {
-    theme,
-    toggle: () => applyTheme(theme === "dark" ? "light" : "dark"),
-  };
+export function currentTheme(): Theme {
+  return state.theme;
+}
+
+export function subscribeTheme(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }

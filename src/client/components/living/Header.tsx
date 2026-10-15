@@ -1,12 +1,12 @@
 // App header: brand mark, LED connection state, language selection and theme.
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { browserDebugEnabled, debugError, downloadBrowserDebug, withBrowserDebug } from "../../lib/debug";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import type { ComicKind } from "./Comic";
 import { useCopy } from "../../ui/copy";
 import { LanguageControl } from "./LanguageControl";
-import { useTheme } from "../../ui/theme";
+import { applyTheme, currentTheme, subscribeTheme } from "../../ui/theme";
 import { Glyph } from "../../ui/icons";
 import { AppConnectionButton } from "./AppConnectionButton";
 
@@ -84,18 +84,17 @@ export function BrowserDiagnosticsButton() {
 
 export function HeaderControls({ diagnosticControl }: { diagnosticControl?: React.ReactNode } = {}) {
   const { vis, t } = useCopy();
-  const { theme, toggle } = useTheme();
+  const theme = useSyncExternalStore(subscribeTheme, currentTheme);
   const themeTitle = t(theme === "dark" ? "theme.light" : "theme.dark");
   const themeButton = (
     <button
       type="button"
-      className="lr-btn"
-      style={{ minWidth: 40, height: 40, borderRadius: 999 }}
+      className="lr-btn lr-theme-toggle"
       aria-label={themeTitle}
       onClick={(event) => {
         // Pointer activation must not pin the hint open; keyboard keeps focus.
         if (event.detail !== 0) event.currentTarget.blur();
-        toggle();
+        applyTheme(theme === "dark" ? "light" : "dark");
       }}
     >
       <Glyph name={theme === "dark" ? "sun" : "moon"} size={16} draw="theme-toggle" />

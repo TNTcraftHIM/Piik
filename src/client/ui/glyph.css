@@ -1,0 +1,27 @@
+@keyframes lr-glyph-in { to { stroke-dashoffset: 0; } }
+@keyframes lr-glyph-pop {
+  0% { opacity: 0; transform: scale(.3); }
+  100% { opacity: 1; transform: scale(1); }
+}
+/* Drawing is reserved for primary actions and explicit state-entry feedback.
+   Both finish in one beat regardless of stroke count; pathLength=1 normalizes
+   each stroke. Reduced motion and ordinary controls use the unanimated SVG. */
+@media (prefers-reduced-motion: no-preference) {
+  :where(html:not([data-reduced-motion])) {
+    .lr-glyph-draw:not(.lr-spin),
+    :is(button, a):is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) .lr-glyph:not(.lr-glyph-draw):not(.lr-spin) {
+      & > :is(path, circle, rect, line) {
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        animation: lr-glyph-in 280ms cubic-bezier(.45, .05, .35, 1) both;
+      }
+      &.is-solid > :is(path, circle, rect), & > :is([fill="currentColor"], [fill^="#"]) {
+        stroke-dasharray: none;
+        stroke-dashoffset: 0;
+        transform-box: fill-box;
+        transform-origin: center;
+        animation-name: lr-glyph-pop;
+      }
+    }
+  }
+}
