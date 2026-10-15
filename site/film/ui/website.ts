@@ -28,7 +28,9 @@ window.addEventListener("message", (event) => {
   settling = requestAnimationFrame(() => paint(data));
 });
 function paint(data: {lang: string; local: number; time: number}) {
-  if (document.documentElement.lang !== data.lang) language.click();
+  if (document.documentElement.lang !== data.lang) {
+    language.querySelector<HTMLButtonElement>(`[data-language="${data.lang}"]`)!.click();
+  }
   const download = document.getElementById("download")!;
   const button = download.querySelector<HTMLAnchorElement>(".download-button")!;
   const progress = Math.min(1, Math.max(0, (data.local - 1.25 * BEAT) / (2 * BEAT)));

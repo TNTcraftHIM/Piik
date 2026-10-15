@@ -51,7 +51,10 @@
         <a href="./docs/?lang=en" data-doc-page=""><span lang="en">Docs</span><span lang="zh-CN">文档</span></a>
       </nav>
       <div class="preferences" hidden>
-        <button id="language" type="button" lang="zh-CN" aria-label="切换到简体中文">简体中文</button>
+        <span id="language" class="lr-lang" role="group" aria-label="Language">
+          <button type="button" data-language="zh-CN" lang="zh-CN" aria-label="简体中文" aria-pressed="false">中</button>
+          <button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="true" class="is-selected">EN</button>
+        </span>
         <label class="theme-picker"
           ><span class="sr-only"><span lang="en">Color theme</span><span lang="zh-CN">外观</span></span
           ><svg viewBox="0 0 24 24" aria-hidden="true">

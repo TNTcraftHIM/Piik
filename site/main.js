@@ -89,9 +89,12 @@ const copy = {
 function setLanguage(lang) {
   root.lang = lang;
   const chinese = lang === 'zh-CN';
-  language.lang = chinese ? 'en' : 'zh-CN';
-  language.textContent = chinese ? 'English' : '简体中文';
-  language.setAttribute('aria-label', chinese ? 'Switch to English' : '切换到简体中文');
+  language.setAttribute('aria-label', chinese ? '语言' : 'Language');
+  for (const button of language.querySelectorAll('button')) {
+    const selected = button.dataset.language === lang;
+    button.classList.toggle('is-selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  }
   const current = copy[root.lang];
   document.title = current.title;
   description.content = current.description;
@@ -106,10 +109,12 @@ function setLanguage(lang) {
   syncWelcome();
   syncFilmPreferences();
 }
-language.addEventListener('click', () => {
-  setLanguage(root.lang === 'zh-CN' ? 'en' : 'zh-CN');
-  rememberLanguage(root.lang);
-});
+for (const button of language.querySelectorAll('button')) {
+  button.addEventListener('click', () => {
+    if (root.lang !== button.dataset.language) setLanguage(button.dataset.language);
+    rememberLanguage(root.lang);
+  });
+}
 function syncThemeColor() {
   document.querySelector('meta[name="theme-color"]').content = getComputedStyle(root).getPropertyValue('--wall').trim();
 }

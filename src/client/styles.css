@@ -1,5 +1,6 @@
 @import "./components/living/pawn.css";
 @import "./components/living/brand-mark.css";
+@import "./components/living/language-control.css";
 
 /* Piik living-room UI — the production design system.
    The stage is a TV on the wall, viewers are pawns on the couch, connection
@@ -165,29 +166,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 @keyframes lr-blink { 50% { opacity: .3; } }
 
-/* Keep the three familiar shortcuts; extra locales share one menu. */
-.lr-lang { --lang-count: 3; border: 2.5px solid var(--ink); }
-.lr-lang:has(.lr-lang-more) { --lang-count: 4; }
-.lr-lang > button {
-  position: relative;
-  display: inline-grid;
-  min-width: 38px;
-  height: 34px;
-  place-items: center;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 700;
-  opacity: .68;
-  transition: opacity 120ms ease, color 140ms ease, background-color 140ms ease, transform 180ms var(--spring);
-}
-.lr-lang > button:is(:hover, :focus-visible) { opacity: 1; transform: translateY(-1px); }
-.lr-lang > button:is(:hover, :focus-visible):not(.is-selected) { background: var(--wall-2); }
-.lr-lang > button:active { transform: scale(.9); }
-.lr-lang > .is-selected { color: var(--paper); opacity: 1; }
+/* Extra locales share one menu after the familiar shortcuts. */
 .lr-lang-more > span { display: inline-flex; align-items: center; gap: 2px; pointer-events: none; }
 .lr-lang-more .lr-glyph:last-child { transition: transform 180ms var(--spring); }
 .lr-header-controls:has(.lr-language-menu:popover-open) .lr-lang-more .lr-glyph:last-child { transform: rotate(180deg); }
@@ -1083,9 +1062,8 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 }
 @keyframes lr-pop { 50% { transform: scale(1.06); } }
 
-/* Segmented controls share a sliding thumb. Equal grid columns keep it aligned
-   across captions; the selected control remains the only selection state. */
-.lr-toggle, .lr-lang {
+/* Equal columns keep the admission thumb aligned across translated captions. */
+.lr-toggle {
   position: relative;
   display: inline-grid;
   grid-auto-flow: column;
@@ -1095,7 +1073,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   background: var(--paper);
 }
 .lr-toggle { border: 2px solid var(--control-edge); }
-.lr-toggle::before, .lr-lang::before {
+.lr-toggle::before {
   content: "";
   position: absolute;
   top: 4px; bottom: 4px; left: 4px;
@@ -1107,10 +1085,6 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 .lr-toggle::before { width: calc(50% - 4px); }
 .lr-toggle:not([data-selected])::before { opacity: 0; }
 .lr-toggle[data-selected="private"]::before { transform: translateX(100%); }
-.lr-lang::before { width: calc((100% - 8px) / var(--lang-count)); }
-.lr-lang:has(> :nth-child(2).is-selected)::before { transform: translateX(100%); }
-.lr-lang:has(> :nth-child(3).is-selected)::before { transform: translateX(200%); }
-.lr-lang:has(> :nth-child(4).is-selected)::before { transform: translateX(300%); }
 .lr-toggle button {
   position: relative;
   z-index: 1;
