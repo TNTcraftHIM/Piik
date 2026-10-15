@@ -511,23 +511,26 @@ the constrained child recovers after release while the healthy child retains its
 original dimensions. These checks do not establish the cause of an unmatched
 physical Host's low-resolution session.
 
-One publication boundary remains reproducible: with two declared encodings but
-only the rate-controlled lowest requested, the original 6 Mbps -> 120 kbps ->
-6 Mbps control settled at about 215--230 kbps of a 300 kbps output. After RTX
-negotiation was repaired, four repeats on 2026-10-15 settled at 239--273 kbps;
-two still failed the fixture's sustained 250 kbps recovery observation without
-further probing. Repair improves delivery but does not establish consistent
-within-output recovery. The full SFU allocator probes spatial deficiency, so it
-stops exploring once that single active RID fits its
-reduced encoding. Diagnostics now retain this within-output limitation, but
-that does not repair its probe demand. A matched isolated library extension
-adds the local encoder's unmet demand to that allocator's state and existing
-padding probe, restoring about 295 kbps. No additional estimator, probe loop or
-fabricated layer bitrate is needed. The pinned and inspected upstream allocator
-have no such input; this experiment is not retained in product code and does
-not justify copying the complete allocator into Piik. Integration must preserve
-that single probe owner. This separate publication control does not diagnose a
-direct P2P field session.
+One publication boundary remains reproducible with two declared encodings but
+only the rate-controlled lowest requested. On 2026-10-15, the current product's
+6 Mbps -> 120 kbps -> 6 Mbps control retained a 238 kbps budget and delivered
+about 234 kbps of its 300 kbps output, with no further probing. Earlier repeats
+varied across the fixture's sustained 250 kbps recovery observation; one passing
+run therefore does not establish recovery. The full SFU allocator probes spatial
+deficiency, so it stops exploring once that single active RID fits its reduced
+encoding. Diagnostics report that limitation but cannot repair probe demand.
+
+A matched isolated library extension adds the local encoder's unmet demand to
+the same allocator's state and padding probe, restoring sustained 295--296 kbps.
+No additional estimator, probe loop or fabricated layer bitrate is needed.
+The [pinned allocator](https://github.com/livekit/livekit/blob/v1.13.9/pkg/sfu/streamallocator/streamallocator.go)
+and inspected upstream expose no such input. `SetChannelCapacity` overrides
+capacity and disables probing; a minimum-capacity setting is not measured
+recovery. Neither is a valid adapter for this demand. A narrow upstream input
+remains the integration boundary; copying the complete allocator or running a
+second probe owner is not accepted. The extension remains an ignored experiment,
+not product code. This synthetic RTP/TWCC comparison neither decodes video nor
+diagnoses a direct P2P field session.
 
 Live audio changes exposed a related scope mismatch: Piik's TWCC tracks only
 video, but the adapter deducted audio from that measured capacity and included

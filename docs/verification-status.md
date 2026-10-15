@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-14
+Last updated: 2026-10-15
 
 This file owns physical evidence limits that change how the product may be
 described. [Status](./status.md) owns the execution/deployment index.
@@ -68,6 +68,20 @@ Responsive Browser checks cover narrow portrait and landscape layouts, but not
 real phone keyboards, Safari behavior or every touch/device combination. The
 owner accepted this bounded UI/model walkthrough for phase closure; these
 physical limits remain open and are not release authorization.
+
+The [numeric media controls](./research/native-client-media.md#media-capability-extension-assessment)
+still need physical limited-decoder, camera-orientation, macOS geometry and
+sustained game/4K acceptance. Check live changes and source replacement through
+relay/SFU, and listen across the [audio control range](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment).
+Existing mono/stereo and Windows HDR-to-SDR retain the [fidelity boundary](./research/media-fidelity.md);
+additional codecs, surround delivery and end-to-end HDR are not implemented promises.
+The [camera and microphone assessment](./research/camera-and-microphone.md)
+owns levels, echo, device replacement/native mixing, OBS input synchronization
+and phone permission/orientation/background limits.
+
+Passive App attachment needs cross-device Browser-permission checks for first
+and saved approval, Site replacement/revocation and Local coexistence. Local
+acceptance does not establish every Browser's permission behavior.
 
 The 2026-09-11 functional test acceptance used two genuine Windows App packages
 and matching Server source/Web builds under the same private contract. Both App/Site version
