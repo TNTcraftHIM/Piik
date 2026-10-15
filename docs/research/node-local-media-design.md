@@ -476,17 +476,26 @@ unacknowledged probes inconclusive, and starts timing at the first acknowledged
 probe packet. Removing either correction fails the real-TWCC regression. These
 changes preserve upstream estimation, loss handling and probe scheduling.
 
-Real decode also exposed a packet-format mismatch at the shared writer:
-LiveKit 1.13.6 includes padding in its probe payload, while Pion SRTP serializes
-another block from `Header.PaddingSize`. An actual library probe therefore
-arrived with 255 bytes of apparent video payload plus 255 bytes of padding.
-The adapter now removes the already-included block only at the Pion write
-boundary; pacing and TWCC retain the intended packet size. Both publication
-and single-child forwarding use that boundary. The regression checks decoded
-RTP payload emptiness after SRTP delivery, rather than treating any received
-packet as valid video. The primary owners are
-[LiveKit probe construction](https://github.com/livekit/livekit/blob/v1.13.6/pkg/sfu/downtrack.go)
-and [Pion packet serialization](https://github.com/pion/rtp/blob/v1.10.5/packet.go).
+Probe padding has no media payload; its size belongs to `Header.PaddingSize`
+and Pion serializes it once. The pinned LiveKit revision includes
+[upstream #4993](https://github.com/livekit/livekit/pull/4993), so Piik's former
+payload-stripping writer is removed. The SDK scheduling proxy still accounts
+for those wire bytes because its size calculation omits RTP padding; only the
+original packet reaches serialization and TWCC. Both publication and
+single-child forwarding use this boundary. Regressions check the actual empty
+RTP payload after SRTP delivery and equal scheduled/written byte counts.
+
+Long pauses expose a separate publication recovery failure: the last forwarded
+packets leave the source's bounded cache while new capture frames keep arriving.
+RTX-based probing then writes nothing and cannot finish. The pin includes
+[upstream #5013](https://github.com/livekit/livekit/pull/5013), which uses padding
+when no cached RTX probe payload is available. A 2026-10-15 retained-connection
+control held a raw 300 kbps source at a 120 kbps link for 22 seconds, then restored
+6 Mbps. The previous dependency remained at zero video through the 18-second
+recovery observation; the updated dependency and serialization adapter restored
+about 294 kbps after eight seconds. The ordinary regression expires the actual
+cache while allocation is paused and fails against the previous dependency.
+This repairs probe delivery, not the separate encoder-demand boundary below.
 
 The explicit `TestTransportConstrainedDormantRecovery` virtual-network trace uses
 real Pion RTP/TWCC through 6 Mbps -> 500 kbps -> 6 Mbps shaping. The repaired
@@ -512,19 +521,27 @@ original dimensions. These checks do not establish the cause of an unmatched
 physical Host's low-resolution session.
 
 One publication boundary remains reproducible with two declared encodings but
-only the rate-controlled lowest requested. On 2026-10-15, the current product's
-6 Mbps -> 120 kbps -> 6 Mbps control retained a 238 kbps budget and delivered
-about 234 kbps of its 300 kbps output, with no further probing. Earlier repeats
-varied across the fixture's sustained 250 kbps recovery observation; one passing
-run therefore does not establish recovery. The full SFU allocator probes spatial
-deficiency, so it stops exploring once that single active RID fits its reduced
+only the rate-controlled lowest requested. It remains after the cache-expiry
+repair: a 2026-10-15 retained-connection 6 Mbps -> 120 kbps -> 6 Mbps control
+held a 94 kbps budget and delivered about 92 kbps of its requested 300 kbps,
+with no further probing. Earlier repeats could cross the fixture's loose
+250 kbps threshold; one passing run therefore does not establish full recovery.
+The full SFU allocator probes spatial deficiency, so it stops exploring once
+that single active RID fits its reduced
 encoding. Diagnostics report that limitation but cannot repair probe demand.
 
 A matched isolated library extension adds the local encoder's unmet demand to
 the same allocator's state and padding probe, restoring sustained 295--296 kbps.
-No additional estimator, probe loop or fabricated layer bitrate is needed.
-The [pinned allocator](https://github.com/livekit/livekit/blob/v1.13.9/pkg/sfu/streamallocator/streamallocator.go)
-and inspected upstream expose no such input. `SetChannelCapacity` overrides
+The stronger control requires both the requested ceiling and sustained media
+above 90% of that ceiling; merely crossing 250 kbps is insufficient. Prolonged
+congestion, pause/resume, replacement with a higher ceiling, and real Opus
+320/96/320 kbps controls also pass. Demand is withdrawn when the output is
+inactive or retired, compared with the committed budget, and expressed relative
+to actual allocated usage. The
+allocator's existing event loop refreshes it without another timer or controller.
+No source measurement is fabricated.
+The [pinned allocator](https://github.com/livekit/livekit/blob/18df6ad4b6942c74a6bd95832735addc0d2c6d87/pkg/sfu/streamallocator/streamallocator.go)
+still exposes no such input. `SetChannelCapacity` overrides
 capacity and disables probing; a minimum-capacity setting is not measured
 recovery. Neither is a valid adapter for this demand. A narrow upstream input
 remains the integration boundary; copying the complete allocator or running a

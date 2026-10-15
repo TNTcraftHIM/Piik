@@ -394,6 +394,22 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	if publication.bandwidth.CongestionState() != bwe.CongestionStateNone || !publication.Counters().Limited {
 		t.Fatalf("clear transport feedback hid the committed publication allocation deficit: state=%v counters=%+v low=%v high=%v", publication.bandwidth.CongestionState(), publication.Counters(), publication.tracks[0].IsDeficient(), publication.tracks[1].IsDeficient())
 	}
+	// A paused sender's recent packets can age out while capture continues.
+	// Recovery must still send a probe when those RTX payloads are unavailable.
+	if publication.tracks[0].WriteProbePackets(300, true) == 0 {
+		t.Fatal("publication has no receiver-report authority for padding probes")
+	}
+	for range source.maxPackets + 8 {
+		frame++
+		pts := time.Duration(frame) * time.Second / 30
+		check(source.BeginFrame(pts, time.Now()))
+		for layer := range 2 {
+			check(source.WriteFrame(layer, encoded.Frame{Data: frameData, PTS: pts, Duration: time.Second / 30}))
+		}
+	}
+	if publication.tracks[0].WriteProbePackets(300, false) == 0 {
+		t.Fatal("publication probe stalled after its forwarded packets left the source cache")
+	}
 	// Restore this allocation fixture's capacity explicitly. A congestion event
 	// cannot prove an increase; this test covers RID reuse, not bandwidth probing.
 	publication.bandwidth.target.Store(1_000_000)

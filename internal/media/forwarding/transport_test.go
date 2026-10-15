@@ -395,7 +395,7 @@ func (held *heldPacketPacer) Enqueue(packet *packetpacer.Packet) {
 type countingPacketWriter struct{ bytes int }
 
 func (writer *countingPacketWriter) WriteRTP(header *rtp.Header, payload []byte) (int, error) {
-	written := header.MarshalSize() + len(payload)
+	written := header.MarshalSize() + len(payload) + int(header.PaddingSize)
 	writer.bytes += written
 	return written, nil
 }
@@ -594,6 +594,30 @@ func TestBoundedPacerCanceledProbesRetainAdmission(t *testing.T) {
 	}
 	if stats := queue.stats(); stats.Packets != 0 || stats.DroppedPackets != 13 {
 		t.Fatalf("canceled ownership was sent or retired twice: %+v", stats)
+	}
+}
+
+func TestBoundedPacerAccountsForPaddingExactlyOnce(t *testing.T) {
+	for _, sizes := range []struct{ payload, padding int }{{100, 0}, {0, 255}, {20, 16}} {
+		log := logger.GetDiscardLogger()
+		sender := packetpacer.NewPassThrough(log)
+		held := &heldPacketPacer{Pacer: sender}
+		queue := newBoundedPacer(held, log, 1)
+		defer queue.Stop()
+		header := &rtp.Header{Version: 2, SSRC: 1, Padding: sizes.padding > 0, PaddingSize: byte(sizes.padding)}
+		writer := &countingPacketWriter{}
+		want := header.MarshalSize() + sizes.payload + sizes.padding
+		queue.Enqueue(&pacer.Packet{Header: header, HeaderSize: header.MarshalSize(),
+			Payload: make([]byte, sizes.payload), WriteStream: writer})
+		proxy := held.packets[0]
+		if scheduled := proxy.Header.MarshalSize() + len(proxy.Payload); scheduled != want {
+			t.Fatalf("scheduled %d bytes for a %d-byte RTP packet: %+v", scheduled, want, sizes)
+		}
+		sender.Enqueue(proxy)
+		queue.Stop()
+		if writer.bytes != want || queue.stats().RTPBytes != uint64(want) || queue.pendingCount() != 0 {
+			t.Fatalf("padding was serialized or counted twice: written=%d stats=%+v want=%d", writer.bytes, queue.stats(), want)
+		}
 	}
 }
 

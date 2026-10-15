@@ -16,9 +16,9 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/coder/websocket v1.8.15
 	github.com/go-logr/logr v1.4.4
-	github.com/livekit/livekit-server v1.13.9
+	github.com/livekit/livekit-server v1.13.11-0.20261014174133-18df6ad4b694
 	github.com/livekit/mediatransportutil v0.0.0-20260821083140-f234b534b095
-	github.com/livekit/protocol v1.52.2-0.20261007103317-a935cd67c29a
+	github.com/livekit/protocol v1.52.2-0.20261012065025-9bb708cdb819
 	github.com/livekit/server-sdk-go/v2 v2.14.0
 	github.com/netbirdio/go-nat v0.0.0-20260821095157-6b2c8c5c74e8
 	github.com/pion/ice/v4 v4.4.7

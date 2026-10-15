@@ -48,6 +48,14 @@ version covers both corrections and the same regressions pass, remove this
 directory and restore the upstream imports. Review dependency bumps against the
 named baseline; do not evolve a separate congestion-control algorithm here.
 
+The normal LiveKit dependency is pinned through
+[upstream #5013](https://github.com/livekit/livekit/pull/5013), which restores
+probe delivery after cached RTX packets expire. Its earlier
+[padding correction](https://github.com/livekit/livekit/pull/4993) also replaces
+Piik's former padding writer. Those repairs use the upstream dependency; no
+additional LiveKit package is copied here. The local send-side measurement
+corrections above remain necessary.
+
 The retained detector also includes [upstream #4935](https://github.com/livekit/livekit/pull/4935)
 and its regression from v1.13.9, adapted to standard Go assertions. Reserved
 TWCC symbols carry no receive delta: skip their measurement rather than consuming

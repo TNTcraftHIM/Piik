@@ -48,7 +48,7 @@ func TestVP8TemporalRecoveryRequiresDecodableFrames(t *testing.T) {
 			ExtSequenceNumber: sequence, ExtTimestamp: sequence * 3000, IsKeyFrame: step.key,
 			Packet: &rtp.Packet{Header: rtp.Header{Version: 2, Marker: true, SSRC: 1000,
 				SequenceNumber: uint16(sequence), Timestamp: uint32(sequence * 3000)}, Payload: []byte{0x10, 0}},
-			Payload: codec.VP8{S: true, T: true, TID: uint8(step.tid), Y: step.sync, IsKeyFrame: step.key},
+			VP8: &codec.VP8{S: true, T: true, TID: uint8(step.tid), Y: step.sync, IsKeyFrame: step.key},
 		}
 		if _, err := forwarder.GetTranslationParams(packet, 0); err != nil {
 			t.Fatalf("%s: %v", step.name, err)
