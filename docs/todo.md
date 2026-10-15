@@ -9,12 +9,9 @@ Git/PRs own completed history.
 
 ## Now
 
-2.0 is published on GitHub. The current maintenance phase reviews optional App
-capabilities, bounded NAT correctness and media recovery; it retains the published
-protocol and route owners. Integrate the verified phase through
-[the release workflow](../CONTRIBUTING.md#full-integration-and-release-workflow)
-after final checks under the owner's current release authorization. Broader
-device coverage below does not override the owner's
+The 2.0 maintenance line retains the published protocol and route owners.
+Release artifacts and operator records own exact delivery; remaining product
+work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
 - [ ] **Native quality recovery.** Verify the retained-connection budget and
@@ -256,14 +253,10 @@ restore reverse feedback. Keep standard ICE recovery while that boundary remains
     Reconsider automatic storage only with a stable room-incarnation identity,
     bounded retention and a clear delete control; reusable room codes must not
     combine conversations. No new history service or wire field is authorized.
-8. **Direct OBS input (#436).** Reopen for a measured virtual-camera limitation.
-    The [capture assessment](./research/camera-and-microphone.md) records raw-frame
-    output and the WHIP boundary; virtual camera alone is not a second encode.
-    Do not add an RTMP/WHIP listener without an accepted publication owner.
-9. **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
+8. **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
     identifies UDP/storage requirements but establishes no cost saving. Keep the
     existing P2P-only Demo; reopen for an accepted provider and operating boundary.
-10. **Phone as a Host microphone.** The [input assessment](./research/camera-and-microphone.md#phone-microphone-assessment)
+9. **Phone as a Host microphone.** The [input assessment](./research/camera-and-microphone.md#phone-microphone-assessment)
     identifies pairing/revocation and native decoded-input ownership beyond the
     device selector. Reopen for a concrete use case that justifies this boundary
     and physical latency/echo/background checks. This does not reopen room voice.

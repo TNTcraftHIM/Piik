@@ -56,9 +56,9 @@ Release artifacts and operator deployment records own delivery completion;
 
 ## Current Work
 
-Post-release maintenance reviews optional App capabilities, NAT correctness and
-media recovery within the existing owners. The owner authorized publication
-after final acceptance; [TODO](./todo.md#now) owns the remaining recovery boundary.
+Post-release maintenance retains the existing protocol and route owners.
+[TODO](./todo.md#now) owns the remaining quality-recovery boundary; release
+artifacts and operator records own delivery and acceptance results.
 
 2.0 separates numeric media requests from presets and bounded runtime admission,
 retains successfully applied quality settings, and lets App serve an approved
