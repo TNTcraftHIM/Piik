@@ -339,6 +339,28 @@ timestamp retires unresolved older data, retaining complete H264 configuration.
 Focused RTP checks cover VP8/H264 loss, duplicate recovery packets and timestamp
 wrap without another timer or packet queue.
 
+The later coupled P2P controls on 2026-10-15 exposed the complementary gap:
+an independent frame could bypass old assembly, but a lost frame could delay
+the request for that recovery until the packet window filled. The current
+4,096-packet capacity protects large access units; at a low packet rate it is
+not a suitable playout deadline. The shared relay input now uses the existing
+assembler's forced-pop operation after one second of advancing RTP media time
+without assembly progress, notifying its existing recovery owner before any
+dependent frame can be consumed. Complete quiet frames still emit immediately;
+quiet intervals, reordering and clock wrap do not add a wall-clock timer.
+
+The actual Windows VP8 encoder consumed live P2P budgets over a 12 Mbps,
+20 ms vnet path, with three one-second 400 kbps limits. With 7.5 KB and 75 KB
+network queues, the longest complete-frame gaps changed from 21.9 / 21.6 seconds
+to 1.5 / 1.2 seconds; both repaired runs ended near 30 fps at 1080p.
+Chrome WebCodecs decoded all 3,443 / 3,418 received pictures respectively;
+this checks the assembled bitstreams, not Browser WebRTC playout.
+These are separate serial runs, not a statistical latency guarantee. Regression
+controls independently reproduce both missing-whole-frame and partial-frame
+waiting for VP8/H264. This correction belongs to Native relay derivation;
+ordinary Browser P2P has its own receiver/jitter buffer. It does not establish
+the cause of an unmatched field report or fix encoder resolution hysteresis.
+
 ### Native Feedback Probe
 
 The explicit [GCC/TWCC probe](../../internal/app/mediaedge/testdata/gcc_feedback_probe.go)

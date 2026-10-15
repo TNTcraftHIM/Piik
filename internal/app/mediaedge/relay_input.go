@@ -29,6 +29,9 @@ type relayVideoInput struct {
 	recoveryTimestamp uint32
 	recoverySequence  uint16
 	hasRecovery       bool
+	pending           bool
+	pendingTimestamp  uint32
+	latestTimestamp   uint32
 }
 
 func (input *relayVideoInput) push(packet *rtp.Packet) error {
@@ -64,17 +67,40 @@ func (input *relayVideoInput) push(packet *rtp.Packet) error {
 					input.onPacketDropped()
 				}
 			}))
+		input.pending = false
 	}
 	if recovery {
 		input.recoveryTimestamp, input.hasRecovery = packet.Timestamp, true
 		input.recoverySequence = packet.SequenceNumber
+	}
+	if len(packet.Payload) > 0 {
+		if !input.pending {
+			input.pending, input.pendingTimestamp, input.latestTimestamp = true, packet.Timestamp, packet.Timestamp
+		} else if int32(packet.Timestamp-input.latestTimestamp) > 0 {
+			input.latestTimestamp = packet.Timestamp
+		}
 	}
 	input.builder.Push(packet)
 	return nil
 }
 
 func (input *relayVideoInput) pop() (*media.Sample, uint32) {
-	return input.builder.PopWithTimestamp()
+	sample, timestamp := input.builder.PopWithTimestamp()
+	// The packet window bounds storage for large access units, not playout
+	// delay. After a second of advancing media without a complete sample, let
+	// the existing assembler discard the gap and request independent recovery.
+	// RTP time leaves quiet sources alone and adds no timer or decode owner.
+	if sample == nil && input.pending && int32(input.latestTimestamp-input.pendingTimestamp) > videoClockRate {
+		if input.onPacketDropped != nil {
+			input.onPacketDropped()
+		}
+		sample, timestamp = input.builder.ForcePopWithTimestamp()
+		input.pending = false
+	}
+	if sample != nil {
+		input.pending = false
+	}
+	return sample, timestamp
 }
 
 func (input *relayVideoInput) frame(data []byte) (nativecapture.Frame, error) {

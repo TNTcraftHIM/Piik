@@ -13,6 +13,7 @@ const nativeSource = settings.get('nativeSource') === '1', background = settings
 const lifecycle = settings.get('lifecycle') === '1', shapedRate = Number(settings.get('rate') || 120000);
 const relay = settings.get('relay') === '1';
 const shortPulse = settings.get('shortPulse') === '1';
+const repeatedPulses = settings.get('repeatedPulses') === '1', textured = settings.get('textured') === '1';
 const displaySource = settings.get('displaySource') === '1';
 const quietStart = settings.get('quietStart') === '1';
 const customSize = settings.has('width') ? { width: Number(settings.get('width')), height: Number(settings.get('height')) } : null;
@@ -187,7 +188,8 @@ const selectReport = report => Array.from(report.values())
         const fields = ['type', 'kind', 'id', 'localCandidateId', 'remoteCandidateId', 'selectedCandidatePairId',
             'port', 'nominated', 'framesEncoded', 'framesDecoded', 'framesSent', 'framesReceived', 'bytesSent',
             'bytesReceived', 'totalEncodeTime', 'totalDecodeTime', 'frameWidth', 'frameHeight', 'framesPerSecond',
-            'targetBitrate', 'qualityLimitationReason', 'qpSum', 'pliCount', 'nackCount', 'retransmittedBytesSent',
+            'targetBitrate', 'qualityLimitationReason', 'qualityLimitationDurations', 'encoderImplementation', 'powerEfficientEncoder',
+            'qpSum', 'pliCount', 'nackCount', 'retransmittedBytesSent',
             'packetsLost', 'jitter', 'jitterBufferDelay', 'jitterBufferEmittedCount', 'freezeCount',
             'totalFreezesDuration', 'reportsSent', 'remoteTimestamp', 'currentRoundTripTime', 'availableOutgoingBitrate', 'state'];
         return Object.fromEntries(fields.filter(key => r[key] !== undefined).map(key => [key, r[key]]));
@@ -273,6 +275,11 @@ async function run() {
             if (id % 60 === 0) sourcePulses.push({ id, at: performance.now() });
         }
         ctx.fillStyle = '#172b3a'; ctx.fillRect(0, 0, 640, 360);
+        if (textured) for (let y = 34; y < 320; y += 8) for (let x = 0; x < 640; x += 8) {
+            const n = (((x + sourceFrame * 7) >> 3) * 17 + (y >> 3) * 23) & 255;
+            ctx.fillStyle = `rgb(${n},${(n * 3) & 255},${(n * 7) & 255})`;
+            ctx.fillRect(x, y, 8, 8);
+        }
         ctx.fillStyle = '#48c98b'; ctx.fillRect((sourceFrame * 11) % 540, 65, 100, 220);
         ctx.fillStyle = '#f7b744'; ctx.font = '40px sans-serif'; ctx.fillText(String(id), 30, 335);
         for (let bit = 0; bit < 12; bit++) {
@@ -325,7 +332,14 @@ async function run() {
         controls.push({ action: 'static-first-frame', at: performance.now(), sourceFrame });
         producing = true;
     }
-    phase = 'healthy'; await wait(shortPulse ? 45000 : 6000); snapshots.push(await snapshot());
+    const observeNetwork = async (name, duration, pulse) => {
+        phase = name; controls.push({ action: name, at: performance.now(), pulse });
+        const until = performance.now() + duration;
+        do { await wait(Math.min(1000, Math.max(0, until - performance.now()))); snapshots.push(await snapshot()); }
+        while (performance.now() < until);
+    };
+    if (repeatedPulses) await observeNetwork('healthy', 30000);
+    else { phase = 'healthy'; await wait(shortPulse ? 45000 : 6000); snapshots.push(await snapshot()); }
     if (lifecycle) {
         let appliedProfile = selectedProfile();
         const apply = async profile => {
@@ -383,11 +397,22 @@ async function run() {
         await wait(6000); snapshots.push(await snapshot());
     }
     if (network) {
-        await fetch('/shaper?rate=' + shapedRate);
-        phase = 'limited'; await wait(shortPulse ? 1000 : 14000); snapshots.push(await snapshot());
-        await fetch('/shaper?rate=0');
-        // --auto extends recovery observation; adaptation always belongs to the product.
-        phase = 'released'; await wait(automatic ? 40000 : 10000); snapshots.push(await snapshot());
+        if (repeatedPulses) {
+            for (let pulse = 0; pulse < 3; pulse++) {
+                await fetch('/shaper?rate=' + shapedRate);
+                await observeNetwork('limited', 1000, pulse);
+                await fetch('/shaper?rate=0');
+                await observeNetwork('released', pulse < 2 ? 9000 : 75000, pulse);
+            }
+        } else {
+            await fetch('/shaper?rate=' + shapedRate);
+            phase = 'limited'; controls.push({ action: phase, at: performance.now() });
+            await wait(shortPulse ? 1000 : 14000); snapshots.push(await snapshot());
+            await fetch('/shaper?rate=0');
+            // --auto extends recovery observation; adaptation always belongs to the product.
+            phase = 'released'; controls.push({ action: phase, at: performance.now() });
+            await wait(automatic ? 40000 : 10000); snapshots.push(await snapshot());
+        }
         if (displaySource) {
             const healthy = sourceFrames.findLast(frame => frame.phase === 'healthy');
             if (!healthy || sourceFrames.some(frame => ['limited', 'released'].includes(frame.phase) &&
@@ -399,7 +424,7 @@ async function run() {
         audioMonitors: audioMonitors.map(({ role, pulses, attached }) => ({ role, pulses, attached })),
         monitors: monitors.map(({ role, samples }) => ({ role, samples })) };
 }
-const configuration = { mode, codec, product: true, network, automatic, av, high, single, late, shortPulse,
+const configuration = { mode, codec, product: true, network, automatic, av, high, single, late, shortPulse, repeatedPulses, textured,
     background, nativeSource, displaySource, quietStart, lifecycle, relay, shapedRate, profile: selectedProfile() };
 try {
     window.probeResult = { ...configuration, ...await run(), controls, visibility, productTrace, errors };

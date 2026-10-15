@@ -51,9 +51,11 @@ experiments and their limits.
 - [ ] **Sustained quality loss.** Retest the affected Native Host and the
   v1.9.2 self-hosted Browser setup with matched Host/Viewer/Server diagnostics,
   route and codec. [Native controls](./research/node-local-media-design.md#send-queue-recovery)
-  and [Browser trials](./research/network-lab.md#sustained-quality-recovery)
+  and [P2P/Browser trials](./research/network-lab.md#sustained-quality-recovery)
   do not establish these reports' causes; Browser recovery can still take tens
-  of seconds. Do not infer server CPU requirements from an unmatched report.
+  of seconds after allocation recovers. Controlled repetition no longer depends
+  on reporter availability; matched reports are needed to attribute their cases.
+  Do not infer server CPU requirements from an unmatched report.
 
 - [ ] **Linux Portal target identity acceptance (#470).** The
   [contributor fix](https://github.com/TNTcraftHIM/Piik/pull/470) is integrated

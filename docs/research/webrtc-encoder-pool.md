@@ -503,6 +503,27 @@ encoded about 30 fps with no CPU-limited adaptation. This replay isolates the
 effect of sampled budgets; it is not a coupled end-to-end media test, perceptual
 score, physical capture test or guarantee of instantaneous recovery.
 
+Coupled Native P2P controls on the same date connected this production encoder
+to the live forwarding transport's budget, through Pion vnet ICE/DTLS/RTP and
+TWCC feedback. Synthetic 1080p30 NV12 input retained a 5 Mbps ceiling; a 12 Mbps
+link with 20 ms router delay was limited to 400 kbps. H264's healthy control
+retained 1080p. Three one-second limits at 30/40/50 seconds reduced received
+output to 540p: the codec budget regained at least 4.5 Mbps about 13 seconds
+after final release, while sustained 1080p returned after 21 seconds. A separate
+15-second constraint reached 360p; budget and 1080p returned about 6 and 32
+seconds after release. Timings require five consecutive one-second samples.
+The periodic run's 3,364 received picture AUs decoded in Chrome; parameter-set
+only samples are configuration, not pictures. Repeating that periodic case after
+the relay assembly correction reached 720p, restored budget / sustained 1080p
+after 18 / 26 seconds, and decoded all 3,294 received pictures. These separate
+runs establish neither a performance ranking nor an H264 recovery improvement.
+This validates received bitstreams, not Browser WebRTC playout, physical capture
+or perceptual quality. The encoder and connection were never replaced.
+VP8 controls additionally exposed the
+[Native relay assembly wait](./node-local-media-design.md#native-producer-boundary)
+rather than an allocation failure; its correction does not remove H264's
+separate encoder recovery latency.
+
 ### Compatible Output Groups
 
 The source now retains per-consumer demand instead of taking a minimum across

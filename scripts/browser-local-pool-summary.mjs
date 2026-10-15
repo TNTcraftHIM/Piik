@@ -5,7 +5,8 @@ for (const filename of process.argv.slice(2)) {
         result.cleanup && Object.values(result.cleanup).every(Boolean);
     const configuration = { file: filename, probeSha256: result.probeSha256, mode: result.mode, codec: result.codec,
         product: result.product, high: result.high, single: result.single, late: result.late, network: result.network,
-        automatic: result.automatic, shortPulse: result.shortPulse, av: result.av, background: result.background, nativeSource: result.nativeSource,
+        automatic: result.automatic, shortPulse: result.shortPulse, repeatedPulses: result.repeatedPulses, textured: result.textured,
+        av: result.av, background: result.background, nativeSource: result.nativeSource,
         displaySource: result.displaySource, quietStart: result.quietStart,
         lifecycle: result.lifecycle, relay: result.relay, shapedRate: result.shapedRate, profile: result.profile,
         completed: !!completed, error: result.error, errors: result.errors, cleanup: result.cleanup };
@@ -32,7 +33,7 @@ for (const filename of process.argv.slice(2)) {
                 senderReports: after.receive.filter(r => r.type === 'remote-outbound-rtp').reduce((s, r) => s + (r.reportsSent || 0), 0) - (before?.receive || []).filter(r => r.type === 'remote-outbound-rtp').reduce((s, r) => s + (r.reportsSent || 0), 0), pli: (d.pliCount || 0) - (c.pliCount || 0) };
         }
         for (const monitor of result.monitors) {
-            const samples = monitor.samples.filter(s => s.phase === next.phase), ages = samples.filter(s => s.age !== null).map(s => s.age).sort((a, b) => a - b);
+            const samples = monitor.samples.filter(s => s.at > prev.at && s.at <= next.at), ages = samples.filter(s => s.age !== null).map(s => s.age).sort((a, b) => a - b);
             let backwards = 0, duplicates = 0, maxGapMs = samples[0] ? samples[0].at - prev.at : seconds * 1000;
             for (let j = 1; j < samples.length; j++) {
                 maxGapMs = Math.max(maxGapMs, samples[j].at - samples[j - 1].at);

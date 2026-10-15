@@ -352,6 +352,31 @@ These controls support interrupted recovery between short disturbances, not a
 universal over-sensitive threshold or permanent lock. Bandwidth recovery and
 encoder resolution recovery must be observed separately.
 
+The later textured-Canvas controls used Chrome 154.0.8037.98, two real Browser
+receivers, the same 1080p30 / balanced / 5 Mbps profile, and three one-second
+400 kbps UDP limits after 30 healthy seconds. Pulses were separated by nine
+unconstrained seconds, followed by 75 seconds of recovery. One Viewer was
+shaped; the other retained 1080p throughout. Recovery below requires five
+consecutive one-second observations, not a single frame or estimate spike.
+
+| Sender | Lowest decoded height | Video target at least 4.5 Mbps after final release | Decoded 1080p at least 20 fps after final release |
+| --- | ---: | ---: | ---: |
+| Product shared encoding | 360p | 15.3 s | 23.5 s |
+| Product ordinary sender | 360p | 6.1 s | 22.5 s |
+| Bare WebRTC sender | 270p | 8.2 s | 32.7 s |
+
+The bare control retains the same source, receiver and shaper while replacing
+HostPeer/pooling with a plain PeerConnection, codec preference and initial sender
+limits. Producer traces show restored allocation reaching the pooled encoder
+before its resolution recovered. All three retained their connections and
+cleaned up. These single runs isolate a mechanism, not a ranking or field
+diagnosis. A separate 2.5 Mbps, one-second shared-encoding control retained
+1080p without packet loss; a 400 kbps limit is severe congestion for this scene,
+even when brief. H264 recovery latency therefore cannot all be attributed to
+Piik's pool, nor can every small network disturbance be called over-sensitive.
+The [coupled Native controls](./webrtc-encoder-pool.md#budget-restoration)
+separate transport recovery from Native encoding and frame assembly.
+
 **Short disturbances can enter the persistent state.** Two one-second rate/loss
 pulses, each followed by 40 unconstrained seconds, took the bare tab sender from
 778p to 418p and then 238p; the actual Piik pool comparison ended at 148p.
@@ -722,6 +747,12 @@ The pool check expects one output owner per compatible allocation, not one
 owner for children with different bandwidth budgets. Set
 `--network --auto --short-pulse` for a 45-second warmup, one-second constraint
 and 40-second recovery instead of the ordinary 14-second constraint. Set
+`--network --auto --repeated-pulses --textured --rate=400000 --preference=balanced`
+with `--1080 --h264 --av` to repeat the textured comparison: 30-second warmup,
+three one-second limits separated by nine seconds, and 75 seconds after the last
+release. It samples stats every second and records each actual rate-change time;
+use `ordinary` and `carrier` serially. `--textured` only changes the synthetic
+picture and also works with the single-pulse controls. Set
 `CHROME_PATH` for another installed Chromium binary. `--auto` extends the
 recovery observation; product code owns all adaptation. Results go to ignored
 `build/browser-local-pool`; summarize with

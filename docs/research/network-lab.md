@@ -268,6 +268,14 @@ survive that deadline, while each attempted route retains its finite budget.
 
 ## Sustained Quality Recovery
 
+P2P stage comparisons also use the existing
+[Browser shared/ordinary probe](./browser-local-encoding-pool.md#sustained-h264-recovery)
+with recorded UDP limits and decoded frames, and
+[coupled Native encoding/transport controls](./webrtc-encoder-pool.md#budget-restoration).
+Compare restored allocation, encoded dimensions and received/decoded progress
+separately. Single-codec recovery and an unblocked packet stream do not establish
+recovery of every receiver or perceptual quality.
+
 The CPU-only `TestPublicationConstrainedRecovery` gate complements the Browser
 cases below. It runs the actual Native publication allocator and Pion transport
 through healthy, brief, periodic and sustained constraints, then pause/resume

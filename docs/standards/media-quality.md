@@ -361,6 +361,9 @@ never its shared video/audio source or healthy siblings.
 Native keyframe requests retain their output scope through coalescing; a relay
 requests its single upstream stream once per batch while keeping local output
 recovery separate.
+Native relay assembly bounds both packet storage and stalled media progress.
+An incomplete frame must not wait for a memory-sized packet window to fill before
+requesting recovery; quiet input and ordinary reordering remain valid.
 
 Native capture uses the same screen-share output construction within Host
 ceilings. Its source, source clock and higher outputs remain independent of

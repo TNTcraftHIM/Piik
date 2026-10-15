@@ -10,7 +10,7 @@ import { parseVideoGateSize } from './media-gate-geometry';
 
 const mode = process.argv[2] || 'carrier', args = process.argv.slice(3);
 const flags = new Set(['--product', '--1080', '--h264', '--single', '--av', '--late', '--background',
-    '--native-source', '--lifecycle', '--network', '--auto', '--relay', '--debug', '--short-pulse', '--display', '--quiet-start']);
+    '--native-source', '--lifecycle', '--network', '--auto', '--relay', '--debug', '--short-pulse', '--repeated-pulses', '--textured', '--display', '--quiet-start']);
 if (!['ordinary', 'carrier'].includes(mode)) throw Error('Expected ordinary|carrier');
 for (const arg of args) if (!flags.has(arg) && !arg.startsWith('--rate=') && !arg.startsWith('--preference=') && !arg.startsWith('--audio-bitrate=') && !arg.startsWith('--size='))
     throw Error('Unsupported option: ' + arg);
@@ -24,6 +24,7 @@ const quietStart = args.includes('--quiet-start');
 const nativeSource = background || args.includes('--native-source'), lifecycle = args.includes('--lifecycle');
 const relay = args.includes('--relay');
 const shortPulse = args.includes('--short-pulse');
+const repeatedPulses = args.includes('--repeated-pulses'), textured = args.includes('--textured');
 const rate = Number(args.find(arg => arg.startsWith('--rate='))?.split('=')[1] || 120000);
 const audioBitrate = Number(args.find(arg => arg.startsWith('--audio-bitrate='))?.split('=')[1] || 128000);
 if (!Number.isInteger(audioBitrate) || audioBitrate < 6000 || audioBitrate > 320000) throw Error('Audio bitrate must be 6000..320000 bps');
@@ -33,6 +34,8 @@ if (!Number.isInteger(rate) || rate <= 0) throw Error('Rate must be a positive i
 if (lifecycle && (nativeSource || network || relay)) throw Error('Lifecycle uses direct canvas/display capture without network shaping');
 if (single && late) throw Error('Single-viewer control cannot also late-join B');
 if (shortPulse && (!network || !automatic)) throw Error('Short pulse requires --network --auto');
+if (repeatedPulses && (!network || !automatic || shortPulse)) throw Error('Repeated pulses require --network --auto without --short-pulse');
+if (textured && nativeSource) throw Error('Textured source requires canvas/display capture');
 if (displaySource && nativeSource) throw Error('Display and fake-device sources are separate probes');
 if (quietStart && !displaySource) throw Error('Quiet start requires real display capture');
 const root = resolve(import.meta.dirname, '..');
@@ -84,7 +87,7 @@ const chrome = await launchChrome(process.env.CHROME_PATH || 'C:/Program Files/G
         ...(background ? [] : ['--disable-background-timer-throttling', '--disable-renderer-backgrounding']),
         ...(nativeSource ? ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] : [])]);
 chrome.stdout.resume(); chrome.stderr.resume();
-let result: Record<string, unknown> = { mode, codec, product: true, network, automatic, high, av, single, late, shortPulse,
+let result: Record<string, unknown> = { mode, codec, product: true, network, automatic, high, av, single, late, shortPulse, repeatedPulses, textured,
     background, nativeSource, displaySource, quietStart, lifecycle, relay, shapedRate: rate, preference };
 try {
     const version = await waitForVersion(debugPort, chrome);
@@ -95,7 +98,7 @@ try {
         query.set('width', String(size.width)); query.set('height', String(size.height));
     }
     if (process.argv.includes('--debug')) query.set('debug', '1');
-    for (const [key, value] of Object.entries({ network, automatic, high, av, single, late, background, nativeSource, displaySource, quietStart, lifecycle, relay, shortPulse }))
+    for (const [key, value] of Object.entries({ network, automatic, high, av, single, late, background, nativeSource, displaySource, quietStart, lifecycle, relay, shortPulse, repeatedPulses, textured }))
         query.set(key, value ? '1' : '0');
     await cdp.call('Page.navigate', { url: 'http://127.0.0.1:' + port + '/?' + query }, page.sessionId, Date.now() + 5000);
     if (displaySource) {
@@ -103,7 +106,7 @@ try {
         await cdp.call('Runtime.evaluate', { expression: 'void window.acquireDisplay()', userGesture: true }, page.sessionId, Date.now() + 3000);
     }
     await waitForSample(() => evaluate<boolean>(cdp!, page!, 'window.probeDone===true', Date.now() + 2000),
-        Boolean, automatic || lifecycle ? 110000 : network || background ? 60000 : 25000);
+        Boolean, repeatedPulses ? 170000 : automatic || lifecycle ? 110000 : network || background ? 60000 : 25000);
     result = await evaluate<Record<string, unknown>>(cdp, page, 'window.probeResult', Date.now() + 3000);
 } catch (error) {
     result.error = String(error);
@@ -116,7 +119,7 @@ try {
     result.probeSha256 = createHash('sha256').update(body).digest('hex');
     result.cleanup = clean;
     await mkdir(join(root, 'build/browser-local-pool'), { recursive: true });
-    const name = [mode, codec.toLowerCase(), displaySource && 'display', network && 'network', automatic && 'auto', shortPulse && 'pulse', high && '1080',
+    const name = [mode, codec.toLowerCase(), displaySource && 'display', network && 'network', automatic && 'auto', shortPulse && 'pulse', repeatedPulses && 'repeated-pulses', textured && 'textured', high && '1080',
         single && 'single', late && 'late', quietStart && 'quiet-start', background && 'background', lifecycle && 'lifecycle', relay && 'relay', Date.now()].filter(Boolean).join('-');
     const output = join(root, 'build/browser-local-pool', name + '.json');
     await writeFile(output, JSON.stringify(result, null, 2) + '\n');

@@ -59,6 +59,96 @@ func TestRelayInputKeepsRecoveryAndEmitsACompleteQuietFrame(t *testing.T) {
 	}
 }
 
+func TestRelayInputBoundsStalledAssemblyByMediaTime(t *testing.T) {
+	for _, scenario := range []struct {
+		name, codec string
+		partial     bool
+	}{
+		{"vp8-missing", "vp8", false}, {"vp8-partial", "vp8", true},
+		{"h264-missing", "h264", false}, {"h264-partial", "h264", true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			requests := 0
+			input := relayVideoInput{codec: scenario.codec, onPacketDropped: func() { requests++ }}
+			key, _ := hex.DecodeString("1000009d012aa0005a00")
+			key = append([]byte{0x10}, key...)
+			delta, fragment := []byte{0x10, 1, 0}, []byte{0x10, 1, 0}
+			if scenario.codec == "h264" {
+				key = []byte{0x78}
+				for _, nal := range [][]byte{sfu.H264KeyFrame2x2[0], sfu.H264KeyFrame2x2[1], sfu.H264KeyFrame2x2IDR} {
+					key = append(key, byte(len(nal)>>8), byte(len(nal)))
+					key = append(key, nal...)
+				}
+				delta, fragment = []byte{0x61, 1, 0}, []byte{0x7c, 0x81, 1}
+			}
+			origin := uint32(0xffff0000) // Exercise media-clock wrap as well.
+			push := func(sequence uint16, timestamp uint32, marker bool, payload []byte) {
+				t.Helper()
+				if err := input.push(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: sequence, Timestamp: timestamp, Marker: marker}, Payload: payload}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			push(10, origin, true, key)
+			if sample, _ := input.pop(); sample == nil {
+				t.Fatal("no initial recovery")
+			}
+			if scenario.partial {
+				push(11, origin+3000, false, fragment)
+			}
+			// Sequence 12 never arrives. At low packet rates the memory-sized
+			// reorder window must not postpone keyframe feedback for minutes.
+			for frame := uint32(2); frame <= 40; frame++ {
+				push(uint16(11+frame), origin+frame*3000, true, delta)
+				for sample, _ := input.pop(); sample != nil; sample, _ = input.pop() {
+					if requests == 0 {
+						t.Fatal("dependent frame escaped before loss notification")
+					}
+				}
+				if frame < 30 && requests != 0 {
+					t.Fatal("discarded within the reorder allowance")
+				}
+			}
+			if requests == 0 {
+				t.Fatal("missing media still blocked recovery after a second")
+			}
+			push(100, origin+123000, true, key)
+			if sample, _ := input.pop(); sample == nil {
+				t.Fatal("recovery remained blocked")
+			}
+		})
+	}
+}
+
+func TestRelayInputKeepsReorderingAndQuietSource(t *testing.T) {
+	requests := 0
+	input := relayVideoInput{codec: "vp8", onPacketDropped: func() { requests++ }}
+	key, _ := hex.DecodeString("1000009d012aa0005a00")
+	push := func(sequence uint16, timestamp uint32, payload []byte) {
+		t.Helper()
+		if err := input.push(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: sequence, Timestamp: timestamp, Marker: true}, Payload: payload}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	push(10, 0, append([]byte{0x10}, key...))
+	if sample, _ := input.pop(); sample == nil {
+		t.Fatal("no recovery")
+	}
+	push(12, 6000, []byte{0x10, 1, 0})
+	if sample, _ := input.pop(); sample != nil {
+		t.Fatal("sequence gap was ignored")
+	}
+	push(11, 3000, []byte{0x10, 1, 0})
+	for _, timestamp := range []uint32{3000, 6000} {
+		if sample, got := input.pop(); sample == nil || got != timestamp {
+			t.Fatal("reordered frame was lost")
+		}
+	}
+	push(13, 30*videoClockRate, []byte{0x10, 1, 0})
+	if sample, _ := input.pop(); sample == nil || requests != 0 {
+		t.Fatal("quiet input became packet loss")
+	}
+}
+
 func TestRelayInputRejectsUnsafeH264Configuration(t *testing.T) {
 	// Generated Constrained Baseline SPS: ID 0 is 5120x2880; ID 1 is
 	// 160x90. A decoder may use either, regardless of which arrived last.
