@@ -532,23 +532,21 @@ the constrained child recovers after release while the healthy child retains its
 original dimensions. These checks do not establish the cause of an unmatched
 physical Host's low-resolution session.
 
-One publication boundary remains reproducible with two declared encodings but
-only the rate-controlled lowest requested. It remains after the cache-expiry
-repair: a 2026-10-15 retained-connection 6 Mbps -> 120 kbps -> 6 Mbps control
-held a 94 kbps budget and delivered about 92 kbps of its requested 300 kbps,
-with no further probing. Earlier repeats could cross the fixture's loose
-250 kbps threshold; one passing run therefore does not establish full recovery.
-The full SFU allocator probes spatial deficiency, so it stops exploring once
-that single active RID fits its reduced
-encoding. Diagnostics report that limitation but cannot repair probe demand.
+One publication boundary remains reproducible after the cache-expiry repair:
+the full SFU allocator probes spatial deficiency, so it stops exploring once
+the sole active RID fits its reduced encoding. In 2026-10-15 retained-connection
+6 Mbps -> 120 kbps -> 6 Mbps controls, a rate-controlled 300 kbps output settled
+at a 94 kbps budget with two declared RIDs, and 222 kbps with just one declared
+output. Thus the gap does not depend on an unused higher RID. Diagnostics report
+the limitation but cannot repair probe demand.
 
 A matched isolated library extension adds the local encoder's unmet demand to
 the same allocator's state and padding probe, restoring sustained 295--296 kbps.
 The stronger control requires both the requested ceiling and sustained media
 above 90% of that ceiling; merely crossing 250 kbps is insufficient. Prolonged
-congestion, pause/resume, replacement with a higher ceiling, and real Opus
-320/96/320 kbps controls also pass. Demand is withdrawn when the output is
-inactive or retired, compared with the committed budget, and expressed relative
+congestion, publication-demand pause/resume, replacement with a higher ceiling,
+and real Opus 320/96/320 kbps controls also pass. Demand is withdrawn when the
+output is inactive or retired, compared with the committed budget, and expressed relative
 to actual allocated usage. The
 allocator's existing event loop refreshes it without another timer or controller.
 No source measurement is fabricated.
@@ -558,8 +556,9 @@ capacity and disables probing; a minimum-capacity setting is not measured
 recovery. Neither is a valid adapter for this demand. A narrow upstream input
 remains the integration boundary; copying the complete allocator or running a
 second probe owner is not accepted. The extension remains an ignored experiment,
-not product code. This synthetic RTP/TWCC comparison neither decodes video nor
-diagnoses a direct P2P field session.
+not product code. The single-output control likewise restores sustained payload
+to 295 kbps with the input. This synthetic RTP/TWCC comparison neither decodes
+video nor diagnoses a direct P2P field session.
 
 Live audio changes exposed a related scope mismatch: Piik's TWCC tracks only
 video, but the adapter deducted audio from that measured capacity and included

@@ -445,6 +445,8 @@ class AdaptiveEncoder::Impl final : public webrtc::VideoSourceInterface<webrtc::
       const auto rate = webrtc::DataRate::BitsPerSec(std::min(bitrate, ceiling_.bit_rate));
       if (!bitrate_ || *bitrate_ != rate.bps()) {
         encoder_->OnBitrateUpdated(rate, rate, 0, 0, 0);
+        // VideoSendStream normally reports this separately from the encoder update.
+        stats_->OnSetEncoderTargetRate(static_cast<uint32_t>(rate.bps()));
         bitrate_ = rate.bps();
       }
       if (key_frame) encoder_->SendKeyFrame();

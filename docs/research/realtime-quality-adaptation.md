@@ -533,6 +533,10 @@ dormant outputs, source replacement and retirement. Neither set establishes a
 single cause for unmatched field reports; no reset loop, minimum quality or
 second congestion controller follows from the shared symptom.
 
+The [Native encoder control](./webrtc-encoder-pool.md#budget-restoration) also
+separates restored allocation from later resolution recovery; that delay is not
+specific to Browser capture or proof that a network estimate is still low.
+
 ### Mature Product Boundaries
 
 Discord documents a multi-process capture/encode/transport/decode pipeline,

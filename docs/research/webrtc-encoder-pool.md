@@ -470,6 +470,30 @@ path remains. The four-second decision budget is unchanged. Current grouping
 at that point still folded multiple weak consumers into one low budget; the
 following integration addresses that independent requirement.
 
+### Budget Restoration
+
+A 2026-10-15 Windows control isolates the production `AdaptiveEncoder` from
+network estimation: unchanged 1080p30 synthetic NV12 input, 5 Mbps budget,
+400 kbps pulses for one second at 15/25/35 seconds, and a 100-second run.
+Hardware H264 dropped to 720p after each pulse had ended and returned to 1080p
+about six seconds after each budget restoration. VP8 retained 1080p in the
+matched schedule. With a continuous 15-second constraint, H264 reached 360p
+and restored 1080p about 19 seconds after the budget returned, via 540p/720p.
+The original input and encoder pipeline remained alive; these are encoded
+dimensions, not decoded/perceptual or physical-network acceptance. One machine
+and synthetic scene do not establish a codec ranking or the field reports' cause.
+
+This confirms separate encoder recovery latency after allocation recovers;
+lowering a network threshold cannot directly repair it. The pinned WebRTC
+[quality scaler](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/utility/quality_scaler.cc)
+uses frame-drop/QP history and distinct down/up conditions. No extra Piik
+cooldown, forced resolution floor or pipeline reset follows from this control.
+The same trace exposed a missing statistics notification: the adapter now
+reports its clamped encoder target through `OnSetEncoderTargetRate`, as
+[VideoSendStream does](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/video_send_stream_impl.cc#1016).
+Previously diagnostics showed zero even while encoding at a positive budget.
+This corrects observation, not adaptation policy.
+
 ### Compatible Output Groups
 
 The source now retains per-consumer demand instead of taking a minimum across
