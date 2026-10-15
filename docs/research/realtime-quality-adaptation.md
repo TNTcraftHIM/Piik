@@ -547,19 +547,55 @@ that result is evidence for native pipeline boundaries, not a Browser API recipe
 Discord also reported a real frame-drop ratchet where reconfiguring an encoder
 to its already-reduced cadence increased bits per frame and compounded drops.
 
-A signed local NetEase UU Remote 4.38.3 installation separates UI, service,
-streamer, codec detector, virtual-display and audio components. Its non-sensitive
-capability caches contain 41 encoder and 74 decoder entries keyed by codec,
-adapter/device, dimensions, frame rate, implementation, chroma sampling and bit
-depth. This supports profile-scoped capability caching and process isolation as
-mature native practices; enum meanings and proprietary algorithms were not
-inferred, and the detector was not executed.
+Signed local NetEase UU Remote installations separate UI, service, streamer,
+codec detector, virtual-display and audio components. The inspected capability
+caches key encoder/decoder support by codec, adapter/device, dimensions, frame
+rate, implementation, chroma sampling and bit depth. This supports profile-scoped
+capability caching and process isolation; the detector was not executed.
+
+A static review of 4.40.1 also found WebRTC congestion-control, quality-scaling
+and probing components. Three encoder-adapter constructors supply the same
+cadence-controller defaults: five downshift samples, a 4,000 ms observation
+window, 10% headroom and a 25% rapid-upshift threshold. Local control-flow and
+log-argument references establish that sample count and elapsed time both gate
+a downshift, with a separate rapid cadence-increase branch. These are encoder
+cadence settings, not packet-loss thresholds or verified live-session policy.
+The binary also contains ALR and rapid-recovery probing configuration; static
+presence does not establish runtime activation or equivalence to current WebRTC.
+
+The [unofficial UU Linux host](https://github.com/VallierDev/uu-remote-linux/tree/15bb35573d8b71d6fe0943d8daa46f0bdc5bc2cb)
+is a different implementation. Its inspected `capture_setting.rs`, `video.rs`
+and `webrtc.rs` use viewer-selected quality/FPS, constant-quality encoding with
+a bitrate cap, a four-frame queue and dependency-aware dropping until an IDR.
+The default subprocess path relies on a short GOP; the optional in-process
+encoder can answer PLI/FIR directly. Receiver reports feed diagnostics, with no
+sender network-estimate-to-encoder-rate loop found in this source. Its preset
+values therefore do not establish NetEase's adaptation or recovery algorithm.
 
 KOOK's official 1080p60 guidance requires substantial CPU/GPU headroom and its
 troubleshooting explicitly notes that hardware acceleration can worsen some
 systems. Oopz treats VPN/accelerator changes as an independent network-path
-diagnostic. Together these support measured fallback and stage-specific
-diagnosis rather than a universal hardware, codec or transport switch.
+diagnostic. Its inspected 0.88.41 package includes Agora and TRTC libraries;
+the packaged screen-share player entry configures Agora RTC/H264 playback with
+HLS fallback available. Bundled SDK code is not evidence that every feature is
+active, or that the publisher uses a particular QoS setting. Agora and TRTC's
+public APIs explicitly distinguish clarity from cadence preferences; TRTC also
+warns that equating minimum and target bitrate disables bitrate adaptation.
+These sources support explicit media intent and stage-specific diagnosis,
+not a universal hardware switch or a forced quality floor.
+
+The useful shared lesson is to separate congestion response, encoder cadence
+and recovery demand. WebRTC's pinned [probe controller](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/congestion_controller/goog_cc/probe_controller.cc)
+already distinguishes a large bandwidth drop, a bounded recovery-probe window,
+ALR and maximum allocation. Its [quality scaler](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/utility/quality_scaler.cc)
+separately requires samples and smoothed QP evidence. Piik's Native encoder uses
+that encoder owner but receives transport budgets from Pion/LiveKit; copying a
+GCC field trial into the encoder would not repair publication allocation.
+Complete the [missing publication demand input](./node-local-media-design.md#send-queue-recovery)
+before considering new thresholds. Any later policy experiment must compare
+brief/repeated pulses with sustained congestion and low-cadence sources, and
+measure latency, loss and recovery as well as retained dimensions. This review
+does not authorize another adaptation controller or reopen the Browser hold.
 
 Production room 4521 supplied a separate network/source boundary. It used one
 stable Host-to-Viewer P2P edge with no reparent or SFU activity, yet Chromium
@@ -716,6 +752,8 @@ percentages, and tuning loops are not adopted for this Browser product.
 - [KOOK screen-share requirements](https://support.kookapp.cn/7ff3/b671)
 - [KOOK resource troubleshooting](https://help.kookapp.cn/6a2f/8525)
 - [Oopz network-path troubleshooting](https://help.oopz.cn/fa71/694b)
+- [Agora degradation preferences](https://api-ref.agora.io/en/video-sdk/android/4.x/API/enum_degradationpreference.html)
+- [TRTC encoding and QoS parameters](https://trtc.io/document/50775)
 - [LiveKit server forwarder](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)
 - [LiveKit server defaults](https://github.com/livekit/livekit/blob/v1.13.5/pkg/config/config.go)
 - [LiveKit Dynacast manager](https://github.com/livekit/livekit/blob/v1.13.5/pkg/rtc/dynacast/dynacastmanagervideo.go)
