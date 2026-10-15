@@ -338,6 +338,20 @@ recreated its connection. These controls verify that current Browser budget
 recovery can reach the encoder; they do not invalidate the textured-scene or
 display-capture results.
 
+A periodic variant on the same date used 15 healthy seconds, three one-second
+400 kbps limits separated by nine unconstrained seconds, and a final 35-second
+recovery. Ordinary sending regained a 5 Mbps outgoing estimate six seconds after
+the final release, but decoded 720p persisted until 19 seconds after release.
+Pooled sending also downscaled and recovered, retaining its original producer;
+these single runs do not rank the two paths. A 1 Mbps ordinary control with the
+same timing retained 1080p without observed packet drops or freezes. The simple
+scene used about 600 kbps before shaping; the 400 kbps pulse therefore caused
+real congestion, not merely a harmless estimate change. The receiver negotiated
+32 kbps Opus despite the requested 128 kbps, limiting the audio load covered.
+These controls support interrupted recovery between short disturbances, not a
+universal over-sensitive threshold or permanent lock. Bandwidth recovery and
+encoder resolution recovery must be observed separately.
+
 **Short disturbances can enter the persistent state.** Two one-second rate/loss
 pulses, each followed by 40 unconstrained seconds, took the bare tab sender from
 778p to 418p and then 238p; the actual Piik pool comparison ended at 148p.

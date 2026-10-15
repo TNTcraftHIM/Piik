@@ -506,6 +506,18 @@ flaky comparisons also registered TWCC twice on the receiver, duplicating
 feedback; those results do not rank the queues. Product receivers already use
 the single default interceptor owner.
 
+A 2026-10-15 periodic variant retained the same transport for 68 seconds, with
+one-second 500 kbps limits starting at 12, 22 and 32 seconds and 6 Mbps otherwise.
+The declared outputs were 300 kbps and 1.2 Mbps. Each pulse selected the lower
+output; the higher output returned about 3--8 seconds after release, and final
+delivery remained about 1.18 Mbps. Thus one-second congestion can affect delivery
+for longer without losing recovery demand. This exercises actual RTP/TWCC,
+allocation, probing and activation, but uses synthetic video payloads without a
+codec or decoder; it cannot measure resolution-recovery delay or perceptual blur.
+The [Browser comparisons](./browser-local-encoding-pool.md#sustained-h264-recovery)
+separately demonstrate encoder lag after allocation recovers. Neither experiment
+establishes that all short disturbances deserve a slower congestion response.
+
 Partial recovery exposed a second adapter omission: a rate-controlled local
 output can remain below its own ceiling without needing another spatial layer.
 Probe demand now includes that unmet current-output demand, including when no
