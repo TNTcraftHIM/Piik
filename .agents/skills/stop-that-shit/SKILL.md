@@ -18,7 +18,7 @@ Piik 是供朋友分享的小项目。优先简单、好用、漂亮和实际效
 复杂度、验证时间和维护负担都是真实成本。用户已经授权的合理工作，应当推进到可用结果。
 
 这是用户要求的提炼，也是本地工作尺度。与 [Ponytail](../ponytail/SKILL.md) 一起使用；
-验证范围按本规则取舍，不机械执行通用 skill 的“每个非平凡改动都新增测试”。
+新方法、新机制必须完整验证其实际行为。减负针对重复测试和无用防御，不降低验证质量。
 [AGENTS.md](../../../AGENTS.md) 和 [CONTRIBUTING.md](../../../CONTRIBUTING.md)
 继续拥有权限、产品约束和交付流程。
 
@@ -34,9 +34,10 @@ Piik 是供朋友分享的小项目。优先简单、好用、漂亮和实际效
   对当前可达问题有作用；“以后可能用上”“以防万一”不构成理由。
 - **兼容只服务现有承诺。** 按已发布的兼容约定处理真实消费者；不为废弃实验、未发布旧代码
   或想象中的客户端保留双读写、别名和迁移层。不要把内部实现变化一律升级成协议问题。
-- **验证要回答问题。** 优先使用已有检查或复现，验证用户能观察到的结果；必要时加一个能
-  抓住真实回归的检查。小文案、布局和可逆低影响改动不默认新增单元测试；不为每个分支、
-  私有函数、实现细节或检查工具再造测试。不同断言只有覆盖不同的实际失败才值得保留。
+- **新机制要验完整。** 沿实际调用链验证预期效果及受影响的主路径，覆盖相关的失败、恢复
+  和生命周期行为；不能用一个 happy path 或孤立单测宣称完成。复用现有检查和复现，缺口
+  补有效回归。小文案、布局和可逆低影响改动不默认新增单元测试；不为每个分支、私有函数
+  或实现细节各造一套测试。同一机制的不同检查应回答不同的实际问题。
 - **已回答的问题不要反复验。** 相关代码、依赖、环境或证据没有变化，就复用有效结果。
   失败后检查具体原因；修正后重跑受影响部分。全套检查按交付阶段执行，不在每次小改后重跑。
   不为“再放心一点”追加矩阵、审计代理、证明文件或验证流程；明确要求的专项验收照常完成。
@@ -66,5 +67,5 @@ Piik 是供朋友分享的小项目。优先简单、好用、漂亮和实际效
 - [Stop That Shit](https://github.com/lennney/stop-that-shit/blob/0.2.4/skills/stop-that-shit/SKILL.md)：额外动作须有当前用途，任务要完成，验证循环要结束。
 - [STSS](https://github.com/lennney/stop-that-shit/blob/0.2.4/skills/stss/SKILL.md)：只保留影响读者决定的限定，减少自我辩护。
 - [Avoid Over-Defensive Programming](https://github.com/aravelo7/codex-agent-skills/blob/main/skills/avoid-overdefensive-programming/SKILL.md)：修正错误源头，避免假成功和静默兜底；不引入其逐分支报告流程。
-- [Ponytail](../ponytail/SKILL.md)：复用现成能力，选最小正确实现；验证要求服从本地任务尺度。
+- [Ponytail](../ponytail/SKILL.md)：复用现成能力，选最小正确实现；新机制验证完整，已回答的问题及时收口。
 - [社区案例：小任务膨胀](https://www.reddit.com/r/codex/comments/1vf5elq/how_do_you_stop_codexclaude_from_overengineering/)与[重复实现和返工](https://www.reddit.com/r/codex/comments/1ujnwxb/codex_quality_issues_in_realworld_coding_ignored/)：检查实际 diff 与交付价值，避免用更多流程治理过多流程。
