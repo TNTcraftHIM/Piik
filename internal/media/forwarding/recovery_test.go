@@ -31,7 +31,7 @@ func TestTransportConstrainedDormantRecovery(t *testing.T) {
 	if os.Getenv("PIIK_TRANSPORT_RECOVERY") == "" {
 		t.Skip("set PIIK_TRANSPORT_RECOVERY=1 for the bounded virtual-network gate")
 	}
-	for _, scenario := range []string{"video-only", "numeric-audio", "within-lowest-output", "encoded-frame-bursts"} {
+	for _, scenario := range []string{"video-only", "numeric-audio", "within-lowest-output", "encoded-frame-bursts", "raw-forwarding"} {
 		t.Run(scenario, func(t *testing.T) { checkTransportRecovery(t, scenario) })
 	}
 }
@@ -40,6 +40,7 @@ func checkTransportRecovery(t *testing.T, scenario string) {
 	t.Helper()
 	withAudio, recoverLowest := scenario == "numeric-audio", scenario == "within-lowest-output"
 	bursts := scenario == "encoded-frame-bursts"
+	raw := scenario == "raw-forwarding"
 	duration, recoveredAt := 26*time.Second, 20*time.Second
 	lowBitrate, highBitrate, linkCeiling, recoveredBitrate := 300_000, 1_200_000, 6_000_000, 800_000
 	if recoverLowest {
@@ -85,7 +86,7 @@ func checkTransportRecovery(t *testing.T, scenario string) {
 	defer source.Close()
 	// The generated lowest output follows the supplied codec budget, as Native
 	// capture does. Raw SFU forwarding cannot change an upstream encoder's rate.
-	source.SetLowestLayerRateControlled(true)
+	source.SetLowestLayerRateControlled(!raw)
 	sendSettings := webrtc.SettingEngine{}
 	sendSettings.SetNet(sendNet)
 	sendSettings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
@@ -249,8 +250,7 @@ func checkTransportRecovery(t *testing.T, scenario string) {
 		if state.VideoBudget > int64(linkCeiling) {
 			t.Fatalf("probe promoted capacity beyond this fixture's link: %+v", state)
 		}
-		_, observed := transport.TargetBitrate()
-		high := !observed || state.Target == 1 || state.Prepare == 1 || !state.Paused && state.Current == 1
+		high := transport.RequiredActiveCount() > 1
 		if elapsed >= 7*time.Second && elapsed < 12*time.Second {
 			dormant = dormant || !high
 			minimum = min(minimum, state.VideoBudget)
@@ -258,7 +258,11 @@ func checkTransportRecovery(t *testing.T, scenario string) {
 		pts := time.Duration(frame) * period
 		check(source.BeginFrame(pts, now))
 		transport.Output.BeginFrame()
-		for layer, bitrate := range []int64{min(int64(lowBitrate), max(state.VideoBudget, 1)), int64(highBitrate)} {
+		lowest := int64(lowBitrate)
+		if !raw {
+			lowest = min(lowest, max(state.VideoBudget, 1))
+		}
+		for layer, bitrate := range []int64{lowest, int64(highBitrate)} {
 			if layer == 1 && !high {
 				continue
 			}

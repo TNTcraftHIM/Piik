@@ -20,7 +20,9 @@ platform deferrals or establish a diagnosis for unmatched reports.
   lacks it. Retain the [controlled comparison](./research/node-local-media-design.md#send-queue-recovery).
   Do not copy the whole allocator, add another controller, fabricate source
   measurements or force a minimum bitrate. This remains an unresolved local
-  defect, separate from the field reports below.
+  defect, separate from the field reports below. The [recovery owner map](./research/realtime-quality-adaptation.md#recovery-ownership)
+  distinguishes this gap from Browser encoder hysteresis and the other paths'
+  existing recovery mechanisms.
 - [ ] **Mobile App connection entry.** Review the shared App button against
   supported desktop packages so mobile Browsers are not led to an unavailable
   App workflow. Keep Browser sharing available; a future Android App remains

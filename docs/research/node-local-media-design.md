@@ -581,6 +581,16 @@ selectable only through real codec output and the normal library allocation.
 Configured ceilings are conservative and do not replace bandwidth probing;
 no cache of historical layer rates or additional polling owner is introduced.
 
+A 2026-10-15 raw-forwarding arm of the same network gate checks this boundary
+without a local rate-controlled encoder. The 6 Mbps -> 500 kbps -> 6 Mbps link
+stops the higher output and then restores about 1.18 Mbps on the retained
+connection. Removing only dormant-output probe demand in an isolated control
+leaves about 294 kbps, no active probe and no higher output after release.
+The fixture uses the production `RequiredActiveCount` to activate outputs;
+configured demand never substitutes for measured source bitrate. This verifies
+the shared forwarding adapter used by SFU subscribers, not a complete hosted
+Browser/SFU session or a field-report diagnosis.
+
 ### Capture Boundary
 
 Output construction follows the [media-quality owner](../standards/media-quality.md):

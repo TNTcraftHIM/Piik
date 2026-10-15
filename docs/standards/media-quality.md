@@ -256,6 +256,11 @@ quality/source changes retain it. Other native platform encoders remain H264.
 
 ## Framework-Owned Adaptation
 
+Requested ceilings, committed network allocation and actual encoded output are
+separate facts. Congestion must not turn a temporary reduced output into a new
+requested ceiling. Recovery demand must survive lower-layer selection and reach
+the existing encoder or dormant-output owner without recreating the connection.
+
 Each Browser direct, relay, or SFU video sender owns a separate track. The original
 track remains a source and local presentation track; it is never attached directly
 to an outbound sender. Display capture with raw-frame stream support forwards a

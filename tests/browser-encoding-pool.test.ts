@@ -155,7 +155,7 @@ describe("Browser encoding pool ownership", () => {
     expect(producer.dispose).not.toHaveBeenCalled();
   });
 
-  it("updates shared demand in place when all children need a lower rate", async () => {
+  it("updates shared demand in place through a lower rate and recovery", async () => {
     const first = member(), second = member();
     await sample(4);
     const [producer, output] = [...producers][0];
@@ -165,6 +165,11 @@ describe("Browser encoding pool ownership", () => {
     expect(producers.size).toBe(1);
     expect(output.budget).toBe(500_000);
     expect(producer.update).toHaveBeenCalledWith(profile, 500_000);
+    first.demand.budget = second.demand.budget = 2_000_000;
+    await sample(2);
+    expect(output.budget).toBe(2_000_000);
+    expect(producers.size).toBe(1);
+    expect(producer.dispose).not.toHaveBeenCalled();
     expect(first.select).toHaveBeenCalledTimes(1);
     expect(second.select).toHaveBeenCalledTimes(1);
   });

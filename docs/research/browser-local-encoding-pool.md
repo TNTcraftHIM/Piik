@@ -328,6 +328,16 @@ without Piik's pool, startup guard, quality controller or repeated parameter
 writes. It also reproduced the tab restriction with VP8. Keeping the original
 preview playing and using `resizeMode:none` did not remove it.
 
+Two fresh-process Chrome 154 controls on 2026-10-15 rechecked current ordinary
+and pooled sending with simple Canvas bars, H264 / 1080p30 / balanced / 5 Mbps,
+14 seconds at 400 kbps and 40 seconds after removing the rate limit. Ordinary
+sending recovered from 720p to 1080p about ten seconds after release. The pooled
+connection and its original producer both regained their 5 Mbps target; this
+simple scene stayed at 1080p even while constrained. Neither case refreshed or
+recreated its connection. These controls verify that current Browser budget
+recovery can reach the encoder; they do not invalidate the textured-scene or
+display-capture results.
+
 **Short disturbances can enter the persistent state.** Two one-second rate/loss
 pulses, each followed by 40 unconstrained seconds, took the bare tab sender from
 778p to 418p and then 238p; the actual Piik pool comparison ended at 148p.

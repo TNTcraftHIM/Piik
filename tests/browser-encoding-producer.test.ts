@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserEncodingProducer } from "../src/client/media/browser-encoding-producer";
-import { configureVideoSender, QUALITY_PROFILES } from "../src/client/media/quality";
+import { applyVideoCaptureProfile, configureVideoSender, QUALITY_PROFILES } from "../src/client/media/quality";
 
 vi.mock("../src/client/media/quality", async (original) => ({
   ...await original<typeof import("../src/client/media/quality")>(),
@@ -104,6 +104,12 @@ describe("Browser encoding producer startup", () => {
 
     await producer.update(QUALITY_PROFILES["1080p30"], 400_000);
     expect(vi.mocked(configureVideoSender).mock.lastCall![1].maxBitrate).toBe(400_000);
+    await producer.update(QUALITY_PROFILES["1080p30"], 5_000_000);
+    expect(vi.mocked(configureVideoSender).mock.lastCall![1].maxBitrate).toBe(5_000_000);
+    expect(applyVideoCaptureProfile).toHaveBeenCalledOnce();
+    expect(Connection.instances).toHaveLength(2);
+    expect(send.close).not.toHaveBeenCalled();
+    expect(receive.close).not.toHaveBeenCalled();
     expect(receive.localDescription).toBe(answer);
     expect(Connection.prototype.createAnswer).toHaveBeenCalledOnce();
   });

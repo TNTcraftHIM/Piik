@@ -497,18 +497,41 @@ Viewer then load only their own page plus the shared codec chunk; Join adds a
 and decoded-frame checks. This changes download, parse and retained module work,
 not media behavior or settings.
 
-The current stage decisions are therefore deliberately narrow:
+### Recovery Ownership
 
-| Stage | Current owner and decision |
+The earlier Browser measurements above do not describe the current Native or
+pooled implementation. A 2026-10-15 producer-to-consumer review distinguishes
+these recovery owners; the [media-quality standard](../standards/media-quality.md)
+owns their required behavior.
+
+| Path | Demand and recovery boundary |
 | --- | --- |
-| Capture | Keep native `getDisplayMedia`, profile constraints and `motion`; no JS video preprocessing or synthetic keepalive. |
-| Codec startup | Keep the real full-profile cadence gate; use local Trickle ICE, but do not shorten its proof or cache a device-wide verdict. |
-| Peer and relay encode | Keep one isolated clone and stock WebRTC adaptation per sender under the existing endpoint cap. Browser relay still decodes and re-encodes. |
-| SFU publication | Keep pinned LiveKit's two representations, Dynacast and send-side BWE. Observe total/active encoding counts before changing layer policy. |
-| Receive latency | Keep the Browser jitter buffer and A/V synchronizer; no fixed `jitterBufferTarget` without a loss/latency A/B. |
-| Presentation | Coalesce only Host diagnostic React commits. Media evidence, freshness and route control stay immediate. |
-| Application loading | Prefetch and execute only the current Host, Viewer or Join page; retain the same loading and access behavior. |
-| Native boundary | OS capture fallback, virtual display, shared/zero-copy encode and driver-specific capability caching require a separately accepted native product surface. |
+| Ordinary Browser P2P / relay | Host ceilings remain sender limits. WebRTC owns probing and encoder adaptation. A Browser relay cannot restore detail already removed upstream. |
+| Browser shared encoding | The outgoing carrier retains Host ceilings; its native video allocation updates the existing local producer. Actual encoded byte rate is not the producer's requested ceiling. |
+| Browser SFU publication | WebRTC budgets the aggregate simulcast upload. Fenced SFU demand controls the active prefix; profile changes retain that demand. This does not use the Native publication allocator. |
+| Native P2P / derived relay | The shared forwarding adapter retains unmet local encoder demand within the current layer and declared demand for dormant higher outputs. Group budget changes keep the transport; accepted recovery frames own group changes. |
+| Native SFU publication | The full allocator can lose unmet encoder demand when the sole active, rate-controlled RID fits at its reduced rate. This remains a confirmed integration gap; see the [controlled comparison](./node-local-media-design.md#send-queue-recovery). |
+| SFU subscriber | Raw forwarding selects existing media. Declared higher-output demand can trigger probing and wake the publisher through direct-subscriber demand; the SFU does not encode missing detail. |
+
+Follow requested quality -> committed network allocation -> source frames ->
+encoded output -> delivered/decoded output when locating persistent degradation.
+Restored bandwidth with reduced source frames, restored full-size source with
+reduced encoder output, and an allocator that stopped probing are different
+failures. A quiet scene can legitimately use fewer bytes than its budget;
+receiving packets or regaining one low layer does not prove full recovery.
+Refresh replaces several of these owners at once and cannot identify the cause.
+
+This separation also exists in upstream WebRTC: its
+[probe controller](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/congestion_controller/goog_cc/probe_controller.cc)
+keeps maximum allocation separate from estimated bandwidth, while encoder
+resource adaptation has its own conditions. The current-main inspection does
+not identify a particular Browser's build. Piik's
+[Browser controls](./browser-local-encoding-pool.md#sustained-h264-recovery)
+include both successful recovery and content-dependent encoder hysteresis after
+allocation recovered. Native controls separately cover budget restoration,
+dormant outputs, source replacement and retirement. Neither set establishes a
+single cause for unmatched field reports; no reset loop, minimum quality or
+second congestion controller follows from the shared symptom.
 
 ### Mature Product Boundaries
 
@@ -516,7 +539,7 @@ Discord documents a multi-process capture/encode/transport/decode pipeline,
 OS-specific capture fallback, hardware codec selection, WebRTC bandwidth
 estimation, and joint monitoring of cadence, latency, visual quality, network,
 CPU and memory. Its desktop client uses native capture and codec integration;
-that result is evidence for a future native boundary, not a Browser API recipe.
+that result is evidence for native pipeline boundaries, not a Browser API recipe.
 Discord also reported a real frame-drop ratchet where reconfiguring an encoder
 to its already-reduced cadence increased bits per frame and compounded drops.
 
