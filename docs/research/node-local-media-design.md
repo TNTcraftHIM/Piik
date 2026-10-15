@@ -512,9 +512,13 @@ original dimensions. These checks do not establish the cause of an unmatched
 physical Host's low-resolution session.
 
 One publication boundary remains reproducible: with two declared encodings but
-only the rate-controlled lowest requested, 6 Mbps -> 120 kbps -> 6 Mbps leaves
-about 215--230 kbps of a 300 kbps output after recovery. The full SFU allocator probes
-spatial deficiency, so it stops exploring once that single active RID fits its
+only the rate-controlled lowest requested, the original 6 Mbps -> 120 kbps ->
+6 Mbps control settled at about 215--230 kbps of a 300 kbps output. After RTX
+negotiation was repaired, four repeats on 2026-10-15 settled at 239--273 kbps;
+two still failed the fixture's sustained 250 kbps recovery observation without
+further probing. Repair improves delivery but does not establish consistent
+within-output recovery. The full SFU allocator probes spatial deficiency, so it
+stops exploring once that single active RID fits its
 reduced encoding. Diagnostics now retain this within-output limitation, but
 that does not repair its probe demand. A matched isolated library extension
 adds the local encoder's unmet demand to that allocator's state and existing
