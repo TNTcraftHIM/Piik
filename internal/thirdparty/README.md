@@ -1,6 +1,6 @@
 # Scoped Go Dependency Repairs
 
-The root `go.mod` replaces only these two modules with local source. They retain
+The root `go.mod` replaces these two modules with local source. They retain
 their original module paths and Apache-2.0 licenses. The checked-in source,
 upstream tests and focused regressions are built and tested by
 `npm run check:go`.
@@ -30,8 +30,8 @@ module cache or apply build-time patches.
 `livekit/sendsidebwe` retains only the eight source files from
 [LiveKit v1.13.6's package](https://github.com/livekit/livekit/tree/v1.13.6/pkg/sfu/bwe/sendsidebwe),
 with its original `LICENSE` and `NOTICE`. It uses the existing pinned LiveKit
-interfaces; the rest of LiveKit remains the normal Go dependency. There is no
-whole-module fork or build-time patch.
+interfaces; the rest of LiveKit comes from the pinned Go dependency, including
+the temporary allocator input described below. No build-time patch is applied.
 
 Two measurement corrections are marked in the modified files: probe finalization
 returns the current acknowledged capacity and rejects invalid/empty feedback;
@@ -48,7 +48,7 @@ version covers both corrections and the same regressions pass, remove this
 directory and restore the upstream imports. Review dependency bumps against the
 named baseline; do not evolve a separate congestion-control algorithm here.
 
-The normal LiveKit dependency is pinned through
+The LiveKit dependency includes
 [upstream #5013](https://github.com/livekit/livekit/pull/5013), which restores
 probe delivery after cached RTX packets expire. Its earlier
 [padding correction](https://github.com/livekit/livekit/pull/4993) also replaces
@@ -60,6 +60,23 @@ The retained detector also includes [upstream #4935](https://github.com/livekit/
 and its regression from v1.13.9, adapted to standard Go assertions. Reserved
 TWCC symbols carry no receive delta: skip their measurement rather than consuming
 the next packet's delta or indexing past the feedback array.
+
+### Local Encoder Probe Demand
+
+Until [upstream #5016](https://github.com/livekit/livekit/pull/5016) is available,
+the root module replaces LiveKit with the immutable
+[c4733475 revision](https://github.com/TNTcraftHIM/livekit/commit/c4733475fd9c1547c89794fd83f31fcf4fc7e542),
+based on upstream `18df6ad4b694`. Its only changes are an optional local encoder
+demand input to `StreamAllocator` and regression tests. Native publication uses
+that input; ordinary forwarding leaves it unset. The existing allocator still
+owns probe timing, congestion response and allocation. No allocator source is
+copied into Piik and no build-time patch is applied.
+
+The explicit `TestPublicationConstrainedRecovery` gate and the upstream tests
+cover recovery and withdrawal without replacing measured source rates or
+capacity. Once an upstream revision supports this input and passes those
+checks, remove the replacement directive and its replacement checksums. The
+separate local send-side estimator corrections retain their own removal gate.
 
 ## Pion Repaired-Packet Identity
 

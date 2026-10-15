@@ -137,3 +137,6 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
+
+// Local-encoder demand hook pending upstream #5016; see internal/thirdparty/README.md.
+replace github.com/livekit/livekit-server => github.com/TNTcraftHIM/livekit v1.13.11-0.20261015123910-c4733475fd9c

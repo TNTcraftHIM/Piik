@@ -532,33 +532,40 @@ the constrained child recovers after release while the healthy child retains its
 original dimensions. These checks do not establish the cause of an unmatched
 physical Host's low-resolution session.
 
-One publication boundary remains reproducible after the cache-expiry repair:
-the full SFU allocator probes spatial deficiency, so it stops exploring once
-the sole active RID fits its reduced encoding. In 2026-10-15 retained-connection
-6 Mbps -> 120 kbps -> 6 Mbps controls, a rate-controlled 300 kbps output settled
-at a 94 kbps budget with two declared RIDs, and 222 kbps with just one declared
-output. Thus the gap does not depend on an unused higher RID. Diagnostics report
-the limitation but cannot repair probe demand.
+Native publication exposed a separate boundary: the full allocator probes
+spatial deficiency, so it can stop exploring once a sole active RID fits at its
+reduced encoding. Single-output and two-declared-RID controls both reproduced it.
+[LiveKit #5016](https://github.com/livekit/livekit/pull/5016) adds explicit unmet
+encoder demand to that allocator's existing state/padding probe. Demand is
+withdrawn for inactive/retired or sufficiently allocated output; desired output
+never replaces measured bitrate or capacity. Piik now uses this input.
+[Provenance and removal](../../internal/thirdparty/README.md#local-encoder-probe-demand)
+own the temporary pin. Piik does not copy the complete allocator or add a probe
+owner. `SetChannelCapacity` is not a substitute: it overrides capacity and
+disables probing. A minimum-capacity setting would not prove measured recovery.
 
-A matched isolated library extension adds the local encoder's unmet demand to
-the same allocator's state and padding probe, restoring sustained 295--296 kbps.
-The stronger control requires both the requested ceiling and sustained media
-above 90% of that ceiling; merely crossing 250 kbps is insufficient. Prolonged
-congestion, publication-demand pause/resume, replacement with a higher ceiling,
-and real Opus 320/96/320 kbps controls also pass. Demand is withdrawn when the
-output is inactive or retired, compared with the committed budget, and expressed relative
-to actual allocated usage. The
-allocator's existing event loop refreshes it without another timer or controller.
-No source measurement is fabricated.
-The [pinned allocator](https://github.com/livekit/livekit/blob/18df6ad4b6942c74a6bd95832735addc0d2c6d87/pkg/sfu/streamallocator/streamallocator.go)
-still exposes no such input. `SetChannelCapacity` overrides
-capacity and disables probing; a minimum-capacity setting is not measured
-recovery. Neither is a valid adapter for this demand. A narrow upstream input
-remains the integration boundary; copying the complete allocator or running a
-second probe owner is not accepted. The extension remains an ignored experiment,
-not product code. The single-output control likewise restores sustained payload
-to 295 kbps with the input. This synthetic RTP/TWCC comparison neither decodes
-video nor diagnoses a direct P2P field session.
+Matched 60-second controls retained one rate-controlled output, 30 generated
+frames/s and the same connection. Impairment lowered a 6 Mbps link to 120 kbps;
+the 5 Mbps output control used a 12 Mbps link. Recovery required five consecutive
+one-second windows above 90% of demand, at least 27 recent frame arrivals/s and
+frame-age P95 below 100 ms; delayed bursts did not count.
+
+| Impairment | Before: final payload | With demand input: final payload | Recovery observation |
+| --- | --- | --- | --- |
+| None | 294.1 kbps | 294.2 kbps | Both stable; no probes |
+| One 1-second pulse | 294.2 kbps | 294.2 kbps | Both restored; about 2 seconds |
+| Three 1-second pulses, 10 seconds apart | 294.2 kbps | 294.2 kbps | Both restored; about 2 seconds after the last pulse |
+| 22 seconds of sustained congestion | 230.8 kbps | 294.7 kbps | Before remained limited for the 30-second observation; candidate recovered in about 11 seconds |
+| Same sustained constraint, 5 Mbps output | 1.10 Mbps | 4.95 Mbps | Before remained limited; candidate recovered in about 12 seconds |
+
+Final windows retained 30 frame arrivals/s, with per-window frame-age P95 below
+37 ms for the candidates. These synthetic RTP measurements are not decoded
+quality or a field diagnosis. The [real encoder replay](./webrtc-encoder-pool.md#budget-restoration)
+separately measures the resulting resolution. The retained publication gate also
+passes pause/resume and source replacement. Nil/disabled callbacks and media
+probing retain their policy; removing demand fails the upstream regressions.
+Short-pulse controls do not justify importing another product's cadence
+thresholds into congestion response.
 
 Live audio changes exposed a related scope mismatch: Piik's TWCC tracks only
 video, but the adapter deducted audio from that measured capacity and included

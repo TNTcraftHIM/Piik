@@ -510,7 +510,7 @@ owns their required behavior.
 | Browser shared encoding | The outgoing carrier retains Host ceilings; its native video allocation updates the existing local producer. Actual encoded byte rate is not the producer's requested ceiling. |
 | Browser SFU publication | WebRTC budgets the aggregate simulcast upload. Fenced SFU demand controls the active prefix; profile changes retain that demand. This does not use the Native publication allocator. |
 | Native P2P / derived relay | The shared forwarding adapter retains unmet local encoder demand within the current layer and declared demand for dormant higher outputs. Group budget changes keep the transport; accepted recovery frames own group changes. |
-| Native SFU publication | The full allocator can lose unmet encoder demand when the sole active, rate-controlled RID fits at its reduced rate. This remains a confirmed integration gap; see the [controlled comparison](./node-local-media-design.md#send-queue-recovery). |
+| Native SFU publication | Explicit unmet local encoder demand keeps the existing allocator probing even when the sole active RID fits at its reduced rate. Desired demand remains separate from measured output/capacity; see the [controlled comparison](./node-local-media-design.md#send-queue-recovery). |
 | SFU subscriber | Raw forwarding selects existing media. Declared higher-output demand can trigger probing and wake the publisher through direct-subscriber demand; the SFU does not encode missing detail. |
 
 Follow requested quality -> committed network allocation -> source frames ->
@@ -591,11 +591,12 @@ ALR and maximum allocation. Its [quality scaler](https://webrtc.googlesource.com
 separately requires samples and smoothed QP evidence. Piik's Native encoder uses
 that encoder owner but receives transport budgets from Pion/LiveKit; copying a
 GCC field trial into the encoder would not repair publication allocation.
-Complete the [missing publication demand input](./node-local-media-design.md#send-queue-recovery)
-before considering new thresholds. Any later policy experiment must compare
-brief/repeated pulses with sustained congestion and low-cadence sources, and
-measure latency, loss and recovery as well as retained dimensions. This review
-does not authorize another adaptation controller or reopen the Browser hold.
+The [publication demand repair](./node-local-media-design.md#send-queue-recovery)
+restores this input without changing congestion thresholds. Any later policy
+experiment must compare brief/repeated pulses with sustained congestion and
+low-cadence sources, measuring latency, loss, recovery and retained dimensions.
+This review does not authorize another adaptation controller or reopen the
+Browser hold.
 
 Production room 4521 supplied a separate network/source boundary. It used one
 stable Host-to-Viewer P2P edge with no reparent or SFU activity, yet Chromium

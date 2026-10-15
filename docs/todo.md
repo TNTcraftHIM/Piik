@@ -14,15 +14,13 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
-- [ ] **Native publication recovery.** The sole active rate-controlled RID can
-  stop probing below its ceiling. Integrate explicit encoder demand through the
-  existing allocator when a narrow upstream input is available; the current API
-  lacks it. Retain the [controlled comparison](./research/node-local-media-design.md#send-queue-recovery).
-  Do not copy the whole allocator, add another controller, fabricate source
-  measurements or force a minimum bitrate. This remains an unresolved local
-  defect, separate from the field reports below. The [recovery owner map](./research/realtime-quality-adaptation.md#recovery-ownership)
-  distinguishes this gap from Browser encoder hysteresis and the other paths'
-  existing recovery mechanisms.
+- [ ] **Return LiveKit to an upstream pin.** Native publication now supplies
+  unmet encoder demand to the existing allocator through the scoped dependency
+  revision submitted in [upstream #5016](https://github.com/livekit/livekit/pull/5016).
+  When maintained upstream provides this input, pass the same recovery gate and
+  remove the temporary replacement. [Provenance and removal](../internal/thirdparty/README.md#local-encoder-probe-demand)
+  own that boundary; this local repair does not diagnose the unmatched field
+  reports below or remove the Browser encoder hold.
 - [ ] **Mobile App connection entry.** Review the shared App button against
   supported desktop packages so mobile Browsers are not led to an unavailable
   App workflow. Keep Browser sharing available; a future Android App remains

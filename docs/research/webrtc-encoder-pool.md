@@ -494,6 +494,15 @@ reports its clamped encoder target through `OnSetEncoderTargetRate`, as
 Previously diagnostics showed zero even while encoding at a positive budget.
 This corrects observation, not adaptation policy.
 
+A separate 60-second replay fed the [matched publication budgets](./node-local-media-design.md#send-queue-recovery)
+into the same production H264 encoder, unchanged synthetic 1080p30 NV12 input
+and 5 Mbps ceiling. The old budget trace left output at 640x360 through the end;
+the repaired trace restored 1920x1080 about 21 seconds after link release,
+roughly nine seconds after the transport budget recovered. Both final windows
+encoded about 30 fps with no CPU-limited adaptation. This replay isolates the
+effect of sampled budgets; it is not a coupled end-to-end media test, perceptual
+score, physical capture test or guarantee of instantaneous recovery.
+
 ### Compatible Output Groups
 
 The source now retains per-consumer demand instead of taking a minimum across

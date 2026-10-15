@@ -23,6 +23,76 @@ import (
 	"github.com/pion/webrtc/v4/pkg/media"
 )
 
+func TestPublicationEncoderDemandFollowsCurrentSourceAndLifetime(t *testing.T) {
+	codec := webrtc.RTPCodecParameters{RTPCodecCapability: webrtc.RTPCodecCapability{
+		MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000,
+	}, PayloadType: 96}
+	newSource := func(ceiling uint32) *Source {
+		t.Helper()
+		source, err := NewSource(SourceOptions{ID: "demand", StreamID: "demand", Codec: codec,
+			Formats: []LayerFormat{{Width: 640, Height: 360, Bitrate: ceiling}}, MaxPackets: 500})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { source.Close() })
+		return source
+	}
+	source := newSource(300_000)
+	publication, err := NewPublication(TransportOptions{
+		Source: source, ConnectionID: "demand-child", InitialBitrate: 100_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { publication.Close() })
+	checkDemand := func(want int64) {
+		t.Helper()
+		if got := publication.encoderProbeDemand(); got != want {
+			t.Fatalf("encoder demand = %d, want %d", got, want)
+		}
+		if publication.VideoBudget() != 100_000 {
+			t.Fatal("desired encoder output replaced measured capacity")
+		}
+	}
+	source.SetLowestLayerRateControlled(true)
+	checkDemand(0) // The source is not attached yet.
+	if err := publication.SetConnected(); err != nil {
+		t.Fatal(err)
+	}
+	checkDemand(300_000) // No measured allocation: demand is not ceiling minus capacity.
+	source.SetLowestLayerRateControlled(false)
+	checkDemand(0) // A raw forwarder cannot spend capacity inside this layer.
+	source.SetLowestLayerRateControlled(true)
+	if err := publication.SetActiveCount(0); err != nil {
+		t.Fatal(err)
+	}
+	checkDemand(0)
+	if err := publication.SetActiveCount(1); err != nil {
+		t.Fatal(err)
+	}
+	checkDemand(300_000)
+	next := newSource(600_000)
+	next.SetLowestLayerRateControlled(true)
+	if err := publication.ReplaceSource(next); err != nil {
+		t.Fatal(err)
+	}
+	source.SetLowestLayerRateControlled(false)
+	checkDemand(600_000) // Retirement of the old encoder cannot erase new demand.
+	publication.bandwidth.target.Store(600_000)
+	if got := publication.encoderProbeDemand(); got != 0 {
+		t.Fatalf("satisfied encoder kept probing: %d", got)
+	}
+	publication.bandwidth.target.Store(100_000)
+	checkDemand(600_000)
+	next.SetLowestLayerRateControlled(false)
+	checkDemand(0)
+	next.SetLowestLayerRateControlled(true)
+	if err := publication.Close(); err != nil {
+		t.Fatal(err)
+	}
+	checkDemand(0)
+}
+
 func TestPublicationEmptyProbeCannotIncreaseCapacity(t *testing.T) {
 	const target = int64(1_000_000)
 	log := logger.GetDiscardLogger()

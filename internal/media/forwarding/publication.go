@@ -74,7 +74,8 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 	publication.pacer.sender = pacer.NewBase(log, publication.bandwidth)
 	publication.allocator = streamallocator.NewStreamAllocator(streamallocator.StreamAllocatorParams{
 		Config: streamallocator.DefaultStreamAllocatorConfig, BWE: publication.bandwidth,
-		Pacer: publication.pacer, Logger: log,
+		AdditionalProbeDemand: publication.encoderProbeDemand,
+		Pacer:                 publication.pacer, Logger: log,
 	}, true, true)
 	publication.allocator.Start()
 	media := &webrtc.MediaEngine{}
@@ -303,6 +304,22 @@ func (publication *Publication) LowestLayerBudget() int64 {
 		remaining -= track.BandwidthRequested()
 	}
 	return max(remaining, 0)
+}
+
+// A local encoder can need more bandwidth without another spatial layer.
+// Keep desired output separate from measured source bitrate and capacity;
+// the allocator remains the only owner of probe timing and recovery.
+func (publication *Publication) encoderProbeDemand() int64 {
+	publication.mu.Lock()
+	defer publication.mu.Unlock()
+	if publication.closed || !publication.attached || publication.activeCount == 0 {
+		return 0
+	}
+	ceiling := controlledLayerCeiling(publication.source, 0)
+	if ceiling <= publication.LowestLayerBudget() {
+		return 0
+	}
+	return max(ceiling-publication.tracks[0].BandwidthRequested(), 0)
 }
 
 type PublicationCounters struct {

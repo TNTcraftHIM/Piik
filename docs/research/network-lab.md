@@ -268,6 +268,23 @@ survive that deadline, while each attempted route retains its finite budget.
 
 ## Sustained Quality Recovery
 
+The CPU-only `TestPublicationConstrainedRecovery` gate complements the Browser
+cases below. It runs the actual Native publication allocator and Pion transport
+through healthy, brief, periodic and sustained constraints, then pause/resume
+and source replacement. It checks recent frame arrival and sustained payload,
+not decoded picture quality. Run it explicitly in a stable executable path:
+
+```powershell
+go test -c -o build/go-tests/publication-recovery.test.exe ./internal/media/forwarding
+$env:PIIK_TRANSPORT_RECOVERY = '1'
+& build/go-tests/publication-recovery.test.exe '-test.run=^TestPublicationConstrainedRecovery$' '-test.v' '-test.timeout=8m'
+Remove-Item Env:PIIK_TRANSPORT_RECOVERY
+```
+
+On other systems, use the same Go command and environment variable with the
+platform executable name. The [publication comparison](./node-local-media-design.md#send-queue-recovery)
+owns measured results and the distinction between encoder demand and capacity.
+
 The [2026-10-14 comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38446966925)
 passed two trials for each quality case on candidate `ea2c7268`, using Chrome
 154.0.8037.97 and the moving 720p30 VP8 source. All six retained their connection,
