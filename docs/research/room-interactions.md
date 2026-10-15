@@ -259,6 +259,45 @@ is incomplete, so unsupported pages retain the in-page panel. Video PiP and chat
 PiP may replace each other under the browser's single-window policy; no media
 or room owner changes. This needs no new room protocol or major version.
 
+## Remote Control Assessment (Not Implemented)
+
+Reviewed 2026-10-15. Cross-platform control is a candidate, not an accepted
+product expansion. A Browser on a computer or phone could control a desktop App;
+controlling Android/iOS themselves is a separate platform problem. The
+[Captured Surface Control draft](https://w3c.github.io/mediacapture-surface-control/)
+only provides limited wheel/zoom operations, not general OS keyboard/mouse input.
+Desktop input needs platform-specific authority:
+[Windows SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput)
+is subject to process-integrity restrictions,
+[macOS accessibility access](https://support.apple.com/guide/mac-help/mh43185/mac)
+needs a separate grant, and Linux needs desktop-specific integration such as the
+[RemoteDesktop Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html).
+Mobile controllers also need touch and text-input behavior, not just mouse-event reuse.
+
+The inspected [uu-remote-linux implementation](https://github.com/VallierDev/uu-remote-linux/tree/b44a639d9f94a249e511b210ac9c7f9b457fda38)
+implements the Linux controlled endpoint; its controllers, account and signaling
+service remain in the official UU ecosystem. It is not an independent
+cross-platform remote-control SDK. Its GPL implementation remains study-only
+under the repository's contribution rules. No matched measurement establishes
+a Go/Rust performance advantage or a need to replace Piik's media pipeline.
+
+A bounded candidate would be attended desktop assistance: one explicitly
+approved controller, with a local revoke action and no unattended access.
+App input authority would have to be process-wide because its two native
+sessions share the same OS keyboard and pointer. Site capture approval cannot
+silently grant a Viewer input rights. Source/session retirement and disconnect
+would end the grant, discard queued input and release pressed keys; reconnect
+would require fresh approval. Whole-window capture is not input isolation.
+
+Transport remains undecided. Existing authenticated signaling could carry
+bounded, directed assistance input independently of the media tree, but adds
+server latency and exposes input to that service. A WebRTC data channel could
+reduce that dependency only with a reachable control path: Viewers may receive
+media from another Viewer or the SFU instead of the Host. Piik has no application
+data channel today. Neither choice is equivalent to reusing chat's 800 ms
+limiter. Scope, input privacy, retirement, latency and real platform acceptance
+must justify the added owner before implementation; current sharing is unchanged.
+
 ## Primary References And Rationale
 
 - [LiveKit media and data](https://docs.livekit.io/frontends/build/media-data/)

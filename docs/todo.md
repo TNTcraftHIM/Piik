@@ -206,3 +206,8 @@ remains; do not add another retry/transport owner to bypass these limits.
     identifies pairing/revocation and native decoded-input ownership beyond the
     device selector. Reopen for a concrete use case that justifies this boundary
     and physical latency/echo/background checks. This does not reopen room voice.
+10. **Attended remote control.** The [cross-platform assessment](./research/room-interactions.md#remote-control-assessment-not-implemented)
+    distinguishes Browser controllers from desktop App input authority. Decide
+    the use case and platform scope before a prototype; transport, input privacy
+    and App-wide grant retirement need acceptance. No remote-control code,
+    mobile controlled endpoint or language rewrite is currently planned.
