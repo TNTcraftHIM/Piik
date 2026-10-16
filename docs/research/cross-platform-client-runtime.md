@@ -257,9 +257,10 @@ The existing Site path already separates public web hosting from App capture.
 Use a reachable Site when Quick Tunnel is unavailable, adding its SFU only when
 media fallback is needed. This reuses current room authority and App authorization
 instead of adding a public tunnel service to operate. If an account-free fallback
-is pursued, localhost.run remains a small candidate; account-bound cpolar/frp
+is reconsidered, localhost.run has the bounded evidence below; account-bound cpolar/frp
 setup is an operator choice, not a new task for Viewers. None is accepted as a
-built-in provider by this review.
+built-in provider; the [owner hold](../todo.md#held-by-owner) excludes integration
+from the current phase.
 Ordinary STUN redundancy and its independent failure controls remain
 owned by [NAT research](./nat-traversal.md); changing the invitation provider
 does not repair blocked STUN or UDP.

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -57,8 +57,11 @@ Release artifacts and operator deployment records own delivery completion;
 ## Current Work
 
 Post-release maintenance retains the existing protocol and route owners.
-[TODO](./todo.md#now) owns the remaining quality-recovery boundary; release
-artifacts and operator records own delivery and acceptance results.
+Its scope is media recovery, connectivity controls, presentation consistency
+and their documentation. [TODO](./todo.md#now) owns release closure and the
+upstream dependency follow-up; deferred providers and product modes stay outside
+this phase. Release artifacts and operator records own delivery and acceptance
+results.
 
 2.0 separates numeric media requests from presets and bounded runtime admission,
 retains successfully applied quality settings, and lets App serve an approved
