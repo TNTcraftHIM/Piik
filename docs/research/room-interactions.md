@@ -298,14 +298,13 @@ a Go/Rust performance advantage or a need to replace Piik's media pipeline.
 
 The `remotecontrol` Go build tag selects Windows `SendInput`; ordinary builds
 leave it unavailable. The prototype uses the App's embedded page and a shared
-display, with one desktop Browser controller. An ordered WebRTC data channel
+display or window, with one desktop Browser controller. An ordered WebRTC data channel
 on the existing direct media edge carries small input messages. There is no new
 listener, signaling command, media route, server input forwarding or dependency.
 The control button appears only after that channel reports its capability.
 An App-assisted Viewer passes input through its own local playback bridge to
 the exact upstream channel; it never forwards input for a downstream Viewer.
-SFU/relay routes, window-only capture, mobile input, relative game
-mouse input, IME and virtual gamepads are outside this prototype.
+SFU/relay input routes, mobile input, IME and virtual gamepads remain unfinished.
 
 `internal/app/remoteinput` owns one process-wide grant because the App's native
 sessions share the same physical keyboard and pointer. The Viewer requests
@@ -314,19 +313,23 @@ page. The existing authorized native-control connection carries these commands;
 only the session that owns the share can decide its requests. Request identity
 comes from the direct media connection and the room's participant list. The
 grant is bound to that channel and source, with a fresh nonce for each approval.
+Each request has its own identity: a late Host decision cannot approve a newer
+request, and a late approval cannot revive the Viewer's cancelled intent.
 Site capture approval never grants input rights. Input may operate the whole
 computer; a shared picture is not an OS input sandbox.
 
 Revocation, pause, source replacement/retirement and connection loss release
 held keys and buttons. The channel belongs to the sharing session; permission
-and pointer coordinates belong to its current display. The Host can change
-displays through the existing source picker without starting another share.
-Window capture disables control, and returning to a display permits a fresh
-request. Audio-only changes retain the current grant. A lost control channel
-needs a new media connection; it never silently restores a grant. The Viewer can use Escape, and
-the Host can stop from the sharing page or Ctrl+Alt+F10. Window blur releases held
+and pointer coordinates belong to its current source. The Host can change
+windows/displays through the existing source picker without starting another
+share, with fresh permission for the replacement. Audio-only changes retain the
+current grant. A lost control channel needs a new media connection; it never
+silently restores a grant. Either side can end control from its page or
+Ctrl+Alt+F10. Escape releases game mouse capture without ending the grant.
+Window blur releases held
 input; hidden or locally paused video ends control. Pointer motion retains the
-latest sample per animation frame; a stalled send queue closes the input channel
+latest absolute sample or accumulated relative movement per animation frame;
+a stalled send queue closes the input channel
 without replacing the media connection. No input history is persisted.
 
 Local acceptance exercised real Windows display capture, Browser and App-assisted viewing,
@@ -388,6 +391,51 @@ fallback is end-of-life. A co-play prototype must choose a maintained input
 backend and verify supported games before promising an installation-free path.
 Basic keyboard/mouse assistance can be assessed independently. This does not
 require multiple screen publishers or a replacement media transport.
+
+### Window Capture And Game Input
+
+Reviewed 2026-10-17. The prototype now passes the existing native capture target
+to the input owner for both windows and displays. Capture selection, input
+capability and Host permission remain distinct facts; this adds no media path
+or input driver. Virtual gamepad eligibility must follow its input backend and
+grant, rather than desktop pointer coordinates.
+
+For window keyboard/mouse control, the captured region must map to the current
+native window geometry, including movement, resizing and DPI. The input owner
+reads the current geometry and process identity. It suspends input and releases
+held state when the target loses focus, and revokes control if the source
+disappears; the Host restores the intended target. This reduces
+accidental input after switching away; it is not an OS window sandbox.
+`SendInput` has no target-window parameter, and shortcuts can change focus.
+Window selection must never imply that remote input is confined to that window.
+
+The Windows sink uses physical-key mapping through
+[scan codes](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput),
+and supports relative mouse movement through browser
+[Pointer Lock](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API),
+with an exit interaction that leaves Escape available to games in ordinary
+pointer mode. The Browser input session owns request/grant lifetime separately
+from the React controls and DOM capture. Real SCTP checks cover permission,
+focus suspension, updated geometry and retirement; Browser checks cover window
+capture, consent and pointer lock. Actual moved-window clicks, mixed DPI and
+game input still need physical acceptance. The current
+ordered data channel also lacks game-latency evidence under packet loss;
+desktop clicking does not establish responsive game control. These are input
+semantics and acceptance work, not reasons to replace the media pipeline.
+
+The reviewed implementation uses WGC capture and the documented Windows input
+API, without game-memory access, injected game code or an input driver.
+[SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput)
+remains subject to process-integrity restrictions, and a successful call only
+proves insertion into the system input stream, not acceptance by a game.
+[Windows marks injected keyboard events](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-kbdllhookstruct).
+[Parsec documents anti-cheat input blocking](https://support.parsec.app/hc/en-us/articles/32381827815188-Mouse-and-Keyboard-Isn-t-Working-Correctly-When-Connected),
+including Vanguard-protected games. [BattlEye distinguishes blocking/kicks from bans](https://www.battleye.com/support/faq/);
+its policy does not certify Piik or another game's anti-cheat. No current evidence
+establishes Piik game compatibility or a ban probability. Virtual controller
+drivers are likewise not an anti-cheat exemption. Keep integration on supported
+platform APIs and maintained input backends; do not add process injection,
+protection bypasses or forced background input to make a rejected game work.
 
 ## Primary References And Rationale
 

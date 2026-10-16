@@ -461,7 +461,7 @@ func (session *Session) ReplaceSource(
 	if !audioOnly {
 		// Suspend input while changing capture. On success bind the committed
 		// target; on failure the previous picture remains eligible for a new grant.
-		session.remoteInput.SetDisplay("")
+		session.remoteInput.SetTarget(nativecapture.CaptureTarget{})
 		defer session.syncRemoteInputSource()
 	}
 	if excludeAudio != nil {
@@ -531,11 +531,7 @@ func (session *Session) syncRemoteInputSource() {
 	session.mu.Lock()
 	target := session.videoOptions.Target
 	session.mu.Unlock()
-	if target.Kind == "display" {
-		session.remoteInput.SetDisplay(target.SourceID)
-	} else {
-		session.remoteInput.SetDisplay("")
-	}
+	session.remoteInput.SetTarget(target)
 }
 
 func startAudioCapture(

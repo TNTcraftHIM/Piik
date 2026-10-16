@@ -13,7 +13,9 @@ import (
 	"io"
 	"sort"
 	"sync"
+	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -24,15 +26,19 @@ type bounds struct{ left, top, width, height int32 }
 type inputEvent struct {
 	Type   string  `json:"type"`
 	Grant  string  `json:"grant,omitempty"`
+	Intent string  `json:"intent,omitempty"`
 	X      float64 `json:"x,omitempty"`
 	Y      float64 `json:"y,omitempty"`
 	Button int     `json:"button,omitempty"`
 	Down   bool    `json:"down,omitempty"`
 	Code   string  `json:"code,omitempty"`
 	Delta  int     `json:"delta,omitempty"`
+	DX     int32   `json:"dx,omitempty"`
+	DY     int32   `json:"dy,omitempty"`
 }
 
 type inputSink interface {
+	Target(nativecapture.CaptureTarget) (bounds, bool, error)
 	Apply(bounds, inputEvent) error
 	Reset() error
 }
@@ -55,7 +61,7 @@ type Manager struct {
 
 type Session struct {
 	manager *Manager
-	bounds  bounds
+	target  nativecapture.CaptureTarget
 	paused  bool
 	closed  bool
 	changed chan struct{}
@@ -66,7 +72,10 @@ type connection struct {
 	edgeID    string
 	id        string
 	requested bool
+	requestID string
+	intent    string
 	grant     string
+	suspended bool
 	channel   *webrtc.DataChannel
 }
 
@@ -83,6 +92,22 @@ func New(ctx context.Context) (*Manager, error) {
 		cancel()
 		return nil, err
 	}
+	// Foreground changes must release held input even when the remote player
+	// is holding a key without sending more events. Only an active grant polls.
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				m.mu.Lock()
+				m.refreshActive()
+				m.mu.Unlock()
+			}
+		}
+	}()
 	return m, nil
 }
 
@@ -110,27 +135,22 @@ func (s *Session) notify() {
 }
 
 // The channel belongs to the sharing session; input permission belongs to its
-// current display. Replacing a picture revokes the grant without losing the
-// channel needed to request control of the next display.
-func (s *Session) SetDisplay(displayID string) {
+// current source. Replacing a picture revokes the grant without losing the
+// channel needed to request control of the next source.
+func (s *Session) SetTarget(target nativecapture.CaptureTarget) {
 	if s == nil {
 		return
 	}
-	var b bounds
-	if displayID != "" {
-		b, _ = displayBounds(displayID)
-	}
-	s.setDisplay(b)
-}
-
-func (s *Session) setDisplay(b bounds) {
 	m := s.manager
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed || s.closed {
 		return
 	}
-	s.bounds = b
+	if target.Kind != "display" && target.Kind != "window" {
+		target = nativecapture.CaptureTarget{}
+	}
+	s.target = target
 	if m.active != nil && m.active.owner == s {
 		m.release()
 	}
@@ -170,20 +190,63 @@ func (m *Manager) send(c *connection, state string) {
 		state = "unavailable"
 	}
 	data, _ := json.Marshal(struct {
-		State string `json:"state"`
-		Grant string `json:"grant,omitempty"`
-	}{state, c.grant})
+		State  string `json:"state"`
+		Grant  string `json:"grant,omitempty"`
+		Intent string `json:"intent,omitempty"`
+	}{state, c.grant, c.intent})
 	_ = c.channel.SendText(string(data))
 }
 
 func (s *Session) available() bool {
-	return !s.closed && s.bounds.width > 0 && s.bounds.height > 0
+	return !s.closed && !s.paused && s.target.SourceID != ""
+}
+
+func (c *connection) state() string {
+	if c.suspended {
+		return "suspended"
+	}
+	return "active"
+}
+
+func (m *Manager) sendState(c *connection) {
+	state := "ready"
+	if m.active == c {
+		state = c.state()
+	} else if c.requested {
+		state = "pending"
+	}
+	m.send(c, state)
+}
+
+// Caller holds mu. Source identity, geometry and focus are checked at the
+// input owner, never inferred from a Browser's last displayed video frame.
+func (m *Manager) refreshActive() (bounds, bool) {
+	c := m.active
+	if c == nil {
+		return bounds{}, false
+	}
+	b, focused, err := m.sink.Target(c.owner.target)
+	if err != nil {
+		m.release()
+		m.send(c, "failed")
+		return bounds{}, false
+	}
+	suspended := !focused
+	if c.suspended != suspended {
+		c.suspended = suspended
+		if !focused {
+			_ = m.sink.Reset()
+		}
+		m.send(c, c.state())
+	}
+	return b, focused
 }
 
 func (m *Manager) release() {
 	if c := m.active; c != nil {
 		m.active = nil
 		c.grant = ""
+		c.suspended = false
 		_ = m.sink.Reset()
 		m.send(c, "ready")
 		c.owner.notify()
@@ -207,22 +270,24 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
 	}
 	switch event.Type {
 	case "sync":
-		state := "ready"
-		if m.active == c {
-			state = "active"
-		} else if c.requested {
-			state = "pending"
-		}
-		m.send(c, state)
+		m.sendState(c)
 	case "request":
-		if !c.owner.available() || c.owner.paused || c.requested || c == m.active {
+		if !c.owner.available() || c.requested || c == m.active {
 			return
 		}
+		if intent, err := hex.DecodeString(event.Intent); err != nil || len(intent) != 16 {
+			return
+		}
+		id := make([]byte, 16)
+		_, _ = rand.Read(id)
+		c.requestID, c.intent = hex.EncodeToString(id), event.Intent
 		c.requested = true
 		m.send(c, "pending")
 		c.owner.notify()
 	case "release":
-		if !c.requested && m.active != c {
+		// A local App playback bridge may release its current endpoint without
+		// knowing the Browser intent. Browser cancellations name their request.
+		if (event.Intent != "" && event.Intent != c.intent) || (!c.requested && m.active != c) {
 			return
 		}
 		c.requested = false
@@ -233,14 +298,18 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
 		}
 		c.owner.notify()
 	default:
-		if m.active != c || c.grant == "" || event.Grant != c.grant || c.owner.paused || !c.owner.available() {
+		if m.active != c || c.grant == "" || event.Grant != c.grant || !c.owner.available() {
 			return
 		}
 		if event.Type == "reset" {
 			_ = m.sink.Reset()
 			return
 		}
-		if err := m.sink.Apply(c.owner.bounds, event); err != nil {
+		b, focused := m.refreshActive()
+		if !focused {
+			return
+		}
+		if err := m.sink.Apply(b, event); err != nil {
 			m.release()
 			m.send(c, "failed")
 		}
@@ -268,15 +337,15 @@ func (s *Session) Pause(paused bool) {
 	if paused && m.active != nil && m.active.owner == s {
 		m.release()
 	}
-	if paused {
-		for _, c := range m.connections {
-			if c.owner == s && c.requested {
+	for _, c := range m.connections {
+		if c.owner == s {
+			if paused {
 				c.requested = false
-				m.send(c, "ready")
 			}
+			m.sendState(c)
 		}
-		s.notify()
 	}
+	s.notify()
 }
 
 // A lost media connection also retires input. ICE recovery does not restore
@@ -361,7 +430,7 @@ func (s *Session) Views() []View {
 	defer m.mu.Unlock()
 	for _, c := range m.connections {
 		if c.owner == s && (c.requested || m.active == c) {
-			views = append(views, View{c.id, c.edgeID, m.active == c})
+			views = append(views, View{c.requestID, c.edgeID, m.active == c})
 		}
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].ID < views[j].ID })
@@ -375,8 +444,14 @@ func (s *Session) Decide(id string, allow bool) error {
 	m := s.manager
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	c := m.connections[id]
-	if m.closed || c == nil || c.owner != s || !s.available() || s.paused || c.channel.ReadyState() != webrtc.DataChannelStateOpen || (!c.requested && m.active != c) {
+	var c *connection
+	for _, candidate := range m.connections {
+		if candidate.owner == s && candidate.requestID == id {
+			c = candidate
+			break
+		}
+	}
+	if m.closed || c == nil || !s.available() || c.channel.ReadyState() != webrtc.DataChannelStateOpen || (!c.requested && m.active != c) {
 		return errors.New("request is no longer available")
 	}
 	defer s.notify()
@@ -394,6 +469,9 @@ func (s *Session) Decide(id string, allow bool) error {
 	_, _ = rand.Read(token)
 	c.grant, c.requested = hex.EncodeToString(token), false
 	m.active = c
-	m.send(c, "active")
+	m.refreshActive()
+	if m.active == c {
+		m.send(c, c.state())
+	}
 	return nil
 }

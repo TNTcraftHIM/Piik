@@ -7,7 +7,6 @@ import (
 	"errors"
 	"math"
 	"runtime"
-	"strconv"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -46,25 +45,6 @@ func newPlatformSink() (inputSink, error) {
 	return &windowsSink{keys: map[uint16]bool{}, buttons: map[int]bool{}}, nil
 }
 
-func displayBounds(id string) (bounds, error) {
-	monitor, err := strconv.ParseUint(id, 10, 64)
-	if err != nil {
-		return bounds{}, err
-	}
-	type rect struct{ Left, Top, Right, Bottom int32 }
-	info := struct {
-		Size          uint32
-		Monitor, Work rect
-		Flags         uint32
-	}{}
-	info.Size = uint32(unsafe.Sizeof(info))
-	ok, _, _ := user32.NewProc("GetMonitorInfoW").Call(uintptr(monitor), uintptr(unsafe.Pointer(&info)))
-	if ok == 0 {
-		return bounds{}, errors.New("shared display is unavailable")
-	}
-	return bounds{info.Monitor.Left, info.Monitor.Top, info.Monitor.Right - info.Monitor.Left, info.Monitor.Bottom - info.Monitor.Top}, nil
-}
-
 func inject(input winInput) error {
 	n, _, _ := sendInput.Call(1, uintptr(unsafe.Pointer(&input)), unsafe.Sizeof(input))
 	if n != 1 {
@@ -73,38 +53,17 @@ func inject(input winInput) error {
 	return nil
 }
 
-func keyInput(key uint16, down bool) winInput {
+func keyInput(scan uint16, down bool) winInput {
 	input := winInput{Kind: 1}
 	k := (*keyboardInput)(unsafe.Pointer(&input.Mouse))
-	k.VK = key
+	k.Scan, k.Flags = scan&0xff, 8 // KEYEVENTF_SCANCODE: physical key, not text.
 	if !down {
-		k.Flags = 2
+		k.Flags |= 2
 	}
-	if key >= 0x21 && key <= 0x2e || key == 0xa3 || key == 0xa5 || key == 0x5b || key == 0x5c {
+	if scan&0xff00 == 0xe000 {
 		k.Flags |= 1
 	}
 	return input
-}
-
-func keyCode(code string) uint16 {
-	if len(code) == 4 && code[:3] == "Key" && code[3] >= 'A' && code[3] <= 'Z' {
-		return uint16(code[3])
-	}
-	if len(code) == 6 && code[:5] == "Digit" && code[5] >= '0' && code[5] <= '9' {
-		return uint16(code[5])
-	}
-	if len(code) >= 2 && code[0] == 'F' {
-		n, _ := strconv.Atoi(code[1:])
-		if n >= 1 && n <= 12 {
-			return uint16(0x6f + n)
-		}
-	}
-	return map[string]uint16{"Backspace": 8, "Tab": 9, "Enter": 13, "Escape": 27, "Space": 32,
-		"PageUp": 33, "PageDown": 34, "End": 35, "Home": 36, "ArrowLeft": 37, "ArrowUp": 38, "ArrowRight": 39, "ArrowDown": 40,
-		"Insert": 45, "Delete": 46, "ShiftLeft": 0xa0, "ShiftRight": 0xa1, "ControlLeft": 0xa2, "ControlRight": 0xa3,
-		"AltLeft": 0xa4, "AltRight": 0xa5, "MetaLeft": 0x5b, "MetaRight": 0x5c,
-		"Semicolon": 0xba, "Equal": 0xbb, "Comma": 0xbc, "Minus": 0xbd, "Period": 0xbe, "Slash": 0xbf,
-		"Backquote": 0xc0, "BracketLeft": 0xdb, "Backslash": 0xdc, "BracketRight": 0xdd, "Quote": 0xde}[code]
 }
 
 func (s *windowsSink) Apply(b bounds, e inputEvent) error {
@@ -123,6 +82,11 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 		px := float64(b.left) + e.X*float64(b.width-1) - float64(int32(x))
 		py := float64(b.top) + e.Y*float64(b.height-1) - float64(int32(y))
 		return inject(winInput{Mouse: mouseInput{X: int32(px * 65535 / float64(int32(w)-1)), Y: int32(py * 65535 / float64(int32(h)-1)), Flags: 0xc001}})
+	case "relative":
+		if e.DX < -32767 || e.DX > 32767 || e.DY < -32767 || e.DY > 32767 {
+			return errors.New("invalid relative pointer")
+		}
+		return inject(winInput{Mouse: mouseInput{X: e.DX, Y: e.DY, Flags: 1}})
 	case "button":
 		flags := map[int]uint32{0: 2, 1: 0x20, 2: 8}[e.Button]
 		if flags == 0 {
@@ -148,7 +112,7 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 		}
 		return inject(winInput{Mouse: mouseInput{Data: uint32(int32(e.Delta)), Flags: 0x800}})
 	case "key":
-		key := keyCode(e.Code)
+		key := scanCodes[e.Code]
 		if key == 0 {
 			return nil
 		}

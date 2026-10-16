@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-16
+Last reviewed: 2026-10-17
 
 Explicit owner holds remain in force; an investigation does not itself
 accept a new feature or architecture. A missing device or reporter trace blocks
@@ -14,13 +14,18 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
-- [ ] **Attended remote-control prototype.** Windows App display sharing now
+- [ ] **Attended remote control and remote co-play.** Windows App display/window sharing now
   offers an optional input channel to a directly connected Browser Viewer in
   experimental `remotecontrol` builds. Browser/App-assisted reception, source
   switching, Host-page consent, revocation and native input have been exercised;
-  user acceptance and an actual remote-device trial
-  remain before choosing a product integration. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
+  window focus/geometry and game mouse/scan-code input are implemented. Physical
+  moved-window/game checks and an actual remote-device trial remain. Per-player
+  virtual gamepads and input return beyond direct media edges are the next
+  co-play work; keep one Host publication and explicit input permission. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
   owns limitations and evidence. This is not part of the public release.
+  [Window/game input assessment](./research/room-interactions.md#window-capture-and-game-input)
+  owns window scope, focus/geometry work and game-compatibility
+  limits; ordinary desktop input checks do not establish remote co-play readiness.
 
 - [ ] **Return LiveKit to an upstream pin.** Native publication now supplies
   unmet encoder demand to the existing allocator through the scoped dependency
