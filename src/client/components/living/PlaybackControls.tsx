@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject, type ReactNode } from "react";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { useCopy } from "../../ui/copy";
 import { debugError } from "../../lib/debug";
@@ -145,6 +145,21 @@ export function PlaybackControlsView({
   const { t, vis } = useCopy();
   const silent = audio.muted || audio.level === 0;
   const percent = Math.round(audio.level * 100);
+  const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
+    : picture.active ? "playback.exitPip" : !canPlay ? "playback.pipWaiting" : "playback.pip";
+  const theaterTitle = theaterMode ? "viewer.theater.exit" : "viewer.theater";
+  const secondaryActions = (caption: boolean) => <>
+    <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
+      cap={caption ? "viewer.reconnect" : undefined} disabled={!reconnectAvailable} onClick={onReconnect} />
+    <Btn icon={picture.active ? "pipExit" : "pip"} draw="playback-pip" title={pipTitle}
+      cap={caption ? pipTitle : undefined} hintTone={picture.failed ? "bad" : undefined}
+      hint={!picture.supported || picture.failed || (!picture.active && !canPlay) ? "hint-pip-unavailable" : picture.active ? "hint-pip-exit" : "hint-pip"}
+      pressed={picture.active} disabled={!picture.supported || (!picture.active && !canPlay)}
+      onClick={() => { void picture.toggle(); }} />
+    {!fullscreen.active && <Btn icon={theaterMode ? "theaterExit" : "theater"} draw="playback-theater" title={theaterTitle}
+      cap={caption ? theaterTitle : undefined} hint={theaterMode ? "hint-theater-exit" : "hint-theater"}
+      pressed={theaterMode} onClick={onToggleTheater} />}
+  </>;
 
   return (
     <div ref={controlsRef} className={`lr-playback lr-media-controls${hidden ? " is-hidden" : ""}`} data-can-play={canPlay} role="group" aria-label={t("playback.controls")}>
@@ -174,20 +189,8 @@ export function PlaybackControlsView({
       </span>
       <span className="lr-playback-view">
         {extraActions}
-        <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
-          disabled={!reconnectAvailable} onClick={onReconnect} />
-        <Btn icon={picture.active ? "pipExit" : "pip"} draw="playback-pip"
-          hintTone={picture.failed ? "bad" : undefined}
-          title={picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
-            : picture.active ? "playback.exitPip" : !canPlay ? "playback.pipWaiting" : "playback.pip"}
-          hint={!picture.supported || picture.failed || (!picture.active && !canPlay) ? "hint-pip-unavailable" : picture.active ? "hint-pip-exit" : "hint-pip"}
-          pressed={picture.active} disabled={!picture.supported || (!picture.active && !canPlay)}
-          onClick={() => { void picture.toggle(); }} />
-        {!fullscreen.active ? <Btn icon={theaterMode ? "theaterExit" : "theater"}
-          draw="playback-theater"
-          title={theaterMode ? "viewer.theater.exit" : "viewer.theater"}
-          hint={theaterMode ? "hint-theater-exit" : "hint-theater"}
-          pressed={theaterMode} onClick={onToggleTheater} /> : null}
+        <span className="lr-playback-secondary">{secondaryActions(false)}</span>
+        <PlaybackMore>{secondaryActions(true)}</PlaybackMore>
         {fullscreen.supported && !theaterMode ? (
           <Btn icon={fullscreen.active ? "contract" : "expand"}
             draw="playback-fullscreen"
@@ -203,4 +206,36 @@ export function PlaybackControlsView({
       </span>
     </div>
   );
+}
+
+// Native popover owns dismissal and focus return. The same actions above render
+// directly on wide players and in this compact disclosure on narrow players.
+function PlaybackMore({ children }: { children: ReactNode }) {
+  const { t } = useCopy();
+  const id = useId();
+  const trigger = useRef<HTMLSpanElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    if (!open || !panel.current || !trigger.current) return;
+    const rect = trigger.current.getBoundingClientRect();
+    const menu = panel.current;
+    menu.style.left = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, rect.right - menu.offsetWidth))}px`;
+    menu.style.top = `${Math.max(8, rect.top - menu.offsetHeight - 8)}px`;
+    const close = () => menu.hidePopover();
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
+  return <span className="lr-playback-more" ref={trigger}>
+    <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
+    <div id={id} ref={panel} className="lr-playback-menu" popover="auto" aria-label={t("playback.more")}
+      onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}
+      onClick={event => {
+        if (!event.defaultPrevented && event.target instanceof Element && event.target.closest("button")) panel.current?.hidePopover();
+      }}>{children}</div>
+  </span>;
 }

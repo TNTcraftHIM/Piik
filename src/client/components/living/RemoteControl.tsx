@@ -5,6 +5,7 @@ import { Glyph } from "../../ui/icons";
 import type { RemoteControlRequest } from "../../native/wire";
 import { RemoteInputSession, picturePoint, type RemoteInputState, type RemoteInputEvent } from "../../remote-control/input-session";
 import { Btn } from "./primitives";
+import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import "./remote-control.css";
 
 // The video keeps its existing media owner. This temporary surface handles
@@ -17,10 +18,11 @@ export function RemoteControl({ channel, videoRef, available }: {
   const [state, setState] = useState<RemoteInputState | null>(null);
   const [locked, setLocked] = useState(false);
   const [lockFailed, setLockFailed] = useState(false);
+  const [inline, setInline] = useState(true);
   const session = useRef<RemoteInputSession | null>(null);
   const surface = useRef<HTMLDivElement | null>(null);
-  const active = state?.state === "active" && available && channel?.readyState === "open";
-  const controlled = (state?.state === "active" || state?.state === "suspended") && available && channel?.readyState === "open";
+  const active = state?.state === "active" && available && inline && channel?.readyState === "open";
+  const controlled = (state?.state === "active" || state?.state === "suspended") && available && inline && channel?.readyState === "open";
   const input = (event: RemoteInputEvent) => session.current?.input(event);
   const reset = useCallback(() => { session.current?.input({ type: "reset" }); }, []);
   const release = useCallback(() => {
@@ -39,12 +41,23 @@ export function RemoteControl({ channel, videoRef, available }: {
     };
   }, [channel]);
   useEffect(() => {
-    if (!available) release();
-  }, [available, channel, release]);
+    if (!available || !inline) release();
+  }, [available, inline, channel, release]);
   useEffect(() => {
-    const video = videoRef.current;
-    video?.addEventListener("pause", release);
-    return () => video?.removeEventListener("pause", release);
+    const video = videoRef.current as FullscreenVideo | null;
+    if (!video) return;
+    // Native PiP/fullscreen moves the picture away from the page's input surface.
+    // DOM fullscreen retains that surface and can continue controlling normally.
+    const syncPresentation = () => setInline(document.pictureInPictureElement !== video &&
+      video.webkitPresentationMode !== "picture-in-picture" && !videoFullscreenState(video).nativeActive);
+    const events = ["enterpictureinpicture", "leavepictureinpicture", "webkitpresentationmodechanged", "webkitbeginfullscreen", "webkitendfullscreen"];
+    syncPresentation();
+    video.addEventListener("pause", release);
+    events.forEach(event => video.addEventListener(event, syncPresentation));
+    return () => {
+      video.removeEventListener("pause", release);
+      events.forEach(event => video.removeEventListener(event, syncPresentation));
+    };
   }, [release, videoRef]);
   useEffect(() => {
     if (!controlled) return;
@@ -83,9 +96,9 @@ export function RemoteControl({ channel, videoRef, available }: {
   const buttonTitle = controlled ? "remote.stop" : state.state === "pending" ? "remote.cancel" : "remote.request";
   const parent = videoRef.current?.parentElement;
   return <>
-    <Btn icon="mouse" title={state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
+    <Btn icon="mouse" title={!inline ? "remote.inlineRequired" : state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
       hint={controlled || state.state === "pending" ? "hint-remote-stop" : "hint-remote-control"}
-      pressed={controlled} disabled={!available || state.state === "unavailable"}
+      pressed={controlled} disabled={!available || !inline || state.state === "unavailable"}
       onClick={() => controlled || state.state === "pending" ? release() : session.current?.request()} />
     {controlled && "requestPointerLock" in HTMLElement.prototype && <Btn icon="gamepad"
       title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"} pressed={locked}

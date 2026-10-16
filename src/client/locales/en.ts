@@ -4,6 +4,7 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 export const en: Record<CopyKey, string> = {
   "remote.title": "Remote control",
   "remote.request": "Request control",
+  "remote.inlineRequired": "Return the video to this page to control",
   "remote.unavailable": "Control is unavailable for the current share",
   "remote.cancel": "Cancel request",
   "remote.stop": "End control",
@@ -25,6 +26,7 @@ export const en: Record<CopyKey, string> = {
   "remote.shortcut": "Stop immediately on this computer:",
   "common.loading": "Loading",
   "playback.controls": "Local playback controls",
+  "playback.more": "More playback options",
   "playback.play": "Play",
   "playback.pause": "Pause on this device",
   "playback.mute": "Mute",

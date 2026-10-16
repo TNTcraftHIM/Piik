@@ -118,7 +118,7 @@ export function Btn({
     </button>
   );
   return hint ? (
-    <Tooltip kind={hint} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText) : label}>{button}</Tooltip>
+    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText) : label}>{button}</Tooltip>
   ) : (
     button
   );

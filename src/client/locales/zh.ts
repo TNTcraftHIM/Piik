@@ -4,6 +4,7 @@ import type { GlyphName } from "../ui/icons";
 export const zh = {
   "remote.title": "远程控制",
   "remote.request": "请求控制",
+  "remote.inlineRequired": "将画面返回页面后，再请求控制",
   "remote.unavailable": "当前分享暂不可控制",
   "remote.cancel": "取消请求",
   "remote.stop": "结束控制",
@@ -25,6 +26,7 @@ export const zh = {
   "remote.shortcut": "本机立即结束控制：",
   "common.loading": "正在加载",
   "playback.controls": "本机播放控制",
+  "playback.more": "更多播放选项",
   "playback.play": "播放",
   "playback.pause": "暂停本机播放",
   "playback.mute": "静音",

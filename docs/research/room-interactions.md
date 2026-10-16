@@ -334,7 +334,8 @@ A closed control channel needs a new media
 connection; neither path silently restores a grant. Either side can end control from its page or
 Ctrl+Alt+F10. Escape releases game mouse capture without ending the grant.
 Window blur releases held
-input; hidden or locally paused video ends control. Pointer motion retains the
+input; hidden, locally paused or native PiP/fullscreen video ends control.
+DOM fullscreen keeps the page's input surface and retains control. Pointer motion retains the
 latest absolute sample or accumulated relative movement per animation frame,
 flushing before button/key transitions so a drag ends at its final position.
 Control actions use the existing playback bar. While controlling, the picture
