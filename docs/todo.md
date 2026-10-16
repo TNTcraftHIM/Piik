@@ -22,12 +22,6 @@ platform deferrals or establish a diagnosis for unmatched reports.
   own that boundary; this local repair does not diagnose the unmatched field
   reports below.
 
-- [ ] **Complete the TeamSpeak runtime comparison.** The
-  [Native comparison](./research/realtime-quality-adaptation.md#teamspeak-native-comparison)
-  owns inspected mechanisms and Piik-side trials. A matched TeamSpeak session
-  with healthy and constrained viewers, including reconnection, is still
-  missing; static inspection does not establish its actual performance.
-
 ## Held By Owner
 
 - [ ] **32-bit Windows/Linux Apps.** Deferred by the owner on 2026-10-02;
