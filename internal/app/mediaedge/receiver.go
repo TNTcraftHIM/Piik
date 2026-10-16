@@ -21,6 +21,7 @@ type ReceiverEvents struct {
 	// The final consumer must check current again after any event queues.
 	LocalCandidate  func(candidate *webrtc.ICECandidateInit, current func() bool)
 	ConnectionState func(state webrtc.PeerConnectionState, pair *SelectedPair, current func() bool)
+	DataChannel     func(*webrtc.DataChannel)
 }
 
 type ReceiverOptions struct {
@@ -166,6 +167,9 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 		go receiver.readRTCP(track, rtpReceiver)
 		receiver.consumeTrack(track, rtpReceiver)
 	})
+	if options.Events.DataChannel != nil {
+		connection.OnDataChannel(options.Events.DataChannel)
+	}
 	answer, err := receiver.createAnswer()
 	if err != nil {
 		_ = receiver.Close()

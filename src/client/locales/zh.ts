@@ -4,6 +4,7 @@ import type { GlyphName } from "../ui/icons";
 export const zh = {
   "remote.title": "远程控制",
   "remote.request": "请求控制",
+  "remote.needsDisplay": "远控需要房主通过 App 分享屏幕。",
   "remote.cancel": "取消请求",
   "remote.stop": "结束控制",
   "remote.allow": "允许控制",

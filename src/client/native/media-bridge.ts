@@ -5,6 +5,7 @@ import { observeDebugConnection } from "../lib/debug-webrtc";
 import type { ConnectionMetrics } from "../types";
 import { preferScreenAudioStereo } from "../webrtc/screen-audio-sdp";
 import { requireReceivingVideo } from "../webrtc/video-codec";
+import { RemoteInputChannel } from "../webrtc/remote-input-channel";
 import {
   collectConnectionMetrics,
   decodedVideoFrames,
@@ -40,6 +41,7 @@ export class NativeMediaBridge {
   readonly connectionId = createOpaqueId();
 
   private readonly peer: RTCPeerConnection;
+  private readonly remoteInput: RemoteInputChannel;
   private readonly lifetime = new AbortController();
   private unsubscribe: (() => void) | null = null;
   private edgeRequested = false;
@@ -56,7 +58,9 @@ export class NativeMediaBridge {
     private readonly control: NativeMediaBridgeControl,
     private readonly onFailed: () => void,
     private readonly sourceConnectionId?: string,
+    onRemoteInput: () => void = () => {},
   ) {
+    this.remoteInput = new RemoteInputChannel(() => { if (!this.disposed) onRemoteInput(); });
     let peer: RTCPeerConnection | undefined;
     try {
       this.stream = new MediaStream();
@@ -73,6 +77,8 @@ export class NativeMediaBridge {
     return collectConnectionMetrics(this.peer, "receive", accumulator);
   }
 
+  getRemoteInput(): RTCDataChannel | null { return this.remoteInput.current; }
+
   async decodedVideoFrames(): Promise<number | null> {
     const track = this.stream.getVideoTracks()[0];
     return decodedVideoFrames(
@@ -86,6 +92,7 @@ export class NativeMediaBridge {
       throw new NativeMediaBridgeError("Native media bridge is unavailable");
     }
     this.expectedAudio = expectedAudio;
+    this.remoteInput.attach(this.peer);
     this.peer.addEventListener("track", (event) => {
       if (this.disposed) return;
       if (!this.stream.getTracks().includes(event.track)) this.stream.addTrack(event.track);
@@ -122,6 +129,7 @@ export class NativeMediaBridge {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.remoteInput.dispose();
     this.lifetime.abort();
     this.rejectNegotiation?.(new NativeMediaBridgeError("Native media bridge failed"));
     this.rejectNegotiation = null;

@@ -6,7 +6,7 @@ import { Btn } from "./primitives";
 import "./remote-control.css";
 
 const stateSchema = z.object({
-  state: z.enum(["ready", "pending", "active", "failed"]),
+  state: z.enum(["ready", "unavailable", "pending", "active", "failed"]),
   code: z.string().regex(/^[0-9a-f]{6}$/),
   grant: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 }).strict();
@@ -57,6 +57,7 @@ export function RemoteControl({ channel, videoRef, available, name }: {
     const closed = () => { grant.current = undefined; setState(null); clearPointer(); };
     channel.addEventListener("message", message);
     channel.addEventListener("close", closed);
+    send({ type: "sync" });
     return () => {
       if (channel.readyState === "open") channel.send(JSON.stringify({ type: "release" }));
       channel.removeEventListener("message", message); channel.removeEventListener("close", closed);
@@ -83,7 +84,7 @@ export function RemoteControl({ channel, videoRef, available, name }: {
     return () => { element?.removeEventListener("wheel", wheel); window.removeEventListener("blur", blur); document.removeEventListener("visibilitychange", hidden); };
   }, [active, channel]);
 
-  if (!channel || channel.readyState !== "open") return null;
+  if (!channel || channel.readyState !== "open" || !state) return null;
   const point = (clientX: number, clientY: number) => {
     const video = videoRef.current;
     if (!video || !video.videoWidth || !video.videoHeight) return null;
@@ -96,7 +97,8 @@ export function RemoteControl({ channel, videoRef, available, name }: {
   const buttonTitle = active ? "remote.stop" : state?.state === "pending" ? "remote.cancel" : "remote.request";
   const parent = videoRef.current?.parentElement;
   return <>
-    <Btn icon="mouse" title={buttonTitle} pressed={active} disabled={!available}
+    <Btn icon="mouse" title={state?.state === "unavailable" ? "remote.needsDisplay" : buttonTitle}
+      pressed={active} disabled={!available || state?.state === "unavailable"}
       onClick={() => active || state?.state === "pending" ? release() : send({ type: "request", name })} />
     {parent && (active || state?.state === "pending" || state?.state === "failed") && createPortal(<>
       {active && <div ref={surface} className="lr-remote-input-surface" tabIndex={0}

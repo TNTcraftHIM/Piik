@@ -4,6 +4,7 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 export const en: Record<CopyKey, string> = {
   "remote.title": "Remote control",
   "remote.request": "Request control",
+  "remote.needsDisplay": "The Host needs to share a screen through Piik App for remote control.",
   "remote.cancel": "Cancel request",
   "remote.stop": "End control",
   "remote.allow": "Allow control",

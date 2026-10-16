@@ -91,15 +91,44 @@ func New(ctx context.Context) (*Manager, error) {
 	return m, nil
 }
 
-func (m *Manager) Display(displayID, title string) *Session {
+func (m *Manager) NewSession() *Session {
 	if m == nil {
 		return nil
 	}
-	b, err := displayBounds(displayID)
-	if err != nil {
-		return nil
+	return &Session{manager: m}
+}
+
+// The channel belongs to the sharing session; input permission belongs to its
+// current display. Replacing a picture revokes the grant without losing the
+// channel needed to request control of the next display.
+func (s *Session) SetDisplay(displayID, title string) {
+	if s == nil {
+		return
 	}
-	return &Session{manager: m, bounds: b, display: title}
+	var b bounds
+	if displayID != "" {
+		b, _ = displayBounds(displayID)
+	}
+	s.setDisplay(b, title)
+}
+
+func (s *Session) setDisplay(b bounds, title string) {
+	m := s.manager
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed || s.closed {
+		return
+	}
+	s.bounds, s.display = b, title
+	if m.active != nil && m.active.owner == s {
+		m.release()
+	}
+	for _, c := range m.connections {
+		if c.owner == s {
+			c.requested = false
+			m.send(c, "ready")
+		}
+	}
 }
 
 func (s *Session) Attach(edgeID string, channel *webrtc.DataChannel) {
@@ -125,12 +154,19 @@ func (m *Manager) send(c *connection, state string) {
 	if c.channel.ReadyState() != webrtc.DataChannelStateOpen {
 		return
 	}
+	if state == "ready" && !c.owner.available() {
+		state = "unavailable"
+	}
 	data, _ := json.Marshal(struct {
 		State string `json:"state"`
 		Code  string `json:"code"`
 		Grant string `json:"grant,omitempty"`
 	}{state, c.id[:6], c.grant})
 	_ = c.channel.SendText(string(data))
+}
+
+func (s *Session) available() bool {
+	return !s.closed && s.bounds.width > 0 && s.bounds.height > 0
 }
 
 func (m *Manager) release() {
@@ -158,8 +194,16 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
 		return
 	}
 	switch event.Type {
+	case "sync":
+		state := "ready"
+		if m.active == c {
+			state = "active"
+		} else if c.requested {
+			state = "pending"
+		}
+		m.send(c, state)
 	case "request":
-		if c.owner.paused || len(event.Name) > 128 || c.requested || c == m.active {
+		if !c.owner.available() || c.owner.paused || len(event.Name) > 128 || c.requested || c == m.active {
 			return
 		}
 		c.requested, c.name = true, event.Name
@@ -175,7 +219,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
 			m.send(c, "ready")
 		}
 	default:
-		if m.active != c || c.grant == "" || event.Grant != c.grant || c.owner.paused {
+		if m.active != c || c.grant == "" || event.Grant != c.grant || c.owner.paused || !c.owner.available() {
 			return
 		}
 		if event.Type == "reset" {
@@ -294,7 +338,7 @@ func (m *Manager) views() []View {
 
 func (m *Manager) decide(id string, allow bool) error {
 	c := m.connections[id]
-	if m.closed || c == nil || c.owner.closed || c.owner.paused || c.channel.ReadyState() != webrtc.DataChannelStateOpen || (!c.requested && m.active != c) {
+	if m.closed || c == nil || !c.owner.available() || c.owner.paused || c.channel.ReadyState() != webrtc.DataChannelStateOpen || (!c.requested && m.active != c) {
 		return errors.New("request is no longer available")
 	}
 	if !allow {

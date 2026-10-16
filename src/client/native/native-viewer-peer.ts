@@ -231,6 +231,7 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
 }
 
 class NativeViewerPeer implements ViewerMediaPeer {
+  getRemoteInput(): RTCDataChannel | null { return this.bridge?.getRemoteInput() ?? null; }
   private currentIceConfig: PeerIceConfig;
   private parentPeerId: string | null = null;
   private connectionId: string | null = null;
@@ -534,6 +535,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
       this.client,
       () => this.handlePlaybackFailure(bridge, connectionId),
       connectionId,
+      () => { if (this.bridge === bridge) this.emit(); },
     );
     this.bridge = bridge;
     void bridge.start(result.audio).then((stream) => {

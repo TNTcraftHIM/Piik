@@ -165,10 +165,9 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		ready:          make(chan error, 1),
 		edges:          make(map[string]*mediaedge.Edge),
 		audioChanged:   make(chan struct{}, 1),
+		remoteInput:    options.RemoteInput.NewSession(),
 	}
-	if options.Video.Target.Kind == "display" {
-		session.remoteInput = options.RemoteInput.Display(options.Video.Target.SourceID, options.Video.Target.Title)
-	}
+	session.syncRemoteInputSource()
 	if audioStream != nil || options.MicrophoneMixing {
 		audioSource, audioErr := engine.NewAudioSource(
 			options.EdgeCapacity, options.Profile.AudioBitrate,
@@ -439,9 +438,6 @@ func (session *Session) ReplaceSource(
 ) error {
 	session.updateMu.Lock()
 	defer session.updateMu.Unlock()
-	// A changed picture must never retain permission to control the old source.
-	session.remoteInput.Close()
-
 	session.mu.Lock()
 	if session.closed {
 		session.mu.Unlock()
@@ -461,6 +457,12 @@ func (session *Session) ReplaceSource(
 	session.mu.Unlock()
 	if session.mixer == nil && audioEnabled != hasAudio {
 		return errors.New("native source audio availability cannot change while sharing")
+	}
+	if !audioOnly {
+		// Suspend input while changing capture. On success bind the committed
+		// target; on failure the previous picture remains eligible for a new grant.
+		session.remoteInput.SetDisplay("", "")
+		defer session.syncRemoteInputSource()
 	}
 	if excludeAudio != nil {
 		if session.mixer == nil {
@@ -511,6 +513,17 @@ func (session *Session) ReplaceSource(
 		replacementAudio,
 		true,
 	)
+}
+
+func (session *Session) syncRemoteInputSource() {
+	session.mu.Lock()
+	target := session.videoOptions.Target
+	session.mu.Unlock()
+	if target.Kind == "display" {
+		session.remoteInput.SetDisplay(target.SourceID, target.Title)
+	} else {
+		session.remoteInput.SetDisplay("", "")
+	}
 }
 
 func startAudioCapture(

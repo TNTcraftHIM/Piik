@@ -301,8 +301,10 @@ leave it unavailable. The prototype uses the App's embedded page and a shared
 display, with one desktop Browser controller. An ordered WebRTC data channel
 on the existing direct media edge carries small input messages. There is no new
 listener, signaling command, media route, server input forwarding or dependency.
-The control button appears only when that channel exists. SFU/relay routes,
-Native receiving Viewers, window-only capture, mobile input, relative game
+The control button appears only after that channel reports its capability.
+An App-assisted Viewer passes input through its own local playback bridge to
+the exact upstream channel; it never forwards input for a downstream Viewer.
+SFU/relay routes, window-only capture, mobile input, relative game
 mouse input, IME and virtual gamepads are outside this prototype.
 
 `internal/app/remoteinput` owns one process-wide grant because the App's native
@@ -313,19 +315,25 @@ grant is bound to that channel and source, with a fresh nonce for each approval.
 Site capture approval never grants input rights. Input may operate the whole
 computer; a shared picture is not an OS input sandbox.
 
-Revocation, pause, source retirement and connection loss release held keys and
-buttons. A changed source or disconnected channel needs a fresh share in this
-prototype; it never silently restores a grant. The Viewer can use Escape, and
+Revocation, pause, source replacement/retirement and connection loss release
+held keys and buttons. The channel belongs to the sharing session; permission
+and pointer coordinates belong to its current display. The Host can change
+displays through the existing source picker without starting another share.
+Window capture disables control, and returning to a display permits a fresh
+request. Audio-only changes retain the current grant. A lost control channel
+needs a new media connection; it never silently restores a grant. The Viewer can use Escape, and
 the Host can stop from the launcher or Ctrl+Alt+F10. Window blur releases held
 input; hidden or locally paused video ends control. Pointer motion retains the
 latest sample per animation frame; a stalled send queue closes the input channel
 without replacing the media connection. No input history is persisted.
 
-Local acceptance exercised real Windows display capture, Browser viewing,
+Local acceptance exercised real Windows display capture, Browser and App-assisted viewing,
 native mouse click, keyboard text, wheel, held-key release and the local stop
 shortcut. The consent owner was also checked over real SCTP channels for
 unapproved/stale input, controller replacement, pause, disconnect and source
-retirement. A foreign-origin approval POST was rejected. These checks do not
+retirement. Display → window → display switching retained the channel and
+required fresh approval; the App-assisted path delivered actual mouse/keyboard
+input and released a held key on revocation. A foreign-origin approval POST was rejected. These checks do not
 establish remote-network latency, game compatibility, mixed-DPI behavior or
 antivirus classification. The experiment build and disposable UI/input probes
 remain under ignored `build/remote-control-prototype/`.
