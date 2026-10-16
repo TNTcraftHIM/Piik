@@ -202,6 +202,7 @@ for current setup details.
 ## Public invitation fails or shows 1033
 
 App **Public invite** uses Cloudflare Tunnel to provide a temporary web address.
+Reachability varies by network, and [Quick Tunnels have no uptime guarantee](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/#limitations).
 `public invitation service exited before connecting` means the helper exited
 before connecting; `exit status 1` alone does not identify the cause.
 [Cloudflare error 1033](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1033/)
@@ -219,12 +220,25 @@ from a page that opens but reports **No media route available**.
    firewall blocks Cloudflare Tunnel; adjust only relevant rules. Ask the
    administrator about a school or workplace network.
 
-For a terminal timeout mentioning `:7844`, check outbound connections from
-`cloudflared`, including proxy or game-accelerator rules.
-[Cloudflare's connectivity checks](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/troubleshoot-tunnels/connectivity-prechecks/)
-cover UDP and TCP on this port. This does not require opening an inbound port on your router.
+The error details help identify which stage failed:
 
-If it keeps failing, you can share through the [online site or an existing site](./getting-started.md#share-from-an-existing-site).
+| Error contains | What to check |
+| --- | --- |
+| `failed to request quick Tunnel` or `api.trycloudflare.com` | The temporary address could not be allocated. Read the cause that follows: check DNS for lookup errors, or outbound HTTPS, proxy rules and service status for connection timeouts. |
+| QUIC timeout, `dial tcp ...:7844` or `TLS handshake with edge` | The connection to a Cloudflare tunnel endpoint failed. Check outbound rules for `cloudflared`, including whether a proxy or game accelerator affects the connection. |
+
+Piik already enables HTTP/2 (TCP) fallback when QUIC (UDP) fails. Both use outbound
+port `7844`. If neither path is reachable, repeated attempts cannot fix it;
+loading ordinary websites does not establish that this port is accessible.
+See [Cloudflare's connection troubleshooting](https://developers.cloudflare.com/tunnel/troubleshooting/)
+for the requirements. You do not need to open an inbound port on your router.
+
+**To continue sharing:** keep the App running, open a reachable
+[online site or existing site](./getting-started.md#share-from-an-existing-site),
+and click **App** at the top to authorize it. You can then use App window/screen
+capture without creating a temporary public invitation. The online site still
+uses P2P; if the page opens but video does not connect, follow
+[media connection troubleshooting](#when-video-will-not-connect).
 Include the App version, failure time and [App diagnostic report](../../cmd/piik-app/README.md#diagnostics)
 in feedback. If the unavailable address is a self-hosted site rather than the App's
 temporary address, ask that site's administrator to check its service.
