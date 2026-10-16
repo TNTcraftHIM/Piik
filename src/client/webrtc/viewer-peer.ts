@@ -68,6 +68,7 @@ export function createViewerRecoveryBudget(): ViewerRecoveryBudget {
 }
 
 export interface ViewerMediaPeer {
+  getRemoteInput?(): RTCDataChannel | null;
   acceptSignal(parentPeerId: string, payload: SignalPayload): Promise<void>;
   updateIceConfig(iceConfig: IceConfig): void;
   requestRecovery(rebuild?: boolean): boolean;
@@ -85,6 +86,8 @@ export interface ViewerMediaPeer {
 }
 
 export class ViewerPeer implements ViewerMediaPeer {
+  private remoteInput: RTCDataChannel | null = null;
+  getRemoteInput(): RTCDataChannel | null { return this.remoteInput; }
   private connection: RTCPeerConnection | null = null;
   private connectionLifetime: AbortController | null = null;
   private connectionId: string | null = null;
@@ -300,6 +303,20 @@ export class ViewerPeer implements ViewerMediaPeer {
       ),
     );
     this.connection = connection;
+    connection.addEventListener("datachannel", ({ channel }) => {
+      if (this.connection !== connection || channel.label !== "piik-remote-input-prototype-v1" || this.remoteInput) {
+        channel.close();
+        return;
+      }
+      this.remoteInput = channel;
+      channel.addEventListener("open", () => this.emit());
+      channel.addEventListener("close", () => {
+        if (this.remoteInput === channel) {
+          this.remoteInput = null;
+          this.emit();
+        }
+      });
+    });
     this.connectionLifetime = new AbortController();
     this.localIceCandidates = localIceCandidates;
     this.snapshot = {
@@ -729,6 +746,8 @@ export class ViewerPeer implements ViewerMediaPeer {
   }
 
   private disposeConnection(): void {
+    this.remoteInput?.close();
+    this.remoteInput = null;
     this.clearDisconnectTimer();
     this.clearInitialConnectionTimer();
     this.clearRecoveryTimer();

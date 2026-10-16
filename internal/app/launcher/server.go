@@ -19,6 +19,7 @@ import (
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
+	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 )
 
@@ -46,6 +47,7 @@ type Selection struct {
 }
 
 type Options struct {
+	RemoteInput         *remoteinput.Manager
 	DefaultMode         Mode
 	Site                string
 	StartupSite         string
@@ -62,6 +64,7 @@ type Options struct {
 var listLANAddresses = lan.List
 
 type Server struct {
+	remoteInput         *remoteinput.Manager
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	listener            net.Listener
@@ -116,6 +119,7 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 	}
 	ctx, cancel := context.WithCancel(parent)
 	server := &Server{
+		remoteInput:         options.RemoteInput,
 		ctx:                 ctx,
 		cancel:              cancel,
 		listener:            listener,
@@ -213,6 +217,8 @@ func (server *Server) ServeHTTP(response http.ResponseWriter, request *http.Requ
 	response.Header().Set("X-Frame-Options", "DENY")
 	response.Header().Set("Referrer-Policy", "no-referrer")
 	switch request.URL.Path {
+	case "/api/client-launcher/remote-control":
+		server.remoteInput.ServeHTTP(response, request)
 	case "/api/client-launcher":
 		server.handleState(response, request)
 	case "/api/client-launcher/launch":
@@ -256,17 +262,18 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 	selected, _ := lan.Select(values, server.lanAddress)
 	server.mu.Lock()
 	state := map[string]any{
-		"site":                server.site,
-		"startupSite":         server.startupSite,
-		"localAccessPassword": server.localAccessPassword,
-		"version":             server.version,
-		"revision":            server.revision,
-		"packageTarget":       runtime.GOOS + "-" + runtime.GOARCH,
-		"debug":               server.debug,
-		"target":              server.target,
-		"starting":            server.selected && !server.resultSet,
-		"detail":              errorDetail(server.resultErr),
-		"lan":                 map[string]any{"addresses": addresses, "selected": selected},
+		"remoteControlPrototype": server.remoteInput != nil,
+		"site":                   server.site,
+		"startupSite":            server.startupSite,
+		"localAccessPassword":    server.localAccessPassword,
+		"version":                server.version,
+		"revision":               server.revision,
+		"packageTarget":          runtime.GOOS + "-" + runtime.GOARCH,
+		"debug":                  server.debug,
+		"target":                 server.target,
+		"starting":               server.selected && !server.resultSet,
+		"detail":                 errorDetail(server.resultErr),
+		"lan":                    map[string]any{"addresses": addresses, "selected": selected},
 		"defaultMode": func() Mode {
 			if server.defaultMode == ModeLocal || server.defaultMode == ModeLink {
 				return server.defaultMode

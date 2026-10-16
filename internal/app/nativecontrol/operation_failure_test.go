@@ -48,7 +48,7 @@ func TestSourceProbesRetireWithTheirControlConnection(t *testing.T) {
 				const origin = "https://site.example"
 				server, err := loopback.Start(ctx, loopback.Options{AllowedOrigins: []string{origin},
 					NewControl: func() loopback.ControlSession {
-						return &observedProbeSession{Session: New(executable, nativecapture.Capabilities{}, false), closed: closed}
+						return &observedProbeSession{Session: New(executable, nativecapture.Capabilities{}, false, nil), closed: closed}
 					}})
 				if err != nil {
 					t.Fatal(err)
@@ -123,7 +123,9 @@ func TestOperationalFailureAndIdempotentStopKeepTheRealControlConnection(t *test
 	defer cancel()
 	const origin = "https://site.example"
 	server, err := loopback.Start(ctx, loopback.Options{AllowedOrigins: []string{origin},
-		NewControl: func() loopback.ControlSession { return New("missing-capture", nativecapture.Capabilities{}, false) }})
+		NewControl: func() loopback.ControlSession {
+			return New("missing-capture", nativecapture.Capabilities{}, false, nil)
+		}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +180,7 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", t.TempDir())
-	session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false)
+	session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false, nil)
 	defer session.Close()
 	const start = `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
 	if value, err := awaitControlResponse(t, session, []byte(start)); err != nil {
@@ -272,7 +274,7 @@ func TestCaptureStartupAndReplacementRemainCancellable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false)
+			session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false, nil)
 			defer session.Close()
 			start := `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"edgeCapacity":1,"codec":"vp8","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
 			payload := strings.Replace(start, `"width":1920,"height":1080`, `"width":1280,"height":720`, 1)

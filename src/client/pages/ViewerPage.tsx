@@ -41,6 +41,7 @@ import {
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { Tooltip } from "../components/living/Tooltip";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { RemoteControl } from "../components/living/RemoteControl";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import {
@@ -2214,7 +2215,10 @@ export function ViewerPage({
               onEnded={invalidateQualityPresentation}
             />
             <PlaybackControls
-              extraActions={<RoomChatToggle session={interactionSession} />}
+              extraActions={<><RoomChatToggle session={interactionSession} />
+                <RemoteControl channel={peerRef.current?.getRemoteInput?.() ?? null} videoRef={videoRef}
+                  available={presentation.overlay === "none" && presentation.hasCurrentFrame}
+                  name={displayName} /></>}
               videoRef={videoRef}
               stream={remoteMedia?.stream ?? null}
               audioTrackKey={remoteMedia?.audioTrackKey}

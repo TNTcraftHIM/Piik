@@ -25,6 +25,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
 	"github.com/TNTcraftHIM/Piik/internal/app/publictunnel"
+	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
@@ -149,6 +150,11 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
+	input, inputErr := remoteinput.New(ctx)
+	if inputErr != nil {
+		slog.Warn("Remote-control prototype unavailable", "reason", inputErr)
+	}
+	defer input.Close()
 	recordContext := func(selected Options, config appconfig.Config) {
 		if recorder == nil {
 			return
@@ -171,7 +177,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 	control, err := loopback.Start(ctx, loopback.Options{
 		AllowedOrigins:    allowedOrigins(config.Site, options.Port),
 		NativeMedia:       nativeMedia.capabilities,
-		NewControl:        nativeMedia.controlFactory(),
+		NewControl:        nativeMedia.controlFactory(input),
 		Presentation:      options.console.setLanguage,
 		QualityPreference: qualityPreference,
 	})
@@ -185,7 +191,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			return err
 		}
 	}
-	return runLauncher(ctx, options, configPath, config, control, func(selected *Options, config appconfig.Config) error {
+	return runLauncher(ctx, options, configPath, config, control, input, func(selected *Options, config appconfig.Config) error {
 		diagnosticsMu.Lock()
 		defer diagnosticsMu.Unlock()
 		if ctx.Err() != nil {
@@ -233,6 +239,7 @@ func runLauncher(
 	configPath string,
 	config appconfig.Config,
 	control *loopback.Server,
+	input *remoteinput.Manager,
 	configureDiagnostics func(*Options, appconfig.Config) error,
 ) (returnedErr error) {
 	automatic := explicitMode(options)
@@ -267,6 +274,7 @@ func runLauncher(
 		ctx,
 		webassets.FS(),
 		launcher.Options{
+			RemoteInput: input,
 			DefaultMode: mode,
 			StartupSite: startupSite,
 			SaveStartupSite: func(site string) error {
@@ -660,9 +668,9 @@ type nativeRuntime struct {
 	discoveryErr   error
 }
 
-func (runtime nativeRuntime) controlFactory() func() loopback.ControlSession {
+func (runtime nativeRuntime) controlFactory(input *remoteinput.Manager) func() loopback.ControlSession {
 	return func() loopback.ControlSession {
-		return nativecontrol.New(runtime.captureProcess, runtime.capture, true)
+		return nativecontrol.New(runtime.captureProcess, runtime.capture, true, input)
 	}
 }
 

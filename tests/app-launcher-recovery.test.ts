@@ -40,7 +40,7 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
     "Mode", "LocalAccessPassword", "Lan", "Version", "Target", "Starting", "Site", "StartupSite",
-    "AppDebug", "Debug", "Error", "Loading", "Update",
+    "AppDebug", "Debug", "Error", "Loading", "Update", "RemoteControlPrototype",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
     state[name] = typeof value === "function" ? value(state[name]) : value;

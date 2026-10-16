@@ -204,7 +204,7 @@ func TestLauncherRetainsItsRuntimeFailureDuringCancellation(t *testing.T) {
 			joined := false
 			go func() {
 				done <- runLauncher(ctx, Options{Port: listener.Addr().(*net.TCPAddr).Port, console: console},
-					configPath, config, control, func(*Options, appconfig.Config) error { return nil })
+					configPath, config, control, nil, func(*Options, appconfig.Config) error { return nil })
 			}()
 			defer func() {
 				cancel()
@@ -342,9 +342,9 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 				if mode == "site" {
 					options.SiteSet = true
 					config.Site = "https://share.example"
-					done <- runLauncher(ctx, options, configPath, config, control, func(*Options, appconfig.Config) error { return nil })
+					done <- runLauncher(ctx, options, configPath, config, control, nil, func(*Options, appconfig.Config) error { return nil })
 				} else {
-					done <- runLauncher(ctx, options, configPath, config, control, func(*Options, appconfig.Config) error { return nil })
+					done <- runLauncher(ctx, options, configPath, config, control, nil, func(*Options, appconfig.Config) error { return nil })
 				}
 			}()
 			select {
@@ -424,9 +424,9 @@ func TestBrowserOpenFailureKeepsTheAppAvailable(t *testing.T) {
 				if mode == "site" {
 					options.SiteSet = true
 					config.Site = "https://share.example"
-					done <- runLauncher(ctx, options, configPath, config, control, func(*Options, appconfig.Config) error { return nil })
+					done <- runLauncher(ctx, options, configPath, config, control, nil, func(*Options, appconfig.Config) error { return nil })
 				} else {
-					done <- runLauncher(ctx, options, configPath, config, control,
+					done <- runLauncher(ctx, options, configPath, config, control, nil,
 						func(*Options, appconfig.Config) error { return nil })
 				}
 			}()
@@ -672,7 +672,7 @@ func TestMissingCaptureKeepsViewerControlAvailable(t *testing.T) {
 	if native.capabilities.Video || native.capabilities.HardwareH264 {
 		t.Fatalf("missing native capture = %+v", native)
 	}
-	control := native.controlFactory()()
+	control := native.controlFactory(nil)()
 	if control == nil {
 		t.Fatal("missing capture disabled the native Viewer control")
 	}

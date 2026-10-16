@@ -15,6 +15,7 @@ import (
 
 	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/pion/webrtc/v4"
@@ -72,6 +73,7 @@ type Options struct {
 	EdgeCapacity     int
 	BindAddress      string
 	PortMapping      bool
+	RemoteInput      *remoteinput.Manager
 	Events           func(context.Context, Event)
 }
 
@@ -105,6 +107,7 @@ type Session struct {
 	audioChanged chan struct{}
 	paused       bool
 	closed       bool
+	remoteInput  *remoteinput.Session
 }
 
 func Start(parent context.Context, options Options) (*Session, error) {
@@ -162,6 +165,9 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		ready:          make(chan error, 1),
 		edges:          make(map[string]*mediaedge.Edge),
 		audioChanged:   make(chan struct{}, 1),
+	}
+	if options.Video.Target.Kind == "display" {
+		session.remoteInput = options.RemoteInput.Display(options.Video.Target.SourceID, options.Video.Target.Title)
 	}
 	if audioStream != nil || options.MicrophoneMixing {
 		audioSource, audioErr := engine.NewAudioSource(
@@ -279,6 +285,9 @@ func (session *Session) prepareEdge(
 				})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair) {
+				if state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+					session.remoteInput.Disconnect(connectionID)
+				}
 				session.emit(Event{
 					Type: "edge-state", ShareID: session.shareID,
 					ConnectionID: connectionID, State: state.String(),
@@ -308,6 +317,12 @@ func (session *Session) prepareEdge(
 	session.edges[connectionID] = edge
 	session.mu.Unlock()
 	var offer webrtc.SessionDescription
+	if localOfferID == "" && session.remoteInput != nil {
+		channel, channelErr := edge.OpenDataChannel(remoteinput.ChannelLabel)
+		if channelErr == nil {
+			session.remoteInput.Attach(connectionID, channel)
+		}
+	}
 	if localOfferID != "" {
 		offer, err = edge.CreateLocalOffer(session.ctx, localOfferID, false)
 	} else {
@@ -342,6 +357,7 @@ func (session *Session) AddCandidate(
 }
 
 func (session *Session) SetPaused(paused bool) {
+	session.remoteInput.Pause(paused)
 	session.mu.Lock()
 	if session.closed {
 		session.mu.Unlock()
@@ -423,6 +439,8 @@ func (session *Session) ReplaceSource(
 ) error {
 	session.updateMu.Lock()
 	defer session.updateMu.Unlock()
+	// A changed picture must never retain permission to control the old source.
+	session.remoteInput.Close()
 
 	session.mu.Lock()
 	if session.closed {
@@ -687,6 +705,7 @@ func (session *Session) Close() error {
 // Both explicit Close and source termination retire these idempotent owners.
 // Do not wait for run here: Close uses this to unblock run's readers.
 func (session *Session) retire() {
+	session.remoteInput.Close()
 	session.mu.Lock()
 	source, stream := session.source, session.stream
 	audioSource, audioStream := session.audioSource, session.audioStream

@@ -254,6 +254,12 @@ func (edge *Edge) CreateOffer() (webrtc.SessionDescription, error) {
 	return offer, nil
 }
 
+// OpenDataChannel adds an optional channel before the initial offer. The edge's
+// PeerConnection owns its transport and closes it with the media connection.
+func (edge *Edge) OpenDataChannel(label string) (*webrtc.DataChannel, error) {
+	return edge.connection.CreateDataChannel(label, nil)
+}
+
 // Local bridges have no STUN or gateway discovery. Complete SDP keeps their
 // candidates and answer in one bounded negotiation, including ICE restarts.
 func (edge *Edge) CreateLocalOffer(ctx context.Context, offerID string, restart bool) (webrtc.SessionDescription, error) {

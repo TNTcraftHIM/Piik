@@ -22,6 +22,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeviewer"
+	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
@@ -42,6 +43,7 @@ type Session struct {
 	captureProcess string
 	capabilities   nativecapture.Capabilities
 	portMapping    bool
+	remoteInput    *remoteinput.Manager
 	ctx            context.Context
 	cancel         context.CancelFunc
 	events         chan any
@@ -69,12 +71,14 @@ func New(
 	captureProcess string,
 	capabilities nativecapture.Capabilities,
 	portMapping bool,
+	remoteInput *remoteinput.Manager,
 ) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &Session{
 		captureProcess: captureProcess,
 		capabilities:   capabilities,
 		portMapping:    portMapping,
+		remoteInput:    remoteInput,
 		ctx:            ctx,
 		cancel:         cancel,
 		events:         make(chan any, 256),
@@ -589,6 +593,7 @@ func (session *Session) startShare(
 	}
 	session.mu.Unlock()
 	host, err := nativehost.Start(ctx, nativehost.Options{
+		RemoteInput:    session.remoteInput,
 		ShareID:        request.ShareID,
 		CaptureProcess: session.captureProcess,
 		Video: nativecapture.VideoOptions{

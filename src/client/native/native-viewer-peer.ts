@@ -177,6 +177,7 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
   }
 
   isRecovering(): boolean { return this.backend?.isRecovering() ?? false; }
+  getRemoteInput(): RTCDataChannel | null { return this.backend?.getRemoteInput?.() ?? null; }
   hasConnection(): boolean { return this.backend?.hasConnection() ?? this.identity !== null; }
   hasConnectionId(connectionId: string): boolean {
     return this.backend?.hasConnectionId(connectionId) ??

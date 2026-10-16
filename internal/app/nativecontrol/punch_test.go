@@ -11,7 +11,7 @@ import (
 )
 
 func TestPunchResponseBackpressureBoundsWorkers(t *testing.T) {
-	session := New("", nativecapture.Capabilities{}, false)
+	session := New("", nativecapture.Capabilities{}, false, nil)
 	t.Cleanup(func() { _ = session.Close() })
 	viewer, err := session.ensureViewer("review_share", 1)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestPunchResponseBackpressureBoundsWorkers(t *testing.T) {
 func TestPunchPreparationPreservesMediaRole(t *testing.T) {
 	for _, sourceID := range []string{"", "retired_receiver"} {
 		t.Run("sender/"+sourceID, func(t *testing.T) {
-			session := New("", nativecapture.Capabilities{}, false)
+			session := New("", nativecapture.Capabilities{}, false, nil)
 			t.Cleanup(func() { _ = session.Close() })
 			request := preparePunchRequest{
 				requestEnvelope: requestEnvelope{Version: 10, ID: "prepare_request", Type: "prepare-punch"},
@@ -91,7 +91,7 @@ func TestPunchPreparationPreservesMediaRole(t *testing.T) {
 		})
 	}
 	t.Run("receiver", func(t *testing.T) {
-		session := New("", nativecapture.Capabilities{}, false)
+		session := New("", nativecapture.Capabilities{}, false, nil)
 		t.Cleanup(func() { _ = session.Close() })
 		capacity := 2
 		request := preparePunchRequest{
@@ -112,7 +112,7 @@ func TestPunchPreparationPreservesMediaRole(t *testing.T) {
 func TestPunchRequiresExplicitMappingStep(t *testing.T) {
 	for _, step := range []string{"", `,"step":null`, `,"step":0`} {
 		t.Run(step, func(t *testing.T) {
-			session := New("", nativecapture.Capabilities{}, false)
+			session := New("", nativecapture.Capabilities{}, false, nil)
 			t.Cleanup(func() { _ = session.Close() })
 			payload := []byte(`{"version":10,"id":"run_request","type":"run-punch","shareId":"share_id",` +
 				`"connectionId":"connection","prediction":{"address":"198.51.100.1","port":5000` + step + `}}`)

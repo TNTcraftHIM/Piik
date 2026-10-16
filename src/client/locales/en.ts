@@ -2,6 +2,19 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "remote.title": "Remote control",
+  "remote.request": "Request control",
+  "remote.cancel": "Cancel request",
+  "remote.stop": "End control",
+  "remote.allow": "Allow control",
+  "remote.surface": "Remote keyboard and mouse input",
+  "remote.active": "Controlling the shared desktop",
+  "remote.pending": "Waiting for approval in the Host's App launcher",
+  "remote.failed": "Remote control is unavailable. Request again.",
+  "remote.consent": "Check the code shown to the Viewer before allowing them to use this computer's mouse and keyboard.",
+  "remote.empty": "Viewer requests will appear here.",
+  "remote.waiting": "Waiting for approval",
+  "remote.shortcut": "Stop immediately on this computer:",
   "common.loading": "Loading",
   "playback.controls": "Local playback controls",
   "playback.play": "Play",

@@ -5,6 +5,7 @@ import { BrandMark } from "../components/living/BrandMark";
 import { HintComic } from "../components/living/hints";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
+import { RemoteControlApproval } from "../components/living/RemoteControl";
 import { AppHeader } from "../components/living/Header";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
@@ -19,6 +20,7 @@ import {
 } from "../lib/release-update";
 
 const launcherStateSchema = z.object({
+  remoteControlPrototype: z.boolean().optional(),
   site: z.string(),
   startupSite: z.string(),
   localAccessPassword: z.string(),
@@ -41,6 +43,7 @@ const launcherErrorSchema = z.object({ detail: z.string() });
 export function AppLauncherPage() {
   const { lang, vis, t } = useCopy();
   const [loading, setLoading] = useState(true);
+  const [remoteControlPrototype, setRemoteControlPrototype] = useState(false);
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<AppMode>("link");
   const [site, setSite] = useState("");
@@ -105,6 +108,7 @@ export function AppLauncherPage() {
           restoredSettings = true;
         }
         setVersion(state.version);
+        setRemoteControlPrototype(state.remoteControlPrototype === true);
         setTarget(state.target);
         setStarting(state.starting === true);
         setSite(state.site);
@@ -321,6 +325,7 @@ export function AppLauncherPage() {
             {update && <AppReleaseNotice update={update} />}
           </LauncherForm>
         )}
+        {remoteControlPrototype && !requestedSite && <RemoteControlApproval />}
       </main>
       <footer className="lr-client-footer">
         <a className="lr-btn" href="https://github.com/TNTcraftHIM/Piik" target="_blank" rel="noopener noreferrer">GitHub<span aria-hidden="true"> ↗</span></a>

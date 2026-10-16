@@ -274,10 +274,10 @@ preserving room membership and chat. One selected picture is the initial scope;
 camera conferencing and room voice are separate features. No implementation or
 protocol change is accepted by this assessment.
 
-## Remote Control Assessment (Not Implemented)
+## Attended Remote-Control Prototype
 
-Reviewed 2026-10-15. Cross-platform control is a candidate, not an accepted
-product expansion. A Browser on a computer or phone could control a desktop App;
+Reviewed 2026-10-16. The Windows attended prototype is local experiment work,
+not a released feature. Cross-platform control remains a candidate. A Browser on a computer or phone could control a desktop App;
 controlling Android/iOS themselves is a separate platform problem. The
 [Captured Surface Control draft](https://w3c.github.io/mediacapture-surface-control/)
 only provides limited wheel/zoom operations, not general OS keyboard/mouse input.
@@ -296,26 +296,39 @@ cross-platform remote-control SDK. Its GPL implementation remains study-only
 under the repository's contribution rules. No matched measurement establishes
 a Go/Rust performance advantage or a need to replace Piik's media pipeline.
 
-A bounded candidate would be attended desktop assistance: one explicitly
-approved controller, with a local revoke action and no unattended access.
-The recommended first prototype is a Windows App sharing a display, controlled
-by one desktop Browser through mouse, wheel and keyboard input. This preserves
-the one-Host picture and existing Viewer/relay roles; virtual gamepads and
-multiple publishers are independent work.
-App input authority would have to be process-wide because its two native
-sessions share the same OS keyboard and pointer. Site capture approval cannot
-silently grant a Viewer input rights. Source/session retirement and disconnect
-would end the grant, discard queued input and release pressed keys; reconnect
-would require fresh approval. Whole-window capture is not input isolation.
+The `remotecontrol` Go build tag selects Windows `SendInput`; ordinary builds
+leave it unavailable. The prototype uses the App's embedded page and a shared
+display, with one desktop Browser controller. An ordered WebRTC data channel
+on the existing direct media edge carries small input messages. There is no new
+listener, signaling command, media route, server input forwarding or dependency.
+The control button appears only when that channel exists. SFU/relay routes,
+Native receiving Viewers, window-only capture, mobile input, relative game
+mouse input, IME and virtual gamepads are outside this prototype.
 
-Transport remains undecided. Existing authenticated signaling could carry
-bounded, directed assistance input independently of the media tree, but adds
-server latency and exposes input to that service. A WebRTC data channel could
-reduce that dependency only with a reachable control path: Viewers may receive
-media from another Viewer or the SFU instead of the Host. Piik has no application
-data channel today. Neither choice is equivalent to reusing chat's 800 ms
-limiter. Scope, input privacy, retirement, latency and real platform acceptance
-must justify the added owner before implementation; current sharing is unchanged.
+`internal/app/remoteinput` owns one process-wide grant because the App's native
+sessions share the same physical keyboard and pointer. The Viewer requests
+control; the Host checks the displayed pairing code and approves on the local
+App launcher. Its existing loopback Host/Origin checks protect approval. The
+grant is bound to that channel and source, with a fresh nonce for each approval.
+Site capture approval never grants input rights. Input may operate the whole
+computer; a shared picture is not an OS input sandbox.
+
+Revocation, pause, source retirement and connection loss release held keys and
+buttons. A changed source or disconnected channel needs a fresh share in this
+prototype; it never silently restores a grant. The Viewer can use Escape, and
+the Host can stop from the launcher or Ctrl+Alt+F10. Window blur releases held
+input; hidden or locally paused video ends control. Pointer motion retains the
+latest sample per animation frame; a stalled send queue closes the input channel
+without replacing the media connection. No input history is persisted.
+
+Local acceptance exercised real Windows display capture, Browser viewing,
+native mouse click, keyboard text, wheel, held-key release and the local stop
+shortcut. The consent owner was also checked over real SCTP channels for
+unapproved/stale input, controller replacement, pause, disconnect and source
+retirement. A foreign-origin approval POST was rejected. These checks do not
+establish remote-network latency, game compatibility, mixed-DPI behavior or
+antivirus classification. The experiment build and disposable UI/input probes
+remain under ignored `build/remote-control-prototype/`.
 
 Remote control can target an additive 2.x release under the
 [compatibility contract](../standards/versioning.md#extending-interfaces): advertise
@@ -326,6 +339,20 @@ this is an extension point, not proof of end-to-end compatibility. The prototype
 must still check old/new Site, page and App combinations. Multiple publishers
 are not a prerequisite, and neither feature size nor an internal refactor alone
 requires a major release.
+
+### Distribution Risk
+
+[Microsoft's software criteria](https://learn.microsoft.com/en-us/defender-xdr/criteria)
+distinguish malicious behavior, unwanted software and user choice/control.
+Attended remote control is a legitimate feature, but input injection and its
+potential misuse can invite additional security review or enterprise blocking.
+No source establishes a numerical false-positive increase for Piik.
+[SmartScreen reputation](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
+and [Chrome download warnings](https://support.google.com/chrome/answer/6261569?hl=en)
+are also distinct from a confirmed malware detection; signing does not guarantee
+that a new binary avoids a warning. This prototype adds no unattended access,
+startup persistence, elevation, driver, keyboard hook or security-product bypass.
+Do not recommend antivirus exclusions as its deployment model.
 
 ### Remote Co-play
 

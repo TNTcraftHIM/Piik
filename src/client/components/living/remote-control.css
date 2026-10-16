@@ -1,0 +1,14 @@
+.lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: crosshair; touch-action: none; outline: 2px solid var(--action); outline-offset: -2px; border-radius: inherit; }
+.lr-remote-input-status { position: absolute; top: 12px; left: 12px; z-index: 4; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 24px); padding: 7px 12px; border-radius: 12px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; pointer-events: none; }
+.lr-remote-input-status code, .lr-remote-request code { font: 700 13px var(--mono); letter-spacing: .12em; }
+.lr-client-launch:has(> .lr-remote-approval) { align-content: center; gap: 24px; }
+.lr-remote-approval { width: min(100%, 620px); margin: 0; padding: 22px; box-sizing: border-box; border: 1px solid color-mix(in srgb, var(--ink) 20%, transparent); border-radius: 22px; background: var(--paper); color: var(--ink); }
+.lr-remote-approval h2 { display: flex; gap: 10px; align-items: center; margin: 0 0 12px; font-size: 18px; }
+.lr-remote-approval small { color: var(--muted); font: 11px var(--mono); }
+.lr-remote-approval p { font-size: 13px; line-height: 1.6; margin: 8px 0; }
+.lr-remote-empty, .lr-remote-shortcut { color: var(--muted); }
+.lr-remote-request { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 0; border-top: 1px solid var(--control-edge); }
+.lr-remote-request > div:first-child { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.lr-remote-request code { margin-left: 12px; color: var(--action); }
+.lr-remote-request-actions { display: flex; gap: 8px; }
+.lr-remote-shortcut kbd { white-space: nowrap; font: 12px var(--mono); }

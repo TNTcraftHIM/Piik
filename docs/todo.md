@@ -14,6 +14,13 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
+- [ ] **Attended remote-control prototype.** Windows App display sharing now
+  offers an optional input channel to a directly connected Browser Viewer in
+  experimental `remotecontrol` builds. Local consent, revocation and native
+  input have been exercised; user acceptance and an actual remote-device trial
+  remain before choosing a product integration. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
+  owns limitations and evidence. This is not part of the public release.
+
 - [ ] **Return LiveKit to an upstream pin.** Native publication now supplies
   unmet encoder demand to the existing allocator through the scoped dependency
   revision submitted in [upstream #5016](https://github.com/livekit/livekit/pull/5016).
@@ -194,12 +201,10 @@ remains; do not add another retry/transport owner to bypass these limits.
     identifies pairing/revocation and native decoded-input ownership beyond the
     device selector. Reopen for a concrete use case that justifies this boundary
     and physical latency/echo/background checks. This does not reopen room voice.
-10. **Attended remote control and co-play.** The [cross-platform assessment](./research/room-interactions.md#remote-control-assessment-not-implemented)
-    separates single-controller assistance from [remote co-play](./research/room-interactions.md#remote-co-play)
-    with virtual gamepad slots. Evaluate input backends, transport and App-wide
-    grant retirement before selecting a prototype. Moonlight/Sunshine inform
-    input semantics; their transport is not a drop-in WebRTC component. No
-    remote-control code or mobile controlled endpoint is currently planned.
+10. **Remote co-play and more controlled platforms.** The [co-play assessment](./research/room-interactions.md#remote-co-play)
+    separates virtual gamepad slots from attended keyboard/mouse assistance.
+    Retain the Windows display prototype above; other input backends, gamepads
+    and mobile controlled endpoints need a separate scope decision.
 11. **Per-Viewer SFU preference (#477).** Existing `SFU_ONLY=true` is an operator
     policy for the whole site; it does not provide the requested individual
     Viewer control. Keep this proposal separate from quality-recovery fixes.
