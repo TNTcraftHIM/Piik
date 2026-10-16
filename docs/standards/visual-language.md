@@ -197,6 +197,9 @@ Their stroke inherits the local surface's text colour:
 dark ink on light surfaces, light ink on dark surfaces, including deliberately
 light panels within a dark page. Gold sparkles remain a brand accent in both
 forms. Do not assign black/white outlines independently at each call site.
+The badge identifies App packages, browser tabs and search results. In-page
+branding and the [README mark](../assets/brand-mark.svg) keep the unboxed outline;
+changing the badge does not restyle the UI, wordmark or illustrations.
 
 | Meaning | Representation |
 | --- | --- |

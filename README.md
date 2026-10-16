@@ -1,4 +1,4 @@
-<p align="center"><img src="./public/favicon.svg" width="64" height="64" alt="Piik mascot"></p>
+<p align="center"><img src="./docs/assets/brand-mark.svg" width="64" height="64" alt="Piik mascot"></p>
 <h1 align="center">Piik</h1>
 <p align="center"><strong>Share the good stuff.</strong><br>Private screen sharing for you and up to 20 friends.</p>
 <p align="center">

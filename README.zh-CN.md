@@ -1,4 +1,4 @@
-<p align="center"><img src="./public/favicon.svg" width="64" height="64" alt="Piik 吉祥物"></p>
+<p align="center"><img src="./docs/assets/brand-mark.svg" width="64" height="64" alt="Piik 吉祥物"></p>
 <h1 align="center">Piik</h1>
 <p align="center"><strong>来，看点<br>好康的。</strong><br>私密屏幕共享，邀请最多 20 位朋友观看。</p>
 <p align="center">
