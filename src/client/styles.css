@@ -958,9 +958,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 /* ---------- buttons & chips ---------- */
 
 .lr-app-connect { min-width: 40px; height: 40px; }
-.lr-app-connect.is-ready { cursor: default; }
 .lr-app-connect.is-ready > svg { color: var(--live); }
-.lr-app-connect.is-ready:hover { transform: none; }
 .lr-app-connect-help {
   position: fixed; inset: auto; margin: 0; padding: 16px;
   width: min(300px, calc(100vw - 16px)); box-sizing: border-box;

@@ -14,11 +14,6 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
-- [ ] **Close the maintenance release.** Complete acceptance of the integrated
-  media-recovery, connectivity, presentation and documentation changes; prepare
-  the proposed version and bilingual release notes for owner review. Reuse valid
-  focused evidence, then follow the existing release workflow. Field-evidence
-  gaps and parked features below do not expand this release's scope.
 - [ ] **Return LiveKit to an upstream pin.** Native publication now supplies
   unmet encoder demand to the existing allocator through the scoped dependency
   revision submitted in [upstream #5016](https://github.com/livekit/livekit/pull/5016).

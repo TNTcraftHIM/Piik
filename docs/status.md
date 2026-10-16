@@ -56,12 +56,12 @@ Release artifacts and operator deployment records own delivery completion;
 
 ## Current Work
 
-Post-release maintenance retains the existing protocol and route owners.
-Its scope is media recovery, connectivity controls, presentation consistency
-and their documentation. [TODO](./todo.md#now) owns release closure and the
-upstream dependency follow-up; deferred providers and product modes stay outside
-this phase. Release artifacts and operator records own delivery and acceptance
-results.
+Current source retains the existing 2.x protocol and route owners. Native media
+recovery uses the existing allocator and encoder, available NAT enhancement is
+automatic, and App startup can open a starred approved Site without starting a
+Local room. [TODO](./todo.md) owns the upstream dependency follow-up, pending field
+evidence and deferred product work. Release artifacts and operator records own
+delivery and acceptance results.
 
 2.0 separates numeric media requests from presets and bounded runtime admission,
 retains successfully applied quality settings, and lets App serve an approved
