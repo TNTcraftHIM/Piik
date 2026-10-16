@@ -50,8 +50,12 @@ export function RemoteControl({ channel, videoRef, available }: {
     if (!controlled) return;
     const element = surface.current;
     element?.focus({ preventScroll: true });
-    const wheel = (event: WheelEvent) => { event.preventDefault(); session.current?.input({ type: "wheel", delta: -Math.sign(event.deltaY) * 120 }); };
+    const wheel = (event: WheelEvent) => { event.preventDefault(); session.current?.scroll(event.deltaY, event.deltaMode); };
     element?.addEventListener("wheel", wheel, { passive: false });
+    // Release can land outside the picture after a drag. Observe it for this
+    // grant only; the native owner ignores buttons it never pressed.
+    const mouseUp = (event: MouseEvent) => session.current?.input({ type: "button", button: event.button, down: false });
+    window.addEventListener("mouseup", mouseUp, true);
     const hidden = () => { if (document.hidden) release(); };
     const lockChanged = () => {
       reset(); setLocked(document.pointerLockElement === element);
@@ -62,6 +66,7 @@ export function RemoteControl({ channel, videoRef, available }: {
     document.addEventListener("pointerlockchange", lockChanged);
     return () => {
       element?.removeEventListener("wheel", wheel);
+      window.removeEventListener("mouseup", mouseUp, true);
       window.removeEventListener("blur", reset);
       document.removeEventListener("visibilitychange", hidden);
       document.removeEventListener("pointerlockchange", lockChanged);
@@ -86,6 +91,7 @@ export function RemoteControl({ channel, videoRef, available }: {
       {controlled && <div ref={surface} className={`lr-remote-input-surface${active ? "" : " is-suspended"}`} tabIndex={0}
         aria-label={t("remote.surface")} role="application"
         onContextMenu={event => event.preventDefault()}
+        onAuxClick={event => event.preventDefault()}
         onPointerMove={event => {
           if (document.pointerLockElement === surface.current) {
             input({ type: "relative", dx: event.movementX, dy: event.movementY });
@@ -95,14 +101,17 @@ export function RemoteControl({ channel, videoRef, available }: {
           }
         }}
         onPointerDown={event => {
-          if (event.button > 2) return;
+          if (document.pointerLockElement !== surface.current) event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        // Pointer down/up report the first/last mouse button only. Mouse events
+        // preserve chords such as holding right to aim while left clicks fire.
+        onMouseDown={event => {
+          if (event.button > 4) return;
           event.preventDefault(); surface.current?.focus({ preventScroll: true });
           if (document.pointerLockElement === surface.current) { input({ type: "button", button: event.button, down: true }); return; }
-          event.currentTarget.setPointerCapture(event.pointerId);
           const position = point(event.clientX, event.clientY);
           if (position) { input({ type: "move", ...position }); input({ type: "button", button: event.button, down: true }); }
         }}
-        onPointerUp={event => { input({ type: "button", button: event.button, down: false }); }}
         onPointerCancel={reset}
         onBlur={reset}
         onKeyDown={event => {

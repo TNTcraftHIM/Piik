@@ -66,6 +66,21 @@ func keyInput(scan uint16, down bool) winInput {
 	return input
 }
 
+func buttonInput(button int, down bool) (winInput, error) {
+	flags := [...]uint32{2, 0x20, 8, 0x80, 0x80} // left, middle, right, X1, X2
+	if button < 0 || button >= len(flags) {
+		return winInput{}, errors.New("invalid button")
+	}
+	input := winInput{Mouse: mouseInput{Flags: flags[button]}}
+	if button >= 3 {
+		input.Mouse.Data = 1 << (button - 3)
+	}
+	if !down {
+		input.Mouse.Flags <<= 1
+	}
+	return input, nil
+}
+
 func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 	switch e.Type {
 	case "move":
@@ -88,17 +103,14 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 		}
 		return inject(winInput{Mouse: mouseInput{X: e.DX, Y: e.DY, Flags: 1}})
 	case "button":
-		flags := map[int]uint32{0: 2, 1: 0x20, 2: 8}[e.Button]
-		if flags == 0 {
-			return errors.New("invalid button")
+		input, err := buttonInput(e.Button, e.Down)
+		if err != nil {
+			return err
 		}
 		if !e.Down && !s.buttons[e.Button] {
 			return nil
 		}
-		if !e.Down {
-			flags <<= 1
-		}
-		if err := inject(winInput{Mouse: mouseInput{Flags: flags}}); err != nil {
+		if err := inject(input); err != nil {
 			return err
 		}
 		if e.Down {

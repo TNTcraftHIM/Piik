@@ -25,6 +25,7 @@ export class RemoteInputSession {
   private disposed = false;
   private pointer: PointerInput | null = null;
   private frame: number | null = null;
+  private wheelFraction = 0;
 
   constructor(private readonly channel: RTCDataChannel, private readonly changed: (state: RemoteInputState | null) => void) {
     channel.addEventListener("message", this.message);
@@ -34,6 +35,7 @@ export class RemoteInputSession {
 
   private set(state: RemoteInputState | null): void {
     this.clearPointer();
+    this.wheelFraction = 0;
     this.state = state;
     this.changed(state);
   }
@@ -107,9 +109,19 @@ export class RemoteInputSession {
       if (this.frame === null) this.frame = requestAnimationFrame(this.flushPointer);
       return;
     }
-    if (event.type === "reset") this.clearPointer();
+    if (event.type === "reset") { this.clearPointer(); this.wheelFraction = 0; }
     else this.flushPointer();
     this.sendInput(event);
+  }
+
+  scroll(deltaY: number, deltaMode: number): void {
+    if (this.state?.state !== "active") return;
+    // Normalize browser pixel/line/page units to wheel ticks (120 per notch).
+    // Common defaults: 100 px or 3 lines per notch; retain precision-pad fractions.
+    this.wheelFraction -= deltaY * (deltaMode === 1 ? 40 : deltaMode === 2 ? 120 : 1.2);
+    const delta = Math.trunc(this.wheelFraction);
+    this.wheelFraction -= delta;
+    if (delta) this.input({ type: "wheel", delta: Math.max(-1200, Math.min(1200, delta)) });
   }
 
   private sendInput(event: RemoteInputEvent): void {

@@ -445,7 +445,15 @@ The Windows sink uses physical-key mapping through
 and supports relative mouse movement through browser
 [Pointer Lock](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API),
 with an exit interaction that leaves Escape available to games in ordinary
-pointer mode. The Browser input session owns request/grant lifetime separately
+pointer mode. Mouse button transitions use `mousedown/up`: unlike
+[`pointerdown/up`](https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerdown_event),
+they retain chords such as holding right while clicking left. Pointer capture
+keeps drags attached to the picture; release is observed across the Viewer
+window so leaving the picture cannot leave a button pressed. Scroll handling
+retains magnitude and fractions across Browser wheel units; the default
+conversion follows [Chromium's wheel mapping](https://github.com/chromium/chromium/blob/main/ui/events/blink/web_input_event_builders_win.cc)
+and [Windows wheel/button semantics](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-mouseinput).
+The Browser input session owns request/grant lifetime separately
 from the React controls and DOM capture. Real SCTP checks cover permission,
 focus suspension, updated geometry and retirement; Browser checks cover window
 capture, consent and pointer lock. Actual moved-window clicks, mixed DPI and

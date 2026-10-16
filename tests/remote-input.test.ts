@@ -52,6 +52,32 @@ it("maps only visible picture pixels when playback has letterboxing", () => {
   expect(picturePoint(video, 901, 350)).toBeNull();
 });
 
+it("preserves wheel magnitude and fractions across browser units, only within the current grant", () => {
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  session.request();
+  const intent = channel.sent.at(-1)?.intent;
+  channel.receive({ state: "active", intent, grant: "c".repeat(64) });
+  session.scroll(100, 0);
+  session.scroll(3, 1);
+  session.scroll(1, 2);
+  expect(channel.sent.slice(-3).map(event => event.delta)).toEqual([-120, -120, -120]);
+  const count = channel.sent.length;
+  for (let i = 0; i < 4; i++) session.scroll(0.25, 0);
+  expect(channel.sent).toHaveLength(count + 1);
+  expect(channel.sent.at(-1)?.delta).toBe(-1);
+  session.scroll(-10_000, 0);
+  expect(channel.sent.at(-1)?.delta).toBe(1200);
+  channel.receive({ state: "suspended", intent, grant: "c".repeat(64) });
+  const suspendedCount = channel.sent.length;
+  session.scroll(100, 0);
+  expect(channel.sent).toHaveLength(suspendedCount);
+  channel.receive({ state: "active", intent, grant: "c".repeat(64) });
+  session.scroll(0.75, 0);
+  expect(channel.sent).toHaveLength(suspendedCount);
+  session.dispose();
+});
+
 it("flushes coalesced motion before buttons and discards it when control ends", () => {
   let nextFrame: FrameRequestCallback | null = null;
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { nextFrame = callback; return 1; });
