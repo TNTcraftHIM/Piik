@@ -66,7 +66,7 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
-function mount(activated = false) {
+function mount(activated = false, state: "idle" | "ready" = "idle") {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }), location: { replace: vi.fn() } };
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site } });
   const native = {
@@ -83,7 +83,7 @@ function mount(activated = false) {
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
     window, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
-    sourcePicker: false, isClientActivated: () => activated,
+    sourcePicker: false, state, isClientActivated: () => activated,
     watchClientActivation: (changed: () => void) => {
       window.addEventListener("activation", changed);
       return () => window.removeEventListener("activation", changed);
@@ -103,6 +103,18 @@ function mount(activated = false) {
 }
 
 describe("App connection approval", () => {
+  it("opens the launcher for an already connected Site without changing approval", async () => {
+    const page = mount(true, "ready");
+    await page.connect();
+    expect(page.popup.location.replace).toHaveBeenCalledWith("http://127.0.0.1:39721/client");
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.pending.current).toBeNull();
+    expect(page.activateClient).not.toHaveBeenCalled();
+    expect(page.onConnected).not.toHaveBeenCalled();
+    page.cleanup();
+    expect(page.popup.closed).toBe(false);
+  });
+
   it("offers recovery without activation or a stranded popup when no App is found", async () => {
     const page = mount();
     page.native.discoverNativeConnect.mockResolvedValue(null);

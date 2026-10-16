@@ -47,7 +47,11 @@ available to its approved Site before either mode starts. The desktop App entry
 is omitted on known mobile platforms; Browser and camera actions retain their
 own capability checks. A Site's explicit App action discovers the local approval
 page, where the user confirms its exact origin. The launcher shows and revokes
-that approval. Activating a page supplies
+that approval. Starring the approved Site makes an ordinary App launch open it;
+without a star, the launcher opens. This preference grants no access and starts
+no room. Replacing or revoking approval clears it; explicit CLI entry keeps
+precedence. The ready App button opens its launcher for management.
+Activating a page supplies
 native capability without restarting its room or healthy media session.
 The source selector exposes that same connection action before sharing; a
 successful connection refreshes its current list. An already approved exact

@@ -1531,14 +1531,15 @@ html[data-theme="dark"] .lr-meter-cell svg { color: #7d92a8; }
 .lr-client-launch-title { font-size: 36px; line-height: 1.1; letter-spacing: -.04em; }
 .lr-client-launch-title small { margin-left: 6px; color: var(--muted); font-size: 15px; letter-spacing: 0; font-weight: 650; }
 .lr-client-brand-dot { color: #e77d38; }
-.lr-client-standby { display: flex; align-items: flex-start; gap: 14px; width: 100%; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--ink) 20%, transparent); border-radius: 22px; background: var(--paper); }
-.lr-client-standby-icon { display: grid; flex: 0 0 44px; height: 44px; place-items: center; border-radius: 14px; background: var(--control-hover); color: var(--ink); }
-.lr-client-standby-copy { display: grid; flex: 1; gap: 6px; min-width: 0; }
+.lr-client-standby { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: start; gap: 14px; width: 100%; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--ink) 20%, transparent); border-radius: 22px; background: var(--paper); }
+.lr-client-standby-icon { display: grid; height: 44px; place-items: center; border-radius: 14px; background: var(--control-hover); color: var(--ink); }
+.lr-client-standby-copy { display: grid; gap: 6px; min-width: 0; }
 .lr-client-standby strong { font-size: 14px; }
 .lr-client-standby p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
-.lr-client-approved-site { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.lr-client-approved-site a { display: flex; align-items: baseline; gap: 4px; min-width: 0; overflow-wrap: anywhere; color: var(--ink); font: 12px/1.6 var(--mono); text-underline-offset: 3px; }
+.lr-client-approved-site { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lr-client-approved-site a { display: flex; flex: 1; align-items: baseline; gap: 4px; min-width: 0; overflow-wrap: anywhere; color: var(--ink); font: 12px/1.6 var(--mono); text-underline-offset: 3px; }
 .lr-client-approved-site a > span { flex: none; }
+.lr-client-site-actions { display: flex; flex: none; align-items: center; gap: 8px; }
 .lr-client-approved-site .lr-btn { min-width: 32px; width: 32px; height: 32px; padding: 0; }
 .lr-client-launch-section { justify-self: start; margin: 5px 0 -8px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .lr-client-approval {

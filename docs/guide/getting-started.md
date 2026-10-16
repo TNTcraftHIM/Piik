@@ -119,6 +119,10 @@ in a private window or after clearing site data, connect again. The same exact
 site already approved by App needs no repeat confirmation. The launcher
 shows the approved site; **×** beside its address revokes access. Approving a different site
 replaces the previous one and ends that site's App connections.
+Select **☆** beside the address to open that site automatically next time you
+start the App. Turn it off to return to the launcher on startup. The connected
+**App** button on the site opens the launcher for these settings.
+If the site is unavailable, use the **App launcher** address in the App terminal.
 To use your App with a friend's new public-invitation address, connect and approve
 that address again. Sharing-quality settings saved in App survive the address change.
 

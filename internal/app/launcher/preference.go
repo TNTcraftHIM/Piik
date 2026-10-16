@@ -30,6 +30,29 @@ func SaveMode(configPath string, mode Mode) error {
 	return os.WriteFile(configPath+".mode", []byte(string(mode)+"\n"), 0o600)
 }
 
+// Startup preference never grants access: only the currently approved origin
+// may be opened. Keep it outside the strict, published client.json format.
+func LoadStartupSite(configPath, approvedSite string) (string, error) {
+	payload, err := os.ReadFile(configPath + ".startup-site")
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	site := strings.TrimSpace(string(payload))
+	if site == "" || site == approvedSite {
+		return site, nil
+	}
+	// CLI/config changes also retire the old choice, rather than letting a
+	// later approval of that same address resurrect it.
+	return "", SaveStartupSite(configPath, "")
+}
+
+func SaveStartupSite(configPath, site string) error {
+	return os.WriteFile(configPath+".startup-site", []byte(site+"\n"), 0o600)
+}
+
 func validMode(mode Mode) bool {
 	return mode == ModeLocal || mode == ModeLink
 }

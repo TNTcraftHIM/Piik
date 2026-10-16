@@ -27,6 +27,8 @@ publication are separate steps in [deployment](../../docs/deployment.md).
 - With no mode argument, the App opens its launcher and waits for use by an
   approved Site. Choose **Local room** or **Public invite** to start a room
   service on this device and enter the normal Host page.
+  Star an approved Site in the launcher to open it on startup instead;
+  turn the star off to restore the launcher. Replacing or revoking the Site clears this choice.
 - The launcher remembers the last mode confirmed with **Open Piik**. Without a
   saved Local/Public choice, it selects Public invite and waits for confirmation.
   The mode preference is stored beside the settings in `client.json.mode`;
@@ -50,9 +52,9 @@ Public invite uses Cloudflare, MiWiFi (Xiaomi) and Bilibili STUN services to
 discover reachable addresses. Each contacted operator can see your public IP,
 port and request timing; these requests contain no shared media, chat or room
 password. NAT enhancement uses the same destinations automatically.
-The App currently offers no STUN override. To choose your own STUN services,
-use a [self-hosted Site](../../docs/operations/self-hosting.md) configured with
-`STUN_URLS`; App Local rooms configure no public STUN.
+To choose your own STUN services for public invitations, set `PIIK_STUN_URLS`
+before starting App; see [App configuration](../../docs/standards/configuration.md#piik-app-configuration).
+An approved Site supplies its own `STUN_URLS`; App Local rooms configure no public STUN.
 
 For Local invitations, the App automatically selects a sole active address or
 sole private IPv4. If several addresses remain possible, choose an interface

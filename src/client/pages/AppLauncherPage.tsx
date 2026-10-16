@@ -20,6 +20,7 @@ import {
 
 const launcherStateSchema = z.object({
   site: z.string(),
+  startupSite: z.string(),
   localAccessPassword: z.string(),
   defaultMode: z.enum(["local", "link"]),
   target: z.string().optional(),
@@ -43,6 +44,7 @@ export function AppLauncherPage() {
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<AppMode>("link");
   const [site, setSite] = useState("");
+  const [startupSite, setStartupSite] = useState("");
   const [localAccessPassword, setLocalAccessPassword] = useState("");
   const [error, setError] = useState<{ kind: "load" | "launch"; detail?: string } | null>(null);
   const [appDebug, setAppDebug] = useState<boolean | undefined>();
@@ -106,6 +108,7 @@ export function AppLauncherPage() {
         setTarget(state.target);
         setStarting(state.starting === true);
         setSite(state.site);
+        setStartupSite(state.startupSite);
         setAppDebug(state.debug);
         setDebug(state.debug === true);
         setError(previous => state.detail ? { kind: "launch", detail: state.detail }
@@ -215,24 +218,26 @@ export function AppLauncherPage() {
     } finally { finish(); }
   }
 
-  async function changeSite(nextSite: string): Promise<void> {
+  async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site"): Promise<void> {
     if (siteBusy) return;
     const finish = beginStateChange();
     setSiteBusy(true);
     setSiteError(undefined);
     try {
-      const response = await fetch("/api/client-launcher/site", {
+      const response = await fetch(`/api/client-launcher/${setting}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ site: nextSite, expectedSite: site }),
       });
-      const result = z.object({ site: z.string() }).safeParse(await response.json().catch(() => null));
-      if (result.success) setSite(result.data.site);
+      const result = launcherStateSchema.pick({ site: true, startupSite: true }).safeParse(await response.json().catch(() => null));
+      if (result.success) {
+        setSite(result.data.site);
+        setStartupSite(result.data.startupSite);
+      }
       if (response.status === 409 && result.success) {
         setSiteError(t("client.connect.changed"));
         return;
       }
-      if (!response.ok || !result.success) throw new Error("App approval failed");
-      setSite(result.data.site);
+      if (!response.ok || !result.success) throw new Error("Could not save App settings");
     } catch {
       setSiteError(t("client.connect.saveFailed"));
     } finally { finish(); setSiteBusy(false); }
@@ -300,6 +305,8 @@ export function AppLauncherPage() {
             </> : undefined}
             mode={mode}
             site={site}
+            openSiteOnStart={site !== "" && startupSite === site}
+            onToggleStartupSite={() => void changeSite(startupSite ? "" : site, "startup-site")}
             localAccessPassword={localAccessPassword}
             onModeChange={setMode}
             onRemoveSite={() => void changeSite("")}

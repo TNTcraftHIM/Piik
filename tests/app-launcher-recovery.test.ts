@@ -30,7 +30,7 @@ const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: ($
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const saved = {
-  site: "https://site.example", localAccessPassword: "saved password", defaultMode: "local",
+  site: "https://site.example", startupSite: "", localAccessPassword: "saved password", defaultMode: "local",
   revision: "test", version: "development", debug: false,
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
@@ -39,7 +39,7 @@ const response = (state: typeof saved & { detail?: string } = saved) => ({ ok: t
 function mount(fetch: ReturnType<typeof vi.fn>) {
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
-    "Mode", "LocalAccessPassword", "Lan", "Version", "Target", "Starting", "Site",
+    "Mode", "LocalAccessPassword", "Lan", "Version", "Target", "Starting", "Site", "StartupSite",
     "AppDebug", "Debug", "Error", "Loading", "Update",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
@@ -61,7 +61,7 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
       return nextTimer;
     },
     clearTimeout: (id: number) => timers.delete(id),
-  }) as { cleanup(): void; changeSite(site: string): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
+  }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site"): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
   return { state, setters, ...actions, checkReleaseUpdate, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
       expect(timers.size).toBe(1);
@@ -122,18 +122,19 @@ describe("App launcher state recovery", () => {
     for (const setter of Object.values(page.setters)) expect(setter).not.toHaveBeenCalled();
   });
 
-  it.each(["site", "debug", "launch"] as const)("rejects stale read success and failure around a %s command", async (operation) => {
+  it.each(["site", "startup-site", "debug", "launch"] as const)("rejects stale read success and failure around a %s command", async (operation) => {
     for (const failedRead of [false, true]) {
       let resolveRead!: (value: ReturnType<typeof response>) => void;
       let rejectRead!: (error: Error) => void;
       const fetch = vi.fn(async (_url: string, options?: { method?: string }) => options?.method === "POST"
-        ? { ok: true, status: 200, json: async () => ({ site: "", target: "https://room.example" }) }
+        ? { ok: true, status: 200, json: async () => ({ site: "", startupSite: "", target: "https://room.example" }) }
         : response());
       const page = mount(fetch);
       await settle();
       fetch.mockImplementationOnce(() => new Promise((resolve, reject) => { resolveRead = resolve; rejectRead = reject; }));
       page.focus();
       if (operation === "site") await page.changeSite("");
+      if (operation === "startup-site") await page.changeSite(saved.site, "startup-site");
       if (operation === "debug") await page.enableDebug();
       if (operation === "launch") await page.launch({ preventDefault() {} });
       const committed = { ...page.state };
@@ -161,7 +162,7 @@ describe("App launcher state recovery", () => {
     const debug = page.enableDebug();
     page.focus();
     expect(fetch).toHaveBeenCalledTimes(3);
-    pending[0]!({ ok: true, status: 200, json: async () => ({ site: "" }) });
+    pending[0]!({ ok: true, status: 200, json: async () => ({ site: "", startupSite: "" }) });
     await approve;
     page.retry();
     expect(fetch).toHaveBeenCalledTimes(3);

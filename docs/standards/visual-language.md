@@ -276,6 +276,7 @@ type checking rather than silently render a warning triangle.
 | Credential / 凭证 | `key`, password dots | Site passphrase or room password, identified by the field label. Room-code admission with a password shows both fields. |
 | Restriction / 受限 | `lock` | Restricted entry, concealed password or a setting fixed by availability; show the affected object. A lock never promises anonymity or secure media. |
 | Site and public entry / 站点与公开入口 | `globe` | Browser/Site entry or code-based public entry. It does not claim internet reachability. |
+| Preferred destination / 默认去处 | `star` | A user-selected default, such as the App's startup Site. It is a preference, not authorization or connection health. |
 | Connections / 连接 | `network`, `branch`, `signal`, `wifiOff`, `server` | Topology, branching, signaling, disconnected signaling and the named server. A server on a media path means forwarding; a Site backend or control-link server alone does not imply SFU. An invitation chain does not represent signaling. |
 | Playback / 播放 | `play`, `pause`, `stop` | Play/resume, pause, end. The control label states whether it affects local viewing or the Host's share. Stop is distinct from a paused or idle room. |
 | Audio / 声音 | `speaker`, `speakerOff` | Audio and mute/no audio, qualified by the source or local playback label. A source track's presence does not establish delivered sound. |

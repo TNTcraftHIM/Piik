@@ -135,6 +135,11 @@ optional preference lives beside the configuration as `client.json.mode` (or
 changing saved settings. Without a valid Local/Public preference, the public
 invitation link is selected. Choosing a mode does not start it until confirmed.
 Local mode remains available for the same network.
+The star beside the approved Site selects it as the next ordinary startup page.
+This preference lives in `<config-path>.startup-site`, separately from access
+permission. Only the currently approved origin can open automatically; replacing
+or revoking approval clears the star. Unstarring restores launcher entry, and
+explicit CLI mode flags retain precedence.
 Selecting Local or Public Link, including through the CLI, preserves the saved
 Site and its allowed App origin; only local approval/revocation or `--site`
 changes it. The Site can use native capabilities while the App waits in its

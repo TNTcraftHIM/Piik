@@ -208,6 +208,7 @@ function Screen({ shot }: { shot: Shot }) {
       {launcher ? (
         <main className="lr-client-launch">
           <LauncherForm
+            openSiteOnStart={false} onToggleStartupSite={() => {}}
             mode={shot}
             onModeChange={noop}
             site=""

@@ -243,6 +243,10 @@ func runLauncher(
 	if err != nil {
 		slog.Debug("Could not restore the last launcher mode", diagnostics.Error(err))
 	}
+	startupSite, err := launcher.LoadStartupSite(configPath, config.Site)
+	if err != nil {
+		slog.Debug("Could not restore the startup Site", diagnostics.Error(err))
+	}
 	// Site approval and room startup mutate separate fields of one config.
 	// Serialize persistence and publish only the complete successfully saved value.
 	var configMu sync.Mutex
@@ -264,7 +268,11 @@ func runLauncher(
 		webassets.FS(),
 		launcher.Options{
 			DefaultMode: mode,
-			Site:        config.Site, Version: buildVersion(), Revision: BuildRevision,
+			StartupSite: startupSite,
+			SaveStartupSite: func(site string) error {
+				return launcher.SaveStartupSite(configPath, site)
+			},
+			Site: config.Site, Version: buildVersion(), Revision: BuildRevision,
 			LocalAccessPassword: config.LocalAccessPassword,
 			Debug:               options.Debug, LANAddress: options.LANAddress,
 			ChangeSite: func(site string) (string, error) {
@@ -297,13 +305,13 @@ func runLauncher(
 	if err != nil {
 		return err
 	}
-	if !automatic {
+	if !automatic && startupSite == "" {
 		options.console.show(consoleView{state: "setup", entry: launch.URL()})
 		options.console.openBrowser(launch.URL())
 	} else if initialConfig.Site != "" && !options.Local && !options.Link {
-		// --site is still an explicit approval shortcut. It supplies native
-		// capabilities immediately; the launcher can start a Local room later.
-		openSite(initialConfig.Site, options)
+		// A starred Site changes only the opening page. --site also remains an
+		// explicit approval shortcut; the launcher can start a Local room later.
+		openSite(initialConfig.Site, launch.URL(), options)
 	}
 	// An interactive room is a child of the resident App. Its failure must not
 	// retire an unrelated Site's native sessions or its approval page. Explicit
@@ -457,10 +465,10 @@ func openDiagnostics(directory string) (*diagnostics.Recorder, error) {
 	return diagnostics.Open(filepath.Join(cache, "Piik", "logs"), "client", BuildRevision)
 }
 
-func openSite(site string, options Options) {
+func openSite(site, launcherURL string, options Options) {
 	slog.Debug("piik-client", "event", "mode", "mode", "site")
 	targetURL := launchURL(site)
-	view := consoleView{mode: "site", state: "ready", entry: targetURL}
+	view := consoleView{mode: "site", state: "ready", entry: targetURL, launcher: launcherURL}
 	options.console.show(view)
 	if options.console.machine {
 		fmt.Printf("Piik Site: %s\n", site)

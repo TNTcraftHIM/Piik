@@ -48,12 +48,14 @@ type Selection struct {
 type Options struct {
 	DefaultMode         Mode
 	Site                string
+	StartupSite         string
 	Version             string
 	Revision            string
 	LocalAccessPassword string
 	Debug               bool
 	LANAddress          string
 	ChangeSite          func(string) (string, error)
+	SaveStartupSite     func(string) error
 	EnableDebug         func() error
 }
 
@@ -67,6 +69,7 @@ type Server struct {
 	assets              fs.FS
 	static              http.Handler
 	site                string
+	startupSite         string
 	defaultMode         Mode
 	localAccessPassword string
 	version             string
@@ -74,6 +77,7 @@ type Server struct {
 	debug               bool
 	lanAddress          string
 	changeSite          func(string) (string, error)
+	saveStartupSite     func(string) error
 	enableDebug         func() error
 	selection           chan Selection
 	resultReady         chan struct{}
@@ -118,6 +122,7 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 		assets:              assets,
 		static:              http.FileServer(http.FS(assets)),
 		site:                normalizedSite,
+		startupSite:         options.StartupSite,
 		defaultMode:         options.DefaultMode,
 		localAccessPassword: options.LocalAccessPassword,
 		version:             options.Version,
@@ -125,6 +130,7 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 		debug:               options.Debug,
 		lanAddress:          options.LANAddress,
 		changeSite:          options.ChangeSite,
+		saveStartupSite:     options.SaveStartupSite,
 		enableDebug:         options.EnableDebug,
 		selection:           make(chan Selection, 1),
 		resultReady:         make(chan struct{}),
@@ -212,7 +218,9 @@ func (server *Server) ServeHTTP(response http.ResponseWriter, request *http.Requ
 	case "/api/client-launcher/launch":
 		server.handleLaunch(response, request)
 	case "/api/client-launcher/site":
-		server.handleSite(response, request)
+		server.handleSite(response, request, false)
+	case "/api/client-launcher/startup-site":
+		server.handleSite(response, request, true)
 	case "/api/client-launcher/debug":
 		server.handleDebug(response, request)
 	case "/client", "/client/":
@@ -249,6 +257,7 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 	server.mu.Lock()
 	state := map[string]any{
 		"site":                server.site,
+		"startupSite":         server.startupSite,
 		"localAccessPassword": server.localAccessPassword,
 		"version":             server.version,
 		"revision":            server.revision,
@@ -269,7 +278,7 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 	writeJSON(response, http.StatusOK, state)
 }
 
-func (server *Server) handleSite(response http.ResponseWriter, request *http.Request) {
+func (server *Server) handleSite(response http.ResponseWriter, request *http.Request, startupOnly bool) {
 	if request.Method != http.MethodPost {
 		response.Header().Set("Allow", http.MethodPost)
 		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
@@ -292,14 +301,28 @@ func (server *Server) handleSite(response http.ResponseWriter, request *http.Req
 		return
 	}
 	server.mu.Lock()
-	if server.site != change.ExpectedSite {
-		current := server.site
-		server.mu.Unlock()
-		writeJSON(response, http.StatusConflict, map[string]string{"site": current})
+	defer server.mu.Unlock()
+	result := func() map[string]string {
+		return map[string]string{"site": server.site, "startupSite": server.startupSite}
+	}
+	if server.site != change.ExpectedSite || (startupOnly && site != "" && site != server.site) {
+		writeJSON(response, http.StatusConflict, result())
+		return
+	}
+	if startupOnly {
+		if server.saveStartupSite == nil {
+			http.Error(response, "startup preference is unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if err := server.saveStartupSite(site); err != nil {
+			writeJSON(response, http.StatusServiceUnavailable, result())
+			return
+		}
+		server.startupSite = site
+		writeJSON(response, http.StatusOK, result())
 		return
 	}
 	if server.changeSite == nil {
-		server.mu.Unlock()
 		http.Error(response, "site approval is unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -307,12 +330,17 @@ func (server *Server) handleSite(response http.ResponseWriter, request *http.Req
 	// Revocation can succeed while media cleanup times out. Reflect the actual
 	// saved permission even on error; a stale confirmation must not restore it.
 	server.site = current
-	server.mu.Unlock()
+	if server.startupSite != "" && server.startupSite != current {
+		server.startupSite = ""
+		err = errors.Join(err, server.saveStartupSite(""))
+	}
 	if err != nil {
-		writeJSON(response, http.StatusServiceUnavailable, map[string]string{"site": current, "detail": errorDetail(err)})
+		failure := result()
+		failure["detail"] = errorDetail(err)
+		writeJSON(response, http.StatusServiceUnavailable, failure)
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]string{"site": current})
+	writeJSON(response, http.StatusOK, result())
 }
 
 func (server *Server) handleDebug(response http.ResponseWriter, request *http.Request) {

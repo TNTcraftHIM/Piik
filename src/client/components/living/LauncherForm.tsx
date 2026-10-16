@@ -36,6 +36,8 @@ export function LauncherForm({
   mode,
   onModeChange,
   site,
+  openSiteOnStart,
+  onToggleStartupSite,
   onRemoveSite,
   siteBusy,
   siteError,
@@ -51,6 +53,8 @@ export function LauncherForm({
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
   site: string;
+  openSiteOnStart: boolean;
+  onToggleStartupSite: () => void;
   onRemoveSite: () => void;
   siteBusy?: boolean;
   siteError?: string;
@@ -103,12 +107,16 @@ export function LauncherForm({
         <div className="lr-client-standby-copy">
           <strong className={vis ? "visually-hidden" : undefined}>{t("client.connect.standby")}</strong>
           <p className={vis ? "visually-hidden" : undefined}>{t("client.connect.standbyHint")}</p>
-          {site && <div className="lr-client-approved-site">
-            <a href={`${site}/#piik-client=1`} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true"> ↗</span></a>
-            <Btn icon="x" title="client.connect.remove" hint="hint-client-site" disabled={siteBusy} onClick={onRemoveSite} />
-          </div>}
           {siteError && <p role="alert">{siteError}</p>}
         </div>
+        {site && <div className="lr-client-approved-site">
+          <a href={`${site}/#piik-client=1`} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true"> ↗</span></a>
+          <div className="lr-client-site-actions">
+            <Btn icon="star" title="client.connect.openOnStart" pressed={openSiteOnStart}
+              hint="hint-client-site" disabled={siteBusy} onClick={onToggleStartupSite} />
+            <Btn icon="x" title="client.connect.remove" hint="hint-client-site" disabled={siteBusy} onClick={onRemoveSite} />
+          </div>
+        </div>}
       </section>
 
       {roomError ?? (target ? <a className="lr-btn is-primary" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>

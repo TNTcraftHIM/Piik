@@ -23,10 +23,10 @@ import (
 )
 
 type consoleView struct {
-	mode, state, entry, invite string
-	protected                  bool
-	problem                    string
-	browserError               error
+	mode, state, entry, invite, launcher string
+	protected                            bool
+	problem                              string
+	browserError                         error
 }
 
 type consoleLanguage string
@@ -94,6 +94,7 @@ var consoleCopy = map[string][3]string{
 	"stopped":      {"Stopped", "已停止", "○"},
 	"failed":       {"Could not continue", "运行失败", "!"},
 	"entry":        {"Open in browser", "打开网页", "□"},
+	"launcher":     {"App launcher", "App 启动页", "☆"},
 	"invite":       {"Site address", "站点地址", "↗"},
 	"access":       {"Site access", "站点准入", ""},
 	"open":         {"Open", "开放", "○"},
@@ -255,7 +256,7 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case consoleFinished:
 		model.finished = true
-		model.view.entry, model.view.invite = "", ""
+		model.view.entry, model.view.invite, model.view.launcher = "", "", ""
 		model.view.browserError = nil
 		model.view.state, model.view.problem = "stopped", ""
 		if value.err != nil {
@@ -377,7 +378,7 @@ func (model consoleModel) content(styled bool) string {
 			fmt.Fprintf(&out, "%s  %s\n", muted.Render(model.text("mode")), model.text(model.view.mode))
 		}
 	}
-	for _, item := range [][2]string{{"entry", model.view.entry}, {"invite", model.view.invite}} {
+	for _, item := range [][2]string{{"entry", model.view.entry}, {"launcher", model.view.launcher}, {"invite", model.view.invite}} {
 		if item[1] == "" || compact && item[0] == "invite" {
 			continue
 		}
@@ -505,6 +506,8 @@ func consoleVisualToken(key string) string {
 		return "*"
 	case "entry":
 		return "□"
+	case "launcher":
+		return "☆"
 	case "invite":
 		return "↗"
 	case "exit":

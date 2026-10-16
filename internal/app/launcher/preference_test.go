@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -75,5 +76,69 @@ func TestUnavailableModePreferenceDoesNotSupplyAnInvalidChoice(t *testing.T) {
 	}
 	if err := SaveMode(path, "invalid"); err == nil {
 		t.Fatal("saved an invalid mode")
+	}
+}
+
+func TestStarredSitePersistsWithoutGrantingAccessAndClearsOnReplacement(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "client.json")
+	config, err := appconfig.LoadOrCreate(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.Site = "https://share.example"
+	if err := appconfig.Save(path, config); err != nil {
+		t.Fatal(err)
+	}
+	original, _ := os.ReadFile(path)
+	if site, err := LoadStartupSite(path, config.Site); err != nil || site != "" {
+		t.Fatalf("unselected startup Site = %q, %v", site, err)
+	}
+	server, err := Start(t.Context(), appAssets(), Options{Site: config.Site,
+		SaveStartupSite: func(site string) error { return SaveStartupSite(path, site) },
+		ChangeSite:      func(site string) (string, error) { return site, nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	origin := strings.TrimSuffix(server.URL(), "/client")
+	for _, test := range []struct {
+		setting, site, approved, want string
+		status                        int
+	}{
+		{"startup-site", config.Site, config.Site, config.Site, 200},
+		{"startup-site", "https://unapproved.example", config.Site, config.Site, 409},
+		{"startup-site", "", config.Site, "", 200},
+		{"startup-site", config.Site, config.Site, config.Site, 200},
+		{"site", "https://other.example", "https://other.example", "", 200},
+		{"startup-site", "https://other.example", "https://other.example", "https://other.example", 200},
+		{"site", "", "", "", 200},
+	} {
+		body := fmt.Sprintf(`{"site":%q,"expectedSite":%q}`, test.site, server.site)
+		response, err := localPost(origin+"/api/client-launcher/"+test.setting, "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var state struct{ Site, StartupSite string }
+		err = json.NewDecoder(response.Body).Decode(&state)
+		response.Body.Close()
+		if err != nil || response.StatusCode != test.status || state.Site != test.approved || state.StartupSite != test.want {
+			t.Fatalf("%+v: status=%d, state=%+v, error=%v", test, response.StatusCode, state, err)
+		}
+		if saved, err := LoadStartupSite(path, test.approved); err != nil || saved != test.want {
+			t.Fatalf("startup Site did not survive reload: %q, %v", saved, err)
+		}
+	}
+	if err := SaveStartupSite(path, config.Site); err != nil {
+		t.Fatal(err)
+	}
+	for _, approved := range []string{"https://other.example", config.Site} {
+		if saved, err := LoadStartupSite(path, approved); err != nil || saved != "" {
+			t.Fatalf("startup preference survived a CLI/config Site change: %q, %v", saved, err)
+		}
+	}
+	current, _ := os.ReadFile(path)
+	if string(current) != string(original) || server.selected {
+		t.Fatal("startup preference changed legacy configuration or started a room")
 	}
 }

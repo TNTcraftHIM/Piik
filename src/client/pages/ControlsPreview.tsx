@@ -62,7 +62,8 @@ export function ControlsPreview() {
   const [majorUpdate, setMajorUpdate] = useState(true);
   const releaseVersion = majorUpdate ? "v2.0.0" : "v1.1.0";
   const releaseURL = `https://github.com/TNTcraftHIM/Piik/releases/tag/${releaseVersion}`;
-  const [launchSite, setLaunchSite] = useState("");
+  const [launchSite, setLaunchSite] = useState("https://demo.piik.tv");
+  const [openSiteOnStart, setOpenSiteOnStart] = useState(false);
   const [launchPassword, setLaunchPassword] = useState("");
   const [launchLan, setLaunchLan] = useState("192.0.2.10");
   const [policy, setPolicy] = useState<"open" | "private">("open");
@@ -257,7 +258,8 @@ export function ControlsPreview() {
       </div>
       <div className="lr-client-launch">
         <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
-          site={launchSite} onRemoveSite={() => setLaunchSite("")}
+          openSiteOnStart={openSiteOnStart} onToggleStartupSite={() => setOpenSiteOnStart(value => !value)}
+          site={launchSite} onRemoveSite={() => { setLaunchSite(""); setOpenSiteOnStart(false); }}
           lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
             { address: "192.0.2.10", name: "Wi-Fi" },
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },

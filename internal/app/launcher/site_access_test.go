@@ -21,7 +21,7 @@ func TestSiteApprovalIsLocalExplicitAndDoesNotStartARoom(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = server.Close() })
 	origin := strings.TrimSuffix(server.URL(), "/client")
-	for _, path := range []string{"site", "launch", "debug"} {
+	for _, path := range []string{"site", "startup-site", "launch", "debug"} {
 		for _, test := range []struct{ origin, contentType string }{
 			{"", "application/json"}, {"null", "application/json"}, {"https://other.example", "application/json"},
 			{origin, "text/plain"}, {origin, "application/x-www-form-urlencoded"},

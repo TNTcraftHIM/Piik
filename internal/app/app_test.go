@@ -23,6 +23,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
+	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
@@ -309,7 +310,7 @@ func TestLauncherRetainsItsRuntimeFailureDuringCancellation(t *testing.T) {
 
 func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 	t.Setenv("TERM", "dumb")
-	for _, mode := range []string{"launcher", "site"} {
+	for _, mode := range []string{"launcher", "site", "starred-site", "revoked-site"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -327,6 +328,14 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 			config, err := appconfig.LoadOrCreate(configPath)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if mode == "starred-site" || mode == "revoked-site" {
+				if err := launcher.SaveStartupSite(configPath, "https://share.example"); err != nil {
+					t.Fatal(err)
+				}
+				if mode == "starred-site" {
+					config.Site = "https://share.example"
+				}
 			}
 			done := make(chan error, 1)
 			go func() {
@@ -348,6 +357,21 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 			console.mu.Unlock()
 			if model.view.entry == "" {
 				t.Fatal("manual entry was not available while browser opening hung")
+			}
+			if mode == "site" || mode == "starred-site" {
+				if model.view.entry != launchURL("https://share.example") {
+					t.Fatalf("App did not open the selected Site: %s", model.view.entry)
+				}
+				response, err := http.Get(model.view.launcher)
+				if err != nil {
+					t.Fatalf("launcher management is unavailable: %v", err)
+				}
+				response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					t.Fatal("Site entry lost access to the launcher")
+				}
+			} else if !strings.HasSuffix(model.view.entry, "/client") {
+				t.Fatalf("App did not preserve launcher entry: %s", model.view.entry)
 			}
 			for range 5 {
 				_, command := model.Update(tea.KeyPressMsg{Code: 'o'})
