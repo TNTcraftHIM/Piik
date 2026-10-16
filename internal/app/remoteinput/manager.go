@@ -345,29 +345,25 @@ func (s *Session) Pause(paused bool) {
 	s.notify()
 }
 
-// A lost media connection also retires input. ICE recovery does not restore
-// an old desktop grant, even when SCTP has not noticed the interruption yet.
-func (s *Session) Disconnect(edgeID string) {
+// Transport loss retires permission, not the media-owned channel. A recovered
+// ICE connection can carry a new request, but never restore the previous grant.
+func (s *Session) RevokeEdge(edgeID string) {
 	if s == nil {
 		return
 	}
 	m := s.manager
 	m.mu.Lock()
-	var channel *webrtc.DataChannel
-	for id, c := range m.connections {
+	defer m.mu.Unlock()
+	for _, c := range m.connections {
 		if c.owner == s && c.edgeID == edgeID {
+			c.requested = false
 			if m.active == c {
 				m.release()
+			} else {
+				m.send(c, "ready")
 			}
-			delete(m.connections, id)
 			s.notify()
-			channel = c.channel
-			break
 		}
-	}
-	m.mu.Unlock()
-	if channel != nil {
-		_ = channel.Close()
 	}
 }
 

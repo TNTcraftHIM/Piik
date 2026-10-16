@@ -285,7 +285,7 @@ func (session *Session) prepareEdge(
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair) {
 				if state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
-					session.remoteInput.Disconnect(connectionID)
+					session.remoteInput.RevokeEdge(connectionID)
 				}
 				session.emit(Event{
 					Type: "edge-state", ShareID: session.shareID,

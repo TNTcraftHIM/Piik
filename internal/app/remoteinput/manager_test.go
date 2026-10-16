@@ -219,11 +219,25 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	waitState("ready")
 	second = request("second")
 	grant2 = decide(second, true)
-	s.Disconnect("second")
+	s.RevokeEdge("second")
 	key(second, grant2)
 	if len(sink.events) != 2 || len(sink.resets) != 3 {
 		t.Fatal("disconnect kept a grant")
 	}
+	// ICE may recover on the same channel. It must accept a fresh request,
+	// without reviving the old grant or a pending approval from before loss.
+	second = request("second")
+	staleRequest := second.requestID
+	s.RevokeEdge("second")
+	if s.Decide(staleRequest, true) == nil || len(s.Views()) != 0 {
+		t.Fatal("transport loss kept a pending approval")
+	}
+	second = request("second")
+	key(second, grant2)
+	if len(sink.events) != 2 {
+		t.Fatal("new request restored the disconnected grant")
+	}
+	decide(second, false)
 	first = request("first")
 	grant = decide(first, true)
 	m.Revoke()

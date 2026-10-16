@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { RemoteInputSession, picturePoint } from "../src/client/remote-control/input-session";
 
 class Channel extends EventTarget {
@@ -50,4 +50,40 @@ it("maps only visible picture pixels when playback has letterboxing", () => {
   expect(picturePoint(video, 500, 350)).toEqual({ x: 0.5, y: 0.5 });
   expect(picturePoint(video, 500, 60)).toBeNull();
   expect(picturePoint(video, 901, 350)).toBeNull();
+});
+
+it("flushes coalesced motion before buttons and discards it when control ends", () => {
+  let nextFrame: FrameRequestCallback | null = null;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { nextFrame = callback; return 1; });
+  vi.stubGlobal("cancelAnimationFrame", () => { nextFrame = null; });
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  const grant = "b".repeat(64);
+  try {
+    channel.receive({ state: "ready" });
+    session.request();
+    const intent = channel.sent.at(-1)?.intent;
+    channel.receive({ state: "active", intent, grant });
+    session.input({ type: "move", x: 0.2, y: 0.3 });
+    session.input({ type: "move", x: 0.7, y: 0.8 });
+    session.input({ type: "button", button: 0, down: false });
+    expect(channel.sent.slice(-2)).toEqual([
+      { type: "move", x: 0.7, y: 0.8, grant },
+      { type: "button", button: 0, down: false, grant },
+    ]);
+    expect(nextFrame).toBeNull();
+    session.input({ type: "relative", dx: 3, dy: -2 });
+    session.input({ type: "relative", dx: 4, dy: 5 });
+    const renderFrame = nextFrame as FrameRequestCallback | null;
+    renderFrame?.(0);
+    expect(channel.sent.at(-1)).toEqual({ type: "relative", dx: 7, dy: 3, grant });
+    session.input({ type: "move", x: 0.9, y: 0.1 });
+    const count = channel.sent.length;
+    channel.receive({ state: "ready", intent });
+    expect(nextFrame).toBeNull();
+    expect(channel.sent).toHaveLength(count);
+  } finally {
+    session.dispose();
+    vi.unstubAllGlobals();
+  }
 });

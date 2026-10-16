@@ -19,16 +19,10 @@ export function RemoteControl({ channel, videoRef, available }: {
   const [lockFailed, setLockFailed] = useState(false);
   const session = useRef<RemoteInputSession | null>(null);
   const surface = useRef<HTMLDivElement | null>(null);
-  const pointer = useRef<Extract<RemoteInputEvent, { type: "move" | "relative" }> | null>(null);
-  const frame = useRef<number | null>(null);
   const active = state?.state === "active" && available && channel?.readyState === "open";
   const controlled = (state?.state === "active" || state?.state === "suspended") && available && channel?.readyState === "open";
   const input = (event: RemoteInputEvent) => session.current?.input(event);
-  const clearPointer = useCallback(() => {
-    if (frame.current !== null) cancelAnimationFrame(frame.current);
-    frame.current = null; pointer.current = null;
-  }, []);
-  const reset = useCallback(() => { clearPointer(); session.current?.input({ type: "reset" }); }, [clearPointer]);
+  const reset = useCallback(() => { session.current?.input({ type: "reset" }); }, []);
   const release = useCallback(() => {
     reset();
     if (document.pointerLockElement === surface.current && surface.current) document.exitPointerLock();
@@ -38,12 +32,12 @@ export function RemoteControl({ channel, videoRef, available }: {
   useEffect(() => {
     setState(null);
     if (!channel) return;
-    const current = new RemoteInputSession(channel, next => { clearPointer(); setState(next); });
+    const current = new RemoteInputSession(channel, setState);
     session.current = current;
     return () => {
-      current.dispose(); session.current = null; clearPointer();
+      current.dispose(); session.current = null;
     };
-  }, [channel, clearPointer]);
+  }, [channel]);
   useEffect(() => {
     if (!available) release();
   }, [available, channel, release]);
@@ -93,25 +87,18 @@ export function RemoteControl({ channel, videoRef, available }: {
         onContextMenu={event => event.preventDefault()}
         onPointerMove={event => {
           if (document.pointerLockElement === surface.current) {
-            const previous = pointer.current?.type === "relative" ? pointer.current : { dx: 0, dy: 0 };
-            pointer.current = { type: "relative", dx: previous.dx + event.movementX, dy: previous.dy + event.movementY };
+            input({ type: "relative", dx: event.movementX, dy: event.movementY });
           } else {
             const position = point(event.clientX, event.clientY);
-            pointer.current = position ? { type: "move", ...position } : null;
+            if (position) input({ type: "move", ...position });
           }
-          if (frame.current !== null) return;
-          frame.current = requestAnimationFrame(() => {
-            frame.current = null;
-            if (pointer.current) input(pointer.current);
-            pointer.current = null;
-          });
         }}
         onPointerDown={event => {
           if (event.button > 2) return;
           event.preventDefault(); surface.current?.focus({ preventScroll: true });
           if (document.pointerLockElement === surface.current) { input({ type: "button", button: event.button, down: true }); return; }
           event.currentTarget.setPointerCapture(event.pointerId);
-          clearPointer(); const position = point(event.clientX, event.clientY);
+          const position = point(event.clientX, event.clientY);
           if (position) { input({ type: "move", ...position }); input({ type: "button", button: event.button, down: true }); }
         }}
         onPointerUp={event => { input({ type: "button", button: event.button, down: false }); }}

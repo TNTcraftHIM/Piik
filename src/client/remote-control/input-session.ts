@@ -15,12 +15,16 @@ export type RemoteInputEvent =
   | { type: "wheel"; delta: number }
   | { type: "reset" };
 
+type PointerInput = Extract<RemoteInputEvent, { type: "move" | "relative" }>;
+
 // Owns input intent and its exact Host grant. DOM capture and media routing
 // consume this session; neither can revive an old approval after cancellation.
 export class RemoteInputSession {
   state: RemoteInputState | null = null;
   private intent: string | null = null;
   private disposed = false;
+  private pointer: PointerInput | null = null;
+  private frame: number | null = null;
 
   constructor(private readonly channel: RTCDataChannel, private readonly changed: (state: RemoteInputState | null) => void) {
     channel.addEventListener("message", this.message);
@@ -29,9 +33,22 @@ export class RemoteInputSession {
   }
 
   private set(state: RemoteInputState | null): void {
+    this.clearPointer();
     this.state = state;
     this.changed(state);
   }
+
+  private clearPointer(): void {
+    if (this.frame !== null) cancelAnimationFrame(this.frame);
+    this.frame = null;
+    this.pointer = null;
+  }
+
+  private readonly flushPointer = (): void => {
+    const pointer = this.pointer;
+    this.clearPointer();
+    if (pointer) this.sendInput(pointer);
+  };
 
   private readonly message = (event: MessageEvent): void => {
     if (this.disposed || typeof event.data !== "string" || event.data.length > 1024) return;
@@ -79,6 +96,23 @@ export class RemoteInputSession {
   }
 
   input(event: RemoteInputEvent): void {
+    if (event.type === "move" || event.type === "relative") {
+      if (this.state?.state !== "active") return;
+      // Absolute samples replace one another; relative samples accumulate.
+      // Flush before a button/key transition to preserve drag and game input order.
+      if (this.pointer && this.pointer.type !== event.type) this.flushPointer();
+      this.pointer = event.type === "relative" && this.pointer?.type === "relative"
+        ? { type: "relative", dx: this.pointer.dx + event.dx, dy: this.pointer.dy + event.dy }
+        : event;
+      if (this.frame === null) this.frame = requestAnimationFrame(this.flushPointer);
+      return;
+    }
+    if (event.type === "reset") this.clearPointer();
+    else this.flushPointer();
+    this.sendInput(event);
+  }
+
+  private sendInput(event: RemoteInputEvent): void {
     const state = this.state;
     if (!this.intent || !state?.grant || state.intent !== this.intent ||
         (state.state !== "active" && !(event.type === "reset" && state.state === "suspended"))) return;
@@ -87,6 +121,7 @@ export class RemoteInputSession {
 
   dispose(): void {
     this.release();
+    this.clearPointer();
     this.disposed = true;
     this.channel.removeEventListener("message", this.message);
     this.channel.removeEventListener("close", this.closed);

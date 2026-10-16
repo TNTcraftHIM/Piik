@@ -324,13 +324,15 @@ held keys and buttons. The channel belongs to the sharing session; permission
 and pointer coordinates belong to its current source. The Host can change
 windows/displays through the existing source picker without starting another
 share, with fresh permission for the replacement. Audio-only changes retain the
-current grant. A lost control channel needs a new media connection; it never
-silently restores a grant. Either side can end control from its page or
+current grant. Brief ICE loss revokes permission while retaining a live channel
+for a fresh request after recovery. A closed control channel needs a new media
+connection; neither path silently restores a grant. Either side can end control from its page or
 Ctrl+Alt+F10. Escape releases game mouse capture without ending the grant.
 Window blur releases held
 input; hidden or locally paused video ends control. Pointer motion retains the
-latest absolute sample or accumulated relative movement per animation frame;
-a stalled send queue closes the input channel
+latest absolute sample or accumulated relative movement per animation frame,
+flushing before button/key transitions so a drag ends at its final position.
+A stalled send queue closes the input channel
 without replacing the media connection. No input history is persisted.
 
 Local acceptance exercised real Windows display capture, Browser and App-assisted viewing,
