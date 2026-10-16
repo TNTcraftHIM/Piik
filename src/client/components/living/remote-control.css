@@ -9,5 +9,7 @@
 .lr-remote-request + .lr-remote-request { border-top: 1px solid var(--control-edge); }
 .lr-remote-request > div:first-child { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
 .lr-remote-request strong { font-size: 14px; }
-.lr-remote-request-actions { display: flex; gap: 8px; margin-left: auto; }
+.lr-remote-request-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; max-width: 100%; }
+.lr-remote-request-actions > .lr-comic-tip-wrap { flex: 1; }
+.lr-remote-request-actions .lr-btn { width: 100%; }
 .lr-remote-note kbd { white-space: nowrap; font: 12px var(--mono); }

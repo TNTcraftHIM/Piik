@@ -21,6 +21,7 @@ export const en: Record<CopyKey, string> = {
   "remote.lockFailed": "Could not capture the mouse. Click again.",
   "remote.pending": "Waiting for the Host to approve",
   "remote.failed": "Remote control is unavailable. Request again.",
+  "remote.decisionFailed": "Couldn't apply this choice. Try again.",
   "remote.consent": "Allowing control gives this Viewer access to this computer's mouse and keyboard.",
   "remote.waiting": "Requesting control",
   "remote.shortcut": "Stop immediately on this computer:",

@@ -21,6 +21,7 @@ export const zh = {
   "remote.lockFailed": "未能锁定鼠标，请再次点击",
   "remote.pending": "等待房主允许",
   "remote.failed": "远程控制不可用，请重新请求",
+  "remote.decisionFailed": "操作未完成，请重试",
   "remote.consent": "允许后，对方可以操作这台电脑的鼠标和键盘。",
   "remote.waiting": "请求控制",
   "remote.shortcut": "本机立即结束控制：",

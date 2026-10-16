@@ -154,21 +154,22 @@ export function RemoteControlApproval({ requests, onDecide }: {
   onDecide: (id: string, allow: boolean) => Promise<void>;
 }) {
   const { t } = useCopy();
-  const [failed, setFailed] = useState(false);
+  const [failedId, setFailedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const decide = async (id: string, allow: boolean) => {
     setBusy(true);
+    setFailedId(null);
     try {
       await onDecide(id, allow);
-      setFailed(false);
-    } catch { setFailed(true); }
+    } catch { setFailedId(id); }
     finally { setBusy(false); }
   };
   return <section className="lr-remote-approval" aria-label={t("remote.title")}>
     <h2><Glyph name="mouse" size={18} />{t("remote.title")}</h2>
-    {requests.map(request => <div className="lr-remote-request" key={request.id}>
+    {requests.map(request => <div className="lr-remote-request" key={request.id} role="group" aria-label={request.name}>
       <div><strong>{request.name}</strong>
-        <p>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.approved" : "remote.waiting")}</p></div>
+        <p>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.approved" : "remote.waiting")}</p>
+        {failedId === request.id && <p role="alert">{t("remote.decisionFailed")}</p>}</div>
       <div className="lr-remote-request-actions">
         <Btn icon="x" title={request.state !== "pending" ? "remote.stop" : "remote.decline"} cap={request.state !== "pending" ? "remote.stop" : "remote.decline"}
           hint="hint-remote-stop" disabled={busy} onClick={() => void decide(request.id, false)} />
@@ -176,7 +177,6 @@ export function RemoteControlApproval({ requests, onDecide }: {
       </div>
     </div>)}
     {requests.some(request => request.state === "pending") && <p className="lr-remote-note">{t("remote.consent")}</p>}
-    {failed && <p role="alert">{t("remote.failed")}</p>}
     {requests.some(request => request.state !== "pending") && <p className="lr-remote-note">{t("remote.shortcut")} <kbd>Ctrl + Alt + F10</kbd></p>}
   </section>;
 }

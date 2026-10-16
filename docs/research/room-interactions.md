@@ -406,7 +406,13 @@ Simulating keys is different from creating independent devices. Windows
 `SendInput` writes to the existing input stream; it does not create a second
 keyboard or pointer. Microsoft's [Virtual HID Framework](https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/virtual-hid-framework--vhf-)
 still requires a HID source driver. Device identity also needs support in the
-game. Per-player virtual keyboards, mice and gamepads remain deferred; keep
+game. Windows also exposes [gamepad injection](https://learn.microsoft.com/en-us/uwp/api/windows.ui.input.preview.injection.inputinjector.injectgamepadinput),
+but it requires the restricted `inputInjectionBrokered` package capability;
+that API alone does not establish a portable-App backend or independent slots
+accepted by desktop games. Linux can create devices through its existing
+[uinput module](https://docs.kernel.org/input/uinput.html), subject to device
+permissions. Dependencies therefore follow the platform and supported games.
+Per-player virtual keyboards, mice and gamepads remain deferred; keep
 that future integration at the platform input boundary without prebuilding a
 device registry, driver installer or alternate transport.
 
