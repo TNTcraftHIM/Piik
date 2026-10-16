@@ -206,3 +206,6 @@ remains; do not add another retry/transport owner to bypass these limits.
     picture per Viewer as the simplest candidate. The current one-Host contract
     is unchanged. Names and UI follow the model decision; low-level sharing and
     recovery work takes priority over this proposal.
+13. **Review the user-suggested [piik-watch-party](https://github.com/Harsh-dev3221/piik-watch-party).**
+    After current maintenance, inspect its implementation for useful ideas that
+    fit Piik's existing model and interaction design.

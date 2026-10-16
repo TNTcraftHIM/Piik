@@ -220,6 +220,10 @@ from a page that opens but reports **No media route available**.
    firewall blocks Cloudflare Tunnel; adjust only relevant rules. Ask the
    administrator about a school or workplace network.
 
+If you use a proxy, confirm that it actually routes the `cloudflared` process.
+Browser proxy settings or `HTTP_PROXY`/`HTTPS_PROXY` alone do not route the
+currently bundled tunnel helper through a proxy.
+
 The error details help identify which stage failed:
 
 | Error contains | What to check |
