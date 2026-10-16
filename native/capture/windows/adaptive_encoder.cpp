@@ -293,7 +293,7 @@ class HardwareEncoder final : public webrtc::VideoEncoder {
       const auto began = env_.clock().TimeInMilliseconds();
       const auto access_unit = encoder_->Encode(native->texture(), native->timestamp100ns(),
                                                 key_frame_pending_, native->deadline());
-      key_frame_pending_ = false;
+      if (access_unit.key_frame) key_frame_pending_ = false;
       webrtc::EncodedImage image;
       image.SetEncodedData(webrtc::EncodedImageBuffer::Create(
           access_unit.bytes.data(), access_unit.bytes.size()));

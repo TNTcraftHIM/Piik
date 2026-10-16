@@ -647,6 +647,32 @@ consumer budgets into [output groups](./webrtc-encoder-pool.md#compatible-output
 and uses LiveKit's per-output forwarding state; copying another aggregation
 controller would replace those semantics rather than merely improve encoding.
 
+The keyframe recovery path distinguishes ignored requests from silent output
+and retains encoder-local recovery before reinitialization. Its broader watchdog
+and software-fallback state machine is not transplanted. The useful boundary is
+request versus actual output: [Chromium's Media Foundation adapter](https://chromium.googlesource.com/chromium/src/+/d5070a6099ade2fe3c953d3b3677843e1a43e87e/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc)
+records whether a keyframe request was fulfilled and delivers the actual frame
+type rather than failing solely because it was not fulfilled.
+
+This comparison exposed a Windows inconsistency in Piik: every forced live
+request required immediate SPS/PPS/IDR output or failed that codec output.
+Windows now retains recovery intent until actual independent output, matching
+the existing macOS/Linux behavior. First-output admission, bitstream validation
+and real driver failures retain their existing handling. No new timer or recovery
+owner is added. A synthetic codec regression checks that a delayed response
+neither loses the request nor mislabels a delta frame. A separate 720p30 physical
+MFT encode/decode control suppressed one force command after one second:
+the previous implementation failed at `bitstream-recovery-unit`; the repair
+decoded all 75 incumbent frames, supplied a new viewer's recovery on the next
+frame and decoded its remaining 45 frames. This establishes controlled behavior,
+not a diagnosis of an untraced user's driver failure.
+
+Color conversion already has an explicit matrix/range owner and fidelity checks;
+TeamSpeak's BT.709 fix is not a reason to override Piik's tagged BT.601 WebRTC SDR
+contract. Likewise, Opus FEC driven by individual talker loss belongs to a different
+audio-feedback model than Piik's shared screen-audio output. Neither comparison
+justifies another color heuristic or per-viewer audio encoder.
+
 The two encoder field trials were applied, together and separately, to the
 existing Windows NV12/MFT H264 lab. The control retained Piik's selected
 [QP settings](./webrtc-encoder-pool.md#budget-restoration). Input was the same

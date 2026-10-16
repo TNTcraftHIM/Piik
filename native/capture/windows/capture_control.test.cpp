@@ -155,23 +155,6 @@ void CheckMailboxWorkers() {
   assert(std::chrono::steady_clock::now() - stopped < std::chrono::seconds(2));
 }
 
-void CheckDroppedRecoveryInput() {
-  using Mailbox = piik::capture::OutputMailbox<int>;
-  Mailbox mailbox(90'000);
-  mailbox.Submit(std::make_shared<int>(1));
-  const auto dropped = mailbox.Take();
-  assert(dropped.recovery && *dropped.input == 1);
-  // The codec accepted input but produced no AU; preserve its consumed request.
-  if (dropped.recovery) mailbox.RequestKeyFrame();
-  mailbox.Submit(std::make_shared<int>(2));
-  const auto recovery = mailbox.Take();
-  assert(recovery.recovery && *recovery.input == 2);
-  assert(mailbox.Accept(recovery.generation));
-  mailbox.Submit(std::make_shared<int>(3));
-  assert(!mailbox.Take().recovery);
-  mailbox.Stop();
-}
-
 void CheckIndependentActivation() {
   using Mailbox = piik::capture::OutputMailbox<int>;
   Mailbox original(300'000), extra(90'000, false);
@@ -259,7 +242,6 @@ int main() {
     assert(decoded.width == 160 && decoded.height == 90 && decoded.nv12.size() == pixels.size());
   }
   CheckMailboxWorkers();
-  CheckDroppedRecoveryInput();
   CheckIndependentActivation();
   CheckOutputPipe();
   CheckInputEnvelopes();

@@ -707,6 +707,10 @@ EncodedAccessUnit LiveEncoder::Encode(
     if (!nal.annex_b) {
       Fail("bitstream-annexb", "live output is not Annex-B H264");
     }
+    const bool recovery = nal.sps && nal.pps && nal.idr;
+    if (!profile_level_id_ && !recovery) {
+      Fail("bitstream-recovery-unit", "initial H264 output lacks SPS, PPS, or IDR");
+    }
     if (nal.profile_level_id) {
       if (!SupportsH264ProfileLevelId(*nal.profile_level_id)) {
         Fail("bitstream-profile", "hardware MFT emitted unsupported H.264 coding tools or level");
@@ -716,16 +720,13 @@ EncodedAccessUnit LiveEncoder::Encode(
       }
       profile_level_id_ = nal.profile_level_id;
     }
-    if (force_key_frame && !(nal.sps && nal.pps && nal.idr)) {
-      Fail("bitstream-recovery-unit",
-           "requested live recovery unit lacks SPS, PPS, or IDR");
-    }
     if (!profile_level_id_) {
       Fail("bitstream-sps", "first live access unit did not carry an SPS");
     }
     RequireEncoderTime(probe_deadline);
-    return EncodedAccessUnit{timestamp100ns, nal.idr && nal.sps && nal.pps,
-                             std::move(bytes)};
+    // A later force request may be delayed by the driver. Report actual output;
+    // the adapter retains recovery intent without discarding usable delta frames.
+    return EncodedAccessUnit{timestamp100ns, recovery, std::move(bytes)};
   }
   Fail("mft-output-timeout", "hardware MFT did not produce live output in time");
 }

@@ -361,6 +361,10 @@ never its shared video/audio source or healthy siblings.
 Native keyframe requests retain their output scope through coalescing; a relay
 requests its single upstream stream once per batch while keeping local output
 recovery separate.
+Only actual independent output fulfills an encoder recovery request. A delayed
+keyframe leaves the request pending while usable delta frames continue; it does
+not itself fail a healthy output. Initial encoder admission still requires a
+decodable starting point, and real encoding failures retain their existing owner.
 Native relay assembly bounds both packet storage and stalled media progress.
 An incomplete frame must not wait for a memory-sized packet window to fill before
 requesting recovery; quiet input and ordinary reordering remain valid.
