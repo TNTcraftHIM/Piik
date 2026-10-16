@@ -1,21 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 128 128" fill="none">
   <defs>
     <linearGradient id="tile" x1="24" y1="4" x2="104" y2="128" gradientUnits="userSpaceOnUse"><stop stop-color="#304752"/><stop offset="1" stop-color="#1b2b38"/></linearGradient>
-    <linearGradient id="case" x1="64" y1="37" x2="64" y2="101" gradientUnits="userSpaceOnUse"><stop stop-color="#fbfcf7"/><stop offset="1" stop-color="#dce9e3"/></linearGradient>
-    <linearGradient id="screen" x1="36" y1="45" x2="92" y2="92" gradientUnits="userSpaceOnUse"><stop stop-color="#e5f2eb"/><stop offset="1" stop-color="#c7e1d7"/></linearGradient>
   </defs>
-  <style>@media(max-width:24px){.sheen{display:none}.antenna,.feet{stroke-width:8}.wink{stroke-width:6.5}}</style>
+  <style>@media(max-width:24px){.mascot{stroke-width:2.6}}</style>
   <rect width="128" height="128" rx="28" fill="url(#tile)"/>
   <rect x=".75" y=".75" width="126.5" height="126.5" rx="27.25" stroke="#ffffff" stroke-width="1.5" stroke-opacity=".18"/>
-  <g stroke="#dce9e3" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
-    <path class="antenna" d="m47 23 17 14 17-14"/>
-    <path class="feet" d="m45 99-5 10m43-10 5 10"/>
+  <g class="mascot" transform="translate(12 10) scale(3.25)" stroke="#e5eee9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4" y="8" width="24" height="18" rx="4"/>
+    <path d="m11 4 5 4 5-4"/>
+    <path d="M10 29l2-3m10 3-2-3"/>
+    <circle cx="11.5" cy="16.5" r="1.25" fill="#e5eee9" stroke="none"/>
+    <path d="M19 17c1.5-1.8 3.2-1.8 4.7 0"/>
   </g>
-  <rect class="sheen" x="20" y="40" width="88" height="64" rx="17" fill="#101d27" fill-opacity=".24"/>
-  <rect x="20" y="37" width="88" height="64" rx="17" fill="url(#case)"/>
-  <rect x="28" y="45" width="72" height="48" rx="10" fill="url(#screen)"/>
-  <path class="sheen" d="M39 46h50a10 10 0 0 1 10 10" stroke="#ffffff" stroke-opacity=".55" stroke-linecap="round"/>
-  <circle cx="46" cy="67" r="4.5" fill="#22303e"/>
-  <path class="wink" d="M74 69q7-9 14 0" stroke="#22303e" stroke-width="5.5" stroke-linecap="round"/>
   <path d="m106 22 2.5 6.5L115 31l-6.5 2.5L106 40l-2.5-6.5L97 31l6.5-2.5Z" fill="#f2c05c"/>
 </svg>

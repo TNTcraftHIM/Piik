@@ -187,10 +187,11 @@ The brand mascot keeps its own identity, separate from ordinary participants.
 Participant characters should leave room for that distinctive presence.
 
 The App badge and favicons derive from [one SVG](../../public/favicon.svg):
-a dark navy tile, warm white television frame, quiet mint screen and small gold
-sparkle. This palette stays fixed across system themes. Keep the badge
-recognisable at 16–48 px: tiny exports simplify highlights and strengthen thin
-strokes; larger exports retain subtle depth without adding detail. Inline brand
+a dark navy tile, warm white television outline and small gold sparkle. The
+unfilled television, antenna, feet and wink keep the proportions of `BrandMark`;
+do not give the badge a filled case or a separate screen. This palette stays
+fixed across system themes. Keep the badge recognisable at 16–48 px by
+strengthening thin strokes in tiny exports. Inline brand
 marks keep the same wink identity with their existing outline and motion.
 Their stroke inherits the local surface's text colour:
 dark ink on light surfaces, light ink on dark surfaces, including deliberately
