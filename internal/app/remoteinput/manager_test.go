@@ -165,7 +165,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	select {
 	case <-s.Changes():
 		views := s.Views()
-		if len(views) != 1 || views[0].ConnectionID != "first" || views[0].Active {
+		if len(views) != 1 || views[0].ConnectionID != "first" || views[0].State != "pending" {
 			t.Fatal("request not reflected in its Host snapshot")
 		}
 	default:
@@ -176,7 +176,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		t.Fatal("unapproved input accepted")
 	}
 	grant := decide(first, true)
-	if !s.Views()[0].Active {
+	if s.Views()[0].State != "active" {
 		t.Fatal("approval not reflected in Host snapshot")
 	}
 	if grant == "" {
@@ -263,7 +263,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	m.refreshActive()
 	m.mu.Unlock()
 	key(first, nextGrant)
-	if !first.suspended || len(sink.events) != 3 || len(sink.resets) != 6 {
+	if !first.suspended || s.Views()[0].State != "suspended" || len(sink.events) != 3 || len(sink.resets) != 6 {
 		t.Fatal("window focus loss did not suspend and release held input once")
 	}
 	sink.focused = true

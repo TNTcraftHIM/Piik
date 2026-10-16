@@ -4,7 +4,7 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 export const en: Record<CopyKey, string> = {
   "remote.title": "Remote control",
   "remote.request": "Request control",
-  "remote.needsNativeSource": "The Host needs to share a window or screen through Piik App for remote control.",
+  "remote.unavailable": "Control is unavailable for the current share",
   "remote.cancel": "Cancel request",
   "remote.stop": "End control",
   "remote.allow": "Allow control",
@@ -12,6 +12,7 @@ export const en: Record<CopyKey, string> = {
   "remote.surface": "Remote keyboard and mouse input",
   "remote.active": "Remote control active",
   "remote.approved": "Control allowed",
+  "remote.hostFocus": "Focus the shared window to resume control",
   "remote.suspended": "Waiting for the Host to focus the shared window",
   "remote.gameMouse": "Game mouse",
   "remote.unlockMouse": "Press Esc to release the mouse. Control stays allowed.",

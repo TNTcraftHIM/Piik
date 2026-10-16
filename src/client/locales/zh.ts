@@ -4,7 +4,7 @@ import type { GlyphName } from "../ui/icons";
 export const zh = {
   "remote.title": "远程控制",
   "remote.request": "请求控制",
-  "remote.needsNativeSource": "远控需要房主通过 App 分享窗口或屏幕。",
+  "remote.unavailable": "当前分享暂不可控制",
   "remote.cancel": "取消请求",
   "remote.stop": "结束控制",
   "remote.allow": "允许控制",
@@ -12,6 +12,7 @@ export const zh = {
   "remote.surface": "远程键鼠控制区域",
   "remote.active": "正在远程控制",
   "remote.approved": "已允许控制",
+  "remote.hostFocus": "切回共享窗口即可继续控制",
   "remote.suspended": "等待房主切回共享窗口",
   "remote.gameMouse": "游戏鼠标",
   "remote.unlockMouse": "按 Esc 释放鼠标，控制权限仍然保留",

@@ -84,7 +84,7 @@ export function RemoteControl({ channel, videoRef, available }: {
   const buttonTitle = controlled ? "remote.stop" : state.state === "pending" ? "remote.cancel" : "remote.request";
   const parent = videoRef.current?.parentElement;
   return <>
-    <Btn icon="mouse" title={state.state === "unavailable" ? "remote.needsNativeSource" : buttonTitle}
+    <Btn icon="mouse" title={state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
       pressed={controlled} disabled={!available || state.state === "unavailable"}
       onClick={() => controlled || state.state === "pending" ? release() : session.current?.request()} />
     {parent && (controlled || state.state === "pending" || state.state === "failed") && createPortal(<>
@@ -158,15 +158,15 @@ export function RemoteControlApproval({ requests, onDecide }: {
     <h2><Glyph name="mouse" size={18} />{t("remote.title")}</h2>
     {requests.map(request => <div className="lr-remote-request" key={request.id}>
       <div><strong>{request.name}</strong>
-        <p>{t(request.active ? "remote.approved" : "remote.waiting")}</p></div>
+        <p>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.approved" : "remote.waiting")}</p></div>
       <div className="lr-remote-request-actions">
-        <Btn icon="x" title={request.active ? "remote.stop" : "remote.decline"} cap={request.active ? "remote.stop" : "remote.decline"}
+        <Btn icon="x" title={request.state !== "pending" ? "remote.stop" : "remote.decline"} cap={request.state !== "pending" ? "remote.stop" : "remote.decline"}
           disabled={busy} onClick={() => void decide(request.id, false)} />
-        {!request.active && <Btn icon="check" tone="primary" title="remote.allow" cap="remote.allow" disabled={busy} onClick={() => void decide(request.id, true)} />}
+        {request.state === "pending" && <Btn icon="check" tone="primary" title="remote.allow" cap="remote.allow" disabled={busy} onClick={() => void decide(request.id, true)} />}
       </div>
     </div>)}
-    {requests.some(request => !request.active) && <p className="lr-remote-note">{t("remote.consent")}</p>}
+    {requests.some(request => request.state === "pending") && <p className="lr-remote-note">{t("remote.consent")}</p>}
     {failed && <p role="alert">{t("remote.failed")}</p>}
-    {requests.some(request => request.active) && <p className="lr-remote-note">{t("remote.shortcut")} <kbd>Ctrl + Alt + F10</kbd></p>}
+    {requests.some(request => request.state !== "pending") && <p className="lr-remote-note">{t("remote.shortcut")} <kbd>Ctrl + Alt + F10</kbd></p>}
   </section>;
 }

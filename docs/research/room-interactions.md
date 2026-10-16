@@ -304,7 +304,8 @@ listener, signaling command, media route, server input forwarding or dependency.
 The control button appears only after that channel reports its capability.
 An App-assisted Viewer passes input through its own local playback bridge to
 the exact upstream channel; it never forwards input for a downstream Viewer.
-SFU/relay input routes, mobile input, IME and virtual gamepads remain unfinished.
+SFU/relay input routes, mobile input and IME remain unfinished. Independent
+virtual gamepads are deferred by the owner; this phase adds no input driver.
 
 `internal/app/remoteinput` owns one process-wide grant because the App's native
 sessions share the same physical keyboard and pointer. The Viewer requests
@@ -373,8 +374,22 @@ Do not recommend antivirus exclusions as its deployment model.
 
 [Steam Remote Play Together](https://partner.steamgames.com/doc/features/remoteplay)
 lets remote participants act as local players in the Host's game. For Piik, this
-could retain one shared picture, but adds per-player virtual controller slots
-and input permissions beyond single-controller desktop assistance.
+retains one shared picture. Games that support a shared keyboard can use separate
+key bindings for the Host and remote player without an input driver. Independent
+gamepads instead need per-player virtual controller slots. The first phase has
+one approved remote keyboard/mouse controller; multiple concurrent controllers
+would need per-controller held-key ownership so one player's key-up does not
+release another's key. The mouse remains one shared pointer.
+
+Game player count is separate from input-device support. Team17 documents
+[four local players but two sharing one keyboard in Overcooked! 2](https://www.team17.com/news/overcooked-2-faq).
+[Pummel Party's developer](https://steamcommunity.com/app/880940/discussions/0/1742226629869609303/)
+describes assigning a physical controller separately from keyboard/mouse; its
+local-player count does not establish split-keyboard support. A Host using a
+physical controller and one remote keyboard player can therefore be another
+driver-free use case when the game supports that combination. Piik's first
+phase limits remote input to one approved Viewer, not the game's local players.
+Keep the UI named remote control; co-play is a use case of the same input grant.
 
 [Moonlight's input implementation](https://github.com/moonlight-stream/moonlight-common-c/blob/aeba988e0a302145eff2e70fa3e11cd98ec01f5d/src/InputStream.c)
 accumulates relative movement and sends the latest absolute pointer position;
@@ -387,9 +402,9 @@ under the project's license policy.
 
 Virtual gamepads are a separate platform cost. [Sunshine's input configuration](https://docs.lizardbyte.dev/projects/sunshine/master/md_docs_2configuration.html#gamepad_driver)
 documents Windows/macOS driver or broker dependencies; its Windows ViGEmBus
-fallback is end-of-life. A co-play prototype must choose a maintained input
-backend and verify supported games before promising an installation-free path.
-Basic keyboard/mouse assistance can be assessed independently. This does not
+fallback is end-of-life. Independent gamepads were deferred by the owner on
+2026-10-17; there is no driver integration in this phase. A future gamepad
+prototype needs an accepted backend and supported-game checks. This does not
 require multiple screen publishers or a replacement media transport.
 
 ### Window Capture And Game Input
@@ -404,7 +419,8 @@ For window keyboard/mouse control, the captured region must map to the current
 native window geometry, including movement, resizing and DPI. The input owner
 reads the current geometry and process identity. It suspends input and releases
 held state when the target loses focus, and revokes control if the source
-disappears; the Host restores the intended target. This reduces
+disappears. Both pages display that same suspension; the Host is asked to focus
+the shared window to resume. This reduces
 accidental input after switching away; it is not an OS window sandbox.
 `SendInput` has no target-window parameter, and shortcuts can change focus.
 Window selection must never imply that remote input is confined to that window.

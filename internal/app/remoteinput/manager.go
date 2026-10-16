@@ -46,7 +46,7 @@ type inputSink interface {
 type View struct {
 	ID           string `json:"id"`
 	ConnectionID string `json:"connectionId"`
-	Active       bool   `json:"active"`
+	State        string `json:"state"`
 }
 
 // One manager covers both native sessions: they operate the same physical desktop.
@@ -201,21 +201,17 @@ func (s *Session) available() bool {
 	return !s.closed && !s.paused && s.target.SourceID != ""
 }
 
-func (c *connection) state() string {
-	if c.suspended {
-		return "suspended"
-	}
-	return "active"
-}
-
-func (m *Manager) sendState(c *connection) {
-	state := "ready"
+func (m *Manager) state(c *connection) string {
 	if m.active == c {
-		state = c.state()
-	} else if c.requested {
-		state = "pending"
+		if c.suspended {
+			return "suspended"
+		}
+		return "active"
 	}
-	m.send(c, state)
+	if c.requested {
+		return "pending"
+	}
+	return "ready"
 }
 
 // Caller holds mu. Source identity, geometry and focus are checked at the
@@ -237,7 +233,8 @@ func (m *Manager) refreshActive() (bounds, bool) {
 		if !focused {
 			_ = m.sink.Reset()
 		}
-		m.send(c, c.state())
+		m.send(c, m.state(c))
+		c.owner.notify()
 	}
 	return b, focused
 }
@@ -270,7 +267,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
 	}
 	switch event.Type {
 	case "sync":
-		m.sendState(c)
+		m.send(c, m.state(c))
 	case "request":
 		if !c.owner.available() || c.requested || c == m.active {
 			return
@@ -342,7 +339,7 @@ func (s *Session) Pause(paused bool) {
 			if paused {
 				c.requested = false
 			}
-			m.sendState(c)
+			m.send(c, m.state(c))
 		}
 	}
 	s.notify()
@@ -430,7 +427,7 @@ func (s *Session) Views() []View {
 	defer m.mu.Unlock()
 	for _, c := range m.connections {
 		if c.owner == s && (c.requested || m.active == c) {
-			views = append(views, View{c.requestID, c.edgeID, m.active == c})
+			views = append(views, View{c.requestID, c.edgeID, m.state(c)})
 		}
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].ID < views[j].ID })
@@ -471,7 +468,7 @@ func (s *Session) Decide(id string, allow bool) error {
 	m.active = c
 	m.refreshActive()
 	if m.active == c {
-		m.send(c, c.state())
+		m.send(c, m.state(c))
 	}
 	return nil
 }

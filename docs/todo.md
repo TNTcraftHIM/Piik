@@ -14,14 +14,14 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
-- [ ] **Attended remote control and remote co-play.** Windows App display/window sharing now
+- [ ] **Attended keyboard/mouse remote control.** Windows App display/window sharing now
   offers an optional input channel to a directly connected Browser Viewer in
   experimental `remotecontrol` builds. Browser/App-assisted reception, source
   switching, Host-page consent, revocation and native input have been exercised;
   window focus/geometry and game mouse/scan-code input are implemented. Physical
-  moved-window/game checks and an actual remote-device trial remain. Per-player
-  virtual gamepads and input return beyond direct media edges are the next
-  co-play work; keep one Host publication and explicit input permission. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
+  moved-window/game checks and an actual remote-device trial remain. Input return
+  beyond direct media edges is unfinished; keep one Host publication and one
+  keyboard/mouse controller at a time, with explicit Host permission. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
   owns limitations and evidence. This is not part of the public release.
   [Window/game input assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns window scope, focus/geometry work and game-compatibility
@@ -37,6 +37,10 @@ platform deferrals or establish a diagnosis for unmatched reports.
 
 ## Held By Owner
 
+- [ ] **Independent gamepads for remote co-play.** Deferred by the owner on
+  2026-10-17. This phase uses keyboard/mouse only and adds no virtual gamepad
+  driver. The [input assessment](./research/room-interactions.md#remote-co-play)
+  owns the platform dependency and distinction from shared keyboard/mouse control.
 - [ ] **32-bit Windows/Linux Apps.** Deferred by the owner on 2026-10-02;
   no package or website option is planned. Browser use remains available where
   the OS/browser supports the required media APIs. Retain the isolated
