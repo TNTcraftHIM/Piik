@@ -562,6 +562,23 @@ and timestamp. This proves spatial isolation and valid delivery, not weak-path
 cadence parity. Budgets in these grouping fixtures are explicit transport
 inputs; the separate shaped-network gate owns automatic estimator evidence.
 
+A subsequent [TeamSpeak comparison](./realtime-quality-adaptation.md#teamspeak-native-comparison)
+tested replacing this partition with one common output: either the maximum or
+the harmonic mean of the active requests. These are policy ablations, not a
+reproduction of TeamSpeak's receiver eligibility and dependency controller.
+The real Native VP8 fixture supplied 1280x720 motion, with requests of
+80 kbps and 1.25 Mbps for twenty seconds, then equal requests and retirement.
+The independent groups retained the healthy receiver's 640x360 output at
+roughly 1.08 Mbps during the final ten constrained seconds. A common harmonic
+output reduced its delivered payload to about 138 kbps; a common maximum sent
+about 1.20 Mbps even to the 80 kbps consumer. Both alternatives reduced the
+derived encoder count but lost independent budget ownership. All variants
+kept the decoder process while demand changed, then retired it after the last
+consumer left. Chrome WebCodecs decoded every exported picture. This bounded,
+forced-demand comparison does not measure real link capacity, perceptual
+quality or TeamSpeak's runtime performance; it supports retaining the current
+partition rather than replacing it with one aggregate rate.
+
 The full H264 Windows Host/Viewer gate also passes live and paused profile
 changes, background-profile recovery, source replacement and restart while
 preserving media identity. SFU retarget has real loopback tests for clock,

@@ -708,6 +708,25 @@ they do not estimate TeamSpeak's performance or the probability of a field issue
 Production retains the existing dropper and adjuster. No new controller,
 FFmpeg dependency or periodic connection reset follows from this comparison.
 
+A separate control applied the inspected bitrate-update thresholds at Piik's
+existing Native encoder demand input, without changing the transport estimator.
+At fixed 30 fps, updates passed only when their difference exceeded 10% or
+200 kbps. Four 120-second runs used the same link impairments above. Recovery
+here requires five consecutive one-second samples containing at least 27
+1080p picture AUs; parameter-set-only units are excluded.
+
+| Demand input | One-second pulses: recovery / longest picture-AU gap | Fifteen-second limit: recovery / longest picture-AU gap |
+| --- | --- | --- |
+| Current | 14.1 s / 2.39 s | 19.1 s / 6.99 s |
+| Filter small changes | 16.2 s / 1.96 s | 23.3 s / 5.22 s |
+
+Filtering reduced demand updates from 1,829 to 17 and from 1,706 to 6,
+respectively, but delayed recovery and delivered fewer picture AUs overall.
+The shorter worst gaps are a tradeoff, not an established overall improvement;
+no filter is retained. The control also varies from the earlier runs, so their
+1.9-second recovery is not a guaranteed recovery time. These remain Piik
+experiments, not measurements of TeamSpeak's complete pipeline.
+
 A follow-up tested whether tighter native rate control could make the two
 trials useful together. NVIDIA recommends small VBV for low-latency encoding;
 this does not establish TeamSpeak's selected buffer. Piik's lab set the MFT
