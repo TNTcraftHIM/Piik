@@ -636,6 +636,16 @@ depth one and zero lookahead. Values were checked against the
 They are backend defaults, not proof of a user's selected encoder or settings
 that can be applied to Piik's Media Foundation backend by renaming options.
 
+The same NVENC constructor enables spatial and temporal AQ, with spatial
+strength 9 and quarter-resolution multipass. These are meaningful quality/cost
+choices: [NVIDIA documents](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.1/nvenc-video-encoder-api-prog-guide/index.html#adaptive-quantization-aq)
+better perceptual allocation, but also extra GPU work and greater frame-size
+variation with temporal AQ. Media Foundation does not expose this same named
+control set. Piik's existing backend avoids a second GPU integration but gives
+up those explicit tuning choices; neither its parameter trials nor its limited
+[profile comparison](./native-client-media.md#native-h264-motion-quality)
+establish equal quality to TeamSpeak's native pipeline.
+
 Shared encoding has its own per-receiver rate and dependency state. Once
 initialized, the inspected rate aggregate suppresses an update unless its bitrate changes by
 more than 10% or 200 kbps, or its frame rate changes by at least 1 fps. These
@@ -697,6 +707,23 @@ the delivery tradeoff above. These single runs reject a blanket transplant;
 they do not estimate TeamSpeak's performance or the probability of a field issue.
 Production retains the existing dropper and adjuster. No new controller,
 FFmpeg dependency or periodic connection reset follows from this comparison.
+
+A follow-up tested whether tighter native rate control could make the two
+trials useful together. NVIDIA recommends small VBV for low-latency encoding;
+this does not establish TeamSpeak's selected buffer. Piik's lab set the MFT
+[H264 HRD buffer in bytes](https://learn.microsoft.com/en-us/windows/win32/codecapi/avenccommonbuffersize-property)
+to one or four frames at each rate change. On the RTX 4070 SUPER / driver 617.42,
+initial values read back correctly, but live writes returned success while
+retaining the previous value until encoder recreation. At a direct 400 kbps
+budget, four-frame buffering reduced settled output to 427 kbps, with 13 s
+recovery; one-frame buffering produced 465 kbps but was still at 360p 69 s after
+the budget returned. The four-frame variant was then exercised through the
+same periodic Pion impairment: recovery was 13.3 s, with a longest picture-AU
+delivery gap of 2.88 s, versus the existing control's 1.9 s and 1.50 s. These
+gap counts exclude parameter-set-only units but are not rendered-frame timings.
+The buffer variant therefore remains lab-only; no encoder recreation on bitrate
+updates is added to force this property to work.
+
 The [ICE comparison](./nat-traversal.md#teamspeak-ice-comparison) owns its
 separate connection-establishment findings.
 
