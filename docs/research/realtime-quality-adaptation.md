@@ -607,6 +607,73 @@ track settings remained 30 fps, and Viewer freeze intervals followed those
 lows. The event therefore contained both native BWE degradation and source
 cadence loss; topology churn and CSS presentation were not required causes.
 
+### TeamSpeak Native Comparison
+
+The 2026-10-16 review inspected the installed TeamSpeak 6 beta5 package
+(`TeamSpeak.dll` SHA-256 prefix `b4888a71b8e7a029`) and its
+[Foundation III release](https://community.teamspeak.com/t/teamspeak-6-0-0-beta5-foundation-iii-update/65513).
+The UI uses CEF; screen sharing crosses a native bridge into libwebrtc and
+FFmpeg 8.1 encoders. CEF's Chromium version does not identify the separately
+linked native WebRTC revision. This was static inspection plus experiments
+in Piik's pipeline, not a measured TeamSpeak call or a product ranking.
+
+Stream initialization supplies three concrete field trials, established from
+their construction and environment call sites rather than string presence:
+
+| Native setting | Meaning and transfer boundary |
+| --- | --- |
+| `WebRTC-CongestionWindow/QueueSize:350,MinBitrate:300000,DropFrame:false/` | Configure GCC congestion-window pushback. The 350 ms queue allowance and 300 kbps pushback floor are not a guaranteed media bitrate; disabling drop-frame-only pushback does not disable congestion control. Piik's Native transport is Pion/LiveKit, so this encoder-side field trial cannot configure that transport. |
+| `WebRTC-VideoRateControl/bitrate_adjuster:false/` | Disable WebRTC's encoder overshoot bitrate adjuster. This does not disable the codec's own rate control. |
+| `WebRTC-FrameDropper/Disabled/` | Disable the external encoder frame dropper; other codec, queue and transport drop paths remain. |
+
+The [upstream parser](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/rtc_base/experiments/rate_control_settings.cc)
+and [encoder contract](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/api/video_codecs/video_encoder.h)
+explain these independent controls. TeamSpeak also configures FFmpeg backends
+directly: the inspected NVENC defaults include P6, low-latency tuning, CBR,
+zero reordering delay and zero lookahead; QSV uses low-delay BRC, asynchronous
+depth one and zero lookahead. Values were checked against the
+[FFmpeg NVENC definitions](https://github.com/FFmpeg/FFmpeg/blob/n8.1/libavcodec/nvenc_h264.c).
+They are backend defaults, not proof of a user's selected encoder or settings
+that can be applied to Piik's Media Foundation backend by renaming options.
+
+Shared encoding has its own per-receiver rate and dependency state. Once
+initialized, the inspected rate aggregate suppresses an update unless its bitrate changes by
+more than 10% or 200 kbps, or its frame rate changes by at least 1 fps. These
+are reconfiguration thresholds, not loss tolerance, a recovery timer or an
+instruction to ignore real congestion. The fanout path tracks lost dependency
+chains per receiver. The beta5 release separately confirms a repair for one
+stalled viewer freezing the shared encoder. Piik already separates incompatible
+consumer budgets into [output groups](./webrtc-encoder-pool.md#compatible-output-groups)
+and uses LiveKit's per-output forwarding state; copying another aggregation
+controller would replace those semantics rather than merely improve encoding.
+
+The two encoder field trials were applied, together and separately, to the
+existing Windows NV12/MFT H264 lab. The control retained Piik's selected
+[QP settings](./webrtc-encoder-pool.md#budget-restoration). Input was the same
+1080p30 synthetic motion, a 5 Mbps ceiling and a 12 Mbps Pion link with 20 ms
+router delay. Impairments limited that link to 400 kbps. Recovery below requires
+five consecutive samples at 1080p and at least 27 received complete AUs/s;
+these counters include parameter-set-only units. Receive gaps measure complete
+AU delivery, not decoded pictures or Browser-rendered freezes.
+
+| Encoder experiment | Three one-second limits: recovery / longest receive gap | Fifteen-second limit: recovery / longest receive gap |
+| --- | --- | --- |
+| Current Piik settings | 1.9 s / 1.48 s | 22.2 s / 6.43 s |
+| Both TeamSpeak encoder trials | 17.3 s / 2.84 s | 16.2 s / 14.96 s |
+| Only disable frame dropper | 8.1 s / 2.83 s | Not run |
+| Only disable bitrate adjuster | 15.2 s / 1.97 s | Not run |
+
+Direct-budget controls initially looked better: both trials retained 1080p
+through brief pulses and shortened sustained-limit recovery from 11 to 9 seconds.
+However, sustained 400 kbps output averaged about 746 kbps instead of 380 kbps
+over the settled low-budget interval. Coupling actual transport feedback exposed
+the delivery tradeoff above. These single runs reject a blanket transplant;
+they do not estimate TeamSpeak's performance or the probability of a field issue.
+Production retains the existing dropper and adjuster. No new controller,
+FFmpeg dependency or periodic connection reset follows from this comparison.
+The [ICE comparison](./nat-traversal.md#teamspeak-ice-comparison) owns its
+separate connection-establishment findings.
+
 ## Quality Shadow
 
 Strict v13 reports renderer-derived freeze/pause deltas only for exact current

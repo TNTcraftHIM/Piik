@@ -200,3 +200,9 @@ remains; do not add another retry/transport owner to bypass these limits.
     Viewer control. Keep this proposal separate from quality-recovery fixes.
     Reopen only for an accepted policy that preserves Host privacy, bounded SFU
     capacity and the existing automatic route owner.
+12. **Multiple simultaneous sharers.** Assess a separate room mode in which
+    participants publish and each Viewer selects a stream. First define room
+    authority, per-publication routes and resource ownership; retain one selected
+    picture per Viewer as the simplest candidate. The current one-Host contract
+    is unchanged. Names and UI follow the model decision; low-level sharing and
+    recovery work takes priority over this proposal.
