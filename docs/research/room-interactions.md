@@ -325,7 +325,9 @@ and pointer coordinates belong to its current source. The Host can change
 windows/displays through the existing source picker without starting another
 share, with fresh permission for the replacement. Audio-only changes retain the
 current grant. Brief ICE loss revokes permission while retaining a live channel
-for a fresh request after recovery. A closed control channel needs a new media
+for a fresh request after recovery. The App-assisted Viewer's local playback
+leg follows the same rule; interruption there releases the upstream grant.
+A closed control channel needs a new media
 connection; neither path silently restores a grant. Either side can end control from its page or
 Ctrl+Alt+F10. Escape releases game mouse capture without ending the grant.
 Window blur releases held
@@ -392,6 +394,14 @@ physical controller and one remote keyboard player can therefore be another
 driver-free use case when the game supports that combination. Piik's first
 phase limits remote input to one approved Viewer, not the game's local players.
 Keep the UI named remote control; co-play is a use case of the same input grant.
+
+Simulating keys is different from creating independent devices. Windows
+`SendInput` writes to the existing input stream; it does not create a second
+keyboard or pointer. Microsoft's [Virtual HID Framework](https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/virtual-hid-framework--vhf-)
+still requires a HID source driver. Device identity also needs support in the
+game. Per-player virtual keyboards, mice and gamepads remain deferred; keep
+that future integration at the platform input boundary without prebuilding a
+device registry, driver installer or alternate transport.
 
 [Moonlight's input implementation](https://github.com/moonlight-stream/moonlight-common-c/blob/aeba988e0a302145eff2e70fa3e11cd98ec01f5d/src/InputStream.c)
 accumulates relative movement and sends the latest absolute pointer position;

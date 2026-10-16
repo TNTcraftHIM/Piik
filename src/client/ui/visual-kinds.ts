@@ -152,6 +152,12 @@ export type InteractionHintKind =
   | "hint-chat-overlay-show"
   | "hint-chat-overlay-hide";
 
+export type RemoteHintKind =
+  | "hint-remote-control"
+  | "hint-remote-stop"
+  | "hint-remote-mouse-lock"
+  | "hint-remote-mouse-release";
+
 export type HintKind =
   | Set1Kind
   | Set2Kind
@@ -161,6 +167,7 @@ export type HintKind =
   | PlaybackHintKind
   | MetricHintKind
   | InteractionHintKind
+  | RemoteHintKind
   | ControlHintKind;
 
 export type ComicTheme = "stage" | "paper";

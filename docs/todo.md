@@ -37,10 +37,11 @@ platform deferrals or establish a diagnosis for unmatched reports.
 
 ## Held By Owner
 
-- [ ] **Independent gamepads for remote co-play.** Deferred by the owner on
+- [ ] **Independent virtual input devices for remote co-play.** Deferred by the owner on
   2026-10-17. This phase uses keyboard/mouse only and adds no virtual gamepad
-  driver. The [input assessment](./research/room-interactions.md#remote-co-play)
-  owns the platform dependency and distinction from shared keyboard/mouse control.
+  driver. Per-player virtual keyboards, mice and gamepads are later work.
+  The [input assessment](./research/room-interactions.md#remote-co-play) owns
+  platform dependencies and the distinction from shared keyboard/mouse control.
 - [ ] **32-bit Windows/Linux Apps.** Deferred by the owner on 2026-10-02;
   no package or website option is planned. Browser use remains available where
   the OS/browser supports the required media APIs. Retain the isolated

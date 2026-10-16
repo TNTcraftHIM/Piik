@@ -135,6 +135,12 @@ func TestInputChannelUsesOnlyLocalPlayback(t *testing.T) {
 	if strings.Contains(relay.SDP, "\nm=application ") {
 		t.Fatal("input capability leaked to a relay child")
 	}
+	session.receiver("upstream").input.releaseLocal("playback")
+	waitMessage(requests, `{"type":"release"}`)
+	if err = local.SendText(`{"type":"request"}`); err != nil {
+		t.Fatal(err)
+	}
+	waitMessage(requests, `{"type":"request"}`)
 	session.CloseEdge("playback")
 	waitMessage(requests, `{"type":"release"}`)
 }

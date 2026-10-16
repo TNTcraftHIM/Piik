@@ -171,7 +171,7 @@ func (session *Session) AcceptOffer(
 	var onDataChannel func(*webrtc.DataChannel)
 	if strings.Contains(offer.SDP, "\nm=application ") {
 		input = &inputBridge{}
-		onDataChannel = func(channel *webrtc.DataChannel) { input.attach(channel, false) }
+		onDataChannel = func(channel *webrtc.DataChannel) { input.attach(channel, "") }
 	}
 	mediaReceiver, answer, err := session.engine.NewReceiver(mediaedge.ReceiverOptions{
 		Offer:         offer,
@@ -306,6 +306,9 @@ func (session *Session) prepareEdge(
 				})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair) {
+				if local && receiver.input != nil && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
+					receiver.input.releaseLocal(connectionID)
+				}
 				session.emit(Event{
 					Type: "edge-state", ShareID: session.shareID,
 					ConnectionID: connectionID, State: state.String(),
@@ -344,7 +347,7 @@ func (session *Session) prepareEdge(
 				session.CloseEdge(connectionID)
 				return webrtc.SessionDescription{}, channelErr
 			}
-			receiver.input.attach(channel, true)
+			receiver.input.attach(channel, connectionID)
 		}
 		offer, err = edge.CreateLocalOffer(session.ctx, localOfferID, false)
 	} else {

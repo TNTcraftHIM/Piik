@@ -11,13 +11,16 @@ import (
 // and its exact upstream connection. Downstream relay edges never attach here.
 // The Host remains the sole input-permission owner.
 type inputBridge struct {
-	mu     sync.Mutex
-	remote *webrtc.DataChannel
-	local  *webrtc.DataChannel
-	closed bool
+	mu          sync.Mutex
+	remote      *webrtc.DataChannel
+	local       *webrtc.DataChannel
+	localEdgeID string
+	closed      bool
 }
 
-func (b *inputBridge) attach(channel *webrtc.DataChannel, local bool) {
+// An empty edge ID identifies the upstream; only local playback has an input leg.
+func (b *inputBridge) attach(channel *webrtc.DataChannel, localEdgeID string) {
+	local := localEdgeID != ""
 	if channel.Label() != remoteinput.ChannelLabel {
 		_ = channel.Close()
 		return
@@ -31,6 +34,7 @@ func (b *inputBridge) attach(channel *webrtc.DataChannel, local bool) {
 	var previous *webrtc.DataChannel
 	if local {
 		previous, b.local = b.local, channel
+		b.localEdgeID = localEdgeID
 		if previous != nil {
 			b.sendRemote(`{"type":"release"}`)
 		}
@@ -73,6 +77,7 @@ func (b *inputBridge) attach(channel *webrtc.DataChannel, local bool) {
 		b.mu.Lock()
 		if local && b.local == channel {
 			b.local = nil
+			b.localEdgeID = ""
 			b.sendRemote(`{"type":"release"}`)
 		}
 		remoteClosed := !local && b.remote == channel
@@ -81,6 +86,16 @@ func (b *inputBridge) attach(channel *webrtc.DataChannel, local bool) {
 			b.close()
 		}
 	})
+}
+
+// Local ICE loss must release input even while its SCTP channel remains open.
+// A retired playback edge must not revoke control on its replacement.
+func (b *inputBridge) releaseLocal(edgeID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if !b.closed && b.local != nil && b.localEdgeID == edgeID {
+		b.sendRemote(`{"type":"release"}`)
+	}
 }
 
 // Caller holds mu. No messages are queued while either leg is unavailable;

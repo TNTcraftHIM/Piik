@@ -15,6 +15,8 @@ export const zh = {
   "remote.hostFocus": "切回共享窗口即可继续控制",
   "remote.suspended": "等待房主切回共享窗口",
   "remote.gameMouse": "游戏鼠标",
+  "remote.gameMouseHelp": "锁定鼠标，连续转动游戏视角；按 Esc 释放。",
+  "remote.releaseMouse": "释放鼠标",
   "remote.unlockMouse": "按 Esc 释放鼠标，控制权限仍然保留",
   "remote.lockFailed": "未能锁定鼠标，请再次点击",
   "remote.pending": "等待房主允许",

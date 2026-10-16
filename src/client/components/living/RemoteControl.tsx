@@ -79,6 +79,7 @@ export function RemoteControl({ channel, videoRef, available }: {
   const parent = videoRef.current?.parentElement;
   return <>
     <Btn icon="mouse" title={state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
+      hint={controlled || state.state === "pending" ? "hint-remote-stop" : "hint-remote-control"}
       pressed={controlled} disabled={!available || state.state === "unavailable"}
       onClick={() => controlled || state.state === "pending" ? release() : session.current?.request()} />
     {parent && (controlled || state.state === "pending" || state.state === "failed") && createPortal(<>
@@ -113,12 +114,14 @@ export function RemoteControl({ channel, videoRef, available }: {
       <div className="lr-remote-input-status" role="status">
         <span>{t(state.state === "suspended" ? "remote.suspended" : active ? "remote.active" : state.state === "failed" ? "remote.failed" : "remote.pending")}</span>
         {controlled && <div className="lr-remote-input-actions">
-          {"requestPointerLock" in HTMLElement.prototype && <Btn icon="gamepad" title="remote.gameMouse" cap="remote.gameMouse" pressed={locked}
+          {"requestPointerLock" in HTMLElement.prototype && <Btn icon="gamepad" title={locked ? "remote.releaseMouse" : "remote.gameMouse"} cap="remote.gameMouse" pressed={locked}
+            hint={locked ? "hint-remote-mouse-release" : "hint-remote-mouse-lock"}
+            hintText={locked ? "remote.unlockMouse" : "remote.gameMouseHelp"}
             onClick={() => void (async () => {
               if (locked) document.exitPointerLock();
               else try { await surface.current?.requestPointerLock(); } catch { setLockFailed(true); }
             })()} />}
-          <Btn icon="x" title="remote.stop" onClick={release} />
+          <Btn icon="x" title="remote.stop" hint="hint-remote-stop" onClick={release} />
         </div>}
         {controlled && (locked || lockFailed) && <small>{t(lockFailed ? "remote.lockFailed" : "remote.unlockMouse")}</small>}
       </div>

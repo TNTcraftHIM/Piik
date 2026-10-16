@@ -15,6 +15,8 @@ export const en: Record<CopyKey, string> = {
   "remote.hostFocus": "Focus the shared window to resume control",
   "remote.suspended": "Waiting for the Host to focus the shared window",
   "remote.gameMouse": "Game mouse",
+  "remote.gameMouseHelp": "Capture the mouse for continuous game camera movement. Press Esc to release.",
+  "remote.releaseMouse": "Release mouse",
   "remote.unlockMouse": "Press Esc to release the mouse. Control stays allowed.",
   "remote.lockFailed": "Could not capture the mouse. Click again.",
   "remote.pending": "Waiting for the Host to approve",
