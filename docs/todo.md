@@ -194,22 +194,19 @@ remains; do not add another retry/transport owner to bypass these limits.
     identifies pairing/revocation and native decoded-input ownership beyond the
     device selector. Reopen for a concrete use case that justifies this boundary
     and physical latency/echo/background checks. This does not reopen room voice.
-10. **Attended remote control.** The [cross-platform assessment](./research/room-interactions.md#remote-control-assessment-not-implemented)
-    distinguishes Browser controllers from desktop App input authority. Decide
-    the use case and platform scope before a prototype; transport, input privacy
-    and App-wide grant retirement need acceptance. No remote-control code,
-    mobile controlled endpoint or language rewrite is currently planned.
+10. **Attended remote control and co-play.** The [cross-platform assessment](./research/room-interactions.md#remote-control-assessment-not-implemented)
+    separates single-controller assistance from [remote co-play](./research/room-interactions.md#remote-co-play)
+    with virtual gamepad slots. Evaluate input backends, transport and App-wide
+    grant retirement before selecting a prototype. Moonlight/Sunshine inform
+    input semantics; their transport is not a drop-in WebRTC component. No
+    remote-control code or mobile controlled endpoint is currently planned.
 11. **Per-Viewer SFU preference (#477).** Existing `SFU_ONLY=true` is an operator
     policy for the whole site; it does not provide the requested individual
     Viewer control. Keep this proposal separate from quality-recovery fixes.
     Reopen only for an accepted policy that preserves Host privacy, bounded SFU
     capacity and the existing automatic route owner.
-12. **Multiple simultaneous sharers.** Assess a separate room mode in which
-    participants publish and each Viewer selects a stream. First define room
-    authority, per-publication routes and resource ownership; retain one selected
-    picture per Viewer as the simplest candidate. The current one-Host contract
-    is unchanged. Names and UI follow the model decision; low-level sharing and
-    recovery work takes priority over this proposal.
-13. **Review the user-suggested [piik-watch-party](https://github.com/Harsh-dev3221/piik-watch-party).**
-    After current maintenance, inspect its implementation for useful ideas that
-    fit Piik's existing model and interaction design.
+12. **Multiple simultaneous sharers.** The [party-mode assessment](./research/room-interactions.md#multiple-sharers-assessment-not-implemented)
+    separates room administration from publication ownership, with one selected
+    picture per Viewer and shared endpoint upload limits. Define publication and
+    subscription lifecycles before a prototype. The current one-Host contract
+    remains; names and UI follow the model decision.

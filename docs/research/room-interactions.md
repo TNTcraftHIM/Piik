@@ -2,7 +2,7 @@
 
 The owner accepted the text/reaction UI and model with bounded local acceptance.
 [Status](../status.md#accepted-interaction-phase) owns release readiness and
-[TODO](../todo.md#now) owns remaining work. Reviewed 2026-10-02.
+[TODO](../todo.md#now) owns remaining work.
 This document records the implementation design and its tradeoffs;
 [rooms and access](../standards/rooms-access.md#room-interactions) owns authority
 and retention, while [presentation and lifecycle](../standards/presentation-lifecycle.md#product-surface)
@@ -54,10 +54,9 @@ ends that service; merely leaving the Host page does not.
   `hostRoomSession`; absence means the corresponding behavior is unavailable.
   The page explicitly subscribes after authentication. Only subscribed current
   sessions receive interaction events. The Host room-session behavior also
-  requires the `roomSession: true` authentication opt-in; older clients retain
-  the original stop-and-leave contract. Existing v23 media messages remain
-  valid, and publication start/result messages are sent only to an opted-in
-  session.
+  requires the `roomSession: true` authentication opt-in; sessions without it
+  retain the stop-and-leave contract. The [public compatibility boundary](../standards/versioning.md#public-compatibility-promise)
+  still applies; publication start/result messages go only to an opted-in session.
 - The viewer discovers this optional capability independently of first-picture
   startup. Late capability discovery enables data on the existing connection.
 - A strict command payload union admits plain chat text or a registered reaction. Chat is
@@ -240,7 +239,7 @@ admission or additional media peers.
 
 [Document Picture-in-Picture](https://developer.chrome.com/docs/web-platform/document-picture-in-picture)
 places the current chat panel in an always-on-top window without installing a
-PWA or implementing an App window. The candidate adopts one stable React portal:
+PWA or implementing an App window. Piik uses one stable React portal:
 the same session, DOM, draft, reading position and controls remain in use.
 Visibility, focus, tooltip placement and dismissal follow the displaying document.
 Theme and language follow the opener. The browser owns window movement and sizing;
@@ -258,6 +257,22 @@ so CSS opacity is not offered as a misleading game-transparency control.
 is incomplete, so unsupported pages retain the in-page panel. Video PiP and chat
 PiP may replace each other under the browser's single-window policy; no media
 or room owner changes. This needs no new room protocol or major version.
+
+## Multiple Sharers Assessment (Not Implemented)
+
+The requested party mode lets several participants share their own screens while
+each Viewer chooses one picture to watch. Publishing and watching would be
+independent, with room administration separate from publication ownership.
+The existing one-Host workflow would remain the default.
+
+This is a model change: the current route controller owns one Host and one
+publication. Each new publication would need its own source generation and
+subscription lifecycle, while endpoint upload limits remain shared across all
+publications. Creating a controller per source must not multiply that endpoint's
+outbound allowance. Switching pictures should replace the selected subscription,
+preserving room membership and chat. One selected picture is the initial scope;
+camera conferencing and room voice are separate features. No implementation or
+protocol change is accepted by this assessment.
 
 ## Remote Control Assessment (Not Implemented)
 
@@ -297,6 +312,29 @@ media from another Viewer or the SFU instead of the Host. Piik has no applicatio
 data channel today. Neither choice is equivalent to reusing chat's 800 ms
 limiter. Scope, input privacy, retirement, latency and real platform acceptance
 must justify the added owner before implementation; current sharing is unchanged.
+
+### Remote Co-play
+
+[Steam Remote Play Together](https://partner.steamgames.com/doc/features/remoteplay)
+lets remote participants act as local players in the Host's game. For Piik, this
+could retain one shared picture, but adds per-player virtual controller slots
+and input permissions beyond single-controller desktop assistance.
+
+[Moonlight's input implementation](https://github.com/moonlight-stream/moonlight-common-c/blob/aeba988e0a302145eff2e70fa3e11cd98ec01f5d/src/InputStream.c)
+accumulates relative movement and sends the latest absolute pointer position;
+input event semantics determine batching and delivery, rather than treating
+every sample as chat. [Sunshine's input owner](https://github.com/LizardByte/Sunshine/blob/5b2a4cfdfa643b5307906c68eb122e5a34855263/src/input.cpp)
+tracks pressed keys/buttons and resets input state. These are useful reference
+patterns for bounded queues and grant retirement. Their GameStream transport
+is not a Browser WebRTC input component; both implementations remain study-only
+under the project's license policy.
+
+Virtual gamepads are a separate platform cost. [Sunshine's input configuration](https://docs.lizardbyte.dev/projects/sunshine/master/md_docs_2configuration.html#gamepad_driver)
+documents Windows/macOS driver or broker dependencies; its Windows ViGEmBus
+fallback is end-of-life. A co-play prototype must choose a maintained input
+backend and verify supported games before promising an installation-free path.
+Basic keyboard/mouse assistance can be assessed independently. This does not
+require multiple screen publishers or a replacement media transport.
 
 ## Primary References And Rationale
 
