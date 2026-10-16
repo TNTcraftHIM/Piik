@@ -460,7 +460,9 @@ and [Windows wheel/button semantics](https://learn.microsoft.com/en-us/windows/w
 The Browser input session owns request/grant lifetime separately
 from the React controls and DOM capture. Real SCTP checks cover permission,
 focus suspension, updated geometry and retirement; Browser checks cover window
-capture, consent and pointer lock. Actual moved-window clicks, mixed DPI and
+capture, consent and pointer lock. Local window move/resize checks matched the
+input owner's live bounds to the decoded WGC aspect ratio, including even-pixel
+encoder rounding. Actual moved-window clicks, mixed DPI and
 game input still need physical acceptance.
 
 A local Pion/SCTP probe with 40 ms RTT delivered ordered input in about 20 ms
