@@ -461,7 +461,7 @@ func (session *Session) ReplaceSource(
 	if !audioOnly {
 		// Suspend input while changing capture. On success bind the committed
 		// target; on failure the previous picture remains eligible for a new grant.
-		session.remoteInput.SetDisplay("", "")
+		session.remoteInput.SetDisplay("")
 		defer session.syncRemoteInputSource()
 	}
 	if excludeAudio != nil {
@@ -515,14 +515,26 @@ func (session *Session) ReplaceSource(
 	)
 }
 
+func (session *Session) RemoteInputChanges() <-chan struct{} {
+	return session.remoteInput.Changes()
+}
+
+func (session *Session) RemoteInputRequests() []remoteinput.View {
+	return session.remoteInput.Views()
+}
+
+func (session *Session) DecideRemoteInput(id string, allow bool) error {
+	return session.remoteInput.Decide(id, allow)
+}
+
 func (session *Session) syncRemoteInputSource() {
 	session.mu.Lock()
 	target := session.videoOptions.Target
 	session.mu.Unlock()
 	if target.Kind == "display" {
-		session.remoteInput.SetDisplay(target.SourceID, target.Title)
+		session.remoteInput.SetDisplay(target.SourceID)
 	} else {
-		session.remoteInput.SetDisplay("", "")
+		session.remoteInput.SetDisplay("")
 	}
 }
 

@@ -2217,8 +2217,7 @@ export function ViewerPage({
             <PlaybackControls
               extraActions={<><RoomChatToggle session={interactionSession} />
                 <RemoteControl channel={peerRef.current?.getRemoteInput?.() ?? null} videoRef={videoRef}
-                  available={presentation.overlay === "none" && presentation.hasCurrentFrame}
-                  name={displayName} /></>}
+                  available={presentation.overlay === "none" && presentation.hasCurrentFrame} /></>}
               videoRef={videoRef}
               stream={remoteMedia?.stream ?? null}
               audioTrackKey={remoteMedia?.audioTrackKey}

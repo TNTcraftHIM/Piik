@@ -17,7 +17,7 @@ platform deferrals or establish a diagnosis for unmatched reports.
 - [ ] **Attended remote-control prototype.** Windows App display sharing now
   offers an optional input channel to a directly connected Browser Viewer in
   experimental `remotecontrol` builds. Browser/App-assisted reception, source
-  switching, local consent, revocation and native input have been exercised;
+  switching, Host-page consent, revocation and native input have been exercised;
   user acceptance and an actual remote-device trial
   remain before choosing a product integration. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
   owns limitations and evidence. This is not part of the public release.

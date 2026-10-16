@@ -274,7 +274,6 @@ func runLauncher(
 		ctx,
 		webassets.FS(),
 		launcher.Options{
-			RemoteInput: input,
 			DefaultMode: mode,
 			StartupSite: startupSite,
 			SaveStartupSite: func(site string) error {

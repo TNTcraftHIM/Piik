@@ -178,7 +178,8 @@ import {
   nativeCaptureTargetKey,
   type NativeCapturePath,
 } from "../native/capture-selection";
-import type { NativeCaptureTarget } from "../native/wire";
+import type { NativeCaptureTarget, RemoteControlRequest } from "../native/wire";
+import { RemoteControlApproval } from "../components/living/RemoteControl";
 import {
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
@@ -387,6 +388,7 @@ export function HostPage({
     return client ? client.microphones() : browserCaptureDevices("audioinput");
   }, []);
   const [nativeActive, setNativeActive] = useState(false);
+  const [remoteControlRequests, setRemoteControlRequests] = useState<RemoteControlRequest[]>([]);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [nativeSources, setNativeSources] =
     useState<NativeSourceList | null>(null);
@@ -1253,6 +1255,7 @@ export function HostPage({
       nativeSourceSelectionRef.current = selection;
       nativeEventCleanup = client.onEvent((event) => {
         if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeClientRef.current !== client) return;
+        if (event.type === "remote-control-state") setRemoteControlRequests(event.requests);
         if (event.type === "audio-state") {
           nativeSourceAudioRef.current = event.sourceAudio;
           setMicrophoneEnabled(event.microphone);
@@ -1591,6 +1594,7 @@ export function HostPage({
     nativeSourceAudioRef.current = undefined;
     nativeSourceSelectionRef.current = null;
     setNativeActive(false);
+    setRemoteControlRequests([]);
     if (!client || !shareGeneration) {
       releaseUnusedNativeClient();
       return;
@@ -3794,6 +3798,17 @@ export function HostPage({
               />
             ) : null}
           </div>
+          {nativeActive && remoteControlRequests.length > 0 && <RemoteControlApproval
+            requests={remoteControlRequests.map(request => {
+              const peer = Array.from(peersRef.current.values()).find(peer => peer.connectionId === request.connectionId);
+              return { ...request, name: viewers.find(viewer => viewer.peerId === peer?.peerId)?.label ?? t("common.name.viewerDefault") };
+            })}
+            onDecide={async (id, allow) => {
+              const client = nativeClientRef.current;
+              const shareId = nativeShareGenerationRef.current;
+              if (!client || !shareId) throw new Error("Native share is unavailable");
+              await client.setRemoteControl(shareId, id, allow);
+            }} />}
           <div className="lr-stage-notices" role="status" aria-live="polite">
             {details?.hasSourceAudio === false && stream ? (
               <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" tone="off" />

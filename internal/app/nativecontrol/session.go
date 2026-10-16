@@ -207,6 +207,20 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		result = session.beginShare(ctx, envelope, request, complete)
 		asynchronous = result == nil
 		return result, nil
+	case "set-remote-control":
+		var request remoteControlRequest
+		if err := decodeStrict(payload, &request); err != nil ||
+			!validIdentities(request.ShareID, request.RequestID) || request.Allow == nil {
+			return nil, protocolViolation("native remote-control decision is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		if err := host.DecideRemoteInput(request.RequestID, *request.Allow); err != nil {
+			return nil, err
+		}
+		return response(envelope, "remote-control-set"), nil
 	case "set-microphone":
 		var request microphoneRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||
@@ -876,19 +890,32 @@ func (session *Session) stopViewer(shareID string) {
 }
 
 func (session *Session) watchHost(host *nativehost.Session) {
-	err, open := <-host.Done()
-	session.mu.Lock()
-	if session.host == host {
-		session.host = nil
-	}
-	session.mu.Unlock()
-	if open {
-		session.emit(shareEndedEvent{
-			Version: loopback.ProtocolVersion,
-			Type:    "share-ended",
-			ShareID: host.ShareID(),
-			Failed:  err != nil,
-		})
+	for {
+		select {
+		case <-host.RemoteInputChanges():
+			session.emit(loopback.ControlEvent{
+				Value: remoteControlStateEvent{
+					eventEnvelope: eventEnvelope{Version: loopback.ProtocolVersion, Type: "remote-control-state", ShareID: host.ShareID()},
+					Requests:      host.RemoteInputRequests(),
+				},
+				Current: func() bool { return session.current(host.ShareID()) == host },
+			})
+		case err, open := <-host.Done():
+			session.mu.Lock()
+			if session.host == host {
+				session.host = nil
+			}
+			session.mu.Unlock()
+			if open {
+				session.emit(shareEndedEvent{
+					Version: loopback.ProtocolVersion,
+					Type:    "share-ended",
+					ShareID: host.ShareID(),
+					Failed:  err != nil,
+				})
+			}
+			return
+		}
 	}
 }
 

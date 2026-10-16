@@ -3,6 +3,7 @@ package nativecontrol
 import (
 	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
@@ -59,6 +60,18 @@ type microphoneRequest struct {
 	Enabled  *bool    `json:"enabled,omitempty"`
 	Volume   *float64 `json:"volume,omitempty"`
 	DeviceID *string  `json:"deviceId,omitempty"`
+}
+
+type remoteControlRequest struct {
+	requestEnvelope
+	ShareID   string `json:"shareId"`
+	RequestID string `json:"requestId"`
+	Allow     *bool  `json:"allow"`
+}
+
+type remoteControlStateEvent struct {
+	eventEnvelope
+	Requests []remoteinput.View `json:"requests"`
 }
 
 type audioStateEvent struct {

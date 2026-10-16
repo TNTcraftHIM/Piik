@@ -145,6 +145,7 @@ func TestOperationalFailureAndIdempotentStopKeepTheRealControlConnection(t *test
 		{"edge-answer", `,"shareId":"missing_share","connectionId":"edge_123456","sdp":"v=0"`, "request-failed"},
 		{"receive-candidate", `,"shareId":"missing_share","connectionId":"edge_123456","candidate":null`, "request-failed"},
 		{"pause-share", `,"shareId":"missing_share","paused":true`, "request-failed"},
+		{"set-remote-control", `,"shareId":"missing_share","requestId":"input_request","allow":true`, "request-failed"},
 		{"publication-media", `,"shareId":"missing_share","publicationGeneration":"publication_123","connectionId":"edge_123456"`, "request-failed"},
 		{"stop-share", `,"shareId":"missing_share"`, "share-stopped"},
 		{"stop-share", `,"shareId":"missing_share"`, "share-stopped"},

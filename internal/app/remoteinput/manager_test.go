@@ -1,10 +1,6 @@
 package remoteinput
 
 import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +26,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	sink := &recordedInput{events: make(chan inputEvent, 20), resets: make(chan struct{}, 20)}
 	m := &Manager{sink: sink, connections: map[string]*connection{}}
 	s := m.NewSession()
-	s.setDisplay(bounds{width: 1920, height: 1080}, "Test display")
+	s.setDisplay(bounds{width: 1920, height: 1080})
 	t.Cleanup(m.Close)
 	host, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -108,7 +104,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	}
 	request := func(peer string) *connection {
 		t.Helper()
-		if err := peers[peer].SendText(`{"type":"request","name":"Viewer"}`); err != nil {
+		if err := peers[peer].SendText(`{"type":"request"}`); err != nil {
 			t.Fatal(err)
 		}
 		var found *connection
@@ -125,11 +121,8 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	}
 	decide := func(c *connection, allow bool) string {
 		t.Helper()
-		response := httptest.NewRecorder()
-		body, _ := json.Marshal(map[string]any{"id": c.id, "allow": allow})
-		m.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(string(body))))
-		if response.Code != http.StatusOK {
-			t.Fatal(response.Code, response.Body.String())
+		if err := s.Decide(c.id, allow); err != nil {
+			t.Fatal(err)
 		}
 		m.mu.Lock()
 		defer m.mu.Unlock()
@@ -138,12 +131,30 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	key := func(c *connection, grant string) {
 		m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"key","code":"KeyA","down":true,"grant":"` + grant + `"}`)})
 	}
+	<-s.Changes() // Drain display setup; the next notification must be a request.
 	first := request("first")
+	other := m.NewSession()
+	other.setDisplay(bounds{width: 1920, height: 1080})
+	if len(other.Views()) != 0 || other.Decide(first.id, true) == nil || other.Decide(first.id, false) == nil {
+		t.Fatal("another Host session can view or decide this share's request")
+	}
+	select {
+	case <-s.Changes():
+		views := s.Views()
+		if len(views) != 1 || views[0].ConnectionID != "first" || views[0].Active {
+			t.Fatal("request not reflected in its Host snapshot")
+		}
+	default:
+		t.Fatal("request did not notify its Host")
+	}
 	key(first, "")
 	if len(sink.events) != 0 {
 		t.Fatal("unapproved input accepted")
 	}
 	grant := decide(first, true)
+	if !s.Views()[0].Active {
+		t.Fatal("approval not reflected in Host snapshot")
+	}
 	if grant == "" {
 		t.Fatal("missing grant")
 	}
@@ -180,13 +191,13 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	}
 	first = request("first")
 	grant = decide(first, true)
-	s.SetDisplay("", "")
+	s.SetDisplay("")
 	key(first, grant)
 	if len(sink.events) != 2 || len(sink.resets) != 5 || s.available() {
 		t.Fatal("source replacement kept input authority")
 	}
 	nextDisplay := bounds{left: 1920, width: 1280, height: 720}
-	s.setDisplay(nextDisplay, "Another display")
+	s.setDisplay(nextDisplay)
 	first = request("first")
 	nextGrant := decide(first, true)
 	key(first, grant)
@@ -196,7 +207,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	}
 	s.Close()
 	key(first, nextGrant)
-	if len(sink.events) != 3 || len(sink.resets) != 6 {
+	if len(sink.events) != 3 || len(sink.resets) != 6 || len(s.Views()) != 0 || s.Decide(first.id, true) == nil {
 		t.Fatal("source retirement kept a grant")
 	}
 }

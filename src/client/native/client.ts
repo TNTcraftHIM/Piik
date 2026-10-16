@@ -699,6 +699,10 @@ export class NativeClient {
     return update.done;
   }
 
+  async setRemoteControl(shareId: string, requestId: string, allow: boolean): Promise<void> {
+    await this.request("set-remote-control", { shareId, requestId, allow }, nativeAckResponseSchema);
+  }
+
   async stopShare(shareId: string): Promise<void> {
     if (this.microphoneVolumeUpdate?.shareId === shareId) this.microphoneVolumeUpdate = null;
     await this.request("stop-share", { shareId }, nativeAckResponseSchema);

@@ -256,6 +256,7 @@ export const nativeAckResponseSchema = z
       "share-stopped",
       "share-paused",
       "microphone-set",
+      "remote-control-set",
       "publication-answer-accepted",
       "publication-candidate-accepted",
       "publication-layers-accepted",
@@ -269,7 +270,15 @@ const eventBase = {
   shareId: opaqueIdentifierSchema,
 };
 
+const remoteControlRequestSchema = z.object({
+  id: opaqueIdentifierSchema,
+  connectionId: opaqueIdentifierSchema,
+  active: z.boolean(),
+}).strict();
+export type RemoteControlRequest = z.infer<typeof remoteControlRequestSchema>;
+
 export const nativeEventSchema = z.discriminatedUnion("type", [
+  z.object({ ...eventBase, type: z.literal("remote-control-state"), requests: z.array(remoteControlRequestSchema) }).strict(),
   z.object({ ...eventBase, type: z.literal("audio-state"), sourceAudio: z.boolean(), microphone: z.boolean(), failed: z.boolean() }).strict(),
   z
     .object({

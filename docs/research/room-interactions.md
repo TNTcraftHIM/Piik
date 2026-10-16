@@ -309,8 +309,10 @@ mouse input, IME and virtual gamepads are outside this prototype.
 
 `internal/app/remoteinput` owns one process-wide grant because the App's native
 sessions share the same physical keyboard and pointer. The Viewer requests
-control; the Host checks the displayed pairing code and approves on the local
-App launcher. Its existing loopback Host/Origin checks protect approval. The
+control; the Host approves, declines or ends control on the current sharing
+page. The existing authorized native-control connection carries these commands;
+only the session that owns the share can decide its requests. Request identity
+comes from the direct media connection and the room's participant list. The
 grant is bound to that channel and source, with a fresh nonce for each approval.
 Site capture approval never grants input rights. Input may operate the whole
 computer; a shared picture is not an OS input sandbox.
@@ -322,7 +324,7 @@ displays through the existing source picker without starting another share.
 Window capture disables control, and returning to a display permits a fresh
 request. Audio-only changes retain the current grant. A lost control channel
 needs a new media connection; it never silently restores a grant. The Viewer can use Escape, and
-the Host can stop from the launcher or Ctrl+Alt+F10. Window blur releases held
+the Host can stop from the sharing page or Ctrl+Alt+F10. Window blur releases held
 input; hidden or locally paused video ends control. Pointer motion retains the
 latest sample per animation frame; a stalled send queue closes the input channel
 without replacing the media connection. No input history is persisted.
@@ -333,7 +335,9 @@ shortcut. The consent owner was also checked over real SCTP channels for
 unapproved/stale input, controller replacement, pause, disconnect and source
 retirement. Display → window → display switching retained the channel and
 required fresh approval; the App-assisted path delivered actual mouse/keyboard
-input and released a held key on revocation. A foreign-origin approval POST was rejected. These checks do not
+input and released a held key on revocation. Request snapshots and decisions
+are scoped to the owning native share; another session cannot inspect, approve
+or decline them. These checks do not
 establish remote-network latency, game compatibility, mixed-DPI behavior or
 antivirus classification. The experiment build and disposable UI/input probes
 remain under ignored `build/remote-control-prototype/`.

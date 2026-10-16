@@ -1,5 +1,5 @@
 // Package remoteinput owns the experimental, attended desktop input grant.
-// Only the local App launcher can approve a connection. Media routing remains
+// Only the owning Host control session can approve a connection. Media routing remains
 // outside this package; closing its exact source or connection releases input.
 package remoteinput
 
@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
 	"sort"
 	"sync"
 
@@ -25,7 +24,6 @@ type bounds struct{ left, top, width, height int32 }
 type inputEvent struct {
 	Type   string  `json:"type"`
 	Grant  string  `json:"grant,omitempty"`
-	Name   string  `json:"name,omitempty"`
 	X      float64 `json:"x,omitempty"`
 	Y      float64 `json:"y,omitempty"`
 	Button int     `json:"button,omitempty"`
@@ -40,11 +38,9 @@ type inputSink interface {
 }
 
 type View struct {
-	ID      string `json:"id"`
-	Code    string `json:"code"`
-	Name    string `json:"name"`
-	Display string `json:"display"`
-	Active  bool   `json:"active"`
+	ID           string `json:"id"`
+	ConnectionID string `json:"connectionId"`
+	Active       bool   `json:"active"`
 }
 
 // One manager covers both native sessions: they operate the same physical desktop.
@@ -60,16 +56,15 @@ type Manager struct {
 type Session struct {
 	manager *Manager
 	bounds  bounds
-	display string
 	paused  bool
 	closed  bool
+	changed chan struct{}
 }
 
 type connection struct {
 	owner     *Session
 	edgeID    string
 	id        string
-	name      string
 	requested bool
 	grant     string
 	channel   *webrtc.DataChannel
@@ -95,13 +90,29 @@ func (m *Manager) NewSession() *Session {
 	if m == nil {
 		return nil
 	}
-	return &Session{manager: m}
+	return &Session{manager: m, changed: make(chan struct{}, 1)}
+}
+
+// Changes coalesces notifications; Views reads the current grant owner. Input
+// packets do not generate UI updates, and no callback runs under the input lock.
+func (s *Session) Changes() <-chan struct{} {
+	if s == nil {
+		return nil
+	}
+	return s.changed
+}
+
+func (s *Session) notify() {
+	select {
+	case s.changed <- struct{}{}:
+	default:
+	}
 }
 
 // The channel belongs to the sharing session; input permission belongs to its
 // current display. Replacing a picture revokes the grant without losing the
 // channel needed to request control of the next display.
-func (s *Session) SetDisplay(displayID, title string) {
+func (s *Session) SetDisplay(displayID string) {
 	if s == nil {
 		return
 	}
@@ -109,17 +120,17 @@ func (s *Session) SetDisplay(displayID, title string) {
 	if displayID != "" {
 		b, _ = displayBounds(displayID)
 	}
-	s.setDisplay(b, title)
+	s.setDisplay(b)
 }
 
-func (s *Session) setDisplay(b bounds, title string) {
+func (s *Session) setDisplay(b bounds) {
 	m := s.manager
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed || s.closed {
 		return
 	}
-	s.bounds, s.display = b, title
+	s.bounds = b
 	if m.active != nil && m.active.owner == s {
 		m.release()
 	}
@@ -129,6 +140,7 @@ func (s *Session) setDisplay(b bounds, title string) {
 			m.send(c, "ready")
 		}
 	}
+	s.notify()
 }
 
 func (s *Session) Attach(edgeID string, channel *webrtc.DataChannel) {
@@ -159,9 +171,8 @@ func (m *Manager) send(c *connection, state string) {
 	}
 	data, _ := json.Marshal(struct {
 		State string `json:"state"`
-		Code  string `json:"code"`
 		Grant string `json:"grant,omitempty"`
-	}{state, c.id[:6], c.grant})
+	}{state, c.grant})
 	_ = c.channel.SendText(string(data))
 }
 
@@ -175,6 +186,7 @@ func (m *Manager) release() {
 		c.grant = ""
 		_ = m.sink.Reset()
 		m.send(c, "ready")
+		c.owner.notify()
 	}
 }
 
@@ -203,11 +215,12 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
 		}
 		m.send(c, state)
 	case "request":
-		if !c.owner.available() || c.owner.paused || len(event.Name) > 128 || c.requested || c == m.active {
+		if !c.owner.available() || c.owner.paused || c.requested || c == m.active {
 			return
 		}
-		c.requested, c.name = true, event.Name
+		c.requested = true
 		m.send(c, "pending")
+		c.owner.notify()
 	case "release":
 		if !c.requested && m.active != c {
 			return
@@ -218,6 +231,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
 		} else {
 			m.send(c, "ready")
 		}
+		c.owner.notify()
 	default:
 		if m.active != c || c.grant == "" || event.Grant != c.grant || c.owner.paused || !c.owner.available() {
 			return
@@ -240,6 +254,7 @@ func (m *Manager) remove(c *connection) {
 		m.release()
 	}
 	delete(m.connections, c.id)
+	c.owner.notify()
 }
 
 func (s *Session) Pause(paused bool) {
@@ -252,6 +267,15 @@ func (s *Session) Pause(paused bool) {
 	s.paused = paused
 	if paused && m.active != nil && m.active.owner == s {
 		m.release()
+	}
+	if paused {
+		for _, c := range m.connections {
+			if c.owner == s && c.requested {
+				c.requested = false
+				m.send(c, "ready")
+			}
+		}
+		s.notify()
 	}
 }
 
@@ -270,6 +294,7 @@ func (s *Session) Disconnect(edgeID string) {
 				m.release()
 			}
 			delete(m.connections, id)
+			s.notify()
 			channel = c.channel
 			break
 		}
@@ -297,6 +322,7 @@ func (s *Session) Close() {
 			channels = append(channels, c.channel)
 		}
 	}
+	s.notify()
 	m.mu.Unlock()
 	for _, channel := range channels {
 		_ = channel.Close()
@@ -325,22 +351,35 @@ func (m *Manager) Close() {
 	}
 }
 
-func (m *Manager) views() []View {
+func (s *Session) Views() []View {
 	views := []View{}
+	if s == nil {
+		return views
+	}
+	m := s.manager
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, c := range m.connections {
-		if c.requested || m.active == c {
-			views = append(views, View{c.id, c.id[:6], c.name, c.owner.display, m.active == c})
+		if c.owner == s && (c.requested || m.active == c) {
+			views = append(views, View{c.id, c.edgeID, m.active == c})
 		}
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].ID < views[j].ID })
 	return views
 }
 
-func (m *Manager) decide(id string, allow bool) error {
+func (s *Session) Decide(id string, allow bool) error {
+	if s == nil {
+		return errors.New("remote input is unavailable")
+	}
+	m := s.manager
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	c := m.connections[id]
-	if m.closed || c == nil || !c.owner.available() || c.owner.paused || c.channel.ReadyState() != webrtc.DataChannelStateOpen || (!c.requested && m.active != c) {
+	if m.closed || c == nil || c.owner != s || !s.available() || s.paused || c.channel.ReadyState() != webrtc.DataChannelStateOpen || (!c.requested && m.active != c) {
 		return errors.New("request is no longer available")
 	}
+	defer s.notify()
 	if !allow {
 		c.requested = false
 		if m.active == c {
@@ -357,40 +396,4 @@ func (m *Manager) decide(id string, allow bool) error {
 	m.active = c
 	m.send(c, "active")
 	return nil
-}
-
-// ServeHTTP is mounted only behind the launcher's loopback Host/Origin checks.
-// It is never exposed through the room server or public invitation tunnel.
-func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if m == nil {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	var choice struct {
-		ID    string `json:"id"`
-		Allow bool   `json:"allow"`
-	}
-	if r.Method == http.MethodPost {
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
-		decoder.DisallowUnknownFields()
-		if decoder.Decode(&choice) != nil || decoder.Decode(&struct{}{}) != io.EOF {
-			http.Error(w, "invalid decision", 400)
-			return
-		}
-	} else if r.Method != http.MethodGet {
-		w.Header().Set("Allow", "GET, POST")
-		http.Error(w, "method not allowed", 405)
-		return
-	}
-	m.mu.Lock()
-	if r.Method == http.MethodPost && m.decide(choice.ID, choice.Allow) != nil {
-		m.mu.Unlock()
-		http.Error(w, "request expired", 409)
-		return
-	}
-	views := m.views()
-	m.mu.Unlock()
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(views)
 }

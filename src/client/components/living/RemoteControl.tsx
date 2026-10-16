@@ -2,20 +2,21 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { z } from "zod";
 import { useCopy } from "../../ui/copy";
+import { Glyph } from "../../ui/icons";
+import type { RemoteControlRequest } from "../../native/wire";
 import { Btn } from "./primitives";
 import "./remote-control.css";
 
 const stateSchema = z.object({
   state: z.enum(["ready", "unavailable", "pending", "active", "failed"]),
-  code: z.string().regex(/^[0-9a-f]{6}$/),
   grant: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 }).strict();
 
 // The video keeps its existing media owner. This temporary surface handles
 // input only while its exact direct connection holds a local App grant.
-export function RemoteControl({ channel, videoRef, available, name }: {
+export function RemoteControl({ channel, videoRef, available }: {
   channel: RTCDataChannel | null; videoRef: RefObject<HTMLVideoElement | null>;
-  available: boolean; name: string;
+  available: boolean;
 }) {
   const { t } = useCopy();
   const [state, setState] = useState<z.infer<typeof stateSchema> | null>(null);
@@ -99,7 +100,7 @@ export function RemoteControl({ channel, videoRef, available, name }: {
   return <>
     <Btn icon="mouse" title={state?.state === "unavailable" ? "remote.needsDisplay" : buttonTitle}
       pressed={active} disabled={!available || state?.state === "unavailable"}
-      onClick={() => active || state?.state === "pending" ? release() : send({ type: "request", name })} />
+      onClick={() => active || state?.state === "pending" ? release() : send({ type: "request" })} />
     {parent && (active || state?.state === "pending" || state?.state === "failed") && createPortal(<>
       {active && <div ref={surface} className="lr-remote-input-surface" tabIndex={0}
         aria-label={t("remote.surface")} role="application"
@@ -131,65 +132,40 @@ export function RemoteControl({ channel, videoRef, available, name }: {
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }} />}
       <div className="lr-remote-input-status" role="status">
         <span>{t(active ? "remote.active" : state?.state === "failed" ? "remote.failed" : "remote.pending")}</span>
-        {state?.state === "pending" && <code>{state.code}</code>}
         {active && <kbd>Esc</kbd>}
       </div>
     </>, parent)}
   </>;
 }
 
-const approvalSchema = z.array(z.object({ id: z.string(), code: z.string(), name: z.string(), display: z.string(), active: z.boolean() }));
-
-export function RemoteControlApproval() {
+export function RemoteControlApproval({ requests, onDecide }: {
+  requests: (RemoteControlRequest & { name: string })[];
+  onDecide: (id: string, allow: boolean) => Promise<void>;
+}) {
   const { t } = useCopy();
-  const [requests, setRequests] = useState<z.infer<typeof approvalSchema>>([]);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const decision = useRef({ revision: 0, pending: false });
-  useEffect(() => {
-    let current = true;
-    let timer: ReturnType<typeof setTimeout>;
-    const read = async () => {
-      const revision = decision.current.revision;
-      const fresh = () => current && revision === decision.current.revision && !decision.current.pending;
-      try {
-        const response = await fetch("/api/client-launcher/remote-control", { cache: "no-store" });
-        if (!response.ok) throw new Error();
-        const result = approvalSchema.parse(await response.json());
-        if (fresh()) { setRequests(result); setFailed(false); }
-      } catch { if (fresh()) { setRequests([]); setFailed(true); } }
-      if (current) timer = setTimeout(read, 1000);
-    };
-    void read();
-    return () => { current = false; clearTimeout(timer); };
-  }, []);
   const decide = async (id: string, allow: boolean) => {
-    if (decision.current.pending) return;
-    decision.current = { revision: decision.current.revision + 1, pending: true };
     setBusy(true);
     try {
-      const response = await fetch("/api/client-launcher/remote-control", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, allow }),
-      });
-      if (!response.ok) throw new Error();
-      setRequests(approvalSchema.parse(await response.json())); setFailed(false);
+      await onDecide(id, allow);
+      setFailed(false);
     } catch { setFailed(true); }
-    finally { decision.current.pending = false; setBusy(false); }
+    finally { setBusy(false); }
   };
   return <section className="lr-remote-approval" aria-label={t("remote.title")}>
-    <h2>{t("remote.title")} <small>Prototype</small></h2>
-    <p>{t("remote.consent")}</p>
-    {requests.length === 0 && <p className="lr-remote-empty">{t("remote.empty")}</p>}
+    <h2><Glyph name="mouse" size={18} />{t("remote.title")}</h2>
     {requests.map(request => <div className="lr-remote-request" key={request.id}>
-      <div><strong>{request.name || t("common.name.viewerDefault")}</strong><code>{request.code}</code>
-        <p>{request.display} · {t(request.active ? "remote.active" : "remote.waiting")}</p></div>
+      <div><strong>{request.name}</strong>
+        <p>{t(request.active ? "remote.active" : "remote.waiting")}</p></div>
       <div className="lr-remote-request-actions">
-        <Btn icon="x" title={request.active ? "remote.stop" : "common.cancel"} cap={request.active ? "remote.stop" : "common.cancel"}
+        <Btn icon="x" title={request.active ? "remote.stop" : "remote.decline"} cap={request.active ? "remote.stop" : "remote.decline"}
           disabled={busy} onClick={() => void decide(request.id, false)} />
         {!request.active && <Btn icon="check" tone="primary" title="remote.allow" cap="remote.allow" disabled={busy} onClick={() => void decide(request.id, true)} />}
       </div>
     </div>)}
+    {requests.some(request => !request.active) && <p className="lr-remote-note">{t("remote.consent")}</p>}
     {failed && <p role="alert">{t("remote.failed")}</p>}
-    <p className="lr-remote-shortcut">{t("remote.shortcut")} <kbd>Ctrl + Alt + F10</kbd></p>
+    {requests.some(request => request.active) && <p className="lr-remote-note">{t("remote.shortcut")} <kbd>Ctrl + Alt + F10</kbd></p>}
   </section>;
 }
