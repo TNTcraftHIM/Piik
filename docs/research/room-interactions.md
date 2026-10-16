@@ -362,8 +362,11 @@ Remote control can target an additive 2.x release under the
 an optional capability, and exchange new commands/events only between supported,
 opted-in sessions. Existing sharing and old command/event shapes remain intact.
 Site capability and App discovery readers already tolerate unknown descriptions;
-this is an extension point, not proof of end-to-end compatibility. The prototype
-must still check old/new Site, page and App combinations. Multiple publishers
+this is an extension point, not proof of end-to-end compatibility. Local crossed
+builds of the published 2.1.0 page/App and this prototype completed native window
+sharing and Viewer decoding in both directions, without input opt-in, new input
+events or a remote-control button when either side lacked support. This covers
+those two combinations, not every published Site/App version. Multiple publishers
 are not a prerequisite, and neither feature size nor an internal refactor alone
 requires a major release.
 
