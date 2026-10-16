@@ -457,10 +457,17 @@ The Browser input session owns request/grant lifetime separately
 from the React controls and DOM capture. Real SCTP checks cover permission,
 focus suspension, updated geometry and retirement; Browser checks cover window
 capture, consent and pointer lock. Actual moved-window clicks, mixed DPI and
-game input still need physical acceptance. The current
-ordered data channel also lacks game-latency evidence under packet loss;
-desktop clicking does not establish responsive game control. These are input
-semantics and acceptance work, not reasons to replace the media pipeline.
+game input still need physical acceptance.
+
+A local Pion/SCTP probe with 40 ms RTT delivered ordered input in about 20 ms
+without loss and about 94 ms at the 95th percentile when every twentieth
+outgoing data packet was dropped. A lost final event, without subsequent input,
+instead waited about 683 ms for retransmission. This synthetic transport probe
+does not establish Browser or game latency. Reliable delivery prevents lost
+key-up events from permanently holding a key, but does not promise immediate
+release during loss. Keep the first prototype on the existing ordered channel;
+desktop acceptance must not be presented as competitive-game readiness. These
+are input semantics and acceptance work, not reasons to replace the media pipeline.
 
 The reviewed implementation uses WGC capture and the documented Windows input
 API, without game-memory access, injected game code or an input driver.
