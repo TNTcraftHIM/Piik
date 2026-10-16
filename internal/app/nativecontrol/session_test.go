@@ -18,6 +18,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
+	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
@@ -315,6 +316,33 @@ func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing
 				case <-time.After(2 * time.Second):
 					t.Fatal("microphone did not complete")
 				}
+			}
+		})
+	}
+}
+
+func TestRemoteInputRequiresPageOptIn(t *testing.T) {
+	for _, optIn := range []bool{false, true} {
+		t.Run(strconv.FormatBool(optIn), func(t *testing.T) {
+			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", t.TempDir())
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			// No OS sink or approved controller: only exercise event ownership.
+			session := New(executable, nativecapture.Capabilities{VideoCapture: true, SoftwareVP8: true}, false, &remoteinput.Manager{})
+			defer session.Close()
+			request := startShareRequest{Version: 10, ID: "request_start", Type: "start-share", ShareID: "share_123456",
+				Source:      nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"},
+				RemoteInput: optIn, EdgeCapacity: 1, Codec: "vp8",
+				Profile: qualitySettings{Resolution: protocol.QualityResolution{Width: 1920, Height: 1080}, MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
+			payload, _ := json.Marshal(request)
+			result, err := awaitControlResponse(t, session, payload)
+			if _, ok := result.(shareStartedResponse); err != nil || !ok {
+				t.Fatalf("start failed: %v %#v", err, result)
+			}
+			if (session.current(request.ShareID).RemoteInputChanges() != nil) != optIn {
+				t.Fatal("input events did not respect page opt-in")
 			}
 		})
 	}

@@ -606,8 +606,14 @@ func (session *Session) startShare(
 		return nil, errors.New("native share is already active")
 	}
 	session.mu.Unlock()
+	// Old pages reject unknown events. Only an opted-in page can own input
+	// requests; this advertises support, not permission for any Viewer.
+	var input *remoteinput.Manager
+	if request.RemoteInput {
+		input = session.remoteInput
+	}
 	host, err := nativehost.Start(ctx, nativehost.Options{
-		RemoteInput:    session.remoteInput,
+		RemoteInput:    input,
 		ShareID:        request.ShareID,
 		CaptureProcess: session.captureProcess,
 		Video: nativecapture.VideoOptions{

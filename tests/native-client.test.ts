@@ -531,7 +531,7 @@ describe("native App private wire", () => {
     ]) expect(nativeHealthSchema.safeParse({ ...health, ...invalid }).success).toBe(false);
   });
 
-  it.each([undefined, false, true])("gates capture-border commands on advertised support: %s", async (supported) => {
+  it.each([undefined, false, true])("gates optional capture commands on advertised support: %s", async (supported) => {
     const requests: Record<string, unknown>[] = [];
     class CaptureSocket extends EventTarget {
       static readonly OPEN = 1;
@@ -561,7 +561,7 @@ describe("native App private wire", () => {
     vi.stubGlobal("WebSocket", CaptureSocket);
     vi.stubGlobal("window", { setTimeout, clearTimeout });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-      ...health, nativeMedia: { ...health.nativeMedia, captureBorderControl: supported },
+      ...health, nativeMedia: { ...health.nativeMedia, captureBorderControl: supported, remoteInput: supported },
     }))));
     const client = await NativeClient.connect();
     expect(client).not.toBeNull();
@@ -578,6 +578,7 @@ describe("native App private wire", () => {
         const extension = supported ? { showCaptureBorder: showCaptureBorder ?? false } : {};
         expect(requests.at(-2)).toEqual({
           version: NATIVE_CLIENT_PROTOCOL, id: expect.any(String), type: "start-share", ...input, ...extension,
+          ...(supported ? { remoteInput: true } : {}),
         });
         expect(requests.at(-1)).toEqual({
           version: NATIVE_CLIENT_PROTOCOL, id: expect.any(String), type: "replace-share-source",

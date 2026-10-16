@@ -45,6 +45,7 @@ type startShareRequest struct {
 	Source            nativecapture.CaptureTarget  `json:"source"`
 	Audio             bool                         `json:"audio"`
 	MicrophoneMixing  bool                         `json:"microphoneMixing,omitempty"`
+	RemoteInput       bool                         `json:"remoteInput,omitempty"`
 	ExcludeAudio      *nativecapture.CaptureTarget `json:"excludeAudio,omitempty"`
 	ShowCaptureBorder bool                         `json:"showCaptureBorder,omitempty"`
 	AdapterIndex      uint32                       `json:"adapterIndex"`

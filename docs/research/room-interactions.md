@@ -297,7 +297,10 @@ under the repository's contribution rules. No matched measurement establishes
 a Go/Rust performance advantage or a need to replace Piik's media pipeline.
 
 The `remotecontrol` Go build tag selects Windows `SendInput`; ordinary builds
-leave it unavailable. The prototype uses the App's embedded page and a shared
+leave it unavailable. App discovery advertises the optional input capability;
+a supporting page opts in when starting its native share. An older page emits
+no opt-in, so it receives neither new input events nor input channels. The
+prototype uses the App's embedded page and a shared
 display or window, with one desktop Browser controller. An ordered WebRTC data channel
 on the existing direct media edge carries small input messages. There is no new
 listener, signaling command, media route, server input forwarding or dependency.

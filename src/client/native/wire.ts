@@ -41,6 +41,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       maxVideoFramerate: z.number().positive().max(Number.MAX_SAFE_INTEGER).optional(),
       maxVideoBitrate: positiveUint32Schema.optional(),
       receiverReuse: z.boolean().default(false),
+      remoteInput: z.boolean().optional(),
       video: z.boolean().default(false),
       processAudio: z.boolean().default(false),
       systemAudio: z.boolean().default(false),

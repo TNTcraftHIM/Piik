@@ -155,6 +155,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		slog.Warn("Remote-control prototype unavailable", "reason", inputErr)
 	}
 	defer input.Close()
+	nativeMedia.capabilities.RemoteInput = input != nil
 	recordContext := func(selected Options, config appconfig.Config) {
 		if recorder == nil {
 			return

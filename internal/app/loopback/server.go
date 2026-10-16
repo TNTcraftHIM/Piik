@@ -83,6 +83,7 @@ type NativeMediaCapabilities struct {
 	MaxVideoBitrate              int                        `json:"maxVideoBitrate,omitempty"`
 	MaxAudioBitrate              int                        `json:"maxAudioBitrate,omitempty"`
 	ReceiverReuse                bool                       `json:"receiverReuse,omitempty"`
+	RemoteInput                  bool                       `json:"remoteInput,omitempty"`
 	Video                        bool                       `json:"video"`
 	CaptureBorderControl         bool                       `json:"captureBorderControl,omitempty"`
 	Microphone                   bool                       `json:"microphone,omitempty"`

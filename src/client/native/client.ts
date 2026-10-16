@@ -338,6 +338,7 @@ export class NativeClient {
         ...shareInput,
         ...(excludeAudio ? { excludeAudio } : {}),
         ...(this.health.nativeMedia.microphone ? { microphoneMixing: true } : {}),
+        ...(this.health.nativeMedia.remoteInput ? { remoteInput: true } : {}),
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),
       },
       shareStartedResponseSchema,
