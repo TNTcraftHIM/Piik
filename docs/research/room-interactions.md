@@ -298,6 +298,10 @@ a Go/Rust performance advantage or a need to replace Piik's media pipeline.
 
 A bounded candidate would be attended desktop assistance: one explicitly
 approved controller, with a local revoke action and no unattended access.
+The recommended first prototype is a Windows App sharing a display, controlled
+by one desktop Browser through mouse, wheel and keyboard input. This preserves
+the one-Host picture and existing Viewer/relay roles; virtual gamepads and
+multiple publishers are independent work.
 App input authority would have to be process-wide because its two native
 sessions share the same OS keyboard and pointer. Site capture approval cannot
 silently grant a Viewer input rights. Source/session retirement and disconnect
@@ -312,6 +316,16 @@ media from another Viewer or the SFU instead of the Host. Piik has no applicatio
 data channel today. Neither choice is equivalent to reusing chat's 800 ms
 limiter. Scope, input privacy, retirement, latency and real platform acceptance
 must justify the added owner before implementation; current sharing is unchanged.
+
+Remote control can target an additive 2.x release under the
+[compatibility contract](../standards/versioning.md#extending-interfaces): advertise
+an optional capability, and exchange new commands/events only between supported,
+opted-in sessions. Existing sharing and old command/event shapes remain intact.
+Site capability and App discovery readers already tolerate unknown descriptions;
+this is an extension point, not proof of end-to-end compatibility. The prototype
+must still check old/new Site, page and App combinations. Multiple publishers
+are not a prerequisite, and neither feature size nor an internal refactor alone
+requires a major release.
 
 ### Remote Co-play
 
