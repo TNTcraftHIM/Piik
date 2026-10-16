@@ -10,7 +10,6 @@ export const zh = {
   "remote.allow": "允许控制",
   "remote.decline": "拒绝",
   "remote.surface": "远程键鼠控制区域",
-  "remote.active": "正在远程控制",
   "remote.approved": "已允许控制",
   "remote.hostFocus": "切回共享窗口即可继续控制",
   "remote.suspended": "等待房主切回共享窗口",

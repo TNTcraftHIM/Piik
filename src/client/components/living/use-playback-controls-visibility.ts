@@ -27,8 +27,12 @@ export function usePlaybackControlsVisibility(
       window.clearTimeout(timer);
       timer = undefined;
     };
+    // Other surfaces in the TV (such as remote input) own their keyboard focus;
+    // only interaction with playback itself should pin its controls open.
+    const owns = (target: EventTarget | null) => target === video ||
+      (target instanceof Node && controls.contains(target));
     const held = () => keepVisible || pressed || hoveringControls ||
-      (screen.contains(document.activeElement) && document.activeElement?.matches(":focus-visible")) ||
+      (owns(document.activeElement) && document.activeElement?.matches(":focus-visible")) ||
       controls.querySelector(":popover-open") !== null;
     const scheduleHide = () => {
       clearIdle();
@@ -83,9 +87,13 @@ export function usePlaybackControlsVisibility(
         scheduleHide();
       }
     }, options);
-    screen.addEventListener("focusin", show, options);
+    screen.addEventListener("focusin", event => {
+      if (owns(event.target)) show(); else scheduleHide();
+    }, options);
     screen.addEventListener("focusout", scheduleHide, options);
-    screen.addEventListener("keydown", show, options);
+    screen.addEventListener("keydown", event => {
+      if (owns(event.target)) show();
+    }, options);
     // Popovers retain their DOM parent in the top layer. Their native toggle
     // event resumes idle hiding after a tooltip/long-press has finished.
     controls.addEventListener("toggle", show, { ...options, capture: true });

@@ -10,7 +10,6 @@ export const en: Record<CopyKey, string> = {
   "remote.allow": "Allow control",
   "remote.decline": "Decline",
   "remote.surface": "Remote keyboard and mouse input",
-  "remote.active": "Remote control active",
   "remote.approved": "Control allowed",
   "remote.hostFocus": "Focus the shared window to resume control",
   "remote.suspended": "Waiting for the Host to focus the shared window",

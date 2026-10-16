@@ -19,6 +19,9 @@
 /* Keep the primary status readable when narrow controls wrap to a second row. */
 .lr-tv-screen:has(> .lr-playback):has(> .lr-tv-overlay) { min-height: 168px; }
 .lr-tv-screen:has(> .lr-playback) > video { grid-area: 1 / 1 / -1 / -1; min-height: 0; }
+/* Remote input must reach every picture pixel, including underneath the toolbar. */
+.lr-tv-screen:has(> .lr-remote-input-surface) > video { grid-area: 1 / 1 / 2 / 2; }
+.lr-tv-screen > .lr-remote-input-surface { grid-area: 1 / 1 / 2 / 2; }
 .lr-tv-screen > .lr-playback { position: relative; inset: auto; grid-area: 2 / 1; }
 .lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay { grid-area: 1 / 1 / 2 / 2; }
 .lr-tv-screen:has(> .lr-playback[data-can-play="true"]) > video { cursor: pointer; }

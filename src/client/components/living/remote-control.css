@@ -1,9 +1,6 @@
 .lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: crosshair; touch-action: none; outline: 2px solid var(--action); outline-offset: -2px; border-radius: inherit; }
 .lr-remote-input-surface.is-suspended { outline-color: var(--muted); cursor: default; }
-.lr-remote-input-status { position: absolute; top: 12px; left: 12px; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; max-width: calc(100% - 24px); box-sizing: border-box; padding: 8px 12px; border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; }
-.lr-remote-input-status > span { flex: 1 1 120px; }
-.lr-remote-input-status > small { flex-basis: 100%; color: var(--muted); }
-.lr-remote-input-actions { display: flex; align-items: center; gap: 6px; }
+.lr-remote-input-status { position: absolute; top: 12px; left: 12px; z-index: 4; max-width: calc(100% - 24px); box-sizing: border-box; padding: 8px 12px; border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; pointer-events: none; }
 .lr-remote-approval { width: min(100%, 620px); margin: 12px auto 0; padding: 16px 20px; box-sizing: border-box; border: 1px solid var(--control-edge); border-radius: 20px; background: var(--paper); color: var(--ink); }
 .lr-remote-approval h2 { display: flex; gap: 8px; align-items: center; margin: 0; font-size: 14px; }
 .lr-remote-approval p { font-size: 12px; line-height: 1.5; margin: 6px 0 0; }

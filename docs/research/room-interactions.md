@@ -337,6 +337,9 @@ Window blur releases held
 input; hidden or locally paused video ends control. Pointer motion retains the
 latest absolute sample or accumulated relative movement per animation frame,
 flushing before button/key transitions so a drag ends at its final position.
+Control actions use the existing playback bar. While controlling, the picture
+reserves that bar's space so every image pixel remains reachable; remote key
+input does not count as keyboard navigation of playback controls.
 A stalled send queue closes the input channel
 without replacing the media connection. No input history is persisted.
 

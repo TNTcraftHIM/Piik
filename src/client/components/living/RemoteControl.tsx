@@ -87,6 +87,15 @@ export function RemoteControl({ channel, videoRef, available }: {
       hint={controlled || state.state === "pending" ? "hint-remote-stop" : "hint-remote-control"}
       pressed={controlled} disabled={!available || state.state === "unavailable"}
       onClick={() => controlled || state.state === "pending" ? release() : session.current?.request()} />
+    {controlled && "requestPointerLock" in HTMLElement.prototype && <Btn icon="gamepad"
+      title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"} pressed={locked}
+      hint={locked ? "hint-remote-mouse-release" : "hint-remote-mouse-lock"}
+      hintText={lockFailed ? "remote.lockFailed" : locked ? "remote.unlockMouse" : "remote.gameMouseHelp"}
+      hintTone={lockFailed ? "warn" : undefined}
+      onClick={() => void (async () => {
+        if (locked) document.exitPointerLock();
+        else try { await surface.current?.requestPointerLock(); } catch { setLockFailed(true); }
+      })()} />}
     {parent && (controlled || state.state === "pending" || state.state === "failed") && createPortal(<>
       {controlled && <div ref={surface} className={`lr-remote-input-surface${active ? "" : " is-suspended"}`} tabIndex={0}
         aria-label={t("remote.surface")} role="application"
@@ -120,20 +129,9 @@ export function RemoteControl({ channel, videoRef, available }: {
           if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }} />}
-      <div className="lr-remote-input-status" role="status">
-        <span>{t(state.state === "suspended" ? "remote.suspended" : active ? "remote.active" : state.state === "failed" ? "remote.failed" : "remote.pending")}</span>
-        {controlled && <div className="lr-remote-input-actions">
-          {"requestPointerLock" in HTMLElement.prototype && <Btn icon="gamepad" title={locked ? "remote.releaseMouse" : "remote.gameMouse"} cap="remote.gameMouse" pressed={locked}
-            hint={locked ? "hint-remote-mouse-release" : "hint-remote-mouse-lock"}
-            hintText={locked ? "remote.unlockMouse" : "remote.gameMouseHelp"}
-            onClick={() => void (async () => {
-              if (locked) document.exitPointerLock();
-              else try { await surface.current?.requestPointerLock(); } catch { setLockFailed(true); }
-            })()} />}
-          <Btn icon="x" title="remote.stop" hint="hint-remote-stop" onClick={release} />
-        </div>}
-        {controlled && (locked || lockFailed) && <small>{t(lockFailed ? "remote.lockFailed" : "remote.unlockMouse")}</small>}
-      </div>
+      {!active && <div className="lr-remote-input-status" role="status">
+        {t(state.state === "suspended" ? "remote.suspended" : state.state === "failed" ? "remote.failed" : "remote.pending")}
+      </div>}
     </>, parent)}
   </>;
 }
@@ -160,8 +158,8 @@ export function RemoteControlApproval({ requests, onDecide }: {
         <p>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.approved" : "remote.waiting")}</p></div>
       <div className="lr-remote-request-actions">
         <Btn icon="x" title={request.state !== "pending" ? "remote.stop" : "remote.decline"} cap={request.state !== "pending" ? "remote.stop" : "remote.decline"}
-          disabled={busy} onClick={() => void decide(request.id, false)} />
-        {request.state === "pending" && <Btn icon="check" tone="primary" title="remote.allow" cap="remote.allow" disabled={busy} onClick={() => void decide(request.id, true)} />}
+          hint="hint-remote-stop" disabled={busy} onClick={() => void decide(request.id, false)} />
+        {request.state === "pending" && <Btn icon="check" tone="primary" title="remote.allow" cap="remote.allow" hint="hint-remote-control" disabled={busy} onClick={() => void decide(request.id, true)} />}
       </div>
     </div>)}
     {requests.some(request => request.state === "pending") && <p className="lr-remote-note">{t("remote.consent")}</p>}
