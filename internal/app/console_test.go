@@ -222,10 +222,32 @@ func TestConsoleEntryKeepsAppActivationWithoutExposingCredentials(t *testing.T) 
 	}
 }
 
+func TestLauncherEntrySurvivesRoomViewsUntilAppExit(t *testing.T) {
+	model := consoleModel{width: 80, language: "en"}
+	launcherURL := "http://127.0.0.1:12345/client"
+	updated, _ := model.Update(consoleLauncher(launcherURL))
+	model = updated.(consoleModel)
+	for _, mode := range []string{"site", "local", "link"} {
+		updated, _ = model.Update(consoleView{mode: mode, state: "ready", entry: "http://127.0.0.1:8787/"})
+		model = updated.(consoleModel)
+		if !strings.Contains(model.content(false), launcherURL) {
+			t.Fatalf("%s view lost the resident App launcher", mode)
+		}
+	}
+	updated, _ = model.Update(consoleView{state: "setup", entry: launcherURL})
+	if count := strings.Count(updated.(consoleModel).content(false), launcherURL); count != 1 {
+		t.Fatalf("setup repeats the launcher address: %d", count)
+	}
+	updated, _ = model.Update(consoleFinished{})
+	if strings.Contains(updated.(consoleModel).content(false), launcherURL) {
+		t.Fatal("exited App retained its launcher address")
+	}
+}
+
 func TestConsolePresentationAndShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	model := consoleModel{cancel: cancel, view: consoleView{
+	model := consoleModel{cancel: cancel, launcher: "http://127.0.0.1:12345/client", view: consoleView{
 		mode: "link", state: "ready", protected: true,
 		entry:  "http://localhost:8787/#client-access=private-secret",
 		invite: "https://a-long-public-link-name.example.test/",

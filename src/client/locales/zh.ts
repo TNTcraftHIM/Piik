@@ -61,7 +61,7 @@ export const zh = {
   "client.launch.room": "在这台设备上创建房间",
   "client.connect.action": "连接 Piik App",
   "client.connect.standby": "App 已就绪",
-  "client.connect.standbyHint": "打开 Piik 站点，点击顶部的 App 即可连接。",
+  "client.connect.standbyHint": "打开 Piik 站点，点击右上角 App，再在弹出页面选择「允许使用」。",
   "client.connect.remove": "取消此站点的 App 授权",
   "client.connect.openOnStart": "启动 App 时打开此站点",
   "client.connect.manage": "App 已就绪 · 管理 App",

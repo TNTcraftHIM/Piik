@@ -294,6 +294,9 @@ func runLauncher(
 	defer func() { returnedErr = errors.Join(returnedErr, launch.Close()) }()
 	control.SetConnectURL(launch.URL())
 	defer control.SetConnectURL("")
+	// Launcher entry lives with the resident App, independently of room views.
+	options.console.send(consoleLauncher(launch.URL()))
+	defer options.console.send(consoleLauncher(""))
 	launchAddress, err := url.Parse(launch.URL())
 	if err != nil {
 		return err
@@ -311,7 +314,7 @@ func runLauncher(
 	} else if initialConfig.Site != "" && !options.Local && !options.Link {
 		// A starred Site changes only the opening page. --site also remains an
 		// explicit approval shortcut; the launcher can start a Local room later.
-		openSite(initialConfig.Site, launch.URL(), options)
+		openSite(initialConfig.Site, options)
 	}
 	// An interactive room is a child of the resident App. Its failure must not
 	// retire an unrelated Site's native sessions or its approval page. Explicit
@@ -465,10 +468,10 @@ func openDiagnostics(directory string) (*diagnostics.Recorder, error) {
 	return diagnostics.Open(filepath.Join(cache, "Piik", "logs"), "client", BuildRevision)
 }
 
-func openSite(site, launcherURL string, options Options) {
+func openSite(site string, options Options) {
 	slog.Debug("piik-client", "event", "mode", "mode", "site")
 	targetURL := launchURL(site)
-	view := consoleView{mode: "site", state: "ready", entry: targetURL, launcher: launcherURL}
+	view := consoleView{mode: "site", state: "ready", entry: targetURL}
 	options.console.show(view)
 	if options.console.machine {
 		fmt.Printf("Piik Site: %s\n", site)

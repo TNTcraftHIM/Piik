@@ -61,7 +61,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.room": "Create a room on this device",
   "client.connect.action": "Connect Piik App",
   "client.connect.standby": "App is ready",
-  "client.connect.standbyHint": "Open a Piik Site and click App at the top to connect.",
+  "client.connect.standbyHint": "Open a Piik site, click App at the top right, then choose Allow access in the popup.",
   "client.connect.remove": "Revoke this Site's App access",
   "client.connect.openOnStart": "Open this site when App starts",
   "client.connect.manage": "App is ready · Manage App",

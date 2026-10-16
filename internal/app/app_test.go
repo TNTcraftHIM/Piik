@@ -362,7 +362,7 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 				if model.view.entry != launchURL("https://share.example") {
 					t.Fatalf("App did not open the selected Site: %s", model.view.entry)
 				}
-				response, err := http.Get(model.view.launcher)
+				response, err := http.Get(model.launcher)
 				if err != nil {
 					t.Fatalf("launcher management is unavailable: %v", err)
 				}

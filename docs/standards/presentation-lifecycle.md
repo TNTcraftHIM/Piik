@@ -50,7 +50,10 @@ page, where the user confirms its exact origin. The launcher shows and revokes
 that approval. Starring the approved Site makes an ordinary App launch open it;
 without a star, the launcher opens. This preference grants no access and starts
 no room. Replacing or revoking approval clears it; explicit CLI entry keeps
-precedence. The ready App button opens its launcher for management.
+precedence. The ready App button and terminal launcher address return to its
+management page in every mode. Local/public room startup is one selection per
+App run; reopening the launcher does not stop or replace that room. Changing
+between those modes requires restarting App.
 Activating a page supplies
 native capability without restarting its room or healthy media session.
 The source selector exposes that same connection action before sharing; a
