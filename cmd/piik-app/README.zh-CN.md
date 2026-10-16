@@ -200,7 +200,8 @@ macOS 程序包包含一个带 ICNS 资源的轻量 `Piik App.app` 启动器，�
 将它按 16/24/32/48/64/128/256 px 导出为 PNG 图层，写入 `cmd/piik-app/piik.ico`；
 打包脚本从这些图层生成 Linux 和 macOS 图标。同时更新网站导出：96 px 的
 `public/favicon.png`，以及包含 16/32/48 px 图层的 `public/favicon.ico`。
-检查深浅背景下的实际小尺寸效果，然后在仓库根目录重新生成 Windows 资源：
+按每个目标尺寸渲染 SVG，让小图标样式生效。检查深浅背景下的实际小尺寸效果，
+然后在仓库根目录重新生成 Windows 资源：
 
 ```sh
 go run github.com/akavel/rsrc@v0.10.2 -ico cmd/piik-app/piik.ico -arch amd64 -o cmd/piik-app/piik_windows_amd64.syso

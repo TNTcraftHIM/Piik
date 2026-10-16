@@ -249,6 +249,7 @@ Export it at 16/24/32/48/64/128/256 px as PNG entries in `cmd/piik-app/piik.ico`
 the package builder derives Linux and macOS icons from those entries. Keep the
 website exports in sync: `public/favicon.png` at 96 px, and `public/favicon.ico`
 with 16/32/48 px entries. Check actual small sizes on light and dark backgrounds.
+Render the SVG at each target size so its small-icon styling applies.
 Then regenerate the Windows resource from the repository root:
 
 ```sh
