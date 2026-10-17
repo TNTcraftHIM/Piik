@@ -21,6 +21,11 @@ platform deferrals or establish a diagnosis for unmatched reports.
   routed input, consent/revocation, relay recovery, window geometry and mobile
   touch/keyboard emulation pass; the [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
   owns implementation and evidence. Finish owner acceptance before release.
+  Finish the presentation review: consolidate remote-operation feedback with
+  existing controls without confusing input permission with media health; reuse
+  the shared floating-panel owner for ongoing Host control management. Distinguish
+  enabled, pending and controlling states, and review desktop/game/touch cursors
+  instead of using a universal crosshair. Keep form errors beside their inputs.
   Physical Android/iOS, mixed-DPI displays, commercial games and an actual
   remote-device trial remain. macOS Quartz/Accessibility and Linux RemoteDesktop
   Portal backends are implemented; Linux compilation and synthetic input/release
@@ -28,6 +33,11 @@ platform deferrals or establish a diagnosis for unmatched reports.
   an Apple SDK build and physical focus/Retina/input checks. The
   [window/game assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns platform and game-compatibility limits. This is not a public feature.
+
+- [ ] **macOS bundle startup (#479).** The reporter can open the Browser UI from
+  Terminal, but double-clicking the `.app` does nothing. Inspect the packaged
+  entry and launch environment before attributing this to permissions; opening
+  the Browser is expected, a silent bundle launch is not. No root cause is established.
 
 - [ ] **Return LiveKit to an upstream pin.** Native publication now supplies
   unmet encoder demand to the existing allocator through the scoped dependency
@@ -171,6 +181,11 @@ experiments and their limits.
   and fixed deadlines. The [process lab](./research/network-lab.md) and
   [assessment](./research/nat-traversal.md#coordinated-native-punching-assessment)
   own existing controls; random-port overlap and field benefit remain unproven.
+  Check the preparation survey under partial STUN failure and asymmetric delay:
+  it currently abandons preparation on a failed lookup or Binding transaction,
+  then resumes ordinary ICE. Use the existing lab to establish whether this
+  unnecessarily loses a usable enhanced path; preserve ordered observations,
+  the current socket owner and the operation deadline.
 
 Prioritize App-to-Browser and Browser-to-Browser comparisons across interface
 changes, lost mappings and asymmetric restrictions, then Native/SFU handoffs
