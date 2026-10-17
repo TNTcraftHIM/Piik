@@ -296,10 +296,12 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	var received [3]atomic.Uint32
 	var invalid atomic.Bool
 	var lastSequence, lowSSRC, missingSequence atomic.Uint32
+	var lowTimestamp atomic.Uint32
+	lowReports := make(chan *rtcp.SenderReport, 4)
 	var repaired atomic.Bool
 	deltaFrame := append([]byte(nil), sfu.VP8KeyFrame8x8...)
 	deltaFrame[0] |= 1
-	receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+	receiver.OnTrack(func(track *webrtc.TrackRemote, rtpReceiver *webrtc.RTPReceiver) {
 		index := 2
 		if track.Kind() == webrtc.RTPCodecTypeVideo {
 			if track.RID() == "q" {
@@ -310,6 +312,24 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 				invalid.Store(true)
 				return
 			}
+		}
+		if index == 0 {
+			go func() {
+				for {
+					packets, _, err := rtpReceiver.ReadSimulcastRTCP(track.RID())
+					if err != nil {
+						return
+					}
+					for _, packet := range packets {
+						if report, ok := packet.(*rtcp.SenderReport); ok && report.SSRC == uint32(track.SSRC()) {
+							select {
+							case lowReports <- report:
+							default:
+							}
+						}
+					}
+				}
+			}()
 		}
 		for {
 			packet, attributes, readErr := ReadRTP(track)
@@ -329,6 +349,7 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 			}
 			if index == 0 {
 				lastSequence.Store(uint32(packet.SequenceNumber))
+				lowTimestamp.Store(packet.Timestamp)
 				lowSSRC.Store(packet.SSRC)
 				if uint32(packet.SequenceNumber) == missingSequence.Load() && attributes.Get(webrtc.AttributeRtxPayloadType) != nil {
 					repaired.Store(true)
@@ -474,6 +495,19 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	// Recovery must still send a probe when those RTX payloads are unavailable.
 	if publication.tracks[0].WriteProbePackets(300, true) == 0 {
 		t.Fatal("publication has no receiver-report authority for padding probes")
+	}
+	// Check the actual SR after paced RTX padding crossed Pion's bound writer.
+	// It must still describe the primary media clock while that RID is paused.
+	for len(lowReports) > 0 {
+		<-lowReports
+	}
+	select {
+	case report := <-lowReports:
+		if delta := int32(report.RTPTime - lowTimestamp.Load()); delta < 0 || delta > 3*90_000 {
+			t.Fatalf("paused publication lost its primary clock after RTX probing: delta=%d", delta)
+		}
+	case <-ctx.Done():
+		t.Fatal("paused publication did not report its media clock")
 	}
 	for range source.maxPackets + 8 {
 		frame++

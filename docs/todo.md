@@ -63,6 +63,14 @@ platform deferrals or establish a diagnosis for unmatched reports.
   ownership and duplicate ClientHello recovery; this is handshake reliability
   work, not a new NAT traversal mechanism.
 
+- [ ] **SFU recovery acceptance.** The shared forwarding adapter now isolates
+  primary sender-report clocks from RTX traffic. Matched SFU logs established
+  that clock contamination can block layer upgrades despite restored capacity;
+  the publication regression and constrained recovery checks pass locally.
+  Include the corrected App and Server in release acceptance; an ICE restart
+  does not replace the affected upstream clock. This does not diagnose every
+  unmatched sustained-quality report below.
+
 ## Held By Owner
 
 - [ ] **Multiple remote-control screens.** Deferred by the owner on 2026-10-17.

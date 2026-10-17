@@ -150,6 +150,14 @@ by projection while outbound sequence continuity remains intact. Incoming sender
 reports retain their source-clock relation; local codec outputs correlate to one
 input anchor, not independently to each encoder's completion time.
 
+Outgoing sender-report accounting is scoped to the bound primary SSRC. LiveKit
+sends repair and zero-timestamp RTX probes through that same writer; the shared
+Pion adapter passes them through without changing the primary clock or counters.
+Otherwise a probe can poison the receiver's RTP/NTP reference and block later
+layer upgrades despite a recovered bandwidth budget. An actual publication
+probe/report regression covers this boundary; reconnecting ICE alone retains the
+affected media objects and cannot repair an already-corrupted reference.
+
 Local capture replacement keeps its RTP source and cumulative counters while
 rebasing only the input packetizers. It must not also restart the RTP projector.
 Unconnected edges reserve child slots without asking for output. Video capacity

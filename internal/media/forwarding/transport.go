@@ -120,7 +120,7 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 	}
 	// DownTrack owns video retransmission; registering default NACK interceptors
 	// here would create a second responder. Pion still owns normal RTCP reports.
-	if err = webrtc.ConfigureRTCPReports(registry); err != nil {
+	if err = configureRTCPReports(registry); err != nil {
 		return nil, err
 	}
 	transport.PC, err = webrtc.NewAPI(webrtc.WithMediaEngine(media),
