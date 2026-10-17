@@ -3,7 +3,7 @@ import type { RemoteControlRequest } from "../../native/wire";
 import type { RemoteControlMode } from "../../remote-control/protocol";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Btn } from "./primitives";
+import { Btn, SwitchItem } from "./primitives";
 import "./remote-control.css";
 
 // Form drafts stay here; the App snapshot owns applied authorization.
@@ -15,11 +15,11 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
   onDecide: (id: string, allow: boolean) => Promise<void>;
 }) {
   const { t, vis } = useCopy();
-  const [draft, setDraft] = useState(mode);
+  const [draft, setDraft] = useState(mode === "off" ? "ask" : mode);
   const [password, setPassword] = useState("");
   const [failedId, setFailedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setDraft(mode); setPassword(""); }, [mode]);
+  useEffect(() => { setDraft(mode === "off" ? "ask" : mode); setPassword(""); }, [mode]);
   const perform = async (id: string, operation: () => Promise<void>) => {
     setBusy(true); setFailedId(null);
     try { await operation(); setPassword(""); }
@@ -27,10 +27,13 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
     finally { setBusy(false); }
   };
   return <section className="lr-remote-approval" aria-label={t("remote.title")}>
-    <details className="lr-remote-settings" onToggle={event => {
+    <SwitchItem checked={mode !== "off"} label={t("remote.title")} hint="hint-remote-control"
+      disabled={busy || (disabled && mode === "off")}
+      onChange={enabled => void perform("policy", () => onPolicy(enabled ? "ask" : "off"))} />
+    {mode !== "off" && <details className="lr-remote-settings" onToggle={event => {
       if (!event.currentTarget.open) { setPassword(""); setDraft(mode); }
     }}>
-      <summary><span><Glyph name="mouse" size={18} />{vis ? null : t("remote.title")}</span>
+      <summary><span><Glyph name="mouse" size={18} />{vis ? null : t("remote.authorization")}</span>
         <span>{t(`remote.mode.${mode}`)}<Glyph name="chevron" size={16} /></span></summary>
       <form onSubmit={event => {
         event.preventDefault();
@@ -39,7 +42,7 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
         <div className="lr-capture-device">
           <label className="lr-capture-device-controls">
             <select value={draft} aria-label={t("remote.authorization")} disabled={busy || disabled}
-              onChange={event => { setDraft(event.target.value as RemoteControlMode); setPassword(""); }}>
+              onChange={event => { setDraft(event.target.value as Exclude<RemoteControlMode, "off">); setPassword(""); }}>
               {(["ask", "room", "password"] as const).map(value => <option key={value} value={value}>{t(`remote.mode.${value}`)}</option>)}
             </select>
           </label>
@@ -55,10 +58,10 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
           <Btn icon="check" title="remote.apply" cap="remote.apply" type="submit" tone="primary"
             hint="hint-remote-control" disabled={busy || disabled || (draft === "password" && !password)} />
         </div>
-        {failedId === "policy" && <p role="alert">{t("remote.decisionFailed")}</p>}
         <p className="lr-remote-note">{t("remote.policyLifetime")}</p>
       </form>
-    </details>
+    </details>}
+    {failedId === "policy" && <p role="alert">{t("remote.decisionFailed")}</p>}
     {requests.map(request => <div className="lr-remote-request" key={request.id} role="group" aria-label={request.name}>
       <div><strong>{request.name}</strong>
         <p>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.approved" : "remote.waiting")}</p>
@@ -71,6 +74,6 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
       </div>
     </div>)}
     {requests.some(request => request.state === "pending") && <p className="lr-remote-note">{t("remote.consent")}</p>}
-    {(mode !== "ask" || requests.some(request => request.state !== "pending")) && <p className="lr-remote-note">{t("remote.shortcut")} <kbd>Ctrl + Alt + F10</kbd></p>}
+    {(mode === "room" || mode === "password" || requests.some(request => request.state !== "pending")) && <p className="lr-remote-note">{t("remote.shortcut")} <kbd>Ctrl + Alt + F10</kbd></p>}
   </section>;
 }

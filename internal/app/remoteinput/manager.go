@@ -131,7 +131,7 @@ func (m *Manager) NewSession() *Session {
 	if m == nil {
 		return nil
 	}
-	s := &Session{manager: m, changed: make(chan struct{}, 1), mode: "ask"}
+	s := &Session{manager: m, changed: make(chan struct{}, 1), mode: "off"}
 	s.route = inputroute.New(s.receivePacket)
 	return s
 }
@@ -169,7 +169,7 @@ func (s *Session) SetTarget(target nativecapture.CaptureTarget) {
 		target = nativecapture.CaptureTarget{}
 	}
 	s.target = target
-	s.mode, s.password = "ask", [32]byte{}
+	s.mode, s.password = "off", [32]byte{}
 	if m.active != nil && m.active.owner == s {
 		m.release()
 	}
@@ -270,7 +270,7 @@ func (m *Manager) reply(c *connection, state, reason string) {
 	if c.epoch == "" {
 		return
 	}
-	if state == "ready" && !c.owner.available() {
+	if state == "ready" && (!c.owner.available() || c.owner.mode == "off") {
 		state = "unavailable"
 	}
 	data, _ := json.Marshal(struct {
@@ -355,7 +355,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 	case "sync":
 		m.send(c, m.state(c))
 	case "request":
-		if !c.owner.available() || c.requested || c == m.active {
+		if !c.owner.available() || c.owner.mode == "off" || c.requested || c == m.active {
 			return
 		}
 		if intent, err := hex.DecodeString(event.Intent); err != nil || len(intent) != 16 {
@@ -509,7 +509,7 @@ type State struct {
 }
 
 func (s *Session) State() State {
-	state := State{Mode: "ask", Requests: []View{}}
+	state := State{Mode: "off", Requests: []View{}}
 	if s == nil {
 		return state
 	}

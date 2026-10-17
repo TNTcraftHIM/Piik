@@ -12,7 +12,10 @@ it("keeps taps, dragging, two-finger gestures and grant retirement distinct", ()
     expect(events).toEqual([{ type: "move", x: .5, y: .5 },
       { type: "button", button: 0, down: true }, { type: "button", button: 0, down: false }]);
     events.length = 0;
-    touchpad.down(1, 20, 20); touchpad.move(1, 70, 45); touchpad.up(1);
+    touchpad.down(1, 20, 20);
+    touchpad.move(1, 24, 22); // Below the tap threshold: retain, don't lose motion.
+    touchpad.move(1, 26, 23);
+    touchpad.move(1, 70, 45); touchpad.up(1);
     expect(events.at(-1)).toEqual({ type: "move", x: .75, y: .75 });
     expect(events.some(event => event.type === "button")).toBe(false);
 

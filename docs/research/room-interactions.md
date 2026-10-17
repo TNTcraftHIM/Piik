@@ -289,7 +289,7 @@ needs a separate grant, and Linux needs desktop-specific integration such as the
 [RemoteDesktop Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html).
 Mobile controllers also need touch and text-input behavior, not just mouse-event reuse.
 
-The inspected [uu-remote-linux implementation](https://github.com/VallierDev/uu-remote-linux/tree/b44a639d9f94a249e511b210ac9c7f9b457fda38)
+The inspected [uu-remote-linux implementation](https://github.com/VallierDev/uu-remote-linux/tree/80ac4448d661e30772214de30cf5cedef990e418)
 implements the Linux controlled endpoint; its controllers, account and signaling
 service remain in the official UU ecosystem. It is not an independent
 cross-platform remote-control SDK. Its GPL implementation remains study-only
@@ -306,7 +306,7 @@ committed media route: direct, Browser relay, App relay or embedded SFU. The
 same Go forwarding module serves App playback/relay and SFU; the Browser adapter
 follows its active media input and child edges. No new listener, PeerConnection,
 route planner or dependency is introduced. The control button appears only
-after the complete input path reports readiness. Updated forwarding peers are
+after the Host enables remote control and the complete input path reports readiness. Updated forwarding peers are
 required along that path; an older peer can still carry the picture.
 Independent virtual gamepads are deferred by the owner; this phase adds no
 input driver.
@@ -326,12 +326,13 @@ This uses [WebRTC data channels](https://www.rfc-editor.org/rfc/rfc8831.html)
 and the platform [AES-GCM API](https://developer.mozilla.org/en-US/docs/Web/API/AesGcmParams).
 
 `internal/app/remoteinput` owns one process-wide grant because the App's native
-sessions share the same physical keyboard and pointer. The Viewer requests
-control; the Host chooses Ask each time (default), Allow room Viewers, or
+sessions share the same physical keyboard and pointer. Remote control starts
+off. Enabling it on the sharing page selects Ask each time; the Host may choose Allow room Viewers or
 Require a password on the current sharing page. Automatic modes accept only
 authenticated room Viewers and never displace an active controller. Permission
-belongs to the current shared source; changing sources or stopping resets it
-to Ask each time. The password verifier is kept only in App memory, with one
+belongs to the current shared source; changing sources or stopping turns it off.
+Turning it off also clears pending requests and releases held input, including
+while sharing is paused. The password verifier is kept only in App memory, with one
 attempt per second shared across that source's endpoints. Nothing is saved in
 configuration, diagnostic reports or links. Host approval, decline and end-control
 actions stay on the same sharing page. The existing authorized native-control connection carries these commands;
@@ -360,8 +361,13 @@ restart. Escape releases game mouse capture without ending the grant.
 Window blur releases held
 input; hidden, locally paused or native PiP/fullscreen video ends control.
 DOM fullscreen keeps the page's input surface and retains control. Pointer motion retains the
-latest absolute sample or accumulated relative movement per animation frame,
+latest absolute sample or accumulated relative movement within a short timer,
 flushing before button/key transitions so a drag ends at its final position.
+Input batching does not wait for rendering. This follows the independent,
+bounded motion batching in [Moonlight](https://github.com/moonlight-stream/moonlight-common-c/blob/master/src/InputStream.c)
+and the [UU Linux input owner](https://github.com/VallierDev/uu-remote-linux/blob/80ac4448d661e30772214de30cf5cedef990e418/src/input.rs).
+Normal pointer-capture release after mouse-up preserves held keyboard keys;
+actual cancellation, blur and grant retirement release them.
 Control actions use the existing playback bar. While controlling, the picture
 reserves that bar's space and keeps its actions visible, so touch users can
 open the keyboard or stop control and every image pixel remains reachable; remote key
@@ -391,6 +397,14 @@ or tap for a right-click. Pointer events select this behavior without OS or
 browser-name checks. The gesture owner is scoped to the current grant;
 cancellation, blur and grant retirement release held input. The keyboard panel
 reserves space below the picture and supplies special keys and common shortcuts.
+Its buttons send remote system shortcuts, including Win+Space, without depending
+on the local OS delivering that combination to the page. Physical system-key
+capture remains subject to the local OS and Browser; even the
+[Keyboard Lock API](https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock)
+only receives keys the OS permits. Piik does not install a global keyboard hook
+or simulate the protected Ctrl+Alt+Delete sequence. Closing the keyboard returns
+focus to the control surface. [Parsec's input modes](https://support.parsec.app/hc/en-us/articles/32361385571860-Immersive-Mode-Setting)
+likewise distinguish remote key capture from ordinary local window interaction.
 The local text field owns IME composition and sends only explicitly submitted
 text through Windows [Unicode input](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput).
 There is no clipboard synchronization. This follows the touchpad conventions in

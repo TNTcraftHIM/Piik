@@ -22,7 +22,7 @@ platform deferrals or establish a diagnosis for unmatched reports.
   implemented; native clicks remain accurate after window movement and resizing.
   Commercial-game compatibility and an actual remote-device trial remain. Keep
   one Host publication and one keyboard/mouse controller at a time, under the
-  Host's source-scoped permission policy. Ask each time, room admission
+  Host's source-scoped permission policy, disabled by default. Ask each time, room admission
   and password modes are implemented. Mobile touchpad gestures and Unicode text
   input pass local Browser-to-Windows checks; physical Android/iOS keyboard and
   fullscreen behavior still need device acceptance. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)

@@ -47,9 +47,16 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 		m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: data}, c.epoch)
 	}
 	request(first, "")
+	if s.State().Mode != "off" || first.requested || m.active != nil {
+		t.Fatal("ordinary sharing accepted a control request before opt-in")
+	}
+	if err := s.SetPolicy("ask", ""); err != nil {
+		t.Fatal(err)
+	}
+	request(first, "")
 	oldRequest := first.requestID
 	if !first.requested || m.active != nil {
-		t.Fatal("default did not require Host approval")
+		t.Fatal("Ask each time did not require Host approval")
 	}
 	if err := s.SetPolicy("room", ""); err != nil {
 		t.Fatal(err)
@@ -110,13 +117,28 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	if m.active != first {
 		t.Fatal("room policy could not authorize a fresh request")
 	}
+	oldGrant := first.grant
+	s.Pause(true)
+	if err := s.SetPolicy("off", ""); err != nil {
+		t.Fatal(err)
+	}
+	s.Pause(false)
+	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"key","code":"KeyA","down":true,"grant":"` + oldGrant + `"}`)}, first.epoch)
+	request(second, "")
+	if m.active != nil || second.requested || len(sink.events) != 0 {
+		t.Fatal("disabled remote control retained input or accepted a new request")
+	}
+	if err := s.SetPolicy("room", ""); err != nil {
+		t.Fatal(err)
+	}
+	request(first, "")
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"})
-	if m.active != nil || s.State().Mode != "ask" {
+	if m.active != nil || s.State().Mode != "off" {
 		t.Fatal("source replacement inherited permission")
 	}
 	request(second, "")
-	if !second.requested || m.active != nil {
-		t.Fatal("replacement source did not require approval")
+	if second.requested || m.active != nil {
+		t.Fatal("replacement source accepted input without opt-in")
 	}
 }
 
@@ -126,6 +148,9 @@ func TestRouteReplacementRequiresApprovalAndIgnoresOldClosure(t *testing.T) {
 	s := m.NewSession()
 	t.Cleanup(s.Close)
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"})
+	if err := s.SetPolicy("ask", ""); err != nil {
+		t.Fatal(err)
+	}
 	peer := protocol.RemoteInputPeer{PeerID: "viewer-route-test", EndpointID: strings.Repeat("a", 32), Secret: strings.Repeat("b", 64)}
 	if err := s.SetPeers([]protocol.RemoteInputPeer{peer}); err != nil {
 		t.Fatal(err)
@@ -184,6 +209,9 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
 	s := m.NewSession()
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"})
+	if err := s.SetPolicy("ask", ""); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(m.Close)
 	host, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -438,6 +466,9 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	nextDisplay := bounds{left: 1920, width: 1280, height: 720}
 	sink.geometry = nextDisplay
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "window", SourceID: "3"})
+	if err := s.SetPolicy("ask", ""); err != nil {
+		t.Fatal(err)
+	}
 	first = request("first")
 	oldRequest, oldIntent := first.requestID, first.intent
 	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + oldIntent + `"}`)}, first.epoch)

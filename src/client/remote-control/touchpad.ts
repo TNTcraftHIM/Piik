@@ -47,12 +47,14 @@ export class RemoteTouchpad {
     const contact = this.contacts.get(id);
     if (!contact) return;
     const dx = x - contact.x, dy = y - contact.y;
-    contact.x = x; contact.y = y;
     if (Math.hypot(x - contact.start.x, y - contact.start.y) > 8) {
       this.moved = true;
       this.clearHold();
     }
     if (!this.moved && !this.dragging) return;
+    // Keep the initial displacement while deciding tap versus motion. Updating
+    // the origin before this threshold loses the start of every small swipe.
+    contact.x = x; contact.y = y;
     if (this.fingers === 1) {
       const picture = this.picture();
       if (!picture?.width || !picture.height) return;

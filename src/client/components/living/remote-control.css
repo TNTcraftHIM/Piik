@@ -2,6 +2,7 @@
 .lr-remote-input-surface.is-suspended { outline-color: var(--muted); cursor: default; }
 .lr-remote-input-status { position: absolute; top: 12px; left: 12px; z-index: 4; max-width: calc(100% - 24px); box-sizing: border-box; padding: 8px 12px; border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; pointer-events: none; }
 .lr-remote-approval { width: min(100%, 620px); margin: 12px auto 0; padding: 16px 20px; box-sizing: border-box; border: 1px solid var(--control-edge); border-radius: 20px; background: var(--paper); color: var(--ink); }
+.lr-remote-settings { margin-top: 12px; }
 .lr-remote-settings summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; font-size: 13px; list-style: none; }
 .lr-remote-settings summary::-webkit-details-marker { display: none; }
 .lr-remote-settings summary > span { display: flex; align-items: center; gap: 8px; }
@@ -32,6 +33,6 @@
 .lr-remote-keyboard .lr-btn { width: 40px; height: 40px; min-width: 0; padding: 0; }
 .lr-remote-game-mouse .lr-btn { width: auto; padding: 0 12px; }
 .lr-remote-keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 10px; }
-.lr-remote-keys .lr-chip { flex: 1 0 32px; padding: 4px 8px; min-width: 32px; min-height: 36px; font: 12px var(--mono); white-space: nowrap; }
+.lr-remote-keys .lr-chip { flex: 1 0 auto; justify-content: center; padding: 4px 8px; min-width: 36px; min-height: 36px; font: 12px var(--mono); letter-spacing: 0; white-space: nowrap; }
 .lr-remote-keyboard p { margin: 8px 0 0; text-align: center; color: var(--muted); font-size: 11px; }
 @media (pointer: coarse) { .lr-remote-game-mouse { display: none; } }

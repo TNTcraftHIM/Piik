@@ -13,14 +13,14 @@ func (s *Session) SetPolicy(mode, password string) error {
 	if s == nil {
 		return errors.New("remote input is unavailable")
 	}
-	if mode != "ask" && mode != "room" && mode != "password" ||
+	if mode != "off" && mode != "ask" && mode != "room" && mode != "password" ||
 		len(password) > 512 || (mode == "password") != (password != "") {
 		return errors.New("invalid remote input policy")
 	}
 	m := s.manager
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.closed || !s.available() {
+	if m.closed || s.closed || (mode != "off" && !s.available()) {
 		return errors.New("remote input is unavailable")
 	}
 	var digest [32]byte

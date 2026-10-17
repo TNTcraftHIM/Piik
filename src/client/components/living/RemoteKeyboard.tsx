@@ -33,6 +33,11 @@ export function RemoteKeyboard({ input, close, mouseControl }: {
         aria-label={t(`remote.key.${code}`)} onClick={() => press([code])}>{label}</button>)}
       {(["A", "C", "V"] as const).map(key => <button key={key} type="button" className="lr-chip"
         aria-label={t(`remote.key.Control${key}`)} onClick={() => press(["ControlLeft", `Key${key}`])}>Ctrl+{key}</button>)}
+      <button type="button" className="lr-chip" aria-label={t("remote.key.MetaLeft")} onClick={() => press(["MetaLeft"])}>Win</button>
+      <button type="button" className="lr-chip" aria-label={t("remote.key.InputLanguage")}
+        onClick={() => press(["MetaLeft", "Space"])}>Win+Space</button>
+      <button type="button" className="lr-chip" aria-label={t("remote.key.SwitchWindow")}
+        onClick={() => press(["AltLeft", "Tab"])}>Alt+Tab</button>
     </div>
     <form className="lr-remote-policy-actions" onSubmit={event => {
       event.preventDefault();

@@ -21,7 +21,7 @@ and choose **Public invite**. To share without installing, open
 3. Move the pointer over the picture or tap it to show the playback bar.
 
 The playback bar controls only your own picture and sound.
-On a computer, click the picture to pause or resume; double-click to enter or
+Use the playback button to pause or resume; on a computer, double-click the picture to enter or
 leave fullscreen where supported. On a phone, tap the picture to show the bar
 and use its buttons. Safari may show system controls in video fullscreen.
 

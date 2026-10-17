@@ -33,6 +33,9 @@ export function RemoteControl({ channel, videoRef, available }: {
   const controlled = (state?.state === "active" || state?.state === "suspended") && available && inline && channel?.readyState === "open";
   const input = (event: RemoteInputEvent) => session.current?.input(event);
   const reset = useCallback(() => { touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
+  const closeKeyboard = () => {
+    reset(); setKeyboardOpen(false); surface.current?.focus({ preventScroll: true });
+  };
   const release = useCallback(() => {
     reset();
     if (document.pointerLockElement === surface.current && surface.current) document.exitPointerLock();
@@ -128,7 +131,7 @@ export function RemoteControl({ channel, videoRef, available }: {
     };
   }, [controlled, channel, release, reset]);
 
-  if (!channel || channel.readyState !== "open" || !state) return null;
+  if (!channel || channel.readyState !== "open" || !state || state.mode === "off") return null;
   const point = (clientX: number, clientY: number) => {
     const video = videoRef.current;
     return video ? picturePoint(video, clientX, clientY) : null;
@@ -146,7 +149,7 @@ export function RemoteControl({ channel, videoRef, available }: {
       }} />
     {controlled && <Btn icon="keyboard" title="remote.keyboard" hint="hint-remote-keyboard"
       hintText="remote.touchHelp" expanded={keyboardOpen} disabled={!active}
-      onClick={() => { reset(); setKeyboardOpen(open => !open); }} />}
+      onClick={() => { if (keyboardOpen) closeKeyboard(); else { reset(); setKeyboardOpen(true); } }} />}
     {parent && (controlled || state.state === "pending" || state.state === "failed" || state.reason || passwordOpen) && createPortal(<>
       {passwordOpen && <form className="lr-remote-password" onSubmit={event => {
         event.preventDefault(); session.current?.request(password); setPassword("");
@@ -213,7 +216,9 @@ export function RemoteControl({ channel, videoRef, available }: {
         onPointerCancel={reset}
         onLostPointerCapture={event => {
           if (event.pointerType === "touch") touchpad.current?.cancel(event.pointerId);
-          else reset();
+          // Normal mouse-up also releases capture. It must not release a key
+          // still held for movement or a keyboard/mouse chord.
+          else if (event.buttons !== 0) reset();
         }}
         onBlur={reset}
         onKeyDown={event => {
@@ -237,9 +242,7 @@ export function RemoteControl({ channel, videoRef, available }: {
             if (locked) document.exitPointerLock();
             else try { await surface.current?.requestPointerLock(); setKeyboardOpen(false); } catch { setLockFailed(true); }
           })()} /></span>}
-        close={() => {
-          reset(); setKeyboardOpen(false); surface.current?.focus({ preventScroll: true });
-        }} />}
+        close={closeKeyboard} />}
       {!active && !passwordOpen && <div className="lr-remote-input-status" role="status">
         {t(state.reason ? `remote.reason.${state.reason}` : state.state === "suspended" ? "remote.suspended" : state.state === "failed" ? "remote.failed"
           : state.mode === "ask" ? "remote.pending" : "remote.connecting")}

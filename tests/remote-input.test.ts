@@ -131,9 +131,7 @@ it("preserves wheel magnitude and fractions across browser units, only within th
 });
 
 it("flushes coalesced motion before buttons and discards it when control ends", () => {
-  let nextFrame: FrameRequestCallback | null = null;
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { nextFrame = callback; return 1; });
-  vi.stubGlobal("cancelAnimationFrame", () => { nextFrame = null; });
+  vi.useFakeTimers();
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
   const grant = "b".repeat(64);
@@ -149,19 +147,18 @@ it("flushes coalesced motion before buttons and discards it when control ends", 
       { type: "move", x: 0.7, y: 0.8, grant },
       { type: "button", button: 0, down: false, grant },
     ]);
-    expect(nextFrame).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
     session.input({ type: "relative", dx: 3, dy: -2 });
     session.input({ type: "relative", dx: 4, dy: 5 });
-    const renderFrame = nextFrame as FrameRequestCallback | null;
-    renderFrame?.(0);
+    vi.advanceTimersByTime(4); // Input does not depend on a rendered frame.
     expect(channel.sent.at(-1)).toEqual({ type: "relative", dx: 7, dy: 3, grant });
     session.input({ type: "move", x: 0.9, y: 0.1 });
     const count = channel.sent.length;
     channel.receive({ mode: "ask", state: "ready", intent });
-    expect(nextFrame).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
     expect(channel.sent).toHaveLength(count);
   } finally {
     session.dispose();
-    vi.unstubAllGlobals();
+    vi.useRealTimers();
   }
 });

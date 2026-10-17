@@ -19,7 +19,7 @@ export class RemoteInputSession {
   private intent: string | null = null;
   private disposed = false;
   private pointer: PointerInput | null = null;
-  private frame: number | null = null;
+  private pointerTimer: ReturnType<typeof setTimeout> | null = null;
   private wheelFraction = 0;
 
   constructor(private readonly channel: InputTransport, private readonly changed: (state: RemoteInputState | null) => void) {
@@ -36,8 +36,8 @@ export class RemoteInputSession {
   }
 
   private clearPointer(): void {
-    if (this.frame !== null) cancelAnimationFrame(this.frame);
-    this.frame = null;
+    if (this.pointerTimer !== null) clearTimeout(this.pointerTimer);
+    this.pointerTimer = null;
     this.pointer = null;
   }
 
@@ -102,7 +102,9 @@ export class RemoteInputSession {
       this.pointer = event.type === "relative" && this.pointer?.type === "relative"
         ? { type: "relative", dx: this.pointer.dx + event.dx, dy: this.pointer.dy + event.dy }
         : event;
-      if (this.frame === null) this.frame = requestAnimationFrame(this.flushPointer);
+      // Bound motion batching independently of rendering: a slow picture must
+      // not slow input too. The timer exists only while motion is pending.
+      if (this.pointerTimer === null) this.pointerTimer = setTimeout(this.flushPointer, 4);
       return;
     }
     if (event.type === "reset") { this.clearPointer(); this.wheelFraction = 0; }

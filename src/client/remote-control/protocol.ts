@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const remoteControlModeSchema = z.enum(["ask", "room", "password"]);
+export const remoteControlModeSchema = z.enum(["off", "ask", "room", "password"]);
 export type RemoteControlMode = z.infer<typeof remoteControlModeSchema>;
 
 export const remoteInputStateSchema = z.object({

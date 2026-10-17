@@ -89,7 +89,6 @@ export function PlaybackControls({
     video.addEventListener("keydown", onKey);
     document.addEventListener("fullscreenchange", syncFullscreen);
     const unbindGestures = bindPlaybackGestures(video,
-      () => actionsRef.current.togglePlayback(),
       () => actionsRef.current.toggleFullscreen());
     return () => {
       unbindGestures();
