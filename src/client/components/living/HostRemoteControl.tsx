@@ -26,6 +26,7 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
   const [failedId, setFailedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const pending = requests.filter(request => request.state === "pending").length;
+  const controller = requests.find(request => request.state !== "pending");
   useEffect(() => { setDraft(mode === "off" ? "ask" : mode); setPassword(""); }, [mode]);
   useLayoutEffect(() => {
     if (!open || !panel.current || !trigger.current) return;
@@ -67,7 +68,7 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
   return <>
     <span className="lr-remote-trigger" ref={trigger}>
       <Btn icon="mouse" cap="remote.title"
-        title={pending ? "remote.requests" : "remote.title"} hint="hint-remote-control"
+        title={pending ? "remote.requests" : controller?.state === "suspended" ? "remote.hostFocus" : controller ? "remote.controlling" : "remote.title"} hint="hint-remote-control"
         tone={mode !== "off" || open ? "on" : undefined} busy={busy}
         popoverTarget={id} expanded={open} controls={id} />
       {pending > 0 && <span className="lr-remote-count" role="status" aria-label={`${t("remote.requests")} · ${pending}`}>{pending}</span>}
@@ -90,8 +91,10 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
       {requests.length > 0 && <div className="lr-remote-requests">
         {requests.map(request => <div className="lr-remote-request" key={request.id} role="group" aria-label={request.name}>
           <div><NameTag name={request.name} identity={request.peerId} />
-            <p>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.approved" : "remote.waiting")}</p>
-            {failedId === request.id && <p role="alert">{t("remote.decisionFailed")}</p>}</div>
+            <p><Glyph name={request.state === "suspended" ? "pause" : request.state === "active" ? "mouse" : "clock"} size={14} />
+              <span className={vis ? "visually-hidden" : undefined}>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.controlling" : "remote.waiting")}</span></p>
+            {failedId === request.id && <p role="alert"><Glyph name="alert" size={14} />
+              <span className={vis ? "visually-hidden" : undefined}>{t("remote.decisionFailed")}</span></p>}</div>
           <div className="lr-remote-request-actions">
             <Btn icon="x" title={request.state !== "pending" ? "remote.stop" : "remote.decline"} cap={request.state !== "pending" ? "remote.stop" : "remote.decline"}
               hint="hint-remote-stop" disabled={busy} onClick={() => void perform(request.id, () => onDecide(request.id, false))} />
@@ -99,7 +102,7 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
               disabled={busy || disabled} onClick={() => void perform(request.id, () => onDecide(request.id, true))} />}
           </div>
         </div>)}
-        {pending > 0 && <p className="lr-remote-note">{t("remote.consent")}</p>}
+        {!vis && pending > 0 && <p className="lr-remote-note">{t("remote.consent")}</p>}
       </div>}
       {mode !== "off" && <form className="lr-remote-settings" onSubmit={event => {
           event.preventDefault();
@@ -125,7 +128,8 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
             hint="hint-remote-control" disabled={busy || disabled || (draft === "password" && !password)} />
         </div>}
       </form>}
-      {failedId === "policy" && <p role="alert">{t("remote.decisionFailed")}</p>}
+      {failedId === "policy" && <p role="alert"><Glyph name="alert" size={14} />
+        <span className={vis ? "visually-hidden" : undefined}>{t("remote.decisionFailed")}</span></p>}
       {!vis && <p className="lr-remote-note">{t("remote.policyLifetime")}</p>}
       {(mode === "room" || mode === "password" || requests.some(request => request.state !== "pending")) && <p className="lr-remote-note">
         {vis ? <Glyph name="keyboard" size={14} /> : t("remote.shortcut")} <kbd>Ctrl + Alt + F10</kbd>

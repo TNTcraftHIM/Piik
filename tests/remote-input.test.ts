@@ -84,6 +84,22 @@ it("maps only visible picture pixels when playback has letterboxing", () => {
   expect(picturePoint(video, 901, 350)).toBeNull();
 });
 
+it("ends a pending request when its source becomes unavailable, even before the request reaches the Host", () => {
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  channel.receive({ mode: "ask", state: "ready" });
+  session.request();
+  // Source pause/off can be announced before the Host has seen this intent.
+  // It still invalidates the whole endpoint, not just an older request.
+  channel.receive({ mode: "ask", state: "unavailable" });
+  expect(session.state?.state).toBe("unavailable");
+  channel.receive({ mode: "ask", state: "ready" });
+  session.request();
+  channel.receive({ mode: "off", state: "unavailable", intent: "a".repeat(32) });
+  expect(session.state?.mode).toBe("off");
+  session.dispose();
+});
+
 it("sends a control password only in the request and follows the App policy after cancellation", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});

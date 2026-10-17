@@ -54,6 +54,9 @@ export class RemoteInputSession {
     const parsed = remoteInputStateSchema.safeParse(decoded);
     if (!parsed.success) return;
     const state = parsed.data;
+    // Source availability is authoritative for every request. Pause/off may
+    // reach us before the Host receives our new intent; it still ends it.
+    if (state.state === "unavailable") this.intent = null;
     if (this.intent !== null && state.intent !== this.intent) return;
     if (this.intent === null && (state.state === "active" || state.state === "suspended" || state.state === "pending")) {
       this.send({ type: "release", intent: state.intent });

@@ -34,7 +34,7 @@
 .lr-tv-screen:has(> .lr-playback[data-can-play="true"]) > video { cursor: pointer; }
 .lr-tv-screen:has(> .lr-playback.is-hidden) > video { cursor: none; }
 /* The video's own focus outline is clipped by the screen; mark its container. */
-.lr-tv-screen:has(> .lr-playback):has(:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
+.lr-tv-screen:has(> .lr-playback):has(> video:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-playback .lr-btn {
   display: grid; place-items: center; flex: none;
   min-width: 0; width: 44px; height: 44px; padding: 0;

@@ -341,6 +341,8 @@ comes from the authenticated room binding, never a relay-supplied participant
 name. The grant is bound to that input channel and source, with a fresh nonce for each approval.
 Each request has its own identity: a late Host decision cannot approve a newer
 request, and a late approval cannot revive the Viewer's cancelled intent.
+Source unavailability ends every pending intent, including one not yet received
+by the Host; it is not a response scoped to an older request.
 Site capture approval never grants input rights. Input may operate the whole
 computer; a shared picture is not an OS input sandbox.
 

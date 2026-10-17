@@ -1,6 +1,7 @@
 .lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: crosshair; touch-action: none; outline: 2px solid var(--action); outline-offset: -2px; border-radius: inherit; }
 .lr-remote-input-surface.is-suspended { outline-color: var(--muted); cursor: default; }
-.lr-remote-input-status { position: absolute; top: 12px; left: 12px; z-index: 4; max-width: calc(100% - 24px); box-sizing: border-box; padding: 8px 12px; border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; pointer-events: none; }
+.lr-remote-input-status { display: flex; align-items: center; gap: 8px; position: absolute; top: 12px; left: 12px; z-index: 4; max-width: calc(100% - 24px); box-sizing: border-box; padding: 8px 12px; border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; pointer-events: none; }
+.lr-remote-input-status > svg { flex: none; }
 .lr-remote-trigger { display: inline-flex; position: relative; }
 .lr-remote-count { position: absolute; top: -4px; right: -3px; min-width: 20px; padding: 0 5px; border: 2px solid var(--paper); border-radius: 12px; background: var(--action); color: #fff; font: 600 11px/16px var(--font); text-align: center; pointer-events: none; }
 .lr-remote-panel { position: fixed; inset: auto; margin: 0; width: min(360px, calc(100vw - 16px)); padding: 16px; overflow: auto; overscroll-behavior: contain; }
@@ -17,9 +18,11 @@
 .lr-remote-policy-actions .lr-input input { min-width: 0; width: 100%; }
 .lr-remote-password { position: absolute; z-index: 5; top: 12px; left: 50%; transform: translateX(-50%); width: min(400px, calc(100% - 24px)); box-sizing: border-box; padding: 16px; border: 1px solid var(--control-edge); border-radius: 20px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 13px; }
 .lr-remote-password > strong { display: block; margin-bottom: 10px; }
-.lr-remote-password p { color: var(--warn); margin: 8px 0 0; font-size: 12px; }
+.lr-remote-password p { display: flex; align-items: center; gap: 6px; color: var(--warn); margin: 8px 0 0; font-size: 12px; }
 .lr-remote-panel p { font-size: 12px; line-height: 1.5; margin: 0; }
 .lr-remote-panel p[role="alert"] { color: var(--danger); }
+.lr-remote-request p, .lr-remote-panel p[role="alert"] { display: flex; align-items: center; gap: 6px; }
+.lr-remote-request p > svg, .lr-remote-panel p[role="alert"] > svg { flex: none; }
 .lr-remote-panel > .lr-remote-note + .lr-remote-note { margin-top: 8px; }
 .lr-remote-panel .lr-remote-note > svg { vertical-align: middle; }
 .lr-remote-note, .lr-remote-request p { color: var(--muted); }
@@ -34,15 +37,18 @@
 .lr-remote-touch-cursor { position: absolute; width: 22px; height: 26px; left: 50%; top: 50%; pointer-events: none; filter: drop-shadow(0 1px 2px #0008); }
 .lr-remote-touch-cursor path { fill: #fff; stroke: #22313e; stroke-width: 1.5; stroke-linejoin: round; }
 .lr-remote-game-mouse { display: flex; justify-content: center; margin-top: 8px; }
-.lr-remote-keyboard { grid-area: 3 / 1; z-index: 4; padding: 10px 12px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--control-edge); }
+.lr-remote-keyboard { grid-area: 3 / 1; z-index: 4; padding: 10px 12px 12px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--control-edge); }
 .lr-remote-keyboard .lr-input { padding: 0 10px; }
 .lr-remote-keyboard input { font-size: 16px; }
 .lr-remote-keyboard .lr-btn { width: 40px; height: 40px; min-width: 0; padding: 0; }
 .lr-remote-game-mouse .lr-btn { width: auto; padding: 0 12px; }
-.lr-remote-keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 10px; }
-.lr-remote-keys .lr-chip { flex: 1 0 auto; justify-content: center; padding: 4px 8px; min-width: 36px; min-height: 36px; font: 12px var(--mono); letter-spacing: 0; white-space: nowrap; }
+.lr-remote-keys { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
+.lr-remote-shortcuts { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.lr-remote-keys .lr-chip { justify-content: center; padding: 4px; width: 100%; min-width: 0; min-height: 36px; border-radius: 10px; font: 12px var(--mono); letter-spacing: 0; white-space: nowrap; }
 .lr-remote-keyboard p { margin: 8px 0 0; text-align: center; color: var(--muted); font-size: 11px; }
 @media (max-width: 580px) {
+  .lr-remote-keys { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .lr-remote-shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .lr-host-share-controls .lr-remote-trigger .lr-btn[aria-controls] { width: 44px; height: 44px; min-height: 44px; padding: 0; }
   .lr-host-share-controls .lr-remote-trigger .lr-btn[aria-controls] .lr-cap { display: none; }
 }
@@ -52,5 +58,4 @@
   .lr-host-share-controls:has(.lr-remote-trigger) .lr-btn[aria-controls] .lr-cap { display: none; }
   .lr-host-share-controls:has(.lr-remote-trigger) > .lr-comic-tip-wrap:has(#host-stop-share) { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
 }
-@media (pointer: coarse) { .lr-remote-game-mouse { display: none; } }
 @media (prefers-reduced-motion: reduce) { .lr-remote-panel:popover-open { animation: none; } }
