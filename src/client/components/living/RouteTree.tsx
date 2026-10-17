@@ -34,6 +34,7 @@ const PAWN_CENTER_X = 20;
 const PAWN_SCALE = 0.82;
 const PAWN_CENTER_Y = 24;
 const LABEL_GAP = 12;
+const SFU_HALF_WIDTH = 20;
 
 function centeredPawnX(centerX: number, scale: number): number {
   return centerX - PAWN_CENTER_X * scale;
@@ -304,9 +305,10 @@ export const RouteTree = memo(function RouteTree({
       </Tooltip>
     </foreignObject>;
   };
-  const linkPath = (parent: { x: number; y: number }, child: { x: number; y: number }) => outline
-    ? `M ${parent.x - 17} ${parent.y} H ${parent.x - 28} V ${child.y} H ${child.x - 18}`
-    : `M ${parent.x + 20} ${parent.y} Q ${(parent.x + child.x) / 2} ${parent.y + (child.y - parent.y) * 0.55}, ${child.x - 18} ${child.y}`;
+  const linkPath = (parent: { x: number; y: number }, child: { x: number; y: number },
+    { from = outline ? 17 : 20, to = 18 } = {}) => outline
+    ? `M ${parent.x - from} ${parent.y} H ${parent.x - 28} V ${child.y} H ${child.x - to}`
+    : `M ${parent.x + from} ${parent.y} Q ${(parent.x + child.x) / 2} ${parent.y + (child.y - parent.y) * 0.55}, ${child.x - to} ${child.y}`;
   const sfuChildPoints = sfuChildren.map((child) => ({
     child,
     point: pos.get(child.key)!,
@@ -354,19 +356,19 @@ export const RouteTree = memo(function RouteTree({
         {sfuPos ? (
           <>
             <path
-              d={linkPath(hostPos, sfuPos)}
+              d={linkPath(hostPos, sfuPos, { to: SFU_HALF_WIDTH })}
               className={edgeClass("sfu")}
             />
             {outline ? sfuChildPoints.map(({ child, point }) => <path key={`edge-${child.key}`}
-              d={linkPath(sfuPos!, point)} className={edgeClass("sfu", child.ready)} />) : sfuChildren.length === 1 ? (
+              d={linkPath(sfuPos!, point, { from: SFU_HALF_WIDTH })} className={edgeClass("sfu", child.ready)} />) : sfuChildren.length === 1 ? (
               <path
-                d={`M ${sfuPos.x + 20} ${sfuPos.y} L ${pos.get(sfuChildren[0]!.key)!.x - 18} ${pos.get(sfuChildren[0]!.key)!.y}`}
+                d={`M ${sfuPos.x + SFU_HALF_WIDTH} ${sfuPos.y} L ${pos.get(sfuChildren[0]!.key)!.x - 18} ${pos.get(sfuChildren[0]!.key)!.y}`}
                 className={edgeClass("sfu", sfuChildren[0]!.ready)}
               />
             ) : sfuRail ? (
               <>
                 <path
-                  d={`M ${sfuPos.x + 20} ${sfuPos.y} H ${sfuRail.x}`}
+                  d={`M ${sfuPos.x + SFU_HALF_WIDTH} ${sfuPos.y} H ${sfuRail.x}`}
                   className={edgeClass("sfu")}
                 />
                 <path
@@ -408,9 +410,9 @@ export const RouteTree = memo(function RouteTree({
           <>
             <g
               className="lr-route-sfu"
-              transform={`translate(${sfuPos.x - 20}, ${sfuPos.y - 16})`}
+              transform={`translate(${sfuPos.x - SFU_HALF_WIDTH}, ${sfuPos.y - 16})`}
             >
-              <rect width="40" height="32" rx="7" />
+              <rect width={SFU_HALF_WIDTH * 2} height="32" rx="7" />
               <path d="M8 12h24M8 20h24" />
             </g>
             <text

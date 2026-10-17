@@ -151,6 +151,10 @@ or disconnected. Theater and fullscreen are separate modes. Page-element
 fullscreen includes the playback bar; Safari's video-only fullscreen uses
 system controls and native video events to reflect playback and exit.
 Identity, connection details and topology stay in the deck.
+Room tools outside the fullscreen player close when it enters fullscreen.
+Returning a detached tool during fullscreen keeps it closed in the page; leaving
+fullscreen allows reopening it with its session and draft intact. The fullscreen
+bar retains the danmaku toggle, not an interaction-window entry.
 
 Viewer playback settings reuse shared controls and expand below the picture;
 fullscreen reserves their height instead of covering the video. Local picture

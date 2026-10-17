@@ -21,7 +21,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
 }) {
   const { t, vis } = useCopy();
   const [open, setOpen] = useState(false);
-  const panelWindow = usePanelWindow(detachable, owner => onOpenChange?.(true, owner));
+  const panelWindow = usePanelWindow(detachable);
   const { container, slot, surfaceDocument, detached } = panelWindow;
   const panelRef = useRef<HTMLElement>(null);
   const positionMenu = useRef<HTMLDivElement>(null);
@@ -40,9 +40,23 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
   };
 
   useLayoutEffect(() => {
-    if (!surfaceDocument) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const owner = panel.ownerDocument;
+    const hideOutsideFullscreen = () => {
+      if (!owner.fullscreenElement || owner.fullscreenElement.contains(panel)) return false;
+      // A room tool outside the fullscreen subtree must not cover the picture.
+      // Adoption already hides its popover, so report the closed state even
+      // when the browser has no further toggle event to deliver on return.
+      panel.hidePopover();
+      setOpen(false);
+      onOpenChange?.(false, owner);
+      return true;
+    };
     // Adoption removes native popovers from the old document's top layer.
-    panelRef.current?.showPopover();
+    if (surfaceDocument && !hideOutsideFullscreen()) panel.showPopover();
+    owner.addEventListener("fullscreenchange", hideOutsideFullscreen);
+    return () => owner.removeEventListener("fullscreenchange", hideOutsideFullscreen);
   }, [surfaceDocument]);
 
   useLayoutEffect(() => {
