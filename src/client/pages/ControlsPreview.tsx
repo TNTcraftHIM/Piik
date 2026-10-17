@@ -115,8 +115,6 @@ export function ControlsPreview() {
         <HostShareControls actions={<>
           <HostMicrophone enabled={microphone} paused={paused} volume={microphoneVolume}
             onToggle={() => setMicrophone(value => !value)} />
-          <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}
-            hint={paused ? "hint-resume" : "hint-pause"} onClick={() => setPaused(!paused)} />
           <Btn icon="switchSource" title="host.switchSource" cap="host.switchSource" hint="hint-switch-source" onClick={notify} />
           </>}
           settings={<Btn icon="sliders" cap="host.settings.button" title={sharingSettings ? "host.advanced.hide" : "host.advanced"}
@@ -125,6 +123,8 @@ export function ControlsPreview() {
             expanded={sharingSettings} controls="preview-sharing-settings" onClick={() => setSharingSettings(value => !value)} />}
           remote={<HostRemoteControl mode={remoteMode} platform="windows" requests={[]}
             disabled={paused} onPolicy={async mode => setRemoteMode(mode)} onDecide={async () => undefined} />}
+          pause={<Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}
+            hint={paused ? "hint-resume" : "hint-pause"} onClick={() => setPaused(!paused)} />}
           ending={<Btn id="host-stop-share" icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />}
         />
         <SharingSettings id="preview-sharing-settings" open={sharingSettings}

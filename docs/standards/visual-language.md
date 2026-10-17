@@ -153,11 +153,12 @@ belongs to the video. Their similar appearance does not equate broadcast pause
 with local playback pause. Waiting overlays use the space above the actual
 playback bar, including when it wraps. Keep the primary status readable on
 narrow screens; optional waiting copy yields first. Microphone mute, sharing
-pause, source replacement and stop remain direct actions; stopping stays
-visually separated from frequent actions.
+pause, source replacement and stop remain direct actions; stop retains its
+danger treatment.
 One compact dock combines direct actions and the sharing-settings entry below
-the television, above the couch. Group microphone, pause and source actions;
-group sharing settings and remote permissions separately from them and stop.
+the television, above the couch. Group microphone and source actions, settings
+and remote permissions, then pause/resume and stop. Keep pause and stop adjacent,
+including on narrow screens.
 Picture presets lead the settings; a fine-tuning disclosure keeps the configured
 limits visible when closed. In sound, source and microphone inputs precede the
 mixed output's audio quality. Presets remain available before sharing starts.

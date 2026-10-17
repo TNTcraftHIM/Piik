@@ -3762,15 +3762,6 @@ export function HostPage({
                 volume={microphoneVolume}
                 onToggle={() => void changeMicrophone(!microphoneEnabled, microphoneDevices[nativeActive ? "native" : "browser"])} />
               <Btn
-                icon={sharingPaused ? "play" : "pause"}
-                cap={sharingPaused ? "host.resume" : "host.pause"}
-                title={sharingPaused ? "host.resume" : "host.pause"}
-                hint={sharingPaused ? "hint-resume" : "hint-pause"}
-                draw="host-share-toggle"
-                disabled={switchingSource || changingQuality || microphonePending}
-                onClick={toggleSharingPause}
-              />
-              <Btn
                 id="host-switch-source"
                 icon="switchSource"
                 cap={switchingSource && !sourceSwitchRef.current?.audioOnly ? "host.switching" : "host.switchSource"}
@@ -3810,6 +3801,15 @@ export function HostPage({
               expanded={showAdvanced}
               controls="host-advanced-door"
               onClick={() => setShowAdvanced((current) => !current)}
+            />}
+            pause={phase === "live" && <Btn
+              icon={sharingPaused ? "play" : "pause"}
+              cap={sharingPaused ? "host.resume" : "host.pause"}
+              title={sharingPaused ? "host.resume" : "host.pause"}
+              hint={sharingPaused ? "hint-resume" : "hint-pause"}
+              draw="host-share-toggle"
+              disabled={switchingSource || changingQuality || microphonePending}
+              onClick={toggleSharingPause}
             />}
             ending={phase === "live" ? (
               <Btn
