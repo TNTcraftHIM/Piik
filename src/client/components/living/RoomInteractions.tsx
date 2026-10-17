@@ -60,7 +60,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
   const canSend = state.ready && !state.pending && !state.coolingDown;
   const person = participants.find(person => person.peerId === target);
   const panelPerson = participants.find(person => person.peerId === panelTarget);
-  const showChat = !settingsOpen && !panelPerson;
+  const showChat = !settingsOpen;
   const rosterKey = participants.map(person => person.peerId).join(",");
   const inspect = target === couch.host?.key && couch.host.onSelect ? () => { if (!couch.host?.selected) couch.host?.onSelect?.(); }
     : couch.entries.some(entry => entry.key === target && entry.selectable !== false) && couch.onSelect
@@ -124,7 +124,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       !log.current?.getClientRects().length) return;
     setLastSeen(latest);
     log.current.scrollTop = log.current.scrollHeight;
-  }, [latest, chatOpen, visible, following, chatDocument, showChat]);
+  }, [latest, chatOpen, visible, following, chatDocument, showChat, panelTarget]);
 
   return <div className="lr-room-interactions">
     <div className="visually-hidden" role="log" aria-label={t("interaction.reactions")}
@@ -140,28 +140,13 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
     <FloatingPanel id={id} trigger={`${id}-toggle`} icon="chat" className="lr-interaction-panel" detachable
       title={t(settingsOpen ? "interaction.settings" : "interaction.title")}
       onOpenChange={(open, owner) => { setChatOpen(open); setChatDocument(owner); }}>
-      {settingsOpen && <RoomChatSettings session={session} />}
-      {chatOpen && !settingsOpen && <div className="lr-interaction-stage" ref={panelArea}>
-        <div className="lr-interaction-people" role="group" aria-label={t("interaction.participant")}>
-          {participants.map(person => <span key={person.peerId} data-room-peer={person.peerId}>
-            <Tooltip overflow={{ text: person.displayName, selector: ".lr-pawn-name" }}>
-              <button type="button" className={`lr-pawn${person.peerId === state.peerId ? " is-you" : ""}`}
-                aria-label={t("interaction.withPerson", { name: person.displayName })}
-                aria-expanded={panelTarget === person.peerId} aria-controls={`${id}-reactions`}
-                onClick={() => setPanelTarget(current => current === person.peerId ? null : person.peerId)}>
-                <PawnSvg color={participantColor(person.peerId)} identity={person.peerId} host={person.peerId === couch.host?.key} />
-                <span className="lr-pawn-name">{person.displayName}</span>
-              </button>
-            </Tooltip>
-          </span>)}
-        </div>
-        {effects && <ReactionEffects state={state} participants={participants} area={panelArea} now={session.now} />}
-      </div>}
-      <div id={`${id}-reactions`} className="lr-interaction-picker" hidden={!panelPerson || settingsOpen}>
-        <RoomReactionPicker person={panelPerson} selfPeerId={state.peerId} hostPeerId={couch.host?.key}
-          canSend={canSend} onSend={sendReaction} />
-      </div>
-      <div className="lr-chat-history" hidden={!showChat}>
+      {settingsOpen && <>
+        <div className="lr-interaction-back"><Btn icon="chat" title="interaction.back" cap="interaction.back"
+          hint="hint-chat-open" onClick={() => setSettingsOpen(false)} /></div>
+        <RoomChatSettings session={session} />
+      </>}
+      <div className="lr-interaction-conversation" hidden={!showChat} ref={panelArea}>
+      <div className="lr-chat-history">
       <div className="lr-chat-log" role="log" aria-label={t("interaction.chat")} aria-live="polite" aria-relevant="additions" tabIndex={0} ref={log}
         onScroll={event => {
           const node = event.currentTarget;
@@ -189,7 +174,32 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       }}><Glyph name="arrowDown" size={15} /><span className={vis ? "visually-hidden" : undefined}>
         {unread ? t("interaction.unread", { count: String(unread) }) : t("interaction.latest")}</span></button>}
       </div>
-      <form className="lr-chat-compose" hidden={!showChat} onSubmit={event => {
+      {chatOpen && !settingsOpen && <>
+      <div className="lr-interaction-stage">
+        <div className="lr-interaction-people-scroll">
+          <div className="lr-interaction-people" role="group" aria-label={t("interaction.participant")}>
+            {participants.map(person => <span key={person.peerId} data-room-peer={person.peerId}>
+              <Tooltip overflow={{ text: person.displayName, selector: ".lr-pawn-name" }}>
+                <button type="button" className={`lr-pawn${person.peerId === state.peerId ? " is-you" : ""}`}
+                  aria-label={t("interaction.withPerson", { name: person.displayName })}
+                  aria-expanded={panelTarget === person.peerId} aria-controls={`${id}-reactions`}
+                  onClick={() => setPanelTarget(current => current === person.peerId ? null : person.peerId)}>
+                  <PawnSvg color={participantColor(person.peerId)} identity={person.peerId} host={person.peerId === couch.host?.key} />
+                  <span className="lr-pawn-name">{person.displayName}</span>
+                </button>
+              </Tooltip>
+            </span>)}
+          </div>
+        </div>
+      </div>
+      {effects && <ReactionEffects state={state} participants={participants} area={panelArea} now={session.now} />}
+      </>}
+      </div>
+      <div id={`${id}-reactions`} className="lr-interaction-picker" hidden={!panelPerson || settingsOpen}>
+        <RoomReactionPicker person={panelPerson} selfPeerId={state.peerId} hostPeerId={couch.host?.key}
+          canSend={canSend} onSend={sendReaction} onBack={() => setPanelTarget(null)} />
+      </div>
+      <form className="lr-chat-compose" hidden={!showChat || Boolean(panelPerson)} onSubmit={event => {
         event.preventDefault();
         const text = normalizeChatText(draft);
         if (text && canSend) { setFollowing(true); session.send({ kind: "chat", text }); }
@@ -201,23 +211,19 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
         <Btn type="submit" icon="send" title="interaction.send" hint="hint-chat-send" tone="primary" busy={state.pending?.payload.kind === "chat"}
           disabled={!canSend || !normalizeChatText(draft)} />
       </form>
-      <footer className="lr-chat-footer">
+      {!settingsOpen && <footer className="lr-chat-footer">
       <div className="lr-chat-actions">
       <RoomChatToggle session={session} caption />
-      <Btn icon={showChat ? "sliders" : "chat"}
-        title={showChat ? "interaction.settings" : "interaction.back"}
-        cap={showChat ? undefined : "interaction.back"}
-        hint={showChat ? "hint-chat-settings" : "hint-chat-open"}
-        onClick={() => { setPanelTarget(null); setSettingsOpen(showChat); }} />
+      <Btn icon="sliders" title="interaction.settings" hint="hint-chat-settings"
+        onClick={() => { setPanelTarget(null); setSettingsOpen(true); }} />
       </div>
-      <div className="lr-interaction-status" role="status">
-        {state.error ? <><Glyph name="alert" size={14} /><span className={vis ? "visually-hidden" : undefined}>{t(`interaction.error.${state.error}`)}</span></>
-          : !state.ready ? <><Glyph name="network" size={14} /><span className={vis ? "visually-hidden" : undefined}>{t("interaction.reconnecting")}</span></>
-          : !vis && <span>{t("interaction.ephemeral")}</span>}
-      </div>
-      {showChat && <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft ? undefined : "hidden",
-        minWidth: `${String(MAX_CHAT_CODE_POINTS).length * 2 + 3}ch` }}>{Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>}
-      </footer>
+      <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft && !panelPerson ? undefined : "hidden" }}>
+        {Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>
+      </footer>}
+      {(state.error || !state.ready) && <div className="lr-interaction-status" role="status">
+        <Glyph name={state.error ? "alert" : "network"} size={14} />
+        <span className={vis ? "visually-hidden" : undefined}>{t(state.error ? `interaction.error.${state.error}` : "interaction.reconnecting")}</span>
+      </div>}
     </FloatingPanel>
     <div className="lr-interaction-couch" ref={area}>
       <Couch {...couch} participantAction={{ open: openReactions, target, controls: menuId }}

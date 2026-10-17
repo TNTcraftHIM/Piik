@@ -30,6 +30,7 @@ export function RoomChatSettings({ session }: { session: RoomInteractionSession 
       </div>;
     })}
     <div className="lr-chat-export">
+      {!vis && <p>{t("interaction.ephemeral")}</p>}
       <Btn icon="save" title="interaction.export" cap="interaction.export" hint="hint-chat-export"
         hintText="interaction.exportHint" disabled={!messages.length} onClick={() => {
           downloadBlob(new Blob([formatChatTranscript(messages)], { type: "text/plain;charset=utf-8" }),

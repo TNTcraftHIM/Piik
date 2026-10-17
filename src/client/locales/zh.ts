@@ -291,8 +291,6 @@ export const zh = {
   "interaction.effects": "显示互动动效",
   "interaction.ephemeral": "仅保留本页收到的消息，刷新后清空。",
   "interaction.empty": "坐这儿，聊两句。",
-  "interaction.prop.tomato": "丢番茄",
-  "interaction.prop.poop": "丢便便",
   "interaction.placeholder": "说点什么…",
   "interaction.send": "发送",
   "interaction.reactions": "表情与小道具",

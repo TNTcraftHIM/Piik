@@ -291,8 +291,6 @@ export const en: Record<CopyKey, string> = {
   "interaction.effects": "Show reaction effects",
   "interaction.ephemeral": "Messages stay on this page and clear when you refresh.",
   "interaction.empty": "Make yourself at home. Say hello.",
-  "interaction.prop.tomato": "Toss tomato",
-  "interaction.prop.poop": "Toss poop",
   "interaction.placeholder": "Say something…",
   "interaction.send": "Send",
   "interaction.reactions": "Reactions",

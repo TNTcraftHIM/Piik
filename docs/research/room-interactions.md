@@ -127,16 +127,16 @@ target even after moving the window. Selecting a different participant keeps its
 placement and any manually chosen size; selecting the same person toggles it.
 The default palette height follows its content, bounded by the visible viewport.
 One's own palette expresses a reaction above oneself and holds the local effects switch; other
-people's palettes offer targeted expressions and two labelled throwing props.
+people's palettes offer targeted expressions and two throwing props.
 Connection details remain secondary when that participant has inspectable data.
 Close or Escape dismisses the palette; it also closes if its participant leaves.
 Sending keeps it open for repeated interaction, with the existing short cooldown.
 Confirmation never changes menu visibility; failure stays visible in the card.
 Opening or closing a reaction card preserves the chat draft and unread state.
 The interaction window also shows a compact room roster with the same identities
-and live reactions. Selecting a person there opens the shared palette in place
-of the chat log; returning restores the draft and reading position. Hidden chat
-does not consume unread messages. This works in the detached window too, using
+and live reactions. Selecting a person opens the shared palette below the roster,
+keeping the conversation visible and preserving the draft and reading position.
+Only visible chat following the latest messages consumes unread messages. This works in the detached window too, using
 the same room session, event expiry and sending controls as the couch shortcut.
 Self expressions follow the sender's head, including idle and interaction motion.
 Only that sender's newest self expression replaces their earlier one. A targeted
