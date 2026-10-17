@@ -6,9 +6,13 @@ export function HostShareControls({ actions, settings, remote, pause, ending }: 
   actions?: ReactNode; settings: ReactNode; remote?: ReactNode; pause?: ReactNode; ending?: ReactNode;
 }) {
   const { t } = useCopy();
-  return <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
-    {actions && <div className="lr-host-control-group">{actions}</div>}
-    <div className="lr-host-control-group">{settings}{remote}</div>
-    {(pause || ending) && <div className="lr-host-control-group">{pause}{ending}</div>}
+  return <div className="lr-host-controls">
+    <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
+      {(actions || pause || ending) && <div className="lr-host-action-dock">
+        {actions && <div className="lr-host-control-group">{actions}</div>}
+        {(pause || ending) && <div className="lr-host-control-group">{pause}{ending}</div>}
+      </div>}
+      <div className="lr-host-tool-dock">{settings}{remote}</div>
+    </div>
   </div>;
 }

@@ -40,6 +40,10 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
     if (!surfaceDocument) return;
     // Adoption removes native popovers from the old document's top layer.
     panelRef.current?.showPopover();
+  }, [surfaceDocument]);
+
+  useLayoutEffect(() => {
+    if (!surfaceDocument) return;
     if (surfaceDocument !== document) surfaceDocument.title = `${title} · Piik`;
   }, [surfaceDocument, title]);
 

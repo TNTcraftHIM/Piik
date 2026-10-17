@@ -150,6 +150,26 @@ export function ControlsPreview() {
           <AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
             disabled={false} onChange={maxAudioBitrate => setQuality(current => ({ ...current, maxAudioBitrate }))} />
           </>}
+          technical={<>
+            <div className="lr-door-group">
+              <span className="lr-door-glyph"><Glyph name="branch" size={19} /><span>{vis ? null : t("host.advanced.route")}</span></span>
+              <div className="lr-row-group">
+                <SwitchItem checked disabled onChange={notify} label={t("host.advanced.route.topo")}
+                  note={t("host.advanced.route.topoHint")} hint="hint-topology" />
+                <SwitchItem checked={false} disabled onChange={notify} label={t("host.advanced.route.peerOnly")}
+                  note={t("host.advanced.route.peerOnlyHint")} hint="hint-route-p2p" />
+              </div>
+            </div>
+            <div className="lr-door-group">
+              <span className="lr-door-glyph"><Glyph name="puzzle" size={19} /><span>{vis ? null : t("host.advanced.codec")}</span></span>
+              <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
+                {(["vp8", "auto", "h264"] as const).map(mode => <Chip key={mode} selected={mode === "auto"} disabled
+                  title={mode === "auto" ? t("host.advanced.codec.auto") : mode.toUpperCase()} hint="hint-codec">
+                  {mode.toUpperCase()}
+                </Chip>)}
+              </div>
+            </div>
+          </>}
         />
       </section>
       <section id="option-preview" className="cp-card">

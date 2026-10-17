@@ -155,18 +155,21 @@ playback bar, including when it wraps. Keep the primary status readable on
 narrow screens; optional waiting copy yields first. Microphone mute, sharing
 pause, source replacement and stop remain direct actions; stop retains its
 danger treatment.
-One compact dock combines direct actions and the sharing-settings entry below
-the television, above the couch. Group microphone and source actions, settings
-and remote permissions, then pause/resume and stop. Keep pause and stop adjacent,
-including on narrow screens.
-Picture presets lead the settings; a fine-tuning disclosure keeps the configured
-limits visible when closed. In sound, source and microphone inputs precede the
-mixed output's audio quality. Presets remain available before sharing starts.
-Separate the less frequent connection/codec options in a nested
-disclosure. Expand in page flow, pushing later content down instead of covering
-the picture or participants. Keep picture and sound in distinct sections; place
-related adjustments side by side where space permits and stack them on narrow
-screens. Avoid another permanent row of settings cards. Numeric quality inputs
+Group direct sharing actions in one centred dock below the television, above
+the couch. Keep pause/resume and stop adjacent; use an internal separator for
+the settings and remote-permission entries. Preserve that order and grouping on
+narrow screens without splitting the dock into separate floating surfaces.
+Room invitations, admission and chat retain their room scope; they do not become
+sharing settings merely because they use a similar control.
+One inline settings panel uses picture and sound tabs. Picture presets lead;
+a fine-tuning disclosure keeps configured limits visible when closed. In sound,
+source and microphone inputs precede the mixed output's audio quality. Presets
+remain available before sharing starts. Switching tabs does not reset values
+or restart media. Keep the less frequent connection/codec options in a shared
+disclosure below the tabs. Expand in page flow, pushing later content down
+instead of covering the picture or participants. Related fields share a row
+where space permits and stack on narrow screens. Avoid another permanent row
+of settings cards. Numeric quality inputs
 retain the accepted capability range; sliders offer a labelled common range for
 quick adjustment. Values outside its range or steps show a custom-value row
 instead of an inaccurate slider position. Returning to the nearest available

@@ -1877,9 +1877,12 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
   animation: lr-sharing-enter 180ms ease-out;
 }
 .lr-sharing-section { display: grid; align-content: start; gap: 20px; min-width: 0; }
-.lr-sharing-section + .lr-sharing-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--wall-2); }
-.lr-sharing-section h2 { display: flex; align-items: center; gap: 8px; font-size: 16px; }
-.lr-sharing-section h2 .lr-cap { font-size: inherit; }
+.lr-sharing-section[hidden] { display: none; }
+.lr-sharing-tabs { display: flex; gap: 4px; width: fit-content; padding: 4px; margin: 0 auto 22px; border-radius: 18px; background: var(--wall); }
+.lr-sharing-tabs .lr-chip { justify-content: center; min-width: 112px; min-height: 40px; gap: 8px; border: 0; border-radius: 14px; box-shadow: none; letter-spacing: 0; }
+.lr-sharing-tabs .lr-chip:not(.is-selected) { background: transparent; color: var(--muted); }
+.lr-sharing-tabs .lr-chip:not(.is-selected):hover { background: var(--control-hover); color: var(--ink); }
+.lr-sharing-section:focus-visible { outline: 2px solid var(--action); outline-offset: 5px; border-radius: 12px; }
 .lr-sharing-section .lr-door-group { gap: 8px; }
 .lr-sharing-section .lr-door-glyph .lr-cap { white-space: normal; }
 .lr-sharing-limits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
@@ -1941,14 +1944,17 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 @container sharing-settings (max-width: 340px) {
   .lr-sharing-section .lr-tile small { max-width: 8ch; min-height: 2.8em; line-height: 1.4; }
 }
+.lr-host-controls { width: 100%; margin-top: 12px; container: host-controls / inline-size; }
 .lr-host-share-controls {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px;
-  width: fit-content; max-width: 100%; margin: 12px auto 0; padding: 6px;
-  background: var(--paper); color: var(--ink); border: 1px solid var(--control-edge);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
+  width: fit-content; max-width: 100%; margin: 0 auto; padding: 6px; color: var(--ink);
+  background: var(--paper); border: 1px solid var(--control-edge);
   border-radius: 20px; box-shadow: 0 3px 0 color-mix(in srgb, var(--ink) 8%, transparent);
 }
+.lr-host-action-dock, .lr-host-tool-dock { display: flex; align-items: center; gap: 4px; }
+.lr-host-action-dock + .lr-host-tool-dock { padding-inline-start: 8px; border-inline-start: 1px solid var(--control-edge); }
 .lr-host-control-group { display: flex; align-items: center; gap: 4px; }
-.lr-host-control-group + .lr-host-control-group { padding-inline-start: 8px; border-inline-start: 1px solid var(--control-edge); }
+.lr-host-control-group + .lr-host-control-group { padding-inline-start: 4px; }
 .lr-microphone-settings { min-width: 0; max-width: 440px; gap: 6px; }
 .lr-microphone-settings .lr-capture-device { padding: 0; }
 .lr-source-audio-settings .lr-capture-device { padding: 0; }
@@ -1975,14 +1981,20 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 .lr-capture-device small, .lr-microphone-settings > small { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .lr-source-picker-body > .lr-capture-device { margin-bottom: 10px; }
 .lr-source-picker .lr-capture-device :is(label, small) { color: #9aa8bb; }
-@media (max-width: 580px) {
-  .lr-host-share-controls { gap: 2px; }
+@container host-controls (max-width: 920px) {
+  .lr-host-share-controls { gap: 4px; }
+  .lr-host-action-dock, .lr-host-tool-dock { gap: 2px; }
+  .lr-host-action-dock + .lr-host-tool-dock { padding-inline-start: 4px; }
   .lr-host-control-group { gap: 2px; }
   .lr-host-control-group + .lr-host-control-group { padding-inline-start: 4px; }
   .lr-host-share-controls .lr-btn { width: 44px; padding: 0; }
   .lr-host-share-controls .lr-cap { display: none; }
-  .lr-host-share-controls .lr-btn[aria-controls] { width: auto; min-width: 44px; height: auto; min-height: 44px; grid-auto-flow: row; gap: 2px; padding: 4px 8px; }
-  .lr-host-share-controls .lr-btn[aria-controls] .lr-cap { display: inline; max-width: 9ch; white-space: normal; font-size: 11px; line-height: 1.3; text-align: center; }
+}
+@container host-controls (max-width: 340px) {
+  .lr-host-share-controls { gap: 4px; padding: 4px; }
+  .lr-host-action-dock, .lr-host-tool-dock { gap: 0; }
+  .lr-host-control-group { gap: 0; }
+  .lr-host-control-group + .lr-host-control-group { padding-inline-start: 2px; }
 }
 .lr-room.is-theater .lr-stage-notices {
   position: absolute;

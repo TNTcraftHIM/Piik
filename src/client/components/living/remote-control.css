@@ -78,17 +78,10 @@
   .lr-remote-keys { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .lr-remote-shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .lr-remote-shortcuts:has(> :nth-child(4):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lr-host-share-controls .lr-remote-trigger .lr-btn[aria-controls] { width: 44px; height: 44px; min-height: 44px; padding: 0; }
-  .lr-host-share-controls .lr-remote-trigger .lr-btn[aria-controls] .lr-cap { display: none; }
 }
 @media (max-width: 380px) {
   .lr-remote-keyboard { padding-inline: 6px; }
   .lr-remote-key-row { gap: 3px; }
   .lr-remote-key-layout.is-letters .lr-remote-key-row .lr-chip { flex-basis: calc((100% - 27px) / 10); }
-  .lr-host-share-controls:has(.lr-remote-trigger) { gap: 0; padding: 2px; }
-  .lr-host-share-controls:has(.lr-remote-trigger) .lr-btn[aria-controls] { width: 44px; height: 44px; min-height: 44px; padding: 0; }
-  .lr-host-share-controls:has(.lr-remote-trigger) .lr-btn[aria-controls] .lr-cap { display: none; }
-  .lr-host-share-controls:has(.lr-remote-trigger) .lr-host-control-group { gap: 0; }
-  .lr-host-share-controls:has(.lr-remote-trigger) .lr-host-control-group + .lr-host-control-group { padding-inline-start: 2px; }
 }
 @media (max-width: 580px) { .lr-remote-feedback > span:not(.visually-hidden) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
