@@ -395,8 +395,14 @@ remain under ignored `build/remote-control-prototype/`.
 
 Touch input uses a relative touchpad over the contained picture: one finger
 moves the cursor, a tap clicks, holding starts a drag, and two fingers scroll
-or tap for a right-click. Pointer events select this behavior without OS or
-browser-name checks. The gesture owner is scoped to the current grant;
+or tap for a right-click. Pinching magnifies the local picture up to 4×; while
+magnified, a two-finger drag pans the view instead of scrolling the remote page.
+A 1× button restores the whole picture. One gesture owner distinguishes pinch
+from scrolling after both contacts update, and retains that choice until release.
+The input geometry uses the transformed picture; local panning keeps its touch
+cursor visible without sending input. Zoom is cleared with the grant and does
+not change capture resolution or the media route. Pointer events select this
+behavior without OS or browser-name checks. The gesture owner is scoped to the current grant;
 cancellation, blur and grant retirement release held input. Temporary loss of
 Host window focus retains the grant's touchpad position while suspending input.
 The keyboard panel reserves space below the picture, or beside it in a short
@@ -422,8 +428,9 @@ There is no clipboard synchronization. This follows the touchpad conventions in
 touch from physical keyboard/mouse input. No game-specific touch layout is added.
 Chromium touch emulation delivered native clicks, scrolling, drag/cancel,
 Chinese/emoji text and shortcuts over the existing P2P route. Narrow layouts,
-DOM fullscreen and Host revocation passed; physical Android/iOS soft keyboards
-and Safari's native fullscreen remain device checks, not established by emulation.
+DOM fullscreen, zoom/pan coordinate alignment and Host revocation passed;
+physical Android/iOS soft keyboards and Safari's native fullscreen remain device
+checks, not established by emulation.
 
 Remote control can target an additive 2.x release under the
 [compatibility contract](../standards/versioning.md#extending-interfaces): advertise

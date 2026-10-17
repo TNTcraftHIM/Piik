@@ -1,10 +1,11 @@
 import type { RemoteInputEvent } from "./input-session";
+import type { RemoteViewport } from "./viewport";
 
 type Point = { x: number; y: number };
 type Contact = Point & { start: Point };
 
-// Gesture lifetime belongs to the current input grant. Coordinates stay in the
-// shared picture, so viewport rotation and letterboxing do not move the target.
+// Gesture lifetime belongs to the current input grant. Pointer coordinates
+// belong to the source picture; the local viewport supplies its visible bounds.
 export class RemoteTouchpad {
   position: Point = { x: 0.5, y: 0.5 };
   private contacts = new Map<number, Contact>();
@@ -13,12 +14,16 @@ export class RemoteTouchpad {
   private moved = false;
   private dragging = false;
   private started = 0;
+  private pair: { center: Point; distance: number } | null = null;
+  private gesture: "pending" | "scroll" | "view" = "pending";
+  private frame: number | null = null;
 
   constructor(
     private readonly picture: () => { width: number; height: number } | null,
     private readonly input: (event: RemoteInputEvent) => void,
     private readonly scroll: (deltaY: number) => void,
     private readonly changed: (position: Point) => void,
+    private readonly viewport: Pick<RemoteViewport, "scale" | "transform" | "visiblePosition">,
   ) {}
 
   down(id: number, x: number, y: number): void {
@@ -26,7 +31,7 @@ export class RemoteTouchpad {
       this.started = performance.now();
       this.fingers = 0;
       this.moved = false;
-      this.input({ type: "move", ...this.position });
+      this.gesture = "pending";
       this.changed(this.position);
     }
     this.contacts.set(id, { x, y, start: { x, y } });
@@ -36,16 +41,25 @@ export class RemoteTouchpad {
       this.hold = setTimeout(() => {
         this.hold = null;
         this.dragging = true;
+        this.input({ type: "move", ...this.position });
         this.input({ type: "button", button: 0, down: true });
       }, 500);
     } else {
       this.endDrag();
+      this.pair = this.pairGeometry();
     }
   }
 
   move(id: number, x: number, y: number): void {
     const contact = this.contacts.get(id);
     if (!contact) return;
+    if (this.fingers > 1) {
+      contact.x = x; contact.y = y;
+      // A native touch packet produces one pointer event per finger. Decide
+      // pinch versus parallel movement after both arrive, not halfway through.
+      if (this.frame === null) this.frame = requestAnimationFrame(() => this.movePair());
+      return;
+    }
     const dx = x - contact.x, dy = y - contact.y;
     if (Math.hypot(x - contact.start.x, y - contact.start.y) > 8) {
       this.moved = true;
@@ -55,26 +69,47 @@ export class RemoteTouchpad {
     // Keep the initial displacement while deciding tap versus motion. Updating
     // the origin before this threshold loses the start of every small swipe.
     contact.x = x; contact.y = y;
-    if (this.fingers === 1) {
-      const picture = this.picture();
-      if (!picture?.width || !picture.height) return;
-      this.position = {
-        x: Math.max(0, Math.min(1, this.position.x + dx / picture.width)),
-        y: Math.max(0, Math.min(1, this.position.y + dy / picture.height)),
-      };
-      this.input({ type: "move", ...this.position });
-      this.changed(this.position);
-    } else if (this.fingers === 2 && this.contacts.size === 2) {
-      this.scroll(-dy / 2);
+    const picture = this.picture();
+    if (!picture?.width || !picture.height) return;
+    this.position = this.viewport.visiblePosition({
+      x: Math.max(0, Math.min(1, this.position.x + dx / picture.width)),
+      y: Math.max(0, Math.min(1, this.position.y + dy / picture.height)),
+    });
+    this.input({ type: "move", ...this.position });
+    this.changed(this.position);
+  }
+
+  private pairGeometry(): { center: Point; distance: number } | null {
+    if (this.fingers !== 2 || this.contacts.size !== 2) return null;
+    const [a, b] = [...this.contacts.values()];
+    return { center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)) };
+  }
+
+  private movePair(): void {
+    if (this.frame !== null) cancelAnimationFrame(this.frame);
+    this.frame = null;
+    const next = this.pairGeometry(), previous = this.pair;
+    if (!next || !previous) return;
+    if (this.gesture === "pending") {
+      const pinch = Math.abs(next.distance - previous.distance) > Math.max(8, previous.distance * .08);
+      const pan = Math.hypot(next.center.x - previous.center.x, next.center.y - previous.center.y) > 8;
+      if (!pinch && !pan) return;
+      this.gesture = pinch || this.viewport.scale > 1 ? "view" : "scroll";
+      this.moved = true;
     }
+    if (this.gesture === "view") this.viewport.transform(previous.center, next.center, next.distance / previous.distance);
+    else this.scroll(previous.center.y - next.center.y);
+    this.pair = next;
   }
 
   up(id: number): void {
+    this.movePair();
     if (!this.contacts.delete(id)) return;
     this.clearHold();
     if (this.contacts.size) return;
     if (!this.moved && !this.dragging && performance.now() - this.started < 500 && this.fingers <= 2) {
       const button = this.fingers === 2 ? 2 : 0;
+      this.input({ type: "move", ...this.position });
       this.input({ type: "button", button, down: true });
       this.input({ type: "button", button, down: false });
     }
@@ -96,6 +131,9 @@ export class RemoteTouchpad {
   }
 
   reset(): void {
+    if (this.frame !== null) cancelAnimationFrame(this.frame);
+    this.frame = null;
+    this.pair = null;
     this.clearHold();
     this.endDrag();
     this.contacts.clear();

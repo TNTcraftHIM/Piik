@@ -5,6 +5,7 @@ import { Glyph } from "../../ui/icons";
 import type { InputTransport } from "../../remote-control/input-route";
 import { RemoteInputSession, picturePoint, pictureRect, type RemoteInputState, type RemoteInputEvent } from "../../remote-control/input-session";
 import { RemoteTouchpad } from "../../remote-control/touchpad";
+import { RemoteViewport } from "../../remote-control/viewport";
 import { RemoteKeyboard } from "./RemoteKeyboard";
 import { Btn } from "./primitives";
 import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
@@ -25,10 +26,12 @@ export function RemoteControl({ channel, videoRef, available }: {
   const [password, setPassword] = useState("");
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [touch, setTouch] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
   const session = useRef<RemoteInputSession | null>(null);
   const surface = useRef<HTMLDivElement | null>(null);
   const cursor = useRef<SVGSVGElement | null>(null);
   const touchpad = useRef<RemoteTouchpad | null>(null);
+  const viewport = useRef<RemoteViewport | null>(null);
   const active = state?.state === "active" && available && inline && channel?.readyState === "open";
   const controlled = (state?.state === "active" || state?.state === "suspended") && available && inline && channel?.readyState === "open";
   const input = useCallback((event: RemoteInputEvent) => session.current?.input(event), []);
@@ -65,7 +68,8 @@ export function RemoteControl({ channel, videoRef, available }: {
   }, [active]);
   useEffect(() => {
     const video = videoRef.current;
-    if (!controlled || !video) { setTouch(false); return; }
+    const element = surface.current;
+    if (!controlled || !video || !element) { setTouch(false); return; }
     const updateCursor = () => {
       const picture = pictureRect(video);
       const rect = surface.current?.getBoundingClientRect();
@@ -73,20 +77,28 @@ export function RemoteControl({ channel, videoRef, available }: {
       cursor.current.style.left = `${picture.left - rect.left + current.position.x * picture.width}px`;
       cursor.current.style.top = `${picture.top - rect.top + current.position.y * picture.height}px`;
     };
+    const view = new RemoteViewport(video, element, zoomed => {
+      setZoomed(zoomed);
+      current.position = view.visiblePosition(current.position);
+      updateCursor();
+    });
+    viewport.current = view;
     const current = new RemoteTouchpad(
       () => pictureRect(video),
       event => session.current?.input(event),
       delta => session.current?.scroll(delta, 0),
       updateCursor,
+      view,
     );
     touchpad.current = current;
     // Layout changes and decoded aspect-ratio changes share the input geometry.
-    const observer = new ResizeObserver(updateCursor);
+    const refresh = () => view.refresh();
+    const observer = new ResizeObserver(refresh);
     observer.observe(video);
-    video.addEventListener("resize", updateCursor);
+    video.addEventListener("resize", refresh);
     return () => {
-      observer.disconnect(); video.removeEventListener("resize", updateCursor);
-      current.reset(); touchpad.current = null;
+      observer.disconnect(); video.removeEventListener("resize", refresh);
+      current.reset(); view.reset(); touchpad.current = null; viewport.current = null;
     };
   }, [controlled, channel, videoRef]);
   useEffect(() => {
@@ -242,6 +254,10 @@ export function RemoteControl({ channel, videoRef, available }: {
         <svg ref={cursor} className="lr-remote-touch-cursor" viewBox="0 0 24 28" aria-hidden="true" style={{ display: touch ? undefined : "none" }}>
           <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />
         </svg>
+      </div>}
+      {controlled && zoomed && <div className="lr-remote-zoom">
+        <button type="button" className="lr-chip" aria-label={t("remote.resetZoom")}
+          onClick={() => { reset(); viewport.current?.reset(); surface.current?.focus({ preventScroll: true }); }}>1×</button>
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls}
         mouseControl={!touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad"
