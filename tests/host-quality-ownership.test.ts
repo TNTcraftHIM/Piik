@@ -107,7 +107,7 @@ function fixture(launchedByClient = true) {
     signalRef: ref({ setHostQualitySettings: vi.fn(), send: vi.fn() }),
     setQualitySettings: vi.fn(), setAdvancedQuality: vi.fn(), setChangingQuality: vi.fn(), savePreferredQuality: vi.fn(),
     setNoticeValue: vi.fn(), setNoticeError: vi.fn(), readableError: hostActionErrorNotice,
-    setDetails: vi.fn(), setNativeActive: vi.fn(), setRemoteControlRequests: vi.fn(),
+    setDetails: vi.fn(), setNativeActive: vi.fn(), setRemoteControlState: vi.fn(),
     remoteInputPeersRef: ref([]), getRuntimeCapabilities: vi.fn(async () => ({ remoteInput: false })),
     applyCaptureProfile: vi.fn(async (_stream: unknown, profile: QualitySettings) => { physical = profile; }),
     captureDetails: () => ({}),

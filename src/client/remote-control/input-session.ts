@@ -1,13 +1,6 @@
-import { z } from "zod";
 import type { InputTransport } from "./input-route";
-
-const stateSchema = z.object({
-  state: z.enum(["ready", "unavailable", "pending", "active", "suspended", "failed"]),
-  grant: z.string().regex(/^[0-9a-f]{64}$/).optional(),
-  intent: z.string().regex(/^[0-9a-f]{32}$/).optional(),
-}).strict();
-
-export type RemoteInputState = z.infer<typeof stateSchema>;
+import { remoteInputStateSchema, type RemoteInputState } from "./protocol";
+export type { RemoteInputState } from "./protocol";
 export type RemoteInputEvent =
   | { type: "move"; x: number; y: number }
   | { type: "relative"; dx: number; dy: number }
@@ -57,7 +50,7 @@ export class RemoteInputSession {
     if (this.disposed || typeof event.data !== "string" || event.data.length > 1024) return;
     let decoded: unknown;
     try { decoded = JSON.parse(event.data); } catch { return; }
-    const parsed = stateSchema.safeParse(decoded);
+    const parsed = remoteInputStateSchema.safeParse(decoded);
     if (!parsed.success) return;
     const state = parsed.data;
     if (this.intent !== null && state.intent !== this.intent) return;
@@ -80,22 +73,23 @@ export class RemoteInputSession {
       return true;
     } catch {
       this.intent = null;
-      this.set({ state: "failed" });
+      this.set({ state: "failed", mode: this.state?.mode ?? "ask" });
       this.channel.close();
       return false;
     }
   }
 
-  request(): void {
+  request(password?: string): void {
     this.intent = crypto.randomUUID().replaceAll("-", "");
-    if (this.send({ type: "request", intent: this.intent })) this.set({ state: "pending", intent: this.intent });
+    if (this.send({ type: "request", intent: this.intent, ...(password !== undefined ? { password } : {}) }))
+      this.set({ state: "pending", mode: this.state?.mode ?? "ask", intent: this.intent });
   }
 
   release(): void {
     if (this.intent === null) return;
     const intent = this.intent;
     this.intent = null;
-    if (this.send({ type: "release", intent })) this.set({ state: "ready" });
+    if (this.send({ type: "release", intent })) this.set({ state: "ready", mode: this.state?.mode ?? "ask" });
   }
 
   input(event: RemoteInputEvent): void {

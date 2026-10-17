@@ -520,8 +520,12 @@ func (session *Session) RemoteInputChanges() <-chan struct{} {
 	return session.remoteInput.Changes()
 }
 
-func (session *Session) RemoteInputRequests() []remoteinput.View {
-	return session.remoteInput.Views()
+func (session *Session) RemoteInputState() remoteinput.State {
+	return session.remoteInput.State()
+}
+
+func (session *Session) SetRemoteInputPolicy(mode, password string) error {
+	return session.remoteInput.SetPolicy(mode, password)
 }
 
 func (session *Session) SetRemoteInputPeers(peers []protocol.RemoteInputPeer) error {

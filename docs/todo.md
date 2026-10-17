@@ -21,7 +21,8 @@ platform deferrals or establish a diagnosis for unmatched reports.
   acceptance. Source switching, focus/geometry and game mouse/scan-code input are
   implemented. Physical moved-window/game checks and an actual remote-device
   trial remain. Keep one Host publication and one
-  keyboard/mouse controller at a time, with explicit Host permission. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
+  keyboard/mouse controller at a time, under the Host's source-scoped permission policy. Ask each time, room admission
+  and password modes are implemented; mobile touch/text input is in progress. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
   owns limitations and evidence. This is not part of the public release.
   [Window/game input assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns window scope, focus/geometry work and game-compatibility
@@ -37,6 +38,9 @@ platform deferrals or establish a diagnosis for unmatched reports.
 
 ## Held By Owner
 
+- [ ] **Multiple remote-control screens.** Deferred by the owner on 2026-10-17.
+  Keep one shared source and the existing Host source picker; Viewer-initiated
+  screen switching and simultaneous multi-screen streams are later work.
 - [ ] **Independent virtual input devices for remote co-play.** Deferred by the owner on
   2026-10-17. This phase uses keyboard/mouse only and adds no virtual gamepad
   driver. Per-player virtual keyboards, mice and gamepads are later work.

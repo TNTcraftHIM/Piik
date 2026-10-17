@@ -179,8 +179,8 @@ import {
   nativeCaptureTargetKey,
   type NativeCapturePath,
 } from "../native/capture-selection";
-import type { NativeCaptureTarget, RemoteControlRequest } from "../native/wire";
-import { RemoteControlApproval } from "../components/living/RemoteControl";
+import type { NativeCaptureTarget, RemoteControlState } from "../native/wire";
+import { HostRemoteControl } from "../components/living/HostRemoteControl";
 import {
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
@@ -389,7 +389,7 @@ export function HostPage({
     return client ? client.microphones() : browserCaptureDevices("audioinput");
   }, []);
   const [nativeActive, setNativeActive] = useState(false);
-  const [remoteControlRequests, setRemoteControlRequests] = useState<RemoteControlRequest[]>([]);
+  const [remoteControlState, setRemoteControlState] = useState<RemoteControlState | null>(null);
   const remoteInputPeersRef = useRef<Extract<ServerMessage, { type: "remote-input-peers" }>["peers"]>([]);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [nativeSources, setNativeSources] =
@@ -1257,7 +1257,7 @@ export function HostPage({
       nativeSourceSelectionRef.current = selection;
       nativeEventCleanup = client.onEvent((event) => {
         if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeClientRef.current !== client) return;
-        if (event.type === "remote-control-state") setRemoteControlRequests(event.requests);
+        if (event.type === "remote-control-state") setRemoteControlState(event);
         if (event.type === "audio-state") {
           nativeSourceAudioRef.current = event.sourceAudio;
           setMicrophoneEnabled(event.microphone);
@@ -1597,7 +1597,7 @@ export function HostPage({
     nativeSourceAudioRef.current = undefined;
     nativeSourceSelectionRef.current = null;
     setNativeActive(false);
-    setRemoteControlRequests([]);
+    setRemoteControlState(null);
     if (!client || !shareGeneration) {
       releaseUnusedNativeClient();
       return;
@@ -3813,10 +3813,18 @@ export function HostPage({
               />
             ) : null}
           </div>
-          {nativeActive && remoteControlRequests.length > 0 && <RemoteControlApproval
-            requests={remoteControlRequests.map(request => {
+          {nativeActive && remoteControlState && <HostRemoteControl
+            mode={remoteControlState.mode}
+            disabled={sharingPaused || switchingSource}
+            requests={remoteControlState.requests.map(request => {
               return { ...request, name: viewers.find(viewer => viewer.peerId === request.peerId)?.label ?? t("common.name.viewerDefault") };
             })}
+            onPolicy={async (mode, password) => {
+              const client = nativeClientRef.current;
+              const shareId = nativeShareGenerationRef.current;
+              if (!client || !shareId) throw new Error("Native share is unavailable");
+              await client.setRemoteControlPolicy(shareId, mode, password);
+            }}
             onDecide={async (id, allow) => {
               const client = nativeClientRef.current;
               const shareId = nativeShareGenerationRef.current;

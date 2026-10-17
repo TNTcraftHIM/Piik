@@ -276,7 +276,7 @@ protocol change is accepted by this assessment.
 
 ## Attended Remote-Control Prototype
 
-Reviewed 2026-10-16. The Windows attended prototype is local experiment work,
+Reviewed 2026-10-17. The Windows remote-control prototype is local experiment work,
 not a released feature. Cross-platform control remains a candidate. A Browser on a computer or phone could control a desktop App;
 controlling Android/iOS themselves is a separate platform problem. The
 [Captured Surface Control draft](https://w3c.github.io/mediacapture-surface-control/)
@@ -327,8 +327,14 @@ and the platform [AES-GCM API](https://developer.mozilla.org/en-US/docs/Web/API/
 
 `internal/app/remoteinput` owns one process-wide grant because the App's native
 sessions share the same physical keyboard and pointer. The Viewer requests
-control; the Host approves, declines or ends control on the current sharing
-page. The existing authorized native-control connection carries these commands;
+control; the Host chooses Ask each time (default), Allow room Viewers, or
+Require a password on the current sharing page. Automatic modes accept only
+authenticated room Viewers and never displace an active controller. Permission
+belongs to the current shared source; changing sources or stopping resets it
+to Ask each time. The password verifier is kept only in App memory, with one
+attempt per second shared across that source's endpoints. Nothing is saved in
+configuration, diagnostic reports or links. Host approval, decline and end-control
+actions stay on the same sharing page. The existing authorized native-control connection carries these commands;
 only the session that owns the share can decide its requests. Request identity
 comes from the authenticated room binding, never a relay-supplied participant
 name. The grant is bound to that input channel and source, with a fresh nonce for each approval.
@@ -347,7 +353,10 @@ the recovered path carries a fresh request. App playback and relay descendants
 follow the same rule; interruption releases the upstream grant.
 A closed control channel needs a new media
 connection; neither path silently restores a grant. Either side can end control from its page or
-Ctrl+Alt+F10. Escape releases game mouse capture without ending the grant.
+Ctrl+Alt+F10. A Host stop (including that local shortcut) also resets automatic
+permission to Ask each time. A Viewer ending their own control leaves the Host's
+policy in place. This adds no service, automatic sharing or control across App
+restart. Escape releases game mouse capture without ending the grant.
 Window blur releases held
 input; hidden, locally paused or native PiP/fullscreen video ends control.
 DOM fullscreen keeps the page's input surface and retains control. Pointer motion retains the

@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { RemoteControlMode } from "../remote-control/protocol";
 import { debugError, debugEvent } from "../lib/debug";
 
 import type {
@@ -702,6 +703,10 @@ export class NativeClient {
 
   async setRemoteControl(shareId: string, requestId: string, allow: boolean): Promise<void> {
     await this.request("set-remote-control", { shareId, requestId, allow }, nativeAckResponseSchema);
+  }
+
+  async setRemoteControlPolicy(shareId: string, mode: RemoteControlMode, password?: string): Promise<void> {
+    await this.request("set-remote-control-policy", { shareId, mode, ...(password !== undefined ? { password } : {}) }, nativeAckResponseSchema);
   }
 
   async setRemoteInputPeers(shareId: string, peers: { peerId: string; endpointId: string; secret: string }[]): Promise<void> {

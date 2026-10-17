@@ -220,6 +220,19 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			return nil, err
 		}
 		return response(envelope, "remote-control-set"), nil
+	case "set-remote-control-policy":
+		var request remoteControlPolicyRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) {
+			return nil, protocolViolation("native remote-control policy is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		if err := host.SetRemoteInputPolicy(request.Mode, request.Password); err != nil {
+			return nil, err
+		}
+		return response(envelope, "remote-control-set"), nil
 	case "set-remote-control":
 		var request remoteControlRequest
 		if err := decodeStrict(payload, &request); err != nil ||
@@ -915,7 +928,7 @@ func (session *Session) watchHost(host *nativehost.Session) {
 			session.emit(loopback.ControlEvent{
 				Value: remoteControlStateEvent{
 					eventEnvelope: eventEnvelope{Version: loopback.ProtocolVersion, Type: "remote-control-state", ShareID: host.ShareID()},
-					Requests:      host.RemoteInputRequests(),
+					State:         host.RemoteInputState(),
 				},
 				Current: func() bool { return session.current(host.ShareID()) == host },
 			})

@@ -46,30 +46,30 @@ it("binds input to the current request and retires cancelled or replaced grants"
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
   const grant = "a".repeat(64);
-  channel.receive({ state: "ready" });
+  channel.receive({ mode: "ask", state: "ready" });
   session.request();
   const first = channel.sent.at(-1)?.intent;
   session.release();
-  channel.receive({ state: "active", intent: first, grant });
+  channel.receive({ mode: "ask", state: "active", intent: first, grant });
   expect(session.state?.state).toBe("ready");
   expect(channel.sent.at(-1)).toEqual({ type: "release", intent: first });
   session.request();
   const second = channel.sent.at(-1)?.intent;
-  channel.receive({ state: "ready", intent: first });
+  channel.receive({ mode: "ask", state: "ready", intent: first });
   expect(session.state?.state).toBe("pending");
-  channel.receive({ state: "active", intent: second, grant });
+  channel.receive({ mode: "ask", state: "active", intent: second, grant });
   session.input({ type: "key", code: "KeyW", down: true });
   expect(channel.sent.at(-1)).toEqual({ type: "key", code: "KeyW", down: true, grant });
-  channel.receive({ state: "suspended", intent: second, grant });
+  channel.receive({ mode: "ask", state: "suspended", intent: second, grant });
   const count = channel.sent.length;
   session.input({ type: "key", code: "KeyD", down: true });
   expect(channel.sent).toHaveLength(count);
   session.input({ type: "reset" });
   expect(channel.sent.at(-1)).toEqual({ type: "reset", grant });
-  channel.receive({ state: "active", intent: second, grant });
+  channel.receive({ mode: "ask", state: "active", intent: second, grant });
   session.dispose();
   expect(channel.sent.at(-1)).toEqual({ type: "release", intent: second });
-  channel.receive({ state: "active", intent: second, grant });
+  channel.receive({ mode: "ask", state: "active", intent: second, grant });
   session.input({ type: "key", code: "KeyW", down: true });
   expect(channel.sent.at(-1)).toEqual({ type: "release", intent: second });
   expect(channel.readyState).toBe("open"); // Media owns the channel lifetime.
@@ -84,12 +84,32 @@ it("maps only visible picture pixels when playback has letterboxing", () => {
   expect(picturePoint(video, 901, 350)).toBeNull();
 });
 
+it("sends a control password only in the request and follows the App policy after cancellation", () => {
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  channel.receive({ state: "ready", mode: "password" });
+  session.request("temporary-secret");
+  const intent = channel.sent.at(-1)?.intent;
+  expect(channel.sent.at(-1)).toMatchObject({ type: "request", password: "temporary-secret" });
+  channel.receive({ state: "ready", mode: "password", reason: "password", intent });
+  expect(session.state?.reason).toBe("password");
+  session.request("temporary-secret");
+  const nextIntent = channel.sent.at(-1)?.intent;
+  channel.receive({ state: "active", mode: "password", intent: nextIntent, grant: "a".repeat(64) });
+  session.release();
+  expect(session.state?.mode).toBe("password");
+  expect(channel.sent.at(-1)).toEqual({ type: "release", intent: nextIntent });
+  channel.receive({ state: "ready", mode: "ask", intent: nextIntent });
+  expect(session.state?.mode).toBe("ask");
+  session.dispose();
+});
+
 it("preserves wheel magnitude and fractions across browser units, only within the current grant", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
   session.request();
   const intent = channel.sent.at(-1)?.intent;
-  channel.receive({ state: "active", intent, grant: "c".repeat(64) });
+  channel.receive({ mode: "ask", state: "active", intent, grant: "c".repeat(64) });
   session.scroll(100, 0);
   session.scroll(3, 1);
   session.scroll(1, 2);
@@ -100,11 +120,11 @@ it("preserves wheel magnitude and fractions across browser units, only within th
   expect(channel.sent.at(-1)?.delta).toBe(-1);
   session.scroll(-10_000, 0);
   expect(channel.sent.at(-1)?.delta).toBe(1200);
-  channel.receive({ state: "suspended", intent, grant: "c".repeat(64) });
+  channel.receive({ mode: "ask", state: "suspended", intent, grant: "c".repeat(64) });
   const suspendedCount = channel.sent.length;
   session.scroll(100, 0);
   expect(channel.sent).toHaveLength(suspendedCount);
-  channel.receive({ state: "active", intent, grant: "c".repeat(64) });
+  channel.receive({ mode: "ask", state: "active", intent, grant: "c".repeat(64) });
   session.scroll(0.75, 0);
   expect(channel.sent).toHaveLength(suspendedCount);
   session.dispose();
@@ -118,10 +138,10 @@ it("flushes coalesced motion before buttons and discards it when control ends", 
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
   const grant = "b".repeat(64);
   try {
-    channel.receive({ state: "ready" });
+    channel.receive({ mode: "ask", state: "ready" });
     session.request();
     const intent = channel.sent.at(-1)?.intent;
-    channel.receive({ state: "active", intent, grant });
+    channel.receive({ mode: "ask", state: "active", intent, grant });
     session.input({ type: "move", x: 0.2, y: 0.3 });
     session.input({ type: "move", x: 0.7, y: 0.8 });
     session.input({ type: "button", button: 0, down: false });
@@ -137,7 +157,7 @@ it("flushes coalesced motion before buttons and discards it when control ends", 
     expect(channel.sent.at(-1)).toEqual({ type: "relative", dx: 7, dy: 3, grant });
     session.input({ type: "move", x: 0.9, y: 0.1 });
     const count = channel.sent.length;
-    channel.receive({ state: "ready", intent });
+    channel.receive({ mode: "ask", state: "ready", intent });
     expect(nextFrame).toBeNull();
     expect(channel.sent).toHaveLength(count);
   } finally {

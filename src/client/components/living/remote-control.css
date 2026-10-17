@@ -2,7 +2,17 @@
 .lr-remote-input-surface.is-suspended { outline-color: var(--muted); cursor: default; }
 .lr-remote-input-status { position: absolute; top: 12px; left: 12px; z-index: 4; max-width: calc(100% - 24px); box-sizing: border-box; padding: 8px 12px; border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; pointer-events: none; }
 .lr-remote-approval { width: min(100%, 620px); margin: 12px auto 0; padding: 16px 20px; box-sizing: border-box; border: 1px solid var(--control-edge); border-radius: 20px; background: var(--paper); color: var(--ink); }
-.lr-remote-approval h2 { display: flex; gap: 8px; align-items: center; margin: 0; font-size: 14px; }
+.lr-remote-settings summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; font-size: 13px; list-style: none; }
+.lr-remote-settings summary::-webkit-details-marker { display: none; }
+.lr-remote-settings summary > span { display: flex; align-items: center; gap: 8px; }
+.lr-remote-settings summary > span:last-child { color: var(--muted); font-size: 12px; }
+.lr-remote-settings form { margin-top: 16px; }
+.lr-remote-policy-actions { display: flex; align-items: center; gap: 8px; }
+.lr-remote-policy-actions .lr-input { flex: 1; min-width: 0; }
+.lr-remote-policy-actions .lr-input input { min-width: 0; width: 100%; }
+.lr-remote-password { position: absolute; z-index: 5; top: 12px; left: 50%; transform: translateX(-50%); width: min(400px, calc(100% - 24px)); box-sizing: border-box; padding: 16px; border: 1px solid var(--control-edge); border-radius: 20px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 13px; }
+.lr-remote-password > strong { display: block; margin-bottom: 10px; }
+.lr-remote-password p { color: var(--warn); margin: 8px 0 0; font-size: 12px; }
 .lr-remote-approval p { font-size: 12px; line-height: 1.5; margin: 6px 0 0; }
 .lr-remote-note, .lr-remote-request p { color: var(--muted); }
 .lr-remote-request { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 0; }

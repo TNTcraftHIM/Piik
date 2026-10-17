@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { createPortal } from "react-dom";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import type { RemoteControlRequest } from "../../native/wire";
 import type { InputTransport } from "../../remote-control/input-route";
 import { RemoteInputSession, picturePoint, type RemoteInputState, type RemoteInputEvent } from "../../remote-control/input-session";
 import { Btn } from "./primitives";
@@ -20,6 +19,8 @@ export function RemoteControl({ channel, videoRef, available }: {
   const [locked, setLocked] = useState(false);
   const [lockFailed, setLockFailed] = useState(false);
   const [inline, setInline] = useState(true);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [password, setPassword] = useState("");
   const session = useRef<RemoteInputSession | null>(null);
   const surface = useRef<HTMLDivElement | null>(null);
   const active = state?.state === "active" && available && inline && channel?.readyState === "open";
@@ -34,6 +35,7 @@ export function RemoteControl({ channel, videoRef, available }: {
 
   useEffect(() => {
     setState(null);
+    setPasswordOpen(false); setPassword("");
     if (!channel) return;
     const current = new RemoteInputSession(channel, setState);
     session.current = current;
@@ -41,6 +43,11 @@ export function RemoteControl({ channel, videoRef, available }: {
       current.dispose(); session.current = null;
     };
   }, [channel]);
+  useEffect(() => {
+    if (controlled || state?.mode !== "password" || !available || !inline) {
+      setPasswordOpen(false); setPassword("");
+    }
+  }, [controlled, state?.mode, available, inline]);
   useEffect(() => {
     if (!available || !inline) release();
   }, [available, inline, channel, release]);
@@ -100,7 +107,11 @@ export function RemoteControl({ channel, videoRef, available }: {
     <Btn icon="mouse" title={!inline ? "remote.inlineRequired" : state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
       hint={controlled || state.state === "pending" ? "hint-remote-stop" : "hint-remote-control"}
       pressed={controlled} disabled={!available || !inline || state.state === "unavailable"}
-      onClick={() => controlled || state.state === "pending" ? release() : session.current?.request()} />
+      onClick={() => {
+        if (controlled || state.state === "pending") release();
+        else if (state.mode === "password") setPasswordOpen(open => !open);
+        else session.current?.request();
+      }} />
     {controlled && "requestPointerLock" in HTMLElement.prototype && <Btn icon="gamepad"
       title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"} pressed={locked}
       hint={locked ? "hint-remote-mouse-release" : "hint-remote-mouse-lock"}
@@ -110,7 +121,25 @@ export function RemoteControl({ channel, videoRef, available }: {
         if (locked) document.exitPointerLock();
         else try { await surface.current?.requestPointerLock(); } catch { setLockFailed(true); }
       })()} />}
-    {parent && (controlled || state.state === "pending" || state.state === "failed") && createPortal(<>
+    {parent && (controlled || state.state === "pending" || state.state === "failed" || state.reason || passwordOpen) && createPortal(<>
+      {passwordOpen && <form className="lr-remote-password" onSubmit={event => {
+        event.preventDefault(); session.current?.request(password); setPassword("");
+      }} onKeyDown={event => {
+        event.stopPropagation();
+        if (event.key === "Escape") { event.preventDefault(); setPasswordOpen(false); setPassword(""); release(); }
+      }}>
+        <strong>{t("remote.password")}</strong>
+        <div className="lr-remote-policy-actions">
+          <label className="lr-input"><Glyph name="key" size={18} />
+            <input type="password" required autoFocus autoComplete="off" maxLength={128}
+              value={password} aria-label={t("remote.password")} disabled={state.state === "pending"}
+              onChange={event => setPassword(event.target.value)} />
+          </label>
+          <Btn icon="check" title="remote.request" type="submit" disabled={!password || state.state === "pending"} />
+          <Btn icon="x" title="common.cancel" onClick={() => { setPasswordOpen(false); setPassword(""); release(); }} />
+        </div>
+        {state.reason && <p role="status">{t(`remote.reason.${state.reason}`)}</p>}
+      </form>}
       {controlled && <div ref={surface} className={`lr-remote-input-surface${active ? "" : " is-suspended"}`} tabIndex={0}
         aria-label={t("remote.surface")} role="application"
         onContextMenu={event => event.preventDefault()}
@@ -143,41 +172,10 @@ export function RemoteControl({ channel, videoRef, available }: {
           if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }} />}
-      {!active && <div className="lr-remote-input-status" role="status">
-        {t(state.state === "suspended" ? "remote.suspended" : state.state === "failed" ? "remote.failed" : "remote.pending")}
+      {!active && !passwordOpen && <div className="lr-remote-input-status" role="status">
+        {t(state.reason ? `remote.reason.${state.reason}` : state.state === "suspended" ? "remote.suspended" : state.state === "failed" ? "remote.failed"
+          : state.mode === "ask" ? "remote.pending" : "remote.connecting")}
       </div>}
     </>, parent)}
   </>;
-}
-
-export function RemoteControlApproval({ requests, onDecide }: {
-  requests: (RemoteControlRequest & { name: string })[];
-  onDecide: (id: string, allow: boolean) => Promise<void>;
-}) {
-  const { t } = useCopy();
-  const [failedId, setFailedId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const decide = async (id: string, allow: boolean) => {
-    setBusy(true);
-    setFailedId(null);
-    try {
-      await onDecide(id, allow);
-    } catch { setFailedId(id); }
-    finally { setBusy(false); }
-  };
-  return <section className="lr-remote-approval" aria-label={t("remote.title")}>
-    <h2><Glyph name="mouse" size={18} />{t("remote.title")}</h2>
-    {requests.map(request => <div className="lr-remote-request" key={request.id} role="group" aria-label={request.name}>
-      <div><strong>{request.name}</strong>
-        <p>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.approved" : "remote.waiting")}</p>
-        {failedId === request.id && <p role="alert">{t("remote.decisionFailed")}</p>}</div>
-      <div className="lr-remote-request-actions">
-        <Btn icon="x" title={request.state !== "pending" ? "remote.stop" : "remote.decline"} cap={request.state !== "pending" ? "remote.stop" : "remote.decline"}
-          hint="hint-remote-stop" disabled={busy} onClick={() => void decide(request.id, false)} />
-        {request.state === "pending" && <Btn icon="check" tone="primary" title="remote.allow" cap="remote.allow" hint="hint-remote-control" disabled={busy} onClick={() => void decide(request.id, true)} />}
-      </div>
-    </div>)}
-    {requests.some(request => request.state === "pending") && <p className="lr-remote-note">{t("remote.consent")}</p>}
-    {requests.some(request => request.state !== "pending") && <p className="lr-remote-note">{t("remote.shortcut")} <kbd>Ctrl + Alt + F10</kbd></p>}
-  </section>;
 }

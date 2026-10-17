@@ -1,5 +1,5 @@
-// Package remoteinput owns the experimental, attended desktop input grant.
-// Only the owning Host control session can approve a connection. Media routing remains
+// Package remoteinput owns the experimental desktop input grant.
+// Only the owning Host control session can choose its authorization policy. Media routing remains
 // outside this package; closing its exact source or connection releases input.
 package remoteinput
 
@@ -26,17 +26,18 @@ const ChannelLabel = inputroute.Label
 type bounds struct{ left, top, width, height int32 }
 
 type inputEvent struct {
-	Type   string  `json:"type"`
-	Grant  string  `json:"grant,omitempty"`
-	Intent string  `json:"intent,omitempty"`
-	X      float64 `json:"x,omitempty"`
-	Y      float64 `json:"y,omitempty"`
-	Button int     `json:"button,omitempty"`
-	Down   bool    `json:"down,omitempty"`
-	Code   string  `json:"code,omitempty"`
-	Delta  int     `json:"delta,omitempty"`
-	DX     int32   `json:"dx,omitempty"`
-	DY     int32   `json:"dy,omitempty"`
+	Type     string  `json:"type"`
+	Grant    string  `json:"grant,omitempty"`
+	Intent   string  `json:"intent,omitempty"`
+	Password string  `json:"password,omitempty"`
+	X        float64 `json:"x,omitempty"`
+	Y        float64 `json:"y,omitempty"`
+	Button   int     `json:"button,omitempty"`
+	Down     bool    `json:"down,omitempty"`
+	Code     string  `json:"code,omitempty"`
+	Delta    int     `json:"delta,omitempty"`
+	DX       int32   `json:"dx,omitempty"`
+	DY       int32   `json:"dy,omitempty"`
 }
 
 type inputSink interface {
@@ -62,12 +63,15 @@ type Manager struct {
 }
 
 type Session struct {
-	manager *Manager
-	target  nativecapture.CaptureTarget
-	paused  bool
-	closed  bool
-	changed chan struct{}
-	route   *inputroute.Relay
+	manager       *Manager
+	target        nativecapture.CaptureTarget
+	paused        bool
+	closed        bool
+	changed       chan struct{}
+	route         *inputroute.Relay
+	mode          string
+	password      [32]byte
+	passwordRetry time.Time
 }
 
 type connection struct {
@@ -126,12 +130,12 @@ func (m *Manager) NewSession() *Session {
 	if m == nil {
 		return nil
 	}
-	s := &Session{manager: m, changed: make(chan struct{}, 1)}
+	s := &Session{manager: m, changed: make(chan struct{}, 1), mode: "ask"}
 	s.route = inputroute.New(s.receivePacket)
 	return s
 }
 
-// Changes coalesces notifications; Views reads the current grant owner. Input
+// Changes coalesces notifications; State reads the current permission and grant owner. Input
 // packets do not generate UI updates, and no callback runs under the input lock.
 func (s *Session) Changes() <-chan struct{} {
 	if s == nil {
@@ -164,6 +168,7 @@ func (s *Session) SetTarget(target nativecapture.CaptureTarget) {
 		target = nativecapture.CaptureTarget{}
 	}
 	s.target = target
+	s.mode, s.password = "ask", [32]byte{}
 	if m.active != nil && m.active.owner == s {
 		m.release()
 	}
@@ -257,6 +262,10 @@ func (s *Session) receivePacket(edgeID string, packet inputroute.Packet) {
 }
 
 func (m *Manager) send(c *connection, state string) {
+	m.reply(c, state, "")
+}
+
+func (m *Manager) reply(c *connection, state, reason string) {
 	if c.epoch == "" {
 		return
 	}
@@ -267,7 +276,9 @@ func (m *Manager) send(c *connection, state string) {
 		State  string `json:"state"`
 		Grant  string `json:"grant,omitempty"`
 		Intent string `json:"intent,omitempty"`
-	}{state, c.grant, c.intent})
+		Mode   string `json:"mode"`
+		Reason string `json:"reason,omitempty"`
+	}{state, c.grant, c.intent, c.owner.mode, reason})
 	c.owner.route.Reply(inputroute.Packet{ID: c.id, Epoch: c.epoch, Data: c.cipher.seal(data, c.epoch)})
 }
 
@@ -352,6 +363,20 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 		id := make([]byte, 16)
 		_, _ = rand.Read(id)
 		c.requestID, c.intent = hex.EncodeToString(id), event.Intent
+		if c.owner.mode != "ask" {
+			if reason := c.owner.authorize(event.Password); reason != "" {
+				m.reply(c, "ready", reason)
+				return
+			}
+			// Automatic permission never displaces another controller, including
+			// a controller of the App's other native session.
+			if m.active != nil {
+				m.reply(c, "ready", "busy")
+				return
+			}
+			m.grant(c)
+			return
+		}
 		c.requested = true
 		m.send(c, "pending")
 		c.owner.notify()
@@ -459,7 +484,9 @@ func (m *Manager) Revoke() {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.release()
+	if m.active != nil {
+		m.active.owner.setPolicy("ask", [32]byte{})
+	}
 }
 
 func (m *Manager) Close() {
@@ -475,21 +502,27 @@ func (m *Manager) Close() {
 	}
 }
 
-func (s *Session) Views() []View {
-	views := []View{}
+type State struct {
+	Mode     string `json:"mode"`
+	Requests []View `json:"requests"`
+}
+
+func (s *Session) State() State {
+	state := State{Mode: "ask", Requests: []View{}}
 	if s == nil {
-		return views
+		return state
 	}
 	m := s.manager
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	state.Mode = s.mode
 	for _, c := range m.connections {
 		if c.owner == s && (c.requested || m.active == c) {
-			views = append(views, View{c.requestID, c.peerID, m.state(c)})
+			state.Requests = append(state.Requests, View{c.requestID, c.peerID, m.state(c)})
 		}
 	}
-	sort.Slice(views, func(i, j int) bool { return views[i].ID < views[j].ID })
-	return views
+	sort.Slice(state.Requests, func(i, j int) bool { return state.Requests[i].ID < state.Requests[j].ID })
+	return state
 }
 
 func (s *Session) Decide(id string, allow bool) error {
@@ -511,6 +544,10 @@ func (s *Session) Decide(id string, allow bool) error {
 	}
 	defer s.notify()
 	if !allow {
+		if s.mode != "ask" {
+			s.setPolicy("ask", [32]byte{})
+			return nil
+		}
 		c.requested = false
 		if m.active == c {
 			m.release()
@@ -519,6 +556,11 @@ func (s *Session) Decide(id string, allow bool) error {
 		}
 		return nil
 	}
+	m.grant(c)
+	return nil
+}
+
+func (m *Manager) grant(c *connection) {
 	m.release()
 	token := make([]byte, 32)
 	_, _ = rand.Read(token)
@@ -528,5 +570,5 @@ func (s *Session) Decide(id string, allow bool) error {
 	if m.active == c {
 		m.send(c, m.state(c))
 	}
-	return nil
+	c.owner.notify()
 }

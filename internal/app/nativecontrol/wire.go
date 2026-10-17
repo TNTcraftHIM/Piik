@@ -76,9 +76,16 @@ type remoteInputPeersRequest struct {
 	Peers   []protocol.RemoteInputPeer `json:"peers"`
 }
 
+type remoteControlPolicyRequest struct {
+	requestEnvelope
+	ShareID  string `json:"shareId"`
+	Mode     string `json:"mode"`
+	Password string `json:"password,omitempty"`
+}
+
 type remoteControlStateEvent struct {
 	eventEnvelope
-	Requests []remoteinput.View `json:"requests"`
+	remoteinput.State
 }
 
 type audioStateEvent struct {
