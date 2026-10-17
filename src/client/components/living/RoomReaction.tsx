@@ -3,6 +3,7 @@ import { REACTION_DURATION_MS, REACTION_GLYPHS, isThrow, type ReactionId } from 
 import type { RoomInteraction } from "../../lib/room-interactions";
 import { identityHash } from "../../lib/identity-hash";
 import { Glyph } from "../../ui/icons";
+import { useSurfaceDocument } from "../../ui/panel-window";
 
 /** Props use the same small silhouette in the picker and on the couch. */
 export function ReactionIcon({ reaction }: { reaction: ReactionId }) {
@@ -47,11 +48,15 @@ export function RoomReaction({ reaction, area, now }: {
   reaction: RoomInteraction & { expiresAt: number }; area: RefObject<HTMLDivElement | null>; now: () => number;
 }) {
   const flight = useRef<HTMLDivElement>(null);
+  const surfaceDocument = useSurfaceDocument();
   const payload = reaction.payload;
   useLayoutEffect(() => {
     const root = area.current;
     const element = flight.current;
     if (!root || !element || payload.kind !== "reaction") return;
+    const owner = root.ownerDocument;
+    const view = owner.defaultView;
+    if (!view) return;
     const pawn = (peer: string) => root.querySelector<SVGSVGElement>(`[data-room-peer="${CSS.escape(peer)}"] .lr-person`);
     const sender = pawn(reaction.sender.peerId);
     const recipient = pawn(payload.targetPeerId ?? reaction.sender.peerId);
@@ -63,8 +68,8 @@ export function RoomReaction({ reaction, area, now }: {
         element.style.visibility = "hidden";
         return;
       }
-      frame = requestAnimationFrame(place);
-      if (document.hidden || !sender.getClientRects().length || !recipient.getClientRects().length) {
+      frame = view.requestAnimationFrame(place);
+      if (owner.hidden || !sender.getClientRects().length || !recipient.getClientRects().length) {
         element.style.visibility = "hidden";
         impact?.cancel();
         return;
@@ -85,7 +90,7 @@ export function RoomReaction({ reaction, area, now }: {
     place();
     const body = recipient.querySelector<SVGGElement>(".lr-reaction-body");
     if (isThrow(payload.reaction) && payload.targetPeerId && body &&
-      !window.matchMedia("(prefers-reduced-motion: reduce)").matches && !root.closest("[data-comic-reduced-motion]")) {
+      !view.matchMedia("(prefers-reduced-motion: reduce)").matches && !root.closest("[data-comic-reduced-motion]")) {
       const elapsed = Math.max(0, REACTION_DURATION_MS - (reaction.expiresAt - now()));
       const delay = REACTION_DURATION_MS * .32 - elapsed;
       if (delay > -560) {
@@ -98,8 +103,8 @@ export function RoomReaction({ reaction, area, now }: {
         ], { duration: 560, delay, easing: "ease-out" });
       }
     }
-    return () => { cancelAnimationFrame(frame); impact?.cancel(); };
-  }, [area, reaction, payload, now]);
+    return () => { view.cancelAnimationFrame(frame); impact?.cancel(); };
+  }, [area, reaction, payload, now, surfaceDocument]);
   if (payload.kind !== "reaction") return null;
   const gift = Boolean(payload.targetPeerId && !isThrow(payload.reaction));
   return <div ref={flight} className={`lr-reaction-flight ${payload.targetPeerId ? gift ? "is-gift" : "is-throw" : "is-expression"}`}
@@ -108,7 +113,7 @@ export function RoomReaction({ reaction, area, now }: {
       // CSS restarts after display:none or reduced motion. Event expiry still
       // owns time, including a late mount when effects are shown again.
       for (const animation of (event.target as Element).getAnimations()) {
-        if (animation instanceof CSSAnimation && animation.animationName.startsWith("lr-reaction-")) {
+        if ("animationName" in animation && (animation as CSSAnimation).animationName.startsWith("lr-reaction-")) {
           animation.currentTime = Math.min(REACTION_DURATION_MS, Math.max(0, REACTION_DURATION_MS - (reaction.expiresAt - now())));
         }
       }

@@ -33,6 +33,13 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
   through mute, pause and source replacement. A capable App/page pair opts into
   this output at startup; source sound and microphone state remain independent
   facts. Browser preview audio never becomes the native mixing source.
+- Audio input availability belongs to the Host capture/mixer owner: a live source
+  audio input or an enabled, live Host microphone makes audio available. A retained
+  mixed output track alone does not. This describes input presence, not measured
+  loudness; quiet content, share pause and Viewer-local mute remain separate facts.
+  Source replacement and microphone changes update this fact without rebuilding
+  the output or media route. An opted-in room session carries it for the current
+  publication, including late joins and signaling reconnects.
 - An audio-only update with the same capture video preserves the Browser video
   sender, encoding state and startup evidence on both direct and SFU paths.
   A new video source owns a new startup baseline; audio changes do not.

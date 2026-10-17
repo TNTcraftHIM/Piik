@@ -83,6 +83,7 @@ func (s *Server) route(
 			RoomInteractions:     true,
 			RemoteInput:          true,
 			ViewerRouteSelection: true,
+			AudioPresence:        true,
 			HostRoomSession:      true,
 		})
 		return

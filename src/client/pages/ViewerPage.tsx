@@ -208,6 +208,7 @@ export function ViewerPage({
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
   const [theaterMode, setTheaterMode] = useTheaterMode();
+  const [audioAvailable, setAudioAvailable] = useState<boolean | null>(null);
   const [hasCustomDisplayName, setHasCustomDisplayName] = useState(
     () => readStoredDisplayName() !== null,
   );
@@ -620,7 +621,9 @@ export function ViewerPage({
     );
     setInteractionSession(null);
     setRouteOptions(null);
+    setAudioAvailable(null);
     void getRuntimeCapabilities().then(capabilities => {
+      if (active && capabilities.audioPresence) signal.enableAudioPresence();
       if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions());
       if (active && capabilities.remoteInput) inputRoute.enable(identity => signal.send({ type: "subscribe-remote-input", ...identity }));
       if (active && capabilities.viewerRouteSelection) {
@@ -1759,6 +1762,10 @@ export function ViewerPage({
         );
         return;
       }
+      if (message.type === "audio-presence") {
+        setAudioAvailable(message.available);
+        return;
+      }
       if (message.type === "host-status") {
         currentHostOnline = message.online;
         if (currentHostPaused !== message.paused && message.paused) {
@@ -1785,6 +1792,7 @@ export function ViewerPage({
         return;
       }
       if (message.type === "sharing-stopped") {
+        setAudioAvailable(null);
         invalidatePresentedMedia();
         currentRouteAssignment = null;
         currentRouteConnectionId = null;
@@ -2270,6 +2278,7 @@ export function ViewerPage({
               videoRef={videoRef}
               stream={remoteMedia?.stream ?? null}
               audioTrackKey={remoteMedia?.audioTrackKey}
+              audioAvailable={audioAvailable}
               theaterMode={theaterMode}
               onToggleTheater={() => setTheaterMode((current) => !current)}
               onReconnect={retryConnection}

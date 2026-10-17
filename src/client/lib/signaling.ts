@@ -79,6 +79,8 @@ function signalUrl(): string {
 
 export class SignalingClient {
   private remoteInputEnabled = false;
+  private audioPresenceEnabled = false;
+  private hostAudioAvailable: boolean | null = null;
   interactions: RoomInteractionSession | null = null;
   private socket: WebSocket | null = null;
   private stopped = false;
@@ -123,6 +125,26 @@ export class SignalingClient {
     if (this.stopped || this.identity.role !== "host") return;
     this.remoteInputEnabled = true;
     if (this.authenticatedPeerId) this.send({ type: "subscribe-remote-input" });
+  }
+
+  enableAudioPresence(): void {
+    if (this.stopped) return;
+    this.audioPresenceEnabled = true;
+    this.flushAudioPresence();
+  }
+
+  setAudioAvailable(available: boolean): void {
+    if (this.identity.role !== "host") return;
+    this.hostAudioAvailable = available;
+    this.flushAudioPresence();
+  }
+
+  private flushAudioPresence(): void {
+    if (!this.audioPresenceEnabled || !this.authenticatedPeerId) return;
+    if (this.identity.role === "viewer") this.send({ type: "subscribe-audio-presence" });
+    else if (this.identity.shareGeneration && this.pendingShareGeneration === null && this.hostAudioAvailable !== null) {
+      this.send({ type: "set-audio-presence", shareGeneration: this.identity.shareGeneration, available: this.hostAudioAvailable });
+    }
   }
 
   enableViewerRouteSelection(): void {
@@ -250,6 +272,7 @@ export class SignalingClient {
     this.identity.roomOnly = true;
     this.pendingShareGeneration = null;
     this.hostQualityIntent = null;
+    this.hostAudioAvailable = null;
     return sent;
   }
 
@@ -410,6 +433,7 @@ export class SignalingClient {
           this.setViewerRoutePreference(this.identity.routePreference);
         }
         this.reconcileHostShareState(message);
+        this.flushAudioPresence();
       }
       if (message.type === "viewer-route-preference" && this.identity.role === "viewer") {
         this.identity.routePreference = message.preference;
@@ -417,6 +441,7 @@ export class SignalingClient {
       if ((message.type === "sharing-started" || message.type === "sharing-start-failed") &&
         this.pendingShareGeneration === message.shareGeneration) {
         this.pendingShareGeneration = null;
+        if (message.type === "sharing-started") this.flushAudioPresence();
       }
       if (message.type === "sharing-start-failed" && this.identity.role === "host" &&
         this.identity.shareGeneration === message.shareGeneration) {

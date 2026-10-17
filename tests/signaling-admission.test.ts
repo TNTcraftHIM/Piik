@@ -38,6 +38,49 @@ function fixture(role: "host" | "viewer" = "host") {
 }
 
 describe("room authentication and site admission", () => {
+  it("opts into audio presence after discovery and replays subscriptions and Host intent on reconnect", async () => {
+    const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
+    const auth = (role: string) => JSON.parse(wire.serverMessages.find(
+      (sample: { name: string }) => sample.name === `authenticated-${role}-minimal`).json);
+    const viewer = fixture("viewer");
+    viewer.sockets[0]!.receive(auth("viewer"));
+    expect(viewer.sockets[0]!.send.mock.calls.some(([raw]) => JSON.parse(raw).type === "subscribe-audio-presence")).toBe(false);
+    viewer.signal.enableAudioPresence();
+    expect(viewer.sockets[0]!.send).toHaveBeenCalledWith(JSON.stringify({ type: "subscribe-audio-presence" }));
+    viewer.sockets[0]!.dispatchEvent(Object.assign(new Event("close"), { code: 1006 }));
+    await vi.advanceTimersByTimeAsync(800);
+    viewer.sockets[1]!.dispatchEvent(new Event("open"));
+    viewer.sockets[1]!.receive(auth("viewer"));
+    expect(viewer.sockets[1]!.send).toHaveBeenCalledWith(JSON.stringify({ type: "subscribe-audio-presence" }));
+    viewer.signal.stop();
+
+    const host = fixture();
+    host.signal.setAudioAvailable(false);
+    const authenticated = { ...auth("host"), shareGeneration: "share_generation_12345678" };
+    host.sockets[0]!.receive(authenticated);
+    expect(host.sockets[0]!.send.mock.calls.some(([raw]) => JSON.parse(raw).type === "set-audio-presence")).toBe(false);
+    host.signal.enableAudioPresence();
+    host.signal.setAudioAvailable(true);
+    const intent = { type: "set-audio-presence", shareGeneration: authenticated.shareGeneration, available: true };
+    expect(host.sockets[0]!.send).toHaveBeenLastCalledWith(JSON.stringify(intent));
+    host.sockets[0]!.dispatchEvent(Object.assign(new Event("close"), { code: 1006 }));
+    host.signal.setAudioAvailable(false);
+    await vi.advanceTimersByTimeAsync(800);
+    host.sockets[1]!.dispatchEvent(new Event("open"));
+    host.sockets[1]!.receive(authenticated);
+    expect(host.sockets[1]!.send).toHaveBeenCalledWith(JSON.stringify({ ...intent, available: false }));
+    host.signal.stopSharing(authenticated.shareGeneration);
+    host.signal.startSharing("next_audio_generation", authenticated.qualitySettings, DEFAULT_ROUTE_POLICY);
+    host.signal.setAudioAvailable(true);
+    const next = { ...intent, shareGeneration: "next_audio_generation" };
+    expect(host.sockets[1]!.send).not.toHaveBeenCalledWith(JSON.stringify(next));
+    host.sockets[1]!.receive({ type: "sharing-started", shareGeneration: "next_audio_generation",
+      routePolicy: DEFAULT_ROUTE_POLICY, routeRevision: authenticated.routeRevision,
+      routeAssignment: authenticated.routeAssignment, qualitySettings: authenticated.qualitySettings, paused: false });
+    expect(host.sockets[1]!.send).toHaveBeenCalledWith(JSON.stringify(next));
+    host.signal.stop();
+  });
+
   it("opts into Viewer route selection only after discovery and reconnects with the acknowledged choice", async () => {
     const { signal, sockets, events } = fixture("viewer");
     const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));

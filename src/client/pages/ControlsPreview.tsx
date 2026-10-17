@@ -310,7 +310,7 @@ export function ControlsPreview() {
     </section>
     <section id="interaction-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">09</span><div><h2>{en ? "A little company" : "聊两句，丢个番茄。"}</h2>
-        <p>{en ? "Click a person for reactions. Move or resize either panel; supported browsers can pop chat out into an always-on-top window." : "点小人发表情；聊天与表情窗都能拖动、缩放。支持的浏览器还可将聊天弹出为置顶小窗。"}</p></div></header>
+        <p>{en ? "Chat and react in one window. Click a person to send a reaction; supported browsers can keep the whole interaction window on top." : "聊天和表情都在互动窗口里。点小人发表情；支持的浏览器可以将整个互动窗口置顶。"}</p></div></header>
       <InteractionControlsPreview />
     </section>
   </>;

@@ -183,6 +183,7 @@ func (s *Server) stopSharing(roomID string) {
 	if current, ok := s.shares[roomID]; ok {
 		s.shares[roomID] = roomShare{generation: current.generation}
 	}
+	s.broadcastAudioPresence(roomID)
 	s.clearRoomViewerEvidence(roomID)
 	s.router.stopRoom(roomID)
 	for _, viewer := range s.store.GetConnectedViewers(roomID) {

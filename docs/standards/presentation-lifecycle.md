@@ -188,6 +188,14 @@ keyboard shortcut own that action. Desktop double-click toggles the available
 fullscreen action. Remote-control input consumes its own clicks and key presses;
 controls and overlays keep their own immediate behavior.
 
+Host source-audio feedback describes the selected source independently of Host
+microphone commentary. Viewer sound controls require a received audio track and,
+when the Host supplies input availability, an available source or microphone
+input. With no input, sound controls are disabled with the no-audio explanation;
+the Viewer's volume and mute preferences remain intact for audio returning.
+Older Hosts without this fact retain received-track feedback. These controls do
+not infer input presence from silence or change capture, transport or relay audio.
+
 Volume starts on native audio output. An explicit setting away from 100% activates
 a local Web Audio stream source and gain, from silence to 200% amplitude. This also
 avoids iPhone's system-owned `video.volume`. This output

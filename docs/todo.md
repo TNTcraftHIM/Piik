@@ -33,6 +33,11 @@ platform deferrals or establish a diagnosis for unmatched reports.
   local fit/crop/stretch and per-viewing Auto/P2P/SFU choice through the existing
   route controller and shared playback settings. Host/site policy still wins;
   [routing](./standards/routing-transport.md#viewer-route-choice) owns the boundary.
+  Include Host input-availability feedback and retained Viewer volume preferences
+  in this UI acceptance; [presentation](./standards/presentation-lifecycle.md)
+  owns their meaning.
+  Also accept the combined interaction window, including its compact roster and
+  live reactions when detached; it reuses the existing room session and palette.
   Finish owner UI acceptance before release. Investigate the route-handoff stall
   seen in the bundled Chromium 152 test browser: RTP continues after commit but
   decoded video stops; the same local fixture passes VP8/H.264 switches in

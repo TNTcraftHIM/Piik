@@ -16,19 +16,34 @@ export class HostAudio {
   private closed = false;
 
   constructor(source: MediaStream, private changed: (enabled: boolean) => void,
-    private kind: BrowserCaptureSource = "browser") {
+    private kind: BrowserCaptureSource = "browser", private availabilityChanged: (available: boolean) => void = () => {}) {
     this.source = source;
+    this.watchSource();
   }
 
   /** Capture facts come from the input, never the mixer destination track. */
   get sourceStream(): MediaStream { return this.source; }
   get sourceKind(): BrowserCaptureSource { return this.kind; }
+  get audioAvailable(): boolean {
+    return this.source.getAudioTracks().some(track => track.readyState === "live") ||
+      Boolean(this.microphone?.enabled && this.microphone.readyState === "live");
+  }
+  private reportAvailability = () => this.availabilityChanged(this.audioAvailable);
+  private watchSource() {
+    this.source.getAudioTracks().forEach(track => track.addEventListener("ended", this.reportAvailability));
+  }
+  private unwatchSource() {
+    this.source.getAudioTracks().forEach(track => track.removeEventListener("ended", this.reportAvailability));
+  }
 
   attach(source: MediaStream, kind = this.kind): MediaStream {
     const previous = this.source;
+    this.unwatchSource();
     this.source = source;
+    this.watchSource();
     this.kind = kind;
     const output = this.compose();
+    this.reportAvailability();
     if (previous !== source) previous.getAudioTracks().forEach((track) => track.stop());
     return output;
   }
@@ -58,6 +73,7 @@ export class HostAudio {
       this.voiceProcessing = voiceProcessing;
       if (this.microphone) this.microphone.enabled = enabled;
       this.changed(enabled);
+      this.reportAvailability();
       return null;
     }
     const hadContext = !!this.context;
@@ -89,11 +105,13 @@ export class HostAudio {
         this.microphone = null;
         this.compose();
         this.changed(false);
+        this.reportAvailability();
       };
       const output = this.compose();
       previous?.stop();
       stream = null;
       this.changed(true);
+      this.reportAvailability();
       // Existing senders already borrow this destination. A device change is
       // local input work, not another media/route replacement.
       return hadContext ? null : output;
@@ -135,6 +153,7 @@ export class HostAudio {
 
   dispose() {
     this.closed = true;
+    this.unwatchSource();
     this.microphone?.stop();
     this.microphone = null;
     this.source.getAudioTracks().forEach((track) => track.stop());

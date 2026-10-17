@@ -2,11 +2,11 @@ import { afterEach, expect, test, vi } from "vitest";
 import { HostAudio } from "../src/client/media/host-audio";
 import { captureBrowserSource, QUALITY_PROFILES } from "../src/client/media/quality";
 
-class Track {
+class Track extends EventTarget {
   enabled = true;
   readyState = "live";
   onended: (() => void) | null = null;
-  constructor(readonly kind: string) {}
+  constructor(readonly kind: string) { super(); }
   stop = vi.fn(() => { this.readyState = "ended"; });
 }
 class Stream {
@@ -44,6 +44,38 @@ function setup() {
   return { contexts, getUserMedia };
 }
 afterEach(() => vi.unstubAllGlobals());
+
+test("input availability follows source and microphone independently of the retained mixer track", async () => {
+  const { getUserMedia } = setup();
+  const source = new Track("audio"), microphone = new Track("audio");
+  const changed = vi.fn();
+  const audio = new HostAudio(media(new Track("video"), source), vi.fn(), "browser", changed);
+  expect(audio.audioAvailable).toBe(true);
+  source.stop();
+  source.dispatchEvent(new Event("ended"));
+  expect(changed).toHaveBeenLastCalledWith(false);
+  getUserMedia.mockResolvedValue(media(microphone));
+  const mixed = (await audio.toggleMicrophone())!;
+  expect(changed).toHaveBeenLastCalledWith(true); // Microphone only.
+  const replaced = audio.attach(media(new Track("video")));
+  expect(replaced.getAudioTracks()).toEqual(mixed.getAudioTracks());
+  expect(changed).toHaveBeenLastCalledWith(true); // Source switch keeps the microphone.
+  await audio.toggleMicrophone();
+  expect(changed).toHaveBeenLastCalledWith(false);
+  expect(mixed.getAudioTracks()[0].readyState).toBe("live");
+  await audio.toggleMicrophone();
+  microphone.stop(); microphone.onended!();
+  expect(changed).toHaveBeenLastCalledWith(false);
+  const next = new Track("audio");
+  audio.attach(media(new Track("video"), next));
+  expect(changed).toHaveBeenLastCalledWith(true);
+  next.enabled = false; // Share pause does not change input availability.
+  expect(audio.audioAvailable).toBe(true);
+  audio.dispose();
+  changed.mockClear();
+  next.dispatchEvent(new Event("ended"));
+  expect(changed).not.toHaveBeenCalled();
+});
 
 test("camera is a bounded video source and never implicitly requests a microphone", async () => {
   const { getUserMedia } = setup();

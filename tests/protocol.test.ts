@@ -28,6 +28,17 @@ const token = "a".repeat(43);
 const roomId = "1234";
 const viewerGrant = `${"b".repeat(21)}g`;
 
+it("keeps audio availability nullable for older Hosts and generation-scoped for updates", () => {
+  expect(clientMessageSchema.safeParse({ type: "subscribe-audio-presence" }).success).toBe(true);
+  for (const available of [false, true, null]) {
+    expect(serverMessageSchema.safeParse({ type: "audio-presence", available }).success).toBe(true);
+    expect(clientMessageSchema.safeParse({ type: "set-audio-presence", shareGeneration: "audio_share_generation", available }).success)
+      .toBe(available !== null);
+  }
+  expect(serverMessageSchema.safeParse({ type: "audio-presence" }).success).toBe(false);
+  expect(clientMessageSchema.safeParse({ type: "set-audio-presence", shareGeneration: "bad", available: true }).success).toBe(false);
+});
+
 it("accepts bounded future reaction events while keeping commands and known prop targets strict", () => {
   const event = { type: "room-interaction", id: "event_future_1234", requestId: "request_future_1234", occurredAt: 1,
     sender: { peerId: "sender_peer_1234", role: "viewer", displayName: "Friend" },
@@ -56,13 +67,13 @@ const qualitySettings = {
 
 describe("runtime capabilities", () => {
   it("defaults missing capabilities off and ignores unknown descriptors", () => {
-    expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false });
+    expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, extra: { enabled: true } }))
-      .toEqual({ sfu: true, natPrediction: false, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false });
+      .toEqual({ sfu: true, natPrediction: false, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false });
     expect(runtimeCapabilitiesSchema.parse({ natPrediction: true, SFU: true }))
-      .toEqual({ sfu: false, natPrediction: true, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false });
+      .toEqual({ sfu: false, natPrediction: true, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, natPrediction: true }))
-      .toEqual({ sfu: true, natPrediction: true, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false });
+      .toEqual({ sfu: true, natPrediction: true, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, sfuOnly: true }).sfuOnly).toBe(true);
 
   });

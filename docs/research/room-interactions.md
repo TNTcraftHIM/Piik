@@ -93,7 +93,7 @@ ends that service; merely leaving the Host page does not.
 
 ## Interaction Design
 
-Chat uses the shared `FloatingPanel` shell for its nonmodal window. The shell
+Chat and reactions use an interaction window in the shared `FloatingPanel` shell. The shell
 owns native visibility, placement, movement, resizing and focus return; the
 conversation retains its session, draft, reading position and unread state.
 It opens initially at the lower right, without
@@ -133,6 +133,11 @@ Close or Escape dismisses the palette; it also closes if its participant leaves.
 Sending keeps it open for repeated interaction, with the existing short cooldown.
 Confirmation never changes menu visibility; failure stays visible in the card.
 Opening or closing a reaction card preserves the chat draft and unread state.
+The interaction window also shows a compact room roster with the same identities
+and live reactions. Selecting a person there opens the shared palette in place
+of the chat log; returning restores the draft and reading position. Hidden chat
+does not consume unread messages. This works in the detached window too, using
+the same room session, event expiry and sending controls as the couch shortcut.
 Self expressions follow the sender's head, including idle and interaction motion.
 Only that sender's newest self expression replaces their earlier one. A targeted
 emoji is a delivery: it travels from sender to recipient, retains a compact
@@ -147,12 +152,14 @@ use short gestures and sparse accents. All decorative descendants share the
 event's remaining phase and expiry; event ID and sender identity seed their
 variation. No particles, stains or animation timers outlive the event.
 A departed participant is never silently replaced as target.
-Everyone sees the same server-issued event; placement follows their own couch
-layout. Effects have a couch-only coordinate owner, independent of panel layout,
-and never become a video overlay or a media status. Impact transforms leave the
+Everyone sees the same server-issued event; placement follows the people in each
+visible surface. Each roster owns its local coordinates and uses the same renderer.
+Effects never become a video overlay or a media status. Impact transforms leave the
 UUID-owned idle animation, names and status indicators alone. Hiding effects or
 retiring the event cancels its own animation; showing a still-live event uses its
-remaining lifetime. Users can hide effects; reduced motion uses a static stamp.
+remaining lifetime. Animation scheduling and visibility follow the document
+displaying the surface, so a hidden main page does not freeze its detached window.
+Users can hide effects; reduced motion uses a static stamp.
 Theater mode hides the couch and retains a chat entry, using the same floating
 panel and draft without changing the picture's size. HTML player fullscreen
 keeps the existing danmaku control; it does not include the conversation panel.
@@ -235,10 +242,10 @@ Bidirectional room voice is not part of the product plan.
 Text, reactions and danmaku introduce no microphone capture, voice
 admission or additional media peers.
 
-## Detached Chat Window
+## Detached Interaction Window
 
 [Document Picture-in-Picture](https://developer.chrome.com/docs/web-platform/document-picture-in-picture)
-places the current chat panel in an always-on-top window without installing a
+places the current interaction panel in an always-on-top window without installing a
 PWA or implementing an App window. Piik uses one stable React portal:
 the same session, DOM, draft, reading position and controls remain in use.
 Visibility, focus, tooltip placement and dismissal follow the displaying document.
@@ -248,7 +255,7 @@ including a window request that completes after retirement.
 
 The [specification](https://wicg.github.io/document-picture-in-picture/) requires
 a secure context and user activation; closing or navigating the opener closes
-the PiP window. It is useful for reading chat beside a windowed or borderless game;
+the PiP window. It supports chat and reactions beside a windowed or borderless game;
 placement above exclusive fullscreen is not guaranteed. Transparent desktop
 backgrounds and mouse passthrough remain an
 [upstream request](https://github.com/WICG/document-picture-in-picture/issues/99),

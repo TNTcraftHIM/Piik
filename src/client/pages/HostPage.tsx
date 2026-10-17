@@ -245,7 +245,7 @@ function captureDetails(stream: MediaStream, native = false, sourceAudio?: boole
         ? `${settings.width}x${settings.height}`
         : null,
     frameRate: settings?.frameRate ?? null,
-    hasSourceAudio: sourceAudio ?? stream.getAudioTracks().length > 0,
+    hasSourceAudio: sourceAudio ?? stream.getAudioTracks().some(track => track.readyState === "live"),
   };
 }
 
@@ -378,6 +378,7 @@ export function HostPage({
     useState<SignalConnectionState>("offline");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const hostAudioRef = useRef<HostAudio | null>(null);
+  const audioAvailableRef = useRef(false);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
@@ -933,6 +934,7 @@ export function HostPage({
     hostSfuRouteRef.current = null;
     hostAudioRef.current?.dispose();
     hostAudioRef.current = null;
+    audioAvailableRef.current = false;
     setMicrophoneEnabled(false);
     setMicrophonePending(false);
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1255,12 +1257,15 @@ export function HostPage({
       );
       nativeMediaBridgeRef.current = bridge;
       nativeSourceAudioRef.current = undefined;
+      audioAvailableRef.current = false;
       nativeSourceSelectionRef.current = selection;
       nativeEventCleanup = client.onEvent((event) => {
         if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeClientRef.current !== client) return;
         if (event.type === "remote-control-state") setRemoteControlState(event);
         if (event.type === "audio-state") {
           nativeSourceAudioRef.current = event.sourceAudio;
+          audioAvailableRef.current = event.sourceAudio || event.microphone;
+          signalRef.current?.setAudioAvailable(audioAvailableRef.current);
           setMicrophoneEnabled(event.microphone);
           setDetails(previous => previous ? { ...previous, hasSourceAudio: event.sourceAudio } : previous);
           if (event.failed) setNoticeValue({ kind: "key", key: "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
@@ -1296,6 +1301,7 @@ export function HostPage({
       }
       if (nativeClientRef.current !== client) throw new NativeRequestError("unavailable", "start-share");
       nativeSourceAudioRef.current ??= started.sourceAudio ?? started.audio;
+      audioAvailableRef.current = nativeSourceAudioRef.current || audioAvailableRef.current;
       videoCodecRef.current = manualVideoCodecPreference(started.codec);
       // Register ownership before waiting for the local bridge. A native edge
       // may fail immediately after becoming ready.
@@ -2515,7 +2521,10 @@ export function HostPage({
 
   function connectRoomSignal(activeRoom: HostRoomState, shareGeneration?: string, allowReplacement = true): SignalingClient {
     const previous = signalRef.current;
-    if (hostRoomSessionAvailable && previous?.ownsHostRoom(activeRoom.roomId, activeRoom.hostToken)) return previous;
+    if (hostRoomSessionAvailable && previous?.ownsHostRoom(activeRoom.roomId, activeRoom.hostToken)) {
+      previous.setAudioAvailable(audioAvailableRef.current);
+      return previous;
+    }
     previous?.stop();
     let authenticated = false;
     const hostClientId = getStableClientId("host", activeRoom.roomId);
@@ -2682,9 +2691,11 @@ export function HostPage({
       { roomInteractions: roomInteractionsAvailable },
     );
     signalRef.current = signal;
+    signal.setAudioAvailable(audioAvailableRef.current);
     remoteInputPeersRef.current = [];
     void getRuntimeCapabilities().then(capabilities => {
       if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
+      if (signalRef.current === signal && capabilities.audioPresence) signal.enableAudioPresence();
     }).catch(() => { /* Optional input does not block sharing. */ });
     setInteractionSession(signal.interactions);
     return signal;
@@ -2781,7 +2792,14 @@ export function HostPage({
     }
     if (captured) {
       if (selection.kind === "browser") {
-        hostAudioRef.current = new HostAudio(captured, setMicrophoneEnabled, selection.source ?? "browser");
+        hostAudioRef.current = new HostAudio(captured, setMicrophoneEnabled, selection.source ?? "browser", available => {
+          if (!isCurrentShare(generation, shareGeneration)) return;
+          audioAvailableRef.current = available;
+          signalRef.current?.setAudioAvailable(available);
+          const source = hostAudioRef.current?.sourceStream;
+          if (source) setDetails(captureDetails(source));
+        });
+        audioAvailableRef.current = hostAudioRef.current.audioAvailable;
         if (selection.source === "camera") setCameraDevice(selection.deviceId ?? "");
       }
       streamRef.current = captured;

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import { HostMark } from "./HostMark";
 import { bindParticipantMotion, participantMotion } from "./participant-motion";
+import { useSurfaceDocument } from "../../ui/panel-window";
 
 /** The accepted A silhouette, shared with the explanatory cast. */
 export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
@@ -24,10 +25,11 @@ export function PawnSvg({ color, host, identity }: {
   color: string; host?: boolean; identity?: string;
 }) {
   const root = useRef<SVGSVGElement>(null);
+  const surfaceDocument = useSurfaceDocument();
   const motion = identity ? participantMotion(identity) : null;
   useLayoutEffect(() => {
     if (identity && root.current) return bindParticipantMotion(root.current, identity);
-  }, [identity]);
+  }, [identity, surfaceDocument]);
   return <svg ref={root} className="lr-person" viewBox="0 0 48 56" width="40" height="48"
     aria-hidden="true" data-motion={identity ? "" : undefined} style={motion ? {
       "--person-duration": `${motion.duration}ms`,

@@ -1,5 +1,5 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { normalizeChatText, MAX_CHAT_CODE_POINTS, REACTION_IDS, isThrow } from "../../../shared/room-interactions";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { normalizeChatText, MAX_CHAT_CODE_POINTS, isThrow, type ReactionId } from "../../../shared/room-interactions";
 import { RoomInteractionSession } from "../../lib/room-interactions";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -8,12 +8,13 @@ import { participantColor } from "./participant-color";
 import { FloatingPanel } from "./FloatingPanel";
 import { PawnSvg } from "./Pawn";
 import { Couch, type CouchProps } from "./Couch";
-import { RoomReaction, ReactionIcon } from "./RoomReaction";
+import { RoomReaction } from "./RoomReaction";
+import { RoomReactionPicker, type InteractionParticipant } from "./RoomReactionPicker";
+import { Tooltip } from "./Tooltip";
 import { RoomChatToggle } from "./RoomChatOverlay";
 import { RoomChatSettings } from "./RoomChatSettings";
 import "./room-interactions.css";
 
-interface Participant { peerId: string; displayName: string }
 type Props = CouchProps & { session: RoomInteractionSession | null };
 
 export function RoomInteractions(props: Props) {
@@ -37,17 +38,19 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [effects, setEffects] = useState(true);
   const [target, setTarget] = useState<string | null>(null);
+  const [panelTarget, setPanelTarget] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [lastSeen, setLastSeen] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [following, setFollowing] = useState(true);
   const area = useRef<HTMLDivElement>(null);
+  const panelArea = useRef<HTMLDivElement>(null);
   const anchor = useRef<HTMLButtonElement | null>(null);
   const log = useRef<HTMLDivElement>(null);
   const readingPosition = useRef(0);
   const id = useId();
   const menuId = `${id}-person`;
-  const participants: Participant[] = [
+  const participants: InteractionParticipant[] = [
     ...(couch.host ? [{ peerId: couch.host.key, displayName: couch.host.name }] : []),
     ...couch.entries.map(entry => ({ peerId: entry.key, displayName: entry.name })),
   ];
@@ -56,6 +59,8 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
   const unread = latest === lastSeen ? 0 : state.messages.length - unseenIndex - 1;
   const canSend = state.ready && !state.pending && !state.coolingDown;
   const person = participants.find(person => person.peerId === target);
+  const panelPerson = participants.find(person => person.peerId === panelTarget);
+  const showChat = !settingsOpen && !panelPerson;
   const rosterKey = participants.map(person => person.peerId).join(",");
   const inspect = target === couch.host?.key && couch.host.onSelect ? () => { if (!couch.host?.selected) couch.host?.onSelect?.(); }
     : couch.entries.some(entry => entry.key === target && entry.selectable !== false) && couch.onSelect
@@ -68,6 +73,9 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       setDraft(current => normalizeChatText(current) === text ? "" : current);
     }
   }, [state.confirmed]);
+  useEffect(() => {
+    if (panelTarget && !panelPerson) setPanelTarget(null);
+  }, [panelTarget, panelPerson]);
   useLayoutEffect(() => {
     const popup = document.getElementById(menuId);
     if (!popup) return;
@@ -80,6 +88,9 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
     if (target === key && popup?.matches(":popover-open")) { popup.hidePopover(); return; }
     anchor.current = trigger;
     setTarget(key);
+  }
+  function sendReaction(reaction: ReactionId, targetPeerId?: string) {
+    session.send({ kind: "reaction", reaction, ...(targetPeerId ? { targetPeerId } : {}) });
   }
   useLayoutEffect(() => {
     // Moving a popover between documents resets its native scroll offset.
@@ -107,13 +118,13 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       owner.removeEventListener("visibilitychange", sync);
       setVisible(false);
     };
-  }, [chatOpen, chatDocument]);
+  }, [chatOpen, chatDocument, showChat]);
   useEffect(() => {
-    if (!chatOpen || !visible || !following || log.current?.ownerDocument.visibilityState !== "visible" ||
+    if (!showChat || !chatOpen || !visible || !following || log.current?.ownerDocument.visibilityState !== "visible" ||
       !log.current?.getClientRects().length) return;
     setLastSeen(latest);
     log.current.scrollTop = log.current.scrollHeight;
-  }, [latest, chatOpen, visible, following, chatDocument]);
+  }, [latest, chatOpen, visible, following, chatDocument, showChat]);
 
   return <div className="lr-room-interactions">
     <div className="visually-hidden" role="log" aria-label={t("interaction.reactions")}
@@ -130,17 +141,35 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       title={t(settingsOpen ? "interaction.settings" : "interaction.title")}
       onOpenChange={(open, owner) => { setChatOpen(open); setChatDocument(owner); }}>
       {settingsOpen && <RoomChatSettings session={session} />}
-      <div className="lr-chat-history" hidden={settingsOpen}>
-      <div className="lr-chat-log" role="log" aria-label={t("interaction.title")} aria-live="polite" aria-relevant="additions" tabIndex={0} ref={log}
+      {chatOpen && !settingsOpen && <div className="lr-interaction-stage" ref={panelArea}>
+        <div className="lr-interaction-people" role="group" aria-label={t("interaction.participant")}>
+          {participants.map(person => <span key={person.peerId} data-room-peer={person.peerId}>
+            <Tooltip overflow={{ text: person.displayName, selector: ".lr-pawn-name" }}>
+              <button type="button" className={`lr-pawn${person.peerId === state.peerId ? " is-you" : ""}`}
+                aria-label={t("interaction.withPerson", { name: person.displayName })}
+                aria-expanded={panelTarget === person.peerId} aria-controls={`${id}-reactions`}
+                onClick={() => setPanelTarget(current => current === person.peerId ? null : person.peerId)}>
+                <PawnSvg color={participantColor(person.peerId)} identity={person.peerId} host={person.peerId === couch.host?.key} />
+                <span className="lr-pawn-name">{person.displayName}</span>
+              </button>
+            </Tooltip>
+          </span>)}
+        </div>
+        {effects && <ReactionEffects state={state} participants={participants} area={panelArea} now={session.now} />}
+      </div>}
+      <div id={`${id}-reactions`} className="lr-interaction-picker" hidden={!panelPerson || settingsOpen}>
+        <RoomReactionPicker person={panelPerson} selfPeerId={state.peerId} hostPeerId={couch.host?.key}
+          canSend={canSend} onSend={sendReaction} />
+      </div>
+      <div className="lr-chat-history" hidden={!showChat}>
+      <div className="lr-chat-log" role="log" aria-label={t("interaction.chat")} aria-live="polite" aria-relevant="additions" tabIndex={0} ref={log}
         onScroll={event => {
           const node = event.currentTarget;
           readingPosition.current = node.scrollTop;
           setFollowing(node.scrollHeight - node.scrollTop - node.clientHeight < 40);
         }}>
         {state.messages.length === 0 ? <div className="lr-chat-empty">
-          <span className="lr-chat-welcome" aria-hidden="true">{participants.slice(0, 2).map(person =>
-            <PawnSvg key={person.peerId} identity={person.peerId} color={participantColor(person.peerId)} host={person.peerId === couch.host?.key} />)}
-            <Glyph name="chat" size={24} /></span><p>{vis ? "···" : t("interaction.empty")}</p>
+          <Glyph name="chat" size={24} /><p>{vis ? "···" : t("interaction.empty")}</p>
         </div> : state.messages.map((message, index) => {
           const previous = state.messages[index - 1];
           const continuation = previous?.sender.peerId === message.sender.peerId && previous.sender.displayName === message.sender.displayName;
@@ -160,7 +189,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       }}><Glyph name="arrowDown" size={15} /><span className={vis ? "visually-hidden" : undefined}>
         {unread ? t("interaction.unread", { count: String(unread) }) : t("interaction.latest")}</span></button>}
       </div>
-      <form className="lr-chat-compose" hidden={settingsOpen} onSubmit={event => {
+      <form className="lr-chat-compose" hidden={!showChat} onSubmit={event => {
         event.preventDefault();
         const text = normalizeChatText(draft);
         if (text && canSend) { setFollowing(true); session.send({ kind: "chat", text }); }
@@ -175,18 +204,18 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       <footer className="lr-chat-footer">
       <div className="lr-chat-actions">
       <RoomChatToggle session={session} caption />
-      <Btn icon={settingsOpen ? "chat" : "sliders"}
-        title={settingsOpen ? "interaction.back" : "interaction.settings"}
-        hint={settingsOpen ? "hint-chat-open" : "hint-chat-settings"}
-        pressed={settingsOpen} tone={settingsOpen ? "on" : undefined}
-        onClick={() => setSettingsOpen(value => !value)} />
+      <Btn icon={showChat ? "sliders" : "chat"}
+        title={showChat ? "interaction.settings" : "interaction.back"}
+        cap={showChat ? undefined : "interaction.back"}
+        hint={showChat ? "hint-chat-settings" : "hint-chat-open"}
+        onClick={() => { setPanelTarget(null); setSettingsOpen(showChat); }} />
       </div>
       <div className="lr-interaction-status" role="status">
         {state.error ? <><Glyph name="alert" size={14} /><span className={vis ? "visually-hidden" : undefined}>{t(`interaction.error.${state.error}`)}</span></>
           : !state.ready ? <><Glyph name="network" size={14} /><span className={vis ? "visually-hidden" : undefined}>{t("interaction.reconnecting")}</span></>
           : !vis && <span>{t("interaction.ephemeral")}</span>}
       </div>
-      {!settingsOpen && <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft ? undefined : "hidden",
+      {showChat && <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft ? undefined : "hidden",
         minWidth: `${String(MAX_CHAT_CODE_POINTS).length * 2 + 3}ch` }}>{Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>}
       </footer>
     </FloatingPanel>
@@ -200,44 +229,13 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
             onClick={detached ? () => chatDocument?.defaultView?.focus() : undefined} />
           {unread > 0 && <span className="lr-interaction-unread" aria-label={t("interaction.unread", { count: String(unread) })}>{unread}</span>}
         </span>} />
-      {effects && state.reactions.map((reaction, index) => {
-        const payload = reaction.payload;
-        if (payload.kind !== "reaction") return null;
-        // Only one's own expression replaces one's previous expression.
-        // Receiving a gift never speaks for that person or hides their reaction.
-        const covered = !payload.targetPeerId && !isThrow(payload.reaction) && state.reactions.slice(index + 1).some(next =>
-          next.payload.kind === "reaction" && !next.payload.targetPeerId && !isThrow(next.payload.reaction) &&
-          next.sender.peerId === reaction.sender.peerId);
-        if (covered) return null;
-        return participants.some(person => person.peerId === reaction.sender.peerId) &&
-          (!payload.targetPeerId || participants.some(person => person.peerId === payload.targetPeerId)) &&
-          <RoomReaction key={reaction.id} reaction={reaction} area={area} now={session.now} />;
-      })}
+      {effects && <ReactionEffects state={state} participants={participants} area={area} now={session.now} />}
     </div>
     <FloatingPanel id={menuId} trigger={anchor} compact anchorOnOpen icon="smile" className="lr-person-menu"
       title={t("interaction.express")} onOpenChange={open => { if (!open) setTarget(null); }}>
       <div className="lr-person-menu-body">
-      <div className="lr-person-menu-target" role="group"
-        aria-label={person ? t("interaction.withPerson", { name: person.displayName }) : t("interaction.express")}>
-        <span className="lr-person-menu-name">
-          <span className="lr-person-menu-portrait">{person
-            ? <PawnSvg color={participantColor(person.peerId)} host={person.peerId === couch.host?.key} />
-            : <Glyph name="smile" size={22} />}</span>
-          <span>{!vis && <small>{t(target === state.peerId ? "interaction.express" : "interaction.toPerson")}</small>}
-            <b>{person?.displayName ?? t("interaction.participant")}</b></span>
-        </span>
-      </div>
-      {[false, true].filter(throws => !throws || (person && target !== state.peerId)).map(throws => <div key={String(throws)} className={throws ? "lr-reaction-props" : "lr-reaction-grid"}>
-        {REACTION_IDS.filter(reaction => isThrow(reaction) === throws).map(reaction => <button key={reaction} type="button"
-          aria-label={t(`interaction.reaction.${reaction}`)} aria-disabled={!canSend || !person}
-          onClick={() => {
-            if (!canSend || !person) return;
-            session.send({ kind: "reaction", reaction, ...(target !== state.peerId ? { targetPeerId: person.peerId } : {}) });
-          }}>
-          <ReactionIcon reaction={reaction} />
-          {throws && !vis && <span>{t(reaction === "tomato" ? "interaction.prop.tomato" : "interaction.prop.poop")}</span>}
-        </button>)}
-      </div>)}
+      <RoomReactionPicker person={person} selfPeerId={state.peerId} hostPeerId={couch.host?.key}
+        canSend={canSend} onSend={sendReaction} />
       {state.error || !state.ready ? <div className="lr-interaction-status" role="status">
         <Glyph name={state.error ? "alert" : "network"} size={14} />
         <span className={vis ? "visually-hidden" : undefined}>{t(state.error ? `interaction.error.${state.error}` : "interaction.reconnecting")}</span>
@@ -253,4 +251,24 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       </div>
     </FloatingPanel>
   </div>;
+}
+
+function ReactionEffects({ state, participants, area, now }: {
+  state: ReturnType<RoomInteractionSession["getSnapshot"]>;
+  participants: InteractionParticipant[];
+  area: RefObject<HTMLDivElement | null>;
+  now: () => number;
+}) {
+  return state.reactions.map((reaction, index) => {
+    const payload = reaction.payload;
+    if (payload.kind !== "reaction") return null;
+    // A gift never speaks for its recipient or replaces their own expression.
+    const covered = !payload.targetPeerId && !isThrow(payload.reaction) && state.reactions.slice(index + 1).some(next =>
+      next.payload.kind === "reaction" && !next.payload.targetPeerId && !isThrow(next.payload.reaction) &&
+      next.sender.peerId === reaction.sender.peerId);
+    if (covered) return null;
+    return participants.some(person => person.peerId === reaction.sender.peerId) &&
+      (!payload.targetPeerId || participants.some(person => person.peerId === payload.targetPeerId)) &&
+      <RoomReaction key={reaction.id} reaction={reaction} area={area} now={now} />;
+  });
 }

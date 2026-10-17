@@ -31,10 +31,11 @@ function testMedia(withAudio: boolean) {
   draw(started);
   const stream = canvas.captureStream(30);
   let audio: AudioContext | undefined;
+  let gain: GainNode | undefined;
   if (withAudio) {
     audio = new AudioContext();
     const tone = audio.createOscillator();
-    const gain = audio.createGain();
+    gain = audio.createGain();
     const destination = audio.createMediaStreamDestination();
     tone.frequency.value = 220;
     gain.gain.value = 0.02;
@@ -45,6 +46,7 @@ function testMedia(withAudio: boolean) {
   return {
     stream,
     audio,
+    setAudioInput(available: boolean) { if (gain) gain.gain.value = available ? 0.02 : 0; },
     stop() {
       cancelAnimationFrame(animation);
       stream.getTracks().forEach((track) => track.stop());
@@ -63,6 +65,7 @@ export function PlaybackPreviewPage() {
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
   const [error, setError] = useState("");
+  const [audioAvailable, setAudioAvailable] = useState(false);
   const hasAudio = Boolean(stream?.getAudioTracks().length);
 
   function play() {
@@ -79,6 +82,7 @@ export function PlaybackPreviewPage() {
     mediaRef.current = media;
     setError("");
     setStream(media.stream);
+    setAudioAvailable(withAudio);
     if (media.audio) void media.audio.resume().catch((cause: unknown) => setError(String(cause)));
   }
 
@@ -115,6 +119,11 @@ export function PlaybackPreviewPage() {
             {hasAudio ? (english ? "Remove audio track" : "移除音轨") : (english ? "Add quiet test tone" : "加入轻音量测试音")}</button>
           <button className="lr-btn" type="button" disabled={!stream} onClick={() => start(hasAudio)}>
             {english ? "Rebind new stream" : "重新绑定新流"}</button>
+          <button className="lr-btn" type="button" disabled={!hasAudio} onClick={() => {
+            mediaRef.current?.setAudioInput(!audioAvailable);
+            setAudioAvailable(!audioAvailable);
+          }}>{audioAvailable ? (english ? "Stop audio input, keep track" : "关闭声音输入，保留音轨")
+              : (english ? "Restore audio input" : "恢复声音输入")}</button>
         </div>
         {error ? <p role="alert">{error}</p> : null}
       </header> : null}
@@ -122,7 +131,7 @@ export function PlaybackPreviewPage() {
         <StageTv live={Boolean(stream)} label={english ? "Local test picture" : "本机测试画面"}>
           <video ref={videoRef} playsInline tabIndex={0} inert={!stream} style={{ objectFit: pictureFit }}
             aria-label={english ? "Local test video" : "本机测试视频"} />
-          <PlaybackControls videoRef={videoRef} stream={stream}
+          <PlaybackControls videoRef={videoRef} stream={stream} audioAvailable={audioAvailable}
             settings={{ pictureFit, setPictureFit, route: { preference: viewerRoute, onChange: setViewerRoute,
               sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } }}
             audioTrackKey={stream?.getAudioTracks().map((track) => track.id).join(",")}

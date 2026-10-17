@@ -220,6 +220,10 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 	switch messageType {
 	case "set-viewer-route-preference":
 		return decodeSetViewerRoutePreference(data)
+	case "subscribe-audio-presence":
+		return decodeEmptyClientMessage(data, SubscribeAudioPresenceMessage{Type: messageType})
+	case "set-audio-presence":
+		return decodeSetAudioPresence(data)
 	case "subscribe-remote-input":
 		return decodeSubscribeRemoteInput(data)
 	case "subscribe-room-interactions":

@@ -130,6 +130,7 @@ type roomShare struct {
 	routePolicy     *protocol.RoutePolicy
 	// pausedGeneration is the share generation the Host paused, "" if none.
 	pausedGeneration string
+	audioAvailable   *bool
 }
 
 type senderQualityRateWindow struct {
@@ -1110,6 +1111,9 @@ func (s *Server) settleHostShare(roomID, sessionID string, request authRequest) 
 		share.pausedGeneration = shareGeneration
 	}
 	s.shares[roomID] = share
+	if currentGeneration != shareGeneration {
+		s.broadcastAudioPresence(roomID)
+	}
 	return shareGeneration
 }
 
@@ -1302,6 +1306,13 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 		name := string(m.DisplayName)
 		authenticated.displayName = &name
 		s.sendViewerPresence(authenticated.roomID)
+	case protocol.SubscribeAudioPresenceMessage:
+		if authenticated.role == protocol.RoleViewer {
+			sess.audioPresence = true
+			s.sendAudioPresence(sess, authenticated.roomID)
+		}
+	case protocol.SetAudioPresenceMessage:
+		s.setAudioPresence(sess, authenticated, m)
 	case protocol.SetSharingPausedMessage:
 		if authenticated.role != protocol.RoleHost {
 			s.sendError(sess, "FORBIDDEN", "只有当前房主可以暂停分享")
@@ -1395,6 +1406,7 @@ func (s *Server) startSharing(sess *session, authenticated *authenticatedSession
 	share := s.shares[authenticated.roomID]
 	share.generation = ""
 	share.pausedGeneration = ""
+	share.audioAvailable = nil
 	s.shares[authenticated.roomID] = share
 	request := authRequest{
 		role:            protocol.RoleHost,

@@ -15,13 +15,14 @@ import "./playback-controls.css";
 // Reflect the existing media element; binding, autoplay recovery and room
 // presentation retain their existing owners.
 export function PlaybackControls({
-  videoRef, stream, audioTrackKey, canPlay, theaterMode, onPlay,
+  videoRef, stream, audioTrackKey, audioAvailable, canPlay, theaterMode, onPlay,
   onToggleTheater, onReconnect, reconnectAvailable,
   extraActions, settings,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   stream: MediaStream | null;
   audioTrackKey?: string;
+  audioAvailable?: boolean | null;
   canPlay: boolean;
   theaterMode: boolean;
   onPlay: () => void;
@@ -116,7 +117,7 @@ export function PlaybackControls({
   const silent = audio.muted || audio.level === 0;
 
   return <PlaybackControlsView controlsRef={controlsRef} hidden={hidden} audio={audio}
-    paused={paused} hasAudio={hasAudio} canPlay={canPlay} theaterMode={theaterMode}
+    paused={paused} hasAudio={hasAudio && audioAvailable !== false} canPlay={canPlay} theaterMode={theaterMode}
     fullscreen={fullscreen} fullscreenFailed={fullscreenFailed} picture={picture}
     togglePlayback={togglePlayback} toggleFullscreen={toggleFullscreen}
     toggleMute={() => {
@@ -184,11 +185,12 @@ export function PlaybackControlsView({
           text={vis ? undefined : t(!hasAudio ? "playback.noAudio" : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic")}
           className="lr-playback-volume">
           <input type="range" min={0} max={audio.boostAvailable ? 200 : 100} step={1}
-            value={percent} disabled={!hasAudio}
-            aria-label={t(audio.boostAvailable ? "playback.volume" : "playback.volumeBasic")} aria-valuetext={`${percent}%`}
+            value={hasAudio ? percent : 0} disabled={!hasAudio}
+            aria-label={t(audio.boostAvailable ? "playback.volume" : "playback.volumeBasic")}
+            aria-valuetext={hasAudio ? `${percent}%` : t("playback.noAudio")}
             onChange={(event) => setLevel(Number(event.target.value) / 100)} />
         </Tooltip>
-        <span className={`lr-playback-level${percent > 100 ? " is-boosted" : ""}`} aria-hidden="true">
+        <span className={`lr-playback-level${hasAudio && percent > 100 ? " is-boosted" : ""}`} aria-hidden="true">
           {hasAudio ? `${percent}%` : "—"}
         </span>
       </span>

@@ -18,24 +18,26 @@ export function participantMotionPhase(identity: string, now: number): number {
 
 /** Native animation timelines keep running without a JS tick or room messages. */
 export function bindParticipantMotion(root: SVGSVGElement, identity: string): () => void {
+  const owner = root.ownerDocument;
+  const view = owner.defaultView;
   const sync = () => {
-    if (document.hidden) return;
-    const timeline = document.timeline.currentTime;
+    if (owner.hidden || !view) return;
+    const timeline = owner.timeline.currentTime;
     if (typeof timeline !== "number") return;
     // Sample wall time at this rendered frame, not at each component's mount.
-    const phase = participantMotionPhase(identity, Date.now() - performance.now() + timeline);
+    const phase = participantMotionPhase(identity, Date.now() - view.performance.now() + timeline);
     for (const animation of root.getAnimations({ subtree: true })) {
-      if (animation instanceof CSSAnimation && animation.animationName.startsWith("lr-person-")) {
+      if ("animationName" in animation && (animation as CSSAnimation).animationName.startsWith("lr-person-")) {
         animation.startTime = timeline - phase;
       }
     }
   };
   // animationstart also covers returning from reduced motion.
   root.addEventListener("animationstart", sync);
-  document.addEventListener("visibilitychange", sync);
+  owner.addEventListener("visibilitychange", sync);
   sync();
   return () => {
     root.removeEventListener("animationstart", sync);
-    document.removeEventListener("visibilitychange", sync);
+    owner.removeEventListener("visibilitychange", sync);
   };
 }

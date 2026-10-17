@@ -238,6 +238,7 @@ export const runtimeCapabilitiesSchema = z.object({
   hostRoomSession: z.boolean().default(false),
   remoteInput: z.boolean().default(false),
   viewerRouteSelection: z.boolean().default(false),
+  audioPresence: z.boolean().default(false),
 });
 export type RuntimeCapabilities = z.infer<typeof runtimeCapabilitiesSchema>;
 
@@ -882,6 +883,8 @@ const signalingChallengeSequenceSchema = z
 
 export const clientMessageSchema = z.union([
   z.object({ type: z.literal("set-viewer-route-preference"), preference: viewerRoutePreferenceSchema }).strict(),
+  z.object({ type: z.literal("subscribe-audio-presence") }).strict(),
+  z.object({ type: z.literal("set-audio-presence"), shareGeneration: opaqueIdSchema, available: z.boolean() }).strict(),
   z.object({ type: z.literal("subscribe-remote-input"), endpointId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
     secret: z.string().regex(/^[0-9a-f]{64}$/).optional() }).strict(),
   z.object({ type: z.literal("subscribe-room-interactions") }).strict(),
@@ -1062,6 +1065,7 @@ const authenticatedMessageSchema = z.union([
 
 export const serverMessageSchema = z.union([
   z.object({ type: z.literal("viewer-route-preference"), preference: viewerRoutePreferenceSchema, accepted: z.boolean() }).strict(),
+  z.object({ type: z.literal("audio-presence"), available: z.boolean().nullable() }).strict(),
   z.object({ type: z.literal("remote-input-peers"), peers: z.array(z.object({ peerId: opaqueIdSchema,
     endpointId: z.string().regex(/^[0-9a-f]{32}$/), secret: z.string().regex(/^[0-9a-f]{64}$/) }).strict()).max(20) }).strict(),
   z.object({ type: z.literal("room-interactions-ready"), serverTime: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).strict(),
