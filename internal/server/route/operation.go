@@ -1330,7 +1330,7 @@ func (c *Controller) selectNextChild() string {
 				departedParents = append(departedParents, viewer.peerID)
 			}
 		}
-		if edge != nil && !edge.Usable {
+		if edge != nil && (!edge.Usable || !c.allowsIncoming(viewer.peerID, edge.Kind) || c.parentRouteRetired(edge)) {
 			unusable = append(unusable, viewer.peerID)
 		}
 		if edge != nil && edge.Kind == UpstreamSfu &&

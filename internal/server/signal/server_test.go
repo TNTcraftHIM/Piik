@@ -1011,6 +1011,7 @@ func isMediaReady(entry presenceEntry) bool {
 // ---------------------------------------------------------------------------
 
 type presenceOptions struct {
+	routePreference *protocol.ViewerRoutePreference
 	displayName     string
 	viewerPresence  bool
 	viewerPassword  string
@@ -1079,6 +1080,9 @@ func authenticate(
 		}
 		if presence.viewerPresence {
 			message["viewerPresence"] = true
+		}
+		if presence.routePreference != nil {
+			message["routePreference"] = *presence.routePreference
 		}
 	}
 	client.sendJSON(message)

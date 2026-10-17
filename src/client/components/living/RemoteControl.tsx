@@ -13,9 +13,10 @@ import "./remote-control.css";
 
 // The video keeps its existing media owner. This temporary surface handles
 // input only while its current routed endpoint holds a local App grant.
-export function RemoteControl({ channel, videoRef, available }: {
+export function RemoteControl({ channel, videoRef, available, pictureFit }: {
   channel: InputTransport | null; videoRef: RefObject<HTMLVideoElement | null>;
   available: boolean;
+  pictureFit?: "contain" | "cover";
 }) {
   const { t, vis } = useCopy();
   const [state, setState] = useState<RemoteInputState | null>(null);
@@ -106,6 +107,7 @@ export function RemoteControl({ channel, videoRef, available }: {
       current.reset(); view.reset(); touchpad.current = null; viewport.current = null;
     };
   }, [controlled, channel, videoRef]);
+  useEffect(() => { viewport.current?.refresh(); }, [pictureFit]);
   useEffect(() => {
     const video = videoRef.current as FullscreenVideo | null;
     if (!video) return;

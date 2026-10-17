@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-17
+Last reviewed: 2026-10-18
 
 Explicit owner holds remain in force; an investigation does not itself
 accept a new feature or architecture. A missing device or reporter trace blocks
@@ -28,6 +28,15 @@ platform deferrals or establish a diagnosis for unmatched reports.
   an Apple SDK build and physical focus/Retina/input checks. The
   [window/game assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns platform and game-compatibility limits. This is not a public feature.
+
+- [ ] **Viewer playback settings acceptance (#477).** The current prototype adds
+  local contain/fill and per-viewing Auto/P2P/SFU choice through the existing
+  route controller and shared playback settings. Host/site policy still wins;
+  [routing](./standards/routing-transport.md#viewer-route-choice) owns the boundary.
+  Finish owner UI acceptance before release. Investigate the route-handoff stall
+  seen in the bundled Chromium 152 test browser: RTP continues after commit but
+  decoded video stops; the same local fixture passes VP8/H.264 switches in
+  installed Chrome 155. This comparison does not yet identify an upstream cause.
 
 - [ ] **macOS bundle startup acceptance (#479).** The package now contains the
   actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
@@ -233,12 +242,7 @@ remains; do not add another retry/transport owner to bypass these limits.
     separates virtual gamepad slots from attended keyboard/mouse assistance.
     Desktop input acceptance remains above; independent gamepads and mobile
     controlled endpoints need a separate scope decision.
-11. **Per-Viewer SFU preference (#477).** Existing `SFU_ONLY=true` is an operator
-    policy for the whole site; it does not provide the requested individual
-    Viewer control. Keep this proposal separate from quality-recovery fixes.
-    Reopen only for an accepted policy that preserves Host privacy, bounded SFU
-    capacity and the existing automatic route owner.
-12. **Multiple simultaneous sharers.** The [party-mode assessment](./research/room-interactions.md#multiple-sharers-assessment-not-implemented)
+11. **Multiple simultaneous sharers.** The [party-mode assessment](./research/room-interactions.md#multiple-sharers-assessment-not-implemented)
     separates room administration from publication ownership, with one selected
     picture per Viewer and shared endpoint upload limits. Define publication and
     subscription lifecycles before a prototype. The current one-Host contract

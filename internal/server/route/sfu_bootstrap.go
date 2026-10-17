@@ -92,7 +92,7 @@ func (c *Controller) bootstrapOperationOwned(op *operation) bool {
 }
 
 func (c *Controller) sfuBootstrapNeeded(demandPeerID string) bool {
-	if !c.sfuBootstrapGloballyNeeded() {
+	if !c.sfuBootstrapGloballyNeeded() || !c.allowsIncoming(demandPeerID, UpstreamSfu) {
 		return false
 	}
 	demand, _ := c.participants.Get(demandPeerID)
@@ -134,6 +134,7 @@ func (c *Controller) sfuBootstrapCarriers() []string {
 			edge.Usable &&
 			edge.PhysicalActive &&
 			plan != nil &&
+			c.candidateValid(peerID, *plan, nil) &&
 			plan.EndpointTransition.Kind != TransitionBoundedGap &&
 			c.sfuBootstrapOpportunityAvailable(peerID, *plan) {
 			carriers = append(carriers, peerID)

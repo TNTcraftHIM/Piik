@@ -8,6 +8,21 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
+// AllowsViewerRoutePreference applies site and Host policy before a Viewer choice.
+// The choice covers only its incoming hop; a Peer parent may itself use SFU.
+func (c *Controller) AllowsViewerRoutePreference(preference protocol.ViewerRoutePreference) bool {
+	return (preference != protocol.ViewerRouteSfu || c.sfuEnabled) &&
+		(preference != protocol.ViewerRoutePeer || !c.sfuOnly)
+}
+
+func (c *Controller) allowsIncoming(childPeerID string, kind UpstreamKind) bool {
+	child, _ := c.participants.Get(childPeerID)
+	if kind == UpstreamSfu {
+		return c.sfuEnabled && (child == nil || child.routePreference != protocol.ViewerRoutePeer)
+	}
+	return !c.sfuOnly && (child == nil || child.routePreference != protocol.ViewerRouteSfu)
+}
+
 // buildCandidates filters the full plan list by the
 // availability opportunity ledger.
 func (c *Controller) buildCandidates(childPeerID string, sfuOnly bool) []CandidatePlan {
@@ -66,7 +81,7 @@ func (c *Controller) buildCandidatePlans(childPeerID string, sfuOnly, preferUntr
 		directCandidates = append(directCandidates, CandidateTuple{Kind: UpstreamPeer, ParentPeerID: parent.peerID, Transport: TransportDirect})
 	}
 	var sfuCandidate *CandidateTuple
-	if c.sfuEnabled {
+	if c.allowsIncoming(childPeerID, UpstreamSfu) {
 		if c.hostPublication != nil && c.hostPublication.Usable && c.hostPublication.PhysicalActive {
 			sfuCandidate = &CandidateTuple{Kind: UpstreamSfu, Publication: PublicationReuse}
 		} else if c.hostPublication != nil || c.publicationFits(childPeerID, false) {
@@ -79,7 +94,7 @@ func (c *Controller) buildCandidatePlans(childPeerID string, sfuOnly, preferUntr
 	}
 	var candidates []CandidateTuple
 	switch {
-	case sfuOnly || c.sfuOnly:
+	case sfuOnly || !c.allowsIncoming(childPeerID, UpstreamPeer):
 		if sfuCandidate != nil {
 			candidates = []CandidateTuple{*sfuCandidate}
 		}
@@ -170,6 +185,9 @@ func (c *Controller) retirementFor(childPeerID, producerPeerID string, tuple Can
 // candidateValid receives att when validating a live attempt.
 func (c *Controller) candidateValid(childPeerID string, plan CandidatePlan, att *attempt) bool {
 	tuple := plan.Tuple
+	if !c.allowsIncoming(childPeerID, tuple.Kind) {
+		return false
+	}
 	child, _ := c.participants.Get(childPeerID)
 	if child == nil || child.sessionID == "" || child.departureConfirmed || (att != nil && att.childSessionID != child.sessionID) {
 		return false

@@ -6,6 +6,7 @@ import {
   type DisplayName,
   type QualitySettings,
   type RoutePolicy,
+  type ViewerRoutePreference,
   type ServerMessage,
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
@@ -122,6 +123,17 @@ export class SignalingClient {
     if (this.stopped || this.identity.role !== "host") return;
     this.remoteInputEnabled = true;
     if (this.authenticatedPeerId) this.send({ type: "subscribe-remote-input" });
+  }
+
+  enableViewerRouteSelection(): void {
+    if (this.stopped || this.identity.role !== "viewer") return;
+    this.identity.routePreference ??= "auto";
+    if (this.authenticatedPeerId) this.setViewerRoutePreference(this.identity.routePreference);
+  }
+
+  setViewerRoutePreference(preference: ViewerRoutePreference): boolean {
+    return this.identity.role === "viewer" && this.identity.routePreference !== undefined &&
+      this.send({ type: "set-viewer-route-preference", preference });
   }
 
   start(): void {
@@ -303,6 +315,7 @@ export class SignalingClient {
     debugEvent("signal", "connecting", { role: this.identity.role, generation });
     const socket = new WebSocket(signalUrl());
     this.socket = socket;
+    let routeSelectionRequestedAtAuth = false;
 
     socket.addEventListener("open", () => {
       if (
@@ -317,6 +330,7 @@ export class SignalingClient {
         protocol: SIGNALING_PROTOCOL,
         ...this.identity,
       };
+      routeSelectionRequestedAtAuth = authenticate.role === "viewer" && authenticate.routePreference !== undefined;
       socket.send(JSON.stringify(authenticate));
       this.authenticationTimer = window.setTimeout(() => {
         if (!this.authenticatedPeerId && this.socket === socket) {
@@ -391,7 +405,14 @@ export class SignalingClient {
         this.refreshSignalingWatchdog();
         this.interactions?.authenticated(message.peerId);
         if (this.remoteInputEnabled) this.send({ type: "subscribe-remote-input" });
+        // Discovery can complete after the authentication request was sent.
+        if (!routeSelectionRequestedAtAuth && this.identity.role === "viewer" && this.identity.routePreference !== undefined) {
+          this.setViewerRoutePreference(this.identity.routePreference);
+        }
         this.reconcileHostShareState(message);
+      }
+      if (message.type === "viewer-route-preference" && this.identity.role === "viewer") {
+        this.identity.routePreference = message.preference;
       }
       if ((message.type === "sharing-started" || message.type === "sharing-start-failed") &&
         this.pendingShareGeneration === message.shareGeneration) {

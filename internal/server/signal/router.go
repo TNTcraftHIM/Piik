@@ -83,11 +83,12 @@ type routerOptions struct {
 
 // authenticatedRouteParticipant carries admitted identity and optional Host policy.
 type authenticatedRouteParticipant struct {
-	roomID      string
-	role        protocol.Role
-	peerID      string
-	sessionID   string
-	routePolicy *protocol.RoutePolicy
+	roomID          string
+	role            protocol.Role
+	peerID          string
+	sessionID       string
+	routePolicy     *protocol.RoutePolicy
+	routePreference *protocol.ViewerRoutePreference
 }
 
 // hybridAuthenticationState supplies the joining session's route assignment.
@@ -146,12 +147,18 @@ type peerSignalDebugInput struct {
 type roomRuntime struct {
 	hostPeerID string
 	controller *route.Controller
-	// Capacities survive stopRoom in insertion order.
-	advertisedCapacityByViewer ordered.Map[string, int]
-	requested                  bool
-	pumping                    bool
-	deadlineStop               func() bool
-	deadlineGeneration         uint64
+	// Viewer choices survive signaling recovery and share replacement, not leave.
+	viewerSettings     ordered.Map[string, viewerRouteSettings]
+	requested          bool
+	pumping            bool
+	deadlineStop       func() bool
+	deadlineGeneration uint64
+}
+
+type viewerRouteSettings struct {
+	capacity int
+	// Empty means the page has not opted into route selection.
+	preference protocol.ViewerRoutePreference
 }
 
 // router applies controller decisions through room signaling and media resources.
@@ -269,19 +276,29 @@ func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridA
 			r.createController(input.roomID, rm, input)
 		}
 	} else {
-		capacity, _ := rm.advertisedCapacityByViewer.Get(input.peerID)
-		rm.advertisedCapacityByViewer.Set(input.peerID, capacity)
+		settings, _ := rm.viewerSettings.Get(input.peerID)
+		settings.preference = ""
+		if input.routePreference != nil {
+			settings.preference = *input.routePreference
+			if !r.viewerRouteAllowed(input.roomID, settings.preference) {
+				settings.preference = protocol.ViewerRouteAuto
+			}
+		}
+		rm.viewerSettings.Set(input.peerID, settings)
 	}
 	if rm.controller != nil {
 		capacity := r.capacity
+		var preference protocol.ViewerRoutePreference
 		if input.role != protocol.RoleHost {
-			capacity, _ = rm.advertisedCapacityByViewer.Get(input.peerID)
+			settings, _ := rm.viewerSettings.Get(input.peerID)
+			capacity, preference = settings.capacity, settings.preference
 		}
 		r.releaseResources(rm.controller.UpsertParticipant(route.ParticipantInput{
 			PeerID:                      input.peerID,
 			Role:                        input.role,
 			SessionID:                   input.sessionID,
 			EffectiveDownstreamCapacity: capacity,
+			RoutePreference:             preference,
 		}, r.nowPtr()))
 	}
 	state := hybridAuthenticationState{routeAssignment: emptyAssignment()}
@@ -371,8 +388,8 @@ func (r *router) observeSenderQualityEvidence(participant authenticatedRoutePart
 	before := snapshot.Revision
 	endpointCapacity := r.capacity
 	if participant.role != protocol.RoleHost {
-		advertised, _ := rm.advertisedCapacityByViewer.Get(participant.peerID)
-		endpointCapacity = min(advertised, r.capacity)
+		settings, _ := rm.viewerSettings.Get(participant.peerID)
+		endpointCapacity = min(settings.capacity, r.capacity)
 	}
 	copyContext := r.qualityCopyContext(snapshot, rm.hostPeerID, participant.peerID, endpointCapacity, qualitySample{
 		kind:          route.UpstreamPeer,
@@ -691,12 +708,61 @@ func (r *router) debugPeerSignal(input peerSignalDebugInput) {
 		"authorization", authorization)
 }
 
+func (r *router) viewerRouteAllowed(roomID string, preference protocol.ViewerRoutePreference) bool {
+	if rm, ok := r.rooms.Get(roomID); ok && rm.controller != nil {
+		return rm.controller.AllowsViewerRoutePreference(preference)
+	}
+	return (preference != protocol.ViewerRouteSfu || r.sfu != nil) &&
+		(preference != protocol.ViewerRoutePeer || !r.sfuOnly)
+}
+
+func (r *router) setViewerRoutePreference(participant authenticatedRouteParticipant, preference protocol.ViewerRoutePreference) {
+	rm := r.room(participant.roomID)
+	settings, _ := rm.viewerSettings.Get(participant.peerID)
+	accepted := r.viewerRouteAllowed(participant.roomID, preference)
+	if accepted {
+		settings.preference = preference
+	} else if settings.preference == "" {
+		settings.preference = protocol.ViewerRouteAuto
+	}
+	rm.viewerSettings.Set(participant.peerID, settings)
+	if accepted && rm.controller != nil {
+		before := rm.controller.Revision()
+		r.releaseResources(rm.controller.SetViewerRoutePreference(participant.peerID, participant.sessionID, preference, r.nowPtr()))
+		if rm.controller.Revision() != before {
+			r.broadcastActive(participant.roomID, rm)
+		}
+	}
+	r.sendViewerRoutePreference(participant.roomID, participant.peerID, accepted)
+	if accepted {
+		r.requestPump(participant.roomID)
+	}
+}
+
+func (r *router) sendViewerRoutePreference(roomID, peerID string, accepted bool) {
+	rm, ok := r.rooms.Get(roomID)
+	if !ok {
+		return
+	}
+	settings, _ := rm.viewerSettings.Get(peerID)
+	if settings.preference == "" {
+		return // Published clients that did not opt in receive no new event.
+	}
+	if viewer, ok := r.store.GetConnectedViewer(roomID, peerID); ok {
+		r.hooks.sendToSession(viewer.SessionID, protocol.ViewerRoutePreferenceMessage{
+			Type: "viewer-route-preference", Preference: settings.preference, Accepted: accepted,
+		})
+	}
+}
+
 func (r *router) setViewerRelayCapacity(participant authenticatedRouteParticipant, downstreamEdges int) {
 	rm := r.room(participant.roomID)
 	r.debug(participant.roomID, "relay-capacity-received",
 		"participant", r.debugPeer(participant.roomID, participant.peerID),
 		"downstreamEdges", downstreamEdges)
-	rm.advertisedCapacityByViewer.Set(participant.peerID, downstreamEdges)
+	settings, _ := rm.viewerSettings.Get(participant.peerID)
+	settings.capacity = downstreamEdges
+	rm.viewerSettings.Set(participant.peerID, settings)
 	if rm.controller != nil &&
 		rm.controller.SetEffectiveCapacity(participant.peerID, participant.sessionID, downstreamEdges, r.nowPtr()) {
 		r.requestPump(participant.roomID)
@@ -954,33 +1020,24 @@ func (r *router) disconnectParticipant(roomID, peerID, sessionID string) {
 func (r *router) removeViewer(roomID, peerID string) {
 	rm, _ := r.rooms.Get(roomID)
 	if rm != nil {
-		rm.advertisedCapacityByViewer.Delete(peerID)
+		rm.viewerSettings.Delete(peerID)
 	}
 	if rm != nil && rm.controller != nil && rm.controller.ConfirmDeparture(peerID, r.nowPtr()) {
 		r.requestPump(roomID)
-	} else if rm != nil && rm.controller == nil && rm.advertisedCapacityByViewer.Len() == 0 {
+	} else if rm != nil && rm.controller == nil && rm.viewerSettings.Len() == 0 {
 		r.rooms.Delete(roomID)
 	}
 }
 
-// stopRoom preserves advertised capacities across shares.
+// stopRoom preserves Viewer settings across shares.
 func (r *router) stopRoom(roomID string) {
-	type capacity struct {
-		peerID string
-		value  int
-	}
-	var capacities []capacity
+	var settings ordered.Map[string, viewerRouteSettings]
 	if rm, _ := r.rooms.Get(roomID); rm != nil {
-		for peerID, value := range rm.advertisedCapacityByViewer.All() {
-			capacities = append(capacities, capacity{peerID, value})
-		}
+		settings = rm.viewerSettings
 	}
 	r.clearRoom(roomID)
-	if len(capacities) > 0 {
-		rm := r.room(roomID)
-		for _, current := range capacities {
-			rm.advertisedCapacityByViewer.Set(current.peerID, current.value)
-		}
+	if settings.Len() > 0 {
+		r.room(roomID).viewerSettings = settings
 	}
 }
 
@@ -1022,12 +1079,18 @@ func (r *router) createController(roomID string, rm *roomRuntime, host authentic
 		EffectiveDownstreamCapacity: r.capacity,
 	}, r.nowPtr())
 	for _, viewer := range r.store.GetConnectedViewers(roomID) {
-		capacity, _ := rm.advertisedCapacityByViewer.Get(viewer.PeerID)
+		settings, _ := rm.viewerSettings.Get(viewer.PeerID)
+		if settings.preference != "" && !r.viewerRouteAllowed(roomID, settings.preference) {
+			settings.preference = protocol.ViewerRouteAuto
+			rm.viewerSettings.Set(viewer.PeerID, settings)
+			r.sendViewerRoutePreference(roomID, viewer.PeerID, true)
+		}
 		rm.controller.UpsertParticipant(route.ParticipantInput{
 			PeerID:                      viewer.PeerID,
 			Role:                        protocol.RoleViewer,
 			SessionID:                   viewer.SessionID,
-			EffectiveDownstreamCapacity: capacity,
+			EffectiveDownstreamCapacity: settings.capacity,
+			RoutePreference:             settings.preference,
 		}, r.nowPtr())
 	}
 }

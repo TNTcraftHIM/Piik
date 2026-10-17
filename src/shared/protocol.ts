@@ -222,6 +222,8 @@ export const routePolicySchema = z
   })
   .strict();
 export type RoutePolicy = z.infer<typeof routePolicySchema>;
+export const viewerRoutePreferenceSchema = z.enum(["auto", "p2p", "sfu"]);
+export type ViewerRoutePreference = z.infer<typeof viewerRoutePreferenceSchema>;
 export const DEFAULT_ROUTE_POLICY = {
   peerOnly: false,
   topologyOptimization: true,
@@ -235,6 +237,7 @@ export const runtimeCapabilitiesSchema = z.object({
   roomInteractions: z.boolean().default(false),
   hostRoomSession: z.boolean().default(false),
   remoteInput: z.boolean().default(false),
+  viewerRouteSelection: z.boolean().default(false),
 });
 export type RuntimeCapabilities = z.infer<typeof runtimeCapabilitiesSchema>;
 
@@ -864,6 +867,7 @@ const authenticateMessageSchema = z.discriminatedUnion("role", [
       clientId: opaqueIdSchema,
       viewerGrant: viewerGrantSchema.optional(),
       viewerPassword: viewerPasswordSchema.optional(),
+      routePreference: viewerRoutePreferenceSchema.optional(),
       displayName: displayNameSchema.optional(),
       viewerPresence: z.literal(true).optional(),
     })
@@ -877,6 +881,7 @@ const signalingChallengeSequenceSchema = z
   .max(Number.MAX_SAFE_INTEGER);
 
 export const clientMessageSchema = z.union([
+  z.object({ type: z.literal("set-viewer-route-preference"), preference: viewerRoutePreferenceSchema }).strict(),
   z.object({ type: z.literal("subscribe-remote-input"), endpointId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
     secret: z.string().regex(/^[0-9a-f]{64}$/).optional() }).strict(),
   z.object({ type: z.literal("subscribe-room-interactions") }).strict(),
@@ -1056,6 +1061,7 @@ const authenticatedMessageSchema = z.union([
 ]);
 
 export const serverMessageSchema = z.union([
+  z.object({ type: z.literal("viewer-route-preference"), preference: viewerRoutePreferenceSchema, accepted: z.boolean() }).strict(),
   z.object({ type: z.literal("remote-input-peers"), peers: z.array(z.object({ peerId: opaqueIdSchema,
     endpointId: z.string().regex(/^[0-9a-f]{32}$/), secret: z.string().regex(/^[0-9a-f]{64}$/) }).strict()).max(20) }).strict(),
   z.object({ type: z.literal("room-interactions-ready"), serverTime: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).strict(),

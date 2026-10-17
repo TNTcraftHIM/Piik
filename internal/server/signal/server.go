@@ -713,6 +713,7 @@ type authRequest struct {
 	token           string
 	viewerGrant     string
 	viewerPassword  string
+	routePreference *protocol.ViewerRoutePreference
 	shareGeneration string
 	sharingPaused   bool
 	qualitySettings *protocol.QualitySettings
@@ -742,13 +743,14 @@ func authRequestOf(message protocol.ClientMessage) (authRequest, bool) {
 		}, true
 	case protocol.AuthenticateViewerMessage:
 		return authRequest{
-			role:           protocol.RoleViewer,
-			roomID:         m.RoomID,
-			clientID:       m.ClientID,
-			viewerGrant:    m.ViewerGrant,
-			viewerPassword: m.ViewerPassword,
-			viewerPresence: m.ViewerPresence,
-			displayName:    displayNameString(m.DisplayName),
+			role:            protocol.RoleViewer,
+			roomID:          m.RoomID,
+			clientID:        m.ClientID,
+			viewerGrant:     m.ViewerGrant,
+			viewerPassword:  m.ViewerPassword,
+			routePreference: m.RoutePreference,
+			viewerPresence:  m.ViewerPresence,
+			displayName:     displayNameString(m.DisplayName),
 		}, true
 	}
 	return authRequest{}, false
@@ -916,6 +918,7 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 		mediaActive = s.activeHostShareGeneration(roomID) != ""
 	}
 	routeParticipant := routeParticipant(sess, authenticated)
+	routeParticipant.routePreference = request.routePreference
 	if participant.Role == protocol.RoleHost && mediaActive {
 		policy := s.routePolicyOf(roomID)
 		routeParticipant.routePolicy = &policy
@@ -1004,6 +1007,9 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 			QualitySettings:               qualitySettings,
 			Role:                          protocol.RoleViewer,
 		})
+	}
+	if participant.Role == protocol.RoleViewer && request.routePreference != nil {
+		s.router.sendViewerRoutePreference(roomID, participant.PeerID, true)
 	}
 	if participant.ReplacedSessionID != "" {
 		if replaced := s.sessionsByID[participant.ReplacedSessionID]; replaced != nil && replaced != sess {
@@ -1241,6 +1247,12 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 				QualitySettings: m.QualitySettings,
 			})
 		}
+	case protocol.SetViewerRoutePreferenceMessage:
+		if authenticated.role != protocol.RoleViewer {
+			s.sendError(sess, "FORBIDDEN", "Only a viewer may select an incoming route")
+			return
+		}
+		s.router.setViewerRoutePreference(routeParticipant(sess, authenticated), m.Preference)
 	case protocol.RelayCapacityMessage:
 		if authenticated.role != protocol.RoleViewer {
 			s.sendError(sess, "FORBIDDEN", "Only a viewer may advertise relay capacity")

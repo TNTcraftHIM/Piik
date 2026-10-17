@@ -31,15 +31,16 @@ type AuthenticateHostMessage struct {
 
 // AuthenticateViewerMessage is the viewer member of authenticateMessageSchema.
 type AuthenticateViewerMessage struct {
-	Type           string       `json:"type"`
-	Protocol       string       `json:"protocol"`
-	RoomID         string       `json:"roomId"`
-	Role           Role         `json:"role"`
-	ClientID       string       `json:"clientId"`
-	ViewerGrant    string       `json:"viewerGrant,omitempty"`
-	ViewerPassword string       `json:"viewerPassword,omitempty"`
-	DisplayName    *DisplayName `json:"displayName,omitempty"`
-	ViewerPresence bool         `json:"viewerPresence,omitempty"`
+	Type            string                 `json:"type"`
+	Protocol        string                 `json:"protocol"`
+	RoomID          string                 `json:"roomId"`
+	Role            Role                   `json:"role"`
+	ClientID        string                 `json:"clientId"`
+	ViewerGrant     string                 `json:"viewerGrant,omitempty"`
+	ViewerPassword  string                 `json:"viewerPassword,omitempty"`
+	DisplayName     *DisplayName           `json:"displayName,omitempty"`
+	ViewerPresence  bool                   `json:"viewerPresence,omitempty"`
+	RoutePreference *ViewerRoutePreference `json:"routePreference,omitempty"`
 }
 
 // SignalingChallengeMessage is { type: "signaling-challenge", sequence }.
@@ -217,6 +218,8 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		return nil, err
 	}
 	switch messageType {
+	case "set-viewer-route-preference":
+		return decodeSetViewerRoutePreference(data)
 	case "subscribe-remote-input":
 		return decodeSubscribeRemoteInput(data)
 	case "subscribe-room-interactions":
@@ -346,7 +349,7 @@ func decodeAuthenticate(data []byte) (ClientMessage, error) {
 			return nil, err
 		}
 		if err := present.optional(
-			"viewerGrant", "viewerPassword", "displayName", "viewerPresence"); err != nil {
+			"viewerGrant", "viewerPassword", "displayName", "viewerPresence", "routePreference"); err != nil {
 			return nil, err
 		}
 		if message.Protocol != SignalingProtocol {

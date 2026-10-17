@@ -1,4 +1,5 @@
 import type { InputTransport } from "./input-route";
+import { videoFitScale } from "../media/video-geometry";
 import { remoteInputStateSchema, type RemoteInputState } from "./protocol";
 export type { RemoteInputState } from "./protocol";
 export type RemoteInputEvent =
@@ -148,11 +149,11 @@ export class RemoteInputSession {
 }
 
 // The input surface can include letterboxing. Its bars are not clickable
-// picture pixels; use the same contained aspect ratio as Viewer playback.
+// picture pixels; use the same local fit as Viewer playback, including cropping.
 export function pictureRect(video: HTMLVideoElement): { left: number; top: number; width: number; height: number } | null {
   if (!video.videoWidth || !video.videoHeight) return null;
   const rect = video.getBoundingClientRect();
-  const scale = Math.min(rect.width / video.videoWidth, rect.height / video.videoHeight);
+  const scale = videoFitScale(video, rect.width, rect.height);
   const width = video.videoWidth * scale, height = video.videoHeight * scale;
   if (!width || !height) return null;
   return { left: rect.left + (rect.width - width) / 2, top: rect.top + (rect.height - height) / 2, width, height };

@@ -317,6 +317,7 @@ type ParticipantInput struct {
 	Role                        protocol.Role
 	SessionID                   string
 	EffectiveDownstreamCapacity int
+	RoutePreference             protocol.ViewerRoutePreference
 }
 
 // EdgeGuard identifies one committed edge exactly. ParentSessionID is only

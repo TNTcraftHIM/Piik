@@ -3,6 +3,7 @@ import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio"
 import { useCopy } from "../../ui/copy";
 import { debugError } from "../../lib/debug";
 import { Btn } from "./primitives";
+import { ViewerPlaybackSettings, type ViewerPlaybackSettingsProps } from "./ViewerPlaybackSettings";
 import { Tooltip } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { usePlaybackControlsVisibility } from "./use-playback-controls-visibility";
@@ -16,7 +17,7 @@ import "./playback-controls.css";
 export function PlaybackControls({
   videoRef, stream, audioTrackKey, canPlay, theaterMode, onPlay,
   onToggleTheater, onReconnect, reconnectAvailable,
-  extraActions,
+  extraActions, settings,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   stream: MediaStream | null;
@@ -28,6 +29,7 @@ export function PlaybackControls({
   onReconnect: () => void;
   reconnectAvailable: boolean;
   extraActions?: ReactNode;
+  settings?: ViewerPlaybackSettingsProps;
 }) {
   const audioRef = useRef<ViewerAudio | null>(null);
   const controlsRef = useRef<HTMLDivElement | null>(null);
@@ -124,14 +126,14 @@ export function PlaybackControls({
       audioRef.current?.setLevel(level);
       audioRef.current?.setMuted(false);
     }} onToggleTheater={onToggleTheater} onReconnect={onReconnect}
-    reconnectAvailable={reconnectAvailable} extraActions={extraActions} />;
+    reconnectAvailable={reconnectAvailable} extraActions={extraActions} settings={settings} />;
 }
 
 // The film shares the rendered controls; the component above alone owns media effects.
 export function PlaybackControlsView({
   controlsRef, hidden, audio, paused, hasAudio, canPlay, theaterMode,
   fullscreen, fullscreenFailed, picture, togglePlayback, toggleFullscreen,
-  toggleMute, setLevel, onToggleTheater, onReconnect, reconnectAvailable, extraActions,
+  toggleMute, setLevel, onToggleTheater, onReconnect, reconnectAvailable, extraActions, settings,
 }: {
   controlsRef?: RefObject<HTMLDivElement | null>; hidden?: boolean;
   audio: ViewerAudioSnapshot; paused: boolean; hasAudio: boolean; canPlay: boolean;
@@ -141,6 +143,7 @@ export function PlaybackControlsView({
   togglePlayback: () => void; toggleFullscreen: () => void; toggleMute: () => void;
   setLevel: (level: number) => void; onToggleTheater: () => void; onReconnect: () => void;
   reconnectAvailable: boolean; extraActions?: ReactNode;
+  settings?: ViewerPlaybackSettingsProps;
 }) {
   const { t, vis } = useCopy();
   const silent = audio.muted || audio.level === 0;
@@ -190,7 +193,7 @@ export function PlaybackControlsView({
       <span className="lr-playback-view">
         {extraActions}
         <span className="lr-playback-secondary">{secondaryActions(false)}</span>
-        <PlaybackMore>{secondaryActions(true)}</PlaybackMore>
+        <PlaybackMore settings={settings}>{secondaryActions(true)}</PlaybackMore>
         {fullscreen.supported && !theaterMode ? (
           <Btn icon={fullscreen.active ? "contract" : "expand"}
             draw="playback-fullscreen"
@@ -210,19 +213,22 @@ export function PlaybackControlsView({
 
 // Native popover owns dismissal and focus return. The same actions above render
 // directly on wide players and in this compact disclosure on narrow players.
-function PlaybackMore({ children }: { children: ReactNode }) {
+function PlaybackMore({ children, settings }: { children: ReactNode; settings?: ViewerPlaybackSettingsProps }) {
   const { t } = useCopy();
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, panel, { side: "above" });
-  return <span className="lr-playback-more" ref={trigger}>
+  return <span className={`lr-playback-more${settings ? " has-settings" : ""}`} ref={trigger}>
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
     <div id={id} ref={panel} className="lr-playback-menu" popover="auto" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}
       onClick={event => {
-        if (!event.defaultPrevented && event.target instanceof Element && event.target.closest("button")) panel.current?.hidePopover();
-      }}>{children}</div>
+        if (!event.defaultPrevented && event.target instanceof Element && event.target.closest(".lr-playback-menu-actions button")) panel.current?.hidePopover();
+      }}>
+      {settings ? <ViewerPlaybackSettings {...settings} /> : null}
+      <div className="lr-playback-menu-actions">{children}</div>
+    </div>
   </span>;
 }

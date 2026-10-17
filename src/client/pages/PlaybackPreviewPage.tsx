@@ -58,6 +58,8 @@ export function PlaybackPreviewPage() {
   const mediaRef = useRef<ReturnType<typeof testMedia> | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [theaterMode, setTheaterMode] = useState(false);
+  const [pictureFit, setPictureFit] = useState<"contain" | "cover">("contain");
+  const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
   const [error, setError] = useState("");
   const hasAudio = Boolean(stream?.getAudioTracks().length);
 
@@ -116,9 +118,11 @@ export function PlaybackPreviewPage() {
       </header> : null}
       <div className="lr-scene">
         <StageTv live={Boolean(stream)} label={english ? "Local test picture" : "本机测试画面"}>
-          <video ref={videoRef} playsInline tabIndex={0} inert={!stream}
+          <video ref={videoRef} playsInline tabIndex={0} inert={!stream} style={{ objectFit: pictureFit }}
             aria-label={english ? "Local test video" : "本机测试视频"} />
           <PlaybackControls videoRef={videoRef} stream={stream}
+            settings={{ pictureFit, setPictureFit, route: { preference: viewerRoute, onChange: setViewerRoute,
+              sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } }}
             audioTrackKey={stream?.getAudioTracks().map((track) => track.id).join(",")}
             canPlay={Boolean(stream)} theaterMode={theaterMode} onPlay={play}
             onToggleTheater={() => setTheaterMode((value) => !value)}

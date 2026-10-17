@@ -93,11 +93,17 @@ it("binds input to the current request and retires cancelled or replaced grants"
 
 it("maps only visible picture pixels when playback has letterboxing", () => {
   const video = { videoWidth: 1920, videoHeight: 1080,
+    style: { objectFit: "contain" },
     getBoundingClientRect: () => ({ left: 100, top: 50, width: 800, height: 600 }),
   } as HTMLVideoElement;
   expect(picturePoint(video, 500, 350)).toEqual({ x: 0.5, y: 0.5 });
   expect(picturePoint(video, 500, 60)).toBeNull();
   expect(picturePoint(video, 901, 350)).toBeNull();
+  video.style.objectFit = "cover";
+  expect(picturePoint(video, 500, 350)).toEqual({ x: 0.5, y: 0.5 });
+  // Filling this 4:3 player crops the 16:9 picture, it does not stretch input.
+  expect(picturePoint(video, 100, 50)?.x).toBeCloseTo(0.125);
+  expect(picturePoint(video, 900, 650)?.x).toBeCloseTo(0.875);
 });
 
 it("ends a pending request when its source becomes unavailable, even before the request reaches the Host", () => {

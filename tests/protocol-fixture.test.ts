@@ -135,6 +135,7 @@ describe("shared wire fixture", () => {
         "client:set-display-name",
         "client:set-quality-settings",
         "client:set-sharing-paused",
+        "client:set-viewer-route-preference",
         "client:sfu-publisher-quality-evidence",
         "client:sfu-signal",
         "client:signal",
@@ -190,6 +191,7 @@ describe("shared wire fixture", () => {
       "viewer-grant-revoked",
       "viewer-presence",
       "viewer-quality-evidence",
+      "viewer-route-preference",
     ]);
   });
 

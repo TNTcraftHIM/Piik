@@ -249,6 +249,8 @@ func DecodeServerMessage(data []byte) (ServerMessage, error) {
 		return nil, err
 	}
 	switch messageType {
+	case "viewer-route-preference":
+		return decodeViewerRoutePreference(data)
 	case "remote-input-peers":
 		return decodeRemoteInputPeers(data)
 	case "room-interactions-ready":

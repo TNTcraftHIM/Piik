@@ -1,4 +1,5 @@
 import { pictureRect } from "./input-session";
+import { videoFitScale } from "../media/video-geometry";
 
 type Point = { x: number; y: number };
 
@@ -31,7 +32,7 @@ export class RemoteViewport {
     const { videoWidth, videoHeight, style } = this.video;
     const { width, height } = this.surface.getBoundingClientRect();
     if (!videoWidth || !videoHeight || !width || !height) return;
-    const fit = Math.min(width / videoWidth, height / videoHeight) * this.scale;
+    const fit = videoFitScale(this.video, width, height) * this.scale;
     const limitX = Math.max(0, (videoWidth * fit - width) / 2);
     const limitY = Math.max(0, (videoHeight * fit - height) / 2);
     const x = this.offset.x = Math.max(-limitX, Math.min(limitX, this.offset.x));

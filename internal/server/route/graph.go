@@ -113,7 +113,7 @@ func (c *Controller) retireInvalidOperationEdge(childPeerID string, released *[]
 }
 
 func (c *Controller) edgeRequiresMove(childPeerID string, edge *CommittedEdge) bool {
-	if !edge.Usable || !edge.PhysicalActive {
+	if !edge.Usable || !edge.PhysicalActive || !c.allowsIncoming(childPeerID, edge.Kind) || c.parentRouteRetired(edge) {
 		return true
 	}
 	if edge.Kind == UpstreamSfu {
@@ -130,6 +130,16 @@ func (c *Controller) edgeRequiresMove(childPeerID string, edge *CommittedEdge) b
 		}
 	}
 	return false
+}
+
+// Keep a relay's subtree while it repairs its ingress. Once that ingress is
+// actually retired, its direct children need their own availability handoff.
+func (c *Controller) parentRouteRetired(edge *CommittedEdge) bool {
+	if edge.Kind != UpstreamPeer || edge.ParentPeerID == c.hostPeerID {
+		return false
+	}
+	parentEdge, ok := c.upstreamByViewer.Get(edge.ParentPeerID)
+	return ok && !parentEdge.PhysicalActive
 }
 
 // rebindCommittedSession preserves the reconnecting peer's edges and

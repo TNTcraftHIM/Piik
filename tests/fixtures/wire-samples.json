@@ -44,6 +44,24 @@
   },
   "clientMessages": [
     {
+      "name": "viewer-route-selection",
+      "schema": "client",
+      "json": "{\"type\":\"set-viewer-route-preference\",\"preference\":\"sfu\"}",
+      "valid": true
+    },
+    {
+      "name": "viewer-route-unknown-choice",
+      "schema": "client",
+      "json": "{\"type\":\"set-viewer-route-preference\",\"preference\":\"tcp\"}",
+      "valid": false
+    },
+    {
+      "name": "viewer-route-no-choice",
+      "schema": "client",
+      "json": "{\"type\":\"set-viewer-route-preference\"}",
+      "valid": false
+    },
+    {
       "name": "signal-punch-stable-mapping",
       "schema": "client",
       "json": "{\"type\":\"signal\",\"targetPeerId\":\"viewer_12345678\",\"payload\":{\"kind\":\"punch\",\"connectionId\":\"connection_12345678\",\"punch\":{\"phase\":\"ready\",\"prediction\":{\"address\":\"198.51.100.1\",\"port\":65535,\"step\":0}}}}",
@@ -1293,6 +1311,14 @@
     }
   ],
   "serverMessages": [
+    {
+      "name": "viewer-route-selection-accepted",
+      "json": "{\"type\":\"viewer-route-preference\",\"preference\":\"sfu\",\"accepted\":true}"
+    },
+    {
+      "name": "viewer-route-selection-rejected",
+      "json": "{\"type\":\"viewer-route-preference\",\"preference\":\"auto\",\"accepted\":false}"
+    },
     {
       "name": "room-interaction-future-reaction",
       "json": "{\"type\":\"room-interaction\",\"id\":\"event_12345678\",\"requestId\":\"request_12345678\",\"occurredAt\":1700000000010,\"sender\":{\"peerId\":\"peer_12345678\",\"role\":\"host\",\"displayName\":\"Piik friend\"},\"payload\":{\"kind\":\"reaction\",\"reaction\":\"future-effect\",\"targetPeerId\":\"target_12345678\"}}"
