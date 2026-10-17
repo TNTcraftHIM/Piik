@@ -1,5 +1,5 @@
 .lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: crosshair; touch-action: none; outline: 2px solid var(--action); outline-offset: -2px; border-radius: inherit; }
-.lr-remote-input-surface.is-suspended { outline-color: var(--muted); cursor: default; }
+.lr-remote-input-surface.is-suspended { outline-color: var(--muted); cursor: default; pointer-events: none; }
 .lr-remote-input-status { display: flex; align-items: center; gap: 8px; position: absolute; top: 12px; left: 12px; z-index: 4; max-width: calc(100% - 24px); box-sizing: border-box; padding: 8px 12px; border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; pointer-events: none; }
 .lr-remote-input-status > svg { flex: none; }
 .lr-remote-trigger { display: inline-flex; position: relative; }
@@ -43,8 +43,25 @@
 .lr-remote-game-mouse .lr-btn { width: auto; padding: 0 12px; }
 .lr-remote-keys { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
 .lr-remote-shortcuts { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.lr-remote-keys .lr-chip { justify-content: center; padding: 4px; width: 100%; min-width: 0; min-height: 36px; border-radius: 10px; font: 12px var(--mono); letter-spacing: 0; white-space: nowrap; }
+.lr-remote-keyboard { min-height: 0; outline: none; }
+.lr-remote-keyboard > * { max-width: 640px; margin-inline: auto; }
+.lr-remote-key-pages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
+.lr-remote-key-pages .lr-chip { justify-content: center; min-width: 0; min-height: 36px; padding: 4px 8px; font-size: 12px; letter-spacing: 0; }
+.lr-remote-key-row { display: flex; justify-content: center; gap: 4px; margin-bottom: 6px; }
+.lr-remote-key-row .lr-chip { flex: 1; }
+.lr-remote-key-layout.is-letters .lr-remote-key-row .lr-chip { flex: 0 1 calc((100% - 36px) / 10); }
+.lr-remote-modifiers { margin-top: 10px; }
+.lr-remote-navigation .lr-chip[data-key="Space"] { flex: 2; }
+:is(.lr-remote-keys, .lr-remote-key-row) .lr-chip { justify-content: center; padding: 4px 0; width: 100%; min-width: 0; min-height: 38px; border-width: 1px; border-radius: 9px; font: 600 12px var(--mono); letter-spacing: 0; white-space: nowrap; touch-action: none; user-select: none; -webkit-touch-callout: none; }
 .lr-remote-keyboard p { margin: 8px 0 0; text-align: center; color: var(--muted); font-size: 11px; }
+/* In short fullscreen/theater viewports, keep the picture beside the keyboard
+   instead of spending the entire height on keys and playback controls. */
+@media (min-width: 600px) and (max-height: 520px) and (orientation: landscape) {
+  :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen):has(> .lr-remote-keyboard) { grid-template: minmax(0, 1fr) auto / minmax(0, 1fr) minmax(280px, 44%); }
+  :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen) > .lr-remote-keyboard { grid-area: 1 / 2 / 3 / 3; overflow-y: auto; overscroll-behavior: contain; border-top: 0; border-left: 1px solid var(--control-edge); }
+  :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen):has(> .lr-remote-keyboard) > .lr-playback { container-type: inline-size; gap: 4px; padding: 4px 6px; }
+  :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen) .lr-remote-key-row .lr-chip { min-height: 32px; }
+}
 @media (max-width: 580px) {
   .lr-remote-keys { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .lr-remote-shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -52,6 +69,9 @@
   .lr-host-share-controls .lr-remote-trigger .lr-btn[aria-controls] .lr-cap { display: none; }
 }
 @media (max-width: 380px) {
+  .lr-remote-keyboard { padding-inline: 6px; }
+  .lr-remote-key-row { gap: 3px; }
+  .lr-remote-key-layout.is-letters .lr-remote-key-row .lr-chip { flex-basis: calc((100% - 27px) / 10); }
   .lr-host-share-controls:has(.lr-remote-trigger) { gap: 0; padding: 2px; }
   .lr-host-share-controls:has(.lr-remote-trigger) .lr-btn[aria-controls] { width: 44px; height: 44px; min-height: 44px; padding: 0; }
   .lr-host-share-controls:has(.lr-remote-trigger) .lr-btn[aria-controls] .lr-cap { display: none; }

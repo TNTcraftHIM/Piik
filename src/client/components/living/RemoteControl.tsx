@@ -31,7 +31,7 @@ export function RemoteControl({ channel, videoRef, available }: {
   const touchpad = useRef<RemoteTouchpad | null>(null);
   const active = state?.state === "active" && available && inline && channel?.readyState === "open";
   const controlled = (state?.state === "active" || state?.state === "suspended") && available && inline && channel?.readyState === "open";
-  const input = (event: RemoteInputEvent) => session.current?.input(event);
+  const input = useCallback((event: RemoteInputEvent) => session.current?.input(event), []);
   const reset = useCallback(() => { touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
   const closeKeyboard = () => {
     reset(); setKeyboardOpen(false); surface.current?.focus({ preventScroll: true });
@@ -61,8 +61,11 @@ export function RemoteControl({ channel, videoRef, available }: {
     if (!available || !inline) release();
   }, [available, inline, channel, release]);
   useEffect(() => {
+    if (!active) { touchpad.current?.reset(); setKeyboardOpen(false); }
+  }, [active]);
+  useEffect(() => {
     const video = videoRef.current;
-    if (!active || !video) { setKeyboardOpen(false); setTouch(false); return; }
+    if (!controlled || !video) { setTouch(false); return; }
     const updateCursor = () => {
       const picture = pictureRect(video);
       const rect = surface.current?.getBoundingClientRect();
@@ -85,7 +88,7 @@ export function RemoteControl({ channel, videoRef, available }: {
       observer.disconnect(); video.removeEventListener("resize", updateCursor);
       current.reset(); touchpad.current = null;
     };
-  }, [active, channel, videoRef]);
+  }, [controlled, channel, videoRef]);
   useEffect(() => {
     const video = videoRef.current as FullscreenVideo | null;
     if (!video) return;

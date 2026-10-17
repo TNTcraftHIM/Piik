@@ -24,7 +24,9 @@ platform deferrals or establish a diagnosis for unmatched reports.
   one Host publication and one keyboard/mouse controller at a time, under the
   Host's source-scoped permission policy, disabled by default. Ask each time, room admission
   and password modes are implemented. Mobile touchpad gestures and Unicode text
-  input pass local Browser-to-Windows checks; physical Android/iOS keyboard and
+  input pass local Browser-to-Windows checks. The virtual keyboard supplies
+  letters, symbols, function keys and one-shot modifiers, with held-key release
+  and portrait/landscape layouts checked locally; physical Android/iOS keyboard and
   fullscreen behavior still need device acceptance. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
   owns limitations and evidence. This is not part of the public release.
   [Window/game input assessment](./research/room-interactions.md#window-capture-and-game-input)

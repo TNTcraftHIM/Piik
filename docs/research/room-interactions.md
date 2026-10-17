@@ -397,8 +397,15 @@ Touch input uses a relative touchpad over the contained picture: one finger
 moves the cursor, a tap clicks, holding starts a drag, and two fingers scroll
 or tap for a right-click. Pointer events select this behavior without OS or
 browser-name checks. The gesture owner is scoped to the current grant;
-cancellation, blur and grant retirement release held input. The keyboard panel
-reserves space below the picture and supplies special keys and common shortcuts.
+cancellation, blur and grant retirement release held input. Temporary loss of
+Host window focus retains the grant's touchpad position while suspending input.
+The keyboard panel reserves space below the picture, or beside it in a short
+landscape fullscreen/theater view. Letters, numbers/symbols and function/navigation
+keys use separate compact sections; text input retains the local IME. Opening
+the key panel does not summon the phone's software keyboard. Modifier selection
+applies to the next key; held contacts repeat and release independently, including
+on cancellation, panel closure and window blur. No pressed state survives grant
+retirement. Common text shortcuts remain beside the text field.
 Its buttons send remote system shortcuts, including Win+Space, without depending
 on the local OS delivering that combination to the page. Physical system-key
 capture remains subject to the local OS and Browser; even the
