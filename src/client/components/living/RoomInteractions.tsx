@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
 import { normalizeChatText, MAX_CHAT_CODE_POINTS, isThrow, type ReactionId } from "../../../shared/room-interactions";
 import { RoomInteractionSession } from "../../lib/room-interactions";
 import { useCopy } from "../../ui/copy";
@@ -9,7 +9,8 @@ import { FloatingPanel } from "./FloatingPanel";
 import { PawnSvg } from "./Pawn";
 import { Couch, type CouchProps } from "./Couch";
 import { RoomReaction } from "./RoomReaction";
-import { RoomReactionPicker, type InteractionParticipant } from "./RoomReactionPicker";
+import { RoomReactionGrid, RoomReactionPicker, type InteractionParticipant } from "./RoomReactionPicker";
+import { RoomReactionActivity } from "./RoomReactionActivity";
 import { Tooltip } from "./Tooltip";
 import { RoomChatToggle } from "./RoomChatOverlay";
 import { RoomChatSettings } from "./RoomChatSettings";
@@ -60,6 +61,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
   const canSend = state.ready && !state.pending && !state.coolingDown;
   const person = participants.find(person => person.peerId === target);
   const panelPerson = participants.find(person => person.peerId === panelTarget);
+  const latestReaction = state.reactions.at(-1);
   const showChat = !settingsOpen;
   const rosterKey = participants.map(person => person.peerId).join(",");
   const inspect = target === couch.host?.key && couch.host.onSelect ? () => { if (!couch.host?.selected) couch.host?.onSelect?.(); }
@@ -77,6 +79,9 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
     if (panelTarget && !panelPerson) setPanelTarget(null);
   }, [panelTarget, panelPerson]);
   useLayoutEffect(() => {
+    if (panelTarget) panelArea.current?.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [panelTarget, chatDocument]);
+  useLayoutEffect(() => {
     const popup = document.getElementById(menuId);
     if (!popup) return;
     if (person && anchor.current?.isConnected) popup.showPopover({ source: anchor.current });
@@ -91,6 +96,12 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
   }
   function sendReaction(reaction: ReactionId, targetPeerId?: string) {
     session.send({ kind: "reaction", reaction, ...(targetPeerId ? { targetPeerId } : {}) });
+  }
+  function dismissPicker(event: KeyboardEvent) {
+    if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing || !panelPerson) return;
+    event.preventDefault();
+    setPanelTarget(null);
+    event.currentTarget.ownerDocument.getElementById(`${id}-express`)?.focus({ preventScroll: true });
   }
   useLayoutEffect(() => {
     // Moving a popover between documents resets its native scroll offset.
@@ -120,7 +131,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
     };
   }, [chatOpen, chatDocument, showChat]);
   useEffect(() => {
-    if (!showChat || !chatOpen || !visible || !following || log.current?.ownerDocument.visibilityState !== "visible" ||
+    if (!showChat || panelTarget || !chatOpen || !visible || !following || log.current?.ownerDocument.visibilityState !== "visible" ||
       !log.current?.getClientRects().length) return;
     setLastSeen(latest);
     log.current.scrollTop = log.current.scrollHeight;
@@ -145,7 +156,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
           hint="hint-chat-open" onClick={() => setSettingsOpen(false)} /></div>
         <RoomChatSettings session={session} />
       </>}
-      <div className="lr-interaction-conversation" hidden={!showChat} ref={panelArea}>
+      <div className="lr-interaction-conversation" hidden={!showChat} ref={panelArea} onKeyDown={dismissPicker}>
       <div className="lr-chat-history">
       <div className="lr-chat-log" role="log" aria-label={t("interaction.chat")} aria-live="polite" aria-relevant="additions" tabIndex={0} ref={log}
         onScroll={event => {
@@ -169,57 +180,59 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
           </div>;
         })}
       </div>
-      {!following && state.messages.length > 0 && <button type="button" className="lr-chat-latest" onClick={() => {
+      {!following && !panelPerson && state.messages.length > 0 && <button type="button" className="lr-chat-latest" onClick={() => {
         setFollowing(true); log.current?.focus({ preventScroll: true });
       }}><Glyph name="arrowDown" size={15} /><span className={vis ? "visually-hidden" : undefined}>
         {unread ? t("interaction.unread", { count: String(unread) }) : t("interaction.latest")}</span></button>}
-      </div>
-      {chatOpen && !settingsOpen && <>
-      <div className="lr-interaction-stage">
+      {chatOpen && !settingsOpen && effects && !panelPerson && latestReaction &&
+        <RoomReactionActivity key={latestReaction.id} reaction={latestReaction} participants={participants}
+          hostPeerId={couch.host?.key} now={session.now} />}
+      <div id={`${id}-reactions`} className="lr-interaction-picker" hidden={!panelPerson}>
         <div className="lr-interaction-people-scroll">
           <div className="lr-interaction-people" role="group" aria-label={t("interaction.participant")}>
             {participants.map(person => <span key={person.peerId} data-room-peer={person.peerId}>
               <Tooltip overflow={{ text: person.displayName, selector: ".lr-pawn-name" }}>
                 <button type="button" className={`lr-pawn${person.peerId === state.peerId ? " is-you" : ""}`}
                   aria-label={t("interaction.withPerson", { name: person.displayName })}
-                  aria-expanded={panelTarget === person.peerId} aria-controls={`${id}-reactions`}
-                  onClick={() => setPanelTarget(current => current === person.peerId ? null : person.peerId)}>
+                  aria-pressed={panelTarget === person.peerId}
+                  onClick={() => setPanelTarget(person.peerId)}>
                   <PawnSvg color={participantColor(person.peerId)} identity={person.peerId} host={person.peerId === couch.host?.key} />
-                  <span className="lr-pawn-name">{person.displayName}</span>
+                  <span className="lr-pawn-name">{person.peerId === state.peerId && !vis ? t("common.you") : person.displayName}</span>
                 </button>
               </Tooltip>
             </span>)}
           </div>
         </div>
+        <RoomReactionGrid person={panelPerson} selfPeerId={state.peerId} canSend={canSend} onSend={sendReaction} />
       </div>
-      {effects && <ReactionEffects state={state} participants={participants} area={panelArea} now={session.now} />}
-      </>}
+      {chatOpen && !settingsOpen && panelPerson && effects &&
+        <ReactionEffects state={state} participants={participants} area={panelArea} now={session.now} />}
       </div>
-      <div id={`${id}-reactions`} className="lr-interaction-picker" hidden={!panelPerson || settingsOpen}>
-        <RoomReactionPicker person={panelPerson} selfPeerId={state.peerId} hostPeerId={couch.host?.key}
-          canSend={canSend} onSend={sendReaction} onBack={() => setPanelTarget(null)} />
       </div>
-      <form className="lr-chat-compose" hidden={!showChat || Boolean(panelPerson)} onSubmit={event => {
+      <form className="lr-chat-compose" hidden={!showChat} onKeyDown={dismissPicker} onSubmit={event => {
         event.preventDefault();
         const text = normalizeChatText(draft);
         if (text && canSend) { setFollowing(true); session.send({ kind: "chat", text }); }
       }}>
+        <div className="lr-chat-input-row">
         <input value={draft} onChange={event => setDraft(event.target.value)} maxLength={MAX_CHAT_CODE_POINTS * 2}
           aria-label={t("interaction.placeholder")} placeholder={vis ? "···" : t("interaction.placeholder")}
-          autoComplete="off"
+          name="message" autoComplete="off" onFocus={() => setPanelTarget(null)}
           onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} />
         <Btn type="submit" icon="send" title="interaction.send" hint="hint-chat-send" tone="primary" busy={state.pending?.payload.kind === "chat"}
           disabled={!canSend || !normalizeChatText(draft)} />
+        </div>
+        <div className="lr-chat-tools">
+          <Btn id={`${id}-express`} icon="smile" title="interaction.express" cap="interaction.express"
+            expanded={Boolean(panelPerson)} controls={`${id}-reactions`} tone={panelPerson ? "on" : undefined}
+            onClick={() => setPanelTarget(current => current ? null : state.peerId)} />
+          <RoomChatToggle session={session} />
+          <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft ? undefined : "hidden" }}>
+            {Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>
+          <Btn icon="sliders" title="interaction.settings" hint="hint-chat-settings"
+            onClick={() => { setPanelTarget(null); setSettingsOpen(true); }} />
+        </div>
       </form>
-      {!settingsOpen && <footer className="lr-chat-footer">
-      <div className="lr-chat-actions">
-      <RoomChatToggle session={session} caption />
-      <Btn icon="sliders" title="interaction.settings" hint="hint-chat-settings"
-        onClick={() => { setPanelTarget(null); setSettingsOpen(true); }} />
-      </div>
-      <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft && !panelPerson ? undefined : "hidden" }}>
-        {Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>
-      </footer>}
       {(state.error || !state.ready) && <div className="lr-interaction-status" role="status">
         <Glyph name={state.error ? "alert" : "network"} size={14} />
         <span className={vis ? "visually-hidden" : undefined}>{t(state.error ? `interaction.error.${state.error}` : "interaction.reconnecting")}</span>

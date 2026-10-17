@@ -3,14 +3,13 @@ import { CHAT_OVERLAY_DURATION_MS, RoomInteractionSession } from "../../lib/room
 import { Btn } from "./primitives";
 import "./room-chat-overlay.css";
 
-export function RoomChatToggle({ session, caption = false }: { session: RoomInteractionSession | null; caption?: boolean }) {
-  return session ? <ConnectedToggle key={session.key} session={session} caption={caption} /> : null;
+export function RoomChatToggle({ session }: { session: RoomInteractionSession | null }) {
+  return session ? <ConnectedToggle key={session.key} session={session} /> : null;
 }
 
-function ConnectedToggle({ session, caption }: { session: RoomInteractionSession; caption: boolean }) {
+function ConnectedToggle({ session }: { session: RoomInteractionSession }) {
   const { overlayEnabled } = useSyncExternalStore(session.subscribe, session.getSnapshot);
   return <span className="lr-chat-overlay-toggle"><Btn icon="danmaku"
-    cap={caption ? "interaction.overlay.label" : undefined}
     title={overlayEnabled ? "interaction.overlay.hide" : "interaction.overlay.show"}
     hint={overlayEnabled ? "hint-chat-overlay-hide" : "hint-chat-overlay-show"}
     hintText={overlayEnabled ? "interaction.overlay.hideHint" : "interaction.overlay.showHint"}

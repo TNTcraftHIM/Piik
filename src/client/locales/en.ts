@@ -283,7 +283,6 @@ export const en: Record<CopyKey, string> = {
   "floating.position.topRight": "Top right",
   "floating.position.bottomLeft": "Bottom left",
   "floating.position.bottomRight": "Bottom right",
-  "interaction.overlay.label": "On screen",
   "interaction.overlay.show": "Show chat on screen",
   "interaction.overlay.hide": "Hide chat on screen",
   "interaction.overlay.showHint": "Show new messages over the picture, just for you.",

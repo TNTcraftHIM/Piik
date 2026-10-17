@@ -71,11 +71,13 @@ platform polyfill installed before UI mounting; controls retain the same
 visibility, focus and dismissal contract. Escape closes
 inner guidance first, then the most recently opened floating panel, then theater
 mode; an IME composition must not dismiss these surfaces.
-The interaction window keeps conversation above a compact participant row and
-composer. Selecting a participant opens the shared reaction picker below that
-row, keeping messages visible and the draft intact. More participants scroll
-within the row rather than consuming the conversation. Retention and export
-details belong in settings, not beside every message entry.
+The interaction window gives conversation the main space and keeps one stable
+composer. Its reaction entry reveals a compact recipient strip and the shared
+palette above the input; neither a permanent roster nor a second target heading
+competes with messages. More recipients scroll within that strip. Keep the
+composer in place while picking, and preserve the draft and reading position.
+Live reactions can appear briefly in the conversation surface without moving its
+layout. Retention and export details belong in settings, not beside every entry.
 Detachable tools reuse the same content in the browser's own always-on-top frame.
 Close, return-to-tab, movement and resizing belong to that frame; do not duplicate
 its controls in the tool header. Keep messages and text contrast

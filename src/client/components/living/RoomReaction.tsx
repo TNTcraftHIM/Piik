@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties, type RefObject } from "react";
+import { useEffect, useRef, type CSSProperties, type RefObject } from "react";
 import { REACTION_DURATION_MS, REACTION_GLYPHS, isThrow, type ReactionId } from "../../../shared/room-interactions";
 import type { RoomInteraction } from "../../lib/room-interactions";
 import { identityHash } from "../../lib/identity-hash";
@@ -50,7 +50,8 @@ export function RoomReaction({ reaction, area, now }: {
   const flight = useRef<HTMLDivElement>(null);
   const surfaceDocument = useSurfaceDocument();
   const payload = reaction.payload;
-  useLayoutEffect(() => {
+  // A newly mounted surface must attach its parent ref before placement starts.
+  useEffect(() => {
     const root = area.current;
     const element = flight.current;
     if (!root || !element || payload.kind !== "reaction") return;

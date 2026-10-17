@@ -133,11 +133,19 @@ Close or Escape dismisses the palette; it also closes if its participant leaves.
 Sending keeps it open for repeated interaction, with the existing short cooldown.
 Confirmation never changes menu visibility; failure stays visible in the card.
 Opening or closing a reaction card preserves the chat draft and unread state.
-The interaction window also shows a compact room roster with the same identities
-and live reactions. Selecting a person opens the shared palette below the roster,
-keeping the conversation visible and preserving the draft and reading position.
-Only visible chat following the latest messages consumes unread messages. This works in the detached window too, using
-the same room session, event expiry and sending controls as the couch shortcut.
+The interaction window keeps one composer with an on-demand reaction tray.
+Its recipient strip uses the same room identities and the couch's shared palette;
+the input and reading position stay in place. Typing or pressing Escape dismisses
+the tray; sending a reaction keeps it open. While it is closed, the newest live
+reaction briefly shows its sender and recipient with the same animation renderer.
+It adds neither a message history entry nor an independent expiry timer. This
+follows the on-demand member controls in
+[Discord](https://support.discord.com/hc/en-us/articles/223657667-Group-Chat-and-Calls)
+and the separate reaction entry in
+[Google Meet](https://support.google.com/meet/answer/13151720?hl=en), adapted to a
+small companion window. Only unobscured chat following the latest messages consumes
+unread messages. The detached window uses the same room session, event expiry and
+sending controls as the couch shortcut.
 Self expressions follow the sender's head, including idle and interaction motion.
 Only that sender's newest self expression replaces their earlier one. A targeted
 emoji is a delivery: it travels from sender to recipient, retains a compact

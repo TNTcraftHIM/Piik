@@ -283,7 +283,6 @@ export const zh = {
   "floating.position.topRight": "右上角",
   "floating.position.bottomLeft": "左下角",
   "floating.position.bottomRight": "右下角",
-  "interaction.overlay.label": "弹幕",
   "interaction.overlay.show": "显示弹幕",
   "interaction.overlay.hide": "隐藏弹幕",
   "interaction.overlay.showHint": "在画面上显示新消息，仅对自己生效。",
