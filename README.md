@@ -27,7 +27,7 @@ on your own server.
 
 </details>
 
-[Features](#features) · [Get started](#get-started) · [Self-hosting](#self-hosting) · [Contributing](#contributing)
+[Features](#features) · [Get started](#get-started) · [Self-hosting](#self-hosting) · [One-click deploy](#one-click-deploy) · [Contributing](#contributing)
 
 ## Features
 
@@ -108,6 +108,11 @@ domain, HTTPS reverse proxy and STUN address. Room data is stored in SQLite.
 For containers, use the [Docker Compose setup](./docs/operations/self-hosting.md#docker-compose).
 
 [**Deploy your own site →**](./docs/operations/self-hosting.md) · [Configuration](./docs/standards/configuration.md) · [Run from source](./docs/README.md#run-from-source)
+
+## One-click deploy
+
+<a href="https://repocloud.io/details/Piik/"><img src="https://d16t0pc4846x52.cloudfront.net/deploylobe.svg" alt="Deploy on RepoCloud" height="40"></a>
+<a href="https://railway.com/deploy/piik"><img src="https://railway.com/button.svg" alt="Deploy on Railway" height="40"></a>
 
 ## Contributing
 

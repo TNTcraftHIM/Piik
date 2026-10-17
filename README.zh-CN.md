@@ -25,7 +25,7 @@ Piik 是一个免费开源的私密屏幕共享工具，适合游戏直播、一
 
 </details>
 
-[功能](#功能) · [开始使用](#开始使用) · [自行部署](#自行部署) · [参与贡献](#参与贡献)
+[功能](#功能) · [开始使用](#开始使用) · [自行部署](#自行部署) · [一键部署](#一键部署) · [参与贡献](#参与贡献)
 
 ## 功能
 
@@ -100,6 +100,11 @@ Piik Server 是一个内置网页界面的独立程序。
 也可以使用 [Docker Compose 部署](./docs/operations/self-hosting.zh-CN.md#使用-docker-compose)。
 
 [**部署自己的站点 →**](./docs/operations/self-hosting.zh-CN.md) · [配置参考](./docs/standards/configuration.md) · [从源码运行](./docs/README.md#run-from-source)
+
+## 一键部署
+
+<a href="https://repocloud.io/details/Piik/"><img src="https://d16t0pc4846x52.cloudfront.net/deploylobe.svg" alt="在 RepoCloud 上部署" height="40"></a>
+<a href="https://railway.com/deploy/piik"><img src="https://railway.com/button.svg" alt="在 Railway 上部署" height="40"></a>
 
 ## 参与贡献
 
