@@ -1,5 +1,19 @@
 # Project Instructions
 
+## Aesthetic And Design Standard
+
+- Piik sets a high aesthetic standard for the whole product: visual design,
+  interaction and overall experience, functional and business boundaries,
+  lifecycle ownership, and code structure. Clear responsibilities, high cohesion,
+  low coupling and good coding practice are part of that standard.
+- Apply Occam's razor to both implementation and product scope. Preserve the
+  motivation and intent behind Piik; remove unnecessary features, controls,
+  states and abstractions when they dilute that intent or burden the experience.
+  Reuse must preserve the meaning and needs of each context.
+- Working behavior alone is not sufficient for acceptance. Deliver a coherent,
+  polished, easy-to-use result with simple, understandable internals. Seek the
+  smallest complete design, without speculative machinery or endless polishing.
+
 ## Authority And Scope
 
 - Read and follow the complete repo-tracked

@@ -3779,6 +3779,24 @@ export function HostPage({
                 onClick={() => void switchSource()}
               />
             </> : null}
+            {nativeActive && remoteControlState && <HostRemoteControl
+              mode={remoteControlState.mode}
+              disabled={sharingPaused || switchingSource}
+              requests={remoteControlState.requests.map(request => {
+                return { ...request, name: viewers.find(viewer => viewer.peerId === request.peerId)?.label ?? t("common.name.viewerDefault") };
+              })}
+              onPolicy={async (mode, password) => {
+                const client = nativeClientRef.current;
+                const shareId = nativeShareGenerationRef.current;
+                if (!client || !shareId) throw new Error("Native share is unavailable");
+                await client.setRemoteControlPolicy(shareId, mode, password);
+              }}
+              onDecide={async (id, allow) => {
+                const client = nativeClientRef.current;
+                const shareId = nativeShareGenerationRef.current;
+                if (!client || !shareId) throw new Error("Native share is unavailable");
+                await client.setRemoteControl(shareId, id, allow);
+              }} />}
             <Btn
               icon="sliders"
               busy={changingQuality}
@@ -3813,24 +3831,6 @@ export function HostPage({
               />
             ) : null}
           </div>
-          {nativeActive && remoteControlState && <HostRemoteControl
-            mode={remoteControlState.mode}
-            disabled={sharingPaused || switchingSource}
-            requests={remoteControlState.requests.map(request => {
-              return { ...request, name: viewers.find(viewer => viewer.peerId === request.peerId)?.label ?? t("common.name.viewerDefault") };
-            })}
-            onPolicy={async (mode, password) => {
-              const client = nativeClientRef.current;
-              const shareId = nativeShareGenerationRef.current;
-              if (!client || !shareId) throw new Error("Native share is unavailable");
-              await client.setRemoteControlPolicy(shareId, mode, password);
-            }}
-            onDecide={async (id, allow) => {
-              const client = nativeClientRef.current;
-              const shareId = nativeShareGenerationRef.current;
-              if (!client || !shareId) throw new Error("Native share is unavailable");
-              await client.setRemoteControl(shareId, id, allow);
-            }} />}
           <div className="lr-stage-notices" role="status" aria-live="polite">
             {details?.hasSourceAudio === false && stream ? (
               <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" tone="off" />
