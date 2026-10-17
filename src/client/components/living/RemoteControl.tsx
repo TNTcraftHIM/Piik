@@ -3,7 +3,9 @@ import { createPortal } from "react-dom";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import type { InputTransport } from "../../remote-control/input-route";
-import { RemoteInputSession, picturePoint, type RemoteInputState, type RemoteInputEvent } from "../../remote-control/input-session";
+import { RemoteInputSession, picturePoint, pictureRect, type RemoteInputState, type RemoteInputEvent } from "../../remote-control/input-session";
+import { RemoteTouchpad } from "../../remote-control/touchpad";
+import { RemoteKeyboard } from "./RemoteKeyboard";
 import { Btn } from "./primitives";
 import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import "./remote-control.css";
@@ -21,12 +23,16 @@ export function RemoteControl({ channel, videoRef, available }: {
   const [inline, setInline] = useState(true);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [password, setPassword] = useState("");
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [touch, setTouch] = useState(false);
   const session = useRef<RemoteInputSession | null>(null);
   const surface = useRef<HTMLDivElement | null>(null);
+  const cursor = useRef<SVGSVGElement | null>(null);
+  const touchpad = useRef<RemoteTouchpad | null>(null);
   const active = state?.state === "active" && available && inline && channel?.readyState === "open";
   const controlled = (state?.state === "active" || state?.state === "suspended") && available && inline && channel?.readyState === "open";
   const input = (event: RemoteInputEvent) => session.current?.input(event);
-  const reset = useCallback(() => { session.current?.input({ type: "reset" }); }, []);
+  const reset = useCallback(() => { touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
   const release = useCallback(() => {
     reset();
     if (document.pointerLockElement === surface.current && surface.current) document.exitPointerLock();
@@ -51,6 +57,23 @@ export function RemoteControl({ channel, videoRef, available }: {
   useEffect(() => {
     if (!available || !inline) release();
   }, [available, inline, channel, release]);
+  useEffect(() => {
+    if (!active) { setKeyboardOpen(false); setTouch(false); return; }
+    const current = new RemoteTouchpad(
+      () => videoRef.current ? pictureRect(videoRef.current) : null,
+      event => session.current?.input(event),
+      delta => session.current?.scroll(delta, 0),
+      position => {
+        const picture = videoRef.current && pictureRect(videoRef.current);
+        const rect = surface.current?.getBoundingClientRect();
+        if (!picture || !rect || !cursor.current) return;
+        cursor.current.style.left = `${picture.left - rect.left + position.x * picture.width}px`;
+        cursor.current.style.top = `${picture.top - rect.top + position.y * picture.height}px`;
+      },
+    );
+    touchpad.current = current;
+    return () => { current.reset(); touchpad.current = null; };
+  }, [active, channel, videoRef]);
   useEffect(() => {
     const video = videoRef.current as FullscreenVideo | null;
     if (!video) return;
@@ -112,15 +135,9 @@ export function RemoteControl({ channel, videoRef, available }: {
         else if (state.mode === "password") setPasswordOpen(open => !open);
         else session.current?.request();
       }} />
-    {controlled && "requestPointerLock" in HTMLElement.prototype && <Btn icon="gamepad"
-      title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"} pressed={locked}
-      hint={locked ? "hint-remote-mouse-release" : "hint-remote-mouse-lock"}
-      hintText={lockFailed ? "remote.lockFailed" : locked ? "remote.unlockMouse" : "remote.gameMouseHelp"}
-      hintTone={lockFailed ? "warn" : undefined}
-      onClick={() => void (async () => {
-        if (locked) document.exitPointerLock();
-        else try { await surface.current?.requestPointerLock(); } catch { setLockFailed(true); }
-      })()} />}
+    {controlled && <Btn icon="keyboard" title="remote.keyboard" hint="hint-remote-keyboard"
+      hintText="remote.touchHelp" expanded={keyboardOpen} disabled={!active}
+      onClick={() => { reset(); setKeyboardOpen(open => !open); }} />}
     {parent && (controlled || state.state === "pending" || state.state === "failed" || state.reason || passwordOpen) && createPortal(<>
       {passwordOpen && <form className="lr-remote-password" onSubmit={event => {
         event.preventDefault(); session.current?.request(password); setPassword("");
@@ -145,16 +162,36 @@ export function RemoteControl({ channel, videoRef, available }: {
         onContextMenu={event => event.preventDefault()}
         onAuxClick={event => event.preventDefault()}
         onPointerMove={event => {
+          if (event.pointerType === "touch") {
+            event.preventDefault(); event.stopPropagation();
+            touchpad.current?.move(event.pointerId, event.clientX, event.clientY); return;
+          }
+          setTouch(false);
           if (document.pointerLockElement === surface.current) {
             input({ type: "relative", dx: event.movementX, dy: event.movementY });
           } else {
             const position = point(event.clientX, event.clientY);
-            if (position) input({ type: "move", ...position });
+            if (position) {
+              input({ type: "move", ...position });
+              if (touchpad.current) touchpad.current.position = position;
+            }
           }
         }}
         onPointerDown={event => {
           if (document.pointerLockElement !== surface.current) event.currentTarget.setPointerCapture(event.pointerId);
+          if (event.pointerType === "touch") {
+            event.preventDefault(); event.stopPropagation(); setTouch(true);
+            surface.current?.focus({ preventScroll: true });
+            touchpad.current?.down(event.pointerId, event.clientX, event.clientY);
+          }
         }}
+        onPointerUp={event => {
+          if (event.pointerType === "touch") {
+            event.preventDefault(); event.stopPropagation(); touchpad.current?.up(event.pointerId);
+          }
+        }}
+        onClick={event => { event.preventDefault(); event.stopPropagation(); }}
+        onDoubleClick={event => { event.preventDefault(); event.stopPropagation(); }}
         // Pointer down/up report the first/last mouse button only. Mouse events
         // preserve chords such as holding right to aim while left clicks fire.
         onMouseDown={event => {
@@ -165,13 +202,35 @@ export function RemoteControl({ channel, videoRef, available }: {
           if (position) { input({ type: "move", ...position }); input({ type: "button", button: event.button, down: true }); }
         }}
         onPointerCancel={reset}
+        onLostPointerCapture={event => {
+          if (event.pointerType === "touch") touchpad.current?.cancel(event.pointerId);
+          else reset();
+        }}
         onBlur={reset}
         onKeyDown={event => {
           event.preventDefault(); event.stopPropagation();
           if (event.code === "F10" && event.ctrlKey && event.altKey) { release(); return; }
           if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
         }}
-        onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }} />}
+        onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
+        <svg ref={cursor} className="lr-remote-touch-cursor" viewBox="0 0 24 28" aria-hidden="true" style={{ display: touch ? undefined : "none" }}>
+          <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />
+        </svg>
+      </div>}
+      {active && keyboardOpen && <RemoteKeyboard input={input}
+        mouseControl={!touch && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad"
+          title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"}
+          cap={locked ? "remote.releaseMouse" : "remote.gameMouse"} pressed={locked}
+          hint={locked ? "hint-remote-mouse-release" : "hint-remote-mouse-lock"}
+          hintText={lockFailed ? "remote.lockFailed" : locked ? "remote.unlockMouse" : "remote.gameMouseHelp"}
+          hintTone={lockFailed ? "warn" : undefined}
+          onClick={() => void (async () => {
+            if (locked) document.exitPointerLock();
+            else try { await surface.current?.requestPointerLock(); setKeyboardOpen(false); } catch { setLockFailed(true); }
+          })()} /></span>}
+        close={() => {
+          reset(); setKeyboardOpen(false); surface.current?.focus({ preventScroll: true });
+        }} />}
       {!active && !passwordOpen && <div className="lr-remote-input-status" role="status">
         {t(state.reason ? `remote.reason.${state.reason}` : state.state === "suspended" ? "remote.suspended" : state.state === "failed" ? "remote.failed"
           : state.mode === "ask" ? "remote.pending" : "remote.connecting")}

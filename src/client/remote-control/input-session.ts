@@ -5,6 +5,7 @@ export type RemoteInputEvent =
   | { type: "move"; x: number; y: number }
   | { type: "relative"; dx: number; dy: number }
   | { type: "key"; code: string; down: boolean }
+  | { type: "text"; text: string }
   | { type: "button"; button: number; down: boolean }
   | { type: "wheel"; delta: number }
   | { type: "reset" };
@@ -137,13 +138,19 @@ export class RemoteInputSession {
 
 // The input surface can include letterboxing. Its bars are not clickable
 // picture pixels; use the same contained aspect ratio as Viewer playback.
-export function picturePoint(video: HTMLVideoElement, clientX: number, clientY: number): { x: number; y: number } | null {
+export function pictureRect(video: HTMLVideoElement): { left: number; top: number; width: number; height: number } | null {
   if (!video.videoWidth || !video.videoHeight) return null;
   const rect = video.getBoundingClientRect();
   const scale = Math.min(rect.width / video.videoWidth, rect.height / video.videoHeight);
   const width = video.videoWidth * scale, height = video.videoHeight * scale;
   if (!width || !height) return null;
-  const x = (clientX - rect.left - (rect.width - width) / 2) / width;
-  const y = (clientY - rect.top - (rect.height - height) / 2) / height;
+  return { left: rect.left + (rect.width - width) / 2, top: rect.top + (rect.height - height) / 2, width, height };
+}
+
+export function picturePoint(video: HTMLVideoElement, clientX: number, clientY: number): { x: number; y: number } | null {
+  const rect = pictureRect(video);
+  if (!rect) return null;
+  const x = (clientX - rect.left) / rect.width;
+  const y = (clientY - rect.top) / rect.height;
   return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
 }

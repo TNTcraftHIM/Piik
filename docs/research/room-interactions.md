@@ -300,7 +300,7 @@ The `remotecontrol` Go build tag selects Windows `SendInput`; ordinary builds
 leave it unavailable. App discovery advertises the optional input capability;
 a supporting page opts in when starting its native share. An older page emits
 no opt-in, so it receives neither new input events nor input channels. The
-prototype shares a display or window with one desktop Browser controller.
+prototype shares a display or window with one desktop or mobile Browser controller.
 Ordered WebRTC data channels carry small input messages back along the existing
 committed media route: direct, Browser relay, App relay or embedded SFU. The
 same Go forwarding module serves App playback/relay and SFU; the Browser adapter
@@ -308,8 +308,8 @@ follows its active media input and child edges. No new listener, PeerConnection,
 route planner or dependency is introduced. The control button appears only
 after the complete input path reports readiness. Updated forwarding peers are
 required along that path; an older peer can still carry the picture.
-Mobile input and IME remain unfinished. Independent virtual gamepads are
-deferred by the owner; this phase adds no input driver.
+Independent virtual gamepads are deferred by the owner; this phase adds no
+input driver.
 
 Opted-in room signaling binds an ephemeral key and endpoint ID to each
 authenticated Viewer, then sends that binding only to the owning Host. The
@@ -363,7 +363,8 @@ DOM fullscreen keeps the page's input surface and retains control. Pointer motio
 latest absolute sample or accumulated relative movement per animation frame,
 flushing before button/key transitions so a drag ends at its final position.
 Control actions use the existing playback bar. While controlling, the picture
-reserves that bar's space so every image pixel remains reachable; remote key
+reserves that bar's space and keeps its actions visible, so touch users can
+open the keyboard or stop control and every image pixel remains reachable; remote key
 input does not count as keyboard navigation of playback controls.
 A stalled send queue closes the input channel
 without replacing the media connection. No input history is persisted.
@@ -383,6 +384,23 @@ request after their intermediate participant left. These checks do not
 establish remote-network latency, game compatibility, mixed-DPI behavior or
 antivirus classification. The experiment build and disposable UI/input probes
 remain under ignored `build/remote-control-prototype/`.
+
+Touch input uses a relative touchpad over the contained picture: one finger
+moves the cursor, a tap clicks, holding starts a drag, and two fingers scroll
+or tap for a right-click. Pointer events select this behavior without OS or
+browser-name checks. The gesture owner is scoped to the current grant;
+cancellation, blur and grant retirement release held input. The keyboard panel
+reserves space below the picture and supplies special keys and common shortcuts.
+The local text field owns IME composition and sends only explicitly submitted
+text through Windows [Unicode input](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput).
+There is no clipboard synchronization. This follows the touchpad conventions in
+[Moonlight's input guide](https://github.com/moonlight-stream/moonlight-docs/wiki/Setup-Guide#keyboardmousegamepad-input-options);
+[UU's iPad guide](https://uuyc.163.com/help/20241203/40221_1197702.html) also distinguishes
+touch from physical keyboard/mouse input. No game-specific touch layout is added.
+Chromium touch emulation delivered native clicks, scrolling, drag/cancel,
+Chinese/emoji text and shortcuts over the existing P2P route. Narrow layouts,
+DOM fullscreen and Host revocation passed; physical Android/iOS soft keyboards
+and Safari's native fullscreen remain device checks, not established by emulation.
 
 Remote control can target an additive 2.x release under the
 [compatibility contract](../standards/versioning.md#extending-interfaces): advertise

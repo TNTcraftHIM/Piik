@@ -10,6 +10,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { bindSvgReplayOnPointerEnter } from "./animation";
 
 const PATHS = {
+  keyboard: { body: (<><rect pathLength={1} x="2" y="5" width="20" height="14" rx="3"/><path pathLength={1} d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 16h10"/></>) },
   mouse: { body: (<><rect pathLength={1} x="6" y="2" width="12" height="20" rx="6"/><path pathLength={1} d="M12 2v7M6 10h12"/></>) },
   star: { body: <path pathLength={1} d="m12 3 2.8 5.7 6.3.9-4.5 4.4 1.1 6.3-5.7-3-5.7 3 1.1-6.3L3.1 9.6l6.3-.9Z" /> },
   textSize: { body: (<><path pathLength={1} d="m2 18 4-9 4 9m-6.5-3h5M12 18l5-13 5 13m-8-4h6"/></>) },

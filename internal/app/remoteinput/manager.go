@@ -35,6 +35,7 @@ type inputEvent struct {
 	Button   int     `json:"button,omitempty"`
 	Down     bool    `json:"down,omitempty"`
 	Code     string  `json:"code,omitempty"`
+	Text     string  `json:"text,omitempty"`
 	Delta    int     `json:"delta,omitempty"`
 	DX       int32   `json:"dx,omitempty"`
 	DY       int32   `json:"dy,omitempty"`

@@ -55,6 +55,12 @@ function MouseLockHint({ theme, lock }: { theme: ComicTheme; lock: boolean }) {
 }
 
 export const REMOTE_SCENES: Record<RemoteHintKind, HintScene> = {
+  "hint-remote-keyboard": ({ theme }) => <><RemoteMotion />{[0, 160].map((x, index) => <g key={x}>
+    <Frame x={x + 4} w={152} theme={theme} result={Boolean(index)} />
+    <MiniTv x={x + 40} y={13} w={80} h={45} />
+    <g transform={`translate(${x + 64} 60)`}><Glyph name="keyboard" size={32} /></g>
+    {Boolean(index) && <g className="vls-remote-cursor"><path d={`M${x + 57} 35h16m5 0h12m-33 7h25`} fill="none" stroke={SKY} strokeWidth={3} strokeLinecap="round" /></g>}
+  </g>)}</>,
   "hint-remote-control": props => <ControlHint {...props} />,
   "hint-remote-stop": props => <ControlHint {...props} stop />,
   "hint-remote-mouse-lock": props => <MouseLockHint {...props} lock />,

@@ -153,6 +153,7 @@ export type InteractionHintKind =
   | "hint-chat-overlay-hide";
 
 export type RemoteHintKind =
+  | "hint-remote-keyboard"
   | "hint-remote-control"
   | "hint-remote-stop"
   | "hint-remote-mouse-lock"

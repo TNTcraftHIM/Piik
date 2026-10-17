@@ -2,6 +2,21 @@ import type { GlyphName } from "../ui/icons";
 
 // Canonical catalog: add keys here first; every other locale must match it.
 export const zh = {
+  "remote.keyboard": "键盘与触控操作",
+  "remote.text": "输入到对方电脑",
+  "remote.sendText": "发送文字",
+  "remote.touchHelp": "滑动移动 · 轻点点击 · 长按拖动 · 双指滑动滚动，轻点右击",
+  "remote.key.Escape": "退出键",
+  "remote.key.Tab": "制表键",
+  "remote.key.ArrowLeft": "向左",
+  "remote.key.ArrowUp": "向上",
+  "remote.key.ArrowDown": "向下",
+  "remote.key.ArrowRight": "向右",
+  "remote.key.Backspace": "退格键",
+  "remote.key.Enter": "回车键",
+  "remote.key.ControlA": "在对方电脑全选",
+  "remote.key.ControlC": "在对方电脑复制",
+  "remote.key.ControlV": "在对方电脑粘贴",
   "remote.title": "远程控制",
   "remote.authorization": "控制授权",
   "remote.mode.ask": "每次询问",

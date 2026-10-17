@@ -2,6 +2,21 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "remote.keyboard": "Keyboard & touch controls",
+  "remote.text": "Type on the remote computer",
+  "remote.sendText": "Send text",
+  "remote.touchHelp": "Swipe to move · Tap to click · Hold to drag · Two fingers: swipe to scroll, tap to right-click",
+  "remote.key.Escape": "Escape",
+  "remote.key.Tab": "Tab",
+  "remote.key.ArrowLeft": "Left arrow",
+  "remote.key.ArrowUp": "Up arrow",
+  "remote.key.ArrowDown": "Down arrow",
+  "remote.key.ArrowRight": "Right arrow",
+  "remote.key.Backspace": "Backspace",
+  "remote.key.Enter": "Enter",
+  "remote.key.ControlA": "Select all on the remote computer",
+  "remote.key.ControlC": "Copy on the remote computer",
+  "remote.key.ControlV": "Paste on the remote computer",
   "remote.title": "Remote control",
   "remote.authorization": "Control permission",
   "remote.mode.ask": "Ask each time",

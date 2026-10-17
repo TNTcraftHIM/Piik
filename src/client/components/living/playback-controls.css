@@ -23,6 +23,13 @@
 .lr-tv-screen:has(> .lr-remote-input-surface) > video { grid-area: 1 / 1 / 2 / 2; }
 .lr-tv-screen > .lr-remote-input-surface { grid-area: 1 / 1 / 2 / 2; }
 .lr-tv-screen > .lr-playback { position: relative; inset: auto; grid-area: 2 / 1; }
+/* Touch control reserves this bar: its input surface consumes taps, so it must
+   always offer keyboard access and a way to end control. */
+.lr-tv-screen:has(> .lr-remote-input-surface) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
+.lr-tv-screen:has(> .lr-playback):has(> .lr-remote-keyboard) { aspect-ratio: auto; grid-template-rows: minmax(0, 1fr) auto auto; }
+.lr-tv-screen:has(> .lr-remote-keyboard) > video { aspect-ratio: 16 / 9; height: auto; }
+.lr-room.is-theater .lr-tv-screen:has(> .lr-remote-keyboard) > video,
+.lr-tv-screen:fullscreen:has(> .lr-remote-keyboard) > video { aspect-ratio: auto; height: 100%; }
 .lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay { grid-area: 1 / 1 / 2 / 2; }
 .lr-tv-screen:has(> .lr-playback[data-can-play="true"]) > video { cursor: pointer; }
 .lr-tv-screen:has(> .lr-playback.is-hidden) > video { cursor: none; }
@@ -34,7 +41,7 @@
 }
 .lr-playback-audio { display: flex; align-items: center; flex: 1; gap: 8px; min-width: min-content; }
 .lr-playback-separator { flex: none; width: 1px; height: 20px; background: currentColor; opacity: .22; }
-.lr-playback-volume { flex: 0 1 144px; min-width: 32px; }
+.lr-playback-volume { flex: 0 1 144px; min-width: 24px; }
 .lr-playback-volume input { width: 100%; min-width: 0; height: 44px; padding: 0; margin: 0; accent-color: var(--action); cursor: pointer; }
 .lr-playback-level { flex: none; width: 4ch; text-align: right; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .lr-playback-level.is-boosted { color: var(--action); }

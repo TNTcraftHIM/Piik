@@ -7,6 +7,8 @@ import (
 	"errors"
 	"math"
 	"runtime"
+	"unicode/utf16"
+	"unicode/utf8"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -45,9 +47,9 @@ func newPlatformSink() (inputSink, error) {
 	return &windowsSink{keys: map[uint16]bool{}, buttons: map[int]bool{}}, nil
 }
 
-func inject(input winInput) error {
-	n, _, _ := sendInput.Call(1, uintptr(unsafe.Pointer(&input)), unsafe.Sizeof(input))
-	if n != 1 {
+func inject(inputs ...winInput) error {
+	n, _, _ := sendInput.Call(uintptr(len(inputs)), uintptr(unsafe.Pointer(&inputs[0])), unsafe.Sizeof(inputs[0]))
+	if n != uintptr(len(inputs)) {
 		return errors.New("Windows did not accept input")
 	}
 	return nil
@@ -64,6 +66,29 @@ func keyInput(scan uint16, down bool) winInput {
 		k.Flags |= 1
 	}
 	return input
+}
+
+// Soft keyboards and IMEs supply committed text, not physical scan codes.
+// Send complete UTF-16 pairs through Windows' standard VK_PACKET path.
+func textInputs(text string) ([]winInput, error) {
+	if len(text) == 0 || len(text) > 512 || !utf8.ValidString(text) {
+		return nil, errors.New("invalid input text")
+	}
+	var inputs []winInput
+	for _, r := range text {
+		if r < 0x20 || r == 0x7f {
+			return nil, errors.New("text contains a control character")
+		}
+	}
+	for _, unit := range utf16.Encode([]rune(text)) {
+		for _, flags := range []uint32{4, 6} { // KEYEVENTF_UNICODE, then KEYUP.
+			input := winInput{Kind: 1}
+			k := (*keyboardInput)(unsafe.Pointer(&input.Mouse))
+			k.Scan, k.Flags = unit, flags
+			inputs = append(inputs, input)
+		}
+	}
+	return inputs, nil
 }
 
 func buttonInput(button int, down bool) (winInput, error) {
@@ -139,6 +164,17 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 		} else {
 			delete(s.keys, key)
 		}
+	case "text":
+		inputs, err := textInputs(e.Text)
+		if err != nil {
+			return err
+		}
+		// Text submission is self-contained; a prior modifier must not turn it
+		// into a shortcut. Existing physical input retains its scan-code path.
+		if err := s.Reset(); err != nil {
+			return err
+		}
+		return inject(inputs...)
 	default:
 		return errors.New("unsupported input")
 	}

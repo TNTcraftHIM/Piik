@@ -23,3 +23,15 @@
 .lr-remote-request-actions > .lr-comic-tip-wrap { flex: 1; }
 .lr-remote-request-actions .lr-btn { width: 100%; }
 .lr-remote-note kbd { white-space: nowrap; font: 12px var(--mono); }
+.lr-remote-touch-cursor { position: absolute; width: 22px; height: 26px; left: 50%; top: 50%; pointer-events: none; filter: drop-shadow(0 1px 2px #0008); }
+.lr-remote-touch-cursor path { fill: #fff; stroke: #22313e; stroke-width: 1.5; stroke-linejoin: round; }
+.lr-remote-game-mouse { display: flex; justify-content: center; margin-top: 8px; }
+.lr-remote-keyboard { grid-area: 3 / 1; z-index: 4; padding: 10px 12px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--control-edge); }
+.lr-remote-keyboard .lr-input { padding: 0 10px; }
+.lr-remote-keyboard input { font-size: 16px; }
+.lr-remote-keyboard .lr-btn { width: 40px; height: 40px; min-width: 0; padding: 0; }
+.lr-remote-game-mouse .lr-btn { width: auto; padding: 0 12px; }
+.lr-remote-keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 10px; }
+.lr-remote-keys .lr-chip { flex: 1 0 32px; padding: 4px 8px; min-width: 32px; min-height: 36px; font: 12px var(--mono); white-space: nowrap; }
+.lr-remote-keyboard p { margin: 8px 0 0; text-align: center; color: var(--muted); font-size: 11px; }
+@media (pointer: coarse) { .lr-remote-game-mouse { display: none; } }

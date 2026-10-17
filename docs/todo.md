@@ -22,7 +22,9 @@ platform deferrals or establish a diagnosis for unmatched reports.
   implemented. Physical moved-window/game checks and an actual remote-device
   trial remain. Keep one Host publication and one
   keyboard/mouse controller at a time, under the Host's source-scoped permission policy. Ask each time, room admission
-  and password modes are implemented; mobile touch/text input is in progress. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
+  and password modes are implemented. Mobile touchpad gestures and Unicode text
+  input pass local Browser-to-Windows checks; physical Android/iOS keyboard and
+  fullscreen behavior still need device acceptance. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
   owns limitations and evidence. This is not part of the public release.
   [Window/game input assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns window scope, focus/geometry work and game-compatibility
