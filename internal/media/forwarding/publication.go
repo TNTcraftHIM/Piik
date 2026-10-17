@@ -122,7 +122,14 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 		return input
 	}
 	registry := &interceptor.Registry{}
-	if err = configureRTCPReports(registry); err != nil {
+	if err = configureRTCPReports(registry, func(ssrc uint32) *sfu.DownTrack {
+		for _, track := range publication.tracks {
+			if track.SSRC() == ssrc {
+				return track
+			}
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 	publication.PC, err = webrtc.NewAPI(webrtc.WithMediaEngine(media), webrtc.WithInterceptorRegistry(registry),

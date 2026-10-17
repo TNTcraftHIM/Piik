@@ -150,13 +150,17 @@ by projection while outbound sequence continuity remains intact. Incoming sender
 reports retain their source-clock relation; local codec outputs correlate to one
 input anchor, not independently to each encoder's completion time.
 
-Outgoing sender-report accounting is scoped to the bound primary SSRC. LiveKit
-sends repair and zero-timestamp RTX probes through that same writer; the shared
-Pion adapter passes them through without changing the primary clock or counters.
-Otherwise a probe can poison the receiver's RTP/NTP reference and block later
-layer upgrades despite a recovered bandwidth budget. An actual publication
-probe/report regression covers this boundary; reconnecting ICE alone retains the
-affected media objects and cannot repair an already-corrupted reference.
+Outgoing video sender reports and RR/RTT accounting share the DownTrack owner.
+Pion supplies the loop at LiveKit's three-second cadence; audio retains Pion
+reports. RTX therefore cannot corrupt the primary clock, and feedback matches
+the owner that sent the report. Real RTCP checks cover probing, pause/resume
+and RTT; constrained checks also cover source replacement. Field logs confirmed
+that a corrupted upstream RTP/NTP reference can block layer changes despite
+restored capacity. A failed downgrade can stop forwarding while the input still
+advances; resuming that input then exposes sequence gaps and RR rollover
+adjustments. Sender-feed gaps and receiver-reported loss are distinct from
+physical network loss. ICE reconnect retains the source reference; update App
+and Server.
 
 Local capture replacement keeps its RTP source and cumulative counters while
 rebasing only the input packetizers. It must not also restart the RTP projector.

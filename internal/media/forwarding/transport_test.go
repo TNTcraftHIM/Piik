@@ -391,8 +391,9 @@ func testTransportVideoFeedbackAudioAndClose(t *testing.T, repair, withdrawDeman
 
 type receiverReportGate struct {
 	interceptor.NoOp
-	allow     atomic.Bool
-	allowNACK atomic.Bool
+	allow       atomic.Bool
+	allowNACK   atomic.Bool
+	reportDelay time.Duration
 }
 
 func (gate *receiverReportGate) NewInterceptor(string) (interceptor.Interceptor, error) {
@@ -402,6 +403,12 @@ func (gate *receiverReportGate) NewInterceptor(string) (interceptor.Interceptor,
 func (gate *receiverReportGate) BindRTCPWriter(writer interceptor.RTCPWriter) interceptor.RTCPWriter {
 	return interceptor.RTCPWriterFunc(func(packets []rtcp.Packet, attributes interceptor.Attributes) (int, error) {
 		if gate.allow.Load() {
+			for _, packet := range packets {
+				if _, report := packet.(*rtcp.ReceiverReport); report {
+					time.Sleep(gate.reportDelay)
+					break
+				}
+			}
 			return writer.Write(packets, attributes)
 		}
 		var filtered []rtcp.Packet

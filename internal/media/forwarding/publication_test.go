@@ -287,7 +287,7 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	check(mediaEngine.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: publicationRIDExtension}, webrtc.RTPCodecTypeVideo))
 	check(mediaEngine.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: "urn:ietf:params:rtp-hdrext:sdes:mid"}, webrtc.RTPCodecTypeVideo))
 	registry := &interceptor.Registry{}
-	reports := &receiverReportGate{}
+	reports := &receiverReportGate{reportDelay: 20 * time.Millisecond}
 	registry.Add(reports)
 	check(webrtc.RegisterDefaultInterceptors(mediaEngine, registry))
 	receiver, err := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(registry), webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
@@ -390,11 +390,10 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	if len(source.GetDownTracks()) != 2 {
 		t.Fatal("publication did not attach exactly one output per encoding")
 	}
-	frame := 0
+	started := time.Now()
 	frameData := sfu.VP8KeyFrame8x8
 	write := func() {
-		frame++
-		pts := time.Duration(frame) * time.Second / 30
+		pts := max(time.Since(started), source.inputPTS+time.Microsecond)
 		check(source.BeginFrame(pts, time.Now()))
 		for layer := 0; layer < 2; layer++ {
 			check(source.WriteFrame(layer, encoded.Frame{Data: frameData, PTS: pts, Duration: time.Second / 30, Recovery: bytes.Equal(frameData, sfu.VP8KeyFrame8x8)}))
@@ -471,6 +470,16 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 			t.Fatal("publication did not measure both available encodings")
 		}
 	}
+	// The sender-report owner must also receive its matching receiver feedback.
+	// Delayed real RTCP distinguishes an observed RTT from loopback's zero ms.
+	for publication.tracks[0].GetTrackStats().RttMax < 10 {
+		write()
+		select {
+		case <-time.After(time.Second / 30):
+		case <-ctx.Done():
+			t.Fatal("receiver reports never reached the publication RTT owner")
+		}
+	}
 	publication.bandwidth.OnCongestionStateChange(bwe.CongestionStateNone, bwe.CongestionStateCongested, 1_000)
 	for publication.tracks[0].BandwidthRequested()+publication.tracks[1].BandwidthRequested() > 1_000 {
 		select {
@@ -496,22 +505,8 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	if publication.tracks[0].WriteProbePackets(300, true) == 0 {
 		t.Fatal("publication has no receiver-report authority for padding probes")
 	}
-	// Check the actual SR after paced RTX padding crossed Pion's bound writer.
-	// It must still describe the primary media clock while that RID is paused.
-	for len(lowReports) > 0 {
-		<-lowReports
-	}
-	select {
-	case report := <-lowReports:
-		if delta := int32(report.RTPTime - lowTimestamp.Load()); delta < 0 || delta > 3*90_000 {
-			t.Fatalf("paused publication lost its primary clock after RTX probing: delta=%d", delta)
-		}
-	case <-ctx.Done():
-		t.Fatal("paused publication did not report its media clock")
-	}
 	for range source.maxPackets + 8 {
-		frame++
-		pts := time.Duration(frame) * time.Second / 30
+		pts := max(time.Since(started), source.inputPTS+time.Microsecond)
 		check(source.BeginFrame(pts, time.Now()))
 		for layer := range 2 {
 			check(source.WriteFrame(layer, encoded.Frame{Data: frameData, PTS: pts, Duration: time.Second / 30}))
@@ -539,6 +534,19 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	}
 	if publication.Counters().Limited {
 		t.Fatal("publication stayed limited after requested low output recovered and high was deactivated")
+	}
+	// The report after paused RTX probing must still match the primary clock.
+	// DownTrack omits reports while no layer is selected, then resumes normally.
+	for len(lowReports) > 0 {
+		<-lowReports
+	}
+	select {
+	case report := <-lowReports:
+		if delta := int32(report.RTPTime - lowTimestamp.Load()); delta < 0 || delta > 3*90_000 {
+			t.Fatalf("publication lost its primary clock after RTX probing: delta=%d", delta)
+		}
+	case <-ctx.Done():
+		t.Fatal("resumed publication did not report its media clock")
 	}
 	// A live encoder can be constrained inside its sole requested RID. The
 	// inactive high RID and a fitting measured rate must not hide that demand.
