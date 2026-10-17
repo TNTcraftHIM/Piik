@@ -79,8 +79,12 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
     if (panelTarget && !panelPerson) setPanelTarget(null);
   }, [panelTarget, panelPerson]);
   useLayoutEffect(() => {
-    if (panelTarget) panelArea.current?.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [panelTarget, chatDocument]);
+    if (!panelTarget) return;
+    const selected = panelArea.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
+    selected?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    // The tray precedes its opener in DOM order; enter it when explicitly opened.
+    if (selected?.ownerDocument.activeElement?.id === `${id}-express`) selected.focus({ preventScroll: true });
+  }, [panelTarget, chatDocument, id]);
   useLayoutEffect(() => {
     const popup = document.getElementById(menuId);
     if (!popup) return;
@@ -190,17 +194,20 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       <div id={`${id}-reactions`} className="lr-interaction-picker" hidden={!panelPerson}>
         <div className="lr-interaction-people-scroll">
           <div className="lr-interaction-people" role="group" aria-label={t("interaction.participant")}>
-            {participants.map(person => <span key={person.peerId} data-room-peer={person.peerId}>
-              <Tooltip overflow={{ text: person.displayName, selector: ".lr-pawn-name" }}>
-                <button type="button" className={`lr-pawn${person.peerId === state.peerId ? " is-you" : ""}`}
-                  aria-label={t("interaction.withPerson", { name: person.displayName })}
-                  aria-pressed={panelTarget === person.peerId}
-                  onClick={() => setPanelTarget(person.peerId)}>
-                  <PawnSvg color={participantColor(person.peerId)} identity={person.peerId} host={person.peerId === couch.host?.key} />
-                  <span className="lr-pawn-name">{person.peerId === state.peerId && !vis ? t("common.you") : person.displayName}</span>
-                </button>
-              </Tooltip>
-            </span>)}
+            {participants.map(person => {
+              const name = person.peerId === state.peerId && !vis ? t("common.you") : person.displayName;
+              return <span key={person.peerId} data-room-peer={person.peerId}>
+                <Tooltip overflow={{ text: name, selector: ".lr-pawn-name" }}>
+                  <button type="button" className={`lr-pawn${person.peerId === state.peerId ? " is-you" : ""}`}
+                    aria-label={t("interaction.withPerson", { name: person.displayName })}
+                    aria-pressed={panelTarget === person.peerId}
+                    onClick={() => setPanelTarget(person.peerId)}>
+                    <PawnSvg color={participantColor(person.peerId)} identity={person.peerId} host={person.peerId === couch.host?.key} />
+                    <span className="lr-pawn-name">{name}</span>
+                  </button>
+                </Tooltip>
+              </span>;
+            })}
           </div>
         </div>
         <RoomReactionGrid person={panelPerson} selfPeerId={state.peerId} canSend={canSend} onSend={sendReaction} />

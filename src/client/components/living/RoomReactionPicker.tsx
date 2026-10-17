@@ -41,14 +41,15 @@ export function RoomReactionGrid({ person, selfPeerId, canSend, onSend }: {
   canSend: boolean;
   onSend: (reaction: ReactionId, targetPeerId?: string) => void;
 }) {
-  const { t } = useCopy();
+  const { t, vis } = useCopy();
   const self = person?.peerId === selfPeerId;
   return <div className="lr-reaction-grid">
     {REACTION_IDS.filter(reaction => !isThrow(reaction) || (person && !self)).map(reaction => <button key={reaction} type="button"
-      className={isThrow(reaction) ? "is-prop" : undefined}
+      className={isThrow(reaction) ? "lr-btn lr-reaction-prop" : "lr-reaction-option"}
       aria-label={t(`interaction.reaction.${reaction}`)} aria-disabled={!canSend || !person}
       onClick={() => { if (canSend && person) onSend(reaction, self ? undefined : person.peerId); }}>
       <ReactionIcon reaction={reaction} />
+      {isThrow(reaction) && !vis && <span>{t(`interaction.reaction.${reaction}`)}</span>}
     </button>)}
   </div>;
 }

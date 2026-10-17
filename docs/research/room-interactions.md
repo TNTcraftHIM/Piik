@@ -97,10 +97,9 @@ Chat and reactions use an interaction window in the shared `FloatingPanel` shell
 owns native visibility, placement, movement, resizing and focus return; the
 conversation retains its session, draft, reading position and unread state.
 It opens initially at the lower right, without
-resizing the picture or moving the couch. Drag its title bar, use arrow keys on
-the focused bar, or explicitly choose a corner under Position. Its summary also
-allows dragging; a drag never activates the menu. Resize from either diagonal
-corner, use arrow keys on a resize handle, or choose a preset under Position.
+resizing the picture or moving the couch. Drag its title bar or use arrow keys on
+the focused bar. Resize from either diagonal corner or use arrow keys on a resize
+handle. These direct controls also work with touch; there is no separate placement menu.
 Resizing holds the opposite corner steady. Size and position belong to this room
 UI only; viewport and keyboard changes bound them without erasing preferences.
 The native manual
@@ -127,7 +126,9 @@ target even after moving the window. Selecting a different participant keeps its
 placement and any manually chosen size; selecting the same person toggles it.
 The default palette height follows its content, bounded by the visible viewport.
 One's own palette expresses a reaction above oneself and holds the local effects switch; other
-people's palettes offer targeted expressions and two throwing props.
+people's palettes offer targeted expressions and two throwing props. The props form
+a compact pair of named action buttons beneath the expression grid, using the
+shared button motion. The same palette serves both the couch and conversation.
 Connection details remain secondary when that participant has inspectable data.
 Close or Escape dismisses the palette; it also closes if its participant leaves.
 Sending keeps it open for repeated interaction, with the existing short cooldown.
@@ -135,7 +136,8 @@ Confirmation never changes menu visibility; failure stays visible in the card.
 Opening or closing a reaction card preserves the chat draft and unread state.
 The interaction window keeps one composer with an on-demand reaction tray.
 Its recipient strip uses the same room identities and the couch's shared palette;
-the input and reading position stay in place. Typing or pressing Escape dismisses
+the input and reading position stay in place. Opening the tray from its button
+focuses the selected person; Escape returns to that button. Typing or pressing Escape dismisses
 the tray; sending a reaction keeps it open. While it is closed, the newest live
 reaction briefly shows its sender and recipient with the same animation renderer.
 It adds neither a message history entry nor an independent expiry timer. This

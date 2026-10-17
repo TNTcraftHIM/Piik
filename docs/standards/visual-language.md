@@ -62,7 +62,8 @@ do not move unrelated controls into that space to fill an empty state.
 Persistent room utilities use the shared floating panel without reflowing the
 living room. The shell owns visibility, focus return, movement, resizing and
 viewport/keyboard bounds; contents retain their domain state. Support title-bar
-dragging and keyboard placement. An interaction palette starts beside its chosen
+dragging, corner resizing and equivalent keyboard controls without a second
+placement menu. An interaction palette starts beside its chosen
 participant, stays open after sending and keeps its position when retargeted.
 One-shot settings and guidance retain their existing disclosures. Anchored
 menus use native popovers and shared viewport placement; a small parent panel

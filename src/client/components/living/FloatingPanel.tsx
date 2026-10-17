@@ -4,11 +4,10 @@ import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { usePanelWindow, panelWindowAPI, SurfaceDocument } from "../../ui/panel-window";
 import { Tooltip } from "./Tooltip";
-import { useAnchoredPopover } from "./use-anchored-popover";
 import "./floating-panel.css";
 
-const PANEL_SIZES = { default: { width: 420, height: 560 }, large: { width: 560, height: 680 } };
-const COMPACT_SIZES = { default: { width: 304, height: undefined }, large: { width: 380, height: 460 } };
+const PANEL_SIZE = { width: 420, height: 560 };
+const COMPACT_SIZE = { width: 304, height: undefined };
 type PanelGesture = "move" | "nw" | "se";
 type PanelChange = { x: number; y: number } | { rect: DOMRect; corner: "nw" | "se"; dx: number; dy: number };
 
@@ -24,12 +23,9 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
   const panelWindow = usePanelWindow(detachable);
   const { container, slot, surfaceDocument, detached } = panelWindow;
   const panelRef = useRef<HTMLElement>(null);
-  const positionMenu = useRef<HTMLDivElement>(null);
-  const positionTrigger = useRef<HTMLButtonElement>(null);
-  useAnchoredPopover(positionTrigger, positionMenu, { enabled: !detached });
-  const sizes = compact ? COMPACT_SIZES : PANEL_SIZES;
+  const defaultSize = compact ? COMPACT_SIZE : PANEL_SIZE;
   const position = useRef({ x: 1, y: 1 });
-  const preferredSize = useRef(sizes.default);
+  const preferredSize = useRef(defaultSize);
   const placePanel = useRef<((change?: PanelChange) => void) | null>(null);
   const gesture = useRef<{ pointerId: number; x: number; y: number; rect: DOMRect; kind: PanelGesture } | null>(null);
   const suppressDragClick = useRef(false);
@@ -88,7 +84,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
 
   function startGesture(event: PointerEvent<HTMLElement>, kind: PanelGesture) {
     if (!event.isPrimary || event.button !== 0 || !panelRef.current) return;
-    if (kind === "move" && (event.target as Element).closest("button, .lr-floating-positions")) return;
+    if (kind === "move" && (event.target as Element).closest("button")) return;
     panelRef.current.getAnimations().forEach(animation => animation.finish());
     gesture.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY,
       rect: panelRef.current.getBoundingClientRect(), kind };
@@ -164,7 +160,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
 
   const panel = <SurfaceDocument.Provider value={surfaceDocument}>
     <section id={id} ref={panelRef} popover="manual" role="dialog" tabIndex={-1} className={`lr-floating-surface lr-floating-panel ${className}`}
-      style={sizes.default}
+      style={defaultSize}
       aria-label={title}
       onPointerDownCapture={() => { suppressDragClick.current = false; }}
       onPointerMove={event => {
@@ -197,7 +193,6 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
           event.currentTarget.focus({ preventScroll: true });
         } else {
           panelWindow.close();
-          positionMenu.current?.hidePopover();
           if (event.currentTarget.contains(document.activeElement)) focusTrigger();
         }
       }}>
@@ -214,40 +209,10 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
         <span className="lr-floating-title">{!detached && <Glyph name="grip" size={17} />}
           {vis ? <Glyph name={icon} size={18} /> : <b>{title}</b>}</span>
         <span id={`${id}-move-hint`} className="visually-hidden">{t("floating.moveHint")}</span>
-        {!detached && <span className="lr-floating-position"
-          onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) positionMenu.current?.hidePopover(); }}>
-          <button ref={positionTrigger} type="button" popoverTarget={`${id}-positions`} aria-label={t("floating.position")}>
-            <Glyph name="move" size={16} />{!vis && <span>{t("floating.position")}</span>}
-          </button>
-          <div ref={positionMenu} id={`${id}-positions`} popover="auto" className="lr-floating-positions" role="group" aria-label={t("floating.position")}>
-            {(["topLeft", "topRight", "bottomLeft", "bottomRight"] as const).map((corner, index) => {
-              const x = index % 2, y = Math.floor(index / 2);
-              return <button key={corner} type="button" aria-label={t(`floating.position.${corner}`)} onClick={() => {
-                position.current = { x, y }; placePanel.current?.();
-                positionMenu.current?.hidePopover(); positionTrigger.current?.focus();
-              }}>
-                <svg viewBox="0 0 28 22" width="28" height="22" aria-hidden="true">
-                  <rect x="1" y="1" width="26" height="20" rx="4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                  <rect x={x ? 16 : 4} y={y ? 12 : 4} width="8" height="6" rx="1.5" fill="currentColor" />
-                </svg>{!vis && <span>{t(`floating.position.${corner}`)}</span>}
-              </button>;
-            })}
-            {(["default", "large"] as const).map(size => <button key={size} type="button" className="lr-floating-size"
-              onClick={() => {
-                preferredSize.current = sizes[size]; placePanel.current?.();
-                positionMenu.current?.hidePopover(); positionTrigger.current?.focus();
-              }} aria-label={t(`floating.size.${size}`)}>
-              <Glyph name={size === "large" ? "expand" : "contract"} size={18} />{!vis && <span>{t(`floating.size.${size}`)}</span>}
-            </button>)}
-          </div>
-        </span>}
         {detachable && !detached && panelWindowAPI(typeof window === "undefined" ? null : window) &&
           <Tooltip kind="hint-window-detach" place="below" text={vis ? undefined : t("floating.detach")}>
             <button type="button" className="lr-popover-close" disabled={panelWindow.opening}
-              aria-label={t("floating.detach")} onClick={() => {
-                positionMenu.current?.hidePopover();
-                void panelWindow.open();
-              }}>
+              aria-label={t("floating.detach")} onClick={() => { void panelWindow.open(); }}>
               <Glyph name="pip" size={18} />
             </button>
           </Tooltip>}
