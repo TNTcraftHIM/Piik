@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { useCopy } from "../../ui/copy";
+import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import type { InputTransport } from "../../remote-control/input-route";
 import { RemoteInputSession, picturePoint, pictureRect, type RemoteInputState, type RemoteInputEvent } from "../../remote-control/input-session";
@@ -155,16 +155,26 @@ export function RemoteControl({ channel, videoRef, available }: {
   const touchControls = touch || matchMedia("(pointer: coarse)").matches;
   const statusIcon = state.reason === "busy" ? "users" : state.reason === "password" || state.state === "failed" ? "alert"
     : state.state === "suspended" ? "pause" : "clock";
+  const feedback: CopyKey | undefined = state.reason ? `remote.reason.${state.reason}`
+    : state.state === "suspended" ? "remote.suspended" : state.state === "failed" ? "remote.failed"
+    : state.state === "pending" ? state.mode === "ask" ? "remote.pending" : "remote.connecting" : undefined;
   const parent = videoRef.current?.parentElement;
   return <>
-    <Btn icon="mouse" title={!inline ? "remote.inlineRequired" : state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
-      hint={controlled || state.state === "pending" ? "hint-remote-stop" : "hint-remote-control"}
-      pressed={controlled} disabled={!available || !inline || state.state === "unavailable"}
-      onClick={() => {
-        if (controlled || state.state === "pending") release();
-        else if (state.mode === "password") setPasswordOpen(open => !open);
-        else session.current?.request();
-      }} />
+    <span className="lr-remote-viewer-control">
+      <Btn icon="mouse" title={!inline ? "remote.inlineRequired" : state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
+        hint={controlled || state.state === "pending" ? "hint-remote-stop" : "hint-remote-control"}
+        hintText={feedback} hintTone={state.state === "failed" ? "warn" : undefined}
+        busy={state.state === "pending"} pressed={controlled} disabled={!available || !inline || state.state === "unavailable"}
+        onClick={() => {
+          if (controlled || state.state === "pending") release();
+          else if (state.mode === "password") setPasswordOpen(open => !open);
+          else session.current?.request();
+        }} />
+      {feedback && !passwordOpen && <span className="lr-remote-feedback" role="status">
+        <Glyph name={statusIcon} size={15} />
+        <span className={vis ? "visually-hidden" : undefined}>{t(feedback)}</span>
+      </span>}
+    </span>
     {controlled && <Btn icon="keyboard" title="remote.keyboard" hint="hint-remote-keyboard"
       hintText={touchControls ? "remote.touchHelp" : undefined} expanded={keyboardOpen} disabled={!active}
       onClick={() => { if (keyboardOpen) closeKeyboard(); else { reset(); setKeyboardOpen(true); } }} />}
@@ -193,7 +203,7 @@ export function RemoteControl({ channel, videoRef, available }: {
         {state.reason && <p role="status" className={state.reason === "password" ? "is-bad" : undefined}><Glyph name={statusIcon} size={16} />
           <span className={vis ? "visually-hidden" : undefined}>{t(`remote.reason.${state.reason}`)}</span></p>}
       </form>}
-      {controlled && <div ref={surface} className={`lr-remote-input-surface${active ? "" : " is-suspended"}`} tabIndex={0}
+      {controlled && <div ref={surface} className={`lr-remote-input-surface${active ? "" : " is-suspended"}${locked ? " is-locked" : ""}`} tabIndex={0}
         aria-label={t("remote.surface")} role="application"
         onContextMenu={event => event.preventDefault()}
         onAuxClick={event => event.preventDefault()}
@@ -271,11 +281,6 @@ export function RemoteControl({ channel, videoRef, available }: {
             else try { await surface.current?.requestPointerLock(); setKeyboardOpen(false); } catch { setLockFailed(true); }
           })()} /></span>}
         close={closeKeyboard} />}
-      {!active && !passwordOpen && <div className="lr-remote-input-status" role="status">
-        <Glyph name={statusIcon} size={18} />
-        <span className={vis ? "visually-hidden" : undefined}>{t(state.reason ? `remote.reason.${state.reason}` : state.state === "suspended" ? "remote.suspended" : state.state === "failed" ? "remote.failed"
-          : state.mode === "ask" ? "remote.pending" : "remote.connecting")}</span>
-      </div>}
     </>, parent)}
   </>;
 }

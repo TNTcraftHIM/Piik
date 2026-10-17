@@ -21,22 +21,11 @@ platform deferrals or establish a diagnosis for unmatched reports.
   routed input, consent/revocation, relay recovery, window geometry and mobile
   touch/keyboard emulation pass; the [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
   owns implementation and evidence. Finish owner acceptance before release.
-  Finish the presentation review: consolidate remote-operation feedback with
-  existing controls without confusing input permission with media health; reuse
-  the shared floating-panel owner for ongoing Host control management. Distinguish
-  enabled, pending and controlling states, and review desktop/game/touch cursors
-  instead of using a universal crosshair. Keep form errors beside their inputs.
-  Decouple permission shutdown from the capture-operation slot: `off` is currently
-  rejected during source/profile changes. Cancellation must cover pending OS
-  authorization and Linux capture preparation so an older completion cannot
-  re-enable control; individual revocation and the local stop shortcut remain available.
   Physical Android/iOS, mixed-DPI displays, commercial games and an actual
   remote-device trial remain. macOS Quartz/Accessibility and Linux RemoteDesktop
   Portal backends are implemented; Linux compilation and synthetic input/release
   checks pass, but desktop permission/capture remains unverified. macOS needs
-  an Apple SDK build and physical focus/Retina/input checks. Before public delivery,
-  include the `remotecontrol` platform backends in the existing native check/package
-  entry points; ordinary Go checks currently build the inert backend. The
+  an Apple SDK build and physical focus/Retina/input checks. The
   [window/game assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns platform and game-compatibility limits. This is not a public feature.
 

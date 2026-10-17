@@ -1,15 +1,18 @@
-.lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: crosshair; touch-action: none; overflow: hidden; outline: 2px solid var(--action); outline-offset: -2px; border-radius: inherit; }
+.lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: default; touch-action: none; overflow: hidden; outline: 2px solid var(--action); outline-offset: -2px; border-radius: inherit; }
 .lr-remote-input-surface.is-suspended { outline-color: var(--muted); cursor: default; pointer-events: none; }
-.lr-remote-input-status { display: flex; align-items: center; gap: 8px; position: absolute; top: 12px; left: 12px; z-index: 4; max-width: calc(100% - 24px); box-sizing: border-box; padding: 8px 12px; border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; pointer-events: none; }
-.lr-remote-input-status > svg { flex: none; }
+.lr-remote-input-surface.is-locked { cursor: none; }
+.lr-remote-viewer-control { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.lr-remote-feedback { display: flex; align-items: center; gap: 5px; max-width: 180px; font-size: 12px; line-height: 1.3; color: inherit; }
+.lr-remote-feedback > svg { flex: none; }
+.lr-tv-screen > .lr-playback:has(.lr-remote-feedback) { opacity: 1; transform: none; pointer-events: auto; }
 .lr-remote-trigger { display: inline-flex; position: relative; }
 .lr-remote-count { position: absolute; top: -4px; right: -3px; min-width: 20px; padding: 0 5px; border: 2px solid var(--paper); border-radius: 12px; background: var(--action); color: #fff; font: 600 11px/16px var(--font); text-align: center; pointer-events: none; }
-.lr-remote-panel { position: fixed; inset: auto; margin: 0; width: min(360px, calc(100vw - 16px)); padding: 16px; overflow: auto; overscroll-behavior: contain; }
-.lr-remote-panel:popover-open { animation: lr-language-open 180ms var(--spring); }
-.lr-remote-panel.is-above { --language-offset: 5px; }
+.lr-remote-panel-body { padding: 14px 0 2px; overflow: auto; min-height: 0; overscroll-behavior: contain; }
+.lr-remote-panel-body > .lr-switch-item { margin-bottom: 12px; }
+.lr-remote-enable-pending { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.lr-remote-enable-pending > svg { color: var(--muted); }
 .lr-remote-panel-header { display: flex; align-items: center; gap: 10px; margin: -4px -4px 10px 0; }
 .lr-remote-panel-header strong { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 14px; }
-.lr-remote-panel-header .lr-switch-item .lr-cap { display: none; }
 .lr-remote-settings { display: grid; gap: 10px; padding: 12px 0; }
 .lr-remote-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .lr-remote-modes .lr-chip { display: flex; flex-direction: column; justify-content: center; gap: 6px; width: 100%; min-width: 0; min-height: 64px; padding: 8px 4px; border-width: 1px; border-radius: 14px; font: 600 12px/1.3 var(--font); letter-spacing: 0; white-space: normal; text-align: center; }
@@ -23,7 +26,7 @@
 .lr-remote-panel p[role="alert"] { color: var(--danger); }
 .lr-remote-request p, .lr-remote-panel p[role="alert"] { display: flex; align-items: center; gap: 6px; }
 .lr-remote-request p > svg, .lr-remote-panel p[role="alert"] > svg { flex: none; }
-.lr-remote-panel > .lr-remote-note + .lr-remote-note { margin-top: 8px; }
+.lr-remote-panel-body > .lr-remote-note + .lr-remote-note { margin-top: 8px; }
 .lr-remote-panel .lr-remote-note > svg { vertical-align: middle; }
 .lr-remote-note, .lr-remote-request p { color: var(--muted); }
 .lr-remote-requests { padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--wall-2); }
@@ -85,4 +88,4 @@
   .lr-host-share-controls:has(.lr-remote-trigger) .lr-btn[aria-controls] .lr-cap { display: none; }
   .lr-host-share-controls:has(.lr-remote-trigger) > .lr-comic-tip-wrap:has(#host-stop-share) { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
 }
-@media (prefers-reduced-motion: reduce) { .lr-remote-panel:popover-open { animation: none; } }
+@media (max-width: 580px) { .lr-remote-feedback > span:not(.visually-hidden) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }

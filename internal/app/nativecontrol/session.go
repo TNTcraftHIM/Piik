@@ -229,9 +229,21 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if host == nil {
 			return nil, errors.New("native share does not exist")
 		}
-		// An OS permission dialog must not block stop/revocation dispatch.
-		result = session.runHostOperation(host, envelope, func() (any, error) {
-			err := host.SetRemoteInputPolicy(request.Mode, request.Password)
+		// Revocation is independent of capture preparation and its operation slot.
+		if request.Mode == "off" {
+			apply, err := host.PrepareRemoteInputPolicy(request.Mode, request.Password)
+			if err != nil {
+				return nil, err
+			}
+			return response(envelope, "remote-control-set"), apply()
+		}
+		var apply func() error
+		result = session.runHostOperation(host, envelope, func() error {
+			var err error
+			apply, err = host.PrepareRemoteInputPolicy(request.Mode, request.Password)
+			return err
+		}, func() (any, error) {
+			err := apply()
 			return response(envelope, "remote-control-set"), err
 		}, complete)
 		asynchronous = result == nil
@@ -272,7 +284,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if request.Enabled == nil && request.DeviceID == nil {
 			return response(envelope, "microphone-set"), nil
 		}
-		result = session.runHostOperation(host, envelope, func() (any, error) {
+		result = session.runHostOperation(host, envelope, nil, func() (any, error) {
 			err := host.SetMicrophone(request.Enabled, nil, request.DeviceID)
 			return response(envelope, "microphone-set"), err
 		}, complete)
@@ -322,7 +334,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		slog.Debug("piik-client", "event", "native-source-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio,
 			"adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
-		result = session.runHostOperation(host, envelope, func() (any, error) {
+		result = session.runHostOperation(host, envelope, nil, func() (any, error) {
 			err := host.ReplaceSource(nativecapture.VideoOptions{
 				Target:            request.Source,
 				ShowCaptureBorder: request.ShowCaptureBorder && session.capabilities.CaptureBorderControl,
@@ -519,7 +531,7 @@ func (session *Session) Close() error {
 }
 
 func (session *Session) updateHost(host *nativehost.Session, request requestEnvelope, shareID string, profile nativehost.QualityProfile, complete func(any, error)) any {
-	return session.runHostOperation(host, request, func() (any, error) {
+	return session.runHostOperation(host, request, nil, func() (any, error) {
 		err := host.UpdateProfile(profile)
 		return session.shareUpdateResult(request, shareID, profile, err), err
 	}, complete)
@@ -527,11 +539,19 @@ func (session *Session) updateHost(host *nativehost.Session, request requestEnve
 
 // Capture mutations share one bounded operation slot. Stop remains
 // synchronous and cancels the owning share before joining this completion.
-func (session *Session) runHostOperation(host *nativehost.Session, request requestEnvelope, operation func() (any, error), complete func(any, error)) any {
+func (session *Session) runHostOperation(host *nativehost.Session, request requestEnvelope, prepare func() error, operation func() (any, error), complete func(any, error)) any {
 	session.mu.Lock()
 	if session.closed || session.host != host || session.updateDone != nil || session.startCancel != nil {
 		session.mu.Unlock()
 		return operationFailure(request, errors.New("native share operation is unavailable or already active"))
+	}
+	// Register an authority-changing intent before asynchronous work can be
+	// overtaken by off/pause. This step never waits for an OS permission dialog.
+	if prepare != nil {
+		if err := prepare(); err != nil {
+			session.mu.Unlock()
+			return operationFailure(request, err)
+		}
 	}
 	done := make(chan struct{})
 	session.updateDone = done

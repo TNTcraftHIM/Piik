@@ -1,14 +1,14 @@
 package remoteinput
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
 	"time"
 )
 
-// ValidatePolicy also runs before a capture-owned OS permission dialog.
-func ValidatePolicy(mode, password string) error {
+func validatePolicy(mode, password string) error {
 	if mode != "off" && mode != "ask" && mode != "room" && mode != "password" ||
 		len(password) > 512 || (mode == "password") != (password != "") {
 		return errors.New("invalid remote input policy")
@@ -16,49 +16,90 @@ func ValidatePolicy(mode, password string) error {
 	return nil
 }
 
-// SetPolicy is reachable only through the owning Host's native-control session.
-// It lives with the current source, never in App config, room access or storage.
-func (s *Session) SetPolicy(mode, password string) error {
+// PolicyChange owns one Host intent from dispatch through OS/capture preparation.
+// It never owns the lifetime of an installed capture stream.
+type PolicyChange struct {
+	session  *Session
+	ctx      context.Context
+	cancel   context.CancelFunc
+	mode     string
+	password [32]byte
+}
+
+func (s *Session) BeginPolicy(ctx context.Context, mode, password string) (*PolicyChange, error) {
 	if s == nil {
-		return errors.New("remote input is unavailable")
+		return nil, errors.New("remote input is unavailable")
 	}
-	if err := ValidatePolicy(mode, password); err != nil {
-		return err
+	if err := validatePolicy(mode, password); err != nil {
+		return nil, err
 	}
 	m := s.manager
 	m.mu.Lock()
-	s.policyRevision++
-	revision := s.policyRevision
-	available := !m.closed && !s.closed && (mode == "off" || s.available())
-	m.mu.Unlock()
-	if !available {
-		return errors.New("remote input is unavailable")
+	defer m.mu.Unlock()
+	if m.closed || s.closed || ctx.Err() != nil || (mode != "off" && !s.available()) {
+		return nil, errors.New("remote input is unavailable")
+	}
+	s.cancelPolicy()
+	ctx, cancel := context.WithCancel(ctx)
+	change := &PolicyChange{session: s, ctx: ctx, cancel: cancel, mode: mode}
+	if mode == "password" {
+		change.password = sha256.Sum256([]byte(password))
+	}
+	s.policyChange = change
+	return change, nil
+}
+
+func (change *PolicyChange) Context() context.Context { return change.ctx }
+
+func (change *PolicyChange) Close() {
+	s := change.session
+	s.manager.mu.Lock()
+	defer s.manager.mu.Unlock()
+	if s.policyChange == change {
+		s.cancelPolicy()
+	}
+}
+
+func (change *PolicyChange) Apply() error {
+	s := change.session
+	m := s.manager
+	if err := change.ctx.Err(); err != nil {
+		return err
 	}
 	// OS input permission is requested only by the Host enabling control, never
 	// by App startup, capture discovery or a remote Viewer's request. The dialog
 	// must not hold the grant lock; recheck the source after it returns.
-	if mode != "off" {
+	if change.mode != "off" {
 		if err := m.sink.Authorize(); err != nil {
 			return err
 		}
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.closed || s.closed || s.policyRevision != revision || (mode != "off" && !s.available()) {
+	if m.closed || s.closed || s.policyChange != change || change.ctx.Err() != nil || (change.mode != "off" && !s.available()) {
 		return errors.New("remote input is unavailable")
 	}
-	var digest [32]byte
-	if mode == "password" {
-		digest = sha256.Sum256([]byte(password))
-	}
-	s.setPolicy(mode, digest)
+	s.setPolicy(change.mode, change.password)
 	return nil
+}
+
+// Caller holds manager.mu. Cancellation invalidates preparation before it can
+// commit a newer permission, even if an OS dialog itself cannot be dismissed.
+func (s *Session) cancelPolicy() {
+	if s.policyChange != nil {
+		s.policyChange.cancel()
+		s.policyChange = nil
+	}
 }
 
 // Caller holds manager.mu. A policy change retires all previous requests and
 // grants, so an old approval cannot acquire the newly configured permission.
 func (s *Session) setPolicy(mode string, password [32]byte) {
-	s.policyRevision++
+	s.cancelPolicy()
+	s.applyPolicy(mode, password)
+}
+
+func (s *Session) applyPolicy(mode string, password [32]byte) {
 	s.mode, s.password = mode, password
 	for _, c := range s.manager.connections {
 		if c.owner == s {

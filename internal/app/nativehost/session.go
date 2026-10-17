@@ -169,7 +169,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		audioChanged:   make(chan struct{}, 1),
 		remoteInput:    options.RemoteInput.NewSession(),
 	}
-	session.syncRemoteInputSource()
+	session.syncRemoteInputSource(nil)
 	if audioStream != nil || options.MicrophoneMixing {
 		audioSource, audioErr := engine.NewAudioSource(
 			options.EdgeCapacity, options.Profile.AudioBitrate,
@@ -430,6 +430,7 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 		state,
 		nil,
 		false,
+		nil,
 	)
 }
 
@@ -464,7 +465,7 @@ func (session *Session) ReplaceSource(
 		// Suspend input while changing capture. On success bind the committed
 		// target; on failure the previous picture remains eligible for a new grant.
 		session.remoteInput.SetTarget(nativecapture.CaptureTarget{}, nil)
-		defer session.syncRemoteInputSource()
+		defer session.syncRemoteInputSource(nil)
 	}
 	if excludeAudio != nil {
 		if session.mixer == nil {
@@ -514,6 +515,7 @@ func (session *Session) ReplaceSource(
 		state,
 		replacementAudio,
 		true,
+		nil,
 	)
 }
 
@@ -525,34 +527,43 @@ func (session *Session) RemoteInputState() remoteinput.State {
 	return session.remoteInput.State()
 }
 
-func (session *Session) SetRemoteInputPolicy(mode, password string) error {
-	if err := remoteinput.ValidatePolicy(mode, password); err != nil {
-		return err
+// Reserve the intent synchronously, before dispatch starts asynchronous OS work.
+func (session *Session) PrepareRemoteInputPolicy(mode, password string) (func() error, error) {
+	change, err := session.remoteInput.BeginPolicy(session.ctx, mode, password)
+	if err != nil {
+		return nil, err
 	}
-	if session.remoteInput.UsesCaptureInput() && mode != "off" {
-		session.updateMu.Lock()
-		defer session.updateMu.Unlock()
-		session.mu.Lock()
-		options, profile := session.videoOptions, session.profile
-		closed := session.closed
-		session.mu.Unlock()
-		if closed {
-			return errors.New("native share is unavailable")
-		}
-		if !options.RemoteInput {
-			// Enabling control is the sole action that may request the OS's combined
-			// screen/input permission. A declined picker leaves the old share intact.
-			options.RemoteInput, options.RestoreToken = true, ""
-			replacement, state, err := session.prepareVideo(session.ctx, options, true, false)
-			if err != nil {
-				return err
+	return func() error {
+		defer change.Close()
+		if session.remoteInput.UsesCaptureInput() && mode != "off" {
+			session.updateMu.Lock()
+			defer session.updateMu.Unlock()
+			session.mu.Lock()
+			options, profile := session.videoOptions, session.profile
+			closed := session.closed
+			session.mu.Unlock()
+			if closed {
+				return errors.New("native share is unavailable")
 			}
-			if err = session.commitCapture(options, profile, replacement, state, nil, false); err != nil {
-				return err
+			if !options.RemoteInput {
+				// Only enabling control requests the combined screen/input permission.
+				// The pending intent can retire without ending the current picture.
+				options.RemoteInput, options.RestoreToken = true, ""
+				replacement, state, err := session.prepareVideo(change.Context(), options, true, false)
+				if err != nil {
+					return err
+				}
+				if err := change.Context().Err(); err != nil {
+					_ = replacement.Close()
+					return err
+				}
+				if err = session.commitCapture(options, profile, replacement, state, nil, false, change); err != nil {
+					return err
+				}
 			}
 		}
-	}
-	return session.remoteInput.SetPolicy(mode, password)
+		return change.Apply()
+	}, nil
 }
 
 func (session *Session) SetRemoteInputPeers(peers []protocol.RemoteInputPeer) error {
@@ -563,12 +574,16 @@ func (session *Session) DecideRemoteInput(id string, allow bool) error {
 	return session.remoteInput.Decide(id, allow)
 }
 
-func (session *Session) syncRemoteInputSource() {
+func (session *Session) syncRemoteInputSource(change *remoteinput.PolicyChange) {
 	session.mu.Lock()
 	target := session.videoOptions.Target
 	capture := session.stream
 	session.mu.Unlock()
-	session.remoteInput.SetTarget(target, capture)
+	if change != nil {
+		change.SetTarget(target, capture)
+	} else {
+		session.remoteInput.SetTarget(target, capture)
+	}
 }
 
 func startAudioCapture(
@@ -592,9 +607,14 @@ func (session *Session) prepareVideo(
 	interactive bool,
 	allowQuiet bool,
 ) (*nativecapture.Stream, CaptureState, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, CaptureState{}, err
+	}
 	options.OutputGroups = session.edgeCapacity
+	// Preparation can be cancelled independently. Installed capture always lives
+	// with the share; cancelling a permission request must not kill its process.
 	replacement, err := nativecapture.StartVideo(
-		ctx,
+		session.ctx,
 		session.captureProcess,
 		options,
 	)
@@ -628,6 +648,7 @@ func (session *Session) commitCapture(
 	state CaptureState,
 	replacementAudio *nativecapture.Stream,
 	replaceAudio bool,
+	inputChange *remoteinput.PolicyChange,
 ) error {
 	session.mu.Lock()
 	if session.closed || session.ctx.Err() != nil {
@@ -677,8 +698,12 @@ func (session *Session) commitCapture(
 	// A Portal stream owns input permission as well as the picture. Retire its
 	// grant before closing it, then bind the replacement through the same owner.
 	if session.remoteInput.UsesCaptureInput() {
-		session.remoteInput.SetTarget(nativecapture.CaptureTarget{}, nil)
-		defer session.syncRemoteInputSource()
+		if inputChange != nil {
+			inputChange.SetTarget(nativecapture.CaptureTarget{}, nil)
+		} else {
+			session.remoteInput.SetTarget(nativecapture.CaptureTarget{}, nil)
+		}
+		defer session.syncRemoteInputSource(inputChange)
 	}
 	_ = replacement.RequestKeyFrame(-1)
 	_ = previous.Close()

@@ -66,17 +66,17 @@ type Manager struct {
 }
 
 type Session struct {
-	manager        *Manager
-	target         nativecapture.CaptureTarget
-	capture        *nativecapture.Stream
-	paused         bool
-	closed         bool
-	changed        chan struct{}
-	route          *inputroute.Relay
-	mode           string
-	policyRevision uint64
-	password       [32]byte
-	passwordRetry  time.Time
+	manager       *Manager
+	target        nativecapture.CaptureTarget
+	capture       *nativecapture.Stream
+	paused        bool
+	closed        bool
+	changed       chan struct{}
+	route         *inputroute.Relay
+	mode          string
+	policyChange  *PolicyChange
+	password      [32]byte
+	passwordRetry time.Time
 }
 
 type connection struct {
@@ -163,6 +163,17 @@ func (s *Session) notify() {
 // current source. Replacing a picture revokes the grant without losing the
 // channel needed to request control of the next source.
 func (s *Session) SetTarget(target nativecapture.CaptureTarget, capture *nativecapture.Stream) {
+	s.setTarget(target, capture, nil)
+}
+
+// A Portal permission change replaces its capture as part of that same intent.
+// Always bind the installed picture, including after cancellation; only a still
+// current change may survive this binding and subsequently enable input.
+func (change *PolicyChange) SetTarget(target nativecapture.CaptureTarget, capture *nativecapture.Stream) {
+	change.session.setTarget(target, capture, change)
+}
+
+func (s *Session) setTarget(target nativecapture.CaptureTarget, capture *nativecapture.Stream, change *PolicyChange) {
 	if s == nil {
 		return
 	}
@@ -177,7 +188,10 @@ func (s *Session) SetTarget(target nativecapture.CaptureTarget, capture *nativec
 	}
 	s.target = target
 	s.capture = capture
-	s.setPolicy("off", [32]byte{})
+	if change == nil || s.policyChange != change {
+		s.cancelPolicy()
+	}
+	s.applyPolicy("off", [32]byte{})
 }
 
 // The Linux Portal owns input and screen selection in the same OS session.
@@ -432,7 +446,7 @@ func (s *Session) Pause(paused bool) {
 	defer m.mu.Unlock()
 	s.paused = paused
 	if paused {
-		s.policyRevision++
+		s.cancelPolicy()
 	}
 	if paused && m.active != nil && m.active.owner == s {
 		m.release()
@@ -471,6 +485,7 @@ func (s *Session) Close() {
 	m := s.manager
 	m.mu.Lock()
 	s.closed = true
+	s.cancelPolicy()
 	if m.active != nil && m.active.owner == s {
 		m.release()
 	}

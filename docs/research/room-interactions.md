@@ -298,7 +298,8 @@ under the repository's contribution rules. No matched measurement establishes
 a Go/Rust performance advantage or a need to replace Piik's media pipeline.
 
 The `remotecontrol` Go build tag selects the native input backend; ordinary builds
-leave it unavailable. App discovery advertises the optional input capability;
+leave it unavailable. Existing Go checks and App packaging inherit
+`GOFLAGS=-tags=remotecontrol` for prototype acceptance. App discovery advertises the optional input capability;
 a supporting page opts in when starting its native share. An older page emits
 no opt-in, so it receives neither new input events nor input channels. The
 prototype shares a display or window with one desktop or mobile Browser controller.
@@ -354,7 +355,11 @@ Require a password on the current sharing page. Automatic modes accept only
 authenticated room Viewers and never displace an active controller. Permission
 belongs to the current shared source; changing sources or stopping turns it off.
 Turning it off also clears pending requests and releases held input, including
-while sharing is paused. The password verifier is kept only in App memory, with one
+while sharing is paused or another capture operation is pending. One input-owner
+intent covers dispatch, OS permission and capture preparation. Off, pause and
+source retirement invalidate it before a late result can enable control. A
+capture already accepted for installation remains owned by the share; cancelling
+input permission cannot kill that picture. The password verifier is kept only in App memory, with one
 attempt per second shared across that source's endpoints. Nothing is saved in
 configuration, diagnostic reports or links. Host approval, decline and end-control
 actions stay on the same sharing page. The existing authorized native-control connection carries these commands;
@@ -394,6 +399,12 @@ bounded motion batching in [Moonlight](https://github.com/moonlight-stream/moonl
 and the [UU Linux input owner](https://github.com/VallierDev/uu-remote-linux/blob/80ac4448d661e30772214de30cf5cedef990e418/src/input.rs).
 Normal pointer-capture release after mouse-up preserves held keyboard keys;
 actual cancellation, blur and grant retirement release them.
+Host settings reuse the shared floating panel beside their entry. An unapplied
+enable request shows a cancel action without displaying permission as granted;
+older completions cannot replace newer form feedback. Viewer request, failure and
+focus feedback stays beside the remote-control action, separate from media health.
+Desktop control uses the normal pointer, game mouse capture hides it, and touch
+control retains its visible arrow.
 Control actions use the existing playback bar. While controlling, the picture
 reserves that bar's space and keeps its actions visible, so touch users can
 open the keyboard or stop control and every image pixel remains reachable; remote key

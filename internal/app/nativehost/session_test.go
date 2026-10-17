@@ -90,7 +90,7 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 			go func() {
 				session.updateMu.Lock()
 				err := session.commitCapture(options, QualityProfile{Video: options.Profile, AudioBitrate: 64_000}, replacement,
-					CaptureState{AdapterIndex: &adapter, EncoderIndex: &encoder, unavailableLayers: []int{0}}, nil, false)
+					CaptureState{AdapterIndex: &adapter, EncoderIndex: &encoder, unavailableLayers: []int{0}}, nil, false, nil)
 				session.updateMu.Unlock()
 				committed <- err
 			}()
@@ -133,7 +133,7 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 				check(err)
 				defer healthy.Close()
 				go func() {
-					committed <- session.commitCapture(options, session.profile, healthy, CaptureState{}, nil, false)
+					committed <- session.commitCapture(options, session.profile, healthy, CaptureState{}, nil, false, nil)
 				}()
 				select {
 				case <-replacement.Done():
@@ -275,7 +275,7 @@ func TestCaptureFailureBelongsToSelectedStream(t *testing.T) {
 			committed := make(chan error, 1)
 			if replace {
 				go func() {
-					committed <- session.commitCapture(options, QualityProfile{Video: options.Profile}, replacement, CaptureState{}, nil, false)
+					committed <- session.commitCapture(options, QualityProfile{Video: options.Profile}, replacement, CaptureState{}, nil, false, nil)
 				}()
 				deadline := time.Now().Add(5 * time.Second)
 				for session.currentStream() != replacement {
@@ -303,6 +303,42 @@ func TestCaptureFailureBelongsToSelectedStream(t *testing.T) {
 				t.Fatalf("publication availability after replacement=%v: %v", replace, err)
 			}
 		})
+	}
+}
+
+func TestPreparedCaptureOutlivesItsPermissionOperation(t *testing.T) {
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "backend")
+	t.Setenv("PIIK_CAPTURE_STARTING", string(captureStatePayload(t,
+		`{"state":"starting","codec":"vp8","adapterIndex":0,"adapterName":"Fixture","adapterIdentity":"0:0","encoderName":"VP8","encoderIdentity":"vp8"}`)))
+	t.Setenv("PIIK_CAPTURE_ACTIVE", string(captureStatePayload(t, `{"state":"active","codec":"vp8","width":1280,"height":720,"fps":30}`)))
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	shareContext, stopShare := context.WithCancel(t.Context())
+	defer stopShare()
+	operationContext, finishOperation := context.WithCancel(shareContext)
+	defer finishOperation()
+	session := &Session{ctx: shareContext, captureProcess: executable, edgeCapacity: 4}
+	stream, _, err := session.prepareVideo(operationContext, nativecapture.VideoOptions{
+		Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "vp8",
+		Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
+	}, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	finishOperation()
+	select {
+	case <-stream.Done():
+		t.Fatal("finishing permission preparation stopped its accepted picture")
+	case <-time.After(250 * time.Millisecond):
+	}
+	stopShare()
+	select {
+	case <-stream.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("capture outlived its owning share")
 	}
 }
 

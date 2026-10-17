@@ -13,6 +13,7 @@ import (
 
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -275,9 +276,10 @@ func TestCaptureStartupAndReplacementRemainCancellable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false, nil)
+			// No input sink is needed to turn permission off.
+			session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false, &remoteinput.Manager{})
 			defer session.Close()
-			start := `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"edgeCapacity":1,"codec":"vp8","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
+			start := `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"remoteInput":true,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
 			payload := strings.Replace(start, `"width":1920,"height":1080`, `"width":1280,"height":720`, 1)
 			if kind == "replace-share-source" {
 				if value, err := awaitControlResponse(t, session, []byte(start)); err != nil {
@@ -303,6 +305,12 @@ func TestCaptureStartupAndReplacementRemainCancellable(t *testing.T) {
 			}
 			// No unbounded parallel initialization while the first is still waiting.
 			assertOperationFailure(t, session, payload)
+			if kind == "replace-share-source" {
+				value, err := session.Handle(t.Context(), []byte(`{"version":10,"id":"request_input_off","type":"set-remote-control-policy","shareId":"share_123456","mode":"off"}`))
+				if err != nil || value != response(requestEnvelope{Version: 10, ID: "request_input_off"}, "remote-control-set") {
+					t.Fatalf("capture preparation blocked permission shutdown: %#v, %v", value, err)
+				}
+			}
 			if _, err := session.Handle(t.Context(), []byte(`{"version":10,"id":"request_ice","type":"edge-candidate","shareId":"share_123456","connectionId":"missing_edge","candidate":null}`)); err != nil {
 				t.Fatalf("capture initialization blocked independent control: %v", err)
 			}

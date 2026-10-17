@@ -1,6 +1,7 @@
 package remoteinput
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
@@ -23,6 +24,15 @@ type recordedInput struct {
 	target    bounds
 	geometry  bounds
 	focused   bool
+}
+
+func setTestPolicy(s *Session, mode, password string) error {
+	change, err := s.BeginPolicy(context.Background(), mode, password)
+	if err != nil {
+		return err
+	}
+	defer change.Close()
+	return change.Apply()
 }
 
 func TestSourceAuthorizationPolicy(t *testing.T) {
@@ -51,7 +61,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	if s.State().Mode != "off" || first.requested || m.active != nil {
 		t.Fatal("ordinary sharing accepted a control request before opt-in")
 	}
-	if err := s.SetPolicy("ask", ""); err != nil {
+	if err := setTestPolicy(s, "ask", ""); err != nil {
 		t.Fatal(err)
 	}
 	request(first, "")
@@ -59,7 +69,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	if !first.requested || m.active != nil {
 		t.Fatal("Ask each time did not require Host approval")
 	}
-	if err := s.SetPolicy("room", ""); err != nil {
+	if err := setTestPolicy(s, "room", ""); err != nil {
 		t.Fatal(err)
 	}
 	if m.active != nil || first.requested || s.Decide(oldRequest, true) == nil {
@@ -81,10 +91,10 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	if !second.requested || m.active != nil {
 		t.Fatal("local stop allowed automatic re-entry")
 	}
-	if s.SetPolicy("password", "") == nil {
+	if setTestPolicy(s, "password", "") == nil {
 		t.Fatal("password mode accepted an empty credential")
 	}
-	if err := s.SetPolicy("password", "shared-secret"); err != nil {
+	if err := setTestPolicy(s, "password", "shared-secret"); err != nil {
 		t.Fatal(err)
 	}
 	request(first, "wrong")
@@ -106,7 +116,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	if m.active != nil || s.State().Mode != "ask" {
 		t.Fatal("Host stop left automatic access enabled")
 	}
-	if err := s.SetPolicy("room", ""); err != nil {
+	if err := setTestPolicy(s, "room", ""); err != nil {
 		t.Fatal(err)
 	}
 	request(first, "")
@@ -120,7 +130,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	}
 	oldGrant := first.grant
 	s.Pause(true)
-	if err := s.SetPolicy("off", ""); err != nil {
+	if err := setTestPolicy(s, "off", ""); err != nil {
 		t.Fatal(err)
 	}
 	s.Pause(false)
@@ -129,7 +139,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	if m.active != nil || second.requested || len(sink.events) != 0 {
 		t.Fatal("disabled remote control retained input or accepted a new request")
 	}
-	if err := s.SetPolicy("room", ""); err != nil {
+	if err := setTestPolicy(s, "room", ""); err != nil {
 		t.Fatal(err)
 	}
 	request(first, "")
@@ -149,7 +159,7 @@ func TestRouteReplacementRequiresApprovalAndIgnoresOldClosure(t *testing.T) {
 	s := m.NewSession()
 	t.Cleanup(s.Close)
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
-	if err := s.SetPolicy("ask", ""); err != nil {
+	if err := setTestPolicy(s, "ask", ""); err != nil {
 		t.Fatal(err)
 	}
 	peer := protocol.RemoteInputPeer{PeerID: "viewer-route-test", EndpointID: strings.Repeat("a", 32), Secret: strings.Repeat("b", 64)}
@@ -210,12 +220,67 @@ func TestOSPermissionCannotAuthorizeAReplacementSource(t *testing.T) {
 		s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"}, nil)
 		return nil
 	}
-	if s.SetPolicy("room", "") == nil || s.State().Mode != "off" {
+	if setTestPolicy(s, "room", "") == nil || s.State().Mode != "off" {
 		t.Fatal("late OS permission enabled input on a replacement source")
 	}
-	sink.authorize = func() error { return s.SetPolicy("off", "") }
-	if s.SetPolicy("room", "") == nil || s.State().Mode != "off" {
+	sink.authorize = func() error { return setTestPolicy(s, "off", "") }
+	if setTestPolicy(s, "room", "") == nil || s.State().Mode != "off" {
 		t.Fatal("late OS permission undid Host revocation")
+	}
+}
+
+func TestPreparedPolicyFollowsTheCommittedSourceAndHostIntent(t *testing.T) {
+	for _, action := range []string{"complete", "off-before-work", "off-during-prepare", "pause-and-resume", "replace-source"} {
+		t.Run(action, func(t *testing.T) {
+			sink := &recordedInput{}
+			m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+			s := m.NewSession()
+			t.Cleanup(s.Close)
+			s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
+			change, err := s.BeginPolicy(t.Context(), "room", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer change.Close()
+			if action == "off-before-work" {
+				if err := setTestPolicy(s, "off", ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Portal capture replacement must retire input while preserving only
+			// the same current Host intent through its own two source bindings.
+			change.SetTarget(nativecapture.CaptureTarget{}, nil)
+			switch action {
+			case "off-during-prepare":
+				if err := setTestPolicy(s, "off", ""); err != nil {
+					t.Fatal(err)
+				}
+			case "pause-and-resume":
+				s.Pause(true)
+				s.Pause(false)
+			case "replace-source":
+				s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"}, nil)
+			}
+			installed := nativecapture.CaptureTarget{Kind: "display", SourceID: "3"}
+			change.SetTarget(installed, nil)
+			cancelled := action != "complete"
+			if (change.Context().Err() != nil) != cancelled {
+				t.Fatal("preparation cancellation did not follow the Host intent")
+			}
+			if (change.Apply() != nil) != cancelled {
+				t.Fatal("late preparation changed a retired permission")
+			}
+			expected := "room"
+			if cancelled {
+				expected = "off"
+			}
+			if s.State().Mode != expected || s.target != installed {
+				t.Fatal("policy or actual source binding diverged after preparation")
+			}
+			if err := setTestPolicy(s, "ask", ""); err != nil {
+				t.Fatalf("new authorization could not use the committed source: %v", err)
+			}
+		})
 	}
 }
 
@@ -237,7 +302,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
 	s := m.NewSession()
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
-	if err := s.SetPolicy("ask", ""); err != nil {
+	if err := setTestPolicy(s, "ask", ""); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Close)
@@ -494,7 +559,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	nextDisplay := bounds{left: 1920, width: 1280, height: 720}
 	sink.geometry = nextDisplay
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "window", SourceID: "3"}, nil)
-	if err := s.SetPolicy("ask", ""); err != nil {
+	if err := setTestPolicy(s, "ask", ""); err != nil {
 		t.Fatal(err)
 	}
 	first = request("first")

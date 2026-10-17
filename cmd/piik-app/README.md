@@ -7,9 +7,10 @@ interface in your system Browser.
 
 ## Run A Package
 
-Extract the matching platform bundle in full and keep `runtime` beside the
-App executable. Run `piik-app.exe` on Windows, `./piik-app` on
-Linux, or `Piik App.app` on macOS. The launcher opens in the system Browser.
+Extract the matching platform bundle in full. On Windows and Linux, keep
+`runtime` beside the App executable and run `piik-app.exe` or `./piik-app`.
+On macOS, open `Piik App.app`; you can move the whole `.app` to Applications.
+The launcher opens in the system Browser.
 Linux native capture uses the system dependencies described
 in the [Linux capture guide](../../native/capture/linux/README.md).
 
