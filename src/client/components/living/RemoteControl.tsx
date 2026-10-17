@@ -58,21 +58,30 @@ export function RemoteControl({ channel, videoRef, available }: {
     if (!available || !inline) release();
   }, [available, inline, channel, release]);
   useEffect(() => {
-    if (!active) { setKeyboardOpen(false); setTouch(false); return; }
+    const video = videoRef.current;
+    if (!active || !video) { setKeyboardOpen(false); setTouch(false); return; }
+    const updateCursor = () => {
+      const picture = pictureRect(video);
+      const rect = surface.current?.getBoundingClientRect();
+      if (!picture || !rect || !cursor.current) return;
+      cursor.current.style.left = `${picture.left - rect.left + current.position.x * picture.width}px`;
+      cursor.current.style.top = `${picture.top - rect.top + current.position.y * picture.height}px`;
+    };
     const current = new RemoteTouchpad(
-      () => videoRef.current ? pictureRect(videoRef.current) : null,
+      () => pictureRect(video),
       event => session.current?.input(event),
       delta => session.current?.scroll(delta, 0),
-      position => {
-        const picture = videoRef.current && pictureRect(videoRef.current);
-        const rect = surface.current?.getBoundingClientRect();
-        if (!picture || !rect || !cursor.current) return;
-        cursor.current.style.left = `${picture.left - rect.left + position.x * picture.width}px`;
-        cursor.current.style.top = `${picture.top - rect.top + position.y * picture.height}px`;
-      },
+      updateCursor,
     );
     touchpad.current = current;
-    return () => { current.reset(); touchpad.current = null; };
+    // Layout changes and decoded aspect-ratio changes share the input geometry.
+    const observer = new ResizeObserver(updateCursor);
+    observer.observe(video);
+    video.addEventListener("resize", updateCursor);
+    return () => {
+      observer.disconnect(); video.removeEventListener("resize", updateCursor);
+      current.reset(); touchpad.current = null;
+    };
   }, [active, channel, videoRef]);
   useEffect(() => {
     const video = videoRef.current as FullscreenVideo | null;

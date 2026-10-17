@@ -277,7 +277,7 @@ protocol change is accepted by this assessment.
 ## Attended Remote-Control Prototype
 
 Reviewed 2026-10-17. The Windows remote-control prototype is local experiment work,
-not a released feature. Cross-platform control remains a candidate. A Browser on a computer or phone could control a desktop App;
+not a released feature. A desktop or mobile Browser can control a Windows App;
 controlling Android/iOS themselves is a separate platform problem. The
 [Captured Surface Control draft](https://w3c.github.io/mediacapture-surface-control/)
 only provides limited wheel/zoom operations, not general OS keyboard/mouse input.
@@ -516,8 +516,10 @@ from the React controls and DOM capture. Real SCTP checks cover permission,
 focus suspension, updated geometry and retirement; Browser checks cover window
 capture, consent and pointer lock. Local window move/resize checks matched the
 input owner's live bounds to the decoded WGC aspect ratio, including even-pixel
-encoder rounding. Actual moved-window clicks, mixed DPI and
-game input still need physical acceptance.
+encoder rounding. A visible isolated Windows target received native clicks
+before and after movement/resizing, physical-key and relative-mouse input;
+focus suspension/resume and Host revocation also passed. These checks do not
+establish commercial-game compatibility or mixed-DPI behavior.
 
 A local Pion/SCTP probe with 40 ms RTT delivered ordered input in about 20 ms
 without loss and about 94 ms at the 95th percentile when every twentieth

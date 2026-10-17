@@ -19,9 +19,10 @@ platform deferrals or establish a diagnosis for unmatched reports.
   routes in experimental `remotecontrol` builds. Routed viewing, Host-page
   consent, actual native key input/release and relay-departure recovery pass local
   acceptance. Source switching, focus/geometry and game mouse/scan-code input are
-  implemented. Physical moved-window/game checks and an actual remote-device
-  trial remain. Keep one Host publication and one
-  keyboard/mouse controller at a time, under the Host's source-scoped permission policy. Ask each time, room admission
+  implemented; native clicks remain accurate after window movement and resizing.
+  Commercial-game compatibility and an actual remote-device trial remain. Keep
+  one Host publication and one keyboard/mouse controller at a time, under the
+  Host's source-scoped permission policy. Ask each time, room admission
   and password modes are implemented. Mobile touchpad gestures and Unicode text
   input pass local Browser-to-Windows checks; physical Android/iOS keyboard and
   fullscreen behavior still need device acceptance. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
