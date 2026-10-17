@@ -124,6 +124,11 @@ without discarding its subtree; departure and capacity changes move only affecte
 children. ADR-0005 owns filtering, ordering, cursor, revision, reservation, and
 rollback mechanics.
 
+Reauthentication rebinds retained media and restores eligible direct opportunities
+behind healthy SFU edges through that same continuation owner. The existing
+session-scoped ledger bounds these attempts; a repeated update of the same
+session does not reopen them.
+
 Five seconds is a scheduling window only while another bounded candidate or SFU
 fallback remains. It advances a silent Peer candidate instead of delaying the
 next available route; it is not interpreted as terminal ICE failure. The final

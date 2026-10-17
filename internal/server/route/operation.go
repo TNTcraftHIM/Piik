@@ -1352,6 +1352,33 @@ func (c *Controller) selectNextChild() string {
 	return candidates[0]
 }
 
+// Restore newly available session opportunities behind a healthy SFU edge.
+// Existing parent intents survive temporary capacity constraints; the normal
+// opportunity ledger still owns eligibility and the attempt budget.
+func (c *Controller) restoreDirectContinuation(peerID string) {
+	child, _ := c.participants.Get(peerID)
+	edge, _ := c.upstreamByViewer.Get(peerID)
+	if child == nil || child.sessionID == "" || !c.allowsIncoming(peerID, UpstreamPeer) ||
+		edge == nil || edge.Kind != UpstreamSfu || !edge.Usable || !edge.PhysicalActive || !c.usableRoute(peerID) {
+		return
+	}
+	var parents []string
+	if previous, ok := c.directContinuations.Get(peerID); ok {
+		parents = append(parents, previous.parentPeerIDs...)
+	}
+	for _, plan := range c.buildCandidates(peerID, false) {
+		if plan.Tuple.Kind == UpstreamPeer && plan.EndpointTransition.Kind != TransitionBoundedGap {
+			parents = append(parents, plan.Tuple.ParentPeerID)
+		}
+	}
+	if len(parents) > 0 {
+		c.directContinuations.Set(peerID, &directContinuation{
+			childSessionID: child.sessionID, sfuConnectionID: edge.ConnectionID,
+			publicationGeneration: edge.PublicationGeneration, parentPeerIDs: dedupeStrings(parents),
+		})
+	}
+}
+
 // directContinuationPick is the selectDirectContinuation result.
 type directContinuationPick struct {
 	childPeerID string

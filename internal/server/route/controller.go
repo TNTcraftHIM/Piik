@@ -469,6 +469,14 @@ func (c *Controller) UpsertParticipant(input ParticipantInput, nowMs *int64) []*
 		if input.Role == protocol.RoleViewer {
 			released = append(released, c.SetViewerRoutePreference(input.PeerID, input.SessionID, input.RoutePreference, nowMs)...)
 		}
+		if previousSessionID != input.SessionID {
+			// Reauthentication opens this session's opportunities even when SFU
+			// media survived. Restore child and parent opportunities in the same
+			// bounded continuation owner, without changing healthy media.
+			for peerID := range c.upstreamByViewer.All() {
+				c.restoreDirectContinuation(peerID)
+			}
+		}
 		return released
 	}
 	// New participants append to the scheduling order.
@@ -511,21 +519,7 @@ func (c *Controller) SetViewerRoutePreference(peerID, sessionID string, preferen
 	c.directContinuations.Delete(peerID)
 	c.clearSfuBootstrapForDemand(peerID)
 	c.touchFacts()
-	if edge, ok := c.upstreamByViewer.Get(peerID); ok && preference == protocol.ViewerRouteAuto &&
-		edge.Kind == UpstreamSfu && edge.Usable && edge.PhysicalActive && c.usableRoute(peerID) {
-		var parents []string
-		for _, plan := range c.buildCandidates(peerID, false) {
-			if plan.Tuple.Kind == UpstreamPeer && plan.EndpointTransition.Kind != TransitionBoundedGap {
-				parents = append(parents, plan.Tuple.ParentPeerID)
-			}
-		}
-		if len(parents) > 0 {
-			c.directContinuations.Set(peerID, &directContinuation{
-				childSessionID: current.sessionID, sfuConnectionID: edge.ConnectionID,
-				publicationGeneration: edge.PublicationGeneration, parentPeerIDs: dedupeStrings(parents),
-			})
-		}
-	}
+	c.restoreDirectContinuation(peerID)
 	c.debug("viewer-route-preference", "participant", c.debugPeer(peerID), "preference", preference)
 	if nowMs != nil {
 		c.recordDemand(peerID, *nowMs, c.routeDemandReason(peerID))
