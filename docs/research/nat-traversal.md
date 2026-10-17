@@ -605,11 +605,17 @@ against that same endpoint pair and relay policy.
 
 #### Stable Pion Interoperability
 
-The candidate uses Pion WebRTC v4.2.23 / ICE v4.4.7. The
+The candidate uses Pion WebRTC v4.2.24 / ICE v4.4.7. The
 [upstream changes](https://github.com/pion/ice/compare/v4.4.0...v4.4.7) include
 STUN retransmission, gathering-generation ownership, Chromium mDNS compatibility
 and pre-created mux lifetime corrections. This updates the shared Native/SFU
 composition; ordinary Browser-to-Browser ICE remains Browser-owned.
+
+WebRTC's DTLS v3.1.13 dependency also includes
+[queued-buffer ownership and handshake-retransmission corrections](https://github.com/pion/dtls/compare/v3.1.10...v3.1.13).
+They address loss/reordering during transport establishment and strengthen
+handshake validation; they do not add reachable NAT paths or another Piik retry
+owner.
 
 A controlled Chrome 152 check reproduced the
 [mDNS query incompatibility](https://github.com/pion/mdns/commit/5b0a717e4ff6e81300d54ce2fef53e635b95fe3c):
