@@ -77,6 +77,12 @@ export function appPackageTarget(id) {
   return APP_PACKAGE_TARGETS.find((target) => target.id === id) ?? null;
 }
 
+// Finder can relocate a downloaded .app independently of its ZIP neighbours.
+// Keep the executable and its existing relative runtime paths inside the bundle.
+export function appPackageDirectory(target) {
+  return target.goos === "darwin" ? "Piik App.app/Contents/MacOS" : "";
+}
+
 export function goBuildEnvironment(target) {
   return {
     ...process.env,

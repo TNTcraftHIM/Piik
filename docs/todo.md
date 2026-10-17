@@ -26,18 +26,26 @@ platform deferrals or establish a diagnosis for unmatched reports.
   the shared floating-panel owner for ongoing Host control management. Distinguish
   enabled, pending and controlling states, and review desktop/game/touch cursors
   instead of using a universal crosshair. Keep form errors beside their inputs.
+  Decouple permission shutdown from the capture-operation slot: `off` is currently
+  rejected during source/profile changes. Cancellation must cover pending OS
+  authorization and Linux capture preparation so an older completion cannot
+  re-enable control; individual revocation and the local stop shortcut remain available.
   Physical Android/iOS, mixed-DPI displays, commercial games and an actual
   remote-device trial remain. macOS Quartz/Accessibility and Linux RemoteDesktop
   Portal backends are implemented; Linux compilation and synthetic input/release
   checks pass, but desktop permission/capture remains unverified. macOS needs
-  an Apple SDK build and physical focus/Retina/input checks. The
+  an Apple SDK build and physical focus/Retina/input checks. Before public delivery,
+  include the `remotecontrol` platform backends in the existing native check/package
+  entry points; ordinary Go checks currently build the inert backend. The
   [window/game assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns platform and game-compatibility limits. This is not a public feature.
 
-- [ ] **macOS bundle startup (#479).** The reporter can open the Browser UI from
-  Terminal, but double-clicking the `.app` does nothing. Inspect the packaged
-  entry and launch environment before attributing this to permissions; opening
-  the Browser is expected, a silent bundle launch is not. No root cause is established.
+- [ ] **macOS bundle startup acceptance (#479).** The package now contains the
+  actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
+  dependency on an external sibling executable. A moved-bundle assembly check
+  passes. Run the native package gate and Finder launch on macOS, including a
+  downloaded/quarantined bundle and capture permissions. The packaging defect
+  is established; its correction has not yet been matched to the reporter's Mac.
 
 - [ ] **Return LiveKit to an upstream pin.** Native publication now supplies
   unmet encoder demand to the existing allocator through the scoped dependency

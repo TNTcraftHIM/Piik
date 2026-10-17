@@ -85,9 +85,14 @@ native runner. Server builds for both Linux architectures remain cgo-free.
 
 The platform package also carries its native presentation metadata: Windows
 embeds the icon in the Go executable, Linux emits a freedesktop desktop entry
-under `share/`, and macOS emits a thin `.app` launcher with an ICNS resource.
-The latter two are packaging metadata only and do not duplicate the App
-executable.
+under `share/`, and macOS emits a self-contained `.app` with an ICNS resource.
+The macOS `CFBundleExecutable` names the real Mach-O App binary in
+`Contents/MacOS`; its relative `runtime/`, license notices and `REVISION` live
+beside it. Moving the `.app` must retain every runtime dependency. This follows
+[Apple's bundle relocation guidance](https://developer.apple.com/forums/thread/724969)
+and avoids a shell entry that reaches outside the bundle. Package checks execute
+the extracted entry and helpers; Finder/Gatekeeper and desktop permissions still
+need macOS acceptance.
 
 CI and local release-candidate builds use the same wrapper on the target's
 native operating system:

@@ -1,5 +1,4 @@
 import {
-  chmodSync,
   mkdirSync,
   readFileSync,
   writeFileSync,
@@ -131,7 +130,7 @@ function writeMacAssets(packageRoot, version, revision, entries) {
       '<plist version="1.0"><dict>',
       "<key>CFBundleDevelopmentRegion</key><string>en</string>",
       "<key>CFBundleDisplayName</key><string>Piik App</string>",
-      "<key>CFBundleExecutable</key><string>launcher</string>",
+      "<key>CFBundleExecutable</key><string>piik-app</string>",
       "<key>CFBundleIconFile</key><string>piik.icns</string>",
       "<key>CFBundleIdentifier</key><string>tv.piik.app</string>",
       "<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>",
@@ -148,19 +147,6 @@ function writeMacAssets(packageRoot, version, revision, entries) {
     ].join("\n"),
     "utf8",
   );
-  const launcher = join(macos, "launcher");
-  writeFileSync(
-    launcher,
-    [
-      "#!/bin/sh",
-      "set -eu",
-      'base=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)',
-      'exec "$base/../../../piik-app" "$@"',
-      "",
-    ].join("\n"),
-    "utf8",
-  );
-  chmodSync(launcher, 0o755);
 }
 
 export function writeAppPlatformAssets({

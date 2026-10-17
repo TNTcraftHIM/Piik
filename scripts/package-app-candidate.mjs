@@ -20,7 +20,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
-import { appPackageTarget, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
+import { appPackageTarget, appPackageDirectory, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
 import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 
@@ -238,27 +238,28 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
 }
 
 async function verifyPackage(root, target, revision, temporaryRoot) {
-  const packagedRevision = readFileSync(join(root, "REVISION"), "ascii").trim();
+  const runtimeRoot = join(root, appPackageDirectory(target));
+  const packagedRevision = readFileSync(join(runtimeRoot, "REVISION"), "ascii").trim();
   if (packagedRevision !== revision) fail("App package revision mismatch");
   for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt",
     "runtime/tunnel/THIRD-PARTY-NOTICES.txt"]) {
-    if (!existsSync(join(root, file)) || readFileSync(join(root, file)).length === 0) {
+    if (!existsSync(join(runtimeRoot, file)) || readFileSync(join(runtimeRoot, file)).length === 0) {
       fail(`App package license text is missing: ${file}`);
     }
   }
 
-  const app = join(root, target.appName);
-  const tunnel = join(root, "runtime", "tunnel", target.tunnelName);
+  const app = join(runtimeRoot, target.appName);
+  const tunnel = join(runtimeRoot, "runtime", "tunnel", target.tunnelName);
   run(app, ["--help"], root);
   run(tunnel, ["--version"], root);
   verifyPlatformAssets(root, target);
 
   if (target.captureName) {
-    const capture = join(root, "runtime", "native", target.captureName);
+    const capture = join(runtimeRoot, "runtime", "native", target.captureName);
     const probe = JSON.parse(run(capture, ["--probe"], root));
     if (probe?.protocol !== 7) fail("Packaged native capture probe is invalid");
   }
-  await verifyLocalPackage(root, target, temporaryRoot);
+  await verifyLocalPackage(runtimeRoot, target, temporaryRoot);
 }
 
 function verifyPlatformAssets(root, target) {
@@ -288,23 +289,23 @@ function verifyPlatformAssets(root, target) {
   }
   if (target.goos === "darwin") {
     const bundle = join(root, "Piik App.app");
-    const launcher = join(bundle, "Contents", "MacOS", "launcher");
+    const executable = join(bundle, "Contents", "MacOS", target.appName);
     const plist = join(bundle, "Contents", "Info.plist");
     const icon = join(bundle, "Contents", "Resources", "piik.icns");
-    if (!existsSync(launcher) || !existsSync(plist) || !existsSync(icon)) {
-      fail("macOS App app icon assets are missing");
+    if (!existsSync(executable) || !existsSync(plist) || !existsSync(icon)) {
+      fail("macOS App bundle is incomplete");
     }
     if (!readFileSync(icon).subarray(0, 4).equals(Buffer.from("icns"))) {
       fail("macOS App icon is not ICNS");
     }
     const plistText = readFileSync(plist, "utf8");
     if (
+      !plistText.includes(`<key>CFBundleExecutable</key><string>${target.appName}</string>`) ||
       !plistText.includes("<key>NSScreenCaptureUsageDescription</key>") ||
       !plistText.includes("<key>NSAudioCaptureUsageDescription</key>")
     ) {
-      fail("macOS App capture usage descriptions are missing");
+      fail("macOS App entry or capture usage descriptions are missing");
     }
-    if (process.platform === "darwin") run(launcher, ["--help"], root);
   }
 }
 

@@ -215,7 +215,8 @@ The result is a ZIP bundle and SHA-256 file. Manual sidecar assembly,
 explicit CI packaging, Release publication and updates are documented in
 [deployment](../../docs/deployment.md); creating a candidate does not publish it.
 
-The extracted bundle contains:
+The App runtime contains the following files. On macOS they live inside
+`Piik App.app/Contents/MacOS`; move the whole `.app` when installing it.
 
 ```text
 piik-app[.exe]
@@ -241,8 +242,9 @@ The Windows App embeds the shared Piik mark through the
 `cmd/piik-app/piik_windows_amd64.syso` resource; the platform
 suffix keeps that Windows resource out of Linux and macOS builds.
 Linux packages include the standard `share/applications` desktop entry and
-hicolor icon. macOS packages include a thin `Piik App.app` launcher
-with an ICNS resource; the raw Go executable remains available beside it.
+hicolor icon. macOS packages include `Piik App.app` with an ICNS resource,
+the App executable and its helpers. For terminal use, the executable is
+`"Piik App.app/Contents/MacOS/piik-app"`.
 
 The editable badge is [public/favicon.svg](../../public/favicon.svg).
 Export it at 16/24/32/48/64/128/256 px as PNG entries in `cmd/piik-app/piik.ico`;

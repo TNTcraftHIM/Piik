@@ -20,7 +20,7 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { appPackageTarget, goBuildEnvironment, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
+import { appPackageTarget, appPackageDirectory, goBuildEnvironment, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
 import { writeAppPlatformAssets } from "./app-icons.mjs";
 import { writeAppLicenseNotices } from "./package-licenses.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
@@ -213,6 +213,7 @@ if (!existsSync(artifactPath) || sha256(artifactPath) !== descriptor.artifactSha
 
 const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", target.id, "assembly");
 const packageRoot = join(temporaryRoot, "package");
+const runtimeRoot = join(packageRoot, appPackageDirectory(target));
 const releaseRoot = join(temporaryRoot, "release");
 let outputOwned = false;
 try {
@@ -227,11 +228,11 @@ try {
   // Build the Web assets the Go binary embeds. The checkout is clean and at the
   // release revision, so this reproduces that release's Web assets.
   runNpm(["run", "build:web"], repositoryRoot);
-  mkdirSync(packageRoot, { recursive: true });
+  mkdirSync(runtimeRoot, { recursive: true });
 
   let packagedCapture = null;
   if (capturePath) {
-    const nativeRoot = join(packageRoot, "runtime", "native");
+    const nativeRoot = join(runtimeRoot, "runtime", "native");
     mkdirSync(nativeRoot, { recursive: true });
     packagedCapture = join(nativeRoot, target.captureName);
     copyFileSync(capturePath, packagedCapture);
@@ -240,7 +241,7 @@ try {
 
   let packagedTunnel = null;
   if (tunnelPath) {
-    const tunnelRoot = join(packageRoot, "runtime", "tunnel");
+    const tunnelRoot = join(runtimeRoot, "runtime", "tunnel");
     mkdirSync(tunnelRoot, { recursive: true });
     const tunnelName = target.tunnelName;
     packagedTunnel = join(tunnelRoot, tunnelName);
@@ -249,7 +250,7 @@ try {
   }
 
   const appName = target.appName;
-  const appPath = join(packageRoot, appName);
+  const appPath = join(runtimeRoot, appName);
   const goCommand = process.env.PIIK_GO?.trim() || "go";
   run(goCommand, [
     "build",
@@ -262,7 +263,7 @@ try {
   ], repositoryRoot, goBuildEnvironment(target));
   chmodSync(appPath, 0o755);
   assertTargetExecutable(appPath, target, "App executable");
-  writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, target,
+  writeAppLicenseNotices(repositoryRoot, runtimeRoot, goCommand, target,
     packagedTunnel ? CLOUDFLARED_VERSION : null);
   const platformAssets = writeAppPlatformAssets({
     packageRoot,
@@ -271,7 +272,7 @@ try {
     revision,
     iconPath: join(repositoryRoot, "cmd", "piik-app", "piik.ico"),
   });
-  writeFileSync(join(packageRoot, "REVISION"), `${revision}\n`, "ascii");
+  writeFileSync(join(runtimeRoot, "REVISION"), `${revision}\n`, "ascii");
 
   assertCleanRevision(repositoryRoot, revision);
   mkdirSync(dirname(outputRoot), { recursive: true });
@@ -289,11 +290,9 @@ try {
     target: target.id,
     platform: target.goos,
     arch: target.goarch,
-    app: appName,
-    nativeCapture: packagedCapture ? `runtime/native/${target.captureName}` : null,
-    publicTunnel: packagedTunnel
-      ? `runtime/tunnel/${target.tunnelName}`
-      : null,
+    app: relative(packageRoot, appPath).replaceAll("\\", "/"),
+    nativeCapture: packagedCapture ? relative(packageRoot, packagedCapture).replaceAll("\\", "/") : null,
+    publicTunnel: packagedTunnel ? relative(packageRoot, packagedTunnel).replaceAll("\\", "/") : null,
     platformAssets,
   })}\n`);
 } catch (error) {

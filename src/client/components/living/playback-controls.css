@@ -32,7 +32,6 @@
 .lr-tv-screen:fullscreen:has(> :is(.lr-remote-keyboard, .lr-remote-password)) > video { aspect-ratio: auto; height: 100%; }
 .lr-tv-screen:has(> .lr-remote-password) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
 .lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay { grid-area: 1 / 1 / 2 / 2; }
-.lr-tv-screen:has(> .lr-playback[data-can-play="true"]) > video { cursor: pointer; }
 .lr-tv-screen:has(> .lr-playback.is-hidden) > video { cursor: none; }
 /* The video's own focus outline is clipped by the screen; mark its container. */
 .lr-tv-screen:has(> .lr-playback):has(> video:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
