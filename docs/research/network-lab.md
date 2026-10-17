@@ -267,6 +267,19 @@ intended reasons and cleaned up. The route regression separately covers a connec
 Peer reaching its operation deadline before a first frame: untried fallback must
 survive that deadline, while each attempted route retains its finite budget.
 
+### Route-Handoff Measurement
+
+An additional continuous `requestVideoFrameCallback` inspection loop can change
+the behavior being measured. On Chromium 152.0.7977.82, it reproduced a receiver
+stall during a P2P/SFU switch while RTP reception continued. Removing only that
+extra observer, retaining pixel readback, decoded-frame counters and Piik's own
+first-frame observer, passed six Auto/P2P/SFU transitions against the same current
+Server: the moving VP8 picture sustained about 30 fps. Installed Chrome
+155.0.8059.84 also passed with the continuous observer. This establishes a
+probe-dependent browser interaction, not a Piik route failure or a particular
+upstream fix. Recheck a failed probe with passive frame counters and changing
+pixels before adding playback resets or transport workarounds.
+
 ## Sustained Quality Recovery
 
 P2P stage comparisons also use the existing

@@ -38,10 +38,7 @@ platform deferrals or establish a diagnosis for unmatched reports.
   owns their meaning.
   Also accept the combined interaction window, including its on-demand reaction
   tray and live reactions when detached; it reuses the existing room session and palette.
-  Finish owner UI acceptance before release. Investigate the route-handoff stall
-  seen in the bundled Chromium 152 test browser: RTP continues after commit but
-  decoded video stops; the same local fixture passes VP8/H.264 switches in
-  installed Chrome 155. This comparison does not yet identify an upstream cause.
+  Finish owner UI acceptance before release.
 
 - [ ] **macOS bundle startup acceptance (#479).** The package now contains the
   actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
