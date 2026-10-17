@@ -1,4 +1,5 @@
 import { PawnSvg } from "../components/living/Pawn";
+import type { VideoFit } from "../media/video-geometry";
 import {
   useEffect,
   useMemo,
@@ -269,7 +270,7 @@ export function ViewerPage({
   const viewerSfuRouteRef = useRef<ViewerSfuRoute | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
-  const [pictureFit, setPictureFit] = useState<"contain" | "cover">("contain");
+  const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
   const [routePreference, setRoutePreference] = useState<ViewerRoutePreference>("auto");
   const [routePreferencePending, setRoutePreferencePending] = useState(false);

@@ -9,6 +9,7 @@ import { RemoteViewport } from "../../remote-control/viewport";
 import { RemoteKeyboard } from "./RemoteKeyboard";
 import { Btn } from "./primitives";
 import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
+import type { VideoFit } from "../../media/video-geometry";
 import "./remote-control.css";
 
 // The video keeps its existing media owner. This temporary surface handles
@@ -16,7 +17,7 @@ import "./remote-control.css";
 export function RemoteControl({ channel, videoRef, available, pictureFit }: {
   channel: InputTransport | null; videoRef: RefObject<HTMLVideoElement | null>;
   available: boolean;
-  pictureFit?: "contain" | "cover";
+  pictureFit?: VideoFit;
 }) {
   const { t, vis } = useCopy();
   const [state, setState] = useState<RemoteInputState | null>(null);

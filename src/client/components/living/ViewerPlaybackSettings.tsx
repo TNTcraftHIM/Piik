@@ -1,11 +1,12 @@
 import type { ViewerRoutePreference } from "../../../shared/protocol";
+import type { VideoFit } from "../../media/video-geometry";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Cap, Chip, RowGroup } from "./primitives";
 
 export interface ViewerPlaybackSettingsProps {
-  pictureFit: "contain" | "cover";
-  setPictureFit: (fit: "contain" | "cover") => void;
+  pictureFit: VideoFit;
+  setPictureFit: (fit: VideoFit) => void;
   route?: {
     preference: ViewerRoutePreference;
     sfuAvailable: boolean;
@@ -26,14 +27,12 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, route }: Vie
   return <div className="lr-viewer-settings">
     <section aria-label={t("playback.pictureFit")}>
       <h3><Glyph name="tv" size={17} /><Cap k="playback.pictureFit" /></h3>
-      <div className="lr-toggle" role="group" aria-label={t("playback.pictureFit")}>
-        {(["contain", "cover"] as const).map(fit => <button key={fit} type="button"
-          className={pictureFit === fit ? "is-selected" : undefined} aria-pressed={pictureFit === fit}
-          aria-label={t(`playback.fit.${fit}`)} onClick={() => setPictureFit(fit)}>
-          <Glyph name={fit === "contain" ? "fitContain" : "fitCover"} size={20} /><Cap k={`playback.fit.${fit}`} />
-        </button>)}
-      </div>
-      {!vis && <p>{t(pictureFit === "cover" ? "playback.fitCrop" : "playback.fitFull")}</p>}
+      <RowGroup>{(["contain", "cover", "fill"] as const).map(fit => <Chip key={fit}
+        selected={pictureFit === fit} title={t(`playback.fit.${fit}`)} onClick={() => setPictureFit(fit)}>
+        {vis && <Glyph name={fit === "contain" ? "fitContain" : fit === "cover" ? "fitCover" : "fitStretch"} size={20} />}
+        <Cap k={`playback.fit.${fit}`} />
+      </Chip>)}</RowGroup>
+      {!vis && <p>{t(pictureFit === "cover" ? "playback.fitCrop" : pictureFit === "fill" ? "playback.fitStretch" : "playback.fitFull")}</p>}
     </section>
     {route ? <section aria-label={t("host.settings.connection")}>
       <h3><Glyph name="branch" size={17} /><Cap k="host.settings.connection" /></h3>

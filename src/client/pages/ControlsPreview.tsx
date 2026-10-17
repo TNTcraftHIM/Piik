@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { VideoFit } from "../media/video-geometry";
 import { Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
 import { RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
@@ -86,7 +87,7 @@ export function ControlsPreview() {
   const [feedback, setFeedback] = useState("");
   const [dial, setDial] = useState("60");
   const [theater, setTheater] = useState(false);
-  const [pictureFit, setPictureFit] = useState<"contain" | "cover">("contain");
+  const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
   const video = useRef<HTMLVideoElement>(null);
   const notify = () => setFeedback(en ? "Got it. This is a preview." : "收到，只在预览里演示。" );

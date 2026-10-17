@@ -104,6 +104,10 @@ it("maps only visible picture pixels when playback has letterboxing", () => {
   // Filling this 4:3 player crops the 16:9 picture, it does not stretch input.
   expect(picturePoint(video, 100, 50)?.x).toBeCloseTo(0.125);
   expect(picturePoint(video, 900, 650)?.x).toBeCloseTo(0.875);
+  video.style.objectFit = "fill";
+  expect(picturePoint(video, 100, 50)).toEqual({ x: 0, y: 0 });
+  expect(picturePoint(video, 900, 650)).toEqual({ x: 1, y: 1 });
+  expect(picturePoint(video, 300, 500)).toEqual({ x: 0.25, y: 0.75 });
 });
 
 it("ends a pending request when its source becomes unavailable, even before the request reaches the Host", () => {

@@ -30,7 +30,7 @@ platform deferrals or establish a diagnosis for unmatched reports.
   owns platform and game-compatibility limits. This is not a public feature.
 
 - [ ] **Viewer playback settings acceptance (#477).** The current prototype adds
-  local contain/fill and per-viewing Auto/P2P/SFU choice through the existing
+  local fit/crop/stretch and per-viewing Auto/P2P/SFU choice through the existing
   route controller and shared playback settings. Host/site policy still wins;
   [routing](./standards/routing-transport.md#viewer-route-choice) owns the boundary.
   Finish owner UI acceptance before release. Investigate the route-handoff stall

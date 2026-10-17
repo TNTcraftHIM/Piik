@@ -65,7 +65,7 @@ func TestViewerRoutePreferenceExhaustionRepairsRelayChildren(t *testing.T) {
 }
 
 func TestViewerRoutePreferenceP2PAcceptsSFUFedParent(t *testing.T) {
-	routes := newController(1, Options{SfuEnabled: true})
+	routes := newController(1, Options{SfuEnabled: true, QualityConvergenceEnabled: true})
 	addViewer(routes, A, 1, nil)
 	addViewer(routes, B, 1, nil)
 	routes.hydrateHostPublication("publication", res("publication"), "publisher")
@@ -78,6 +78,55 @@ func TestViewerRoutePreferenceP2PAcceptsSFUFedParent(t *testing.T) {
 	commitCurrent(t, routes, 2, "a_b")
 	eq(t, routes.sourceUsable(B), true)
 	noOperation(t, routes.Reconcile(4).Operation)
+	// A fixed incoming kind still permits quality repair of the P2P child.
+	for index, state := range []SenderQualityState{SenderQualityHealthy, SenderQualityDegraded, SenderQualityDegraded, SenderQualityDegraded} {
+		eq(t, observeSenderState(routes, senderState{parentPeerID: A, childPeerID: B,
+			connectionID: "a_b", state: state, acceptedAtMs: int64(10 + index)}).Accepted, true)
+	}
+	op = must(t, routes.Reconcile(14).Operation)
+	eq(t, op.Reason, DemandQualityConvergence)
+	eq(t, op.ChildPeerID, B)
+	eqSlice(t, tuples(op), []CandidateTuple{regenerateTuple(A)})
+	prepared := beginOperation(t, routes, BeginInput{NowMs: 15, ConnectionID: "a_b_regenerated",
+		Reservation: directOverlap("regeneration_overlap")})
+	guard := guardFor(B, prepared.Current.Revision, "a_b_regenerated")
+	eq(t, routes.CandidateReady(guard, 16, nil, CandidateProof{RelativeQualityApproved: true}).Committed, false)
+	eq(t, routes.ObserveSenderQualityEvidence(senderSample(A, B, prepared.Current.Revision,
+		"a_b_regenerated", "regenerated-rtp\x00track", SenderQualityHealthy, 17), nil).Committed, true)
+	eq(t, edgeOf(t, routes, B).ConnectionID, "a_b_regenerated")
+	eq(t, edgeOf(t, routes, A).Kind, UpstreamSfu)
+	eq(t, edgeOf(t, routes, A).ConnectionID, "a_sfu")
+	noOperation(t, routes.Reconcile(18).Operation)
+}
+
+func TestViewerRoutePreferenceSFUBootstrapDoesNotQueuePeerContinuation(t *testing.T) {
+	routes := newController(2, Options{SfuEnabled: true})
+	for _, peer := range []string{B, C} {
+		addViewer(routes, peer, 0, nil)
+		routes.hydrateEdge(peer, peerEdge(HOST, peer+"_host"))
+	}
+	addViewer(routes, A, 0, nil)
+	op := must(t, routes.Reconcile(0).Operation)
+	eq(t, op.Reason, DemandSfuBootstrap)
+	eq(t, op.ChildPeerID, C)
+	// The carrier selects SFU while its existing bootstrap is being prepared.
+	routes.SetViewerRoutePreference(C, sessionOf(C), protocol.ViewerRouteSfu, ms(1))
+	op = must(t, routes.Reconcile(2).Operation)
+	eq(t, op.Reason, DemandSfuBootstrap)
+	eq(t, op.ChildPeerID, C)
+	prepared := beginOperation(t, routes, BeginInput{NowMs: 3, ConnectionID: "carrier_sfu",
+		PublicationGeneration: "publication", PublicationConnectionID: "publisher",
+		Reservation: sfuCreateOverlap("carrier_subscription", "publication", "publication_overlap")})
+	eq(t, routes.CandidateReady(guardFor(C, prepared.Current.Revision, "carrier_sfu"),
+		4, nil, CandidateProof{}).Committed, true)
+	eq(t, routes.directContinuations.Has(C), false)
+	op = must(t, routes.Reconcile(5).Operation)
+	eq(t, op.ChildPeerID, A)
+	eqSlice(t, tuples(op), []CandidateTuple{sfuTuple(PublicationReuse)})
+	prepared = beginOperation(t, routes, BeginInput{NowMs: 6, ConnectionID: "a_sfu", Reservation: sfuReuse("a_subscription")})
+	eq(t, routes.CandidateReady(guardFor(A, prepared.Current.Revision, "a_sfu"), 7, nil, CandidateProof{}).Committed, true)
+	noOperation(t, routes.Reconcile(8).Operation)
+	noOperation(t, routes.Reconcile(9).Operation)
 }
 
 func TestViewerRoutePreferenceExhaustionRetainsSFUAnchorForChildRepair(t *testing.T) {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { VideoFit } from "../media/video-geometry";
 import { AppHeader } from "../components/living/Header";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { StageTv } from "../components/living/Stage";
@@ -7,19 +8,20 @@ import { useCopy } from "../ui/copy";
 function testMedia(withAudio: boolean) {
   const canvas = document.createElement("canvas");
   canvas.width = 640;
-  canvas.height = 360;
+  // A 4:3 picture makes contain, crop and stretch visible in the 16:9 player.
+  canvas.height = 480;
   const paint = canvas.getContext("2d")!;
   const started = performance.now();
   let animation = 0;
   function draw(now: number) {
     const seconds = (now - started) / 1000;
     paint.fillStyle = "#172c3b";
-    paint.fillRect(0, 0, 640, 360);
+    paint.fillRect(0, 0, 640, 480);
     paint.fillStyle = "#29475b";
-    paint.fillRect(0, 260, 640, 100);
+    paint.fillRect(0, 340, 640, 140);
     paint.fillStyle = "#9de8bf";
     paint.beginPath();
-    paint.arc(320 + Math.sin(seconds) * 190, 180, 26, 0, Math.PI * 2);
+    paint.arc(320 + Math.sin(seconds) * 190, 240, 26, 0, Math.PI * 2);
     paint.fill();
     paint.fillStyle = "#dfe8f2";
     paint.font = "24px monospace";
@@ -58,7 +60,7 @@ export function PlaybackPreviewPage() {
   const mediaRef = useRef<ReturnType<typeof testMedia> | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [theaterMode, setTheaterMode] = useState(false);
-  const [pictureFit, setPictureFit] = useState<"contain" | "cover">("contain");
+  const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
   const [error, setError] = useState("");
   const hasAudio = Boolean(stream?.getAudioTracks().length);

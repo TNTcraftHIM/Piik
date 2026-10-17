@@ -80,6 +80,8 @@ capacity ledger and first-frame commit. Existing media remains during permitted
 preparation; exhaustion retires a disallowed route and reports normal failure.
 Returning to Auto restores eligible direct opportunities. A relay's children
 repair through normal availability routing if its ingress is finally retired.
+Restricting the incoming kind does not remove a Viewer from the graph: eligible
+P2P quality repair and service to downstream children keep their existing owners.
 
 The choice survives signaling reconnect and source/share replacement while that
 Viewer remains in the room; leaving or opening a new viewing session resets it.

@@ -1002,7 +1002,7 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 			}
 			remainingParentPeerIDs = append(remainingParentPeerIDs, op.deferredParentPeerIDs...)
 		}
-		if len(remainingParentPeerIDs) > 0 {
+		if len(remainingParentPeerIDs) > 0 && c.allowsIncoming(op.childPeerID, UpstreamPeer) {
 			// Dedupe preserving first occurrence.
 			c.directContinuations.Set(op.childPeerID, &directContinuation{
 				childSessionID:        op.childSessionID,

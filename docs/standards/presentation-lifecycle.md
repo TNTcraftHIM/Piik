@@ -152,10 +152,12 @@ fullscreen includes the playback bar; Safari's video-only fullscreen uses
 system controls and native video events to reflect playback and exit.
 Identity, connection details and topology stay in the deck.
 
-Viewer playback settings reuse shared controls and a bounded anchored popover.
-Local picture fit defaults to contain; fill preserves proportions and may crop
-edges, without changing capture or encoding. Remote input and magnification use
-the same rendered picture geometry. Incoming-route choice follows the
+Viewer playback settings reuse shared controls and expand below the picture;
+fullscreen reserves their height instead of covering the video. Local picture
+fit defaults to contain; cover preserves proportions and may crop edges, while
+stretch fills the player by changing proportions. These choices do not change
+capture or encoding. Remote input and magnification use the same rendered
+picture geometry. Incoming-route choice follows the
 [routing contract](./routing-transport.md#viewer-route-choice); its selected value
 is server-acknowledged intent, not evidence of the currently playing route.
 
