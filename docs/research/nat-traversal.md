@@ -523,6 +523,16 @@ Blocked initial/retransmission writes and unused stable-socket retirement have
 regression coverage. The shared wire decoder requires an explicit zero step;
 missing/null fields cannot silently select this behavior.
 
+A focused in-memory preparation check on 2026-10-17 retained the existing
+sequential-NAT fixture and three ordered destinations. Losing the first request
+to one destination recovered through Pion retransmission in 300 ms; delaying
+one response by 250 ms completed preparation in 250 ms. A silent destination
+returned no prediction at the existing 1.5-second survey deadline. The Browser
+caller supplies exactly three destinations, so skipping a failed destination
+cannot supply the three successful observations required by this preparation.
+Keep the current failure-to-ordinary-ICE behavior; these controls establish
+bounded recovery and failure, not a physical-network success-rate benefit.
+
 The Windows Browser-to-App fanout gate also exercises the actual room retry,
 both Native control preparations and ordinary ICE continuation when the mapping
 is ineligible. Two Viewers decode about 30 fps; live quality, pause/resume, source

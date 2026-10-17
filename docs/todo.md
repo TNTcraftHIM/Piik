@@ -178,11 +178,6 @@ experiments and their limits.
   and fixed deadlines. The [process lab](./research/network-lab.md) and
   [assessment](./research/nat-traversal.md#coordinated-native-punching-assessment)
   own existing controls; random-port overlap and field benefit remain unproven.
-  Check the preparation survey under partial STUN failure and asymmetric delay:
-  it currently abandons preparation on a failed lookup or Binding transaction,
-  then resumes ordinary ICE. Use the existing lab to establish whether this
-  unnecessarily loses a usable enhanced path; preserve ordered observations,
-  the current socket owner and the operation deadline.
 
 Prioritize App-to-Browser and Browser-to-Browser comparisons across interface
 changes, lost mappings and asymmetric restrictions, then Native/SFU handoffs
