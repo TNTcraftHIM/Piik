@@ -2,11 +2,21 @@
 
 ## Aesthetic And Design Standard
 
+Every conversation turn, feature and action must follow these top-level
+constraints and all applicable skill requirements throughout the work, not
+only at final review.
+
 Piik's high aesthetic standard applies equally to its interface, interactions,
 functional and business boundaries, lifecycle, and code. Preserve the product's
 motivation and intent; judge additions by their effect on the simplicity,
-coherence and quality of the whole experience. Working behavior alone does not
-satisfy this standard. Detailed requirements remain with the
+coherence, usability, maintainability and appropriate extensibility of the whole
+experience. Working behavior alone does not satisfy this standard.
+
+Before implementation or expansion, understand the intended experience,
+responsibilities and lifecycle; inspect existing owners and components for
+reuse, then choose the smallest coherent design that meets this standard.
+Do not defer design until after implementation. Keep this reasoning proportionate,
+without repeated checklists or a parallel rulebook. Detailed requirements remain with the
 [visual language](./docs/standards/visual-language.md),
 [engineering conventions](./docs/standards/engineering.md) and required skills below.
 
