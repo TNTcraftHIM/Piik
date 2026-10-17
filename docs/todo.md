@@ -9,7 +9,7 @@ Git/PRs own completed history.
 
 ## Now
 
-The 2.0 maintenance line retains the published protocol and route owners.
+The 2.x maintenance line retains the published protocol and route owners.
 Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
@@ -63,13 +63,14 @@ platform deferrals or establish a diagnosis for unmatched reports.
   ownership and duplicate ClientHello recovery; this is handshake reliability
   work, not a new NAT traversal mechanism.
 
-- [ ] **SFU recovery acceptance.** Shared forwarding now gives DownTrack one
+- [ ] **SFU recovery rollout.** Shared forwarding now gives DownTrack one
   owner for video sender reports and RR/RTT accounting, with Pion scheduling.
   Matched SFU logs established clock contamination blocking layer changes and
-  missing RTT updates; RTCP and constrained recovery checks pass locally.
-  Include the corrected App and Server in release acceptance; an ICE restart
-  does not replace the affected upstream clock. This does not diagnose every
-  unmatched sustained-quality report below.
+  missing RTT updates. RTCP, constrained recovery and the current App/Server
+  lifecycle checks pass locally. After the approved release, verify the affected
+  deployment with both corrected App and Server; an ICE restart does not replace
+  the affected upstream clock. This does not diagnose every unmatched
+  sustained-quality report below.
 
 ## Held By Owner
 

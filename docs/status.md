@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-16
+Last updated: 2026-10-18
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -56,12 +56,13 @@ Release artifacts and operator deployment records own delivery completion;
 
 ## Current Work
 
-Current source retains the existing 2.x protocol and route owners. Native media
-recovery uses the existing allocator and encoder, available NAT enhancement is
-automatic, and App startup can open a starred approved Site without starting a
-Local room. [TODO](./todo.md) owns the upstream dependency follow-up, pending field
-evidence and deferred product work. Release artifacts and operator records own
-delivery and acceptance results.
+Current source retains the existing 2.x protocol and route owners. The unpublished
+phase combines attended keyboard/mouse control, Viewer playback settings and the
+interaction window, with shared forwarding recovery repairs. Remote input remains
+opt-in and build-gated pending owner acceptance; its
+[prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
+owns platform evidence. [TODO](./todo.md) owns release acceptance, upstream follow-up
+and deferred work. Release artifacts and operator records own delivery results.
 
 2.0 separates numeric media requests from presets and bounded runtime admission,
 retains successfully applied quality settings, and lets App serve an approved
