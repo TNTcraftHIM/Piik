@@ -34,10 +34,10 @@ is absent, provided the room service and their admitted sessions remain availabl
 [Rooms and access](./rooms-access.md#room-interactions) owns interaction authority
 and retention; [status](../status.md#accepted-interaction-phase) owns release readiness.
 
-On capable desktop browsers, chat can move to a Document Picture-in-Picture
-window. It remains one presentation of the admitted room session, with the same
-draft and history. Read visibility and guidance follow its current document.
-Closing the window returns chat to the page; room retirement or opener teardown
+On capable desktop browsers, the interaction window can move to a Document
+Picture-in-Picture window. It retains the admitted room session's messages,
+reactions and draft. Read visibility and guidance follow its current document.
+Closing the window returns it to the page; room retirement or opener teardown
 closes it, including a late asynchronous open. Browser window support does not
 promise game-overlay transparency, click-through or exclusive-fullscreen coverage.
 

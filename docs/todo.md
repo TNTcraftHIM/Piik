@@ -55,10 +55,10 @@ platform deferrals or establish a diagnosis for unmatched reports.
   own that boundary; this local repair does not diagnose the unmatched field
   reports below.
 
-- [ ] **Pion DTLS maintenance update.** Review [WebRTC v4.2.24](https://github.com/pion/webrtc/releases/tag/v4.2.24) / DTLS v3.1.12
-  against the existing media checks. Upstream corrects queued handshake-buffer
-  ownership and duplicate ClientHello recovery; this is handshake reliability
-  work, not a new NAT traversal mechanism.
+- [ ] **Audio-exclusion explanation (#480).** At release, point the reporter to
+  the [source-audio scopes](./guide/getting-started.md#exclude-a-voice-app-from-screen-audio).
+  The missing window/camera exclusion control is intentional; investigate a
+  specific unwanted recording only if a matching source/input report establishes it.
 
 - [ ] **SFU recovery rollout.** Shared forwarding now gives DownTrack one
   owner for video sender reports and RR/RTT accounting, with Pion scheduling.
@@ -147,8 +147,10 @@ experiments and their limits.
   [#448](https://github.com/TNTcraftHIM/Piik/issues/448) and
   [#453](https://github.com/TNTcraftHIM/Piik/issues/453) need paired transport traces;
   the v1.6.3 timeout also needs share-start/SDP evidence.
-  [#471](https://github.com/TNTcraftHIM/Piik/issues/471) needs ICE traces and the
-  discovery URLs after STUN redundancy and override changes.
+  [#471](https://github.com/TNTcraftHIM/Piik/issues/471) reports working STUN and
+  a router mapping on v2.1.0, but no ICE check responses. Obtain the retained
+  paired reports; that summary alone does not distinguish NAT filtering,
+  upstream mapping or a blocked path.
   [#468](https://github.com/TNTcraftHIM/Piik/issues/468) needs the complete join/
   reauthentication trace on repaired connection-opportunity accounting.
   [#464](https://github.com/TNTcraftHIM/Piik/issues/464) needs matched SFU reports

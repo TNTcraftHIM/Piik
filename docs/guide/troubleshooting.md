@@ -23,7 +23,7 @@ collect a diagnostic report if the problem persists.
 | HDR picture looks too bright or washed out | On Windows, try App capture or temporarily turn off HDR; see [HDR capture](#hdr-picture-looks-too-bright-or-washed-out). |
 | Yellow outline around the shared window or screen | This is Windows' capture indicator. See [capture borders](#yellow-capture-border-on-windows) for Windows 11 controls and an optional Windows 10 workaround. |
 | Picture but no source sound | Unmute the video. The host should choose a source with shareable audio and enable sound in the source picker. Camera video and audio inputs are selected separately; see [audio settings](./getting-started.md#add-your-voice). |
-| Cannot hear the host's voice | The host can enable **Microphone** below the picture, then check the selected input and its volume in **Settings → Sound**. Check the device connection and microphone permission. If the control is unavailable, update the App and refresh the page. |
+| Cannot hear the host's voice | The host can enable **Microphone** below the picture, then check the selected input and its volume in **Sharing settings → Sound**. Check the device connection and microphone permission. If the control is unavailable, update the App and refresh the page. |
 | Screen sharing includes a voice app's audio | Windows App screen capture can [exclude application audio](./getting-started.md#exclude-a-voice-app-from-screen-audio). This does not remove echo from speakers picked up by a microphone. |
 | Virtual microphone has echo, or remains audible when muted in Piik | Temporarily turn off **System sound** to compare. A mixer's playback can enter source audio separately from Piik's microphone; check its [audio routing](./getting-started.md#exclude-a-voice-app-from-screen-audio). |
 | Page opens but video will not connect | Use **Reconnect** if available, or refresh the viewing page. See [connection troubleshooting](#when-video-will-not-connect) if it still fails. |
@@ -110,7 +110,7 @@ If selecting a window or screen returns you to the start screen, or reports a
 sharing failure, it may involve capture, encoding or the Browser-to-App media
 connection. The message alone does not identify a graphics-driver problem.
 
-1. **Compare codecs on the same source.** In **Settings → Connection & encoding**, change the
+1. **Compare codecs on the same source.** In **Sharing settings → Picture → Fine-tune picture**, change the
    video codec from **H264** to **Auto** or **VP8**, then start sharing again.
    If VP8 works, you can keep using it while checking the H264 path.
 2. **Update and restart.** Update Piik App and Chrome, and install the appropriate
@@ -259,7 +259,7 @@ If it recurs or never recovers, compare the following:
    one viewer? Note the time and whether it recovers on its own. A clear host
    preview does not establish that viewers' connections are healthy.
 2. **Change one thing at a time.** The host can try a lower resolution or frame
-   rate under **Settings → Picture**, and check CPU/GPU load while the game runs.
+   rate under **Sharing settings → Picture**, and check CPU/GPU load while the game runs.
    An affected viewer can compare another browser or a phone hotspot. Increasing
    bitrate does not necessarily help.
 3. **Check the actual codec.** Open the host's **Show connection details** and

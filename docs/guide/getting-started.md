@@ -31,9 +31,10 @@ and use its buttons. Safari may show system controls in video fullscreen.
 | Control | What it does |
 | --- | --- |
 | **Theater mode** | Expands the picture inside the browser tab. |
-| **Fullscreen** | Uses the full screen while keeping the picture's proportions; black bars can remain when they differ from your screen. |
+| **Fullscreen** | Expands the picture to the full screen. |
 | **Picture in picture** | Opens a floating video where supported. |
 | **Volume** | Goes up to 200% with audio boost, or 100% otherwise. Lower it if the sound distorts. |
+| **Playback settings** | **Fit** keeps the whole picture visible; **Fill** crops its edges; **Stretch** fills the area by changing its proportions. Connection settings default to **Auto**; available alternatives depend on the host and site. |
 
 </details>
 
@@ -187,7 +188,7 @@ sharing to allow that fallback. The project's online site uses P2P only.
 ## Picture and sound settings
 
 Open **Sharing settings** below the picture. Picture presets are directly available;
-expand **Fine-tune picture** for resolution, frame-rate, bitrate and picture-preference controls.
+expand **Fine-tune picture** for resolution, frame-rate, bitrate, picture preference and video codec.
 
 - In **Fine-tune picture**, enter width and height under **Resolution limit**.
   Piik preserves the source's proportions within that ceiling, including portrait
@@ -212,7 +213,7 @@ when your public-invite address changes.
 ## Add your voice
 
 While sharing, select **Microphone** below the picture and
-allow microphone access. Select it again to mute. Open **Settings → Sound** below the picture
+allow microphone access. Select it again to mute. Open **Sharing settings → Sound** below the picture
 to choose a microphone and adjust its input volume.
 The default volume is 100%, with up to 200% available.
 Source audio and your voice reach viewers together. The Host preview stays muted.
@@ -235,6 +236,10 @@ the [OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tut
 then select the virtual audio input in Piik's microphone list and turn on the microphone.
 
 ### Exclude a voice app from screen audio
+
+On Windows, this control applies to system sound from **Screens**. **Apps / Windows**
+captures only the selected application's process tree; **Camera** uses the separately
+selected microphone or audio input.
 
 On supported Windows Apps, open the **Screens** tab and enable **System sound**.
 Under **Exclude application audio**, select a window belonging to the voice app,
@@ -261,16 +266,16 @@ app to a different playback device.
 
 ## Chat and reactions
 
-Once the host starts the first share, participants can select **Chat** below the
+Once the host starts the first share, participants can select **Interact** below the
 sofa to send messages. Select a person on the sofa to open their reaction menu:
 your own reactions appear above you; reactions sent to a friend fly towards them.
-The chat window can be moved and resized without rearranging the page.
+The interaction window can be moved and resized without rearranging the page.
 
-Supported desktop browsers show **Always-on-top chat** in the window's top-right
-corner, so you can read messages while playing. Keep the Piik page open; closing
-the small window returns chat to the page. Use a windowed or borderless game;
-exclusive fullscreen may cover the chat. The window cannot show the game through
-its background or let mouse clicks pass through.
+Supported desktop browsers show **Open in always-on-top window** in its top-right
+corner. You can read messages, see reactions and select someone to interact with
+while playing. Keep the Piik page open; closing the small window returns it to the page.
+Use a windowed or borderless game; exclusive fullscreen may cover the window.
+The window cannot show the game through its background or let mouse clicks pass through.
 
 **On screen**, beside the message box or in the viewer's playback bar, shows new
 messages over the picture. It is off by default and only changes your own view.
