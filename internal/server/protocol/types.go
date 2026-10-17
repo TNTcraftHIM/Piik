@@ -190,6 +190,7 @@ type RuntimeCapabilities struct {
 	NatPrediction    bool `json:"natPrediction"`
 	RoomInteractions bool `json:"roomInteractions,omitempty"`
 	HostRoomSession  bool `json:"hostRoomSession,omitempty"`
+	RemoteInput      bool `json:"remoteInput,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -202,13 +203,14 @@ func (v *RuntimeCapabilities) UnmarshalJSON(data []byte) error {
 	if present == nil {
 		return errors.New("runtime capabilities must be an object")
 	}
-	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "hostRoomSession", "natPrediction"); err != nil {
+	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "hostRoomSession", "natPrediction", "remoteInput"); err != nil {
 
 		return err
 	}
 	for key, target := range map[string]*bool{
 		"sfu": &v.Sfu, "sfuOnly": &v.SfuOnly, "natPrediction": &v.NatPrediction,
 		"roomInteractions": &v.RoomInteractions, "hostRoomSession": &v.HostRoomSession,
+		"remoteInput": &v.RemoteInput,
 	} {
 		if value, ok := present[key]; ok {
 			if err := json.Unmarshal(value, target); err != nil {

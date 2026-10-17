@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { RemoteInputSession, picturePoint } from "../src/client/remote-control/input-session";
+import { InputRoute, type InputIdentity } from "../src/client/remote-control/input-route";
 
 class Channel extends EventTarget {
   readyState = "open";
@@ -9,6 +10,37 @@ class Channel extends EventTarget {
   close() { this.readyState = "closed"; this.dispatchEvent(new Event("close")); }
   receive(value: object) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) })); }
 }
+
+it("reuses the authenticated identity across media routes and syncs after delayed key installation", async () => {
+  const registered: InputIdentity[] = [];
+  const route = new InputRoute(() => {});
+  route.enable(identity => { registered.push(identity); return true; });
+  const first = new Channel();
+  route.setUpstream(first as unknown as RTCDataChannel);
+  first.receive({ ready: true });
+  const oldEndpoint = route.current!;
+  const session = new RemoteInputSession(oldEndpoint, () => {});
+  await vi.waitFor(() => expect(first.sent.filter(p => p.data)).toHaveLength(1));
+  const oldPacket = first.sent.find(p => p.data)!;
+  expect(oldPacket.data).not.toContain("sync");
+  first.receive({ id: registered[0].endpointId, ready: true });
+  await vi.waitFor(() => expect(first.sent.filter(p => p.data)).toHaveLength(2));
+  session.dispose();
+  const next = new Channel();
+  route.setUpstream(next as unknown as RTCDataChannel);
+  expect(oldEndpoint.readyState).toBe("closed");
+  next.receive({ ready: true });
+  const nextSession = new RemoteInputSession(route.current!, () => {});
+  await vi.waitFor(() => expect(next.sent.filter(p => p.data)).toHaveLength(1));
+  const newPacket = next.sent.find(p => p.data)!;
+  expect(registered).toHaveLength(1);
+  expect(newPacket.id).toBe(oldPacket.id);
+  expect(newPacket.epoch).not.toBe(oldPacket.epoch);
+  const sequence = (p: Record<string, unknown>) => new DataView(Uint8Array.from(atob(p.data as string), c => c.charCodeAt(0)).buffer).getBigUint64(0);
+  expect(sequence(newPacket)).toBeGreaterThan(sequence(oldPacket));
+  nextSession.dispose();
+  route.dispose();
+});
 
 it("binds input to the current request and retires cancelled or replaced grants", () => {
   const channel = new Channel();

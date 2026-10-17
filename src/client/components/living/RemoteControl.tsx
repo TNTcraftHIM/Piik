@@ -3,15 +3,16 @@ import { createPortal } from "react-dom";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import type { RemoteControlRequest } from "../../native/wire";
+import type { InputTransport } from "../../remote-control/input-route";
 import { RemoteInputSession, picturePoint, type RemoteInputState, type RemoteInputEvent } from "../../remote-control/input-session";
 import { Btn } from "./primitives";
 import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import "./remote-control.css";
 
 // The video keeps its existing media owner. This temporary surface handles
-// input only while its exact direct connection holds a local App grant.
+// input only while its current routed endpoint holds a local App grant.
 export function RemoteControl({ channel, videoRef, available }: {
-  channel: RTCDataChannel | null; videoRef: RefObject<HTMLVideoElement | null>;
+  channel: InputTransport | null; videoRef: RefObject<HTMLVideoElement | null>;
   available: boolean;
 }) {
   const { t } = useCopy();

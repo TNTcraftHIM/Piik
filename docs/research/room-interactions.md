@@ -300,23 +300,38 @@ The `remotecontrol` Go build tag selects Windows `SendInput`; ordinary builds
 leave it unavailable. App discovery advertises the optional input capability;
 a supporting page opts in when starting its native share. An older page emits
 no opt-in, so it receives neither new input events nor input channels. The
-prototype uses the App's embedded page and a shared
-display or window, with one desktop Browser controller. An ordered WebRTC data channel
-on the existing direct media edge carries small input messages. There is no new
-listener, signaling command, media route, server input forwarding or dependency.
-The control button appears only after that channel reports its capability.
-An App-assisted Viewer passes input through its own local playback bridge to
-the exact upstream channel; it never forwards input for a downstream Viewer.
-SFU/relay input routes, mobile input and IME remain unfinished. Independent
-virtual gamepads are deferred by the owner; this phase adds no input driver.
+prototype shares a display or window with one desktop Browser controller.
+Ordered WebRTC data channels carry small input messages back along the existing
+committed media route: direct, Browser relay, App relay or embedded SFU. The
+same Go forwarding module serves App playback/relay and SFU; the Browser adapter
+follows its active media input and child edges. No new listener, PeerConnection,
+route planner or dependency is introduced. The control button appears only
+after the complete input path reports readiness. Updated forwarding peers are
+required along that path; an older peer can still carry the picture.
+Mobile input and IME remain unfinished. Independent virtual gamepads are
+deferred by the owner; this phase adds no input driver.
+
+Opted-in room signaling binds an ephemeral key and endpoint ID to each
+authenticated Viewer, then sends that binding only to the owning Host. The
+Host passes the snapshot through its existing authorized native session.
+Viewer and native Host use platform AES-GCM to protect input and grant replies;
+intermediate Viewers and the SFU forward ciphertext, not keyboard events or
+authority. The Site remains trusted because it distributes those keys.
+Keys are scoped to the authenticated connection, excluded from diagnostics and
+never persisted. Direction, sequence and input-channel incarnation bind packets
+to their current owner; a delayed closure from a replaced branch cannot revoke
+a newly approved channel. The Browser requires Web Crypto in a secure context
+(HTTPS or localhost); ordinary HTTP viewing remains available without remote input.
+This uses [WebRTC data channels](https://www.rfc-editor.org/rfc/rfc8831.html)
+and the platform [AES-GCM API](https://developer.mozilla.org/en-US/docs/Web/API/AesGcmParams).
 
 `internal/app/remoteinput` owns one process-wide grant because the App's native
 sessions share the same physical keyboard and pointer. The Viewer requests
 control; the Host approves, declines or ends control on the current sharing
 page. The existing authorized native-control connection carries these commands;
 only the session that owns the share can decide its requests. Request identity
-comes from the direct media connection and the room's participant list. The
-grant is bound to that channel and source, with a fresh nonce for each approval.
+comes from the authenticated room binding, never a relay-supplied participant
+name. The grant is bound to that input channel and source, with a fresh nonce for each approval.
 Each request has its own identity: a late Host decision cannot approve a newer
 request, and a late approval cannot revive the Viewer's cancelled intent.
 Site capture approval never grants input rights. Input may operate the whole
@@ -327,9 +342,9 @@ held keys and buttons. The channel belongs to the sharing session; permission
 and pointer coordinates belong to its current source. The Host can change
 windows/displays through the existing source picker without starting another
 share, with fresh permission for the replacement. Audio-only changes retain the
-current grant. Brief ICE loss revokes permission while retaining a live channel
-for a fresh request after recovery. The App-assisted Viewer's local playback
-leg follows the same rule; interruption there releases the upstream grant.
+current grant. Brief ICE loss and media-route replacement revoke permission;
+the recovered path carries a fresh request. App playback and relay descendants
+follow the same rule; interruption releases the upstream grant.
 A closed control channel needs a new media
 connection; neither path silently restores a grant. Either side can end control from its page or
 Ctrl+Alt+F10. Escape releases game mouse capture without ending the grant.
@@ -352,7 +367,10 @@ retirement. Display → window → display switching retained the channel and
 required fresh approval; the App-assisted path delivered actual mouse/keyboard
 input and released a held key on revocation. Request snapshots and decisions
 are scoped to the owning native share; another session cannot inspect, approve
-or decline them. These checks do not
+or decline them. Real Browser-relay, App-relay and SFU chains also delivered
+video and native key input, released held input on Host revocation, and retired
+control on share stop. Both relay chains recovered viewing and accepted a fresh
+request after their intermediate participant left. These checks do not
 establish remote-network latency, game compatibility, mixed-DPI behavior or
 antivirus classification. The experiment build and disposable UI/input probes
 remain under ignored `build/remote-control-prototype/`.

@@ -9,7 +9,7 @@ import (
 
 	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
+	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -41,12 +41,12 @@ type sessionEdge struct {
 
 type sessionReceiver struct {
 	*mediaedge.Receiver
-	input *inputBridge
+	input *inputroute.Relay
 }
 
 func (receiver *sessionReceiver) Close() error {
 	if receiver.input != nil {
-		receiver.input.close()
+		receiver.input.Close()
 	}
 	return receiver.Receiver.Close()
 }
@@ -167,11 +167,11 @@ func (session *Session) AcceptOffer(
 		}
 	}
 	session.CloseReceiver(connectionID)
-	var input *inputBridge
+	var input *inputroute.Relay
 	var onDataChannel func(*webrtc.DataChannel)
 	if strings.Contains(offer.SDP, "\nm=application ") {
-		input = &inputBridge{}
-		onDataChannel = func(channel *webrtc.DataChannel) { input.attach(channel, "") }
+		input = inputroute.New(nil)
+		onDataChannel = input.AttachUp
 	}
 	mediaReceiver, answer, err := session.engine.NewReceiver(mediaedge.ReceiverOptions{
 		Offer:         offer,
@@ -189,6 +189,9 @@ func (session *Session) AcceptOffer(
 				})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair, current func() bool) {
+				if input != nil {
+					input.SetUpAvailable(state == webrtc.PeerConnectionStateConnected)
+				}
 				session.emit(Event{
 					Current: current,
 					Type:    "edge-state", ShareID: session.shareID,
@@ -209,7 +212,7 @@ func (session *Session) AcceptOffer(
 	})
 	if err != nil {
 		if input != nil {
-			input.close()
+			input.Close()
 		}
 		return OfferResult{}, err
 	}
@@ -306,8 +309,8 @@ func (session *Session) prepareEdge(
 				})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair) {
-				if local && receiver.input != nil && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
-					receiver.input.releaseLocal(connectionID)
+				if receiver.input != nil && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
+					receiver.input.LoseDown(connectionID, nil)
 				}
 				session.emit(Event{
 					Type: "edge-state", ShareID: session.shareID,
@@ -340,15 +343,15 @@ func (session *Session) prepareEdge(
 	}
 	session.mu.Unlock()
 	var offer webrtc.SessionDescription
-	if local {
-		if receiver.input != nil {
-			channel, channelErr := edge.OpenDataChannel(remoteinput.ChannelLabel)
-			if channelErr != nil {
-				session.CloseEdge(connectionID)
-				return webrtc.SessionDescription{}, channelErr
-			}
-			receiver.input.attach(channel, connectionID)
+	if receiver.input != nil {
+		channel, channelErr := edge.OpenDataChannel(inputroute.Label)
+		if channelErr != nil {
+			session.CloseEdge(connectionID)
+			return webrtc.SessionDescription{}, channelErr
 		}
+		receiver.input.AttachDown(connectionID, channel)
+	}
+	if local {
 		offer, err = edge.CreateLocalOffer(session.ctx, localOfferID, false)
 	} else {
 		offer, err = edge.CreateOffer()

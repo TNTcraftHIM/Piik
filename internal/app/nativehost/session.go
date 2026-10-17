@@ -18,6 +18,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -521,6 +522,10 @@ func (session *Session) RemoteInputChanges() <-chan struct{} {
 
 func (session *Session) RemoteInputRequests() []remoteinput.View {
 	return session.remoteInput.Views()
+}
+
+func (session *Session) SetRemoteInputPeers(peers []protocol.RemoteInputPeer) error {
+	return session.remoteInput.SetPeers(peers)
 }
 
 func (session *Session) DecideRemoteInput(id string, allow bool) error {

@@ -16,10 +16,12 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
 
-const ChannelLabel = "piik-remote-input-prototype-v1"
+const ChannelLabel = inputroute.Label
 
 type bounds struct{ left, top, width, height int32 }
 
@@ -44,16 +46,16 @@ type inputSink interface {
 }
 
 type View struct {
-	ID           string `json:"id"`
-	ConnectionID string `json:"connectionId"`
-	State        string `json:"state"`
+	ID     string `json:"id"`
+	PeerID string `json:"peerId"`
+	State  string `json:"state"`
 }
 
 // One manager covers both native sessions: they operate the same physical desktop.
 type Manager struct {
 	mu          sync.Mutex
 	sink        inputSink
-	connections map[string]*connection
+	connections map[endpointKey]*connection
 	active      *connection
 	closed      bool
 	stop        context.CancelFunc
@@ -65,18 +67,27 @@ type Session struct {
 	paused  bool
 	closed  bool
 	changed chan struct{}
+	route   *inputroute.Relay
 }
 
 type connection struct {
 	owner     *Session
 	edgeID    string
+	epoch     string
 	id        string
 	requested bool
 	requestID string
 	intent    string
 	grant     string
 	suspended bool
-	channel   *webrtc.DataChannel
+	peerID    string
+	secret    string
+	cipher    *inputCipher
+}
+
+type endpointKey struct {
+	owner *Session
+	id    string
 }
 
 // New is inert in ordinary builds. The remotecontrol build tag selects the
@@ -87,7 +98,7 @@ func New(ctx context.Context) (*Manager, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	m := &Manager{sink: sink, connections: make(map[string]*connection), stop: cancel}
+	m := &Manager{sink: sink, connections: make(map[endpointKey]*connection), stop: cancel}
 	if err := watchStopShortcut(ctx, func() { m.Revoke() }); err != nil {
 		cancel()
 		return nil, err
@@ -115,7 +126,9 @@ func (m *Manager) NewSession() *Session {
 	if m == nil {
 		return nil
 	}
-	return &Session{manager: m, changed: make(chan struct{}, 1)}
+	s := &Session{manager: m, changed: make(chan struct{}, 1)}
+	s.route = inputroute.New(s.receivePacket)
+	return s
 }
 
 // Changes coalesces notifications; Views reads the current grant owner. Input
@@ -164,26 +177,87 @@ func (s *Session) SetTarget(target nativecapture.CaptureTarget) {
 }
 
 func (s *Session) Attach(edgeID string, channel *webrtc.DataChannel) {
+	s.route.AttachDown(edgeID, channel)
+}
+
+// Bindings come only from the owning Host's authenticated room connection.
+// Receiving a packet from a relay never creates or names an input identity.
+func (s *Session) SetPeers(peers []protocol.RemoteInputPeer) error {
+	if s == nil {
+		return errors.New("remote input is unavailable")
+	}
 	m := s.manager
-	id := make([]byte, 16)
-	_, _ = rand.Read(id)
-	c := &connection{owner: s, edgeID: edgeID, id: hex.EncodeToString(id), channel: channel}
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.closed || s.closed {
+		return errors.New("remote input is closed")
+	}
+	retained := make(map[string]bool, len(peers))
+	for _, peer := range peers {
+		if !protocol.ValidInputKey(peer.EndpointID, peer.Secret) || !protocol.ValidOpaqueID(peer.PeerID) || retained[peer.EndpointID] {
+			return errors.New("invalid input endpoint")
+		}
+		retained[peer.EndpointID] = true
+	}
+	for _, peer := range peers {
+		previous := m.connections[endpointKey{s, peer.EndpointID}]
+		if previous != nil && previous.secret == peer.Secret && previous.peerID == peer.PeerID {
+			continue
+		}
+		if previous == m.active && previous != nil {
+			m.release()
+		}
+		cipher, _ := newInputCipher(peer.Secret)
+		c := &connection{owner: s, id: peer.EndpointID, peerID: peer.PeerID, secret: peer.Secret, cipher: cipher}
+		m.connections[endpointKey{s, c.id}] = c
+		// Signaling and the media return path can arrive in either order.
+		// Ask this endpoint to sync only after its authenticated key is installed.
+		ready := true
+		s.route.Reply(inputroute.Packet{ID: c.id, Ready: &ready})
+	}
+	for id, c := range m.connections {
+		if c.owner == s && !retained[id.id] {
+			if m.active == c {
+				m.release()
+			}
+			delete(m.connections, id)
+		}
+	}
+	s.notify()
+	return nil
+}
+
+func (s *Session) receivePacket(edgeID string, packet inputroute.Packet) {
+	m := s.manager
+	m.mu.Lock()
+	c := m.connections[endpointKey{s, packet.ID}]
+	if c == nil || m.closed || s.closed {
 		m.mu.Unlock()
-		_ = channel.Close()
 		return
 	}
-	m.connections[c.id] = c
+	if packet.Closed {
+		if c.edgeID == edgeID && c.epoch == packet.Epoch {
+			m.revoke(c)
+			c.edgeID = ""
+		}
+		m.mu.Unlock()
+		return
+	}
+	plain, err := c.cipher.open(packet.Data, packet.Epoch)
+	if err != nil {
+		m.mu.Unlock()
+		return
+	}
+	if c.edgeID != "" && (c.edgeID != edgeID || c.epoch != packet.Epoch) {
+		m.revoke(c)
+	}
+	c.edgeID, c.epoch = edgeID, packet.Epoch
 	m.mu.Unlock()
-	channel.OnOpen(func() { m.mu.Lock(); defer m.mu.Unlock(); m.send(c, "ready") })
-	channel.OnMessage(func(message webrtc.DataChannelMessage) { m.receive(c, message) })
-	channel.OnClose(func() { m.remove(c) })
-	channel.OnError(func(error) { m.remove(c) })
+	m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: plain}, packet.Epoch)
 }
 
 func (m *Manager) send(c *connection, state string) {
-	if c.channel.ReadyState() != webrtc.DataChannelStateOpen {
+	if c.epoch == "" {
 		return
 	}
 	if state == "ready" && !c.owner.available() {
@@ -194,7 +268,7 @@ func (m *Manager) send(c *connection, state string) {
 		Grant  string `json:"grant,omitempty"`
 		Intent string `json:"intent,omitempty"`
 	}{state, c.grant, c.intent})
-	_ = c.channel.SendText(string(data))
+	c.owner.route.Reply(inputroute.Packet{ID: c.id, Epoch: c.epoch, Data: c.cipher.seal(data, c.epoch)})
 }
 
 func (s *Session) available() bool {
@@ -250,7 +324,7 @@ func (m *Manager) release() {
 	}
 }
 
-func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
+func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoch string) {
 	if !message.IsString || len(message.Data) > 1024 {
 		return
 	}
@@ -262,7 +336,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.closed || c.owner.closed || m.connections[c.id] != c {
+	if m.closed || c.owner.closed || m.connections[endpointKey{c.owner, c.id}] != c || c.epoch != epoch {
 		return
 	}
 	switch event.Type {
@@ -282,9 +356,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
 		m.send(c, "pending")
 		c.owner.notify()
 	case "release":
-		// A local App playback bridge may release its current endpoint without
-		// knowing the Browser intent. Browser cancellations name their request.
-		if (event.Intent != "" && event.Intent != c.intent) || (!c.requested && m.active != c) {
+		if event.Intent != c.intent || (!c.requested && m.active != c) {
 			return
 		}
 		c.requested = false
@@ -313,13 +385,13 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage) {
 	}
 }
 
-func (m *Manager) remove(c *connection) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (m *Manager) revoke(c *connection) {
+	c.requested = false
 	if m.active == c {
 		m.release()
+	} else {
+		m.send(c, "ready")
 	}
-	delete(m.connections, c.id)
 	c.owner.notify()
 }
 
@@ -356,13 +428,7 @@ func (s *Session) RevokeEdge(edgeID string) {
 	defer m.mu.Unlock()
 	for _, c := range m.connections {
 		if c.owner == s && c.edgeID == edgeID {
-			c.requested = false
-			if m.active == c {
-				m.release()
-			} else {
-				m.send(c, "ready")
-			}
-			s.notify()
+			m.revoke(c)
 		}
 	}
 }
@@ -377,18 +443,14 @@ func (s *Session) Close() {
 	if m.active != nil && m.active.owner == s {
 		m.release()
 	}
-	var channels []*webrtc.DataChannel
 	for id, c := range m.connections {
 		if c.owner == s {
 			delete(m.connections, id)
-			channels = append(channels, c.channel)
 		}
 	}
 	s.notify()
 	m.mu.Unlock()
-	for _, channel := range channels {
-		_ = channel.Close()
-	}
+	s.route.Close()
 }
 
 func (m *Manager) Revoke() {
@@ -423,7 +485,7 @@ func (s *Session) Views() []View {
 	defer m.mu.Unlock()
 	for _, c := range m.connections {
 		if c.owner == s && (c.requested || m.active == c) {
-			views = append(views, View{c.requestID, c.edgeID, m.state(c)})
+			views = append(views, View{c.requestID, c.peerID, m.state(c)})
 		}
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].ID < views[j].ID })
@@ -444,7 +506,7 @@ func (s *Session) Decide(id string, allow bool) error {
 			break
 		}
 	}
-	if m.closed || c == nil || !s.available() || c.channel.ReadyState() != webrtc.DataChannelStateOpen || (!c.requested && m.active != c) {
+	if m.closed || c == nil || !s.available() || c.edgeID == "" || (!c.requested && m.active != c) {
 		return errors.New("request is no longer available")
 	}
 	defer s.notify()

@@ -217,6 +217,8 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		return nil, err
 	}
 	switch messageType {
+	case "subscribe-remote-input":
+		return decodeSubscribeRemoteInput(data)
 	case "subscribe-room-interactions":
 		return decodeEmptyClientMessage(data, SubscribeRoomInteractionsMessage{Type: messageType})
 	case "send-room-interaction":

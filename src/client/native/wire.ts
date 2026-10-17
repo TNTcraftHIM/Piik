@@ -273,7 +273,7 @@ const eventBase = {
 
 const remoteControlRequestSchema = z.object({
   id: opaqueIdentifierSchema,
-  connectionId: opaqueIdentifierSchema,
+  peerId: opaqueIdentifierSchema,
   state: z.enum(["pending", "active", "suspended"]),
 }).strict();
 export type RemoteControlRequest = z.infer<typeof remoteControlRequestSchema>;

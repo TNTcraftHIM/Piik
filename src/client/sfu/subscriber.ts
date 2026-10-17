@@ -1,4 +1,5 @@
 import type { SfuSignalMessage } from "../../shared/protocol";
+import { RemoteInputChannel } from "../webrtc/remote-input-channel";
 import type { ConnectionMetrics } from "../types";
 import { debugRtcFailure, debugRtcStats } from "../lib/debug-webrtc";
 import {
@@ -12,6 +13,7 @@ import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 import { SfuPeer, type SfuConnectionConfig } from "./peer";
 
 interface SubscriberEvents {
+  onInputChanged?: () => void;
   send: (message: SfuSignalMessage) => boolean;
   onStream: (stream: MediaStream | null) => void;
   onVideoAvailability?: (available: boolean) => void;
@@ -28,6 +30,8 @@ interface SubscribedTrack {
 }
 
 export class SfuSubscriber {
+  private readonly remoteInput = new RemoteInputChannel(() => this.events.onInputChanged?.());
+  getRemoteInput(): RTCDataChannel | null { return this.remoteInput.current; }
   private peer: SfuPeer | null = null;
   private video: SubscribedTrack | null = null;
   private audio: SubscribedTrack | null = null;
@@ -59,6 +63,7 @@ export class SfuSubscriber {
         } else if (state === "disconnected") this.reconnect();
       },
     });
+    this.remoteInput.attach(this.peer.pc);
     return true;
   }
 
@@ -131,6 +136,7 @@ export class SfuSubscriber {
   async disconnect(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.remoteInput.dispose();
     this.active = false;
     const peer = this.peer;
     this.peer = null;

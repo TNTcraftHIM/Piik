@@ -21,6 +21,7 @@ import {
 import { preferredVideoCodecForTrack } from "./video-codec-preflight";
 
 export interface ViewerRelayEvents {
+  onInputChannel?: (channel: RTCDataChannel, connection: RTCPeerConnection) => void;
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate?: (snapshot: PeerSnapshot | null) => void;
   onSenderUpdate?: (snapshot: PeerSnapshot, revision: number | null) => void;
@@ -540,6 +541,7 @@ export class ViewerRelay {
   ): HostMediaPeer {
     let peer: HostMediaPeer;
     const peerEvents: HostPeerEvents = {
+      onInputChannel: this.events.onInputChannel,
       sendSignal: (targetPeerId, payload) =>
         !this.disposed &&
         (this.peers.get(childPeerId) === peer ||

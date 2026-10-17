@@ -148,6 +148,7 @@ func (s *Server) handleDisconnect(sess *session) {
 		return
 	}
 	s.router.disconnectParticipant(disconnected.RoomID, disconnected.PeerID, sess.sessionID)
+	s.sendRemoteInputPeers(disconnected.RoomID)
 	if disconnected.Role == protocol.RoleHost {
 		s.broadcastHostStatus(disconnected.RoomID, false, false)
 		s.sendViewerPresence(disconnected.RoomID)

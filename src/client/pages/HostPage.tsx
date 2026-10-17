@@ -79,6 +79,7 @@ import { say, useCopy, type CopyKey } from "../ui/copy";
 import { resolveMediaFailure, type MediaFailure } from "../ui/media-failure";
 import {
   ApiError,
+  getRuntimeCapabilities,
   createRoom,
   replaceOwnedRoom,
   updateRoomAccess,
@@ -389,6 +390,7 @@ export function HostPage({
   }, []);
   const [nativeActive, setNativeActive] = useState(false);
   const [remoteControlRequests, setRemoteControlRequests] = useState<RemoteControlRequest[]>([]);
+  const remoteInputPeersRef = useRef<Extract<ServerMessage, { type: "remote-input-peers" }>["peers"]>([]);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [nativeSources, setNativeSources] =
     useState<NativeSourceList | null>(null);
@@ -1299,6 +1301,7 @@ export function HostPage({
       ownNativeClient(client);
       nativeShareGenerationRef.current = shareGeneration;
       nativeModeRef.current = true;
+      if (client.health.nativeMedia.remoteInput) await client.setRemoteInputPeers(shareGeneration, remoteInputPeersRef.current);
       setNativeActive(true);
       const stream = await bridge.start(started.audio);
       if (!isCurrentShare(generation, shareGeneration)) {
@@ -2553,6 +2556,14 @@ export function HostPage({
         },
         onMessage: (message) => {
           if (signalRef.current !== signal || !isCurrentRoomAuthority(activeRoom)) return;
+          if (message.type === "remote-input-peers") {
+            remoteInputPeersRef.current = message.peers;
+            const client = nativeClientRef.current, shareId = nativeShareGenerationRef.current;
+            if (client?.health.nativeMedia.remoteInput && nativeModeRef.current && shareId) {
+              void client.setRemoteInputPeers(shareId, message.peers).catch(error => debugError("native", "input-endpoints", error));
+            }
+            return;
+          }
           const currentGeneration = activeGenerationRef.current;
           const currentShareGeneration = shareGenerationRef.current;
           const localShareActive =
@@ -2670,6 +2681,10 @@ export function HostPage({
       { roomInteractions: roomInteractionsAvailable },
     );
     signalRef.current = signal;
+    remoteInputPeersRef.current = [];
+    void getRuntimeCapabilities().then(capabilities => {
+      if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
+    }).catch(() => { /* Optional input does not block sharing. */ });
     setInteractionSession(signal.interactions);
     return signal;
   }
@@ -3800,8 +3815,7 @@ export function HostPage({
           </div>
           {nativeActive && remoteControlRequests.length > 0 && <RemoteControlApproval
             requests={remoteControlRequests.map(request => {
-              const peer = Array.from(peersRef.current.values()).find(peer => peer.connectionId === request.connectionId);
-              return { ...request, name: viewers.find(viewer => viewer.peerId === peer?.peerId)?.label ?? t("common.name.viewerDefault") };
+              return { ...request, name: viewers.find(viewer => viewer.peerId === request.peerId)?.label ?? t("common.name.viewerDefault") };
             })}
             onDecide={async (id, allow) => {
               const client = nativeClientRef.current;

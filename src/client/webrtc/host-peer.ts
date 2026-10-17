@@ -1,4 +1,5 @@
 import type { CopyKey } from "../ui/copy";
+import { INPUT_CHANNEL } from "../remote-control/input-route";
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import { waitForConnectionOperation } from "./connection-operation";
@@ -52,6 +53,7 @@ type PeerIceConfig = Pick<RTCConfiguration, "iceServers"> & {
 export interface HostPeerEvents {
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   onUpdate: (snapshot: PeerSnapshot) => void;
+  onInputChannel?: (channel: RTCDataChannel, connection: RTCPeerConnection) => void;
 }
 
 /** Common lifecycle contract for Browser and native Host direct edges. */
@@ -144,6 +146,7 @@ export class HostPeer {
           iceConfig.natPredictionStunUrls,
         ),
       });
+      if (events.onInputChannel) events.onInputChannel(this.connection.createDataChannel(INPUT_CHANNEL), this.connection);
     } catch (error) {
       stopSenderVideoTrack(this.senderVideoTrack);
       throw error;

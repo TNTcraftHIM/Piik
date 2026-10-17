@@ -22,6 +22,7 @@ import {
 } from "./route-transition";
 
 interface ViewerSubscriberTransport {
+  getRemoteInput?(): RTCDataChannel | null;
   connect(config: SfuConnectionConfig): Promise<boolean>;
   updateConfig(config: SfuConnectionConfig): void;
   acceptSignal(message: SfuSignalMessage): Promise<void>;
@@ -51,6 +52,7 @@ interface ViewerSubscriberSlot {
 }
 
 interface ViewerSfuRouteEvents {
+  onInputChanged?: () => void;
   activatePeer: (
     assignment: ParticipantRouteAssignment,
     revision?: number,
@@ -100,6 +102,7 @@ interface ViewerSfuRouteEvents {
 }
 
 export class ViewerSfuRoute {
+  getRemoteInput(): RTCDataChannel | null { return this.active?.subscriber.getRemoteInput?.() ?? null; }
   private readonly route = new MediaRouteTransition();
   private pending: ViewerSubscriberSlot | null = null;
   private active: ViewerSubscriberSlot | null = null;
@@ -428,6 +431,7 @@ export class ViewerSfuRoute {
     let slot: ViewerSubscriberSlot;
     const subscriberEvents = {
       send: this.events.send,
+      onInputChanged: () => { if (this.active === slot) this.events.onInputChanged?.(); },
       onStream: (stream: MediaStream | null) => {
         if (stream) {
           this.handleStream(slot, stream);

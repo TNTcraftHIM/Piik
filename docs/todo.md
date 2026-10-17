@@ -15,12 +15,12 @@ work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
 - [ ] **Attended keyboard/mouse remote control.** Windows App display/window sharing now
-  offers an optional input channel to a directly connected Browser Viewer in
-  experimental `remotecontrol` builds. Browser/App-assisted reception, source
-  switching, Host-page consent, revocation and native input have been exercised;
-  window focus/geometry and game mouse/scan-code input are implemented. Physical
-  moved-window/game checks and an actual remote-device trial remain. Input return
-  beyond direct media edges is unfinished; keep one Host publication and one
+  offers optional input over the existing direct, Browser/App relay and SFU
+  routes in experimental `remotecontrol` builds. Routed viewing, Host-page
+  consent, actual native key input/release and relay-departure recovery pass local
+  acceptance. Source switching, focus/geometry and game mouse/scan-code input are
+  implemented. Physical moved-window/game checks and an actual remote-device
+  trial remain. Keep one Host publication and one
   keyboard/mouse controller at a time, with explicit Host permission. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
   owns limitations and evidence. This is not part of the public release.
   [Window/game input assessment](./research/room-interactions.md#window-capture-and-game-input)

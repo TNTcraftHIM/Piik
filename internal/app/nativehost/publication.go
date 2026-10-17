@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
+	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -35,6 +36,9 @@ func (session *Session) PreparePublication(generation, connectionID string, serv
 					PublicationGeneration: generation, ConnectionID: connectionID, Candidate: candidate})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, _ *mediaedge.SelectedPair) {
+				if state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+					session.remoteInput.RevokeEdge(connectionID)
+				}
 				session.emit(Event{Type: "publication-state", ShareID: session.shareID,
 					Current:               current,
 					PublicationGeneration: generation, ConnectionID: connectionID, State: state.String()})
@@ -56,6 +60,12 @@ func (session *Session) PreparePublication(generation, connectionID string, serv
 	publication = created
 	session.publications[key] = publication
 	session.mu.Unlock()
+	if session.remoteInput != nil {
+		channel, channelErr := publication.OpenDataChannel(remoteinput.ChannelLabel)
+		if channelErr == nil {
+			session.remoteInput.Attach(connectionID, channel)
+		}
+	}
 	offer, err := publication.CreateOffer()
 	if err != nil {
 		session.ClosePublication(generation, connectionID)

@@ -70,6 +70,12 @@ type remoteControlRequest struct {
 	Allow     *bool  `json:"allow"`
 }
 
+type remoteInputPeersRequest struct {
+	requestEnvelope
+	ShareID string                     `json:"shareId"`
+	Peers   []protocol.RemoteInputPeer `json:"peers"`
+}
+
 type remoteControlStateEvent struct {
 	eventEnvelope
 	Requests []remoteinput.View `json:"requests"`

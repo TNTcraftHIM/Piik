@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { InputTransport } from "./input-route";
 
 const stateSchema = z.object({
   state: z.enum(["ready", "unavailable", "pending", "active", "suspended", "failed"]),
@@ -27,7 +28,7 @@ export class RemoteInputSession {
   private frame: number | null = null;
   private wheelFraction = 0;
 
-  constructor(private readonly channel: RTCDataChannel, private readonly changed: (state: RemoteInputState | null) => void) {
+  constructor(private readonly channel: InputTransport, private readonly changed: (state: RemoteInputState | null) => void) {
     channel.addEventListener("message", this.message);
     channel.addEventListener("close", this.closed);
     this.send({ type: "sync" });

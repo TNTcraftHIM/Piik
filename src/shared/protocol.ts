@@ -234,6 +234,7 @@ export const runtimeCapabilitiesSchema = z.object({
   natPrediction: z.boolean().default(false),
   roomInteractions: z.boolean().default(false),
   hostRoomSession: z.boolean().default(false),
+  remoteInput: z.boolean().default(false),
 });
 export type RuntimeCapabilities = z.infer<typeof runtimeCapabilitiesSchema>;
 
@@ -876,6 +877,8 @@ const signalingChallengeSequenceSchema = z
   .max(Number.MAX_SAFE_INTEGER);
 
 export const clientMessageSchema = z.union([
+  z.object({ type: z.literal("subscribe-remote-input"), endpointId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
+    secret: z.string().regex(/^[0-9a-f]{64}$/).optional() }).strict(),
   z.object({ type: z.literal("subscribe-room-interactions") }).strict(),
   z.object({ type: z.literal("send-room-interaction"), requestId: opaqueIdSchema,
     payload: interactionPayloadSchema }).strict(),
@@ -1053,6 +1056,8 @@ const authenticatedMessageSchema = z.union([
 ]);
 
 export const serverMessageSchema = z.union([
+  z.object({ type: z.literal("remote-input-peers"), peers: z.array(z.object({ peerId: opaqueIdSchema,
+    endpointId: z.string().regex(/^[0-9a-f]{32}$/), secret: z.string().regex(/^[0-9a-f]{64}$/) }).strict()).max(20) }).strict(),
   z.object({ type: z.literal("room-interactions-ready"), serverTime: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).strict(),
   z.object({ type: z.literal("room-interaction-rejected"), requestId: opaqueIdSchema,
     reason: z.enum(["rate-limited", "target-unavailable", "not-subscribed", "busy"]) }).strict(),

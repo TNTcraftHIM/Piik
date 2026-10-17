@@ -37,6 +37,10 @@ type Publication struct {
 	qualityCounters forwarding.PublicationCounters
 }
 
+func (publication *Publication) OpenDataChannel(label string) (*webrtc.DataChannel, error) {
+	return publication.signaling.OpenDataChannel(label)
+}
+
 func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publication, error) {
 	if source == nil || source.engine != engine || options.Local || options.ConnectionID == "" ||
 		len(options.ConnectionID) > 256 || options.Audio != nil && options.Audio.engine != engine {

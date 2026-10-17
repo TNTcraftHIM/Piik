@@ -54,6 +54,9 @@ type session struct {
 	lastSignalingChallengeAtMs int64
 	authenticated              *authenticatedSession
 	roomInteractions           bool
+	remoteInput                bool
+	inputEndpoint              string
+	inputSecret                string
 	nextInteractionAtMs        int64
 
 	// authStop stops the authentication deadline; authGeneration is

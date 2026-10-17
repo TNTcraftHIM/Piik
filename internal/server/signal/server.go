@@ -1185,6 +1185,8 @@ func routeParticipant(sess *session, authenticated *authenticatedSession) authen
 
 func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authenticatedSession, message protocol.ClientMessage) {
 	switch m := message.(type) {
+	case protocol.SubscribeRemoteInputMessage:
+		s.subscribeRemoteInput(sess, authenticated, m)
 	case protocol.SubscribeRoomInteractionsMessage:
 		// Explicit opt-in protects older v23 readers from unknown events.
 		sess.roomInteractions = true

@@ -207,6 +207,19 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		result = session.beginShare(ctx, envelope, request, complete)
 		asynchronous = result == nil
 		return result, nil
+	case "set-remote-input-peers":
+		var request remoteInputPeersRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) || len(request.Peers) > 20 {
+			return nil, protocolViolation("native input endpoints are invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		if err := host.SetRemoteInputPeers(request.Peers); err != nil {
+			return nil, err
+		}
+		return response(envelope, "remote-control-set"), nil
 	case "set-remote-control":
 		var request remoteControlRequest
 		if err := decodeStrict(payload, &request); err != nil ||

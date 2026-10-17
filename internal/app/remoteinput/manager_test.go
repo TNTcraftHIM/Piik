@@ -2,12 +2,17 @@ package remoteinput
 
 import (
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
+	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -17,6 +22,52 @@ type recordedInput struct {
 	target   bounds
 	geometry bounds
 	focused  bool
+}
+
+func TestRouteReplacementRequiresApprovalAndIgnoresOldClosure(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 8), resets: make(chan struct{}, 8), focused: true}
+	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+	s := m.NewSession()
+	t.Cleanup(s.Close)
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"})
+	peer := protocol.RemoteInputPeer{PeerID: "viewer-route-test", EndpointID: strings.Repeat("a", 32), Secret: strings.Repeat("b", 64)}
+	if err := s.SetPeers([]protocol.RemoteInputPeer{peer}); err != nil {
+		t.Fatal(err)
+	}
+	cipher, _ := newInputCipher(peer.Secret)
+	request := func(epoch string) string {
+		t.Helper()
+		cipher.sent++
+		header := make([]byte, 20)
+		binary.BigEndian.PutUint64(header, cipher.sent)
+		_, _ = rand.Read(header[8:])
+		plain := []byte(`{"type":"request","intent":"` + epoch + `"}`)
+		data := cipher.aead.Seal(header, header[8:], plain, inputAAD(0, header[:8], epoch))
+		s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: epoch, Data: base64.StdEncoding.EncodeToString(data)})
+		views := s.Views()
+		if len(views) != 1 || views[0].State != "pending" {
+			t.Fatal("new channel did not require fresh approval")
+		}
+		if err := s.Decide(views[0].ID, true); err != nil {
+			t.Fatal(err)
+		}
+		return m.active.grant
+	}
+	oldEpoch, newEpoch := strings.Repeat("c", 32), strings.Repeat("d", 32)
+	oldGrant := request(oldEpoch)
+	newGrant := request(newEpoch)
+	if oldGrant == newGrant || len(sink.resets) != 1 {
+		t.Fatal("replacement retained old input")
+	}
+	s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: oldEpoch, Closed: true})
+	m.receive(m.active, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + newEpoch + `"}`)}, oldEpoch)
+	if m.active == nil || m.active.grant != newGrant {
+		t.Fatal("old descendant closure retired the new grant")
+	}
+	s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: newEpoch, Closed: true})
+	if m.active != nil || len(sink.resets) != 2 {
+		t.Fatal("current route loss did not release input")
+	}
 }
 
 func (s *recordedInput) Target(nativecapture.CaptureTarget) (bounds, bool, error) {
@@ -34,7 +85,7 @@ func (s *recordedInput) Reset() error { s.resets <- struct{}{}; return nil }
 // is injected by this test; the platform acceptance uses a dedicated window.
 func TestAttendedGrantLifecycle(t *testing.T) {
 	sink := &recordedInput{events: make(chan inputEvent, 20), resets: make(chan struct{}, 20), geometry: bounds{width: 1920, height: 1080}, focused: true}
-	m := &Manager{sink: sink, connections: map[string]*connection{}}
+	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
 	s := m.NewSession()
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"})
 	t.Cleanup(m.Close)
@@ -51,12 +102,36 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	channels := make(chan *webrtc.DataChannel, 2)
 	type observedState struct{ peer, state string }
 	states := make(chan observedState, 128)
+	bindings := map[string]protocol.RemoteInputPeer{}
+	ciphers := map[string]*inputCipher{}
+	for _, name := range []string{"first", "second"} {
+		id, key := make([]byte, 16), make([]byte, 32)
+		_, _ = rand.Read(id)
+		_, _ = rand.Read(key)
+		bindings[name] = protocol.RemoteInputPeer{PeerID: name + "-viewer", EndpointID: hex.EncodeToString(id), Secret: hex.EncodeToString(key)}
+		ciphers[name], _ = newInputCipher(bindings[name].Secret)
+	}
+	if err := s.SetPeers([]protocol.RemoteInputPeer{bindings["first"], bindings["second"]}); err != nil {
+		t.Fatal(err)
+	}
 	viewer.OnDataChannel(func(c *webrtc.DataChannel) {
 		c.OnMessage(func(message webrtc.DataChannelMessage) {
+			var packet inputroute.Packet
+			if json.Unmarshal(message.Data, &packet) != nil || packet.ID != bindings[c.Label()].EndpointID {
+				return
+			}
+			bytes, err := base64.StdEncoding.DecodeString(packet.Data)
+			if err != nil || len(bytes) < 36 {
+				return
+			}
+			plain, err := ciphers[c.Label()].aead.Open(nil, bytes[8:20], bytes[20:], inputAAD(1, bytes[:8], packet.Epoch))
+			if err != nil {
+				return
+			}
 			var value struct {
 				State string `json:"state"`
 			}
-			if json.Unmarshal(message.Data, &value) == nil {
+			if json.Unmarshal(plain, &value) == nil {
 				states <- observedState{c.Label(), value.State}
 			}
 		})
@@ -128,7 +203,16 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		t.Helper()
 		intent := make([]byte, 16)
 		_, _ = rand.Read(intent)
-		if err := peers[peer].SendText(`{"type":"request","intent":"` + hex.EncodeToString(intent) + `"}`); err != nil {
+		cipher := ciphers[peer]
+		cipher.sent++
+		header := make([]byte, 20)
+		binary.BigEndian.PutUint64(header, cipher.sent)
+		_, _ = rand.Read(header[8:])
+		plain := []byte(`{"type":"request","intent":"` + hex.EncodeToString(intent) + `"}`)
+		epoch := bindings[peer].EndpointID
+		data := cipher.aead.Seal(header, header[8:], plain, inputAAD(0, header[:8], epoch))
+		packet, _ := json.Marshal(inputroute.Packet{ID: bindings[peer].EndpointID, Epoch: epoch, Data: base64.StdEncoding.EncodeToString(data)})
+		if err := peers[peer].SendText(string(packet)); err != nil {
 			t.Fatal(err)
 		}
 		var found *connection
@@ -153,19 +237,22 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		return c.grant
 	}
 	key := func(c *connection, grant string) {
-		m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"key","code":"KeyA","down":true,"grant":"` + grant + `"}`)})
+		m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"key","code":"KeyA","down":true,"grant":"` + grant + `"}`)}, c.epoch)
 	}
 	<-s.Changes() // Drain display setup; the next notification must be a request.
 	first := request("first")
 	other := m.NewSession()
 	other.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"})
+	if err := other.SetPeers([]protocol.RemoteInputPeer{bindings["first"]}); err != nil {
+		t.Fatal("endpoint identity leaked across independent rooms", err)
+	}
 	if len(other.Views()) != 0 || other.Decide(first.requestID, true) == nil || other.Decide(first.requestID, false) == nil {
 		t.Fatal("another Host session can view or decide this share's request")
 	}
 	select {
 	case <-s.Changes():
 		views := s.Views()
-		if len(views) != 1 || views[0].ConnectionID != "first" || views[0].State != "pending" {
+		if len(views) != 1 || views[0].PeerID != "first-viewer" || views[0].State != "pending" {
 			t.Fatal("request not reflected in its Host snapshot")
 		}
 	default:
@@ -257,13 +344,13 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "window", SourceID: "3"})
 	first = request("first")
 	oldRequest, oldIntent := first.requestID, first.intent
-	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + oldIntent + `"}`)})
+	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + oldIntent + `"}`)}, first.epoch)
 	first = request("first")
 	if s.Decide(oldRequest, true) == nil {
 		t.Fatal("late approval authorized a replacement request")
 	}
 	nextGrant := decide(first, true)
-	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + oldIntent + `"}`)})
+	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + oldIntent + `"}`)}, first.epoch)
 	key(first, grant)
 	key(first, nextGrant)
 	if len(sink.events) != 3 || nextGrant == grant || sink.target != nextDisplay {

@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
@@ -74,6 +75,7 @@ type mediaPublication struct {
 	connectionID string
 	metadata     PublicationMedia
 	pc           *webrtc.PeerConnection
+	input        *inputroute.Relay
 	source       *forwarding.Source
 	audio        *webrtc.TrackLocalStaticRTP
 	ready        chan struct{}
@@ -191,6 +193,12 @@ func (media *Media) PreparePublication(fence ResourceFence, connectionID string,
 		publication.emit(MediaEvent{Candidate: value})
 	})
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		publication.mu.Lock()
+		input := publication.input
+		publication.mu.Unlock()
+		if input != nil {
+			input.SetUpAvailable(state == webrtc.PeerConnectionStateConnected)
+		}
 		if state == webrtc.PeerConnectionStateFailed {
 			publication.fail(errors.New("SFU publisher transport failed"))
 			return
@@ -198,6 +206,16 @@ func (media *Media) PreparePublication(fence ResourceFence, connectionID string,
 		publication.emit(MediaEvent{State: state})
 	})
 	pc.OnTrack(publication.consumeTrack)
+	pc.OnDataChannel(func(channel *webrtc.DataChannel) {
+		publication.mu.Lock()
+		input := publication.input
+		publication.mu.Unlock()
+		if input != nil {
+			input.AttachUp(channel)
+		} else {
+			_ = channel.Close()
+		}
+	})
 	media.publications[fence] = publication
 	go publication.runDemand()
 	return nil
@@ -323,6 +341,15 @@ func (media *Media) AcceptPublisherOffer(fence ResourceFence, connectionID strin
 	if offer.Type != webrtc.SDPTypeOffer {
 		return webrtc.SessionDescription{}, errors.New("SFU publisher requires an offer")
 	}
+	publication.mu.Lock()
+	if publication.closed {
+		publication.mu.Unlock()
+		return webrtc.SessionDescription{}, errors.New("SFU publication is closed")
+	}
+	if publication.input == nil && strings.Contains(offer.SDP, "\nm=application ") {
+		publication.input = inputroute.New(nil)
+	}
+	publication.mu.Unlock()
 	if err = publication.pc.SetRemoteDescription(offer); err != nil {
 		return webrtc.SessionDescription{}, err
 	}
@@ -580,7 +607,15 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 		return webrtc.SessionDescription{}, errors.New("SFU subscription media is unavailable")
 	}
 	subscriber.transport = transport
+	input := publication.input
 	publication.mu.Unlock()
+	if input != nil {
+		channel, channelErr := transport.PC.CreateDataChannel(inputroute.Label, nil)
+		if channelErr != nil {
+			return webrtc.SessionDescription{}, channelErr
+		}
+		input.AttachDown(fence.ViewerPeerID+":"+connectionID, channel)
+	}
 	transport.PC.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		var value *webrtc.ICECandidateInit
 		if candidate != nil {
@@ -590,6 +625,9 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 		publication.emitSubscriber(subscriber, MediaEvent{Candidate: value})
 	})
 	transport.PC.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if input != nil && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
+			input.LoseDown(fence.ViewerPeerID+":"+connectionID, nil)
+		}
 		if state == webrtc.PeerConnectionStateConnected {
 			if err := transport.SetConnected(); err != nil {
 				state = webrtc.PeerConnectionStateFailed
@@ -727,8 +765,12 @@ func (publication *mediaPublication) close() error {
 			}
 		}
 		source := publication.source
+		input := publication.input
 		publication.mu.Unlock()
 		publication.closeErr = publication.pc.Close()
+		if input != nil {
+			input.Close()
+		}
 		for _, transport := range transports {
 			_ = transport.PC.Close()
 		}

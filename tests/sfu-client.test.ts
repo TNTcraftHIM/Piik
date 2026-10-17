@@ -95,7 +95,7 @@ class FakeSender {
   }
 }
 
-class FakePc {
+class FakePc extends EventTarget {
   static instances: FakePc[] = [];
   onicecandidate: ((event: { candidate: unknown }) => void) | null = null;
   onconnectionstatechange: (() => void) | null = null;
@@ -148,6 +148,7 @@ class FakePc {
     async (_candidate: RTCIceCandidateInit) => undefined,
   );
   constructor(readonly configuration: RTCConfiguration) {
+    super();
     FakePc.instances.push(this);
   }
   addTransceiver(track: FakeTrack | string, options: RTCRtpTransceiverInit) {
@@ -164,6 +165,7 @@ class FakePc {
   state(state: RTCPeerConnectionState): void {
     this.connectionState = state;
     this.onconnectionstatechange?.();
+    this.dispatchEvent(new Event("connectionstatechange"));
   }
 }
 

@@ -11,8 +11,8 @@ import (
 )
 
 // Exercise the actual native receiver and local playback edge, not a second
-// Browser-only path. An input channel must never propagate to a relay child.
-func TestInputChannelUsesOnlyLocalPlayback(t *testing.T) {
+// Browser-only path. Both local playback and relay children use the media tree.
+func TestInputChannelUsesPlaybackAndRelay(t *testing.T) {
 	peer := func() *webrtc.PeerConnection {
 		t.Helper()
 		p, err := webrtc.NewPeerConnection(webrtc.Configuration{})
@@ -116,15 +116,17 @@ func TestInputChannelUsesOnlyLocalPlayback(t *testing.T) {
 			}
 		}
 	}
-	waitMessage(requests, `{"type":"sync"}`)
-	if err = remote.SendText(`{"state":"ready"}`); err != nil {
+	waitMessage(requests, `{"ready":true}`)
+	if err = remote.SendText(`{"ready":true}`); err != nil {
 		t.Fatal(err)
 	}
-	waitMessage(states, `{"state":"ready"}`)
-	if err = local.SendText(`{"type":"request"}`); err != nil {
+	waitMessage(states, `{"ready":true}`)
+	const packet = `{"id":"0123456789abcdef0123456789abcdef","epoch":"0123456789abcdef0123456789abcdef","data":"encrypted"}`
+	const closed = `{"id":"0123456789abcdef0123456789abcdef","epoch":"0123456789abcdef0123456789abcdef","closed":true}`
+	if err = local.SendText(packet); err != nil {
 		t.Fatal(err)
 	}
-	waitMessage(requests, `{"type":"request"}`)
+	waitMessage(requests, packet)
 	if err = session.UpdateProfile(nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 2_000_000, Preference: "balanced"}); err != nil {
 		t.Fatal(err)
 	}
@@ -132,15 +134,15 @@ func TestInputChannelUsesOnlyLocalPlayback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(relay.SDP, "\nm=application ") {
-		t.Fatal("input capability leaked to a relay child")
+	if !strings.Contains(relay.SDP, "\nm=application ") {
+		t.Fatal("relay child has no input return path")
 	}
-	session.receiver("upstream").input.releaseLocal("playback")
-	waitMessage(requests, `{"type":"release"}`)
-	if err = local.SendText(`{"type":"request"}`); err != nil {
+	session.receiver("upstream").input.LoseDown("playback", nil)
+	waitMessage(requests, closed)
+	if err = local.SendText(packet); err != nil {
 		t.Fatal(err)
 	}
-	waitMessage(requests, `{"type":"request"}`)
+	waitMessage(requests, packet)
 	session.CloseEdge("playback")
-	waitMessage(requests, `{"type":"release"}`)
+	waitMessage(requests, closed)
 }

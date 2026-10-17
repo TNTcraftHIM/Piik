@@ -77,6 +77,7 @@ function signalUrl(): string {
 }
 
 export class SignalingClient {
+  private remoteInputEnabled = false;
   interactions: RoomInteractionSession | null = null;
   private socket: WebSocket | null = null;
   private stopped = false;
@@ -115,6 +116,12 @@ export class SignalingClient {
       if (this.authenticatedPeerId) this.interactions.authenticated(this.authenticatedPeerId);
     }
     return this.interactions;
+  }
+
+  enableRemoteInput(): void {
+    if (this.stopped || this.identity.role !== "host") return;
+    this.remoteInputEnabled = true;
+    if (this.authenticatedPeerId) this.send({ type: "subscribe-remote-input" });
   }
 
   start(): void {
@@ -383,6 +390,7 @@ export class SignalingClient {
         debugEvent("signal", "authenticated", { role: this.identity.role, generation });
         this.refreshSignalingWatchdog();
         this.interactions?.authenticated(message.peerId);
+        if (this.remoteInputEnabled) this.send({ type: "subscribe-remote-input" });
         this.reconcileHostShareState(message);
       }
       if ((message.type === "sharing-started" || message.type === "sharing-start-failed") &&

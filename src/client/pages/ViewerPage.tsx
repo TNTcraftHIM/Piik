@@ -42,6 +42,7 @@ import { StatusIndicator } from "../components/living/StatusIndicator";
 import { Tooltip } from "../components/living/Tooltip";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { RemoteControl } from "../components/living/RemoteControl";
+import { InputRoute } from "../remote-control/input-route";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import {
@@ -189,6 +190,8 @@ export function ViewerPage({
     null,
   );
   const [peerSnapshot, setPeerSnapshot] = useState<PeerSnapshot | null>(null);
+  const [, refreshInput] = useState(0);
+  const inputRoute = useMemo(() => new InputRoute(() => refreshInput(value => value + 1)), []);
   const [sfuUpstream, setSfuUpstream] = useState<SfuUpstreamState | null>(null);
   const [assignedRoute, setAssignedRoute] = useState<{
     revision: number;
@@ -609,6 +612,7 @@ export function ViewerPage({
     setInteractionSession(null);
     void getRuntimeCapabilities().then(capabilities => {
       if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions());
+      if (active && capabilities.remoteInput) inputRoute.enable(identity => signal.send({ type: "subscribe-remote-input", ...identity }));
     }).catch(() => { /* Optional room data never blocks viewing. */ });
     signalRef.current = signal;
     const qualityEvidenceReporter = new ViewerQualityEvidenceReporter(
@@ -773,6 +777,7 @@ export function ViewerPage({
         currentIceConfig,
         currentQualitySettings,
         {
+          onInputChannel: (channel, connection) => inputRoute.attachChild(channel, connection),
           sendSignal: (targetPeerId, payload) =>
             active
               ? signal.send({
@@ -940,6 +945,7 @@ export function ViewerPage({
       }
       let route: ViewerSfuRoute;
       route = new ViewerSfuRoute(currentPeerId!, {
+        onInputChanged: () => refreshInput(value => value + 1),
         activatePeer: async (assignment, revision) => {
           if (!active || viewerSfuRoute !== route) {
             return;
@@ -1476,6 +1482,7 @@ export function ViewerPage({
       authorityToken: number,
     ): Promise<void> {
       if (message.type === "authenticated") {
+        inputRoute.reauthenticate();
         dispatchPresentation({ type: "access", access: "ready" });
         setViewerPasswordDraft("");
         setViewerPasswordError(null);
@@ -1829,6 +1836,7 @@ export function ViewerPage({
       }
       relayChildEvidenceStore.clear();
       signal.stop();
+      inputRoute.dispose();
       clearParticipantPresence();
       if (signalRef.current === signal) {
         signalRef.current = null;
@@ -1849,6 +1857,10 @@ export function ViewerPage({
       releaseNativeClient();
     };
   }, [roomId, viewerGrant, viewerPasswordAttempt]);
+
+  useEffect(() => {
+    inputRoute.setUpstream(peerRef.current?.getRemoteInput?.() ?? viewerSfuRouteRef.current?.getRemoteInput() ?? null);
+  });
 
   useEffect(() => {
     const video = videoRef.current;
@@ -2216,7 +2228,7 @@ export function ViewerPage({
             />
             <PlaybackControls
               extraActions={<><RoomChatToggle session={interactionSession} />
-                <RemoteControl channel={peerRef.current?.getRemoteInput?.() ?? null} videoRef={videoRef}
+                <RemoteControl channel={inputRoute.current} videoRef={videoRef}
                   available={presentation.overlay === "none" && presentation.hasCurrentFrame} /></>}
               videoRef={videoRef}
               stream={remoteMedia?.stream ?? null}
