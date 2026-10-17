@@ -55,7 +55,7 @@
 .lr-playback-secondary { display: inline-flex; align-items: center; gap: inherit; }
 .lr-playback-more { display: none; }
 .lr-playback-menu { position: fixed; inset: auto; margin: 0; padding: 8px; max-width: calc(100vw - 16px); border: 1.5px solid var(--control-edge); border-radius: 18px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); overflow: auto; overscroll-behavior: contain; }
-.lr-playback-menu:popover-open { display: grid; gap: 6px; animation: lr-language-open 180ms var(--spring); }
+.lr-playback-menu:is(:popover-open, .\:popover-open) { display: grid; gap: 6px; animation: lr-language-open 180ms var(--spring); }
 .lr-playback-menu-actions { display: grid; gap: 6px; }
 .lr-playback-settings { flex: 0 0 100%; min-width: 0; padding-block: 16px 10px; border-top: 1px solid var(--wall-2); animation: lr-sharing-enter 180ms ease-out; }
 .lr-viewer-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; max-width: 720px; margin: 0 auto; }
@@ -92,5 +92,5 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .lr-playback, .lr-playback .lr-btn { transition: none; }
-  .lr-playback-menu:popover-open, .lr-playback-settings { animation: none; }
+  .lr-playback-menu:is(:popover-open, .\:popover-open), .lr-playback-settings { animation: none; }
 }

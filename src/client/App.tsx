@@ -33,7 +33,7 @@ import { Glyph } from "./ui/icons";
 import { applyLaunchCopy, useCopy } from "./ui/copy";
 import { consoleLanguage } from "./locales";
 import { initTheme } from "./ui/theme";
-import { installBrowserDebug, withBrowserDebug } from "./lib/debug";
+import { debugError, installBrowserDebug, withBrowserDebug } from "./lib/debug";
 
 const TooltipPreviewPage = import.meta.env.DEV
   ? lazy(() => import("./pages/TooltipPreviewPage").then((module) => ({ default: module.TooltipPreviewPage })))
@@ -133,6 +133,10 @@ class RouteBoundary extends Component<
 
   static getDerivedStateFromError(): { failed: boolean } {
     return { failed: true };
+  }
+
+  componentDidCatch(error: Error): void {
+    debugError("app", "route-failed", error);
   }
 
   render(): ReactNode {

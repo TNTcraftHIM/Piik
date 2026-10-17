@@ -66,7 +66,9 @@ dragging and keyboard placement. An interaction palette starts beside its chosen
 participant, stays open after sending and keeps its position when retargeted.
 One-shot settings and guidance retain their existing disclosures. Anchored
 menus use native popovers and shared viewport placement; a small parent panel
-must not clip their actions. Escape closes
+must not clip their actions. Browsers without the Popover API use one shared
+platform polyfill installed before UI mounting; controls retain the same
+visibility, focus and dismissal contract. Escape closes
 inner guidance first, then the most recently opened floating panel, then theater
 mode; an IME composition must not dismiss these surfaces.
 Detachable tools reuse the same content in the browser's own always-on-top frame.
