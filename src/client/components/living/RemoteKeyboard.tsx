@@ -50,8 +50,9 @@ export function RemoteKeyboard({ input, close, mouseControl, touch }: {
 
   const key = ([label, code, shifted]: Key) => {
     const name = `remote.key.${code}`;
+    const caption = shifted && modifiers.includes("ShiftLeft") ? shifted : label;
     return <button key={code} type="button" className="lr-chip"
-      data-key={code} aria-label={isCopyKey(name) ? t(name) : label}
+      data-key={code} aria-label={isCopyKey(name) ? t(name) : caption}
       onPointerDown={event => {
         if (event.button !== 0) return;
         event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
@@ -63,7 +64,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch }: {
       onClick={event => {
         if (event.detail === 0) { presses.tap([...modifiers, code]); setModifiers([]); }
       }}>
-      {shifted && modifiers.includes("ShiftLeft") ? shifted : label}
+      {caption}
     </button>;
   };
 
@@ -117,6 +118,6 @@ export function RemoteKeyboard({ input, close, mouseControl, touch }: {
       </form>
     </>}
     {mouseControl}
-    {!vis && touch && page === "text" && <p>{t("remote.touchHelp")}</p>}
+    {!vis && touch && <p>{t("remote.touchHelp")}</p>}
   </section>;
 }

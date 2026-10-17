@@ -1533,17 +1533,17 @@ html[data-theme="dark"] .lr-meter-cell svg { color: #7d92a8; }
 .lr-client-standby-state { display: inline-flex; align-items: center; gap: 9px; }
 .lr-client-standby strong { font-size: 14px; }
 .lr-client-standby p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
-.lr-client-connect-guide > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; border-radius: 8px; cursor: pointer; list-style: none; }
+.lr-client-connect-guide > summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; border-radius: 8px; cursor: pointer; list-style: none; }
 .lr-client-connect-guide > summary::-webkit-details-marker { display: none; }
-.lr-client-connect-toggle { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
+.lr-client-connect-toggle { display: inline-flex; align-items: center; gap: 5px; margin-inline-start: auto; color: var(--muted); font-size: 12px; }
 .lr-client-connect-guide > summary:is(:hover, :focus-visible) .lr-client-connect-toggle { color: var(--ink); }
 .lr-client-connect-toggle > svg:last-child { transition: transform 180ms var(--spring); }
 .lr-client-connect-guide[open] .lr-client-connect-toggle > svg:last-child { transform: rotate(180deg); }
 .lr-client-connect-steps { padding: 4px 0 8px; }
-.lr-client-approved-site { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-width: 0; }
-.lr-client-approved-site a { display: flex; flex: 1; align-items: baseline; gap: 4px; min-width: 0; overflow-wrap: anywhere; color: var(--ink); font: 12px/1.6 var(--mono); text-underline-offset: 3px; }
+.lr-client-approved-site { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.lr-client-approved-site a { display: flex; flex: 1 1 auto; align-items: baseline; gap: 4px; min-width: 0; overflow-wrap: anywhere; color: var(--ink); font: 12px/1.6 var(--mono); text-underline-offset: 3px; }
 .lr-client-approved-site a > span { flex: none; }
-.lr-client-site-actions { display: flex; flex: none; align-items: center; gap: 8px; }
+.lr-client-site-actions { display: flex; flex: none; align-items: center; gap: 8px; margin-inline-start: auto; }
 .lr-client-approved-site .lr-btn { min-width: 32px; width: 32px; height: 32px; padding: 0; }
 .lr-client-launch-section { justify-self: start; margin: 5px 0 -8px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .lr-client-approval {

@@ -55,7 +55,7 @@
 .lr-remote-modifiers { margin-top: 10px; }
 .lr-remote-navigation .lr-chip[data-key="Space"] { flex: 2; }
 :is(.lr-remote-keys, .lr-remote-key-row) .lr-chip { justify-content: center; padding: 4px 0; width: 100%; min-width: 0; min-height: 38px; border-width: 1px; border-radius: 9px; font: 600 12px var(--mono); letter-spacing: 0; white-space: nowrap; touch-action: none; user-select: none; -webkit-touch-callout: none; }
-.lr-remote-keyboard p { margin: 8px 0 0; text-align: center; color: var(--muted); font-size: 11px; }
+.lr-remote-keyboard p { margin-block: 8px 0; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.5; }
 /* In short fullscreen/theater viewports, keep the picture beside the keyboard
    instead of spending the entire height on keys and playback controls. */
 @media (min-width: 600px) and (max-height: 520px) and (orientation: landscape) {
