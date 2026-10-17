@@ -37,7 +37,7 @@ type windowsSink struct {
 	buttons map[int]bool
 }
 
-func newPlatformSink() (inputSink, error) {
+func newPlatformSink(bool) (inputSink, error) {
 	if err := sendInput.Find(); err != nil {
 		return nil, err
 	}
@@ -46,6 +46,8 @@ func newPlatformSink() (inputSink, error) {
 	user32.NewProc("SetProcessDpiAwarenessContext").Call(^uintptr(3))
 	return &windowsSink{keys: map[uint16]bool{}, buttons: map[int]bool{}}, nil
 }
+
+func (*windowsSink) Authorize() error { return nil }
 
 func inject(inputs ...winInput) error {
 	n, _, _ := sendInput.Call(uintptr(len(inputs)), uintptr(unsafe.Pointer(&inputs[0])), unsafe.Sizeof(inputs[0]))

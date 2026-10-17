@@ -17,11 +17,12 @@ import (
 )
 
 type recordedInput struct {
-	events   chan inputEvent
-	resets   chan struct{}
-	target   bounds
-	geometry bounds
-	focused  bool
+	authorize func() error
+	events    chan inputEvent
+	resets    chan struct{}
+	target    bounds
+	geometry  bounds
+	focused   bool
 }
 
 func TestSourceAuthorizationPolicy(t *testing.T) {
@@ -29,7 +30,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
 	s := m.NewSession()
 	t.Cleanup(s.Close)
-	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"})
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
 	peers := []protocol.RemoteInputPeer{
 		{PeerID: "first-viewer", EndpointID: strings.Repeat("a", 32), Secret: strings.Repeat("b", 64)},
 		{PeerID: "second-viewer", EndpointID: strings.Repeat("c", 32), Secret: strings.Repeat("d", 64)},
@@ -132,7 +133,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	request(first, "")
-	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"})
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"}, nil)
 	if m.active != nil || s.State().Mode != "off" {
 		t.Fatal("source replacement inherited permission")
 	}
@@ -147,7 +148,7 @@ func TestRouteReplacementRequiresApprovalAndIgnoresOldClosure(t *testing.T) {
 	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
 	s := m.NewSession()
 	t.Cleanup(s.Close)
-	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"})
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
 	if err := s.SetPolicy("ask", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +192,34 @@ func TestRouteReplacementRequiresApprovalAndIgnoresOldClosure(t *testing.T) {
 	}
 }
 
-func (s *recordedInput) Target(nativecapture.CaptureTarget) (bounds, bool, error) {
+func (s *recordedInput) Authorize() error {
+	if s.authorize != nil {
+		return s.authorize()
+	}
+	return nil
+}
+
+func TestOSPermissionCannotAuthorizeAReplacementSource(t *testing.T) {
+	sink := &recordedInput{}
+	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+	s := m.NewSession()
+	t.Cleanup(s.Close)
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
+	sink.authorize = func() error {
+		// Closing/replacing the share must remain possible while an OS dialog is open.
+		s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"}, nil)
+		return nil
+	}
+	if s.SetPolicy("room", "") == nil || s.State().Mode != "off" {
+		t.Fatal("late OS permission enabled input on a replacement source")
+	}
+	sink.authorize = func() error { return s.SetPolicy("off", "") }
+	if s.SetPolicy("room", "") == nil || s.State().Mode != "off" {
+		t.Fatal("late OS permission undid Host revocation")
+	}
+}
+
+func (s *recordedInput) Target(nativecapture.CaptureTarget, *nativecapture.Stream) (bounds, bool, error) {
 	return s.geometry, s.focused, nil
 }
 
@@ -208,7 +236,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	sink := &recordedInput{events: make(chan inputEvent, 20), resets: make(chan struct{}, 20), geometry: bounds{width: 1920, height: 1080}, focused: true}
 	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
 	s := m.NewSession()
-	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"})
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
 	if err := s.SetPolicy("ask", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +394,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	<-s.Changes() // Drain display setup; the next notification must be a request.
 	first := request("first")
 	other := m.NewSession()
-	other.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"})
+	other.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"}, nil)
 	if err := other.SetPeers([]protocol.RemoteInputPeer{bindings["first"]}); err != nil {
 		t.Fatal("endpoint identity leaked across independent rooms", err)
 	}
@@ -458,14 +486,14 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	}
 	first = request("first")
 	grant = decide(first, true)
-	s.SetTarget(nativecapture.CaptureTarget{})
+	s.SetTarget(nativecapture.CaptureTarget{}, nil)
 	key(first, grant)
 	if len(sink.events) != 2 || len(sink.resets) != 5 || s.available() {
 		t.Fatal("source replacement kept input authority")
 	}
 	nextDisplay := bounds{left: 1920, width: 1280, height: 720}
 	sink.geometry = nextDisplay
-	s.SetTarget(nativecapture.CaptureTarget{Kind: "window", SourceID: "3"})
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "window", SourceID: "3"}, nil)
 	if err := s.SetPolicy("ask", ""); err != nil {
 		t.Fatal(err)
 	}

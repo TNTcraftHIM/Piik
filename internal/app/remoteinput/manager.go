@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -42,7 +43,8 @@ type inputEvent struct {
 }
 
 type inputSink interface {
-	Target(nativecapture.CaptureTarget) (bounds, bool, error)
+	Authorize() error
+	Target(nativecapture.CaptureTarget, *nativecapture.Stream) (bounds, bool, error)
 	Apply(bounds, inputEvent) error
 	Reset() error
 }
@@ -64,15 +66,17 @@ type Manager struct {
 }
 
 type Session struct {
-	manager       *Manager
-	target        nativecapture.CaptureTarget
-	paused        bool
-	closed        bool
-	changed       chan struct{}
-	route         *inputroute.Relay
-	mode          string
-	password      [32]byte
-	passwordRetry time.Time
+	manager        *Manager
+	target         nativecapture.CaptureTarget
+	capture        *nativecapture.Stream
+	paused         bool
+	closed         bool
+	changed        chan struct{}
+	route          *inputroute.Relay
+	mode           string
+	policyRevision uint64
+	password       [32]byte
+	passwordRetry  time.Time
 }
 
 type connection struct {
@@ -96,9 +100,9 @@ type endpointKey struct {
 }
 
 // New is inert in ordinary builds. The remotecontrol build tag selects the
-// Windows prototype; it does not install a service, driver or startup entry.
-func New(ctx context.Context) (*Manager, error) {
-	sink, err := newPlatformSink()
+// platform backend; it does not install a service, driver or startup entry.
+func New(ctx context.Context, captureInput bool) (*Manager, error) {
+	sink, err := newPlatformSink(captureInput)
 	if err != nil || sink == nil {
 		return nil, err
 	}
@@ -106,6 +110,9 @@ func New(ctx context.Context) (*Manager, error) {
 	m := &Manager{sink: sink, connections: make(map[endpointKey]*connection), stop: cancel}
 	if err := watchStopShortcut(ctx, func() { m.Revoke() }); err != nil {
 		cancel()
+		if closer, ok := sink.(io.Closer); ok {
+			_ = closer.Close()
+		}
 		return nil, err
 	}
 	// Foreground changes must release held input even when the remote player
@@ -155,7 +162,7 @@ func (s *Session) notify() {
 // The channel belongs to the sharing session; input permission belongs to its
 // current source. Replacing a picture revokes the grant without losing the
 // channel needed to request control of the next source.
-func (s *Session) SetTarget(target nativecapture.CaptureTarget) {
+func (s *Session) SetTarget(target nativecapture.CaptureTarget, capture *nativecapture.Stream) {
 	if s == nil {
 		return
 	}
@@ -165,22 +172,16 @@ func (s *Session) SetTarget(target nativecapture.CaptureTarget) {
 	if m.closed || s.closed {
 		return
 	}
-	if target.Kind != "display" && target.Kind != "window" {
+	if target.Kind != "display" && target.Kind != "window" && !(s.UsesCaptureInput() && target.Kind == "picker") {
 		target = nativecapture.CaptureTarget{}
 	}
 	s.target = target
-	s.mode, s.password = "off", [32]byte{}
-	if m.active != nil && m.active.owner == s {
-		m.release()
-	}
-	for _, c := range m.connections {
-		if c.owner == s {
-			c.requested = false
-			m.send(c, "ready")
-		}
-	}
-	s.notify()
+	s.capture = capture
+	s.setPolicy("off", [32]byte{})
 }
+
+// The Linux Portal owns input and screen selection in the same OS session.
+func (s *Session) UsesCaptureInput() bool { return s != nil && runtime.GOOS == "linux" }
 
 func (s *Session) Attach(edgeID string, channel *webrtc.DataChannel) {
 	s.route.AttachDown(edgeID, channel)
@@ -274,12 +275,13 @@ func (m *Manager) reply(c *connection, state, reason string) {
 		state = "unavailable"
 	}
 	data, _ := json.Marshal(struct {
-		State  string `json:"state"`
-		Grant  string `json:"grant,omitempty"`
-		Intent string `json:"intent,omitempty"`
-		Mode   string `json:"mode"`
-		Reason string `json:"reason,omitempty"`
-	}{state, c.grant, c.intent, c.owner.mode, reason})
+		Platform string `json:"platform"`
+		State    string `json:"state"`
+		Grant    string `json:"grant,omitempty"`
+		Intent   string `json:"intent,omitempty"`
+		Mode     string `json:"mode"`
+		Reason   string `json:"reason,omitempty"`
+	}{runtime.GOOS, state, c.grant, c.intent, c.owner.mode, reason})
 	c.owner.route.Reply(inputroute.Packet{ID: c.id, Epoch: c.epoch, Data: c.cipher.seal(data, c.epoch)})
 }
 
@@ -307,7 +309,7 @@ func (m *Manager) refreshActive() (bounds, bool) {
 	if c == nil {
 		return bounds{}, false
 	}
-	b, focused, err := m.sink.Target(c.owner.target)
+	b, focused, err := m.sink.Target(c.owner.target, c.owner.capture)
 	if err != nil {
 		m.release()
 		m.send(c, "failed")
@@ -429,6 +431,9 @@ func (s *Session) Pause(paused bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s.paused = paused
+	if paused {
+		s.policyRevision++
+	}
 	if paused && m.active != nil && m.active.owner == s {
 		m.release()
 	}
@@ -495,8 +500,15 @@ func (m *Manager) Close() {
 		return
 	}
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return
+	}
 	m.closed = true
 	m.release()
+	if closer, ok := m.sink.(io.Closer); ok {
+		_ = closer.Close()
+	}
 	m.mu.Unlock()
 	if m.stop != nil {
 		m.stop()
@@ -504,12 +516,13 @@ func (m *Manager) Close() {
 }
 
 type State struct {
+	Platform string `json:"platform"`
 	Mode     string `json:"mode"`
 	Requests []View `json:"requests"`
 }
 
 func (s *Session) State() State {
-	state := State{Mode: "off", Requests: []View{}}
+	state := State{Platform: runtime.GOOS, Mode: "off", Requests: []View{}}
 	if s == nil {
 		return state
 	}

@@ -276,8 +276,9 @@ protocol change is accepted by this assessment.
 
 ## Attended Remote-Control Prototype
 
-Reviewed 2026-10-17. The Windows remote-control prototype is local experiment work,
-not a released feature. A desktop or mobile Browser can control a Windows App;
+Reviewed 2026-10-17. The remote-control prototype is local experiment work,
+not a released feature. Desktop and mobile Browsers are controllers; Windows App
+input has local physical evidence, while macOS/Linux backends remain under platform acceptance;
 controlling Android/iOS themselves is a separate platform problem. The
 [Captured Surface Control draft](https://w3c.github.io/mediacapture-surface-control/)
 only provides limited wheel/zoom operations, not general OS keyboard/mouse input.
@@ -296,7 +297,7 @@ cross-platform remote-control SDK. Its GPL implementation remains study-only
 under the repository's contribution rules. No matched measurement establishes
 a Go/Rust performance advantage or a need to replace Piik's media pipeline.
 
-The `remotecontrol` Go build tag selects Windows `SendInput`; ordinary builds
+The `remotecontrol` Go build tag selects the native input backend; ordinary builds
 leave it unavailable. App discovery advertises the optional input capability;
 a supporting page opts in when starting its native share. An older page emits
 no opt-in, so it receives neither new input events nor input channels. The
@@ -310,6 +311,27 @@ after the Host enables remote control and the complete input path reports readin
 required along that path; an older peer can still carry the picture.
 Independent virtual gamepads are deferred by the owner; this phase adds no
 input driver.
+
+The logical owners are App coordination/authority, native capture/encoding, and
+native input. These are module boundaries, not three required executables.
+`internal/app/remoteinput` owns permission, grants and release; its platform
+adapter only resolves the target and executes input. Windows uses `SendInput`;
+macOS uses public Quartz events and requests Accessibility permission only when
+the Host enables control. macOS window input also verifies the process incarnation
+and actual focused AX window, rather than treating stacking order as focus.
+
+Linux uses the existing capture helper's RemoteDesktop Portal session for both
+the selected monitor and input permission. Ordinary sharing still requests only
+ScreenCast. Enabling control opens the system's combined screen/input selector;
+cancelling leaves the previous share intact. Support requires keyboard/pointer
+capabilities and libportal's restore-capable API; missing support leaves ordinary
+capture available. The inherited capture pipe carries input, with no new listener
+or privileged device access. Replacing that Portal session, including a quality
+change, revokes its input grant and resets policy before binding the replacement.
+This first Linux backend supports a monitor, not window-scoped input.
+Linux compilation, synthetic Portal input/release checks and shared Go lifecycle
+tests pass in an isolated VM. A real desktop/compositor remains unverified;
+macOS still needs an Apple SDK build and physical permission/Retina/focus checks.
 
 Opted-in room signaling binds an ephemeral key and endpoint ID to each
 authenticated Viewer, then sends that binding only to the owning Host. The
@@ -355,8 +377,10 @@ current grant. Brief ICE loss and media-route replacement revoke permission;
 the recovered path carries a fresh request. App playback and relay descendants
 follow the same rule; interruption releases the upstream grant.
 A closed control channel needs a new media
-connection; neither path silently restores a grant. Either side can end control from its page or
-Ctrl+Alt+F10. A Host stop (including that local shortcut) also resets automatic
+connection; neither path silently restores a grant. Either side can end control
+from its page. Windows also supplies a local Ctrl+Alt+F10 stop shortcut; macOS
+uses Control+Option+F10. Linux retains the desktop's sharing controls instead
+of registering a second global key grab. A Host stop (including that local shortcut) also resets automatic
 permission to Ask each time. A Viewer ending their own control leaves the Host's
 policy in place. This adds no service, automatic sharing or control across App
 restart. Escape releases game mouse capture without ending the grant.
@@ -412,7 +436,8 @@ the key panel does not summon the phone's software keyboard. Modifier selection
 applies to the next key; held contacts repeat and release independently, including
 on cancellation, panel closure and window blur. No pressed state survives grant
 retirement. Common text shortcuts remain beside the text field.
-Its buttons send remote system shortcuts, including Win+Space, without depending
+Its buttons follow the controlled App's platform, including Windows Win+Space
+and macOS Command shortcuts, without depending
 on the local OS delivering that combination to the page. Physical system-key
 capture remains subject to the local OS and Browser; even the
 [Keyboard Lock API](https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock)

@@ -259,7 +259,7 @@ export function RemoteControl({ channel, videoRef, available }: {
         <button type="button" className="lr-chip" aria-label={t("remote.resetZoom")}
           onClick={() => { reset(); viewport.current?.reset(); surface.current?.focus({ preventScroll: true }); }}>1×</button>
       </div>}
-      {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls}
+      {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
         mouseControl={!touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad"
           title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"}
           cap={locked ? "remote.releaseMouse" : "remote.gameMouse"} pressed={locked}

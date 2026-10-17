@@ -203,6 +203,41 @@ func TestCaptureStopPreservesAnInFlightFrame(t *testing.T) {
 	<-closed
 }
 
+func TestRemoteInputDoesNotBlockOnAStalledCapture(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := startStreamWithEnvironment(t.Context(), executable,
+		[]string{"-test.run=^TestCaptureStopHelper$"}, []string{"PIIK_CAPTURE_STOP_FIXTURE=unresponsive"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if _, err := stream.Read(); err != nil {
+		t.Fatal(err)
+	}
+	stream.remoteInput = true
+	result := make(chan error, 1)
+	go func() {
+		for range 8192 {
+			if err := stream.SendRemoteInput("M 0.500000000 0.500000000"); err != nil {
+				result <- err
+				return
+			}
+		}
+		result <- nil
+	}()
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("unresponsive helper accepted input after its pipe filled")
+		}
+	case <-time.After(captureStopTimeout + 3*time.Second):
+		t.Fatal("input held its grant lock beyond the capture stop budget")
+	}
+}
+
 func TestDiagnosticStderrOverflowDoesNotStopTheChildReader(t *testing.T) {
 	for _, discard := range []bool{false, true} {
 		buffer := &boundedBuffer{limit: 4, discardOverflow: discard}

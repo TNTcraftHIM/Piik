@@ -229,10 +229,13 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if host == nil {
 			return nil, errors.New("native share does not exist")
 		}
-		if err := host.SetRemoteInputPolicy(request.Mode, request.Password); err != nil {
-			return nil, err
-		}
-		return response(envelope, "remote-control-set"), nil
+		// An OS permission dialog must not block stop/revocation dispatch.
+		result = session.runHostOperation(host, envelope, func() (any, error) {
+			err := host.SetRemoteInputPolicy(request.Mode, request.Password)
+			return response(envelope, "remote-control-set"), err
+		}, complete)
+		asynchronous = result == nil
+		return result, nil
 	case "set-remote-control":
 		var request remoteControlRequest
 		if err := decodeStrict(payload, &request); err != nil ||

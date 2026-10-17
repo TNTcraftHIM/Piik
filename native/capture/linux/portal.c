@@ -3,11 +3,19 @@
 #include <gio/gio.h>
 #include <unistd.h>
 
+// Ordinary capture keeps working with the existing system libportal. Remote
+// input needs its restore-capable API to retain the screen across quality changes.
+extern void xdp_portal_create_remote_desktop_session_full(
+    XdpPortal *, XdpDeviceType, XdpOutputType, XdpRemoteDesktopFlags,
+    XdpCursorMode, XdpPersistMode, const char *, GCancellable *,
+    GAsyncReadyCallback, gpointer) __attribute__((weak));
+
 typedef struct {
   GMainLoop *loop;
   XdpPortal *portal;
   XdpSession *session;
   GError *error;
+  gboolean remote_input;
 } PortalRequest;
 
 static void finish_request(PortalRequest *request, GError *error) {
@@ -30,8 +38,9 @@ static void session_created(GObject *source, GAsyncResult *result,
                             gpointer data) {
   PortalRequest *request = data;
   GError *error = NULL;
-  request->session = xdp_portal_create_screencast_session_finish(
-      XDP_PORTAL(source), result, &error);
+  request->session = request->remote_input
+      ? xdp_portal_create_remote_desktop_session_finish(XDP_PORTAL(source), result, &error)
+      : xdp_portal_create_screencast_session_finish(XDP_PORTAL(source), result, &error);
   if (request->session == NULL) {
     finish_request(request, error);
     return;
@@ -62,7 +71,27 @@ gboolean piik_portal_available(void) {
   return available;
 }
 
-gboolean piik_portal_capture_open(const char *restore_token,
+gboolean piik_portal_input_available(void) {
+  if (xdp_portal_create_remote_desktop_session_full == NULL) return FALSE;
+  GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
+  if (bus == NULL) return FALSE;
+  GVariant *reply = g_dbus_connection_call_sync(bus,
+      "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+      "org.freedesktop.DBus.Properties", "Get",
+      g_variant_new("(ss)", "org.freedesktop.portal.RemoteDesktop", "AvailableDeviceTypes"),
+      G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 1000, NULL, NULL);
+  g_object_unref(bus);
+  if (reply == NULL) return FALSE;
+  GVariant *value = NULL;
+  g_variant_get(reply, "(v)", &value);
+  gboolean available = g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32) &&
+      (g_variant_get_uint32(value) & 3) == 3;
+  g_variant_unref(value);
+  g_variant_unref(reply);
+  return available;
+}
+
+gboolean piik_portal_capture_open(const char *restore_token, gboolean remote_input,
                                       PiikPortalCapture *capture,
                                       GError **error) {
   g_return_val_if_fail(capture != NULL, FALSE);
@@ -74,21 +103,40 @@ gboolean piik_portal_capture_open(const char *restore_token,
   PortalRequest request = {
       .loop = g_main_loop_new(NULL, FALSE),
       .portal = capture->portal,
+      .remote_input = remote_input,
   };
-  xdp_portal_create_screencast_session(
+  const char *token = restore_token != NULL && restore_token[0] != '\0' ? restore_token : NULL;
+  if (remote_input) {
+    if (!piik_portal_input_available()) {
+      g_main_loop_unref(request.loop);
+      g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "desktop remote input is unavailable");
+      piik_portal_capture_close(capture);
+      return FALSE;
+    }
+    xdp_portal_create_remote_desktop_session_full(
+        capture->portal, XDP_DEVICE_KEYBOARD | XDP_DEVICE_POINTER, XDP_OUTPUT_MONITOR,
+        XDP_REMOTE_DESKTOP_FLAG_NONE, XDP_CURSOR_MODE_EMBEDDED,
+        XDP_PERSIST_MODE_TRANSIENT, token, NULL, session_created, &request);
+  } else xdp_portal_create_screencast_session(
       capture->portal, XDP_OUTPUT_MONITOR | XDP_OUTPUT_WINDOW,
       XDP_SCREENCAST_FLAG_NONE, XDP_CURSOR_MODE_EMBEDDED,
       XDP_PERSIST_MODE_PERSISTENT,
-      restore_token != NULL && restore_token[0] != '\0' ? restore_token : NULL,
+      token,
       NULL, session_created, &request);
   g_main_loop_run(request.loop);
   g_main_loop_unref(request.loop);
+  capture->session = request.session;
   if (request.error != NULL) {
     g_propagate_error(error, request.error);
     piik_portal_capture_close(capture);
     return FALSE;
   }
-  capture->session = request.session;
+  capture->remote_input = remote_input;
+  if (remote_input && (xdp_session_get_devices(capture->session) & 3) != 3) {
+    g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "keyboard and pointer permission was not granted");
+    piik_portal_capture_close(capture);
+    return FALSE;
+  }
 
   GVariant *streams = xdp_session_get_streams(capture->session);
   if (streams == NULL) {
@@ -103,6 +151,10 @@ gboolean piik_portal_capture_open(const char *restore_token,
   gboolean found = g_variant_iter_next(&iterator, "(u@a{sv})",
                                        &capture->node_id, &properties);
   if (properties != NULL) {
+    if (remote_input) {
+      if (!g_variant_lookup(properties, "logical_size", "(ii)", &capture->input_width, &capture->input_height))
+        g_variant_lookup(properties, "size", "(ii)", &capture->input_width, &capture->input_height);
+    }
     guint64 serial = 0;
     if (g_variant_lookup(properties, "pipewire-serial", "t", &serial) &&
         serial > 0) {
@@ -111,7 +163,7 @@ gboolean piik_portal_capture_open(const char *restore_token,
     g_variant_unref(properties);
   }
   g_variant_unref(streams);
-  if (!found || capture->node_id == 0) {
+  if (!found || capture->node_id == 0 || (remote_input && (capture->input_width <= 0 || capture->input_height <= 0))) {
     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                         "portal returned an invalid PipeWire stream");
     piik_portal_capture_close(capture);
@@ -131,6 +183,7 @@ gboolean piik_portal_capture_open(const char *restore_token,
 
 void piik_portal_capture_close(PiikPortalCapture *capture) {
   if (capture == NULL) return;
+  piik_portal_input_reset(capture);
   if (capture->pipewire_fd >= 0) close(capture->pipewire_fd);
   capture->pipewire_fd = -1;
   g_clear_pointer(&capture->restore_token, g_free);

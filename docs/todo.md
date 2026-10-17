@@ -30,6 +30,11 @@ platform deferrals or establish a diagnosis for unmatched reports.
   input coordinates and provides picture reset; physical Android/iOS keyboard and
   fullscreen behavior still need device acceptance. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
   owns limitations and evidence. This is not part of the public release.
+  macOS Quartz/Accessibility and Linux RemoteDesktop Portal backends are implemented.
+  Linux compilation, synthetic input/release and shared Go lifecycle checks pass;
+  actual desktop permission/capture still needs acceptance. macOS needs an Apple
+  SDK build and physical focus/Retina/input checks. Platform-aware virtual keys
+  and permission/stop copy share the same input state; no extra driver or route.
   [Window/game input assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns window scope, focus/geometry work and game-compatibility
   limits; ordinary desktop input checks do not establish remote co-play readiness.
@@ -222,10 +227,10 @@ remains; do not add another retry/transport owner to bypass these limits.
     identifies pairing/revocation and native decoded-input ownership beyond the
     device selector. Reopen for a concrete use case that justifies this boundary
     and physical latency/echo/background checks. This does not reopen room voice.
-10. **Remote co-play and more controlled platforms.** The [co-play assessment](./research/room-interactions.md#remote-co-play)
+10. **Remote co-play and mobile controlled platforms.** The [co-play assessment](./research/room-interactions.md#remote-co-play)
     separates virtual gamepad slots from attended keyboard/mouse assistance.
-    Retain the Windows display prototype above; other input backends, gamepads
-    and mobile controlled endpoints need a separate scope decision.
+    Desktop input acceptance remains above; independent gamepads and mobile
+    controlled endpoints need a separate scope decision.
 11. **Per-Viewer SFU preference (#477).** Existing `SFU_ONLY=true` is an operator
     policy for the whole site; it does not provide the requested individual
     Viewer control. Keep this proposal separate from quality-recovery fixes.

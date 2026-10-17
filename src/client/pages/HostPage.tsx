@@ -3781,6 +3781,7 @@ export function HostPage({
             </> : null}
             {nativeActive && remoteControlState && <HostRemoteControl
               mode={remoteControlState.mode}
+              platform={remoteControlState.platform}
               disabled={sharingPaused || switchingSource}
               requests={remoteControlState.requests.map(request => {
                 return { ...request, name: viewers.find(viewer => viewer.peerId === request.peerId)?.label ?? t("common.name.viewerDefault") };

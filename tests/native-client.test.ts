@@ -32,6 +32,15 @@ describe("native App private wire", () => {
     nativeMedia: { video: true, hardwareH264: true },
   };
 
+  it("requires the controlled App platform in remote-control state", () => {
+    const event = { version: NATIVE_CLIENT_PROTOCOL, type: "remote-control-state", shareId: "share_123456", mode: "off", requests: [] };
+    expect(nativeEventSchema.safeParse(event).success).toBe(false);
+    for (const platform of ["windows", "darwin", "linux"]) {
+      expect(nativeEventSchema.parse({ ...event, platform })).toMatchObject({ platform });
+    }
+    expect(nativeEventSchema.safeParse({ ...event, platform: "unknown" }).success).toBe(false);
+  });
+
   it.each(["prompt", "denied"])("background App preferences do not request local access when permission is %s", async (state) => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("navigator", { permissions: { query: vi.fn().mockResolvedValue({ state }) } });

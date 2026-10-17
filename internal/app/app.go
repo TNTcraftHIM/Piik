@@ -150,7 +150,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
-	input, inputErr := remoteinput.New(ctx)
+	input, inputErr := remoteinput.New(ctx, nativeMedia.capture.RemoteInput)
 	if inputErr != nil {
 		slog.Warn("Remote-control prototype unavailable", "reason", inputErr)
 	}

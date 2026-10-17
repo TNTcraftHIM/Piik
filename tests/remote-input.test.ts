@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { RemoteInputSession, picturePoint } from "../src/client/remote-control/input-session";
 import { InputRoute, type InputIdentity } from "../src/client/remote-control/input-route";
+import { remoteInputStateSchema } from "../src/client/remote-control/protocol";
 
 class Channel extends EventTarget {
   readyState = "open";
@@ -10,6 +11,21 @@ class Channel extends EventTarget {
   close() { this.readyState = "closed"; this.dispatchEvent(new Event("close")); }
   receive(value: object) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) })); }
 }
+
+it.each(["windows", "darwin", "linux"] as const)("keeps the Host platform in local request state (%s)", platform => {
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  session.request();
+  expect(channel.sent).toEqual([{ type: "sync" }]);
+  expect(remoteInputStateSchema.safeParse({ mode: "ask", state: "ready" }).success).toBe(false);
+  expect(remoteInputStateSchema.safeParse({ mode: "ask", state: "ready", platform: "unknown" }).success).toBe(false);
+  channel.receive({ mode: "ask", state: "ready", platform });
+  session.request();
+  expect(session.state).toMatchObject({ state: "pending", platform });
+  session.release();
+  expect(session.state).toMatchObject({ state: "ready", platform });
+  session.dispose();
+});
 
 it("reuses the authenticated identity across media routes and syncs after delayed key installation", async () => {
   const registered: InputIdentity[] = [];
@@ -46,30 +62,30 @@ it("binds input to the current request and retires cancelled or replaced grants"
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
   const grant = "a".repeat(64);
-  channel.receive({ mode: "ask", state: "ready" });
+  channel.receive({ platform: "windows", mode: "ask", state: "ready" });
   session.request();
   const first = channel.sent.at(-1)?.intent;
   session.release();
-  channel.receive({ mode: "ask", state: "active", intent: first, grant });
+  channel.receive({ platform: "windows", mode: "ask", state: "active", intent: first, grant });
   expect(session.state?.state).toBe("ready");
   expect(channel.sent.at(-1)).toEqual({ type: "release", intent: first });
   session.request();
   const second = channel.sent.at(-1)?.intent;
-  channel.receive({ mode: "ask", state: "ready", intent: first });
+  channel.receive({ platform: "windows", mode: "ask", state: "ready", intent: first });
   expect(session.state?.state).toBe("pending");
-  channel.receive({ mode: "ask", state: "active", intent: second, grant });
+  channel.receive({ platform: "windows", mode: "ask", state: "active", intent: second, grant });
   session.input({ type: "key", code: "KeyW", down: true });
   expect(channel.sent.at(-1)).toEqual({ type: "key", code: "KeyW", down: true, grant });
-  channel.receive({ mode: "ask", state: "suspended", intent: second, grant });
+  channel.receive({ platform: "windows", mode: "ask", state: "suspended", intent: second, grant });
   const count = channel.sent.length;
   session.input({ type: "key", code: "KeyD", down: true });
   expect(channel.sent).toHaveLength(count);
   session.input({ type: "reset" });
   expect(channel.sent.at(-1)).toEqual({ type: "reset", grant });
-  channel.receive({ mode: "ask", state: "active", intent: second, grant });
+  channel.receive({ platform: "windows", mode: "ask", state: "active", intent: second, grant });
   session.dispose();
   expect(channel.sent.at(-1)).toEqual({ type: "release", intent: second });
-  channel.receive({ mode: "ask", state: "active", intent: second, grant });
+  channel.receive({ platform: "windows", mode: "ask", state: "active", intent: second, grant });
   session.input({ type: "key", code: "KeyW", down: true });
   expect(channel.sent.at(-1)).toEqual({ type: "release", intent: second });
   expect(channel.readyState).toBe("open"); // Media owns the channel lifetime.
@@ -87,15 +103,15 @@ it("maps only visible picture pixels when playback has letterboxing", () => {
 it("ends a pending request when its source becomes unavailable, even before the request reaches the Host", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
-  channel.receive({ mode: "ask", state: "ready" });
+  channel.receive({ platform: "windows", mode: "ask", state: "ready" });
   session.request();
   // Source pause/off can be announced before the Host has seen this intent.
   // It still invalidates the whole endpoint, not just an older request.
-  channel.receive({ mode: "ask", state: "unavailable" });
+  channel.receive({ platform: "windows", mode: "ask", state: "unavailable" });
   expect(session.state?.state).toBe("unavailable");
-  channel.receive({ mode: "ask", state: "ready" });
+  channel.receive({ platform: "windows", mode: "ask", state: "ready" });
   session.request();
-  channel.receive({ mode: "off", state: "unavailable", intent: "a".repeat(32) });
+  channel.receive({ platform: "windows", mode: "off", state: "unavailable", intent: "a".repeat(32) });
   expect(session.state?.mode).toBe("off");
   session.dispose();
 });
@@ -103,22 +119,22 @@ it("ends a pending request when its source becomes unavailable, even before the 
 it("sends a control password only in the request and follows the App policy after cancellation", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
-  channel.receive({ state: "ready", mode: "password" });
+  channel.receive({ platform: "windows", state: "ready", mode: "password" });
   session.request("temporary-secret");
   const intent = channel.sent.at(-1)?.intent;
   expect(channel.sent.at(-1)).toMatchObject({ type: "request", password: "temporary-secret" });
-  channel.receive({ state: "ready", mode: "password", reason: "password", intent });
+  channel.receive({ platform: "windows", state: "ready", mode: "password", reason: "password", intent });
   expect(session.state?.reason).toBe("password");
   session.release();
   expect(session.state?.reason).toBeUndefined();
   expect(session.state?.mode).toBe("password");
   session.request("temporary-secret");
   const nextIntent = channel.sent.at(-1)?.intent;
-  channel.receive({ state: "active", mode: "password", intent: nextIntent, grant: "a".repeat(64) });
+  channel.receive({ platform: "windows", state: "active", mode: "password", intent: nextIntent, grant: "a".repeat(64) });
   session.release();
   expect(session.state?.mode).toBe("password");
   expect(channel.sent.at(-1)).toEqual({ type: "release", intent: nextIntent });
-  channel.receive({ state: "ready", mode: "ask", intent: nextIntent });
+  channel.receive({ platform: "windows", state: "ready", mode: "ask", intent: nextIntent });
   expect(session.state?.mode).toBe("ask");
   session.dispose();
 });
@@ -126,9 +142,10 @@ it("sends a control password only in the request and follows the App policy afte
 it("preserves wheel magnitude and fractions across browser units, only within the current grant", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  channel.receive({ platform: "windows", mode: "ask", state: "ready" });
   session.request();
   const intent = channel.sent.at(-1)?.intent;
-  channel.receive({ mode: "ask", state: "active", intent, grant: "c".repeat(64) });
+  channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant: "c".repeat(64) });
   session.scroll(100, 0);
   session.scroll(3, 1);
   session.scroll(1, 2);
@@ -139,11 +156,11 @@ it("preserves wheel magnitude and fractions across browser units, only within th
   expect(channel.sent.at(-1)?.delta).toBe(-1);
   session.scroll(-10_000, 0);
   expect(channel.sent.at(-1)?.delta).toBe(1200);
-  channel.receive({ mode: "ask", state: "suspended", intent, grant: "c".repeat(64) });
+  channel.receive({ platform: "windows", mode: "ask", state: "suspended", intent, grant: "c".repeat(64) });
   const suspendedCount = channel.sent.length;
   session.scroll(100, 0);
   expect(channel.sent).toHaveLength(suspendedCount);
-  channel.receive({ mode: "ask", state: "active", intent, grant: "c".repeat(64) });
+  channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant: "c".repeat(64) });
   session.scroll(0.75, 0);
   expect(channel.sent).toHaveLength(suspendedCount);
   session.dispose();
@@ -155,10 +172,10 @@ it("flushes coalesced motion before buttons and discards it when control ends", 
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
   const grant = "b".repeat(64);
   try {
-    channel.receive({ mode: "ask", state: "ready" });
+    channel.receive({ platform: "windows", mode: "ask", state: "ready" });
     session.request();
     const intent = channel.sent.at(-1)?.intent;
-    channel.receive({ mode: "ask", state: "active", intent, grant });
+    channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant });
     session.input({ type: "move", x: 0.2, y: 0.3 });
     session.input({ type: "move", x: 0.7, y: 0.8 });
     session.input({ type: "button", button: 0, down: false });
@@ -173,7 +190,7 @@ it("flushes coalesced motion before buttons and discards it when control ends", 
     expect(channel.sent.at(-1)).toEqual({ type: "relative", dx: 7, dy: 3, grant });
     session.input({ type: "move", x: 0.9, y: 0.1 });
     const count = channel.sent.length;
-    channel.receive({ mode: "ask", state: "ready", intent });
+    channel.receive({ platform: "windows", mode: "ask", state: "ready", intent });
     expect(vi.getTimerCount()).toBe(0);
     expect(channel.sent).toHaveLength(count);
   } finally {

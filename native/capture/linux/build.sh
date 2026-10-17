@@ -13,7 +13,7 @@ mkdir -p "$output"
 build() {
   cc \
     -std=c11 -O2 -Wall -Wextra -Werror \
-    "$source_root/$1" "$source_root/portal.c" \
+    "$source_root/$1" "$source_root/portal.c" "$source_root/input.c" \
     $(pkg-config --cflags --libs \
       libportal gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0) \
     -o "$output/$2"
@@ -23,4 +23,8 @@ build main.c piik-capture
 if [ "${2:-}" = "--check" ]; then
   build main.test.c piik-capture-test
   "$output/piik-capture-test"
+  cc -std=c11 -O2 -Wall -Wextra -Werror \
+    "$source_root/input.test.c" "$source_root/input.c" \
+    $(pkg-config --cflags --libs libportal) -o "$output/piik-input-test"
+  "$output/piik-input-test"
 fi

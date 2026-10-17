@@ -46,6 +46,7 @@ type Capabilities struct {
 	Platform              string    `json:"platform"`
 	PlatformBuild         string    `json:"platformBuild"`
 	VideoCapture          bool      `json:"videoCapture"`
+	RemoteInput           bool      `json:"remoteInput,omitempty"`
 	CaptureBorderControl  bool      `json:"captureBorderControl,omitempty"`
 	Microphone            bool      `json:"microphone,omitempty"`
 	ProcessAudio          bool      `json:"processAudio"`

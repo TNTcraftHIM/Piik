@@ -2,10 +2,13 @@ import { z } from "zod";
 
 export const remoteControlModeSchema = z.enum(["off", "ask", "room", "password"]);
 export type RemoteControlMode = z.infer<typeof remoteControlModeSchema>;
+export const remoteInputPlatformSchema = z.enum(["windows", "darwin", "linux"]);
+export type RemoteInputPlatform = z.infer<typeof remoteInputPlatformSchema>;
 
 export const remoteInputStateSchema = z.object({
   state: z.enum(["ready", "unavailable", "pending", "active", "suspended", "failed"]),
   mode: remoteControlModeSchema,
+  platform: remoteInputPlatformSchema,
   grant: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   intent: z.string().regex(/^[0-9a-f]{32}$/).optional(),
   reason: z.enum(["password", "retry", "busy"]).optional(),

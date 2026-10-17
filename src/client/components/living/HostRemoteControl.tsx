@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { RemoteControlRequest } from "../../native/wire";
-import type { RemoteControlMode } from "../../remote-control/protocol";
+import type { RemoteControlMode, RemoteInputPlatform } from "../../remote-control/protocol";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Btn, Chip, NameTag, SwitchItem } from "./primitives";
@@ -9,8 +9,9 @@ import "./floating-panel.css";
 import "./remote-control.css";
 
 // Form drafts stay here; the App snapshot owns applied authorization.
-export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide }: {
+export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy, onDecide }: {
   mode: RemoteControlMode;
+  platform: RemoteInputPlatform;
   requests: (RemoteControlRequest & { name: string })[];
   disabled?: boolean;
   onPolicy: (mode: RemoteControlMode, password?: string) => Promise<void>;
@@ -129,10 +130,11 @@ export function HostRemoteControl({ mode, requests, disabled, onPolicy, onDecide
         </div>}
       </form>}
       {failedId === "policy" && <p role="alert"><Glyph name="alert" size={14} />
-        <span className={vis ? "visually-hidden" : undefined}>{t("remote.decisionFailed")}</span></p>}
-      {!vis && <p className="lr-remote-note">{t("remote.policyLifetime")}</p>}
+        <span className={vis ? "visually-hidden" : undefined}>{t(platform === "darwin" && mode === "off" ? "remote.macPermission" : "remote.decisionFailed")}</span></p>}
+      {!vis && <p className="lr-remote-note">{t(platform === "linux" && mode === "off" ? "remote.linuxEnable" : "remote.policyLifetime")}</p>}
       {(mode === "room" || mode === "password" || requests.some(request => request.state !== "pending")) && <p className="lr-remote-note">
-        {vis ? <Glyph name="keyboard" size={14} /> : t("remote.shortcut")} <kbd>Ctrl + Alt + F10</kbd>
+        {platform === "linux" ? <><Glyph name="mouse" size={14} /> <span className={vis ? "visually-hidden" : undefined}>{t("remote.linuxStop")}</span></>
+          : <>{vis ? <Glyph name="keyboard" size={14} /> : t("remote.shortcut")} <kbd>{platform === "darwin" ? "Ctrl + Option + F10" : "Ctrl + Alt + F10"}</kbd></>}
       </p>}
     </div>, document.body)}
   </>;

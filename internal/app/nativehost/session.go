@@ -40,6 +40,7 @@ type CaptureState struct {
 	Height          uint32                        `json:"height,omitempty"`
 	FPS             uint32                        `json:"fps,omitempty"`
 	RestoreToken    string                        `json:"restoreToken,omitempty"`
+	RemoteInput     bool                          `json:"remoteInput,omitempty"`
 	Outputs         []nativecapture.OutputProfile `json:"outputs"`
 
 	unavailableLayers []int
@@ -462,7 +463,7 @@ func (session *Session) ReplaceSource(
 	if !audioOnly {
 		// Suspend input while changing capture. On success bind the committed
 		// target; on failure the previous picture remains eligible for a new grant.
-		session.remoteInput.SetTarget(nativecapture.CaptureTarget{})
+		session.remoteInput.SetTarget(nativecapture.CaptureTarget{}, nil)
 		defer session.syncRemoteInputSource()
 	}
 	if excludeAudio != nil {
@@ -525,6 +526,32 @@ func (session *Session) RemoteInputState() remoteinput.State {
 }
 
 func (session *Session) SetRemoteInputPolicy(mode, password string) error {
+	if err := remoteinput.ValidatePolicy(mode, password); err != nil {
+		return err
+	}
+	if session.remoteInput.UsesCaptureInput() && mode != "off" {
+		session.updateMu.Lock()
+		defer session.updateMu.Unlock()
+		session.mu.Lock()
+		options, profile := session.videoOptions, session.profile
+		closed := session.closed
+		session.mu.Unlock()
+		if closed {
+			return errors.New("native share is unavailable")
+		}
+		if !options.RemoteInput {
+			// Enabling control is the sole action that may request the OS's combined
+			// screen/input permission. A declined picker leaves the old share intact.
+			options.RemoteInput, options.RestoreToken = true, ""
+			replacement, state, err := session.prepareVideo(session.ctx, options, true, false)
+			if err != nil {
+				return err
+			}
+			if err = session.commitCapture(options, profile, replacement, state, nil, false); err != nil {
+				return err
+			}
+		}
+	}
 	return session.remoteInput.SetPolicy(mode, password)
 }
 
@@ -539,8 +566,9 @@ func (session *Session) DecideRemoteInput(id string, allow bool) error {
 func (session *Session) syncRemoteInputSource() {
 	session.mu.Lock()
 	target := session.videoOptions.Target
+	capture := session.stream
 	session.mu.Unlock()
-	session.remoteInput.SetTarget(target)
+	session.remoteInput.SetTarget(target, capture)
 }
 
 func startAudioCapture(
@@ -585,6 +613,10 @@ func (session *Session) prepareVideo(
 	if err != nil {
 		_ = replacement.Close()
 		return nil, CaptureState{}, err
+	}
+	if options.RemoteInput && !state.RemoteInput {
+		_ = replacement.Close()
+		return nil, CaptureState{}, errors.New("desktop did not grant remote input")
 	}
 	return replacement, state, nil
 }
@@ -641,6 +673,12 @@ func (session *Session) commitCapture(
 	}
 	if replacement == nil {
 		return nil
+	}
+	// A Portal stream owns input permission as well as the picture. Retire its
+	// grant before closing it, then bind the replacement through the same owner.
+	if session.remoteInput.UsesCaptureInput() {
+		session.remoteInput.SetTarget(nativecapture.CaptureTarget{}, nil)
+		defer session.syncRemoteInputSource()
 	}
 	_ = replacement.RequestKeyFrame(-1)
 	_ = previous.Close()

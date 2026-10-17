@@ -15,7 +15,7 @@ var extendedFrameBounds = windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmGet
 
 type rect struct{ left, top, right, bottom int32 }
 
-func (s *windowsSink) Target(target nativecapture.CaptureTarget) (bounds, bool, error) {
+func (s *windowsSink) Target(target nativecapture.CaptureTarget, _ *nativecapture.Stream) (bounds, bool, error) {
 	id, err := strconv.ParseUint(target.SourceID, 10, 64)
 	if err != nil || id == 0 {
 		return bounds{}, false, errors.New("shared source is unavailable")

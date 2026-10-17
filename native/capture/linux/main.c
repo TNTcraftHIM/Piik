@@ -74,6 +74,7 @@ struct CaptureRun {
   guint original_output;
   const EncoderInfo *encoder_info;
   const char *restore_token;
+  PiikPortalCapture *portal;
   GMutex lock;
   char *failure;
   gint stopping;
@@ -321,9 +322,10 @@ static int write_probe(void) {
       json,
       "{\"protocol\":%d,\"platform\":\"linux\",\"platformBuild\":%s,"
       "\"videoCapture\":%s,\"softwareVP8\":false,\"processAudio\":false,\"systemAudio\":%s,\"microphone\":%s,"
-      "\"adapters\":[",
+      "\"remoteInput\":%s,\"adapters\":[",
       kCaptureProtocol, build, video ? "true" : "false",
-      audio ? "true" : "false", audio ? "true" : "false");
+      audio ? "true" : "false", audio ? "true" : "false",
+      video && piik_portal_input_available() ? "true" : "false");
   g_free(build);
   if (encoders->len > 0) {
     g_string_append(json,
@@ -702,6 +704,7 @@ static gboolean set_output_active(VideoOutput *output, gboolean enabled) {
 }
 
 static gboolean apply_control(CaptureRun *run, char *line) {
+  if (g_str_has_prefix(line, "I ")) return piik_portal_input(run->portal, line + 2);
   char *values[4] = {0};
   guint count = 0;
   g_auto(GStrv) tokens = g_strsplit_set(line, " \t\r", -1);
@@ -1025,9 +1028,10 @@ static GstFlowReturn video_sample(GstAppSink *sink, gpointer data) {
     char *status = g_strdup_printf(
         "{\"state\":\"active\",\"codec\":\"h264\",\"hardwareOnly\":true,"
         "\"profileLevelId\":\"%s\",\"width\":%u,\"height\":%u,"
-        "\"fps\":%u,\"restoreToken\":%s,\"outputs\":%s}",
+        "\"fps\":%u,\"restoreToken\":%s,\"outputs\":%s,\"remoteInput\":%s}",
         nal.profile_level_id, run->profile.width, run->profile.height,
-        run->profile.frame_rate, token, profiles);
+        run->profile.frame_rate, token, profiles,
+        run->portal != NULL && run->portal->remote_input ? "true" : "false");
     g_free(token);
     g_free(profiles);
     gboolean active_written = write_status(status);
@@ -1149,6 +1153,12 @@ static char *pipewire_target(const PiikPortalCapture *portal) {
       : g_strdup_printf("path=%u", portal->node_id);
 }
 
+static void portal_closed(XdpSession *session, gpointer data) {
+  (void)session;
+  CaptureRun *run = data;
+  fail_run(run, "desktop sharing permission ended");
+}
+
 static int capture_video(int count, char **values) {
   CaptureRun run = {.last_input_timestamp = GST_CLOCK_TIME_NONE};
   gboolean encoded = count > 1 && strcmp(values[1], "--encoded-video") == 0;
@@ -1165,8 +1175,9 @@ static int capture_video(int count, char **values) {
   const EncoderInfo *encoder_info = g_ptr_array_index(encoders, encoder_index);
   GError *error = NULL;
   PiikPortalCapture portal = {.pipewire_fd = -1};
+  gboolean remote_input = g_strcmp0(g_getenv("PIIK_CAPTURE_REMOTE_INPUT"), "1") == 0;
   if (!encoded && !piik_portal_capture_open(
-          g_getenv("PIIK_XDP_RESTORE_TOKEN"), &portal, &error)) {
+          g_getenv("PIIK_XDP_RESTORE_TOKEN"), remote_input, &portal, &error)) {
     fprintf(stderr, "Piik capture unavailable: %s\n",
             error == NULL ? "screen selection failed" : error->message);
     g_clear_error(&error);
@@ -1222,6 +1233,8 @@ static int capture_video(int count, char **values) {
   run.pipeline = pipeline;
   run.encoder_info = encoder_info;
   run.restore_token = portal.restore_token;
+  run.portal = &portal;
+  if (portal.session != NULL) g_signal_connect(portal.session, "closed", G_CALLBACK(portal_closed), &run);
   g_mutex_init(&run.lock);
   int result = 2;
   GstElement *source = gst_bin_get_by_name(GST_BIN(pipeline), "source");
@@ -1284,8 +1297,9 @@ static int capture_video(int count, char **values) {
       "\"adapterIndex\":0,\"adapterName\":%s,"
       "\"adapterIdentity\":\"gstreamer-hardware-h264\","
       "\"encoderIndex\":%u,\"encoderName\":%s,"
-      "\"encoderIdentity\":%s,\"outputs\":%s}",
-      adapter_name, encoder_index, encoder_name, encoder_identity, profiles);
+      "\"encoderIdentity\":%s,\"outputs\":%s,\"remoteInput\":%s}",
+      adapter_name, encoder_index, encoder_name, encoder_identity, profiles,
+      portal.remote_input ? "true" : "false");
   g_free(adapter_name);
   g_free(encoder_name);
   g_free(encoder_identity);
@@ -1293,6 +1307,7 @@ static int capture_video(int count, char **values) {
   result = run_pipeline(&run, starting);
   g_free(starting);
 cleanup:
+  if (portal.session != NULL) g_signal_handlers_disconnect_by_data(portal.session, &run);
   if (run.encoded_source != NULL) gst_object_unref(run.encoded_source);
   for (guint index = 0; index < run.output_count; ++index) {
     if (run.outputs[index].encoder != NULL) gst_object_unref(run.outputs[index].encoder);

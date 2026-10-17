@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { remoteControlModeSchema } from "../remote-control/protocol";
+import { remoteControlModeSchema, remoteInputPlatformSchema } from "../remote-control/protocol";
 import { sfuMediaSchema, positiveUint32Schema, qualityResolutionSchema, punchPredictionSchema,
   nullableSafeEvidenceNumber, nullableSafeEvidenceInteger } from "../../shared/protocol";
 
@@ -279,7 +279,7 @@ const remoteControlRequestSchema = z.object({
 }).strict();
 export type RemoteControlRequest = z.infer<typeof remoteControlRequestSchema>;
 
-export const remoteControlStateSchema = z.object({ mode: remoteControlModeSchema, requests: z.array(remoteControlRequestSchema) });
+export const remoteControlStateSchema = z.object({ mode: remoteControlModeSchema, platform: remoteInputPlatformSchema, requests: z.array(remoteControlRequestSchema) });
 export type RemoteControlState = z.infer<typeof remoteControlStateSchema>;
 
 export const nativeEventSchema = z.discriminatedUnion("type", [

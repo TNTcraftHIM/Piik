@@ -53,6 +53,7 @@ type CaptureTarget struct {
 }
 
 type VideoOptions struct {
+	RemoteInput       bool
 	Target            CaptureTarget
 	Codec             string
 	AdapterIndex      uint32
@@ -120,10 +121,11 @@ func validVideoPreference(preference string) bool {
 }
 
 type Stream struct {
-	cancel context.CancelFunc
-	input  io.ReadCloser
-	key    io.WriteCloser
-	done   chan error
+	remoteInput bool
+	cancel      context.CancelFunc
+	input       io.ReadCloser
+	key         io.WriteCloser
+	done        chan error
 
 	outputs   []OutputProfile
 	active    [maxOutputs]bool
@@ -251,6 +253,9 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 	if options.RestoreToken != "" {
 		environment = []string{"PIIK_XDP_RESTORE_TOKEN=" + options.RestoreToken}
 	}
+	if options.RemoteInput {
+		environment = append(environment, "PIIK_CAPTURE_REMOTE_INPUT=1")
+	}
 	arguments := []string{
 		"--capture-video",
 		options.Target.Kind,
@@ -291,6 +296,7 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 		return nil, err
 	}
 	stream.outputs = outputs
+	stream.remoteInput = options.RemoteInput
 	stream.active[0], stream.active[1] = true, true
 	return stream, nil
 }
@@ -641,6 +647,32 @@ func (stream *Stream) writeControl(command string) error {
 	stream.controlMu.Lock()
 	defer stream.controlMu.Unlock()
 	return stream.writeControlLocked(command)
+}
+
+// Remote input uses the selected Portal capture's inherited control pipe; it
+// never opens a separate OS session, listener or network route.
+func (stream *Stream) RemoteInput() bool {
+	// Availability cannot wait behind a blocked media-control write: the input
+	// owner must remain able to reach its bounded write/retirement path.
+	return stream != nil && stream.remoteInput && stream.ctx.Err() == nil
+}
+
+func (stream *Stream) SendRemoteInput(command string) error {
+	if stream == nil {
+		return errors.New("capture input is unavailable")
+	}
+	// A stalled helper must not hold the input grant lock indefinitely. Retire
+	// that same capture if even a small control command cannot make progress.
+	timer := time.AfterFunc(captureStopTimeout, stream.cancel)
+	defer timer.Stop()
+	if !stream.RemoteInput() {
+		return errors.New("capture input is unavailable")
+	}
+	err := stream.writeControl("I " + command)
+	if err != nil {
+		stream.cancel()
+	}
+	return err
 }
 
 func (stream *Stream) writeControlLocked(command string) error {

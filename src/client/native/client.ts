@@ -706,7 +706,7 @@ export class NativeClient {
   }
 
   async setRemoteControlPolicy(shareId: string, mode: RemoteControlMode, password?: string): Promise<void> {
-    await this.request("set-remote-control-policy", { shareId, mode, ...(password !== undefined ? { password } : {}) }, nativeAckResponseSchema);
+    await this.request("set-remote-control-policy", { shareId, mode, ...(password !== undefined ? { password } : {}) }, nativeAckResponseSchema, null);
   }
 
   async setRemoteInputPeers(shareId: string, peers: { peerId: string; endpointId: string; secret: string }[]): Promise<void> {

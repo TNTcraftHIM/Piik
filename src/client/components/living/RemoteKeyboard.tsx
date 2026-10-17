@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RemoteInputEvent } from "../../remote-control/input-session";
+import type { RemoteInputPlatform } from "../../remote-control/protocol";
 import { RemoteKeyboardPresses } from "../../remote-control/keyboard";
 import { isCopyKey, useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -18,22 +19,29 @@ const ROWS = {
   functions: [functions(1), functions(7), [["Ins", "Insert"], ["Del", "Delete"], ["Home", "Home"], ["End", "End"], ["PgUp", "PageUp"], ["PgDn", "PageDown"]],
     [["Caps", "CapsLock"], ["PrtSc", "PrintScreen"], ["ScrLk", "ScrollLock"], ["NumLk", "NumLock"]]],
 } satisfies Record<string, Key[][]>;
-const MODIFIERS: Key[] = [["Ctrl", "ControlLeft"], ["Alt", "AltLeft"], ["Shift", "ShiftLeft"], ["Win", "MetaLeft"]];
 const NAVIGATION: Key[] = [["Esc", "Escape"], ["Tab", "Tab"], ["␣", "Space"], ["←", "ArrowLeft"], ["↑", "ArrowUp"], ["↓", "ArrowDown"], ["→", "ArrowRight"]];
-const SHORTCUTS = [
-  ["Ctrl+A", "ControlA", ["ControlLeft", "KeyA"]], ["Ctrl+C", "ControlC", ["ControlLeft", "KeyC"]],
-  ["Ctrl+V", "ControlV", ["ControlLeft", "KeyV"]], ["Win", "MetaLeft", ["MetaLeft"]],
-  ["Win+Space", "InputLanguage", ["MetaLeft", "Space"]], ["Alt+Tab", "SwitchWindow", ["AltLeft", "Tab"]],
-] as const;
 type Page = keyof typeof ROWS | "text";
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
-export function RemoteKeyboard({ input, close, mouseControl, touch }: {
+export function RemoteKeyboard({ input, close, mouseControl, touch, platform }: {
   input: (event: RemoteInputEvent) => void; close: () => void;
   mouseControl?: ReactNode; touch: boolean;
+  platform: RemoteInputPlatform;
 }) {
   const { t, vis } = useCopy();
+  const mac = platform === "darwin";
+  const command = mac ? "MetaLeft" : "ControlLeft";
+  const modifiersKeys: Key[] = [["Ctrl", "ControlLeft"], [mac ? "Opt" : "Alt", "AltLeft"], ["Shift", "ShiftLeft"],
+    [mac ? "Cmd" : platform === "windows" ? "Win" : "Super", "MetaLeft"]];
+  const shortcuts = [
+    [`${mac ? "Cmd" : "Ctrl"}+A`, "ControlA", [command, "KeyA"]],
+    [`${mac ? "Cmd" : "Ctrl"}+C`, "ControlC", [command, "KeyC"]],
+    [`${mac ? "Cmd" : "Ctrl"}+V`, "ControlV", [command, "KeyV"]],
+    ...(platform === "windows" ? [["Win", "MetaLeft", ["MetaLeft"]], ["Win+Space", "InputLanguage", ["MetaLeft", "Space"]]] as const
+      : mac ? [["Ctrl+Space", "InputLanguage", ["ControlLeft", "Space"]], ["Cmd+`", "SwitchWindow", ["MetaLeft", "Backquote"]]] as const : []),
+    [`${mac ? "Cmd" : "Alt"}+Tab`, mac ? "SwitchApp" : "SwitchWindow", [mac ? "MetaLeft" : "AltLeft", "Tab"]],
+  ] as const;
   const [page, setPage] = useState<Page>("letters");
   const [text, setText] = useState("");
   const [modifiers, setModifiers] = useState<string[]>([]);
@@ -47,6 +55,9 @@ export function RemoteKeyboard({ input, close, mouseControl, touch }: {
     window.addEventListener("blur", reset);
     return () => { window.removeEventListener("blur", reset); presses.reset(); };
   }, [presses]);
+  const rows = page === "text" ? [] : mac && page === "functions"
+    ? [...ROWS.functions.slice(0, 2), ROWS.functions.slice(2).flat().filter(([, code]) => !["Insert", "PrintScreen", "ScrollLock", "NumLock"].includes(code))]
+    : ROWS[page];
 
   const key = ([label, code, shifted]: Key) => {
     const name = `remote.key.${code}`;
@@ -88,19 +99,19 @@ export function RemoteKeyboard({ input, close, mouseControl, touch }: {
     </div>
     {page !== "text" ? <>
       <div className={`lr-remote-key-layout is-${page}`}>
-        {ROWS[page].map((row, index) => <div className="lr-remote-key-row" key={index}>{row.map(key)}</div>)}
+        {rows.map((row, index) => <div className="lr-remote-key-row" key={index}>{row.map(key)}</div>)}
       </div>
       <div className="lr-remote-key-row lr-remote-modifiers">
-        {MODIFIERS.map(([label, code]) => <Chip key={code} title={label} selected={modifiers.includes(code)}
+        {modifiersKeys.map(([label, code]) => <Chip key={code} title={mac && code === "AltLeft" ? "Option" : label} selected={modifiers.includes(code)}
           onClick={() => setModifiers(current => current.includes(code) ? current.filter(item => item !== code) : [...current, code])}>{label}</Chip>)}
         {key(["⌫", "Backspace"])}{key(["↵", "Enter"])}
       </div>
       <div className="lr-remote-key-row lr-remote-navigation">{NAVIGATION.map(key)}</div>
-      {!vis && <p>{t("remote.modifierHelp")}</p>}
+      {!vis && <p>{t("remote.modifierHelp", { modifiers: modifiersKeys.map(([label, code]) => mac && code === "AltLeft" ? "Option" : label).join(" / ") })}</p>}
     </> : <>
       <div className="lr-remote-keys">{[...NAVIGATION.filter(([, code]) => code !== "Space"), ["⌫", "Backspace"], ["↵", "Enter"]].map(item => key(item as Key))}</div>
       <div className="lr-remote-keys lr-remote-shortcuts">
-        {SHORTCUTS.map(([label, name, codes]) => <button key={name} type="button" className="lr-chip"
+        {shortcuts.map(([label, name, codes]) => <button key={name} type="button" className="lr-chip"
           aria-label={t(`remote.key.${name}`)} onClick={() => presses.tap(codes)}>{label}</button>)}
       </div>
       <form className="lr-remote-policy-actions" onSubmit={event => {

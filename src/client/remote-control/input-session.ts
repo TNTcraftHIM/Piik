@@ -77,26 +77,29 @@ export class RemoteInputSession {
       return true;
     } catch {
       this.intent = null;
-      this.set({ state: "failed", mode: this.state?.mode ?? "ask" });
+      this.set(this.state && { ...this.state, state: "failed", grant: undefined });
       this.channel.close();
       return false;
     }
   }
 
   request(password?: string): void {
+    const state = this.state;
+    if (!state) return;
     this.intent = crypto.randomUUID().replaceAll("-", "");
     if (this.send({ type: "request", intent: this.intent, ...(password !== undefined ? { password } : {}) }))
-      this.set({ state: "pending", mode: this.state?.mode ?? "ask", intent: this.intent });
+      this.set({ state: "pending", mode: state.mode, platform: state.platform, intent: this.intent });
   }
 
   release(): void {
-    if (this.intent === null) {
+    if (this.intent === null || !this.state) {
       if (this.state?.reason) this.set({ ...this.state, reason: undefined });
       return;
     }
     const intent = this.intent;
+    const state = this.state;
     this.intent = null;
-    if (this.send({ type: "release", intent })) this.set({ state: "ready", mode: this.state?.mode ?? "ask" });
+    if (this.send({ type: "release", intent })) this.set({ state: "ready", mode: state.mode, platform: state.platform });
   }
 
   input(event: RemoteInputEvent): void {
