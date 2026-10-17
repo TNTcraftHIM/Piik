@@ -2,8 +2,11 @@
 
 #include "platform_darwin.h"
 #include <ApplicationServices/ApplicationServices.h>
+#import <AppKit/NSEvent.h>
 #include <libproc.h>
+#include <math.h>
 #include <string.h>
+#include <time.h>
 
 static bool number(CFDictionaryRef value, CFStringRef key, int64_t *out) {
   CFTypeRef field = CFDictionaryGetValue(value, key);
@@ -88,13 +91,16 @@ static bool post(CGEventRef event, uint64_t flags) {
 bool piik_input_key(CGEventSourceRef source, uint16_t code, bool down,
                     uint64_t flags, bool repeat) {
   CGEventRef event = CGEventCreateKeyboardEvent(source, code, down);
-  if (event && repeat) CGEventSetIntegerValueField(event, kCGKeyboardEventAutorepeat, 1);
+  if (event) {
+    if (code >= 54 && code <= 62) CGEventSetType(event, kCGEventFlagsChanged);
+    else if (repeat) CGEventSetIntegerValueField(event, kCGKeyboardEventAutorepeat, 1);
+  }
   return post(event, flags);
 }
 
 bool piik_input_pointer(CGEventSourceRef source, double x, double y,
                         int button, bool down, int drag, bool relative,
-                        uint64_t flags) {
+                        uint64_t flags, PiikInputClick *click) {
   CGEventRef current = CGEventCreate(NULL);
   if (!current) return false;
   CGPoint point = CGEventGetLocation(current);
@@ -111,6 +117,19 @@ bool piik_input_pointer(CGEventSourceRef source, double x, double y,
                          (down ? kCGEventOtherMouseDown : kCGEventOtherMouseUp);
   }
   CGEventRef event = CGEventCreateMouseEvent(source, type, point, button);
+  if (event && click) {
+    if (down) {
+      struct timespec clock;
+      clock_gettime(CLOCK_MONOTONIC, &clock);
+      double now = clock.tv_sec + clock.tv_nsec / 1e9;
+      // Quartz requires an explicit click count. Use the Host's double-click
+      // interval and keep distinct positions/buttons from becoming double-clicks.
+      click->count = now - click->time <= [NSEvent doubleClickInterval] &&
+          hypot(point.x - click->x, point.y - click->y) <= 4 ? click->count + 1 : 1;
+      click->time = now; click->x = point.x; click->y = point.y;
+    }
+    CGEventSetIntegerValueField(event, kCGMouseEventClickState, click->count);
+  }
   if (event && relative) {
     CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, (int64_t)x);
     CGEventSetIntegerValueField(event, kCGMouseEventDeltaY, (int64_t)y);
@@ -119,8 +138,8 @@ bool piik_input_pointer(CGEventSourceRef source, double x, double y,
 }
 
 bool piik_input_scroll(CGEventSourceRef source, int32_t delta, uint64_t flags) {
-  // Browser wheel delta is positive down; Quartz scroll is positive up.
-  return post(CGEventCreateScrollWheelEvent(source, kCGScrollEventUnitPixel, 1, -delta), flags);
+  // The shared input session already normalizes wheel deltas to positive up.
+  return post(CGEventCreateScrollWheelEvent(source, kCGScrollEventUnitPixel, 1, delta), flags);
 }
 
 bool piik_input_text(CGEventSourceRef source, const uint16_t *text, size_t length) {

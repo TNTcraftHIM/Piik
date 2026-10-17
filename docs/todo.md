@@ -16,28 +16,18 @@ platform deferrals or establish a diagnosis for unmatched reports.
 
 - [ ] **Attended keyboard/mouse remote control.** Windows App display/window sharing now
   offers optional input over the existing direct, Browser/App relay and SFU
-  routes in experimental `remotecontrol` builds. Routed viewing, Host-page
-  consent, actual native key input/release and relay-departure recovery pass local
-  acceptance. Source switching, focus/geometry and game mouse/scan-code input are
-  implemented; native clicks remain accurate after window movement and resizing.
-  Commercial-game compatibility and an actual remote-device trial remain. Keep
-  one Host publication and one keyboard/mouse controller at a time, under the
-  Host's source-scoped permission policy, disabled by default. Ask each time, room admission
-  and password modes are implemented. Mobile touchpad gestures and Unicode text
-  input pass local Browser-to-Windows checks. The virtual keyboard supplies
-  letters, symbols, function keys and one-shot modifiers, with held-key release
-  and portrait/landscape layouts checked locally. Local pinch zoom/pan retains
-  input coordinates and provides picture reset; physical Android/iOS keyboard and
-  fullscreen behavior still need device acceptance. The [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
-  owns limitations and evidence. This is not part of the public release.
-  macOS Quartz/Accessibility and Linux RemoteDesktop Portal backends are implemented.
-  Linux compilation, synthetic input/release and shared Go lifecycle checks pass;
-  actual desktop permission/capture still needs acceptance. macOS needs an Apple
-  SDK build and physical focus/Retina/input checks. Platform-aware virtual keys
-  and permission/stop copy share the same input state; no extra driver or route.
-  [Window/game input assessment](./research/room-interactions.md#window-capture-and-game-input)
-  owns window scope, focus/geometry work and game-compatibility
-  limits; ordinary desktop input checks do not establish remote co-play readiness.
+  routes in experimental `remotecontrol` builds. Keep one Host publication and
+  one controller, with source-scoped permission disabled by default. Local Windows
+  routed input, consent/revocation, relay recovery, window geometry and mobile
+  touch/keyboard emulation pass; the [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
+  owns implementation and evidence. Finish owner acceptance before release.
+  Physical Android/iOS, mixed-DPI displays, commercial games and an actual
+  remote-device trial remain. macOS Quartz/Accessibility and Linux RemoteDesktop
+  Portal backends are implemented; Linux compilation and synthetic input/release
+  checks pass, but desktop permission/capture remains unverified. macOS needs
+  an Apple SDK build and physical focus/Retina/input checks. The
+  [window/game assessment](./research/room-interactions.md#window-capture-and-game-input)
+  owns platform and game-compatibility limits. This is not a public feature.
 
 - [ ] **Return LiveKit to an upstream pin.** Native publication now supplies
   unmet encoder demand to the existing allocator through the scoped dependency

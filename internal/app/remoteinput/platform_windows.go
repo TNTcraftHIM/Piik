@@ -186,8 +186,11 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 func (s *windowsSink) Reset() error {
 	var result error
 	for key := range s.keys {
-		result = errors.Join(result, inject(keyInput(key, false)))
-		delete(s.keys, key)
+		if err := inject(keyInput(key, false)); err != nil {
+			result = errors.Join(result, err)
+		} else {
+			delete(s.keys, key)
+		}
 	}
 	for button := range s.buttons {
 		result = errors.Join(result, s.Apply(bounds{}, inputEvent{Type: "button", Button: button}))

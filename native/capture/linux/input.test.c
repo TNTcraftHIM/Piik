@@ -47,6 +47,11 @@ int main(void) {
   g_assert_cmpuint(last_stream, ==, 42);
   g_assert_cmpfloat(last_x, ==, 1919);
   g_assert_cmpfloat(last_y, ==, 1079);
+  g_assert_true(piik_portal_input(&capture, "W -120")); // Browser scroll down.
+  g_assert_cmpfloat(last_x, ==, 0);
+  g_assert_cmpfloat(last_y, ==, 120);
+  g_assert_true(piik_portal_input(&capture, "W 24")); // Fractional scroll up.
+  g_assert_cmpfloat(last_y, ==, -24);
   g_assert_true(piik_portal_input(&capture, "K 30 1"));
   g_assert_true(piik_portal_input(&capture, "B 2 1"));
   g_assert_cmpint(held_key, ==, 30);

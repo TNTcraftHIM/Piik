@@ -446,7 +446,9 @@ or simulate the protected Ctrl+Alt+Delete sequence. Closing the keyboard returns
 focus to the control surface. [Parsec's input modes](https://support.parsec.app/hc/en-us/articles/32361385571860-Immersive-Mode-Setting)
 likewise distinguish remote key capture from ordinary local window interaction.
 The local text field owns IME composition and sends only explicitly submitted
-text through Windows [Unicode input](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput).
+text through the platform input adapter, including Windows
+[Unicode input](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput),
+Quartz Unicode events and Portal keysyms.
 There is no clipboard synchronization. This follows the touchpad conventions in
 [Moonlight's input guide](https://github.com/moonlight-stream/moonlight-docs/wiki/Setup-Guide#keyboardmousegamepad-input-options);
 [UU's iPad guide](https://uuyc.163.com/help/20241203/40221_1197702.html) also distinguishes

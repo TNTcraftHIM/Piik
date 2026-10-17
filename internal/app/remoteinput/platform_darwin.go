@@ -3,7 +3,7 @@
 package remoteinput
 
 /*
-#cgo LDFLAGS: -framework ApplicationServices
+#cgo LDFLAGS: -framework ApplicationServices -framework AppKit
 #include "platform_darwin.h"
 */
 import "C"
@@ -24,6 +24,8 @@ type macSink struct {
 	source  C.CGEventSourceRef
 	keys    map[uint16]bool
 	buttons map[int]bool
+	clicks  [5]C.PiikInputClick
+	caps    bool
 }
 
 func newPlatformSink(bool) (inputSink, error) {
@@ -31,7 +33,8 @@ func newPlatformSink(bool) (inputSink, error) {
 	if source == 0 {
 		return nil, errors.New("macOS input is unavailable")
 	}
-	return &macSink{source: source, keys: map[uint16]bool{}, buttons: map[int]bool{}}, nil
+	return &macSink{source: source, keys: map[uint16]bool{}, buttons: map[int]bool{},
+		caps: C.CGEventSourceFlagsState(C.kCGEventSourceStateCombinedSessionState)&C.kCGEventFlagMaskAlphaShift != 0}, nil
 }
 
 func (*macSink) Authorize() error {
@@ -59,6 +62,9 @@ func (*macSink) Target(target nativecapture.CaptureTarget, _ *nativecapture.Stre
 
 func (s *macSink) flags() C.uint64_t {
 	var flags uint64
+	if s.caps {
+		flags |= 1 << 16
+	}
 	for key := range s.keys {
 		switch key {
 		case 56, 60:
@@ -94,7 +100,7 @@ func (s *macSink) Apply(b bounds, e inputEvent) error {
 				break
 			}
 		}
-		ok = bool(C.piik_input_pointer(s.source, C.double(x), C.double(y), -1, false, C.int(drag), C.bool(e.Type == "relative"), s.flags()))
+		ok = bool(C.piik_input_pointer(s.source, C.double(x), C.double(y), -1, false, C.int(drag), C.bool(e.Type == "relative"), s.flags(), nil))
 	case "button":
 		if e.Button < 0 || e.Button > 4 {
 			return errors.New("invalid pointer button")
@@ -103,7 +109,7 @@ func (s *macSink) Apply(b bounds, e inputEvent) error {
 		if !e.Down && !s.buttons[button] {
 			return nil
 		}
-		ok = bool(C.piik_input_pointer(s.source, 0, 0, C.int(button), C.bool(e.Down), -1, false, s.flags()))
+		ok = bool(C.piik_input_pointer(s.source, 0, 0, C.int(button), C.bool(e.Down), -1, false, s.flags(), &s.clicks[button]))
 		if ok {
 			if e.Down {
 				s.buttons[button] = true
@@ -125,6 +131,10 @@ func (s *macSink) Apply(b bounds, e inputEvent) error {
 		if !e.Down && !held {
 			return nil
 		}
+		caps := s.caps
+		if code == 57 && e.Down && !held {
+			s.caps = !s.caps
+		}
 		if e.Down {
 			s.keys[code] = true
 		} else {
@@ -132,6 +142,7 @@ func (s *macSink) Apply(b bounds, e inputEvent) error {
 		}
 		ok = bool(C.piik_input_key(s.source, C.uint16_t(code), C.bool(e.Down), s.flags(), C.bool(held && e.Down)))
 		if !ok {
+			s.caps = caps
 			if held {
 				s.keys[code] = true
 			} else {
@@ -171,12 +182,13 @@ func (s *macSink) Reset() error {
 		}
 	}
 	for button := range s.buttons {
-		if bool(C.piik_input_pointer(s.source, 0, 0, C.int(button), false, -1, false, 0)) {
+		if bool(C.piik_input_pointer(s.source, 0, 0, C.int(button), false, -1, false, s.flags(), &s.clicks[button])) {
 			delete(s.buttons, button)
 		} else {
 			result = errors.New("macOS could not release held input")
 		}
 	}
+	s.clicks = [5]C.PiikInputClick{}
 	return result
 }
 

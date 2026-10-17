@@ -190,7 +190,7 @@ export function RemoteControl({ channel, videoRef, available }: {
           </label>
           <Btn icon="check" title="remote.request" type="submit" disabled={!password || state.state === "pending"} />
         </div>
-        {state.reason && <p role="status"><Glyph name={statusIcon} size={16} />
+        {state.reason && <p role="status" className={state.reason === "password" ? "is-bad" : undefined}><Glyph name={statusIcon} size={16} />
           <span className={vis ? "visually-hidden" : undefined}>{t(`remote.reason.${state.reason}`)}</span></p>}
       </form>}
       {controlled && <div ref={surface} className={`lr-remote-input-surface${active ? "" : " is-suspended"}`} tabIndex={0}
