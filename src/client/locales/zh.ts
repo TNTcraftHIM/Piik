@@ -464,7 +464,7 @@ export const zh = {
   "host.settings.pictureDetails": "画面细调",
   "host.settings.pictureLimits": "当前画面上限",
   "host.settings.sound": "声音",
-  "host.settings.technical": "连接与编码",
+  "host.settings.connection": "连接设置",
   "host.advanced.resolution": "分辨率上限",
   "host.advanced.framerate": "帧率上限",
   "host.advanced.bitrate": "视频码率上限",

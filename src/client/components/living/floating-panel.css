@@ -1,5 +1,5 @@
 .lr-floating-surface { color: var(--ink); background: var(--paper); border: 1px solid var(--control-edge); border-radius: 24px; box-shadow: 0 12px 36px rgb(16 26 44 / .2), var(--control-shadow); }
-.lr-floating-panel { position: fixed; inset: auto 12px 12px auto; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); margin: 0; padding: 16px; overflow: auto; overscroll-behavior: contain; transform-origin: right bottom; }
+.lr-floating-panel { position: fixed; inset: auto 12px 12px auto; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); margin: 0; padding: 16px; overflow: auto; overscroll-behavior: contain; transform-origin: right bottom; container: floating-panel / inline-size; }
 .lr-floating-panel:popover-open { display: flex; flex-direction: column; animation: lr-floating-enter 180ms var(--spring); }
 .lr-floating-panel:focus { outline: none; }
 .lr-floating-panel:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
@@ -9,14 +9,18 @@
 .lr-floating-title { display: flex; flex: 1; min-width: 0; align-items: center; gap: 7px; font-size: 14px; }
 .lr-floating-title svg { flex: none; color: var(--muted); }
 .lr-floating-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lr-floating-position { position: relative; flex: none; }
-.lr-floating-position > summary { display: flex; align-items: center; gap: 5px; min-height: 40px; padding: 0 9px; border-radius: 12px; font-size: 12px; color: var(--muted); cursor: pointer; list-style: none; }
-.lr-floating-position > summary::-webkit-details-marker { display: none; }
-.lr-floating-position > summary:is(:hover, :focus-visible), .lr-floating-position[open] > summary { color: var(--ink); background: var(--control-hover); }
-.lr-floating-positions { position: absolute; z-index: 2; top: calc(100% + 6px); right: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 180px; padding: 8px; border: 1px solid var(--control-edge); border-radius: 18px; background: var(--paper); box-shadow: var(--control-shadow), 0 8px 24px #0002; }
+.lr-floating-position { flex: none; }
+.lr-floating-position > button { display: flex; align-items: center; gap: 5px; min-height: 40px; padding: 0 9px; border: 0; border-radius: 12px; background: transparent; font-size: 12px; color: var(--muted); cursor: pointer; }
+.lr-floating-position > button:is(:hover, :focus-visible), .lr-floating-position:has(:popover-open) > button { color: var(--ink); background: var(--control-hover); }
+.lr-floating-positions { position: fixed; inset: auto; margin: 0; width: 180px; padding: 8px; border: 1px solid var(--control-edge); border-radius: 18px; background: var(--paper); box-shadow: var(--control-shadow), 0 8px 24px #0002; overflow: auto; overscroll-behavior: contain; }
+.lr-floating-positions:popover-open { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .lr-floating-positions button { display: grid; justify-items: center; gap: 6px; min-height: 60px; padding: 8px 4px; border: 0; border-radius: 10px; color: var(--ink); background: transparent; font-size: 11px; }
 .lr-floating-positions button:is(:hover, :focus-visible) { color: var(--action); background: var(--control-hover); }
 .lr-floating-positions .lr-floating-size { border-top: 1px solid var(--wall-2); }
+@container floating-panel (max-width: 320px) {
+  .lr-floating-header { gap: 6px; }
+  .lr-floating-position > button > span { display: none; }
+}
 .lr-floating-resize { position: absolute; z-index: 3; display: grid; place-items: center; width: 28px; height: 28px; color: var(--muted); cursor: nwse-resize; touch-action: none; user-select: none; }
 .lr-floating-resize.is-nw { top: 1px; left: 1px; transform: rotate(180deg); }
 .lr-floating-resize.is-se { right: 1px; bottom: 1px; }

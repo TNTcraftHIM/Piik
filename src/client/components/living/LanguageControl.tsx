@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, type KeyboardEvent } from "react";
 import { locales, type Lang } from "../../locales";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
+import { useAnchoredPopover } from "./use-anchored-popover";
 
 // The registry owns languages; the native popover owns visibility and dismissal.
 // This control adds Piik's presentation, viewport placement and menu navigation.
@@ -12,40 +13,20 @@ export function LanguageControl() {
   const menuRef = useRef<HTMLSpanElement>(null);
   const extraLanguages = (Object.keys(locales) as Lang[]).filter((key): boolean => key !== "zh" && key !== "en");
   const selectedExtra = !vis && extraLanguages.includes(lang) ? locales[lang] : null;
+  useAnchoredPopover(triggerRef, menuRef, { maxHeight: 360, enabled: extraLanguages.length > 0 });
 
   useEffect(() => {
     const menu = menuRef.current;
     const trigger = triggerRef.current;
     if (!menu || !trigger) return;
-    const place = () => {
-      if (!menu.matches(":popover-open")) return;
-      const rect = trigger.getBoundingClientRect();
-      if (rect.bottom <= 0 || rect.top >= window.innerHeight) {
-        menu.hidePopover();
-        return;
-      }
-      const below = Math.max(0, window.innerHeight - rect.bottom - 16);
-      const above = Math.max(0, rect.top - 16);
-      const openAbove = below < Math.min(menu.scrollHeight, 360) && above > below;
-      menu.style.maxHeight = `${Math.min(360, openAbove ? above : below)}px`;
-      menu.classList.toggle("is-above", openAbove);
-      const top = openAbove ? rect.top - menu.offsetHeight - 8 : Math.max(8, rect.bottom + 8);
-      menu.style.left = `${Math.max(8, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8))}px`;
-      menu.style.top = `${top}px`;
-    };
     const opened = () => {
       if (!menu.matches(":popover-open")) return;
-      place();
       const selected = menu.querySelector<HTMLButtonElement>('[aria-checked="true"]');
       (selected ?? menu.querySelector<HTMLButtonElement>("button"))?.focus();
     };
     menu.addEventListener("toggle", opened);
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
     return () => {
       menu.removeEventListener("toggle", opened);
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
     };
   }, [extraLanguages.length]);
 

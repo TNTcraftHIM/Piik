@@ -48,7 +48,7 @@
 .lr-playback-view { display: inline-flex; align-items: center; flex: none; gap: 4px; margin-left: auto; border-left: 1px solid var(--wall-2); padding-left: 8px; }
 .lr-playback-secondary { display: inline-flex; align-items: center; gap: inherit; }
 .lr-playback-more { display: none; }
-.lr-playback-menu { position: fixed; inset: auto; margin: 0; padding: 8px; max-width: calc(100vw - 16px); border: 1.5px solid var(--control-edge); border-radius: 18px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); }
+.lr-playback-menu { position: fixed; inset: auto; margin: 0; padding: 8px; max-width: calc(100vw - 16px); border: 1.5px solid var(--control-edge); border-radius: 18px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); overflow: auto; overscroll-behavior: contain; }
 .lr-playback-menu:popover-open { display: grid; gap: 6px; }
 .lr-playback-menu .lr-comic-tip-wrap { display: block; }
 .lr-playback-menu .lr-btn { display: flex; justify-content: flex-start; width: 100%; padding: 0 12px; gap: 8px; }

@@ -513,6 +513,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   transition: color 120ms ease, background 120ms ease;
 }
 .lr-source-picker-tabs button svg { flex: 0 0 auto; }
+.lr-source-picker-tabs button > span { word-break: keep-all; }
 @media (max-width: 520px) {
   .lr-source-picker-tabs button { flex-direction: column; gap: 3px; padding-inline: 0; font-size: 11px; }
 }
@@ -1036,7 +1037,7 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 }
 @keyframes lr-pop { 50% { transform: scale(1.06); } }
 
-/* Equal columns keep the admission thumb aligned across translated captions. */
+/* Equal columns keep the shared two-option thumb aligned across translated captions. */
 .lr-toggle {
   position: relative;
   display: inline-grid;
@@ -1057,8 +1058,8 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   pointer-events: none;
 }
 .lr-toggle::before { width: calc(50% - 4px); }
-.lr-toggle:not([data-selected])::before { opacity: 0; }
-.lr-toggle[data-selected="private"]::before { transform: translateX(100%); }
+.lr-toggle:not(:has(.is-selected))::before { opacity: 0; }
+.lr-toggle:has(> :nth-child(2).is-selected, > :nth-child(2) .is-selected)::before { transform: translateX(100%); }
 .lr-toggle button {
   position: relative;
   z-index: 1;
@@ -1878,10 +1879,8 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 }
 .lr-sharing-section { display: grid; align-content: start; gap: 20px; min-width: 0; }
 .lr-sharing-section[hidden] { display: none; }
-.lr-sharing-tabs { display: flex; gap: 4px; width: fit-content; padding: 4px; margin: 0 auto 22px; border-radius: 18px; background: var(--wall); }
-.lr-sharing-tabs .lr-chip { justify-content: center; min-width: 112px; min-height: 40px; gap: 8px; border: 0; border-radius: 14px; box-shadow: none; letter-spacing: 0; }
-.lr-sharing-tabs .lr-chip:not(.is-selected) { background: transparent; color: var(--muted); }
-.lr-sharing-tabs .lr-chip:not(.is-selected):hover { background: var(--control-hover); color: var(--ink); }
+.lr-sharing-tabs { display: grid; width: fit-content; margin: 0 auto 22px; }
+.lr-sharing-tabs > button { min-width: 112px; gap: 8px; }
 .lr-sharing-section:focus-visible { outline: 2px solid var(--action); outline-offset: 5px; border-radius: 12px; }
 .lr-sharing-section .lr-door-group { gap: 8px; }
 .lr-sharing-section .lr-door-glyph .lr-cap { white-space: normal; }
@@ -1909,24 +1908,24 @@ html[data-theme="dark"] .lr-switch::after { background: var(--ink); }
 .lr-sharing-panel input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: 3px solid var(--paper); border-radius: 50%; background: var(--action); box-shadow: 0 0 0 1px var(--action); transition: transform 180ms var(--spring); }
 .lr-sharing-panel input[type="range"]:is(:hover, :focus-visible):not(:disabled)::-webkit-slider-thumb { transform: scale(1.1); }
 .lr-sharing-panel input[type="range"]:is(:hover, :focus-visible):not(:disabled)::-moz-range-thumb { transform: scale(1.1); }
-.lr-sharing-technical { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--wall-2); }
-:is(.lr-sharing-picture-details, .lr-sharing-technical) > summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 8px; border-radius: 12px; color: var(--muted); cursor: pointer; list-style: none; font-size: 12px; transition: color 140ms ease, background-color 140ms ease; }
-:is(.lr-sharing-picture-details, .lr-sharing-technical) > summary::-webkit-details-marker { display: none; }
-:is(.lr-sharing-picture-details, .lr-sharing-technical) > summary:is(:hover, :focus-visible) { color: var(--ink); background: var(--control-hover); }
-:is(.lr-sharing-picture-details, .lr-sharing-technical) > summary > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+.lr-sharing-connection { margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--wall-2); }
+:is(.lr-sharing-picture-details, .lr-sharing-connection) > summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 8px; border-radius: 12px; color: var(--muted); cursor: pointer; list-style: none; font-size: 12px; transition: color 140ms ease, background-color 140ms ease; }
+:is(.lr-sharing-picture-details, .lr-sharing-connection) > summary::-webkit-details-marker { display: none; }
+:is(.lr-sharing-picture-details, .lr-sharing-connection) > summary:is(:hover, :focus-visible) { color: var(--ink); background: var(--control-hover); }
+:is(.lr-sharing-picture-details, .lr-sharing-connection) > summary > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
 .lr-sharing-chevron { grid-column: -2; transition: transform 180ms ease; }
 details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 .lr-sharing-picture-summary { display: flex; justify-content: end; flex-wrap: wrap; gap: 4px 12px; font: 11px/1.5 var(--mono); font-variant-numeric: tabular-nums; }
 .lr-sharing-picture-summary > span { white-space: nowrap; }
-:is(.lr-sharing-picture-details, .lr-sharing-technical) > div { display: grid; gap: 20px; padding-top: 16px; }
-.lr-sharing-technical .lr-row-group:has(.lr-switch-item) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.lr-sharing-technical .lr-switch-item .lr-cap { white-space: normal; }
+:is(.lr-sharing-picture-details, .lr-sharing-connection) > div { display: grid; gap: 20px; padding-top: 16px; }
+.lr-sharing-connection .lr-row-group:has(.lr-switch-item) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.lr-sharing-connection .lr-switch-item .lr-cap { white-space: normal; }
 @keyframes lr-sharing-enter { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .lr-sharing-panel { animation: none; } .lr-sharing-chevron { transition: none; } }
 @container sharing-settings (max-width: 600px) {
   .lr-sharing-panel { padding: 16px; border-radius: 20px; }
   .lr-sharing-limits, .lr-sharing-audio-controls:has(> .lr-source-audio-settings):has(> .lr-microphone-settings),
-  .lr-sharing-technical .lr-row-group:has(.lr-switch-item) { grid-template-columns: 1fr; gap: 20px; }
+  .lr-sharing-connection .lr-row-group:has(.lr-switch-item) { grid-template-columns: 1fr; gap: 20px; }
   .lr-sharing-section .lr-tiles { gap: 8px; }
   .lr-sharing-section .lr-tile { padding: 10px 4px; }
   .lr-sharing-section .lr-tile strong { font-size: 12px; }

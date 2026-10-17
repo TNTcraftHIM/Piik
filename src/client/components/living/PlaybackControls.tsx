@@ -1,9 +1,10 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type RefObject, type ReactNode } from "react";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { useCopy } from "../../ui/copy";
 import { debugError } from "../../lib/debug";
 import { Btn } from "./primitives";
 import { Tooltip } from "./Tooltip";
+import { useAnchoredPopover } from "./use-anchored-popover";
 import { usePlaybackControlsVisibility } from "./use-playback-controls-visibility";
 import { usePictureInPicture } from "./use-picture-in-picture";
 import { bindPlaybackGestures } from "./playback-gestures";
@@ -151,7 +152,7 @@ export function PlaybackControlsView({
     <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
       cap={caption ? "viewer.reconnect" : undefined} disabled={!reconnectAvailable} onClick={onReconnect} />
     <Btn icon={picture.active ? "pipExit" : "pip"} draw="playback-pip" title={pipTitle}
-      cap={caption ? pipTitle : undefined} hintTone={picture.failed ? "bad" : undefined}
+      cap={caption ? (picture.active ? "playback.exitPip" : "playback.pip") : undefined} hintTone={picture.failed ? "bad" : undefined}
       hint={!picture.supported || picture.failed || (!picture.active && !canPlay) ? "hint-pip-unavailable" : picture.active ? "hint-pip-exit" : "hint-pip"}
       pressed={picture.active} disabled={!picture.supported || (!picture.active && !canPlay)}
       onClick={() => { void picture.toggle(); }} />
@@ -215,20 +216,7 @@ function PlaybackMore({ children }: { children: ReactNode }) {
   const trigger = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  useLayoutEffect(() => {
-    if (!open || !panel.current || !trigger.current) return;
-    const rect = trigger.current.getBoundingClientRect();
-    const menu = panel.current;
-    menu.style.left = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, rect.right - menu.offsetWidth))}px`;
-    menu.style.top = `${Math.max(8, rect.top - menu.offsetHeight - 8)}px`;
-    const close = () => menu.hidePopover();
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
-    return () => {
-      window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, [open]);
+  useAnchoredPopover(trigger, panel, { side: "above" });
   return <span className="lr-playback-more" ref={trigger}>
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
     <div id={id} ref={panel} className="lr-playback-menu" popover="auto" aria-label={t("playback.more")}

@@ -138,7 +138,17 @@ export function ControlsPreview() {
             <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={false}
               onChange={change => setQuality(current => ({ ...current, ...change }))} />
             <PicturePreferenceControl value={quality.degradationPreference} disabled={false}
-              onChange={degradationPreference => setQuality(current => ({ ...current, degradationPreference }))} /></>}
+              onChange={degradationPreference => setQuality(current => ({ ...current, degradationPreference }))} />
+            <div className="lr-door-group">
+              <span className="lr-door-glyph"><Glyph name="puzzle" size={19} /><span>{vis ? null : t("host.advanced.codec")}</span></span>
+              <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
+                {(["vp8", "auto", "h264"] as const).map(mode => <Chip key={mode} selected={mode === "auto"} disabled
+                  title={mode === "auto" ? t("host.advanced.codec.auto") : mode.toUpperCase()} hint="hint-codec">
+                  {mode.toUpperCase()}
+                </Chip>)}
+              </div>
+            </div>
+          </>}
           audio={<>
           <div className="lr-door-group lr-source-audio-settings">
             <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.systemAudio")}
@@ -150,26 +160,14 @@ export function ControlsPreview() {
           <AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
             disabled={false} onChange={maxAudioBitrate => setQuality(current => ({ ...current, maxAudioBitrate }))} />
           </>}
-          technical={<>
-            <div className="lr-door-group">
-              <span className="lr-door-glyph"><Glyph name="branch" size={19} /><span>{vis ? null : t("host.advanced.route")}</span></span>
-              <div className="lr-row-group">
-                <SwitchItem checked disabled onChange={notify} label={t("host.advanced.route.topo")}
-                  note={t("host.advanced.route.topoHint")} hint="hint-topology" />
-                <SwitchItem checked={false} disabled onChange={notify} label={t("host.advanced.route.peerOnly")}
-                  note={t("host.advanced.route.peerOnlyHint")} hint="hint-route-p2p" />
-              </div>
+          connection={
+            <div className="lr-row-group" role="group" aria-label={t("host.advanced.route")}>
+              <SwitchItem checked disabled onChange={notify} label={t("host.advanced.route.topo")}
+                note={t("host.advanced.route.topoHint")} hint="hint-topology" />
+              <SwitchItem checked={false} disabled onChange={notify} label={t("host.advanced.route.peerOnly")}
+                note={t("host.advanced.route.peerOnlyHint")} hint="hint-route-p2p" />
             </div>
-            <div className="lr-door-group">
-              <span className="lr-door-glyph"><Glyph name="puzzle" size={19} /><span>{vis ? null : t("host.advanced.codec")}</span></span>
-              <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
-                {(["vp8", "auto", "h264"] as const).map(mode => <Chip key={mode} selected={mode === "auto"} disabled
-                  title={mode === "auto" ? t("host.advanced.codec.auto") : mode.toUpperCase()} hint="hint-codec">
-                  {mode.toUpperCase()}
-                </Chip>)}
-              </div>
-            </div>
-          </>}
+          }
         />
       </section>
       <section id="option-preview" className="cp-card">
@@ -182,7 +180,7 @@ export function ControlsPreview() {
             note={t("host.advanced.route.sfuOnlyHint")} hint="hint-route-sfu" />
         </div>
         <div className="cp-tools">
-          <span className="lr-toggle" role="group" aria-label={t("host.policy")} data-selected={policy}>
+          <span className="lr-toggle" role="group" aria-label={t("host.policy")}>
             {(["open", "private"] as const).map(value => <Tooltip key={value} kind={value === "open" ? "hint-admission-code" : "hint-policy-private"}
               text={vis ? undefined : `${t(`host.policy.${value}`)} · ${t(value === "private" && roomPassword ? "host.policy.privatePasswordHint" : `host.policy.${value}Hint`)}`}>
               <button type="button" className={policy === value ? "is-selected" : undefined} aria-pressed={policy === value}

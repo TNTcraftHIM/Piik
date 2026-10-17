@@ -4,6 +4,7 @@ import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
 import { Comic } from "./Comic";
+import { useAnchoredPopover } from "./use-anchored-popover";
 
 interface AppConnectionProps {
   sourcePicker?: boolean;
@@ -28,6 +29,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
   const helpId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const help = useRef<HTMLDivElement>(null);
+  useAnchoredPopover(trigger, help);
   const pending = useRef<{ controller: AbortController; popup: Window | null } | null>(null);
   const healthCheck = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -56,13 +58,6 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     return () => { healthCheck.current?.abort(); window.removeEventListener("focus", onFocus); unwatch(); };
   }, [sourcePicker]);
   useEffect(() => () => { pending.current?.controller.abort(); pending.current?.popup?.close(); }, []);
-  useEffect(() => {
-    // A one-shot disclosure follows its trigger again on the next opening.
-    const close = () => help.current?.hidePopover();
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close);
-    return () => { window.removeEventListener("resize", close); window.removeEventListener("scroll", close); };
-  }, []);
 
   function showHelp(): void {
     if (trigger.current) help.current?.showPopover({ source: trigger.current });
@@ -159,17 +154,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
       className="lr-app-connect-help" onToggle={event => {
         setHelpOpen(event.newState === "open");
         if (event.newState !== "open" || !trigger.current) return;
-        const panel = event.currentTarget;
-        const rect = trigger.current.getBoundingClientRect();
-        if (rect.bottom <= 0 || rect.top >= window.innerHeight) { panel.hidePopover(); return; }
-        const below = window.innerHeight - rect.bottom - 16;
-        const above = rect.top - 16;
-        const openAbove = below < panel.scrollHeight && above > below;
-        panel.classList.toggle("is-above", openAbove);
-        panel.style.maxHeight = `${Math.max(0, openAbove ? above : below)}px`;
-        panel.style.left = `${Math.max(8, Math.min(rect.right - panel.offsetWidth, window.innerWidth - panel.offsetWidth - 8))}px`;
-        panel.style.top = `${Math.max(8, openAbove ? rect.top - panel.offsetHeight - 8 : rect.bottom + 8)}px`;
-        panel.querySelector<HTMLButtonElement>("button")?.focus();
+        event.currentTarget.querySelector<HTMLButtonElement>("button")?.focus();
       }}>
       <div className="lr-app-connect-head">
         <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && <Comic kind={state === "incompatible" ? "warning" : "signal-failed"} theme="paper" />}</div>

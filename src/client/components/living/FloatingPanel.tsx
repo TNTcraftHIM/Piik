@@ -4,6 +4,7 @@ import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { usePanelWindow, panelWindowAPI, SurfaceDocument } from "../../ui/panel-window";
 import { Tooltip } from "./Tooltip";
+import { useAnchoredPopover } from "./use-anchored-popover";
 import "./floating-panel.css";
 
 const PANEL_SIZES = { default: { width: 420, height: 560 }, large: { width: 560, height: 680 } };
@@ -23,7 +24,9 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
   const panelWindow = usePanelWindow(detachable, owner => onOpenChange?.(true, owner));
   const { container, slot, surfaceDocument, detached } = panelWindow;
   const panelRef = useRef<HTMLElement>(null);
-  const positionMenu = useRef<HTMLDetailsElement>(null);
+  const positionMenu = useRef<HTMLDivElement>(null);
+  const positionTrigger = useRef<HTMLButtonElement>(null);
+  useAnchoredPopover(positionTrigger, positionMenu, { enabled: !detached });
   const sizes = compact ? COMPACT_SIZES : PANEL_SIZES;
   const position = useRef({ x: 1, y: 1 });
   const preferredSize = useRef(sizes.default);
@@ -75,10 +78,8 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
     panelRef.current.getAnimations().forEach(animation => animation.finish());
     gesture.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY,
       rect: panelRef.current.getBoundingClientRect(), kind };
-    // Capture on the summary preserves its native click/keyboard activation.
-    const handle = (event.target as Element).closest<HTMLElement>("summary") ?? event.currentTarget;
-    handle.focus({ preventScroll: true });
-    handle.setPointerCapture(event.pointerId);
+    event.currentTarget.focus({ preventScroll: true });
+    event.currentTarget.setPointerCapture(event.pointerId);
   }
   useLayoutEffect(() => {
     const panel = panelRef.current;
@@ -182,7 +183,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
           event.currentTarget.focus({ preventScroll: true });
         } else {
           panelWindow.close();
-          if (positionMenu.current) positionMenu.current.open = false;
+          positionMenu.current?.hidePopover();
           if (event.currentTarget.contains(document.activeElement)) focusTrigger();
         }
       }}>
@@ -199,20 +200,17 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
         <span className="lr-floating-title">{!detached && <Glyph name="grip" size={17} />}
           {vis ? <Glyph name={icon} size={18} /> : <b>{title}</b>}</span>
         <span id={`${id}-move-hint`} className="visually-hidden">{t("floating.moveHint")}</span>
-        {!detached && <details ref={positionMenu} className="lr-floating-position"
-          onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }}
-          onKeyDown={event => {
-            if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing || !event.currentTarget.open) return;
-            event.stopPropagation(); event.currentTarget.open = false;
-            event.currentTarget.querySelector("summary")?.focus();
-          }}>
-          <summary aria-label={t("floating.position")}><Glyph name="move" size={16} />{!vis && <span>{t("floating.position")}</span>}</summary>
-          <div className="lr-floating-positions" role="group" aria-label={t("floating.position")}>
+        {!detached && <span className="lr-floating-position"
+          onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) positionMenu.current?.hidePopover(); }}>
+          <button ref={positionTrigger} type="button" popoverTarget={`${id}-positions`} aria-label={t("floating.position")}>
+            <Glyph name="move" size={16} />{!vis && <span>{t("floating.position")}</span>}
+          </button>
+          <div ref={positionMenu} id={`${id}-positions`} popover="auto" className="lr-floating-positions" role="group" aria-label={t("floating.position")}>
             {(["topLeft", "topRight", "bottomLeft", "bottomRight"] as const).map((corner, index) => {
               const x = index % 2, y = Math.floor(index / 2);
               return <button key={corner} type="button" aria-label={t(`floating.position.${corner}`)} onClick={() => {
                 position.current = { x, y }; placePanel.current?.();
-                if (positionMenu.current) { positionMenu.current.open = false; positionMenu.current.querySelector("summary")?.focus(); }
+                positionMenu.current?.hidePopover(); positionTrigger.current?.focus();
               }}>
                 <svg viewBox="0 0 28 22" width="28" height="22" aria-hidden="true">
                   <rect x="1" y="1" width="26" height="20" rx="4" fill="none" stroke="currentColor" strokeWidth="1.5" />
@@ -223,17 +221,17 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
             {(["default", "large"] as const).map(size => <button key={size} type="button" className="lr-floating-size"
               onClick={() => {
                 preferredSize.current = sizes[size]; placePanel.current?.();
-                if (positionMenu.current) { positionMenu.current.open = false; positionMenu.current.querySelector("summary")?.focus(); }
+                positionMenu.current?.hidePopover(); positionTrigger.current?.focus();
               }} aria-label={t(`floating.size.${size}`)}>
               <Glyph name={size === "large" ? "expand" : "contract"} size={18} />{!vis && <span>{t(`floating.size.${size}`)}</span>}
             </button>)}
           </div>
-        </details>}
+        </span>}
         {detachable && !detached && panelWindowAPI(typeof window === "undefined" ? null : window) &&
           <Tooltip kind="hint-window-detach" place="below" text={vis ? undefined : t("floating.detach")}>
             <button type="button" className="lr-popover-close" disabled={panelWindow.opening}
               aria-label={t("floating.detach")} onClick={() => {
-                if (positionMenu.current) positionMenu.current.open = false;
+                positionMenu.current?.hidePopover();
                 void panelWindow.open();
               }}>
               <Glyph name="pip" size={18} />

@@ -64,7 +64,9 @@ living room. The shell owns visibility, focus return, movement, resizing and
 viewport/keyboard bounds; contents retain their domain state. Support title-bar
 dragging and keyboard placement. An interaction palette starts beside its chosen
 participant, stays open after sending and keeps its position when retargeted.
-One-shot settings and guidance retain their existing disclosures. Escape closes
+One-shot settings and guidance retain their existing disclosures. Anchored
+menus use native popovers and shared viewport placement; a small parent panel
+must not clip their actions. Escape closes
 inner guidance first, then the most recently opened floating panel, then theater
 mode; an IME composition must not dismiss these surfaces.
 Detachable tools reuse the same content in the browser's own always-on-top frame.
@@ -161,11 +163,13 @@ the settings and remote-permission entries. Preserve that order and grouping on
 narrow screens without splitting the dock into separate floating surfaces.
 Room invitations, admission and chat retain their room scope; they do not become
 sharing settings merely because they use a similar control.
-One inline settings panel uses picture and sound tabs. Picture presets lead;
-a fine-tuning disclosure keeps configured limits visible when closed. In sound,
+One inline settings panel uses picture and sound tabs with the shared sliding
+two-option control. Picture presets lead; a fine-tuning disclosure contains
+picture limits, preference and video encoding, keeping configured limits visible
+when closed. In sound,
 source and microphone inputs precede the mixed output's audio quality. Presets
 remain available before sharing starts. Switching tabs does not reset values
-or restart media. Keep the less frequent connection/codec options in a shared
+or restart media. Keep the less frequent connection options in a shared
 disclosure below the tabs. Expand in page flow, pushing later content down
 instead of covering the picture or participants. Related fields share a row
 where space permits and stack on narrow screens. Avoid another permanent row

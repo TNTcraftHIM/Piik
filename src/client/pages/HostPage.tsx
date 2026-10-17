@@ -3866,6 +3866,23 @@ export function HostPage({
               <PicturePreferenceControl value={advancedQuality.degradationPreference}
                 disabled={phase === "starting" || switchingSource}
                 onChange={degradationPreference => changeAdvancedQuality({ degradationPreference })} />
+              <div className="lr-door-group">
+                <span className="lr-door-glyph"><Glyph name="puzzle" size={19} /><Cap k="host.advanced.codec" /></span>
+                <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
+                  {(["vp8", "auto", "h264"] as const).map(mode => (
+                    <Chip key={mode} selected={displayedVideoCodecMode === mode}
+                      disabled={phase === "starting" || phase === "live"}
+                      title={mode === "auto"
+                        ? resolvedVideoCodec
+                          ? `${t("host.advanced.codec.auto")} · ${resolvedVideoCodec.toUpperCase()}`
+                          : `${t("host.advanced.codec.auto")} · ${t("host.advanced.codec.autoHint")}`
+                        : `${mode.toUpperCase()} · ${t(mode === "vp8" ? "host.advanced.codec.vp8Hint" : "host.advanced.codec.h264Hint")}`}
+                      hint="hint-codec" onClick={() => changeVideoCodecMode(mode)}>
+                      {mode.toUpperCase()}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
             </>}
             audio={<>
               {phase === "live" && nativeActive && nativeSourceSelectionRef.current?.target.kind === "display" &&
@@ -3908,88 +3925,44 @@ export function HostPage({
                 max={audioBitrateCeiling} disabled={phase === "starting" || switchingSource}
                 onChange={changeMaxAudioBitrate} />
             </>}
-            technical={<>
-              <div className="lr-door-group">
-                <span
-                  className="lr-door-glyph"
-                >
-                  <Glyph name="branch" size={19} />
-                  <Cap k="host.advanced.route" />
-                </span>
-                <div className="lr-row-group">
-                  {sfuOnly ? <SwitchItem checked disabled locked
-                    onChange={() => {}}
-                    label={t("host.advanced.route.sfuOnly")}
-                    note={t("host.advanced.route.sfuOnlyHint")}
-                    hint="hint-route-sfu"
-                  /> : <>
-                    <SwitchItem
-                      checked={routePolicy.topologyOptimization}
-                      disabled={phase === "starting" || phase === "live"}
-                      onChange={(checked) =>
-                        changeRoutePolicy({ topologyOptimization: checked })
-                      }
-                      label={t("host.advanced.route.topo")}
-                      note={t("host.advanced.route.topoHint")}
-                      hint="hint-topology"
-                    />
-                    <SwitchItem
-                      checked={routePolicy.peerOnly}
-                      disabled={
-                        !sfuAvailable || phase === "starting" || phase === "live"
-                      }
-                      locked={!sfuAvailable}
-                      onChange={(checked) =>
-                        changeRoutePolicy({ peerOnly: checked })
-                      }
-                      label={t("host.advanced.route.peerOnly")}
-                      note={t(
-                        sfuAvailable
-                          ? "host.advanced.route.peerOnlyHint"
-                          : "host.advanced.route.peerOnlyRequired",
-                      )}
-                      hint={sfuAvailable ? "hint-route-p2p" : "hint-route-p2p-required"}
-                    />
-                  </>}
-                </div>
+            connection={
+              <div className="lr-row-group" role="group" aria-label={t("host.advanced.route")}>
+                {sfuOnly ? <SwitchItem checked disabled locked
+                  onChange={() => {}}
+                  label={t("host.advanced.route.sfuOnly")}
+                  note={t("host.advanced.route.sfuOnlyHint")}
+                  hint="hint-route-sfu"
+                /> : <>
+                  <SwitchItem
+                    checked={routePolicy.topologyOptimization}
+                    disabled={phase === "starting" || phase === "live"}
+                    onChange={(checked) =>
+                      changeRoutePolicy({ topologyOptimization: checked })
+                    }
+                    label={t("host.advanced.route.topo")}
+                    note={t("host.advanced.route.topoHint")}
+                    hint="hint-topology"
+                  />
+                  <SwitchItem
+                    checked={routePolicy.peerOnly}
+                    disabled={
+                      !sfuAvailable || phase === "starting" || phase === "live"
+                    }
+                    locked={!sfuAvailable}
+                    onChange={(checked) =>
+                      changeRoutePolicy({ peerOnly: checked })
+                    }
+                    label={t("host.advanced.route.peerOnly")}
+                    note={t(
+                      sfuAvailable
+                        ? "host.advanced.route.peerOnlyHint"
+                        : "host.advanced.route.peerOnlyRequired",
+                    )}
+                    hint={sfuAvailable ? "hint-route-p2p" : "hint-route-p2p-required"}
+                  />
+                </>}
               </div>
-              <div className="lr-door-group">
-                <span
-                  className="lr-door-glyph"
-                >
-                  <Glyph name="puzzle" size={19} />
-                  <Cap k="host.advanced.codec" />
-                </span>
-                <div
-                  className="lr-row-group"
-                  role="group"
-                  aria-label={t("host.advanced.codec")}
-                >
-                  {(["vp8", "auto", "h264"] as const).map((mode) => (
-                    <Chip
-                      key={mode}
-                      selected={displayedVideoCodecMode === mode}
-                      disabled={phase === "starting" || phase === "live"}
-                      title={
-                        mode === "auto"
-                          ? resolvedVideoCodec
-                            ? `${t("host.advanced.codec.auto")} · ${resolvedVideoCodec.toUpperCase()}`
-                            : `${t("host.advanced.codec.auto")} · ${t("host.advanced.codec.autoHint")}`
-                          : `${mode.toUpperCase()} · ${t(
-                              mode === "vp8"
-                                ? "host.advanced.codec.vp8Hint"
-                                : "host.advanced.codec.h264Hint",
-                            )}`
-                      }
-                      hint="hint-codec"
-                      onClick={() => changeVideoCodecMode(mode)}
-                    >
-                      {mode.toUpperCase()}
-                    </Chip>
-                  ))}
-                </div>
-              </div>
-            </>}
+            }
           />
           <RoomInteractions session={room ? interactionSession : null}
             view="host"
@@ -4218,7 +4191,6 @@ export function HostPage({
                   className="lr-toggle"
                   role="group"
                   aria-label={t("host.policy")}
-                  data-selected={activeCodeEntryPolicy}
                 >
                   <Tooltip kind="hint-admission-code"
                     text={vis ? undefined : `${t("host.policy.open")} · ${t("host.policy.openHint")}`}>

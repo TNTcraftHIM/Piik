@@ -464,7 +464,7 @@ export const en: Record<CopyKey, string> = {
   "host.settings.pictureDetails": "Fine-tune picture",
   "host.settings.pictureLimits": "Current picture limits",
   "host.settings.sound": "Sound",
-  "host.settings.technical": "Connection & encoding",
+  "host.settings.connection": "Connection settings",
   "host.advanced.resolution": "Resolution limit",
   "host.advanced.framerate": "FPS limit",
   "host.advanced.bitrate": "Bitrate limit",

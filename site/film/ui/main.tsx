@@ -366,7 +366,7 @@ function Screen({ shot }: { shot: Shot }) {
                   </div>
                   <span className="lr-divider" aria-hidden="true" />
                   <RowGroup>
-                    <span className="lr-toggle" role="group" aria-label={t("host.policy")} data-selected="private">
+                    <span className="lr-toggle" role="group" aria-label={t("host.policy")}>
                       <button type="button" aria-pressed={false}><Glyph name="globe" size={19} /><Cap k="host.policy.open" /></button>
                       <button type="button" className="is-selected" aria-pressed><Glyph name="lock" size={19} /><Cap k="host.policy.private" /></button>
                     </span>

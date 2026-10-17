@@ -4,9 +4,9 @@ import { Glyph } from "../../ui/icons";
 import { Cap } from "./primitives";
 
 // Presentation only. Capture, preferences and pending operations stay with the Host.
-export function SharingSettings({ id, open, busy, presets, picture, pictureSummary, audio, technical }: {
+export function SharingSettings({ id, open, busy, presets, picture, pictureSummary, audio, connection }: {
   id: string; open: boolean; busy?: boolean;
-  presets: ReactNode; picture?: ReactNode; pictureSummary?: ReactNode; audio: ReactNode; technical?: ReactNode;
+  presets: ReactNode; picture?: ReactNode; pictureSummary?: ReactNode; audio: ReactNode; connection?: ReactNode;
 }) {
   const { t } = useCopy();
   const [tab, setTab] = useState<"picture" | "sound">("picture");
@@ -24,9 +24,9 @@ export function SharingSettings({ id, open, busy, presets, picture, pictureSumma
   }
   return <div id={id} className={`lr-sharing-settings lr-door-reveal${open ? " is-open" : ""}`}>
     <div>{open ? <section className="lr-sharing-panel" aria-label={t("host.advanced")} aria-busy={busy}>
-      <div className="lr-sharing-tabs" role="tablist" aria-label={t("host.advanced")} onKeyDown={navigate}>
+      <div className="lr-toggle lr-sharing-tabs" role="tablist" aria-label={t("host.advanced")} onKeyDown={navigate}>
         {(["picture", "sound"] as const).map(value => <button key={value} type="button" role="tab"
-          id={`${id}-${value}-tab`} className={`lr-chip${tab === value ? " is-selected" : ""}`}
+          id={`${id}-${value}-tab`} className={tab === value ? "is-selected" : undefined}
           aria-label={t(`host.settings.${value}`)} aria-selected={tab === value}
           aria-controls={`${id}-${value}`} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)}>
           <Glyph name={value === "picture" ? "tv" : "speaker"} size={18} /><Cap k={`host.settings.${value}`} />
@@ -48,12 +48,12 @@ export function SharingSettings({ id, open, busy, presets, picture, pictureSumma
         aria-labelledby={`${id}-sound-tab`} hidden={tab !== "sound"}>
         <div className="lr-sharing-audio-controls">{audio}</div>
       </section>
-      {technical ? <details className="lr-sharing-technical">
-        <summary aria-label={t("host.settings.technical")}>
-          <span><Glyph name="branch" size={17} /><Cap k="host.settings.technical" /></span>
+      {connection ? <details className="lr-sharing-connection">
+        <summary aria-label={t("host.settings.connection")}>
+          <span><Glyph name="branch" size={17} /><Cap k="host.settings.connection" /></span>
           <Glyph name="chevron" size={17} className="lr-sharing-chevron" />
         </summary>
-        <div>{technical}</div>
+        <div>{connection}</div>
       </details> : null}
     </section> : null}</div>
   </div>;
