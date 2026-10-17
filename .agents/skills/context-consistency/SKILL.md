@@ -1,10 +1,9 @@
 ---
 name: context-consistency
 description: >
-  Review repeated meanings across Piik code, UI, copy, lifecycle and documentation.
-  Use for cross-surface or cross-layer consistency work, recurring fixes in sibling
-  paths, and requested repository-wide standardization audits. Locate common
-  ownership gaps while preserving differences justified by context.
+  Trace shared meanings and owners across Piik code, UI, copy and lifecycle.
+  Use for cross-surface consistency work, recurring sibling-path defects or
+  repository standardization audits; not every isolated edit.
 ---
 
 # Context Consistency
@@ -31,7 +30,7 @@ stand in for coverage. Review-only work must not alter product sources.
 ## Trace Before Comparing
 
 Follow a concrete producer through state/normalization, effects, consumers and
-cleanup. Record the subject, asserted fact or requested outcome, authority,
+cleanup. Establish the subject, asserted fact or requested outcome, authority,
 scope/generation, lifetime and user intent. Use a small comparison table only
 when there are multiple variants to compare.
 
@@ -55,7 +54,8 @@ When fixes are authorized, choose the smallest coherent correction at the
 existing owner and update its reachable consumers. Share implementation where
 the semantics and lifetime match; use narrow adapters for real runtime or
 presentation differences. A similar name or repeated syntax is not sufficient
-reason to merge states or introduce a generic manager.
+reason to merge states or introduce a generic manager. Visual consistency
+preserves meaning and interaction without forcing every scene into one template.
 
 If the intended semantics are unresolved, put that decision in
 [TODO](../../../docs/todo.md) and continue independent checks. Do not turn a

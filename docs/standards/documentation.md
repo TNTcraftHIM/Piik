@@ -11,6 +11,7 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 | Topic | Owner | Keep here |
 | --- | --- | --- |
 | Universal constraints and navigation | `AGENTS.md` | Short mandatory boundaries and links; no procedure manual |
+| Reusable agent methods | `.agents/skills/*/SKILL.md` | Task triggers and methods under project constraints; link to domain rules and delivery rather than repeat them |
 | Branches, review, validation, PRs, releases and cleanup | `CONTRIBUTING.md` | Executable workflow |
 | Module boundaries, interface discipline and ablation | [Engineering](./engineering.md) | Current responsibility map and shared coding rules |
 | Names, terminology and voice | [Naming and copy](./naming.md) | Product/tool names, role labels and Chinese/English writing conventions |
@@ -88,6 +89,31 @@ The [context-governance research](../research/agent-context-governance.md) owns
 the external rationale; the existing hygiene scripts own executable limits.
 Their gardening warnings invite review, not arbitrary compression; hard failures
 for broken links, required owners and instruction-loading limits remain binding.
+
+## Agent Instructions And Skills
+
+Keep broadly applicable project constraints near the top of `AGENTS.md`, with
+explicit task triggers for required skills. Domain standards define accepted
+behavior; skills explain how to do a recurring kind of work. Neither research
+examples nor skill defaults can expand user authorization or replace a domain
+decision. Use repo-linked adaptations when a global skill has the same name;
+names alone do not establish which instructions were loaded.
+
+Give each skill one recognizable purpose and a short description stating when
+it applies. Keep useful, non-obvious decisions in its body. Link to existing
+owners for details; add supporting files only when a real workflow needs them.
+Do not create nested instruction files merely to split a short document, copy
+the same rules into multiple tool formats, or require every installed skill on
+every turn. Relevant instructions remain applicable without repeated loading.
+
+When changing instructions, check actual task behavior: would a scoped layout
+fix trigger unrelated network gates, a review silently authorize edits, or a
+simplicity rule permit incomplete UX? Check intended triggers and nearby tasks
+that should not trigger the workflow. Preserve necessary safety and compatibility
+while removing conflicting or redundant procedures. Use metadata/link checks
+for structure and representative work for behavior; passing a schema validator
+does not establish that a skill is effective. Add no permanent prompt test suite
+or hooks without a demonstrated recurring need.
 
 ## Checks
 

@@ -3,7 +3,7 @@
 - Reviewed: 2026-08-27
 - Scope: repository context, durable memory, documentation types, and decisions
 - Status: evidence; repository policy is owned by
-  [maintenance](../standards/documentation.md)
+  [documentation ownership](../standards/documentation.md)
 
 ## Findings
 
@@ -65,6 +65,49 @@ Sources:
 - [Martin Fowler: Architecture Decision Record](https://martinfowler.com/bliki/ArchitectureDecisionRecord.html)
 - [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow)
 
+### Instructions And Skills
+
+Reviewed: 2026-10-17. These are source-derived design considerations, not a
+benchmark of agent reliability or another set of mandatory instructions.
+
+OpenAI's current guidance favors task-scoped references, short skill descriptions
+and explicit completion boundaries. Its documented OSS workflow separates
+repository policy from reusable skill methods. The Agent Skills community
+guidance likewise recommends coherent purposes, detail proportional to task
+fragility, and refinement against real execution. A skill need not carry its
+own scripts, reference tree or elaborate procedure to be useful.
+
+Codex loads an instruction chain from global scope through the working directory;
+more specific project instructions follow broader ones. Skill descriptions
+select workflows whose bodies load on use. Same-named skills are not merged, so
+Piik links its repo adaptations explicitly. This loading behavior is distinct
+from project authority: a skill cannot grant a release, change an accepted
+product contract or weaken a user's task boundary.
+
+The community Ponytail and Stop That Shit approaches support reuse and completion
+with less speculative work. Piik keeps those principles but evaluates total
+ownership and the complete experience, rather than line count or the first
+working implementation. Its Ponytail adaptation removes forced persistence,
+fixed response length and per-branch test prescriptions; upstream attribution
+remains in the skill's [provenance](../../.agents/skills/ponytail/UPSTREAM.md).
+New mechanisms still need relevant end-to-end evidence. Required design thinking
+does not imply a separate design document, review agent or approval for each edit.
+
+Sources:
+
+- [OpenAI: Rethinking skills and prompts](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)
+- [OpenAI: Using skills for OSS maintenance](https://developers.openai.com/blog/skills-agents-sdk)
+- [Codex instruction discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md) and [skill loading](https://learn.chatgpt.com/docs/build-skills)
+- [Agent Skills best practices](https://agentskills.io/skill-creation/best-practices) and [specification](https://agentskills.io/specification)
+- [Stop That Shit](https://github.com/lennney/stop-that-shit/blob/0.2.4/skills/stop-that-shit/SKILL.md) and [STSS](https://github.com/lennney/stop-that-shit/blob/0.2.4/skills/stss/SKILL.md): complete the responsibility and omit unnecessary work or self-justifying prose.
+- [Avoid Over-Defensive Programming](https://github.com/aravelo7/codex-agent-skills/blob/main/skills/avoid-overdefensive-programming/SKILL.md): fix the producing owner; Piik does not adopt a per-branch reporting procedure.
+
+The earlier community reports about
+[small-task expansion](https://www.reddit.com/r/codex/comments/1vf5elq/how_do_you_stop_codexclaude_from_overengineering/)
+and [ignored context](https://www.reddit.com/r/codex/comments/1ujnwxb/codex_quality_issues_in_realworld_coding_ignored/)
+motivate inspecting useful output and execution cost; they are anecdotes, not
+statistical evidence about a model.
+
 ## Applicability
 
 Piik is small enough that a vector database, memory provider, generated code
@@ -72,4 +115,4 @@ map, parallel agent-context format, or separate RFC repository would add more
 ownership than it removes. The useful practices are bounded always-on context,
 one owner per fact, domain-shaped reference, evidence on demand, short ADRs,
 link checks, and Git-backed history. Exact repository policy remains in
-[maintenance](../standards/documentation.md), not in this research note.
+[documentation ownership](../standards/documentation.md), not in this research note.
