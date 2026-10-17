@@ -73,6 +73,10 @@ claims. A cultural reference should still make sense to someone unfamiliar with 
 Machine-assisted drafts need proofreading by someone who understands the language
 and the screen; raise unclear source text in the PR instead of guessing.
 
+App startup failures share reason codes between the launcher and console. Translate
+their user-facing explanations in both catalogs; keep error codes and raw technical
+details unchanged so reports remain useful for diagnosis.
+
 Locale files are TypeScript objects. These are existing examples:
 
 ```ts

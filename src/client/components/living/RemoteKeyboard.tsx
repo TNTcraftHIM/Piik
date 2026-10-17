@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { RemoteInputEvent } from "../../remote-control/input-session";
 import type { RemoteInputPlatform } from "../../remote-control/protocol";
 import { RemoteKeyboardPresses } from "../../remote-control/keyboard";
 import { isCopyKey, useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
+import { panelWindowAPI, SurfaceDocument, usePanelWindow } from "../../ui/panel-window";
 import { Btn, Chip } from "./primitives";
+import { Tooltip } from "./Tooltip";
+import "./floating-panel.css";
 
 type Key = readonly [label: string, code: string, shifted?: string];
 const letters = (row: string): Key[] => [...row].map(letter => [letter, `Key${letter}`]);
@@ -24,10 +28,11 @@ type Page = keyof typeof ROWS | "text";
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
-export function RemoteKeyboard({ input, close, mouseControl, touch, platform }: {
+export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange }: {
   input: (event: RemoteInputEvent) => void; close: () => void;
   mouseControl?: ReactNode; touch: boolean;
   platform: RemoteInputPlatform;
+  onSurfaceChange?: (owner: Document) => void;
 }) {
   const { t, vis } = useCopy();
   const mac = platform === "darwin";
@@ -48,13 +53,25 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform }: 
   const composing = useRef(false);
   const editor = useRef<HTMLInputElement>(null);
   const panel = useRef<HTMLElement>(null);
+  const panelWindow = usePanelWindow(true, onSurfaceChange);
+  const owner = panelWindow.surfaceDocument ?? document;
   const presses = useMemo(() => new RemoteKeyboardPresses(input), [input]);
   useEffect(() => {
     panel.current?.focus({ preventScroll: true });
     const reset = () => { presses.reset(); setModifiers([]); };
-    window.addEventListener("blur", reset);
-    return () => { window.removeEventListener("blur", reset); presses.reset(); };
-  }, [presses]);
+    const hidden = () => { if (owner.hidden) reset(); };
+    reset();
+    owner.defaultView?.addEventListener("blur", reset);
+    owner.addEventListener("visibilitychange", hidden);
+    return () => {
+      owner.defaultView?.removeEventListener("blur", reset);
+      owner.removeEventListener("visibilitychange", hidden);
+      presses.reset();
+    };
+  }, [presses, owner]);
+  useEffect(() => {
+    if (owner !== document) owner.title = `${t("remote.keyboard")} · Piik`;
+  }, [owner, t]);
   const rows = page === "text" ? [] : mac && page === "functions"
     ? [...ROWS.functions.slice(0, 2), ROWS.functions.slice(2).flat().filter(([, code]) => !["Insert", "PrintScreen", "ScrollLock", "NumLock"].includes(code))]
     : ROWS[page];
@@ -79,16 +96,26 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform }: 
     </button>;
   };
 
-  return <section ref={panel} tabIndex={-1} className="lr-remote-keyboard" aria-label={t("remote.keyboard")}
+  const keyboard = <SurfaceDocument.Provider value={owner}><section ref={panel} tabIndex={-1} className="lr-remote-keyboard" aria-label={t("remote.keyboard")}
     onContextMenu={event => event.preventDefault()}
     onKeyDown={event => {
       event.stopPropagation();
-      if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.preventDefault(); close(); }
+      if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+        event.preventDefault();
+        if (panelWindow.detached) owner.defaultView?.close(); else close();
+      }
     }} onKeyUp={event => event.stopPropagation()}>
     <div className="lr-remote-panel-header">
       <strong><Glyph name="keyboard" size={18} />{vis ? null : t("remote.keyboard")}</strong>
-      <button type="button" className="lr-popover-close" aria-label={t("common.close")} onClick={close}><Glyph name="x" size={17} /></button>
+      {!panelWindow.detached && <>
+        {panelWindowAPI(window) && <Tooltip kind="hint-window-detach" place="below" text={vis ? undefined : t("floating.detach")}>
+          <button type="button" className="lr-popover-close" aria-label={t("floating.detach")} disabled={panelWindow.opening}
+            onClick={() => { presses.reset(); setModifiers([]); void panelWindow.open(); }}><Glyph name="pip" size={18} /></button>
+        </Tooltip>}
+        <button type="button" className="lr-popover-close" aria-label={t("common.close")} onClick={close}><Glyph name="x" size={17} /></button>
+      </>}
     </div>
+    {panelWindow.failed && <p className="lr-floating-error" role="status">{t("floating.detachFailed")}</p>}
     <div className="lr-remote-key-pages" role="group" aria-label={t("remote.keyPages")}>
       {(["letters", "symbols", "functions", "text"] as const).map(id => <Chip key={id}
         selected={page === id} title={t(`remote.keys.${id}`)} onClick={() => {
@@ -128,7 +155,10 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform }: 
         <Btn icon="send" title="remote.sendText" type="submit" disabled={!text} />
       </form>
     </>}
-    {mouseControl}
+    {!panelWindow.detached && mouseControl}
     {!vis && touch && <p>{t("remote.touchHelp")}</p>}
-  </section>;
+  </section></SurfaceDocument.Provider>;
+  return <span ref={panelWindow.slot} style={{ display: "contents" }}>
+    {panelWindow.container && createPortal(keyboard, panelWindow.container)}
+  </span>;
 }

@@ -15,11 +15,14 @@ import type { InteractionPayload } from "../../shared/protocol";
 import { REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { SharingSettings } from "../components/living/SharingSettings";
+import { HostShareControls } from "../components/living/HostShareControls";
+import { HostRemoteControl } from "../components/living/HostRemoteControl";
+import type { RemoteControlMode } from "../remote-control/protocol";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 
-import { AudioBitrateControl, PicturePreferenceControl, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
+import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import { MAX_SCREEN_AUDIO_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
@@ -57,6 +60,7 @@ export function ControlsPreview() {
   const [voiceProcessing, setVoiceProcessing] = useState(true);
   const [microphoneDevice, setMicrophoneDevice] = useState("");
   const [sharingSettings, setSharingSettings] = useState(false);
+  const [remoteMode, setRemoteMode] = useState<RemoteControlMode>("off");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
   const [majorUpdate, setMajorUpdate] = useState(true);
@@ -105,21 +109,28 @@ export function ControlsPreview() {
           <Btn icon="network" title="host.topology" hint="hint-topology" onClick={notify} />
           <Btn icon="sliders" title="host.advanced" hint="hint-advanced" onClick={notify} />
         </div>
-        <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
+      </section>
+      <section id="sharing-preview" className="cp-card cp-sharing-preview">
+        <header><h2>{t("host.advanced")}</h2></header>
+        <HostShareControls actions={<>
           <HostMicrophone enabled={microphone} paused={paused} volume={microphoneVolume}
             onToggle={() => setMicrophone(value => !value)} />
           <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}
             hint={paused ? "hint-resume" : "hint-pause"} onClick={() => setPaused(!paused)} />
           <Btn icon="switchSource" title="host.switchSource" cap="host.switchSource" hint="hint-switch-source" onClick={notify} />
-          <Btn icon="sliders" cap="host.settings.button" title={sharingSettings ? "host.advanced.hide" : "host.advanced"}
+          </>}
+          settings={<Btn icon="sliders" cap="host.settings.button" title={sharingSettings ? "host.advanced.hide" : "host.advanced"}
 
             hint={sharingSettings ? "hint-collapse" : "hint-advanced"} tone={sharingSettings ? "on" : undefined}
-            expanded={sharingSettings} controls="preview-sharing-settings" onClick={() => setSharingSettings(value => !value)} />
-          <Btn id="host-stop-share" icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />
-        </div>
+            expanded={sharingSettings} controls="preview-sharing-settings" onClick={() => setSharingSettings(value => !value)} />}
+          remote={<HostRemoteControl mode={remoteMode} platform="windows" requests={[]}
+            disabled={paused} onPolicy={async mode => setRemoteMode(mode)} onDecide={async () => undefined} />}
+          ending={<Btn id="host-stop-share" icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />}
+        />
         <SharingSettings id="preview-sharing-settings" open={sharingSettings}
           presets={<QualityPresets selected={matchingQualityProfileId(quality)}
             onSelect={id => setQuality(current => ({ ...QUALITY_PROFILES[id], maxAudioBitrate: current.maxAudioBitrate }))} />}
+          pictureSummary={<PictureSettingsSummary value={quality} />}
           picture={<><ResolutionControl value={quality.resolution} limits={VIDEO_CAPTURE_LIMITS} disabled={false}
             onChange={resolution => setQuality(current => ({ ...current, resolution,
               maxFramerate: Math.min(current.maxFramerate, captureFramerateCeiling(resolution)),
@@ -128,8 +139,7 @@ export function ControlsPreview() {
               onChange={change => setQuality(current => ({ ...current, ...change }))} />
             <PicturePreferenceControl value={quality.degradationPreference} disabled={false}
               onChange={degradationPreference => setQuality(current => ({ ...current, degradationPreference }))} /></>}
-          audio={<><AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
-              disabled={false} onChange={maxAudioBitrate => setQuality(current => ({ ...current, maxAudioBitrate }))} />
+          audio={<>
           <div className="lr-door-group lr-source-audio-settings">
             <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.systemAudio")}
               hint={sound ? "hint-stop-audio" : "hint-share-audio"} />
@@ -137,6 +147,8 @@ export function ControlsPreview() {
           </div><HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
             native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
             voiceProcessing={voiceProcessing} onVoiceProcessing={setVoiceProcessing} />
+          <AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
+            disabled={false} onChange={maxAudioBitrate => setQuality(current => ({ ...current, maxAudioBitrate }))} />
           </>}
         />
       </section>

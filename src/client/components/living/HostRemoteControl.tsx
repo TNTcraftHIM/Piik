@@ -20,6 +20,8 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
   const { t, vis } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
+  const [surfaceDocument, setSurfaceDocument] = useState<Document | null>(null);
+  const detached = Boolean(surfaceDocument && surfaceDocument !== document);
   const [draft, setDraft] = useState(mode === "off" ? "ask" : mode);
   const [password, setPassword] = useState("");
   const [failedId, setFailedId] = useState<string | null>(null);
@@ -52,14 +54,16 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
   return <>
     <span className="lr-remote-trigger">
       <Btn id={`${id}-trigger`} icon="mouse" cap="remote.title"
-        title={pending ? "remote.requests" : controller?.state === "suspended" ? "remote.hostFocus" : controller ? "remote.controlling" : "remote.title"} hint="hint-remote-control"
+        title={detached ? "floating.focus" : pending ? "remote.requests" : controller?.state === "suspended" ? "remote.hostFocus" : controller ? "remote.controlling" : "remote.title"} hint={detached ? "hint-window-detach" : "hint-remote-control"}
         tone={mode !== "off" || open ? "on" : undefined}
-        popoverTarget={id} expanded={open} controls={id} />
+        popoverTarget={detached ? undefined : id} expanded={open} controls={detached ? undefined : id}
+        onClick={detached ? () => surfaceDocument?.defaultView?.focus() : undefined} />
       {pending > 0 && <span className="lr-remote-count" role="status" aria-label={`${t("remote.requests")} · ${pending}`}>{pending}</span>}
     </span>
-    {createPortal(<FloatingPanel id={id} trigger={`${id}-trigger`} title={t("remote.title")} icon="mouse" compact anchorOnOpen
-      className="lr-remote-panel" onOpenChange={opened => {
+    {createPortal(<FloatingPanel id={id} trigger={`${id}-trigger`} title={t("remote.title")} icon="mouse" compact anchorOnOpen detachable
+      className="lr-remote-panel" onOpenChange={(opened, owner) => {
         setOpen(opened);
+        setSurfaceDocument(owner);
         if (!opened) { setPassword(""); setDraft(mode === "off" ? "ask" : mode); }
       }}>
       <div className="lr-remote-panel-body">
@@ -72,7 +76,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
             onClick={() => void applyPolicy("off")} />
         </div>}
         {requests.length > 0 && <div className="lr-remote-requests">
-          {requests.map(request => <div className="lr-remote-request" key={request.id} role="group" aria-label={request.name}>
+          {[...requests].sort((a, b) => Number(a.state === "pending") - Number(b.state === "pending")).map(request => <div className="lr-remote-request" key={request.id} role="group" aria-label={request.name}>
             <div><NameTag name={request.name} identity={request.peerId} />
               <p><Glyph name={request.state === "suspended" ? "pause" : request.state === "active" ? "mouse" : "clock"} size={14} />
                 <span className={vis ? "visually-hidden" : undefined}>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.controlling" : "remote.waiting")}</span></p>

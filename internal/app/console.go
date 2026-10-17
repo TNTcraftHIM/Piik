@@ -16,6 +16,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/TNTcraftHIM/Piik/internal/app/browser"
+	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -25,7 +26,7 @@ import (
 type consoleView struct {
 	mode, state, entry, invite string
 	protected                  bool
-	problem                    string
+	problem                    error
 	browserError               error
 }
 
@@ -39,6 +40,9 @@ type consoleOpenResult struct {
 	err    error
 }
 type consoleDiagnostic string
+
+func (diagnostic consoleDiagnostic) Error() string { return string(diagnostic) }
+
 type consoleDebug struct {
 	logPath string
 	export  func() (string, error)
@@ -85,30 +89,42 @@ type console struct {
 }
 
 var consoleCopy = map[string][3]string{
-	"mode":         {"Mode", "模式", ""},
-	"local":        {"Local network", "局域网", "□"},
-	"link":         {"Public link", "公网链接", "↗"},
-	"site":         {"Piik Site", "Piik 站点", "@"},
-	"setup":        {"App is ready", "App 已就绪", "?"},
-	"starting":     {"Starting", "正在启动", "…"},
-	"ready":        {"Ready", "已就绪", "✓"},
-	"stopping":     {"Stopping", "正在退出", "→"},
-	"stopped":      {"Stopped", "已停止", "○"},
-	"failed":       {"Could not continue", "运行失败", "!"},
-	"entry":        {"Open in browser", "打开网页", "□"},
-	"launcher":     {"App launcher", "App 启动页", "☆"},
-	"invite":       {"Site address", "站点地址", "↗"},
-	"access":       {"Site access", "站点准入", ""},
-	"open":         {"Open", "开放", "○"},
-	"password":     {"Password protected", "已设置密码", "*"},
-	"error":        {"Details", "详情", "!"},
-	"exit":         {"quit", "退出", "↪"},
-	"openFailed":   {"Could not open the browser; use the address above.", "无法打开浏览器，请使用上方地址。", "! ↗"},
-	"log":          {"Log", "日志", ""},
-	"export":       {"Export diagnostics", "导出诊断", ""},
-	"exporting":    {"Saving diagnostics", "正在保存诊断", ""},
-	"exported":     {"Saved", "已保存", ""},
-	"exportFailed": {"Could not save diagnostics", "无法保存诊断", ""},
+	"failure.tunnel-exited":      {"Public invite disconnected before it was ready. Try again or use an existing Piik site.", "公网邀请尚未就绪就已断开，请重试或使用已有 Piik 站点。", "!"},
+	"failure.tunnel-timeout":     {"Public invite did not connect in time. Try again or use an existing Piik site.", "公网邀请连接超时，请重试或使用已有 Piik 站点。", "!"},
+	"failure.tunnel-unavailable": {"The public-invite helper is unavailable. Extract the complete App package again.", "公网邀请辅助程序不可用，请重新完整解压 App 程序包。", "!"},
+	"failure.tunnel-start":       {"Could not start public invite. Check the details or use an existing Piik site.", "无法启动公网邀请，请查看详情或使用已有 Piik 站点。", "!"},
+	"failure.tunnel-stopped":     {"Public invite stopped. Reopen App for a new link or use an existing Piik site.", "公网邀请已停止，请重开 App 获取新链接，或使用已有 Piik 站点。", "!"},
+	"failure.local-port":         {"The local port is unavailable. Close the other process or choose another port.", "本地端口不可用，请关闭占用程序或更换端口。", "!"},
+	"failure.local-network":      {"No suitable local invitation address. Check your network and selected address.", "没有合适的局域网邀请地址，请检查网络和所选地址。", "!"},
+	"failure.configuration":      {"Could not apply App settings. Check the details.", "无法应用 App 设置，请查看详情。", "!"},
+	"failure.native-control":     {"App connection service is unavailable. Reopen App and try again.", "App 连接服务不可用，请重开 App 后重试。", "!"},
+	"failure.launcher":           {"App launcher is unavailable. Reopen App and try again.", "App 启动页不可用，请重开 App 后重试。", "!"},
+	"failure.diagnostics":        {"Could not start diagnostics. Check the save location and permissions.", "无法开启诊断，请检查保存位置与权限。", "!"},
+	"failure.local-server":       {"The local room service is unavailable. Check the details.", "本地房间服务不可用，请查看详情。", "!"},
+	"mode":                       {"Mode", "模式", ""},
+	"local":                      {"Local network", "局域网", "□"},
+	"link":                       {"Public link", "公网链接", "↗"},
+	"site":                       {"Piik Site", "Piik 站点", "@"},
+	"setup":                      {"App is ready", "App 已就绪", "?"},
+	"starting":                   {"Starting", "正在启动", "…"},
+	"ready":                      {"Ready", "已就绪", "✓"},
+	"stopping":                   {"Stopping", "正在退出", "→"},
+	"stopped":                    {"Stopped", "已停止", "○"},
+	"failed":                     {"Could not continue", "运行失败", "!"},
+	"entry":                      {"Open in browser", "打开网页", "□"},
+	"launcher":                   {"App launcher", "App 启动页", "☆"},
+	"invite":                     {"Site address", "站点地址", "↗"},
+	"access":                     {"Site access", "站点准入", ""},
+	"open":                       {"Open", "开放", "○"},
+	"password":                   {"Password protected", "已设置密码", "*"},
+	"error":                      {"Details", "详情", "!"},
+	"exit":                       {"quit", "退出", "↪"},
+	"openFailed":                 {"Could not open the browser; use the address above.", "无法打开浏览器，请使用上方地址。", "! ↗"},
+	"log":                        {"Log", "日志", ""},
+	"export":                     {"Export diagnostics", "导出诊断", ""},
+	"exporting":                  {"Saving diagnostics", "正在保存诊断", ""},
+	"exported":                   {"Saved", "已保存", ""},
+	"exportFailed":               {"Could not save diagnostics", "无法保存诊断", ""},
 }
 
 func newConsole(cancel context.CancelFunc, machine bool) *console {
@@ -230,7 +246,7 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case consoleLauncher:
 		model.launcher = string(value)
 	case consoleDiagnostic:
-		model.view.problem = string(value)
+		model.view.problem = value
 		model.view.browserError = nil
 	case consoleDebug:
 		model.debug = value
@@ -262,9 +278,9 @@ func (model consoleModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.finished = true
 		model.view.entry, model.view.invite, model.launcher = "", "", ""
 		model.view.browserError = nil
-		model.view.state, model.view.problem = "stopped", ""
+		model.view.state, model.view.problem = "stopped", nil
 		if value.err != nil {
-			model.view.state, model.view.problem = "failed", value.err.Error()
+			model.view.state, model.view.problem = "failed", value.err
 		}
 		return model, tea.Quit
 	case tea.KeyPressMsg:
@@ -416,7 +432,17 @@ func (model consoleModel) content(styled bool) string {
 			fmt.Fprintf(&out, "\n%s  %s\n", muted.Render(model.text("access")), model.text(access))
 		}
 	}
-	problem := model.view.problem
+	problem := ""
+	if model.view.problem != nil {
+		problem = diagnostics.SafeText(model.view.problem.Error())
+		if _, diagnostic := model.view.problem.(consoleDiagnostic); !diagnostic {
+			if reason := failure.Of(model.view.problem); reason != "" {
+				fmt.Fprintf(&out, "\n%s\n", ansi.Hardwrap(model.text("failure."+string(reason)), width-4, true))
+			} else if model.view.state != "failed" {
+				fmt.Fprintf(&out, "\n%s\n", model.text("failed"))
+			}
+		}
+	}
 	if model.view.browserError != nil {
 		problem = model.text("openFailed") + "\n" + model.view.browserError.Error()
 	}

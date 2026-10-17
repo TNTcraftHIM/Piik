@@ -25,6 +25,8 @@ export function RemoteControl({ channel, videoRef, available }: {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [keyboardDocument, setKeyboardDocument] = useState<Document | null>(null);
+  const keyboardDetached = Boolean(keyboardDocument && keyboardDocument !== document);
   const [touch, setTouch] = useState(false);
   const [zoomed, setZoomed] = useState(false);
   const session = useRef<RemoteInputSession | null>(null);
@@ -37,8 +39,11 @@ export function RemoteControl({ channel, videoRef, available }: {
   const input = useCallback((event: RemoteInputEvent) => session.current?.input(event), []);
   const reset = useCallback(() => { touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
   const closeKeyboard = () => {
-    reset(); setKeyboardOpen(false); surface.current?.focus({ preventScroll: true });
+    reset(); setKeyboardOpen(false); setKeyboardDocument(null); surface.current?.focus({ preventScroll: true });
   };
+  const keyboardSurfaceChanged = useCallback((owner: Document) => {
+    reset(); setKeyboardDocument(owner);
+  }, [reset]);
   const release = useCallback(() => {
     reset();
     if (document.pointerLockElement === surface.current && surface.current) document.exitPointerLock();
@@ -64,7 +69,7 @@ export function RemoteControl({ channel, videoRef, available }: {
     if (!available || !inline) release();
   }, [available, inline, channel, release]);
   useEffect(() => {
-    if (!active) { touchpad.current?.reset(); setKeyboardOpen(false); }
+    if (!active) { touchpad.current?.reset(); setKeyboardOpen(false); setKeyboardDocument(null); }
   }, [active]);
   useEffect(() => {
     const video = videoRef.current;
@@ -127,24 +132,33 @@ export function RemoteControl({ channel, videoRef, available }: {
     // grant only; the native owner ignores buttons it never pressed.
     const mouseUp = (event: MouseEvent) => session.current?.input({ type: "button", button: event.button, down: false });
     window.addEventListener("mouseup", mouseUp, true);
-    const hidden = () => { if (document.hidden) release(); };
     const lockChanged = () => {
       reset(); setLocked(document.pointerLockElement === element);
       if (document.pointerLockElement === element) { setLockFailed(false); element?.focus({ preventScroll: true }); }
     };
     window.addEventListener("blur", reset);
-    document.addEventListener("visibilitychange", hidden);
     document.addEventListener("pointerlockchange", lockChanged);
     return () => {
       element?.removeEventListener("wheel", wheel);
       window.removeEventListener("mouseup", mouseUp, true);
       window.removeEventListener("blur", reset);
-      document.removeEventListener("visibilitychange", hidden);
       document.removeEventListener("pointerlockchange", lockChanged);
       if (document.pointerLockElement === element) document.exitPointerLock();
       setLocked(false); setLockFailed(false);
     };
   }, [controlled, channel, release, reset]);
+  useEffect(() => {
+    if (!controlled) return;
+    const owners = [...new Set([document, ...(keyboardDocument ? [keyboardDocument] : [])])];
+    const hidden = () => {
+      reset();
+      // A visible detached keyboard is still an attended input surface.
+      if (owners.every(owner => owner.hidden || owner.defaultView?.closed)) release();
+    };
+    owners.forEach(owner => owner.addEventListener("visibilitychange", hidden));
+    hidden();
+    return () => owners.forEach(owner => owner.removeEventListener("visibilitychange", hidden));
+  }, [controlled, keyboardDocument, release, reset]);
 
   if (!channel || channel.readyState !== "open" || !state || state.mode === "off") return null;
   const point = (clientX: number, clientY: number) => {
@@ -175,9 +189,13 @@ export function RemoteControl({ channel, videoRef, available }: {
         <span className={vis ? "visually-hidden" : undefined}>{t(feedback)}</span>
       </span>}
     </span>
-    {controlled && <Btn icon="keyboard" title="remote.keyboard" hint="hint-remote-keyboard"
+    {controlled && <Btn icon="keyboard" title={keyboardDetached ? "floating.focus" : "remote.keyboard"} hint={keyboardDetached ? "hint-window-detach" : "hint-remote-keyboard"}
       hintText={touchControls ? "remote.touchHelp" : undefined} expanded={keyboardOpen} disabled={!active}
-      onClick={() => { if (keyboardOpen) closeKeyboard(); else { reset(); setKeyboardOpen(true); } }} />}
+      onClick={() => {
+        if (keyboardDetached) keyboardDocument?.defaultView?.focus();
+        else if (keyboardOpen) closeKeyboard();
+        else { reset(); setKeyboardOpen(true); }
+      }} />}
     {parent && (controlled || state.state === "pending" || state.state === "failed" || state.reason || passwordOpen) && createPortal(<>
       {passwordOpen && <form className="lr-remote-password" onSubmit={event => {
         event.preventDefault(); session.current?.request(password); setPassword("");
@@ -270,6 +288,7 @@ export function RemoteControl({ channel, videoRef, available }: {
           onClick={() => { reset(); viewport.current?.reset(); surface.current?.focus({ preventScroll: true }); }}>1×</button>
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
+        onSurfaceChange={keyboardSurfaceChanged}
         mouseControl={!touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad"
           title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"}
           cap={locked ? "remote.releaseMouse" : "remote.gameMouse"} pressed={locked}

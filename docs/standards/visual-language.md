@@ -67,9 +67,9 @@ participant, stays open after sending and keeps its position when retargeted.
 One-shot settings and guidance retain their existing disclosures. Escape closes
 inner guidance first, then the most recently opened floating panel, then theater
 mode; an IME composition must not dismiss these surfaces.
-Detached chat uses the same content in the browser's own always-on-top frame.
+Detachable tools reuse the same content in the browser's own always-on-top frame.
 Close, return-to-tab, movement and resizing belong to that frame; do not duplicate
-its controls in the compact chat header. Keep messages and text contrast
+its controls in the tool header. Keep messages and text contrast
 primary; do not simulate transparent desktop content with a washed-out panel.
 
 Keep the application language control's segmented Chinese, English and visual
@@ -156,9 +156,12 @@ narrow screens; optional waiting copy yields first. Microphone mute, sharing
 pause, source replacement and stop remain direct actions; stopping stays
 visually separated from frequent actions.
 One compact dock combines direct actions and the sharing-settings entry below
-the television, above the couch. Its disclosure groups quality presets and picture
-parameters with sound and microphone settings; presets remain available before
-sharing starts. Separate the less frequent connection/codec options in a nested
+the television, above the couch. Group microphone, pause and source actions;
+group sharing settings and remote permissions separately from them and stop.
+Picture presets lead the settings; a fine-tuning disclosure keeps the configured
+limits visible when closed. In sound, source and microphone inputs precede the
+mixed output's audio quality. Presets remain available before sharing starts.
+Separate the less frequent connection/codec options in a nested
 disclosure. Expand in page flow, pushing later content down instead of covering
 the picture or participants. Keep picture and sound in distinct sections; place
 related adjustments side by side where space permits and stack them on narrow

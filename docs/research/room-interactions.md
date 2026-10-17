@@ -389,8 +389,8 @@ of registering a second global key grab. A Host stop (including that local short
 permission to Ask each time. A Viewer ending their own control leaves the Host's
 policy in place. This adds no service, automatic sharing or control across App
 restart. Escape releases game mouse capture without ending the grant.
-Window blur releases held
-input; hidden, locally paused or native PiP/fullscreen video ends control.
+Window blur releases held input. Control ends when no input surface is visible,
+or when video is locally paused or enters native PiP/fullscreen.
 DOM fullscreen keeps the page's input surface and retains control. Pointer motion retains the
 latest absolute sample or accumulated relative movement within a short timer,
 flushing before button/key transitions so a drag ends at its final position.
@@ -409,6 +409,14 @@ Control actions use the existing playback bar. While controlling, the picture
 reserves that bar's space and keeps its actions visible, so touch users can
 open the keyboard or stop control and every image pixel remains reachable; remote key
 input does not count as keyboard navigation of playback controls.
+Host management and the Viewer's virtual keyboard can use the browser's
+always-on-top document window, reusing the same portal and state as chat.
+Closing that window returns its content to the page. Keyboard migration, blur
+and retirement release held input; its visible detached document keeps the
+existing grant while the main tab is hidden. Physical key capture and game
+mouse lock stay with the picture, while the detached keyboard sends virtual
+keys and committed text through the same input session. Grant retirement
+closes the keyboard window. Browsers without this API retain the in-page UI.
 A stalled send queue closes the input channel
 without replacing the media connection. No input history is persisted.
 

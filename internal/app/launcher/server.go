@@ -18,6 +18,7 @@ import (
 	"time"
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 )
@@ -266,6 +267,7 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 		"target":              server.target,
 		"starting":            server.selected && !server.resultSet,
 		"detail":              errorDetail(server.resultErr),
+		"reason":              failure.Of(server.resultErr),
 		"lan":                 map[string]any{"addresses": addresses, "selected": selected},
 		"defaultMode": func() Mode {
 			if server.defaultMode == ModeLocal || server.defaultMode == ModeLink {
@@ -403,7 +405,7 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 	server.mu.Unlock()
 	if !resultSet || resultErr != nil {
 		writeJSON(response, http.StatusServiceUnavailable, map[string]string{
-			"error": "Piik App could not start", "detail": errorDetail(resultErr),
+			"error": "Piik App could not start", "detail": errorDetail(resultErr), "reason": string(failure.Of(resultErr)),
 		})
 		return
 	}

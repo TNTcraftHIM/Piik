@@ -8,7 +8,7 @@ import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { AppHeader } from "../components/living/Header";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
-import { hasCopyPreference, useCopy } from "../ui/copy";
+import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { Glyph } from "../ui/icons";
 import { currentThemePreference } from "../ui/theme";
@@ -25,6 +25,7 @@ const launcherStateSchema = z.object({
   defaultMode: z.enum(["local", "link"]),
   target: z.string().optional(),
   starting: z.boolean().optional(),
+  reason: z.string().optional(),
   detail: z.string().optional(),
   revision: z.string(),
   version: z.string().default("development"),
@@ -36,7 +37,7 @@ const launcherStateSchema = z.object({
   }).optional(),
 });
 const launcherResultSchema = z.object({ target: z.string().url() }).strict();
-const launcherErrorSchema = z.object({ detail: z.string() });
+const launcherErrorSchema = z.object({ reason: z.string().optional(), detail: z.string() });
 
 export function AppLauncherPage() {
   const { lang, vis, t } = useCopy();
@@ -46,7 +47,7 @@ export function AppLauncherPage() {
   const [site, setSite] = useState("");
   const [startupSite, setStartupSite] = useState("");
   const [localAccessPassword, setLocalAccessPassword] = useState("");
-  const [error, setError] = useState<{ kind: "load" | "launch"; detail?: string } | null>(null);
+  const [error, setError] = useState<{ kind: "load" | "launch"; reason?: string; detail?: string } | null>(null);
   const [appDebug, setAppDebug] = useState<boolean | undefined>();
   const [debug, setDebug] = useState(false);
   const [debugBusy, setDebugBusy] = useState(false);
@@ -111,7 +112,7 @@ export function AppLauncherPage() {
         setStartupSite(state.startupSite);
         setAppDebug(state.debug);
         setDebug(state.debug === true);
-        setError(previous => state.detail ? { kind: "launch", detail: state.detail }
+        setError(previous => state.detail ? { kind: "launch", reason: state.reason, detail: state.detail }
           : previous?.kind === "load" ? null : previous);
         setLoading(false);
         if (state.starting) timer = setTimeout(() => void readState(), 750);
@@ -206,7 +207,7 @@ export function AppLauncherPage() {
       }
       if (!response.ok) {
         const failure = launcherErrorSchema.safeParse(await response.json().catch(() => null));
-        setError({ kind: "launch", detail: failure.success ? failure.data.detail : undefined });
+        setError({ kind: "launch", ...(failure.success ? failure.data : {}) });
         setStarting(false);
         return;
       }
@@ -243,6 +244,7 @@ export function AppLauncherPage() {
     } finally { finish(); setSiteBusy(false); }
   }
 
+  const errorKey = `client.launch.failure.${error?.reason}`;
   return (
     <div className="lr-app">
       <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
@@ -300,8 +302,12 @@ export function AppLauncherPage() {
           <LauncherForm
             roomError={error?.kind === "launch" ? <>
               <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
-              {error.detail && <p className="lr-client-launch-detail">{error.detail}</p>}
+              {isCopyKey(errorKey) && <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t(errorKey)}</p>}
               <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.reopen")}</p>
+              {error.detail && <details className="lr-client-launch-technical">
+                <summary>{t("client.launch.errorDetails")}</summary>
+                <p className="lr-client-launch-detail">{error.detail}</p>
+              </details>}
             </> : undefined}
             mode={mode}
             site={site}

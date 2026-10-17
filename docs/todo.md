@@ -44,6 +44,11 @@ platform deferrals or establish a diagnosis for unmatched reports.
   own that boundary; this local repair does not diagnose the unmatched field
   reports below.
 
+- [ ] **Pion DTLS maintenance update.** Review [WebRTC v4.2.24](https://github.com/pion/webrtc/releases/tag/v4.2.24) / DTLS v3.1.12
+  against the existing media checks. Upstream corrects queued handshake-buffer
+  ownership and duplicate ClientHello recovery; this is handshake reliability
+  work, not a new NAT traversal mechanism.
+
 ## Held By Owner
 
 - [ ] **Multiple remote-control screens.** Deferred by the owner on 2026-10-17.

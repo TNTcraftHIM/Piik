@@ -18,6 +18,7 @@ import (
 	"time"
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
@@ -94,7 +95,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		var err error
 		recorder, err = openDiagnostics(options.LogDir)
 		if err != nil {
-			return fmt.Errorf("Piik App diagnostics are unavailable: %w", err)
+			return errors.Join(failure.Diagnostics, fmt.Errorf("Piik App diagnostics are unavailable: %w", err))
 		}
 		recorder.Context("build", map[string]any{"version": buildVersion(), "revision": BuildRevision})
 		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
@@ -122,7 +123,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 	slog.Debug("piik-client", "event", "start", "version", buildVersion(), "revision", BuildRevision)
 	options.console.show(consoleView{state: "starting"})
 	if err := validateMode(options); err != nil {
-		return err
+		return errors.Join(failure.Configuration, err)
 	}
 	if options.Port == 0 {
 		options.Port = DefaultLocalPort
@@ -132,21 +133,21 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		var err error
 		configPath, err = appconfig.DefaultPath()
 		if err != nil {
-			return fmt.Errorf("Piik App configuration is unavailable: %w", err)
+			return errors.Join(failure.Configuration, fmt.Errorf("Piik App configuration is unavailable: %w", err))
 		}
 	}
 	config, err := appconfig.LoadOrCreate(configPath)
 	if err != nil {
-		return fmt.Errorf("Piik App configuration is unavailable: %w", err)
+		return errors.Join(failure.Configuration, fmt.Errorf("Piik App configuration is unavailable: %w", err))
 	}
 	config, err = applyMode(config, options)
 	if err != nil {
-		return err
+		return errors.Join(failure.Configuration, err)
 	}
 	slog.Debug("piik-client", "event", "configuration", "siteConfigured", config.Site != "", "localAccessProtected", config.LocalAccessPassword != "")
 	if options.SiteSet {
 		if err = appconfig.Save(configPath, config); err != nil {
-			return fmt.Errorf("Piik App configuration is unavailable: %w", err)
+			return errors.Join(failure.Configuration, fmt.Errorf("Piik App configuration is unavailable: %w", err))
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
@@ -183,7 +184,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		QualityPreference: qualityPreference,
 	})
 	if err != nil {
-		return fmt.Errorf("Piik App native control could not start: %w", err)
+		return errors.Join(failure.NativeControl, fmt.Errorf("Piik App native control could not start: %w", err))
 	}
 	defer func() { returnedErr = errors.Join(returnedErr, control.Close()) }()
 	slog.Debug("piik-client", "event", "control-ready")
@@ -297,7 +298,7 @@ func runLauncher(
 		},
 	)
 	if err != nil {
-		return err
+		return errors.Join(failure.Launcher, err)
 	}
 	defer func() { returnedErr = errors.Join(returnedErr, launch.Close()) }()
 	control.SetConnectURL(launch.URL())
@@ -307,14 +308,14 @@ func runLauncher(
 	defer options.console.send(consoleLauncher(""))
 	launchAddress, err := url.Parse(launch.URL())
 	if err != nil {
-		return err
+		return errors.Join(failure.Launcher, err)
 	}
 	configMu.Lock()
 	launcherOrigin = launchAddress.Scheme + "://" + launchAddress.Host
 	err = control.SetAllowedOrigins(append(allowedOrigins(config.Site, options.Port), launcherOrigin))
 	configMu.Unlock()
 	if err != nil {
-		return err
+		return errors.Join(failure.NativeControl, err)
 	}
 	if !automatic && startupSite == "" {
 		options.console.show(consoleView{state: "setup", entry: launch.URL()})
@@ -333,7 +334,7 @@ func runLauncher(
 			return roomErr
 		}
 		launch.SetResult("", roomErr)
-		options.console.show(consoleView{state: "setup", entry: launch.URL(), problem: diagnostics.SafeText(roomErr.Error())})
+		options.console.show(consoleView{state: "setup", entry: launch.URL(), problem: roomErr})
 		slog.Debug("piik-client", "event", "local-room-stopped", diagnostics.Error(roomErr))
 		select {
 		case <-ctx.Done():
@@ -361,7 +362,7 @@ func runLauncher(
 			return err
 		case err = <-launch.Done():
 			if err != nil {
-				return fmt.Errorf("Piik App launcher stopped unexpectedly: %w", err)
+				return errors.Join(failure.Launcher, fmt.Errorf("Piik App launcher stopped unexpectedly: %w", err))
 			}
 			return nil
 		}
@@ -382,7 +383,7 @@ func runLauncher(
 		next.LocalAccessPassword = selection.LocalAccessPassword
 	})
 	if err != nil {
-		err = fmt.Errorf("Piik App configuration could not be saved: %w", err)
+		err = errors.Join(failure.Configuration, fmt.Errorf("Piik App configuration could not be saved: %w", err))
 		return finishRoom(err)
 	}
 	if err = configureDiagnostics(&options, selectedConfig); err != nil {
@@ -498,7 +499,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 ) (returnedErr error) {
 	stunURLs, natPredictionStunURLs, err := localSTUNURLs(options.Link)
 	if err != nil {
-		return err
+		return errors.Join(failure.Configuration, err)
 	}
 	view := consoleView{mode: "local", state: "starting", protected: config.LocalAccessPassword != ""}
 	if options.Link {
@@ -508,7 +509,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	options.console.show(view)
 	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4zero, Port: options.Port})
 	if err != nil {
-		return fmt.Errorf("local server port is unavailable: %w", err)
+		return errors.Join(failure.LocalPort, fmt.Errorf("local server port is unavailable: %w", err))
 	}
 	defer func() {
 		if listener != nil {
@@ -524,7 +525,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	// addresses as allowed local origins but never block link startup on LAN
 	// selection (multi-interface hosts may not have one obvious address).
 	if lanErr != nil && !options.Link {
-		return lanErr
+		return errors.Join(failure.LocalNetwork, lanErr)
 	}
 	var tunnel *publictunnel.Process
 	publicOrigin := ""
@@ -557,7 +558,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		NATPredictionSTUNURLs: natPredictionStunURLs,
 	})
 	if err != nil {
-		return err
+		return errors.Join(failure.Configuration, err)
 	}
 	logger := options.logger
 	if logger == nil {
@@ -570,12 +571,12 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		Logger:   logger,
 	})
 	if err != nil {
-		return err
+		return errors.Join(failure.LocalServer, err)
 	}
 	listener = nil // Ownership is now in the application's startup/shutdown path.
 	defer func() { returnedErr = errors.Join(returnedErr, endLocalServer(localServer)) }()
 	if _, err = localServer.Listen(ctx); err != nil {
-		return err
+		return errors.Join(failure.LocalServer, err)
 	}
 	slog.Debug("piik-client", "event", "local-server-ready", "port", options.Port, "publicLink", publicOrigin != "")
 
@@ -618,14 +619,14 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		return nil
 	case err = <-control.Done():
 		if err != nil {
-			return fmt.Errorf("Piik App native control stopped unexpectedly: %w", err)
+			return errors.Join(failure.NativeControl, fmt.Errorf("Piik App native control stopped unexpectedly: %w", err))
 		}
 		return nil
 	case <-tunnelDone:
 		if ctx.Err() != nil {
 			return nil
 		}
-		return errors.New("public invitation link stopped; reopen Piik to create a new link")
+		return errors.Join(failure.TunnelStopped, errors.New("public invitation link stopped; reopen Piik to create a new link"))
 	}
 }
 

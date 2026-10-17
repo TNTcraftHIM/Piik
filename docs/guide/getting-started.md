@@ -109,10 +109,16 @@ also keeps an **App launcher** address. To change between Local room and Public
 invite, close and reopen the App, then choose again. This ends the previous room
 and generates a new public-invitation address.
 
-**Already have a Piik site?** Keep the App running, open the site and click
-**App** at the top. Check the address on the local confirmation page, then choose
-**Allow access**. Enter any site passphrase on the site itself. Allow local-network
-access if the browser asks. No room mode needs to be selected in the launcher.
+### Use App with an existing site
+
+1. Keep Piik App running and open the Piik site in your browser. Enter its site
+   passphrase if asked; [Piik online](https://demo.piik.tv) needs no site passphrase.
+   No room mode needs to be selected in the App launcher.
+2. Click **App** at the top. Allow local-network access if the browser asks.
+3. Check the site address on the local confirmation page, then choose **Allow access**.
+4. Return to the site, choose **Start sharing**, then **Apps / Windows** or **Screens**.
+   Select a source and send the new room invitation to your friends.
+
 You can also choose **Connect Piik App** inside the **Start sharing** source
 selector; its list updates as soon as the connection completes.
 If connection fails, the App button offers **Retry** and **Download App**.
@@ -173,16 +179,17 @@ Screen capture requires an HTTPS site or `localhost`. The sources and audio
 offered by the picker depend on your browser and operating system.
 Invitation links grant access to that room; share them with the people you want there.
 
-To use App capture on that same site, follow [Connect to Site](#choose-an-app-mode).
+To use App capture on that same site, follow [Use App with an existing site](#use-app-with-an-existing-site).
 The site manages rooms and invitations; the App supplies native capture.
 If its operator has enabled SFU forwarding, turn off **Privacy mode** before
 sharing to allow that fallback. The project's online site uses P2P only.
 
 ## Picture and sound settings
 
-Open **Sharing settings** below the picture to adjust picture and audio quality.
+Open **Sharing settings** below the picture. Picture presets are directly available;
+expand **Fine-tune picture** for resolution, frame-rate, bitrate and picture-preference controls.
 
-- Choose a picture preset, or enter width and height under **Resolution limit**.
+- In **Fine-tune picture**, enter width and height under **Resolution limit**.
   Piik preserves the source's proportions within that ceiling, including portrait
   and ultrawide pictures.
 - Sliders cover 15–60 fps in steps of 5 and 2–12 Mbps in steps of 0.5. You can also enter an
@@ -191,7 +198,9 @@ Open **Sharing settings** below the picture to adjust picture and audio quality.
   selects the nearest available slider value.
   The frame-rate limit depends
   on picture size: for example, 1080p240, 1440p144 and 4K60 are accepted requests.
-- Choose an audio preset, or enter an **Audio bitrate limit** from 6 to 320 kbps.
+- Under **Sound**, adjust source audio and microphone input. **Audio quality**
+  controls the shared audio output: choose a preset or enter an **Audio bitrate limit**
+  from 6 to 320 kbps.
 
 The selectable range depends on picture size and the connected App. Picture and sound
 still adapt to the source, device and available bandwidth.

@@ -15,9 +15,37 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/charmbracelet/x/ansi"
 )
+
+func TestConsoleLocalizesFailureAtRenderWithoutLosingCause(t *testing.T) {
+	cause := errors.New("cloudflared exit status 7")
+	problem := errors.Join(failure.TunnelExited, cause)
+	model := consoleModel{language: "en", width: 120, view: consoleView{state: "setup", problem: problem}}
+	for _, language := range []string{"en", "zh", "vis"} {
+		updated, _ := model.Update(consoleLanguage(language))
+		model = updated.(consoleModel)
+		content := model.content(false)
+		if !strings.Contains(strings.Join(strings.Fields(content), ""), strings.Join(strings.Fields(model.text("failure.tunnel-exited")), "")) || !strings.Contains(content, cause.Error()) {
+			t.Fatalf("%s failure presentation: %s", language, content)
+		}
+		if !errors.Is(model.view.problem, cause) {
+			t.Fatal("console lost original cause")
+		}
+	}
+	model.language = "en"
+	model.view.problem = errors.New("unclassified technical failure")
+	if content := model.content(false); !strings.Contains(content, "Could not continue") || !strings.Contains(content, "unclassified technical failure") {
+		t.Fatalf("unknown failure presentation: %s", content)
+	}
+	updated, _ := model.Update(consoleDiagnostic("raw diagnostic line"))
+	content := updated.(consoleModel).content(false)
+	if !strings.Contains(content, "raw diagnostic line") || strings.Contains(content, "Could not continue") {
+		t.Fatalf("diagnostic changed: %s", content)
+	}
+}
 
 func TestConsoleRetainsTheSavedDiagnosticPathAfterRestoration(t *testing.T) {
 	for _, scenario := range []string{"normal", "terminal-ended-before-export", "terminal-read-failed", "manual-result-after-terminal", "failed-export", "failed-export-keeps-path"} {

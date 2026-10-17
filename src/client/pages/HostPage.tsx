@@ -26,6 +26,7 @@ import { AppHeader, LedStrip } from "../components/living/Header";
 import { WelcomeLine } from "../components/living/WelcomeLine";
 import type { CouchEntry } from "../components/living/Couch";
 import { SharingSettings } from "../components/living/SharingSettings";
+import { HostShareControls } from "../components/living/HostShareControls";
 import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
 import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import { RoomInteractions } from "../components/living/RoomInteractions";
@@ -52,7 +53,7 @@ import type { ComicKind } from "../components/living/Comic";
 import type { HintKind } from "../ui/visual-kinds";
 import type { ComicTone } from "../components/living/comic-presentation";
 import { Tooltip } from "../components/living/Tooltip";
-import { AudioBitrateControl, PicturePreferenceControl, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
+import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
 import { RoomCodeInput, RoomCodeError } from "../components/living/RoomCodeInput";
 import { MetricCell } from "../components/living/Metrics";
 import {
@@ -3754,8 +3755,8 @@ export function HostPage({
               />
             ) : null}
           </StageTv>
-          <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
-            {phase === "live" ? <>
+          <HostShareControls
+            actions={phase === "live" ? <>
               <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
                 unavailable={nativeActive && !nativeClientRef.current?.health.nativeMedia.microphone} paused={sharingPaused} disabled={switchingSource || changingQuality}
                 volume={microphoneVolume}
@@ -3779,7 +3780,7 @@ export function HostPage({
                 onClick={() => void switchSource()}
               />
             </> : null}
-            {nativeActive && remoteControlState && <HostRemoteControl
+            remote={nativeActive && remoteControlState && <HostRemoteControl
               mode={remoteControlState.mode}
               platform={remoteControlState.platform}
               disabled={sharingPaused || switchingSource}
@@ -3798,7 +3799,7 @@ export function HostPage({
                 if (!client || !shareId) throw new Error("Native share is unavailable");
                 await client.setRemoteControl(shareId, id, allow);
               }} />}
-            <Btn
+            settings={<Btn
               icon="sliders"
               busy={changingQuality}
               cap="host.settings.button"
@@ -3809,8 +3810,8 @@ export function HostPage({
               expanded={showAdvanced}
               controls="host-advanced-door"
               onClick={() => setShowAdvanced((current) => !current)}
-            />
-            {phase === "live" ? (
+            />}
+            ending={phase === "live" ? (
               <Btn
                 id="host-stop-share"
                 icon="stop"
@@ -3831,7 +3832,7 @@ export function HostPage({
                 onClick={() => endSharing({ key: "host.startCancelled" })}
               />
             ) : null}
-          </div>
+          />
           <div className="lr-stage-notices" role="status" aria-live="polite">
             {details?.hasSourceAudio === false && stream ? (
               <Pill icon="speakerOff" label={t("host.noAudio")} comic="no-audio" tone="off" />
@@ -3853,6 +3854,7 @@ export function HostPage({
                   maxAudioBitrate: screenAudioBitrate(advancedQualityRef.current.maxAudioBitrate),
                 })} />
             }
+            pictureSummary={<PictureSettingsSummary value={advancedQuality} />}
             picture={<>
               <ResolutionControl value={advancedQuality.resolution} limits={videoLimits}
                 disabled={phase === "starting" || switchingSource}
@@ -3866,9 +3868,6 @@ export function HostPage({
                 onChange={degradationPreference => changeAdvancedQuality({ degradationPreference })} />
             </>}
             audio={<>
-              <AudioBitrateControl value={screenAudioBitrate(advancedQuality.maxAudioBitrate)}
-                max={audioBitrateCeiling} disabled={phase === "starting" || switchingSource}
-                onChange={changeMaxAudioBitrate} />
               {phase === "live" && nativeActive && nativeSourceSelectionRef.current?.target.kind === "display" &&
                 nativeClientRef.current?.health.nativeMedia.microphone && nativeClientRef.current.health.nativeMedia.processAudioExclusion ? (
                 <div className="lr-door-group lr-source-audio-settings">
@@ -3905,6 +3904,9 @@ export function HostPage({
                   onVoiceProcessing={enabled => void changeMicrophone(microphoneEnabled, microphoneDevices.browser, enabled)}
                 />
               ) : null}
+              <AudioBitrateControl value={screenAudioBitrate(advancedQuality.maxAudioBitrate)}
+                max={audioBitrateCeiling} disabled={phase === "starting" || switchingSource}
+                onChange={changeMaxAudioBitrate} />
             </>}
             technical={<>
               <div className="lr-door-group">

@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 )
 
@@ -72,10 +73,10 @@ func Start(
 		return nil, err
 	}
 	if err := validateExecutable(executable); err != nil {
-		return nil, err
+		return nil, errors.Join(failure.TunnelUnavailable, err)
 	}
 	if err := validateLocalOrigin(localOrigin); err != nil {
-		return nil, err
+		return nil, errors.Join(failure.TunnelStart, err)
 	}
 	startup, cancel := context.WithTimeout(parent, startupTimeout)
 	defer cancel()
@@ -109,8 +110,15 @@ func Start(
 			err = errors.Join(startup.Err(), err)
 		}
 		if parent.Err() == nil {
-			err = errors.Join(errors.New("public invitation service did not connect within 30 seconds; check your Internet connection and reopen Piik to try again"), err)
+			err = errors.Join(failure.TunnelTimeout, errors.New("public invitation service did not connect within 30 seconds; check your Internet connection and reopen Piik to try again"), err)
 		}
+	}
+	if err != nil && err != parent.Err() && failure.Of(err) == "" {
+		reason := failure.TunnelStart
+		if errors.Is(err, errStartupExited) {
+			reason = failure.TunnelExited
+		}
+		err = errors.Join(reason, err)
 	}
 	return nil, err
 }

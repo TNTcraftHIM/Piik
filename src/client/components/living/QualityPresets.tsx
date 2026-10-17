@@ -44,6 +44,15 @@ export function QualityPresets({ selected, limits = VIDEO_CAPTURE_LIMITS, disabl
   </div>;
 }
 
+export function PictureSettingsSummary({ value }: { value: QualityProfile }) {
+  const { t } = useCopy();
+  return <span className="lr-sharing-picture-summary" aria-label={t("host.settings.pictureLimits")}>
+    <span>{value.resolution.width} × {value.resolution.height}</span>
+    <span>{value.maxFramerate} fps</span>
+    <span>{value.maxBitrate / 1_000_000} Mbps</span>
+  </span>;
+}
+
 export function ResolutionControl({ value, limits, disabled, onChange }: {
   value: QualityResolution;
   limits: VideoCaptureLimits;

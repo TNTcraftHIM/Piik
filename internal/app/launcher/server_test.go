@@ -16,6 +16,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	appfailure "github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 )
 
@@ -373,20 +374,33 @@ func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
 		t.Fatalf("CLI debug was not advertised: %+v, %v", state, err)
 	}
 	_ = response.Body.Close()
-	server.SetResult("", errors.New("public tunnel failed: token=private-secret "+strings.Repeat("network unavailable ", 200)))
+	cause := errors.New("public tunnel failed: token=private-secret " + strings.Repeat("network unavailable ", 200))
+	server.SetResult("", errors.Join(appfailure.TunnelExited, cause))
 	response, err = localPost(origin+"/api/client-launcher/launch", "application/json",
 		strings.NewReader(`{"mode":"link","language":"en"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	var failure struct{ Error, Detail string }
+	var failure struct{ Error, Detail, Reason string }
 	if err := json.NewDecoder(response.Body).Decode(&failure); err != nil || response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("failure response = %d, %v", response.StatusCode, err)
 	}
-	if failure.Error != "Piik App could not start" || !strings.Contains(failure.Detail, "public tunnel failed") ||
+	if failure.Reason != string(appfailure.TunnelExited) || failure.Error != "Piik App could not start" || !strings.Contains(failure.Detail, "public tunnel failed") ||
 		strings.Contains(failure.Detail, "private-secret") || len([]rune(failure.Detail)) > 2051 {
 		t.Fatalf("unsafe or missing failure detail: %+v", failure)
+	}
+	response, err = http.Get(origin + "/api/client-launcher")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var restored struct{ Reason, Detail string }
+	if err := json.NewDecoder(response.Body).Decode(&restored); err != nil || restored.Reason != failure.Reason || restored.Detail != failure.Detail {
+		t.Fatalf("restored failure = %+v, %v", restored, err)
+	}
+	if !errors.Is(server.resultErr, cause) {
+		t.Fatal("launcher lost original cause")
 	}
 }
 

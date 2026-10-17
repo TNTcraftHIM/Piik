@@ -237,11 +237,14 @@ loading ordinary websites does not establish that this port is accessible.
 See [Cloudflare's connection troubleshooting](https://developers.cloudflare.com/tunnel/troubleshooting/)
 for the requirements. You do not need to open an inbound port on your router.
 
-**To continue sharing:** keep the App running, open a reachable
-[online site or existing site](./getting-started.md#share-from-an-existing-site),
-and click **App** at the top to authorize it. You can then use App window/screen
-capture without creating a temporary public invitation. The online site still
-uses P2P; if the page opens but video does not connect, follow
+**To continue without a public invite:** keep the App running and open
+[Piik online](https://demo.piik.tv) or another reachable Piik site. Follow
+[Use App with an existing site](./getting-started.md#use-app-with-an-existing-site)
+to authorize App window/screen capture, then send your friends the new site's
+room invitation. The old public-invitation link does not lead to this new room.
+Piik online needs no site passphrase. This bypasses the temporary Cloudflare web
+address; the online site remains P2P-only, with no SFU fallback.
+If the page opens but video does not connect, follow
 [media connection troubleshooting](#when-video-will-not-connect).
 Include the App version, failure time and [App diagnostic report](../../cmd/piik-app/README.md#diagnostics)
 in feedback. If the unavailable address is a self-hosted site rather than the App's

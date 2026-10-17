@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState } from "react";
 
 // Geometry, focus and visibility follow the document displaying a surface.
 // Its React tree and domain state continue to belong to the original page.
@@ -10,6 +10,44 @@ export function panelWindowAPI(view: Window | null) {
   return view && view === view.top && view.isSecureContext
     ? (view as Window & { documentPictureInPicture?: PictureInPicture }).documentPictureInPicture
     : undefined;
+}
+
+/** One portal target survives adoption; the containing room owns its retirement. */
+export function usePanelWindow(enabled: boolean, onDocument?: (owner: Document) => void) {
+  const [container] = useState(() => {
+    if (!enabled || typeof document === "undefined") return null;
+    const node = document.createElement("div");
+    node.style.display = "contents";
+    return node;
+  });
+  const slot = useRef<HTMLSpanElement>(null);
+  const lifetime = useRef<AbortController | null>(null);
+  const [surfaceDocument, setSurfaceDocument] = useState<Document | null>(null);
+  const [opening, setOpening] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useLayoutEffect(() => {
+    if (!container || !slot.current) return;
+    slot.current.append(container);
+    return () => { lifetime.current?.abort(); container.remove(); };
+  }, [container]);
+  async function open() {
+    if (!container || opening) return;
+    const controller = new AbortController();
+    lifetime.current = controller;
+    setOpening(true); setFailed(false);
+    try {
+      await openPanelWindow(container, controller.signal, owner => {
+        setSurfaceDocument(owner); onDocument?.(owner);
+      });
+    } catch { if (!controller.signal.aborted) setFailed(true); }
+    finally { if (!controller.signal.aborted) setOpening(false); }
+  }
+  function close() {
+    lifetime.current?.abort();
+    setOpening(false); setFailed(false);
+  }
+  return { container, slot, surfaceDocument, opening, failed, open, close,
+    detached: Boolean(surfaceDocument && surfaceDocument !== document) };
 }
 
 /** Adopt one stable portal, then return it on close. No second React root/session. */

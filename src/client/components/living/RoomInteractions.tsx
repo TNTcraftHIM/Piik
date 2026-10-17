@@ -195,7 +195,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
         footerAction={<span className="lr-interaction-chat-toggle">
           <Btn id={`${id}-toggle`} icon="chat" title={detached ? "interaction.focus" : chatOpen ? "interaction.close" : "interaction.open"}
             cap="interaction.open" expanded={chatOpen} controls={detached ? undefined : id}
-            hint={detached ? "hint-chat-detach" : chatOpen ? "hint-close" : "hint-chat-open"}
+            hint={detached ? "hint-window-detach" : chatOpen ? "hint-close" : "hint-chat-open"}
             tone={chatOpen ? "on" : undefined} popoverTarget={detached ? undefined : id}
             onClick={detached ? () => chatDocument?.defaultView?.focus() : undefined} />
           {unread > 0 && <span className="lr-interaction-unread" aria-label={t("interaction.unread", { count: String(unread) })}>{unread}</span>}

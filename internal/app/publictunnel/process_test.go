@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	appfailure "github.com/TNTcraftHIM/Piik/internal/app/failure"
 )
 
 func TestMain(tests *testing.M) {
@@ -137,7 +139,7 @@ func TestStartupRetriesOnlyRetiredPreReadyChildren(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				if process != nil || !errors.Is(err, errStartupExited) {
+				if process != nil || !errors.Is(err, errStartupExited) || appfailure.Of(err) != appfailure.TunnelExited {
 					t.Fatalf("exhausted startup: %v, %v", process, err)
 				}
 				if sample.exitCode != 0 {
@@ -409,7 +411,7 @@ func TestStartupCancellationStillRetiresTheTunnel(t *testing.T) {
 func TestMissingTunnelExplainsHowToRestoreThePackage(t *testing.T) {
 	_, err := Start(t.Context(), filepath.Join(t.TempDir(), "missing-tunnel"), "http://127.0.0.1:8787")
 	var cause *os.PathError
-	if !errors.As(err, &cause) || !strings.Contains(err.Error(), "extract the complete Piik archive") {
+	if !errors.As(err, &cause) || appfailure.Of(err) != appfailure.TunnelUnavailable || !strings.Contains(err.Error(), "extract the complete Piik archive") {
 		t.Fatalf("missing tunnel lost its cause or recovery instruction: %v", err)
 	}
 }

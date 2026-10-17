@@ -2545,7 +2545,7 @@ async function startHost(
     5_000, "sharing settings", signal);
   if (codecMode !== "auto") {
     await evaluate(cdp, page, `(() => {
-      const technical = document.querySelector('#host-advanced-door details');
+      const technical = document.querySelector('#host-advanced-door .lr-sharing-technical');
       if (technical instanceof HTMLDetailsElement && !technical.open) technical.querySelector('summary')?.click();
     })()`);
     await waitForPage(
