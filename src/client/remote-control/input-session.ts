@@ -90,7 +90,10 @@ export class RemoteInputSession {
   }
 
   release(): void {
-    if (this.intent === null) return;
+    if (this.intent === null) {
+      if (this.state?.reason) this.set({ ...this.state, reason: undefined });
+      return;
+    }
     const intent = this.intent;
     this.intent = null;
     if (this.send({ type: "release", intent })) this.set({ state: "ready", mode: this.state?.mode ?? "ask" });

@@ -109,6 +109,9 @@ it("sends a control password only in the request and follows the App policy afte
   expect(channel.sent.at(-1)).toMatchObject({ type: "request", password: "temporary-secret" });
   channel.receive({ state: "ready", mode: "password", reason: "password", intent });
   expect(session.state?.reason).toBe("password");
+  session.release();
+  expect(session.state?.reason).toBeUndefined();
+  expect(session.state?.mode).toBe("password");
   session.request("temporary-secret");
   const nextIntent = channel.sent.at(-1)?.intent;
   channel.receive({ state: "active", mode: "password", intent: nextIntent, grant: "a".repeat(64) });

@@ -138,8 +138,8 @@ export function RemoteControl({ channel, videoRef, available }: {
   };
   const buttonTitle = controlled ? "remote.stop" : state.state === "pending" ? "remote.cancel" : "remote.request";
   const touchControls = touch || matchMedia("(pointer: coarse)").matches;
-  const statusIcon = state.reason === "password" ? "key" : state.reason === "busy" ? "users"
-    : state.state === "failed" ? "alert" : state.state === "suspended" ? "pause" : "clock";
+  const statusIcon = state.reason === "busy" ? "users" : state.reason === "password" || state.state === "failed" ? "alert"
+    : state.state === "suspended" ? "pause" : "clock";
   const parent = videoRef.current?.parentElement;
   return <>
     <Btn icon="mouse" title={!inline ? "remote.inlineRequired" : state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
@@ -160,15 +160,20 @@ export function RemoteControl({ channel, videoRef, available }: {
         event.stopPropagation();
         if (event.key === "Escape") { event.preventDefault(); setPasswordOpen(false); setPassword(""); release(); }
       }}>
-        {!vis && <strong>{t("remote.password")}</strong>}
+        <div className="lr-remote-panel-header">
+          <strong><Glyph name="key" size={18} />{vis ? null : t("remote.password")}</strong>
+          <button type="button" className="lr-popover-close" aria-label={t("common.cancel")}
+            onClick={() => { setPasswordOpen(false); setPassword(""); release(); }}>
+            <Glyph name="x" size={17} />
+          </button>
+        </div>
         <div className="lr-remote-policy-actions">
-          <label className="lr-input"><Glyph name="key" size={18} />
+          <label className="lr-input">
             <input type="password" required autoFocus autoComplete="off" maxLength={128}
               value={password} aria-label={t("remote.password")} disabled={state.state === "pending"}
               onChange={event => setPassword(event.target.value)} />
           </label>
           <Btn icon="check" title="remote.request" type="submit" disabled={!password || state.state === "pending"} />
-          <Btn icon="x" title="common.cancel" onClick={() => { setPasswordOpen(false); setPassword(""); release(); }} />
         </div>
         {state.reason && <p role="status"><Glyph name={statusIcon} size={16} />
           <span className={vis ? "visually-hidden" : undefined}>{t(`remote.reason.${state.reason}`)}</span></p>}

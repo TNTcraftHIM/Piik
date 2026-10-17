@@ -16,9 +16,8 @@
 .lr-remote-policy-actions { display: flex; align-items: center; gap: 8px; }
 .lr-remote-policy-actions .lr-input { flex: 1; min-width: 0; }
 .lr-remote-policy-actions .lr-input input { min-width: 0; width: 100%; }
-.lr-remote-password { position: absolute; z-index: 5; top: 12px; left: 50%; transform: translateX(-50%); width: min(400px, calc(100% - 24px)); box-sizing: border-box; padding: 16px; border: 1px solid var(--control-edge); border-radius: 20px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 13px; }
-.lr-remote-password > strong { display: block; margin-bottom: 10px; }
-.lr-remote-password p { display: flex; align-items: center; gap: 6px; color: var(--warn); margin: 8px 0 0; font-size: 12px; }
+.lr-remote-password p { display: flex; align-items: center; gap: 6px; color: var(--warn); margin: 8px auto 0; font-size: 12px; }
+.lr-remote-password > * { max-width: 360px; margin-inline: auto; }
 .lr-remote-panel p { font-size: 12px; line-height: 1.5; margin: 0; }
 .lr-remote-panel p[role="alert"] { color: var(--danger); }
 .lr-remote-request p, .lr-remote-panel p[role="alert"] { display: flex; align-items: center; gap: 6px; }
@@ -37,10 +36,10 @@
 .lr-remote-touch-cursor { position: absolute; width: 22px; height: 26px; left: 50%; top: 50%; pointer-events: none; filter: drop-shadow(0 1px 2px #0008); }
 .lr-remote-touch-cursor path { fill: #fff; stroke: #22313e; stroke-width: 1.5; stroke-linejoin: round; }
 .lr-remote-game-mouse { display: flex; justify-content: center; margin-top: 8px; }
-.lr-remote-keyboard { grid-area: 3 / 1; z-index: 4; padding: 10px 12px 12px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--control-edge); }
-.lr-remote-keyboard .lr-input { padding: 0 10px; }
-.lr-remote-keyboard input { font-size: 16px; }
-.lr-remote-keyboard .lr-btn { width: 40px; height: 40px; min-width: 0; padding: 0; }
+:is(.lr-remote-keyboard, .lr-remote-password) { grid-area: 3 / 1; z-index: 4; padding: 10px 12px 12px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--control-edge); }
+:is(.lr-remote-keyboard, .lr-remote-password) .lr-input { padding: 0 10px; }
+:is(.lr-remote-keyboard, .lr-remote-password) input { font-size: 16px; }
+:is(.lr-remote-keyboard, .lr-remote-password) .lr-btn { width: 40px; height: 40px; min-width: 0; padding: 0; }
 .lr-remote-game-mouse .lr-btn { width: auto; padding: 0 12px; }
 .lr-remote-keys { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
 .lr-remote-shortcuts { grid-template-columns: repeat(6, minmax(0, 1fr)); }

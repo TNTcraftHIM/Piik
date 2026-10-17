@@ -26,10 +26,11 @@
 /* Touch control reserves this bar: its input surface consumes taps, so it must
    always offer keyboard access and a way to end control. */
 .lr-tv-screen:has(> .lr-remote-input-surface) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
-.lr-tv-screen:has(> .lr-playback):has(> .lr-remote-keyboard) { aspect-ratio: auto; grid-template-rows: minmax(0, 1fr) auto auto; }
-.lr-tv-screen:has(> .lr-remote-keyboard) > video { aspect-ratio: 16 / 9; height: auto; }
-.lr-room.is-theater .lr-tv-screen:has(> .lr-remote-keyboard) > video,
-.lr-tv-screen:fullscreen:has(> .lr-remote-keyboard) > video { aspect-ratio: auto; height: 100%; }
+.lr-tv-screen:has(> .lr-playback):has(> :is(.lr-remote-keyboard, .lr-remote-password)) { aspect-ratio: auto; grid-template-rows: minmax(0, 1fr) auto auto; }
+.lr-tv-screen:has(> :is(.lr-remote-keyboard, .lr-remote-password)) > video { grid-area: 1 / 1 / 2 / 2; aspect-ratio: 16 / 9; height: auto; }
+.lr-room.is-theater .lr-tv-screen:has(> :is(.lr-remote-keyboard, .lr-remote-password)) > video,
+.lr-tv-screen:fullscreen:has(> :is(.lr-remote-keyboard, .lr-remote-password)) > video { aspect-ratio: auto; height: 100%; }
+.lr-tv-screen:has(> .lr-remote-password) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
 .lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay { grid-area: 1 / 1 / 2 / 2; }
 .lr-tv-screen:has(> .lr-playback[data-can-play="true"]) > video { cursor: pointer; }
 .lr-tv-screen:has(> .lr-playback.is-hidden) > video { cursor: none; }
