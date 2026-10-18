@@ -366,7 +366,7 @@ function InteractionControlsPreview() {
     <RoomChatOverlay session={session} visible />
     <PlaybackControls videoRef={video} stream={null} canPlay={false} onPlay={() => {}}
       theaterMode={theater} onToggleTheater={() => setTheater(value => !value)} onReconnect={() => {}} reconnectAvailable={false}
-      extraActions={<RoomChatToggle session={session} />} />
+      overlayAction={<RoomChatToggle session={session} />} />
   </StageTv><RoomInteractions session={session}
     view={viewer ? "viewer" : "host"} host={{ key: "preview-host", name: "Piik", you: !viewer }} entries={
       Array.from({ length: crowded ? 20 : 1 }, (_, index) => ({

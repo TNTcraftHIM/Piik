@@ -196,8 +196,10 @@ from the existing setting/resource owners.
 The microphone comic depicts Host commentary gain;
 the Viewer's listening-volume comic remains a different action.
 
-The Viewer bar groups local play/volume, room/input tools, then display modes,
-with fullscreen at the outer edge. Keep remote control and its keyboard adjacent.
+The Viewer bar groups local play/volume/overlay, remote mouse/keyboard, then
+settings/display modes, with fullscreen at the outer edge. Quiet dividers mark
+these responsibilities at every width. Show the remote group only when the Host
+offers control; keep both entries in place and enable the keyboard on control grant.
 The capsule floats inside the picture's lower edge with a small inset. Watching
 and remote input share that geometry; granting or ending control never moves it.
 Remote input keeps its own clicks. When controls hide during remote input or

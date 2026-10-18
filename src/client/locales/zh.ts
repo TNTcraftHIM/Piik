@@ -83,7 +83,7 @@ export const zh = {
   "remote.waiting": "请求控制",
   "remote.shortcut": "本机立即结束控制：",
   "common.loading": "正在加载",
-  "playback.controls": "本机播放控制",
+  "playback.controls": "播放器控件",
   "playback.showControls": "显示播控",
   "playback.reveal": "播控呼出",
   "playback.reveal.move": "移动鼠标",

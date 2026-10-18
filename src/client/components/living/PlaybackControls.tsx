@@ -21,7 +21,7 @@ type PlaybackVisibility = ReturnType<typeof usePlaybackControlsVisibility>;
 export function PlaybackControls({
   videoRef, stream, audioTrackKey, audioAvailable, canPlay, theaterMode, onPlay,
   onToggleTheater, onReconnect, reconnectAvailable,
-  extraActions, settings,
+  overlayAction, remoteActions, settings,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   stream: MediaStream | null;
@@ -33,7 +33,8 @@ export function PlaybackControls({
   onToggleTheater: () => void;
   onReconnect: () => void;
   reconnectAvailable: boolean;
-  extraActions?: ReactNode;
+  overlayAction?: ReactNode;
+  remoteActions?: ReactNode;
   settings?: ViewerPlaybackSettingsProps;
 }) {
   const audioRef = useRef<ViewerAudio | null>(null);
@@ -131,14 +132,14 @@ export function PlaybackControls({
       audioRef.current?.setLevel(level);
       audioRef.current?.setMuted(false);
     }} onToggleTheater={onToggleTheater} onReconnect={onReconnect}
-    reconnectAvailable={reconnectAvailable} extraActions={extraActions} settings={settings} />;
+    reconnectAvailable={reconnectAvailable} overlayAction={overlayAction} remoteActions={remoteActions} settings={settings} />;
 }
 
 // The film shares the rendered controls; the component above alone owns media effects.
 export function PlaybackControlsView({
   controlsRef, visibility, audio, paused, hasAudio, canPlay, theaterMode,
   fullscreen, fullscreenFailed, picture, togglePlayback, toggleFullscreen,
-  toggleMute, setLevel, onToggleTheater, onReconnect, reconnectAvailable, extraActions, settings,
+  toggleMute, setLevel, onToggleTheater, onReconnect, reconnectAvailable, overlayAction, remoteActions, settings,
 }: {
   controlsRef?: RefObject<HTMLDivElement | null>; visibility?: PlaybackVisibility;
   audio: ViewerAudioSnapshot; paused: boolean; hasAudio: boolean; canPlay: boolean;
@@ -147,7 +148,7 @@ export function PlaybackControlsView({
   picture: Pick<ReturnType<typeof usePictureInPicture>, "active" | "supported" | "failed" | "toggle">;
   togglePlayback: () => void; toggleFullscreen: () => void; toggleMute: () => void;
   setLevel: (level: number) => void; onToggleTheater: () => void; onReconnect: () => void;
-  reconnectAvailable: boolean; extraActions?: ReactNode;
+  reconnectAvailable: boolean; overlayAction?: ReactNode; remoteActions?: ReactNode;
   settings?: ViewerPlaybackSettingsProps;
 }) {
   const { t, vis } = useCopy();
@@ -174,13 +175,12 @@ export function PlaybackControlsView({
   return <>
     <div ref={barRef} className={`lr-playback lr-host-share-controls lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
       data-reveal={visibility?.revealOnMove === false ? "click" : "move"} role="group" aria-label={t("playback.controls")}>
-      <span className="lr-playback-audio">
+      <span className="lr-playback-watch">
         <Btn icon={paused ? "play" : "pause"}
           draw="playback-state"
           title={paused ? "playback.play" : "playback.pause"}
           hint={paused ? "hint-local-play" : "hint-local-pause"}
           disabled={!canPlay} onClick={togglePlayback} />
-        <span className="lr-playback-separator" aria-hidden="true" />
         <Btn icon={!hasAudio || silent ? "speakerOff" : "speaker"}
           draw="playback-sound"
           title={!hasAudio ? "playback.noAudio" : silent ? "playback.unmute" : "playback.mute"}
@@ -198,14 +198,13 @@ export function PlaybackControlsView({
         <span className={`lr-playback-level${hasAudio && percent > 100 ? " is-boosted" : ""}`} aria-hidden="true">
           {hasAudio ? `${percent}%` : null}
         </span>
+        {overlayAction}
       </span>
-      <span className="lr-playback-tools">
-        {extraActions}
+      {remoteActions}
+      <span className="lr-playback-view">
         <PlaybackMore panel={menuRef} settings={settings} visibility={visibility} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
           {displayActions(true)}
         </PlaybackMore>
-      </span>
-      <span className="lr-playback-view">
         <span className="lr-playback-secondary">{displayActions(false)}</span>
         {fullscreen.supported && !theaterMode ? (
           <Btn icon={fullscreen.active ? "contract" : "expand"}

@@ -2258,10 +2258,10 @@ export function ViewerPage({
               onEnded={invalidateQualityPresentation}
             />
             <PlaybackControls
-              extraActions={<><RoomChatToggle session={interactionSession} />
-                <RemoteControl channel={inputRoute.current} videoRef={videoRef}
+              overlayAction={<RoomChatToggle session={interactionSession} />}
+              remoteActions={<RemoteControl channel={inputRoute.current} videoRef={videoRef}
                   pictureFit={pictureFit}
-                  available={presentation.overlay === "none" && presentation.hasCurrentFrame} /></>}
+                  available={presentation.overlay === "none" && presentation.hasCurrentFrame} />}
               settings={{ pictureFit, setPictureFit,
                 route: routeOptions ? {
                   preference: routePreference, sfuAvailable: routeOptions.sfu && !peerOnly,
