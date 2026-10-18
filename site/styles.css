@@ -67,7 +67,7 @@ h1 { font-size: clamp(49px, 5.7vw, 76px); line-height: 1.06; margin-block: 22px 
 .button svg { width: 22px; height: 22px; }
 .primary { border-color: var(--action-deep); background: var(--action-deep); color: #fff; box-shadow: var(--control-shadow); }
 .button:not(:disabled):is(:hover, :focus-visible) { transform: translateY(-3px); box-shadow: 0 7px 0 color-mix(in srgb, var(--ink) 18%, transparent); }
-.button:not(:disabled):active { transform: scale(var(--control-press-scale)); box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 18%, transparent); transition-duration: 80ms; }
+.button:not(:disabled):active { transform: var(--control-press-transform); box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 18%, transparent); transition-duration: 80ms; }
 .hero-note { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 18px; }
 .film-actions { display:flex; align-items:center; flex-wrap:wrap; gap:0 20px; margin-top:18px; }
 .film-link { display:inline-flex; align-items:center; gap:10px; min-height:44px; text-decoration:none; font-size:12px; font-weight:650; }
@@ -131,7 +131,7 @@ h3 { font-size: 21px; font-weight: 700; letter-spacing: -.03em; line-height: 1.3
 .download-architecture label > span { position: relative; display: flex; align-items: center; justify-content: center; height: 100%; min-height: 36px; padding: 6px 12px; border: 1px solid transparent; border-radius: 18px; font-size: 12px; font-weight: 600; pointer-events: none; transition: color 140ms ease, transform 180ms var(--spring); }
 .download-architecture input:checked + span { color: var(--control-selected-ink); }
 .download-architecture input:enabled:is(:hover, :focus-visible) + span { color: var(--action-text); transform: translateY(-1px); }
-.download-architecture input:enabled:active + span { transform: scale(var(--control-press-scale)); transition-duration: 80ms; }
+.download-architecture input:enabled:active + span { transform: var(--control-press-transform); transition-duration: 80ms; }
 .download-architecture input:focus-visible + span { outline: 3px solid var(--action); outline-offset: 3px; }
 .download-architecture:disabled { border-color: transparent; background: transparent; padding-inline: 0; }
 .download-architecture:disabled label > span { padding-inline: 0; border-color: transparent; background: transparent; color: var(--muted); box-shadow: none; }
@@ -309,11 +309,11 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
 /* Small, finite scenes; the whole step owns hover, the button also supports tap/keys. */
 @media (prefers-reduced-motion: no-preference) {
   .step-art g { transform-box: fill-box; transform-origin: center; }
-  .steps li:is(:hover, :focus-within) .screen-cursor { animation: choose-screen var(--comic-beat) ease-in-out; }
-  .steps li:is(:hover, :focus-within) .chosen-window { animation: window-response var(--comic-beat) ease-in-out; }
-  .steps li:is(:hover, :focus-within) .invite-plane { animation: send-invite var(--comic-beat) ease-in-out; }
-  .steps li:is(:hover, :focus-within) .invite-note { animation: note-response var(--comic-beat) ease-in-out; }
-  .steps li:is(:hover, :focus-within) .sofa-friend { animation: take-a-seat var(--comic-beat) ease-out; }
+  .steps li:is(:hover, :focus-within) .screen-cursor { animation: choose-screen var(--comic-beat) ease-in-out infinite; }
+  .steps li:is(:hover, :focus-within) .chosen-window { animation: window-response var(--comic-beat) ease-in-out infinite; }
+  .steps li:is(:hover, :focus-within) .invite-plane { animation: send-invite var(--comic-beat) ease-in-out infinite; }
+  .steps li:is(:hover, :focus-within) .invite-note { animation: note-response var(--comic-beat) ease-in-out infinite; }
+  .steps li:is(:hover, :focus-within) .sofa-friend { animation: take-a-seat var(--comic-beat) ease-out infinite; }
   .steps li:is(:hover, :focus-within) .sofa-friend + .sofa-friend { animation-delay: .12s; }
   /* Keep finished timelines replayable; every scene ends at its original pose. */
   .steps li:is(:hover, :focus-within) .step-art [class] { animation-fill-mode: both; }

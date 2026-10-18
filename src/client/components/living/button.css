@@ -1,5 +1,5 @@
 /* Shared control geometry and motion for the application and static website. */
-:root { --control-press-scale: .98; }
+:root { --control-press-transform: translateY(0); }
 button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .lr-btn {
   display: inline-grid;
@@ -20,12 +20,13 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 }
 .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: translateY(-2px); }
 .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-primary):not(.is-on):not(.is-danger) { background: var(--control-hover); border-color: var(--ink); }
-.lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(var(--control-press-scale)); box-shadow: none; transition-duration: 80ms; }
+.lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
 .lr-btn.is-primary { --primary-fill: var(--action-deep); border-color: var(--primary-fill); background: var(--primary-fill); color: #fff; }
 .lr-btn.is-primary:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { --primary-fill: color-mix(in srgb, var(--action-deep) 88%, #000); }
 .lr-btn.is-danger { border-color: var(--danger); color: color-mix(in srgb, var(--danger) 70%, var(--ink)); }
 .lr-btn.is-danger:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--danger) 10%, var(--paper)); }
 .lr-btn.is-on { border-color: var(--action); background: var(--control-selected); color: var(--control-selected-ink); box-shadow: inset 0 0 0 1px var(--action), var(--control-shadow); }
+.lr-btn.is-on:active:not(:disabled):not([aria-disabled="true"]) { box-shadow: inset 0 0 0 1px var(--action); }
 .lr-btn .lr-cap { margin-left: 2px; font-size: 12.5px; font-weight: 600; }
 .lr-theme-toggle { min-width: 40px; height: 40px; }
 @media (prefers-reduced-motion: reduce) {

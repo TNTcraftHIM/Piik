@@ -141,7 +141,7 @@ export const HintComic = memo(function HintComic({
   const resolvedTone = tone ?? defaults.tone;
   const resolvedMotion = motion ?? defaults.motion;
   const style: CSSProperties = {
-    ...comicStyle(resolvedTone, resolvedMotion),
+    ...comicStyle(resolvedTone),
     width: size != null ? `${size}px` : "min(320px, 86%)",
     height: "auto",
     display: "block",

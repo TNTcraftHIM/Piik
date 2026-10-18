@@ -86,11 +86,11 @@ const COLOURS: Record<ComicTone, string> = {
   bad: "var(--danger)",
 };
 
-export function comicStyle(tone: ComicTone, motion: ComicMotion): CSSProperties {
+export function comicStyle(tone: ComicTone): CSSProperties {
   return {
     "--comic-tone": COLOURS[tone],
     "--comic-duration": "3.2s",
-    // Explanations inherit the tooltip's loop; standalone results play once.
-    "--comic-repeat": motion === "progress" ? "infinite" : undefined,
+    // Scene poses distinguish progress from a settled result, not repetition.
+    "--comic-repeat": "infinite",
   } as CSSProperties;
 }

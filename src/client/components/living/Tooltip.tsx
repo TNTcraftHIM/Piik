@@ -548,7 +548,7 @@ export function Tooltip({
       }) : children}
       <span ref={tipRef} id={tooltipId} popover="manual"
         data-tone={resolvedTone}
-        style={{ ...comicStyle(resolvedTone, resolvedMotion), "--comic-repeat": "infinite", left: position.left, top: position.top, "--tooltip-caret": `${position.caret}px` } as CSSProperties}
+        style={{ ...comicStyle(resolvedTone), left: position.left, top: position.top, "--tooltip-caret": `${position.caret}px` } as CSSProperties}
         className={`lr-comic-tip${kind ? " has-comic" : ""}${caption !== undefined ? " is-text" : ""}${placeClass}`} role="tooltip" aria-hidden={!interactionOpen}>
         {panelMounted ? <span className="lr-comic-tip-content">
           {kind ? isHintKind(kind)

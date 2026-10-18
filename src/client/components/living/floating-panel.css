@@ -18,7 +18,7 @@
 .lr-floating-resize:focus-visible { outline: 2px solid var(--action); outline-offset: -4px; border-radius: 10px; }
 @keyframes lr-floating-enter { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
 .lr-popover-close { display: grid; place-items: center; width: 36px; height: 36px; flex: none; background: transparent; color: var(--muted); border: 0; border-radius: 12px; cursor: pointer; }
-.lr-popover-close:is(:hover, :focus-visible) { background: var(--control-hover); color: var(--ink); }
+.lr-popover-close:is(:hover, :focus-visible):not(:disabled) { background: var(--control-hover); color: var(--ink); }
 .lr-floating-error { padding: 8px 0; color: var(--danger); font-size: 12px; }
 /* The browser owns the detached frame, movement and resizing. */
 .lr-panel-window { background: var(--paper); }

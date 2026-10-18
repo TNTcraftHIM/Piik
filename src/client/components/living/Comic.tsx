@@ -546,21 +546,23 @@ function SceneSignal({ theme, state, peer = false }: {
       <style>{`
 .vls-signal-message{animation:vlsSignalMessage var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-signal-retry{transform-box:fill-box;transform-origin:center;animation:vlsSignalRetry var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
-.vls-signal-result{transform-box:fill-box;transform-origin:center;animation:vlsSignalResult var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-signal-page{animation:vlsSignalPage var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsSignalMessage{0%{transform:translateX(0);opacity:0}8%{opacity:1}40%{transform:translateX(82px);opacity:1}55%,100%{transform:translateX(82px);opacity:0}}
 @keyframes vlsSignalRetry{0%{transform:rotate(0)}55%,100%{transform:rotate(360deg)}}
-@keyframes vlsSignalResult{0%,8%,42%,100%{transform:none}20%{transform:scale(.9)}30%{transform:scale(1.04)}}
+@keyframes vlsSignalPage{0%,12%,48%,100%{transform:none}22%{transform:translateY(-3px)}34%{transform:translateY(1px)}}
 ${rmBlock(["vls-signal-message", "vls-signal-retry"], [
   [".vls-signal-message", "opacity:1;transform:translateX(41px)"],
   [".vls-signal-retry", "transform:none"],
 ])}
-${rmBlock(["vls-signal-result"], [[".vls-signal-result", "transform:none"]], false)}
+${rmBlock(["vls-signal-page"], [[".vls-signal-page", "transform:none"]], false)}
 `}</style>
       <Frame x={4} w={312} theme={theme} result />
-      <BrowserWindow x={24} y={23} w={96} h={50}>
-        <circle cx={37} cy={43} r={3} fill={color} />
-        <path d="M47 43h56 M34 55h36 M77 55h26 M34 64h69" stroke={LINE} strokeWidth={2} strokeLinecap="round" />
-      </BrowserWindow>
+      <g className={state === "connecting" || state === "recovering" ? undefined : "vls-signal-page"}>
+        <BrowserWindow x={24} y={23} w={96} h={50}>
+          <circle cx={37} cy={43} r={3} fill={color} />
+          <path d="M47 43h56 M34 55h36 M77 55h26 M34 64h69" stroke={LINE} strokeWidth={2} strokeLinecap="round" />
+        </BrowserWindow>
+      </g>
       {peer ? <BrowserWindow x={251} y={25} w={47} h={46} /> : <ServerBox x={254} y={25} w={42} h={46} />}
       <path
         d={state === "connecting" ? "M130 48H244" : "M130 48H164 M204 48H244"}
@@ -583,11 +585,11 @@ ${rmBlock(["vls-signal-result"], [[".vls-signal-result", "transform:none"]], fal
           <path d="M175 43a11 11 0 0 1 19-2l2 3 M190 44h6v-6 M193 53a11 11 0 0 1-19 2l-2-3 M178 52h-6v6" />
         </g>
       ) : state === "connected" ? (
-        <path className="vls-signal-result" d="M174 48l7 7 14-17" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        <path d="M174 48l7 7 14-17" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none" />
       ) : state === "failed" ? (
-        <RedX cx={184} cy={48} arm={8} className="vls-signal-result" />
+        <RedX cx={184} cy={48} arm={8} />
       ) : (
-        <g className="vls-signal-result" stroke={color} strokeWidth={2.5} strokeLinecap="round" fill="none">
+        <g stroke={color} strokeWidth={2.5} strokeLinecap="round" fill="none">
           <path d="M174 43h5 M174 53h5 M189 43h5 M189 53h5 M176 59l16-22" />
         </g>
       )}
@@ -1546,7 +1548,7 @@ export const Comic = memo(function Comic({
   const resolvedTone = tone ?? presentation.tone;
   const resolvedMotion = motion ?? presentation.motion;
   const style = {
-    ...comicStyle(resolvedTone, resolvedMotion),
+    ...comicStyle(resolvedTone),
     "--comic-neutral": resolvedTheme === "paper" ? "var(--ink)" : "#48597a",
     width: size != null ? `${size}px` : "min(320px, 86%)",
     height: "auto",

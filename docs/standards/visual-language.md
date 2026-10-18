@@ -200,9 +200,11 @@ threshold or quality verdict.
 ### Sharing And Playback
 
 Shared buttons and chips use pill shapes, a quiet lower edge and a short lift
-on hover or keyboard focus, then compress on press. Inputs and option tiles
-share softer corners. Press compression uses the shared scale in `button.css`,
-centred on the control's resting bounds, without an extra downward translation.
+on hover or keyboard focus, then settle onto their resting plane on press.
+Inputs and option tiles share softer corners. Press feedback uses the shared
+transform in `button.css` and releases the lower shadow. Keep icon, text and
+control dimensions intact: scaling the whole button shifts off-centre contents
+sideways and changes their stroke weight. Do not add a separate icon displacement.
 Keep filled buttons' border and face in the same colour state; a bright inset
 rim must not look like a gap between them. Keep a distinct focus ring and a
 persistent selected state; disabled controls must not pretend to activate. Reduced motion keeps
@@ -595,9 +597,9 @@ failure; lack of PiP support is a limitation.
 
 | Presentation | Rule |
 | --- | --- |
-| Action demonstration (`demo`) | Explain an action with a short gesture and a readable hold; repeat while its tooltip is displayed |
+| Action demonstration (`demo`) | Explain an action with a short gesture and a readable hold; repeat while displayed |
 | Work actually continuing (`progress`) | Repeat a gentle connection/recovery beat while that state exists |
-| Settled success, failure, limitation, pause or idle (`still`) | Keep the result readable while a related character or object moves; tooltip gestures loop without re-running the actual operation or changing the verdict |
+| Settled success, failure, limitation, pause or idle (`still`) | Keep the result readable while a related character or object moves; gestures loop without re-running the actual operation or changing the verdict |
 
 Demonstrations and progress share the existing 3.2-second comic beat. The main
 action belongs in its first half, followed by a readable hold; small internal
@@ -608,11 +610,12 @@ busier. An explanatory slider describes purpose and available range, not its
 live numeric value.
 Decorative sparkle must support the pictured action, never fake current success.
 
-The shared tooltip owns repetition for hover, keyboard focus and click/tap;
-scene animations inherit its repeat count instead of hard-coding one play.
-Closing guidance pauses and unmounts its scene. The panel entrance plays once;
-its characters and objects keep moving while shown. Standalone settled scenes
-retain their brief gesture, while real progress repeats for its state's lifetime.
+The shared comic presentation owns repetition for tooltips, overlays and
+standalone results; scenes inherit its repeat count. Previews use the same
+rule, without their own animation overrides. Closing guidance pauses and
+unmounts its scene. The panel entrance plays once; its characters and objects
+keep moving while shown. Settled scenes repeat their quiet subject gesture;
+real progress repeats for its state's lifetime.
 
 Reduced motion uses each scene's **explicit informative static pose**. Disabling
 animation alone is insufficient if the base SVG hides the result or shows a
