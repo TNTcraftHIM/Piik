@@ -3896,7 +3896,7 @@ export function HostPage({
                           : `${t("host.advanced.codec.auto")} · ${t("host.advanced.codec.autoHint")}`
                         : `${mode.toUpperCase()} · ${t(mode === "vp8" ? "host.advanced.codec.vp8Hint" : "host.advanced.codec.h264Hint")}`}
                       hint="hint-codec" onClick={() => changeVideoCodecMode(mode)}>
-                      {mode.toUpperCase()}
+                      {mode === "auto" && !vis ? t("host.advanced.codec.auto") : mode.toUpperCase()}
                     </Chip>
                   ))}
                 </div>

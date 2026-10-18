@@ -186,7 +186,7 @@ export function PlaybackControlsView({
 
   return <>
     <div id={controlsId} ref={barRef} className={`lr-playback lr-host-share-controls lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
-      data-reveal={visibility?.revealOnMove === false ? "click" : "move"} role="group" aria-label={t("playback.controls")}>
+      role="group" aria-label={t("playback.controls")}>
       <span className="lr-playback-watch">
         <Btn icon={paused ? "play" : "pause"}
           draw="playback-state"
@@ -214,7 +214,7 @@ export function PlaybackControlsView({
       </span>
       {remoteActions}
       <span className="lr-playback-view">
-        <PlaybackMore panel={menuRef} settings={settings} overlaySettings={overlaySettings} visibility={visibility} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
+        <PlaybackMore panel={menuRef} settings={settings} overlaySettings={overlaySettings} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
           {displayActions(true)}
         </PlaybackMore>
         <span className="lr-playback-secondary">{displayActions(false)}</span>
@@ -238,13 +238,12 @@ export function PlaybackControlsView({
 
 // Native popover owns dismissal and focus return. The same actions above render
 // directly on wide players and in this compact disclosure on narrow players.
-function PlaybackMore({ panel, children, settings, overlaySettings, visibility, onReconnect, reconnectAvailable }: {
+function PlaybackMore({ panel, children, settings, overlaySettings, onReconnect, reconnectAvailable }: {
   panel: RefObject<HTMLDivElement | null>; children: ReactNode; settings?: ViewerPlaybackSettingsProps;
   overlaySettings?: ReactNode;
-  visibility?: PlaybackVisibility;
   onReconnect: () => void; reconnectAvailable: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
   const reconnect = <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
@@ -265,18 +264,6 @@ function PlaybackMore({ panel, children, settings, overlaySettings, visibility, 
       {overlaySettings && <section className="lr-playback-overlay-settings" aria-label={t("playback.overlay")}>
         <h3><Glyph name="danmaku" size={17} /><Cap k="playback.overlay" /></h3>
         {overlaySettings}
-      </section>}
-      {visibility && <section className="lr-playback-reveal-mode" aria-label={t("playback.reveal")}>
-        <h3><Glyph name="mouse" size={17} /><Cap k="playback.reveal" /></h3>
-        <div className="lr-toggle" role="group" aria-label={t("playback.reveal")}>
-          {([true, false] as const).map(move => <button key={String(move)} type="button"
-            className={visibility.revealOnMove === move ? "is-selected" : undefined}
-            aria-pressed={visibility.revealOnMove === move} aria-label={t(move ? "playback.reveal.move" : "playback.reveal.click")}
-            onClick={() => visibility.setRevealOnMove(move)}>
-            {vis && <Glyph name={move ? "mouse" : "chevron"} size={18} className={move ? undefined : "lr-playback-reveal-arrow"} />}
-            <Cap k={move ? "playback.reveal.move" : "playback.reveal.click"} />
-          </button>)}
-        </div>
       </section>}
     </div>
   </span>;

@@ -9,7 +9,6 @@ export function usePlaybackControlsVisibility(
   keepVisible: boolean,
 ) {
   const [hidden, setHidden] = useState(false);
-  const [revealOnMove, setRevealOnMove] = useState(true);
   const pointerType = useRef("");
 
   useEffect(() => {
@@ -54,8 +53,9 @@ export function usePlaybackControlsVisibility(
     };
 
     screen.addEventListener("pointermove", (event) => {
-      // Relative-input mode owns mouse motion until pointer lock is released.
-      if (!revealOnMove || event.pointerType === "touch" || screen.contains(document.pointerLockElement)) return;
+      // Remote input owns picture motion; its bezel pull reveals the controls.
+      if (event.pointerType === "touch" || screen.contains(document.pointerLockElement) ||
+        (event.target instanceof Element && event.target.closest(".lr-remote-input-surface"))) return;
       // Cursor/style changes can emit stationary moves (Video.js #1068).
       if (lastMove?.x === event.screenX && lastMove.y === event.screenY) return;
       lastMove = { x: event.screenX, y: event.screenY };
@@ -84,12 +84,9 @@ export function usePlaybackControlsVisibility(
     screen.addEventListener("click", (event) => {
       // Only the picture itself is a local reveal target. Remote input and
       // other tools retain their clicks; the play button owns playback.
-      if (event.target === video && !held()) {
-        if (!revealOnMove) show();
-        else if (pointerType.current === "touch") {
-          setHidden((current) => !current);
-          scheduleHide();
-        }
+      if (event.target === video && pointerType.current === "touch" && !held()) {
+        setHidden((current) => !current);
+        scheduleHide();
       }
     }, options);
     screen.addEventListener("focusin", event => {
@@ -112,7 +109,7 @@ export function usePlaybackControlsVisibility(
       clearIdle();
       listeners.abort();
     };
-  }, [videoRef, controlsRef, keepVisible, revealOnMove]);
+  }, [videoRef, controlsRef, keepVisible]);
 
-  return { hidden: keepVisible ? false : hidden, revealOnMove, setRevealOnMove };
+  return { hidden: keepVisible ? false : hidden };
 }

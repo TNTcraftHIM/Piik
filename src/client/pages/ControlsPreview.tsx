@@ -147,7 +147,7 @@ export function ControlsPreview() {
               <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
                 {(["vp8", "auto", "h264"] as const).map(mode => <Chip key={mode} selected={mode === "auto"} disabled
                   title={mode === "auto" ? t("host.advanced.codec.auto") : mode.toUpperCase()} hint="hint-codec">
-                  {mode.toUpperCase()}
+                  {mode === "auto" && !vis ? t("host.advanced.codec.auto") : mode.toUpperCase()}
                 </Chip>)}
               </div>
             </div>

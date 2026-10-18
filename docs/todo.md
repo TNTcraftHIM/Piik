@@ -42,6 +42,12 @@ platform deferrals or establish a diagnosis for unmatched reports.
   tray and live reactions when detached; it reuses the existing room session and palette.
   Finish owner UI acceptance before release.
 
+- [ ] **Icon selection and update-film direction.** Review the film-aligned SVG
+  candidates at favicon and App sizes before replacing public assets; retain the
+  in-product mascot. The proposed short update film is a storyboard for owner
+  review, not a finished or approved replacement. Demonstrate the accepted
+  single-controller keyboard/mouse flow with real UI and explicit Host consent.
+
 - [ ] **macOS bundle startup acceptance (#479).** The package now contains the
   actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
   dependency on an external sibling executable. A moved-bundle assembly check

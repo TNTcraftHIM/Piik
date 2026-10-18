@@ -252,8 +252,7 @@ and remote input share that geometry; granting or ending control never moves it.
 Remote input keeps its own clicks. When controls hide during remote input,
 retain a local pull on the TV bezel, away from the status lamp. Theater and
 fullscreen place it at the screen edge. Ordinary viewing reveals controls on
-the picture itself without another button.
-Put the reveal preference in playback settings, not another toolbar action.
+mouse movement or a touch tap on the picture, without another button or setting.
 Keep the chat-overlay toggle in the bar; its appearance settings also belong in
 playback settings and reuse the interaction window's controls and local owner.
 Shorten the volume slider before moving display modes into settings; keep the
