@@ -75,12 +75,16 @@ describe("runtime capabilities", () => {
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, natPrediction: true }))
       .toEqual({ sfu: true, natPrediction: true, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, sfuOnly: true }).sfuOnly).toBe(true);
-
+    expect(runtimeCapabilitiesSchema.parse({ roomReactionIds: ["heart", "future-effect"] }).roomReactionIds)
+      .toEqual(["heart", "future-effect"]);
+    expect(runtimeCapabilitiesSchema.parse({ roomReactionIds: [] }).roomReactionIds).toEqual([]);
   });
 
   it("rejects malformed known capabilities and non-object responses", () => {
     for (const value of [null, [], true, { sfu: null }, { sfu: "true" },
       { natPrediction: null }, { natPrediction: 1 }, { sfuOnly: null }, { sfuOnly: "true" },
+      { roomReactionIds: null }, { roomReactionIds: "heart" }, { roomReactionIds: ["bad id"] },
+      { roomReactionIds: [true] }, { roomReactionIds: [""] },
     ]) {
       expect(runtimeCapabilitiesSchema.safeParse(value).success).toBe(false);
     }

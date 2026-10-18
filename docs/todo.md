@@ -28,7 +28,7 @@ platform deferrals or establish a diagnosis for unmatched reports.
   remote-device trial remain. macOS Quartz/Accessibility and Linux RemoteDesktop
   Portal backends are implemented; Linux compilation and synthetic input/release
   checks pass, but desktop permission/capture remains unverified. macOS needs
-  an Apple SDK build and physical focus/Retina/input checks. The
+  physical focus/Retina/input checks. The
   [window/game assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns platform and game-compatibility limits. This is not a public feature.
 

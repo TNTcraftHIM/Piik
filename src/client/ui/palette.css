@@ -1,0 +1,23 @@
+/* Shared surfaces for the App, website and documentation. Illustrations and
+   semantic status colours keep their own roles. Theme selection stays local. */
+:root {
+  --wall: #f4f3ef;
+  --wall-2: #e7e9ed;
+  --paper: #fff;
+  --ink: #22303e;
+  --muted: color-mix(in srgb, var(--ink) 75%, var(--paper));
+  --line: color-mix(in srgb, var(--ink) 20%, var(--paper));
+  --control-hover: #edf0f5;
+  --piik-dark-wall: #171a20;
+  --piik-dark-wall-2: #1d2129;
+  --piik-dark-paper: #252a33;
+  --piik-dark-ink: #e6e9ef;
+  --piik-dark-hover: #333b48;
+}
+:root[data-theme="dark"], :root.dark {
+  --wall: var(--piik-dark-wall);
+  --wall-2: var(--piik-dark-wall-2);
+  --paper: var(--piik-dark-paper);
+  --ink: var(--piik-dark-ink);
+  --control-hover: var(--piik-dark-hover);
+}

@@ -1317,7 +1317,7 @@ describe("client signaling recovery policy", () => {
     signal.stop();
   });
 
-  it("enables negotiated room data after authentication without replacing signaling or exposing it to media handlers", () => {
+  it.each([false, true])("negotiates room reactions without replacing signaling (initial discovery: %s)", initial => {
     vi.useFakeTimers();
     const sockets: FakeWebSocket[] = [];
     class FakeWebSocket extends EventTarget {
@@ -1334,7 +1334,7 @@ describe("client signaling recovery policy", () => {
     const onMessage = vi.fn();
     const signal = new SignalingClient({ roomId: "1234", role: "viewer", clientId: "viewer-client" }, {
       onMessage, onStatus: vi.fn(), onTerminated: vi.fn(), onAccessRequired: vi.fn(),
-    });
+    }, undefined, initial ? { roomInteractions: true, roomReactionIds: ["heart"] } : {});
     const receive = (body: object) => {
       const event = new Event("message");
       Object.defineProperty(event, "data", { value: JSON.stringify(body) });
@@ -1347,10 +1347,13 @@ describe("client signaling recovery policy", () => {
       iceConfig: { iceServers: [], natPredictionStunUrls: [] }, codeEntryPolicy: "open",
       viewerAuthorizationGeneration: "viewer_generation_12345678", ...routeAuthenticated(),
     });
-    expect(signal.interactions).toBeNull();
-    expect(sockets[0].send).toHaveBeenCalledTimes(1);
-    const data = signal.enableRoomInteractions()!;
+    if (initial) expect(signal.interactions?.getSnapshot().reactionIds).toEqual(["heart"]);
+    else expect(signal.interactions).toBeNull();
+    expect(sockets[0].send).toHaveBeenCalledTimes(initial ? 2 : 1);
+    const data = signal.enableRoomInteractions(["heart", "thumbsup", "future-effect"])!;
+    expect(data.getSnapshot().reactionIds).toEqual(["thumbsup", "heart"]);
     expect(sockets[0].send).toHaveBeenLastCalledWith(JSON.stringify({ type: "subscribe-room-interactions" }));
+    expect(sockets[0].send).toHaveBeenCalledTimes(2);
     receive({ type: "room-interactions-ready", serverTime: Date.now() });
     expect(data.getSnapshot().ready).toBe(true);
     expect(sockets).toHaveLength(1);

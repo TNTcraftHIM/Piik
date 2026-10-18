@@ -78,6 +78,10 @@ number. Similar shapes do not make their responsibilities interchangeable.
 
 Selection, expansion and pending operations describe different facts. Use the
 appropriate native/ARIA semantics even when controls share their styling.
+Button labels and drag handles are not selectable text, including on touch
+browsers. Keep message text and editors selectable. Held-input controls own
+release on pointer-up, cancellation, lost capture and surface blur; a browser
+callout must not consume that gesture.
 Tab navigation keeps focus in the tablist and preserves drafts/settings; the
 navigation key must not become a remote keystroke or start capture. Existing
 resource cleanup still applies. Value changes keep their domain owner's commit
@@ -531,7 +535,14 @@ explained clearly in two; do not invent stages to fill extra panels.
 
 ## Semantic Colour And Shape
 
-Use the existing theme tokens in `src/client/styles.css`. The shared
+App, website and documentation use the neutral surface palette in
+`src/client/ui/palette.css`: warm light canvas, white paper, charcoal dark
+surfaces and clear text contrast. Source selection follows the same theme.
+Reserve green for cast identity and semantic state, not the general canvas or
+hover fill. Blue actions and gold upholstery keep their established roles;
+illustration and badge artwork retain their own palettes.
+
+Use the semantic theme tokens in `src/client/styles.css`. The shared
 `comic-presentation.ts` maps meanings to those tokens for tooltip outlines,
 carets, result panels and verdict marks. Do not choose independent hex colours
 or animation rules inside an individual scene.
@@ -676,6 +687,12 @@ stationary and manually scrollable instead of discarding the hidden words.
   here instead of copying the palette, cast or animation table.
 
 ## Interaction References
+
+[Radix colour roles](https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale)
+separate surfaces, interaction states, borders and text instead of tinting every
+layer with the accent. Native [text selection](https://developer.mozilla.org/en-US/docs/Web/CSS/user-select)
+and [pointer capture](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events)
+support held controls without disabling selection across the whole page.
 
 [Fluent tabs](https://fluent2.microsoft.design/components/web/react/core/tablist/usage),
 [switches](https://fluent2.microsoft.design/components/web/react/core/switch/usage)

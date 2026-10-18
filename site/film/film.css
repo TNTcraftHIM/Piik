@@ -1,7 +1,7 @@
-:root { color-scheme: light; --wall:#e9f2ee; --paper:#fafaf3; --ink:#22303e; --muted:#52635e; --line:#c6d6cc; --accent:#e4572e; }
-@media (prefers-color-scheme:dark) { :root { color-scheme:dark; --wall:#14232b; --paper:#1b2d34; --ink:#eef4eb; --muted:#b3c4bd; --line:#3b5155; --accent:#f28d66; } }
-:root[data-theme="light"] { color-scheme:light; --wall:#e9f2ee; --paper:#fafaf3; --ink:#22303e; --muted:#52635e; --line:#c6d6cc; --accent:#e4572e; }
-:root[data-theme="dark"] { color-scheme:dark; --wall:#14232b; --paper:#1b2d34; --ink:#eef4eb; --muted:#b3c4bd; --line:#3b5155; --accent:#f28d66; }
+@import "../../src/client/ui/palette.css";
+:root { color-scheme: light; --accent:#e4572e; }
+@media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) { color-scheme:dark; --wall:var(--piik-dark-wall); --paper:var(--piik-dark-paper); --ink:var(--piik-dark-ink); --accent:#f28d66; } }
+:root[data-theme="dark"] { color-scheme:dark; --accent:#f28d66; }
 * { box-sizing:border-box; }
 :root { --spring:cubic-bezier(.3,1.45,.45,1); }
 body { margin:0; background:var(--wall); color:var(--ink); font:15px/1.6 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; -webkit-font-smoothing:antialiased; }

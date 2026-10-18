@@ -105,18 +105,20 @@ export class SignalingClient {
     private readonly identity: SignalingIdentity,
     private readonly events: SignalingEvents,
     private readonly now: () => number = Date.now,
-    capabilities: { roomInteractions?: boolean } = {},
+    capabilities: { roomInteractions?: boolean; roomReactionIds?: readonly string[] } = {},
   ) {
-    if (capabilities.roomInteractions) this.enableRoomInteractions();
+    if (capabilities.roomInteractions) this.enableRoomInteractions(capabilities.roomReactionIds);
   }
 
   // Capability discovery may finish after media authentication. Enabling room
   // data must not replace the signaling connection or its healthy media.
-  enableRoomInteractions(): RoomInteractionSession | null {
+  enableRoomInteractions(reactionIds?: readonly string[]): RoomInteractionSession | null {
     if (this.stopped) return null;
     if (!this.interactions) {
-      this.interactions = new RoomInteractionSession(message => this.send(message), this.now);
+      this.interactions = new RoomInteractionSession(message => this.send(message), this.now, reactionIds);
       if (this.authenticatedPeerId) this.interactions.authenticated(this.authenticatedPeerId);
+    } else {
+      this.interactions.setSupportedReactions(reactionIds);
     }
     return this.interactions;
   }

@@ -1,30 +1,25 @@
+@import "../../../../src/client/ui/palette.css";
+
 :root {
   --vp-font-family-base: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --vp-font-family-mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
-  --vp-c-brand-1: #256b47;
-  --vp-c-brand-2: #367b57;
-  --vp-c-brand-3: #256b47;
-  --vp-c-brand-soft: #256b4718;
-  --vp-c-bg: #fafaf3;
-  --vp-c-bg-alt: #e9f2ee;
-  --vp-c-bg-soft: #e9f2ee;
-  --vp-c-text-1: #22303e;
-  --vp-c-text-2: #52635e;
-  --vp-c-divider: #c6d6cc;
-  --vp-code-block-bg: #e9f2ee;
+  --vp-c-brand-1: #2058c9;
+  --vp-c-brand-2: #2f6fed;
+  --vp-c-brand-3: #2058c9;
+  --vp-c-brand-soft: #2f6fed18;
+  --vp-c-bg: var(--paper);
+  --vp-c-bg-alt: var(--wall);
+  --vp-c-bg-soft: var(--wall);
+  --vp-c-text-1: var(--ink);
+  --vp-c-text-2: var(--muted);
+  --vp-c-divider: var(--line);
+  --vp-code-block-bg: var(--wall);
 }
 .dark {
-  --vp-c-brand-1: #9bdbb2;
-  --vp-c-brand-2: #b0e6c3;
-  --vp-c-brand-3: #9bdbb2;
-  --vp-c-brand-soft: #9bdbb218;
-  --vp-c-bg: #1b2d34;
-  --vp-c-bg-alt: #14232b;
-  --vp-c-bg-soft: #14232b;
-  --vp-c-text-1: #eef4eb;
-  --vp-c-text-2: #b3c4bd;
-  --vp-c-divider: #3b5155;
-  --vp-code-block-bg: #14232b;
+  --vp-c-brand-1: #8eb3ff;
+  --vp-c-brand-2: #a9c4ff;
+  --vp-c-brand-3: #2058c9;
+  --vp-c-brand-soft: #8eb3ff18;
 }
 .VPNavBarTitle .identity { gap: 8px; font-size: 24px; letter-spacing: -.045em; }
 .VPNavBarTitle .mascot { width: 30px; height: 30px; }

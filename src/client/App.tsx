@@ -396,6 +396,7 @@ function SiteAccessGate({
     return (
       <HostPage
         roomInteractionsAvailable={capabilities?.roomInteractions === true}
+        roomReactionIds={capabilities?.roomReactionIds}
         hostRoomSessionAvailable={capabilities?.hostRoomSession === true}
         launchedByClient={launchedByClient}
         sfuAvailable={capabilities?.sfu === true}

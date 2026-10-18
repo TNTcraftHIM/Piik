@@ -234,6 +234,7 @@ describe("Host room ownership", () => {
       stop = vi.fn();
       stopSharing = vi.fn();
       setAudioAvailable = vi.fn();
+      enableRoomInteractions = vi.fn(() => this.interactions);
       constructor(public identity: { roomId: string; token: string; roomOnly?: true; shareGeneration?: string },
         public events: {
           onMessage(message: unknown): void;
@@ -248,7 +249,7 @@ describe("Host room ownership", () => {
     Object.assign(current.signalRef, { current: null });
     current.generationRef.current = 1;
     Object.assign(current.context, {
-      SignalingClient: Signal, hostRoomSessionAvailable: true, roomInteractionsAvailable: true,
+      SignalingClient: Signal, hostRoomSessionAvailable: true, roomInteractionsAvailable: true, roomReactionIds: undefined,
       visRef: ref(false), hostClientIdRef: ref(null), displayNameRef: ref("Host"),
       getStableClientId: () => "host-client", defaultHostDisplayName: () => "Host", readDisplayName: () => "Host",
       setDisplayName: vi.fn(), setDisplayNameDraft: vi.fn(), setDisplayNameError: vi.fn(),

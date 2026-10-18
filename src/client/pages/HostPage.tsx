@@ -323,6 +323,7 @@ function hostTerminationKey(reason: SignalingTerminationReason): CopyKey {
 
 interface HostPageProps {
   roomInteractionsAvailable?: boolean;
+  roomReactionIds?: readonly string[];
   hostRoomSessionAvailable?: boolean;
   sfuAvailable?: boolean;
   sfuOnly?: boolean;
@@ -345,6 +346,7 @@ type ShareSourceSelection =
 
 export function HostPage({
   roomInteractionsAvailable = false,
+  roomReactionIds,
   hostRoomSessionAvailable = false,
   sfuAvailable = false,
   sfuOnly = false,
@@ -2688,12 +2690,13 @@ export function HostPage({
         },
       },
       undefined,
-      { roomInteractions: roomInteractionsAvailable },
+      { roomInteractions: roomInteractionsAvailable, roomReactionIds },
     );
     signalRef.current = signal;
     signal.setAudioAvailable(audioAvailableRef.current);
     remoteInputPeersRef.current = [];
     void getRuntimeCapabilities().then(capabilities => {
+      if (signalRef.current === signal && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
       if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
       if (signalRef.current === signal && capabilities.audioPresence) signal.enableAudioPresence();
     }).catch(() => { /* Optional input does not block sharing. */ });

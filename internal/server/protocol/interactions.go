@@ -3,6 +3,7 @@ package protocol
 import (
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -13,6 +14,9 @@ const MaxChatCodePoints = 280
 const InteractionIntervalMs = 800
 
 var reactionIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// RoomReactionIDs is the command registry advertised to pages by this Server.
+var RoomReactionIDs = []string{"thumbsup", "thumbsdown", "laugh", "clown", "eyeroll", "eyes", "wow", "wave", "heart", "clap", "party", "fire", "star", "sleep", "tomato", "poop"}
 
 type InteractionPayload struct {
 	Kind         string `json:"kind"`
@@ -96,12 +100,8 @@ func decodeSendRoomInteraction(data []byte) (ClientMessage, error) {
 	}
 	// Only received presentation events are extensible. An unregistered command
 	// must never acquire meaning merely because its identifier is well-formed.
-	if message.Payload.Kind == "reaction" {
-		switch message.Payload.Reaction {
-		case "wave", "heart", "clap", "laugh", "wow", "party", "fire", "eyes", "star", "sleep", "clown", "eyeroll", "thumbsup", "thumbsdown", "tomato", "poop":
-		default:
-			return nil, errors.New("unknown reaction")
-		}
+	if message.Payload.Kind == "reaction" && !slices.Contains(RoomReactionIDs, message.Payload.Reaction) {
+		return nil, errors.New("unknown reaction")
 	}
 	return message, nil
 }

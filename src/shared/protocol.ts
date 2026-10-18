@@ -235,6 +235,7 @@ export const runtimeCapabilitiesSchema = z.object({
   sfuOnly: z.boolean().optional(),
   natPrediction: z.boolean().default(false),
   roomInteractions: z.boolean().default(false),
+  roomReactionIds: z.array(z.string().max(32).regex(/^[a-z][a-z0-9-]*$/)).max(64).optional(),
   hostRoomSession: z.boolean().default(false),
   remoteInput: z.boolean().default(false),
   viewerRouteSelection: z.boolean().default(false),

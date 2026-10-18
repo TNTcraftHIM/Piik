@@ -1,14 +1,10 @@
+@import "../src/client/ui/palette.css";
 @import "../src/client/components/living/language-control.css";
 @import "../src/client/components/living/button.css";
 @import "../src/client/ui/glyph.css";
 
 :root {
   color-scheme: light;
-  --wall: #e9f2ee;
-  --paper: #fafaf3;
-  --ink: #22303e;
-  --muted: #52635e;
-  --line: #c6d6cc;
   --green: #256b47;
   --orange: #e4572e;
   --soft-orange: #f7e5cc;
@@ -24,15 +20,13 @@
   --couch-dark: #cd8845;
   --comic-beat: 3.2s;
   --spring: cubic-bezier(.3, 1.45, .45, 1);
-  --wall-2: color-mix(in srgb, var(--ink) 7%, var(--paper));
   --control-edge: color-mix(in srgb, var(--ink) 62%, var(--paper));
-  --control-hover: var(--wall-2);
   --control-shadow: 0 3px 0 color-mix(in srgb, var(--ink) 13%, transparent);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { color-scheme: dark; --wall: #14232b; --paper: #1b2d34; --ink: #eef4eb; --muted: #b3c4bd; --line: #3b5155; --green: #9bdbb2; --orange: #f28d66; --soft-orange: #3d342c; --button-ink: #14232b; }
+  :root:not([data-theme="light"]) { color-scheme: dark; --wall: var(--piik-dark-wall); --paper: var(--piik-dark-paper); --ink: var(--piik-dark-ink); --wall-2: var(--piik-dark-wall-2); --control-hover: var(--piik-dark-hover); --green: #9bdbb2; --orange: #f28d66; --soft-orange: #3d342c; --button-ink: var(--wall); }
 }
-:root[data-theme="dark"] { color-scheme: dark; --wall: #14232b; --paper: #1b2d34; --ink: #eef4eb; --muted: #b3c4bd; --line: #3b5155; --green: #9bdbb2; --orange: #f28d66; --soft-orange: #3d342c; --button-ink: #14232b; }
+:root[data-theme="dark"] { color-scheme: dark; --green: #9bdbb2; --orange: #f28d66; --soft-orange: #3d342c; --button-ink: var(--wall); }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 30px; }
 body { margin: 0; background: var(--wall); color: var(--ink); font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; -webkit-font-smoothing: antialiased; }

@@ -624,7 +624,7 @@ export function ViewerPage({
     setAudioAvailable(null);
     void getRuntimeCapabilities().then(capabilities => {
       if (active && capabilities.audioPresence) signal.enableAudioPresence();
-      if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions());
+      if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
       if (active && capabilities.remoteInput) inputRoute.enable(identity => signal.send({ type: "subscribe-remote-input", ...identity }));
       if (active && capabilities.viewerRouteSelection) {
         signal.enableViewerRouteSelection();

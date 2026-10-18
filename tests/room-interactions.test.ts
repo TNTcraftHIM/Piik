@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { CHAT_HISTORY_LIMIT, CHAT_OVERLAY_DURATION_MS, RoomInteractionSession, type RoomInteraction } from "../src/client/lib/room-interactions";
-import { normalizeChatText } from "../src/shared/room-interactions";
+import { REACTION_IDS, normalizeChatText } from "../src/shared/room-interactions";
 import { formatChatTranscript } from "../src/client/lib/room-chat-export";
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -14,6 +14,26 @@ function setup() {
 }
 const message = (id: string): RoomInteraction => ({ type: "room-interaction", id, requestId: "request_1234", occurredAt: Date.now(),
   sender: { peerId: "other_peer_1234", role: "viewer", displayName: "朋友" }, payload: { kind: "chat", text: "Hello" } });
+
+test.each([
+  { advertised: undefined, expected: ["laugh", "eyes", "wow", "wave", "heart", "clap", "party", "fire", "star", "sleep", "tomato", "poop"] },
+  { advertised: ["heart", "thumbsup", "future-effect"], expected: ["thumbsup", "heart"] },
+  { advertised: [], expected: [] },
+])("sends only known Server-supported reactions: $advertised", ({ advertised, expected }) => {
+  const send = vi.fn(() => true);
+  const session = new RoomInteractionSession(send, Date.now, advertised);
+  session.authenticated("self_peer_1234");
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  expect(session.getSnapshot().reactionIds).toEqual(expected);
+  for (const reaction of REACTION_IDS.filter(id => !expected.includes(id))) {
+    expect(session.send({ kind: "reaction", reaction, targetPeerId: "other_peer_1234" })).toBe(false);
+  }
+  expect(send).toHaveBeenCalledTimes(1); // Unsupported commands never reach signaling.
+  expect(session.send(advertised?.includes("thumbsup")
+    ? { kind: "reaction", reaction: "thumbsup" }
+    : { kind: "chat", text: "Still here" })).toBe(true);
+  session.close();
+});
 
 test("appearance is local, preserves a running flight, survives re-admission and resets with the room", () => {
   const { session, send } = setup();

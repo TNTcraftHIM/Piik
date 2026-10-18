@@ -336,7 +336,7 @@ function InteractionControlsPreview() {
           requestId: message.requestId, occurredAt: Date.now(), sender, payload: message.payload });
       });
       return true;
-    });
+    }, Date.now, REACTION_IDS);
     model.authenticated(sender.peerId);
     setSession(model);
     return () => model.close();

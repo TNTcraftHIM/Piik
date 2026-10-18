@@ -1,4 +1,4 @@
-import { REACTION_IDS, isThrow, type ReactionId } from "../../../shared/room-interactions";
+import { isThrow, type ReactionId } from "../../../shared/room-interactions";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { PawnSvg } from "./Pawn";
@@ -9,10 +9,11 @@ import { Tooltip } from "./Tooltip";
 export interface InteractionParticipant { peerId: string; displayName: string }
 
 /** The couch shortcut and detached room share the same choices and target semantics. */
-export function RoomReactionPicker({ person, selfPeerId, hostPeerId, canSend, onSend }: {
+export function RoomReactionPicker({ person, selfPeerId, hostPeerId, reactionIds, canSend, onSend }: {
   person: InteractionParticipant | undefined;
   selfPeerId: string | null;
   hostPeerId?: string;
+  reactionIds: readonly ReactionId[];
   canSend: boolean;
   onSend: (reaction: ReactionId, targetPeerId?: string) => void;
 }) {
@@ -31,20 +32,21 @@ export function RoomReactionPicker({ person, selfPeerId, hostPeerId, canSend, on
           </Tooltip></span>
       </span>
     </div>
-    <RoomReactionGrid person={person} selfPeerId={selfPeerId} canSend={canSend} onSend={onSend} />
+    <RoomReactionGrid person={person} selfPeerId={selfPeerId} reactionIds={reactionIds} canSend={canSend} onSend={onSend} />
   </>;
 }
 
-export function RoomReactionGrid({ person, selfPeerId, canSend, onSend }: {
+export function RoomReactionGrid({ person, selfPeerId, reactionIds, canSend, onSend }: {
   person: InteractionParticipant | undefined;
   selfPeerId: string | null;
+  reactionIds: readonly ReactionId[];
   canSend: boolean;
   onSend: (reaction: ReactionId, targetPeerId?: string) => void;
 }) {
   const { t, vis } = useCopy();
   const self = person?.peerId === selfPeerId;
   return <div className="lr-reaction-grid">
-    {REACTION_IDS.filter(reaction => !isThrow(reaction) || (person && !self)).map(reaction => <button key={reaction} type="button"
+    {reactionIds.filter(reaction => !isThrow(reaction) || (person && !self)).map(reaction => <button key={reaction} type="button"
       className={isThrow(reaction) ? "lr-btn lr-reaction-prop" : "lr-reaction-option"}
       aria-label={t(`interaction.reaction.${reaction}`)} aria-disabled={!canSend || !person}
       onClick={() => { if (canSend && person) onSend(reaction, self ? undefined : person.peerId); }}>

@@ -1,4 +1,5 @@
 /* Shared control geometry and motion for the application and static website. */
+button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .lr-btn {
   display: inline-grid;
   grid-auto-flow: column;

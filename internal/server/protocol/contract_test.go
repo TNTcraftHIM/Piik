@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -19,19 +20,32 @@ func TestRuntimeCapabilities(t *testing.T) {
 		{`{"natPrediction":true,"SFU":true}`, RuntimeCapabilities{NatPrediction: true}},
 		{`{"sfu":true,"natPrediction":true}`, RuntimeCapabilities{Sfu: true, NatPrediction: true}},
 		{`{"sfu":"ignored duplicate","sfu":true}`, RuntimeCapabilities{Sfu: true}},
+		{`{"roomReactionIds":["heart","future-effect"]}`, RuntimeCapabilities{RoomReactionIDs: []string{"heart", "future-effect"}}},
+		{`{"roomReactionIds":[]}`, RuntimeCapabilities{RoomReactionIDs: []string{}}},
 	} {
 		got := RuntimeCapabilities{Sfu: true, NatPrediction: true}
-		if err := json.Unmarshal([]byte(test.data), &got); err != nil || got != test.want {
+		if err := json.Unmarshal([]byte(test.data), &got); err != nil || !reflect.DeepEqual(got, test.want) {
 			t.Errorf("decode %s = %+v, %v; want %+v", test.data, got, err, test.want)
 		}
 	}
 	for _, data := range []string{
 		`null`, `[]`, `true`, `{"sfu":null}`, `{"sfu":"true"}`, `{"sfuOnly":null}`, `{"sfuOnly":"true"}`,
 		`{"natPrediction":null}`, `{"natPrediction":1}`,
+		`{"roomReactionIds":null}`, `{"roomReactionIds":"heart"}`, `{"roomReactionIds":["bad id"]}`,
+		`{"roomReactionIds":[true]}`, `{"roomReactionIds":[""]}`,
 	} {
 		var got RuntimeCapabilities
 		if err := json.Unmarshal([]byte(data), &got); err == nil {
 			t.Errorf("expected %s to be rejected", data)
+		}
+	}
+}
+
+func TestAdvertisedRoomReactionsAreRegisteredCommands(t *testing.T) {
+	for _, id := range append(append([]string{}, RoomReactionIDs...), "future-effect") {
+		_, err := DecodeClientMessage([]byte(fmt.Sprintf(`{"type":"send-room-interaction","requestId":"request_1234","payload":{"kind":"reaction","reaction":%q,"targetPeerId":"target_peer_1234"}}`, id)))
+		if (err == nil) != (id != "future-effect") {
+			t.Errorf("reaction %q: %v", id, err)
 		}
 	}
 }

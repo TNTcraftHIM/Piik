@@ -60,7 +60,7 @@
 .lr-remote-key-layout.is-letters .lr-remote-key-row .lr-chip { flex: 0 1 calc((100% - 36px) / 10); }
 .lr-remote-modifiers { margin-top: 10px; }
 .lr-remote-navigation .lr-chip[data-key="Space"] { flex: 2; }
-:is(.lr-remote-keys, .lr-remote-key-row) .lr-chip { justify-content: center; padding: 4px 0; width: 100%; min-width: 0; min-height: 38px; border-width: 1px; border-radius: 9px; font: 600 12px var(--mono); letter-spacing: 0; white-space: nowrap; touch-action: none; user-select: none; -webkit-touch-callout: none; }
+:is(.lr-remote-keys, .lr-remote-key-row) .lr-chip { justify-content: center; padding: 4px 0; width: 100%; min-width: 0; min-height: 38px; border-width: 1px; border-radius: 9px; font: 600 12px var(--mono); letter-spacing: 0; white-space: nowrap; touch-action: none; }
 .lr-remote-keyboard p { margin-block: 8px 0; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.5; }
 :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen):has(.lr-remote-keyboard) { grid-template-rows: minmax(min(120px, 30dvh), 1fr) auto minmax(0, auto); }
 :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen) .lr-remote-keyboard { max-height: none; overflow-y: auto; overscroll-behavior: contain; }

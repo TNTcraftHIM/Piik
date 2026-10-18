@@ -101,7 +101,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
   };
 
   const keyboard = <SurfaceDocument.Provider value={owner}><section ref={panel} tabIndex={-1} className="lr-remote-keyboard" aria-label={t("remote.keyboard")}
-    onContextMenu={event => event.preventDefault()}
+    onContextMenu={event => { if ((event.target as Element).closest("button")) event.preventDefault(); }}
     onKeyDown={event => {
       event.stopPropagation();
       if (event.key === "Escape" && !event.nativeEvent.isComposing) {

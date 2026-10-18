@@ -223,7 +223,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
             })}
           </div>
         </div>
-        <RoomReactionGrid person={panelPerson} selfPeerId={state.peerId} canSend={canSend} onSend={sendReaction} />
+        <RoomReactionGrid person={panelPerson} selfPeerId={state.peerId} reactionIds={state.reactionIds} canSend={canSend} onSend={sendReaction} />
       </div>
       {chatOpen && !settingsOpen && panelPerson && effects &&
         <ReactionEffects state={state} participants={participants} area={panelArea} now={session.now} />}
@@ -276,7 +276,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       title={t("interaction.express")} onOpenChange={open => { if (!open) setTarget(null); }}>
       <div className="lr-floating-scroll lr-person-menu-body">
       <RoomReactionPicker person={person} selfPeerId={state.peerId} hostPeerId={couch.host?.key}
-        canSend={canSend} onSend={sendReaction} />
+        reactionIds={state.reactionIds} canSend={canSend} onSend={sendReaction} />
       {state.error || !state.ready ? <div className="lr-interaction-status" role="status">
         <Glyph name={state.error ? "alert" : "network"} size={14} />
         <span className={vis ? "visually-hidden" : undefined}>{t(state.error ? `interaction.error.${state.error}` : "interaction.reconnecting")}</span>

@@ -351,8 +351,9 @@ or privileged device access. Replacing that Portal session, including a quality
 change, revokes its input grant and resets policy before binding the replacement.
 This first Linux backend supports a monitor, not window-scoped input.
 Linux compilation, synthetic Portal input/release checks and shared Go lifecycle
-tests pass in an isolated VM. A real desktop/compositor remains unverified;
-macOS still needs an Apple SDK build and physical permission/Retina/focus checks.
+tests pass in an isolated VM. Apple SDK builds and package checks pass on both
+Intel and Apple silicon CI. A real Linux desktop/compositor and physical macOS
+permission/Retina/focus checks remain unverified.
 
 Opted-in room signaling binds an ephemeral key and endpoint ID to each
 authenticated Viewer, then sends that binding only to the owning Host. The

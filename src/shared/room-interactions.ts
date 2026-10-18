@@ -4,6 +4,8 @@ export const INTERACTION_INTERVAL_MS = 800;
 export const REACTION_DURATION_MS = 2400;
 export const REACTION_IDS = ["thumbsup", "thumbsdown", "laugh", "clown", "eyeroll", "eyes", "wow", "wave", "heart", "clap", "party", "fire", "star", "sleep", "tomato", "poop"] as const;
 export type ReactionId = typeof REACTION_IDS[number];
+// Published 2.1 Servers predate the optional reaction command registry.
+export const BASELINE_REACTION_IDS: readonly ReactionId[] = ["wave", "heart", "clap", "laugh", "wow", "party", "fire", "eyes", "star", "sleep", "tomato", "poop"];
 export const isThrow = (reaction: string) => reaction === "tomato" || reaction === "poop";
 export const REACTION_GLYPHS: Record<ReactionId, string> = {
   wave: "👋", heart: "❤️", clap: "👏", laugh: "😂", wow: "🤯", party: "🎉",
