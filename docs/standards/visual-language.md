@@ -98,7 +98,8 @@ that every popup should acquire.
 | Read a brief explanation | Shared `Tooltip`; no settings or required actions hidden in a hint |
 | Adjust a few contextual settings | Attached native popover with `useAnchoredPopover`; dismiss after use, no dragging or detaching |
 | Work through related settings | Inline disclosure or tabs, as in `SharingSettings`; expand into page flow rather than cover the picture |
-| Complete a bounded task before continuing | Existing modal dialog, such as source selection; contain focus and return it on close |
+| Complete a task that blocks the page | Existing native modal dialog, such as share-failure help; contain focus and return it on close |
+| Choose a source inside the television | TV-local nonmodal dialog; keep its own Tab loop, inner guidance before Escape cancellation, and return focus to the current share action on close. Surrounding room controls remain available to the pointer |
 | Keep a room tool available while watching or working | `FloatingPanel`, as used for interactions and Host remote permissions; retain its position without reflowing the room |
 | Use a tool outside the page | Optional `usePanelWindow` on capable browsers; reuse the same content/session, as with interactions, remote permissions and the docked remote keyboard |
 

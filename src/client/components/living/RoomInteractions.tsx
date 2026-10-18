@@ -49,6 +49,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
   const panelArea = useRef<HTMLDivElement>(null);
   const anchor = useRef<HTMLButtonElement | null>(null);
   const panelAnchor = useRef<HTMLElement | null>(null);
+  const enterPanelPicker = useRef(false);
   const log = useRef<HTMLDivElement>(null);
   const readingPosition = useRef(0);
   const id = useId();
@@ -85,7 +86,8 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
     const selected = panelArea.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
     selected?.scrollIntoView({ block: "nearest", inline: "nearest" });
     // Enter the tray on opening, without stealing focus when retargeting.
-    if (selected?.ownerDocument.activeElement === panelAnchor.current) selected.focus({ preventScroll: true });
+    if (enterPanelPicker.current) selected?.focus({ preventScroll: true });
+    enterPanelPicker.current = false;
   }, [panelTarget, chatDocument]);
   useLayoutEffect(() => {
     const popup = document.getElementById(menuId);
@@ -104,6 +106,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
     session.send({ kind: "reaction", reaction, ...(targetPeerId ? { targetPeerId } : {}) });
   }
   function openPanelReactions(key: string, trigger: HTMLElement | null) {
+    enterPanelPicker.current = !panelPerson;
     panelAnchor.current = trigger;
     setPanelTarget(key);
   }

@@ -130,6 +130,7 @@ export function Chip({
   onClick,
   title,
   hint,
+  hintText,
   name,
   value,
   children,
@@ -140,6 +141,7 @@ export function Chip({
   title: string;
   /** Shared hint comic; text modes add the localized caption. */
   hint?: HintKind;
+  hintText?: string;
   name?: string;
   value?: string;
   children: ReactNode;
@@ -157,7 +159,7 @@ export function Chip({
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}
       style={softDisabled ? SOFT_DISABLED_STYLE : undefined}
-      aria-label={title}
+      aria-label={disabled && hintText ? `${title} · ${hintText}` : title}
       onClick={
         softDisabled
           ? blockSoftDisabledClick
@@ -173,7 +175,7 @@ export function Chip({
     </button>
   );
   return hint ? (
-    <Tooltip kind={hint} text={vis ? undefined : title}>{chip}</Tooltip>
+    <Tooltip kind={hint} text={vis ? undefined : hintText ?? title}>{chip}</Tooltip>
   ) : (
     chip
   );

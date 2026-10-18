@@ -112,15 +112,13 @@ export function Tooltip({
       title?: string;
     }>(children) ? children : null;
   const disabledTrigger = trigger?.props.disabled === true;
-  const rawDisabledTriggerLabel = disabledTrigger && trigger
+  const rawTriggerLabel = trigger
     ? trigger.props["aria-label"] ??
       trigger.props.label ??
       trigger.props.title
     : undefined;
-  const disabledTriggerLabel =
-    rawDisabledTriggerLabel && isCopyKey(rawDisabledTriggerLabel)
-      ? say(rawDisabledTriggerLabel)
-      : rawDisabledTriggerLabel;
+  const triggerLabel = rawTriggerLabel && isCopyKey(rawTriggerLabel) ? say(rawTriggerLabel) : rawTriggerLabel;
+  const disabledTriggerLabel = disabledTrigger ? triggerLabel : undefined;
   const focusableWrap = disabledTrigger || (overflowing && !kind && trigger?.type !== "button");
 
   useLayoutEffect(() => {
@@ -579,7 +577,8 @@ export function Tooltip({
       <span ref={tipRef} id={tooltipId} popover="manual"
         data-tone={resolvedTone}
         style={{ ...comicStyle(resolvedTone), left: position.left, top: position.top, "--tooltip-caret": `${position.caret}px` } as CSSProperties}
-        className={`lr-comic-tip${kind ? " has-comic" : ""}${caption !== undefined ? " is-text" : ""}${placeClass}`} role="tooltip" aria-hidden={!interactionOpen}>
+        className={`lr-comic-tip${kind ? " has-comic" : ""}${caption !== undefined ? " is-text" : ""}${placeClass}`}
+        role="tooltip" aria-label={caption ? undefined : triggerLabel} aria-hidden={!interactionOpen || (!caption && !triggerLabel)}>
         {panelMounted ? <span className="lr-comic-tip-content">
           {kind ? isHintKind(kind)
               ? <HintComic kind={kind} size={200} tone={resolvedTone} motion={resolvedMotion} />

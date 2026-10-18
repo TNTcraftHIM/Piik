@@ -99,6 +99,7 @@ export type Set4Kind =
   | "hint-theater-exit"
   | "hint-route-p2p"
   | "hint-route-p2p-required"
+  | "hint-route-sfu-required"
   | "hint-route-sfu"
   | "hint-client-local"
   | "hint-app-ready"

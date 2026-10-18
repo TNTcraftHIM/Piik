@@ -391,6 +391,13 @@ ${rmBlock(
   </>
 );
 
+// A site requiring server forwarding excludes the direct peer path.
+const HintRouteSfuRequired: HintScene = ({ theme }) => <>
+  <HintRouteSfu theme={theme} />
+  <path d="M58 58h44" fill="none" stroke={FAINT} strokeWidth={2} strokeDasharray="3 3" />
+  <RedX cx={80} cy={58} arm={7} />
+</>;
+
 // The home mark distinguishes local sharing from a public direct route.
 const HintClientLocal: HintScene = ({ theme }) => (
   <>
@@ -440,6 +447,7 @@ export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-route-p2p": HintRouteP2p,
   "hint-route-p2p-required": HintRouteP2pRequired,
   "hint-route-sfu": HintRouteSfu,
+  "hint-route-sfu-required": HintRouteSfuRequired,
   "hint-client-local": HintClientLocal,
   "hint-app-ready": () => <g transform="translate(112 0)" color={INK}><BrandMark size={96} motion="loop" /></g>,
   "hint-client-site": HintClientSite,

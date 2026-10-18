@@ -47,18 +47,11 @@ platform deferrals or establish a diagnosis for unmatched reports.
   the affected upstream clock. This does not diagnose every unmatched
   sustained-quality report below.
 
-- [ ] **Frontend interaction boundaries.** At the existing surface owners,
-  contain source-picker modal focus, keep Escape inside the chat reaction tray
-  before closing its parent, and explain unavailable Viewer routes in visual
-  mode. Retain accessible names for visual-only headings/tooltips and remove
-  the duplicate reaction-picker catalogue entry. These are presentation fixes;
-  route authority and room/remote-input lifetimes stay unchanged.
-
-- [ ] **New promotional film.** Begin after publication. Explain Piik's screen
-  sharing directly, then show sharing/invitation, interaction and single-controller
-  keyboard/mouse use with explicit Host consent. Its visual direction may differ
-  from the existing film. Local key visuals and the motion study are exploratory,
-  not a finished film.
+- [ ] **New promotional film.** Review the local 54-second Chinese/English
+  motion draft, which introduces screen sharing, invitation, interaction and
+  single-controller keyboard/mouse use with explicit Host consent. Confirm the
+  pacing and soundtrack before replacing the existing online film. The current
+  draft uses product components and staged scenes, not a recorded live session.
 
 ## Held By Owner
 

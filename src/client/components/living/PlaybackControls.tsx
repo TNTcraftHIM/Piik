@@ -4,7 +4,7 @@ import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio"
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { debugError } from "../../lib/debug";
-import { Btn, Cap } from "./primitives";
+import { Btn } from "./primitives";
 import { ViewerPlaybackSettings, type ViewerPlaybackSettingsProps } from "./ViewerPlaybackSettings";
 import { Tooltip } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
@@ -243,7 +243,7 @@ function PlaybackMore({ panel, children, settings, overlaySettings, onReconnect,
   overlaySettings?: ReactNode;
   onReconnect: () => void; reconnectAvailable: boolean;
 }) {
-  const { t } = useCopy();
+  const { t, vis } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
   const reconnect = <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
@@ -262,7 +262,7 @@ function PlaybackMore({ panel, children, settings, overlaySettings, onReconnect,
       {settings ? <ViewerPlaybackSettings {...settings} displayActions={display} reconnect={reconnect} />
         : <div className="lr-playback-menu-actions">{display}{reconnect}</div>}
       {overlaySettings && <section className="lr-playback-overlay-settings" aria-label={t("playback.overlay")}>
-        <h3><Glyph name="danmaku" size={17} /><Cap k="playback.overlay" /></h3>
+        <h3><Glyph name="danmaku" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.overlay")}</span></h3>
         {overlaySettings}
       </section>}
     </div>

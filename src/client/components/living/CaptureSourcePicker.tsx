@@ -187,6 +187,17 @@ export function CaptureSourcePicker({
       className={`lr-tv-overlay lr-source-picker${vis ? " is-visual" : ""}`}
       role="dialog"
       aria-label={t("host.sourcePicker.title")}
+      onKeyDown={event => {
+        if (event.key !== "Tab" || event.defaultPrevented || event.nativeEvent.isComposing) return;
+        // This TV-local task keeps its keyboard loop without making the room
+        // modal; pointer users can still reach the surrounding room controls.
+        const controls = [...event.currentTarget.querySelectorAll<HTMLElement>(
+          'button, input, select, textarea, a[href], summary, [tabindex]',
+        )].filter(element => element.tabIndex >= 0 && !element.matches(":disabled") && element.getClientRects().length);
+        const next = event.shiftKey && event.target === controls[0] ? controls.at(-1)
+          : !event.shiftKey && event.target === controls.at(-1) ? controls[0] : undefined;
+        if (next) { event.preventDefault(); next.focus(); }
+      }}
     >
       <div className="lr-source-picker-panel">
         <header className="lr-source-picker-head">
