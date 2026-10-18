@@ -17,9 +17,6 @@
 @container (height < 78px) { .lr-chat-flight[data-lane="1"] { visibility: hidden; } }
 @container (height < 44px) { .lr-chat-flight { visibility: hidden; } }
 .lr-chat-overlay-toggle { display: inline-flex; }
-@container (max-width: 440px) {
-  .lr-playback:has(.lr-chat-overlay-toggle) .lr-btn { width: clamp(28px, 9cqw, 40px); }
-}
 [data-comic-reduced-motion] .lr-chat-flight { animation: none; left: 12px; }
 @media (prefers-reduced-motion: reduce) {
   .lr-chat-flight { animation: none; left: 12px; }

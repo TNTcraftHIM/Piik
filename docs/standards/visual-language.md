@@ -165,7 +165,7 @@ Sharing and local playback controls use the same quiet, compact button treatment
 The Host's persistent dock stays below the picture; the Viewer's playback bar
 belongs to the video. Their similar appearance does not equate broadcast pause
 with local playback pause. Waiting overlays use the space above the actual
-playback bar, including when it wraps. Keep the primary status readable on
+playback bar. Keep the primary status readable on
 narrow screens; optional waiting copy yields first. Microphone mute, sharing
 pause, source replacement and stop remain direct actions; stop retains its
 danger treatment.
@@ -196,10 +196,18 @@ from the existing setting/resource owners.
 The microphone comic depicts Host commentary gain;
 the Viewer's listening-volume comic remains a different action.
 
-Viewer settings expand below the picture with equal-width options for picture
-fit and incoming route. Stack the groups on narrow screens; fullscreen reserves
-space for the panel. Fit, proportional crop and stretch change local display
-only, keeping their controls separate from the Host's picture settings.
+The Viewer bar groups local play/volume, room/input tools, then display modes,
+with fullscreen at the outer edge. Keep remote control and its keyboard adjacent.
+Shorten the volume slider before moving display modes into settings; keep the
+bar on one line at supported mobile widths.
+Viewer settings use a brief anchored popover, preferring space below the picture
+without resizing it. Picture fit owns the narrow-screen overflow for display
+modes; incoming-route settings own reconnect. Use equal-width choices and stack
+these groups on narrow screens. Fit, proportional crop and stretch change local
+display only, separate from the Host's picture settings.
+Persistent interaction and remote-permission tools may use the shared floating
+window; the remote keyboard docks outside the picture and can detach on capable
+browsers. One-step actions and brief adjustments do not need movable windows.
 
 Visual source choices (windows, screens and cameras) share named thumbnail cards,
 including their focus, hover and refresh treatment. Thumbnails fit the whole frame

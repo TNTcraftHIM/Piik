@@ -153,9 +153,7 @@ export function PlaybackControlsView({
   const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
     : picture.active ? "playback.exitPip" : !canPlay ? "playback.pipWaiting" : "playback.pip";
   const theaterTitle = theaterMode ? "viewer.theater.exit" : "viewer.theater";
-  const secondaryActions = (caption: boolean) => <>
-    <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
-      cap={caption ? "viewer.reconnect" : undefined} disabled={!reconnectAvailable} onClick={onReconnect} />
+  const displayActions = (caption: boolean) => <>
     <Btn icon={picture.active ? "pipExit" : "pip"} draw="playback-pip" title={pipTitle}
       cap={caption ? (picture.active ? "playback.exitPip" : "playback.pip") : undefined} hintTone={picture.failed ? "bad" : undefined}
       hint={!picture.supported || picture.failed || (!picture.active && !canPlay) ? "hint-pip-unavailable" : picture.active ? "hint-pip-exit" : "hint-pip"}
@@ -193,10 +191,14 @@ export function PlaybackControlsView({
           {hasAudio ? `${percent}%` : "—"}
         </span>
       </span>
-      <span className="lr-playback-view">
+      <span className="lr-playback-tools">
         {extraActions}
-        <span className="lr-playback-secondary">{secondaryActions(false)}</span>
-        <PlaybackMore settings={settings}>{secondaryActions(!settings)}</PlaybackMore>
+        <PlaybackMore settings={settings} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
+          {displayActions(true)}
+        </PlaybackMore>
+      </span>
+      <span className="lr-playback-view">
+        <span className="lr-playback-secondary">{displayActions(false)}</span>
         {fullscreen.supported && !theaterMode ? (
           <Btn icon={fullscreen.active ? "contract" : "expand"}
             draw="playback-fullscreen"
@@ -216,22 +218,31 @@ export function PlaybackControlsView({
 
 // Native popover owns dismissal and focus return. The same actions above render
 // directly on wide players and in this compact disclosure on narrow players.
-function PlaybackMore({ children, settings }: { children: ReactNode; settings?: ViewerPlaybackSettingsProps }) {
+function PlaybackMore({ children, settings, onReconnect, reconnectAvailable }: {
+  children: ReactNode; settings?: ViewerPlaybackSettingsProps;
+  onReconnect: () => void; reconnectAvailable: boolean;
+}) {
   const { t } = useCopy();
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, panel, { side: "below", minVisibleHeight: settings ? 160 : Infinity });
-  return <span className={`lr-playback-more${settings ? " has-settings" : ""}`} ref={trigger}>
+  const reconnect = <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
+    cap="viewer.reconnect" disabled={!reconnectAvailable} onClick={() => {
+      panel.current?.hidePopover();
+      onReconnect();
+    }} />;
+  const display = <div className="lr-playback-display-menu">{children}</div>;
+  return <span className="lr-playback-more" ref={trigger}>
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
     <div id={id} ref={panel} className={`lr-floating-surface lr-playback-menu${settings ? " lr-playback-settings" : ""}`} popover="auto" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}
       onClick={event => {
-        if (!settings && !event.defaultPrevented && event.target instanceof Element && event.target.closest(".lr-playback-menu-actions button")) panel.current?.hidePopover();
+        if (!event.defaultPrevented && event.target instanceof Element && event.target.closest(".lr-playback-display-menu button")) panel.current?.hidePopover();
       }}>
-      {settings && <ViewerPlaybackSettings {...settings} />}
-      <div className={settings ? "lr-playback-settings-actions" : "lr-playback-menu-actions"}>{children}</div>
+      {settings ? <ViewerPlaybackSettings {...settings} displayActions={display} reconnect={reconnect} />
+        : <div className="lr-playback-menu-actions">{display}{reconnect}</div>}
     </div>
   </span>;
 }

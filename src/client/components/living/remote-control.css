@@ -1,7 +1,7 @@
 .lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: default; touch-action: none; overflow: hidden; outline: 2px solid var(--action); outline-offset: -2px; border-radius: inherit; }
 .lr-remote-input-surface.is-suspended { outline-color: var(--muted); cursor: default; pointer-events: none; }
 .lr-remote-input-surface.is-locked { cursor: none; }
-.lr-remote-viewer-control { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.lr-remote-viewer-control { position: relative; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 .lr-remote-feedback { display: flex; align-items: center; gap: 5px; max-width: 180px; font-size: 12px; line-height: 1.3; color: inherit; }
 .lr-remote-feedback > svg { flex: none; }
 .lr-tv-screen > .lr-playback:has(.lr-remote-feedback) { opacity: 1; transform: none; pointer-events: auto; }
@@ -72,7 +72,7 @@
 @media (min-width: 600px) and (max-height: 520px) and (orientation: landscape) {
   :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen):has(.lr-remote-keyboard) { grid-template: minmax(0, 1fr) auto / minmax(0, 1fr) minmax(280px, 44%); }
   :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen) .lr-remote-keyboard { grid-area: 1 / 2 / 3 / 3; border-top: 0; border-left: 1px solid var(--control-edge); }
-  :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen):has(.lr-remote-keyboard) > .lr-playback { width: 100%; container-type: inline-size; gap: 4px; padding: 4px 6px; }
+  :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen):has(.lr-remote-keyboard) > .lr-playback { width: 100%; container: media-stage / inline-size; gap: 4px; padding: 4px 6px; }
   :is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen) .lr-remote-key-row .lr-chip { min-height: 32px; }
 }
 @media (max-width: 580px) {
@@ -85,7 +85,10 @@
   .lr-remote-key-row { gap: 3px; }
   .lr-remote-key-layout.is-letters .lr-remote-key-row .lr-chip { flex-basis: calc((100% - 27px) / 10); }
 }
-@media (max-width: 580px) { .lr-remote-feedback > span:not(.visually-hidden) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
+@container media-stage (max-width: 640px) {
+  .lr-remote-feedback { position: absolute; top: -2px; right: -2px; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--paper); box-shadow: 0 0 0 1px var(--control-edge); pointer-events: none; }
+  .lr-remote-feedback > span:not(.visually-hidden) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
 
 .lr-remote-keep-modifiers { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; font-size: 12px; cursor: pointer; }
 .lr-remote-keep-modifiers input { width: 16px; height: 16px; margin: 0; accent-color: var(--action); }

@@ -85,6 +85,7 @@ export const en: Record<CopyKey, string> = {
   "playback.controls": "Local playback controls",
   "playback.more": "Playback settings",
   "playback.pictureFit": "Picture fit",
+  "playback.connection": "Connection",
   "playback.fit.contain": "Fit",
   "playback.fit.cover": "Fill",
   "playback.fit.fill": "Stretch",

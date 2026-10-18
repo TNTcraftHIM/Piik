@@ -85,6 +85,7 @@ export const zh = {
   "playback.controls": "本机播放控制",
   "playback.more": "播放设置",
   "playback.pictureFit": "画面显示",
+  "playback.connection": "连接",
   "playback.fit.contain": "完整显示",
   "playback.fit.cover": "等比铺满",
   "playback.fit.fill": "拉伸铺满",
