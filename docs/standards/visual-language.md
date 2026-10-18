@@ -324,11 +324,13 @@ changing the badge does not restyle the UI, wordmark or illustrations.
 
 These are **identity/object colours**, not status. A green pawn remains green
 in a failed scene; a successful scene does not turn other people green. Real
-roster identities use the shared UUID colour function to generate a stable
-colour in a continuous cool hue range, not a fixed list or the illustrative
-"you versus others" palette. The same identity keeps its colour across surfaces,
-themes and roster changes; colour alone does not identify a person. Actor positions
-and identities remain stable from the first panel to the result.
+roster identities use the shared UUID colour function to generate stable hues,
+lightness and chroma outside the upholstery/crown's amber range, not a fixed
+list or the illustrative "you versus others" palette. The same identity keeps
+its colour across surfaces, themes and roster changes, without colour-assignment
+messages. Similar colours remain possible; names and self/Host marks identify
+people. Actor positions and identities remain stable from the first panel to
+the result.
 
 Room pawns, tooltip/status comics and introduction participants use
 a round head, half-oval body and two restrained eyes. Reuse the shared
@@ -541,13 +543,13 @@ explained clearly in two; do not invent stages to fill extra panels.
 
 ## Semantic Colour And Shape
 
-App, website and documentation use the neutral surface palette in
-`src/client/ui/palette.css`: light grey canvas, white paper, charcoal dark
+App, website and documentation use the shared surface palette in
+`src/client/ui/palette.css`: a fresh pale canvas, warm white paper, blue-grey dark
 surfaces and clear text contrast. Source selection follows the same theme.
 Reserve green for cast identity and semantic state, not the general canvas or
-hover fill. Cyan marks actions, focus and selected controls; use the deeper
+hover fill. Blue marks actions, focus and selected controls; use the deeper
 variant for white-on-filled actions and readable light-theme links. Selected
-choices keep a neutral face with an inset outline. Subtle surface highlights
+choices use the shared tinted face and inset outline. Subtle surface highlights
 and shadows add depth without changing control geometry or press feedback.
 Gold upholstery, illustration and badge artwork retain their own palettes.
 
@@ -562,7 +564,7 @@ or animation rules inside an individual scene.
 | Confirmed completion or delivered media | Green `--live` / `live` | Neutral before, green result; check or completed object |
 | Still usable with a limitation, unavailable optional capability, or intentional media pause | Amber `--warn` / `warn` | Neutral before, amber result; limit, pause, lock or unavailable mark on the affected part |
 | Confirmed failed or blocked action | Red `--danger` / `bad` | Neutral before, red result; cross, broken path or other explicit failure mark |
-| Work in progress or awaiting an action/frame | Cyan `--action` / `busy` | Neutral before, cyan current/result panel; connection, progress or play symbol |
+| Work in progress or awaiting an action/frame | Blue `--action` / `busy` | Neutral before, blue current/result panel; connection, progress or play symbol |
 
 Recovery retains amber because service is interrupted while work continues.
 Waiting for a Host and unknown observations remain neutral. A control's

@@ -18,7 +18,7 @@
   top: 4px; bottom: 4px; left: 4px;
   width: calc((100% - 8px) / var(--lang-count));
   border-radius: 999px;
-  background: var(--paper);
+  background: var(--control-selected);
   box-shadow: inset 0 0 0 2px var(--action);
   transition: transform 260ms var(--spring);
   pointer-events: none;
@@ -45,7 +45,7 @@
 .lr-lang > button:is(:hover, :focus-visible) { opacity: 1; transform: translateY(-1px); }
 .lr-lang > button:is(:hover, :focus-visible):not(.is-selected) { background: var(--wall-2); }
 .lr-lang > button:active { transform: scale(var(--control-press-scale)); transition-duration: 80ms; }
-.lr-lang > .is-selected { color: var(--ink); opacity: 1; }
+.lr-lang > .is-selected { color: var(--control-selected-ink); opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .lr-lang::before, .lr-lang > button { transition: none; }
   .lr-lang > button { transform: none !important; }
