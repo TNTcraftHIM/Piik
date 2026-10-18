@@ -187,7 +187,7 @@ export const zh = {
   "client.launch.localAccess": "站点口令（可选）",
   "client.launch.accessSettings": "站点口令",
   "client.launch.accessSet": "已设置",
-  "client.launch.localAccessHint": "设置后，开房或凭房间号加入需要口令。邀请链接可直接进入对应房间。",
+  "client.launch.localAccessHint": "设置后，创建房间或凭房间号加入需要输入口令。",
   "client.launch.go": "进入 Piik",
   "client.launch.starting": "正在准备 Piik",
   "client.launch.error": "房间暂不可用",
