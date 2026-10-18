@@ -1,23 +1,40 @@
 /* Shared surfaces for the App, website and documentation. Illustrations and
    semantic status colours keep their own roles. Theme selection stays local. */
 :root {
-  --wall: #f4f3ef;
-  --wall-2: #e7e9ed;
+  --wall: #ebebeb;
+  --wall-2: #dedfe0;
   --paper: #fff;
-  --ink: #22303e;
+  --ink: #303236;
   --muted: color-mix(in srgb, var(--ink) 75%, var(--paper));
   --line: color-mix(in srgb, var(--ink) 20%, var(--paper));
-  --control-hover: #edf0f5;
-  --piik-dark-wall: #171a20;
-  --piik-dark-wall-2: #1d2129;
-  --piik-dark-paper: #252a33;
-  --piik-dark-ink: #e6e9ef;
-  --piik-dark-hover: #333b48;
+  --action: #008da5;
+  --action-deep: #007c93;
+  --action-text: var(--action-deep);
+  --control-hover: color-mix(in srgb, var(--action) 7%, var(--paper));
+  --control-edge: color-mix(in srgb, var(--ink) 58%, var(--paper));
+  --surface-rim: rgb(255 255 255 / .9);
+  --surface-shade: rgb(28 30 32 / .16);
+  --surface-glint: rgb(255 255 255 / .4);
+  --surface-glaze: linear-gradient(165deg, var(--surface-glint), transparent 65%, rgb(0 0 0 / .015));
+  --control-shadow: 0 3px 0 var(--surface-shade), 0 5px 10px color-mix(in srgb, var(--surface-shade) 45%, transparent);
+  --panel-shadow: inset 0 1px 0 var(--surface-rim), 0 3px 0 var(--surface-shade), 0 16px 36px color-mix(in srgb, var(--surface-shade) 55%, transparent);
+  --piik-dark-wall: #262729;
+  --piik-dark-wall-2: #303235;
+  --piik-dark-paper: #3b3d40;
+  --piik-dark-ink: #f4f4f5;
+  --piik-dark-action: #54d5e5;
+  --piik-dark-hover: color-mix(in srgb, var(--piik-dark-action) 7%, var(--piik-dark-paper));
 }
 :root[data-theme="dark"], :root.dark {
   --wall: var(--piik-dark-wall);
   --wall-2: var(--piik-dark-wall-2);
   --paper: var(--piik-dark-paper);
   --ink: var(--piik-dark-ink);
+  --action: var(--piik-dark-action);
+  --action-text: var(--action);
   --control-hover: var(--piik-dark-hover);
+  --control-edge: color-mix(in srgb, var(--ink) 42%, var(--paper));
+  --surface-rim: rgb(255 255 255 / .09);
+  --surface-shade: rgb(0 0 0 / .32);
+  --surface-glint: rgb(255 255 255 / .035);
 }

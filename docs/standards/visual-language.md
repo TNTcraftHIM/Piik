@@ -542,11 +542,14 @@ explained clearly in two; do not invent stages to fill extra panels.
 ## Semantic Colour And Shape
 
 App, website and documentation use the neutral surface palette in
-`src/client/ui/palette.css`: warm light canvas, white paper, charcoal dark
+`src/client/ui/palette.css`: light grey canvas, white paper, charcoal dark
 surfaces and clear text contrast. Source selection follows the same theme.
 Reserve green for cast identity and semantic state, not the general canvas or
-hover fill. Blue actions and gold upholstery keep their established roles;
-illustration and badge artwork retain their own palettes.
+hover fill. Cyan marks actions, focus and selected controls; use the deeper
+variant for white-on-filled actions and readable light-theme links. Selected
+choices keep a neutral face with an inset outline. Subtle surface highlights
+and shadows add depth without changing control geometry or press feedback.
+Gold upholstery, illustration and badge artwork retain their own palettes.
 
 Use the semantic theme tokens in `src/client/styles.css`. The shared
 `comic-presentation.ts` maps meanings to those tokens for tooltip outlines,
@@ -559,7 +562,7 @@ or animation rules inside an individual scene.
 | Confirmed completion or delivered media | Green `--live` / `live` | Neutral before, green result; check or completed object |
 | Still usable with a limitation, unavailable optional capability, or intentional media pause | Amber `--warn` / `warn` | Neutral before, amber result; limit, pause, lock or unavailable mark on the affected part |
 | Confirmed failed or blocked action | Red `--danger` / `bad` | Neutral before, red result; cross, broken path or other explicit failure mark |
-| Work in progress or awaiting an action/frame | Blue `--action` / `busy` | Neutral before, blue current/result panel; connection, progress or play symbol |
+| Work in progress or awaiting an action/frame | Cyan `--action` / `busy` | Neutral before, cyan current/result panel; connection, progress or play symbol |
 
 Recovery retains amber because service is interrupted while work continues.
 Waiting for a Host and unknown observations remain neutral. A control's

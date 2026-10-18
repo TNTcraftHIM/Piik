@@ -52,7 +52,7 @@
 .lr-playback-volume { flex: 0 1 144px; min-width: 24px; }
 .lr-playback-volume input { width: 100%; min-width: 0; height: 44px; padding: 0; margin: 0; accent-color: var(--action); cursor: pointer; }
 .lr-playback-level { flex: none; width: 4ch; text-align: right; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.lr-playback-level.is-boosted { color: var(--action); }
+.lr-playback-level.is-boosted { color: var(--action-text); }
 .lr-playback > :is(.lr-remote-controls, .lr-playback-view) { display: inline-flex; align-items: center; flex: none; gap: 4px; }
 .lr-playback > :is(.lr-remote-controls, .lr-playback-view)::before { content: ""; flex: none; width: 1px; height: 20px; margin-right: 4px; background: var(--control-edge); }
 .lr-playback-secondary { display: inline-flex; align-items: center; gap: inherit; }
