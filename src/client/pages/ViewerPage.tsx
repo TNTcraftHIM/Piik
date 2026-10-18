@@ -67,6 +67,7 @@ import { deriveViewerStatus, deriveParticipantStatus } from "../ui/media-status"
 import { clearViewerGrant, getStableClientId } from "../lib/session";
 import { createOpaqueId } from "../lib/opaque-id";
 import { SignalingClient } from "../lib/signaling";
+import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import {
   P2pQualityProbe,
@@ -271,7 +272,7 @@ export function ViewerPage({
   const viewerSfuRouteRef = useRef<ViewerSfuRoute | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
-  const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
+  const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
   const [routePreference, setRoutePreference] = useState<ViewerRoutePreference>("auto");
   const [routePreferencePending, setRoutePreferencePending] = useState(false);
@@ -627,7 +628,9 @@ export function ViewerPage({
       if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
       if (active && capabilities.remoteInput) inputRoute.enable(identity => signal.send({ type: "subscribe-remote-input", ...identity }));
       if (active && capabilities.viewerRouteSelection) {
-        signal.enableViewerRouteSelection();
+        const saved = readRoomPreferences().routePreference;
+        const allowed = saved === "sfu" ? capabilities.sfu : saved !== "p2p" || !capabilities.sfuOnly;
+        signal.enableViewerRouteSelection(allowed ? saved : "auto");
         setRouteOptions({ sfu: capabilities.sfu, sfuOnly: capabilities.sfuOnly === true });
       }
     }).catch(() => { /* Optional room data never blocks viewing. */ });
@@ -2263,7 +2266,9 @@ export function ViewerPage({
               remoteActions={<RemoteControl channel={inputRoute.current} videoRef={videoRef}
                   pictureFit={pictureFit}
                   available={presentation.overlay === "none" && presentation.hasCurrentFrame} />}
-              settings={{ pictureFit, setPictureFit,
+              settings={{ pictureFit, setPictureFit: fit => {
+                setPictureFit(fit); saveRoomPreferences({ pictureFit: fit });
+              },
                 route: routeOptions ? {
                   preference: routePreference, sfuAvailable: routeOptions.sfu && !peerOnly,
                   sfuOnly: routeOptions.sfuOnly, peerOnly,
@@ -2271,6 +2276,7 @@ export function ViewerPage({
                   rejected: routePreferenceRejected,
                   onChange: preference => {
                     if (signalRef.current?.setViewerRoutePreference(preference)) {
+                      saveRoomPreferences({ routePreference: preference });
                       setRoutePreferencePending(true); setRoutePreferenceRejected(false);
                     }
                   },

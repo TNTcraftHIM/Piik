@@ -1048,7 +1048,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   position: absolute;
   top: 4px; bottom: 4px; left: 4px;
   border-radius: 999px;
-  background: var(--control-selected);
+  background: var(--ink);
   box-shadow: inset 0 0 0 2px var(--action);
   width: calc((100% - 8px) / var(--lr-segments));
   transform: translateX(calc(var(--lr-selected-index) * 100%));
@@ -1073,7 +1073,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   color: color-mix(in srgb, var(--ink) 68%, var(--paper));
   transition: color 180ms ease, transform 180ms var(--spring);
 }
-.lr-toggle button.is-selected { color: var(--control-selected-ink); }
+.lr-toggle button.is-selected { color: var(--paper); }
 .lr-toggle button:is(:hover, :focus-visible):not(:disabled) { transform: translateY(-1px); }
 .lr-toggle button:active { transform: var(--control-press-transform); transition-duration: 80ms; }
 /* The wrapper owns each half in both language modes. */
@@ -1929,7 +1929,7 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 .lr-host-share-controls {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
   width: fit-content; max-width: 100%; margin: 0 auto; padding: 6px; color: var(--ink);
-  background: var(--paper); border: 1px solid var(--control-edge);
+  background: var(--surface-glaze) var(--paper); border: 1px solid var(--control-edge);
   border-radius: 20px; box-shadow: 0 3px 0 color-mix(in srgb, var(--ink) 8%, transparent);
 }
 .lr-host-action-dock, .lr-host-tool-dock { display: flex; align-items: center; gap: 4px; }

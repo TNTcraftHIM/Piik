@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { RemoteControlRequest } from "../../native/wire";
 import type { RemoteControlMode, RemoteInputPlatform } from "../../remote-control/protocol";
+import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Btn, Chip, NameTag, SwitchItem } from "./primitives";
@@ -22,7 +23,8 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
   const [open, setOpen] = useState(false);
   const [surfaceDocument, setSurfaceDocument] = useState<Document | null>(null);
   const detached = Boolean(surfaceDocument && surfaceDocument !== document);
-  const [draft, setDraft] = useState(mode === "off" ? "ask" : mode);
+  const [draft, setDraft] = useState(() => mode === "off" ? readRoomPreferences().remoteControlMode : mode);
+  const [preparing, setPreparing] = useState(false);
   const [password, setPassword] = useState("");
   const [failedId, setFailedId] = useState<string | null>(null);
   const [pendingActions, setPendingActions] = useState<Map<string, symbol>>(() => new Map());
@@ -30,7 +32,11 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
   const busy = pendingActions.size > 0;
   const pending = requests.filter(request => request.state === "pending").length;
   const controller = requests.find(request => request.state !== "pending");
-  useEffect(() => { setDraft(mode === "off" ? "ask" : mode); setPassword(""); }, [mode]);
+  useEffect(() => {
+    setDraft(mode === "off" ? readRoomPreferences().remoteControlMode : mode);
+    setPassword(""); setPreparing(false);
+    if (mode !== "off") saveRoomPreferences({ remoteControlMode: mode });
+  }, [mode]);
   const perform = async (id: string, operation: () => Promise<void>) => {
     const identity = Symbol();
     latestOperation.current = identity;
@@ -64,12 +70,18 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
       className="lr-remote-panel" onOpenChange={(opened, owner) => {
         setOpen(opened);
         setSurfaceDocument(owner);
-        if (!opened) { setPassword(""); setDraft(mode === "off" ? "ask" : mode); }
+        if (!opened) {
+          setPassword(""); setPreparing(false);
+          setDraft(mode === "off" ? readRoomPreferences().remoteControlMode : mode);
+        }
       }}>
       <div className="lr-floating-scroll lr-remote-panel-body">
         <SwitchItem checked={mode !== "off"} label={t("remote.title")} hint="hint-remote-control"
           disabled={mode === "off" && (busy || disabled)}
-          onChange={enabled => void applyPolicy(enabled ? "ask" : "off")} />
+          onChange={enabled => {
+            if (enabled && draft === "password" && !password) setPreparing(true);
+            else void applyPolicy(enabled ? draft : "off", enabled && draft === "password" ? password : undefined);
+          }} />
         {pendingActions.has("enable") && mode === "off" && <div className="lr-remote-enable-pending" role="status">
           <Glyph name="loader" size={18} className="lr-spin" />
           <Btn icon="x" cap="remote.cancel" title="remote.cancel" hint="hint-remote-stop"
@@ -91,7 +103,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
           </div>)}
           {!vis && pending > 0 && <p className="lr-remote-note">{t("remote.consent")}</p>}
         </div>}
-        {mode !== "off" && <form className="lr-remote-settings" onSubmit={event => {
+        {(mode !== "off" || preparing) && <form className="lr-remote-settings" onSubmit={event => {
             event.preventDefault();
             void applyPolicy(draft, draft === "password" ? password : undefined);
           }}>
@@ -104,13 +116,17 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
             </Chip>)}
           </div>
           {!vis && <p className="lr-remote-note">{t(`remote.help.${draft}`)}</p>}
+          {draft === "password" && <label className="lr-input">
+            <Glyph name="key" size={18} />
+            <input type="password" autoComplete="new-password" required maxLength={128} value={password} autoFocus={preparing}
+              aria-label={t("remote.password")} placeholder={vis ? "" : t("remote.password")}
+              disabled={busy || disabled} onChange={event => setPassword(event.target.value)} />
+          </label>}
           {(draft !== mode || draft === "password") && <div className="lr-remote-policy-actions">
-            {draft === "password" && <label className="lr-input">
-              <Glyph name="key" size={18} />
-              <input type="password" autoComplete="new-password" required maxLength={128} value={password}
-                aria-label={t("remote.password")} placeholder={vis ? "" : t("remote.password")}
-                disabled={busy || disabled} onChange={event => setPassword(event.target.value)} />
-            </label>}
+            {preparing && !busy && <Btn icon="x" title="common.cancel" cap="common.cancel" onClick={() => {
+              setPreparing(false); setPassword(""); setDraft(readRoomPreferences().remoteControlMode);
+              (surfaceDocument ?? document).getElementById(id)?.querySelector<HTMLButtonElement>('[role="switch"]')?.focus();
+            }} />}
             <Btn icon="check" title="remote.apply" cap="remote.apply" type="submit" tone="primary"
               hint="hint-remote-control" disabled={busy || disabled || (draft === "password" && !password)} />
           </div>}

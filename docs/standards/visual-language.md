@@ -551,9 +551,16 @@ surfaces and clear text contrast. Source selection follows the same theme.
 Reserve green for cast identity and semantic state, not the general canvas or
 hover fill. Blue marks actions, focus and selected controls; use the deeper
 variant for white-on-filled actions and readable light-theme links. Selected
-choices use the shared tinted face and inset outline. Subtle surface highlights
+choices use the shared tinted face and inset outline; sliding segments use
+inverse ink/paper with the same accent outline. Subtle surface highlights
 and shadows add depth without changing control geometry or press feedback.
 Gold upholstery, illustration and badge artwork retain their own palettes.
+
+The App terminal keeps its user's terminal background and palette. A compact
+mascot/title block identifies the App and build; state, addresses and available
+shortcut keys form separate reading levels. Use terminal-theme blue for links
+and actions, neutral rules, and the same success/wait/failure colour meanings.
+Preserve monochrome output and compact layouts without changing their behavior.
 
 Use the semantic theme tokens in `src/client/styles.css`. The shared
 `comic-presentation.ts` maps meanings to those tokens for tooltip outlines,

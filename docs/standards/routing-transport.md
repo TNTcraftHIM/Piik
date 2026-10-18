@@ -83,9 +83,10 @@ repair through normal availability routing if its ingress is finally retired.
 Restricting the incoming kind does not remove a Viewer from the graph: eligible
 P2P quality repair and service to downstream children keep their existing owners.
 
-The choice survives signaling reconnect and source/share replacement while that
-Viewer remains in the room; leaving or opening a new viewing session resets it.
-A new share policy that disallows the choice resets it to Auto. Discovery gates
+The applied choice survives signaling reconnect and source/share replacement.
+The Viewer's explicit preference is remembered within the Browser origin and
+requested again on capable Sites. An incompatible site or share policy applies
+Auto without overwriting that personal preference. Discovery gates
 the optional command, and replies go only to opted-in Viewers; existing 2.x
 participants retain their established protocol and automatic behavior.
 

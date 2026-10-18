@@ -182,6 +182,7 @@ import {
 } from "../native/capture-selection";
 import type { NativeCaptureTarget, RemoteControlState } from "../native/wire";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
+import { InputRoute } from "../remote-control/input-route";
 import {
   MAX_ENDPOINT_MEDIA_CHILDREN,
   reconcileBoundedMediaChildren,
@@ -613,6 +614,7 @@ export function HostPage({
   const nativeShareGenerationRef = useRef<string | null>(null);
   const serverShareGenerationRef = useRef<string | null>(null);
   const nativeMediaBridgeRef = useRef<NativeMediaBridge | null>(null);
+  const nativeInputRoute = useMemo(() => new InputRoute(() => {}), []);
   const nativeMediaIngressRef = useRef<NativeMediaIngress | null>(null);
   const nativeEventCleanupRef = useRef<(() => void) | null>(null);
   const nativeClientCloseCleanupRef = useRef<(() => void) | null>(null);
@@ -1256,6 +1258,12 @@ export function HostPage({
             endSharing({ key: "native.fail.edge", failureCode: "app/browser-media/connection" }, true, "route-failed", "bad");
           }
         },
+        undefined,
+        () => {
+          if (nativeMediaBridgeRef.current === bridge && isCurrentShare(generation, shareGeneration)) {
+            nativeInputRoute.setUpstream(bridge?.getRemoteInput() ?? null);
+          }
+        },
       );
       nativeMediaBridgeRef.current = bridge;
       nativeSourceAudioRef.current = undefined;
@@ -1596,6 +1604,7 @@ export function HostPage({
     const shareGeneration = nativeShareGenerationRef.current;
     const ingress = nativeMediaIngressRef.current;
     nativeMediaIngressRef.current = null;
+    nativeInputRoute.dispose();
     nativeMediaBridgeRef.current?.dispose();
     nativeMediaBridgeRef.current = null;
     ingress?.dispose();
@@ -2100,7 +2109,9 @@ export function HostPage({
                   input.iceConfig,
                   input.stream,
                   input.profile,
-                  events,
+                  { ...events, onInputChannel: nativeModeRef.current
+                    ? (channel, connection) => nativeInputRoute.attachChild(channel, connection)
+                    : undefined },
                   input.videoCodec,
                   candidate.connectionId,
                   input.natPredictionEnabled,

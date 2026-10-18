@@ -31,7 +31,7 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, route, displ
     <section aria-label={t("playback.pictureFit")}>
       <div className="lr-viewer-settings-heading"><h3><Glyph name="tv" size={17} /><Cap k="playback.pictureFit" /></h3></div>
       <RowGroup>{(["contain", "cover", "fill"] as const).map(fit => <Chip key={fit}
-        selected={pictureFit === fit} title={t(`playback.fit.${fit}`)} onClick={() => setPictureFit(fit)}>
+        selected={pictureFit === fit} title={t(`playback.fit.${fit}`)} hint={`hint-fit-${fit}`} onClick={() => setPictureFit(fit)}>
         {vis && <Glyph name={fit === "contain" ? "fitContain" : fit === "cover" ? "fitCover" : "fitStretch"} size={20} />}
         <Cap k={`playback.fit.${fit}`} />
       </Chip>)}</RowGroup>

@@ -344,6 +344,14 @@ func TestRemoteInputRequiresPageOptIn(t *testing.T) {
 			if (session.current(request.ShareID).RemoteInputChanges() != nil) != optIn {
 				t.Fatal("input events did not respect page opt-in")
 			}
+			// Browser quality candidates relay through this same preview bridge.
+			offer, err := session.current(request.ShareID).PrepareLocalEdge("preview_input", "preview_offer", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(offer.SDP, "m=application ") != optIn {
+				t.Fatal("preview bridge did not preserve the opted-in input channel")
+			}
 		})
 	}
 }

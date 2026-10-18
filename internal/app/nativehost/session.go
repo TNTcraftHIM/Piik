@@ -318,7 +318,7 @@ func (session *Session) prepareEdge(
 	session.edges[connectionID] = edge
 	session.mu.Unlock()
 	var offer webrtc.SessionDescription
-	if localOfferID == "" && session.remoteInput != nil {
+	if session.remoteInput != nil {
 		channel, channelErr := edge.OpenDataChannel(remoteinput.ChannelLabel)
 		if channelErr == nil {
 			session.remoteInput.Attach(connectionID, channel)

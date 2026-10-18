@@ -361,8 +361,10 @@ and the platform [AES-GCM API](https://developer.mozilla.org/en-US/docs/Web/API/
 
 `internal/app/remoteinput` owns one process-wide grant because the App's native
 sessions share the same physical keyboard and pointer. Remote control starts
-off. Enabling it on the sharing page selects Ask each time; the Host may choose Allow room Viewers or
-Require a password on the current sharing page. Automatic modes accept only
+off. The Browser remembers the last successfully applied authorization mode;
+the Host must still enable it manually for each new shared source. Ask each time
+is the default. A remembered password mode asks for a new password before
+applying; the password itself is never remembered. Automatic modes accept only
 authenticated room Viewers and never displace an active controller. Permission
 belongs to the current shared source; changing sources or stopping turns it off.
 Turning it off also clears pending requests and releases held input, including
@@ -371,7 +373,7 @@ intent covers dispatch, OS permission and capture preparation. Off, pause and
 source retirement invalidate it before a late result can enable control. A
 capture already accepted for installation remains owned by the share; cancelling
 input permission cannot kill that picture. The password verifier is kept only in App memory, with one
-attempt per second shared across that source's endpoints. Nothing is saved in
+attempt per second shared across that source's endpoints. The verifier is never saved in
 configuration, diagnostic reports or links. Host approval, decline and end-control
 actions stay on the same sharing page. The existing authorized native-control connection carries these commands;
 only the session that owns the share can decide its requests. Request identity

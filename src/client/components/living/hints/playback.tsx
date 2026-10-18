@@ -1,3 +1,4 @@
+import { useId } from "react";
 import {
   BrowserWindow, FAINT, Frame, INK_STAGE, LIVE, MiniTv, Pawn, SKY, TV_BODY, TV_EDGE, YOU, rmBlock,
 } from "../Comic";
@@ -187,7 +188,35 @@ function PictureHint({ theme, exit = false, unavailable = false }: Parameters<Hi
   </>;
 }
 
+// The same 4:3 picture demonstrates the three local display operations.
+function PictureFitHint({ theme, fit }: Parameters<HintScene>[0] & { fit: "contain" | "cover" | "fill" }) {
+  const clip = useId();
+  const picture = <><rect width={80} height={60} fill="var(--wall-2)" />
+    <circle cx={40} cy={24} r={15} fill={SKY} />
+    <path d="M0 60 22 34 40 52 60 30 80 55v5Z" fill={YOU} />
+    <rect x={1} y={1} width={78} height={58} fill="none" stroke={FAINT} strokeWidth={2} /></>;
+  return <>
+    <PlaybackMotion />
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
+    <g transform="translate(40 18)">{picture}</g>
+    <defs><clipPath id={clip}><rect x={184} y={18} width={112} height={60} rx={3} /></clipPath></defs>
+    <g className="vls-pb-chrome-in">
+      <rect x={184} y={18} width={112} height={60} rx={3} fill={TV_BODY} />
+      <g clipPath={`url(#${clip})`}>
+        <g transform={fit === "contain" ? "translate(200 18)" : fit === "cover" ? "translate(184 6) scale(1.4)" : "translate(184 18) scale(1.4 1)"}>
+          {picture}
+        </g>
+      </g>
+      <rect x={184} y={18} width={112} height={60} rx={3} fill="none" stroke="var(--ink)" strokeWidth={2} />
+    </g>
+  </>;
+}
+
 export const PLAYBACK_SCENES: Record<PlaybackHintKind, HintScene> = {
+  "hint-fit-contain": props => <PictureFitHint {...props} fit="contain" />,
+  "hint-fit-cover": props => <PictureFitHint {...props} fit="cover" />,
+  "hint-fit-fill": props => <PictureFitHint {...props} fit="fill" />,
   "hint-local-play": (props) => <PlaybackHint {...props} paused={false} />,
   "hint-local-pause": (props) => <PlaybackHint {...props} paused />,
   "hint-volume": (props) => <AudioHint {...props} action="volume" />,

@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type RefObject } from "react";
 import { normalizeChatText, MAX_CHAT_CODE_POINTS, isThrow, type ReactionId } from "../../../shared/room-interactions";
 import { RoomInteractionSession } from "../../lib/room-interactions";
+import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Btn, SwitchItem } from "./primitives";
@@ -37,7 +38,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
   const [chatDocument, setChatDocument] = useState<Document | null>(null);
   const detached = Boolean(chatDocument && chatDocument !== document);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [effects, setEffects] = useState(true);
+  const [effects, setEffects] = useState(() => readRoomPreferences().interactionEffects);
   const [target, setTarget] = useState<string | null>(null);
   const [panelTarget, setPanelTarget] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -243,6 +244,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
         </div>
         <div className="lr-chat-tools">
           <Btn id={`${id}-express`} icon="smile" title="interaction.express" cap="interaction.express"
+            hint="hint-reaction-picker"
             expanded={Boolean(panelPerson)} controls={`${id}-reactions`} tone={panelPerson ? "on" : undefined}
             onClick={() => {
               if (panelPerson) setPanelTarget(null);
@@ -286,7 +288,9 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
         <span className="visually-hidden">{vis && t("host.details")}</span>
       </button>}
       {target === state.peerId && <div className="lr-interaction-effects">
-        <SwitchItem checked={effects} onChange={setEffects} label={t("interaction.effects")} />
+        <SwitchItem checked={effects} onChange={enabled => {
+          setEffects(enabled); saveRoomPreferences({ interactionEffects: enabled });
+        }} label={t("interaction.effects")} />
         {vis && <Glyph name="smile" size={17} />}
       </div>}
       </div>

@@ -30,7 +30,7 @@ collect a diagnostic report if the problem persists.
 | WebRTC or IP-leak protection is enabled | Check whether it blocks media connections using [browser WebRTC settings](#browser-webrtc-restrictions). |
 | Connection fails on a campus or restricted network | Compare with a phone hotspot, then consider a [site with SFU forwarding](#campus-networks-and-strict-nat). |
 | Picture repeatedly blurs, stutters or stops | Identify who is affected, then follow [picture quality and interruption checks](#picture-blurs-stutters-or-stops). |
-| Phone fullscreen has black bars, or the button does not work | Video keeps its proportions; try landscape orientation and the playback bar's **Fullscreen** button. System video fullscreen depends on the browser. See [viewing controls](./getting-started.md#join-a-friends-room). |
+| Phone fullscreen has black bars, or the button does not work | Video keeps its proportions by default. Try landscape orientation, or choose **Fill** or **Stretch** in the page's **Playback settings**. Use the playback bar's **Fullscreen** button; system video fullscreen depends on the browser. See [viewing controls](./getting-started.md#join-a-friends-room). |
 | Sharing stops after sleep or suspension | Wake the device and return to the sharing tab; start sharing again if needed. Browser and OS suspension can interrupt capture or playback. |
 
 For a bug report, include the version, OS/browser, what you expected, and how

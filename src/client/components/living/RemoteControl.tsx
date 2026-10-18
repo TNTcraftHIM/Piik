@@ -221,7 +221,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
               value={password} aria-label={t("remote.password")} disabled={state.state === "pending"}
               onChange={event => setPassword(event.target.value)} />
           </label>
-          <Btn icon="check" title="remote.request" type="submit" disabled={!password || state.state === "pending"} />
+          <Btn icon="check" title="remote.request" hint="hint-remote-control" type="submit" disabled={!password || state.state === "pending"} />
         </div>
         {state.reason && <p role="status" className={state.reason === "password" ? "is-bad" : undefined}><Glyph name={statusIcon} size={16} />
           <span className={vis ? "visually-hidden" : undefined}>{t(`remote.reason.${state.reason}`)}</span></p>}

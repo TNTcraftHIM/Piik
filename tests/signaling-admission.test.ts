@@ -81,7 +81,7 @@ describe("room authentication and site admission", () => {
     host.signal.stop();
   });
 
-  it("opts into Viewer route selection only after discovery and reconnects with the acknowledged choice", async () => {
+  it("restores Viewer route preference after discovery and reconnects with the acknowledged choice", async () => {
     const { signal, sockets, events } = fixture("viewer");
     const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
     const authenticated = JSON.parse(wire.serverMessages.find(
@@ -89,9 +89,9 @@ describe("room authentication and site admission", () => {
     expect(JSON.parse(sockets[0]!.send.mock.calls[0]![0])).not.toHaveProperty("routePreference");
     expect(signal.setViewerRoutePreference("sfu")).toBe(false);
     // Capability discovery finishes after authenticate went onto the wire.
-    signal.enableViewerRouteSelection();
+    signal.enableViewerRouteSelection("sfu");
     sockets[0]!.receive(authenticated);
-    expect(sockets[0]!.send).toHaveBeenCalledWith(JSON.stringify({ type: "set-viewer-route-preference", preference: "auto" }));
+    expect(sockets[0]!.send).toHaveBeenCalledWith(JSON.stringify({ type: "set-viewer-route-preference", preference: "sfu" }));
     expect(signal.setViewerRoutePreference("p2p")).toBe(true);
     sockets[0]!.receive({ type: "viewer-route-preference", preference: "p2p", accepted: true });
     expect(signal.setViewerRoutePreference("sfu")).toBe(true);

@@ -24,6 +24,12 @@ room identity, current state, roster, and one manual media-reconnect action.
 Controls and text must remain usable without overlap or horizontal overflow on
 desktop and mobile viewports.
 
+Personal room-tool presentation and incoming-route preferences are remembered
+within the same Browser origin across rooms and reloads. Their existing domain
+owners still apply capability and room-policy constraints. Restoring preferences
+never restores room admission, control grants, actual held input, passwords or
+message drafts, and never starts capture or remote control.
+
 A capable, opted-in authenticated room session
 outlives its current publication. Stopping capture retires media, not chat;
 restoring an existing room joins it without starting capture. Entering the page

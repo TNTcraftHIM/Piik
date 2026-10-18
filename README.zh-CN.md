@@ -88,6 +88,8 @@ Piik App 的公网邀请和在线版使用纯 P2P 连接，
 
 ## 自行部署
 
+<p><a href="./docs/operations/self-hosting.zh-CN.md#使用-docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 Piik"></a></p>
+
 Piik Server 是一个内置网页界面的独立程序。
 根据服务器架构下载 Linux x64 的 `piik-<revision>-runtime.tar.gz` 或 ARM64 的
 `piik-<revision>-linux-arm64-runtime.tar.gz`，解压后运行：
@@ -112,3 +114,17 @@ Piik Server 是一个内置网页界面的独立程序。
 ## 许可
 
 Piik 自有代码采用 [MIT 许可](./LICENSE)，依赖保留各自的[许可与声明](./licenses/README.md)。
+
+## 项目动态
+
+<p align="center">
+  <a href="https://trendshift.io/repositories/236065"><img src="https://trendshift.io/api/badge/trendshift/repositories/236065/daily?language=TypeScript" width="250" alt="Piik 的 Trendshift 趋势"></a>
+</p>
+<p align="center">
+  <a href="https://www.star-history.com/#TNTcraftHIM/Piik&amp;Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=TNTcraftHIM/Piik&amp;type=Date&amp;theme=dark">
+      <img src="https://api.star-history.com/svg?repos=TNTcraftHIM/Piik&amp;type=Date" width="760" alt="Piik GitHub 星标增长趋势">
+    </picture>
+  </a>
+</p>

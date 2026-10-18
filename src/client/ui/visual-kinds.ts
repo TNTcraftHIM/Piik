@@ -105,6 +105,9 @@ export type Set4Kind =
   | "hint-client-site";
 
 export type PlaybackHintKind =
+  | "hint-fit-contain"
+  | "hint-fit-cover"
+  | "hint-fit-fill"
   | "hint-local-play"
   | "hint-local-pause"
   | "hint-volume"
@@ -144,6 +147,7 @@ export type MetricHintKind = `hint-metric-${
 }`;
 
 export type InteractionHintKind =
+  | "hint-reaction-picker"
   | "hint-chat-open"
   | "hint-chat-send"
   | "hint-chat-settings"

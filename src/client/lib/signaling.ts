@@ -149,9 +149,9 @@ export class SignalingClient {
     }
   }
 
-  enableViewerRouteSelection(): void {
+  enableViewerRouteSelection(preference: ViewerRoutePreference = "auto"): void {
     if (this.stopped || this.identity.role !== "viewer") return;
-    this.identity.routePreference ??= "auto";
+    this.identity.routePreference ??= preference;
     if (this.authenticatedPeerId) this.setViewerRoutePreference(this.identity.routePreference);
   }
 

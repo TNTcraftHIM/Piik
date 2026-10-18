@@ -72,6 +72,12 @@ platform deferrals or establish a diagnosis for unmatched reports.
   the affected upstream clock. This does not diagnose every unmatched
   sustained-quality report below.
 
+- [ ] **Release issue follow-up.** After owner acceptance and publication, link
+  confirmed fixes to the release PR and notes, then reply with the shipped
+  version on relevant open and previously closed issues. Close only established
+  resolutions or explicitly declined requests; retain unmatched reports as
+  awaiting evidence.
+
 ## Held By Owner
 
 - [ ] **Persistent-loss estimator replacement.** Deferred by the owner on

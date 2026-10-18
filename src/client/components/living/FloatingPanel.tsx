@@ -138,9 +138,8 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
       const top = (viewport?.offsetTop ?? 0) + 12;
       const bottom = top + (viewport?.height ?? document.documentElement.clientHeight) - 24;
       const below = anchor.bottom + 8;
-      const headroom = anchor.top - top >= panel.offsetHeight + 136 ? 128 : 0;
       place({ x: anchor.x + anchor.width / 2 - panel.offsetWidth / 2,
-        y: below + panel.offsetHeight <= bottom ? below : anchor.top - panel.offsetHeight - 8 - headroom });
+        y: below + panel.offsetHeight <= bottom ? below : anchor.top - panel.offsetHeight - 8 });
     }
     viewport?.addEventListener("resize", resize);
     viewport?.addEventListener("scroll", resize);

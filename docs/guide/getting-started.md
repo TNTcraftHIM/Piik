@@ -146,8 +146,10 @@ The [App guide](../../cmd/piik-app/README.md#modes) explains the connection setu
 
 ### Upgrading
 
-**Piik 2.0 and 1.x cannot be used together.** The App and the site it connects to
-need the same major version. Read the release notes on
+**Piik 2.x and 1.x cannot be used together.** The App and the site it connects to
+need the same major version. Different 2.x versions preserve established sharing
+and viewing; new features require support from the relevant App and site.
+Read the release notes on
 [GitHub](https://github.com/TNTcraftHIM/Piik/releases/latest) or
 [Gitee](https://gitee.com/TNTcraftHIM/Piik/releases) before upgrading.
 
@@ -271,6 +273,9 @@ app to a different playback device.
    **Ask each time**.
 3. Your friend selects **Request control** in their playback bar. Choose
    **Allow control** on your sharing page when their request arrives.
+
+When sharing a window, switch back to that window after allowing control. Input
+pauses while another window is active and resumes when you return.
 
 One viewer can control at a time, using a desktop or mobile browser. Update the
 host's App and the room's site, then refresh the viewing page. The control button

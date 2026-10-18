@@ -9,7 +9,6 @@
   padding: 6px 12px max(6px, env(safe-area-inset-bottom));
   border-top: 1.5px solid color-mix(in srgb, var(--ink) 24%, transparent);
   color: var(--ink);
-  background: var(--paper);
   box-shadow: 0 -4px 18px rgb(0 0 0 / 8%);
   transition: opacity 180ms ease, transform 220ms var(--spring);
 }
@@ -28,9 +27,9 @@
 .lr-tv-screen > .lr-playback { position: relative; inset: auto; grid-area: 2 / 1; max-width: calc(100% - 16px); margin-bottom: 8px; }
 /* Remote taps belong to input. The local pull stays on the bezel, outside the
    picture; theater/fullscreen use the same pull at the screen's bottom edge. */
-.lr-playback-reveal { display: none; position: absolute; bottom: 1px; right: 18px; z-index: 4; width: 64px; height: 24px; padding: 0; border: 1px solid #dbe7ec40; border-radius: 8px; background: color-mix(in srgb, #dbe7ec 14%, var(--frame)); box-shadow: 0 1px 0 #0003; color: #dbe7ec; cursor: pointer; transition: background-color 160ms ease; }
+.lr-playback-reveal { display: none; position: absolute; bottom: 1px; right: 18px; z-index: 4; width: 64px; height: 24px; padding: 0; border: 1px solid color-mix(in srgb, var(--piik-dark-ink) 25%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--piik-dark-ink) 14%, var(--frame)); box-shadow: 0 1px 0 var(--surface-shade); color: var(--piik-dark-ink); cursor: pointer; transition: background-color 160ms ease; }
 .lr-playback-reveal > svg { transition: transform 160ms var(--spring); }
-.lr-playback-reveal:is(:hover, :focus-visible) { background: color-mix(in srgb, #dbe7ec 24%, var(--frame)); }
+.lr-playback-reveal:is(:hover, :focus-visible) { background: color-mix(in srgb, var(--piik-dark-ink) 24%, var(--frame)); }
 .lr-playback-reveal:is(:hover, :focus-visible) > svg { transform: translateY(1px); }
 .lr-playback-reveal:active > svg { transform: none; }
 .lr-playback-reveal:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }

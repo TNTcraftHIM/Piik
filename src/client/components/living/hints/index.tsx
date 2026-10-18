@@ -23,6 +23,10 @@ import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } fr
 export type { HintKind, HintScene };
 
 export const HINT_KINDS: readonly HintKind[] = [
+  "hint-fit-contain",
+  "hint-fit-cover",
+  "hint-fit-fill",
+  "hint-reaction-picker",
   "hint-share-start",
   "hint-share-stop",
   "hint-microphone-on",

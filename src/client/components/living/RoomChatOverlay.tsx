@@ -1,5 +1,6 @@
 import { useEffect, useId, useSyncExternalStore, type CSSProperties } from "react";
-import { CHAT_OVERLAY_DURATION_MS, CHAT_OVERLAY_LIMITS, RoomInteractionSession } from "../../lib/room-interactions";
+import { CHAT_OVERLAY_DURATION_MS, RoomInteractionSession } from "../../lib/room-interactions";
+import { CHAT_OVERLAY_LIMITS } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Btn } from "./primitives";

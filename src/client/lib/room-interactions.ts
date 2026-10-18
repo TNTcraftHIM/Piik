@@ -2,6 +2,7 @@ import { interactionPayloadSchema, type ClientMessage, type ServerMessage, type 
 import { BASELINE_REACTION_IDS, INTERACTION_INTERVAL_MS, REACTION_DURATION_MS, REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { createOpaqueId } from "./opaque-id";
 import { identityHash } from "./identity-hash";
+import { CHAT_OVERLAY_LIMITS, readRoomPreferences, saveRoomPreferences } from "./room-preferences";
 
 export type RoomInteraction = Omit<Extract<ServerMessage, { type: "room-interaction" }>, "payload"> & {
   payload: InteractionPayload;
@@ -10,7 +11,6 @@ type Rejection = Extract<ServerMessage, { type: "room-interaction-rejected" }>["
 export type InteractionError = Rejection | "offline" | "unconfirmed";
 export const CHAT_OVERLAY_DURATION_MS = 6000;
 export const CHAT_HISTORY_LIMIT = 1000;
-export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1] } as const;
 type OverlayAppearance = { scale: number; opacity: number };
 const CHAT_OVERLAY_LANES = 3;
 interface InteractionState {
@@ -47,6 +47,8 @@ export class RoomInteractionSession {
   private serverOffset = 0;
 
   constructor(private readonly sendMessage: (message: ClientMessage) => boolean, readonly now = Date.now, reactionIds?: readonly string[]) {
+    const { overlayEnabled, overlayAppearance } = readRoomPreferences();
+    this.state = { ...this.state, overlayEnabled, overlayAppearance };
     this.setSupportedReactions(reactionIds);
   }
 
@@ -150,6 +152,7 @@ export class RoomInteractionSession {
   setOverlayEnabled(enabled: boolean) {
     if (this.closed || this.state.overlayEnabled === enabled) return;
     this.update({ overlayEnabled: enabled, overlayMessages: [] });
+    saveRoomPreferences({ overlayEnabled: enabled });
     this.expireEffects();
   }
 
@@ -166,6 +169,7 @@ export class RoomInteractionSession {
       scale: Math.min(CHAT_OVERLAY_LIMITS.scale[1], Math.max(CHAT_OVERLAY_LIMITS.scale[0], appearance.scale)),
       opacity: Math.min(CHAT_OVERLAY_LIMITS.opacity[1], Math.max(CHAT_OVERLAY_LIMITS.opacity[0], appearance.opacity)),
     } });
+    saveRoomPreferences({ overlayAppearance: this.state.overlayAppearance });
   }
 
   private expireEffects() {

@@ -95,6 +95,8 @@ link and the online version, may not connect on restrictive networks.
 
 ## Self-hosting
 
+<p><a href="./docs/operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik with Docker Compose"></a></p>
+
 Piik Server is a standalone binary with the web interface built in.
 Download the Server package for Linux x64 (`piik-<revision>-runtime.tar.gz`)
 or ARM64 (`piik-<revision>-linux-arm64-runtime.tar.gz`),
@@ -121,3 +123,17 @@ See [ways to contribute](./CONTRIBUTING.md#ways-to-help) or
 
 Piik-owned code is [MIT licensed](./LICENSE). Dependencies retain their own
 [licenses and notices](./licenses/README.md).
+
+## Project activity
+
+<p align="center">
+  <a href="https://trendshift.io/repositories/236065"><img src="https://trendshift.io/api/badge/trendshift/repositories/236065/daily?language=TypeScript" width="250" alt="Piik on Trendshift"></a>
+</p>
+<p align="center">
+  <a href="https://www.star-history.com/#TNTcraftHIM/Piik&amp;Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=TNTcraftHIM/Piik&amp;type=Date&amp;theme=dark">
+      <img src="https://api.star-history.com/svg?repos=TNTcraftHIM/Piik&amp;type=Date" width="760" alt="Piik GitHub star history">
+    </picture>
+  </a>
+</p>

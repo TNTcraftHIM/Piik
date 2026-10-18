@@ -101,7 +101,6 @@ var consoleCopy = map[string][3]string{
 	"failure.launcher":           {"App launcher is unavailable. Reopen App and try again.", "App 启动页不可用，请重开 App 后重试。", "!"},
 	"failure.diagnostics":        {"Could not start diagnostics. Check the save location and permissions.", "无法开启诊断，请检查保存位置与权限。", "!"},
 	"failure.local-server":       {"The local room service is unavailable. Check the details.", "本地房间服务不可用，请查看详情。", "!"},
-	"mode":                       {"Mode", "模式", ""},
 	"local":                      {"Local network", "局域网", "□"},
 	"link":                       {"Public link", "公网链接", "↗"},
 	"site":                       {"Piik Site", "Piik 站点", "@"},
@@ -343,11 +342,26 @@ func (model consoleModel) content(styled bool) string {
 	compact := model.height > 0 && model.height < 24
 	compactDebug := compact && model.debug.logPath != ""
 	visual := model.language == "vis"
-	accent, muted, link := lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()
+	accent, muted, link, rule := lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle()
 	if styled {
 		accent = accent.Bold(true)
 		muted = muted.Faint(true)
 		link = link.Underline(true)
+	}
+	key, stateStyle := accent, accent
+	if styled && model.colors {
+		// Use the terminal's palette so light and dark terminal themes both work.
+		link = link.Foreground(lipgloss.Color("12"))
+		key = key.Foreground(lipgloss.Color("12"))
+		rule = rule.Foreground(lipgloss.Color("8"))
+		switch model.view.state {
+		case "ready", "setup":
+			stateStyle = stateStyle.Foreground(lipgloss.Color("10"))
+		case "starting", "stopping":
+			stateStyle = stateStyle.Foreground(lipgloss.Color("11"))
+		case "failed":
+			stateStyle = stateStyle.Foreground(lipgloss.Color("9"))
+		}
 	}
 	revision := BuildRevision
 	if len(revision) == 40 {
@@ -355,17 +369,21 @@ func (model consoleModel) content(styled bool) string {
 	}
 	var out strings.Builder
 	version := buildVersion()
-	heading := "Piik\nApp\n" + muted.Render(version)
+	heading := accent.Render("Piik App") + "\n" + muted.Render(version)
 	if revision != "" && revision != version {
-		heading = "Piik App\n" + muted.Render(version) + "\n" + muted.Render(revision)
+		heading += "\n" + muted.Render(revision)
 	}
 	animated := styled && model.animating()
 	mascot := accent.Render(consoleTV(model.frame, animated, compact || width < 34))
-	if styled && model.colors && width >= 36 && !compactDebug {
+	if styled && model.colors && width >= 36 && !compact {
 		mascot = consoleBlockTV(model.frame, animated)
 	}
-	fmt.Fprintln(&out, lipgloss.JoinHorizontal(lipgloss.Center, mascot, heading))
-	fmt.Fprintln(&out)
+	fmt.Fprintln(&out, lipgloss.JoinHorizontal(lipgloss.Center, mascot, "  ", heading))
+	if styled && !compact {
+		fmt.Fprintln(&out, rule.Render(strings.Repeat("─", width-4)))
+	} else {
+		fmt.Fprintln(&out)
+	}
 	state := model.text(model.view.state)
 	if model.view.state == "starting" && !visual {
 		dots := 3
@@ -375,29 +393,17 @@ func (model consoleModel) content(styled bool) string {
 		state += strings.Repeat(".", dots)
 	}
 	if visual {
-		stateStyle := accent
-		if styled && model.colors {
-			switch model.view.state {
-			case "ready":
-				stateStyle = stateStyle.Foreground(lipgloss.Color("#3fb97a"))
-			case "starting", "stopping":
-				stateStyle = stateStyle.Foreground(lipgloss.Color("#e8a33d"))
-			case "failed":
-				stateStyle = stateStyle.Foreground(lipgloss.Color("#e25a52"))
-			}
-		}
 		// Keep visual mode one line tall; multi-line scene art side by side
 		// collapses on narrow terminals and reads like missing characters.
 		fmt.Fprintln(&out, lipgloss.JoinHorizontal(lipgloss.Center,
 			accent.Render(consoleVisualToken(model.view.mode)), " · ",
 			stateStyle.Render(consoleVisualToken(model.view.state))))
-	} else if compactDebug && model.view.mode != "" {
-		fmt.Fprintf(&out, "%s  %s\n", accent.Render(state), model.text(model.view.mode))
 	} else {
-		fmt.Fprintln(&out, accent.Render(state))
+		statusLine := stateStyle.Render(state)
 		if model.view.mode != "" {
-			fmt.Fprintf(&out, "%s  %s\n", muted.Render(model.text("mode")), model.text(model.view.mode))
+			statusLine += muted.Render("  ·  ") + model.text(model.view.mode)
 		}
+		fmt.Fprintln(&out, ansi.Wrap(statusLine, width-4, ""))
 	}
 	for _, item := range [][2]string{{"entry", model.view.entry}, {"launcher", model.launcher}, {"invite", model.view.invite}} {
 		if item[1] == "" || compact && item[0] == "invite" || item[0] == "launcher" && item[1] == model.view.entry {
@@ -470,31 +476,27 @@ func (model consoleModel) content(styled bool) string {
 		}
 	}
 	if !model.finished {
-		keys := "[q / Ctrl+C]"
+		keys := key.Render("[q / Ctrl+C]")
 		if !styled {
 			keys = "Ctrl+C"
 		}
-		help := keys + " " + model.text("exit")
+		help := keys + " " + muted.Render(model.text("exit"))
 		if visual {
 			if model.view.entry != "" && styled {
-				help = "[o] ↗    " + help
+				help = key.Render("[o]") + " ↗    " + help
 			}
 			help = lipgloss.JoinHorizontal(lipgloss.Center, accessPicture, help)
 		} else if model.view.entry != "" && styled {
 			separator := "    "
-			if compact && model.debug.export != nil {
+			if compact {
 				separator = "\n"
 			}
-			help = "[o] " + model.text("entry") + separator + help
+			help = key.Render("[o]") + " " + muted.Render(model.text("entry")) + separator + help
 		}
 		if model.debug.export != nil && styled {
-			help = "[d] " + model.text("export") + "\n" + help
+			help = key.Render("[d]") + " " + muted.Render(model.text("export")) + "\n" + help
 		}
-		if visual {
-			fmt.Fprintf(&out, "\n%s", accent.Render(help))
-		} else {
-			fmt.Fprintf(&out, "\n%s", muted.Render(help))
-		}
+		fmt.Fprintf(&out, "\n%s", help)
 	}
 	content := ansi.Hardwrap(out.String(), width-4, true)
 	if !styled {
@@ -505,7 +507,7 @@ func (model consoleModel) content(styled bool) string {
 		content = strings.ReplaceAll(content, "\n\n", "\n")
 		padding = 0
 	}
-	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
+	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(rule.GetForeground()).
 		Padding(padding, 1).Width(width).Render(content)
 }
 
