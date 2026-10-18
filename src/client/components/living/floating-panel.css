@@ -22,12 +22,8 @@
 .lr-floating-error { padding: 8px 0; color: var(--danger); font-size: 12px; }
 /* The browser owns the detached frame, movement and resizing. */
 .lr-panel-window { background: var(--paper); }
-.lr-panel-window .lr-floating-panel { inset: 0 !important; width: 100% !important; height: 100dvh !important; max-width: none; max-height: none !important; padding: 12px; border: 0; border-radius: 0; box-shadow: none; animation: none; }
-.lr-panel-window .lr-floating-header { min-height: 40px; margin: -12px -12px 0; padding: 2px 8px 2px 14px; border-radius: 0; cursor: default; touch-action: auto; }
+.lr-panel-window .lr-floating-panel { inset: 0 !important; width: 100% !important; height: 100dvh !important; max-width: none; max-height: none !important; padding-top: 0; border-color: transparent; border-radius: 0; box-shadow: none; animation: none; }
+.lr-panel-window .lr-floating-header { display: none; }
 .lr-panel-window .lr-chat-log { padding-block: 12px; }
 [data-comic-reduced-motion] .lr-floating-panel:is(:popover-open, .\:popover-open) { animation: none; }
 @media (prefers-reduced-motion: reduce) { .lr-floating-panel:is(:popover-open, .\:popover-open) { animation: none; } }
-@media (max-width: 420px) {
-  .lr-floating-panel { padding: 12px; }
-  .lr-floating-header { margin: -12px -12px 0; padding: 6px 10px 6px 24px; }
-}

@@ -6,16 +6,18 @@ function setup() {
   const requestWindow = vi.fn(() => new Promise<Window>(resolve => { finish = resolve; }));
   const view = { isSecureContext: true, documentPictureInPicture: { requestWindow } } as unknown as Window;
   Object.defineProperty(view, "top", { value: view });
-  const container = { ownerDocument: { defaultView: view }, parentElement: {}, isConnected: true } as HTMLElement;
+  const container = { ownerDocument: { defaultView: view }, parentElement: {}, isConnected: true,
+    firstElementChild: { getBoundingClientRect: () => ({ width: 304, height: 346 }) } } as unknown as HTMLElement;
   return { container, view, requestWindow, finish: (window: Window) => finish(window) };
 }
 
 test("a room retired while the browser opens PiP closes the late window without moving its UI", async () => {
-  const { container, finish } = setup();
+  const { container, finish, requestWindow } = setup();
   const controller = new AbortController();
   const changed = vi.fn();
   const close = vi.fn();
   const opening = openPanelWindow(container, controller.signal, changed);
+  expect(requestWindow).toHaveBeenCalledWith({ width: 304, height: 346, preferInitialWindowPlacement: true });
   controller.abort();
   finish({ close } as unknown as Window);
   await opening;

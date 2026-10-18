@@ -80,6 +80,13 @@ platform deferrals or establish a diagnosis for unmatched reports.
 
 ## Held By Owner
 
+- [ ] **Remote-control latency and responsiveness.** Scheduled after this release.
+  Compare input-to-visible-response timing on the same endpoints, source and
+  network against a mature remote-control implementation. Separate input
+  delivery, Host execution, capture/encode and receive/playout; retain the
+  existing route and authorization owners. Identify the dominant delay before
+  changing budgets or buffering, and compare loss/recovery as well as steady latency.
+
 - [ ] **Persistent-loss estimator replacement.** Deferred by the owner on
   2026-10-18. Retain mature congestion control and accept quality reduction under
   sustained high loss; no custom loss model or release prerequisite is added.

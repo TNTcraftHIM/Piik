@@ -5,7 +5,7 @@ import { createContext, useContext, useLayoutEffect, useRef, useState } from "re
 export const SurfaceDocument = createContext<Document | null>(null);
 export const useSurfaceDocument = () => useContext(SurfaceDocument) ?? (typeof document === "undefined" ? null : document);
 
-type PictureInPicture = { requestWindow(options: { width: number; height: number }): Promise<Window> };
+type PictureInPicture = { requestWindow(options: { width: number; height: number; preferInitialWindowPlacement: boolean }): Promise<Window> };
 export function panelWindowAPI(view: Window | null) {
   return view && view === view.top && view.isSecureContext
     ? (view as Window & { documentPictureInPicture?: PictureInPicture }).documentPictureInPicture
@@ -56,7 +56,9 @@ export async function openPanelWindow(container: HTMLElement, signal: AbortSigna
   const parent = container.parentElement;
   const api = panelWindowAPI(home.defaultView);
   if (!api || !parent || signal.aborted) return;
-  const pip = await api.requestWindow({ width: 360, height: 480 });
+  // The portal wrapper uses display: contents; its child owns visible geometry.
+  const { width, height } = container.firstElementChild!.getBoundingClientRect();
+  const pip = await api.requestWindow({ width: Math.round(width), height: Math.round(height), preferInitialWindowPlacement: true });
   // Room retirement can beat the browser's permission/window creation work.
   if (signal.aborted || !container.isConnected) { pip.close(); return; }
   let returned = false;

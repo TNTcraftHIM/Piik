@@ -1,12 +1,13 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { RemoteControlRequest } from "../../native/wire";
 import type { RemoteControlMode, RemoteInputPlatform } from "../../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Btn, Chip, NameTag, SwitchItem } from "./primitives";
+import { Btn, NameTag, SwitchItem } from "./primitives";
 import { FloatingPanel } from "./FloatingPanel";
+import { Tooltip } from "./Tooltip";
 import "./remote-control.css";
 
 // Form drafts stay here; the App snapshot owns applied authorization.
@@ -107,13 +108,17 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
             event.preventDefault();
             void applyPolicy(draft, draft === "password" ? password : undefined);
           }}>
-          <div className="lr-remote-modes" role="group" aria-label={t("remote.authorization")}>
-            {(["ask", "room", "password"] as const).map((value, index) => <Chip key={value} selected={draft === value}
-              title={t(`remote.mode.${value}`)} hint="hint-remote-control" disabled={busy || disabled}
-              onClick={() => { setDraft(value); setPassword(""); }}>
-              <Glyph name={(["check", "users", "key"] as const)[index]} size={18} />
-              {vis ? null : <span>{t(`remote.mode.${value}`)}</span>}
-            </Chip>)}
+          {!vis && <span className="lr-remote-field-label">{t("remote.authorization")}</span>}
+          <div className="lr-toggle lr-remote-modes" role="group" aria-label={t("remote.authorization")}
+            style={{ "--lr-segments": 3, "--lr-selected-index": ["ask", "room", "password"].indexOf(draft) } as CSSProperties}>
+            {(["ask", "room", "password"] as const).map((value, index) => <Tooltip key={value}
+              kind="hint-remote-control" text={vis ? undefined : t(`remote.help.${value}`)}>
+              <button type="button" className={draft === value ? "is-selected" : undefined} aria-pressed={draft === value}
+                aria-label={t(`remote.mode.${value}`)} disabled={busy || disabled}
+                onClick={() => { setDraft(value); setPassword(""); }}>
+                {vis ? <Glyph name={(["check", "users", "key"] as const)[index]} size={18} /> : t(`remote.mode.${value}`)}
+              </button>
+            </Tooltip>)}
           </div>
           {!vis && <p className="lr-remote-note">{t(`remote.help.${draft}`)}</p>}
           {draft === "password" && <label className="lr-input">

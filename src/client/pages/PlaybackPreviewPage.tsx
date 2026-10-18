@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { VideoFit } from "../media/video-geometry";
 import { AppHeader } from "../components/living/Header";
 import { PlaybackControls } from "../components/living/PlaybackControls";
-import { StageTv } from "../components/living/Stage";
+import { StageOverlay, StageTv } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { STATUS_CATALOG } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
@@ -58,7 +58,7 @@ function testMedia(withAudio: boolean) {
 }
 
 export function PlaybackPreviewPage() {
-  const { lang } = useCopy();
+  const { lang, t } = useCopy();
   const english = lang === "en";
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRef = useRef<ReturnType<typeof testMedia> | null>(null);
@@ -67,6 +67,7 @@ export function PlaybackPreviewPage() {
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
   const [error, setError] = useState("");
+  const [waiting, setWaiting] = useState(true);
   const [audioAvailable, setAudioAvailable] = useState(false);
   const hasAudio = Boolean(stream?.getAudioTracks().length);
 
@@ -83,6 +84,7 @@ export function PlaybackPreviewPage() {
     const media = testMedia(withAudio);
     mediaRef.current = media;
     setError("");
+    setWaiting(false);
     setStream(media.stream);
     setAudioAvailable(withAudio);
     if (media.audio) void media.audio.resume().catch((cause: unknown) => setError(String(cause)));
@@ -117,6 +119,8 @@ export function PlaybackPreviewPage() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <button className="lr-btn" type="button" onClick={() => start(false)}>
             {english ? "Start picture only" : "开启无声测试画面"}</button>
+          <button className="lr-btn" type="button" aria-pressed={waiting} onClick={() => setWaiting(value => !value)}>
+            {english ? "Connection overlay" : "连接遮罩"}</button>
           <button className="lr-btn" type="button" disabled={!stream} onClick={() => start(!hasAudio)}>
             {hasAudio ? (english ? "Remove audio track" : "移除音轨") : (english ? "Add quiet test tone" : "加入轻音量测试音")}</button>
           <button className="lr-btn" type="button" disabled={!stream} onClick={() => start(hasAudio)}>
@@ -131,14 +135,15 @@ export function PlaybackPreviewPage() {
       </header> : null}
       <div className="lr-scene">
         <StageTv live={Boolean(stream)} label={english ? "Local test picture" : "本机测试画面"}
-          indicator={<StatusIndicator status={stream ? STATUS_CATALOG.connected : STATUS_CATALOG.idle} />}>
+          indicator={<StatusIndicator status={waiting ? STATUS_CATALOG.joining : stream ? STATUS_CATALOG.connected : STATUS_CATALOG.idle} />}>
           <video ref={videoRef} playsInline tabIndex={0} inert={!stream} style={{ objectFit: pictureFit }}
             aria-label={english ? "Local test video" : "本机测试视频"} />
+          {waiting && <StageOverlay dim waiting icon={STATUS_CATALOG.joining.icon} message={t(STATUS_CATALOG.joining.labelKey)} comic={STATUS_CATALOG.joining.comic} />}
           <PlaybackControls videoRef={videoRef} stream={stream} audioAvailable={audioAvailable}
             settings={{ pictureFit, setPictureFit, route: { preference: viewerRoute, onChange: setViewerRoute,
               sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } }}
             audioTrackKey={stream?.getAudioTracks().map((track) => track.id).join(",")}
-            canPlay={Boolean(stream)} theaterMode={theaterMode} onPlay={play}
+            canPlay={Boolean(stream) && !waiting} theaterMode={theaterMode} onPlay={play}
             onToggleTheater={() => setTheaterMode((value) => !value)}
             onReconnect={() => start(hasAudio)} reconnectAvailable={Boolean(stream)} />
         </StageTv>

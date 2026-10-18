@@ -129,6 +129,9 @@ Close, return-to-tab, movement and resizing belong to that frame; do not duplica
 its controls in the tool header. Keep messages and text contrast
 primary; do not simulate transparent desktop content with a washed-out panel.
 Moving or detaching changes the surface, not the domain owner or protocol.
+Request the tool's current rendered size when detaching, within browser window
+limits. The native title bar replaces the floating panel's header; keep body
+spacing and control sizes consistent with the in-page tool.
 Reuse visibility, placement, dismissal and focus behavior through these existing
 owners; do not give each feature its own window manager. Different layouts are
 justified by task or available space, not by which feature was implemented last.
@@ -223,10 +226,10 @@ and connection details, so inspecting a route does not displace room actions.
 Sharing and local playback controls use the same quiet, compact button treatment.
 The Host's persistent dock stays below the picture; the Viewer's playback bar
 belongs to the video. Their similar appearance does not equate broadcast pause
-with local playback pause. Waiting overlays use the space above the actual
-playback bar. Keep the primary status readable on
-narrow screens; optional waiting copy yields first. Microphone mute, sharing
-pause, source replacement and stop remain direct actions; stop retains its
+with local playback pause. A waiting overlay dims the complete picture, including
+behind the playback bar; its message uses the space above that bar. Keep the
+primary status readable on narrow screens; optional waiting copy yields first.
+Microphone mute, sharing pause, source replacement and stop remain direct actions; stop retains its
 danger treatment.
 Group direct sharing actions in one centred dock below the television, above
 the couch. Keep pause/resume and stop adjacent; use an internal separator for
@@ -553,8 +556,10 @@ App, website and documentation use the shared surface palette in
 surfaces and clear text contrast. Source selection follows the same theme.
 Reserve green for cast identity and semantic state, not the general canvas or
 hover fill. Light mode uses blue for actions, focus and selected controls;
-dark mode keeps navy surfaces with soft-white highlights and navy text on
-filled actions. Use the shared foreground/background pairs for both themes.
+dark mode keeps navy surfaces with soft-white selection highlights and navy text.
+Primary actions such as starting a share, joining and confirming retain their
+blue fill and white foreground in both themes; theme selection must not erase
+their identity. Use the shared foreground/background pairs for both themes.
 Selected choices use the shared face and inset outline; sliding segments use
 inverse ink/paper with the same accent outline. Subtle surface highlights
 and shadows add depth without changing control geometry or press feedback.

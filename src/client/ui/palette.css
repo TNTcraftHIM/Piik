@@ -7,9 +7,12 @@
   --ink: #29374a;
   --muted: color-mix(in srgb, var(--ink) 75%, var(--paper));
   --line: color-mix(in srgb, var(--ink) 20%, var(--paper));
+  /* Primary actions keep their identity; selection/focus follows the theme. */
+  --primary: #2765ce;
+  --primary-ink: #fff;
   --action: #3478e5;
-  --action-deep: #2765ce;
-  --action-ink: #fff;
+  --action-deep: var(--primary);
+  --action-ink: var(--primary-ink);
   --action-text: #2055b2;
   --control-hover: #eef3ff;
   --control-selected: #e5efff;
