@@ -361,7 +361,7 @@ bottleneck.
 
 On 2026-10-07, the local Native H.264 SFU gate initially passed its two-room
 check, then missed its unchanged 300-frame/30-second requirement. The repeat
-environment exposed only a GameViewer virtual display. Current main reproduced
+environment exposed only a third-party virtual display. Current main reproduced
 the failure with its own App and capture binary: video/audio arrived, but video
 was roughly 4–7 fps without receiver loss or decode drops. A source-window draw
 counter advanced about 133 times per second; that counts drawing attempts, not
