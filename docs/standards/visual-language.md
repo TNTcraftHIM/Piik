@@ -218,8 +218,15 @@ The App badge and favicons derive from [one SVG](../../public/favicon.svg):
 a dark navy tile, warm white television outline and small gold sparkle. The
 unfilled television, antenna, feet and wink keep the proportions of `BrandMark`;
 do not give the badge a filled case or a separate screen. This palette stays
-fixed across system themes. Keep the badge recognisable at 16–48 px by
-strengthening thin strokes in tiny exports. Inline brand
+fixed across system themes. Let the television fill the tile with optical
+padding so the surrounding tile does not make the mascot look undersized.
+At 16–24 px, strengthen the outline and open eye, and omit the decorative
+sparkle and tile rim. Keep the antenna, feet and wink at every size. Render
+each export at its target viewport; check actual 16/24/32/48 px on light and
+dark backgrounds rather than judging only an enlarged master. This follows
+[Microsoft's small-size silhouette guidance](https://learn.microsoft.com/en-us/windows/apps/design/iconography/app-icon-design)
+and [GNOME's detail guidance](https://developer.gnome.org/hig/guidelines/app-icons.html#detail).
+Inline brand
 marks keep the same wink identity with their existing outline and motion.
 Their stroke inherits the local surface's text colour:
 dark ink on light surfaces, light ink on dark surfaces, including deliberately
