@@ -90,6 +90,15 @@ func (r *router) drivePump(roomID string, rm *roomRuntime, controller *route.Con
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	defer func() { r.inflight-- }()
+	if current, _ := r.rooms.Get(roomID); current != rm || rm.controller != controller {
+		// Preparation yielded before this share retired. Its remainder owns only
+		// the reservation, never the replacement room's waiters or deadline.
+		rm.pumping = false
+		if pending != nil && !pending.result.denied {
+			r.releaseReservation(pending.result.prepared.reservation)
+		}
+		return
+	}
 	if !failed {
 		failed = r.recoverPump(func() {
 			if pending != nil {

@@ -1970,6 +1970,52 @@ func TestRouterOrdersExactPrepareCommitsOnlyChildProofAndRollsBackAboveP(t *test
 	}
 }
 
+func TestRetiredPumpPreservesReplacementShareResourceWaiter(t *testing.T) {
+	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true, sfuIngressCapacity: 1})
+	created := h.createRoom()
+	host := h.connectHost(created, nil, "", "")
+	viewer := h.connectViewer(created, "replacement-waiter")
+	occupied := sfu.ResourceFence{RoomID: "9001", ShareGeneration: "occupied-share", PublicationGeneration: "occupied-publication"}
+	h.locked(func() {
+		h.router.sfuOnly = true
+		if !h.admission.ReservePublication(occupied) {
+			t.Fatal("reserve occupied publication")
+		}
+		h.router.connectParticipant(host)
+		h.router.connectParticipant(viewer)
+		old, _ := h.router.rooms.Get(created.RoomID)
+		old.pumping = true
+		controller := old.controller
+		revision := controller.Revision()
+		// Suspend the same queued remainder as requestPump, allowing the new
+		// share to acquire the authority mutex before the old driver resumes.
+		pending := h.router.pumpRoom(created.RoomID, old, controller, &revision, nil, true)
+		if pending == nil || !pending.result.denied {
+			t.Fatal("expected queued denied candidate")
+		}
+		h.router.stopRoom(created.RoomID)
+		h.router.connectParticipant(host)
+		replacement, _ := h.router.rooms.Get(created.RoomID)
+		replacementRevision := replacement.controller.Revision()
+		h.router.pumpRoom(created.RoomID, replacement, replacement.controller, &replacementRevision, nil, false)
+		if !h.router.resourceWaiters.Has(created.RoomID) {
+			t.Fatal("replacement did not wait")
+		}
+		h.router.inflight++
+		go h.router.drivePump(created.RoomID, old, controller, revision, pending, false)
+	})
+	h.settle()
+	h.locked(func() {
+		if !h.router.resourceWaiters.Has(created.RoomID) {
+			t.Fatal("retired pump erased the replacement share's SFU waiter")
+		}
+		h.admission.BeginDrain(occupied)
+		h.admission.CompleteDrain(occupied)
+		h.router.wakeResourceWaiters()
+	})
+	h.waitPreparedTransport(viewer.sessionID, "sfu")
+}
+
 func TestRouterCreatesOneHostPublicationAndReusesExactViewerSubscriptions(t *testing.T) {
 	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true})
 	created := h.createRoom()
