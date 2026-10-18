@@ -636,9 +636,21 @@ ignoring repeated observations; ordinary, probe and CTR measurements receive the
 same facts. Rollover likewise retains its boundary packet. Both controls fail
 without their respective fixes.
 
-The low-utilization comparison still fell to about 13 kbps with both repairs,
-then recovered after loss ended. These corrections do not solve persistent-loss
-collapse. Reduced source traffic and network capacity must remain distinct in
+The same feedback-boundary review found that replayed observations could advance
+the congestion state without any new measurement. Long runs of delayed packets
+also exceeded the group's ACK-count-sized loss bitmap: all 172 packets could be
+received with 43 losses still counted. Group membership now covers the tracker's
+live history, while late ACKs repair only losses observed by that group. Reset
+and new measurement scopes likewise start at their own first ACK when the
+tracker's predecessor was later on either clock; otherwise old feedback could
+produce a negative traffic ratio and bandwidth. Ordinary in-group reordering retains its
+signed deltas. Pion-generated feedback controls cover replay, late arrival and
+reset; a reused bitmap slot cannot erase an expired packet's loss.
+
+The low-utilization comparison still fell to about 13 kbps with these repairs,
+then restored its 5 Mbps budget about seven seconds after loss ended. These
+corrections do not solve persistent-loss collapse. Reduced source traffic and
+network capacity must remain distinct in
 the next comparison. Google WebRTC's
 [loss-based estimator](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/congestion_controller/goog_cc/loss_based_bwe_v2.cc)
 models inherent loss separately; that is a reference for evaluation, not an

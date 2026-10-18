@@ -39,9 +39,12 @@ probe timing begins with its first acknowledged packet, excluding pre-probe idle
 time; congestion statistics retain the packet that starts each new CTR group,
 including its received/lost accounting; overlapping TWCC feedback changes each
 packet's state once, retaining late ACKs without duplicating counts or moving
-the receive-time baseline. Piik's shared forwarding package uses this copy for
-both individual transports and publications. Its regression checks use real
-TWCC feedback and retain the no-feedback and idle-before-probe controls. The
+the receive-time baseline. Only new observations advance congestion state.
+Group loss membership covers the packet tracker's history, and a new measurement
+does not inherit a later packet as its first ACK's time baseline. Piik's shared
+forwarding package uses this copy for both individual transports and publications.
+Its regression checks use real TWCC feedback and retain the no-feedback and
+idle-before-probe controls. The
 [media research owner](../../docs/research/node-local-media-design.md#send-queue-recovery)
 records the runtime evidence and remaining limits.
 

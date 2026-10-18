@@ -26,6 +26,7 @@ const (
 	packetFeedbackUnknown packetFeedback = iota
 	packetFeedbackLost
 	packetFeedbackReceived
+	packetFeedbackReceivedAfterLoss
 )
 
 type packetInfo struct {

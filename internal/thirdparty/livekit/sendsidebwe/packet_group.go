@@ -13,6 +13,8 @@
 // limitations under the License.
 
 // Modified by Piik: use feedback state; the first receive timestamp can be zero.
+// Track loss membership for the full packet history, independently of ACK count.
+// A new measurement must not start at a later packet from a previous scope.
 package sendsidebwe
 
 import (
@@ -154,7 +156,7 @@ func newPacketGroup(params packetGroupParams, inheritedQueuingDelay int64) *pack
 	return &packetGroup{
 		params:                params,
 		inheritedQueuingDelay: inheritedQueuingDelay,
-		snBitmap:              utils.NewBitmap[uint64](params.Config.MinPackets),
+		snBitmap:              utils.NewBitmap[uint64](packetHistorySize),
 	}
 }
 
@@ -165,6 +167,12 @@ func (p *packetGroup) Add(pi *packetInfo, sendDelta, recvDelta int64, isLost boo
 
 	if err := p.inGroup(pi.sequenceNumber); err != nil {
 		return err
+	}
+
+	if p.acked.numPackets() == 0 && (sendDelta < 0 || recvDelta < 0) {
+		// The tracker can reference an ACK later on either clock from before
+		// Reset or a new CTR window. Start at this scope's own first observation.
+		sendDelta, recvDelta = 0, 0
 	}
 
 	if p.minSequenceNumber == 0 || pi.sequenceNumber < p.minSequenceNumber {
@@ -183,11 +191,14 @@ func (p *packetGroup) Add(pi *packetInfo, sendDelta, recvDelta int64, isLost boo
 	p.maxRecvTime = max(p.maxRecvTime, pi.recvTime)
 
 	p.acked.add(int(pi.size), pi.isRTX, pi.isProbe)
-	if int(pi.sequenceNumber-p.minSequenceNumber) < p.snBitmap.Len() && p.snBitmap.IsSet(pi.sequenceNumber-p.minSequenceNumber) {
-		// an earlier packet reported as lost has been received
-		p.snBitmap.Clear(pi.sequenceNumber - p.minSequenceNumber)
+	if pi.feedback == packetFeedbackReceivedAfterLoss && p.snBitmap.IsSet(pi.sequenceNumber) {
+		// Only undo a loss that this group observed. Reset/new groups may see
+		// late ACKs whose earlier loss belonged to a retired measurement.
 		p.lost.remove(int(pi.size), pi.isRTX, pi.isProbe)
 	}
+	// Absolute sequence slots cover every packet still in the tracker. A fresh
+	// ACK clears an expired slot without undoing another packet's historical loss.
+	p.snBitmap.Clear(pi.sequenceNumber)
 
 	// note that out-of-order deliveries will amplify the queueing delay.
 	// for e.g. a, b, c getting delivered as a, c, b.
@@ -204,7 +215,7 @@ func (p *packetGroup) Add(pi *packetInfo, sendDelta, recvDelta int64, isLost boo
 }
 
 func (p *packetGroup) lostPacket(pi *packetInfo) error {
-	if pi.feedback == packetFeedbackReceived {
+	if pi.feedback == packetFeedbackReceived || pi.feedback == packetFeedbackReceivedAfterLoss {
 		// previously received packet, so not lost
 		return nil
 	}
@@ -217,7 +228,7 @@ func (p *packetGroup) lostPacket(pi *packetInfo) error {
 		p.minSequenceNumber = pi.sequenceNumber
 	}
 	p.maxSequenceNumber = max(p.maxSequenceNumber, pi.sequenceNumber)
-	p.snBitmap.Set(pi.sequenceNumber - p.minSequenceNumber)
+	p.snBitmap.Set(pi.sequenceNumber)
 
 	p.lost.add(int(pi.size), pi.isRTX, pi.isProbe)
 	return nil

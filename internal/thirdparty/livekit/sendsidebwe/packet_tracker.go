@@ -26,6 +26,8 @@ import (
 
 // -------------------------------------------------------------------------------
 
+const packetHistorySize = 2048
+
 type packetTrackerParams struct {
 	Logger logger.Logger
 }
@@ -38,7 +40,7 @@ type packetTracker struct {
 	sequenceNumber uint64
 
 	baseSendTime int64
-	packetInfos  [2048]packetInfo
+	packetInfos  [packetHistorySize]packetInfo
 
 	baseRecvTime int64
 	piLastRecv   *packetInfo
@@ -114,7 +116,7 @@ func (p *packetTracker) RecordPacketIndicationFromRemote(sn uint16, recvTime int
 
 	// Reports may overlap after reordering. Only new observations may change
 	// counters or the delta baseline; a late ACK must still repair earlier loss.
-	if pi.feedback == packetFeedbackReceived {
+	if pi.feedback == packetFeedbackReceived || pi.feedback == packetFeedbackReceivedAfterLoss {
 		return
 	}
 	if recvTime == 0 {
@@ -126,7 +128,11 @@ func (p *packetTracker) RecordPacketIndicationFromRemote(sn uint16, recvTime int
 		return
 	}
 
-	pi.feedback = packetFeedbackReceived
+	if pi.feedback == packetFeedbackLost {
+		pi.feedback = packetFeedbackReceivedAfterLoss
+	} else {
+		pi.feedback = packetFeedbackReceived
+	}
 	if p.baseRecvTime == 0 {
 		p.baseRecvTime = recvTime
 		p.piLastRecv = pi

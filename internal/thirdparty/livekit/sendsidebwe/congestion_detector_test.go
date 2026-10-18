@@ -24,8 +24,44 @@ import (
 	"github.com/livekit/protocol/logger"
 	"github.com/livekit/protocol/utils/mono"
 
+	"github.com/livekit/livekit-server/pkg/sfu/bwe"
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
 )
+
+func TestHandleTWCCFeedbackAdvancesOnlyOnNewObservations(t *testing.T) {
+	c := newCongestionDetector(congestionDetectorParams{Config: defaultCongestionDetectorConfig, Logger: logger.GetLogger()})
+	now := mono.UnixMicro()
+	c.RecordPacketSendAndGetSequenceNumber(now, 1200, false, ccutils.ProbeClusterIdInvalid, false)
+	recorder := twcc.NewRecorder(1)
+	for i := range 420 {
+		sn := c.RecordPacketSendAndGetSequenceNumber(now+int64(i+1)*10_000, 1200, false, ccutils.ProbeClusterIdInvalid, false)
+		if i%2 == 0 || i == 419 {
+			recorder.Record(1, sn, 1_000_000+int64(i)*10_000)
+		}
+	}
+	reports := recorder.BuildFeedbackPacket()
+	for _, report := range reports {
+		c.HandleTWCCFeedback(report.(*rtcp.TransportLayerCC))
+	}
+	if c.CongestionState() != bwe.CongestionStateEarlyWarning {
+		t.Fatalf("initial loss did not produce early warning: %v", c.CongestionState())
+	}
+	for _, report := range reports {
+		c.HandleTWCCFeedback(report.(*rtcp.TransportLayerCC))
+	}
+	if c.CongestionState() != bwe.CongestionStateEarlyWarning {
+		t.Fatalf("replayed observations advanced congestion: %v", c.CongestionState())
+	}
+	// Fresh feedback must still drive the ordinary congestion response.
+	sn := c.RecordPacketSendAndGetSequenceNumber(now+4_210_000, 1200, false, ccutils.ProbeClusterIdInvalid, false)
+	recorder.Record(1, sn, 5_200_000)
+	for _, report := range recorder.BuildFeedbackPacket() {
+		c.HandleTWCCFeedback(report.(*rtcp.TransportLayerCC))
+	}
+	if c.CongestionState() != bwe.CongestionStateCongested {
+		t.Fatalf("new observations did not advance congestion: %v", c.CongestionState())
+	}
+}
 
 func TestHandleTWCCFeedbackOverlappingReports(t *testing.T) {
 	c := newCongestionDetector(congestionDetectorParams{
@@ -85,6 +121,97 @@ func TestHandleTWCCFeedbackOverlappingReports(t *testing.T) {
 	check(5, 0)
 	if got := c.packetTracker.getPacketInfoExisting(sns[4]).recvTime; got != 60_000 {
 		t.Fatalf("receive time after overlapping feedback = %d, want 60000", got)
+	}
+}
+
+func TestHandleTWCCFeedbackLateAcknowledgements(t *testing.T) {
+	for _, reset := range []bool{false, true} {
+		c := newCongestionDetector(congestionDetectorParams{Config: defaultCongestionDetectorConfig, Logger: logger.GetLogger()})
+		now := mono.UnixMicro()
+		c.RecordPacketSendAndGetSequenceNumber(now, 1200, false, 1, false)
+		sns := make([]uint16, 172)
+		for i := range sns {
+			sns[i] = c.RecordPacketSendAndGetSequenceNumber(now+int64(i+1)*1000, 1200, false, 1, false)
+		}
+		c.ProbeClusterStarting(ccutils.ProbeClusterInfo{Id: 1})
+		recorder := twcc.NewRecorder(1)
+		report := func() {
+			for _, packet := range recorder.BuildFeedbackPacket() {
+				c.HandleTWCCFeedback(packet.(*rtcp.TransportLayerCC))
+			}
+		}
+		recorder.Record(1, sns[0], 1_000_000)
+		recorder.Record(1, sns[len(sns)-1], 1_171_000)
+		report()
+		if reset {
+			c.Reset()
+		}
+		for i := 1; i < len(sns)-1; i++ {
+			recorder.Record(1, sns[i], 1_200_000+int64(i)*1000)
+		}
+		report()
+		acked, lost := 0, 0
+		for _, group := range c.packetGroups {
+			acked += group.acked.numPackets()
+			lost += group.lost.numPackets()
+			if traffic := group.Traffic(); traffic.Duration() < 0 || traffic.sendDelta < 0 || traffic.recvDelta < 0 {
+				t.Fatalf("reset=%v: late ACK used a later packet outside its measurement as the baseline: %+v", reset, traffic)
+			}
+		}
+		want := len(sns)
+		if reset {
+			want -= 2
+		}
+		if acked != want || lost != 0 {
+			t.Fatalf("reset=%v: late arrivals left ack=%d lost=%d, want %d/0", reset, acked, lost, want)
+		}
+		if !reset && (c.probePacketGroup.acked.numPackets() != want || c.probePacketGroup.lost.numPackets() != 0) {
+			t.Fatal("probe did not repair its own lost packets")
+		}
+	}
+}
+
+func TestHandleTWCCFeedbackReorderedReportsAcrossReset(t *testing.T) {
+	c := newCongestionDetector(congestionDetectorParams{Config: defaultCongestionDetectorConfig, Logger: logger.GetLogger()})
+	now := mono.UnixMicro()
+	c.RecordPacketSendAndGetSequenceNumber(now, 1200, false, 1, false)
+	a := c.RecordPacketSendAndGetSequenceNumber(now+1000, 1200, false, 1, false)
+	b := c.RecordPacketSendAndGetSequenceNumber(now+2000, 1200, false, 1, false)
+	recorder := twcc.NewRecorder(1)
+	recorder.Record(1, b, 1_000_000)
+	older := recorder.BuildFeedbackPacket()
+	// Pion splits the late arrival from the earlier report at the delta limit.
+	recorder.Record(1, a, 10_000_000)
+	newer := recorder.BuildFeedbackPacket()
+	c.HandleTWCCFeedback(newer[0].(*rtcp.TransportLayerCC))
+	c.Reset()
+	c.HandleTWCCFeedback(older[0].(*rtcp.TransportLayerCC))
+	traffic := c.packetGroups[0].Traffic()
+	if traffic.ackedPackets != 1 || traffic.sendDelta != 0 || traffic.recvDelta != 0 || traffic.Duration() != 0 {
+		t.Fatalf("new measurement inherited a later receive timestamp: %+v", traffic)
+	}
+}
+
+func TestPacketGroupExpiredLossSlot(t *testing.T) {
+	tracker := newPacketTracker(packetTrackerParams{Logger: logger.GetLogger()})
+	group := newPacketGroup(packetGroupParams{Config: defaultPacketGroupConfig}, 0)
+	tracker.RecordPacketSendAndGetSequenceNumber(1_000_000, 1200, false, 0, false)
+	sn := tracker.RecordPacketSendAndGetSequenceNumber(1_001_000, 1200, false, 0, false)
+	lost, _, _ := tracker.RecordPacketIndicationFromRemote(sn, 0)
+	if err := group.Add(&lost, 0, 0, true); err != nil {
+		t.Fatal(err)
+	}
+	// A long quiet/lost stretch can outlive both rings without closing the group.
+	// A new packet in the old bitmap slot must not cancel the expired loss.
+	for i := 1; i <= group.snBitmap.Len(); i++ {
+		sn = tracker.RecordPacketSendAndGetSequenceNumber(1_001_000+int64(i)*1000, 1200, false, 0, false)
+	}
+	acked, sendDelta, recvDelta := tracker.RecordPacketIndicationFromRemote(sn, 6_000_000)
+	if err := group.Add(&acked, sendDelta, recvDelta, false); err != nil {
+		t.Fatal(err)
+	}
+	if group.acked.numPackets() != 1 || group.lost.numPackets() != 1 {
+		t.Fatalf("fresh ACK changed expired loss: ack=%d lost=%d", group.acked.numPackets(), group.lost.numPackets())
 	}
 }
 

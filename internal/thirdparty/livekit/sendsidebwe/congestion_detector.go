@@ -14,6 +14,7 @@
 
 // Modified by Piik: finalize probes from valid acknowledged measurements,
 // not the detector's retained initial capacity; retain packets across CTR groups.
+// Only fresh packet observations may advance congestion state.
 // Includes upstream #4935: consume deltas only for TWCC symbols carrying one.
 package sendsidebwe
 
@@ -689,6 +690,7 @@ func (c *congestionDetector) HandleTWCCFeedback(report *rtcp.TransportLayerCC) {
 	sequenceNumber := report.BaseSequenceNumber
 	endSequenceNumberExclusive := sequenceNumber + report.PacketStatusCount
 	deltaIdx := 0
+	hasNewObservation := false
 	processSymbol := func(symbol uint16) {
 		recvTime := int64(0)
 		isLost := false
@@ -706,6 +708,7 @@ func (c *congestionDetector) HandleTWCCFeedback(report *rtcp.TransportLayerCC) {
 		}
 		pi, sendDelta, recvDelta := c.packetTracker.RecordPacketIndicationFromRemote(sequenceNumber, recvTime)
 		if pi.sendTime != 0 {
+			hasNewObservation = true
 			trackPacketGroup(&pi, sendDelta, recvDelta, isLost)
 		}
 		sequenceNumber++
@@ -736,6 +739,10 @@ func (c *congestionDetector) HandleTWCCFeedback(report *rtcp.TransportLayerCC) {
 		}
 	}
 
+	if !hasNewObservation {
+		c.lock.Unlock()
+		return
+	}
 	c.prunePacketGroups()
 	shouldNotify, fromState, toState, committedChannelCapacity := c.congestionDetectionStateMachine()
 	c.lock.Unlock()
