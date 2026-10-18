@@ -132,6 +132,9 @@ for participants still connected to the same room. Interaction subscriptions
 inherit existing membership, replacement and revocation checks; they grant no
 additional authority and do not modify media routes.
 
+The reaction palette is curated, with no free-form input. Additions preserve
+existing choices.
+
 Sending a reaction requires a registered identifier. Received reaction events
 validate their envelope, identity, target and bounded identifier, then the page
 skips effects it cannot display. An unknown effect does not terminate signaling,
