@@ -1,5 +1,5 @@
 /* Shared control geometry and motion for the application and static website. */
-:root { --control-press-transform: translateY(0); }
+:root { --control-press-transform: translateY(2px); }
 button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .lr-btn {
   display: inline-grid;

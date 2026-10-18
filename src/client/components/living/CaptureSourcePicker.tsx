@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from "react";
 
 import type { NativeCaptureTarget } from "../../native/wire";
 import { audioApplicationKey, audioApplications, nativeCaptureTargetKey } from "../../native/capture-selection";
@@ -210,8 +210,8 @@ export function CaptureSourcePicker({
         </header>
 
         <div
-          className="lr-source-picker-tabs"
-          style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+          className="lr-toggle lr-source-picker-tabs"
+          style={{ "--lr-segments": tabs.length, "--lr-selected-index": tabs.indexOf(activeTab) } as CSSProperties}
           role="tablist"
           aria-label={t("host.sourcePicker.title")}
           onKeyDown={navigateTabs}
@@ -222,6 +222,7 @@ export function CaptureSourcePicker({
                 type="button"
                 role="tab"
                 id={`${pickerId}-${value}`}
+                className={activeTab === value ? "is-selected" : undefined}
                 data-source-tab={value}
                 aria-controls={`${pickerId}-panel`}
                 aria-selected={activeTab === value}

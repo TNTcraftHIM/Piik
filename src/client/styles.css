@@ -480,43 +480,25 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-source-picker-close:is(:hover, :focus-visible):not(:disabled) { background: var(--control-hover); }
 .lr-source-picker-refresh:active:not(:disabled),
 .lr-source-picker-close:active:not(:disabled) { transform: var(--control-press-transform); transition-duration: 80ms; }
-.lr-source-picker-tabs {
+.lr-source-picker-tabs.lr-toggle {
   display: grid;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--control-edge);
-  border-radius: 16px;
-  background: var(--wall-2);
-  box-shadow: inset 0 1px 0 var(--surface-rim), 0 2px 0 var(--surface-shade);
 }
 .lr-source-picker-tabs > span { min-width: 0; }
-.lr-source-picker-tabs button {
-  display: flex;
+.lr-source-picker-tabs.lr-toggle button {
   width: 100%;
+  height: auto;
   min-height: 44px;
-  align-items: center;
-  justify-content: center;
   gap: 7px;
   padding: 8px 4px;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--muted);
   font-size: 12px;
   font-weight: 700;
-  transition: color 120ms ease, background 120ms ease;
 }
 .lr-source-picker-tabs button svg { flex: 0 0 auto; }
 .lr-source-picker-tabs button > span { word-break: keep-all; }
 @media (max-width: 520px) {
-  .lr-source-picker-tabs button { flex-direction: column; gap: 3px; padding-inline: 0; font-size: 11px; }
+  .lr-source-picker-tabs.lr-toggle button { flex-direction: column; gap: 3px; padding-inline: 0; font-size: 11px; }
 }
 .lr-source-picker-tabs button:is(:hover, :focus-visible):not(:disabled):not([aria-selected="true"]) { background: var(--control-hover); }
-.lr-source-picker-tabs button[aria-selected="true"] {
-  background: var(--control-selected);
-  color: var(--control-selected-ink);
-  box-shadow: inset 0 0 0 2px var(--action), 0 2px 0 var(--surface-shade);
-}
 .lr-source-picker-body {
   display: flex;
   min-height: 0;

@@ -71,7 +71,7 @@ number. Similar shapes do not make their responsibilities interchangeable.
 | Turn a setting on or off immediately | `SwitchItem`; compact toolbar actions such as mute use a pressed `Btn` |
 | Select independent options within a task | Native checkboxes or independent pressed `Chip`s, such as held modifier keys; a selection awaiting Apply must not look like a committed setting |
 | Choose a short, fixed mode | Shared `.lr-toggle` sliding selection; option chips/cards when individual choices need explanations, richer previews or wrapping |
-| Switch related content pages | A named tablist with one selected tab and its associated panel; use the shared sliding treatment for short labels, source cards for visual source categories, and `navigateTabs` for Arrow/Home/End navigation |
+| Switch related content pages | A named tablist with one selected tab and its associated panel; use the shared sliding treatment for short labels, including capture categories, and `navigateTabs` for Arrow/Home/End navigation |
 | Pick a device or an item from a variable list | Existing named selector/menu; use source thumbnails when appearance helps identify the item |
 | Adjust a numeric value | Range slider for quick adjustment, with a visible value; reuse `QualityNumberControl` when exact entry or a wider accepted range is useful |
 | Apply several settings together | A named preset tile/chip; allow no preset to be selected when the current values are custom |
@@ -200,7 +200,7 @@ threshold or quality verdict.
 ### Sharing And Playback
 
 Shared buttons and chips use pill shapes, a quiet lower edge and a short lift
-on hover or keyboard focus, then settle onto their resting plane on press.
+on hover or keyboard focus, then sink 2 px on press and spring back on release.
 Inputs and option tiles share softer corners. Press feedback uses the shared
 transform in `button.css` and releases the lower shadow. Keep icon, text and
 control dimensions intact: scaling the whole button shifts off-centre contents
