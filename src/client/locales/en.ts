@@ -3,6 +3,7 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
   "remote.keyboard": "Remote keyboard",
+  "remote.keyboardRequiresControl": "Take control to use the remote keyboard",
   "remote.keyPages": "Keyboard sections",
   "remote.keys.letters": "Letter keys",
   "remote.keys.symbols": "Numbers and symbols",

@@ -192,13 +192,13 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
         <span className={vis ? "visually-hidden" : undefined}>{t(feedback)}</span>
       </span>}
     </span>
-    {controlled && <Btn icon="keyboard" title={keyboardDetached ? "floating.focus" : "remote.keyboard"} hint={keyboardDetached ? "hint-window-detach" : "hint-remote-keyboard"}
-      hintText={touchControls ? "remote.touchHelp" : undefined} expanded={keyboardOpen} disabled={!active}
+    <Btn icon="keyboard" title={keyboardDetached ? "floating.focus" : "remote.keyboard"} hint={keyboardDetached ? "hint-window-detach" : "hint-remote-keyboard"}
+      hintText={!active ? feedback ?? "remote.keyboardRequiresControl" : touchControls ? "remote.touchHelp" : undefined} expanded={keyboardOpen} disabled={!active}
       onClick={() => {
         if (keyboardDetached) keyboardDocument?.defaultView?.focus();
         else if (keyboardOpen) closeKeyboard();
         else { reset(); setKeyboardOpen(true); }
-      }} />}
+      }} />
     {parent && (controlled || state.state === "pending" || state.state === "failed" || state.reason || passwordOpen) && createPortal(<>
       {passwordOpen && <form className="lr-remote-password" onSubmit={event => {
         event.preventDefault(); session.current?.request(password); setPassword("");

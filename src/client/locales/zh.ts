@@ -3,6 +3,7 @@ import type { GlyphName } from "../ui/icons";
 // Canonical catalog: add keys here first; every other locale must match it.
 export const zh = {
   "remote.keyboard": "远程键盘",
+  "remote.keyboardRequiresControl": "取得控制权后可使用远程键盘",
   "remote.keyPages": "键盘分区",
   "remote.keys.letters": "字母键",
   "remote.keys.symbols": "数字与符号",

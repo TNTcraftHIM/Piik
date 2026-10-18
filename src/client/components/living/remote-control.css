@@ -50,7 +50,7 @@
 .lr-remote-keys { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
 .lr-remote-shortcuts { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .lr-remote-shortcuts:has(> :nth-child(4):last-child) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.lr-remote-keyboard { min-height: 0; max-height: min(460px, 65dvh); overflow-y: auto; overscroll-behavior: contain; outline: none; }
+.lr-remote-keyboard { min-height: 0; max-height: 65dvh; overflow-y: auto; overscroll-behavior: contain; outline: none; }
 .lr-remote-keyboard > .lr-remote-panel-header { position: sticky; top: -10px; z-index: 1; background: var(--paper); }
 .lr-remote-keyboard > * { max-width: 640px; margin-inline: auto; }
 .lr-remote-key-pages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
