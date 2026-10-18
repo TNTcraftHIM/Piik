@@ -649,12 +649,27 @@ reset; a reused bitmap slot cannot erase an expired packet's loss.
 
 The low-utilization comparison still fell to about 13 kbps with these repairs,
 then restored its 5 Mbps budget about seven seconds after loss ended. These
-corrections do not solve persistent-loss collapse. Reduced source traffic and
-network capacity must remain distinct in
-the next comparison. Google WebRTC's
+corrections do not solve persistent-loss collapse. Further CTR-reference and
+measurement-window experiments are not accepted production changes. Requiring
+new ratio deterioration held about 1.19 Mbps under the same persistent loss and
+still reduced the budget after a real 120 kbps bottleneck. However, retaining
+that reference can mask later deterioration within one congestion episode;
+refreshing it on improvement re-arms false reductions from random variation.
+Accumulating observations without resetting avoided those reductions but made
+the reaction to a later bottleneck depend on the length of the preceding run.
+These controls reject a reference guard or longer averaging window as a complete
+repair. The lab's final-recovery assertion alone does not detect intervening
+unjustified cuts; inspect the budget timeline against each imposed link change.
+
+Reduced source traffic and network capacity must remain distinct. Google WebRTC's
 [loss-based estimator](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/congestion_controller/goog_cc/loss_based_bwe_v2.cc)
-models inherent loss separately; that is a reference for evaluation, not an
-accepted replacement or a reason to import another controller into Piik.
+models inherent loss separately and can exclude the low-ACK capacity candidate
+under its application-limited policy. Its application-limited input comes from sending
+activity relative to the target, not received throughput: a real bottleneck
+also lowers ACK throughput. The retained LiveKit detector has no such input;
+neither freezing loss response nor swapping to Pion's older loss controller
+establishes the same behavior. Evaluate a mature implementation at that boundary
+before changing the controller; no second quality controller is accepted.
 
 ### Capture Boundary
 

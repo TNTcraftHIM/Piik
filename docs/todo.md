@@ -75,8 +75,10 @@ platform deferrals or establish a diagnosis for unmatched reports.
 - [ ] **Persistent loss with low source utilization.** An App-to-Browser field
   trace and a controlled reproduction expose excessive budget reduction when
   actual video uses only part of its requested bitrate. Correcting feedback
-  accounting and measurement boundaries does not resolve that behavior. Compare
-  estimator handling of persistent loss and real bandwidth constraints before selecting a change;
+  accounting and measurement boundaries does not resolve that behavior. CTR
+  reference/window experiments do not provide a complete repair. Evaluate mature
+  application-limited estimation against persistent loss and repeated real
+  bandwidth reductions before selecting a change;
   [evidence and limits](./research/node-local-media-design.md#persistent-loss-with-low-source-utilization)
   distinguish the reproduced mechanism from the still-unknown cause of field loss.
 
