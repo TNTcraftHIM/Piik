@@ -26,14 +26,14 @@ func registerVideoCodec(media *webrtc.MediaEngine, codec webrtc.RTPCodecParamete
 	}, webrtc.RTPCodecTypeVideo)
 }
 
-// ReadRTP restores repaired packets using the negotiated codec. Pion v4.2.23
-// can queue RTX before a RID track's first primary read initializes PayloadType,
-// even though Codec is already known. Do not rewrite ordinary packets: their
-// payload type still has to match the source's negotiated identity.
+// ReadRTP restores repaired packets to the admitted primary track. Pion can
+// queue RTX before RID admission initializes SSRC or the first primary read
+// initializes PayloadType. Ordinary packets retain their wire identity checks.
 func ReadRTP(track *webrtc.TrackRemote) (*rtp.Packet, interceptor.Attributes, error) {
 	packet, attributes, err := track.ReadRTP()
 	if err == nil && attributes.Get(webrtc.AttributeRtxPayloadType) != nil {
 		packet.PayloadType = uint8(track.Codec().PayloadType)
+		packet.SSRC = uint32(track.SSRC())
 	}
 	return packet, attributes, err
 }
