@@ -70,6 +70,8 @@
 .lr-remote-arrows [data-key="ArrowUp"] { grid-column: 2; }
 .lr-remote-arrows [data-key="ArrowLeft"] { grid-column: 1; }
 .lr-remote-text-entry { display: grid; gap: 8px; margin-bottom: 14px; }
+.lr-remote-text-entry .lr-remote-text-field { height: 56px; gap: 6px; padding: 6px; }
+.lr-remote-text-field input { padding-inline: 6px; }
 .lr-remote-text-entry .lr-btn { flex: none; width: auto; gap: 6px; padding-inline: 12px; }
 .lr-remote-keyboard .lr-remote-text-entry p { margin: 0; text-align: start; }
 :is(.lr-remote-keys, .lr-remote-key-row) .lr-chip { justify-content: center; padding: 4px 0; width: 100%; min-width: 0; min-height: 38px; border-width: 1px; border-radius: 9px; font: 600 12px var(--mono); letter-spacing: 0; white-space: nowrap; touch-action: none; }

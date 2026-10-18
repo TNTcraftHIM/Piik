@@ -173,14 +173,14 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         if (!text || composing.current) return;
         input({ type: "text", text }); setText(""); editor.current?.focus();
       }}>
-        <div className="lr-remote-policy-actions">
-          <label className="lr-input"><Glyph name="pencil" size={18} /><input ref={editor} maxLength={128} value={text}
+        <div className="lr-input lr-remote-text-field">
+          <input ref={editor} maxLength={128} value={text}
             aria-label={t("remote.text")} placeholder={vis ? "" : t("remote.text")} autoComplete="off"
             aria-describedby={vis ? undefined : `${id}-text-help`}
             enterKeyHint="send" onChange={event => setText(event.target.value)}
             onCompositionStart={() => { composing.current = true; }}
             onCompositionEnd={() => { composing.current = false; }}
-            onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} /></label>
+            onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} />
           <Btn icon="send" cap="remote.typeText" title="remote.sendText" hint="hint-remote-keyboard" tone="primary" type="submit" disabled={!text} />
         </div>
         {!vis && <p id={`${id}-text-help`}>{t("remote.textHelp")}</p>}

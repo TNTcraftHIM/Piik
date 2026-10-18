@@ -46,8 +46,9 @@ platform deferrals or establish a diagnosis for unmatched reports.
 - [ ] **macOS bundle startup acceptance (#479).** The package now contains the
   actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
   dependency on an external sibling executable. A moved-bundle assembly check
-  passes. Run the native package gate and Finder launch on macOS, including a
-  downloaded/quarantined bundle and capture permissions. The packaging defect
+  passes, and candidate CI has built and packaged both Mac architectures.
+  Verify Finder launch on macOS, including a downloaded/quarantined bundle and
+  capture permissions. The packaging defect
   is established; its correction has not yet been matched to the reporter's Mac.
 
 - [ ] **Return LiveKit to an upstream pin.** Native publication now supplies

@@ -43,7 +43,7 @@ function editor() {
     },
   });
   const blur = (relatedTarget: unknown = null) => result.props.onBlur({ currentTarget: container, relatedTarget });
-  const press = (value: string) => key({ key: value, currentTarget: { blur: () => blur() },
+  const press = (value: string) => key({ key: value, nativeEvent: { isComposing: false }, currentTarget: { blur: () => blur() },
     preventDefault() {}, stopPropagation() {} });
   return { input, inside, onChange, choose, blur, press, setInvalid };
 }

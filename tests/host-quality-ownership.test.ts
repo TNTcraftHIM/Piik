@@ -11,6 +11,7 @@ import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
 import { NativeCompatibilityError, NativeRequestError } from "../src/client/native/client";
 import { nativeCaptureTargetKey } from "../src/client/native/capture-selection";
 import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
+import { InputRoute } from "../src/client/remote-control/input-route";
 import { reconcileBoundedMediaChildren } from "../src/client/webrtc/media-assignment";
 import { debugError, debugEvent, debugOperation } from "../src/client/lib/debug";
 import { ApiError } from "../src/client/lib/api";
@@ -102,6 +103,7 @@ function fixture(launchedByClient = true) {
     nativeModeRef: ref(false), nativeClientRef: ref<typeof client | null>(client), nativeShareGenerationRef: ref<string | null>("share"),
     hostAudioRef: ref<{ sourceStream: MediaStream } | null>(null),
     nativeMediaIngressRef: ref<ReturnType<typeof ingress> | null>(null), nativeMediaBridgeRef: ref(null),
+    nativeInputRoute: new InputRoute(() => {}),
     nativeEventCleanupRef: ref(null), nativeShareCleanupRef: ref(Promise.resolve()),
     peersRef: ref(new Map([["viewer", peer]])), hostProvisionalChildRef: ref(null), hostSfuRouteRef: ref(route),
     signalRef: ref({ setHostQualitySettings: vi.fn(), setAudioAvailable: vi.fn(), send: vi.fn() }),
