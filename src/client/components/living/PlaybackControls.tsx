@@ -148,6 +148,10 @@ export function PlaybackControlsView({
   settings?: ViewerPlaybackSettingsProps;
 }) {
   const { t, vis } = useCopy();
+  const localControlsRef = useRef<HTMLDivElement>(null);
+  const barRef = controlsRef ?? localControlsRef;
+  const menuRef = useRef<HTMLDivElement>(null);
+  useAnchoredPopover(barRef, menuRef, { align: "center", minVisibleHeight: settings ? 160 : Infinity });
   const silent = audio.muted || audio.level === 0;
   const percent = Math.round(audio.level * 100);
   const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
@@ -165,7 +169,7 @@ export function PlaybackControlsView({
   </>;
 
   return (
-    <div ref={controlsRef} className={`lr-playback lr-host-share-controls lr-media-controls${hidden ? " is-hidden" : ""}`} role="group" aria-label={t("playback.controls")}>
+    <div ref={barRef} className={`lr-playback lr-host-share-controls lr-media-controls${hidden ? " is-hidden" : ""}`} role="group" aria-label={t("playback.controls")}>
       <span className="lr-playback-audio">
         <Btn icon={paused ? "play" : "pause"}
           draw="playback-state"
@@ -188,12 +192,12 @@ export function PlaybackControlsView({
             onChange={(event) => setLevel(Number(event.target.value) / 100)} />
         </Tooltip>
         <span className={`lr-playback-level${hasAudio && percent > 100 ? " is-boosted" : ""}`} aria-hidden="true">
-          {hasAudio ? `${percent}%` : "—"}
+          {hasAudio ? `${percent}%` : null}
         </span>
       </span>
       <span className="lr-playback-tools">
         {extraActions}
-        <PlaybackMore settings={settings} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
+        <PlaybackMore panel={menuRef} settings={settings} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
           {displayActions(true)}
         </PlaybackMore>
       </span>
@@ -218,23 +222,20 @@ export function PlaybackControlsView({
 
 // Native popover owns dismissal and focus return. The same actions above render
 // directly on wide players and in this compact disclosure on narrow players.
-function PlaybackMore({ children, settings, onReconnect, reconnectAvailable }: {
-  children: ReactNode; settings?: ViewerPlaybackSettingsProps;
+function PlaybackMore({ panel, children, settings, onReconnect, reconnectAvailable }: {
+  panel: RefObject<HTMLDivElement | null>; children: ReactNode; settings?: ViewerPlaybackSettingsProps;
   onReconnect: () => void; reconnectAvailable: boolean;
 }) {
   const { t } = useCopy();
   const id = useId();
-  const trigger = useRef<HTMLSpanElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  useAnchoredPopover(trigger, panel, { side: "below", minVisibleHeight: settings ? 160 : Infinity });
   const reconnect = <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
     cap="viewer.reconnect" disabled={!reconnectAvailable} onClick={() => {
       panel.current?.hidePopover();
       onReconnect();
     }} />;
   const display = <div className="lr-playback-display-menu">{children}</div>;
-  return <span className="lr-playback-more" ref={trigger}>
+  return <span className="lr-playback-more">
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
     <div id={id} ref={panel} className={`lr-floating-surface lr-playback-menu${settings ? " lr-playback-settings" : ""}`} popover="auto" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}

@@ -1,11 +1,12 @@
 import { useLayoutEffect, type RefObject } from "react";
 
-// Native popovers own visibility, dismissal and focus. This only places an
-// end-aligned menu beside its invoker, within the document displaying it.
+// Native popovers own visibility, dismissal and focus. This only places a
+// menu beside its anchor, within the document displaying it.
 export function useAnchoredPopover(
   trigger: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>,
-  { side = "below", maxHeight = Infinity, minVisibleHeight = Infinity, enabled = true }: {
-    side?: "above" | "below"; maxHeight?: number; minVisibleHeight?: number; enabled?: boolean;
+  { side = "below", align = "end", maxHeight = Infinity, minVisibleHeight = Infinity, enabled = true }: {
+    side?: "above" | "below"; align?: "end" | "center";
+    maxHeight?: number; minVisibleHeight?: number; enabled?: boolean;
   } = {},
 ) {
   useLayoutEffect(() => {
@@ -33,7 +34,8 @@ export function useAnchoredPopover(
       menu.style.maxWidth = `${right - left}px`;
       menu.style.maxHeight = `${Math.min(maxHeight, openAbove ? above : below)}px`;
       menu.classList.toggle("is-above", openAbove);
-      menu.style.left = `${Math.max(left, Math.min(rect.right - menu.offsetWidth, right - menu.offsetWidth))}px`;
+      const x = align === "center" ? rect.left + (rect.width - menu.offsetWidth) / 2 : rect.right - menu.offsetWidth;
+      menu.style.left = `${Math.max(left, Math.min(x, right - menu.offsetWidth))}px`;
       menu.style.top = `${Math.max(top, openAbove ? rect.top - menu.offsetHeight - 8 : rect.bottom + 8)}px`;
     };
     // The containing panel may reposition itself in the same resize. Measure
@@ -67,5 +69,5 @@ export function useAnchoredPopover(
       viewport?.removeEventListener("resize", schedule);
       viewport?.removeEventListener("scroll", schedule);
     };
-  }, [trigger, panel, side, maxHeight, minVisibleHeight, enabled]);
+  }, [trigger, panel, side, align, maxHeight, minVisibleHeight, enabled]);
 }
