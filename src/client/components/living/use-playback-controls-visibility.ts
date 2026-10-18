@@ -7,8 +7,9 @@ export function usePlaybackControlsVisibility(
   videoRef: RefObject<HTMLVideoElement | null>,
   controlsRef: RefObject<HTMLDivElement | null>,
   keepVisible: boolean,
-): boolean {
+) {
   const [hidden, setHidden] = useState(false);
+  const [revealOnMove, setRevealOnMove] = useState(true);
   const pointerType = useRef("");
 
   useEffect(() => {
@@ -53,9 +54,8 @@ export function usePlaybackControlsVisibility(
     };
 
     screen.addEventListener("pointermove", (event) => {
-      // Movement on the remote surface belongs to the controlled computer;
-      // revealing the local bar there would cover its click targets again.
-      if (event.pointerType === "touch" || !owns(event.target)) return;
+      // Relative-input mode owns mouse motion until pointer lock is released.
+      if (!revealOnMove || event.pointerType === "touch" || screen.contains(document.pointerLockElement)) return;
       // Cursor/style changes can emit stationary moves (Video.js #1068).
       if (lastMove?.x === event.screenX && lastMove.y === event.screenY) return;
       lastMove = { x: event.screenX, y: event.screenY };
@@ -82,11 +82,14 @@ export function usePlaybackControlsVisibility(
       }
     }, options);
     screen.addEventListener("click", (event) => {
-      // Native click excludes scrolling/cancelled gestures. A video tap only
-      // reveals/hides controls; playback remains owned by the play button.
-      if (event.target === video && pointerType.current === "touch" && !held()) {
-        setHidden((current) => !current);
-        scheduleHide();
+      // Only the picture itself is a local reveal target. Remote input and
+      // other tools retain their clicks; the play button owns playback.
+      if (event.target === video && !held()) {
+        if (!revealOnMove) show();
+        else if (pointerType.current === "touch") {
+          setHidden((current) => !current);
+          scheduleHide();
+        }
       }
     }, options);
     screen.addEventListener("focusin", event => {
@@ -109,7 +112,7 @@ export function usePlaybackControlsVisibility(
       clearIdle();
       listeners.abort();
     };
-  }, [videoRef, controlsRef, keepVisible]);
+  }, [videoRef, controlsRef, keepVisible, revealOnMove]);
 
-  return keepVisible ? false : hidden;
+  return { hidden: keepVisible ? false : hidden, revealOnMove, setRevealOnMove };
 }

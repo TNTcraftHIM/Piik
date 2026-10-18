@@ -29,7 +29,7 @@ import { MAX_SCREEN_AUDIO_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, captu
 import type { loadCameraPreviews } from "../media/camera-previews";
 import { Tooltip } from "../components/living/Tooltip";
 import { StatusIndicator } from "../components/living/StatusIndicator";
-import { deriveParticipantStatus } from "../ui/media-status";
+import { deriveParticipantStatus, STATUS_CATALOG } from "../ui/media-status";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { PeoplePreview } from "./PeoplePreview";
@@ -276,7 +276,8 @@ export function ControlsPreview() {
     <section id="playback-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">07</span><div><h2>{en ? "The playback bar" : "播放时，顺手就能找到。"}</h2>
         <p>{en ? "This bar shows its waiting state. The playback test page includes a moving picture, volume and picture in picture." : "这里展示等待画面时的播放栏；动态画面、音量和小窗可进入完整播放预览试用。"}</p></div></header>
-      <div className="cp-stage"><StageTv label={t("playback.controls")}><video ref={video} poster={POSTER} playsInline inert style={{ objectFit: pictureFit }} />
+      <div className="cp-stage"><StageTv label={t("playback.controls")} indicator={<StatusIndicator status={STATUS_CATALOG.idle} />}>
+        <video ref={video} poster={POSTER} playsInline inert style={{ objectFit: pictureFit }} />
         <PlaybackControls videoRef={video} stream={null} canPlay={false} theaterMode={theater} onPlay={notify}
           settings={{ pictureFit, setPictureFit, route: { preference: viewerRoute, onChange: setViewerRoute,
             sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } }}
@@ -360,7 +361,7 @@ function InteractionControlsPreview() {
       targetPeerId: crowded ? "preview-friend-1" : viewer ? "preview-friend" : "preview-host",
     })}><Glyph name="smile" size={18} />{lang === "en" ? "Receive a reaction" : "模拟收到表情"}</button>
   </div><div className={theater ? "lr-room is-theater" : "cp-interaction-room"}><div className="lr-scene">
-  <StageTv label={t("interaction.title")}>
+  <StageTv label={t("interaction.title")} indicator={<StatusIndicator status={STATUS_CATALOG.connected} />}>
     <video ref={video} poster={POSTER} playsInline />
     <RoomChatOverlay session={session} visible />
     <PlaybackControls videoRef={video} stream={null} canPlay={false} onPlay={() => {}}

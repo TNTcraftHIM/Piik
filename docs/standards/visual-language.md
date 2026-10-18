@@ -200,8 +200,9 @@ The Viewer bar groups local play/volume, room/input tools, then display modes,
 with fullscreen at the outer edge. Keep remote control and its keyboard adjacent.
 The capsule floats inside the picture's lower edge with a small inset. Watching
 and remote input share that geometry; granting or ending control never moves it.
-Remote input keeps its own pointer gestures. When idle controls hide, retain a
-small local entry to reveal them without sending an input action to the Host.
+Remote input keeps its own clicks. When controls hide during remote input or
+click-to-reveal mode, retain a small local entry without sending Host input.
+Put the reveal preference in playback settings, not another toolbar action.
 Shorten the volume slider before moving display modes into settings; keep the
 bar on one line at supported mobile widths.
 Viewer settings use a brief anchored popover, preferring space below the picture

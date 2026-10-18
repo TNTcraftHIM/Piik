@@ -3,6 +3,8 @@ import type { VideoFit } from "../media/video-geometry";
 import { AppHeader } from "../components/living/Header";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { StageTv } from "../components/living/Stage";
+import { StatusIndicator } from "../components/living/StatusIndicator";
+import { STATUS_CATALOG } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
 
 function testMedia(withAudio: boolean) {
@@ -128,7 +130,8 @@ export function PlaybackPreviewPage() {
         {error ? <p role="alert">{error}</p> : null}
       </header> : null}
       <div className="lr-scene">
-        <StageTv live={Boolean(stream)} label={english ? "Local test picture" : "本机测试画面"}>
+        <StageTv live={Boolean(stream)} label={english ? "Local test picture" : "本机测试画面"}
+          indicator={<StatusIndicator status={stream ? STATUS_CATALOG.connected : STATUS_CATALOG.idle} />}>
           <video ref={videoRef} playsInline tabIndex={0} inert={!stream} style={{ objectFit: pictureFit }}
             aria-label={english ? "Local test video" : "本机测试视频"} />
           <PlaybackControls videoRef={videoRef} stream={stream} audioAvailable={audioAvailable}

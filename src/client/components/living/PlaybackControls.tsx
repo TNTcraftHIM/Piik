@@ -3,7 +3,7 @@ import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio"
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { debugError } from "../../lib/debug";
-import { Btn } from "./primitives";
+import { Btn, Cap, Chip, RowGroup } from "./primitives";
 import { ViewerPlaybackSettings, type ViewerPlaybackSettingsProps } from "./ViewerPlaybackSettings";
 import { Tooltip } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
@@ -13,6 +13,8 @@ import { bindPlaybackGestures } from "./playback-gestures";
 import { toggleVideoFullscreen, videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import "./playback-controls.css";
 import "./floating-panel.css";
+
+type PlaybackVisibility = ReturnType<typeof usePlaybackControlsVisibility>;
 
 // Reflect the existing media element; binding, autoplay recovery and room
 // presentation retain their existing owners.
@@ -43,7 +45,7 @@ export function PlaybackControls({
   const [hasAudio, setHasAudio] = useState(false);
   const [fullscreen, setFullscreen] = useState({ supported: false, ready: false, active: false });
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
-  const hidden = usePlaybackControlsVisibility(videoRef, controlsRef, paused || !canPlay);
+  const visibility = usePlaybackControlsVisibility(videoRef, controlsRef, paused || !canPlay);
   const picture = usePictureInPicture(videoRef);
 
   const togglePlayback = () => {
@@ -118,7 +120,7 @@ export function PlaybackControls({
 
   const silent = audio.muted || audio.level === 0;
 
-  return <PlaybackControlsView controlsRef={controlsRef} hidden={hidden} audio={audio}
+  return <PlaybackControlsView controlsRef={controlsRef} visibility={visibility} audio={audio}
     paused={paused} hasAudio={hasAudio && audioAvailable !== false} canPlay={canPlay} theaterMode={theaterMode}
     fullscreen={fullscreen} fullscreenFailed={fullscreenFailed} picture={picture}
     togglePlayback={togglePlayback} toggleFullscreen={toggleFullscreen}
@@ -134,11 +136,11 @@ export function PlaybackControls({
 
 // The film shares the rendered controls; the component above alone owns media effects.
 export function PlaybackControlsView({
-  controlsRef, hidden, audio, paused, hasAudio, canPlay, theaterMode,
+  controlsRef, visibility, audio, paused, hasAudio, canPlay, theaterMode,
   fullscreen, fullscreenFailed, picture, togglePlayback, toggleFullscreen,
   toggleMute, setLevel, onToggleTheater, onReconnect, reconnectAvailable, extraActions, settings,
 }: {
-  controlsRef?: RefObject<HTMLDivElement | null>; hidden?: boolean;
+  controlsRef?: RefObject<HTMLDivElement | null>; visibility?: PlaybackVisibility;
   audio: ViewerAudioSnapshot; paused: boolean; hasAudio: boolean; canPlay: boolean;
   theaterMode: boolean; fullscreen: { supported: boolean; ready: boolean; active: boolean };
   fullscreenFailed?: boolean;
@@ -170,7 +172,8 @@ export function PlaybackControlsView({
   </>;
 
   return <>
-    <div ref={barRef} className={`lr-playback lr-host-share-controls lr-media-controls${hidden ? " is-hidden" : ""}`} role="group" aria-label={t("playback.controls")}>
+    <div ref={barRef} className={`lr-playback lr-host-share-controls lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
+      data-reveal={visibility?.revealOnMove === false ? "click" : "move"} role="group" aria-label={t("playback.controls")}>
       <span className="lr-playback-audio">
         <Btn icon={paused ? "play" : "pause"}
           draw="playback-state"
@@ -198,7 +201,7 @@ export function PlaybackControlsView({
       </span>
       <span className="lr-playback-tools">
         {extraActions}
-        <PlaybackMore panel={menuRef} settings={settings} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
+        <PlaybackMore panel={menuRef} settings={settings} visibility={visibility} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
           {displayActions(true)}
         </PlaybackMore>
       </span>
@@ -220,18 +223,19 @@ export function PlaybackControlsView({
     </div>
     <button type="button" className="lr-btn lr-playback-reveal" aria-label={t("playback.showControls")}
       onClick={() => barRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true })}>
-      <Glyph name="chevron" size={18} />
+      <Glyph name="chevron" size={18} className="lr-playback-reveal-arrow" />
     </button>
   </>;
 }
 
 // Native popover owns dismissal and focus return. The same actions above render
 // directly on wide players and in this compact disclosure on narrow players.
-function PlaybackMore({ panel, children, settings, onReconnect, reconnectAvailable }: {
+function PlaybackMore({ panel, children, settings, visibility, onReconnect, reconnectAvailable }: {
   panel: RefObject<HTMLDivElement | null>; children: ReactNode; settings?: ViewerPlaybackSettingsProps;
+  visibility?: PlaybackVisibility;
   onReconnect: () => void; reconnectAvailable: boolean;
 }) {
-  const { t } = useCopy();
+  const { t, vis } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
   const reconnect = <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
@@ -249,6 +253,15 @@ function PlaybackMore({ panel, children, settings, onReconnect, reconnectAvailab
       }}>
       {settings ? <ViewerPlaybackSettings {...settings} displayActions={display} reconnect={reconnect} />
         : <div className="lr-playback-menu-actions">{display}{reconnect}</div>}
+      {visibility && <section className="lr-playback-reveal-mode" aria-label={t("playback.reveal")}>
+        <h3><Glyph name="mouse" size={17} /><Cap k="playback.reveal" /></h3>
+        <RowGroup>{([true, false] as const).map(move => <Chip key={String(move)}
+          selected={visibility.revealOnMove === move} title={t(move ? "playback.reveal.move" : "playback.reveal.click")}
+          onClick={() => visibility.setRevealOnMove(move)}>
+          {vis && <Glyph name={move ? "mouse" : "chevron"} size={18} className={move ? undefined : "lr-playback-reveal-arrow"} />}
+          <Cap k={move ? "playback.reveal.move" : "playback.reveal.click"} />
+        </Chip>)}</RowGroup>
+      </section>}
     </div>
   </span>;
 }

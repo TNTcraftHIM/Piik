@@ -181,11 +181,13 @@ slider and move secondary display actions into settings, preserving one row and
 Playing video hides the bar
 after two idle seconds, following [Media Chrome's default](https://github.com/muxinc/media-chrome/blob/main/docs/src/pages/docs/en/components/media-controller.md#autohide).
 Pause or unavailable playback keeps it visible. Control hover, keyboard focus,
-dragging and an open tooltip hold it open; mouse movement reveals it, and a
-touch tap on the picture toggles only visibility. Remote input gestures do not
-reveal local controls; a small local entry restores them through the same focus
-and visibility owner. One presentation-only idle
-timer owns visibility; it never changes playback or route state. Controls
+dragging and an open tooltip hold it open. Mouse movement reveals it by default;
+a touch tap on the picture toggles only visibility. The local click-to-reveal
+setting ignores movement and reveals controls on a picture click or the small
+reveal button. Remote clicks stay with input, so use that button during control;
+pointer-locked input never reveals the toolbar through mouse movement.
+One presentation hook owns visibility and the reveal preference for the current
+player, using one idle timer; it never changes playback or route state. Controls
 follow the shared [motion grammar](./visual-language.md#motion-grammar).
 
 A picture click does not pause playback; the playback button and focused-video
