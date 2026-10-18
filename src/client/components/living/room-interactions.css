@@ -63,7 +63,7 @@
 .lr-chat-tools .lr-btn.is-on { background: color-mix(in srgb, var(--action) 12%, var(--paper)); color: var(--action); }
 .lr-chat-tools .lr-chat-count { padding: 0 4px; }
 .lr-chat-compose[hidden] { display: none; }
-.lr-chat-settings { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 18px 2px; }
+.lr-chat-settings { flex: 1; padding-block: 18px; }
 .lr-chat-settings > p { margin: 0 0 20px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .lr-chat-setting { margin-bottom: 22px; }
 .lr-chat-setting > label { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 28px; font-size: 13px; }
@@ -77,7 +77,7 @@
 .lr-interaction-status { display: flex; flex: none; align-items: center; gap: 6px; min-height: 24px; margin-top: 6px; font-size: 11px; line-height: 1.5; color: var(--muted); }
 .lr-interaction-status > svg { flex: none; }
 .lr-person-menu { transform-origin: center bottom; }
-.lr-person-menu-body { flex: 1; min-height: 0; padding-top: 12px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.lr-person-menu-body { flex: 1; padding-block: 12px 6px; }
 .lr-person-menu-target { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .lr-person-menu-name { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
 .lr-person-menu-name > span:last-child { flex: 1; min-width: 0; }

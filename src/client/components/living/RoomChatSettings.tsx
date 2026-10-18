@@ -11,7 +11,7 @@ export function RoomChatSettings({ session }: { session: RoomInteractionSession 
   const { overlayAppearance, messages } = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const { t, vis } = useCopy();
   const id = useId();
-  return <div className="lr-chat-settings">
+  return <div className="lr-floating-scroll lr-chat-settings">
     {!vis && <p>{t("interaction.settingsHint")}</p>}
     {(["scale", "opacity"] as const).map(property => {
       const percent = Math.round(overlayAppearance[property] * 100);

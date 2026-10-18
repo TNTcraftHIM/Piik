@@ -529,6 +529,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   gap: 10px;
   overflow-y: auto;
   scrollbar-gutter: stable;
+  padding: 8px;
+  margin: -8px;
 }
 .lr-source-picker-body > [role="status"] { text-align: center; }
 .lr-source-app-connection { display: flex; justify-content: flex-end; margin-top: 12px; }

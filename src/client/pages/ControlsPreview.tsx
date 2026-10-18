@@ -357,7 +357,7 @@ function InteractionControlsPreview() {
       </select>
     </label>
     <button type="button" className="lr-btn" onClick={() => receiveSample({ kind: "reaction", reaction,
-      targetPeerId: viewer ? "preview-friend" : "preview-host",
+      targetPeerId: crowded ? "preview-friend-1" : viewer ? "preview-friend" : "preview-host",
     })}><Glyph name="smile" size={18} />{lang === "en" ? "Receive a reaction" : "模拟收到表情"}</button>
   </div><div className={theater ? "lr-room is-theater" : "cp-interaction-room"}><div className="lr-scene">
   <StageTv label={t("interaction.title")}>

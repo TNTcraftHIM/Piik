@@ -259,7 +259,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
     </div>
     <FloatingPanel id={menuId} trigger={anchor} compact anchorOnOpen icon="smile" className="lr-person-menu"
       title={t("interaction.express")} onOpenChange={open => { if (!open) setTarget(null); }}>
-      <div className="lr-person-menu-body">
+      <div className="lr-floating-scroll lr-person-menu-body">
       <RoomReactionPicker person={person} selfPeerId={state.peerId} hostPeerId={couch.host?.key}
         canSend={canSend} onSend={sendReaction} />
       {state.error || !state.ready ? <div className="lr-interaction-status" role="status">

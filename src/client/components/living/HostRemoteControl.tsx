@@ -66,7 +66,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
         setSurfaceDocument(owner);
         if (!opened) { setPassword(""); setDraft(mode === "off" ? "ask" : mode); }
       }}>
-      <div className="lr-remote-panel-body">
+      <div className="lr-floating-scroll lr-remote-panel-body">
         <SwitchItem checked={mode !== "off"} label={t("remote.title")} hint="hint-remote-control"
           disabled={mode === "off" && (busy || disabled)}
           onChange={enabled => void applyPolicy(enabled ? "ask" : "off")} />
