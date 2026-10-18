@@ -151,6 +151,26 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	if second.requested || m.active != nil {
 		t.Fatal("replacement source accepted input without opt-in")
 	}
+	if err := setTestPolicy(s, "room", ""); err != nil {
+		t.Fatal(err)
+	}
+	request(first, "")
+	revokedGrant := first.grant
+	if err := s.SetPeers(peers[1:]); err != nil {
+		t.Fatal(err)
+	}
+	if m.active != nil || first.grant != "" || m.connections[endpointKey{s, first.id}] != nil {
+		t.Fatal("room membership removal retained the active input grant")
+	}
+	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"key","code":"KeyA","down":true,"grant":"` + revokedGrant + `"}`)}, first.epoch)
+	request(first, "")
+	if m.active != nil || first.requested || len(sink.events) != 0 {
+		t.Fatal("removed endpoint regained input with its old grant or key")
+	}
+	request(second, "")
+	if m.active != second {
+		t.Fatal("membership removal interrupted the remaining authenticated endpoint")
+	}
 }
 
 func TestRouteReplacementRequiresApprovalAndIgnoresOldClosure(t *testing.T) {

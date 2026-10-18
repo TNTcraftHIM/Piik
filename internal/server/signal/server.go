@@ -1016,6 +1016,9 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 		if replaced := s.sessionsByID[participant.ReplacedSessionID]; replaced != nil && replaced != sess {
 			replaced.close(websocket.StatusCode(protocol.SignalCloseSessionReplaced), "Session replaced")
 		}
+		if participant.Role == protocol.RoleViewer {
+			s.sendRemoteInputPeers(roomID)
+		}
 	}
 
 	if participant.Role == protocol.RoleHost && mediaActive {

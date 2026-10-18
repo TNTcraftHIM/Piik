@@ -232,6 +232,9 @@ func (s *Server) revokeGrantViewers(roomID string, update room.ViewerGrantUpdate
 	if len(update.RevokedViewers) == 0 {
 		return
 	}
+	// The store has already removed their admission. Retire input identity as
+	// well; a shared relay's media connection may survive this Viewer leaving.
+	s.sendRemoteInputPeers(roomID)
 	s.deferredViewerPresenceRooms[roomID] = struct{}{}
 	func() {
 		defer delete(s.deferredViewerPresenceRooms, roomID)
