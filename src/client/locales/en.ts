@@ -597,7 +597,7 @@ export const en: Record<CopyKey, string> = {
   "viewer.msg.waitingHost": "Waiting for the host to share",
   "viewer.msg.preparingP2p": "Establishing P2P",
   "viewer.msg.connectionRetry": "Retrying ({current}/{total})",
-  "viewer.msg.preparingSfu": "Connecting backup route",
+  "viewer.msg.preparingSfu": "Connecting server relay",
   "viewer.msg.allocating": "Allocating a route",
   "viewer.msg.receiving": "Receiving video",
   "viewer.msg.playing": "Playing",

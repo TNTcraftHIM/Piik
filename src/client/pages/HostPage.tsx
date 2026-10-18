@@ -197,8 +197,8 @@ import {
 } from "../webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 import {
-  hostActionErrorNotice,
-  hostServerErrorNotice,
+  hostActionErrorKey,
+  hostServerErrorKey,
   shouldPauseLocalPreview,
   sourceSwitchNotice,
   isCapturePermissionFailure,
@@ -250,10 +250,10 @@ function captureDetails(stream: MediaStream, native = false, sourceAudio?: boole
   };
 }
 
-function readableError(error: unknown, action: HostAction): string {
+function readableError(error: unknown, action: HostAction): StatusNoticeMessage {
   return error instanceof ApiError
     ? error.message
-    : hostActionErrorNotice(error, action);
+    : { key: hostActionErrorKey(error, action) };
 }
 
 function closeAbandonedRoom(room: HostRoomIdentity): void {
@@ -485,7 +485,7 @@ export function HostPage({
     readDisplayName(defaultHostDisplayName(vis)),
   );
   const [displayNameDraft, setDisplayNameDraft] = useState(displayName);
-  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [displayNameError, setDisplayNameError] = useState(false);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [viewerQualityEvidence, setViewerQualityEvidence] = useState<
     ReadonlyMap<string, ViewerQualityEvidencePresentation>
@@ -522,7 +522,9 @@ export function HostPage({
     if (error instanceof NativeMediaBridgeError || (error instanceof NativeRequestError &&
       (["unavailable", "disconnected", "send-failed"].includes(error.reason) || error.operation === "prepare-edge"))) action = "connection";
     const permissionMissing = isCapturePermissionFailure(error, action);
-    setNoticeValue({ kind: "text", text: readableError(error, action), target, tone: permissionMissing ? "warn" : "bad",
+    const message = readableError(error, action);
+    setNoticeValue({ ...(typeof message === "string" ? { kind: "text", text: message } : { kind: "key", ...message }),
+      target, tone: permissionMissing ? "warn" : "bad",
       failureCode: error instanceof ApiError ? `site/http-${error.status}` : hostFailureCode(error, action),
       comic: permissionMissing ? "hint-capture-browser" : action === "connection" ? "route-failed" : action === "capture" || action === "source"
         ? "source-failed" : action === "quality" || action === "sourceAudio" ? "settings-failed" : "warning" });
@@ -2547,7 +2549,7 @@ export function HostPage({
     displayNameRef.current = initialDisplayName;
     setDisplayName(initialDisplayName);
     setDisplayNameDraft(initialDisplayName);
-    setDisplayNameError(null);
+    setDisplayNameError(false);
     const signal = new SignalingClient(
       {
         roomId: activeRoom.roomId,
@@ -2627,7 +2629,7 @@ export function HostPage({
             return;
           }
           if (message.type === "error" && message.code === "HOST_ALREADY_CONNECTED") {
-            endRoomSession(hostServerErrorNotice(message.code), "signal-failed");
+            endRoomSession({ key: hostServerErrorKey(message.code) }, "signal-failed");
             return;
           }
           const reauthenticated =
@@ -2669,7 +2671,7 @@ export function HostPage({
           }
           if (message.type === "sharing-start-failed") {
             if (localShareActive && message.shareGeneration === currentShareGeneration) {
-              endSharing(hostServerErrorNotice(message.code), false, "signal-failed", "bad");
+              endSharing({ key: hostServerErrorKey(message.code) }, false, "signal-failed", "bad");
             }
             return;
           }
@@ -2679,7 +2681,7 @@ export function HostPage({
             return;
           }
           if (message.type === "error") {
-            setNotice(hostServerErrorNotice(message.code), "signal-failed", "bad");
+            setNoticeKey(hostServerErrorKey(message.code), "signal-failed", "bad");
             return;
           }
           const mediaActive =
@@ -3487,13 +3489,13 @@ export function HostPage({
     const hostFallback = defaultHostDisplayName(vis);
     const saved = saveDisplayName(displayNameDraft, hostFallback);
     if (!saved) {
-      setDisplayNameError(say("host.nameError"));
+      setDisplayNameError(true);
       return;
     }
     displayNameRef.current = saved;
     setDisplayName(saved);
     setDisplayNameDraft(saved);
-    setDisplayNameError(null);
+    setDisplayNameError(false);
     setEditingDisplayName(false);
     setHasCustomDisplayName(readStoredDisplayName() !== null);
     if (signalRef.current && !signalRef.current.setDisplayName(saved)) {
@@ -4068,7 +4070,7 @@ export function HostPage({
                         aria-invalid={displayNameError ? "true" : undefined}
                         onChange={(event) => {
                           setDisplayNameDraft(event.target.value);
-                          setDisplayNameError(null);
+                          setDisplayNameError(false);
                         }}
                       />
                     </span>
@@ -4085,7 +4087,7 @@ export function HostPage({
                       hint="hint-close"
                       onClick={() => {
                         setDisplayNameDraft(displayName);
-                        setDisplayNameError(null);
+                        setDisplayNameError(false);
                         setEditingDisplayName(false);
                       }}
                     />
@@ -4103,7 +4105,7 @@ export function HostPage({
                       hint="hint-rename"
                       onClick={() => {
                         setDisplayNameDraft(displayName);
-                        setDisplayNameError(null);
+                        setDisplayNameError(false);
                         setEditingDisplayName(true);
                       }}
                     />
@@ -4113,7 +4115,7 @@ export function HostPage({
                   <Pill
                     icon="alert"
                     tone="bad"
-                    label={displayNameError}
+                    label={t("host.nameError")}
                     alert
                     comic="name-invalid"
                   />

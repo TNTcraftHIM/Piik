@@ -9,14 +9,16 @@ import { useCopy } from "../../ui/copy";
 import { resolveMediaFailure, type MediaFailure } from "../../ui/media-failure";
 import type { ConnectionMetrics } from "../../types";
 import { MetricCells } from "./Metrics";
+import { Pill } from "./primitives";
 
 export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
   const { t, vis } = useCopy();
   const cell = (
-    <span
+    <button
+      type="button"
       className="lr-meter-cell"
-      // The route hint is available to keyboard users in every language.
-      tabIndex={0}
+      aria-label={t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
+      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
     >
       {route === "sfu" ? (
         <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -39,10 +41,11 @@ export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
       ) : (
         <b>{route === "sfu" ? "SFU" : "P2P"}</b>
       )}
-    </span>
+    </button>
   );
   return (
     <Tooltip
+      toggleOnClick
       kind={route === "sfu" ? "hint-route-sfu" : "hint-route-p2p"}
       text={vis ? undefined : t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
     >
@@ -90,16 +93,7 @@ export function PawnDetail({
         </span>
       ) : null}
       {errorText ? (
-        <Tooltip kind="route-failed" text={vis ? undefined : errorText}>
-          <span
-            className="lr-pill is-bad"
-            role="alert"
-            tabIndex={0}
-          >
-            <Glyph name="alert" size={16} />
-            {vis ? <span className="visually-hidden">{errorText}</span> : <span>{errorText}</span>}
-          </span>
-        </Tooltip>
+        <Pill icon="alert" tone="bad" label={errorText} comic="route-failed" alert />
       ) : null}
       {route ? <RouteGlyph route={route} /> : null}
       {metrics ? (

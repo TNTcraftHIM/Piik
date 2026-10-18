@@ -43,44 +43,44 @@ export function isCapturePermissionFailure(error: unknown, action: HostAction): 
     error instanceof DOMException && error.name === "NotAllowedError";
 }
 
-export function hostActionErrorNotice(
+export function hostActionErrorKey(
   error: unknown,
   action: HostAction,
-): string {
+): CopyKey {
   if (error instanceof NativeRequestError) {
     switch (error.reason) {
       case "unavailable":
       case "disconnected":
-      case "send-failed": return say("native.fail.controlDisconnected");
-      case "timeout": return say("native.fail.requestTimeout");
-      case "invalid-response": return say("native.fail.invalidResponse");
+      case "send-failed": return "native.fail.controlDisconnected";
+      case "timeout": return "native.fail.requestTimeout";
+      case "invalid-response": return "native.fail.invalidResponse";
       case "rejected":
-        if (error.operation === "start-share") return say("native.fail.captureStart");
-        if (error.operation === "prepare-edge") return say("native.fail.edgePrepare");
+        if (error.operation === "start-share") return "native.fail.captureStart";
+        if (error.operation === "prepare-edge") return "native.fail.edgePrepare";
         break;
     }
   }
-  if (error instanceof NativeMediaBridgeInitializationError) return say("native.fail.browserMedia");
-  if (error instanceof NativeMediaBridgeError) return say("native.fail.edge");
-  if (isCapturePermissionFailure(error, action)) return say("host.capture.cancelled");
+  if (error instanceof NativeMediaBridgeInitializationError) return "native.fail.browserMedia";
+  if (error instanceof NativeMediaBridgeError) return "native.fail.edge";
+  if (isCapturePermissionFailure(error, action)) return "host.capture.cancelled";
   if (
     error instanceof DOMException &&
     (action === "capture" || action === "source")
   ) {
     switch (error.name) {
       case "NotFoundError":
-        return say("host.capture.noSource");
+        return "host.capture.noSource";
       case "NotReadableError":
-        return say("host.capture.readFailed");
+        return "host.capture.readFailed";
       case "SecurityError":
-        return say("host.capture.unavailable");
+        return "host.capture.unavailable";
       case "InvalidStateError":
-        return say("host.capture.inactive");
+        return "host.capture.inactive";
       case "OverconstrainedError":
-        return say("host.capture.constraints");
+        return "host.capture.constraints";
     }
   }
-  return say(HOST_ACTION_FALLBACK[action]);
+  return HOST_ACTION_FALLBACK[action];
 }
 
 /** Safe support context: never copy arbitrary exception text or request fields. */
@@ -113,8 +113,8 @@ export function hostFailureChecks(code: string): CopyKey[] {
   return [];
 }
 
-export function hostServerErrorNotice(code: ServerErrorCode): string {
-  return say(HOST_SERVER_ERROR_NOTICE[code]);
+export function hostServerErrorKey(code: ServerErrorCode): CopyKey {
+  return HOST_SERVER_ERROR_NOTICE[code];
 }
 
 export function sourceSwitchNotice({
