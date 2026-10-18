@@ -1373,38 +1373,59 @@ func TestRouterKeepsPeerOnlySharesOutOfConfiguredSfuFallback(t *testing.T) {
 }
 
 func TestRouterSilentlyKeepsWorkingMediaWhenQualityOnlySfuAdmissionIsDenied(t *testing.T) {
-	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true, sfuIngressCapacity: 1})
+	debug := captureRouteDebug(t)
+	h := newRouterHarness(t, routerHarnessOptions{capacity: 2, withSfu: true, sfuIngressCapacity: 1})
 	occupied := sfu.ResourceFence{RoomID: "9001", ShareGeneration: "occupied_share_12345678", PublicationGeneration: "occupied_publication_12345678"}
 	created := h.createRoom()
 	host := h.connectHost(created, qualityPolicy, "", "")
-	viewer := h.connectViewer(created, "quality-sfu-denied")
 	h.locked(func() {
 		if !h.admission.ReservePublication(occupied) {
 			t.Fatal("the occupying publication must be reserved")
 		}
 		h.doComplete(host)
-		h.doComplete(viewer)
 	})
-	prepared := h.waitPrepared(viewer.sessionID)
-	var active activeViewerMediaEdge
-	h.locked(func() {
-		h.doReady(viewer, int64(prepared.Revision))
-		active = h.doMustEdge(created.RoomID, viewer.peerID)
-		for index, state := range []string{"healthy", "degraded"} {
-			if !h.router.observeSenderQualityEvidence(host, senderEvidenceMessage(viewer.peerID, active.connectionID, "viewer-rtp", "track", float64(100+index), active.revision, state)) {
-				t.Fatalf("%s evidence must be accepted", state)
+	viewers := []authenticatedRouteParticipant{
+		h.connectViewer(created, "quality-sfu-denied-first"),
+		h.connectViewer(created, "quality-sfu-denied-second"),
+	}
+	active := make([]activeViewerMediaEdge, len(viewers))
+	for index, viewer := range viewers {
+		h.complete(viewer)
+		prepared := h.waitPrepared(viewer.sessionID)
+		h.routeReady(viewer, int64(prepared.Revision))
+		active[index] = h.mustActiveEdge(created.RoomID, viewer.peerID)
+	}
+	degrade := func(viewer authenticatedRouteParticipant) {
+		h.locked(func() {
+			edge := h.doMustEdge(created.RoomID, viewer.peerID)
+			for index, state := range []string{"healthy", "degraded", "degraded", "degraded"} {
+				if !h.router.observeSenderQualityEvidence(host, senderEvidenceMessage(viewer.peerID, edge.connectionID, "viewer-rtp", "track", float64(100+index), edge.revision, state)) {
+					t.Fatalf("%s evidence must be accepted", state)
+				}
+			}
+		})
+	}
+	// SFU relief requires every Host root to be persistently degraded. Exhaust
+	// the second root's regeneration before the first makes SFU eligible.
+	degrade(viewers[1])
+	regeneration := h.waitPreparedAbove(viewers[1].sessionID, active[1].revision)
+	h.routeFailed(viewers[1], routeFailedMessage(int64(regeneration.Revision), "prepare", regeneration.Candidate.ConnectionID))
+	h.settle()
+	degrade(viewers[0])
+	h.waitFor("the quality-only SFU admission rejection", func() bool {
+		return debug.calledWith(created.RoomID, "candidate-preparation-denied", map[string]any{"rejectionBucket": "sfu-admission"})
+	})
+	h.settle()
+	for index, viewer := range viewers {
+		for _, message := range h.messages(viewer.sessionID) {
+			if _, ok := message.(protocol.RouteStatusMessage); ok {
+				t.Fatal("a denied quality-only candidate must stay silent")
 			}
 		}
-	})
-	h.waitFor("the quality operation to settle", func() bool { return h.diagnostic(created.RoomID).Operation == nil })
-	for _, message := range h.messages(viewer.sessionID) {
-		if _, ok := message.(protocol.RouteStatusMessage); ok {
-			t.Fatal("a denied quality-only candidate must stay silent")
+		if edge := h.mustActiveEdge(created.RoomID, viewer.peerID); edge.connectionID != active[index].connectionID ||
+			edge.upstream != protocol.PeerUpstream(host.peerID) {
+			t.Fatalf("working media changed: %+v", edge)
 		}
-	}
-	if edge := h.mustActiveEdge(created.RoomID, viewer.peerID); edge.connectionID != active.connectionID ||
-		edge.upstream != protocol.PeerUpstream(host.peerID) {
-		t.Fatalf("working media changed: %+v", edge)
 	}
 	h.locked(func() {
 		h.admission.BeginDrain(occupied)
