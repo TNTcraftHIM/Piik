@@ -1061,6 +1061,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   border: 0;
   border-radius: 999px;
   background: transparent;
+  font-weight: 600;
   /* Inactive text stays readable; the selected option gains full contrast. */
   color: color-mix(in srgb, var(--ink) 68%, var(--paper));
   transition: color 180ms ease, transform 180ms var(--spring);
