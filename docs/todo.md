@@ -43,12 +43,6 @@ platform deferrals or establish a diagnosis for unmatched reports.
   tray and live reactions when detached; it reuses the existing room session and palette.
   Finish owner UI acceptance before release.
 
-- [ ] **Control motion consistency.** After functional acceptance, compare
-  launcher mode cards in selected and unselected states against shared controls.
-  Align hover lift and press/release bounce where the interaction is the same;
-  avoid state-dependent displacement. The owner reported this remaining visual
-  mismatch on 2026-10-18 and prioritized functional checks first.
-
 - [ ] **macOS bundle startup acceptance (#479).** The package now contains the
   actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
   dependency on an external sibling executable. A moved-bundle assembly check

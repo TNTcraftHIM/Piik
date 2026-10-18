@@ -1,5 +1,9 @@
 /* Shared control geometry and motion for the application and static website. */
-:root { --control-press-transform: translateY(2px); }
+:root {
+  --control-hover-transform: translateY(-2px);
+  --control-press-transform: translateY(2px);
+  --control-motion: transform 260ms var(--spring);
+}
 button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .lr-btn {
   display: inline-grid;
@@ -16,9 +20,9 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
   white-space: nowrap;
   text-decoration: none;
   box-shadow: var(--control-shadow);
-  transition: transform 260ms var(--spring), background-color 140ms ease, border-color 140ms ease;
+  transition: var(--control-motion), background-color 140ms ease, border-color 140ms ease;
 }
-.lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: translateY(-2px); }
+.lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: var(--control-hover-transform); }
 .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-primary):not(.is-on):not(.is-danger) { background: var(--control-hover); border-color: var(--ink); }
 .lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
 .lr-btn.is-primary { --primary-fill: var(--action-deep); border-color: var(--primary-fill); background: var(--primary-fill); color: var(--action-ink); }
@@ -30,5 +34,7 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .lr-btn .lr-cap { margin-left: 2px; font-size: 12.5px; font-weight: 600; }
 .lr-theme-toggle { min-width: 40px; height: 40px; }
 @media (prefers-reduced-motion: reduce) {
+  :root { --control-hover-transform: none; --control-press-transform: none; }
   .lr-btn { transform: none !important; transition: none !important; }
 }
+html[data-reduced-motion] { --control-hover-transform: none; --control-press-transform: none; }

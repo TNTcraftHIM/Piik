@@ -371,10 +371,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   border-radius: 50%;
   color: #fff;
   background: rgba(255, 255, 255, .07);
-  transition: transform 180ms var(--spring), background 160ms ease;
+  transition: var(--control-motion), background 160ms ease;
 }
-.lr-tv-big:hover { transform: scale(1.05); }
-.lr-tv-big:active { transform: var(--control-press-transform); transition-duration: 80ms; }
+.lr-tv-big:is(button, .is-action):is(:hover, :focus-visible):not(:disabled) { transform: var(--control-hover-transform); }
+.lr-tv-big:is(button, .is-action):active:not(:disabled) { transform: var(--control-press-transform); transition-duration: 80ms; }
 .lr-tv-big.is-action { border-color: var(--action-deep); background: var(--action-deep); color: var(--action-ink); cursor: pointer; }
 .lr-tv-big.is-action:hover { border-color: color-mix(in srgb, var(--action-deep) 88%, #000); background: color-mix(in srgb, var(--action-deep) 88%, #000); }
 .lr-tv-big.is-ripple::after {
@@ -472,14 +472,14 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   background: var(--paper);
   box-shadow: var(--control-shadow);
   color: var(--ink);
-  transition: transform 140ms var(--spring), background 120ms ease;
+  transition: var(--control-motion), background 120ms ease;
 }
 .lr-source-picker-refresh { margin-left: auto; }
 .lr-source-picker-head > .lr-comic-tip-wrap:has(> .lr-source-picker-refresh) { margin-left: auto; }
 .lr-source-picker-refresh:is(:hover, :focus-visible):not(:disabled),
-.lr-source-picker-close:is(:hover, :focus-visible):not(:disabled) { background: var(--control-hover); }
+.lr-source-picker-close:is(:hover, :focus-visible):not(:disabled) { background: var(--control-hover); transform: var(--control-hover-transform); }
 .lr-source-picker-refresh:active:not(:disabled),
-.lr-source-picker-close:active:not(:disabled) { transform: var(--control-press-transform); transition-duration: 80ms; }
+.lr-source-picker-close:active:not(:disabled) { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
 .lr-source-picker-tabs.lr-toggle {
   display: grid;
 }
@@ -536,12 +536,12 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   box-shadow: var(--control-shadow);
   color: var(--ink);
   text-align: left;
-  transition: transform 150ms var(--spring), border-color 120ms ease, background 120ms ease;
+  transition: var(--control-motion), border-color 120ms ease, background 120ms ease;
 }
 .lr-source-option:is(:hover, :focus-visible):not(:disabled) {
   border-color: var(--action);
   background: var(--control-hover);
-  transform: translateY(-2px);
+  transform: var(--control-hover-transform);
   box-shadow: inset 0 0 0 1px var(--action), var(--control-shadow);
 }
 .lr-source-option:active:not(:disabled) { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
@@ -987,9 +987,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 /* Selection keeps the same press/release transition. A separate transform
    animation would jump away from the held pose when the selection changes. */
 .lr-chip, .lr-tile {
-  transition: transform 180ms var(--spring), background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition: var(--control-motion), background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
-:is(.lr-chip, .lr-tile):is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):where(:not(.is-selected)) { background: var(--control-hover); transform: translateY(-2px); }
+:is(.lr-chip, .lr-tile):is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: var(--control-hover-transform); }
+:is(.lr-chip, .lr-tile):is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):where(:not(.is-selected)) { background: var(--control-hover); }
 :is(.lr-chip, .lr-tile):active:not(:disabled):not([aria-disabled="true"]) { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
 :is(.lr-chip, .lr-tile).is-selected { background: var(--control-selected); color: var(--control-selected-ink); border-color: var(--action); box-shadow: inset 0 0 0 1px var(--action), var(--control-shadow); }
 :is(.lr-chip, .lr-tile).is-selected:active:not(:disabled) { box-shadow: inset 0 0 0 1px var(--action); }
@@ -1293,9 +1294,9 @@ html[data-theme="dark"] .lr-pill.is-good { background: #14291d; }
   border-radius: 12px;
   background: var(--paper);
   color: var(--ink);
-  transition: transform 120ms var(--spring), background 120ms ease;
+  transition: var(--control-motion), background 120ms ease;
 }
-.lr-pawn-detail-close:hover { background: var(--wall-2); }
+.lr-pawn-detail-close:is(:hover, :focus-visible) { background: var(--wall-2); transform: var(--control-hover-transform); }
 .lr-pawn-detail-close:active { transform: var(--control-press-transform); transition-duration: 80ms; }
 
 /* ---------- topology tree ---------- */
@@ -1681,9 +1682,9 @@ html[data-theme="dark"] .lr-pill.is-good { background: #14291d; }
   border-radius: 50%;
   background: var(--action-deep);
   color: var(--action-ink);
-  transition: transform 140ms var(--spring), background 160ms ease;
+  transition: var(--control-motion), background 160ms ease;
 }
-.lr-join-go:hover:not(:disabled) { border-color: color-mix(in srgb, var(--action-deep) 88%, #000); background: color-mix(in srgb, var(--action-deep) 88%, #000); transform: scale(1.05); }
+.lr-join-go:is(:hover, :focus-visible):not(:disabled) { border-color: color-mix(in srgb, var(--action-deep) 88%, #000); background: color-mix(in srgb, var(--action-deep) 88%, #000); transform: var(--control-hover-transform); }
 .lr-join-go:active:not(:disabled) { transform: var(--control-press-transform); transition-duration: 80ms; }
 .lr-join-go:disabled { background: var(--wall-2); border-color: transparent; color: var(--muted); opacity: 1; }
 

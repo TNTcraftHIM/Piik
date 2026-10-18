@@ -199,11 +199,14 @@ threshold or quality verdict.
 
 ### Sharing And Playback
 
-Shared buttons and chips use pill shapes, a quiet lower edge and a short lift
-on hover or keyboard focus, then sink 2 px on press and spring back on release.
+Shared buttons and chips use pill shapes and a quiet lower edge. Standalone
+buttons, chips and option tiles lift 2 px on hover or keyboard focus, sink 2 px
+on press, and spring back over 260 ms on release. Selected and unselected states
+use the same motion; selection changes only their colour and outline.
 Inputs and option tiles share softer corners. Press feedback uses the shared
-transform in `button.css` and releases the lower shadow. Keep icon, text and
-control dimensions intact: scaling the whole button shifts off-centre contents
+motion values in `button.css` and releases the lower shadow. Captions inside
+sliding tracks retain a smaller 1 px lift without moving the track. Keep icon,
+text and control dimensions intact: scaling the whole button shifts off-centre contents
 sideways and changes their stroke weight. Do not add a separate icon displacement.
 Keep filled buttons' border and face in the same colour state; a bright inset
 rim must not look like a gap between them. Keep a distinct focus ring and a
