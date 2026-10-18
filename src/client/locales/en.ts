@@ -9,6 +9,7 @@ export const en: Record<CopyKey, string> = {
   "remote.keys.functions": "Function keys",
   "remote.keys.text": "Text",
   "remote.modifierHelp": "Shortcuts: select {modifiers}, then a key",
+  "remote.keepModifiers": "Hold modifiers (tap again to release)",
   "remote.key.Space": "Space",
   "remote.key.Insert": "Insert",
   "remote.key.Delete": "Delete",

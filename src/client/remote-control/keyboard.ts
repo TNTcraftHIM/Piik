@@ -3,11 +3,11 @@ import type { RemoteInputEvent } from "./input-session";
 // Virtual keys share the physical-key path. Each contact owns its chord until
 // release; another finger must not release a modifier that is still in use.
 export class RemoteKeyboardPresses {
-  private held = new Map<number, { codes: readonly string[]; timer: ReturnType<typeof setTimeout> }>();
+  private held = new Map<number, { codes: readonly string[]; timer?: ReturnType<typeof setTimeout> }>();
 
   constructor(private readonly input: (event: RemoteInputEvent) => void) {}
 
-  down(id: number, codes: readonly string[]): void {
+  down(id: number, codes: readonly string[], repeating = true): void {
     this.up(id);
     for (const code of codes) {
       if (!this.pressed(code)) this.input({ type: "key", code, down: true });
@@ -18,7 +18,7 @@ export class RemoteKeyboardPresses {
       this.input({ type: "key", code: codes[codes.length - 1], down: true });
       press.timer = setTimeout(repeat, 50);
     };
-    this.held.set(id, { codes, timer: setTimeout(repeat, 400) });
+    this.held.set(id, { codes, timer: repeating ? setTimeout(repeat, 400) : undefined });
   }
 
   up(id: number): void {

@@ -4,8 +4,8 @@ import { useLayoutEffect, type RefObject } from "react";
 // end-aligned menu beside its invoker, within the document displaying it.
 export function useAnchoredPopover(
   trigger: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>,
-  { side = "below", maxHeight = Infinity, enabled = true }: {
-    side?: "above" | "below"; maxHeight?: number; enabled?: boolean;
+  { side = "below", maxHeight = Infinity, minVisibleHeight = Infinity, enabled = true }: {
+    side?: "above" | "below"; maxHeight?: number; minVisibleHeight?: number; enabled?: boolean;
   } = {},
 ) {
   useLayoutEffect(() => {
@@ -26,7 +26,10 @@ export function useAnchoredPopover(
       }
       const above = Math.max(0, rect.top - top - 8), below = Math.max(0, bottom - rect.bottom - 8);
       const height = Math.min(menu.scrollHeight, maxHeight);
-      const openAbove = side === "above" ? above >= height || above > below : below < height && above > below;
+      // Scrollable palettes can prefer their requested side without requiring
+      // every row to fit; compact menus retain the full-content threshold.
+      const preferredHeight = Math.min(height, minVisibleHeight);
+      const openAbove = side === "above" ? above >= preferredHeight || above > below : below < preferredHeight && above > below;
       menu.style.maxWidth = `${right - left}px`;
       menu.style.maxHeight = `${Math.min(maxHeight, openAbove ? above : below)}px`;
       menu.classList.toggle("is-above", openAbove);
@@ -64,5 +67,5 @@ export function useAnchoredPopover(
       viewport?.removeEventListener("resize", schedule);
       viewport?.removeEventListener("scroll", schedule);
     };
-  }, [trigger, panel, side, maxHeight, enabled]);
+  }, [trigger, panel, side, maxHeight, minVisibleHeight, enabled]);
 }

@@ -1,6 +1,7 @@
 .lr-playback {
   position: absolute;
   inset: auto 0 0;
+  justify-self: center;
   z-index: 4;
   display: flex;
   flex-wrap: wrap;
@@ -9,33 +10,31 @@
   padding: 6px 12px max(6px, env(safe-area-inset-bottom));
   border-top: 1.5px solid color-mix(in srgb, var(--ink) 24%, transparent);
   color: var(--ink);
-  background: color-mix(in srgb, var(--paper) 78%, transparent);
+  background: var(--paper);
   box-shadow: 0 -4px 18px rgb(0 0 0 / 8%);
   transition: opacity 180ms ease, transform 220ms var(--spring);
 }
 .lr-playback.is-hidden { opacity: 0; transform: translateY(6px); pointer-events: none; }
+.lr-playback:has([popover]:is(:popover-open, .\:popover-open)) { opacity: 1; transform: none; pointer-events: auto; }
 /* Let the bar's actual height (including wrapping) reserve overlay space. */
 .lr-tv-screen:has(> .lr-playback) { display: grid; width: 100%; grid-template: minmax(0, 1fr) auto / minmax(0, 1fr); }
 /* Keep the primary status readable when narrow controls wrap to a second row. */
 .lr-tv-screen:has(> .lr-playback):has(> .lr-tv-overlay) { min-height: 168px; }
 .lr-tv-screen:has(> .lr-playback) > video { grid-area: 1 / 1 / -1 / -1; min-height: 0; }
 /* Remote input must reach every picture pixel, including underneath the toolbar. */
-.lr-tv-screen:has(> .lr-remote-input-surface) > video { grid-area: 1 / 1 / 2 / 2; }
+.lr-tv-screen:has(> .lr-remote-input-surface) { aspect-ratio: auto; }
+.lr-tv-screen:has(> .lr-remote-input-surface) > video { grid-area: 1 / 1 / 2 / 2; aspect-ratio: 16 / 9; height: auto; }
+.lr-room.is-theater .lr-tv-screen:has(> .lr-remote-input-surface) > video,
+.lr-tv-screen:fullscreen:has(> .lr-remote-input-surface) > video { aspect-ratio: auto; height: 100%; }
 .lr-tv-screen > .lr-remote-input-surface { grid-area: 1 / 1 / 2 / 2; }
 .lr-tv-screen > .lr-playback { position: relative; inset: auto; grid-area: 2 / 1; }
-/* Settings expand below the picture; fullscreen reserves their height instead. */
-.lr-tv-screen:has(.lr-playback-settings) { aspect-ratio: auto; }
-.lr-tv-screen:has(.lr-playback-settings) > video { grid-area: 1 / 1 / 2 / 2; aspect-ratio: 16 / 9; height: auto; }
-.lr-room.is-theater .lr-tv-screen:has(.lr-playback-settings) > video,
-.lr-tv-screen:fullscreen:has(.lr-playback-settings) > video { aspect-ratio: auto; height: 100%; }
-.lr-playback:has(.lr-playback-settings) { background: var(--paper); }
 /* Touch control reserves this bar: its input surface consumes taps, so it must
    always offer keyboard access and a way to end control. */
 .lr-tv-screen:has(> .lr-remote-input-surface) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
-.lr-tv-screen:has(> .lr-playback):has(> :is(.lr-remote-keyboard, .lr-remote-password)) { aspect-ratio: auto; grid-template-rows: minmax(0, 1fr) auto auto; }
-.lr-tv-screen:has(> :is(.lr-remote-keyboard, .lr-remote-password)) > video { grid-area: 1 / 1 / 2 / 2; aspect-ratio: 16 / 9; height: auto; }
-.lr-room.is-theater .lr-tv-screen:has(> :is(.lr-remote-keyboard, .lr-remote-password)) > video,
-.lr-tv-screen:fullscreen:has(> :is(.lr-remote-keyboard, .lr-remote-password)) > video { aspect-ratio: auto; height: 100%; }
+.lr-tv-screen:has(> .lr-playback):has(:is(.lr-remote-keyboard, .lr-remote-password)) { aspect-ratio: auto; grid-template-rows: minmax(0, 1fr) auto auto; }
+.lr-tv-screen:has(:is(.lr-remote-keyboard, .lr-remote-password)) > video { grid-area: 1 / 1 / 2 / 2; aspect-ratio: 16 / 9; height: auto; }
+.lr-room.is-theater .lr-tv-screen:has(:is(.lr-remote-keyboard, .lr-remote-password)) > video,
+.lr-tv-screen:fullscreen:has(:is(.lr-remote-keyboard, .lr-remote-password)) > video { aspect-ratio: auto; height: 100%; }
 .lr-tv-screen:has(> .lr-remote-password) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
 .lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay { grid-area: 1 / 1 / 2 / 2; }
 .lr-tv-screen:has(> .lr-playback.is-hidden) > video { cursor: none; }
@@ -54,10 +53,11 @@
 .lr-playback-view { display: inline-flex; align-items: center; flex: none; gap: 4px; margin-left: auto; border-left: 1px solid var(--wall-2); padding-left: 8px; }
 .lr-playback-secondary { display: inline-flex; align-items: center; gap: inherit; }
 .lr-playback-more { display: none; }
-.lr-playback-menu { position: fixed; inset: auto; margin: 0; padding: 8px; max-width: calc(100vw - 16px); border: 1.5px solid var(--control-edge); border-radius: 18px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); overflow: auto; overscroll-behavior: contain; }
+.lr-playback-more.has-settings { display: inline-flex; }
+.lr-playback-menu { position: fixed; inset: auto; margin: 0; padding: 8px; max-width: calc(100vw - 16px); overflow: auto; overscroll-behavior: contain; }
 .lr-playback-menu:is(:popover-open, .\:popover-open) { display: grid; gap: 6px; animation: lr-language-open 180ms var(--spring); }
 .lr-playback-menu-actions { display: grid; gap: 6px; }
-.lr-playback-settings { flex: 0 0 100%; min-width: 0; padding: 16px 6px 10px; border-top: 1px solid var(--wall-2); animation: lr-sharing-enter 180ms ease-out; }
+.lr-playback-settings { width: min(560px, calc(100vw - 16px)); padding: 16px; container: playback-settings / inline-size; }
 .lr-viewer-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; max-width: 720px; margin: 0 auto; }
 .lr-viewer-settings section { min-width: 0; }
 .lr-viewer-settings > section:only-child { grid-column: 1 / -1; width: 100%; max-width: 360px; justify-self: center; }
@@ -67,16 +67,14 @@
 .lr-viewer-settings .lr-chip { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 40px; padding: 6px; font-size: 12px; white-space: nowrap; }
 .lr-viewer-settings p { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 10px 0 0; }
 .lr-viewer-settings p.is-error { color: var(--bad); }
-.lr-playback-settings-actions { display: none; }
-:is(.lr-room.is-theater .lr-tv-screen, .lr-tv-screen:fullscreen) .lr-playback-settings { max-height: 40dvh; overflow-y: auto; overscroll-behavior: contain; }
+.lr-playback-settings-actions { display: flex; justify-content: center; gap: 12px; padding-top: 12px; border-top: 1px solid var(--wall-2); }
 .lr-playback-menu .lr-comic-tip-wrap { display: block; }
-.lr-playback-menu .lr-btn { display: flex; justify-content: flex-start; width: 100%; padding: 0 12px; gap: 8px; }
+.lr-playback-menu-actions .lr-btn { display: flex; justify-content: flex-start; width: 100%; padding: 0 12px; gap: 8px; }
 .lr-tv-screen:fullscreen { width: 100%; height: 100%; border: 0; border-radius: 0; }
 .lr-tv-screen:has(> .lr-playback) { container-type: inline-size; }
 @container (max-width: 640px) {
   .lr-playback-secondary, .lr-playback-separator, .lr-playback-level { display: none; }
   .lr-playback-more { display: inline-flex; }
-  .lr-viewer-settings { grid-template-columns: minmax(0, 1fr); gap: 20px; max-width: 360px; }
   .lr-playback-settings-actions { display: flex; justify-content: center; gap: 16px; margin-top: 14px; padding-top: 8px; border-top: 1px solid var(--wall-2); }
 }
 @container (max-width: 440px) {
@@ -85,7 +83,7 @@
   .lr-tv-overlay > .lr-waiting-caption > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .lr-playback { gap: 6px; padding: 4px 8px max(4px, env(safe-area-inset-bottom)); }
   .lr-playback .lr-btn { width: clamp(24px, 10cqw, 44px); }
-  .lr-playback-menu .lr-btn { width: 100%; }
+  .lr-playback-menu-actions .lr-btn { width: 100%; }
   .lr-playback-audio { gap: 4px; }
   .lr-playback-volume { flex: 1; }
   .lr-playback-view { gap: 2px; border: 0; padding: 0; }
@@ -94,3 +92,6 @@
   .lr-playback, .lr-playback .lr-btn { transition: none; }
   .lr-playback-menu:is(:popover-open, .\:popover-open), .lr-playback-settings { animation: none; }
 }
+
+@container playback-settings (max-width: 480px) { .lr-viewer-settings { grid-template-columns: minmax(0, 1fr); gap: 16px; } }
+@container media-stage (min-width: 641px) { .lr-playback-settings-actions { display: none; } }

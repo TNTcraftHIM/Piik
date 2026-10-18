@@ -50,6 +50,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
   const [page, setPage] = useState<Page>("letters");
   const [text, setText] = useState("");
   const [modifiers, setModifiers] = useState<string[]>([]);
+  const [keepModifiers, setKeepModifiers] = useState(false);
   const composing = useRef(false);
   const editor = useRef<HTMLInputElement>(null);
   const panel = useRef<HTMLElement>(null);
@@ -84,13 +85,13 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       onPointerDown={event => {
         if (event.button !== 0) return;
         event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
-        presses.down(event.pointerId, [...modifiers, code]); setModifiers([]);
+        presses.down(event.pointerId, [...modifiers, code]); if (!keepModifiers) setModifiers([]);
       }}
       onPointerUp={event => presses.up(event.pointerId)}
-      onPointerCancel={event => presses.up(event.pointerId)}
+      onPointerCancel={() => { presses.reset(); setModifiers([]); }}
       onLostPointerCapture={event => presses.up(event.pointerId)}
       onClick={event => {
-        if (event.detail === 0) { presses.tap([...modifiers, code]); setModifiers([]); }
+        if (event.detail === 0) { presses.tap([...modifiers, code]); if (!keepModifiers) setModifiers([]); }
       }}>
       {caption}
     </button>;
@@ -119,7 +120,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     <div className="lr-remote-key-pages" role="group" aria-label={t("remote.keyPages")}>
       {(["letters", "symbols", "functions", "text"] as const).map(id => <Chip key={id}
         selected={page === id} title={t(`remote.keys.${id}`)} onClick={() => {
-          presses.reset(); setPage(id); if (id === "text") setModifiers([]);
+          presses.reset(); setModifiers([]); setPage(id);
         }}>
         {id === "letters" ? "ABC" : id === "symbols" ? "123" : id === "functions" ? "Fn" : vis ? <Glyph name="pencil" size={16} /> : t("remote.keys.text")}
       </Chip>)}
@@ -129,11 +130,22 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         {rows.map((row, index) => <div className="lr-remote-key-row" key={index}>{row.map(key)}</div>)}
       </div>
       <div className="lr-remote-key-row lr-remote-modifiers">
-        {modifiersKeys.map(([label, code]) => <Chip key={code} title={mac && code === "AltLeft" ? "Option" : label} selected={modifiers.includes(code)}
-          onClick={() => setModifiers(current => current.includes(code) ? current.filter(item => item !== code) : [...current, code])}>{label}</Chip>)}
+        {modifiersKeys.map(([label, code], index) => <Chip key={code} title={mac && code === "AltLeft" ? "Option" : label} selected={modifiers.includes(code)}
+          onClick={() => {
+            const selected = modifiers.includes(code);
+            if (keepModifiers) {
+              if (selected) presses.up(-2 - index);
+              else presses.down(-2 - index, [code], false);
+            }
+            setModifiers(current => selected ? current.filter(item => item !== code) : [...current, code]);
+          }}>{label}</Chip>)}
         {key(["⌫", "Backspace"])}{key(["↵", "Enter"])}
       </div>
       <div className="lr-remote-key-row lr-remote-navigation">{NAVIGATION.map(key)}</div>
+      <label className="lr-remote-keep-modifiers"><input type="checkbox" checked={keepModifiers}
+        aria-label={t("remote.keepModifiers")}
+        onChange={event => { presses.reset(); setModifiers([]); setKeepModifiers(event.target.checked); }} />
+        {vis ? <span aria-hidden="true"><kbd>Ctrl / ⇧</kbd><Glyph name="lock" size={14} /></span> : t("remote.keepModifiers")}</label>
       {!vis && <p>{t("remote.modifierHelp", { modifiers: modifiersKeys.map(([label, code]) => mac && code === "AltLeft" ? "Option" : label).join(" / ") })}</p>}
     </> : <>
       <div className="lr-remote-keys">{[...NAVIGATION.filter(([, code]) => code !== "Space"), ["⌫", "Backspace"], ["↵", "Enter"]].map(item => key(item as Key))}</div>

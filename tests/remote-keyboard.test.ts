@@ -2,6 +2,26 @@ import { expect, it, vi } from "vitest";
 import { RemoteKeyboardPresses } from "../src/client/remote-control/keyboard";
 import type { RemoteInputEvent } from "../src/client/remote-control/input-session";
 
+it("keeps a selected modifier across keys without repeating it and releases it on reset", () => {
+  vi.useFakeTimers();
+  try {
+    const events: RemoteInputEvent[] = [];
+    const keyboard = new RemoteKeyboardPresses(event => events.push(event));
+    keyboard.down(-2, ["ControlLeft"], false);
+    keyboard.tap(["ControlLeft", "KeyC"]);
+    keyboard.tap(["ControlLeft", "KeyV"]);
+    vi.advanceTimersByTime(1000);
+    expect(events).toEqual([
+      { type: "key", code: "ControlLeft", down: true },
+      { type: "key", code: "KeyC", down: true }, { type: "key", code: "KeyC", down: false },
+      { type: "key", code: "KeyV", down: true }, { type: "key", code: "KeyV", down: false },
+    ]);
+    keyboard.reset();
+    expect(events.at(-1)).toEqual({ type: "key", code: "ControlLeft", down: false });
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
+
 it("holds and repeats virtual chords, shares modifiers, and releases every contact on retirement", () => {
   vi.useFakeTimers();
   try {

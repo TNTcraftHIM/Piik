@@ -9,6 +9,7 @@ export const zh = {
   "remote.keys.functions": "功能键",
   "remote.keys.text": "文字",
   "remote.modifierHelp": "组合键：先选 {modifiers}，再按目标键",
+  "remote.keepModifiers": "保持修饰键（再次点按释放）",
   "remote.key.Space": "空格键",
   "remote.key.Insert": "插入键",
   "remote.key.Delete": "删除键",

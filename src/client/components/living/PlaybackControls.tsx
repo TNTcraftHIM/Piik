@@ -11,6 +11,7 @@ import { usePictureInPicture } from "./use-picture-in-picture";
 import { bindPlaybackGestures } from "./playback-gestures";
 import { toggleVideoFullscreen, videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import "./playback-controls.css";
+import "./floating-panel.css";
 
 // Reflect the existing media element; binding, autoplay recovery and room
 // presentation retain their existing owners.
@@ -147,8 +148,6 @@ export function PlaybackControlsView({
   settings?: ViewerPlaybackSettingsProps;
 }) {
   const { t, vis } = useCopy();
-  const settingsId = useId();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const silent = audio.muted || audio.level === 0;
   const percent = Math.round(audio.level * 100);
   const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
@@ -168,7 +167,7 @@ export function PlaybackControlsView({
   </>;
 
   return (
-    <div ref={controlsRef} className={`lr-playback lr-media-controls${hidden && !settingsOpen ? " is-hidden" : ""}`} role="group" aria-label={t("playback.controls")}>
+    <div ref={controlsRef} className={`lr-playback lr-host-share-controls lr-media-controls${hidden ? " is-hidden" : ""}`} role="group" aria-label={t("playback.controls")}>
       <span className="lr-playback-audio">
         <Btn icon={paused ? "play" : "pause"}
           draw="playback-state"
@@ -197,9 +196,7 @@ export function PlaybackControlsView({
       <span className="lr-playback-view">
         {extraActions}
         <span className="lr-playback-secondary">{secondaryActions(false)}</span>
-        {settings ? <Btn id={`${settingsId}-trigger`} icon="sliders" title="playback.more" hint="hint-advanced"
-          expanded={settingsOpen} controls={settingsId} onClick={() => setSettingsOpen(!settingsOpen)} />
-          : <PlaybackMore>{secondaryActions(true)}</PlaybackMore>}
+        <PlaybackMore settings={settings}>{secondaryActions(!settings)}</PlaybackMore>
         {fullscreen.supported && !theaterMode ? (
           <Btn icon={fullscreen.active ? "contract" : "expand"}
             draw="playback-fullscreen"
@@ -213,36 +210,28 @@ export function PlaybackControlsView({
             onClick={toggleFullscreen} />
         ) : null}
       </span>
-      {settings && settingsOpen ? <section id={settingsId} className="lr-playback-settings" aria-label={t("playback.more")}
-        onKeyDown={event => {
-          if (event.key !== "Escape" || event.defaultPrevented) return;
-          event.preventDefault(); event.stopPropagation(); setSettingsOpen(false);
-          event.currentTarget.ownerDocument.getElementById(`${settingsId}-trigger`)?.focus();
-        }}>
-        <ViewerPlaybackSettings {...settings} />
-        <div className="lr-playback-settings-actions">{secondaryActions(false)}</div>
-      </section> : null}
     </div>
   );
 }
 
 // Native popover owns dismissal and focus return. The same actions above render
 // directly on wide players and in this compact disclosure on narrow players.
-function PlaybackMore({ children }: { children: ReactNode }) {
+function PlaybackMore({ children, settings }: { children: ReactNode; settings?: ViewerPlaybackSettingsProps }) {
   const { t } = useCopy();
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  useAnchoredPopover(trigger, panel, { side: "above" });
-  return <span className="lr-playback-more" ref={trigger}>
+  useAnchoredPopover(trigger, panel, { side: "below", minVisibleHeight: settings ? 160 : Infinity });
+  return <span className={`lr-playback-more${settings ? " has-settings" : ""}`} ref={trigger}>
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
-    <div id={id} ref={panel} className="lr-playback-menu" popover="auto" aria-label={t("playback.more")}
+    <div id={id} ref={panel} className={`lr-floating-surface lr-playback-menu${settings ? " lr-playback-settings" : ""}`} popover="auto" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}
       onClick={event => {
-        if (!event.defaultPrevented && event.target instanceof Element && event.target.closest(".lr-playback-menu-actions button")) panel.current?.hidePopover();
+        if (!settings && !event.defaultPrevented && event.target instanceof Element && event.target.closest(".lr-playback-menu-actions button")) panel.current?.hidePopover();
       }}>
-      <div className="lr-playback-menu-actions">{children}</div>
+      {settings && <ViewerPlaybackSettings {...settings} />}
+      <div className={settings ? "lr-playback-settings-actions" : "lr-playback-menu-actions"}>{children}</div>
     </div>
   </span>;
 }

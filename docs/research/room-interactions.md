@@ -472,7 +472,9 @@ The keyboard panel reserves space below the picture, or beside it in a short
 landscape fullscreen/theater view. Letters, numbers/symbols and function/navigation
 keys use separate compact sections; text input retains the local IME. Opening
 the key panel does not summon the phone's software keyboard. Modifier selection
-applies to the next key; held contacts repeat and release independently, including
+applies to the next key by default. An optional hold-modifiers checkbox keeps
+selected modifiers pressed until tapped again; turning it off releases them.
+Held contacts repeat and release independently, including
 on cancellation, panel closure and window blur. No pressed state survives grant
 retirement. Common text shortcuts remain beside the text field.
 Its buttons follow the controlled App's platform, including Windows Win+Space
