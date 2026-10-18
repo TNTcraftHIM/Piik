@@ -307,6 +307,8 @@ export const zh = {
   "interaction.reaction.laugh": "笑出声",
   "interaction.reaction.clown": "小丑",
   "interaction.reaction.eyeroll": "翻个白眼",
+  "interaction.reaction.thumbsup": "点赞",
+  "interaction.reaction.thumbsdown": "点踩",
   "interaction.reaction.wow": "震惊",
   "interaction.reaction.party": "撒花",
   "interaction.reaction.fire": "太燃了",

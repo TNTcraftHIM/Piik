@@ -307,6 +307,8 @@ export const en: Record<CopyKey, string> = {
   "interaction.reaction.laugh": "Laugh",
   "interaction.reaction.clown": "Clown",
   "interaction.reaction.eyeroll": "Eye roll",
+  "interaction.reaction.thumbsup": "Thumbs up",
+  "interaction.reaction.thumbsdown": "Thumbs down",
   "interaction.reaction.wow": "Mind blown",
   "interaction.reaction.party": "Celebrate",
   "interaction.reaction.fire": "On fire",
