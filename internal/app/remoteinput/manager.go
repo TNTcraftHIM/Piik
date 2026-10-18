@@ -1,4 +1,4 @@
-// Package remoteinput owns the experimental desktop input grant.
+// Package remoteinput owns the source-scoped desktop input grant.
 // Only the owning Host control session can choose its authorization policy. Media routing remains
 // outside this package; closing its exact source or connection releases input.
 package remoteinput
@@ -99,8 +99,8 @@ type endpointKey struct {
 	id    string
 }
 
-// New is inert in ordinary builds. The remotecontrol build tag selects the
-// platform backend; it does not install a service, driver or startup entry.
+// New prepares the platform backend. Input remains disabled until the sharing
+// session enables it; no service, driver or startup entry is installed.
 func New(ctx context.Context, captureInput bool) (*Manager, error) {
 	sink, err := newPlatformSink(captureInput)
 	if err != nil || sink == nil {

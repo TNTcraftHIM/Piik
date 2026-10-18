@@ -58,8 +58,8 @@ Release artifacts and operator deployment records own delivery completion;
 
 Current source retains the existing 2.x protocol and route owners. The unpublished
 phase combines attended keyboard/mouse control, Viewer playback settings and the
-interaction window, with shared forwarding recovery repairs. Remote input remains
-opt-in and build-gated pending owner acceptance; its
+interaction window, with shared forwarding recovery repairs. Native input is
+included in candidate App builds and remains off until the Host enables it; its
 [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
 owns platform evidence. [TODO](./todo.md) owns release acceptance, upstream follow-up
 and deferred work. Release artifacts and operator records own delivery results.

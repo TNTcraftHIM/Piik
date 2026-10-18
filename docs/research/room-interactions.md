@@ -296,8 +296,8 @@ protocol change is accepted by this assessment.
 
 ## Attended Remote-Control Prototype
 
-Reviewed 2026-10-17. The remote-control prototype is local experiment work,
-not a released feature. Desktop and mobile Browsers are controllers; Windows App
+Reviewed 2026-10-18. Remote control is included in the unpublished candidate,
+not yet a released feature. Desktop and mobile Browsers are controllers; Windows App
 input has local physical evidence, while macOS/Linux backends remain under platform acceptance;
 controlling Android/iOS themselves is a separate platform problem. The
 [Captured Surface Control draft](https://w3c.github.io/mediacapture-surface-control/)
@@ -317,9 +317,9 @@ cross-platform remote-control SDK. Its GPL implementation remains study-only
 under the repository's contribution rules. No matched measurement establishes
 a Go/Rust performance advantage or a need to replace Piik's media pipeline.
 
-The `remotecontrol` Go build tag selects the native input backend; ordinary builds
-leave it unavailable. Existing Go checks and App packaging inherit
-`GOFLAGS=-tags=remotecontrol` for prototype acceptance. App discovery advertises the optional input capability;
+The native input backend is included by the existing platform build constraints;
+App checks and packaging use the same implementation without an experimental
+feature tag. App discovery advertises the optional input capability;
 a supporting page opts in when starting its native share. An older page emits
 no opt-in, so it receives neither new input events nor input channels. The
 prototype shares a display or window with one desktop or mobile Browser controller.

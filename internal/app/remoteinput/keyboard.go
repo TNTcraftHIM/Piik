@@ -1,4 +1,4 @@
-//go:build (windows || linux) && remotecontrol
+//go:build windows || linux
 
 package remoteinput
 

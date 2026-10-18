@@ -1,4 +1,4 @@
-//go:build darwin && cgo && remotecontrol
+//go:build darwin && cgo
 
 package remoteinput
 

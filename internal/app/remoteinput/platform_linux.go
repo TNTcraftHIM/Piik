@@ -1,4 +1,4 @@
-//go:build linux && remotecontrol
+//go:build linux
 
 package remoteinput
 

@@ -1,4 +1,4 @@
-//go:build !remotecontrol || (!windows && !darwin && !linux) || (darwin && !cgo)
+//go:build (!windows && !darwin && !linux) || (darwin && !cgo)
 
 package remoteinput
 

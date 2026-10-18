@@ -16,13 +16,14 @@ platform deferrals or establish a diagnosis for unmatched reports.
 
 - [ ] **Attended keyboard/mouse remote control.** Windows App display/window sharing now
   offers optional input over the existing direct, Browser/App relay and SFU
-  routes in experimental `remotecontrol` builds. Keep one Host publication and
+  routes in candidate App builds. Keep one Host publication and
   one controller, with source-scoped permission disabled by default. Local Windows
   routed input, consent/revocation, relay recovery, window geometry and mobile
   touch/keyboard emulation pass; the [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
-  owns implementation and evidence. Finish owner acceptance before release;
-  normal packages still omit the build tag. Public activation must include the
-  package build setting and matching English/Chinese usage instructions.
+  owns implementation and evidence. Default package builds include the backend;
+  [English](./guide/getting-started.md#let-a-friend-control-your-shared-screen) and
+  [Chinese](./guide/getting-started.zh-CN.md#让朋友操作共享的电脑) usage instructions
+  cover the opt-in flow. Finish owner acceptance before release.
   Physical Android/iOS, mixed-DPI displays, commercial games and an actual
   remote-device trial remain. macOS Quartz/Accessibility and Linux RemoteDesktop
   Portal backends are implemented; Linux compilation and synthetic input/release
@@ -42,13 +43,11 @@ platform deferrals or establish a diagnosis for unmatched reports.
   tray and live reactions when detached; it reuses the existing room session and palette.
   Finish owner UI acceptance before release.
 
-- [ ] **Icon selection and update-film direction.** Review the new graphic SVG
-  candidates at favicon and App sizes before replacing public assets; retain the
-  in-product mascot. The owner welcomes broader icon construction and an update
-  film with its own narrative and visual direction. Key visuals, storyboard and
-  the short motion study are local review material, not an approved replacement
-  or finished film. Demonstrate the accepted single-controller keyboard/mouse
-  flow with real UI and explicit Host consent.
+- [ ] **Icon refinement for release.** The owner chose the restrained B direction
+  with a little surface depth. Keep the current mascot geometry, proportions and
+  wink. Public/App assets now derive from that lightly shaded navy SVG;
+  finish owner review at favicon and App sizes. In-product and README marks
+  retain their current identity.
 
 - [ ] **macOS bundle startup acceptance (#479).** The package now contains the
   actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
@@ -89,6 +88,12 @@ platform deferrals or establish a diagnosis for unmatched reports.
 
 ## Held By Owner
 
+- [ ] **New promotional film.** Deferred until after this version's preparation
+  by the owner on 2026-10-18; it is not a release prerequisite. Start with a plain
+  explanation of Piik's screen sharing, then show real sharing/invitation,
+  interaction and single-controller keyboard/mouse use with explicit Host
+  consent. Its visual direction may differ from the existing film. Local key
+  visuals and the motion study are exploratory, not a finished film.
 - [ ] **Multiple remote-control screens.** Deferred by the owner on 2026-10-17.
   Keep one shared source and the existing Host source picker; Viewer-initiated
   screen switching and simultaneous multi-screen streams are later work.

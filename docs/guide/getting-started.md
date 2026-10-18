@@ -7,7 +7,7 @@ watching, using Piik online, using Piik App and sharing through an existing site
 
 [Join a room](#join-a-friends-room) · [Use online](#use-piik-online) ·
 [Piik App](#share-with-piik-app) · [Existing site](#share-from-an-existing-site) ·
-[Chat and reactions](#chat-and-reactions) ·
+[Remote control](#let-a-friend-control-your-shared-screen) · [Chat and reactions](#chat-and-reactions) ·
 [Troubleshooting](#when-something-gets-in-the-way)
 
 Viewers need a browser and an invitation. To start sharing, download Piik App
@@ -263,6 +263,46 @@ whose capability probe supports process exclusion; it is not a Browser-capture f
 Windows 10 support depends on system updates and the actual capability check.
 If the option is absent, share a single application window or route the voice
 app to a different playback device.
+
+## Let a friend control your shared screen
+
+1. Share through Piik App using **Apps / Windows** or **Screens**.
+2. Open **Remote control** below the picture and turn it on. It starts with
+   **Ask each time**.
+3. Your friend selects **Request control** in their playback bar. Choose
+   **Allow control** on your sharing page when their request arrives.
+
+One viewer can control at a time, using a desktop or mobile browser. Update the
+host's App and the room's site, then refresh the viewing page. The control button
+appears when the host enables control and the connection supports it. Browser
+and camera capture cannot receive remote input.
+
+Either person can choose **End control**. On the host's computer, **Ctrl+Alt+F10**
+on Windows or **Control+Option+F10** on macOS also stops control. Changing the
+shared source or stopping sharing turns remote control off. After a connection
+interruption, the viewer requests control again.
+
+On a phone, swipe to move the pointer, tap to click and hold to drag. Two-finger
+tap is right-click; two-finger swipe scrolls. Pinch to zoom, then use two fingers
+to move around the enlarged picture. **Remote keyboard** provides keys,
+shortcuts and text input. On a computer, **Game mouse** captures continuous
+mouse movement; press **Esc** to release it.
+
+<details>
+<summary>Permissions and platform support</summary>
+
+**Room Viewers** allows a room member to take idle control without asking each
+time; **Password** requires a separate control password. These choices apply
+only to the current shared source. Control gives access to the computer's mouse
+and keyboard, so allow people you trust. It is not limited to what is visible
+inside the video.
+
+macOS asks for Accessibility permission. Linux needs a supported desktop Portal
+and currently controls a selected screen, not an application window. Windows
+is the primary physically tested host; macOS/Linux device acceptance is still
+limited. System-protected shortcuts and some games may not accept remote input.
+
+</details>
 
 ## Chat and reactions
 
