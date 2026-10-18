@@ -89,7 +89,8 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
       if (!event.currentTarget.contains(event.relatedTarget)) apply(event.currentTarget);
     }}
     onKeyDown={event => {
-      if (!(event.target instanceof HTMLInputElement) || (event.key !== "Enter" && event.key !== "Escape")) return;
+      if (event.defaultPrevented || event.nativeEvent.isComposing ||
+          !(event.target instanceof HTMLInputElement) || (event.key !== "Enter" && event.key !== "Escape")) return;
       event.preventDefault();
       event.stopPropagation();
       if (event.key === "Escape") reset(event.currentTarget);
@@ -168,7 +169,8 @@ function QualityNumberControl({ value, min, max, step, unit, name, label, disabl
       aria-invalid={invalid || undefined} aria-describedby={invalid ? errorId : undefined}
       onInput={() => setInvalid(false)}
       onKeyDown={event => {
-        if (event.key !== "Enter" && event.key !== "Escape") return;
+        if (event.defaultPrevented || event.nativeEvent.isComposing ||
+            (event.key !== "Enter" && event.key !== "Escape")) return;
         event.preventDefault();
         event.stopPropagation();
         if (event.key === "Escape") reset();

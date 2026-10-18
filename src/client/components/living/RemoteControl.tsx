@@ -23,7 +23,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
   const [state, setState] = useState<RemoteInputState | null>(null);
   const [locked, setLocked] = useState(false);
   const [lockFailed, setLockFailed] = useState(false);
-  const [inline, setInline] = useState(true);
+  const [presentation, setPresentation] = useState<"playing" | "paused" | "external">("paused");
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -36,8 +36,9 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
   const cursor = useRef<SVGSVGElement | null>(null);
   const touchpad = useRef<RemoteTouchpad | null>(null);
   const viewport = useRef<RemoteViewport | null>(null);
-  const active = state?.state === "active" && available && inline && channel?.readyState === "open";
-  const controlled = (state?.state === "active" || state?.state === "suspended") && available && inline && channel?.readyState === "open";
+  const canControl = available && presentation === "playing";
+  const active = state?.state === "active" && canControl && channel?.readyState === "open";
+  const controlled = (state?.state === "active" || state?.state === "suspended") && canControl && channel?.readyState === "open";
   const input = useCallback((event: RemoteInputEvent) => session.current?.input(event), []);
   const reset = useCallback(() => { touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
   const closeKeyboard = () => {
@@ -63,13 +64,13 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
     };
   }, [channel]);
   useEffect(() => {
-    if (controlled || state?.mode !== "password" || !available || !inline) {
+    if (controlled || state?.mode !== "password" || !canControl) {
       setPasswordOpen(false); setPassword("");
     }
-  }, [controlled, state?.mode, available, inline]);
+  }, [controlled, state?.mode, canControl]);
   useEffect(() => {
-    if (!available || !inline) release();
-  }, [available, inline, channel, release]);
+    if (!available) release();
+  }, [available, channel, release]);
   useEffect(() => {
     if (!active) { touchpad.current?.reset(); setKeyboardOpen(false); setKeyboardDocument(null); }
   }, [active]);
@@ -114,14 +115,18 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
     if (!video) return;
     // Native PiP/fullscreen moves the picture away from the page's input surface.
     // DOM fullscreen retains that surface and can continue controlling normally.
-    const syncPresentation = () => setInline(document.pictureInPictureElement !== video &&
-      video.webkitPresentationMode !== "picture-in-picture" && !videoFullscreenState(video).nativeActive);
-    const events = ["enterpictureinpicture", "leavepictureinpicture", "webkitpresentationmodechanged", "webkitbeginfullscreen", "webkitendfullscreen"];
+    const syncPresentation = () => {
+      const external = document.pictureInPictureElement === video ||
+        video.webkitPresentationMode === "picture-in-picture" || videoFullscreenState(video).nativeActive;
+      const current = external ? "external" : video.paused || video.ended ? "paused" : "playing";
+      // Invalidate the request as well as its grant before a late approval arrives.
+      if (current !== "playing") release();
+      setPresentation(current);
+    };
+    const events = ["play", "pause", "ended", "emptied", "enterpictureinpicture", "leavepictureinpicture", "webkitpresentationmodechanged", "webkitbeginfullscreen", "webkitendfullscreen"];
     syncPresentation();
-    video.addEventListener("pause", release);
     events.forEach(event => video.addEventListener(event, syncPresentation));
     return () => {
-      video.removeEventListener("pause", release);
       events.forEach(event => video.removeEventListener(event, syncPresentation));
     };
   }, [release, videoRef]);
@@ -179,10 +184,10 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
   return <>
     <span className="lr-remote-controls" role="group" aria-label={t("remote.title")}>
       <span className="lr-remote-viewer-control">
-        <Btn icon="mouse" title={!inline ? "remote.inlineRequired" : state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
+        <Btn icon="mouse" title={presentation === "external" ? "remote.inlineRequired" : presentation === "paused" ? "remote.playbackRequired" : state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
           hint={controlled || state.state === "pending" ? "hint-remote-stop" : "hint-remote-control"}
           hintText={feedback} hintTone={state.state === "failed" ? "warn" : undefined}
-          busy={state.state === "pending"} pressed={controlled} disabled={!available || !inline || state.state === "unavailable"}
+          busy={state.state === "pending"} pressed={controlled} disabled={!canControl || state.state === "unavailable"}
           onClick={() => {
             if (controlled || state.state === "pending") release();
             else if (state.mode === "password") setPasswordOpen(open => !open);
@@ -206,7 +211,9 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
         event.preventDefault(); session.current?.request(password); setPassword("");
       }} onKeyDown={event => {
         event.stopPropagation();
-        if (event.key === "Escape") { event.preventDefault(); setPasswordOpen(false); setPassword(""); release(); }
+        if (event.key === "Escape" && !event.defaultPrevented && !event.nativeEvent.isComposing) {
+          event.preventDefault(); setPasswordOpen(false); setPassword(""); release();
+        }
       }}>
         <div className="lr-remote-panel-header">
           <strong><Glyph name="key" size={18} />{vis ? null : t("remote.password")}</strong>

@@ -61,6 +61,7 @@ export const en: Record<CopyKey, string> = {
   "remote.reason.busy": "Another Viewer is controlling. Please try again later",
   "remote.request": "Request control",
   "remote.inlineRequired": "Return the video to this page to control",
+  "remote.playbackRequired": "Play the video before requesting control",
   "remote.unavailable": "Control is unavailable for the current share",
   "remote.cancel": "Cancel request",
   "remote.stop": "End control",

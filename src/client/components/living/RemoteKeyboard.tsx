@@ -113,7 +113,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     onContextMenu={event => { if ((event.target as Element).closest("button")) event.preventDefault(); }}
     onKeyDown={event => {
       event.stopPropagation();
-      if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+      if (event.key === "Escape" && !event.defaultPrevented && !event.nativeEvent.isComposing) {
         event.preventDefault();
         if (panelWindow.detached) owner.defaultView?.close(); else close();
       }

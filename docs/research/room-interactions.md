@@ -403,7 +403,8 @@ permission to Ask each time. A Viewer ending their own control leaves the Host's
 policy in place. This adds no service, automatic sharing or control across App
 restart. Escape releases game mouse capture without ending the grant.
 Window blur releases held input. Control ends when no input surface is visible,
-or when video is locally paused or enters native PiP/fullscreen.
+or when video is locally paused or enters native PiP/fullscreen. New requests
+require the picture to be playing in the page; returning never restores a grant.
 DOM fullscreen keeps the page's input surface and retains control. Pointer motion retains the
 latest absolute sample or accumulated relative movement within a short timer,
 flushing before button/key transitions so a drag ends at its final position.
@@ -417,10 +418,9 @@ older completions cannot replace newer form feedback. Viewer request, failure an
 focus feedback stays beside the remote-control action, separate from media health.
 Desktop control uses the normal pointer, game mouse capture hides it, and touch
 control retains its visible arrow.
-Control actions use the existing playback bar. While controlling, the picture
-reserves that bar's space and keeps its actions visible, so touch users can
-open the keyboard or stop control and every image pixel remains reachable; remote key
-input does not count as keyboard navigation of playback controls.
+Control actions use the existing playback bar. While controlling, a drawer handle
+on the television frame reveals the bar, keeping picture pixels available for
+input. Remote key input does not count as keyboard navigation of playback controls.
 Host management and the Viewer's virtual keyboard can use the browser's
 always-on-top document window, reusing the same portal and state as chat.
 Closing that window returns its content to the page. Keyboard migration, blur

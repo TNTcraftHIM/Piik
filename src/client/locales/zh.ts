@@ -61,6 +61,7 @@ export const zh = {
   "remote.reason.busy": "已有其他观众正在控制，请稍后再试",
   "remote.request": "请求控制",
   "remote.inlineRequired": "将画面返回页面后，再请求控制",
+  "remote.playbackRequired": "播放画面后，再请求控制",
   "remote.unavailable": "当前分享暂不可控制",
   "remote.cancel": "取消请求",
   "remote.stop": "结束控制",
