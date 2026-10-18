@@ -61,6 +61,12 @@ boundaries exist: [shared core](../adr/0012-shared-go-backend-core.md),
 [Browser pooling](../adr/0014-browser-node-local-encoding-pool.md).
 Directory names are a map, not a requirement to introduce another layer.
 
+The official website and public Demo are optional entry points, not runtime
+dependencies of App or self-hosted rooms. Ship the Web assets with the binaries.
+Help and download navigation may prefer the reachable website, with direct
+GitHub destinations while its bounded, page-scoped check is pending or fails.
+Keep this check outside room startup, authorization and media lifecycles.
+
 ## Contract Map
 
 | Boundary | Schema/validation owners |

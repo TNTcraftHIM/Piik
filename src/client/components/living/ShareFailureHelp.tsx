@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from "react";
+import { useProjectLink } from "../../lib/use-project-link";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -18,7 +19,8 @@ export function ShareFailureHelp({ status, label, code, checks }: {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
   const hint = (status.tooltip ?? status.comic)!;
-  const guide = `https://piik.tv/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`;
+  const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
+    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, open);
   return <>
     <StatusIndicator status={status} label={label} onActivate={() => {
       setCopied("idle");

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { activateClient, isClientActivated, watchClientActivation } from "../../lib/session";
+import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
@@ -26,6 +27,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
   const { t, vis } = useCopy();
   const [state, setState] = useState<"idle" | "busy" | "ready" | "unavailable" | "incompatible">("idle");
   const [helpOpen, setHelpOpen] = useState(false);
+  const downloadURL = useProjectLink("/#download", "https://github.com/TNTcraftHIM/Piik/releases/latest", helpOpen);
   const helpId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const help = useRef<HTMLDivElement>(null);
@@ -168,7 +170,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
         <button type="button" className="lr-btn" aria-label={t("common.retry")} onClick={() => void connect()}>
           <Glyph name="refresh" size={16} /><span className={vis ? "visually-hidden" : undefined}>{t("common.retry")}</span>
         </button>
-        <a className="lr-btn" href="https://piik.tv/#download" target="_blank" rel="noopener noreferrer" aria-label={t("client.connect.download")}>
+        <a className="lr-btn" href={downloadURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.connect.download")}>
           <Glyph name="arrowDown" size={16} /><span className={vis ? "visually-hidden" : undefined}>{t("client.connect.download")}</span>
         </a>
       </div>

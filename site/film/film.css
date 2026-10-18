@@ -1,4 +1,5 @@
 @import "../../src/client/ui/palette.css";
+@import "../../src/client/components/living/button.css";
 :root { color-scheme: light; --accent:#e4572e; }
 @media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) { color-scheme:dark; --wall:var(--piik-dark-wall); --paper:var(--piik-dark-paper); --ink:var(--piik-dark-ink); --accent:#f28d66; } }
 :root[data-theme="dark"] { color-scheme:dark; --accent:#f28d66; }
@@ -37,7 +38,7 @@ body[data-ready] .fallback { display:none; }
 .quiet-play { min-height:44px; padding:6px 14px; font-size:12px; color:#52635e; }
 .play-film { transition:transform .22s cubic-bezier(.2,.9,.3,1.4),background .2s; }
 .play-film:hover { transform:translateY(-3px); background:#314557; }
-.play-film:active { transform:translateY(2px); }
+.play-film:active { transform:scale(var(--control-press-scale)); transition-duration:80ms; }
 #reduced-note { flex-basis:100%; text-align:center; font-size:12px; margin:0; }
 .transport { --wall-2:#ffffff18; position:relative; display:flex; align-items:center; gap:4px; width:min(620px,calc(100% - 48px)); margin:12px auto 14px; border:1px solid #ffffff20; border-radius:16px; padding:4px 10px; background:rgb(34 48 62 / 78%); color:#fafaf3; box-shadow:0 4px 20px #14232b15; }
 .lr-btn svg { display:block; }

@@ -201,8 +201,11 @@ threshold or quality verdict.
 
 Shared buttons and chips use pill shapes, a quiet lower edge and a short lift
 on hover or keyboard focus, then compress on press. Inputs and option tiles
-share softer corners. Keep a distinct focus ring and a persistent selected
-state; disabled controls must not pretend to activate. Reduced motion keeps
+share softer corners. Press compression uses the shared scale in `button.css`,
+centred on the control's resting bounds, without an extra downward translation.
+Keep filled buttons' border and face in the same colour state; a bright inset
+rim must not look like a gap between them. Keep a distinct focus ring and a
+persistent selected state; disabled controls must not pretend to activate. Reduced motion keeps
 the colour, outline and selected position without decorative displacement.
 The shared button uses the same pressed value for `aria-pressed` and its selected
 treatment; active state remains distinct from hover in both themes.

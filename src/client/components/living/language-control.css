@@ -43,7 +43,7 @@
 }
 .lr-lang > button:is(:hover, :focus-visible) { opacity: 1; transform: translateY(-1px); }
 .lr-lang > button:is(:hover, :focus-visible):not(.is-selected) { background: var(--wall-2); }
-.lr-lang > button:active { transform: scale(.9); }
+.lr-lang > button:active { transform: scale(var(--control-press-scale)); transition-duration: 80ms; }
 .lr-lang > .is-selected { color: var(--paper); opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .lr-lang::before, .lr-lang > button { transition: none; }

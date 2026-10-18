@@ -26,6 +26,7 @@ authorization counters for visual consistency can invalidate data or stale-work
 fences. A room number is a user-facing address, not a software version.
 The private tooling-only npm package carries no independent product version.
 The App launcher displays its installed version from the existing launcher state;
+the Web footer displays its bundled build version without a network lookup.
 Server startup logs retain the running version and revision. The website may
 display GitHub's latest stable tag and `published_at` as optional metadata, never
 a manually maintained version or the installed App's identity. Publication time
@@ -149,8 +150,8 @@ Updates remain a manual action. Release prose stays on GitHub/Gitee; the App
 does not fetch or render remote Markdown or add a second changelog store.
 Direct download remains the primary action; reading notes is optional. Keep the
 major warning inline, without a confirmation dialog or mandatory website detour.
-The same notice offers the official website's download section as a manual
-alternative, including the verified Gitee mirror. API response time does not
+The same notice links directly to the Gitee releases as a manual alternative,
+without depending on the website. API response time does not
 measure package-download throughput; do not add speed probes or automatic
 provider switching to an otherwise valid update check.
 
