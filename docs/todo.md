@@ -72,18 +72,14 @@ platform deferrals or establish a diagnosis for unmatched reports.
   the affected upstream clock. This does not diagnose every unmatched
   sustained-quality report below.
 
-- [ ] **Persistent loss with low source utilization.** An App-to-Browser field
-  trace and a controlled reproduction expose excessive budget reduction when
-  actual video uses only part of its requested bitrate. Correcting feedback
-  accounting and measurement boundaries does not resolve that behavior. CTR
-  reference/window experiments do not provide a complete repair. Evaluate mature
-  application-limited estimation against persistent loss and repeated real
-  bandwidth reductions before selecting a change;
-  [evidence and limits](./research/node-local-media-design.md#persistent-loss-with-low-source-utilization)
-  distinguish the reproduced mechanism from the still-unknown cause of field loss.
-
 ## Held By Owner
 
+- [ ] **Persistent-loss estimator replacement.** Deferred by the owner on
+  2026-10-18. Retain mature congestion control and accept quality reduction under
+  sustained high loss; no custom loss model or release prerequisite is added.
+  [Evidence and limits](./research/node-local-media-design.md#persistent-loss-with-low-source-utilization)
+  retain the low-utilization collapse and distinguish it from concrete feedback
+  accounting or recovery defects, which remain in scope for ordinary fixes.
 - [ ] **New promotional film.** Deferred until after this version's preparation
   by the owner on 2026-10-18; it is not a release prerequisite. Start with a plain
   explanation of Piik's screen sharing, then show real sharing/invitation,

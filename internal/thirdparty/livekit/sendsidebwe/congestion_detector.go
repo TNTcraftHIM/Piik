@@ -15,6 +15,7 @@
 // Modified by Piik: finalize probes from valid acknowledged measurements,
 // not the detector's retained initial capacity; retain packets across CTR groups.
 // Only fresh packet observations may advance congestion state.
+// Inconclusive completed probes back off instead of growing their next duration.
 // Includes upstream #4935: consume deltas only for TWCC symbols carrying one.
 package sendsidebwe
 
@@ -577,6 +578,7 @@ func (c *congestionDetector) Reset() {
 	c.rtt = bwe.DefaultRTT
 
 	c.packetGroups = nil
+	c.packetTracker.ResetDelay()
 
 	c.probePacketGroup = nil
 	c.probeRegulator = ccutils.NewProbeRegulator(ccutils.ProbeRegulatorParams{
@@ -872,7 +874,16 @@ func (c *congestionDetector) ProbeClusterFinalize() (ccutils.ProbeSignal, int64,
 		c.estimatedAvailableChannelCapacity = estimatedAvailableChannelCapacity
 	}
 
-	c.probeRegulator.ProbeSignal(probeSignal, pci.CreatedAt)
+	// The regulator treats every non-congesting input as a successful probe.
+	// Missing or inconclusive feedback proves no headroom: retain that result
+	// for the caller, but retry with the regulator's existing backoff policy.
+	regulatorSignal := probeSignal
+	regulatorBaseTime := pci.CreatedAt
+	if regulatorSignal == ccutils.ProbeSignalInconclusive {
+		regulatorSignal = ccutils.ProbeSignalCongesting
+		regulatorBaseTime = time.Time{} // Back off after completion, including a long feedback wait.
+	}
+	c.probeRegulator.ProbeSignal(regulatorSignal, regulatorBaseTime)
 	c.probePacketGroup = nil
 	return probeSignal, estimatedAvailableChannelCapacity, true
 }

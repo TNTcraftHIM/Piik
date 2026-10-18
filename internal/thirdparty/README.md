@@ -35,13 +35,17 @@ the temporary allocator input described below. No build-time patch is applied.
 
 Measurement corrections are marked in the modified files: probe finalization
 returns the current acknowledged capacity and rejects invalid/empty feedback;
+inconclusive probes use existing backoff from completion without growing the
+next probe or reporting measured congestion;
 probe timing begins with its first acknowledged packet, excluding pre-probe idle
 time; congestion statistics retain the packet that starts each new CTR group,
 including its received/lost accounting; overlapping TWCC feedback changes each
 packet's state once, retaining late ACKs without duplicating counts or moving
 the receive-time baseline. Only new observations advance congestion state.
-Group loss membership covers the packet tracker's history, and a new measurement
-does not inherit a later packet as its first ACK's time baseline. Piik's shared
+Group loss membership covers the packet tracker's history. Delay measurement
+advances in send order with a receive-time watermark, while older ACKs repair
+counts without rewinding it. Reset reseeds that delay baseline without discarding
+delivery history. Piik's shared
 forwarding package uses this copy for both individual transports and publications.
 Its regression checks use real TWCC feedback and retain the no-feedback and
 idle-before-probe controls. The

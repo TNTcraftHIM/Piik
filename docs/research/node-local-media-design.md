@@ -640,17 +640,27 @@ The same feedback-boundary review found that replayed observations could advance
 the congestion state without any new measurement. Long runs of delayed packets
 also exceeded the group's ACK-count-sized loss bitmap: all 172 packets could be
 received with 43 losses still counted. Group membership now covers the tracker's
-live history, while late ACKs repair only losses observed by that group. Reset
-and new measurement scopes likewise start at their own first ACK when the
-tracker's predecessor was later on either clock; otherwise old feedback could
-produce a negative traffic ratio and bandwidth. Ordinary in-group reordering retains its
-signed deltas. Pion-generated feedback controls cover replay, late arrival and
-reset; a reused bitmap slot cannot erase an expired packet's loss.
+live history, while late ACKs repair only losses observed by that group. A reused
+bitmap slot cannot erase an expired packet's loss.
 
-The low-utilization comparison still fell to about 13 kbps with these repairs,
-then restored its 5 Mbps budget about seven seconds after loss ended. These
-corrections do not solve persistent-loss collapse. Further CTR-reference and
-measurement-window experiments are not accepted production changes. Requiring
+Delay measurements now advance in send order with a receive-time watermark;
+historical ACKs repair counts without rewinding that baseline. Actual packet
+timestamps remain available. Reset reseeds delay measurement while preserving
+delivery history. This replaces a scope-local negative-delta clamp that could
+leave 100 ms of phantom queue after one reordered packet, even after hundreds of clean
+packets. A Pion TWCC control verifies queue drainage, steady acknowledged bitrate
+and packet counts; a sustained-delay control still retains congestion.
+
+Inconclusive completed probes also use the existing regulator's failure backoff
+from completion. Previously they entered its successful-probe branch, growing
+the next duration and allowing immediate retries after a long feedback wait.
+The reported result remains inconclusive and cannot raise capacity.
+
+The earlier low-utilization comparison still fell to about 13 kbps after the
+accounting repairs, then restored its 5 Mbps budget about seven seconds after loss
+ended. These results do not establish a repair for persistent-loss collapse.
+Further CTR-reference and measurement-window experiments are not accepted
+production changes. Requiring
 new ratio deterioration held about 1.19 Mbps under the same persistent loss and
 still reduced the budget after a real 120 kbps bottleneck. However, retaining
 that reference can mask later deterioration within one congestion episode;
@@ -668,8 +678,17 @@ under its application-limited policy. Its application-limited input comes from s
 activity relative to the target, not received throughput: a real bottleneck
 also lowers ACK throughput. The retained LiveKit detector has no such input;
 neither freezing loss response nor swapping to Pion's older loss controller
-establishes the same behavior. Evaluate a mature implementation at that boundary
-before changing the controller; no second quality controller is accepted.
+establishes the same behavior. Pion's
+[underutilized-source discussion](https://github.com/pion/interceptor/issues/156)
+likewise distinguishes unoffered traffic from capacity and points to
+application-limited detection and probing. This is guidance, not a drop-in repair
+for Piik's retained detector.
+
+On 2026-10-18 the owner deferred replacing the loss estimator: sustained high
+loss may reduce quality, and a custom model is not justified by the present
+tradeoff. Retain this limitation without claiming that the severe low-utilization
+case is fixed, or that every upstream implementation has the same behavior.
+Concrete feedback and recovery defects remain separate from that policy choice.
 
 ### Capture Boundary
 

@@ -168,6 +168,10 @@ func checkPublicationProbeCapacity(t *testing.T, received bool) {
 		AvailableBandwidthBps: int(target), DesiredBps: 800_000,
 		Duration: 200 * time.Millisecond, DesiredBytes: 20_000,
 	}}
+	if !received {
+		// A delayed completion must back off from now, not an expired start time.
+		info.CreatedAt = start.Add(-time.Minute)
+	}
 	bandwidth.ProbeClusterStarting(info)
 	for index := range 100 {
 		at := start.Add(time.Duration(index) * 2 * time.Millisecond).UnixMicro()
@@ -194,6 +198,9 @@ func checkPublicationProbeCapacity(t *testing.T, received bool) {
 				}
 			} else if signal != ccutils.ProbeSignalInconclusive || capacity != target {
 				t.Fatalf("unacknowledged probe changed capacity: signal=%v committed=%d", signal, capacity)
+			}
+			if !received && (bandwidth.ProbeDuration() > info.Goal.Duration || bandwidth.CanProbe()) {
+				t.Fatalf("unacknowledged probe did not back off: duration=%v ready=%v", bandwidth.ProbeDuration(), bandwidth.CanProbe())
 			}
 			bandwidth.OnCongestionStateChange(bwe.CongestionStateNone, bwe.CongestionStateCongested, target/2)
 			if bandwidth.target.Load() != target/2 {

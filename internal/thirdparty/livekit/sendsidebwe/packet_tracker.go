@@ -13,6 +13,7 @@
 // limitations under the License.
 
 // Modified by Piik: apply overlapping feedback once while retaining late ACKs.
+// Keep delay measurement monotonic without discarding packet/loss accounting.
 package sendsidebwe
 
 import (
@@ -44,6 +45,7 @@ type packetTracker struct {
 
 	baseRecvTime int64
 	piLastRecv   *packetInfo
+	lastRecvTime int64
 
 	probeClusterId         ccutils.ProbeClusterId
 	probeMaxSequenceNumber uint64
@@ -54,6 +56,15 @@ func newPacketTracker(params packetTrackerParams) *packetTracker {
 		params:         params,
 		sequenceNumber: uint64(rand.Intn(1<<14)) + uint64(1<<15), // a random number in third quartile of sequence number space
 	}
+}
+
+func (p *packetTracker) ResetDelay() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	// Keep delivery history so overlapping reports cannot count packets twice.
+	p.piLastRecv = nil
+	p.lastRecvTime = 0
 }
 
 func (p *packetTracker) RecordPacketSendAndGetSequenceNumber(
@@ -135,13 +146,22 @@ func (p *packetTracker) RecordPacketIndicationFromRemote(sn uint16, recvTime int
 	}
 	if p.baseRecvTime == 0 {
 		p.baseRecvTime = recvTime
-		p.piLastRecv = pi
 	}
 
 	pi.recvTime = recvTime - p.baseRecvTime
 	piRecv = *pi
 	if p.piLastRecv != nil {
-		sendDelta, recvDelta = pi.sendTime-p.piLastRecv.sendTime, pi.recvTime-p.piLastRecv.recvTime
+		// Historical ACKs repair counts, not the current delay baseline.
+		if pi.sequenceNumber < p.piLastRecv.sequenceNumber {
+			return
+		}
+		sendDelta = pi.sendTime - p.piLastRecv.sendTime
+		// TWCC is in send order, so receive times can go backwards. Retain the
+		// receive watermark while send time advances and drains the old queue.
+		recvDelta = max(0, pi.recvTime-p.lastRecvTime)
+		p.lastRecvTime = max(p.lastRecvTime, pi.recvTime)
+	} else {
+		p.lastRecvTime = pi.recvTime
 	}
 	p.piLastRecv = pi
 	return

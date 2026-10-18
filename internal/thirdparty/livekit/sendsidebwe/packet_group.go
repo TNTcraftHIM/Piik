@@ -14,7 +14,6 @@
 
 // Modified by Piik: use feedback state; the first receive timestamp can be zero.
 // Track loss membership for the full packet history, independently of ACK count.
-// A new measurement must not start at a later packet from a previous scope.
 package sendsidebwe
 
 import (
@@ -169,12 +168,6 @@ func (p *packetGroup) Add(pi *packetInfo, sendDelta, recvDelta int64, isLost boo
 		return err
 	}
 
-	if p.acked.numPackets() == 0 && (sendDelta < 0 || recvDelta < 0) {
-		// The tracker can reference an ACK later on either clock from before
-		// Reset or a new CTR window. Start at this scope's own first observation.
-		sendDelta, recvDelta = 0, 0
-	}
-
 	if p.minSequenceNumber == 0 || pi.sequenceNumber < p.minSequenceNumber {
 		p.minSequenceNumber = pi.sequenceNumber
 	}
@@ -200,11 +193,6 @@ func (p *packetGroup) Add(pi *packetInfo, sendDelta, recvDelta int64, isLost boo
 	// ACK clears an expired slot without undoing another packet's historical loss.
 	p.snBitmap.Clear(pi.sequenceNumber)
 
-	// note that out-of-order deliveries will amplify the queueing delay.
-	// for e.g. a, b, c getting delivered as a, c, b.
-	// let us say packets are delivered with interval of `x`
-	//   send delta aggregate will go up by x((a, c) = 2x + (c, b) -1x)
-	//   recv delta aggregate will go up by 3x((a, c) = 2x + (c, b) 1x)
 	p.aggregateSendDelta += sendDelta
 	p.aggregateRecvDelta += recvDelta
 

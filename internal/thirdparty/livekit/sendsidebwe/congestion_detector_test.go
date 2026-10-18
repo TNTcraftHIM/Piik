@@ -17,6 +17,7 @@ package sendsidebwe
 
 import (
 	"testing"
+	"time"
 
 	"github.com/pion/interceptor/pkg/twcc"
 	"github.com/pion/rtcp"
@@ -27,6 +28,60 @@ import (
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
 )
+
+func TestHandleTWCCFeedbackReorderingDrainsQueue(t *testing.T) {
+	for _, sustained := range []bool{false, true} {
+		t.Run(map[bool]string{false: "reordered-packet", true: "sustained-queue"}[sustained], func(t *testing.T) {
+			config := defaultCongestionDetectorConfig
+			config.PacketGroup.MinPackets = 2
+			c := newCongestionDetector(congestionDetectorParams{Config: config, Logger: logger.GetDiscardLogger()})
+			now := mono.UnixMicro()
+			c.RecordPacketSendAndGetSequenceNumber(now, 1200, false, 0, false)
+			var sns [400]uint16
+			for i := range sns {
+				sns[i] = c.RecordPacketSendAndGetSequenceNumber(now+int64(i+1)*10_000, 1200, false, 0, false)
+			}
+			recorder := twcc.NewRecorder(1)
+			report := func(packets []rtcp.Packet) {
+				for _, packet := range packets {
+					c.HandleTWCCFeedback(packet.(*rtcp.TransportLayerCC))
+				}
+			}
+			recorder.Record(1, sns[0], 1_100_000)
+			recorder.Record(1, sns[1], 1_210_000)
+			report(recorder.BuildFeedbackPacket())
+			if got := c.packetGroups[len(c.packetGroups)-1].PropagatedQueuingDelay(); got != 100_000 {
+				t.Fatalf("fixture queue = %d, want 100000", got)
+			}
+			c.congestionState = bwe.CongestionStateCongested
+			wantDelay, wantState := int64(0), bwe.CongestionStateNone
+			if sustained {
+				wantDelay, wantState = 100_000, bwe.CongestionStateCongested
+			}
+			for i := 2; i < len(sns); i++ {
+				recorder.Record(1, sns[i], 1_100_000+int64(i)*10_000+wantDelay)
+				if i%10 == 9 {
+					report(recorder.BuildFeedbackPacket())
+				}
+			}
+			last := c.packetGroups[len(c.packetGroups)-1]
+			if delay := last.PropagatedQueuingDelay(); delay != wantDelay || c.CongestionState() != wantState {
+				t.Fatalf("incorrect queue recovery: delay=%v state=%v, want %v/%v", time.Duration(delay)*time.Microsecond, c.CongestionState(), time.Duration(wantDelay)*time.Microsecond, wantState)
+			}
+			if rate := last.Traffic().AcknowledgedBitrate(); rate != 960_000 {
+				t.Fatalf("steady acknowledged bitrate = %d, want 960000", rate)
+			}
+			acked, lost := 0, 0
+			for _, group := range c.packetGroups {
+				acked += group.acked.numPackets()
+				lost += group.lost.numPackets()
+			}
+			if acked != len(sns) || lost != 0 {
+				t.Fatalf("reordering changed packet accounting: acked=%d lost=%d", acked, lost)
+			}
+		})
+	}
+}
 
 func TestHandleTWCCFeedbackAdvancesOnlyOnNewObservations(t *testing.T) {
 	c := newCongestionDetector(congestionDetectorParams{Config: defaultCongestionDetectorConfig, Logger: logger.GetLogger()})
