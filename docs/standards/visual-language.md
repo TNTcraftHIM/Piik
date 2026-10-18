@@ -559,7 +559,9 @@ hover fill. Light mode uses blue for actions, focus and selected controls;
 dark mode keeps navy surfaces with soft-white selection highlights and navy text.
 Primary actions such as starting a share, joining and confirming retain their
 blue fill and white foreground in both themes; theme selection must not erase
-their identity. Use the shared foreground/background pairs for both themes.
+their identity. The active remote-input outline uses that same fixed blue;
+suspended input uses the muted state. Use the shared foreground/background pairs
+for both themes.
 Selected choices use the shared face and inset outline; sliding segments use
 inverse ink/paper with the same accent outline. Subtle surface highlights
 and shadows add depth without changing control geometry or press feedback.

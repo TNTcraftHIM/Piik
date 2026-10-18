@@ -74,6 +74,7 @@ body {
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; touch-action: manipulation; }
 button:disabled { cursor: not-allowed; opacity: 0.4; }
+input[type="checkbox"]:not(:disabled) { cursor: pointer; }
 h1, h2, h3, p, dl, dd, dt { margin: 0; }
 ul { margin: 0; padding: 0; list-style: none; }
 
@@ -832,7 +833,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   flex-wrap: nowrap;
   font-size: 13px;
 }
-.lr-viewer-host-slot svg { flex: 0 0 auto; color: #53676a; }
+.lr-viewer-host-slot svg { flex: 0 0 auto; color: var(--muted); }
 .lr-viewer-host-slot b {
   min-width: 0;
   overflow: hidden;

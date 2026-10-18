@@ -1,4 +1,4 @@
-.lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: default; touch-action: none; overflow: hidden; outline: 2px solid var(--action); outline-offset: -2px; border-radius: inherit; }
+.lr-tv-screen > .lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: default; touch-action: none; overflow: hidden; outline: 2px solid var(--primary); outline-offset: -2px; border-radius: inherit; }
 .lr-remote-input-surface.is-suspended { outline-color: var(--muted); cursor: default; pointer-events: none; }
 .lr-remote-input-surface.is-locked { cursor: none; }
 .lr-remote-viewer-control { position: relative; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
@@ -79,6 +79,7 @@
 .lr-remote-text-entry { display: grid; gap: 8px; margin-bottom: 14px; }
 .lr-remote-text-entry .lr-remote-text-field { display: flex; flex-direction: column; align-items: stretch; height: auto; gap: 8px; padding: 10px; }
 .lr-remote-text-field textarea { width: 100%; min-height: 96px; max-height: 30dvh; resize: vertical; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; font: 16px/1.5 var(--mono); tab-size: 4; }
+.lr-remote-text-field textarea::placeholder { color: var(--muted); font-family: var(--font); opacity: 1; }
 .lr-remote-text-actions { display: flex; justify-content: end; }
 .lr-remote-keyboard .lr-remote-text-entry p[role="alert"] { color: var(--danger); }
 .lr-remote-text-entry .lr-btn { flex: none; width: auto; gap: 6px; padding-inline: 12px; }
