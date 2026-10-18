@@ -9,6 +9,7 @@
   --line: color-mix(in srgb, var(--ink) 20%, var(--paper));
   --action: #3478e5;
   --action-deep: #2765ce;
+  --action-ink: #fff;
   --action-text: #2055b2;
   --control-hover: #eef3ff;
   --control-selected: #e5efff;
@@ -23,11 +24,12 @@
   --piik-dark-wall-2: #2c3543;
   --piik-dark-paper: #354153;
   --piik-dark-ink: #f6f3eb;
-  --piik-dark-action: #8bb5ff;
-  --piik-dark-action-text: #a9c8ff;
+  --piik-dark-action: #f6f3eb;
+  --piik-dark-action-ink: #29374a;
+  --piik-dark-action-text: var(--piik-dark-action);
   --piik-dark-hover: #414f67;
-  --piik-dark-selected: #405779;
-  --piik-dark-selected-ink: #e2edff;
+  --piik-dark-selected: var(--piik-dark-action);
+  --piik-dark-selected-ink: var(--piik-dark-action-ink);
 }
 :root[data-theme="dark"], :root.dark {
   --wall: var(--piik-dark-wall);
@@ -35,6 +37,8 @@
   --paper: var(--piik-dark-paper);
   --ink: var(--piik-dark-ink);
   --action: var(--piik-dark-action);
+  --action-deep: var(--piik-dark-action);
+  --action-ink: var(--piik-dark-action-ink);
   --action-text: var(--piik-dark-action-text);
   --control-hover: var(--piik-dark-hover);
   --control-selected: var(--piik-dark-selected);

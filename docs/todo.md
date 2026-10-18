@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-18
+Last reviewed: 2026-10-19
 
 Explicit owner holds remain in force; an investigation does not itself
 accept a new feature or architecture. A missing device or reporter trace blocks
@@ -42,6 +42,12 @@ platform deferrals or establish a diagnosis for unmatched reports.
   Also accept the combined interaction window, including its on-demand reaction
   tray and live reactions when detached; it reuses the existing room session and palette.
   Finish owner UI acceptance before release.
+
+- [ ] **Control motion consistency.** After functional acceptance, compare
+  launcher mode cards in selected and unselected states against shared controls.
+  Align hover lift and press/release bounce where the interaction is the same;
+  avoid state-dependent displacement. The owner reported this remaining visual
+  mismatch on 2026-10-18 and prioritized functional checks first.
 
 - [ ] **macOS bundle startup acceptance (#479).** The package now contains the
   actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's

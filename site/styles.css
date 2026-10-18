@@ -20,7 +20,7 @@
   --spring: cubic-bezier(.3, 1.45, .45, 1);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { color-scheme: dark; --wall: var(--piik-dark-wall); --paper: var(--piik-dark-paper); --ink: var(--piik-dark-ink); --wall-2: var(--piik-dark-wall-2); --control-hover: var(--piik-dark-hover); --action: var(--piik-dark-action); --action-text: var(--piik-dark-action-text); --control-selected: var(--piik-dark-selected); --control-selected-ink: var(--piik-dark-selected-ink); --orange: #f28d66; --soft-orange: #3d342c; }
+  :root:not([data-theme="light"]) { color-scheme: dark; --wall: var(--piik-dark-wall); --paper: var(--piik-dark-paper); --ink: var(--piik-dark-ink); --wall-2: var(--piik-dark-wall-2); --control-hover: var(--piik-dark-hover); --action: var(--piik-dark-action); --action-deep: var(--piik-dark-action); --action-ink: var(--piik-dark-action-ink); --action-text: var(--piik-dark-action-text); --control-selected: var(--piik-dark-selected); --control-selected-ink: var(--piik-dark-selected-ink); --orange: #f28d66; --soft-orange: #3d342c; }
 }
 :root[data-theme="dark"] { color-scheme: dark; --orange: #f28d66; --soft-orange: #3d342c; }
 * { box-sizing: border-box; }
@@ -65,7 +65,7 @@ h1 { font-size: clamp(49px, 5.7vw, 76px); line-height: 1.06; margin-block: 22px 
 .text-link { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; font-weight: 650; }
 .button { display: inline-flex; justify-content: center; align-items: center; gap: 29px; min-height: 54px; padding: 12px 25px; border: 2px solid var(--ink); border-radius: 999px; text-decoration: none; font-size: 14px; font-weight: 700; transition: transform .22s cubic-bezier(.2, .9, .3, 1.4); }
 .button svg { width: 22px; height: 22px; }
-.primary { border-color: var(--action-deep); background: var(--action-deep); color: #fff; box-shadow: var(--control-shadow); }
+.primary { border-color: var(--action-deep); background: var(--action-deep); color: var(--action-ink); box-shadow: var(--control-shadow); }
 .button:not(:disabled):is(:hover, :focus-visible) { transform: translateY(-3px); box-shadow: 0 7px 0 color-mix(in srgb, var(--ink) 18%, transparent); }
 .button:not(:disabled):active { transform: var(--control-press-transform); box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 18%, transparent); transition-duration: 80ms; }
 .hero-note { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 18px; }
@@ -130,7 +130,8 @@ h3 { font-size: 21px; font-weight: 700; letter-spacing: -.03em; line-height: 1.3
 .download-architecture input:disabled { cursor: default; }
 .download-architecture label > span { position: relative; display: flex; align-items: center; justify-content: center; height: 100%; min-height: 36px; padding: 6px 12px; border: 1px solid transparent; border-radius: 18px; font-size: 12px; font-weight: 600; pointer-events: none; transition: color 140ms ease, transform 180ms var(--spring); }
 .download-architecture input:checked + span { color: var(--control-selected-ink); }
-.download-architecture input:enabled:is(:hover, :focus-visible) + span { color: var(--action-text); transform: translateY(-1px); }
+.download-architecture input:enabled:is(:hover, :focus-visible) + span { transform: translateY(-1px); }
+.download-architecture input:enabled:not(:checked):is(:hover, :focus-visible) + span { color: var(--action-text); }
 .download-architecture input:enabled:active + span { transform: var(--control-press-transform); transition-duration: 80ms; }
 .download-architecture input:focus-visible + span { outline: 3px solid var(--action); outline-offset: 3px; }
 .download-architecture:disabled { border-color: transparent; background: transparent; padding-inline: 0; }

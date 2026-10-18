@@ -6,7 +6,7 @@
 .lr-remote-feedback > svg { flex: none; }
 .lr-tv-screen > .lr-playback:has(.lr-remote-feedback) { opacity: 1; transform: none; pointer-events: auto; }
 .lr-remote-trigger { display: inline-flex; position: relative; }
-.lr-remote-count { position: absolute; top: -4px; right: -3px; min-width: 20px; padding: 0 5px; border: 2px solid var(--paper); border-radius: 12px; background: var(--action-deep); color: #fff; font: 600 11px/16px var(--font); text-align: center; pointer-events: none; }
+.lr-remote-count { position: absolute; top: -4px; right: -3px; min-width: 20px; padding: 0 5px; border: 2px solid var(--paper); border-radius: 12px; background: var(--action-deep); color: var(--action-ink); font: 600 11px/16px var(--font); text-align: center; pointer-events: none; }
 .lr-remote-panel-body { padding-block: 14px 6px; }
 .lr-remote-panel-body > .lr-switch-item { margin-bottom: 12px; }
 .lr-remote-enable-pending { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }

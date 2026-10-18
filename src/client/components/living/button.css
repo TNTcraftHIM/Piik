@@ -21,7 +21,7 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: translateY(-2px); }
 .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-primary):not(.is-on):not(.is-danger) { background: var(--control-hover); border-color: var(--ink); }
 .lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
-.lr-btn.is-primary { --primary-fill: var(--action-deep); border-color: var(--primary-fill); background: var(--primary-fill); color: #fff; }
+.lr-btn.is-primary { --primary-fill: var(--action-deep); border-color: var(--primary-fill); background: var(--primary-fill); color: var(--action-ink); }
 .lr-btn.is-primary:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { --primary-fill: color-mix(in srgb, var(--action-deep) 88%, #000); }
 .lr-btn.is-danger { border-color: var(--danger); color: color-mix(in srgb, var(--danger) 70%, var(--ink)); }
 .lr-btn.is-danger:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--danger) 10%, var(--paper)); }

@@ -549,9 +549,10 @@ App, website and documentation use the shared surface palette in
 `src/client/ui/palette.css`: a fresh pale canvas, warm white paper, blue-grey dark
 surfaces and clear text contrast. Source selection follows the same theme.
 Reserve green for cast identity and semantic state, not the general canvas or
-hover fill. Blue marks actions, focus and selected controls; use the deeper
-variant for white-on-filled actions and readable light-theme links. Selected
-choices use the shared tinted face and inset outline; sliding segments use
+hover fill. Light mode uses blue for actions, focus and selected controls;
+dark mode keeps navy surfaces with soft-white highlights and navy text on
+filled actions. Use the shared foreground/background pairs for both themes.
+Selected choices use the shared face and inset outline; sliding segments use
 inverse ink/paper with the same accent outline. Subtle surface highlights
 and shadows add depth without changing control geometry or press feedback.
 Gold upholstery, illustration and badge artwork retain their own palettes.

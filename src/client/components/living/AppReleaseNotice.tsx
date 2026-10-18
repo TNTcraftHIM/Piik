@@ -30,9 +30,15 @@ export function AppReleaseNotice({ update }: { update: ReleaseUpdateNotice }) {
         <a href={update.releaseURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.update.notes")}>
           {vis ? <Glyph name="window" size={17} /> : t("client.update.notes")}<span aria-hidden="true"> ↗</span>
         </a>
-        <a href="https://gitee.com/TNTcraftHIM/Piik/releases" target="_blank" rel="noopener noreferrer" aria-label={t("client.update.downloads")}>
-          {vis ? <Glyph name="arrowDown" size={17} /> : t("client.update.downloads")}<span aria-hidden="true"> ↗</span>
-        </a>
+        <details className="lr-client-release-mirror">
+          <summary aria-label={t("client.update.alternative")}>
+            {vis ? <Glyph name="arrowDown" size={17} /> : t("client.update.alternative")}
+            <Glyph name="chevron" size={14} />
+          </summary>
+          <a href="https://gitee.com/TNTcraftHIM/Piik/releases" target="_blank" rel="noopener noreferrer">
+            {t("client.update.downloads")}<span aria-hidden="true"> ↗</span>
+          </a>
+        </details>
       </div>
     </div>
     {major && <p id={warningId} className={vis ? "visually-hidden" : "lr-client-release-warning"}>
