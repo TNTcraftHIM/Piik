@@ -8,7 +8,7 @@
 
 SQLite has one cohesive current consumer: the room authorization aggregate. It
 is justified when application releases should retain not only a preferred code,
-but the exact Host ownership, existing Viewer invitation, revocation high-water,
+but the exact Host ownership, existing Viewer invitation, authorization generation,
 code-entry policy and password verifier. It is not a generic
 store for future features.
 
@@ -53,16 +53,17 @@ receive fresh session/peer/connection/route generations, and recommit media on a
 newly decoded frame. A surviving Host capture track may therefore recover with a
 bounded interruption; a page/browser restart still requires a new capture gesture.
 
-The application continues to clear and rebuild LiveKit rooms and the process
-resource ledger. SQLite does not make a LiveKit process restart seamless. True
-LiveKit failover remains its separate Redis/distributed/draining architecture.
+The application rebuilds embedded SFU publications, subscriptions and the process
+resource ledger. SQLite does not make a media-process restart seamless.
+LiveKit's separate Redis/distributed/draining architecture is not part of this
+embedded composition.
 
 ## Why Not A Signed Recovery Capsule
 
 A signed Host capsule is smaller only when recovery may issue a new invitation.
 It cannot prove that an older capsule is not replaying a Viewer grant revoked by
 a newer one. Stable old invitations plus strong rotate/revoke therefore require
-a durable latest-authorization-generation high-water mark. Once that durable
+a durable current authorization generation. Once that durable
 owner exists, keeping the code, credential digests, policy and verifier in
 the same SQLite row is simpler than a client capsule, signing key and second
 truth path.
@@ -73,7 +74,7 @@ The accepted implementation uses one embedded SQLite driver, one exact schema,
 one process connection and transactional low-frequency room writes. No ORM,
 event table, stats writer, compatibility reader or migration chain is added.
 Unknown schema, wrong application identity, corrupt row, inaccessible file or a
-second owner fails before signaling or LiveKit mutation.
+second owner fails before signaling or SFU resource mutation.
 
 Production activation is not an app-only cutover. It requires an access-restricted
 writable directory, configuration backup, database backup/restore procedure and

@@ -29,8 +29,8 @@ platform probe and physical gate report it.
    [media quality](../standards/media-quality.md). Audio scope adds no second
    representation or independent clock; Host commentary uses the existing mixer.
 4. Browser source switching replaces the current screen-audio track in the same
-   persistent media stream. Local Viewer play, mute, and volume stay inside the
-   native media element.
+   persistent media stream. Viewer play, mute, and volume remain local playback
+   controls, owned by the Viewer audio path rather than capture or routing.
 5. Do not describe generic Browser system audio as application-isolated. UI and
    documentation must leave source scope to the Browser's actual result.
 6. Windows process-tree audio for a selected window, and default render-device

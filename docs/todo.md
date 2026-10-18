@@ -34,8 +34,8 @@ platform deferrals or establish a diagnosis for unmatched reports.
   publication failure before the subscriber offer. A deterministic Pion trial
   established that repair can queue before primary RID admission, retaining a
   zero SSRC. The shared RTP reader now restores the admitted primary identity;
-  focused forwarding and Browser SFU lifecycle checks pass. Publish the correction
-  with separate release approval and repeat the affected deployment check. The
+  focused forwarding and Browser SFU lifecycle checks pass. Complete this repository
+  audit and acceptance, publish v2.2.1, and repeat the affected deployment check. The
   production logs match this failure boundary but do not identify the packet fields.
 
 - [ ] **SFU recovery rollout.** Shared forwarding now gives DownTrack one

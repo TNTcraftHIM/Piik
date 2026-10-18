@@ -25,7 +25,7 @@ Every room owns:
 
 - one random free code from `1000` through `9999`;
 - a SHA-256 Host-token digest and Viewer-grant digest;
-- a monotonically increasing Viewer authorization generation;
+- an opaque random Viewer authorization generation;
 - `open | private` code entry and optional salted scrypt password material.
 
 Room authority has no time limit by default. Explicit replacement or deletion
@@ -57,9 +57,11 @@ It never stores raw tokens, grants, or passwords.
 The schema is one exact current version on an embedded SQLite driver, one
 connection, one writer, and transactional room mutations. An unknown schema,
 wrong application identity, corrupt row, inaccessible path, or second owner
-fails startup before signaling or LiveKit mutation. This private pre-release
-contract has no legacy reader or migration chain. A schema cutover must preserve
-existing authority through an explicit offline operation on a verified copy,
+fails startup before signaling or SFU resource mutation. There is no automatic
+legacy reader or migration chain; published upgrades follow the
+[public compatibility promise](../standards/versioning.md#public-compatibility-promise).
+A schema cutover must preserve existing authority through an explicit offline
+operation on a verified copy,
 with the previous database and application retained for rollback. Removing the
 lease column never deletes rooms or rotates credentials.
 
@@ -68,18 +70,20 @@ media route is considered online until fresh sessions establish it again.
 
 Participants, display names, client/peer/session IDs, share generation, pause,
 quality settings, codec decisions, route graph, pending operations, first-frame
-proof, SFU tokens/resources/rooms, RTCStats, diagnostics, and logs remain
+proof, SFU publications/subscriptions, RTCStats, diagnostics, and logs remain
 process-only. Every restart creates fresh session and route authority and media
-must reconnect and recommit on a newly decoded frame. SQLite does not make a
-LiveKit restart seamless or remove the browser gesture required after capture
+must reconnect and recommit on a newly decoded frame. SQLite does not make media
+recovery seamless or remove the browser gesture required after capture
 itself ends.
 
 ### Host Ownership And Preferred Code
 
-The Host browser keeps the raw Host token and creation profile in same-origin
-local storage. The server keeps only the token digest. Clearing browser data or
-changing device loses ownership; IP, UA, hardware and browser fingerprints are
-never identity.
+Each Host tab keeps its current room and raw Host token in session storage;
+same-origin local storage keeps the resume hint and independent creation profile.
+The [Host-tab lifecycle](../standards/rooms-access.md#room-authority) owns
+cross-tab claims and resume behavior. The server keeps only the token digest.
+Clearing browser data or changing device loses ownership; IP, UA, hardware and
+browser fingerprints are never identity.
 
 The browser also remembers one non-secret preferred room code with no local
 expiry or renewal timer. It is only a future allocation hint. The server remains

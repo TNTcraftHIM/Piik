@@ -75,9 +75,11 @@ the same Browser build.
 
 - The App is one process. Room authority, the loopback capability service, and
   native media share it, so a panic in the server ends the Local session exactly
-  as a crashed Node child did, and the capability service no longer survives a
-  failed room authority. Hosted exits non-zero and systemd restarts it; nothing
-  restarts a vanished authority in place.
+  as a crashed Node child did. An ordinary Local/public room startup failure
+  leaves the resident App and capability service available under
+  [ADR-0010](./0010-cross-platform-client-runtime.md); a process crash does not.
+  Hosted exits non-zero and systemd restarts it; nothing restarts a vanished
+  authority in place.
 - Package and runtime cost falls in three places: the App package loses its
   bundled runtime and dependency tree, the application release becomes the server
   binary with its notices and revision, and a production host installs no

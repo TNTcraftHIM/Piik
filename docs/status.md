@@ -56,15 +56,14 @@ Release artifacts and operator deployment records own delivery completion;
 
 ## Current Work
 
-Current source retains the existing 2.x protocol and route owners. This phase
-combines attended keyboard/mouse control, Viewer playback settings and the
-interaction window, with shared forwarding recovery repairs. Native input is
-included in App builds and remains off until the Host enables it; its
-[prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
-owns platform evidence. The owner authorized release after final automated and
-local acceptance on 2026-10-19. [TODO](./todo.md) owns upstream follow-up,
-device acceptance and deferred work. Release artifacts and operator records own
-delivery results.
+The published v2.2.0 includes attended keyboard/mouse control, Viewer playback
+settings and the interaction window. Current maintenance retains the existing
+2.x protocol and route owners and audits the repository alongside scoped media,
+interaction and lifecycle repairs. On 2026-10-19 the owner authorized publishing
+v2.2.1 once this audit and acceptance are complete. The promotional film remains
+a local draft pending review. [TODO](./todo.md) owns upstream follow-up, device
+acceptance and deferred work. Release artifacts and operator records own delivery
+results.
 
 2.0 separates numeric media requests from presets and bounded runtime admission,
 retains successfully applied quality settings, and lets App serve an approved
