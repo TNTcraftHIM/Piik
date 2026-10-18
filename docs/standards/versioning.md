@@ -142,17 +142,18 @@ identity separately. Stable update notices ignore prereleases.
 
 ### Major-Upgrade Guidance
 
-The App update notice keeps a separate link to the selected provider's exact
-release page. A newer major adds a short, visible breaking-change notice; the
-Server logs the same distinction while preserving its checker JSON and exit
-codes. This is release guidance, not a replacement for actual wire checks.
+The App update notice keeps direct download as its primary action, with a small
+Gitee mirror link below it. A newer major adds a short, visible breaking-change
+notice linking to the selected provider's exact release page; ordinary updates
+do not add a separate release-notes control. The Server logs the same distinction
+while preserving its checker JSON and exit codes. This is release guidance,
+not a replacement for actual wire checks.
 Updates remain a manual action. Release prose stays on GitHub/Gitee; the App
 does not fetch or render remote Markdown or add a second changelog store.
-Direct download remains the primary action; reading notes is optional. Keep the
-major warning inline, without a confirmation dialog or mandatory website detour.
-The same notice links directly to the Gitee releases as a manual alternative,
-without depending on the website. API response time does not
-measure package-download throughput; do not add speed probes or automatic
+Keep the major warning inline, without a confirmation dialog or mandatory
+website detour. The mirror link opens Gitee releases without depending on the
+website. API response time does not measure package-download throughput;
+do not add speed probes or automatic
 provider switching to an otherwise valid update check.
 
 Older installed Apps cannot acquire new warning UI from release metadata.

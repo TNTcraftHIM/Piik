@@ -64,8 +64,8 @@ export function ControlsPreview() {
   const [remoteMode, setRemoteMode] = useState<RemoteControlMode>("off");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
-  const [majorUpdate, setMajorUpdate] = useState(true);
-  const releaseVersion = majorUpdate ? "v2.0.0" : "v1.1.0";
+  const [majorUpdate, setMajorUpdate] = useState(false);
+  const releaseVersion = majorUpdate ? "v3.0.0" : "v2.2.0";
   const releaseURL = `https://github.com/TNTcraftHIM/Piik/releases/tag/${releaseVersion}`;
   const [launchSite, setLaunchSite] = useState("https://demo.piik.tv");
   const [openSiteOnStart, setOpenSiteOnStart] = useState(false);

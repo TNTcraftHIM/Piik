@@ -215,9 +215,7 @@ export const zh = {
   "client.update.available": "发现新的 Piik 版本",
   "client.update.major": "发现新的 Piik 大版本",
   "client.update.majorHint": "此更新含不兼容改动。升级前请查看版本说明。",
-  "client.update.notes": "版本说明",
-  "client.update.alternative": "备用下载",
-  "client.update.downloads": "Gitee 下载",
+  "client.update.downloads": "Gitee 备用下载",
   "client.update.differentBuild": "当前构建与官方发行版不同",
   "client.update.official": "可获取 Piik 正式发行版",
 
