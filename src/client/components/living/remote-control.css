@@ -113,7 +113,11 @@
   .lr-remote-feedback > span:not(.visually-hidden) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 
+.lr-comic-tip-wrap.lr-remote-combine-hint { display: flex; justify-content: center; }
 .lr-remote-combine-keys { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; font-size: 12px; cursor: pointer; }
 .lr-remote-combine-keys input { width: 16px; height: 16px; margin: 0; accent-color: var(--action); }
 .lr-remote-combine-keys > span { display: inline-flex; align-items: center; gap: 6px; }
-.lr-remote-combine-keys kbd { font: 600 12px var(--mono); }
+.lr-remote-combine-keys kbd {
+  display: grid; place-items: center; min-width: 24px; height: 24px;
+  border: 1px solid var(--line); border-radius: 5px; font: 600 14px var(--mono);
+}

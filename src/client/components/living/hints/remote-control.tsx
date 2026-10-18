@@ -7,12 +7,17 @@ function RemoteMotion() {
 .vls-remote-cursor{animation:vlsRemoteCursor var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 .vls-remote-stop{animation:vlsRemoteStop var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-remote-pan{animation:vlsRemotePan var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-combination-modifier{animation:vlsCombinationModifier var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+.vls-combination-key{animation:vlsCombinationKey var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsRemoteCursor{0%,10%{transform:translate(-10px,8px);opacity:0}24%{opacity:1}42%,100%{transform:none;opacity:1}}
 @keyframes vlsRemoteStop{0%,12%{opacity:1}36%,100%{opacity:0}}
 @keyframes vlsRemotePan{0%,12%,72%,100%{transform:none}40%{transform:translateX(-9px)}}
-${rmBlock(["vls-remote-cursor", "vls-remote-stop", "vls-remote-pan"], [
+@keyframes vlsCombinationModifier{0%,10%,82%,100%{opacity:0}22%,68%{opacity:1}}
+@keyframes vlsCombinationKey{0%,40%,82%,100%{opacity:0}50%,68%{opacity:1}}
+${rmBlock(["vls-remote-cursor", "vls-remote-stop", "vls-remote-pan", "vls-combination-modifier", "vls-combination-key"], [
   [".vls-remote-cursor", "transform:none;opacity:1"],
   [".vls-remote-stop", "opacity:0"], [".vls-remote-pan", "transform:none"],
+  [".vls-combination-modifier,.vls-combination-key", "opacity:1"],
 ])}
 `}</style>;
 }
@@ -55,6 +60,20 @@ function MouseLockHint({ theme, lock }: { theme: ComicTheme; lock: boolean }) {
 }
 
 export const REMOTE_SCENES: Record<RemoteHintKind, HintScene> = {
+  "hint-key-combination": ({ theme }) => <><RemoteMotion />{[0, 160].map((x, index) => <g key={x}>
+    <Frame x={x + 4} w={152} theme={theme} result={Boolean(index)} />
+    <g transform={`translate(${x + 30} 26)`}>
+      <rect width={40} height={40} rx={8} fill="none" stroke={FAINT} strokeWidth={2} />
+      <rect className="vls-combination-modifier" width={40} height={40} rx={8} fill={SKY} fillOpacity={.25} stroke={SKY} strokeWidth={2} />
+      <path d="m20 10-10 11h6v9h8v-9h6Z" fill="none" stroke={FAINT} strokeWidth={2} strokeLinejoin="round" />
+    </g>
+    <path d={`M${x + 76} 46h8m-4-4v8`} stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+    <g transform={`translate(${x + 90} 26)`}>
+      <rect width={40} height={40} rx={8} fill="none" stroke={FAINT} strokeWidth={2} />
+      {Boolean(index) && <rect className="vls-combination-key" width={40} height={40} rx={8} fill={SKY} fillOpacity={.25} stroke={SKY} strokeWidth={2} />}
+      <path d="m11 29 9-18 9 18m-14-6h10" fill="none" stroke={FAINT} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </g>
+  </g>)}</>,
   "hint-remote-keyboard": ({ theme }) => <><RemoteMotion />{[0, 160].map((x, index) => <g key={x}>
     <Frame x={x + 4} w={152} theme={theme} result={Boolean(index)} />
     <MiniTv x={x + 40} y={13} w={80} h={45} />

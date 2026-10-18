@@ -60,7 +60,6 @@ you can also create a room in the online version.
 | --- | --- |
 | [Use Piik online](https://demo.piik.tv) | Share from a desktop browser, or choose Camera on a phone with browser camera support. |
 | [Download Piik App](https://piik.tv/#download) | Extract and open the App, choose **Public invite**, then **Open Piik** to create a temporary room. |
-| [Host your own site](./docs/operations/self-hosting.md) | Advanced: deploy Piik Server on a Linux x64 or ARM64 server with your own domain, then connect through Piik App or a browser. |
 
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="Choose a screen, send an invitation, watch together."></p>
 
@@ -94,6 +93,9 @@ P2P-only modes, including the App's temporary public
 link and the online version, may not connect on restrictive networks.
 
 ## Self-hosting
+
+To run a site for your group, deploy Piik Server. App users can start with
+public invitations without a server of their own.
 
 <p><a href="./docs/operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik with Docker Compose"></a></p>
 

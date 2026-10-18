@@ -30,6 +30,8 @@ with your version, system, browser and reproduction steps. The
 
 ## Run a site for your group
 
+<p><a href="../operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik Server with Docker Compose"></a></p>
+
 Self-hosting is an advanced option requiring a server, domain and network configuration.
 
 - [Deploy Piik Server](../operations/self-hosting.md) with Docker Compose or the server package.

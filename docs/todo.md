@@ -14,35 +14,6 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
-- [ ] **Attended keyboard/mouse remote control.** Windows App display/window sharing now
-  offers optional input over the existing direct, Browser/App relay and SFU
-  routes in candidate App builds. Keep one Host publication and
-  one controller, with source-scoped permission disabled by default. Local Windows
-  routed input, consent/revocation, relay recovery, window geometry and mobile
-  touch/keyboard emulation pass; the [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
-  owns implementation and evidence. Default package builds include the backend;
-  [English](./guide/getting-started.md#let-a-friend-control-your-shared-screen) and
-  [Chinese](./guide/getting-started.zh-CN.md#让朋友操作共享的电脑) usage instructions
-  cover the opt-in flow. Finish owner acceptance before release.
-  Physical Android/iOS, mixed-DPI displays, commercial games and an actual
-  remote-device trial remain. macOS Quartz/Accessibility and Linux RemoteDesktop
-  Portal backends are implemented; Linux compilation and synthetic input/release
-  checks pass, but desktop permission/capture remains unverified. macOS needs
-  physical focus/Retina/input checks. The
-  [window/game assessment](./research/room-interactions.md#window-capture-and-game-input)
-  owns platform and game-compatibility limits. This is not a public feature.
-
-- [ ] **Viewer playback settings acceptance (#477).** The current prototype adds
-  local fit/crop/stretch and per-viewing Auto/P2P/SFU choice through the existing
-  route controller and shared playback settings. Host/site policy still wins;
-  [routing](./standards/routing-transport.md#viewer-route-choice) owns the boundary.
-  Include Host input-availability feedback and retained Viewer volume preferences
-  in this UI acceptance; [presentation](./standards/presentation-lifecycle.md)
-  owns their meaning.
-  Also accept the combined interaction window, including its on-demand reaction
-  tray and live reactions when detached; it reuses the existing room session and palette.
-  Finish owner UI acceptance before release.
-
 - [ ] **macOS bundle startup acceptance (#479).** The package now contains the
   actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
   dependency on an external sibling executable. A moved-bundle assembly check
@@ -79,6 +50,12 @@ platform deferrals or establish a diagnosis for unmatched reports.
   resolutions or explicitly declined requests; retain unmatched reports as
   awaiting evidence.
 
+- [ ] **New promotional film.** Begin after publication. Explain Piik's screen
+  sharing directly, then show sharing/invitation, interaction and single-controller
+  keyboard/mouse use with explicit Host consent. Its visual direction may differ
+  from the existing film. Local key visuals and the motion study are exploratory,
+  not a finished film.
+
 ## Held By Owner
 
 - [ ] **Remote-control latency and responsiveness.** Scheduled after this release.
@@ -94,12 +71,6 @@ platform deferrals or establish a diagnosis for unmatched reports.
   [Evidence and limits](./research/node-local-media-design.md#persistent-loss-with-low-source-utilization)
   retain the low-utilization collapse and distinguish it from concrete feedback
   accounting or recovery defects, which remain in scope for ordinary fixes.
-- [ ] **New promotional film.** Deferred until after this version's preparation
-  by the owner on 2026-10-18; it is not a release prerequisite. Start with a plain
-  explanation of Piik's screen sharing, then show real sharing/invitation,
-  interaction and single-controller keyboard/mouse use with explicit Host
-  consent. Its visual direction may differ from the existing film. Local key
-  visuals and the motion study are exploratory, not a finished film.
 - [ ] **Multiple remote-control screens.** Deferred by the owner on 2026-10-17.
   Keep one shared source and the existing Host source picker; Viewer-initiated
   screen switching and simultaneous multi-screen streams are later work.
@@ -125,6 +96,13 @@ platform deferrals or establish a diagnosis for unmatched reports.
 These physical checks or reporter diagnoses remain unverified. A local repair or
 successful test is not proof of a reporter's cause; research owns the completed
 experiments and their limits.
+
+- [ ] **Remote-control device acceptance.** Verify physical Android/iOS
+  controllers, mixed-DPI displays, commercial games and an actual remote-device
+  session. macOS needs Finder/Accessibility, focus, Retina and input checks;
+  Linux needs desktop Portal permissions and capture/input checks. Existing
+  [evidence and limits](./verification-status.md#device-evidence-boundary) remain
+  distinct from build and emulated-controller acceptance.
 
 - [ ] **Sustained quality loss.** Retest the affected Native Host and the
   v1.9.2 self-hosted Browser setup with matched Host/Viewer/Server diagnostics,

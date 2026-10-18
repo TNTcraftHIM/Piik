@@ -30,6 +30,8 @@
 
 ## 为朋友搭建站点
 
+<p><a href="../operations/self-hosting.zh-CN.md#使用-docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 Piik Server"></a></p>
+
 自部署属于进阶操作，需要服务器、域名和网络配置。
 
 - [部署 Piik Server](../operations/self-hosting.zh-CN.md)：使用 Docker Compose 或服务端程序包。

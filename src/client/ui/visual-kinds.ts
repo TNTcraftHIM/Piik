@@ -158,6 +158,7 @@ export type InteractionHintKind =
 
 export type RemoteHintKind =
   | "hint-remote-keyboard"
+  | "hint-key-combination"
   | "hint-remote-control"
   | "hint-remote-stop"
   | "hint-remote-mouse-lock"

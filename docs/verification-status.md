@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-15
+Last updated: 2026-10-19
 
 This file owns physical evidence limits that change how the product may be
 described. [Status](./status.md) owns the execution/deployment index.
@@ -47,6 +47,18 @@ is required to close this phase. Investigate further only from a new failure
 or a measured improvement worth its implementation and maintenance cost.
 
 ## Device Evidence Boundary
+
+Attended keyboard/mouse control has Windows physical input and local routed
+acceptance for consent, revocation, held-key release and source geometry.
+Browser checks cover mobile touch/zoom/keyboard emulation, detached tools and
+Viewer playback preferences. Physical Android/iOS controllers, mixed-DPI displays,
+commercial games and an actual remote-device session remain unverified.
+macOS builds and packaging pass; Finder/Accessibility, focus, Retina and input
+still need a Mac. Linux compilation and synthetic input/release pass, while
+desktop Portal permissions and capture/input need physical acceptance. The
+[remote-control assessment](./research/room-interactions.md#attended-remote-control-prototype)
+owns the mechanism and game-input limits. These limits do not claim parity with
+dedicated remote-control products.
 
 Windows HDR-to-SDR has synthetic FP16 conversion and decoded
 H.264/VP8 Browser reception evidence. Local displays were in SDR mode; real HDR

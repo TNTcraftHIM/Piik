@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-10-16
+Last updated: 2026-10-19
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -101,6 +101,12 @@ implementation and routine UI detail.
   time alone is not media-failure evidence or a keepalive guarantee.
 
 ## Current Snapshot
+
+Optional attended keyboard/mouse control follows the committed media route back
+to the native Host. One source-scoped grant admits one controller; source change,
+stop and revocation retire it. It adds no separate connection planner or listener.
+Viewer playback preferences and the combined interaction window remain local
+presentation owners under the existing 2.x compatibility boundary.
 
 The current contract tuple is owned by [status](./status.md#accepted-release-contract).
 Embedded SFU SDP/ICE and demand travel over the

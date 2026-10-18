@@ -293,8 +293,8 @@ protocol change is accepted by this assessment.
 
 ## Attended Remote-Control Prototype
 
-Reviewed 2026-10-18. Remote control is included in the unpublished candidate,
-not yet a released feature. Desktop and mobile Browsers are controllers; Windows App
+Reviewed 2026-10-19. Remote control is included in the accepted release scope.
+Desktop and mobile Browsers are controllers; Windows App
 input has local physical evidence, while macOS/Linux backends remain under platform acceptance;
 controlling Android/iOS themselves is a separate platform problem. The
 [Captured Surface Control draft](https://w3c.github.io/mediacapture-surface-control/)
