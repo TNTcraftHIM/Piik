@@ -183,8 +183,8 @@ after two idle seconds, following [Media Chrome's default](https://github.com/mu
 Pause or unavailable playback keeps it visible. Control hover, keyboard focus,
 dragging and an open tooltip hold it open. Mouse movement reveals it by default;
 a touch tap on the picture toggles only visibility. The local click-to-reveal
-setting ignores movement and reveals controls on a picture click or the small
-reveal button. Remote clicks stay with input, so use that button during control;
+setting retains the cursor, ignores movement and reveals controls on a picture
+click. Remote clicks stay with input, so use the bezel pull during control;
 pointer-locked input never reveals the toolbar through mouse movement.
 One presentation hook owns visibility and the reveal preference for the current
 player, using one idle timer; it never changes playback or route state. Controls

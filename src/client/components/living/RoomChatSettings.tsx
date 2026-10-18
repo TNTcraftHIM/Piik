@@ -1,34 +1,17 @@
-import { useId, useSyncExternalStore } from "react";
-import { CHAT_HISTORY_LIMIT, CHAT_OVERLAY_LIMITS, RoomInteractionSession } from "../../lib/room-interactions";
+import { useSyncExternalStore } from "react";
+import { CHAT_HISTORY_LIMIT, RoomInteractionSession } from "../../lib/room-interactions";
 import { downloadBlob } from "../../lib/download";
 import { formatChatTranscript } from "../../lib/room-chat-export";
 import { useCopy } from "../../ui/copy";
-import { Glyph } from "../../ui/icons";
 import { Btn } from "./primitives";
-import { Tooltip } from "./Tooltip";
+import { RoomChatOverlaySettings } from "./RoomChatOverlay";
 
 export function RoomChatSettings({ session }: { session: RoomInteractionSession }) {
-  const { overlayAppearance, messages } = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const { messages } = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const { t, vis } = useCopy();
-  const id = useId();
   return <div className="lr-floating-scroll lr-chat-settings">
     {!vis && <p>{t("interaction.settingsHint")}</p>}
-    {(["scale", "opacity"] as const).map(property => {
-      const percent = Math.round(overlayAppearance[property] * 100);
-      const label = t(`interaction.overlay.${property}`);
-      return <div className="lr-chat-setting" key={property}>
-        <label htmlFor={`${id}-${property}`}>
-          {vis ? <Glyph name={property === "scale" ? "textSize" : "opacity"} size={18} /> : label}
-          <output htmlFor={`${id}-${property}`}>{percent}%</output>
-        </label>
-        <Tooltip kind="hint-chat-settings" text={vis ? undefined : label}>
-          <input id={`${id}-${property}`} type="range" min={CHAT_OVERLAY_LIMITS[property][0] * 100}
-            max={CHAT_OVERLAY_LIMITS[property][1] * 100} step={10} value={percent}
-            aria-label={label} aria-valuetext={`${percent}%`}
-            onChange={event => session.setOverlayAppearance({ ...overlayAppearance, [property]: Number(event.target.value) / 100 })} />
-        </Tooltip>
-      </div>;
-    })}
+    <RoomChatOverlaySettings session={session} />
     <div className="lr-chat-export">
       {!vis && <p>{t("interaction.ephemeral")}</p>}
       <Btn icon="save" title="interaction.export" cap="interaction.export" hint="hint-chat-export"

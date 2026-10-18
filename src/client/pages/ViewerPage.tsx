@@ -27,7 +27,7 @@ import {
 import { AppHeader, LedStrip } from "../components/living/Header";
 import type { CouchEntry } from "../components/living/Couch";
 import { RoomInteractions } from "../components/living/RoomInteractions";
-import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
+import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import { getRuntimeCapabilities } from "../lib/api";
 import { participantColor } from "../components/living/participant-color";
@@ -2259,6 +2259,7 @@ export function ViewerPage({
             />
             <PlaybackControls
               overlayAction={<RoomChatToggle session={interactionSession} />}
+              overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
               remoteActions={<RemoteControl channel={inputRoute.current} videoRef={videoRef}
                   pictureFit={pictureFit}
                   available={presentation.overlay === "none" && presentation.hasCurrentFrame} />}

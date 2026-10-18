@@ -26,16 +26,22 @@
 .lr-tv-screen:fullscreen:has(> .lr-playback) > video { aspect-ratio: auto; height: 100%; }
 .lr-tv-screen > .lr-remote-input-surface { grid-area: 1 / 1 / 3 / 2; }
 .lr-tv-screen > .lr-playback { position: relative; inset: auto; grid-area: 2 / 1; max-width: calc(100% - 16px); margin-bottom: 8px; }
-/* Remote taps belong to input. Keep a local entry when idle controls are hidden. */
-.lr-btn.lr-playback-reveal { display: none; grid-area: 2 / 1; align-self: end; justify-self: end; z-index: 4; min-width: 0; width: 44px; height: 44px; padding: 0; margin: 0 8px 8px 0; border-width: 1px; }
+/* Remote taps belong to input. The local pull stays on the bezel, outside the
+   picture; theater/fullscreen use the same pull at the screen's bottom edge. */
+.lr-playback-reveal { display: none; position: absolute; bottom: 1px; right: 18px; z-index: 4; width: 64px; height: 24px; padding: 0; border: 1px solid #dbe7ec40; border-radius: 8px; background: color-mix(in srgb, #dbe7ec 14%, var(--frame)); box-shadow: 0 1px 0 #0003; color: #dbe7ec; cursor: pointer; transition: background-color 160ms ease; }
+.lr-playback-reveal > svg { transition: transform 160ms var(--spring); }
+.lr-playback-reveal:is(:hover, :focus-visible) { background: color-mix(in srgb, #dbe7ec 24%, var(--frame)); }
+.lr-playback-reveal:is(:hover, :focus-visible) > svg { transform: translateY(1px); }
+.lr-playback-reveal:active > svg { transform: none; }
+.lr-playback-reveal:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+.lr-tv-screen > .lr-playback-reveal { right: 50%; bottom: 0; translate: 50% 0; border-radius: 10px 10px 0 0; border-bottom: 0; }
 .lr-playback-reveal-arrow { rotate: 180deg; }
-.lr-tv-screen > .lr-playback.is-hidden[data-reveal="click"] + .lr-playback-reveal,
-.lr-tv-screen:has(> .lr-remote-input-surface) > .lr-playback.is-hidden + .lr-playback-reveal { display: grid; place-items: center; }
-.lr-tv-screen:has(> .lr-remote-password) > .lr-playback-reveal,
-.lr-tv-screen > .lr-playback:has(:is(.lr-remote-feedback, [popover]:popover-open, [popover].\:popover-open)) + .lr-playback-reveal { display: none; }
+.lr-tv:has(> .lr-tv-screen > .lr-remote-input-surface):has(> .lr-tv-screen > .lr-playback.is-hidden) > .lr-tv-chin > .lr-playback-reveal,
+.lr-tv-screen:has(> .lr-remote-input-surface):has(> .lr-playback.is-hidden) > .lr-playback-reveal { display: grid; place-items: center; }
+.lr-tv:has(.lr-remote-password, .lr-playback :is(.lr-remote-feedback, [popover]:popover-open, [popover].\:popover-open)) .lr-playback-reveal { display: none; }
 .lr-tv-screen:has(> .lr-remote-password) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
 .lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay { grid-area: 1 / 1 / 2 / 2; }
-.lr-tv-screen:has(> .lr-playback.is-hidden) > video { cursor: none; }
+.lr-tv-screen:has(> .lr-playback.is-hidden[data-reveal="move"]) > video { cursor: none; }
 /* The video's own focus outline is clipped by the screen; mark its container. */
 .lr-tv-screen:has(> .lr-playback):has(> video:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-playback .lr-btn {
@@ -58,13 +64,16 @@
 .lr-viewer-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; width: 100%; }
 .lr-viewer-settings section { min-width: 0; }
 .lr-viewer-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; margin-bottom: 12px; }
-.lr-viewer-settings h3, .lr-playback-reveal-mode h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; font-weight: 650; }
+.lr-viewer-settings h3, .lr-playback-reveal-mode h3, .lr-playback-overlay-settings h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; font-weight: 650; }
 .lr-viewer-settings-heading .lr-btn { display: flex; align-items: center; gap: 5px; width: auto; height: 36px; padding: 0 8px; font-size: 12px; white-space: nowrap; }
 .lr-viewer-settings .lr-row-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .lr-viewer-settings .lr-row-group > * { min-width: 0; }
-.lr-viewer-settings .lr-chip, .lr-playback-reveal-mode .lr-chip { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 40px; padding: 6px; font-size: 12px; white-space: nowrap; }
+.lr-viewer-settings .lr-chip { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 40px; padding: 6px; font-size: 12px; white-space: nowrap; }
 .lr-playback-reveal-mode { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--control-edge); }
-.lr-playback-reveal-mode .lr-row-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; flex: 1; min-width: 180px; max-width: 276px; }
+.lr-playback-reveal-mode .lr-toggle { flex: 1; min-width: 180px; max-width: 276px; }
+.lr-playback-reveal-mode .lr-toggle button { height: 40px; padding-inline: 6px; font-size: 12px; white-space: nowrap; }
+.lr-playback-overlay-settings { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--control-edge); }
+.lr-playback-overlay-settings .lr-chat-overlay-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 8px; }
 .lr-viewer-settings p { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 10px 0 0; }
 .lr-viewer-settings p.is-error { color: var(--bad); }
 .lr-playback-display-menu { display: none; }
@@ -92,12 +101,12 @@
   .lr-playback > :is(.lr-remote-controls, .lr-playback-view)::before { margin-right: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lr-playback, .lr-playback .lr-btn { transition: none; }
+  .lr-playback, .lr-playback .lr-btn, .lr-playback-reveal, .lr-playback-reveal > svg { transition: none; }
   .lr-playback-menu:is(:popover-open, .\:popover-open), .lr-playback-settings { animation: none; }
 }
 
 @container playback-settings (max-width: 480px) {
   .lr-viewer-settings { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .lr-playback-reveal-mode { display: block; }
-  .lr-playback-reveal-mode .lr-row-group { max-width: none; margin-top: 12px; }
+  .lr-playback-reveal-mode .lr-toggle { display: grid; max-width: none; margin-top: 12px; }
 }

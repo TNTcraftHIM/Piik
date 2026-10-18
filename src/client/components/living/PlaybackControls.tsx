@@ -1,9 +1,10 @@
 import { useEffect, useId, useRef, useState, type RefObject, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { debugError } from "../../lib/debug";
-import { Btn, Cap, Chip, RowGroup } from "./primitives";
+import { Btn, Cap } from "./primitives";
 import { ViewerPlaybackSettings, type ViewerPlaybackSettingsProps } from "./ViewerPlaybackSettings";
 import { Tooltip } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
@@ -21,7 +22,7 @@ type PlaybackVisibility = ReturnType<typeof usePlaybackControlsVisibility>;
 export function PlaybackControls({
   videoRef, stream, audioTrackKey, audioAvailable, canPlay, theaterMode, onPlay,
   onToggleTheater, onReconnect, reconnectAvailable,
-  overlayAction, remoteActions, settings,
+  overlayAction, overlaySettings, remoteActions, settings,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   stream: MediaStream | null;
@@ -34,6 +35,7 @@ export function PlaybackControls({
   onReconnect: () => void;
   reconnectAvailable: boolean;
   overlayAction?: ReactNode;
+  overlaySettings?: ReactNode;
   remoteActions?: ReactNode;
   settings?: ViewerPlaybackSettingsProps;
 }) {
@@ -132,14 +134,14 @@ export function PlaybackControls({
       audioRef.current?.setLevel(level);
       audioRef.current?.setMuted(false);
     }} onToggleTheater={onToggleTheater} onReconnect={onReconnect}
-    reconnectAvailable={reconnectAvailable} overlayAction={overlayAction} remoteActions={remoteActions} settings={settings} />;
+    reconnectAvailable={reconnectAvailable} overlayAction={overlayAction} overlaySettings={overlaySettings} remoteActions={remoteActions} settings={settings} />;
 }
 
 // The film shares the rendered controls; the component above alone owns media effects.
 export function PlaybackControlsView({
   controlsRef, visibility, audio, paused, hasAudio, canPlay, theaterMode,
   fullscreen, fullscreenFailed, picture, togglePlayback, toggleFullscreen,
-  toggleMute, setLevel, onToggleTheater, onReconnect, reconnectAvailable, overlayAction, remoteActions, settings,
+  toggleMute, setLevel, onToggleTheater, onReconnect, reconnectAvailable, overlayAction, overlaySettings, remoteActions, settings,
 }: {
   controlsRef?: RefObject<HTMLDivElement | null>; visibility?: PlaybackVisibility;
   audio: ViewerAudioSnapshot; paused: boolean; hasAudio: boolean; canPlay: boolean;
@@ -148,14 +150,19 @@ export function PlaybackControlsView({
   picture: Pick<ReturnType<typeof usePictureInPicture>, "active" | "supported" | "failed" | "toggle">;
   togglePlayback: () => void; toggleFullscreen: () => void; toggleMute: () => void;
   setLevel: (level: number) => void; onToggleTheater: () => void; onReconnect: () => void;
-  reconnectAvailable: boolean; overlayAction?: ReactNode; remoteActions?: ReactNode;
+  reconnectAvailable: boolean; overlayAction?: ReactNode; overlaySettings?: ReactNode; remoteActions?: ReactNode;
   settings?: ViewerPlaybackSettingsProps;
 }) {
   const { t, vis } = useCopy();
+  const controlsId = useId();
   const localControlsRef = useRef<HTMLDivElement>(null);
   const barRef = controlsRef ?? localControlsRef;
   const menuRef = useRef<HTMLDivElement>(null);
-  useAnchoredPopover(barRef, menuRef, { align: "center", minVisibleHeight: settings ? 160 : Infinity });
+  const [chin, setChin] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setChin(barRef.current?.closest(".lr-tv")?.querySelector<HTMLElement>(".lr-tv-chin") ?? null);
+  }, [barRef]);
+  useAnchoredPopover(barRef, menuRef, { align: "center", minVisibleHeight: settings || overlaySettings ? 160 : Infinity });
   const silent = audio.muted || audio.level === 0;
   const percent = Math.round(audio.level * 100);
   const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
@@ -171,9 +178,14 @@ export function PlaybackControlsView({
       cap={caption ? theaterTitle : undefined} hint={theaterMode ? "hint-theater-exit" : "hint-theater"}
       pressed={theaterMode} onClick={onToggleTheater} />}
   </>;
+  const reveal = <button type="button" className="lr-playback-reveal" aria-label={t("playback.showControls")}
+    aria-controls={controlsId} aria-expanded={!visibility?.hidden}
+    onClick={() => barRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true })}>
+    <Glyph name="chevron" size={18} className="lr-playback-reveal-arrow" />
+  </button>;
 
   return <>
-    <div ref={barRef} className={`lr-playback lr-host-share-controls lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
+    <div id={controlsId} ref={barRef} className={`lr-playback lr-host-share-controls lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
       data-reveal={visibility?.revealOnMove === false ? "click" : "move"} role="group" aria-label={t("playback.controls")}>
       <span className="lr-playback-watch">
         <Btn icon={paused ? "play" : "pause"}
@@ -202,7 +214,7 @@ export function PlaybackControlsView({
       </span>
       {remoteActions}
       <span className="lr-playback-view">
-        <PlaybackMore panel={menuRef} settings={settings} visibility={visibility} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
+        <PlaybackMore panel={menuRef} settings={settings} overlaySettings={overlaySettings} visibility={visibility} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
           {displayActions(true)}
         </PlaybackMore>
         <span className="lr-playback-secondary">{displayActions(false)}</span>
@@ -220,17 +232,15 @@ export function PlaybackControlsView({
         ) : null}
       </span>
     </div>
-    <button type="button" className="lr-btn lr-playback-reveal" aria-label={t("playback.showControls")}
-      onClick={() => barRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true })}>
-      <Glyph name="chevron" size={18} className="lr-playback-reveal-arrow" />
-    </button>
+    {chin && !theaterMode && !fullscreen.active ? createPortal(reveal, chin) : reveal}
   </>;
 }
 
 // Native popover owns dismissal and focus return. The same actions above render
 // directly on wide players and in this compact disclosure on narrow players.
-function PlaybackMore({ panel, children, settings, visibility, onReconnect, reconnectAvailable }: {
+function PlaybackMore({ panel, children, settings, overlaySettings, visibility, onReconnect, reconnectAvailable }: {
   panel: RefObject<HTMLDivElement | null>; children: ReactNode; settings?: ViewerPlaybackSettingsProps;
+  overlaySettings?: ReactNode;
   visibility?: PlaybackVisibility;
   onReconnect: () => void; reconnectAvailable: boolean;
 }) {
@@ -245,21 +255,28 @@ function PlaybackMore({ panel, children, settings, visibility, onReconnect, reco
   const display = <div className="lr-playback-display-menu">{children}</div>;
   return <span className="lr-playback-more">
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
-    <div id={id} ref={panel} className={`lr-floating-surface lr-playback-menu${settings ? " lr-playback-settings" : ""}`} popover="auto" aria-label={t("playback.more")}
+    <div id={id} ref={panel} className={`lr-floating-surface lr-playback-menu${settings || overlaySettings ? " lr-playback-settings" : ""}`} popover="auto" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}
       onClick={event => {
         if (!event.defaultPrevented && event.target instanceof Element && event.target.closest(".lr-playback-display-menu button")) panel.current?.hidePopover();
       }}>
       {settings ? <ViewerPlaybackSettings {...settings} displayActions={display} reconnect={reconnect} />
         : <div className="lr-playback-menu-actions">{display}{reconnect}</div>}
+      {overlaySettings && <section className="lr-playback-overlay-settings" aria-label={t("playback.overlay")}>
+        <h3><Glyph name="danmaku" size={17} /><Cap k="playback.overlay" /></h3>
+        {overlaySettings}
+      </section>}
       {visibility && <section className="lr-playback-reveal-mode" aria-label={t("playback.reveal")}>
         <h3><Glyph name="mouse" size={17} /><Cap k="playback.reveal" /></h3>
-        <RowGroup>{([true, false] as const).map(move => <Chip key={String(move)}
-          selected={visibility.revealOnMove === move} title={t(move ? "playback.reveal.move" : "playback.reveal.click")}
-          onClick={() => visibility.setRevealOnMove(move)}>
-          {vis && <Glyph name={move ? "mouse" : "chevron"} size={18} className={move ? undefined : "lr-playback-reveal-arrow"} />}
-          <Cap k={move ? "playback.reveal.move" : "playback.reveal.click"} />
-        </Chip>)}</RowGroup>
+        <div className="lr-toggle" role="group" aria-label={t("playback.reveal")}>
+          {([true, false] as const).map(move => <button key={String(move)} type="button"
+            className={visibility.revealOnMove === move ? "is-selected" : undefined}
+            aria-pressed={visibility.revealOnMove === move} aria-label={t(move ? "playback.reveal.move" : "playback.reveal.click")}
+            onClick={() => visibility.setRevealOnMove(move)}>
+            {vis && <Glyph name={move ? "mouse" : "chevron"} size={18} className={move ? undefined : "lr-playback-reveal-arrow"} />}
+            <Cap k={move ? "playback.reveal.move" : "playback.reveal.click"} />
+          </button>)}
+        </div>
       </section>}
     </div>
   </span>;

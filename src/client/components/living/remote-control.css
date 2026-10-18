@@ -53,8 +53,8 @@
 .lr-remote-keyboard { min-height: 0; max-height: 65dvh; overflow-y: auto; overscroll-behavior: contain; outline: none; }
 .lr-remote-keyboard > .lr-remote-panel-header { position: sticky; top: -10px; z-index: 1; background: var(--paper); }
 .lr-remote-keyboard > * { max-width: 640px; margin-inline: auto; }
-.lr-remote-key-pages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
-.lr-remote-key-pages .lr-chip { justify-content: center; min-width: 0; min-height: 36px; padding: 4px 8px; font-size: 12px; letter-spacing: 0; }
+.lr-remote-keyboard .lr-remote-key-pages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 12px; }
+.lr-remote-keyboard .lr-remote-key-pages button { min-width: 0; height: 36px; padding: 4px 8px; font-size: 12px; letter-spacing: 0; }
 .lr-remote-key-row { display: flex; justify-content: center; gap: 4px; margin-bottom: 6px; }
 .lr-remote-key-row .lr-chip { flex: 1; }
 .lr-remote-key-layout.is-letters .lr-remote-key-row .lr-chip { flex: 0 1 calc((100% - 36px) / 10); }

@@ -1,6 +1,7 @@
-import { useState, type ReactNode, type KeyboardEvent } from "react";
+import { useState, type ReactNode } from "react";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
+import { navigateTabs } from "../../ui/tab-navigation";
 import { Cap } from "./primitives";
 
 // Presentation only. Capture, preferences and pending operations stay with the Host.
@@ -10,21 +11,9 @@ export function SharingSettings({ id, open, busy, presets, picture, pictureSumma
 }) {
   const { t } = useCopy();
   const [tab, setTab] = useState<"picture" | "sound">("picture");
-  function navigate(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.altKey || event.ctrlKey || event.metaKey) return;
-    const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
-    const current = tabs.indexOf(event.target as HTMLButtonElement);
-    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
-      : event.key === "ArrowRight" ? (current + 1) % tabs.length
-      : event.key === "ArrowLeft" ? (current + tabs.length - 1) % tabs.length : -1;
-    if (next < 0) return;
-    event.preventDefault();
-    tabs[next].focus();
-    tabs[next].click();
-  }
   return <div id={id} className={`lr-sharing-settings lr-door-reveal${open ? " is-open" : ""}`}>
     <div>{open ? <section className="lr-sharing-panel" aria-label={t("host.advanced")} aria-busy={busy}>
-      <div className="lr-toggle lr-sharing-tabs" role="tablist" aria-label={t("host.advanced")} onKeyDown={navigate}>
+      <div className="lr-toggle lr-sharing-tabs" role="tablist" aria-label={t("host.advanced")} onKeyDown={navigateTabs}>
         {(["picture", "sound"] as const).map(value => <button key={value} type="button" role="tab"
           id={`${id}-${value}-tab`} className={tab === value ? "is-selected" : undefined}
           aria-label={t(`host.settings.${value}`)} aria-selected={tab === value}

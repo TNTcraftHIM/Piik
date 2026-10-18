@@ -4,6 +4,7 @@ import type { NativeCaptureTarget } from "../../native/wire";
 import { audioApplicationKey, audioApplications, nativeCaptureTargetKey } from "../../native/capture-selection";
 import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
+import { navigateTabs } from "../../ui/tab-navigation";
 import { Tooltip } from "./Tooltip";
 import { HintComic } from "./hints";
 import { Pill } from "./primitives";
@@ -213,30 +214,7 @@ export function CaptureSourcePicker({
           style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
           role="tablist"
           aria-label={t("host.sourcePicker.title")}
-          onKeyDown={(event) => {
-            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
-              return;
-            const available = tabs.filter(tabAvailable);
-            if (!available.length) return;
-            const index = available.indexOf(activeTab);
-            const next =
-              event.key === "Home"
-                ? 0
-                : event.key === "End"
-                  ? available.length - 1
-                  : (index +
-                      (event.key === "ArrowRight" ? 1 : -1) +
-                      available.length) %
-                    available.length;
-            const nextTab = available[next]!;
-            event.preventDefault();
-            setTab(nextTab);
-            event.currentTarget
-              .querySelector<HTMLButtonElement>(
-                `[data-source-tab="${nextTab}"]`,
-              )
-              ?.focus();
-          }}
+          onKeyDown={navigateTabs}
         >
           {tabs.map((value) => {
             const button = (

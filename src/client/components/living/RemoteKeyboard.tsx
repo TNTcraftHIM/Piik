@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { RemoteInputEvent } from "../../remote-control/input-session";
 import type { RemoteInputPlatform } from "../../remote-control/protocol";
@@ -6,6 +6,7 @@ import { RemoteKeyboardPresses } from "../../remote-control/keyboard";
 import { isCopyKey, useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { panelWindowAPI, SurfaceDocument, usePanelWindow } from "../../ui/panel-window";
+import { navigateTabs } from "../../ui/tab-navigation";
 import { Btn, Chip } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import "./floating-panel.css";
@@ -25,6 +26,7 @@ const ROWS = {
 } satisfies Record<string, Key[][]>;
 const NAVIGATION: Key[] = [["Esc", "Escape"], ["Tab", "Tab"], ["␣", "Space"], ["←", "ArrowLeft"], ["↑", "ArrowUp"], ["↓", "ArrowDown"], ["→", "ArrowRight"]];
 type Page = keyof typeof ROWS | "text";
+const PAGES: readonly Page[] = ["letters", "symbols", "functions", "text"];
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
@@ -35,6 +37,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
   onSurfaceChange?: (owner: Document) => void;
 }) {
   const { t, vis } = useCopy();
+  const id = useId();
   const mac = platform === "darwin";
   const command = mac ? "MetaLeft" : "ControlLeft";
   const modifiersKeys: Key[] = [["Ctrl", "ControlLeft"], [mac ? "Opt" : "Alt", "AltLeft"], ["Shift", "ShiftLeft"],
@@ -117,14 +120,19 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       </>}
     </div>
     {panelWindow.failed && <p className="lr-floating-error" role="status">{t("floating.detachFailed")}</p>}
-    <div className="lr-remote-key-pages" role="group" aria-label={t("remote.keyPages")}>
-      {(["letters", "symbols", "functions", "text"] as const).map(id => <Chip key={id}
-        selected={page === id} title={t(`remote.keys.${id}`)} onClick={() => {
-          presses.reset(); setModifiers([]); setPage(id);
+    <div className="lr-toggle lr-remote-key-pages" role="tablist" aria-label={t("remote.keyPages")}
+      style={{ "--lr-segments": PAGES.length, "--lr-selected-index": PAGES.indexOf(page) } as CSSProperties}
+      onKeyDown={navigateTabs}>
+      {PAGES.map(value => <button key={value} type="button" role="tab" id={`${id}-${value}`}
+        className={page === value ? "is-selected" : undefined} aria-selected={page === value}
+        aria-controls={`${id}-panel`} tabIndex={page === value ? 0 : -1}
+        aria-label={t(`remote.keys.${value}`)} onClick={() => {
+          presses.reset(); setModifiers([]); setPage(value);
         }}>
-        {id === "letters" ? "ABC" : id === "symbols" ? "123" : id === "functions" ? "Fn" : vis ? <Glyph name="pencil" size={16} /> : t("remote.keys.text")}
-      </Chip>)}
+        {value === "letters" ? "ABC" : value === "symbols" ? "123" : value === "functions" ? "Fn" : vis ? <Glyph name="pencil" size={16} /> : t("remote.keys.text")}
+      </button>)}
     </div>
+    <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${page}`}>
     {page !== "text" ? <>
       <div className={`lr-remote-key-layout is-${page}`}>
         {rows.map((row, index) => <div className="lr-remote-key-row" key={index}>{row.map(key)}</div>)}
@@ -158,7 +166,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         if (!text || composing.current) return;
         input({ type: "text", text }); setText(""); editor.current?.focus();
       }}>
-        <label className="lr-input"><Glyph name="pencil" size={18} /><input ref={editor} autoFocus maxLength={128} value={text}
+        <label className="lr-input"><Glyph name="pencil" size={18} /><input ref={editor} maxLength={128} value={text}
           aria-label={t("remote.text")} placeholder={vis ? "" : t("remote.text")} autoComplete="off"
           enterKeyHint="send" onChange={event => setText(event.target.value)}
           onCompositionStart={() => { composing.current = true; }}
@@ -167,6 +175,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         <Btn icon="send" title="remote.sendText" type="submit" disabled={!text} />
       </form>
     </>}
+    </div>
     {!panelWindow.detached && mouseControl}
     {!vis && touch && <p>{t("remote.touchHelp")}</p>}
   </section></SurfaceDocument.Provider>;

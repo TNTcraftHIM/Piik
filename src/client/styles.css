@@ -1039,8 +1039,10 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
 }
 @keyframes lr-pop { 50% { transform: scale(1.06); } }
 
-/* Equal columns keep the shared two-option thumb aligned across translated captions. */
+/* Equal segments keep the shared thumb aligned across translated captions. */
 .lr-toggle {
+  --lr-segments: 2;
+  --lr-selected-index: 0;
   position: relative;
   display: inline-grid;
   grid-auto-flow: column;
@@ -1056,12 +1058,13 @@ html[data-theme="dark"] .lr-invite-url { background: #1a2634; border-color: #334
   top: 4px; bottom: 4px; left: 4px;
   border-radius: 999px;
   background: var(--ink);
+  width: calc((100% - 8px) / var(--lr-segments));
+  transform: translateX(calc(var(--lr-selected-index) * 100%));
   transition: transform 260ms var(--spring);
   pointer-events: none;
 }
-.lr-toggle::before { width: calc(50% - 4px); }
 .lr-toggle:not(:has(.is-selected))::before { opacity: 0; }
-.lr-toggle:has(> :nth-child(2).is-selected, > :nth-child(2) .is-selected)::before { transform: translateX(100%); }
+.lr-toggle:has(> :nth-child(2).is-selected, > :nth-child(2) .is-selected) { --lr-selected-index: 1; }
 .lr-toggle button {
   position: relative;
   z-index: 1;

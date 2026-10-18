@@ -267,6 +267,9 @@ force different authorities into a universal state manager.
 
 The [consistency skill](../../.agents/skills/context-consistency/SKILL.md) owns the
 review method; ordinary changes check their affected consumers.
+UI control and surface selection belongs to the
+[visual language](./visual-language.md#control-selection), including when tools
+remain attached, float or detach. Reuse that contract before adding local UI rules.
 
 These boundaries align with [W3C consistent identification](https://www.w3.org/WAI/WCAG21/Understanding/consistent-identification.html),
 [GOV.UK contribution criteria](https://design-system.service.gov.uk/community/contribution-criteria/)

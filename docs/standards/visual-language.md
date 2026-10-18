@@ -1,7 +1,7 @@
 # Visual Language
 
 This is the single design requirement for Piik's shared Web/App interface:
-illustration, semantic colour, panel grammar, motion and tooltip presentation.
+control/surface selection, illustration, semantic colour, motion and guidance.
 New UI work follows this file and the local `/__tooltip-preview` catalogue.
 [Media status](./media-status.md) owns which facts justify each status;
 [presentation lifecycle](./presentation-lifecycle.md) owns interaction
@@ -59,6 +59,45 @@ Keep existing controls in their established positions as a room becomes active.
 Represent missing room identity with a passive placeholder in its own slot;
 do not move unrelated controls into that space to fill an empty state.
 
+### Control Selection
+
+Choose by the user's task, then reuse its interaction and visual primitive.
+A sliding selection track shows a discrete choice; a range slider adjusts a
+number. Similar shapes do not make their responsibilities interchangeable.
+
+| Task | Control and existing owner |
+| --- | --- |
+| Perform an action or open a tool | `Btn`; use a stable caption and `aria-expanded` for disclosures |
+| Turn a setting on or off immediately | `SwitchItem`; compact toolbar actions such as mute use a pressed `Btn` |
+| Select independent options within a task | Native checkboxes or independent pressed `Chip`s, such as held modifier keys; a selection awaiting Apply must not look like a committed setting |
+| Choose a short, fixed mode | Shared `.lr-toggle` sliding selection; option chips/cards when individual choices need explanations, richer previews or wrapping |
+| Switch related content pages | A named tablist with one selected tab and its associated panel; use the shared sliding treatment for short labels, source cards for visual source categories, and `navigateTabs` for Arrow/Home/End navigation |
+| Pick a device or an item from a variable list | Existing named selector/menu; use source thumbnails when appearance helps identify the item |
+| Adjust a numeric value | Range slider for quick adjustment, with a visible value; reuse `QualityNumberControl` when exact entry or a wider accepted range is useful |
+| Apply several settings together | A named preset tile/chip; allow no preset to be selected when the current values are custom |
+
+Selection, expansion and pending operations describe different facts. Use the
+appropriate native/ARIA semantics even when controls share their styling.
+Tab navigation keeps focus in the tablist and preserves drafts/settings; the
+navigation key must not become a remote keystroke or start capture. Existing
+resource cleanup still applies. Value changes keep their domain owner's commit
+behavior. A `RowGroup` arranges controls; it does not own their selection.
+
+### Surface Selection
+
+Choose the smallest surface that supports the task's duration and relationship
+to the picture. Movable and detachable are separate capabilities, not upgrades
+that every popup should acquire.
+
+| Task | Surface and existing owner |
+| --- | --- |
+| Read a brief explanation | Shared `Tooltip`; no settings or required actions hidden in a hint |
+| Adjust a few contextual settings | Attached native popover with `useAnchoredPopover`; dismiss after use, no dragging or detaching |
+| Work through related settings | Inline disclosure or tabs, as in `SharingSettings`; expand into page flow rather than cover the picture |
+| Complete a bounded task before continuing | Existing modal dialog, such as source selection; contain focus and return it on close |
+| Keep a room tool available while watching or working | `FloatingPanel`, as used for interactions and Host remote permissions; retain its position without reflowing the room |
+| Use a tool outside the page | Optional `usePanelWindow` on capable browsers; reuse the same content/session, as with interactions, remote permissions and the docked remote keyboard |
+
 Persistent room utilities use the shared floating panel without reflowing the
 living room. The shell owns visibility, focus return, movement, resizing and
 viewport/keyboard bounds; contents retain their domain state. Support title-bar
@@ -85,6 +124,10 @@ Detachable tools reuse the same content in the browser's own always-on-top frame
 Close, return-to-tab, movement and resizing belong to that frame; do not duplicate
 its controls in the tool header. Keep messages and text contrast
 primary; do not simulate transparent desktop content with a washed-out panel.
+Moving or detaching changes the surface, not the domain owner or protocol.
+Reuse visibility, placement, dismissal and focus behavior through these existing
+owners; do not give each feature its own window manager. Different layouts are
+justified by task or available space, not by which feature was implemented last.
 
 Keep the application language control's segmented Chinese, English and visual
 shortcuts. When additional catalogs exist, insert one language menu
@@ -96,6 +139,8 @@ control owns menu navigation, focus and viewport placement. Keep touch rows
 large and long lists scrollable. Locale labels belong to the shared registry.
 Use a globe and chevron for the unselected picker, and each language's own full
 name in the menu, following [W3C language-navigation guidance](https://www.w3.org/International/questions/qa-navigation-select).
+
+### Guidance
 
 Help-only indicators toggle their guidance on click or tap and dismiss on a
 second activation, outside tap, Escape or focus leaving. Touch long-press opens
@@ -147,6 +192,8 @@ and overview headings. Frames, packets, jitter and audio repair have distinct
 symbols; related time measurements keep a clock with a scene identifying the
 measured stage. Illustrations explain a metric, never invent its current value,
 threshold or quality verdict.
+
+### Sharing And Playback
 
 Shared buttons and chips use pill shapes, a quiet lower edge and a short lift
 on hover or keyboard focus, then compress on press. Inputs and option tiles
@@ -202,9 +249,13 @@ these responsibilities at every width. Show the remote group only when the Host
 offers control; keep both entries in place and enable the keyboard on control grant.
 The capsule floats inside the picture's lower edge with a small inset. Watching
 and remote input share that geometry; granting or ending control never moves it.
-Remote input keeps its own clicks. When controls hide during remote input or
-click-to-reveal mode, retain a small local entry without sending Host input.
+Remote input keeps its own clicks. When controls hide during remote input,
+retain a local pull on the TV bezel, away from the status lamp. Theater and
+fullscreen place it at the screen edge. Ordinary viewing reveals controls on
+the picture itself without another button.
 Put the reveal preference in playback settings, not another toolbar action.
+Keep the chat-overlay toggle in the bar; its appearance settings also belong in
+playback settings and reuse the interaction window's controls and local owner.
 Shorten the volume slider before moving display modes into settings; keep the
 bar on one line at supported mobile widths.
 Viewer settings use a brief anchored popover, preferring space below the picture
@@ -626,6 +677,19 @@ stationary and manually scrollable instead of discarding the hidden words.
   here instead of copying the palette, cast or animation table.
 
 ## Interaction References
+
+[Fluent tabs](https://fluent2.microsoft.design/components/web/react/core/tablist/usage),
+[switches](https://fluent2.microsoft.design/components/web/react/core/switch/usage)
+and [sliders](https://fluent2.microsoft.design/components/web/react/core/slider/usage)
+distinguish content navigation, immediate binary settings and numeric adjustment.
+[WAI-ARIA tabs](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/)
+defines the shared selection, focus and keyboard contract.
+[GNOME popovers](https://developer.gnome.org/hig/patterns/containers/popovers.html)
+and [utility panes](https://developer.gnome.org/hig/patterns/containers/utility-panes.html)
+distinguish brief contextual adjustments from tools alongside the main view.
+Piik's floating/detached tool choice applies that distinction to watching and
+remote input; [Document Picture-in-Picture](https://developer.chrome.com/docs/web-platform/document-picture-in-picture)
+supplies the optional native window and its lifetime boundary.
 
 [Carbon status indicators](https://v10.carbondesignsystem.com/patterns/status-indicator-pattern/)
 supports combining semantic colour with shape and symbols;

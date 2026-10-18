@@ -86,6 +86,7 @@ export const en: Record<CopyKey, string> = {
   "playback.controls": "Player controls",
   "playback.showControls": "Show playback controls",
   "playback.reveal": "Show controls",
+  "playback.overlay": "On-screen chat",
   "playback.reveal.move": "On movement",
   "playback.reveal.click": "On click",
   "playback.more": "Playback settings",

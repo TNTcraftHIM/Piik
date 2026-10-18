@@ -68,11 +68,7 @@ button.lr-chat-avatar:focus-visible { outline-offset: -3px; }
 .lr-chat-compose[hidden] { display: none; }
 .lr-chat-settings { flex: 1; padding-block: 18px; }
 .lr-chat-settings > p { margin: 0 0 20px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.lr-chat-setting { margin-bottom: 22px; }
-.lr-chat-setting > label { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 28px; font-size: 13px; }
-.lr-chat-setting output { color: var(--muted); font: 12px var(--mono); }
-.lr-chat-setting > .lr-comic-tip-wrap { display: flex; width: 100%; }
-.lr-chat-setting input[type="range"] { width: 100%; min-height: 40px; margin: 0; accent-color: var(--action); cursor: pointer; }
+.lr-chat-settings > .lr-chat-overlay-settings { margin-bottom: 22px; }
 .lr-chat-export { display: grid; justify-items: start; gap: 8px; padding-top: 16px; border-top: 1px solid var(--wall-2); }
 .lr-chat-export > p { margin: 0 0 6px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .lr-chat-export small { color: var(--muted); font-size: 12px; line-height: 1.6; }

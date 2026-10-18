@@ -17,6 +17,12 @@
 @container (height < 78px) { .lr-chat-flight[data-lane="1"] { visibility: hidden; } }
 @container (height < 44px) { .lr-chat-flight { visibility: hidden; } }
 .lr-chat-overlay-toggle { display: inline-flex; }
+.lr-chat-overlay-settings { display: grid; gap: 18px; }
+.lr-chat-setting { min-width: 0; }
+.lr-chat-setting > label { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 28px; font-size: 13px; }
+.lr-chat-setting output { color: var(--muted); font: 12px var(--mono); }
+.lr-chat-setting > .lr-comic-tip-wrap { display: flex; width: 100%; }
+.lr-chat-setting input[type="range"] { width: 100%; min-height: 40px; margin: 0; accent-color: var(--action); cursor: pointer; }
 [data-comic-reduced-motion] .lr-chat-flight { animation: none; left: 12px; }
 @media (prefers-reduced-motion: reduce) {
   .lr-chat-flight { animation: none; left: 12px; }

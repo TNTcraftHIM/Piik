@@ -86,6 +86,7 @@ export const zh = {
   "playback.controls": "播放器控件",
   "playback.showControls": "显示播控",
   "playback.reveal": "播控呼出",
+  "playback.overlay": "弹幕",
   "playback.reveal.move": "移动鼠标",
   "playback.reveal.click": "点击呼出",
   "playback.more": "播放设置",

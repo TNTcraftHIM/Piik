@@ -20,7 +20,9 @@ platform deferrals or establish a diagnosis for unmatched reports.
   one controller, with source-scoped permission disabled by default. Local Windows
   routed input, consent/revocation, relay recovery, window geometry and mobile
   touch/keyboard emulation pass; the [prototype boundary](./research/room-interactions.md#attended-remote-control-prototype)
-  owns implementation and evidence. Finish owner acceptance before release.
+  owns implementation and evidence. Finish owner acceptance before release;
+  normal packages still omit the build tag. Public activation must include the
+  package build setting and matching English/Chinese usage instructions.
   Physical Android/iOS, mixed-DPI displays, commercial games and an actual
   remote-device trial remain. macOS Quartz/Accessibility and Linux RemoteDesktop
   Portal backends are implemented; Linux compilation and synthetic input/release
