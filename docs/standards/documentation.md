@@ -67,8 +67,14 @@ audit-summary directories or replacement archives of completed work.
 
 Published copy describes Piik's behavior and design directly. Remove discarded
 design labels, private operational details and conversational comparisons to
-other products. Retain primary technical evidence and required attribution or
-license notices; rewriting prose must not obscure the origin of reused work.
+other products. Describe visual choices in Piik's own design vocabulary.
+Retain relevant public technical references beside the claims they support,
+using accurate names and direct links without implying affiliation or endorsement.
+Local research inventories do not belong in product copy; keep source provenance
+accurate rather than relabel private observations as public documentation.
+Credit reused code and assets through their existing license and notice owners;
+a reference or thank-you does not replace permission or required attribution.
+Preserve accepted contributors' authorship under [CONTRIBUTING](../../CONTRIBUTING.md).
 
 ## Consolidation And Ablation
 
