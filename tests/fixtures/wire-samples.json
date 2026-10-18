@@ -1088,6 +1088,18 @@
       "valid": true
     },
     {
+      "name": "room-reaction-clown-targeted",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"clown\",\"targetPeerId\":\"viewer_12345678\"}}",
+      "valid": true
+    },
+    {
+      "name": "room-reaction-eyeroll-untargeted",
+      "schema": "client",
+      "json": "{\"type\":\"send-room-interaction\",\"requestId\":\"request_12345678\",\"payload\":{\"kind\":\"reaction\",\"reaction\":\"eyeroll\"}}",
+      "valid": true
+    },
+    {
       "name": "numeric-audio-6000",
       "schema": "client",
       "json": "{\"type\":\"set-quality-settings\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":6000}}",

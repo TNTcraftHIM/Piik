@@ -19,6 +19,7 @@ import { locales, type TitleFrameKey } from "../locales";
 import { composeDocumentTitle, useDocumentTitle } from "../ui/document-title";
 import { HOST_STATUS_SCENARIOS, STATUS_SCENARIOS } from "./status-preview-scenarios";
 import "./status-preview.css";
+import { usePreviewAnchor } from "./use-preview-anchor";
 
 function StatusMark({ status }: { status: StatusDescriptor }) {
   const { t, vis } = useCopy();
@@ -31,6 +32,7 @@ function StatusMark({ status }: { status: StatusDescriptor }) {
 }
 
 export function StatusPreviewPage() {
+  usePreviewAnchor();
   const { lang, vis, t, titleFrames } = useCopy();
   const [selected, setSelected] = useState("playing");
   const [reducedMotion, setReducedMotion] = useState(false);

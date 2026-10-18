@@ -135,11 +135,14 @@ Sending keeps it open for repeated interaction, with the existing short cooldown
 Confirmation never changes menu visibility; failure stays visible in the card.
 Opening or closing a reaction card preserves the chat draft and unread state.
 The interaction window keeps one composer with an on-demand reaction tray.
-Its recipient strip uses the same room identities and the couch's shared palette;
-the input and reading position stay in place. Opening the tray from its button
-focuses the selected person; Escape returns to that button. Typing or pressing Escape dismisses
-the tray; sending a reaction keeps it open. While it is closed, the newest live
-reaction briefly shows its sender and recipient with the same animation renderer.
+Its recipient strip uses the same room identities and the couch's shared palette.
+The tray shortens the scrollable message list rather than covering messages;
+the input and reading position stay in place. Its composer button or a current
+participant's message avatar opens it and focuses the selected person; Escape
+returns to that opener. Avatars of departed participants remain non-interactive.
+Typing or pressing Escape dismisses the tray; sending a reaction keeps it open.
+While it is closed, the newest live reaction briefly shows its sender and recipient
+with the same animation renderer.
 It adds neither a message history entry nor an independent expiry timer. This
 follows the on-demand member controls in
 [Discord](https://support.discord.com/hc/en-us/articles/223657667-Group-Chat-and-Calls)

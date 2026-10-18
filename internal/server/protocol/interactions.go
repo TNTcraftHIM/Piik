@@ -98,7 +98,7 @@ func decodeSendRoomInteraction(data []byte) (ClientMessage, error) {
 	// must never acquire meaning merely because its identifier is well-formed.
 	if message.Payload.Kind == "reaction" {
 		switch message.Payload.Reaction {
-		case "wave", "heart", "clap", "laugh", "wow", "party", "fire", "eyes", "star", "sleep", "tomato", "poop":
+		case "wave", "heart", "clap", "laugh", "wow", "party", "fire", "eyes", "star", "sleep", "clown", "eyeroll", "tomato", "poop":
 		default:
 			return nil, errors.New("unknown reaction")
 		}

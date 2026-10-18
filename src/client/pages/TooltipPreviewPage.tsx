@@ -11,6 +11,7 @@ import { useCopy, type CopyKey } from "../ui/copy";
 import { replaySvgAnimations } from "../ui/animation";
 import { MetricCells } from "../components/living/Metrics";
 import { EMPTY_METRICS } from "../types";
+import { usePreviewAnchor } from "./use-preview-anchor";
 
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
   { label: "说明 / Neutral", kind: "hint-volume", tone: "off", motion: "demo", text: "playback.volume" },
@@ -56,6 +57,7 @@ function PreviewCard({ kind, tone, motion, label, text }: {
 }
 
 export function TooltipPreviewPage() {
+  usePreviewAnchor();
   const { t, lang } = useCopy();
   const en = lang === "en";
   const [reducedMotion, setReducedMotion] = useState(false);
