@@ -93,6 +93,10 @@ func (engine *Engine) BeginPunch(connectionID string, source *Source, servers []
 	if err != nil || len(key) != 32 || connectionID == "" || len(connectionID) > 256 {
 		return nil, errors.New("invalid connection preparation")
 	}
+	// Publication registration takes the engine before its source. Keep the
+	// same order so preparing a peer cannot deadlock an SFU publication.
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
 	if source != nil {
 		source.mu.Lock()
 		defer source.mu.Unlock()
@@ -100,8 +104,6 @@ func (engine *Engine) BeginPunch(connectionID string, source *Source, servers []
 			return nil, errors.New("media source is unavailable")
 		}
 	}
-	engine.mu.Lock()
-	defer engine.mu.Unlock()
 	if engine.closed || engine.punch != nil {
 		return nil, errors.New("connection preparation is unavailable")
 	}

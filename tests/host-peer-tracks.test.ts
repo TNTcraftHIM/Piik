@@ -5,6 +5,7 @@ import {
   type QualityProfile,
 } from "../src/client/media/quality.ts";
 import { HostProvisionalChild } from "../src/client/media/host-provisional-child.ts";
+import { senderQualityEvidenceFromSnapshot } from "../src/client/media/sender-quality-evidence.ts";
 import { EMPTY_METRICS, type PeerSnapshot } from "../src/client/types.ts";
 import { HostPeer, RENEGOTIATION_ANSWER_TIMEOUT_MS, type HostMediaPeer } from "../src/client/webrtc/host-peer.ts";
 import {
@@ -560,6 +561,47 @@ function encodedPeerFixture() {
 }
 
 describe("HostPeer sender-frame lifetime", () => {
+  it("retires sender evidence with its connection", () => {
+    const peer = createPeer(createStream(createTrack("video", "source"), null));
+    const snapshot = peer.getSnapshot();
+    expect(senderQualityEvidenceFromSnapshot(snapshot, 1)?.state).toBe("unknown");
+    expect(senderQualityEvidenceFromSnapshot(snapshot, 1)).toBeNull();
+    peer.dispose();
+    expect(senderQualityEvidenceFromSnapshot(snapshot, 1)?.state).toBe("unknown");
+  });
+
+  // Channel setup can fail before the peer reaches its disposal owner.
+  it.each(["allocation", "binding"] as const)(
+    "closes the allocated connection when input channel %s fails",
+    (failure) => {
+      const video = createTrack("video", "input-setup");
+      const error = new DOMException("Input setup failed", "OperationError");
+      class InputConnection extends FakePeerConnection {
+        createDataChannel(): RTCDataChannel {
+          if (failure === "allocation") throw error;
+          return {} as RTCDataChannel;
+        }
+      }
+      vi.stubGlobal("RTCPeerConnection", InputConnection);
+      expect(() => new HostPeer(
+        "viewer-peer",
+        { iceServers: [] },
+        createStream(video, null),
+        QUALITY_PROFILES["720p30"],
+        {
+          sendSignal: () => true,
+          onUpdate: () => {},
+          onInputChannel: () => { throw error; },
+        },
+      )).toThrow(error);
+      expect(FakePeerConnection.latest?.connectionState).toBe("closed");
+      expect(FakePeerConnection.activeCount).toBe(0);
+      const clone = vi.mocked(video.clone).mock.results[0]!.value;
+      expect(clone.stop).toHaveBeenCalledOnce();
+      expect(video.stop).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(["current", "replaced", "pending"])("handles a %s frame input ending in its owning operation", async (phase) => {
     const endings: Array<{ track: MediaStreamTrack; end: () => void }> = [];
     vi.spyOn(senderTracks, "cloneSenderVideoTrack").mockImplementation((source, onEnded) => {

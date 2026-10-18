@@ -8,6 +8,10 @@ import type {
 import { HostSfuRoute } from "../src/client/media/host-sfu-route.ts";
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
 import {
+  invalidateSenderQualityEvidence,
+  sfuPublisherQualityEvidenceFromMetrics,
+} from "../src/client/media/sender-quality-evidence.ts";
+import {
   exactPeerSignalOwner,
   MediaRouteTransition,
   reportActivePeerRouteFailure,
@@ -665,6 +669,13 @@ describe("minimal route transition contracts", () => {
   });
 
   it("replaces a Host physical connection within one publication and fences stale signaling", async () => {
+    invalidateSenderQualityEvidence();
+    const metrics = {
+      ...EMPTY_METRICS, sampleTimestampMs: 1_000, sampleWindowMs: 2_000,
+      intervalFramesEncoded: 30, nativeEdgeQualityState: "healthy" as const,
+      qualityLimitationReason: "none",
+    };
+    const evidence = () => sfuPublisherQualityEvidenceFromMetrics(metrics, 1, "publication");
     const publishers: ReturnType<typeof createFakePublisher>[] = [];
     const route = new HostSfuRoute({
       getStream: () => ({}) as MediaStream,
@@ -681,16 +692,23 @@ describe("minimal route transition contracts", () => {
     await route.acceptAndWait({ revision: 1, phase: "active", assignment: hostAssignment("publication") });
     const first = sfuConfig(1, "publication");
     await route.acceptConfig(first);
+    expect(evidence()?.state).toBe("unknown");
+    metrics.sampleTimestampMs += 2_000;
+    expect(evidence()?.state).toBe("healthy");
     const replacement = { ...first, connectionId: "replacement_connection" };
     await route.acceptConfig(replacement);
     expect(publishers).toHaveLength(2);
     expect(publishers[0]!.disconnect).toHaveBeenCalledOnce();
     expect(publishers[1]!.disconnect).not.toHaveBeenCalled();
+    metrics.sampleTimestampMs += 2_000;
+    expect(evidence()?.state).toBe("healthy");
     await route.acceptSignal({ ...first, type: "sfu-signal", kind: "candidate", candidate: { candidate: "old" } });
     expect(publishers[0]!.acceptSignal).not.toHaveBeenCalled();
     await route.acceptSignal({ ...replacement, type: "sfu-signal", kind: "candidate", candidate: { candidate: "current" } });
     expect(publishers[1]!.acceptSignal).toHaveBeenCalledOnce();
     await route.disconnect();
+    metrics.sampleTimestampMs += 2_000;
+    expect(evidence()?.state).toBe("unknown");
   });
 
   it("reports and retires an exact active SFU source replacement failure", async () => {

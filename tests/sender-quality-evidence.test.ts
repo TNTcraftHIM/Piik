@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   invalidateSenderQualityEvidence,
+  retireSenderQualityEvidence,
+  retireSfuPublisherQualityEvidence,
   senderQualityEvidenceFromSnapshot,
   sfuPublisherQualityEvidenceFromMetrics,
 } from "../src/client/media/sender-quality-evidence.ts";
@@ -38,6 +40,43 @@ function report(
 }
 
 describe("native sender quality evidence", () => {
+  it.each(["failed", "closed"] as const)("does not retain a retired %s snapshot", (connectionState) => {
+    invalidateSenderQualityEvidence();
+    const snapshot: PeerSnapshot = {
+      peerId: "viewer_12345678", connectionId: "connection_12345678",
+      connectionState: "connected", iceConnectionState: "connected", error: null,
+      metrics: { ...EMPTY_METRICS },
+    };
+    expect(senderQualityEvidenceFromSnapshot(snapshot, 2)?.state).toBe("unknown");
+    expect(senderQualityEvidenceFromSnapshot({ ...snapshot, connectionState }, 2)).toBeNull();
+    expect(senderQualityEvidenceFromSnapshot(snapshot, 2)?.state).toBe("unknown");
+  });
+
+  it.each(["direct", "publication"])("retires only the released %s identity", (path) => {
+    invalidateSenderQualityEvidence();
+    const metrics = {
+      ...EMPTY_METRICS, sampleTimestampMs: 1_000, sampleWindowMs: 2_000,
+      rtpStatsId: "outbound-1", trackIdentifier: "track-1", intervalFramesEncoded: 30,
+      nativeEdgeQualityState: "healthy" as const, qualityLimitationReason: "none",
+    };
+    const emit = (identity: string) => path === "direct"
+      ? senderQualityEvidenceFromSnapshot({
+        peerId: "viewer_12345678", connectionId: identity,
+        connectionState: "connected", iceConnectionState: "connected", error: null, metrics,
+      }, 2)
+      : sfuPublisherQualityEvidenceFromMetrics(metrics, 2, identity);
+    const retired = "retired_12345678";
+    const live = "live_12345678";
+    expect(emit(retired)?.state).toBe("unknown");
+    expect(emit(live)?.state).toBe("unknown");
+    if (path === "direct") retireSenderQualityEvidence(retired);
+    else retireSfuPublisherQualityEvidence(retired);
+    expect(emit(retired)?.state).toBe("unknown");
+    expect(emit(live)).toBeNull();
+    metrics.sampleTimestampMs += 2_000;
+    expect(emit(live)?.state).toBe("healthy");
+  });
+
   it.each(["direct", "publication"])("preserves %s observations independently of control evidence", (path) => {
     invalidateSenderQualityEvidence();
     const metrics = {

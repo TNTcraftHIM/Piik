@@ -27,8 +27,8 @@ consumer and a distinct responsibility.
 
 The App binds IPv4 loopback on a bounded range (`39721`-`39730`). `/health`
 returns the protocol version, service identity, selected port, and an
-`instanceToken`. `/control` admits one WebSocket session whose subprotocol
-contains that same value. The first frame must be `hello`; subsequent requests
+`instanceToken`. `/control` admits up to two WebSocket sessions whose subprotocols
+contain that same value. The first frame must be `hello`; subsequent requests
 are limited to capability discovery, source preview, and one generation-fenced
 share's media controls.
 
@@ -37,9 +37,10 @@ unrelated listener. It is visible through health and stdout and is not an
 authentication secret. Host and Origin checks plus Chromium's Local Network
 Access permission form the Browser boundary.
 
-The current protocol advertises only the native capabilities and
-generation-fenced media commands that have consumers. It carries no room
-credentials or route policy; those stay in the Browser/server protocol.
+The current protocol advertises native capabilities and generation-fenced media
+commands that have consumers. The Browser also delivers authenticated remote-input
+peer identities and their scoped secrets to the native input owner. Room access
+credentials and route policy stay in the Browser/server protocol.
 
 ## App Composition
 

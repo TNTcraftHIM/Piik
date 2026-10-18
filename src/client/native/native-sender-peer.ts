@@ -5,6 +5,7 @@ import type {
   SignalPayload,
 } from "../../shared/protocol";
 import { EMPTY_METRICS, type PeerSnapshot } from "../types";
+import { retireSenderQualityEvidence } from "../media/sender-quality-evidence";
 import type { HostMediaPeer } from "../webrtc/host-peer";
 import { NativeSenderEdge, type NativeEdgeControl } from "./native-sender-edge";
 import type { NativeVideoCodec } from "./wire";
@@ -223,6 +224,7 @@ export class NativeSenderPeer implements HostMediaPeer {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    retireSenderQualityEvidence(this.connectionId);
     this.edge.dispose();
   }
 }

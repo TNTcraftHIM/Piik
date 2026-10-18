@@ -22,6 +22,7 @@ import {
   type QualityProfile,
 } from "../media/quality";
 import { cloneSenderVideoTrack, stopSenderVideoTrack } from "../media/sender-video-track";
+import { retireSenderQualityEvidence } from "../media/sender-quality-evidence";
 import { EMPTY_METRICS, type PeerSnapshot } from "../types";
 import {
   captureMetrics,
@@ -137,8 +138,9 @@ export class HostPeer {
       : null;
     this.startupVideoProfilePending = needsStartupVideoProfile(desiredProfile);
     this.encodedStreamsEnabled = !!videoPool && supportsBrowserEncoding();
+    let allocatedConnection: RTCPeerConnection | null = null;
     try {
-      this.connection = new RTCPeerConnection({
+      this.connection = allocatedConnection = new RTCPeerConnection({
         ...(this.encodedStreamsEnabled ? { encodedInsertableStreams: true } : {}),
         iceServers: iceServersWithNatPrediction(
           iceConfig.iceServers,
@@ -148,6 +150,7 @@ export class HostPeer {
       });
       if (events.onInputChannel) events.onInputChannel(this.connection.createDataChannel(INPUT_CHANNEL), this.connection);
     } catch (error) {
+      allocatedConnection?.close();
       stopSenderVideoTrack(this.senderVideoTrack);
       throw error;
     }
@@ -517,6 +520,7 @@ export class HostPeer {
       return;
     }
     this.lifetime.abort();
+    retireSenderQualityEvidence(this.connectionId);
     this.nextNegotiationEpoch();
     this.ordinaryAnswerEpoch = null;
     this.pendingNegotiation = false;

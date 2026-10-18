@@ -941,10 +941,14 @@ static gboolean bus_message(GstBus *bus, GstMessage *message, gpointer data) {
     } else if (!failed->failed) {
       failed->failed = TRUE;
       set_output_active(failed, FALSE);
+      // A byte limit can split a localized diagnostic's final UTF-8 character.
+      // Keep this optional error valid so the Go reader retains healthy outputs.
+      char *detail = g_utf8_make_valid(cause, MIN(strlen(cause), 512));
       if (!write_frame(6, 0, (guint8)failed->layer, 0, 0, 0, 0,
-                       (const guint8 *)cause, MIN(strlen(cause), 512))) {
+                       (const guint8 *)detail, strlen(detail))) {
         fail_run(run, "native media output closed");
       }
+      g_free(detail);
     }
     g_clear_error(&error);
     g_free(debug);

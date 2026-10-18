@@ -115,6 +115,9 @@ describe("native Host peer quality", () => {
       },
     });
     peer.dispose();
+    expect(senderQualityEvidenceFromSnapshot(snapshots.at(-1)!, 7)).toMatchObject({
+      state: "unknown",
+    });
   });
 
   it("applies the latest relay ceiling before preparing a child", async () => {

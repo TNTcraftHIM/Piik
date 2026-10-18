@@ -470,7 +470,7 @@ static gboolean verify_sibling_survives(gpointer data) {
   return G_SOURCE_REMOVE;
 }
 
-static void check_output_failure_isolation(gboolean post_error) {
+static void check_output_failure_isolation(gboolean post_error, const char *error_detail) {
   FailureFixture fixture = {.run = {.output_count = 2}, .frames_at_failure = -1};
   CaptureRun *run = &fixture.run;
   g_mutex_init(&run->lock);
@@ -484,7 +484,7 @@ static void check_output_failure_isolation(gboolean post_error) {
       "frames. ! valve name=gate1 drop=true ! ( queue max-size-buffers=1 "
       "max-size-bytes=0 max-size-time=0 leaky=downstream ! "
       "identity name=encoder1 ! fakesink name=good signal-handoffs=true sync=false async=false )",
-      post_error ? 3 : -1);
+      post_error && error_detail == NULL ? 3 : -1);
   GError *error = NULL;
   run->pipeline = gst_parse_launch(description, &error);
   g_free(description);
@@ -525,6 +525,7 @@ static void check_output_failure_isolation(gboolean post_error) {
   g_assert_cmpint(gst_element_set_state(run->pipeline, GST_STATE_PLAYING), !=, GST_STATE_CHANGE_FAILURE);
   g_assert_true(set_output_active(&run->outputs[0], TRUE));
   g_assert_true(set_output_active(&run->outputs[1], TRUE));
+  if (error_detail != NULL) fail_output(&run->outputs[0], error_detail);
   g_timeout_add(10, verify_sibling_survives, &fixture);
   g_main_loop_run(run->loop);
   g_assert_cmpstr(run->failure, ==, "shared source fixture failure");
@@ -543,7 +544,10 @@ static void check_output_failure_isolation(gboolean post_error) {
   g_assert_cmpint(bytes[5], ==, 6);
   g_assert_cmpint(bytes[7], ==, 0);
   g_assert_cmpuint(size, ==, 32 + read_be((guint8 *)bytes + 28, 4));
-  if (post_error) g_assert_nonnull(strstr(bytes + 32, "Failed after iterations as requested"));
+  g_assert_true(g_utf8_validate(bytes + 32, size - 32, NULL));
+  if (error_detail != NULL) {
+    g_assert_cmpuint(size, <=, 32 + 512 + 2); // A partial final byte becomes U+FFFD.
+  } else if (post_error) g_assert_nonnull(strstr(bytes + 32, "Failed after iterations as requested"));
   g_free(bytes);
   unlink(frame_path);
   g_free(frame_path);
@@ -599,7 +603,12 @@ int main(int argc, char **argv) {
   check_encoder_timestamp_segment(1000ULL * 60 * 60 * GST_SECOND);
   check_encoder_timestamp_segment(0);
   check_slot_retirement();
-  check_output_failure_isolation(TRUE);
-  check_output_failure_isolation(FALSE);
+  check_output_failure_isolation(TRUE, NULL);
+  check_output_failure_isolation(FALSE, NULL);
+  char *prefix = g_strnfill(511, 'x');
+  char *localized_error = g_strconcat(prefix, "\xe4\xb8\xad\xe6\x96\x87", NULL);
+  check_output_failure_isolation(TRUE, localized_error);
+  g_free(localized_error);
+  g_free(prefix);
   return 0;
 }

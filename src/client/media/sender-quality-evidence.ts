@@ -15,6 +15,18 @@ const unknownPublications = new Set<string>();
 const connectionSampleTimestamps = new Map<string, number>();
 const publicationSampleTimestamps = new Map<string, number>();
 
+export function retireSenderQualityEvidence(connectionId: string): void {
+  connectionGenerations.delete(connectionId);
+  unknownConnections.delete(connectionId);
+  connectionSampleTimestamps.delete(connectionId);
+}
+
+export function retireSfuPublisherQualityEvidence(publicationGeneration: string): void {
+  publicationGenerations.delete(publicationGeneration);
+  unknownPublications.delete(publicationGeneration);
+  publicationSampleTimestamps.delete(publicationGeneration);
+}
+
 export function invalidateSenderQualityEvidence(): void {
   senderEvidenceGeneration += 1;
   connectionGenerations.clear();
@@ -87,6 +99,10 @@ export function senderQualityEvidenceFromSnapshot(
   snapshot: PeerSnapshot,
   routeRevision: number,
 ): Extract<ClientMessage, { type: "sender-quality-evidence" }> | null {
+  if (snapshot.connectionState === "failed" || snapshot.connectionState === "closed") {
+    retireSenderQualityEvidence(snapshot.connectionId);
+    return null;
+  }
   const evidence = nativeQualityState(snapshot.metrics);
   const rawSampleTimestampMs = snapshot.metrics.sampleTimestampMs;
   const hasIdentity =
