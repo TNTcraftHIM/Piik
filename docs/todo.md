@@ -43,12 +43,6 @@ platform deferrals or establish a diagnosis for unmatched reports.
   tray and live reactions when detached; it reuses the existing room session and palette.
   Finish owner UI acceptance before release.
 
-- [ ] **Icon refinement for release.** The owner chose the restrained B direction
-  with a little surface depth. Keep the current mascot geometry, proportions and
-  wink. Public/App assets now derive from that lightly shaded navy SVG;
-  finish owner review at favicon and App sizes. In-product and README marks
-  retain their current identity.
-
 - [ ] **macOS bundle startup acceptance (#479).** The package now contains the
   actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
   dependency on an external sibling executable. A moved-bundle assembly check
