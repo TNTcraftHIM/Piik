@@ -60,18 +60,27 @@
 .lr-remote-keyboard .lr-remote-key-pages button { min-width: 0; height: 36px; padding: 4px 8px; font-size: 12px; letter-spacing: 0; }
 .lr-remote-key-row { display: flex; justify-content: center; gap: 4px; margin-bottom: 6px; }
 .lr-remote-key-row .lr-chip { flex: 1; }
-.lr-remote-key-layout.is-letters .lr-remote-key-row .lr-chip { flex: 0 1 calc((100% - 36px) / 10); }
-.lr-remote-modifiers { margin-top: 10px; }
+.lr-remote-key-layout.is-letters .lr-remote-key-row:not(:last-child) .lr-chip { flex: 0 1 calc((100% - 36px) / 10); }
+.lr-remote-modifier-key { display: flex; flex: 1; min-width: 0; }
+.lr-remote-modifier-key .lr-chip { width: 100%; }
+.lr-remote-key-layout .lr-remote-modifier-key, .lr-remote-key-layout [data-key="Backspace"] { flex: 1.5; }
+.lr-remote-bottom-row { margin-top: 10px; }
+.lr-remote-bottom-row > .lr-remote-modifier-key { min-width: 40px; }
+.lr-remote-bottom-row [data-key="Space"] { flex: 3; }
+.lr-remote-bottom-row [data-key="Enter"] { flex: 2; min-width: 44px; }
 .lr-remote-navigation { display: flex; align-items: end; gap: 12px; margin-top: 10px; }
 .lr-remote-navigation-actions { flex: 1; min-width: 0; }
-.lr-remote-navigation-actions .lr-chip[data-key="Space"] { flex: 2; }
 .lr-remote-navigation-actions.is-text { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.lr-remote-navigation-actions.is-editing { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.lr-remote-navigation-actions.is-editing:has(> :nth-child(5):last-child) > :first-child { grid-column: 2; }
 .lr-remote-arrows { flex: 0 0 36%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .lr-remote-arrows [data-key="ArrowUp"] { grid-column: 2; }
 .lr-remote-arrows [data-key="ArrowLeft"] { grid-column: 1; }
 .lr-remote-text-entry { display: grid; gap: 8px; margin-bottom: 14px; }
-.lr-remote-text-entry .lr-remote-text-field { height: 56px; gap: 6px; padding: 6px; }
-.lr-remote-text-field input { padding-inline: 6px; }
+.lr-remote-text-entry .lr-remote-text-field { display: flex; flex-direction: column; align-items: stretch; height: auto; gap: 8px; padding: 10px; }
+.lr-remote-text-field textarea { width: 100%; min-height: 96px; max-height: 30dvh; resize: vertical; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; font: 16px/1.5 var(--mono); tab-size: 4; }
+.lr-remote-text-actions { display: flex; justify-content: end; }
+.lr-remote-keyboard .lr-remote-text-entry p[role="alert"] { color: var(--danger); }
 .lr-remote-text-entry .lr-btn { flex: none; width: auto; gap: 6px; padding-inline: 12px; }
 .lr-remote-keyboard .lr-remote-text-entry p { margin: 0; text-align: start; }
 :is(.lr-remote-keys, .lr-remote-key-row) .lr-chip { justify-content: center; padding: 4px 0; width: 100%; min-width: 0; min-height: 38px; border-width: 1px; border-radius: 9px; font: 600 12px var(--mono); letter-spacing: 0; white-space: nowrap; touch-action: none; }
@@ -96,14 +105,14 @@
 @media (max-width: 380px) {
   .lr-remote-keyboard { padding-inline: 6px; }
   .lr-remote-key-row { gap: 3px; }
-  .lr-remote-key-layout.is-letters .lr-remote-key-row .lr-chip { flex-basis: calc((100% - 27px) / 10); }
+  .lr-remote-key-layout.is-letters .lr-remote-key-row:not(:last-child) .lr-chip { flex-basis: calc((100% - 27px) / 10); }
 }
 @container media-stage (max-width: 640px) {
   .lr-remote-feedback { position: absolute; top: -2px; right: -2px; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--paper); box-shadow: 0 0 0 1px var(--control-edge); pointer-events: none; }
   .lr-remote-feedback > span:not(.visually-hidden) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 
-.lr-remote-keep-modifiers { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; font-size: 12px; cursor: pointer; }
-.lr-remote-keep-modifiers input { width: 16px; height: 16px; margin: 0; accent-color: var(--action); }
-.lr-remote-keep-modifiers > span { display: inline-flex; align-items: center; gap: 6px; }
-.lr-remote-keep-modifiers kbd { font: 600 12px var(--mono); }
+.lr-remote-combine-keys { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; font-size: 12px; cursor: pointer; }
+.lr-remote-combine-keys input { width: 16px; height: 16px; margin: 0; accent-color: var(--action); }
+.lr-remote-combine-keys > span { display: inline-flex; align-items: center; gap: 6px; }
+.lr-remote-combine-keys kbd { font: 600 12px var(--mono); }

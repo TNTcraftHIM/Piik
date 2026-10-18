@@ -295,6 +295,41 @@ func (s *recordedInput) Apply(target bounds, event inputEvent) error {
 }
 func (s *recordedInput) Reset() error { s.resets <- struct{}{}; return nil }
 
+func TestCommittedMultilineText(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 16), resets: make(chan struct{}, 8)}
+	longLine := strings.Repeat("\\\"", maxTextBytes/2)
+	for _, text := range []string{longLine, "if (ready) {\r\n\tprint(\"中文 😀\");\n}"} {
+		if err := applyText(sink, bounds{}, text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []inputEvent{
+		{Type: "text", Text: longLine},
+		{Type: "text", Text: "if (ready) {"},
+		{Type: "key", Code: "Enter", Down: true}, {Type: "key", Code: "Enter"},
+		{Type: "key", Code: "Tab", Down: true}, {Type: "key", Code: "Tab"},
+		{Type: "text", Text: "print(\"中文 😀\");"},
+		{Type: "key", Code: "Enter", Down: true}, {Type: "key", Code: "Enter"},
+		{Type: "text", Text: "}"},
+	}
+	if len(sink.events) != len(want) {
+		t.Fatalf("input events: %d, want %d", len(sink.events), len(want))
+	}
+	for _, event := range want {
+		if actual := <-sink.events; actual != event {
+			t.Fatalf("input: %+v, want %+v", actual, event)
+		}
+	}
+	for _, text := range []string{"", strings.Repeat("x", maxTextBytes+1), "a\x00b", "a\x7fb", string([]byte{0xff})} {
+		if err := applyText(sink, bounds{}, text); err == nil {
+			t.Fatal("invalid text accepted")
+		}
+	}
+	if len(sink.events) != 0 || len(sink.resets) != 2 {
+		t.Fatal("invalid text applied partial input or reset held keys")
+	}
+}
+
 // Exercise the consent/retirement owner over real SCTP channels. No OS input
 // is injected by this test; the platform acceptance uses a dedicated window.
 func TestAttendedGrantLifecycle(t *testing.T) {

@@ -4,8 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
 )
 
 func TestRoutedInputRejectsForgeryReflectionAndReplay(t *testing.T) {
@@ -14,9 +17,15 @@ func TestRoutedInputRejectsForgeryReflectionAndReplay(t *testing.T) {
 	header := make([]byte, 20)
 	binary.BigEndian.PutUint64(header, 1)
 	_, _ = rand.Read(header[8:])
-	plain := []byte(`{"type":"reset","grant":"approved-only"}`)
+	// Escaped quotes/backslashes at the text limit must survive the same relay
+	// envelope as keys, with no alternate channel or widened queue budget.
+	plain, _ := json.Marshal(inputEvent{Type: "text", Text: strings.Repeat("\\\"", maxTextBytes/2), Grant: strings.Repeat("a", 64)})
 	bytes := host.aead.Seal(header, header[8:], plain, inputAAD(0, header[:8], epoch))
 	packet := base64.StdEncoding.EncodeToString(bytes)
+	envelope, _ := json.Marshal(inputroute.Packet{ID: strings.Repeat("b", 32), Epoch: epoch, Data: packet})
+	if len(plain) > maxInputBytes || len(envelope) > inputroute.MaxPacket {
+		t.Fatal("valid text does not fit the input transport")
+	}
 	forged := append([]byte{}, bytes...)
 	forged[len(forged)-1] ^= 1
 	if _, err := host.open(base64.StdEncoding.EncodeToString(forged), epoch); err == nil {

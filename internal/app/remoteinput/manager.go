@@ -353,7 +353,7 @@ func (m *Manager) release() {
 }
 
 func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoch string) {
-	if !message.IsString || len(message.Data) > 1024 {
+	if !message.IsString || len(message.Data) > maxInputBytes {
 		return
 	}
 	var event inputEvent
@@ -420,7 +420,13 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 		if !focused {
 			return
 		}
-		if err := m.sink.Apply(b, event); err != nil {
+		var err error
+		if event.Type == "text" {
+			err = applyText(m.sink, b, event.Text)
+		} else {
+			err = m.sink.Apply(b, event)
+		}
+		if err != nil {
 			m.release()
 			m.send(c, "failed")
 		}

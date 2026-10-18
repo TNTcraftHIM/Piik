@@ -10,7 +10,9 @@ import (
 )
 
 const Label = "piik-remote-input-prototype-v1"
-const MaxPacket = 2048
+
+// 2 KiB of text, JSON escaping, authenticated encryption and the relay envelope.
+const MaxPacket = 6144
 
 // Packet data is authenticated and encrypted between the Viewer and Host App.
 // Relays only learn endpoint IDs. Small Host state replies fan out along the

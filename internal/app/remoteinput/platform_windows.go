@@ -8,7 +8,6 @@ import (
 	"math"
 	"runtime"
 	"unicode/utf16"
-	"unicode/utf8"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -72,16 +71,8 @@ func keyInput(scan uint16, down bool) winInput {
 
 // Soft keyboards and IMEs supply committed text, not physical scan codes.
 // Send complete UTF-16 pairs through Windows' standard VK_PACKET path.
-func textInputs(text string) ([]winInput, error) {
-	if len(text) == 0 || len(text) > 512 || !utf8.ValidString(text) {
-		return nil, errors.New("invalid input text")
-	}
+func textInputs(text string) []winInput {
 	var inputs []winInput
-	for _, r := range text {
-		if r < 0x20 || r == 0x7f {
-			return nil, errors.New("text contains a control character")
-		}
-	}
 	for _, unit := range utf16.Encode([]rune(text)) {
 		for _, flags := range []uint32{4, 6} { // KEYEVENTF_UNICODE, then KEYUP.
 			input := winInput{Kind: 1}
@@ -90,7 +81,7 @@ func textInputs(text string) ([]winInput, error) {
 			inputs = append(inputs, input)
 		}
 	}
-	return inputs, nil
+	return inputs
 }
 
 func buttonInput(button int, down bool) (winInput, error) {
@@ -167,16 +158,7 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 			delete(s.keys, key)
 		}
 	case "text":
-		inputs, err := textInputs(e.Text)
-		if err != nil {
-			return err
-		}
-		// Text submission is self-contained; a prior modifier must not turn it
-		// into a shortcut. Existing physical input retains its scan-code path.
-		if err := s.Reset(); err != nil {
-			return err
-		}
-		return inject(inputs...)
+		return inject(textInputs(e.Text)...)
 	default:
 		return errors.New("unsupported input")
 	}

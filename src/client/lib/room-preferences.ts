@@ -16,7 +16,7 @@ const roomPreferencesSchema = z.object({
   }).default({ scale: 1, opacity: 1 }),
   interactionEffects: z.boolean().default(true),
   keyboardPage: z.enum(REMOTE_KEYBOARD_PAGES).default("letters"),
-  keepModifiers: z.boolean().default(false),
+  combineKeys: z.boolean().default(false),
   remoteControlMode: remoteControlModeSchema.exclude(["off"]).default("ask"),
 });
 export type RoomPreferences = z.infer<typeof roomPreferencesSchema>;

@@ -36,7 +36,7 @@ func newInputCipher(key string) (*inputCipher, error) {
 
 func (c *inputCipher) open(data, epoch string) ([]byte, error) {
 	bytes, err := base64.StdEncoding.DecodeString(data)
-	if err != nil || len(bytes) < 20+c.aead.Overhead() || len(bytes) > 1536 {
+	if err != nil || len(bytes) < 20+c.aead.Overhead() || len(bytes) > maxInputBytes+20+c.aead.Overhead() {
 		return nil, errors.New("invalid input packet")
 	}
 	seq := binary.BigEndian.Uint64(bytes[:8])

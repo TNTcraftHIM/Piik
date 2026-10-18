@@ -463,9 +463,10 @@ Host window focus retains the grant's touchpad position while suspending input.
 The keyboard panel reserves space below the picture, or beside it in a short
 landscape fullscreen/theater view. Letters, numbers/symbols and function/navigation
 keys use separate compact sections; text input retains the local IME. Opening
-the key panel does not summon the phone's software keyboard. Modifier selection
-applies to the next key by default. An optional hold-modifiers checkbox keeps
-selected modifiers pressed until tapped again; turning it off releases them.
+the key panel does not summon the phone's software keyboard. Keys follow physical
+press/release by default. Optional combination mode lets a tap select each
+modifier; completing the next ordinary key releases the selected modifiers.
+Tapping a selected modifier again cancels it; turning the mode off releases all keys.
 Held contacts repeat and release independently, including
 on cancellation, panel closure and window blur. No pressed state survives grant
 retirement. Common text shortcuts remain beside the text field.
@@ -477,8 +478,12 @@ capture remains subject to the local OS and Browser; even the
 only receives keys the OS permits. Piik does not install a global keyboard hook
 or simulate the protected Ctrl+Alt+Delete sequence. Closing the keyboard returns
 focus to the control surface.
-The local text field owns IME composition and sends only explicitly submitted
-text through the platform input adapter, including Windows
+The multiline text field owns IME composition and preserves a pasted draft;
+Enter edits that draft and the explicit button submits it. One submission is
+bounded to 2 KiB of UTF-8 so it fits the existing input queue without a bulk
+transfer channel; an oversized draft stays editable rather than being truncated.
+The shared input owner releases held keys and maps line endings/tabs to their
+physical keys before passing ordinary text through the platform adapter, including Windows
 [Unicode input](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput),
 Quartz Unicode events and Portal keysyms.
 There is no clipboard synchronization. This follows the touchpad conventions in

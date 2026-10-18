@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"unicode/utf8"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 )
@@ -65,17 +64,6 @@ func (s *portalSink) Apply(_ bounds, e inputEvent) error {
 		}
 		command = fmt.Sprintf("W %d", e.Delta)
 	case "text":
-		if e.Text == "" || len(e.Text) > 512 || !utf8.ValidString(e.Text) {
-			return errors.New("invalid text")
-		}
-		for _, r := range e.Text {
-			if r < 32 && r != '\n' && r != '\t' {
-				return errors.New("invalid text")
-			}
-		}
-		if err := s.Reset(); err != nil {
-			return err
-		}
 		for _, r := range e.Text {
 			if err := s.capture.SendRemoteInput(fmt.Sprintf("U %d", r)); err != nil {
 				return err

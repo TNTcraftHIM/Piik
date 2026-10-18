@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"time"
 	"unicode/utf16"
-	"unicode/utf8"
 	"unsafe"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
@@ -150,17 +149,6 @@ func (s *macSink) Apply(b bounds, e inputEvent) error {
 			}
 		}
 	case "text":
-		if len(e.Text) == 0 || len(e.Text) > 512 || !utf8.ValidString(e.Text) {
-			return errors.New("invalid text")
-		}
-		for _, r := range e.Text {
-			if r < 32 && r != '\n' && r != '\t' {
-				return errors.New("invalid text")
-			}
-		}
-		if err := s.Reset(); err != nil {
-			return err
-		}
 		text := utf16.Encode([]rune(e.Text))
 		ok = bool(C.piik_input_text(s.source, (*C.uint16_t)(unsafe.Pointer(&text[0])), C.size_t(len(text))))
 	default:

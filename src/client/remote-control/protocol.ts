@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+// A text submission still fits one encrypted input packet and the existing queue.
+export const REMOTE_TEXT_BYTES = 2048;
+
 export const remoteControlModeSchema = z.enum(["off", "ask", "room", "password"]);
 export type RemoteControlMode = z.infer<typeof remoteControlModeSchema>;
 export const remoteInputPlatformSchema = z.enum(["windows", "darwin", "linux"]);

@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { RemoteInputEvent } from "../../remote-control/input-session";
-import type { RemoteInputPlatform } from "../../remote-control/protocol";
+import { REMOTE_TEXT_BYTES, type RemoteInputPlatform } from "../../remote-control/protocol";
 import { RemoteKeyboardPresses } from "../../remote-control/keyboard";
 import { readRoomPreferences, saveRoomPreferences, REMOTE_KEYBOARD_PAGES, type RoomPreferences } from "../../lib/room-preferences";
 import { isCopyKey, useCopy } from "../../ui/copy";
@@ -22,10 +22,10 @@ const ROWS = {
     [["`", "Backquote", "~"], ["-", "Minus", "_"], ["=", "Equal", "+"], ["[", "BracketLeft", "{"], ["]", "BracketRight", "}"], ["\\", "Backslash", "|"]],
     [[";", "Semicolon", ":"], ["'", "Quote", '"'], [",", "Comma", "<"], [".", "Period", ">"], ["/", "Slash", "?"]],
   ],
-  functions: [functions(1), functions(7), [["Ins", "Insert"], ["Del", "Delete"], ["Home", "Home"], ["End", "End"], ["PgUp", "PageUp"], ["PgDn", "PageDown"]],
-    [["Caps", "CapsLock"], ["PrtSc", "PrintScreen"], ["ScrLk", "ScrollLock"], ["NumLk", "NumLock"]]],
+  functions: [functions(1), functions(7), [["Caps", "CapsLock"], ["PrtSc", "PrintScreen"], ["ScrLk", "ScrollLock"], ["NumLk", "NumLock"]]],
 } satisfies Record<string, Key[][]>;
 const NAVIGATION: Key[] = [["Esc", "Escape"], ["Tab", "Tab"]];
+const EDITING: Key[] = [["Ins", "Insert"], ["Home", "Home"], ["PgUp", "PageUp"], ["Del", "Delete"], ["End", "End"], ["PgDn", "PageDown"]];
 const ARROWS: Key[] = [["↑", "ArrowUp"], ["←", "ArrowLeft"], ["↓", "ArrowDown"], ["→", "ArrowRight"]];
 type Page = RoomPreferences["keyboardPage"];
 const PAGES = REMOTE_KEYBOARD_PAGES;
@@ -42,8 +42,8 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
   const id = useId();
   const mac = platform === "darwin";
   const command = mac ? "MetaLeft" : "ControlLeft";
-  const modifiersKeys: Key[] = [["Ctrl", "ControlLeft"], [mac ? "Opt" : "Alt", "AltLeft"], ["Shift", "ShiftLeft"],
-    [mac ? "Cmd" : platform === "windows" ? "Win" : "Super", "MetaLeft"]];
+  const modifiersKeys: Key[] = [["Ctrl", "ControlLeft"],
+    [mac ? "Cmd" : platform === "windows" ? "Win" : "Super", "MetaLeft"], [mac ? "Opt" : "Alt", "AltLeft"], ["Shift", "ShiftLeft"]];
   const shortcuts = [
     [`${mac ? "Cmd" : "Ctrl"}+A`, "ControlA", [command, "KeyA"]],
     [`${mac ? "Cmd" : "Ctrl"}+C`, "ControlC", [command, "KeyC"]],
@@ -55,9 +55,10 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
   const [page, setPage] = useState<Page>(() => readRoomPreferences().keyboardPage);
   const [text, setText] = useState("");
   const [modifiers, setModifiers] = useState<string[]>([]);
-  const [keepModifiers, setKeepModifiers] = useState(() => readRoomPreferences().keepModifiers);
+  const [combineKeys, setCombineKeys] = useState(() => readRoomPreferences().combineKeys);
   const composing = useRef(false);
-  const editor = useRef<HTMLInputElement>(null);
+  const editor = useRef<HTMLTextAreaElement>(null);
+  const textTooLong = new TextEncoder().encode(text).length > REMOTE_TEXT_BYTES;
   const panel = useRef<HTMLElement>(null);
   const panelWindow = usePanelWindow(true, onSurfaceChange);
   const owner = panelWindow.surfaceDocument ?? document;
@@ -79,8 +80,13 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     if (owner !== document) owner.title = `${t("remote.keyboard")} · Piik`;
   }, [owner, t]);
   const rows = page === "text" ? [] : mac && page === "functions"
-    ? [...ROWS.functions.slice(0, 2), ROWS.functions.slice(2).flat().filter(([, code]) => !["Insert", "PrintScreen", "ScrollLock", "NumLock"].includes(code))]
+    ? ROWS.functions.slice(0, 2)
     : ROWS[page];
+
+  const releaseModifiers = () => {
+    modifiersKeys.forEach((_, index) => presses.up(-2 - index));
+    setModifiers([]);
+  };
 
   const key = ([label, code, shifted]: Key) => {
     const name = `remote.key.${code}`;
@@ -90,21 +96,31 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       onPointerDown={event => {
         if (event.button !== 0) return;
         event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
-        presses.down(event.pointerId, [...modifiers, code]); if (!keepModifiers) setModifiers([]);
+        presses.down(event.pointerId, [...modifiers, code], !modifiersKeys.some(([, value]) => value === code));
       }}
-      onPointerUp={event => presses.up(event.pointerId)}
+      onPointerUp={event => { presses.up(event.pointerId); releaseModifiers(); }}
       onPointerCancel={() => { presses.reset(); setModifiers([]); }}
-      onLostPointerCapture={event => presses.up(event.pointerId)}
+      onLostPointerCapture={event => { presses.up(event.pointerId); releaseModifiers(); }}
       onClick={event => {
-        if (event.detail === 0) { presses.tap([...modifiers, code]); if (!keepModifiers) setModifiers([]); }
+        if (event.detail === 0) { presses.tap([...modifiers, code]); releaseModifiers(); }
       }}>
       {caption}
     </button>;
   };
 
+  const modifier = ([label, code]: Key, index: number) => <span className="lr-remote-modifier-key" key={code}>
+    {combineKeys ? <Chip title={mac && code === "AltLeft" ? "Option" : label} selected={modifiers.includes(code)} onClick={() => {
+      const selected = modifiers.includes(code);
+      if (selected) presses.up(-2 - index);
+      else presses.down(-2 - index, [code], false);
+      setModifiers(current => selected ? current.filter(item => item !== code) : [...current, code]);
+    }}>{code === "ShiftLeft" ? "⇧" : label}</Chip> : key([code === "ShiftLeft" ? "⇧" : label, code])}
+  </span>;
+
   const navigation = <div className="lr-remote-navigation">
-    <div className={`lr-remote-key-row lr-remote-navigation-actions${page === "text" ? " is-text" : ""}`}>
-      {[...NAVIGATION, ...(page === "text" ? [["⌫", "Backspace"], ["↵", "Enter"]] : [["␣", "Space"]])].map(item => key(item as Key))}
+    <div className={`lr-remote-key-row lr-remote-navigation-actions${page === "functions" ? " is-editing" : page === "text" ? " is-text" : ""}`}>
+      {(page === "functions" ? EDITING.filter(([, code]) => !mac || code !== "Insert")
+        : [...NAVIGATION, ...(page === "text" ? [["⌫", "Backspace"], ["↵", "Enter"]] : [])]).map(item => key(item as Key))}
     </div>
     <div className="lr-remote-key-row lr-remote-arrows">{ARROWS.map(key)}</div>
   </div>;
@@ -144,46 +160,43 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${page}`}>
     {page !== "text" ? <>
       <div className={`lr-remote-key-layout is-${page}`}>
-        {rows.map((row, index) => <div className="lr-remote-key-row" key={index}>{row.map(key)}</div>)}
+        {rows.map((row, index) => <div className="lr-remote-key-row" key={index}>
+          {index === 2 && page !== "functions" && modifier(modifiersKeys[3], 3)}{row.map(key)}{index === 2 && page !== "functions" && key(["⌫", "Backspace"])}
+        </div>)}
       </div>
-      <div className="lr-remote-key-row lr-remote-modifiers">
-        {modifiersKeys.map(([label, code], index) => <Chip key={code} title={mac && code === "AltLeft" ? "Option" : label} selected={modifiers.includes(code)}
-          onClick={() => {
-            const selected = modifiers.includes(code);
-            if (keepModifiers) {
-              if (selected) presses.up(-2 - index);
-              else presses.down(-2 - index, [code], false);
-            }
-            setModifiers(current => selected ? current.filter(item => item !== code) : [...current, code]);
-          }}>{label}</Chip>)}
-        {key(["⌫", "Backspace"])}{key(["↵", "Enter"])}
+      {page === "functions" && <div className="lr-remote-key-row">{NAVIGATION.map(key)}{mac && key(["Caps", "CapsLock"])}{modifier(modifiersKeys[3], 3)}{key(["⌫", "Backspace"])}</div>}
+      <div className="lr-remote-key-row lr-remote-bottom-row">
+        {modifiersKeys.slice(0, 3).map(modifier)}{key(["␣", "Space"])}{key(["↵", "Enter"])}
       </div>
       {navigation}
-      <label className="lr-remote-keep-modifiers"><input type="checkbox" checked={keepModifiers}
-        aria-label={t("remote.keepModifiers")}
+      <label className="lr-remote-combine-keys"><input type="checkbox" checked={combineKeys}
+        aria-label={t("remote.combinationMode")}
         onChange={event => {
-          presses.reset(); setModifiers([]); setKeepModifiers(event.target.checked);
-          saveRoomPreferences({ keepModifiers: event.target.checked });
+          presses.reset(); setModifiers([]); setCombineKeys(event.target.checked);
+          saveRoomPreferences({ combineKeys: event.target.checked });
         }} />
-        {vis ? <span aria-hidden="true"><kbd>Ctrl / ⇧</kbd><Glyph name="lock" size={14} /></span> : t("remote.keepModifiers")}</label>
-      {!vis && <p>{t("remote.modifierHelp", { modifiers: modifiersKeys.map(([label, code]) => mac && code === "AltLeft" ? "Option" : label).join(" / ") })}</p>}
+        {vis ? <span aria-hidden="true"><kbd>Ctrl + C</kbd></span> : t("remote.combinationMode")}</label>
+      {!vis && <p>{t(combineKeys ? "remote.combinationHelp" : "remote.keyboardHelp")}</p>}
     </> : <>
       <form className="lr-remote-text-entry" onSubmit={event => {
         event.preventDefault();
-        if (!text || composing.current) return;
+        if (!text || textTooLong || composing.current) return;
         input({ type: "text", text }); setText(""); editor.current?.focus();
       }}>
         <div className="lr-input lr-remote-text-field">
-          <input ref={editor} maxLength={128} value={text}
-            aria-label={t("remote.text")} placeholder={vis ? "" : t("remote.text")} autoComplete="off"
+          <textarea ref={editor} rows={4} value={text}
+            aria-label={t("remote.text")} placeholder={vis ? "" : t("remote.text")} autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+            aria-invalid={textTooLong || undefined}
             aria-describedby={vis ? undefined : `${id}-text-help`}
-            enterKeyHint="send" onChange={event => setText(event.target.value)}
+            enterKeyHint="enter" onChange={event => setText(event.target.value)}
             onCompositionStart={() => { composing.current = true; }}
             onCompositionEnd={() => { composing.current = false; }}
-            onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} />
-          <Btn icon="send" cap="remote.typeText" title="remote.sendText" hint="hint-remote-keyboard" tone="primary" type="submit" disabled={!text} />
+          />
+          <div className="lr-remote-text-actions">
+            <Btn icon="send" cap="remote.typeText" title="remote.sendText" hint="hint-remote-keyboard" tone="primary" type="submit" disabled={!text || textTooLong} />
+          </div>
         </div>
-        {!vis && <p id={`${id}-text-help`}>{t("remote.textHelp")}</p>}
+        {textTooLong ? <p id={`${id}-text-help`} role="alert">{t("remote.textTooLong")}</p> : !vis && <p id={`${id}-text-help`}>{t("remote.textHelp")}</p>}
       </form>
       {navigation}
       <div className="lr-remote-keys lr-remote-shortcuts">

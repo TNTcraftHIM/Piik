@@ -4,7 +4,7 @@ type Packet = { id?: string; epoch?: string; data?: string; closed?: boolean; re
 export type InputTransport = Pick<RTCDataChannel, "readyState" | "bufferedAmount" | "send" | "close" | "addEventListener" | "removeEventListener">;
 
 function packet(data: unknown): Packet | null {
-  if (typeof data !== "string" || data.length > 2048) return null;
+  if (typeof data !== "string" || data.length > 6144) return null;
   try {
     const p = JSON.parse(data) as Packet;
     return p && (typeof p.ready === "boolean" || typeof p.id === "string" && /^[0-9a-f]{32}$/.test(p.id) &&
