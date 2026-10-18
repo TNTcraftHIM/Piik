@@ -4,7 +4,7 @@
 .lr-interaction-conversation[hidden] { display: none; }
 .lr-interaction-conversation .lr-reaction-flight { overflow: hidden; }
 /* The picker belongs to the composer; opening it never moves the input or reading position. */
-.lr-interaction-people-scroll { overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 0 8px; margin-bottom: 8px; border-bottom: 1px solid var(--wall-2); }
+.lr-interaction-people-scroll { overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px 0 8px; margin-bottom: 8px; border-bottom: 1px solid var(--wall-2); }
 .lr-interaction-people { display: flex; gap: 4px; width: max-content; min-width: 100%; }
 .lr-interaction-people > span { display: flex; flex: none; max-width: 148px; }
 .lr-interaction-people .lr-comic-tip-wrap { width: 100%; }
