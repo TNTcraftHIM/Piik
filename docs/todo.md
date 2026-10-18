@@ -58,6 +58,12 @@ platform deferrals or establish a diagnosis for unmatched reports.
 
 ## Held By Owner
 
+- [ ] **Selection-colour consistency.** Deferred to the next minor update by
+  the owner on 2026-10-19. Keep this release's accepted palette. Sliding
+  segments should reuse the theme's selected-control colour pair rather than
+  inverse text/paper colours; review related App, Web and website choices at
+  their shared owners. Preserve primary-action and semantic-status identities.
+
 - [ ] **Remote-control latency and responsiveness.** Scheduled after this release.
   Compare input-to-visible-response timing on the same endpoints, source and
   network against a mature remote-control implementation. Separate input
