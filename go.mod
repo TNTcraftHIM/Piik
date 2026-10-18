@@ -16,8 +16,8 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/coder/websocket v1.8.15
 	github.com/go-logr/logr v1.4.4
-	github.com/livekit/livekit-server v1.13.11-0.20261014174133-18df6ad4b694
-	github.com/livekit/mediatransportutil v0.0.0-20260821083140-f234b534b095
+	github.com/livekit/livekit-server v1.13.11-0.20261016133420-cde3991916cf
+	github.com/livekit/mediatransportutil v0.0.0-20261014192331-dd8e31a0adc0
 	github.com/livekit/protocol v1.52.2-0.20261012065025-9bb708cdb819
 	github.com/livekit/server-sdk-go/v2 v2.14.0
 	github.com/netbirdio/go-nat v0.0.0-20260821095157-6b2c8c5c74e8
@@ -139,4 +139,4 @@ require (
 )
 
 // Local-encoder demand hook pending upstream #5016; see internal/thirdparty/README.md.
-replace github.com/livekit/livekit-server => github.com/TNTcraftHIM/livekit v1.13.11-0.20261015180525-f10692c6f232
+replace github.com/livekit/livekit-server => github.com/TNTcraftHIM/livekit v1.13.11-0.20261018043008-c7f56b389713

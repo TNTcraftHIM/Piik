@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Modified by Piik: apply overlapping feedback once while retaining late ACKs.
 package sendsidebwe
 
 import (
@@ -111,12 +112,21 @@ func (p *packetTracker) RecordPacketIndicationFromRemote(sn uint16, recvTime int
 		return
 	}
 
+	// Reports may overlap after reordering. Only new observations may change
+	// counters or the delta baseline; a late ACK must still repair earlier loss.
+	if pi.feedback == packetFeedbackReceived {
+		return
+	}
 	if recvTime == 0 {
-		// maybe lost OR already received but reported lost in a later report
+		if pi.feedback == packetFeedbackLost {
+			return
+		}
+		pi.feedback = packetFeedbackLost
 		piRecv = *pi
 		return
 	}
 
+	pi.feedback = packetFeedbackReceived
 	if p.baseRecvTime == 0 {
 		p.baseRecvTime = recvTime
 		p.piLastRecv = pi

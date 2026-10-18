@@ -627,13 +627,19 @@ video using one quarter of its budget fell to about 13 kbps. Both restored a
 picture-quality measurements, and the fixed random seed does not pair packets
 across different send rates.
 
-The investigation also confirmed that CTR group rollover discarded its boundary
-packet. Refeeding that packet preserves received/lost bytes and timing, matching
-the ordinary packet-group path. A deterministic accounting regression fails
-without the repair. The low-utilization comparison still fell to about 15 kbps
-with the repair, then recovered after loss ended: this correction does not solve
-persistent-loss collapse. Reduced source traffic and network capacity must remain
-distinct in the next comparison. Google WebRTC's
+Two measurement defects were already present in v1.9.2's LiveKit v1.13.6 dependency:
+CTR group rollover discarded its boundary packet, and overlapping TWCC reports
+recounted received/lost packets and moved the receive-time baseline. A real Pion
+recorder with four sent packets and two late arrivals produced six ACKs and one
+remaining loss. Packet-state transitions now retain the late ACK repairs while
+ignoring repeated observations; ordinary, probe and CTR measurements receive the
+same facts. Rollover likewise retains its boundary packet. Both controls fail
+without their respective fixes.
+
+The low-utilization comparison still fell to about 13 kbps with both repairs,
+then recovered after loss ended. These corrections do not solve persistent-loss
+collapse. Reduced source traffic and network capacity must remain distinct in
+the next comparison. Google WebRTC's
 [loss-based estimator](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/congestion_controller/goog_cc/loss_based_bwe_v2.cc)
 models inherent loss separately; that is a reference for evaluation, not an
 accepted replacement or a reason to import another controller into Piik.

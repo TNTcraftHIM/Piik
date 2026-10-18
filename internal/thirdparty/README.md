@@ -37,9 +37,11 @@ Measurement corrections are marked in the modified files: probe finalization
 returns the current acknowledged capacity and rejects invalid/empty feedback;
 probe timing begins with its first acknowledged packet, excluding pre-probe idle
 time; congestion statistics retain the packet that starts each new CTR group,
-including its received/lost accounting. Piik's shared forwarding package uses this copy for both individual
-transports and publications. Its regression checks use real TWCC feedback and
-retain the no-feedback and idle-before-probe controls. The
+including its received/lost accounting; overlapping TWCC feedback changes each
+packet's state once, retaining late ACKs without duplicating counts or moving
+the receive-time baseline. Piik's shared forwarding package uses this copy for
+both individual transports and publications. Its regression checks use real
+TWCC feedback and retain the no-feedback and idle-before-probe controls. The
 [media research owner](../../docs/research/node-local-media-design.md#send-queue-recovery)
 records the runtime evidence and remaining limits.
 
@@ -57,6 +59,12 @@ Piik's former padding writer. Those repairs use the upstream dependency; no
 additional LiveKit package is copied here. The local send-side measurement
 corrections above remain necessary.
 
+The dependency also includes [upstream #5018](https://github.com/livekit/livekit/pull/5018)
+and [#5019](https://github.com/livekit/livekit/pull/5019): dummy-start timestamp
+offsets stay within the RTP clock's wrap domain and are cleared on receiver
+restart. These correct layer/source-switch continuity in the existing DownTrack;
+Piik adds no timestamp repair alongside it.
+
 The retained detector also includes [upstream #4935](https://github.com/livekit/livekit/pull/4935)
 and its regression from v1.13.9, adapted to standard Go assertions. Reserved
 TWCC symbols carry no receive delta: skip their measurement rather than consuming
@@ -66,8 +74,8 @@ the next packet's delta or indexing past the feedback array.
 
 Until [upstream #5016](https://github.com/livekit/livekit/pull/5016) is available,
 the root module replaces LiveKit with the immutable
-[f10692c6 revision](https://github.com/TNTcraftHIM/livekit/commit/f10692c6f232790ab95a063e24220531eeda6032),
-based on upstream `18df6ad4b694`. Its only changes are an optional local encoder
+[c7f56b38 revision](https://github.com/TNTcraftHIM/livekit/commit/c7f56b38971398d077a0aa5004443eaf3c31016c),
+based on upstream `cde3991916cf`. Its only changes are an optional local encoder
 demand input to `StreamAllocator` and regression tests. Native publication uses
 that input; ordinary forwarding leaves it unset. The existing allocator still
 owns probe timing, congestion response and allocation; encoder demand does not

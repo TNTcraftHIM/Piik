@@ -18,6 +18,7 @@ package sendsidebwe
 import (
 	"testing"
 
+	"github.com/pion/interceptor/pkg/twcc"
 	"github.com/pion/rtcp"
 
 	"github.com/livekit/protocol/logger"
@@ -25,6 +26,67 @@ import (
 
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
 )
+
+func TestHandleTWCCFeedbackOverlappingReports(t *testing.T) {
+	c := newCongestionDetector(congestionDetectorParams{
+		Config: defaultCongestionDetectorConfig,
+		Logger: logger.GetLogger(),
+	})
+	c.createCTRTrend()
+	c.ProbeClusterStarting(ccutils.ProbeClusterInfo{Id: 1})
+	// Keep the send-time baseline outside the reported sequence.
+	c.RecordPacketSendAndGetSequenceNumber(1_000_000, 1200, false, 1, false)
+	var sns [5]uint16
+	for i := range sns {
+		sns[i] = c.RecordPacketSendAndGetSequenceNumber(1_010_000+int64(i)*10_000, 1200, false, 1, false)
+	}
+	recorder := twcc.NewRecorder(1)
+	var initial *rtcp.TransportLayerCC
+	report := func() {
+		t.Helper()
+		for _, packet := range recorder.BuildFeedbackPacket() {
+			feedback := packet.(*rtcp.TransportLayerCC)
+			if initial == nil {
+				initial = feedback
+			}
+			c.HandleTWCCFeedback(feedback)
+		}
+	}
+	check := func(acked, lost int) {
+		t.Helper()
+		for name, group := range map[string]*packetGroup{
+			"normal": c.packetGroups[0], "probe": c.probePacketGroup.packetGroup, "congested": c.congestedPacketGroup,
+		} {
+			if group.acked.numPackets() != acked || group.lost.numPackets() != lost ||
+				group.acked.numBytes() != acked*1200 || group.lost.numBytes() != lost*1200 {
+				t.Fatalf("%s feedback: ack=%+v lost=%+v, want %d/%d packets", name, group.acked, group.lost, acked, lost)
+			}
+		}
+	}
+	// Pion repeats earlier received/lost packets when a late packet arrives.
+	recorder.Record(1, sns[0], 1_000_000)
+	recorder.Record(1, sns[3], 1_030_000)
+	report()
+	check(2, 2)
+	recorder.Record(1, sns[1], 1_040_000)
+	report()
+	check(3, 1)
+	recorder.Record(1, sns[2], 1_050_000)
+	report()
+	check(4, 0)
+	lastReceived := *c.packetTracker.piLastRecv
+	c.HandleTWCCFeedback(initial)
+	check(4, 0)
+	if *c.packetTracker.piLastRecv != lastReceived {
+		t.Fatal("repeated feedback changed the receive-time baseline")
+	}
+	recorder.Record(1, sns[4], 1_060_000)
+	report()
+	check(5, 0)
+	if got := c.packetTracker.getPacketInfoExisting(sns[4]).recvTime; got != 60_000 {
+		t.Fatalf("receive time after overlapping feedback = %d, want 60000", got)
+	}
+}
 
 // the reserved symbol has no receive delta, so its packet is neither acked nor lost,
 // and the next received packet uses the next delta

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Modified by Piik: use feedback state; the first receive timestamp can be zero.
 package sendsidebwe
 
 import (
@@ -203,7 +204,7 @@ func (p *packetGroup) Add(pi *packetInfo, sendDelta, recvDelta int64, isLost boo
 }
 
 func (p *packetGroup) lostPacket(pi *packetInfo) error {
-	if pi.recvTime != 0 {
+	if pi.feedback == packetFeedbackReceived {
 		// previously received packet, so not lost
 		return nil
 	}

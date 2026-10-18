@@ -12,11 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Modified by Piik: retain each packet's feedback state independently of time.
 package sendsidebwe
 
 import (
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
 	"go.uber.org/zap/zapcore"
+)
+
+type packetFeedback uint8
+
+const (
+	packetFeedbackUnknown packetFeedback = iota
+	packetFeedbackLost
+	packetFeedbackReceived
 )
 
 type packetInfo struct {
@@ -27,6 +36,7 @@ type packetInfo struct {
 	size           uint16
 	isRTX          bool
 	isProbe        bool
+	feedback       packetFeedback
 }
 
 func (pi *packetInfo) MarshalLogObject(e zapcore.ObjectEncoder) error {
