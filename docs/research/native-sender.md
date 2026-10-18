@@ -139,7 +139,7 @@ Pion is MIT and coder/websocket is ISC. The Windows APIs use installed hardware
 MFTs; vendor codec binaries are not redistributed. Direct NVENC would require a
 separate NVIDIA Video Codec SDK and redistribution review. H.264 patent and
 project licensing remain unresolved before executable distribution. No
-proprietary Oopz/Agora or GPL/AGPL code was copied.
+proprietary or GPL/AGPL implementation code was copied.
 
 ## Primary Sources
 

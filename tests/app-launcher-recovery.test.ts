@@ -34,7 +34,7 @@ const saved = {
   revision: "test", version: "development", debug: false,
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
-const response = (state: typeof saved & { detail?: string } = saved) => ({ ok: true, json: async () => state });
+const response = (state: typeof saved & { detail?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
 
 function mount(fetch: ReturnType<typeof vi.fn>) {
   const state: Record<string, unknown> = {};
@@ -61,7 +61,7 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
       return nextTimer;
     },
     clearTimeout: (id: number) => timers.delete(id),
-  }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site"): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
+  }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
   return { state, setters, ...actions, checkReleaseUpdate, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
       expect(timers.size).toBe(1);
@@ -73,6 +73,28 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
 }
 
 describe("App launcher state recovery", () => {
+  it.each([true, false])("keeps approval pending until the optional startup preference settles (saved: %s)", async (savedStartup) => {
+    const nextSite = "https://next.example";
+    let finishStartup!: (value: ReturnType<typeof response>) => void;
+    const fetch = vi.fn(async () => response());
+    const page = mount(fetch);
+    await settle();
+    fetch.mockResolvedValueOnce(response({ ...saved, site: nextSite }))
+      .mockImplementationOnce(() => new Promise(resolve => { finishStartup = resolve; }));
+    const approval = page.changeSite(nextSite, "site", true);
+    await settle();
+    expect(page.state).toMatchObject({ Site: nextSite, StartupSite: "", SiteBusy: true });
+    expect(fetch.mock.calls[2]).toEqual(["/api/client-launcher/startup-site", expect.objectContaining({
+      body: JSON.stringify({ site: nextSite, expectedSite: nextSite }),
+    })]);
+    finishStartup({ ...response({ ...saved, site: nextSite, startupSite: savedStartup ? nextSite : "" }),
+      ok: savedStartup, status: savedStartup ? 200 : 503 });
+    await approval;
+    expect(page.state).toMatchObject({ Site: nextSite, SiteBusy: false,
+      StartupSite: savedStartup ? nextSite : "", SiteError: savedStartup ? undefined : "client.connect.saveFailed" });
+    page.cleanup();
+  });
+
   it("restores saved choices after a failed first read, then preserves unsaved edits on focus", async () => {
     const fetch = vi.fn(async () => response()).mockRejectedValueOnce(new Error("unavailable"));
     const page = mount(fetch);

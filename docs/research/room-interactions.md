@@ -143,12 +143,9 @@ returns to that opener. Avatars of departed participants remain non-interactive.
 Typing or pressing Escape dismisses the tray; sending a reaction keeps it open.
 While it is closed, the newest live reaction briefly shows its sender and recipient
 with the same animation renderer.
-It adds neither a message history entry nor an independent expiry timer. This
-follows the on-demand member controls in
-[Discord](https://support.discord.com/hc/en-us/articles/223657667-Group-Chat-and-Calls)
-and the separate reaction entry in
-[Google Meet](https://support.google.com/meet/answer/13151720?hl=en), adapted to a
-small companion window. Only unobscured chat following the latest messages consumes
+It adds neither a message history entry nor an independent expiry timer. Member
+controls and reactions open on demand within the small companion window. Only
+unobscured chat following the latest messages consumes
 unread messages. The detached window uses the same room session, event expiry and
 sending controls as the couch shortcut.
 Self expressions follow the sender's head, including idle and interaction motion.
@@ -310,13 +307,6 @@ needs a separate grant, and Linux needs desktop-specific integration such as the
 [RemoteDesktop Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html).
 Mobile controllers also need touch and text-input behavior, not just mouse-event reuse.
 
-The inspected [uu-remote-linux implementation](https://github.com/VallierDev/uu-remote-linux/tree/80ac4448d661e30772214de30cf5cedef990e418)
-implements the Linux controlled endpoint; its controllers, account and signaling
-service remain in the official UU ecosystem. It is not an independent
-cross-platform remote-control SDK. Its GPL implementation remains study-only
-under the repository's contribution rules. No matched measurement establishes
-a Go/Rust performance advantage or a need to replace Piik's media pipeline.
-
 The native input backend is included by the existing platform build constraints;
 App checks and packaging use the same implementation without an experimental
 feature tag. App discovery advertises the optional input capability;
@@ -415,9 +405,8 @@ or when video is locally paused or enters native PiP/fullscreen.
 DOM fullscreen keeps the page's input surface and retains control. Pointer motion retains the
 latest absolute sample or accumulated relative movement within a short timer,
 flushing before button/key transitions so a drag ends at its final position.
-Input batching does not wait for rendering. This follows the independent,
-bounded motion batching in [Moonlight](https://github.com/moonlight-stream/moonlight-common-c/blob/master/src/InputStream.c)
-and the [UU Linux input owner](https://github.com/VallierDev/uu-remote-linux/blob/80ac4448d661e30772214de30cf5cedef990e418/src/input.rs).
+Input batching does not wait for rendering. Motion batching stays independent
+and bounded.
 Normal pointer-capture release after mouse-up preserves held keyboard keys;
 actual cancellation, blur and grant retirement release them.
 Host settings reuse the shared floating panel beside their entry. An unapplied
@@ -485,16 +474,14 @@ capture remains subject to the local OS and Browser; even the
 [Keyboard Lock API](https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock)
 only receives keys the OS permits. Piik does not install a global keyboard hook
 or simulate the protected Ctrl+Alt+Delete sequence. Closing the keyboard returns
-focus to the control surface. [Parsec's input modes](https://support.parsec.app/hc/en-us/articles/32361385571860-Immersive-Mode-Setting)
-likewise distinguish remote key capture from ordinary local window interaction.
+focus to the control surface.
 The local text field owns IME composition and sends only explicitly submitted
 text through the platform input adapter, including Windows
 [Unicode input](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput),
 Quartz Unicode events and Portal keysyms.
 There is no clipboard synchronization. This follows the touchpad conventions in
-[Moonlight's input guide](https://github.com/moonlight-stream/moonlight-docs/wiki/Setup-Guide#keyboardmousegamepad-input-options);
-[UU's iPad guide](https://uuyc.163.com/help/20241203/40221_1197702.html) also distinguishes
-touch from physical keyboard/mouse input. No game-specific touch layout is added.
+[Moonlight's input guide](https://github.com/moonlight-stream/moonlight-docs/wiki/Setup-Guide#keyboardmousegamepad-input-options).
+No game-specific touch layout is added.
 Chromium touch emulation delivered native clicks, scrolling, drag/cancel,
 Chinese/emoji text and shortcuts over the existing P2P route. Narrow layouts,
 DOM fullscreen, zoom/pan coordinate alignment and Host revocation passed;
@@ -636,8 +623,7 @@ API, without game-memory access, injected game code or an input driver.
 remains subject to process-integrity restrictions, and a successful call only
 proves insertion into the system input stream, not acceptance by a game.
 [Windows marks injected keyboard events](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-kbdllhookstruct).
-[Parsec documents anti-cheat input blocking](https://support.parsec.app/hc/en-us/articles/32381827815188-Mouse-and-Keyboard-Isn-t-Working-Correctly-When-Connected),
-including Vanguard-protected games. [BattlEye distinguishes blocking/kicks from bans](https://www.battleye.com/support/faq/);
+[BattlEye distinguishes blocking/kicks from bans](https://www.battleye.com/support/faq/);
 its policy does not certify Piik or another game's anti-cheat. No current evidence
 establishes Piik game compatibility or a ban probability. Virtual controller
 drivers are likewise not an anti-cheat exemption. Keep integration on supported

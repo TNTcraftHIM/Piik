@@ -537,55 +537,14 @@ The [Native encoder control](./webrtc-encoder-pool.md#budget-restoration) also
 separates restored allocation from later resolution recovery; that delay is not
 specific to Browser capture or proof that a network estimate is still low.
 
-### Mature Product Boundaries
+### Media Adaptation Boundaries
 
-Discord documents a multi-process capture/encode/transport/decode pipeline,
-OS-specific capture fallback, hardware codec selection, WebRTC bandwidth
-estimation, and joint monitoring of cadence, latency, visual quality, network,
-CPU and memory. Its desktop client uses native capture and codec integration;
-that result is evidence for native pipeline boundaries, not a Browser API recipe.
-Discord also reported a real frame-drop ratchet where reconfiguring an encoder
-to its already-reduced cadence increased bits per frame and compounded drops.
+Capability checks must cover the actual codec, adapter/device, dimensions,
+frame rate, implementation, chroma sampling and bit depth. Native capture and
+codec work should retain clear process and resource owners. Encoder cadence,
+network congestion response and recovery demand are separate responsibilities.
 
-Signed local NetEase UU Remote installations separate UI, service, streamer,
-codec detector, virtual-display and audio components. The inspected capability
-caches key encoder/decoder support by codec, adapter/device, dimensions, frame
-rate, implementation, chroma sampling and bit depth. This supports profile-scoped
-capability caching and process isolation; the detector was not executed.
-
-A static review of 4.40.1 also found WebRTC congestion-control, quality-scaling
-and probing components. Three encoder-adapter constructors supply the same
-cadence-controller defaults: five downshift samples, a 4,000 ms observation
-window, 10% headroom and a 25% rapid-upshift threshold. Local control-flow and
-log-argument references establish that sample count and elapsed time both gate
-a downshift, with a separate rapid cadence-increase branch. These are encoder
-cadence settings, not packet-loss thresholds or verified live-session policy.
-The binary also contains ALR and rapid-recovery probing configuration; static
-presence does not establish runtime activation or equivalence to current WebRTC.
-
-The [unofficial UU Linux host](https://github.com/VallierDev/uu-remote-linux/tree/15bb35573d8b71d6fe0943d8daa46f0bdc5bc2cb)
-is a different implementation. Its inspected `capture_setting.rs`, `video.rs`
-and `webrtc.rs` use viewer-selected quality/FPS, constant-quality encoding with
-a bitrate cap, a four-frame queue and dependency-aware dropping until an IDR.
-The default subprocess path relies on a short GOP; the optional in-process
-encoder can answer PLI/FIR directly. Receiver reports feed diagnostics, with no
-sender network-estimate-to-encoder-rate loop found in this source. Its preset
-values therefore do not establish NetEase's adaptation or recovery algorithm.
-
-KOOK's official 1080p60 guidance requires substantial CPU/GPU headroom and its
-troubleshooting explicitly notes that hardware acceleration can worsen some
-systems. Oopz treats VPN/accelerator changes as an independent network-path
-diagnostic. Its inspected 0.88.41 package includes Agora and TRTC libraries;
-the packaged screen-share player entry configures Agora RTC/H264 playback with
-HLS fallback available. Bundled SDK code is not evidence that every feature is
-active, or that the publisher uses a particular QoS setting. Agora and TRTC's
-public APIs explicitly distinguish clarity from cadence preferences; TRTC also
-warns that equating minimum and target bitrate disables bitrate adaptation.
-These sources support explicit media intent and stage-specific diagnosis,
-not a universal hardware switch or a forced quality floor.
-
-The useful shared lesson is to separate congestion response, encoder cadence
-and recovery demand. WebRTC's pinned [probe controller](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/congestion_controller/goog_cc/probe_controller.cc)
+WebRTC's pinned [probe controller](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/congestion_controller/goog_cc/probe_controller.cc)
 already distinguishes a large bandwidth drop, a bounded recovery-probe window,
 ALR and maximum allocation. Its [quality scaler](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/utility/quality_scaler.cc)
 separately requires samples and smoothed QP evidence. Piik's Native encoder uses
@@ -607,18 +566,13 @@ track settings remained 30 fps, and Viewer freeze intervals followed those
 lows. The event therefore contained both native BWE degradation and source
 cadence loss; topology churn and CSS presentation were not required causes.
 
-### TeamSpeak Native Comparison
+### Native Encoder Policy Experiments
 
-The 2026-10-16 review inspected the installed TeamSpeak 6 beta5 package
-(`TeamSpeak.dll` SHA-256 prefix `b4888a71b8e7a029`) and its
-[Foundation III release](https://community.teamspeak.com/t/teamspeak-6-0-0-beta5-foundation-iii-update/65513).
-The UI uses CEF; screen sharing crosses a native bridge into libwebrtc and
-FFmpeg 8.1 encoders. CEF's Chromium version does not identify the separately
-linked native WebRTC revision. This was static inspection plus experiments
-in Piik's pipeline, not a measured TeamSpeak call or a product ranking.
-
-Stream initialization supplies three concrete field trials, established from
-their construction and environment call sites rather than string presence:
+Piik evaluated the encoder controls below in its existing Native pipeline.
+The congestion-window setting illustrates a separate transport boundary; it
+cannot configure Piik's Pion/LiveKit transport through encoder configuration.
+The dropper and bitrate-adjuster experiments below measure the current Piik
+pipeline, not another application's complete implementation.
 
 | Native setting | Meaning and transfer boundary |
 | --- | --- |
@@ -628,43 +582,24 @@ their construction and environment call sites rather than string presence:
 
 The [upstream parser](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/rtc_base/experiments/rate_control_settings.cc)
 and [encoder contract](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/api/video_codecs/video_encoder.h)
-explain these independent controls. TeamSpeak also configures FFmpeg backends
-directly: the inspected NVENC defaults include P6, low-latency tuning, CBR,
-zero reordering delay and zero lookahead; QSV uses low-delay BRC, asynchronous
-depth one and zero lookahead. Values were checked against the
-[FFmpeg NVENC definitions](https://github.com/FFmpeg/FFmpeg/blob/n8.1/libavcodec/nvenc_h264.c).
-They are backend defaults, not proof of a user's selected encoder or settings
-that can be applied to Piik's Media Foundation backend by renaming options.
-
-The same NVENC constructor enables spatial and temporal AQ, with spatial
-strength 9 and quarter-resolution multipass. These are meaningful quality/cost
-choices: [NVIDIA documents](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.1/nvenc-video-encoder-api-prog-guide/index.html#adaptive-quantization-aq)
-better perceptual allocation, but also extra GPU work and greater frame-size
-variation with temporal AQ. Media Foundation does not expose this same named
-control set. Piik's existing backend avoids a second GPU integration but gives
-up those explicit tuning choices; neither its parameter trials nor its limited
+explain these independent controls. Encoder backend options are not portable
+merely because they have similar names. Media Foundation does not expose every
+NVENC quality/cost control; Piik's limited
 [profile comparison](./native-client-media.md#native-h264-motion-quality)
-establish equal quality to TeamSpeak's native pipeline.
+does not establish parity with another native pipeline.
 
-Shared encoding has its own per-receiver rate and dependency state. Once
-initialized, the inspected rate aggregate suppresses an update unless its bitrate changes by
-more than 10% or 200 kbps, or its frame rate changes by at least 1 fps. These
-are reconfiguration thresholds, not loss tolerance, a recovery timer or an
-instruction to ignore real congestion. The fanout path tracks lost dependency
-chains per receiver. The beta5 release separately confirms a repair for one
-stalled viewer freezing the shared encoder. Piik already separates incompatible
-consumer budgets into [output groups](./webrtc-encoder-pool.md#compatible-output-groups)
-and uses LiveKit's per-output forwarding state; copying another aggregation
-controller would replace those semantics rather than merely improve encoding.
+Shared encoding needs independent per-receiver rate and dependency state.
+Piik separates incompatible consumer budgets into
+[output groups](./webrtc-encoder-pool.md#compatible-output-groups) and uses
+LiveKit's per-output forwarding state. Replacing that partition with one rate
+aggregate changes its semantics.
 
-The keyframe recovery path distinguishes ignored requests from silent output
-and retains encoder-local recovery before reinitialization. Its broader watchdog
-and software-fallback state machine is not transplanted. The useful boundary is
+The useful boundary is
 request versus actual output: [Chromium's Media Foundation adapter](https://chromium.googlesource.com/chromium/src/+/d5070a6099ade2fe3c953d3b3677843e1a43e87e/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc)
 records whether a keyframe request was fulfilled and delivers the actual frame
 type rather than failing solely because it was not fulfilled.
 
-This comparison exposed a Windows inconsistency in Piik: every forced live
+A Windows inconsistency in Piik required a repair: every forced live
 request required immediate SPS/PPS/IDR output or failed that codec output.
 Windows now retains recovery intent until actual independent output, matching
 the existing macOS/Linux behavior. First-output admission, bitstream validation
@@ -678,10 +613,9 @@ frame and decoded its remaining 45 frames. This establishes controlled behavior,
 not a diagnosis of an untraced user's driver failure.
 
 Color conversion already has an explicit matrix/range owner and fidelity checks;
-TeamSpeak's BT.709 fix is not a reason to override Piik's tagged BT.601 WebRTC SDR
-contract. Likewise, Opus FEC driven by individual talker loss belongs to a different
-audio-feedback model than Piik's shared screen-audio output. Neither comparison
-justifies another color heuristic or per-viewer audio encoder.
+Piik retains its tagged BT.601 WebRTC SDR contract. Individual talker loss also
+belongs to a different audio-feedback model than Piik's shared screen-audio
+output; it does not justify a per-viewer audio encoder.
 
 The two encoder field trials were applied, together and separately, to the
 existing Windows NV12/MFT H264 lab. The control retained Piik's selected
@@ -695,7 +629,7 @@ AU delivery, not decoded pictures or Browser-rendered freezes.
 | Encoder experiment | Three one-second limits: recovery / longest receive gap | Fifteen-second limit: recovery / longest receive gap |
 | --- | --- | --- |
 | Current Piik settings | 1.9 s / 1.48 s | 22.2 s / 6.43 s |
-| Both TeamSpeak encoder trials | 17.3 s / 2.84 s | 16.2 s / 14.96 s |
+| Both encoder trials | 17.3 s / 2.84 s | 16.2 s / 14.96 s |
 | Only disable frame dropper | 8.1 s / 2.83 s | Not run |
 | Only disable bitrate adjuster | 15.2 s / 1.97 s | Not run |
 
@@ -704,11 +638,11 @@ through brief pulses and shortened sustained-limit recovery from 11 to 9 seconds
 However, sustained 400 kbps output averaged about 746 kbps instead of 380 kbps
 over the settled low-budget interval. Coupling actual transport feedback exposed
 the delivery tradeoff above. These single runs reject a blanket transplant;
-they do not estimate TeamSpeak's performance or the probability of a field issue.
+they do not estimate another application's performance or field failure rates.
 Production retains the existing dropper and adjuster. No new controller,
 FFmpeg dependency or periodic connection reset follows from this comparison.
 
-A separate control applied the inspected bitrate-update thresholds at Piik's
+A separate control applied bitrate-update thresholds at Piik's
 existing Native encoder demand input, without changing the transport estimator.
 At fixed 30 fps, updates passed only when their difference exceeded 10% or
 200 kbps. Four 120-second runs used the same link impairments above. Recovery
@@ -725,11 +659,11 @@ respectively, but delayed recovery and delivered fewer picture AUs overall.
 The shorter worst gaps are a tradeoff, not an established overall improvement;
 no filter is retained. The control also varies from the earlier runs, so their
 1.9-second recovery is not a guaranteed recovery time. These remain Piik
-experiments, not measurements of TeamSpeak's complete pipeline.
+experiments with the current Piik pipeline.
 
 A follow-up tested whether tighter native rate control could make the two
 trials useful together. NVIDIA recommends small VBV for low-latency encoding;
-this does not establish TeamSpeak's selected buffer. Piik's lab set the MFT
+Piik's lab set the MFT
 [H264 HRD buffer in bytes](https://learn.microsoft.com/en-us/windows/win32/codecapi/avenccommonbuffersize-property)
 to one or four frames at each rate change. On the RTX 4070 SUPER / driver 617.42,
 initial values read back correctly, but live writes returned success while
@@ -743,8 +677,8 @@ gap counts exclude parameter-set-only units but are not rendered-frame timings.
 The buffer variant therefore remains lab-only; no encoder recreation on bitrate
 updates is added to force this property to work.
 
-The [ICE comparison](./nat-traversal.md#teamspeak-ice-comparison) owns its
-separate connection-establishment findings.
+[ICE recovery boundaries](./nat-traversal.md#ice-recovery-boundaries) own
+connection establishment separately.
 
 ## Quality Shadow
 
@@ -887,11 +821,6 @@ percentages, and tuning loops are not adopted for this Browser product.
 - [Picture-in-Picture](https://www.w3.org/TR/picture-in-picture/)
 - [Chrome timer throttling](https://developer.chrome.com/blog/timer-throttling-in-chrome-88)
 - [Chrome Page Lifecycle](https://developer.chrome.com/docs/web-platform/page-lifecycle-api)
-- [Discord Go Live pipeline](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology)
-- [Discord AMD encoder ratchet](https://discord.com/blog/from-blocky-to-brilliant-improving-video-quality-on-discord-go-live-on-amd-gpus)
-- [KOOK screen-share requirements](https://support.kookapp.cn/7ff3/b671)
-- [KOOK resource troubleshooting](https://help.kookapp.cn/6a2f/8525)
-- [Oopz network-path troubleshooting](https://help.oopz.cn/fa71/694b)
 - [Agora degradation preferences](https://api-ref.agora.io/en/video-sdk/android/4.x/API/enum_degradationpreference.html)
 - [TRTC encoding and QoS parameters](https://trtc.io/document/50775)
 - [LiveKit server forwarder](https://github.com/livekit/livekit/blob/v1.13.5/pkg/sfu/forwarder.go)

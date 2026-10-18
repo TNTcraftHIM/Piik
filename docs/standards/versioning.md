@@ -289,10 +289,7 @@ preserves authored Markdown and appends identity/checksums; it does not infer an
 editorial summary from a version number. Keep provenance and the full changelog
 link after the user-facing explanation.
 
-Editorial references: [CC Switch releases](https://github.com/farion1231/cc-switch/releases)
-and [OBS Studio releases](https://github.com/obsproject/obs-studio/releases) show
-release introductions and grouped changes; Piik's exact scope and upgrade
-instructions must come from its own accepted changes.
+Piik's release scope and upgrade instructions come from its own accepted changes.
 
 ## Release Sources
 

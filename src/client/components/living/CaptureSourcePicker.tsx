@@ -191,7 +191,7 @@ export function CaptureSourcePicker({
       <div className="lr-source-picker-panel">
         <header className="lr-source-picker-head">
           <span className="lr-source-picker-mark" aria-hidden="true">
-            <Glyph name="share" size={22} draw="capture-source" />
+            <Glyph name="window" size={22} draw="capture-source" />
           </span>
           {vis ? null : (
             <span className="lr-source-picker-copy">

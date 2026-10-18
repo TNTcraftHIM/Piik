@@ -18,16 +18,10 @@
 These are architecture references only. No implementation or copyleft source is
 copied.
 
-A read-only inventory of locally installed streaming clients adds one practical
-constraint. GameViewer separates its UI, supervised media service, codec
-capability detector, streamer, health process, and updater. Discord keeps its
-Chromium UI separate from a native voice/media module and updater. Oopz ships
-Flutter, a second WebView, FFmpeg, Agora RTC, and Tencent LiteAV together; that
-stack is substantially larger and duplicates media ownership. Piik follows
-the first two products' process separation but not their UI runtimes, and avoids
-Oopz's parallel RTC stacks: one Go process, one Pion media core, and one thin
-system capture sidecar per platform remain sufficient. No binary code or private
-application data was copied or inspected.
+Piik separates the Browser UI from native capture and media ownership. One Go
+process, one Pion media core, and one thin system capture sidecar per platform
+remain sufficient; additional UI runtimes or parallel RTC stacks need an actual
+consumer and a distinct responsibility.
 
 ## Current Control Boundary
 
@@ -324,11 +318,9 @@ Its [feature-upgrade guidance](https://sparkle-project.org/documentation/publish
 also requires capable readers or a separate feed; metadata alone cannot teach
 older readers a new rule.
 
-[CC Switch's About panel](https://github.com/farion1231/cc-switch/blob/243cd9a93b67f56efac173f32505b4085fb40cae/src/components/settings/AboutSection.tsx)
-separates its update action from opening the target version's release notes.
-The installed edition downloads, installs and restarts. Reading release notes
-is optional. This supports Piik's action hierarchy, not adoption of CC Switch's
-installer or update infrastructure; no implementation code was copied.
+Piik's primary action opens the download for the target version; release notes
+are optional context. This action hierarchy does not require another installer
+or update infrastructure.
 
 The evidence supports direct manual downloads with an optional release-note
 link and inline major-upgrade guidance. The accepted behavior belongs to
@@ -370,8 +362,6 @@ undecided.
 - [LocalSend protocol](https://github.com/localsend/protocol/blob/main/README.md)
 - [Sunshine](https://docs.lizardbyte.dev/projects/sunshine/latest/)
 - [Syncthing GUI configuration](https://docs.syncthing.net/users/config.html)
-- [GameViewer product](https://uuyc.163.com/)
-- [Discord desktop architecture](https://discord.com/blog/how-discord-maintains-performance-while-adding-features)
 - [WebView2 Evergreen runtime](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/evergreen-vs-fixed-version)
 - [WebView2 screen capture](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2screencapturestartingeventargs)
 - [WebKitGTK multimedia](https://docs.webkit.org/Ports/WebKitGTK%20and%20WPE%20WebKit/Multimedia.html)

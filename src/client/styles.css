@@ -25,7 +25,6 @@
   --pawn-5: #e2698f;
   --pawn-6: #4e9c74;
   --pawn-7: #a978bd;
-  --pawn-8: #5f7dd8;
   --action: #2f6fed;
   --action-deep: #2058c9;
   --live: #2fa66a;
@@ -1558,6 +1557,10 @@ html[data-theme="dark"] .lr-pill.is-good { background: #14291d; }
 .lr-client-approval-origin > strong { flex: 1; min-width: 0; font-weight: 650; }
 .lr-client-approval-origin > .lr-client-approval-check { color: var(--live); }
 .lr-client-approval p.lr-client-approval-replace { padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size: 12px; }
+.lr-client-approval-startup { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 13px; line-height: 1.5; cursor: pointer; }
+.lr-client-approval-startup input { width: 18px; height: 18px; margin: 0 2px 0 0; flex: none; accent-color: var(--action); }
+.lr-client-approval-startup > svg { flex: none; }
+.lr-client-approval-startup:has(:disabled) { opacity: .5; cursor: default; }
 .lr-client-approval-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .lr-client-approval-actions > :only-child { grid-column: 1 / -1; }
 .lr-client-approval-actions > .lr-comic-tip-wrap { min-width: 0; }

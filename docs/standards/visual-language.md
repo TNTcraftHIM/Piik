@@ -324,9 +324,11 @@ changing the badge does not restyle the UI, wordmark or illustrations.
 
 These are **identity/object colours**, not status. A green pawn remains green
 in a failed scene; a successful scene does not turn other people green. Real
-roster identities retain the shared UUID colour function, not the illustrative
-"you versus others" palette. Actor positions and identities remain stable from
-the first panel to the result.
+roster identities use the shared UUID colour function to generate a stable
+colour in a continuous cool hue range, not a fixed list or the illustrative
+"you versus others" palette. The same identity keeps its colour across surfaces,
+themes and roster changes; colour alone does not identify a person. Actor positions
+and identities remain stable from the first panel to the result.
 
 Room pawns, tooltip/status comics and introduction participants use
 a round head, half-oval body and two restrained eyes. Reuse the shared
@@ -355,8 +357,9 @@ spacing, then use a vertical outline when depth exceeds the available width.
 Couch upholstery uses the fixed warm orange/yellow `--couch` / `--couch-dark`
 palette. Never draw upholstery from the participant palette or randomize it by
 room. Keep automatic participant colours outside the upholstery's amber/orange
-range and the crown's gold; check all eight tokens against both objects in light
-and dark themes. The crown retains a bright gold fill with a dark gold edge.
+range and the crown's gold; check the generated range against both objects in
+light and dark themes. Fixed illustration colours remain illustration tokens.
+The crown retains a bright gold fill with a dark gold edge.
 Figures and exterior upholstery use flat fills without outline strokes.
 Use differences in tone, spacing and name tags to keep people readable; retain
 only the few interior seams that clarify cushions. Apply this convention to

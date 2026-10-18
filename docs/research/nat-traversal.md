@@ -26,28 +26,16 @@ configured, Chromium emitted one deduplicated srflx candidate. No raw address or
 port was retained. This proves endpoint reachability and candidate
 deduplication; it does not classify the NAT or prove another direct path.
 
-### TeamSpeak ICE Comparison
+### ICE Recovery Boundaries
 
-TeamSpeak's [engineer explanation](https://community.teamspeak.com/t/how-does-share-screen-technically-work/56850)
-identifies ordinary WebRTC ICE and two operator-hosted STUN services. Their
-`turn.teamspeak.com` / `turn2.teamspeak.com` names do not establish TURN relay;
-the engineer explicitly describes them as STUN-only. This supplies no measured
-connection-success advantage or evidence for proprietary hole punching.
-
-Static inspection of TeamSpeak 6 beta5 on 2026-10-16 found explicit negotiation
-ownership, stale-connection and old-ICE-generation rejection, an ICE-restart
-recovery tier followed by complete connection reset, and a check that skips a
-duplicate restart already performed since the reported failure. Its
-[release notes](https://community.teamspeak.com/t/teamspeak-6-0-0-beta5-foundation-iii-update/65513)
-also identify lost large offers after restart and overly strict timeouts as
-repaired connection failures. These findings support generation-aware recovery
-and complete signaling delivery, not simply raising retry counts. Piik already
-owns these concerns in [ordinary recovery](#ordinary-ice-and-media-recovery);
-no second restart controller or borrowed public STUN service is introduced.
-The installed package's `StreamSFU` class name alone does not prove an enabled
-server relay or automatic P2P/SFU switching. No live TeamSpeak NAT comparison
-was performed. [Encoding and rate-control findings](./realtime-quality-adaptation.md#teamspeak-native-comparison)
-are separate from reachability evidence.
+Connection recovery needs explicit negotiation ownership, stale-connection and
+old-ICE-generation rejection, and complete signaling delivery. A duplicate
+restart already performed since a reported failure should not create another
+operation. Piik owns these concerns in
+[ordinary recovery](#ordinary-ice-and-media-recovery); increasing retry counts
+or adding another restart controller does not repair those boundaries.
+Endpoint names and packaged class names alone do not establish active relay
+behavior or a measured connection-success advantage.
 
 ### Public-Link Discovery Redundancy
 

@@ -46,6 +46,7 @@ export function AppLauncherPage() {
   const [mode, setMode] = useState<AppMode>("link");
   const [site, setSite] = useState("");
   const [startupSite, setStartupSite] = useState("");
+  const [openOnApproval, setOpenOnApproval] = useState(false);
   const [localAccessPassword, setLocalAccessPassword] = useState("");
   const [error, setError] = useState<{ kind: "load" | "launch"; reason?: string; detail?: string } | null>(null);
   const [appDebug, setAppDebug] = useState<boolean | undefined>();
@@ -69,12 +70,15 @@ export function AppLauncherPage() {
     } catch { return false; }
   })();
   const approvalCurrent = validSite && site === requestedSite;
+  const openSiteOnStart = site !== "" && startupSite === site;
 
   useEffect(() => {
     // The App's saved exact origin owns permission, including repeat connections.
     // The requesting page still verifies authorized health before using App.
-    if (approvalCurrent) window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
-  }, [approvalCurrent, requestedSite]);
+    // The opener closes this page. Finish an explicitly selected startup
+    // preference first, and leave a failed save visible for correction.
+    if (approvalCurrent && !siteBusy && !siteError) window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
+  }, [approvalCurrent, requestedSite, siteBusy, siteError]);
 
   useEffect(() => {
     let current = true;
@@ -219,15 +223,15 @@ export function AppLauncherPage() {
     } finally { finish(); }
   }
 
-  async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site"): Promise<void> {
+  async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site", starAfterApproval = false): Promise<void> {
     if (siteBusy) return;
     const finish = beginStateChange();
     setSiteBusy(true);
     setSiteError(undefined);
-    try {
+    async function save(setting: "site" | "startup-site", expectedSite: string): Promise<boolean> {
       const response = await fetch(`/api/client-launcher/${setting}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ site: nextSite, expectedSite: site }),
+        body: JSON.stringify({ site: nextSite, expectedSite }),
       });
       const result = launcherStateSchema.pick({ site: true, startupSite: true }).safeParse(await response.json().catch(() => null));
       if (result.success) {
@@ -236,9 +240,13 @@ export function AppLauncherPage() {
       }
       if (response.status === 409 && result.success) {
         setSiteError(t("client.connect.changed"));
-        return;
+        return false;
       }
       if (!response.ok || !result.success) throw new Error("Could not save App settings");
+      return true;
+    }
+    try {
+      if (await save(setting, site) && starAfterApproval) await save("startup-site", nextSite);
     } catch {
       setSiteError(t("client.connect.saveFailed"));
     } finally { finish(); setSiteBusy(false); }
@@ -291,11 +299,20 @@ export function AppLauncherPage() {
             </div>
             {!validSite && <Pill icon="alert" tone="bad" label={t("client.connect.invalid")} comic="signal-failed" />}
             {siteError && <p role="alert">{siteError}</p>}
+            {validSite && <label className="lr-client-approval-startup">
+              <input type="checkbox" disabled={siteBusy}
+                checked={approvalCurrent ? openSiteOnStart : openOnApproval}
+                onChange={event => approvalCurrent
+                  ? void changeSite(event.target.checked ? site : "", "startup-site")
+                  : setOpenOnApproval(event.target.checked)} />
+              <Glyph name="star" size={18} />
+              <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOnStart")}</span>
+            </label>}
             <div className="lr-client-approval-actions">
               <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"}
                 onClick={() => window.close()} />
               {!approvalCurrent && <Btn icon="check" title="client.connect.approve" cap="client.connect.approve" tone="primary"
-                hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void changeSite(requestedSite)} />}
+                hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void changeSite(requestedSite, "site", openOnApproval)} />}
             </div>
           </section>
         ) : (
@@ -311,7 +328,7 @@ export function AppLauncherPage() {
             </> : undefined}
             mode={mode}
             site={site}
-            openSiteOnStart={site !== "" && startupSite === site}
+            openSiteOnStart={openSiteOnStart}
             onToggleStartupSite={() => void changeSite(startupSite ? "" : site, "startup-site")}
             localAccessPassword={localAccessPassword}
             onModeChange={setMode}
