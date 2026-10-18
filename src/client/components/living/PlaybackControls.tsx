@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type RefObject, type ReactNode } from "react";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { useCopy } from "../../ui/copy";
+import { Glyph } from "../../ui/icons";
 import { debugError } from "../../lib/debug";
 import { Btn } from "./primitives";
 import { ViewerPlaybackSettings, type ViewerPlaybackSettingsProps } from "./ViewerPlaybackSettings";
@@ -168,7 +169,7 @@ export function PlaybackControlsView({
       pressed={theaterMode} onClick={onToggleTheater} />}
   </>;
 
-  return (
+  return <>
     <div ref={barRef} className={`lr-playback lr-host-share-controls lr-media-controls${hidden ? " is-hidden" : ""}`} role="group" aria-label={t("playback.controls")}>
       <span className="lr-playback-audio">
         <Btn icon={paused ? "play" : "pause"}
@@ -217,7 +218,11 @@ export function PlaybackControlsView({
         ) : null}
       </span>
     </div>
-  );
+    <button type="button" className="lr-btn lr-playback-reveal" aria-label={t("playback.showControls")}
+      onClick={() => barRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus({ preventScroll: true })}>
+      <Glyph name="chevron" size={18} />
+    </button>
+  </>;
 }
 
 // Native popover owns dismissal and focus return. The same actions above render

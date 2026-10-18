@@ -156,8 +156,8 @@ Returning a detached tool during fullscreen keeps it closed in the page; leaving
 fullscreen allows reopening it with its session and draft intact. The fullscreen
 bar retains the danmaku toggle, not an interaction-window entry.
 
-Viewer playback settings reuse shared controls and expand below the picture;
-fullscreen reserves their height instead of covering the video. Local picture
+Viewer playback settings reuse shared controls in an anchored popover;
+placement follows the [visual language](./visual-language.md) without resizing video. Local picture
 fit defaults to contain; cover preserves proportions and may crop edges, while
 stretch fills the player by changing proportions. These choices do not change
 capture or encoding. Remote input and magnification use the same rendered
@@ -175,15 +175,16 @@ audio consumer; it preserves current-frame proof and Viewer-local playback.
 A pending `play()` canceled by pause or rebinding is not a media failure;
 cancellation alone must not invalidate frame proof or disable local playback.
 
-The bar spans the screen's lower edge, preferring one row. Narrow screens shorten
-the volume slider and compact horizontal spacing and button widths, retaining
-44px control height and all actions; the percentage readout hides on narrow
-screens. If the control groups cannot fit, they wrap without overlapping.
+The bar floats at the picture's lower edge. Narrow screens shorten the volume
+slider and move secondary display actions into settings, preserving one row and
+44px control height; the percentage readout hides on narrow screens.
 Playing video hides the bar
 after two idle seconds, following [Media Chrome's default](https://github.com/muxinc/media-chrome/blob/main/docs/src/pages/docs/en/components/media-controller.md#autohide).
 Pause or unavailable playback keeps it visible. Control hover, keyboard focus,
 dragging and an open tooltip hold it open; mouse movement reveals it, and a
-touch tap on the picture toggles only visibility. One presentation-only idle
+touch tap on the picture toggles only visibility. Remote input gestures do not
+reveal local controls; a small local entry restores them through the same focus
+and visibility owner. One presentation-only idle
 timer owns visibility; it never changes playback or route state. Controls
 follow the shared [motion grammar](./visual-language.md#motion-grammar).
 

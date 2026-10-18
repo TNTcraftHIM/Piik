@@ -83,6 +83,7 @@ export const zh = {
   "remote.shortcut": "本机立即结束控制：",
   "common.loading": "正在加载",
   "playback.controls": "本机播放控制",
+  "playback.showControls": "显示播控",
   "playback.more": "播放设置",
   "playback.pictureFit": "画面显示",
   "playback.connection": "连接",

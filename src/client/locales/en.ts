@@ -83,6 +83,7 @@ export const en: Record<CopyKey, string> = {
   "remote.shortcut": "Stop immediately on this computer:",
   "common.loading": "Loading",
   "playback.controls": "Local playback controls",
+  "playback.showControls": "Show playback controls",
   "playback.more": "Playback settings",
   "playback.pictureFit": "Picture fit",
   "playback.connection": "Connection",

@@ -16,20 +16,21 @@
 .lr-playback.lr-media-controls { flex-wrap: nowrap; }
 .lr-playback.is-hidden { opacity: 0; transform: translateY(6px); pointer-events: none; }
 .lr-playback:has([popover]:is(:popover-open, .\:popover-open)) { opacity: 1; transform: none; pointer-events: auto; }
-/* Watching and remote input share one picture/toolbar geometry. Opening a tool
-   must not move the bar or cover pixels the controller needs to reach. */
-.lr-tv-screen:has(> .lr-playback) { display: grid; width: 100%; aspect-ratio: auto; grid-template: minmax(0, 1fr) auto / minmax(0, 1fr); }
+/* The picture spans the toolbar row; tools use the row below it. Remote input
+   uses the same geometry, so a grant never resizes the picture or moves the bar. */
+.lr-tv-screen:has(> .lr-playback) { display: grid; width: 100%; aspect-ratio: auto; grid-template: minmax(0, 1fr) auto auto / minmax(0, 1fr); }
 /* Keep the primary status readable above compact controls. */
 .lr-tv-screen:has(> .lr-playback):has(> .lr-tv-overlay) { min-height: 168px; }
-.lr-tv-screen:has(> .lr-playback) > video { grid-area: 1 / 1 / 2 / 2; min-height: 0; aspect-ratio: 16 / 9; height: auto; }
+.lr-tv-screen:has(> .lr-playback) > video { grid-area: 1 / 1 / 3 / 2; min-height: 0; aspect-ratio: 16 / 9; height: auto; }
 .lr-room.is-theater .lr-tv-screen:has(> .lr-playback) > video,
 .lr-tv-screen:fullscreen:has(> .lr-playback) > video { aspect-ratio: auto; height: 100%; }
-.lr-tv-screen > .lr-remote-input-surface { grid-area: 1 / 1 / 2 / 2; }
-.lr-tv-screen > .lr-playback { position: relative; inset: auto; grid-area: 2 / 1; }
-/* Touch control reserves this bar: its input surface consumes taps, so it must
-   always offer keyboard access and a way to end control. */
-.lr-tv-screen:has(> .lr-remote-input-surface) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
-.lr-tv-screen:has(> .lr-playback):has(:is(.lr-remote-keyboard, .lr-remote-password)) { grid-template-rows: minmax(0, 1fr) auto auto; }
+.lr-tv-screen > .lr-remote-input-surface { grid-area: 1 / 1 / 3 / 2; }
+.lr-tv-screen > .lr-playback { position: relative; inset: auto; grid-area: 2 / 1; max-width: calc(100% - 16px); margin-bottom: 8px; }
+/* Remote taps belong to input. Keep a local entry when idle controls are hidden. */
+.lr-btn.lr-playback-reveal { display: none; grid-area: 2 / 1; align-self: end; justify-self: end; z-index: 4; min-width: 0; width: 44px; height: 44px; padding: 0; margin: 0 8px 8px 0; border-width: 1px; }
+.lr-playback-reveal > svg { rotate: 180deg; }
+.lr-tv-screen:has(> .lr-remote-input-surface) > .lr-playback.is-hidden + .lr-playback-reveal { display: grid; place-items: center; }
+.lr-tv-screen > .lr-playback:has(:is(.lr-remote-feedback, [popover]:popover-open, [popover].\:popover-open)) + .lr-playback-reveal { display: none; }
 .lr-tv-screen:has(> .lr-remote-password) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
 .lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay { grid-area: 1 / 1 / 2 / 2; }
 .lr-tv-screen:has(> .lr-playback.is-hidden) > video { cursor: none; }

@@ -53,7 +53,9 @@ export function usePlaybackControlsVisibility(
     };
 
     screen.addEventListener("pointermove", (event) => {
-      if (event.pointerType === "touch") return;
+      // Movement on the remote surface belongs to the controlled computer;
+      // revealing the local bar there would cover its click targets again.
+      if (event.pointerType === "touch" || !owns(event.target)) return;
       // Cursor/style changes can emit stationary moves (Video.js #1068).
       if (lastMove?.x === event.screenX && lastMove.y === event.screenY) return;
       lastMove = { x: event.screenX, y: event.screenY };
