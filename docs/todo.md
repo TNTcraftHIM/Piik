@@ -17,7 +17,7 @@ platform deferrals or establish a diagnosis for unmatched reports.
 - [ ] **macOS bundle startup acceptance (#479).** The package now contains the
   actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
   dependency on an external sibling executable. A moved-bundle assembly check
-  passes, and candidate CI has built and packaged both Mac architectures.
+  passes, and release CI has built and packaged both Mac architectures.
   Verify Finder launch on macOS, including a downloaded/quarantined bundle and
   capture permissions. The packaging defect
   is established; its correction has not yet been matched to the reporter's Mac.
@@ -30,10 +30,13 @@ platform deferrals or establish a diagnosis for unmatched reports.
   own that boundary; this local repair does not diagnose the unmatched field
   reports below.
 
-- [ ] **Audio-exclusion explanation (#480).** At release, point the reporter to
-  the [source-audio scopes](./guide/getting-started.md#exclude-a-voice-app-from-screen-audio).
-  The missing window/camera exclusion control is intentional; investigate a
-  specific unwanted recording only if a matching source/input report establishes it.
+- [ ] **Early repaired-media startup.** Release postflight reproduced an SFU
+  publication failure before the subscriber offer. A deterministic Pion trial
+  established that repair can queue before primary RID admission, retaining a
+  zero SSRC. The shared RTP reader now restores the admitted primary identity;
+  focused forwarding and Browser SFU lifecycle checks pass. Publish the correction
+  with separate release approval and repeat the affected deployment check. The
+  production logs match this failure boundary but do not identify the packet fields.
 
 - [ ] **SFU recovery rollout.** Shared forwarding now gives DownTrack one
   owner for video sender reports and RR/RTT accounting, with Pion scheduling.
@@ -44,11 +47,12 @@ platform deferrals or establish a diagnosis for unmatched reports.
   the affected upstream clock. This does not diagnose every unmatched
   sustained-quality report below.
 
-- [ ] **Release issue follow-up.** After owner acceptance and publication, link
-  confirmed fixes to the release PR and notes, then reply with the shipped
-  version on relevant open and previously closed issues. Close only established
-  resolutions or explicitly declined requests; retain unmatched reports as
-  awaiting evidence.
+- [ ] **Frontend interaction boundaries.** At the existing surface owners,
+  contain source-picker modal focus, keep Escape inside the chat reaction tray
+  before closing its parent, and explain unavailable Viewer routes in visual
+  mode. Retain accessible names for visual-only headings/tooltips and remove
+  the duplicate reaction-picker catalogue entry. These are presentation fixes;
+  route authority and room/remote-input lifetimes stay unchanged.
 
 - [ ] **New promotional film.** Begin after publication. Explain Piik's screen
   sharing directly, then show sharing/invitation, interaction and single-controller
@@ -58,11 +62,14 @@ platform deferrals or establish a diagnosis for unmatched reports.
 
 ## Held By Owner
 
-- [ ] **Selection-colour consistency.** Deferred to the next minor update by
+- [ ] **Theme-role consistency.** Deferred to the next minor update by
   the owner on 2026-10-19. Keep this release's accepted palette. Sliding
   segments should reuse the theme's selected-control colour pair rather than
   inverse text/paper colours; review related App, Web and website choices at
-  their shared owners. Preserve primary-action and semantic-status identities.
+  their shared owners. Define primary, secondary, selection and status roles
+  once; preserve primary-action and semantic-status identities. Bridge the
+  same-origin website/docs appearance preference through their existing theme
+  adapters rather than keeping independent explicit choices.
 
 - [ ] **Remote-control latency and responsiveness.** Scheduled after this release.
   Compare input-to-visible-response timing on the same endpoints, source and
