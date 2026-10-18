@@ -198,6 +198,8 @@ the Viewer's listening-volume comic remains a different action.
 
 The Viewer bar groups local play/volume, room/input tools, then display modes,
 with fullscreen at the outer edge. Keep remote control and its keyboard adjacent.
+Keep picture and playback in separate rows for both watching and remote input,
+so granting or ending control does not move the bar or obscure source pixels.
 Shorten the volume slider before moving display modes into settings; keep the
 bar on one line at supported mobile widths.
 Viewer settings use a brief anchored popover, preferring space below the picture
