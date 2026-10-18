@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Modified by Piik: finalize probes from valid acknowledged measurements,
-// not the detector's retained initial capacity.
+// not the detector's retained initial capacity; retain packets across CTR groups.
 // Includes upstream #4935: consume deltas only for TWCC symbols carrying one.
 package sendsidebwe
 
@@ -1072,6 +1072,8 @@ func (c *congestionDetector) updateCTRTrend(pi *packetInfo, sendDelta, recvDelta
 			},
 			c.congestedPacketGroup.PropagatedQueuingDelay(),
 		)
+		// The old group rejected this packet before accounting for it.
+		_ = c.congestedPacketGroup.Add(pi, sendDelta, recvDelta, isLost)
 	}
 }
 

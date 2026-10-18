@@ -69,6 +69,14 @@ platform deferrals or establish a diagnosis for unmatched reports.
   the affected upstream clock. This does not diagnose every unmatched
   sustained-quality report below.
 
+- [ ] **Persistent loss with low source utilization.** An App-to-Browser field
+  trace and a controlled reproduction expose excessive budget reduction when
+  actual video uses only part of its requested bitrate. The CTR group-boundary
+  accounting repair does not resolve that behavior. Compare estimator handling
+  of persistent loss and real bandwidth constraints before selecting a change;
+  [evidence and limits](./research/node-local-media-design.md#persistent-loss-with-low-source-utilization)
+  distinguish the reproduced mechanism from the still-unknown cause of field loss.
+
 ## Held By Owner
 
 - [ ] **Multiple remote-control screens.** Deferred by the owner on 2026-10-17.

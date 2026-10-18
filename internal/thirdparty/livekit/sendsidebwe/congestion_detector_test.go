@@ -112,3 +112,38 @@ func TestHandleTWCCFeedbackReservedSymbol(t *testing.T) {
 		})
 	}
 }
+
+// A feedback packet that closes the previous group still belongs to the next
+// measurement. Losing it biases throughput and loss, especially on sparse video.
+func TestCongestedTrafficAcrossGroupBoundaries(t *testing.T) {
+	for _, lostBoundary := range []bool{false, true} {
+		config := defaultCongestionDetectorConfig
+		config.CongestedPacketGroup.MinPackets = 2
+		c := newCongestionDetector(congestionDetectorParams{Config: config, Logger: logger.GetLogger()})
+		c.createCTRTrend()
+		lastReceived := int64(90_000)
+		for i := range 6 {
+			lost := lostBoundary && i == 2
+			packet := packetInfo{sequenceNumber: uint64(i + 1), sendTime: 100_000 + int64(i)*10_000, size: uint16(100 * (i + 1))}
+			delta := int64(0)
+			if !lost {
+				packet.recvTime = packet.sendTime + 300_000
+				delta = packet.sendTime - lastReceived
+				lastReceived = packet.sendTime
+			}
+			c.updateCTRTrend(&packet, delta, delta, lost)
+		}
+		total := newTrafficStats(trafficStatsParams{Config: config.WeightedLoss})
+		total.Merge(c.congestedTrafficStats)
+		total.Merge(c.congestedPacketGroup.Traffic())
+		ackedPackets, ackedBytes, lostPackets, lostBytes := 6, 2100, 0, 0
+		if lostBoundary {
+			ackedPackets, ackedBytes, lostPackets, lostBytes = 5, 1800, 1, 300
+		}
+		if total.ackedPackets != ackedPackets || total.ackedBytes != ackedBytes ||
+			total.lostPackets != lostPackets || total.lostBytes != lostBytes ||
+			total.Duration() != 60_000 || total.sendDelta != 60_000 || total.recvDelta != 60_000 {
+			t.Fatalf("lost boundary=%v: feedback was not conserved: %+v", lostBoundary, total)
+		}
+	}
+}

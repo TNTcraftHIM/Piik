@@ -608,6 +608,36 @@ configured demand never substitutes for measured source bitrate. This verifies
 the shared forwarding adapter used by SFU subscribers, not a complete hosted
 Browser/SFU session or a field-report diagnosis.
 
+### Persistent Loss With Low Source Utilization
+
+A 2026-10-18 Native-to-Browser P2P trace retained healthy local 1080p output
+while the remote connection's video budget fell from 5 Mbps to about 8 kbps.
+Remote feedback reported roughly 320 ms RTT and sustained loss, commonly
+10–25%. Congestion began on loss, followed by repeated CTR-trend reductions
+based on progressively lower acknowledged throughput. Probes were sent, but
+their loss prevented promotion. This establishes the reduction path, not the
+physical path's capacity or the origin of its loss. A local TUN was active;
+it was left unchanged, so proxy causation is unproven.
+
+A virtual-network comparison reused the production forwarding gate with a
+12 Mbps link, 320 ms round-trip delay and 15% random packet loss for 30 seconds,
+then removed loss. Full-budget synthetic video bottomed out near 1.16 Mbps;
+video using one quarter of its budget fell to about 13 kbps. Both restored a
+5 Mbps budget after loss ended. These are generated RTP payloads, not decoded
+picture-quality measurements, and the fixed random seed does not pair packets
+across different send rates.
+
+The investigation also confirmed that CTR group rollover discarded its boundary
+packet. Refeeding that packet preserves received/lost bytes and timing, matching
+the ordinary packet-group path. A deterministic accounting regression fails
+without the repair. The low-utilization comparison still fell to about 15 kbps
+with the repair, then recovered after loss ended: this correction does not solve
+persistent-loss collapse. Reduced source traffic and network capacity must remain
+distinct in the next comparison. Google WebRTC's
+[loss-based estimator](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/congestion_controller/goog_cc/loss_based_bwe_v2.cc)
+models inherent loss separately; that is a reference for evaluation, not an
+accepted replacement or a reason to import another controller into Piik.
+
 ### Capture Boundary
 
 Output construction follows the [media-quality owner](../standards/media-quality.md):

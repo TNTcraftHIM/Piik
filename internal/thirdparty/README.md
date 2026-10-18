@@ -33,10 +33,11 @@ with its original `LICENSE` and `NOTICE`. It uses the existing pinned LiveKit
 interfaces; the rest of LiveKit comes from the pinned Go dependency, including
 the temporary allocator input described below. No build-time patch is applied.
 
-Two measurement corrections are marked in the modified files: probe finalization
+Measurement corrections are marked in the modified files: probe finalization
 returns the current acknowledged capacity and rejects invalid/empty feedback;
 probe timing begins with its first acknowledged packet, excluding pre-probe idle
-time. Piik's shared forwarding package uses this copy for both individual
+time; congestion statistics retain the packet that starts each new CTR group,
+including its received/lost accounting. Piik's shared forwarding package uses this copy for both individual
 transports and publications. Its regression checks use real TWCC feedback and
 retain the no-feedback and idle-before-probe controls. The
 [media research owner](../../docs/research/node-local-media-design.md#send-queue-recovery)
@@ -44,7 +45,7 @@ records the runtime evidence and remaining limits.
 
 The package notice collector still includes LiveKit's upstream license and
 notice through the other compiled LiveKit packages. When a maintained upstream
-version covers both corrections and the same regressions pass, remove this
+version covers these corrections and the same regressions pass, remove this
 directory and restore the upstream imports. Review dependency bumps against the
 named baseline; do not evolve a separate congestion-control algorithm here.
 
