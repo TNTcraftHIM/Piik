@@ -64,6 +64,11 @@ do not move unrelated controls into that space to fill an empty state.
 Choose by the user's task, then reuse its interaction and visual primitive.
 A sliding selection track shows a discrete choice; a range slider adjusts a
 number. Similar shapes do not make their responsibilities interchangeable.
+The catalogue renders production controls with sample data, including their
+meaningfully different variants and surfaces; dedicated playback and status
+previews remain linked from it. Keep a new control family discoverable there
+instead of leaving its only example in an ignored prototype. Platform-owned
+permissions and window chrome are verified in the actual platform, not imitated.
 
 | Task | Control and existing owner |
 | --- | --- |
@@ -78,6 +83,26 @@ number. Similar shapes do not make their responsibilities interchangeable.
 
 Selection, expansion and pending operations describe different facts. Use the
 appropriate native/ARIA semantics even when controls share their styling.
+Shared control geometry and motion live in `button.css`; `Btn` selects their
+variants. Use the regular size for standalone actions, compact for page/room
+toolbars, and dense for secondary panel/list actions. These are defaults, not a
+requirement for identical silhouettes: round icon actions keep equal width and
+height, captions may form pills, and embedded tools may use quiet rounded
+rectangles. Preserve proportions when space is tight; do not compress one axis
+of a circle. Header utilities share compact alignment and icon scale with the
+language track. Low-frequency help stays unframed and quiet; it need not carry
+the outline or shadow of direct settings. Narrow layouts shorten captions or
+spacing before changing that hierarchy.
+Keep App, language, theme and help together; narrow room headers place connection
+status beside the brand above this utility group instead of wrapping each action.
+`segmented-control.css` owns the sliding treatment for language, mode selection,
+tabs and native radio groups. Consumers supply selection and layout; they must
+not duplicate the selected colours or press animation. Language choices keep
+circular selection marks; settings and source tabs expand to fit their content
+and available space.
+Theme colours remain owned by `palette.css`. Rich choices, keyboard keys and
+responsive media tools keep their task-specific layout without creating another
+button or selection palette.
 Button labels and drag handles are not selectable text, including on touch
 browsers. Keep message text and editors selectable. Held-input controls own
 release on pointer-up, cancellation, lost capture and surface blur; a browser
@@ -203,8 +228,8 @@ threshold or quality verdict.
 
 ### Sharing And Playback
 
-Shared buttons and chips use pill shapes and a quiet lower edge. Standalone
-buttons, chips and option tiles lift 2 px on hover or keyboard focus, sink 2 px
+Shared buttons and chips use pill shapes and a quiet lower edge.
+Standalone buttons, chips and option tiles lift 2 px on hover or keyboard focus, sink 2 px
 on press, and spring back over 260 ms on release. Selected and unselected states
 use the same motion; selection changes only their colour and outline.
 Inputs and option tiles share softer corners. Press feedback uses the shared
@@ -413,6 +438,7 @@ type checking rather than silently render a warning triangle.
 | Repeat and disclosure / 重试与展开 | `refresh`, `chevron`, `arrowRight` | Repeat/refresh, expand/collapse, proceed/enter. Direction follows the control's action; no arrow alone establishes delivery. |
 | Transfer and upgrade / 传输与更新 | `arrowUp`, `arrowDown` | Outbound/inbound or upload/download, qualified by the adjacent label. An explicit update label may use the upward arrow for upgrade; neither arrow is a connection-quality rating. |
 | Diagnostics / 诊断 | `cpu` | Technical diagnostics in the labelled diagnostic control; in metrics the same processor identifies encoding work. The surrounding control or measured field states the scope. |
+| Help / 帮助 | `help`, `book` | Open product help or read a guide, respectively; current build identity belongs with this low-frequency information, separate from media settings and App connection state. |
 | Settings / 设置 | `sliders`, `mountain`, `balance`, `frames` | Settings, preserve image detail, balanced preference, preserve frame rate. The frame-rate preference uses the same frames as the measured value. |
 | Progress and result / 进度与结果 | `loader`, `alert`, `check`, `x` | In progress, a problem, confirmation/positive result, cancellation/negative result. The status owner supplies severity; the shape alone cannot set it. |
 | Theme / 主题 | `sun`, `moon` | Light/dark appearance in theme controls. A moon in an idle-room scene means rest, with the idle scene providing that context. |
@@ -563,8 +589,9 @@ blue fill and white foreground in both themes; theme selection must not erase
 their identity. The active remote-input outline uses that same fixed blue;
 suspended input uses the muted state. Use the shared foreground/background pairs
 for both themes.
-Selected choices use the shared face and inset outline; sliding segments use
-inverse ink/paper with the same accent outline. Subtle surface highlights
+Selected choices, including sliding segments and language shortcuts, use the
+shared `--control-selected` / `--control-selected-ink` pair and accent outline.
+Unselected hover uses `--control-hover`. Subtle surface highlights
 and shadows add depth without changing control geometry or press feedback.
 Gold upholstery, illustration and badge artwork retain their own palettes.
 
@@ -574,7 +601,8 @@ shortcut keys form separate reading levels. Use terminal-theme blue for links
 and actions, neutral rules, and the same success/wait/failure colour meanings.
 Preserve monochrome output and compact layouts without changing their behavior.
 
-Use the semantic theme tokens in `src/client/styles.css`. The shared
+Use the semantic theme tokens in `src/client/ui/palette.css`. Status colours
+keep their meaning independently of control selection and focus. The shared
 `comic-presentation.ts` maps meanings to those tokens for tooltip outlines,
 carets, result panels and verdict marks. Do not choose independent hex colours
 or animation rules inside an individual scene.
@@ -585,7 +613,7 @@ or animation rules inside an individual scene.
 | Confirmed completion or delivered media | Green `--live` / `live` | Neutral before, green result; check or completed object |
 | Still usable with a limitation, unavailable optional capability, or intentional media pause | Amber `--warn` / `warn` | Neutral before, amber result; limit, pause, lock or unavailable mark on the affected part |
 | Confirmed failed or blocked action | Red `--danger` / `bad` | Neutral before, red result; cross, broken path or other explicit failure mark |
-| Work in progress or awaiting an action/frame | Blue `--action` / `busy` | Neutral before, blue current/result panel; connection, progress or play symbol |
+| Work in progress or awaiting an action/frame | Blue `--busy` / `busy` | Neutral before, blue current/result panel; connection, progress or play symbol |
 
 Recovery retains amber because service is interrupted while work continues.
 Waiting for a Host and unknown observations remain neutral. A control's

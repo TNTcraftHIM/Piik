@@ -1,5 +1,12 @@
 /* Shared control geometry and motion for the application and static website. */
 :root {
+  --spring: cubic-bezier(.3, 1.45, .45, 1);
+  --control-size: 52px;
+  --control-compact-size: 44px;
+  --control-dense-size: 36px;
+  --control-icon-size: 18px;
+  --control-label-size: 12.5px;
+  --control-border-width: 2px;
   --control-hover-transform: translateY(-2px);
   --control-press-transform: translateY(2px);
   --control-motion: transform 260ms var(--spring);
@@ -11,12 +18,14 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-width: 52px; height: 52px;
-  padding: 0 14px;
-  border: 2px solid var(--control-edge);
+  min-width: var(--button-size, var(--control-size)); height: var(--button-size, var(--control-size));
+  padding: 0 var(--button-padding, 14px);
+  border: var(--control-border-width) solid var(--control-edge);
   border-radius: 999px;
   background: var(--paper);
   color: var(--ink);
+  font-size: var(--control-label-size);
+  font-weight: 600;
   white-space: nowrap;
   text-decoration: none;
   box-shadow: var(--control-shadow);
@@ -31,8 +40,13 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .lr-btn.is-danger:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: color-mix(in srgb, var(--danger) 10%, var(--paper)); }
 .lr-btn.is-on { border-color: var(--action); background: var(--control-selected); color: var(--control-selected-ink); box-shadow: inset 0 0 0 1px var(--action), var(--control-shadow); }
 .lr-btn.is-on:active:not(:disabled):not([aria-disabled="true"]) { box-shadow: inset 0 0 0 1px var(--action); }
-.lr-btn .lr-cap { margin-left: 2px; font-size: 12.5px; font-weight: 600; }
-.lr-theme-toggle { min-width: 40px; height: 40px; }
+.lr-btn .lr-cap { margin-left: 2px; font-size: var(--control-label-size); font-weight: 600; }
+.lr-btn > .lr-glyph { width: var(--button-icon-size, var(--control-icon-size)); height: var(--button-icon-size, var(--control-icon-size)); }
+.lr-btn.is-compact { --button-size: var(--control-compact-size); --button-padding: 10px; }
+.lr-btn.is-dense { --button-size: var(--control-dense-size); --button-padding: 8px; --button-icon-size: 16px; }
+.lr-btn.is-quiet { border-radius: 12px; }
+.lr-btn.is-quiet:not(.is-on):not(.is-primary):not(.is-danger) { background: transparent; border-color: transparent; color: var(--muted); box-shadow: none; }
+.lr-btn.is-quiet:not(.is-on):not(.is-primary):not(.is-danger):is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: var(--control-hover); border-color: transparent; color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   :root { --control-hover-transform: none; --control-press-transform: none; }
   .lr-btn { transform: none !important; transition: none !important; }

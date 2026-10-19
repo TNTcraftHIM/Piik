@@ -167,7 +167,7 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
       title={t(settingsOpen ? "interaction.settings" : "interaction.title")}
       onOpenChange={(open, owner) => { setChatOpen(open); setChatDocument(owner); }}>
       {settingsOpen && <>
-        <div className="lr-interaction-back"><Btn icon="chat" title="interaction.back" cap="interaction.back"
+        <div className="lr-interaction-back"><Btn icon="chat" title="interaction.back" cap="interaction.back" size="dense"
           hint="hint-chat-open" onClick={() => setSettingsOpen(false)} /></div>
         <RoomChatSettings session={session} />
       </>}
@@ -242,21 +242,21 @@ function InteractionPanel({ session, state, ...couch }: ConnectedProps & {
           aria-label={t("interaction.placeholder")} placeholder={vis ? "···" : t("interaction.placeholder")}
           name="message" autoComplete="off" onFocus={() => setPanelTarget(null)}
           onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} />
-        <Btn type="submit" icon="send" title="interaction.send" hint="hint-chat-send" tone="primary" busy={state.pending?.payload.kind === "chat"}
+        <Btn type="submit" icon="send" title="interaction.send" hint="hint-chat-send" tone="primary" size="compact" busy={state.pending?.payload.kind === "chat"}
           disabled={!canSend || !normalizeChatText(draft)} />
         </div>
         <div className="lr-chat-tools">
-          <Btn id={`${id}-express`} icon="smile" title="interaction.express" cap="interaction.express"
+          <Btn id={`${id}-express`} icon="smile" title="interaction.express" cap="interaction.express" size="dense" quiet
             hint="hint-reaction-picker"
             expanded={Boolean(panelPerson)} controls={`${id}-reactions`} tone={panelPerson ? "on" : undefined}
             onClick={() => {
               if (panelPerson) setPanelTarget(null);
               else openPanelReactions(state.peerId!, panelArea.current?.ownerDocument.getElementById(`${id}-express`) ?? null);
             }} />
-          <RoomChatToggle session={session} />
+          <RoomChatToggle session={session} size="dense" quiet />
           <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft ? undefined : "hidden" }}>
             {Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>
-          <Btn icon="sliders" title="interaction.settings" hint="hint-chat-settings"
+          <Btn icon="sliders" title="interaction.settings" hint="hint-chat-settings" size="dense" quiet
             onClick={() => { setPanelTarget(null); setSettingsOpen(true); }} />
         </div>
       </form>

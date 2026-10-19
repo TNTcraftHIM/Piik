@@ -121,6 +121,46 @@ encodes into a caller-owned Opus buffer, and can be replaced without changing
 the media edge or control wire. The dependency is BSD-3-Clause licensed;
 App CI follows the toolchain declared in [go.mod](../../go.mod).
 
+## macOS Audio Startup
+
+[Issue #486](https://github.com/TNTcraftHIM/Piik/issues/486) reports successful
+video-only startup but audio and then video timeouts with source audio enabled.
+Darwin previously confirmed audio readiness only after collecting 20 ms of PCM.
+The local correction instead confirms successful ScreenCaptureKit/AVAudioEngine
+startup on the existing sample queue, before admitting PCM. A silent input can
+therefore become ready without samples; failed or cancelled startup still cannot.
+This follows [Apple's startup contract](https://developer.apple.com/documentation/screencapturekit/scstream/startcapture%28completionhandler%3A%29)
+and the [upstream audio-capture lifecycle](https://github.com/obsproject/obs-studio/blob/master/plugins/mac-capture/mac-sck-audio-capture.m).
+
+Existing Go pipe fixtures now cover ready-but-silent audio, audio that never
+becomes ready, video startup in both cases and cancellation of blocked readers.
+Both controls pass without changing Go startup deadlines or adding retries.
+They do not reproduce the report's additional video timeout. Its display-audio
+attempt and window-filter crash refer to different processes; they do not
+establish one failure or an App bundle-identity collision. The native audio
+self-test is part of the Mac capture check, but compilation and actual Mac
+capture remain unverified on this Windows workstation.
+
+The remaining video timeout needs a separate Mac reproduction. Darwin emits
+`StartingStatus` after `SCShareableContent` enumeration and filter construction,
+before creating or starting its video stream. Native Host currently starts both
+helpers before reading video status, so their initial enumerations can overlap.
+An [Apple Developer Forums report](https://developer.apple.com/forums/thread/772365)
+reproduces an unresponsive `replayd` and similar 4097 errors using repeated
+concurrent enumeration from multiple processes, without capturing media
+(FB16310901). This is a candidate mechanism, not an established cause of #486;
+Apple has not confirmed its cause or a fix.
+
+The smallest Mac comparison uses the existing `piik-capture --list`: run one
+helper, then two concurrently, under the same parent with bounded attempts.
+Discard source metadata and retain only timing and errors. Separately compare
+current startup with waiting for the video's existing `StartingStatus` before
+starting audio. Keep deadlines, bundle identity and permissions unchanged in
+these comparisons. Terminal versus App launch is a separate variable:
+[Apple DTS describes TCC's responsible-process attribution](https://developer.apple.com/forums/thread/125438),
+so a successful manual helper does not establish identical permission context.
+No same-parent comparison or startup-order fix has yet been verified on a Mac.
+
 ## Current Boundary
 
 Windows supports hardware H264 and software VP8 behind the same capture,
@@ -149,6 +189,27 @@ shutdown cannot be preempted by that deadline. Slow-output rejection has fixture
 coverage; native AMD/Intel physical acceptance and game-load behavior remain
 open. This evidence does not establish the cause of reported system-wide lag.
 
+Auto's cadence probe borrows the selected hardware codec through a temporary
+WebRTC pipeline. That pipeline is destroyed before the same hardware instance
+moves into the ordinary live output, avoiding a second driver activation while
+keeping synthetic frame-dropper and adaptation history out of live capture.
+An October 19 comparison on the local NVIDIA device reduced hardware creation
+from two instances to one. Single real inputs at 1 and 30 fps produced decodable
+IDRs about 34–39 ms after selection; 30/60 fps output and explicit H264/VP8 also
+passed. Total healthy Auto startup remained around 1.8 seconds, so this proves
+less initialization and a valid handoff, not a material speedup or a repair for
+an uninterruptible driver call. Concurrent cadence benchmarks are not adopted:
+shared-device contention would change the capability being measured.
+
+The current v2.2.1 report in [#437](https://github.com/TNTcraftHIM/Piik/issues/437)
+records device loss after about 3.25 seconds, before the Auto selection finishes.
+The selector could then enter another candidate despite lacking time for its
+required cadence measurement. Admission now uses that same measurement schedule
+before synchronous setup, preserving the existing VP8 fallback. A 750 ms
+remaining-budget control rejects Auto at 30 fps but retains manual H264 and the
+immediate 1 fps probe. This fixes budget admission, not the physical
+`DEVICE_HUNG`; the later blocked API and reporter-device outcome remain unknown.
+
 The `input-texture-create / 0x887a0005` report identifies a lost D3D device during
 candidate preparation, not a failed room route or proof that every candidate
 failed. Following Microsoft's [device-loss guidance](https://learn.microsoft.com/en-us/windows/uwp/gaming/handling-device-lost-scenarios),
@@ -173,8 +234,8 @@ across those adapter entries and all five resolutions. Forty activation/retireme
 cycles included cancellation and shutdown with an input still in flight; the
 device remained healthy. Five selections, including AMD rejection, also
 succeeded while another process continued H264 encoding.
-The reported stage creates probe textures before actual WGC capture; Auto's
-cadence textures are prepared before MFT activation. These results narrow the
+The reported stage creates probe textures before actual WGC capture; texture
+synthesis remains outside the measured cadence. These results narrow the
 tested mechanisms but do not cover the failing device, driver reset or exhaustion.
 
 Repeated NVIDIA MFT activation retained about two process handles per cycle.

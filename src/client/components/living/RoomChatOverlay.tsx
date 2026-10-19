@@ -1,4 +1,4 @@
-import { useEffect, useId, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useId, useSyncExternalStore, type CSSProperties, type ComponentProps } from "react";
 import { CHAT_OVERLAY_DURATION_MS, RoomInteractionSession } from "../../lib/room-interactions";
 import { CHAT_OVERLAY_LIMITS } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
@@ -7,13 +7,15 @@ import { Btn } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import "./room-chat-overlay.css";
 
-export function RoomChatToggle({ session }: { session: RoomInteractionSession | null }) {
-  return session ? <ConnectedToggle key={session.key} session={session} /> : null;
+type ToggleProps = { session: RoomInteractionSession | null } & Pick<ComponentProps<typeof Btn>, "size" | "quiet">;
+
+export function RoomChatToggle({ session, ...appearance }: ToggleProps) {
+  return session ? <ConnectedToggle key={session.key} session={session} {...appearance} /> : null;
 }
 
-function ConnectedToggle({ session }: { session: RoomInteractionSession }) {
+function ConnectedToggle({ session, ...appearance }: ToggleProps & { session: RoomInteractionSession }) {
   const { overlayEnabled } = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  return <span className="lr-chat-overlay-toggle"><Btn icon="danmaku"
+  return <span className="lr-chat-overlay-toggle"><Btn icon="danmaku" {...appearance}
     title={overlayEnabled ? "interaction.overlay.hide" : "interaction.overlay.show"}
     hint={overlayEnabled ? "hint-chat-overlay-hide" : "hint-chat-overlay-show"}
     hintText={overlayEnabled ? "interaction.overlay.hideHint" : "interaction.overlay.showHint"}

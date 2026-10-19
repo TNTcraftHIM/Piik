@@ -107,7 +107,7 @@ export function PawnDetail({
       <Tooltip kind="hint-close" text={vis ? undefined : t("common.close")}>
         <button
           type="button"
-          className="lr-pawn-detail-close"
+          className="lr-btn is-dense is-quiet"
           aria-label={t("common.close")}
           onClick={(event) => {
             // Pointer activation must not pin the hint open; keyboard keeps focus.

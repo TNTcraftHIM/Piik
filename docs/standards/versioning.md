@@ -26,7 +26,7 @@ authorization counters for visual consistency can invalidate data or stale-work
 fences. A room number is a user-facing address, not a software version.
 The private tooling-only npm package carries no independent product version.
 The App launcher displays its installed version from the existing launcher state;
-the Web footer displays its bundled build version without a network lookup.
+the Web help menu displays its bundled build version without a network lookup.
 Server startup logs retain the running version and revision. The website may
 display GitHub's latest stable tag and `published_at` as optional metadata, never
 a manually maintained version or the installed App's identity. Publication time
@@ -270,11 +270,26 @@ remain unchanged. An exact tag does not move
 the changelog's starting point. Keep no `CHANGELOG.md`, versioned note directory
 or generated history commits. PRs and Git retain editorial provenance.
 
-Release notes introduce the release before listing changes. In each language,
-open with one or two sentences explaining its actual emphasis and who benefits:
-a maintenance update, a feature addition, or a compatibility-changing release.
-Match that description to the user-visible impact; an internal refactor alone
-does not justify calling a release breaking or major.
+Keep the Release title `Piik vX.Y.Z`. The body may open with one short bilingual
+editorial headline. Its lifetime is independent of semver: keep, replace or omit
+it based on what is worth telling readers, not whether the version is a patch
+or minor update. An already-published feature, a verified community milestone,
+thanks or an occasional light aside can lead. Keep Piik's friendly tone without
+forced jokes; never turn an old feature into a claim that it is new in this
+update, advertise an unfinished prototype or trivialize a serious failure.
+
+When used, write the headline as the first two bold paragraphs, Chinese then
+English, with plain text inside `**...**`. The website reads this same pair from
+the published Release body and displays the current language; it does not keep
+another copy, interpret arbitrary Markdown or guess a headline from older
+releases. Gitee retains the same body. Do not add a campaign registry or automatic
+version-based inheritance; review any reused headline when preparing the PR.
+
+Then introduce **this update** in each language with one or two factual sentences:
+its actual changes, who benefits and any required upgrade action. A headline is
+optional; that explanation is not. An internal refactor alone does not justify
+calling a release breaking or major. Urgent security, data-loss or compatibility
+instructions take precedence over a playful opening.
 
 Then group concrete changes under useful headings such as highlights, fixes,
 upgrade instructions or known limitations. Omit empty categories and routine
@@ -284,13 +299,19 @@ Chinese and English cover the same release facts with natural phrasing. Use
 `###` for language sections and `####` for categories when both are needed.
 
 The approved final description must read as one release when several unpublished
-commits are included. Preview the rendered aggregate; do not let repeated
-introductions or raw commit titles become its narrative. The existing pipeline
+commits are included. Preview the rendered aggregate with at most one bilingual
+headline. The last included product PR owns that choice, including omission;
+aggregation removes earlier headlines but retains all actual change details in
+order. Do not let repeated introductions or raw commit titles become its narrative. The existing pipeline
 preserves authored Markdown and appends identity/checksums; it does not infer an
 editorial summary from a version number. Keep provenance and the full changelog
 link after the user-facing explanation.
 
 Piik's release scope and upgrade instructions come from its own accepted changes.
+Editorial references reviewed on 2026-10-19: [Discord's update](https://discord.com/blog/discord-update-september-25-2026)
+combines a friendly voice with concrete changes; [VS Code's version notes](https://code.visualstudio.com/updates/v1_95)
+keep feature highlights alongside subsequent patch fixes. These inform the
+presentation, not Piik's version selection or feature claims.
 
 ## Release Sources
 

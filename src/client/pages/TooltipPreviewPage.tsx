@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AppHeader } from "../components/living/Header";
+import { AppHeader, LedStrip } from "../components/living/Header";
 import { Tooltip } from "../components/living/Tooltip";
 import { ControlsPreview } from "./ControlsPreview";
 import { WelcomeLine, WelcomeCipher } from "../components/living/WelcomeLine";
@@ -63,7 +63,7 @@ export function TooltipPreviewPage() {
   const [reducedMotion, setReducedMotion] = useState(false);
   return (
     <div className="lr-app" data-comic-reduced-motion={reducedMotion || undefined}>
-      <AppHeader />
+      <AppHeader led={<LedStrip state="live" label={t("state.signal.connected")} comic="signal-connected" />} />
       <main className="lr-room lr-tooltip-preview">
         <header className="lr-tooltip-preview-head">
           <h1>{en ? "Piik · UI catalogue" : "Piik · UI 控件大全"}</h1>
@@ -79,13 +79,28 @@ export function TooltipPreviewPage() {
           <a href="#playback-preview">{en ? "Playback" : "播放栏"}</a><a href="#comic-preview">{en ? "Tooltips & comics" : "提示与漫画"}</a>
           <a href="#launcher-preview">{en ? "App launcher" : "模式选择"}</a>
           <a href="#interaction-preview">{en ? "Chat & reactions" : "聊天与互动"}</a>
-          <a href="#hint-remote-control">{en ? "Remote control" : "远程控制"}</a>
+          <a href="#remote-control-preview">{en ? "Remote control & keyboard" : "远程控制与键盘"}</a>
 
-          <a href="#hint-admission-code">{en ? "Room entry" : "房间准入"}</a>
+          <a href="#admission-preview">{en ? "Room entry" : "房间准入"}</a>
           <a href="#metrics-preview">{en ? "Metrics" : "连接数据"}</a>
           <a href="#welcome-preview">{en ? "Opening lines" : "开场白"}</a>
           <a href="/__status-preview">{en ? "Status gallery" : "完整状态预览"}</a>
         </nav>
+        <details className="cp-catalog-scope">
+          <summary>{en ? "Shared controls and surfaces" : "控件与容器的复用范围"}</summary>
+          <p>{en ? "These examples render production components with sample data. Page layouts combine them; a different caption or arrangement does not create a new control type."
+            : "这里用示例数据渲染正式组件。业务页面组合这些组件；文案或排列不同，不代表另造一种控件。"}</p>
+          <ul>
+            <li><a href="#button-preview">{en ? "Buttons" : "按钮"}</a> · <code>Btn / button.css</code></li>
+            <li><a href="#option-preview">{en ? "Choices and toggles" : "选择与开关"}</a> · <code>Chip / SwitchItem / segmented-control.css</code></li>
+            <li><a href="#sharing-preview">{en ? "Numeric settings and inline tabs" : "数值设置与页内选项卡"}</a> · <code>QualityPresets / SharingSettings</code></li>
+            <li><a href="#playback-preview">{en ? "Brief attached settings" : "短时附着设置"}</a> · <code>useAnchoredPopover</code></li>
+            <li><a href="#interaction-preview">{en ? "Persistent and detachable tools" : "常驻与可独立的工具窗"}</a> · <code>FloatingPanel / usePanelWindow</code></li>
+            <li><a href="/__status-preview#sharing-troubleshooting">{en ? "Modal troubleshooting" : "模态故障排查"}</a> · <code>ShareFailureHelp / dialog</code></li>
+          </ul>
+          <p>{en ? "Source selection stays inside the television. Browser capture permissions, native select menus and operating-system window frames are platform UI, verified in their actual environment. Website and documentation navigation retain their page-specific layouts."
+            : "选源界面留在电视内。浏览器采集授权、原生下拉菜单和操作系统窗框属于平台界面，在实际环境验收；官网与文档导航保留各自的页面布局。"}</p>
+        </details>
         <ControlsPreview />
         <MetricPreview />
         <WelcomeLine still={reducedMotion} />

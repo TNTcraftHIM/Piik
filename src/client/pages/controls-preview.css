@@ -1,5 +1,14 @@
 .cp-nav { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 20px 0 28px; }
 .cp-nav a { color: var(--ink); font-size: 13px; text-underline-offset: 5px; }
+.cp-catalog-scope { margin-bottom: 24px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.cp-catalog-scope summary { color: var(--ink); cursor: pointer; }
+.cp-catalog-scope a { color: var(--ink); text-underline-offset: 3px; }
+.cp-catalog-scope code { overflow-wrap: anywhere; }
+.cp-control-sample { display: grid; justify-items: center; align-content: start; gap: 10px; margin: 0 6px 0 0; }
+.cp-control-sample figcaption { color: var(--muted); font-size: 12px; }
+.cp-keyboard { max-width: 780px; margin-inline: auto; }
+.cp-input-output { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
+.cp-input-output output { font-family: var(--mono); overflow-wrap: anywhere; }
 .cp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .cp-card { min-width: 0; padding: 24px; border: 1px solid var(--control-edge); border-radius: 24px; background: var(--paper); scroll-margin-top: 24px; }
 .cp-sharing-preview { grid-column: 1 / -1; }
@@ -12,6 +21,7 @@
 .cp-tools > [role="group"]:not(.lr-lcd, .lr-toggle) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cp-tools .lr-input { max-width: 100%; }
 .cp-tools .lr-input input { width: 160px; }
+.cp-tools .lr-input select { min-width: 0; border: 0; background: var(--paper); color: var(--ink); font: inherit; }
 .cp-tools .lr-pill { max-width: 100%; }
 .cp-feedback { min-height: 2em; }
 .cp-card .cp-input-error { color: var(--danger); }

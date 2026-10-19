@@ -21,7 +21,7 @@ require (
 	github.com/livekit/protocol v1.52.2-0.20261012065025-9bb708cdb819
 	github.com/livekit/server-sdk-go/v2 v2.14.0
 	github.com/netbirdio/go-nat v0.0.0-20260821095157-6b2c8c5c74e8
-	github.com/pion/ice/v4 v4.4.7
+	github.com/pion/ice/v4 v4.4.8
 	github.com/pion/interceptor v0.1.49
 	github.com/pion/logging v0.2.4
 	github.com/pion/rtcp v1.2.19

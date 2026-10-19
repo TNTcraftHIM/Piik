@@ -10,6 +10,8 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { bindSvgReplayOnPointerEnter } from "./animation";
 
 const PATHS = {
+  book: { body: (<><path pathLength={1} d="M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Zm0 0v15M5 8h4m-4 4h4m6-4h4m-4 4h4"/></>) },
+  help: { body: (<><circle pathLength={1} cx="12" cy="12" r="9"/><path pathLength={1} d="M9.5 8.5a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4M12 16.5h.01"/></>) },
   fitContain: { body: (<><rect pathLength={1} x="2" y="3" width="20" height="18" rx="2"/><path pathLength={1} d="M2 7h20M2 17h20m-15-5h10"/></>) },
   fitCover: { body: (<><rect pathLength={1} x="2" y="3" width="20" height="18" rx="2"/><path pathLength={1} d="M7 3v18M17 3v18m-7-9h4"/></>) },
   fitStretch: { body: (<><rect pathLength={1} x="2" y="3" width="20" height="18" rx="2"/><path pathLength={1} d="M6 12h12M9 9l-3 3 3 3m6-6 3 3-3 3"/></>) },

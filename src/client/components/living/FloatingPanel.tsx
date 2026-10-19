@@ -210,12 +210,12 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
         <span id={`${id}-move-hint`} className="visually-hidden">{t("floating.moveHint")}</span>
         {detachable && !detached && panelWindowAPI(typeof window === "undefined" ? null : window) &&
           <Tooltip kind="hint-window-detach" place="below" text={vis ? undefined : t("floating.detach")}>
-            <button type="button" className="lr-popover-close" disabled={panelWindow.opening}
+            <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" disabled={panelWindow.opening}
               aria-label={t("floating.detach")} onClick={() => { void panelWindow.open(); }}>
               <Glyph name="pip" size={18} />
             </button>
           </Tooltip>}
-        {!detached && <button type="button" className="lr-popover-close" aria-label={t("common.close")} onClick={() => {
+        {!detached && <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" aria-label={t("common.close")} onClick={() => {
           panelRef.current?.hidePopover(); focusTrigger();
         }}><Glyph name="x" size={16} /></button>}
       </header>

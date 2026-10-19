@@ -150,7 +150,7 @@ export function CaptureSourcePicker({
   const refreshButton = (
     <button
       type="button"
-      className="lr-source-picker-refresh"
+      className="lr-btn is-dense lr-source-picker-refresh"
       aria-label={refreshLabel}
       disabled={refreshing}
       onClick={activeTab === "camera" ? cameraSources.refresh : onRefresh}
@@ -161,7 +161,7 @@ export function CaptureSourcePicker({
   const closeButton = (
     <button
       type="button"
-      className="lr-source-picker-close"
+      className="lr-btn is-dense is-quiet lr-source-picker-close"
       aria-label={t("common.cancel")}
       onClick={onCancel}
       autoFocus

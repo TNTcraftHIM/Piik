@@ -76,7 +76,9 @@ Keep architecture choices beside each platform's download buttons, with one
 centered link for more downloads below the cards. Tutorials remain in their own
 sections. Keep section navigation available on phones rather than hiding the
 only route to documentation.
-The film can use bolder composition, but must show real operations and concrete
+The release film must work without seeing an earlier film: establish screen
+sharing and how a friend joins before introducing new ways to interact.
+It can use bolder composition, but must show real operations and concrete
 benefits before its closing action. The [copy guide](./naming.md#voice-and-terminology)
 owns technical disclosure; a dramatic heading does not exempt copy from it.
 
@@ -166,8 +168,11 @@ are not automatically included in the website artifact.
 The [website operations guide](../operations/website.md) owns Pages publication,
 public destinations and the separate P2P-only demo. The primary action leads
 to the platform download section. The website operations guide owns each
-platform's latest download routes and provider labels. Link release notes
-separately and verify destinations as part of publication.
+platform's latest download routes and provider labels. The download entry may
+show the current Release's [editorial headline](./versioning.md#release-notes),
+read from the same metadata request as its version and date. Keep the full
+release-note link and verify destinations as part of publication. Without that
+metadata, the ordinary download links remain usable.
 Online, App and self-hosting walkthroughs
 use real action names and explain the first sharing and viewing steps. Keep
 platform requirements and connection limitations beside the relevant steps.

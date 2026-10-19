@@ -24,7 +24,7 @@ export function isNativeNatSurveyCandidate(
   return normalized !== null && natPredictionSurveyUrls(iceServers, auxiliaryStunUrls).has(normalized);
 }
 
-const BASE_STUN_PORT = 3478;
+const DEFAULT_STUN_PORT = 3478;
 const MIN_PREDICTABLE_PORT = 1;
 const MAX_PREDICTABLE_PORT = 65_535;
 
@@ -101,7 +101,7 @@ function normalizedStunUrl(url: string): string | null {
   // The HTTP parser normalizes the host but drops an explicit :80. STUN
   // defaults to 3478 only when its authority omits the port (RFC 7064).
   const explicitPort = /:(\d+)$/.exec(authority)?.[1];
-  const port = explicitPort === undefined ? BASE_STUN_PORT : Number(explicitPort);
+  const port = explicitPort === undefined ? DEFAULT_STUN_PORT : Number(explicitPort);
   return `stun:${hostname}:${port}`;
 }
 
@@ -119,18 +119,13 @@ export function natPredictionSurveyUrls(
   if (configuredAuxiliaryUrls.size !== 2) {
     return new Set();
   }
-  for (const server of iceServers ?? []) {
-    for (const url of urlsOf(server)) {
-      const baseUrl = normalizedStunUrl(url);
-      if (baseUrl?.endsWith(`:${BASE_STUN_PORT}`)) {
-        const surveyUrls = new Set([baseUrl, ...configuredAuxiliaryUrls]);
-        if (surveyUrls.size === 3) {
-          return surveyUrls;
-        }
-      }
-    }
-  }
-  return new Set();
+  const ordinary = (iceServers ?? []).flatMap(urlsOf)
+    .map(normalizedStunUrl)
+    .filter((url): url is string => url !== null && !configuredAuxiliaryUrls.has(url));
+  // Keep the published Hosted base choice, independent of discovery order.
+  // Explicit App surveys may also use a non-default port.
+  const base = ordinary.find(url => url.endsWith(`:${DEFAULT_STUN_PORT}`)) ?? ordinary[0];
+  return base ? new Set([base, ...configuredAuxiliaryUrls]) : new Set();
 }
 
 /**

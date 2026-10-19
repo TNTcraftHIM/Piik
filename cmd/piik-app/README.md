@@ -129,8 +129,8 @@ For codec-specific failures, see [Windows H264 troubleshooting](../../docs/guide
 Enable **Debug launch** in the launcher before starting a room or connecting a Site, reproduce the
 problem, then press `D` in the interactive terminal to export a local ZIP.
 Use `--debug` for failures before the selector opens. Exporting does not stop
-the share or upload the archive. For Browser diagnostics, click the **Debug**
-chip icon after the theme control, confirm the reload, then use **Web report** to download.
+the share or upload the archive. For Browser diagnostics, open **Help → Debug**
+after the theme control, confirm the reload, then use **Help → Web report** to download.
 For cooperation failures, include both reports from the same reproduction. The
 [diagnostic reference](../../docs/standards/configuration.md#diagnostics) owns
 log locations, export commands, retention and privacy boundaries.

@@ -81,7 +81,7 @@ export function getComicPresentation(kind?: ComicKind | HintKind): ComicPresenta
 
 const COLOURS: Record<ComicTone, string> = {
   off: "var(--comic-neutral, var(--ink))",
-  busy: "var(--action)",
+  busy: "var(--busy)",
   live: "var(--live)",
   warn: "var(--warn)",
   bad: "var(--danger)",

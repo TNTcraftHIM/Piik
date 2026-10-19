@@ -138,10 +138,10 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       <strong><Glyph name="keyboard" size={18} />{vis ? null : t("remote.keyboard")}</strong>
       {!panelWindow.detached && <>
         {panelWindowAPI(window) && <Tooltip kind="hint-window-detach" place="below" text={vis ? undefined : t("floating.detach")}>
-          <button type="button" className="lr-popover-close" aria-label={t("floating.detach")} disabled={panelWindow.opening}
+          <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" aria-label={t("floating.detach")} disabled={panelWindow.opening}
             onClick={() => { presses.reset(); setModifiers([]); void panelWindow.open(); }}><Glyph name="pip" size={18} /></button>
         </Tooltip>}
-        <button type="button" className="lr-popover-close" aria-label={t("common.close")} onClick={close}><Glyph name="x" size={17} /></button>
+        <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" aria-label={t("common.close")} onClick={close}><Glyph name="x" size={17} /></button>
       </>}
     </div>
     {panelWindow.failed && <p className="lr-floating-error" role="status">{t("floating.detachFailed")}</p>}
@@ -195,7 +195,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
             onCompositionEnd={() => { composing.current = false; }}
           />
           <div className="lr-remote-text-actions">
-            <Btn icon="send" cap="remote.typeText" title="remote.sendText" hint="hint-remote-keyboard" tone="primary" type="submit" disabled={!text || textTooLong} />
+            <Btn icon="send" cap="remote.typeText" title="remote.sendText" size="compact" hint="hint-remote-keyboard" tone="primary" type="submit" disabled={!text || textTooLong} />
           </div>
         </div>
         {textTooLong ? <p id={`${id}-text-help`} role="alert">{t("remote.textTooLong")}</p> : !vis && <p id={`${id}-text-help`}>{t("remote.textHelp")}</p>}

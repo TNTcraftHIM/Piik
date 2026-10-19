@@ -1,0 +1,82 @@
+/* One track for language, settings and source tabs, including native radio
+   groups. Callers own semantics, selection and content-specific proportions. */
+.lr-toggle, .lr-lang {
+  --lr-segments: 2;
+  --lr-selected-index: 0;
+  --selection-item-size: var(--control-compact-size);
+  position: relative;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  padding: 4px;
+  border: var(--control-border-width) solid var(--control-edge);
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: var(--control-shadow);
+}
+.lr-lang {
+  --lr-segments: 3;
+  --selection-item-size: calc(var(--control-compact-size) - 12px);
+  grid-auto-columns: var(--selection-item-size);
+}
+.lr-lang:has(.lr-lang-more) { --lr-segments: 4; }
+:is(.lr-toggle, .lr-lang)::before {
+  content: "";
+  position: absolute;
+  top: 4px; bottom: 4px; left: 4px;
+  width: calc((100% - 8px) / var(--lr-segments));
+  border-radius: 999px;
+  background: var(--control-selected);
+  box-shadow: inset 0 0 0 var(--control-border-width) var(--action);
+  transform: translateX(calc(var(--lr-selected-index) * 100%));
+  transition: transform 260ms var(--spring);
+  pointer-events: none;
+}
+:is(.lr-toggle, .lr-lang):not(:has(.is-selected, input:checked))::before,
+.lr-toggle:disabled::before { opacity: 0; }
+:is(.lr-toggle, .lr-lang):has(> :nth-child(2).is-selected, > :nth-child(2) .is-selected, > label:nth-of-type(2) input:checked) { --lr-selected-index: 1; }
+:is(.lr-toggle, .lr-lang):has(> :nth-child(3).is-selected, > :nth-child(3) .is-selected, > label:nth-of-type(3) input:checked) { --lr-selected-index: 2; }
+:is(.lr-toggle, .lr-lang):has(> :nth-child(4).is-selected, > :nth-child(4) .is-selected, > label:nth-of-type(4) input:checked) { --lr-selected-index: 3; }
+.lr-toggle button, .lr-lang > button, .lr-toggle > label > span {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: var(--selection-item-size);
+  min-height: var(--selection-item-size);
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--ink) 68%, var(--paper));
+  font-size: var(--control-label-size);
+  font-weight: 600;
+  transition: color 140ms ease, background-color 140ms ease, var(--control-motion);
+}
+.lr-lang > button { min-width: 0; padding: 0; }
+.lr-toggle > label { position: relative; min-width: 0; }
+.lr-toggle > label > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.lr-toggle > label > input:disabled { cursor: default; }
+.lr-toggle > label > span { display: flex; pointer-events: none; }
+.lr-toggle input:focus-visible + span { outline: 3px solid var(--action); outline-offset: 3px; }
+:is(.lr-toggle, .lr-lang) button.is-selected,
+.lr-toggle input:checked + span { color: var(--control-selected-ink); }
+:is(.lr-toggle, .lr-lang) button:is(:hover, :focus-visible):not(:disabled),
+.lr-toggle input:enabled:is(:hover, :focus-visible) + span { transform: translateY(-1px); }
+:is(.lr-toggle, .lr-lang) button:is(:hover, :focus-visible):not(:disabled):not(.is-selected),
+.lr-toggle input:enabled:not(:checked):is(:hover, :focus-visible) + span { background: var(--control-hover); color: var(--ink); }
+:is(.lr-toggle, .lr-lang) button:active:not(:disabled),
+.lr-toggle input:enabled:active + span { transform: var(--control-press-transform); transition-duration: 80ms; }
+.lr-toggle > .lr-comic-tip-wrap { min-width: 0; justify-content: center; }
+.lr-toggle > .lr-comic-tip-wrap > button { width: 100%; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.lr-toggle, .lr-lang)::before, :is(.lr-toggle, .lr-lang) button, .lr-toggle > label > span { transition: none; }
+  :is(.lr-toggle, .lr-lang) button, .lr-toggle > label > span { transform: none !important; }
+}
+html[data-reduced-motion] :is(.lr-toggle, .lr-lang)::before,
+html[data-reduced-motion] :is(.lr-toggle, .lr-lang) button,
+html[data-reduced-motion] .lr-toggle > label > span { transition: none; }
+html[data-reduced-motion] :is(.lr-toggle, .lr-lang) button,
+html[data-reduced-motion] .lr-toggle > label > span { transform: none !important; }

@@ -16,7 +16,6 @@
 .lr-share-help[open] { animation: lr-share-help-enter 180ms var(--spring); }
 .lr-share-help header { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
 .lr-share-help h2 { margin: 0; font-size: 18px; }
-.lr-share-help header button { min-width: 40px; min-height: 40px; padding: 8px; }
 .lr-share-help-scene { width: min(260px, 100%); margin: 16px auto; }
 .lr-share-help-reason { font-weight: 700; line-height: 1.6; margin: 12px 0 6px; }
 .lr-share-help code { color: var(--muted); font-size: 12px; }

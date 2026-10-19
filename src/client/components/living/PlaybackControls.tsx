@@ -246,7 +246,7 @@ function PlaybackMore({ panel, children, settings, overlaySettings, onReconnect,
   const { t, vis } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
-  const reconnect = <Btn icon="refresh" title="viewer.reconnect" hint="hint-reconnect" draw="playback-reconnect"
+  const reconnect = <Btn icon="refresh" title="viewer.reconnect" size="dense" hint="hint-reconnect" draw="playback-reconnect"
     cap="viewer.reconnect" disabled={!reconnectAvailable} onClick={() => {
       panel.current?.hidePopover();
       onReconnect();

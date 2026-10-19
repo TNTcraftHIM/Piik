@@ -217,7 +217,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
       }}>
         <div className="lr-remote-panel-header">
           <strong><Glyph name="key" size={18} />{vis ? null : t("remote.password")}</strong>
-          <button type="button" className="lr-popover-close" aria-label={t("common.cancel")}
+          <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" aria-label={t("common.cancel")}
             onClick={() => { setPasswordOpen(false); setPassword(""); release(); }}>
             <Glyph name="x" size={17} />
           </button>
@@ -228,7 +228,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
               value={password} aria-label={t("remote.password")} disabled={state.state === "pending"}
               onChange={event => setPassword(event.target.value)} />
           </label>
-          <Btn icon="check" title="remote.request" hint="hint-remote-control" type="submit" disabled={!password || state.state === "pending"} />
+          <Btn icon="check" title="remote.request" size="compact" hint="hint-remote-control" type="submit" disabled={!password || state.state === "pending"} />
         </div>
         {state.reason && <p role="status" className={state.reason === "password" ? "is-bad" : undefined}><Glyph name={statusIcon} size={16} />
           <span className={vis ? "visually-hidden" : undefined}>{t(`remote.reason.${state.reason}`)}</span></p>}
@@ -301,7 +301,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit }: {
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
         onSurfaceChange={keyboardSurfaceChanged}
-        mouseControl={!touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad"
+        mouseControl={!touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad" size="compact"
           title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"}
           cap={locked ? "remote.releaseMouse" : "remote.gameMouse"} pressed={locked}
           hint={locked ? "hint-remote-mouse-release" : "hint-remote-mouse-lock"}

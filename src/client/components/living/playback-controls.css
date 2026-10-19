@@ -47,11 +47,11 @@
 .lr-tv-screen:has(> .lr-playback):has(> video:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-playback .lr-btn {
   display: grid; place-items: center; flex: none;
-  min-width: 0; width: 44px; height: 44px; padding: 0;
+  min-width: 0; width: var(--control-compact-size); padding: 0;
 }
 .lr-playback-watch { display: flex; align-items: center; flex: 1; gap: 8px; min-width: 0; }
 .lr-playback-volume { flex: 0 1 144px; min-width: 24px; }
-.lr-playback-volume input { width: 100%; min-width: 0; height: 44px; padding: 0; margin: 0; accent-color: var(--action); cursor: pointer; }
+.lr-playback-volume input { width: 100%; min-width: 0; height: var(--control-compact-size); padding: 0; margin: 0; accent-color: var(--action); cursor: pointer; }
 .lr-playback-level { flex: none; width: 4ch; text-align: right; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .lr-playback-level.is-boosted { color: var(--action-text); }
 .lr-playback > :is(.lr-remote-controls, .lr-playback-view) { display: inline-flex; align-items: center; flex: none; gap: 4px; }
@@ -64,9 +64,9 @@
 .lr-playback-settings { width: min(560px, calc(100vw - 16px)); padding: 16px; container: playback-settings / inline-size; }
 .lr-viewer-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; width: 100%; }
 .lr-viewer-settings section { min-width: 0; }
-.lr-viewer-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; margin-bottom: 12px; }
+.lr-viewer-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: var(--control-dense-size); margin-bottom: 12px; }
 .lr-viewer-settings h3, .lr-playback-overlay-settings h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; font-weight: 650; }
-.lr-viewer-settings-heading .lr-btn { display: flex; align-items: center; gap: 5px; width: auto; height: 36px; padding: 0 8px; font-size: 12px; white-space: nowrap; }
+.lr-viewer-settings-heading .lr-btn { width: auto; }
 .lr-viewer-settings .lr-row-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .lr-viewer-settings .lr-row-group > * { min-width: 0; }
 .lr-viewer-settings .lr-chip { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 40px; padding: 6px; font-size: 12px; white-space: nowrap; }
@@ -90,7 +90,7 @@
   .lr-tv-overlay > .lr-waiting-caption { min-height: 1.4em; }
   .lr-tv-overlay > .lr-waiting-caption > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .lr-playback.lr-media-controls { gap: 4px; padding: 4px 4px max(4px, env(safe-area-inset-bottom)); }
-  .lr-playback .lr-btn { width: clamp(24px, 9cqw, 44px); }
+  .lr-playback .lr-btn { width: clamp(24px, 9cqw, var(--control-compact-size)); }
   .lr-playback-menu .lr-btn { width: auto; }
   .lr-playback-menu-actions .lr-btn, .lr-playback-display-menu .lr-btn { width: 100%; }
   .lr-playback-watch { gap: 2px; }

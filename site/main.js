@@ -3,6 +3,7 @@ import { initialLanguage, rememberLanguage } from './assets/language.js';
 import { createTextCycle } from '../src/client/ui/text-rotation.ts';
 import { applyTheme, currentTheme, currentThemePreference, initTheme, subscribeTheme } from '../src/client/ui/theme.ts';
 import { DEFAULT_RELEASE_API_URL, parseReleaseMetadata } from '../src/client/lib/release-update.ts';
+import { splitReleaseHeadline } from '../scripts/release-headline.mjs';
 mountBrands();
 const architecturePickers = document.querySelectorAll('.download-architecture');
 function syncDownloadLinks(picker) {
@@ -26,17 +27,21 @@ if (releaseLabel) {
   void fetch(DEFAULT_RELEASE_API_URL, {
     credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
     signal: controller.signal, headers: { Accept: 'application/vnd.github+json' },
-  }).then(async response => {
-    if (!response.ok) return null;
-    return parseReleaseMetadata(await response.json());
-  })
-    .then(release => {
+  }).then(response => response.ok ? response.json() : null)
+    .then(metadata => {
+      const release = parseReleaseMetadata(metadata);
       if (!release?.publishedAt) return;
       releaseLabel.querySelector('b').textContent = release.version;
       const date = releaseLabel.querySelector('time');
       date.dateTime = release.publishedAt;
       date.textContent = release.publishedAt.slice(0, 10);
       releaseLabel.hidden = false;
+      const { headline } = splitReleaseHeadline(metadata.body);
+      if (headline) {
+        const label = document.getElementById('download-headline');
+        for (const text of label.querySelectorAll('[lang]')) text.textContent = headline[text.lang];
+        label.hidden = false;
+      }
     }).catch(() => {}).finally(() => clearTimeout(timeout));
 }
 const root = document.documentElement;

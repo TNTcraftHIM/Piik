@@ -782,8 +782,8 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 		},
 		{
 			name: "custom survey", link: true,
-			override:              "stun:a.test:3478, stun:b.test:3478, stun:c.test:3478",
-			stunURLs:              []string{"stun:a.test:3478", "stun:b.test:3478", "stun:c.test:3478"},
+			override:              "stun:a.test:19302, stun:b.test:3478, stun:c.test:3478, stun:fallback.test:3478",
+			stunURLs:              []string{"stun:a.test:19302", "stun:b.test:3478", "stun:c.test:3478", "stun:fallback.test:3478"},
 			natPredictionSTUNURLs: []string{"stun:b.test:3478", "stun:c.test:3478"},
 		},
 	} {

@@ -1,5 +1,5 @@
-/* Shared surfaces for the App, website and documentation. Illustrations and
-   semantic status colours keep their own roles. Theme selection stays local. */
+/* Shared theme for the App, website and documentation. Status and selection
+   have separate roles; illustrations keep their own colours. */
 :root {
   --wall: #f3f5f8;
   --wall-2: #e5eaf2;
@@ -14,6 +14,11 @@
   --action-deep: var(--primary);
   --action-ink: var(--primary-ink);
   --action-text: #2055b2;
+  --idle: #8ea3b8;
+  --busy: #3478e5;
+  --live: #2fa66a;
+  --warn: #d98e04;
+  --danger: #d64541;
   --control-hover: #eef3ff;
   --control-selected: #e5efff;
   --control-selected-ink: #214c9b;
@@ -39,6 +44,10 @@
   --wall-2: var(--piik-dark-wall-2);
   --paper: var(--piik-dark-paper);
   --ink: var(--piik-dark-ink);
+  --busy: #82b1ff;
+  --live: #3fb97a;
+  --warn: #e8a33d;
+  --danger: #e25a52;
   --action: var(--piik-dark-action);
   --action-deep: var(--piik-dark-action);
   --action-ink: var(--piik-dark-action-ink);

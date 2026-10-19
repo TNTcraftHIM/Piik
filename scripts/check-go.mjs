@@ -194,6 +194,7 @@ function checkPlatformCapture() {
   }
   if (process.platform === "darwin") {
     run(executable, ["--geometry-self-test"]);
+    run(executable, ["--audio-self-test"]);
     if (probe.adapters.some(adapter => adapter.hardwareH264.length > 0)) {
       run(executable, ["--self-test"]);
     } else {

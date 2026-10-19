@@ -4,7 +4,6 @@
 @media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) { color-scheme:dark; --wall:var(--piik-dark-wall); --paper:var(--piik-dark-paper); --ink:var(--piik-dark-ink); --accent:#f28d66; } }
 :root[data-theme="dark"] { color-scheme:dark; --accent:#f28d66; }
 * { box-sizing:border-box; }
-:root { --spring:cubic-bezier(.3,1.45,.45,1); }
 body { margin:0; background:var(--wall); color:var(--ink); font:15px/1.6 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; -webkit-font-smoothing:antialiased; }
 [hidden] { display:none !important; }
 html[lang="en"] [lang="zh-CN"], html[lang="zh-CN"] [lang="en"] { display:none; }

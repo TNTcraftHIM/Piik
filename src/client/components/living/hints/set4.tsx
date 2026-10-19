@@ -22,9 +22,29 @@ import {
 import type { ComicTheme } from "../Comic";
 import type { HintScene, Set4Kind } from "../../../ui/visual-kinds";
 import { BrandMark } from "../BrandMark";
+import { Glyph } from "../../../ui/icons";
 
 const INK = "var(--ink)";
 const WALL2 = "var(--wall-2)";
+
+/* A question leads to a guide; reading stays neutral, not a success verdict. */
+const HintHelp: HintScene = ({ theme }) => (
+  <>
+    <style>{`
+.vls-help-question{animation:vlsHelpQuestion var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-help-reader{animation:vlsHelpRead var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsHelpQuestion{0%,12%,32%,100%{transform:translateY(0)}22%{transform:translateY(-3px)}}
+@keyframes vlsHelpRead{0%,42%,62%,100%{transform:translateY(0)}52%{transform:translateY(-2px)}}
+${rmBlock(["vls-help-question", "vls-help-reader"], [[".vls-help-question,.vls-help-reader", "transform:none"]])}
+`}</style>
+    <Frame x={4} w={152} theme={theme} />
+    <Frame x={164} w={152} theme={theme} result />
+    <Pawn x={52} yb={78} s={12} eyes />
+    <g transform="translate(96 26)" color={INK}><g className="vls-help-question"><Glyph name="help" size={28} /></g></g>
+    <Pawn x={202} yb={78} s={12} eyes className="vls-help-reader" />
+    <g transform="translate(238 25)" color={INK}><Glyph name="book" size={50} /></g>
+  </>
+);
 
 /* hint-topology: [one pawn with a Host badge] → [host with two leaf
    pawns on neutral edges]. Demo: leaves hop in turn (8-20%, 26-38%),
@@ -436,6 +456,7 @@ ${rmBlock(
 );
 
 export const SET4_SCENES: Record<Set4Kind, HintScene> = {
+  "hint-help": HintHelp,
   "hint-topology": HintTopology,
   "hint-close": HintClose,
   "hint-rename": HintRename,

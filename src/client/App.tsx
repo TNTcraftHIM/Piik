@@ -115,16 +115,11 @@ export function App() {
   }, [lang, vis, launchedByClient]);
 
   return (
-    <div className="lr-app-shell">
-      <RouteBoundary>
-        <Suspense fallback={<RouteLoader />}>
-          <AppRoute />
-        </Suspense>
-      </RouteBoundary>
-      {appRoute.kind !== "client" && <footer className="lr-web-version">
-        Piik Web {import.meta.env.VITE_PIIK_VERSION ?? "development"}
-      </footer>}
-    </div>
+    <RouteBoundary>
+      <Suspense fallback={<RouteLoader />}>
+        <AppRoute />
+      </Suspense>
+    </RouteBoundary>
   );
 }
 

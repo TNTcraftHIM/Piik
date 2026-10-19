@@ -17,10 +17,10 @@
 .lr-remote-field-label { font-size: 12px; font-weight: 650; }
 .lr-remote-modes.lr-toggle { display: grid; }
 .lr-remote-modes > .lr-comic-tip-wrap { min-width: 0; }
-.lr-remote-modes button { min-width: 0; height: auto; min-height: 40px; padding: 6px 4px; font: 600 12px/1.3 var(--font); white-space: normal; }
+.lr-remote-modes button { min-width: 0; padding: 6px 4px; line-height: 1.3; white-space: normal; }
 .lr-remote-policy-actions { display: flex; align-items: center; gap: 8px; }
 .lr-remote-settings > .lr-remote-policy-actions > * { flex: 1; }
-.lr-remote-settings .lr-remote-policy-actions .lr-btn { width: 100%; height: 42px; }
+.lr-remote-settings .lr-remote-policy-actions .lr-btn { width: 100%; }
 .lr-remote-policy-actions .lr-input { flex: 1; min-width: 0; }
 .lr-remote-policy-actions .lr-input input { min-width: 0; width: 100%; }
 .lr-remote-password p { display: flex; align-items: center; gap: 6px; color: var(--warn); margin: 8px auto 0; font-size: 12px; }
@@ -49,15 +49,13 @@
 :is(.lr-remote-keyboard, .lr-remote-password) { grid-area: 3 / 1; z-index: 4; padding: 10px 12px 12px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--control-edge); }
 :is(.lr-remote-keyboard, .lr-remote-password) .lr-input { padding: 0 10px; }
 :is(.lr-remote-keyboard, .lr-remote-password) input { font-size: 16px; }
-:is(.lr-remote-keyboard, .lr-remote-password) .lr-btn { width: 40px; height: 40px; min-width: 0; padding: 0; }
-.lr-remote-game-mouse .lr-btn { width: auto; padding: 0 12px; }
 .lr-remote-keys { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
 .lr-remote-shortcuts:has(> :nth-child(4):last-child) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .lr-remote-keyboard { min-height: 0; max-height: 65dvh; overflow-y: auto; overscroll-behavior: contain; outline: none; }
 .lr-remote-keyboard > .lr-remote-panel-header { position: sticky; top: -10px; z-index: 1; background: var(--paper); }
 .lr-remote-keyboard > * { max-width: 640px; margin-inline: auto; }
-.lr-remote-keyboard .lr-remote-key-pages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 12px; }
-.lr-remote-keyboard .lr-remote-key-pages button { min-width: 0; height: 36px; padding: 4px 8px; font-size: 12px; letter-spacing: 0; }
+.lr-remote-keyboard .lr-remote-key-pages { --selection-item-size: calc(var(--control-compact-size) - 12px); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 12px; }
+.lr-remote-keyboard .lr-remote-key-pages button { min-width: 0; padding: 4px 8px; }
 .lr-remote-key-row { display: flex; justify-content: center; gap: 4px; margin-bottom: 6px; }
 .lr-remote-key-row .lr-chip { flex: 1; }
 .lr-remote-key-layout.is-letters .lr-remote-key-row:not(:last-child) .lr-chip { flex: 0 1 calc((100% - 36px) / 10); }
@@ -82,7 +80,7 @@
 .lr-remote-text-field textarea::placeholder { color: var(--muted); font-family: var(--font); opacity: 1; }
 .lr-remote-text-actions { display: flex; justify-content: end; }
 .lr-remote-keyboard .lr-remote-text-entry p[role="alert"] { color: var(--danger); }
-.lr-remote-text-entry .lr-btn { flex: none; width: auto; gap: 6px; padding-inline: 12px; }
+.lr-remote-text-entry .lr-btn { flex: none; }
 .lr-remote-keyboard .lr-remote-text-entry p { margin: 0; text-align: start; }
 :is(.lr-remote-keys, .lr-remote-key-row) .lr-chip { justify-content: center; padding: 4px 0; width: 100%; min-width: 0; min-height: 38px; border-width: 1px; border-radius: 9px; font: 600 12px var(--mono); letter-spacing: 0; white-space: nowrap; touch-action: none; }
 .lr-remote-keyboard p { margin-block: 8px 0; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.5; }

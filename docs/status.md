@@ -49,21 +49,25 @@ also accepts an optional SFU-only policy through the same route controller.
 Windows native capture and thumbnails now share automatic HDR-to-SDR conversion;
 synthetic GPU and Browser reception checks pass, with physical HDR display
 acceptance still pending in [verification status](./verification-status.md).
-Room voice is outside the product plan; Host microphone commentary remains.
+Room voice is outside this published phase; Host microphone commentary remains.
 These features are published; physical device limits remain open.
 Release artifacts and operator deployment records own delivery completion;
 [TODO](./todo.md#now) owns remaining work.
 
 ## Current Work
 
-The published v2.2.0 includes attended keyboard/mouse control, Viewer playback
-settings and the interaction window. Current maintenance retains the existing
-2.x protocol and route owners and audits the repository alongside scoped media,
-interaction and lifecycle repairs. On 2026-10-19 the owner authorized publishing
-v2.2.1 once this audit and acceptance are complete. The promotional film remains
-a local draft pending review. [TODO](./todo.md) owns upstream follow-up, device
-acceptance and deferred work. Release artifacts and operator records own delivery
-results.
+The published v2.2.1 retains attended keyboard/mouse control, Viewer playback
+settings and the interaction window, with the maintenance media and lifecycle
+repairs. Delivery and bounded deployment postflight are complete. Current work
+prioritizes capture, route/media follow-up and shared theme consistency. The
+promotional film remains an online-review draft; export follows owner acceptance.
+Separate local prototypes assess room voice and shared-keyboard/virtual-gamepad
+co-play. A room-owned tree experiment now reuses the existing route controller
+for bidirectional voice and video on shared Pion connections. Local media-owner
+experiments do not establish public App-hosted voice;
+neither prototype changes the published feature or protocol boundary.
+[TODO](./todo.md) owns upstream follow-up, device acceptance and deferred work;
+release artifacts and operator records own exact delivery results.
 
 2.0 separates numeric media requests from presets and bounded runtime admission,
 retains successfully applied quality settings, and lets App serve an approved

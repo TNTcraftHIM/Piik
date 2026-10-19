@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress';
 import { pages, documentLink, repository } from '../pages.mjs';
 import { githubSlug } from '../../../scripts/markdown-slug.mjs';
+import { THEME_STORAGE_KEY } from '../../../src/client/ui/theme.ts';
 
 const editPattern = ({ frontmatter }) => `https://github.com/TNTcraftHIM/Piik/edit/main/${frontmatter.source}`;
 const base = process.env.PIIK_DOCS_BASE || '/docs/';
@@ -32,7 +33,18 @@ export default defineConfig({
   ],
   description: 'Piik guides, troubleshooting and self-hosting.',
   cleanUrls: false,
-  appearance: true,
+  appearance: { storageKey: THEME_STORAGE_KEY },
+  transformHead({ head }) {
+    // VitePress 1's startup script ignores appearance.storageKey. Keep its
+    // first paint on the same preference as the native runtime and homepage.
+    const appearance = head.find(([tag, attrs]) => tag === 'script' && attrs.id === 'check-dark-mode');
+    if (appearance) appearance[2] = `;(() => {
+      let preference;
+      try { preference = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)}); } catch {}
+      const dark = preference === 'dark' || (preference !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.classList.toggle('dark', dark);
+    })()`;
+  },
   lastUpdated: false,
   vite: { publicDir: false },
   locales: {

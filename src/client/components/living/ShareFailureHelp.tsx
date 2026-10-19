@@ -30,7 +30,7 @@ export function ShareFailureHelp({ status, label, code, checks }: {
     <dialog ref={dialog} className="lr-share-help" aria-labelledby={titleId} onClose={() => setOpen(false)}>
       {open && <>
         <header><h2 id={titleId}>{vis && <Glyph name="alert" size={20} />}<span className={vis ? "visually-hidden" : undefined}>{t("shareHelp.title")}</span></h2>
-          <button type="button" className="lr-btn" aria-label={t("common.close")} autoFocus onClick={() => dialog.current?.close()}>
+          <button type="button" className="lr-btn is-dense is-quiet" aria-label={t("common.close")} autoFocus onClick={() => dialog.current?.close()}>
             <Glyph name="x" size={18} />
           </button>
         </header>

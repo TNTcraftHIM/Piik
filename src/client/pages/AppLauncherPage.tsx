@@ -256,7 +256,7 @@ export function AppLauncherPage() {
   return (
     <div className="lr-app">
       <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
-        <Btn icon="cpu" title="client.launch.debugHint" cap="client.launch.debug"
+        <Btn icon="cpu" title="client.launch.debugHint" size="compact"
           pressed={debug} tone={debug ? "on" : undefined} hint="debug-start"
           disabled={appDebug || debugBusy || loading || starting || !!target || error !== null}
           onClick={() => void enableDebug()} />
@@ -346,7 +346,7 @@ export function AppLauncherPage() {
         )}
       </main>
       <footer className="lr-client-footer">
-        <a className="lr-btn" href="https://github.com/TNTcraftHIM/Piik" target="_blank" rel="noopener noreferrer">GitHub<span aria-hidden="true"> ↗</span></a>
+        <a className="lr-btn is-dense is-quiet" href="https://github.com/TNTcraftHIM/Piik" target="_blank" rel="noopener noreferrer">GitHub<span aria-hidden="true"> ↗</span></a>
         {version && <p className="lr-client-version">
           <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version })}</span>
           {vis && <span aria-hidden="true">{version}</span>}

@@ -1,8 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { documentLink } from "../site/docs/pages.mjs";
 import { githubSlug } from "../scripts/markdown-slug.mjs";
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import { THEME_STORAGE_KEY } from "../src/client/ui/theme";
 
 describe("reader documentation publication", () => {
+  it("uses the shared appearance key before the native documentation runtime starts", () => {
+    const config = readFileSync(new URL("../site/docs/.vitepress/config.mjs", import.meta.url), "utf8");
+    const template = config.match(/appearance\[2\] = (`[\s\S]*?`);/)?.[1];
+    expect(template).toBeTruthy();
+    const script = runInNewContext(template!, { THEME_STORAGE_KEY });
+    for (const [preference, systemDark, blocked, expected] of [
+      ["light", true, false, false], ["dark", false, false, true],
+      [null, true, false, true], ["auto", false, false, false],
+      [null, true, true, true],
+    ] as const) {
+      let dark = false;
+      runInNewContext(script, {
+        document: { documentElement: { classList: { toggle: (_name: string, value: boolean) => { dark = value; } } } },
+        localStorage: { getItem: (key: string) => {
+          if (blocked) throw new Error("Storage disabled");
+          expect(key).toBe("piik:ui-theme");
+          return preference;
+        } },
+        window: { matchMedia: () => ({ matches: systemDark }) },
+      });
+      expect(dark).toBe(expected);
+    }
+  });
   it("preserves repository anchors for apostrophes, numbered steps and Chinese punctuation", () => {
     expect(githubSlug("Join a friend's room")).toBe("join-a-friends-room");
     expect(githubSlug("2. Enable HTTPS")).toBe("2-enable-https");

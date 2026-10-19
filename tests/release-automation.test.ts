@@ -6,12 +6,27 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { pullRequestNotes, releaseNotes } from "../scripts/release-notes.mjs";
+import { splitReleaseHeadline } from "../scripts/release-headline.mjs";
 
 const planner = fileURLToPath(new URL("../scripts/release-version.mjs", import.meta.url));
 const publisher = fileURLToPath(new URL("../scripts/publish-release.mjs", import.meta.url));
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 
 describe("release automation", () => {
+  it("shares only an authored leading bilingual headline with the website", () => {
+    const opening = "**远程同乐，轮到你啦！**\n\n**Play together. Your turn!**";
+    expect(splitReleaseHeadline(`${opening}\n\n### 中文\n\n修复开播。`)).toEqual({
+      headline: { "zh-CN": "远程同乐，轮到你啦！", en: "Play together. Your turn!" },
+      notes: "### 中文\n\n修复开播。",
+    });
+    expect(splitReleaseHeadline(opening.replaceAll("\n\n", "\r\n\r\n\r\n")).headline)
+      .toEqual({ "zh-CN": "远程同乐，轮到你啦！", en: "Play together. Your turn!" });
+    for (const body of [undefined, "旧版本说明", "**只有一句**", "**   **\n\n**English**",
+      "**Fixed** **disconnects**\n\n**Details**", `本次更新\n\n${opening}`, `### 中文\n\n${opening}`]) {
+      expect(splitReleaseHeadline(body)).toEqual({ headline: null, notes: body ?? "" });
+    }
+  });
+
   it("validates the PR body against its net product diff before the squash", () => {
     const root = mkdtempSync(join(tmpdir(), "piik-pr-notes-"));
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
@@ -87,19 +102,26 @@ describe("release automation", () => {
         cwd: root, encoding: "utf8", env: { ...process.env, PIIK_BUILD_VERSION: "v1.0.1" },
       }));
       expect(candidate).toMatchObject({ version: "v1.0.1", publish: false });
-      commit("fix: repair playback\n\n## Release notes\n- Playback resumes after reconnecting.");
-      const next = commit("feat: add a sharing option\n\n## Release notes\n- Choose a window to share.");
+      commit("fix: repair playback\n\n## Release notes\n**旧主题**\n\n**Earlier theme**\n\n- Playback resumes after reconnecting.");
+      const opening = "**远程同乐，轮到你啦！**\n\n**Play together. Your turn!**";
+      const next = commit(`feat: add a sharing option\n\n## Release notes\n${opening}\n\n- Choose a window to share.`);
       const notes = releaseNotes(root, "v1.1.0", next, "fixture/Piik");
+      expect(notes.startsWith(opening)).toBe(true);
+      expect(notes).not.toMatch(/旧主题|Earlier theme/);
       expect(notes).toContain("- Playback resumes after reconnecting.\n\n- Choose a window to share.");
       expect(notes).toContain(`/compare/v1.0.0...${next}`);
       expect(notes).not.toContain("开始分享");
       expect(notes).not.toContain("redesign");
-      git("tag", "v1.1.0");
+      const omitted = commit("fix: reconnect\n\n## Release notes\n- Reconnect reliably.");
+      const plain = releaseNotes(root, "v1.1.0", omitted, "fixture/Piik");
+      expect(splitReleaseHeadline(plain).headline).toBeNull();
+      expect(plain).toContain("- Playback resumes after reconnecting.\n\n- Choose a window to share.\n\n- Reconnect reliably.");
+      git("tag", "v1.1.0", next);
       expect(releaseNotes(root, "v1.1.0", next, "fixture/Piik")).toBe(notes);
       // A checkout may have advanced; generation still uses the requested SHA.
       expect(releaseNotes(root, "v1.0.0", launch, "fixture/Piik")).toBe(first);
       for (const section of ["", "## Release notes", "## Release notes\n<!-- Fill in -->\n### Changes",
-        "## Release notes\n- One\n## Release notes\n- Two"]) {
+        "## Release notes\n- One\n## Release notes\n- Two", `## Release notes\n${opening}`]) {
         git("checkout", "--quiet", "--detach", next);
         const invalid = commit(`chore: maintenance\n\n${section}`);
         expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("one nonempty");

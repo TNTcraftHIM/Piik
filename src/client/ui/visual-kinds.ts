@@ -89,6 +89,7 @@ export type AdmissionHintKind =
   | "hint-admission-invite";
 
 export type Set4Kind =
+  | "hint-help"
   | "hint-topology"
   | "hint-close"
   | "hint-rename"

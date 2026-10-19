@@ -181,7 +181,7 @@ Diagnostics are local and opt-in. Enable them **before** reproducing the problem
 | Surface | Enable | Export |
 | --- | --- | --- |
 | App | Enable **Debug launch** with the small chip icon after the theme control in the mode selector, or start with `--debug` / `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
-| Browser Host/Viewer | Click the **Debug** chip icon after the theme control and confirm the reload, or add `?debug=1` before any invitation fragment | The same control becomes a download arrow for the web report |
+| Browser Host/Viewer | Open **Help → Debug** after the theme control and confirm the reload, or add `?debug=1` before any invitation fragment | **Help → Web report** downloads the browser report |
 | Hosted Server | Start with `--debug`, `PIIK_DEBUG=server` or `PIIK_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
 
 App **Debug launch** starts App collection immediately, including while waiting

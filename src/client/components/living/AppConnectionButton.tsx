@@ -138,7 +138,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
   return <><Tooltip kind={state === "ready" ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
     text={vis ? undefined : label} disabled={helpOpen}
     place={sourcePicker ? "above" : "below"} align="end">
-    <button ref={trigger} type="button" className={`${sourcePicker ? "lr-source-picker-refresh lr-source-app-connect" : "lr-btn lr-app-connect"}${state === "ready" ? " is-ready" : ""}`}
+    <button ref={trigger} type="button" className={`${sourcePicker ? "lr-btn is-dense lr-source-picker-refresh lr-source-app-connect" : "lr-btn is-compact lr-app-connect"}${state === "ready" ? " is-ready" : ""}`}
       aria-label={sourcePicker ? t("client.connect.action") : label} aria-busy={state === "busy" || undefined}
       popoverTarget={failed ? helpId : undefined} aria-haspopup={failed ? "dialog" : undefined}
       onClick={failed ? undefined : event => {
@@ -153,14 +153,14 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     </button>
   </Tooltip>
     <div ref={help} id={helpId} popover="auto" role="dialog" aria-label={t("client.connect.action")} aria-describedby={`${helpId}-message`}
-      className="lr-app-connect-help" onToggle={event => {
+      className="lr-anchored-card lr-app-connect-help" onToggle={event => {
         setHelpOpen(event.newState === "open");
         if (event.newState !== "open" || !trigger.current) return;
         event.currentTarget.querySelector<HTMLButtonElement>("button")?.focus();
       }}>
       <div className="lr-app-connect-head">
         <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && <Comic kind={state === "incompatible" ? "warning" : "signal-failed"} theme="paper" />}</div>
-        <button type="button" className="lr-btn lr-app-connect-close" aria-label={t("common.close")}
+        <button type="button" className="lr-btn is-dense is-quiet lr-app-connect-close" aria-label={t("common.close")}
           popoverTarget={helpId} popoverTargetAction="hide">
           <Glyph name="x" size={16} />
         </button>

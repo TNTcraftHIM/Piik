@@ -8,7 +8,18 @@
 
 <!-- Required for product-changing PRs; omit this section for standalone website/docs/maintenance work. Public copy, automatically published in GitHub Releases. Keep this exact heading; use ### for subsections. Describe user benefits, fixes and required upgrade actions in concise Chinese and English. Omit internal logs, audit prompts and unverified claims. 产品改动需填写公开的中英文更新说明；仅官网、文档或外围维护可删去此节。 -->
 
-<!-- Start each language with a short introduction: what kind of update this is, its emphasis and who benefits. Then group relevant highlights/fixes/upgrade notes; omit empty headings. Use ### for languages and #### for categories. An internal refactor is not automatically a breaking change. Review the final release as one coherent description, including any earlier unpublished changes. 中英文分别先介绍本次更新的性质和重点，再按需分组写新功能、修复与升级事项；别用提交日志代替版本介绍。 -->
+<!-- Follow docs/standards/versioning.md#release-notes. Keep the public Release title Piik vX.Y.Z.
+An optional editorial headline opens the body as two bold plain-text paragraphs: Chinese, then English.
+Keep/change/omit it by editorial relevance, independently of semver. A released feature, verified community
+milestone, thanks or light aside is fine; do not present an old feature as new or promise a prototype.
+Then use ### 中文 and ### English to explain THIS update: actual benefits, fixes and required actions.
+Group details only when useful. Serious upgrade instructions take precedence over playful copy.
+Preview the complete generated release, including earlier unpublished changes: one bilingual headline at most.
+The last product PR supplies that headline (or omits it); earlier PRs retain their actual changes.
+正文可先写一组双语主题：中文、英文各一个 **纯文本粗体段落**。按内容决定沿用、换掉或省略，与版本位无关。
+主题可以讲已上线功能、真实社区里程碑或轻松小事；随后必须明确“本次更新”改了什么，不用俏皮话代替事实。
+合并前检查整份生成文案和官网摘句，勿重复主题、误报新功能或手工复制另一份文案。
+-->
 
 ## Verification / 验证
 

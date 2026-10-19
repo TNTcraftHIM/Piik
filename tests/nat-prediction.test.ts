@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { punchIceConfig } from "../src/client/native/native-punch";
 
 import {
   addRemoteIceCandidate,
@@ -167,7 +168,10 @@ describe("NAT prediction ICE adapter", () => {
       natPredictionSurveyUrls([
         { urls: "stun:share.example.test:5349" },
       ], auxiliary),
-    ).toEqual(new Set());
+    ).toEqual(new Set([
+      "stun:share.example.test:5349",
+      ...auxiliary,
+    ]));
   });
 
   it("does not invent auxiliary listeners that the server did not enable", () => {
@@ -190,17 +194,61 @@ describe("NAT prediction ICE adapter", () => {
     expect(natPredictionSurveyUrls(servers, auxiliary)).toEqual(new Set(urls));
   });
 
+  it("keeps auxiliary discovery entries from replacing the ordinary base", () => {
+    const auxiliary = ["stun:site.test:3479", "stun:site.test:3480"];
+    const urls = [...auxiliary, "stun:site.test:3478"];
+    expect(natPredictionSurveyUrls([{ urls }], auxiliary)).toEqual(new Set([
+      "stun:site.test:3478", ...auxiliary,
+    ]));
+    expect(natPredictionSurveyUrls([{ urls: auxiliary }], auxiliary)).toEqual(new Set());
+  });
+
+  it.each([
+    ["stun:site.test:3479", "stun:site.test:3480"],
+    ["stun:survey-a.test:3478", "stun:survey-b.test:3478"],
+  ])("preserves the published base choice with non-default discovery first: %s", (...auxiliary) => {
+    const servers = [{ urls: ["stun:discovery.test:19302", "stun:site.test:3478"] }];
+    expect(natPredictionSurveyUrls(servers, auxiliary)).toEqual(new Set([
+      "stun:site.test:3478", ...auxiliary,
+    ]));
+  });
+
+  it("uses a non-default base when the remaining discovery URLs are the survey pair", () => {
+    const urls = ["stun:primary.test:19302", "stun:survey-a.test:3478", "stun:survey-b.test:3478"];
+    const servers = [{ urls }];
+    const auxiliary = urls.slice(1, 3);
+    expect(natPredictionSurveyUrls(servers, auxiliary)).toEqual(new Set(urls.slice(0, 3)));
+    expect(punchIceConfig({ iceServers: servers, natPredictionStunUrls: auxiliary })).toEqual({
+      iceServers: [{ urls: urls.slice(0, 3) }],
+    });
+
+    const send = vi.fn<(candidate: SignalCandidate) => void>();
+    const batch = new NatPredictionCandidateBatch(send);
+    for (const [index, port] of [[1, 40_000], [2, 40_003], [3, 40_006]]) {
+      const observation = candidate(port!)!;
+      observation.candidate = observation.candidate.replace("candidate:base", `candidate:ns${index}`);
+      const eligible = isNativeNatSurveyCandidate(observation, servers, auxiliary);
+      expect(eligible).toBe(true);
+      batch.add(observation, eligible);
+    }
+    batch.complete();
+    const emitted = send.mock.calls.map(([value]) => value);
+    expect(emitted.filter(value => /^candidate:ns/.test(value?.candidate ?? ""))).toHaveLength(3);
+    expect(emitted.filter(value => /^candidate:s[pm]/.test(value?.candidate ?? ""))).toHaveLength(MAX_NAT_PREDICTION_CANDIDATES);
+    expect(emitted.at(-1)).toBeNull();
+  });
+
   it.each([
     ["stun:Share.TEST", "stun:share.test:3478"],
     ["STUN:Share.TEST:03478", "stun:share.test:3478"],
     ["stun:[2001:DB8::1]:3478", "stun:[2001:db8::1]:3478"],
-    ["stun:share.test:80", null],
-    ["stun:share.test:00080", null],
-    ["stun:share.test:443", null],
+    ["stun:share.test:80", "stun:share.test:80"],
+    ["stun:share.test:00080", "stun:share.test:80"],
+    ["stun:share.test:443", "stun:share.test:443"],
   ] as const)("preserves the STUN port in survey membership for %s", (url, base) => {
     const auxiliary = ["stun:survey.test:80", "stun:survey.test:443"];
     expect(natPredictionSurveyUrls([{ urls: url }], auxiliary)).toEqual(
-      new Set(base ? [base, ...auxiliary] : []),
+      new Set([base, ...auxiliary]),
     );
   });
 
@@ -409,14 +457,14 @@ describe("NAT prediction ICE adapter", () => {
   it("retires an unfinished generation without ending the restarted ICE session", () => {
     const sent: SignalCandidate[] = [];
     const survey = [
-      "stun:share.example.test:3478",
+      "stun:share.example.test:19302",
       "stun:survey-a.example.test:3478",
       "stun:survey-b.example.test:3478",
     ];
     const emitter = new NatPredictionCandidateEmitter(
       true,
       (value) => sent.push(value),
-      new Set(survey),
+      natPredictionSurveyUrls([{ urls: survey }], survey.slice(1)),
     );
     const emit = (port: number, usernameFragment: string, url: string) => {
       emitter.add({

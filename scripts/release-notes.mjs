@@ -2,6 +2,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import semver from "semver";
 import { hasProductChanges, isReleaseVersion, releaseCommits, stableTags } from "./release-version.mjs";
+import { splitReleaseHeadline } from "./release-headline.mjs";
 
 export function releaseNotesSection(message, source) {
   const sections = message.replace(/\r\n/g, "\n").split(/^## /m).slice(1)
@@ -9,7 +10,8 @@ export function releaseNotesSection(message, source) {
   const body = sections.length === 1
     ? sections[0].split("\n").slice(1).join("\n").replace(/<!--[\s\S]*?-->/g, "").trim()
     : "";
-  if (!body || !body.split("\n").some((line) => line.trim() && !/^#{1,6}(\s|$)/.test(line))) {
+  const { notes } = splitReleaseHeadline(body);
+  if (!notes || !notes.split("\n").some((line) => line.trim() && !/^#{1,6}(\s|$)/.test(line))) {
     throw new Error(`${source} needs one nonempty ## Release notes section`);
   }
   if (/\uFFFD|\?{3,}/u.test(body)) {
@@ -35,8 +37,13 @@ export function releaseNotes(root, version, revision, repository, { allowEmpty =
   // Exclude this release's tag so retrying after publication keeps the same range.
   const previous = stableTags(root, "--merged", revision).find((tag) => semver.lt(tag, version));
   const bodies = [];
+  let headline = null;
   for (const commit of releaseCommits(root, revision, previous)) {
-    bodies.push(releaseNotesSection(commit.message, `Commit ${commit.revision}`));
+    const section = splitReleaseHeadline(releaseNotesSection(commit.message, `Commit ${commit.revision}`));
+    // The final product PR is the editorial decision for this release, including
+    // deliberate omission. Earlier PRs retain all their actual update details.
+    headline = section.headline;
+    bodies.push(section.notes);
   }
   if (!bodies.length) {
     if (allowEmpty) return "";
@@ -46,7 +53,8 @@ export function releaseNotes(root, version, revision, repository, { allowEmpty =
   const source = previous
     ? `[完整变更 / Full changelog](${url}/compare/${previous}...${revision})`
     : `[源代码 / Source](${url}/tree/${revision})`;
-  return `${bodies.join("\n\n")}\n\n---\n\n${source}\n`;
+  const opening = headline ? `**${headline["zh-CN"]}**\n\n**${headline.en}**\n\n` : "";
+  return `${opening}${bodies.join("\n\n")}\n\n---\n\n${source}\n`;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

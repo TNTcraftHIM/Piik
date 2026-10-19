@@ -13,13 +13,14 @@
 namespace piik::capture::windows {
 class AdaptiveEncoder::Impl final {
  public:
-  explicit Impl(Factory create, VideoProfile profile) : encoder(create(profile)) {}
+  explicit Impl(Factory create, VideoProfile profile, std::unique_ptr<VideoEncoder> initial)
+      : encoder(initial ? std::move(initial) : create(profile)) {}
   std::unique_ptr<VideoEncoder> encoder;
 };
 
 AdaptiveEncoder::AdaptiveEncoder(OutputKind, VideoProfile profile, ID3D11Device*,
-    Factory create, std::unique_ptr<VideoEncoder>, int)
-    : impl_(std::make_unique<Impl>(std::move(create), profile)) {}
+    Factory create, std::unique_ptr<VideoEncoder> initial, int)
+    : impl_(std::make_unique<Impl>(std::move(create), profile, std::move(initial))) {}
 AdaptiveEncoder::~AdaptiveEncoder() = default;
 
 std::optional<AdaptiveAccessUnit> AdaptiveEncoder::Encode(FrameProducer,
@@ -53,7 +54,7 @@ class FixtureEncoder final : public VideoEncoder {
   std::shared_future<void> released_;
 };
 
-void CheckWorkerFailureGeneration(ID3D11Device* device, bool replace) {
+void CheckWorkerFailureGeneration(ID3D11Device* device, bool replace, bool active = true) {
   std::promise<void> entered, release, output, failure;
   auto began = entered.get_future();
   auto released = release.get_future().share();
@@ -63,10 +64,14 @@ void CheckWorkerFailureGeneration(ID3D11Device* device, bool replace) {
   HANDLE sink = CreateFileW(L"NUL", GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
   assert(sink != INVALID_HANDLE_VALUE);
   ProtocolWriter writer(sink);
+  const AdaptiveEncoder::Factory create = [&](const VideoProfile&) -> std::unique_ptr<VideoEncoder> {
+    return std::make_unique<FixtureEncoder>(created++ == 0 ? &entered : nullptr, released);
+  };
+  // The selected codec moves into its worker without recreation. Retirement
+  // still rebuilds it from the same factory.
+  auto prepared = create(VideoProfile{});
   OutputWorker worker(0, VideoProfile{}, OutputKind::h264, device, writer,
-      [&](const VideoProfile&) -> std::unique_ptr<VideoEncoder> {
-        return std::make_unique<FixtureEncoder>(created++ == 0 ? &entered : nullptr, released);
-      }, nullptr, true, [&](const EncodedAccessUnit&) { output.set_value(); },
+      create, std::move(prepared), active, [&](const EncodedAccessUnit&) { output.set_value(); },
       [&](std::exception_ptr error) {
         try { std::rethrow_exception(error); }
         catch (const GateFailure& actual) { assert(actual.result() == E_FAIL); }
@@ -77,6 +82,7 @@ void CheckWorkerFailureGeneration(ID3D11Device* device, bool replace) {
   input->height = 720;
   input->presentation = {1280, 720};
   input->timestamp = 333'333;
+  if (!active) assert(worker.SetActive(true));
   worker.Submit(input);
   assert(began.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
   if (replace) {
@@ -223,6 +229,29 @@ void CheckEncoderCandidates() {
     assert(error.stage() == "codec-probe-timeout");
   }
   assert(tried.empty());
+
+  // A slow failed candidate can leave 750 ms of the four-second selection
+  // budget. Auto at 30 fps cannot fit its cadence measurement into that time;
+  // manual H264 and the immediate two-frame 1 fps probe still can proceed.
+  for (const auto [automatic, frame_rate] :
+       {std::pair{true, 30U}, std::pair{false, 30U}, std::pair{true, 1U}}) {
+    VideoProfile profile;
+    profile.frame_rate = frame_rate;
+    const auto minimum_time = automatic ? CadenceTiming(profile).MinimumDuration()
+                                        : EncoderClock::duration::zero();
+    tried.clear();
+    bool expired = false;
+    try {
+      const auto selected = SelectEncoderCandidate(candidates, preferred,
+          EncoderClock::now() + std::chrono::milliseconds(750),
+          [&](EncoderCandidate candidate) { tried.push_back(candidate); }, minimum_time);
+      assert(selected == preferred);
+    } catch (const GateFailure& error) {
+      expired = error.stage() == "codec-probe-timeout";
+    }
+    assert(expired == (automatic && frame_rate == 30));
+    assert(tried.size() == (expired ? 0U : 1U));
+  }
 }
 
 class CadenceFixtureEncoder final : public VideoEncoder {
@@ -260,9 +289,8 @@ void CheckAutoCadenceProbe(ID3D11Device* device) {
   auto probe = [&](std::chrono::milliseconds latency, UINT32 dropped,
                    EncoderClock::time_point deadline, bool cold_only = false) {
     calls = 0;
-    return SustainsEncodedCadence([=, &calls](const VideoProfile&) -> std::unique_ptr<VideoEncoder> {
-      return std::make_unique<CadenceFixtureEncoder>(latency, dropped, cold_only, calls);
-    }, device, profile, deadline);
+    CadenceFixtureEncoder encoder(latency, dropped, cold_only, calls);
+    return SustainsEncodedCadence(encoder, device, profile, deadline);
   };
   const auto deadline = EncoderClock::now() + std::chrono::seconds(30);
   // Valid output at a fraction of the source rate is the driver defect Auto rejects.
@@ -467,6 +495,7 @@ int main() {
   CheckAutoCadenceProbe(device.Get());
   CheckWorkerFailureGeneration(device.Get(), false);
   CheckWorkerFailureGeneration(device.Get(), true);
+  CheckWorkerFailureGeneration(device.Get(), false, false);
   CheckWorkerDimensions(device.Get(), {1080, 1920}, {404, 720});
   CheckWorkerDimensions(device.Get(), {3440, 1440}, {1280, 534});
   CheckWorkerDimensions(device.Get(), {640, 480}, {640, 480});

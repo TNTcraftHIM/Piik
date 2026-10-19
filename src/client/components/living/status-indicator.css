@@ -1,5 +1,5 @@
 .lr-status-indicator {
-  --status-colour: #8ea3b8;
+  --status-colour: var(--idle);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -16,7 +16,7 @@ button.lr-status-indicator {
   cursor: pointer;
 }
 .lr-status-indicator[data-tone="live"] { --status-colour: var(--live); }
-.lr-status-indicator[data-tone="busy"] { --status-colour: var(--action); }
+.lr-status-indicator[data-tone="busy"] { --status-colour: var(--busy); }
 .lr-status-indicator[data-tone="warn"] { --status-colour: var(--warn); }
 .lr-status-indicator[data-tone="bad"] { --status-colour: var(--danger); }
 .lr-status-indicator:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }

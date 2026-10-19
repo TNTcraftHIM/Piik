@@ -15,6 +15,7 @@ machine's architecture:
 ```sh
 sh native/capture/darwin/build.sh /outside/repository/build
 /outside/repository/build/piik-capture --geometry-self-test
+/outside/repository/build/piik-capture --audio-self-test
 /outside/repository/build/piik-capture --self-test
 /outside/repository/build/piik-capture --probe
 ```
@@ -26,7 +27,9 @@ before sending encoded input to the helper; CoreMedia can normalize SPS cropping
 in its format description. `--self-test`
 encodes successive landscape, portrait, ultrawide and small 420v buffers through
 one output worker, requiring the fitted dimensions and a constrained-baseline
-SPS/PPS/IDR after each size change. Neither needs Screen Recording permission.
+SPS/PPS/IDR after each size change. `--audio-self-test` checks silent startup,
+ready-before-PCM ordering and stopped input without using an audio device.
+These checks need no Screen Recording permission.
 Real source selection, window resizing, display-scale changes and recovery still
 require a physical macOS gate.
 

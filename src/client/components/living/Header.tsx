@@ -1,5 +1,6 @@
 // App header: brand mark, LED connection state, language selection and theme.
-import { useState, useSyncExternalStore } from "react";
+import { useId, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { browserDebugEnabled, debugError, downloadBrowserDebug, withBrowserDebug } from "../../lib/debug";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
@@ -9,6 +10,8 @@ import { LanguageControl } from "./LanguageControl";
 import { applyTheme, currentTheme, subscribeTheme } from "../../ui/theme";
 import { Glyph } from "../../ui/icons";
 import { AppConnectionButton } from "./AppConnectionButton";
+import { useAnchoredPopover } from "./use-anchored-popover";
+import { useProjectLink } from "../../lib/use-project-link";
 
 export type LedState = "live" | "busy" | "warn" | "bad" | "off";
 
@@ -45,14 +48,14 @@ export function LedStrip({
 }
 
 /** Shared explicit opt-in/export action; starting diagnostics reloads the page. */
-export function BrowserDiagnosticsButton() {
+export function BrowserDiagnosticsButton({ quiet = false }: { quiet?: boolean } = {}) {
   const { vis, t } = useCopy();
   const [debugExport, setDebugExport] = useState<"idle" | "busy" | "failed">("idle");
   const debugTitle = t(!browserDebugEnabled ? "debug.startHint" :
     debugExport === "failed" ? "debug.exportFailed" : "debug.exportHint");
   const debugButton = (
     <button
-      type="button" className={`lr-btn${browserDebugEnabled ? " is-on" : ""}`} disabled={debugExport === "busy"}
+      type="button" className={`lr-btn is-compact${quiet ? " is-quiet" : ""}${browserDebugEnabled ? " is-on" : ""}`} disabled={debugExport === "busy"}
       aria-label={debugTitle} aria-busy={debugExport === "busy" || undefined}
       onClick={() => {
         if (!browserDebugEnabled) {
@@ -82,14 +85,56 @@ export function BrowserDiagnosticsButton() {
     text={vis ? undefined : debugTitle} place="below" align="end">{debugButton}</Tooltip>;
 }
 
-export function HeaderControls({ diagnosticControl }: { diagnosticControl?: React.ReactNode } = {}) {
+const webVersion = import.meta.env.VITE_PIIK_VERSION ?? "development";
+const webRelease = /^v\d+\.\d+\.\d+$/.test(webVersion)
+  ? `https://github.com/TNTcraftHIM/Piik/releases/tag/${webVersion}` : null;
+
+function BrowserHelpMenu() {
+  const { lang, vis, t } = useCopy();
+  const id = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  useAnchoredPopover(trigger, panel);
+  const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
+    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, open);
+  return <>
+    <Tooltip kind="hint-help" text={vis ? undefined : t("help.hint")} disabled={open} place="below" align="end">
+      <button ref={trigger} type="button" className="lr-btn is-compact is-quiet"
+        popoverTarget={id} aria-haspopup="dialog" aria-expanded={open} aria-label={t("help.title")}>
+        <Glyph name="help" />
+      </button>
+    </Tooltip>
+    {createPortal(<div ref={panel} id={id} popover="auto" role="dialog" aria-label={t("help.title")}
+      className={`lr-anchored-card lr-help-menu${vis ? " is-visual" : ""}`} onToggle={event => {
+        if (event.target === event.currentTarget) setOpen(event.newState === "open");
+      }}>
+      <header><strong>Piik Web</strong>
+        {webRelease ? <a href={webRelease} target="_blank" rel="noopener noreferrer"
+          aria-label={`Piik Web ${webVersion}`}>{webVersion}</a> : <span>{webVersion}</span>}
+      </header>
+      <nav aria-label={t("help.title")}>
+        {open && <>
+          <Tooltip kind="hint-help" text={vis ? undefined : t("shareHelp.guide")} place="below" align="end">
+            <a className="lr-btn is-compact is-quiet" href={guide} target="_blank" rel="noopener noreferrer" aria-label={t("shareHelp.guide")}>
+              <Glyph name="book" size={16} />{!vis && <span className="lr-cap">{t("help.troubleshooting")}</span>}
+            </a>
+          </Tooltip>
+          <BrowserDiagnosticsButton quiet />
+        </>}
+      </nav>
+    </div>, document.body)}
+  </>;
+}
+
+export function HeaderControls({ diagnosticControl, appControl }: { diagnosticControl?: React.ReactNode; appControl?: React.ReactNode } = {}) {
   const { vis, t } = useCopy();
   const theme = useSyncExternalStore(subscribeTheme, currentTheme);
   const themeTitle = t(theme === "dark" ? "theme.light" : "theme.dark");
   const themeButton = (
     <button
       type="button"
-      className="lr-btn lr-theme-toggle"
+      className="lr-btn is-compact lr-theme-toggle"
       aria-label={themeTitle}
       onClick={(event) => {
         // Pointer activation must not pin the hint open; keyboard keeps focus.
@@ -107,13 +152,12 @@ export function HeaderControls({ diagnosticControl }: { diagnosticControl?: Reac
   );
   return (
     <span className="lr-top-right lr-header-controls">
+      {appControl}
       <LanguageControl />
       <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
         {themeButton}
       </Tooltip>
-      {diagnosticControl !== null && <span className="lr-header-diagnostic">
-        {diagnosticControl === undefined ? <BrowserDiagnosticsButton /> : diagnosticControl}
-      </span>}
+      {diagnosticControl === undefined ? <BrowserHelpMenu /> : diagnosticControl}
     </span>
   );
 }
@@ -145,8 +189,8 @@ export function AppHeader({
       </a>}
       <span className="lr-top-right">
         {led}
-        {homeHref !== "/client" && showAppConnection && <AppConnectionButton />}
-        <HeaderControls diagnosticControl={diagnosticControl} />
+        <HeaderControls diagnosticControl={diagnosticControl}
+          appControl={homeHref !== "/client" && showAppConnection ? <AppConnectionButton /> : undefined} />
       </span>
     </header>
   );

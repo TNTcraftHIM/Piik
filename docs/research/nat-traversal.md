@@ -424,6 +424,58 @@ No new transport or universal success-rate claim is accepted by this review.
 The [retired Go experiment](#integration-cost-and-recovery-controls) establishes
 reuse feasibility and its cost, not a Browser-compatible reachability gain.
 
+### External Forwarding And Participant Relays
+
+The October 19 review and isolated Linux check of
+[frp v0.71.1](https://github.com/fatedier/frp/releases/tag/v0.71.1)
+establish fixed-UDP forwarding feasibility, not an integrated Piik provider:
+
+- HTTP/WebSocket can use a normal reverse-proxy entry with the correct HTTPS
+  public origin. A fixed SFU UDP forward is a deployment candidate when
+  `SFU_PUBLIC_IP` advertises the reachable frps address and the external and local
+  ports both match `SFU_UDP_PORT`; Piik does not separately advertise a remote port.
+- Do not expose Piik's STUN listeners through ordinary frp UDP forwarding. Its
+  [forwarder opens a local socket](https://github.com/fatedier/frp/blob/v0.71.1/pkg/proto/udp/udp.go)
+  for each remote endpoint, so the backend observes frpc's address instead of the
+  participant's mapping. Piik's STUN listener does not parse Proxy Protocol.
+  Keep STUN directly reachable.
+- The [UDP proxy](https://github.com/fatedier/frp/blob/v0.71.1/client/proxy/udp.go)
+  frames datagrams into a work connection; choosing QUIC does not turn this into
+  QUIC DATAGRAM or establish immunity to ordered-stream blocking. App edge
+  sockets also remain dynamic: forwarding the page alone is not media integration.
+  [XTCP requires frpc at both ends](https://gofrp.org/en/docs/examples/xtcp/), so
+  it cannot replace ICE for an ordinary Browser invitation.
+
+The direct/frp control used Piik's embedded SFU with one Pion publisher and two
+subscribers. Both paths delivered at least 30 complete, byte-identical VP8 frames
+and 30 Opus packets per subscriber, with an explicit Viewer PLI reaching the
+publisher. The frp arm blocked direct backend-to-client traffic, used the default
+TCP work connection, and preserved a sibling when one subscriber retired.
+The same check against Piik's STUN listener returned the actual client mapping
+directly and frpc's backend socket through frp, confirming the STUN limitation
+above. These loopback controls do not establish Browser decoding, audible audio,
+public-network performance, loss recovery or QUIC behavior.
+
+A well-connected participant already can help through the existing Viewer relay.
+Browser relays reuse WebRTC senders; Native relays can forward suitable encoded
+media. Any voluntary capacity control should feed the existing room controller,
+with its endpoint cap and current-edge retirement. Bandwidth alone does not prove
+reachability. A separate App-hosted SFU would need remote-worker admission,
+authorized commands and capacity/retirement ownership that the current embedded
+SFU does not expose. [Tailscale Peer Relays](https://tailscale.com/docs/features/peer-relay)
+likewise require configured reachability and authorization; they are not arbitrary
+high-bandwidth peers. This review does not accept a second graph or relay service.
+
+A controlled Native relay check blocked only Host-to-target traffic in Pion
+vnet. The unmodified controller retired that silent candidate after its existing
+five-second head start, selected a friend and committed only after 30 received
+VP8 frames decoded. Reverse PLI reached the Host. Friend departure retired the
+Native Source/Edge/Receiver path; the ordinary Host recovery exhausted its
+existing 20-second budget. A new friend session restored decoded video and PLI;
+old reports and media writes were rejected, with no remaining edges or sockets.
+This establishes controller/transport composition, not room WebSocket admission,
+Browser relay behavior or a field NAT success rate.
+
 ### Coordinated Native Punching Assessment
 
 The October 12, 2026 scope includes optional Native transport at both ends when
@@ -593,11 +645,19 @@ against that same endpoint pair and relay policy.
 
 #### Stable Pion Interoperability
 
-The candidate uses Pion WebRTC v4.2.24 / ICE v4.4.7. The
-[upstream changes](https://github.com/pion/ice/compare/v4.4.0...v4.4.7) include
+The candidate uses Pion WebRTC v4.2.24 / ICE v4.4.8. The
+[upstream changes](https://github.com/pion/ice/compare/v4.4.0...v4.4.8) include
 STUN retransmission, gathering-generation ownership, Chromium mDNS compatibility
 and pre-created mux lifetime corrections. This updates the shared Native/SFU
 composition; ordinary Browser-to-Browser ICE remains Browser-owned.
+
+ICE v4.4.8 also [corrects Binding-request PRIORITY](https://github.com/pion/ice/pull/1026)
+to use the peer-reflexive preference instead of the source candidate's preference.
+The old value could tie a peer-reflexive pair with a host pair and add an
+unnecessary acceptance wait. The upstream regression fails with the old pin and
+passes with the correction, as do Piik's existing Native, STUN and SFU checks.
+This corrects candidate selection; it does not establish a new reachable NAT
+class or a field success rate.
 
 WebRTC's DTLS v3.1.13 dependency also includes
 [queued-buffer ownership and handshake-retransmission corrections](https://github.com/pion/dtls/compare/v3.1.10...v3.1.13).

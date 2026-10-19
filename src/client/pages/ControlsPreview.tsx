@@ -33,6 +33,7 @@ import { deriveParticipantStatus, STATUS_CATALOG } from "../ui/media-status";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { PeoplePreview } from "./PeoplePreview";
+import { RemoteControlsPreview } from "./RemoteControlsPreview";
 import "./controls-preview.css";
 
 const POSTER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="#e8eee6"/><rect x="100" y="60" width="440" height="240" rx="20" fill="#fffdf6"/><path d="M100 100h440" stroke="#c9d7cf" stroke-width="2"/><circle cx="128" cy="81" r="6" fill="#ed9e65"/><circle cx="320" cy="190" r="46" fill="#65b099"/><path d="m310 191 9 9 16-22" fill="none" stroke="#fffdf6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>')}`;
@@ -112,6 +113,18 @@ export function ControlsPreview() {
           <Btn icon="network" title="host.topology" hint="hint-topology" onClick={notify} />
           <Btn icon="sliders" title="host.advanced" hint="hint-advanced" onClick={notify} />
         </div>
+        <p>{en ? "The same button family has regular, compact and dense sizes. Quiet actions keep a usable target without a visible frame."
+          : "同一按钮族提供常规、紧凑和小尺寸；弱化操作保留点击范围，不强调边框。"}</p>
+        <div className="cp-tools">
+          {([undefined, "compact", "dense"] as const).map((size, index) => <figure className="cp-control-sample" key={size ?? "regular"}>
+            <Btn icon="link" title="host.invite.copy" hint="hint-copy-invite" size={size} onClick={notify} />
+            <figcaption>{en ? ["Regular", "Compact", "Dense"][index] : ["常规", "紧凑", "小尺寸"][index]}</figcaption>
+          </figure>)}
+          <figure className="cp-control-sample">
+            <Btn icon="help" title="help.title" hint="hint-help" size="compact" quiet onClick={notify} />
+            <figcaption>{en ? "Quiet" : "弱化"}</figcaption>
+          </figure>
+        </div>
       </section>
       <section id="sharing-preview" className="cp-card cp-sharing-preview">
         <header><h2>{t("host.advanced")}</h2></header>
@@ -182,7 +195,7 @@ export function ControlsPreview() {
           <SwitchItem checked disabled locked onChange={() => undefined} label={t("host.advanced.route.sfuOnly")}
             note={t("host.advanced.route.sfuOnlyHint")} hint="hint-route-sfu" />
         </div>
-        <div className="cp-tools">
+        <div className="cp-tools" id="admission-preview">
           <span className="lr-toggle" role="group" aria-label={t("host.policy")}>
             {(["open", "private"] as const).map(value => <Tooltip key={value} kind={value === "open" ? "hint-admission-code" : "hint-policy-private"}
               text={vis ? undefined : `${t(`host.policy.${value}`)} · ${t(value === "private" && roomPassword ? "host.policy.privatePasswordHint" : `host.policy.${value}Hint`)}`}>
@@ -210,6 +223,13 @@ export function ControlsPreview() {
         </div>
         {!includeCredential && policy === "private" && !roomPassword ? <Pill icon="lock" tone="warn"
           comic="hint-policy-private" label={t("host.invite.credentialRequired")} /> : null}
+        <p>{en ? "The website's architecture picker uses the same sliding style with native radio buttons. Arrow keys change the choice."
+          : "官网的架构选择也复用滑动样式，使用原生单选项；聚焦后可用方向键切换。"}</p>
+        <fieldset className="lr-toggle">
+          <legend className="visually-hidden">{en ? "Download architecture" : "下载架构"}</legend>
+          <label><input type="radio" name="preview-architecture" value="amd64" defaultChecked /><span>x64</span></label>
+          <label><input type="radio" name="preview-architecture" value="arm64" /><span>ARM64</span></label>
+        </fieldset>
       </section>
       <section id="input-preview" className="cp-card">
         <header><span className="cp-number">03</span><h2>{en ? "Names, codes and small details" : "名字、房间号，还有小细节。"}</h2></header>
@@ -315,6 +335,7 @@ export function ControlsPreview() {
         <p>{en ? "Chat and react in one window. Open reactions beside the message input; supported browsers can keep this window on top." : "聊天和表情都在一个窗口里。点输入区的「发表情」选择互动对象；支持的浏览器可以将窗口置顶。"}</p></div></header>
       <InteractionControlsPreview />
     </section>
+    <RemoteControlsPreview />
   </>;
 }
 

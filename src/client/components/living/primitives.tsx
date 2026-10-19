@@ -40,6 +40,8 @@ export function Btn({
   icon,
   cap,
   tone,
+  size,
+  quiet = false,
   title,
   disabled,
   busy,
@@ -59,6 +61,8 @@ export function Btn({
   icon: GlyphName;
   cap?: CopyKey;
   tone?: "primary" | "danger" | "on";
+  size?: "compact" | "dense";
+  quiet?: boolean;
   title: CopyKey;
   disabled?: boolean;
   busy?: boolean;
@@ -86,7 +90,7 @@ export function Btn({
     <button
       id={id}
       type={type}
-      className={`lr-btn${activeTone ? ` is-${activeTone}` : ""}`}
+      className={`lr-btn${size ? ` is-${size}` : ""}${quiet ? " is-quiet" : ""}${activeTone ? ` is-${activeTone}` : ""}`}
       aria-label={label}
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}

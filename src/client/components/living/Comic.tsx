@@ -1456,7 +1456,7 @@ ${rmBlock(["vls-source-host"], [], false)}
     {state === "switching" ? <BrowserWindow x={225} y={24} w={71} h={47}>
       <circle cx={260} cy={50} r={11} fill={SKY} />
     </BrowserWindow> : <MiniTv x={225} y={26} w={71} h={43} />}
-    {state === "failed" ? <RedX cx={185} cy={51} arm={11} /> : <g stroke="var(--comic-tone, var(--action))" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none">
+    {state === "failed" ? <RedX cx={185} cy={51} arm={11} /> : <g stroke="var(--comic-tone, var(--busy))" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" fill="none">
       <path className="vls-source-switch" d={state === "switching" ? "M158 42h51m-9-8 9 8-9 8" : "M158 51h51m-9-8 9 8-9 8"} />
       {state === "switching" && <path className="vls-source-switch vls-source-return" d="M209 61h-51m9-8-9 8 9 8" />}
     </g>}

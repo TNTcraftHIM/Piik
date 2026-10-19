@@ -133,6 +133,9 @@ export const zh = {
   "debug.exportHint": "下载网页诊断，可能包含网络地址和设备信息",
   "debug.exportFailed": "诊断下载失败，请重试",
   "brand.home": "Piik 首页",
+  "help.title": "帮助",
+  "help.hint": "帮助、诊断与版本信息",
+  "help.troubleshooting": "问题排查",
 
   "common.roomCode": "房间号",
   "host.roomCodePending": "开始分享后生成房间号",

@@ -124,9 +124,9 @@ export function LauncherForm({
         {site && <div className="lr-client-approved-site">
           <a href={`${site}/#piik-client=1`} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true"> ↗</span></a>
           <div className="lr-client-site-actions">
-            <Btn icon="star" title="client.connect.openOnStart" pressed={openSiteOnStart}
+            <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={openSiteOnStart}
               hint="hint-client-site" disabled={siteBusy} onClick={onToggleStartupSite} />
-            <Btn icon="x" title="client.connect.remove" hint="hint-client-site" disabled={siteBusy} onClick={onRemoveSite} />
+            <Btn icon="x" title="client.connect.remove" size="dense" hint="hint-client-site" disabled={siteBusy} onClick={onRemoveSite} />
           </div>
         </div>}
       </section>

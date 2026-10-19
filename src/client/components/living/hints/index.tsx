@@ -67,6 +67,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-topology",
   "hint-close",
   "hint-rename",
+  "hint-help",
   "hint-theme-light",
   "hint-theme-dark",
   "hint-collapse",

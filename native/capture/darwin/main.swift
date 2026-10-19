@@ -1227,6 +1227,14 @@ private final class AudioCaptureOutput: NSObject, SCStreamOutput, SCStreamDelega
         pending.reserveCapacity(960 * 2 * MemoryLayout<Int16>.size * 2)
     }
 
+    // The platform confirms startup; silence is not a failed capture. Call on
+    // the sample queue so the ready status always precedes admitted PCM.
+    func start() throws {
+        guard !done.isStopped else { return }
+        try writer.writeStatus(AudioStatus())
+        active = true
+    }
+
     private func append(_ sample: Float32) {
         let clipped = max(-1, min(1, sample))
         var value = Int16((clipped * Float32(Int16.max)).rounded()).littleEndian
@@ -1361,7 +1369,7 @@ private final class AudioCaptureOutput: NSObject, SCStreamOutput, SCStreamDelega
 
     // Microphone conversion and ScreenCaptureKit audio use the same PCM framing.
     func appendPCM(_ buffer: AVAudioPCMBuffer) throws {
-        guard !done.isStopped, let samples = buffer.int16ChannelData else { return }
+        guard active, !done.isStopped, let samples = buffer.int16ChannelData else { return }
         pending.append(UnsafeRawPointer(samples[0]).assumingMemoryBound(to: UInt8.self),
                        count: Int(buffer.frameLength) * 4)
         try flushFrames()
@@ -1370,10 +1378,6 @@ private final class AudioCaptureOutput: NSObject, SCStreamOutput, SCStreamDelega
     private func flushFrames() throws {
         let frameBytes = 960 * 2 * MemoryLayout<Int16>.size
         while pending.count >= frameBytes {
-            if !active {
-                try writer.writeStatus(AudioStatus())
-                active = true
-            }
             let payload = pending.prefix(frameBytes)
             try writer.writePCM(
                 Data(payload),
@@ -1390,7 +1394,7 @@ private final class AudioCaptureOutput: NSObject, SCStreamOutput, SCStreamDelega
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of outputType: SCStreamOutputType
     ) {
-        guard outputType == .audio, sampleBuffer.isValid else { return }
+        guard active, !done.isStopped, outputType == .audio, sampleBuffer.isValid else { return }
         do {
             try append(sampleBuffer)
             try flushFrames()
@@ -1401,6 +1405,41 @@ private final class AudioCaptureOutput: NSObject, SCStreamOutput, SCStreamDelega
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         done.signal(error)
+    }
+}
+
+private func audioSelfTest() throws {
+    let collector = EnvelopeCollector()
+    let done = StopSignal()
+    let output = AudioCaptureOutput(writer: ProtocolWriter(output: { collector.append($0) }), done: done)
+    guard let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 48_000,
+                                    channels: 2, interleaved: true),
+          let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 960),
+          let samples = buffer.int16ChannelData else {
+        throw CaptureFailure(description: "audio self-test buffer is unavailable")
+    }
+    buffer.frameLength = 960
+    memset(samples[0], 0, 960 * 4)
+    try output.appendPCM(buffer)
+    guard collector.snapshot().isEmpty else {
+        throw CaptureFailure(description: "audio was admitted before startup succeeded")
+    }
+    try output.start()
+    let started = collector.snapshot()
+    guard started.count == 1, started[0][5] == 3,
+          let status = try JSONSerialization.jsonObject(with: Data(started[0].dropFirst(32))) as? [String: Any],
+          status["state"] as? String == "active", status["audio"] as? Bool == true else {
+        throw CaptureFailure(description: "silent audio did not become ready")
+    }
+    try output.appendPCM(buffer)
+    let frames = collector.snapshot()
+    guard frames.count == 2, frames[1][5] == 1, frames[1].count == 32 + 960 * 4 else {
+        throw CaptureFailure(description: "audio ready did not precede PCM exactly once")
+    }
+    done.signal()
+    try output.appendPCM(buffer)
+    guard collector.snapshot().count == 2 else {
+        throw CaptureFailure(description: "stopped audio continued writing PCM")
     }
 }
 
@@ -2037,6 +2076,7 @@ private func captureMicrophone(deviceUID: String = "") throws {
                 }
                 tapped = true
                 try capture.start()
+                try worker.sync { try output.start() }
             } catch { done.signal(error) }
         }
     }
@@ -2095,6 +2135,7 @@ private func captureAudio(_ arguments: [String]) async throws {
 
     try await stream.startCapture()
     do {
+        try queue.sync { try output.start() }
         try done.wait()
     } catch {
         try? await stream.stopCapture()
@@ -2114,6 +2155,8 @@ private struct PiikCapture {
                 try selfTest()
             } else if arguments.count == 2, arguments[1] == "--geometry-self-test" {
                 try geometrySelfTest()
+            } else if arguments.count == 2, arguments[1] == "--audio-self-test" {
+                try audioSelfTest()
             } else if arguments.count == 2, arguments[1] == "--list" {
                 try await listSources()
             } else if arguments.count == 2, arguments[1] == "--list-microphones" {

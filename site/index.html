@@ -64,7 +64,7 @@
           <button type="button" data-language="zh-CN" lang="zh-CN" aria-label="简体中文" aria-pressed="false">中</button>
           <button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="true" class="is-selected">EN</button>
         </span>
-        <button id="theme" class="lr-btn lr-theme-toggle" type="button"></button>
+        <button id="theme" class="lr-btn is-compact lr-theme-toggle" type="button"></button>
         <template id="theme-light"></template>
         <template id="theme-dark"></template>
       </div>
@@ -86,7 +86,7 @@
             ><span lang="zh-CN">游戏高光、周末电影、旅行照片。<br />开个房间，叫朋友来一起看。</span>
           </p>
           <div class="hero-actions">
-            <a class="button primary" href="#download"
+            <a class="lr-btn is-primary button" href="#download"
               ><span lang="en">Download Piik App</span><span lang="zh-CN">下载 Piik App</span
               ><svg aria-hidden="true"><use href="#download-mark" /></svg></a
             ><a class="text-link" href="https://demo.piik.tv" target="_blank" rel="noopener noreferrer"
@@ -352,7 +352,7 @@
                   <span lang="en">Self-hosted Piik sites can <a href="./docs/self-hosting.html#optional-media-fallback">enable media forwarding (SFU)</a> as a fallback when a direct connection cannot be established.</span
                   ><span lang="zh-CN">自行部署的 Piik 站点可以<a href="./docs/zh/self-hosting.html#可选启用媒体兜底">启用媒体转发（SFU）</a>，为直连失败提供兜底。</span>
                 </p>
-                <a class="button download-button" href="https://demo.piik.tv" aria-describedby="demo-status"
+                <a class="lr-btn button download-button" href="https://demo.piik.tv" aria-describedby="demo-status"
                   ><span lang="en">Use Piik online</span><span lang="zh-CN">直接在线使用</span
                   ><span aria-hidden="true"> ↗</span></a
                 >
@@ -724,6 +724,7 @@
         <div class="section-heading">
           <p class="eyebrow"><span lang="en">Download</span><span lang="zh-CN">下载 Piik App</span></p>
           <h2 id="download-title"><span lang="en">Get Piik App.</span><span lang="zh-CN">下载 Piik App。</span></h2>
+          <p class="download-headline" id="download-headline" hidden><span lang="zh-CN"></span><span lang="en"></span></p>
           <div class="download-release">
             <span id="download-release" hidden>
               <strong><span lang="en">Latest release </span><span lang="zh-CN">最新版本 </span><b></b></strong>
@@ -749,12 +750,12 @@
               </svg>
             </div>
             <h3 id="download-windows">Windows</h3>
-            <fieldset class="download-architecture" disabled>
+            <fieldset class="lr-toggle download-architecture" disabled>
               <legend class="sr-only"><span lang="en">Windows architecture</span><span lang="zh-CN">Windows 架构</span></legend>
               <label><input type="radio" name="windows-architecture" value="windows-amd64" checked /><span><span lang="en">64-bit (x64)</span><span lang="zh-CN">64 位（x64）</span></span></label>
             </fieldset>
             <a
-              class="button download-button"
+              class="lr-btn button download-button"
               href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-windows-amd64.zip"
               aria-describedby="download-status"
               ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
@@ -778,13 +779,13 @@
               </svg>
             </div>
             <h3 id="download-macos">macOS</h3>
-            <fieldset class="download-architecture" disabled>
+            <fieldset class="lr-toggle download-architecture" disabled>
               <legend class="sr-only"><span lang="en">Mac processor</span><span lang="zh-CN">Mac 芯片</span></legend>
               <label><input type="radio" name="macos-architecture" value="darwin-arm64" checked /><span><span lang="en">Apple silicon</span><span lang="zh-CN">Apple 芯片</span></span></label>
               <label><input type="radio" name="macos-architecture" value="darwin-amd64" /><span>Intel</span></label>
             </fieldset>
             <a
-              class="button download-button"
+              class="lr-btn button download-button"
               href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-darwin-arm64.zip"
               aria-describedby="download-status"
               ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
@@ -809,13 +810,13 @@
               </svg>
             </div>
             <h3 id="download-linux">Linux</h3>
-            <fieldset class="download-architecture" disabled>
+            <fieldset class="lr-toggle download-architecture" disabled>
               <legend class="sr-only"><span lang="en">Linux architecture</span><span lang="zh-CN">Linux 架构</span></legend>
               <label><input type="radio" name="linux-architecture" value="linux-amd64" checked /><span><span lang="en">64-bit (x64)</span><span lang="zh-CN">64 位（x64）</span></span></label>
               <label><input type="radio" name="linux-architecture" value="linux-arm64" /><span>ARM64</span></label>
             </fieldset>
             <a
-              class="button download-button"
+              class="lr-btn button download-button"
               href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-linux-amd64.zip"
               aria-describedby="download-status"
               ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
@@ -826,7 +827,7 @@
           </article>
         </div>
         <div class="download-help">
-          <a class="button" href="https://github.com/TNTcraftHIM/Piik"><span lang="en">View on GitHub</span><span lang="zh-CN">GitHub 项目</span><span aria-hidden="true"> ↗</span></a>
+          <a class="lr-btn button" href="https://github.com/TNTcraftHIM/Piik"><span lang="en">View on GitHub</span><span lang="zh-CN">GitHub 项目</span><span aria-hidden="true"> ↗</span></a>
           <p><span lang="en">Physical-device coverage for the macOS and Linux apps is still limited. If you have a device, we'd welcome your <a href="https://github.com/TNTcraftHIM/Piik/issues">test results and feedback</a>.</span><span lang="zh-CN">macOS 和 Linux 版 Piik App 仍需更多实机测试，欢迎有设备的朋友试用并<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈问题</a>。</span></p>
         </div>
       </section>

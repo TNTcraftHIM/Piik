@@ -30,39 +30,26 @@ platform deferrals or establish a diagnosis for unmatched reports.
   own that boundary; this local repair does not diagnose the unmatched field
   reports below.
 
-- [ ] **Early repaired-media startup.** Release postflight reproduced an SFU
-  publication failure before the subscriber offer. A deterministic Pion trial
-  established that repair can queue before primary RID admission, retaining a
-  zero SSRC. The shared RTP reader now restores the admitted primary identity;
-  focused forwarding and Browser SFU lifecycle checks pass. Complete this repository
-  audit and acceptance, publish v2.2.1, and repeat the affected deployment check. The
-  production logs match this failure boundary but do not identify the packet fields.
+- [ ] **2.x maintenance acceptance.** Complete acceptance and integration of
+  the capture selection/handoff repairs, Pion/STUN corrections, shared controls,
+  help/version menu, website/docs appearance and release-headline presentation.
+  Preserve published protocols, explicit preferences and primary/status colour
+  identities. These changes are not yet published; room-voice and co-play code
+  remain in their isolated prototypes. Device and reporter limits stay below.
 
-- [ ] **SFU recovery rollout.** Shared forwarding now gives DownTrack one
-  owner for video sender reports and RR/RTT accounting, with Pion scheduling.
-  Matched SFU logs established clock contamination blocking layer changes and
-  missing RTT updates. RTCP, constrained recovery and the current App/Server
-  lifecycle checks pass locally. After the approved release, verify the affected
-  deployment with both corrected App and Server; an ICE restart does not replace
-  the affected upstream clock. This does not diagnose every unmatched
-  sustained-quality report below.
-
-- [ ] **New promotional film.** Review the local 54-second Chinese/English
-  motion draft, which introduces screen sharing, invitation, interaction and
-  single-controller keyboard/mouse use with explicit Host consent. Confirm the
-  pacing and soundtrack before replacing the existing online film. The current
-  draft uses product components and staged scenes, not a recorded live session.
+- [ ] **New promotional film.** Refine the accepted short proof's art direction
+  into a standalone Chinese/English introduction that assumes no earlier film.
+  Functional and mechanism work takes priority. Keep the draft in the online
+  review player; export video only after the owner accepts that preview.
+  Keep sharing, invitation, Host consent
+  and playing together causally connected, using product components with staged
+  content for actual operations. The local 36-second cut now carries this story,
+  including a real reaction picker and a friend's tomato throw;
+  refine the two-player party-game vignette, motion, reading time and soundtrack
+  before replacing the online film. Depict the published local-Host plus one
+  remote-friend keyboard flow; experimental multi-controller features are not claims.
 
 ## Held By Owner
-
-- [ ] **Theme-role consistency.** Deferred to the next minor update by
-  the owner on 2026-10-19. Keep this release's accepted palette. Sliding
-  segments should reuse the theme's selected-control colour pair rather than
-  inverse text/paper colours; review related App, Web and website choices at
-  their shared owners. Define primary, secondary, selection and status roles
-  once; preserve primary-action and semantic-status identities. Bridge the
-  same-origin website/docs appearance preference through their existing theme
-  adapters rather than keeping independent explicit choices.
 
 - [ ] **Remote-control latency and responsiveness.** Scheduled after this release.
   Compare input-to-visible-response timing on the same endpoints, source and
@@ -80,11 +67,6 @@ platform deferrals or establish a diagnosis for unmatched reports.
 - [ ] **Multiple remote-control screens.** Deferred by the owner on 2026-10-17.
   Keep one shared source and the existing Host source picker; Viewer-initiated
   screen switching and simultaneous multi-screen streams are later work.
-- [ ] **Independent virtual input devices for remote co-play.** Deferred by the owner on
-  2026-10-17. This phase uses keyboard/mouse only and adds no virtual gamepad
-  driver. Per-player virtual keyboards, mice and gamepads are later work.
-  The [input assessment](./research/room-interactions.md#remote-co-play) owns
-  platform dependencies and the distinction from shared keyboard/mouse control.
 - [ ] **32-bit Windows/Linux Apps.** Deferred by the owner on 2026-10-02;
   no package or website option is planned. Browser use remains available where
   the OS/browser supports the required media APIs. Retain the isolated
@@ -102,6 +84,15 @@ platform deferrals or establish a diagnosis for unmatched reports.
 These physical checks or reporter diagnoses remain unverified. A local repair or
 successful test is not proof of a reporter's cause; research owns the completed
 experiments and their limits.
+
+- [ ] **macOS sharing with source audio (#486).** Compile and run the Darwin
+  audio self-test and verify actual screen/window audio plus microphone startup.
+  The local repair confirms audio readiness when platform startup succeeds,
+  rather than waiting for samples. Go pipe controls preserve video with silent
+  or unavailable audio. The reporter's full start-share timeout and separate
+  window-filter crash remain unconfirmed; do not close the report on this partial
+  correction. [Evidence](./research/native-client-media.md#macos-audio-startup)
+  separates the confirmed readiness defect from the unresolved system failures.
 
 - [ ] **Remote-control device acceptance.** Verify physical Android/iOS
   controllers, mixed-DPI displays, commercial games and an actual remote-device
@@ -161,8 +152,9 @@ experiments and their limits.
   [#453](https://github.com/TNTcraftHIM/Piik/issues/453) need paired transport traces;
   the v1.6.3 timeout also needs share-start/SDP evidence.
   [#471](https://github.com/TNTcraftHIM/Piik/issues/471) reports working STUN and
-  a router mapping on v2.1.0, but no ICE check responses. Obtain the retained
-  paired reports; that summary alone does not distinguish NAT filtering,
+  a router mapping on v2.1.0, but no ICE check responses. Its single STUN URL
+  enables ordinary discovery, not the three-destination prediction survey.
+  Obtain the retained paired reports; that summary alone does not distinguish NAT filtering,
   upstream mapping or a blocked path.
   [#468](https://github.com/TNTcraftHIM/Piik/issues/468) needs the complete join/
   reauthentication trace on repaired connection-opportunity accounting.
@@ -191,7 +183,11 @@ experiments and their limits.
   permissions, control capacity, enumeration and startup. The v1.6.5 Auto-to-VP8
   report needs the Browser exception/assets and actual output; its early
   `stop-share` is not proof of a no-frame timeout. [#419](https://github.com/TNTcraftHIM/Piik/issues/419)
-  and [#437](https://github.com/TNTcraftHIM/Piik/issues/437) need matched App reports.
+  still needs a matched App report. The v2.2.1 log in
+  [#437](https://github.com/TNTcraftHIM/Piik/issues/437) exposed Auto admitting a
+  hardware probe with insufficient measurement time. Its local correction
+  preserves the existing VP8 fallback; retest on the affected device. The
+  underlying `DEVICE_HUNG` and subsequent blocked API remain unconfirmed.
   For `input-texture-create / 0x887a0005`, obtain subsequent candidates and the
   final result; [native media research](./research/native-client-media.md#current-boundary)
   owns hardware evidence and limits.
@@ -209,7 +205,62 @@ experiments and their limits.
   relevant Go runtime using the [GC attribution boundary](./research/realtime-quality-adaptation.md#go-gc-attribution);
   no field report currently establishes GC as its cause.
 
+## Local Interaction Prototypes
+
+- [ ] **Optional room voice (#484).** Continue the isolated self-hosted voice
+  and room-owned tree experiments. Keep production,
+  public invitations and the public Demo unchanged; do not recreate the previous
+  P2P voice mesh. The Host approves voice admission
+  and speaking, and can mute or revoke participants; each listener can also mute
+  another participant locally. Voice remains separate from shared-source audio.
+  The isolated prototype carries actual multi-publisher audio with server-enforced
+  consent and retirement. Synthetic voice/sharing coexistence and a separate local
+  media process are exercised; review the experience before product integration.
+  Physical microphones and external networks remain unverified.
+  Reuse the existing room authority and mature media transport; keep voice
+  publications outside the screen-capture lifetime.
+  Assess an App-hosted instance of the same voice forwarder separately, including
+  Viewers reachable only through a video relay and voice without an active share.
+  The room-tree experiment reuses the unmodified controller for Browser/Pion
+  voice, video and separate source audio, including decoded playback, relay
+  departure and independent publication retirement. Unauthorized voice relays
+  make that path unavailable without disturbing video; approval restores it on
+  the same connections. Before integration, complete production App authorization
+  and control, multi-track upload budgeting, physical audio and external-network
+  acceptance under those owners.
+  The [transport assessment](./research/room-interactions.md#room-voice-transport-assessment)
+  separates this local evidence from a production P2P voice path.
+  [Issue #484](https://github.com/TNTcraftHIM/Piik/issues/484)
+  describes the use case; the published product contract is unchanged.
+
+- [ ] **Shared-keyboard remote co-play.** Prototype several consented Viewers
+  using the existing input channel and media route. Keep one Host source and
+  one grant/retirement owner, track held keys per participant, and release a key
+  only after its last holder lets go. Give the shared pointer one explicit owner.
+  The local Host-plus-two-Viewer trial covers actual decoded video and encrypted
+  input, individual revoke/disconnect, source replacement and stop/rejoin. Review
+  the prototype before product integration; its recording sink does not establish
+  desktop injection, physical Host key overlap or game compatibility.
+  Multiple screens remain deferred. This experiment
+  does not accept a new published grant model or claim universal game support.
+
+- [ ] **Optional virtual gamepads for remote co-play.** The owner authorized an
+  isolated input-backend experiment on 2026-10-19. Let the Host supply the
+  optional dependency; do not install or bundle a kernel driver. Reuse the
+  encrypted input route and grant owner, with Host-assigned independent devices
+  and neutralization/removal on retirement. Evaluate maintained backends,
+  licensing, privileges and real-game recognition before product integration.
+  The [input assessment](./research/room-interactions.md#remote-co-play) owns
+  platform dependencies and the distinction from shared keyboard/mouse control.
+
 ## Next: P2P Connection And Feedback Evidence
+
+- [ ] **External forwarding and participant relays.** Complete Browser and
+  external-network acceptance for existing friend relays. Before adopting frp
+  for a deployment, compare loss/recovery and performance on that network; the
+  local SFU media/feedback and STUN controls establish feasibility and the address
+  limitation, not public-network performance. Keep the [forwarding assessment](./research/nat-traversal.md#external-forwarding-and-participant-relays)
+  as the evidence owner; no second graph or App-hosted SFU is integrated.
 
 - [ ] **Coordinated Native retry acceptance.**
   Compare the same difficult-network peers with enhancement enabled/disabled,

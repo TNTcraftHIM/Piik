@@ -247,10 +247,132 @@ danmaku or reaction effects. Current behavior remains the no-history contract ab
 
 ## Audio Boundary
 
-The Host microphone remains commentary mixed into the shared source.
-Bidirectional room voice is not part of the product plan.
-Text, reactions and danmaku introduce no microphone capture, voice
-admission or additional media peers.
+The published Host microphone remains commentary mixed into the shared source.
+Text, reactions and danmaku introduce no microphone capture or additional media
+peers. Room voice is an isolated prototype, not a published capability.
+
+### Room Voice Transport Assessment
+
+Reviewed 2026-10-19. The owner requested optional self-hosted voice and assessment
+of App-hosted voice. The local prototype forwards independent Opus publications,
+uses existing room identities, and enforces Host admission and speaking grants.
+It demonstrates decoded voice before, during and after synthetic screen sharing;
+production integration and external-network reachability remain unverified.
+
+The proposed ownership is one room and membership authority, independent screen
+and voice publications. Starting or stopping a share must not create or destroy
+voice membership. The separate-forwarder prototype retires a disconnected voice
+session while approved Viewers can continue talking; explicitly ending the room
+retires all voice sessions. The room-tree experiment below retains healthy media
+during a signaling interruption and separates that from confirmed departure.
+Host-only video and participant-owned voice can
+coexist without turning every speaker into a screen publisher.
+
+| Transport | Benefit | Boundary |
+| --- | --- | --- |
+| Self-hosted SFU | Each participant connects to one configured service; independent tracks allow local mute | The service's media endpoint must be reachable; an HTTP connection alone is insufficient |
+| Host App as voice forwarder | The same forwarding module could run locally without a mandatory public media server | Every participant must reach the Host App; existing relayed video does not prove this |
+| Participant mesh | No forwarding process | Pairwise reachability and upload fan-out grow with the room; partial audibility is possible |
+| Room-owned bidirectional tree (candidate) | Reuses reachable neighbors and distributes forwarding upload | Requires room-owned connections, independent voice publications and explicit relay/listening permission; it is not an input-channel extension |
+
+For example, `Host <-> A <-> B` may carry video and remote input while `Host <-> B`
+cannot connect. A Host-App voice star would leave B without voice. Before sharing,
+there may be no video tree at all. The current `HostPeer` sends one video and one
+source-audio track; `ViewerRelay` uses that same sender. The reverse input channel
+carries bounded encrypted commands, not audio playout, jitter buffering or media
+feedback. Sending audio bytes there would introduce another audio transport stack.
+
+[RTP topology guidance](https://www.rfc-editor.org/rfc/rfc7667.html#section-3.7)
+describes forwarding independent streams without mixing them. This preserves
+per-person mute and avoids returning a speaker's own track. A single mixed
+broadcast would lose that control unless each listener received a separate mix.
+For scale, a four-person App hub forwarding three 32 kbps voice tracks to each
+of three guests sends 288 kbps; 21 participants require 12.8 Mbps in the same
+all-speaking case. These are payload calculations, not measured performance;
+packet overhead and shared-screen upload are additional.
+
+The owner proposed lifting the existing route and connection lifetime to the
+room on 2026-10-19. This is a candidate design, not a published contract: keep
+one graph and one serial operation owner, with video and voice as separate
+consumers. WebRTC already supports bidirectional tracks over shared transports
+([WebRTC transceivers](https://www.w3.org/TR/webrtc/#dom-rtcrtptransceiver),
+[BUNDLE](https://www.rfc-editor.org/rfc/rfc8843.html)). The graph can retain its
+rooted, acyclic orientation for placement while voice travels both ways over an
+edge. Host authority and the single screen source remain unchanged.
+
+Under that design, admitted voice or screen-sharing demand can acquire room
+connections. Stopping video retires its tracks and quality work, not connections
+still serving voice or another participant. Microphone mute does not leave the
+voice session. Once no media consumer or transit demand remains, physical
+connections retire while room chat can continue. Connection epochs are distinct
+from individual publication generations. Route changes retain one prepare/commit
+operation; video still needs decoded-frame proof, while silent voice cannot
+depend on a video frame or audible microphone samples. Current share-wide pause,
+first-frame admission and `HostPeer`/`ViewerRelay` stream ownership are the
+concrete extraction points, rather than reasons to reject transport reuse.
+
+Independent voice tracks retain speaker identity and local mute. Forwarding on
+the committed tree excludes the ingress branch; it need not send every packet
+to the Host and back. Candidate overlap must not create duplicate forwarding or
+let a retired publication survive. A video relay without listening permission
+must not receive decodable voice: relay eligibility or end-to-end encryption
+still needs a deliberate choice. Multi-track congestion and mixed-capability
+production paths remain to be exercised. No generic transport framework, second route
+planner or automatic root migration is implied by this candidate.
+
+The isolated `prototypes/room-media` experiment on `spike/room-voice` reuses the
+production route controller without modifying it. Actual room admission and
+loopback Pion connections carry two independent Opus publications in both
+directions, followed by VP8 video on the same PeerConnections. Video pause,
+stop and replacement preserve voice; an actual edge interruption lets the same
+controller select an available alternate relay. Publication identity survives
+that change, while a replacement source gets a fresh identity. Stopping video
+during candidate preparation also re-evaluates readiness for remaining voice
+demand, rather than waiting for another connection event. Room retirement closes
+the actual connections as well as clearing their plan.
+After signaling loss and physical connection failure coincide, reauthentication
+reconciles the transport's existing failure fact with the controller's current
+session guard. This repairs an experiment caller omission; production Viewer
+reconciliation already has the corresponding behavior. No second retry owner
+or timer is needed.
+
+This experiment excludes nodes without listening permission from voice paths,
+including an unjoined Host. It reports the affected listeners unavailable,
+preserves video, and restores voice on the same connections after approval.
+The Browser follow-up uses independently decoded 330/660 Hz voice, VP8 video and
+separate 880 Hz source audio on the same connections, with either a Browser or
+an independent Pion process as the intermediate participant. Local mute,
+listening revocation/reapproval and relay departure during video preserve the
+publication boundaries; the existing controller commits replacement routes only
+after that candidate's decoded-frame evidence. Stopping sharing retires video
+and source audio while voice continues. Receive bindings include connection and
+publication identity so a candidate cannot replace committed transit media.
+The Pion worker receives only authorized plans and SDP through private inherited
+pipes; it holds neither room credentials nor another route controller.
+
+The existing downstream-copy cap remains a connection bound, not a guarantee
+of balanced multi-track bandwidth. These synthetic loopback results establish
+Browser/Pion decoding and forwarding, not production App control integration,
+public-network reachability, physical echo cancellation or 21-person capacity.
+Production decoded-frame admission remains unchanged.
+
+The current separate-forwarder experiment remains a useful control. It
+uses the same Opus forwarder in a separate local process. Private inherited pipes
+carry already-authenticated commands; the room service remains the identity
+authority. This establishes a replaceable media owner, not an implemented public
+App-to-Site control path or a new accepted product route. The controlled trial
+keeps `Host -> A -> B` video decoding while B's direct voice ICE is denied;
+lifting that denial and explicitly rejoining restores voice. A connected video
+route therefore cannot be displayed as proof of an available voice endpoint.
+
+Voice integration also needs one Host microphone publication, rather than both
+commentary and room voice carrying the same capture. System-audio capture can
+recapture received voices even with headphones; reuse supported audio exclusion
+and validate simultaneous capture/playback before making an echo-free claim.
+In the synthetic sharing trial, moving the Host microphone out of commentary
+removed its frequency from source audio. Deliberately feeding received voice
+into loopback put it back into that source; excluding that input removed it.
+These are routing observations, not physical-device echo-cancellation acceptance.
 
 ## Detached Interaction Window
 
@@ -553,9 +675,10 @@ that API alone does not establish a portable-App backend or independent slots
 accepted by desktop games. Linux can create devices through its existing
 [uinput module](https://docs.kernel.org/input/uinput.html), subject to device
 permissions. Dependencies therefore follow the platform and supported games.
-Per-player virtual keyboards, mice and gamepads remain deferred; keep
-that future integration at the platform input boundary without prebuilding a
-device registry, driver installer or alternate transport.
+Per-player virtual keyboards and mice do not make an arbitrary game recognize
+independent players. Steam's [direct-input interface](https://partner.steamgames.com/doc/api/isteamremoteplay#BEnableRemotePlayTogetherDirectInput)
+can expose separate input events to an integrated game; it is not a general
+desktop-game backend. Independent gamepads are the more useful next assessment.
 
 [Moonlight's input implementation](https://github.com/moonlight-stream/moonlight-common-c/blob/aeba988e0a302145eff2e70fa3e11cd98ec01f5d/src/InputStream.c)
 accumulates relative movement and sends the latest absolute pointer position;
@@ -566,12 +689,34 @@ patterns for bounded queues and grant retirement. Their GameStream transport
 is not a Browser WebRTC input component; both implementations remain study-only
 under the project's license policy.
 
-Virtual gamepads are a separate platform cost. [Sunshine's input configuration](https://docs.lizardbyte.dev/projects/sunshine/master/md_docs_2configuration.html#gamepad_driver)
-documents Windows/macOS driver or broker dependencies; its Windows ViGEmBus
-fallback is end-of-life. Independent gamepads were deferred by the owner on
-2026-10-17; there is no driver integration in this phase. A future gamepad
-prototype needs an accepted backend and supported-game checks. This does not
-require multiple screen publishers or a replacement media transport.
+The owner authorized an optional virtual-gamepad backend prototype on
+2026-10-19, with dependencies supplied by the Host. Installing or bundling a
+kernel driver is not part of that authorization; product integration remains
+undecided. [Parsec documents a virtual USB driver](https://support.parsec.app/hc/en-us/articles/32381705301908-Setup-Gamepad),
+not a driver-free Host. [ViGEmBus is end-of-life](https://docs.nefarius.at/projects/ViGEm/End-of-Life/).
+The current [libvirtualhid platform matrix](https://github.com/LizardByte/libvirtualhid/blob/dfff3ea8c34022c915799740806c17c0ed5c2492/docs/platform-support.md)
+offers a common API, but Windows/macOS require installed licensed components;
+Linux uses kernel input facilities and device permissions. Its library is MIT,
+while drivers/brokers have a [separate source-available license](https://github.com/LizardByte/libvirtualhid/blob/dfff3ea8c34022c915799740806c17c0ed5c2492/LICENSE.md).
+It is a candidate to evaluate, not an accepted free portable dependency.
+The local experiment can use an explicitly supplied ViGEmClient user-mode SDK
+with an already-installed ViGEmBus. This is a legacy compatibility backend,
+not a recommendation to install an end-of-life driver. Browser reports through
+the existing encrypted input route reach two temporary devices with independent
+XInput state; each can be neutralized and removed without changing the other.
+Logical slots and SDK handles identify ownership;
+an early SDK user-index value does not establish the game's player number.
+
+The proposed path is Browser Gamepad API (or a later keyboard/touch mapping) ->
+existing encrypted input route -> Host-approved player slot -> platform gamepad
+backend. The Host assigns device identity; a guest cannot select another player's
+slot. Reuse input-grant retirement to neutralize buttons/axes and dispose owned
+devices. Keep current keyboard/mouse input unchanged. Batch analog samples without
+discarding button transitions, as the cited Moonlight input implementation does.
+No new media route, port or multiple screen publisher is required. Slot capacity
+follows the backend and game, including physical controllers already in use;
+it is not the room capacity. A prototype still needs real-game recognition,
+concurrent-player and disconnect acceptance before claiming four-player support.
 
 ### Window Capture And Game Input
 

@@ -250,8 +250,10 @@ deadline still bounds warmup and hardware input/output waits. A candidate whose
 measured delivery falls outside that allowance is rejected and the next candidate
 is tried within the four-second budget. A measured frame deficit beyond that
 allowance ends the probe immediately: remaining frames cannot change its result.
-The probe retires before the live encoder is prepared and proved, so selection
-requires only one hardware session at a time.
+Do not start another candidate unless the remaining budget can cover its
+measurement. A successful probe hands the same hardware encoder to live output;
+only its synthetic adaptation history is retired, so selection needs one hardware
+session and does not repeat unproven activation.
 Without a sustaining candidate, Auto starts the ordinary VP8 path directly, as manual VP8 does. A
 faster software encode never replaces a sustaining H264 encoder. Encoder readiness
 uses Media Foundation events rather than timer-based polling.

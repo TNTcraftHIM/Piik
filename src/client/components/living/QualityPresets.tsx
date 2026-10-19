@@ -238,7 +238,7 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
             {hasCommonRange ? <Tooltip kind={control.hint} text={vis ? undefined : t("host.video.returnCommonHint", {
               value: String(commonValue), unit: control.unit,
             })}>
-              <button type="button" className="lr-btn" disabled={disabled}
+              <button type="button" className="lr-btn is-dense" disabled={disabled}
                 aria-label={`${t(control.label)} · ${t("host.video.returnCommonHint", { value: String(commonValue), unit: control.unit })}`}
                 onClick={event => {
                   const group = event.currentTarget.closest(".lr-quality-rate");

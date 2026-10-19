@@ -128,11 +128,11 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
               disabled={busy || disabled} onChange={event => setPassword(event.target.value)} />
           </label>}
           {(draft !== mode || draft === "password") && <div className="lr-remote-policy-actions">
-            {preparing && !busy && <Btn icon="x" title="common.cancel" cap="common.cancel" onClick={() => {
+            {preparing && !busy && <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" onClick={() => {
               setPreparing(false); setPassword(""); setDraft(readRoomPreferences().remoteControlMode);
               (surfaceDocument ?? document).getElementById(id)?.querySelector<HTMLButtonElement>('[role="switch"]')?.focus();
             }} />}
-            <Btn icon="check" title="remote.apply" cap="remote.apply" type="submit" tone="primary"
+            <Btn icon="check" title="remote.apply" cap="remote.apply" type="submit" tone="primary" size="compact"
               hint="hint-remote-control" disabled={busy || disabled || (draft === "password" && !password)} />
           </div>}
         </form>}

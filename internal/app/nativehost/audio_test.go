@@ -67,6 +67,10 @@ func runAudioRecoveryCapture() {
 			_ = os.WriteFile(marker, []byte(os.Args[3]+":"+os.Args[4]), 0600)
 		}
 	}
+	if audio && os.Getenv("PIIK_AUDIO_STARTUP") == "no-ready" {
+		<-stopped
+		return
+	}
 	period := time.Second / 30
 	status := []byte(`{"state":"active","audio":true}`)
 	if audio {
@@ -78,6 +82,10 @@ func runAudioRecoveryCapture() {
 			Width: 1280, Height: 720, FPS: 30, Outputs: outputs})
 	}
 	write(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: status})
+	if audio && os.Getenv("PIIK_AUDIO_STARTUP") == "silent" {
+		<-stopped
+		return
+	}
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 	for pts := period; ; pts += period {
@@ -96,6 +104,42 @@ func runAudioRecoveryCapture() {
 			write(nativecapture.Frame{Kind: nativecapture.FrameVP8, Layer: layer, Width: 8, Height: 8,
 				Timestamp: pts, Duration: period, KeyFrame: true, Data: sfu.VP8KeyFrame8x8})
 		}
+	}
+}
+
+func TestAudioStartupDoesNotRequireSamplesOrStopVideo(t *testing.T) {
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"silent", "no-ready"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("PIIK_AUDIO_STARTUP", mode)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			video := nativecapture.VideoOptions{Codec: "vp8", Profile: audioRecoveryProfile(),
+				Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Silent fixture"}}
+			session, err := Start(ctx, Options{ShareID: "audio-startup", CaptureProcess: executable,
+				Video: video, Profile: QualityProfile{Video: video.Profile, AudioBitrate: 64_000},
+				AudioEnabled: true, EdgeCapacity: 1, BindAddress: "127.0.0.1:0"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			if session.Codec() != "vp8" || session.HasAudio() != (mode == "silent") {
+				t.Fatalf("codec=%s audio=%v for %s", session.Codec(), session.HasAudio(), mode)
+			}
+			cancel()
+			select {
+			case err := <-session.Done():
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("Stop did not release the silent audio and video readers")
+			}
+		})
 	}
 }
 

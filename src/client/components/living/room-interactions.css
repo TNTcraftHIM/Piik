@@ -19,7 +19,6 @@
 .lr-interaction-picker[hidden] { display: none; }
 .lr-interaction-picker:not([hidden]) { transform-origin: center bottom; animation: lr-floating-enter 150ms var(--spring); }
 .lr-interaction-back { flex: none; padding: 14px 0 0; }
-.lr-interaction-back .lr-btn { min-width: 36px; height: 36px; padding: 0 10px; gap: 4px; }
 .lr-interaction-activity { position: absolute; z-index: 2; right: 4px; bottom: 8px; max-width: calc(100% - 8px); padding-top: 68px; pointer-events: none; --gift-arc: 30px; --gift-lift: 30px; }
 .lr-interaction-activity-people, .lr-interaction-activity-people > span { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .lr-interaction-activity-people { padding: 8px 12px; border: 1px solid var(--control-edge); border-radius: 18px; background: color-mix(in srgb, var(--paper) 96%, transparent); box-shadow: var(--control-shadow); }
@@ -59,11 +58,9 @@ button.lr-chat-avatar:focus-visible { outline-offset: -3px; }
 .lr-chat-compose:has(input:focus-visible) { outline: 3px solid var(--action); outline-offset: 2px; }
 .lr-chat-input-row { display: flex; align-items: center; gap: 6px; }
 .lr-chat-input-row > input { min-width: 0; flex: 1; width: 0; height: 44px; border: 0; outline: none; border-radius: 14px; padding: 0 10px; background: transparent; color: var(--ink); font-size: 16px; }
-.lr-chat-input-row .lr-btn { flex: none; width: 40px; height: 40px; min-width: 40px; padding: 0; border-radius: 14px; }
+.lr-chat-input-row .lr-btn { flex: none; }
 .lr-chat-tools { display: flex; align-items: center; gap: 2px; padding-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.5; }
-.lr-chat-tools .lr-btn { flex: none; min-width: 36px; height: 36px; padding: 0 8px; gap: 6px; border-color: transparent; background: transparent; box-shadow: none; color: var(--muted); }
-.lr-chat-tools .lr-btn:is(:hover, :focus-visible) { background: var(--control-hover); color: var(--ink); }
-.lr-chat-tools .lr-btn.is-on { background: var(--control-selected); color: var(--control-selected-ink); }
+.lr-chat-tools .lr-btn { flex: none; }
 .lr-chat-tools .lr-chat-count { padding: 0 4px; }
 .lr-chat-compose[hidden] { display: none; }
 .lr-chat-settings { flex: 1; padding-block: 18px; }
