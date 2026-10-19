@@ -138,8 +138,9 @@ Both controls pass without changing Go startup deadlines or adding retries.
 They do not reproduce the report's additional video timeout. Its display-audio
 attempt and window-filter crash refer to different processes; they do not
 establish one failure or an App bundle-identity collision. The native audio
-self-test is part of the Mac capture check, but compilation and actual Mac
-capture remain unverified on this Windows workstation.
+self-test is part of the Mac capture check. Both Darwin architectures compiled
+and passed that self-test in candidate CI on 2026-10-19; actual source/microphone
+capture and permissions remain unverified on this Windows workstation.
 
 The remaining video timeout needs a separate Mac reproduction. Darwin emits
 `StartingStatus` after `SCShareableContent` enumeration and filter construction,

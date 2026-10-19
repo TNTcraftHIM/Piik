@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-19
+Last reviewed: 2026-10-20
 
 Explicit owner holds remain in force; an investigation does not itself
 accept a new feature or architecture. A missing device or reporter trace blocks
@@ -14,14 +14,6 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
-- [ ] **macOS bundle startup acceptance (#479).** The package now contains the
-  actual Mach-O entry and helpers inside `.app`, replacing the shell launcher's
-  dependency on an external sibling executable. A moved-bundle assembly check
-  passes, and release CI has built and packaged both Mac architectures.
-  Verify Finder launch on macOS, including a downloaded/quarantined bundle and
-  capture permissions. The packaging defect
-  is established; its correction has not yet been matched to the reporter's Mac.
-
 - [ ] **Return LiveKit to an upstream pin.** Native publication now supplies
   unmet encoder demand to the existing allocator through the scoped dependency
   revision submitted in [upstream #5016](https://github.com/livekit/livekit/pull/5016).
@@ -29,13 +21,6 @@ platform deferrals or establish a diagnosis for unmatched reports.
   remove the temporary replacement. [Provenance and removal](../internal/thirdparty/README.md#local-encoder-probe-demand)
   own that boundary; this local repair does not diagnose the unmatched field
   reports below.
-
-- [ ] **2.x maintenance acceptance.** Complete acceptance and integration of
-  the capture selection/handoff repairs, Pion/STUN corrections, shared controls,
-  help/version menu, website/docs appearance and release-headline presentation.
-  Preserve published protocols, explicit preferences and primary/status colour
-  identities. These changes are not yet published; room-voice and co-play code
-  remain in their isolated prototypes. Device and reporter limits stay below.
 
 - [ ] **New promotional film.** Refine the accepted short proof's art direction
   into a standalone Chinese/English introduction that assumes no earlier film.
@@ -85,8 +70,14 @@ These physical checks or reporter diagnoses remain unverified. A local repair or
 successful test is not proof of a reporter's cause; research owns the completed
 experiments and their limits.
 
-- [ ] **macOS sharing with source audio (#486).** Compile and run the Darwin
-  audio self-test and verify actual screen/window audio plus microphone startup.
+- [ ] **macOS bundle startup acceptance (#479).** Verify Finder launch,
+  quarantine and capture permissions on a physical Mac. The Mach-O entry and
+  helpers are inside `.app`; moved-bundle assembly and both architecture builds
+  pass. The corrected packaging has not yet been matched to the reporter's Mac.
+
+- [ ] **macOS sharing with source audio (#486).** Verify actual screen/window
+  audio plus microphone startup. Both Darwin architectures compile and pass the
+  audio self-test in candidate CI.
   The local repair confirms audio readiness when platform startup succeeds,
   rather than waiting for samples. Go pipe controls preserve video with silent
   or unavailable audio. The reporter's full start-share timeout and separate
@@ -223,7 +214,9 @@ experiments and their limits.
   Viewers reachable only through a video relay and voice without an active share.
   The room-tree experiment reuses the unmodified controller for Browser/Pion
   voice, video and separate source audio, including decoded playback, relay
-  departure and independent publication retirement. Unauthorized voice relays
+  departure and independent publication retirement. Its authenticated Browser
+  control now handles negotiation and first-frame commit without a test runner
+  routing SDP or declaring media ready. Unauthorized voice relays
   make that path unavailable without disturbing video; approval restores it on
   the same connections. Before integration, complete production App authorization
   and control, multi-track upload budgeting, physical audio and external-network
@@ -324,3 +317,9 @@ remains; do not add another retry/transport owner to bypass these limits.
     picture per Viewer and shared endpoint upload limits. Define publication and
     subscription lifecycles before a prototype. The current one-Host contract
     remains; names and UI follow the model decision.
+12. **Windows x64 Server packaging (#485).** Review the contributor's package
+    extension separately from the maintenance release, including descriptors,
+    container filtering, mirror inventory and Windows runtime acceptance.
+    Remove the unrelated history-check fallback before integration; an absent
+    push base is not a Windows packaging requirement. Existing Linux Server
+    packages and Windows App support are unchanged.

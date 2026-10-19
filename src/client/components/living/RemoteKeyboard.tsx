@@ -41,6 +41,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
   const { t, vis } = useCopy();
   const id = useId();
   const mac = platform === "darwin";
+  const metaKeyTitle = t(mac ? "remote.key.Command" : platform === "windows" ? "remote.key.Windows" : "remote.key.Super");
   const command = mac ? "MetaLeft" : "ControlLeft";
   const modifiersKeys: Key[] = [["Ctrl", "ControlLeft"],
     [mac ? "Cmd" : platform === "windows" ? "Win" : "Super", "MetaLeft"], [mac ? "Opt" : "Alt", "AltLeft"], ["Shift", "ShiftLeft"]];
@@ -92,7 +93,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     const name = `remote.key.${code}`;
     const caption = shifted && modifiers.includes("ShiftLeft") ? shifted : label;
     return <button key={code} type="button" className="lr-chip"
-      data-key={code} aria-label={isCopyKey(name) ? t(name) : caption}
+      data-key={code} aria-label={code === "MetaLeft" ? metaKeyTitle : isCopyKey(name) ? t(name) : caption}
       onPointerDown={event => {
         if (event.button !== 0) return;
         event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
@@ -109,7 +110,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
   };
 
   const modifier = ([label, code]: Key, index: number) => <span className="lr-remote-modifier-key" key={code}>
-    {combineKeys ? <Chip title={mac && code === "AltLeft" ? "Option" : label} selected={modifiers.includes(code)} onClick={() => {
+    {combineKeys ? <Chip title={code === "MetaLeft" ? metaKeyTitle : code === "ShiftLeft" ? t("remote.key.ShiftLeft") : mac && code === "AltLeft" ? "Option" : label} selected={modifiers.includes(code)} onClick={() => {
       const selected = modifiers.includes(code);
       if (selected) presses.up(-2 - index);
       else presses.down(-2 - index, [code], false);

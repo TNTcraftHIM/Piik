@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) owns unresolved physical limits,
@@ -56,11 +56,14 @@ Release artifacts and operator deployment records own delivery completion;
 
 ## Current Work
 
-The published v2.2.1 retains attended keyboard/mouse control, Viewer playback
-settings and the interaction window, with the maintenance media and lifecycle
-repairs. Delivery and bounded deployment postflight are complete. Current work
-prioritizes capture, route/media follow-up and shared theme consistency. The
-promotional film remains an online-review draft; export follows owner acceptance.
+The current 2.x release line retains attended keyboard/mouse control, Viewer
+playback settings and the interaction window, with the maintenance media and lifecycle
+repairs. The accepted maintenance phase preserves the published protocols and
+route owners; release artifacts and operator records establish publication and
+postflight completion. Current implementation work turns to room-owned routing
+and voice in the isolated prototype, while device/reporter follow-up remains in
+the TODO ledger. The promotional film remains an online-review draft; export
+follows owner acceptance.
 Separate local prototypes assess room voice and shared-keyboard/virtual-gamepad
 co-play. A room-owned tree experiment now reuses the existing route controller
 for bidirectional voice and video on shared Pion connections. Local media-owner

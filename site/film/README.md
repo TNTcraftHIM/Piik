@@ -39,7 +39,8 @@ picks up their styling and copy. Review scene selection and camera framing when
 the product workflow changes. Cursor targets follow component elements, not
 screenshot coordinates.
 
-The README's four room screenshots use this same fixture. Open
+The README's four room screenshots use this same fixture. In an isolated Browser
+profile without saved presentation preferences, open
 `/film/ui/index.html?still=viewer&lang=en&theme=light` at **1160 × 1040** and capture
 the full page; repeat with `lang=zh` and `theme=dark` for the corresponding
 `docs/assets/room-{en,zh}-{light,dark}.png` files. The still view uses natural page
