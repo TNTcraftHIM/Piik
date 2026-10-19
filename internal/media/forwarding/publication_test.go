@@ -488,11 +488,13 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 		}
 	}
 	publication.bandwidth.OnCongestionStateChange(bwe.CongestionStateNone, bwe.CongestionStateCongested, 1_000)
-	for publication.tracks[0].BandwidthRequested()+publication.tracks[1].BandwidthRequested() > 1_000 {
+	// Empty allocations also request zero while the allocator's event is queued.
+	// Wait for the committed deficit as well as its shared capacity bound.
+	for publication.tracks[0].BandwidthRequested()+publication.tracks[1].BandwidthRequested() > 1_000 || !publication.Counters().Limited {
 		select {
 		case <-time.After(5 * time.Millisecond):
 		case <-ctx.Done():
-			t.Fatal("simulcast allocations exceeded their shared video capacity")
+			t.Fatal("simulcast allocation did not commit its shared capacity limit")
 		}
 	}
 	if publication.LowestLayerBudget() != 1_000 {
