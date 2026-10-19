@@ -53,7 +53,8 @@ export function releaseNotes(root, version, revision, repository, { allowEmpty =
   const source = previous
     ? `[Full changelog / 完整变更](${url}/compare/${previous}...${revision})`
     : `[Source / 源代码](${url}/tree/${revision})`;
-  const opening = headline ? `**${headline.en}**\n\n**${headline["zh-CN"]}**\n\n` : "";
+  const opening = headline ? [headline.en, headline["zh-CN"]]
+    .map(({ title, description }) => `**${title}**${description ? `\n\n${description}` : ""}`).join("\n\n") + "\n\n" : "";
   return `${opening}${bodies.join("\n\n")}\n\n---\n\n${source}\n`;
 }
 

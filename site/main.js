@@ -39,7 +39,12 @@ if (releaseLabel) {
       const { headline } = splitReleaseHeadline(metadata.body);
       if (headline) {
         const label = document.getElementById('download-headline');
-        for (const text of label.querySelectorAll('[lang]')) text.textContent = headline[text.lang];
+        for (const text of label.querySelectorAll('[lang]')) {
+          text.querySelector('strong').textContent = headline[text.lang].title;
+          const description = text.querySelector('span');
+          description.textContent = headline[text.lang].description;
+          description.hidden = !headline[text.lang].description;
+        }
         label.hidden = false;
       }
     }).catch(() => {}).finally(() => clearTimeout(timeout));

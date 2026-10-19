@@ -278,8 +278,14 @@ thanks or an occasional light aside can lead. Keep Piik's friendly tone without
 forced jokes; never turn an old feature into a claim that it is new in this
 update, advertise an unfinished prototype or trivialize a serious failure.
 
-When used, write the headline as the first two bold paragraphs, English then
-Chinese, with plain text inside `**...**`. The website reads this same pair from
+When used, open with a short bold title followed by one plain paragraph explaining
+that headline's concrete meaning. Write the complete English pair first, then the
+Chinese pair. For example: **Play together. Your turn!** / Piik now supports
+remote control and remote co-play; **远程同乐，轮到你啦！** / Piik 现已支持远程控制与远程同乐。
+The explanation states the feature or fact, rather than adding another slogan;
+it does not replace the description of this update below. Keep each title and
+explanation to one authored line, using plain text inside `**...**` and the
+description. The website reads these same pairs from
 the published Release body and displays the current language; it does not keep
 another copy, interpret arbitrary Markdown or guess a headline from older
 releases. Gitee retains the same body. Do not add a campaign registry or automatic

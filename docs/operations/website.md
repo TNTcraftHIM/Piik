@@ -161,7 +161,7 @@ native latest-attachment route:
 Both links follow provider publication without a website rebuild. Supported App
 architecture choices stay visible; one selection updates both providers' links.
 An optional GitHub metadata request supplies the latest version/date and its
-authored editorial headline;
+authored editorial title and one-line explanation;
 failure does not disable architecture selection. Without JavaScript, the default
 links remain Windows x64, Apple silicon and Linux x64. Publish a newly listed App
 package before deploying its website option. ARM64 Server packages alone do not

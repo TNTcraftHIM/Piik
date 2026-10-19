@@ -169,7 +169,7 @@ The [website operations guide](../operations/website.md) owns Pages publication,
 public destinations and the separate P2P-only demo. The primary action leads
 to the platform download section. The website operations guide owns each
 platform's latest download routes and provider labels. The download entry may
-show the current Release's [editorial headline](./versioning.md#release-notes),
+show the current Release's [editorial title and factual explanation](./versioning.md#release-notes),
 read from the same metadata request as its version and date. Keep the full
 release-note link and verify destinations as part of publication. Without that
 metadata, the ordinary download links remain usable.
