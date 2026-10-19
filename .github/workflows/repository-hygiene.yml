@@ -186,12 +186,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: amd64
+          - os: linux
+            arch: amd64
             runner: ubuntu-latest
             artifact: piik-server
-          - arch: arm64
+          - os: linux
+            arch: arm64
             runner: ubuntu-24.04-arm
             artifact: piik-server-linux-arm64
+          # Cross-compiled on the same Linux runner; no container recipe and a
+          # ZIP archive instead of the Linux tar.gz.
+          - os: windows
+            arch: amd64
+            runner: ubuntu-latest
+            artifact: piik-server-windows-amd64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     env:
@@ -211,16 +219,30 @@ jobs:
           cache-dependency-path: go.sum
       - name: Install dependencies
         run: npm ci
+      # Only the Windows target writes a ZIP, and the Linux ZIP writer shells
+      # out to the `zip` CLI.
+      - name: Ensure zip is available
+        if: matrix.os == 'windows'
+        run: command -v zip >/dev/null || (sudo apt-get update && sudo apt-get install -y zip)
       - name: Package Server release
+        if: matrix.os == 'linux'
         run: >-
           node scripts/package-server-release.mjs "$RUNNER_TEMP/server-release"
-          --arch "${{ matrix.arch }}"
+          --os "${{ matrix.os }}" --arch "${{ matrix.arch }}"
           --container-image "piik-candidate:$GITHUB_SHA-${{ matrix.arch }}"
+      - name: Package Windows Server release
+        if: matrix.os == 'windows'
+        run: >-
+          node scripts/package-server-release.mjs "$RUNNER_TEMP/server-release"
+          --os "${{ matrix.os }}" --arch "${{ matrix.arch }}"
       - name: Check the container and deployment recipe
+        if: matrix.os == 'linux'
         run: npm run check:container -- "piik-candidate:$GITHUB_SHA-${{ matrix.arch }}" "$GITHUB_SHA"
       - name: Save the verified container
+        if: matrix.os == 'linux'
         run: docker save "piik-candidate:$GITHUB_SHA-${{ matrix.arch }}" --output "$RUNNER_TEMP/piik-container-${{ matrix.arch }}.tar"
       - name: Upload the verified container
+        if: matrix.os == 'linux'
         uses: actions/upload-artifact@v7
         with:
           name: piik-container-${{ matrix.arch }}-${{ github.sha }}

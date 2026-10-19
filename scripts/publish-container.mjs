@@ -9,6 +9,9 @@ if (process.argv.length !== 6 || !image) {
   throw new Error("Usage: node scripts/publish-container.mjs <local-image-prefix> <artifacts> <version> <full-SHA>");
 }
 const { servers } = readReleaseArtifacts(directory, version, revision);
+// Only the Linux Server packages have a container image; a Windows Server
+// package shares the `amd64` arch but is a ZIP with no image of its own.
+const linuxServers = servers.filter(server => server.goos === "linux");
 const repository = process.env.GITHUB_REPOSITORY || "TNTcraftHIM/Piik";
 const destination = `ghcr.io/${repository.toLowerCase()}`;
 const run = (command, ...args) => execFileSync(command, args, {
@@ -47,20 +50,20 @@ function manifest(reference) {
 
 function verifyIndex(reference, index) {
   assert.deepEqual(index.manifests.map(item => `${item.platform.os}/${item.platform.architecture}`).sort(),
-    servers.map(server => `linux/${server.arch}`).sort(), "Container platforms differ from the release");
-  for (const server of servers) {
+    linuxServers.map(server => `linux/${server.arch}`).sort(), "Container platforms differ from the release");
+  for (const server of linuxServers) {
     run("docker", "pull", "--platform", `linux/${server.arch}`, reference);
     verifyImage(reference, server);
   }
 }
 
-for (const server of servers) verifyImage(`${image}-${server.arch}`, server);
+for (const server of linuxServers) verifyImage(`${image}-${server.arch}`, server);
 const existing = manifest(tag);
 if (existing) {
   verifyIndex(tag, existing);
   process.stdout.write(`${tag} already exists; retained without replacement.\n`);
 } else {
-  const parts = servers.map(server => ({ server, tag: `${tag}-${server.arch}` }));
+  const parts = linuxServers.map(server => ({ server, tag: `${tag}-${server.arch}` }));
   // Validate every existing platform before publishing any missing sibling.
   for (const part of parts) {
     part.exists = manifest(part.tag) !== null;

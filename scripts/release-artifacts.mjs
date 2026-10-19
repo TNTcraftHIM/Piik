@@ -43,7 +43,7 @@ export function readReleaseArtifacts(directory, version, revision) {
       if (asset(descriptor.manifest).sha256 !== descriptor.manifestSha256) {
         throw new Error("Server manifest checksum mismatch");
       }
-      servers.push({ ...archive, arch: serverTarget.goarch });
+      servers.push({ ...archive, arch: serverTarget.goarch, goos: serverTarget.goos });
     } else if (readFileSync(asset(`${descriptor.artifact}.sha256`).path, "utf8").trim() !==
         `${descriptor.artifactSha256}  ${descriptor.artifact}`) {
       throw new Error(`App checksum file mismatch: ${target}`);
