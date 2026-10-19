@@ -73,7 +73,7 @@ and link its complete guide. The existing-site guide links there for visitors
 who want to run their own site. Explain what App and site each provide; optional SFU
 fallback requires the site to enable it and is not a connectivity guarantee.
 Keep architecture choices beside each platform's download buttons, with one
-centered link for more downloads below the cards. Tutorials remain in their own
+centered repository link below the cards. Tutorials remain in their own
 sections. Keep section navigation available on phones rather than hiding the
 only route to documentation.
 The release film must work without seeing an earlier film: establish screen
