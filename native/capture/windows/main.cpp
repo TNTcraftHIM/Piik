@@ -1989,10 +1989,7 @@ void RunVideoCapture(ProductArguments arguments) {
     const HANDLE window_waits[] = {
         process.get(), shutdown->get(), frame_ready->get()};
     const HANDLE display_waits[] = {shutdown->get(), frame_ready->get()};
-    bool source_was_minimized = false;
     for (;;) {
-      if (window_target && IsIconic(reinterpret_cast<HWND>(
-              static_cast<UINT_PTR>(arguments.source_id)))) source_was_minimized = true;
       for (const auto& control : controls.Read()) {
         if (control.kind == 'Q') {
           cleanup();
@@ -2044,19 +2041,10 @@ void RunVideoCapture(ProductArguments arguments) {
         latest = std::move(next);
       }
       if (!latest) continue;
-      // Minimized content is a placeholder, including queued frames after
-      // restoration. Retire that pool generation before admitting pictures.
+      // A minimized window has no capturable picture.
       if (window_target && IsIconic(reinterpret_cast<HWND>(
               static_cast<UINT_PTR>(arguments.source_id)))) {
-        source_was_minimized = true;
         latest.Close();
-        continue;
-      }
-      if (source_was_minimized) {
-        latest.Close();
-        latest = nullptr;
-        pool.Recreate(capture_device, static_cast<DirectXPixelFormat>(pool_format), 2, pool_size);
-        source_was_minimized = false;
         continue;
       }
       INT64 signed_timestamp = latest.SystemRelativeTime().count();
@@ -2072,6 +2060,15 @@ void RunVideoCapture(ProductArguments arguments) {
       }
       auto content_size = latest.ContentSize();
       if (content_size.Width <= 0 || content_size.Height <= 0) continue;
+      // ContentSize belongs to the rendered frame; Size belongs to the current
+      // target. Queued minimize/resize frames must not reconfigure the encoder
+      // after the target has already changed again.
+      const auto target_size = item.Size();
+      if (content_size.Width != target_size.Width ||
+          content_size.Height != target_size.Height) {
+        latest.Close();
+        continue;
+      }
       const auto color = display_color.Resolve();
       if (content_size.Width != pool_size.Width ||
           content_size.Height != pool_size.Height || color.Format() != pool_format) {

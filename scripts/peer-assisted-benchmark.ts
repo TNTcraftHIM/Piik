@@ -2545,15 +2545,13 @@ async function startHost(
     5_000, "sharing settings", signal);
   if (codecMode !== "auto") {
     await evaluate(cdp, page, `(() => {
-      const technical = document.querySelector('#host-advanced-door .lr-sharing-technical');
-      if (technical instanceof HTMLDetailsElement && !technical.open) technical.querySelector('summary')?.click();
+      const picture = document.querySelector('#host-advanced-door .lr-sharing-picture-details');
+      if (picture instanceof HTMLDetailsElement && !picture.open) picture.querySelector('summary')?.click();
     })()`);
     await waitForPage(
       cdp,
       page,
-      `Array.from(document.querySelectorAll('#host-advanced-door button')).some(
-        (button) => button instanceof HTMLButtonElement && button.getAttribute('aria-label')?.startsWith('${codecMode.toUpperCase()}')
-      )`,
+      `document.querySelector('#host-advanced-door button[name="videoCodec"][value="${codecMode}"]') instanceof HTMLButtonElement`,
       5_000,
       `${codecMode} codec control`,
       signal,
@@ -2562,9 +2560,7 @@ async function startHost(
       cdp,
       page,
       `(() => {
-        const button = Array.from(document.querySelectorAll('#host-advanced-door button')).find(
-          (candidate) => candidate instanceof HTMLButtonElement && candidate.getAttribute('aria-label')?.startsWith('${codecMode.toUpperCase()}')
-        );
+        const button = document.querySelector('#host-advanced-door button[name="videoCodec"][value="${codecMode}"]');
         if (!(button instanceof HTMLButtonElement)) throw new Error('Codec mode button missing');
         button.click();
         return true;

@@ -293,6 +293,17 @@ reproduce the new v2.0.0 `app/capture/failed` report. That key reports a failed
 Native source lifetime; the App's capture-process and share-ended diagnostics
 are needed to identify which capture, codec or stream operation failed.
 
+The 2026-10-19 window gate exposed a different restoration failure: WGC queued
+a minimized 146x21 placeholder after the target had returned to 1251x1365.
+Clearing the pool once still admitted it and H.264 rejected the resulting
+encoder size. Frame admission now compares the
+[rendered content size](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.direct3d11captureframe.contentsize)
+with the [current target size](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscaptureitem.size)
+before reconfiguring the pool or encoder, replacing the one-shot restoration
+flag. The Auto/H.264 window gate then passed restoration, profile changes,
+resizing, source replacement and source-exit recovery on the same media object.
+This local reproduction does not identify the unmatched game/driver reports.
+
 ## Keyframe Request Ownership
 
 A direct Native source delivers a requested physical output through its

@@ -3904,7 +3904,7 @@ export function HostPage({
                 <span className="lr-door-glyph"><Glyph name="puzzle" size={19} /><Cap k="host.advanced.codec" /></span>
                 <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
                   {(["vp8", "auto", "h264"] as const).map(mode => (
-                    <Chip key={mode} selected={displayedVideoCodecMode === mode}
+                    <Chip key={mode} name="videoCodec" value={mode} selected={displayedVideoCodecMode === mode}
                       disabled={phase === "starting" || phase === "live"}
                       title={mode === "auto"
                         ? resolvedVideoCodec

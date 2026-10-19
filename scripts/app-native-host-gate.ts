@@ -781,6 +781,9 @@ async function main(): Promise<void> {
       `document.querySelector('button[aria-controls="host-advanced-door"]')?.click()`,
       Date.now() + 5_000,
     );
+    await clickHostControl(cdp, host,
+      `document.querySelector('#host-advanced-door .lr-sharing-picture-details > summary')`,
+    );
     result.preSharePreferenceEnabled = await waitForValue(
       (deadline) => evaluate<boolean>(
         cdp!,
@@ -799,10 +802,8 @@ async function main(): Promise<void> {
     // ceilings. Native capture no longer pads/upscales every source to 16:9.
     await clickHostControl(cdp, host, `document.querySelector('button.lr-chip[aria-label="1440p"]')`);
     await clickHostControl(cdp, host, `document.querySelector('button[name="degradationPreference"][value="maintain-resolution"]')`);
-    await clickHostControl(cdp, host, `document.querySelector('.lr-sharing-technical > summary')`);
     await clickHostControl(cdp, host,
-      `([...document.querySelectorAll('button.lr-chip')].find((button) =>
-        button.textContent?.trim() === ${JSON.stringify(requestedCodec.toUpperCase())}))`,
+      `document.querySelector('button[name="videoCodec"][value="${requestedCodec}"]')`,
     );
     await evaluate<void>(
       cdp,
@@ -972,6 +973,9 @@ async function main(): Promise<void> {
         result.livePresetChanges += 1;
       }
       stage = "native-quality-controls";
+      await clickHostControl(cdp, host,
+        `document.querySelector('#host-advanced-door .lr-sharing-picture-details > summary')`,
+      );
       await waitForValue(
         (deadline) => evaluate<boolean>(
           cdp!,

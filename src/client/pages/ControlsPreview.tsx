@@ -158,7 +158,7 @@ export function ControlsPreview() {
             <div className="lr-door-group">
               <span className="lr-door-glyph"><Glyph name="puzzle" size={19} /><span>{vis ? null : t("host.advanced.codec")}</span></span>
               <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
-                {(["vp8", "auto", "h264"] as const).map(mode => <Chip key={mode} selected={mode === "auto"} disabled
+                {(["vp8", "auto", "h264"] as const).map(mode => <Chip key={mode} name="videoCodec" value={mode} selected={mode === "auto"} disabled
                   title={mode === "auto" ? t("host.advanced.codec.auto") : mode.toUpperCase()} hint="hint-codec">
                   {mode === "auto" && !vis ? t("host.advanced.codec.auto") : mode.toUpperCase()}
                 </Chip>)}
