@@ -53,7 +53,7 @@ export function releaseNotes(root, version, revision, repository, { allowEmpty =
   const source = previous
     ? `[完整变更 / Full changelog](${url}/compare/${previous}...${revision})`
     : `[源代码 / Source](${url}/tree/${revision})`;
-  const opening = headline ? `**${headline["zh-CN"]}**\n\n**${headline.en}**\n\n` : "";
+  const opening = headline ? `**${headline.en}**\n\n**${headline["zh-CN"]}**\n\n` : "";
   return `${opening}${bodies.join("\n\n")}\n\n---\n\n${source}\n`;
 }
 

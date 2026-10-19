@@ -240,7 +240,7 @@ apply. Preserve the original image and packages for retries.
 ## Release Notes
 
 GitHub Releases owns the published changelog. Each product-changing PR supplies reviewed
-Chinese and English user-facing copy under the exact `## Release notes` heading
+English and Chinese user-facing copy under the exact `## Release notes` heading
 in its squash commit; `###` headings structure that copy. Explain benefits,
 fixes and required upgrade actions, including breaking changes. Keep internal
 work logs, audit handoffs and unverified claims outside this public section.
@@ -278,8 +278,8 @@ thanks or an occasional light aside can lead. Keep Piik's friendly tone without
 forced jokes; never turn an old feature into a claim that it is new in this
 update, advertise an unfinished prototype or trivialize a serious failure.
 
-When used, write the headline as the first two bold paragraphs, Chinese then
-English, with plain text inside `**...**`. The website reads this same pair from
+When used, write the headline as the first two bold paragraphs, English then
+Chinese, with plain text inside `**...**`. The website reads this same pair from
 the published Release body and displays the current language; it does not keep
 another copy, interpret arbitrary Markdown or guess a headline from older
 releases. Gitee retains the same body. Do not add a campaign registry or automatic
@@ -295,8 +295,9 @@ Then group concrete changes under useful headings such as highlights, fixes,
 upgrade instructions or known limitations. Omit empty categories and routine
 implementation/test inventories. A small fix may need only its introduction and
 a few bullets. Required upgrade steps or interruptions must be easy to find.
-Chinese and English cover the same release facts with natural phrasing. Use
-`###` for language sections and `####` for categories when both are needed.
+English and Chinese cover the same release facts with natural phrasing, with
+English first. Use `###` for language sections and `####` for categories when
+both are needed.
 
 The approved final description must read as one release when several unpublished
 commits are included. Preview the rendered aggregate with at most one bilingual

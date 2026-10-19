@@ -14,7 +14,7 @@ const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 
 describe("release automation", () => {
   it("shares only an authored leading bilingual headline with the website", () => {
-    const opening = "**远程同乐，轮到你啦！**\n\n**Play together. Your turn!**";
+    const opening = "**Play together. Your turn!**\n\n**远程同乐，轮到你啦！**";
     expect(splitReleaseHeadline(`${opening}\n\n### 中文\n\n修复开播。`)).toEqual({
       headline: { "zh-CN": "远程同乐，轮到你啦！", en: "Play together. Your turn!" },
       notes: "### 中文\n\n修复开播。",
@@ -102,8 +102,8 @@ describe("release automation", () => {
         cwd: root, encoding: "utf8", env: { ...process.env, PIIK_BUILD_VERSION: "v1.0.1" },
       }));
       expect(candidate).toMatchObject({ version: "v1.0.1", publish: false });
-      commit("fix: repair playback\n\n## Release notes\n**旧主题**\n\n**Earlier theme**\n\n- Playback resumes after reconnecting.");
-      const opening = "**远程同乐，轮到你啦！**\n\n**Play together. Your turn!**";
+      commit("fix: repair playback\n\n## Release notes\n**Earlier theme**\n\n**旧主题**\n\n- Playback resumes after reconnecting.");
+      const opening = "**Play together. Your turn!**\n\n**远程同乐，轮到你啦！**";
       const next = commit(`feat: add a sharing option\n\n## Release notes\n${opening}\n\n- Choose a window to share.`);
       const notes = releaseNotes(root, "v1.1.0", next, "fixture/Piik");
       expect(notes.startsWith(opening)).toBe(true);
