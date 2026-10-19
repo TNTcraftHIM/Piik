@@ -20,16 +20,23 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { writeServerLicenseNotices } from "./package-licenses.mjs";
-import { tarExecutable } from "./archive-tool.mjs";
+import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { buildVersion } from "./release-version.mjs";
 import { SERVER_PACKAGE_TARGETS } from "./server-package-targets.mjs";
 
-const SERVER_NAME = "piik-server";
+// A Windows build ships the same archive shape with an `.exe` binary, so the
+// binary name, the manifest allowlist and the archive allowlist all follow the
+// selected target instead of a single constant.
+function serverBinaryName(target) {
+  return target.goos === "windows" ? "piik-server.exe" : "piik-server";
+}
 
 // Everything the archive may contain. deploy/release-server.sh enforces the same
 // four names in its entry allowlist and manifest pattern; both change together.
-const RUNTIME_PATHS = ["REVISION", "LICENSE", "THIRD-PARTY-NOTICES.txt", SERVER_NAME];
+function runtimePaths(target) {
+  return ["REVISION", "LICENSE", "THIRD-PARTY-NOTICES.txt", serverBinaryName(target)];
+}
 
 // The Vite output the server embeds. Its index.html names the main asset the
 // deployment postflight proves over HTTP.
@@ -105,10 +112,10 @@ function regularFiles(root) {
   );
 }
 
-function recordsFor(root) {
+function recordsFor(root, paths) {
   return regularFiles(root).map((absolute) => {
     const path = normalizedRelative(root, absolute);
-    if (!RUNTIME_PATHS.includes(path)) fail(`Unexpected packaged file: ${path}`);
+    if (!paths.includes(path)) fail(`Unexpected packaged file: ${path}`);
     return { path, size: statSync(absolute).size, sha256: sha256(absolute) };
   });
 }
@@ -128,7 +135,7 @@ function compareRecords(expected, actual) {
   }
 }
 
-function validateArchiveEntries(entries) {
+function validateArchiveEntries(entries, paths) {
   for (const rawEntry of entries.split(/\r?\n/)) {
     let entry = rawEntry;
     while (entry.startsWith("./")) entry = entry.slice(2);
@@ -141,7 +148,7 @@ function validateArchiveEntries(entries) {
     ) {
       fail(`Invalid archive entry: ${rawEntry}`);
     }
-    if (!RUNTIME_PATHS.includes(entry)) fail(`Unexpected archive entry: ${rawEntry}`);
+    if (!paths.includes(entry)) fail(`Unexpected archive entry: ${rawEntry}`);
   }
 }
 
@@ -160,13 +167,19 @@ function mainAssetOf(distributionRoot) {
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   arch: { type: "string", default: "amd64" },
+  os: { type: "string", default: "linux" },
   "container-image": { type: "string" },
 } });
-const target = SERVER_PACKAGE_TARGETS.find(target => target.goarch === values.arch);
+const target = SERVER_PACKAGE_TARGETS.find(
+  candidate => candidate.goarch === values.arch && candidate.goos === values.os,
+);
 if (positionals.length !== 1 || !target) {
-  fail("Usage: node scripts/package-server-release.mjs <new-output-directory> [--arch amd64|arm64] [--container-image <tag>]");
+  fail("Usage: node scripts/package-server-release.mjs <new-output-directory> [--os linux|windows] [--arch amd64|arm64] [--container-image <tag>]");
 }
 const containerImage = values["container-image"];
+if (containerImage && target.goos !== "linux") {
+  fail("--container-image requires a linux target");
+}
 if (containerImage && !/^[a-z0-9][a-z0-9._/:+-]*$/.test(containerImage)) {
   fail("Container image tag is invalid");
 }
@@ -199,7 +212,8 @@ try {
   mkdirSync(runtimeRoot, { recursive: true });
   copyFileSync(join(repositoryRoot, "LICENSE"), join(runtimeRoot, "LICENSE"));
   const goCommand = process.env.PIIK_GO?.trim() || "go";
-  const serverPath = join(runtimeRoot, SERVER_NAME);
+  const binaryName = serverBinaryName(target);
+  const serverPath = join(runtimeRoot, binaryName);
   run(goCommand, [
     "build",
     "-trimpath",
@@ -214,7 +228,7 @@ try {
     GOARCH: target.goarch,
     CGO_ENABLED: "0",
   });
-  chmodSync(serverPath, 0o755);
+  if (target.goos !== "windows") chmodSync(serverPath, 0o755);
   writeServerLicenseNotices(
     repositoryRoot,
     join(runtimeRoot, "THIRD-PARTY-NOTICES.txt"),
@@ -224,10 +238,12 @@ try {
   assertCleanRevision(repositoryRoot, revision);
   writeFileSync(join(runtimeRoot, "REVISION"), `${revision}\n`, "ascii");
 
-  const records = recordsFor(runtimeRoot);
+  const paths = runtimePaths(target);
+  const records = recordsFor(runtimeRoot, paths);
   const stem = `piik-${releaseId}${target.suffix}`;
   const manifestName = `${stem}.manifest.tsv`;
-  const artifactName = `${stem}-runtime.tar.gz`;
+  const archiveKind = target.goos === "windows" ? "zip" : "tar.gz";
+  const artifactName = `${stem}-runtime.${archiveKind}`;
   const descriptorName = `${stem}.release.json`;
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
   outputOwned = true;
@@ -240,12 +256,18 @@ try {
     "ascii",
   );
 
-  const tar = tarExecutable();
-  run(tar, ["-czf", artifactPath, "-C", runtimeRoot, "."], repositoryRoot);
-  validateArchiveEntries(run(tar, ["-tzf", artifactPath], repositoryRoot));
-  mkdirSync(verifyRoot);
-  run(tar, ["-xzf", artifactPath, "-C", verifyRoot], repositoryRoot);
-  compareRecords(records, recordsFor(verifyRoot));
+  if (archiveKind === "zip") {
+    createZip(runtimeRoot, artifactPath);
+    mkdirSync(verifyRoot);
+    extractZip(artifactPath, verifyRoot);
+  } else {
+    const tar = tarExecutable();
+    run(tar, ["-czf", artifactPath, "-C", runtimeRoot, "."], repositoryRoot);
+    validateArchiveEntries(run(tar, ["-tzf", artifactPath], repositoryRoot), paths);
+    mkdirSync(verifyRoot);
+    run(tar, ["-xzf", artifactPath, "-C", verifyRoot], repositoryRoot);
+  }
+  compareRecords(records, recordsFor(verifyRoot, paths));
 
   const descriptor = {
     schema: 2,

@@ -9,6 +9,7 @@ const repository = "TNTcraftHIM/Piik", image = `piik-candidate:${revision}`;
 const tag = `ghcr.io/tntcrafthim/piik:${version}`;
 const servers = ["amd64", "arm64"].map(arch => ({
   name: `piik-aaaaaaa-${arch}-runtime.tar.gz`, sha256: arch === "amd64" ? digest : "d".repeat(64), arch,
+  goos: "linux",
 }));
 type Scenario = { existing?: boolean; draft?: boolean; badArchive?: boolean;
   wrongSource?: boolean; wrongImage?: boolean; remoteMismatch?: boolean;

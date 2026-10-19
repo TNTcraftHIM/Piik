@@ -16,7 +16,11 @@ git diff --check
 git diff --cached --check
 
 if [ -n "${PIIK_BASE_SHA:-}" ] && [ "$PIIK_BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
-  git diff --check "$PIIK_BASE_SHA"...HEAD
+  if git cat-file -e "$PIIK_BASE_SHA^{commit}" 2>/dev/null; then
+    git diff --check "$PIIK_BASE_SHA"...HEAD
+  else
+    echo "Base revision $PIIK_BASE_SHA is absent (rewritten push); skipping the range check." >&2
+  fi
 fi
 
 node scripts/check-docs.mjs
