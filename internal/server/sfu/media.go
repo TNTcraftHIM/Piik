@@ -64,6 +64,7 @@ type Media struct {
 	options      MediaOptions
 	mu           sync.Mutex
 	publications map[ResourceFence]*mediaPublication
+	voice        *voiceMedia
 	closed       bool
 	closeOnce    sync.Once
 	closeErr     error
@@ -113,7 +114,7 @@ type mediaSubscription struct {
 }
 
 func NewMedia(options MediaOptions) *Media {
-	return &Media{options: options, publications: make(map[ResourceFence]*mediaPublication)}
+	return &Media{options: options, publications: make(map[ResourceFence]*mediaPublication), voice: newVoiceMedia(options.Settings)}
 }
 
 func (media *Media) HasPublication(fence ResourceFence, connectionID string) bool {
@@ -794,6 +795,7 @@ func (media *Media) Close() error {
 		publications := media.publications
 		media.publications = nil
 		media.mu.Unlock()
+		media.closeErr = media.voice.close()
 		for _, publication := range publications {
 			media.closeErr = errors.Join(media.closeErr, publication.close())
 		}
