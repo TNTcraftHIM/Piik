@@ -307,6 +307,56 @@ static GstState branch_state(VideoOutput *output) {
   return state;
 }
 
+static void check_desktop_source_pixel_aspect(void) {
+  const VideoProfile profile = {.width = 1920, .height = 1080};
+  GString *description = g_string_new("appsrc name=source format=time ! ");
+  g_string_append_printf(description, "%s ! ", desktop_source_caps);
+  append_video_scale(description, &profile);
+  g_string_append(description, "appsink name=output sync=false async=false");
+  GError *error = NULL;
+  GstElement *pipeline = gst_parse_launch(description->str, &error);
+  g_string_free(description, TRUE);
+  g_assert_no_error(error);
+  GstElement *source = gst_bin_get_by_name(GST_BIN(pipeline), "source");
+  GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), "output");
+  GstPad *pad = gst_element_get_static_pad(source, "src");
+  GstCaps *peer = gst_pad_peer_query_caps(pad, NULL);
+  // Reproduce PipeWire choosing from a downstream scaler's broad PAR range.
+  GstCaps *offer = gst_caps_from_string(
+      "video/x-raw,format=BGRA,width=3840,height=2160,framerate=30/1,"
+      "pixel-aspect-ratio=(fraction)[1/2147483647,2147483647/1]");
+  GstCaps *caps = gst_caps_fixate(gst_caps_intersect_full(
+      offer, peer, GST_CAPS_INTERSECT_FIRST));
+  GstVideoInfo input;
+  g_assert_true(gst_video_info_from_caps(&input, caps));
+  g_assert_cmpint(input.par_n, ==, 1);
+  g_assert_cmpint(input.par_d, ==, 1);
+  gst_app_src_set_caps(GST_APP_SRC(source), caps);
+  g_assert_cmpint(gst_element_set_state(pipeline, GST_STATE_PLAYING), !=,
+                 GST_STATE_CHANGE_FAILURE);
+  GstBuffer *buffer = gst_buffer_new_allocate(NULL, input.size, NULL);
+  GST_BUFFER_PTS(buffer) = 0;
+  GST_BUFFER_DURATION(buffer) = GST_SECOND / 30;
+  g_assert_cmpint(gst_app_src_push_buffer(GST_APP_SRC(source), buffer), ==, GST_FLOW_OK);
+  GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(sink), GST_SECOND);
+  g_assert_nonnull(sample);
+  GstVideoInfo output;
+  g_assert_true(gst_video_info_from_caps(&output, gst_sample_get_caps(sample)));
+  g_assert_cmpint(output.width, ==, 1920);
+  g_assert_cmpint(output.height, ==, 1080);
+  g_assert_cmpint(output.par_n, ==, 1);
+  g_assert_cmpint(output.par_d, ==, 1);
+  gst_sample_unref(sample);
+  gst_element_set_state(pipeline, GST_STATE_NULL);
+  gst_caps_unref(caps);
+  gst_caps_unref(offer);
+  gst_caps_unref(peer);
+  gst_object_unref(pad);
+  gst_object_unref(source);
+  gst_object_unref(sink);
+  gst_object_unref(pipeline);
+}
+
 static void check_source_geometry(guint max_width, guint max_height) {
   const VideoProfile profile = {.width = max_width, .height = max_height};
   GString *description = g_string_new("appsrc name=source format=time ! ");
@@ -598,6 +648,7 @@ int main(int argc, char **argv) {
   check_encoder_admission_and_control();
   check_bus_error_retains_primary_cause();
   check_slot_profiles();
+  check_desktop_source_pixel_aspect();
   check_source_geometry(1920, 1080);
   check_source_geometry(2, 2);
   check_encoder_timestamp_segment(1000ULL * 60 * 60 * GST_SECOND);
