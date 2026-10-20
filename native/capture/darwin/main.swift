@@ -1,6 +1,7 @@
 import AVFoundation
 import AudioToolbox
 import CoreAudio
+import CoreGraphics
 import CoreMedia
 import CoreVideo
 import Darwin
@@ -267,7 +268,9 @@ private func target(for display: SCDisplay) -> CaptureTarget {
 }
 
 private func shareableContent() async throws -> SCShareableContent {
-    try await SCShareableContent.excludingDesktopWindows(
+    // Initialize the display service before ScreenCaptureKit builds filters.
+    _ = CGMainDisplayID()
+    return try await SCShareableContent.excludingDesktopWindows(
         false,
         onScreenWindowsOnly: true
     )
@@ -2105,7 +2108,11 @@ private func captureAudio(_ arguments: [String]) async throws {
               })?.0 else {
             throw CaptureFailure(description: "audio target identity changed")
         }
-        filter = SCContentFilter(desktopIndependentWindow: selected)
+        guard let application = selected.owningApplication,
+              let display = content.displays.first else {
+            throw CaptureFailure(description: "audio application is unavailable")
+        }
+        filter = SCContentFilter(display: display, including: [application], exceptingWindows: [])
     } else if kind == "display" {
         guard pid == 0, creationTime == "0",
               let selected = content.displays.first else {

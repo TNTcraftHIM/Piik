@@ -142,25 +142,24 @@ self-test is part of the Mac capture check. Both Darwin architectures compiled
 and passed that self-test in candidate CI on 2026-10-19; actual source/microphone
 capture and permissions remain unverified on this Windows workstation.
 
-The remaining video timeout needs a separate Mac reproduction. Darwin emits
-`StartingStatus` after `SCShareableContent` enumeration and filter construction,
-before creating or starting its video stream. Native Host currently starts both
-helpers before reading video status, so their initial enumerations can overlap.
-An [Apple Developer Forums report](https://developer.apple.com/forums/thread/772365)
-reproduces an unresponsive `replayd` and similar 4097 errors using repeated
-concurrent enumeration from multiple processes, without capturing media
-(FB16310901). This is a candidate mechanism, not an established cause of #486;
-Apple has not confirmed its cause or a fix.
+The 2026-10-20 pipe reproduction establishes a second startup defect: waiting
+for audio readiness before reading video can fill the video pipe and block a
+capture service that audio initialization also needs. The session now waits for
+video readiness while draining video, then initializes optional source audio.
+The full-pipe/silent/no-ready controls and native Host lifecycle tests pass
+without longer deadlines. This also removes the overlapping initial source
+enumeration described in an [Apple Developer Forums report](https://developer.apple.com/forums/thread/772365)
+(FB16310901); that report does not establish the cause of every #486 timeout.
 
-The smallest Mac comparison uses the existing `piik-capture --list`: run one
-helper, then two concurrently, under the same parent with bounded attempts.
-Discard source metadata and retain only timing and errors. Separately compare
-current startup with waiting for the video's existing `StartingStatus` before
-starting audio. Keep deadlines, bundle identity and permissions unchanged in
-these comparisons. Terminal versus App launch is a separate variable:
-[Apple DTS describes TCC's responsible-process attribution](https://developer.apple.com/forums/thread/125438),
-so a successful manual helper does not establish identical permission context.
-No same-parent comparison or startup-order fix has yet been verified on a Mac.
+The window-audio filter now selects the owning application on a display, matching
+its process-audio responsibility, rather than constructing a video-window filter.
+The helper initializes CoreGraphics through its public display API before asking
+ScreenCaptureKit for content. This addresses the initialization dependency shown
+by the reported SkyLight filter crash and the [primary implementation](https://github.com/indutny/mac-screen-share/blob/main/addon.mm).
+These Darwin changes still need Mac SDK compilation and physical capture coverage;
+the previous architecture/self-test CI result covers the earlier readiness fix.
+Terminal launch and App launch remain distinct permission contexts under
+[Apple's TCC attribution](https://developer.apple.com/forums/thread/125438).
 
 ## Current Boundary
 

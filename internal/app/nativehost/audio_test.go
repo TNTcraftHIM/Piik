@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -81,7 +82,31 @@ func runAudioRecoveryCapture() {
 		status, _ = json.Marshal(CaptureState{State: "active", Codec: "vp8",
 			Width: 1280, Height: 720, FPS: 30, Outputs: outputs})
 	}
+	marker := os.Getenv("PIIK_AUDIO_WAIT_FOR_VIDEO")
+	if audio && marker != "" {
+		ticker := time.NewTicker(5 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			if _, err := os.Stat(marker); err == nil {
+				break
+			}
+			select {
+			case <-stopped:
+				return
+			case <-ticker.C:
+			}
+		}
+	}
 	write(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: status})
+	if !audio && marker != "" {
+		// Exceed the OS pipe buffer before allowing audio initialization to finish.
+		data := make([]byte, 256*1024)
+		copy(data, sfu.VP8KeyFrame8x8)
+		write(nativecapture.Frame{Kind: nativecapture.FrameBegin, Duration: period})
+		write(nativecapture.Frame{Kind: nativecapture.FrameVP8, Layer: 1, Width: 8, Height: 8,
+			Duration: period, KeyFrame: true, Data: data})
+		_ = os.WriteFile(marker, nil, 0600)
+	}
 	if audio && os.Getenv("PIIK_AUDIO_STARTUP") == "silent" {
 		<-stopped
 		return
@@ -113,9 +138,12 @@ func TestAudioStartupDoesNotRequireSamplesOrStopVideo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []string{"silent", "no-ready"} {
+	for _, mode := range []string{"silent", "no-ready", "drain-video"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("PIIK_AUDIO_STARTUP", mode)
+			if mode == "drain-video" {
+				t.Setenv("PIIK_AUDIO_WAIT_FOR_VIDEO", filepath.Join(t.TempDir(), "video-drained"))
+			}
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			video := nativecapture.VideoOptions{Codec: "vp8", Profile: audioRecoveryProfile(),
@@ -127,7 +155,7 @@ func TestAudioStartupDoesNotRequireSamplesOrStopVideo(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer session.Close()
-			if session.Codec() != "vp8" || session.HasAudio() != (mode == "silent") {
+			if session.Codec() != "vp8" || session.HasAudio() != (mode != "no-ready") {
 				t.Fatalf("codec=%s audio=%v for %s", session.Codec(), session.HasAudio(), mode)
 			}
 			cancel()

@@ -154,7 +154,9 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 				}
 				return
 			}
-			go session.run()
+			videoDone := make(chan error, 1)
+			go func() { videoDone <- session.runVideo() }()
+			go session.run(videoDone)
 			closed := make(chan error, 1)
 			if mode == "closed" {
 				go func() { closed <- session.Close() }()

@@ -140,19 +140,6 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		_ = engine.Close()
 		return nil, err
 	}
-	var audioStream *nativecapture.Stream
-	if options.AudioEnabled {
-		var audioErr error
-		audioStream, audioErr = startAudioCapture(
-			parent,
-			options.CaptureProcess,
-			options.Video.Target,
-			options.ExcludeAudio,
-		)
-		if audioErr != nil {
-			slog.DebugContext(parent, "piik-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
-		}
-	}
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{
 		shareID:        options.ShareID,
@@ -161,7 +148,6 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		profile:        options.Profile,
 		edgeCapacity:   options.EdgeCapacity,
 		stream:         stream,
-		audioStream:    audioStream,
 		engine:         engine,
 		events:         options.Events,
 		ctx:            ctx,
@@ -173,6 +159,41 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		remoteInput:    options.RemoteInput.NewSession(),
 	}
 	session.syncRemoteInputSource(nil)
+	// Drain video while the optional audio process initializes. Otherwise a full
+	// video pipe can stall the platform capture service that audio also needs.
+	videoDone := make(chan error, 1)
+	go func() { videoDone <- session.runVideo() }()
+	var timeout <-chan time.Time
+	if options.Video.Target.Kind != "picker" {
+		timer := time.NewTimer(startTimeout)
+		defer timer.Stop()
+		timeout = timer.C
+	}
+	select {
+	case err = <-session.ready:
+	case <-timeout:
+		err = errors.New("native capture did not start in time")
+	case <-parent.Done():
+		err = parent.Err()
+	}
+	if err != nil {
+		cancel()
+		_ = stream.Close()
+		<-videoDone
+		session.retire()
+		return nil, err
+	}
+	// Start the optional audio helper only after video initialization, avoiding
+	// concurrent platform source enumeration while continuing to drain video.
+	var audioStream *nativecapture.Stream
+	if options.AudioEnabled {
+		var audioErr error
+		audioStream, audioErr = startAudioCapture(ctx, options.CaptureProcess, options.Video.Target, options.ExcludeAudio)
+		if audioErr != nil {
+			slog.DebugContext(ctx, "piik-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
+		}
+		session.audioStream = audioStream
+	}
 	if audioStream != nil || options.MicrophoneMixing {
 		audioSource, audioErr := engine.NewAudioSource(
 			mediaedge.PhysicalSourceCapacity(options.EdgeCapacity), options.Profile.AudioBitrate,
@@ -192,34 +213,19 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		if session.audioSource == nil {
 			cancel()
 			_ = stream.Close()
-			_ = engine.Close()
+			<-videoDone
+			session.retire()
 			return nil, errors.New("native mixed audio could not start")
 		}
 		session.mixer = &audioMix{ctx: ctx, output: session.audioSource, emit: session.emit, shareID: session.shareID, gain: 1}
 		session.mixer.setSource(audioStream)
 	}
-	go session.run()
-	var timeout <-chan time.Time
-	var timer *time.Timer
-	if options.Video.Target.Kind != "picker" {
-		timer = time.NewTimer(startTimeout)
-		timeout = timer.C
-		defer timer.Stop()
-	}
-	select {
-	case err = <-session.ready:
-		if err != nil {
-			_ = session.Close()
-			return nil, err
-		}
-		return session, nil
-	case <-timeout:
+	go session.run(videoDone)
+	if err := ctx.Err(); err != nil {
 		_ = session.Close()
-		return nil, errors.New("native capture did not start in time")
-	case <-parent.Done():
-		_ = session.Close()
-		return nil, parent.Err()
+		return nil, err
 	}
+	return session, nil
 }
 
 func (session *Session) ShareID() string {
@@ -828,11 +834,7 @@ func (session *Session) edge(connectionID string) *mediaedge.Edge {
 	return session.edges[connectionID]
 }
 
-func (session *Session) run() {
-	videoDone := make(chan error, 1)
-	go func() {
-		videoDone <- session.runVideo()
-	}()
+func (session *Session) run(videoDone <-chan error) {
 	audioDone := make(chan struct{})
 	qualityDone := make(chan struct{})
 	go func() {
