@@ -390,23 +390,38 @@ restrictions on media UDP.
 If hosting a server is inconvenient, you can also try a third-party virtual LAN
 to put your friends on the same virtual network. For example,
 [UU's official guide (Chinese)](https://uu.163.com/blog/lan-multiplayer-guide-net.html)
-offers LAN and general-purpose multiplayer rooms. The tool must carry Piik's
-web traffic and WebRTC UDP, rather than only traffic for selected games.
+offers LAN and general-purpose multiplayer rooms. Choose general-purpose LAN
+networking, rather than acceleration limited to one game. The tool must provide
+reachable virtual IPv4 addresses and carry both Piik's web traffic and WebRTC UDP.
 
-1. Everyone runs the networking tool and joins the same virtual LAN. Keep it running.
+1. Everyone runs the networking tool and joins the same virtual LAN.
 2. If its virtual adapter and IP appear in Piik App's **Local room** address list,
    the host selects that address and starts sharing. Allow Piik through the
    Windows firewall for that virtual network; do not disable the whole firewall.
 3. Send friends the full Piik invitation using that address, not a `localhost`
    address or just a room code. Check picture and sound after the page opens;
    a reachable web page does not establish that media UDP works too.
+4. Keep the networking tool running on every device. If its virtual IP changes,
+   select the new address in the App and send a new invitation.
 
 This may help with some strict NAT combinations, but is not guaranteed to work
 on every campus network. Firewall rules and Browser address discovery still
-matter. If the tool
-provides no usable virtual address or forwards only game traffic, this procedure
-does not apply. Join only with trusted friends; speed and availability also depend
-on the third-party service.
+matter. The current test App adds local address discovery for routed virtual
+LANs; earlier releases may open the page but remain stuck connecting to media.
+If the tool provides no usable virtual address or forwards only game traffic,
+this procedure does not apply. Join only with trusted friends; speed and
+availability also depend on the third-party service.
+
+Other tools such as [ZeroTier](https://docs.zerotier.com/start/) and
+[Tailscale](https://tailscale.com/docs/how-to/quickstart) also create private
+networks. Check that the tool supports everyone's devices and the requirements
+above before following the same Piik steps. Other tools and platforms have not
+yet been tested with Piik.
+
+Already have a reachable server? [The frp recipe](../operations/self-hosting.md#optional-forward-an-existing-server-with-frp)
+forwards an existing Piik site's web and SFU endpoints. It needs a public frps
+host and is an administrator option, rather than the same virtual-LAN setup.
+Forwarding the web page alone does not forward WebRTC media.
 
 Ready to host a site for your group? Follow [self-hosting](../operations/self-hosting.md).
 For other guides, return to [the documentation home](./README.md).

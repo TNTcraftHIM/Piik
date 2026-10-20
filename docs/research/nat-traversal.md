@@ -456,6 +456,13 @@ directly and frpc's backend socket through frp, confirming the STUN limitation
 above. These loopback controls do not establish Browser decoding, audible audio,
 public-network performance, loss recovery or QUIC behavior.
 
+The October 20 review also checked frp's [VirtualNet example](https://gofrp.org/en/docs/examples/virtualnet/).
+It describes a TUN-based private network between clients and visitors, which is
+closer to the virtual-LAN approach than fixed-port forwarding. The official guide
+still marks it Alpha and unsuitable for production. It requires frp setup on
+participating endpoints as well as a reachable frps service; it is not part of
+Piik's tested forwarding recipe or a default campus-network recommendation.
+
 A well-connected participant already can help through the existing Viewer relay.
 The normal integration candidate now exposes an explicit voluntary fanout
 override through that controller, bounded by actual endpoint capability and

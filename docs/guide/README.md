@@ -21,7 +21,7 @@ Choose a guide for what you want to do.
 
 - [Public invitation failure or 1033](./troubleshooting.md#public-invitation-fails-or-shows-1033), or [room creation returns 403](./troubleshooting.md#room-creation-returns-403).
 - [Sharing will not start](./troubleshooting.md#sharing-does-not-start-after-source-selection), [missing App sources](./troubleshooting.md#app-windows-or-screens-are-missing), or [H264 and graphics checks](./troubleshooting.md#h264-sharing-fails-on-windows).
-- [Video will not connect](./troubleshooting.md#when-video-will-not-connect), including WebRTC settings and campus networks.
+- [Video will not connect](./troubleshooting.md#when-video-will-not-connect), including WebRTC settings and [campus-network / virtual-LAN options](./troubleshooting.md#campus-networks-and-strict-nat).
 - [Blur or stuttering](./troubleshooting.md#picture-blurs-stutters-or-stops), or [HDR overexposure](./troubleshooting.md#hdr-picture-looks-too-bright-or-washed-out).
 
 Still stuck? [Report a problem](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
