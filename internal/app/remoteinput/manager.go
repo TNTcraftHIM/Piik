@@ -67,7 +67,6 @@ type Manager struct {
 	stopKey      int
 	registerStop func(int) (func(), error)
 	stopShortcut func()
-	saveStopKey  func(int) error
 }
 
 type Session struct {
@@ -106,14 +105,14 @@ type endpointKey struct {
 
 // New prepares the platform backend. Input remains disabled until the sharing
 // session enables it; no service, driver or startup entry is installed.
-func New(ctx context.Context, captureInput bool, stopKey int, saveStopKey func(int) error) (*Manager, error) {
+func New(ctx context.Context, captureInput bool) (*Manager, error) {
 	sink, err := newPlatformSink(captureInput)
 	if err != nil || sink == nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Manager{sink: sink, connections: make(map[endpointKey]*connection), stop: cancel,
-		stopKey: stopKey, saveStopKey: saveStopKey}
+		stopKey: defaultStopKey}
 	stopPressed := make(chan struct{}, 1)
 	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 		m.registerStop = func(key int) (func(), error) {

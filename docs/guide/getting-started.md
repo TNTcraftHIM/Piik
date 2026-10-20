@@ -290,7 +290,8 @@ for remote control, so no control button appears.
 Either person can choose **End control**. On the host's computer, **Ctrl+Alt+F10**
 on Windows or **Control+Option+F10** on macOS also stops control by default.
 Change the function key in the host's **Remote control** panel if it conflicts
-with another app. The viewer can separately change **Exit control shortcut**
+with another app. Shortcut choices are saved in this site's browser storage;
+each site is configured independently. The viewer can separately change **Exit control shortcut**
 in **Remote keyboard**, including its detached window. Changing the
 shared source or stopping sharing turns remote control off. After a connection
 interruption, the viewer requests control again.

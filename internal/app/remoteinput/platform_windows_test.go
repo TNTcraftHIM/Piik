@@ -23,11 +23,12 @@ func TestNativeStopShortcutRegistrationLifetime(t *testing.T) {
 		t.Fatal("no test shortcut is available")
 	}
 	t.Cleanup(reserved)
-	m, err := New(t.Context(), false, key, nil)
+	m, err := New(t.Context(), false)
 	if err != nil || m == nil {
 		t.Fatalf("hotkey collision disabled the input backend: %v", err)
 	}
 	t.Cleanup(m.Close)
+	m.stopKey = key
 	state, err := m.ReadStopShortcut()
 	if err != nil || state.Available {
 		t.Fatalf("reserved chord was reported usable: %+v, %v", state, err)

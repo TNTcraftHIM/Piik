@@ -1,10 +1,11 @@
 package remoteinput
 
-import (
-	"errors"
+import "errors"
 
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
-)
+const defaultStopKey = 10
+
+// F12 is reserved by Windows debuggers even when no debugger is running.
+func ValidStopKey(key int) bool { return key >= 1 && key <= 11 }
 
 type StopShortcut struct {
 	Key       int  `json:"key"`
@@ -62,7 +63,7 @@ func (m *Manager) ReadStopShortcut() (StopShortcut, error) {
 }
 
 func (m *Manager) SetStopShortcut(key int) (StopShortcut, error) {
-	if !m.SupportsStopShortcut() || !appconfig.ValidRemoteStopKey(key) {
+	if !m.SupportsStopShortcut() || !ValidStopKey(key) {
 		return StopShortcut{}, errors.New("remote-control shortcut is invalid or unavailable")
 	}
 	m.mu.Lock()
@@ -77,13 +78,7 @@ func (m *Manager) SetStopShortcut(key int) (StopShortcut, error) {
 	if err != nil {
 		return StopShortcut{}, err
 	}
-	if m.saveStopKey != nil {
-		if err := m.saveStopKey(key); err != nil {
-			stop()
-			return StopShortcut{}, err
-		}
-	}
-	// Keep the old working chord until registration and persistence both succeed.
+	// Keep the old working chord until registration succeeds.
 	if m.stopShortcut != nil {
 		m.stopShortcut()
 	}

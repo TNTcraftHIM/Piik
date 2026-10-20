@@ -26,29 +26,6 @@ func TestLoadOrCreatePersistsOneValidConfiguration(t *testing.T) {
 	}
 }
 
-func TestRemoteShortcutPersistencePreservesMainConfiguration(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "client.json")
-	initial, err := LoadOrCreate(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if key, err := LoadRemoteStopKey(path); err != nil || key != 10 {
-		t.Fatalf("default key: %d, %v", key, err)
-	}
-	if err := SaveRemoteStopKey(path, 9); err != nil {
-		t.Fatal(err)
-	}
-	if err := SaveRemoteStopKey(path, 12); err == nil {
-		t.Fatal("invalid key was persisted")
-	}
-	if key, err := LoadRemoteStopKey(path); err != nil || key != 9 {
-		t.Fatalf("saved key: %d, %v", key, err)
-	}
-	if loaded, err := LoadOrCreate(path); err != nil || loaded != initial {
-		t.Fatalf("main config changed: %+v, %v", loaded, err)
-	}
-}
-
 func TestUserChosenLocalAccessPasswordIsPreserved(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "client.json")
 	for _, value := range []string{"", "x", "中文", " ", "  中文 +&  ", strings.Repeat("x", 256)} {

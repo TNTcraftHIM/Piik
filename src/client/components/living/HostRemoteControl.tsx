@@ -37,10 +37,15 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
   const controller = requests.find(request => request.state !== "pending");
   const policyAction = mode !== "off" ? "remote.apply" : draft === "room" ? "remote.enableRoom" : "remote.enable";
   const [shortcut, setShortcut] = useState<RemoteStopShortcut | null>(null);
+  const shortcutUnavailable = mode === "off" && Boolean(onShortcut) && !shortcut?.available;
   useEffect(() => {
     if (!open || !onShortcut) return;
     let current = true;
-    void onShortcut().then(value => { if (current) setShortcut(value); }, () => { if (current) setShortcut(null); });
+    setShortcut(null);
+    // Restore this Site's choice before allowing a new permission request.
+    const key = readRoomPreferences().remoteStopKey;
+    const load = mode === "off" ? onShortcut(key).catch(() => ({ key, available: false })) : onShortcut();
+    void load.then(value => { if (current) setShortcut(value); }, () => { if (current) setShortcut(null); });
     return () => { current = false; };
   }, [open, mode, onShortcut]);
   useEffect(() => {
@@ -85,13 +90,14 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
         setOpen(opened);
         setSurfaceDocument(owner);
         if (!opened) {
+          setShortcut(null);
           setPassword(""); setPreparing(false);
           setDraft(mode === "off" ? readRoomPreferences().remoteControlMode : mode);
         }
       }}>
       <div className="lr-floating-scroll lr-remote-panel-body">
         <SwitchItem checked={mode !== "off"} label={t("remote.title")} hint="hint-remote-control"
-          disabled={mode === "off" && (busy || disabled)}
+          disabled={mode === "off" && (busy || disabled || shortcutUnavailable)}
           onChange={enabled => {
             // A remembered automatic grant is not consent for this audience.
             if (enabled && (draft === "room" || draft === "password" && !password)) setPreparing(true);
@@ -148,7 +154,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
             }} />}
             <Btn icon="check" title={policyAction} cap={policyAction}
               type="submit" tone="primary" size="compact" hint="hint-remote-control" hintText={`remote.help.${draft}`}
-              disabled={busy || disabled || (draft === "password" && !password)} />
+              disabled={busy || disabled || shortcutUnavailable || (draft === "password" && !password)} />
           </div>}
         </form>}
         {failedId === "policy" && <p role="alert"><Glyph name="alert" size={14} />
@@ -156,7 +162,10 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
         {!vis && <p className="lr-remote-note">{t(platform === "linux" && mode === "off" ? "remote.linuxEnable" : "remote.policyLifetime")}</p>}
         {onShortcut && shortcut && <>
           <RemoteShortcutSelect host mac={platform === "darwin"} value={shortcut.key} disabled={busy || disabled}
-            onChange={key => void perform("shortcut", async () => setShortcut(await onShortcut(key)))} />
+            onChange={key => void perform("shortcut", async () => {
+              setShortcut(await onShortcut(key));
+              saveRoomPreferences({ remoteStopKey: key });
+            })} />
           {(!shortcut.available || failedId === "shortcut") && <p role="alert"><Glyph name="alert" size={14} />
             <span className={vis ? "visually-hidden" : undefined}>{t("remote.shortcutFailed")}</span></p>}
         </>}

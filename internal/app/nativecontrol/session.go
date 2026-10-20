@@ -17,7 +17,6 @@ import (
 	"time"
 	"unicode"
 
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
@@ -267,7 +266,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		var request remoteStopShortcutRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||
 			(envelope.Type == "get-remote-stop-shortcut" && request.Key != 0) ||
-			(envelope.Type == "set-remote-stop-shortcut" && !appconfig.ValidRemoteStopKey(request.Key)) {
+			(envelope.Type == "set-remote-stop-shortcut" && !remoteinput.ValidStopKey(request.Key)) {
 			return nil, protocolViolation("native remote-control shortcut is invalid")
 		}
 		if session.current(request.ShareID) == nil || !session.remoteInput.SupportsStopShortcut() {

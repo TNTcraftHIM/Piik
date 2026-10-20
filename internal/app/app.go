@@ -152,13 +152,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
-	stopKey, shortcutErr := appconfig.LoadRemoteStopKey(configPath)
-	if shortcutErr != nil {
-		slog.Debug("piik-client", "event", "remote-shortcut-load-failed", diagnostics.Error(shortcutErr))
-	}
-	input, inputErr := remoteinput.New(ctx, nativeMedia.capture.RemoteInput, stopKey, func(key int) error {
-		return appconfig.SaveRemoteStopKey(configPath, key)
-	})
+	input, inputErr := remoteinput.New(ctx, nativeMedia.capture.RemoteInput)
 	if inputErr != nil {
 		slog.Warn("Remote control is unavailable", "reason", inputErr)
 	}

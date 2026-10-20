@@ -26,8 +26,9 @@ desktop and mobile viewports.
 
 Personal room-tool presentation and incoming-route preferences are remembered
 within the same Browser origin across rooms and reloads. Their existing domain
-owners still apply capability and room-policy constraints. Restoring preferences
-never restores room admission, control grants, actual held input, passwords or
+owners still apply capability and room-policy constraints. Remote-control
+shortcut choices follow this same boundary; App applies them only in memory.
+Restoring preferences never restores room admission, control grants, actual held input, passwords or
 message drafts, and never starts capture or remote control.
 
 A capable, opted-in authenticated room session
