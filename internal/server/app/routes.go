@@ -81,6 +81,8 @@ func (s *Server) route(
 			SfuOnly:              s.config.SFU != nil && s.config.SFU.Only,
 			NatPrediction:        s.config.NATPredictionEnabled && !(s.config.SFU != nil && s.config.SFU.Only),
 			RoomInteractions:     true,
+			RoomVoice:            true,
+			RelayVolunteer:       true,
 			RoomReactionIDs:      protocol.RoomReactionIDs,
 			RemoteInput:          true,
 			ViewerRouteSelection: true,

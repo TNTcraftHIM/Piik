@@ -218,6 +218,16 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		return nil, err
 	}
 	switch messageType {
+	case "set-relay-volunteer":
+		return decodeSetRelayVolunteer(data)
+	case "subscribe-room-voice":
+		return decodeEmptyClientMessage(data, SubscribeRoomVoiceMessage{Type: messageType})
+	case "room-voice-command":
+		return decodeRoomVoiceCommand(data)
+	case "room-voice-signal":
+		return decodeRoomVoiceSignal(data)
+	case "room-voice-transport":
+		return decodeRoomVoiceTransport(data)
 	case "set-viewer-route-preference":
 		return decodeSetViewerRoutePreference(data)
 	case "subscribe-audio-presence":

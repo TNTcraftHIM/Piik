@@ -38,6 +38,44 @@ function fixture(role: "host" | "viewer" = "host") {
 }
 
 describe("room authentication and site admission", () => {
+  it("replays only this page's relay intent after the authenticated page's ordinary capacity report", async () => {
+    const { signal, sockets, events } = fixture("viewer");
+    const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
+    const authenticated = JSON.parse(wire.serverMessages.find(
+      (sample: { name: string }) => sample.name === "authenticated-viewer-minimal").json);
+    events.onMessage.mockImplementation(message => {
+      if (message.type === "authenticated") signal.send({ type: "relay-capacity", downstreamEdges: 3 });
+    });
+    sockets[0]!.receive(authenticated);
+    expect(signal.relayVolunteerRequest).toBeNull();
+    expect(sockets[0]!.send.mock.calls.map(([raw]) => JSON.parse(raw).type)).not.toContain("set-relay-volunteer");
+    expect(signal.setRelayVolunteer(true, 20)).toBe(true);
+    sockets[0]!.receive({ type: "relay-volunteer", enabled: true, capacity: 20 });
+    for (const enabled of [true, false]) {
+      if (!enabled) {
+        signal.setRelayVolunteer(false, 20);
+        // An earlier enabled acknowledgement must not restore consent while
+        // the newer withdrawal is in flight or replay it after socket loss.
+        sockets.at(-1)!.receive({ type: "relay-volunteer", enabled: true, capacity: 20 });
+        expect(signal.relayVolunteerRequest?.enabled).toBe(false);
+        sockets.at(-1)!.receive({ type: "relay-volunteer", enabled: false, capacity: 2 });
+      }
+      sockets.at(-1)!.dispatchEvent(Object.assign(new Event("close"), { code: 1006 }));
+      await vi.advanceTimersByTimeAsync(800);
+      const socket = sockets.at(-1)!;
+      socket.dispatchEvent(new Event("open"));
+      socket.receive(authenticated);
+      const reports = socket.send.mock.calls.map(([raw]) => JSON.parse(raw)).filter(message =>
+        message.type === "relay-capacity" || message.type === "set-relay-volunteer");
+      expect(reports).toEqual([
+        { type: "relay-capacity", downstreamEdges: 3 },
+        { type: "set-relay-volunteer", enabled, capacity: 20 },
+      ]);
+    }
+    signal.stop();
+    expect(signal.relayVolunteerRequest).toBeNull();
+  });
+
   it("opts into audio presence after discovery and replays subscriptions and Host intent on reconnect", async () => {
     const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
     const auth = (role: string) => JSON.parse(wire.serverMessages.find(

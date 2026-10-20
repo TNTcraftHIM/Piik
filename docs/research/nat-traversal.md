@@ -457,6 +457,11 @@ above. These loopback controls do not establish Browser decoding, audible audio,
 public-network performance, loss recovery or QUIC behavior.
 
 A well-connected participant already can help through the existing Viewer relay.
+The normal integration candidate now exposes an explicit voluntary fanout
+override through that controller, bounded by actual endpoint capability and
+the room's 20-Viewer limit. This is not a new SFU worker or a guarantee that the
+participant is reachable. Browser room-voice checks cover a real three-person
+relay and local-mute isolation; external networks remain the next evidence step.
 Browser relays reuse WebRTC senders; Native relays can forward suitable encoded
 media. Any voluntary capacity control should feed the existing room controller,
 with its endpoint cap and current-edge retirement. Bandwidth alone does not prove

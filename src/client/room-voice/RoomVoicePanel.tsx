@@ -37,6 +37,7 @@ export function RoomVoiceControls({ session }: Props) {
 
 function memberStatus(state: RoomVoiceSnapshot, peerId: string): CopyKey {
   const member = state.room!.members.find(member => member.peerId === peerId)!;
+  if (!member.connected) return "voice.offline";
   return member.publicationId ? "voice.microphoneActive" : member.listen ? member.speak ? "voice.canSpeak" : "voice.listening"
     : member.requested ? "voice.pending" : "voice.outside";
 }

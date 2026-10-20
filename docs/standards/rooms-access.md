@@ -159,6 +159,28 @@ the distinction between a room session and its current media publication.
 [Interaction research](../research/room-interactions.md) records delivery bounds,
 compatibility and design rationale.
 
+## Room Voice
+
+Capable test builds add optional room voice to the same authenticated room.
+The Host joins directly; Viewers request admission, and the Host separately
+allows listening and speaking. Approval never opens a microphone. Each speaker
+explicitly starts capture and owns one server-assigned publication; mute,
+revocation and session replacement retire that publication. Local mute changes
+only the listener's playback, including when that listener relays for others.
+
+Listening permission also authorizes a participant to forward decodable voice.
+A video relay without that permission cannot carry voice; the existing route
+controller selects a permitted path or reports that voice is unavailable.
+This is transport encryption between neighbors, not end-to-end encryption
+against an admitted relay or the SFU operator.
+
+Voice admission and routes outlive picture pause, stop and source replacement.
+Leaving voice releases its microphone and forwarding demand; room retirement or
+authorization loss ends the corresponding voice authority. Runtime voice state
+is not persisted. The [routing contract](./routing-transport.md#room-media)
+owns placement and recovery; [status](../status.md#current-work) distinguishes
+the local candidate from the published product.
+
 ## Persistence Modes
 
 - **Stable mode (Hosted default):** one exact-schema SQLite owner persists room

@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -76,9 +76,11 @@ implementation and routine UI detail.
   publication; Piik configures no TURN or TCP media route. Hosted operators may
   require SFU-only media through the same controller. On P2P-first sites, a
   pre-share peer-only policy can exclude that SFU suffix for one share generation.
-- Every endpoint shares one steady outbound-copy cap, default `2` and limited to
-  `1..3`. One room controller owns one committed graph, one reconcile loop, and
-  one serial child operation. First decoded frame commits availability work;
+- Ordinary endpoints share one steady outbound-copy cap, default `2` and limited to
+  `1..3`; the candidate's explicit relay volunteer uses the
+  [capacity owner](./standards/routing-transport.md#endpoint-and-server-capacity).
+  One room controller owns one committed graph, one reconcile loop, and
+  one serial child operation. First decoded frame commits picture availability work;
   accepted quality work adds native edge proof before commit in that operation.
 - Browser WebRTC and the shared Pion/LiveKit media adapter own congestion control,
   media adaptation, pacing and layer selection. Parent demand is local to direct
@@ -101,6 +103,13 @@ implementation and routine UI detail.
   time alone is not media-failure evidence or a keepalive guarantee.
 
 ## Current Snapshot
+
+The local room-voice candidate integrates normal App/Server/Web rather than a
+standalone demo. It keeps room authority and one route controller while picture
+generations and independently approved voice publications have separate
+lifetimes. Production remains on the published feature boundary; [status](./status.md#current-work)
+owns candidate readiness and [room media](./standards/routing-transport.md#room-media)
+owns the new behavior.
 
 Optional attended keyboard/mouse control follows the committed media route back
 to the native Host. One source-scoped grant admits one controller; source change,

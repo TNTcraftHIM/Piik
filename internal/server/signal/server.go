@@ -184,6 +184,7 @@ type Server struct {
 	senderQualityRateBySession    map[string]*senderQualityRateWindow
 	// shares keeps generation, settings, route policy and pause intent together.
 	shares                      map[string]roomShare
+	voices                      map[string]*roomVoice
 	deferredViewerPresenceRooms map[string]struct{}
 
 	heartbeatStop func() bool
@@ -265,7 +266,15 @@ func New(options Options) (*Server, error) {
 		hooks: routerHooks{
 			sendToSession:   s.sendToSession,
 			shareGeneration: func(roomID string) string { return s.shares[roomID].generation },
-			routesChanged:   s.sendViewerPresence,
+			routesChanged: func(roomID string) {
+				s.sendViewerPresence(roomID)
+				s.syncRoomVoice(roomID)
+			},
+			voiceAllowed:        s.voiceAllowed,
+			voiceDemandChanged:  s.syncVoiceDemand,
+			voiceCandidateReady: s.voiceCandidateReady,
+			voiceRouteFailed:    s.voiceRouteFailed,
+			videoGeneration:     s.activeHostShareGeneration,
 		},
 		now:       s.now,
 		afterFunc: s.afterFunc,
@@ -417,6 +426,9 @@ func (s *Server) hasConnectionCapacity() bool {
 func (s *Server) Close(ctx context.Context) error {
 	s.mu.Lock()
 	s.closing = true
+	for roomID := range s.voices {
+		s.closeRoomVoice(roomID)
+	}
 	if s.heartbeatStop != nil {
 		s.heartbeatStop()
 	}
@@ -1022,6 +1034,10 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 	}
 
 	if participant.Role == protocol.RoleHost && mediaActive {
+		if rm, _ := s.router.rooms.Get(roomID); rm != nil && rm.roomMedia && rm.controller != nil &&
+			rm.controller.Snapshot().VideoGeneration != shareGeneration {
+			s.router.setVideoPublication(roomID, shareGeneration, s.shares[roomID].pausedGeneration == shareGeneration)
+		}
 		s.router.setPaused(roomID, s.shares[roomID].pausedGeneration == shareGeneration)
 	}
 	if participant.Role == protocol.RoleViewer || mediaActive {
@@ -1145,6 +1161,18 @@ func (s *Server) connectRouteParticipant(participant authenticatedRouteParticipa
 			assigned = false
 		}
 	}()
+	if participant.role == protocol.RoleHost && participant.routePolicy != nil {
+		if rm, _ := s.router.rooms.Get(participant.roomID); rm != nil && rm.roomMedia && rm.controller != nil {
+			s.router.releaseResources(rm.controller.SetRoutePolicy(*participant.routePolicy, s.now()))
+			for peerID, settings := range rm.viewerSettings.All() {
+				if settings.preference != "" && !rm.controller.AllowsViewerRoutePreference(settings.preference) {
+					settings.preference = protocol.ViewerRouteAuto
+					rm.viewerSettings.Set(peerID, settings)
+					s.router.sendViewerRoutePreference(participant.roomID, peerID, true)
+				}
+			}
+		}
+	}
 	return s.router.connectParticipant(participant), true
 }
 
@@ -1198,6 +1226,16 @@ func routeParticipant(sess *session, authenticated *authenticatedSession) authen
 
 func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authenticatedSession, message protocol.ClientMessage) {
 	switch m := message.(type) {
+	case protocol.SetRelayVolunteerMessage:
+		s.setRelayVolunteer(sess, authenticated, m)
+	case protocol.SubscribeRoomVoiceMessage:
+		s.subscribeRoomVoice(sess, authenticated)
+	case protocol.RoomVoiceCommandMessage:
+		s.handleRoomVoiceCommand(sess, authenticated, m.Command)
+	case protocol.RoomVoiceSignalMessage:
+		s.handleRoomVoiceSignal(sess, authenticated, m)
+	case protocol.RoomVoiceTransportMessage:
+		s.handleRoomVoiceTransport(sess, authenticated, m)
 	case protocol.SubscribeRemoteInputMessage:
 		s.subscribeRemoteInput(sess, authenticated, m)
 	case protocol.SubscribeRoomInteractionsMessage:
@@ -1367,9 +1405,6 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 			return
 		}
 		s.stopSharing(authenticated.roomID)
-		// Room membership and its interaction stream outlive the media
-		// publication. The next start-sharing message claims a fresh generation.
-		authenticated.shareGeneration = ""
 		s.sendViewerPresence(authenticated.roomID)
 	case protocol.AbandonRoomMessage:
 		if authenticated.role != protocol.RoleHost {
@@ -1447,6 +1482,7 @@ func (s *Server) startSharing(sess *session, authenticated *authenticatedSession
 		QualitySettings: qualitySettings,
 		Paused:          share.pausedGeneration == shareGeneration,
 	})
+	s.router.setVideoPublication(authenticated.roomID, shareGeneration, share.pausedGeneration == shareGeneration)
 	// Acknowledge publication authority before any media effects use it.
 	s.router.setPaused(authenticated.roomID, share.pausedGeneration == shareGeneration)
 	s.router.completeAuthentication(routeParticipant, routeState)

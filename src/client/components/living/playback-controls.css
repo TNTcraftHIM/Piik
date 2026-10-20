@@ -70,6 +70,9 @@
 .lr-viewer-settings-heading .lr-btn { width: auto; }
 .lr-viewer-settings .lr-row-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .lr-viewer-settings .lr-row-group > * { min-width: 0; }
+.lr-viewer-settings .lr-row-group:has(.lr-switch-item) { display: flex; align-items: center; }
+.lr-viewer-settings .lr-switch-item .lr-cap { white-space: normal; line-height: 1.4; }
+.lr-viewer-relay-setting { margin-top: 14px; }
 .lr-viewer-settings .lr-chip { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 40px; padding: 6px; font-size: 12px; white-space: nowrap; }
 .lr-playback-overlay-settings { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--control-edge); }
 .lr-playback-overlay-settings .lr-chat-overlay-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-top: 8px; }

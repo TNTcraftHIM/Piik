@@ -449,6 +449,10 @@ func TestRouteDiagnosticSnapshot(t *testing.T) {
 // "keeps route messages strict alongside the single authenticated mode" and
 // "accepts every bounded hybrid upstream shape".
 func TestParticipantRouteAssignment(t *testing.T) {
+	children := make([]string, MaxViewersPerRoomLimit+1)
+	for index := range children {
+		children[index] = fmt.Sprintf(`"child_%08d"`, index)
+	}
 	routeUpdate := func(assignment string) []byte {
 		return []byte(`{"type":"route-update","revision":9,"phase":"active","assignment":` +
 			assignment + `}`)
@@ -470,7 +474,7 @@ func TestParticipantRouteAssignment(t *testing.T) {
 			`{"upstream":{"kind":"peer","peerId":"parent_12345678"},"childPeerIds":[],` +
 				`"sfuPublicationGeneration":"generation_12345678"}`, false},
 		{"too many children", `{"upstream":{"kind":"none"},"childPeerIds":` +
-			`["child_12345678","child_87654321","child_third_1234","child_overflow_1"],` +
+			`[` + strings.Join(children, ",") + `],` +
 			`"sfuPublicationGeneration":null}`, false},
 		{"duplicate children", `{"upstream":{"kind":"none"},` +
 			`"childPeerIds":["child_12345678","child_12345678"],` +

@@ -189,6 +189,8 @@ type RuntimeCapabilities struct {
 	SfuOnly              bool     `json:"sfuOnly,omitempty"`
 	NatPrediction        bool     `json:"natPrediction"`
 	RoomInteractions     bool     `json:"roomInteractions,omitempty"`
+	RoomVoice            bool     `json:"roomVoice,omitempty"`
+	RelayVolunteer       bool     `json:"relayVolunteer,omitempty"`
 	HostRoomSession      bool     `json:"hostRoomSession,omitempty"`
 	RemoteInput          bool     `json:"remoteInput,omitempty"`
 	ViewerRouteSelection bool     `json:"viewerRouteSelection,omitempty"`
@@ -206,13 +208,15 @@ func (v *RuntimeCapabilities) UnmarshalJSON(data []byte) error {
 	if present == nil {
 		return errors.New("runtime capabilities must be an object")
 	}
-	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "hostRoomSession", "natPrediction", "remoteInput", "viewerRouteSelection", "audioPresence", "roomReactionIds"); err != nil {
+	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "roomVoice", "relayVolunteer", "hostRoomSession", "natPrediction", "remoteInput", "viewerRouteSelection", "audioPresence", "roomReactionIds"); err != nil {
 
 		return err
 	}
 	for key, target := range map[string]*bool{
 		"sfu": &v.Sfu, "sfuOnly": &v.SfuOnly, "natPrediction": &v.NatPrediction,
 		"roomInteractions": &v.RoomInteractions, "hostRoomSession": &v.HostRoomSession,
+		"roomVoice":            &v.RoomVoice,
+		"relayVolunteer":       &v.RelayVolunteer,
 		"remoteInput":          &v.RemoteInput,
 		"viewerRouteSelection": &v.ViewerRouteSelection,
 		"audioPresence":        &v.AudioPresence,
@@ -629,7 +633,7 @@ func (v *ParticipantRouteAssignment) UnmarshalJSON(data []byte) error {
 	if err := present.requireNullable("sfuPublicationGeneration"); err != nil {
 		return err
 	}
-	if len(v.ChildPeerIDs) > MaxEndpointMediaCopyCapacity {
+	if len(v.ChildPeerIDs) > MaxViewersPerRoomLimit {
 		return errors.New("childPeerIds holds too many entries")
 	}
 	seen := make(map[string]struct{}, len(v.ChildPeerIDs))

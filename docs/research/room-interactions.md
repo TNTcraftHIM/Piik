@@ -253,6 +253,19 @@ peers. Room voice is an isolated prototype, not a published capability.
 
 ### Room Voice Transport Assessment
 
+Integration update, 2026-10-20: the normal App/Server/Web candidate now uses one
+room controller for voice and picture, with companion Browser audio connections
+on its selected edges and an embedded Opus SFU adapter on the existing UDP mux.
+The earlier experiments below remain design evidence, not the distributable
+implementation. Normal UI checks exercise pre-share room creation, Host grants,
+duplex capture, a three-participant Peer relay, local mute without interrupting
+forwarding, picture start/stop/restart, detach and authority retirement on P2P
+and forced-SFU arms. These synthetic-device checks do not establish microphone
+echo behavior, difficult-NAT reachability or 21-person audio capacity.
+Product owners are [room voice](../standards/rooms-access.md#room-voice) and
+[room media](../standards/routing-transport.md#room-media); the public release
+does not yet include this candidate.
+
 Reviewed 2026-10-19. The owner requested optional self-hosted voice and assessment
 of App-hosted voice. The local prototype forwards independent Opus publications,
 uses existing room identities, and enforces Host admission and speaking grants.

@@ -60,15 +60,17 @@ The current 2.x release line retains attended keyboard/mouse control, Viewer
 playback settings and the interaction window, with the maintenance media and lifecycle
 repairs. The accepted maintenance phase preserves the published protocols and
 route owners; release artifacts and operator records establish publication and
-postflight completion. Current implementation work turns to room-owned routing
-and voice in the isolated prototype, while device/reporter follow-up remains in
-the TODO ledger. The promotional film remains an online-review draft; export
-follows owner acceptance.
-Separate local prototypes assess room voice and shared-keyboard/virtual-gamepad
-co-play. A room-owned tree experiment now reuses the existing route controller
-for bidirectional voice and video on shared Pion connections. Local media-owner
-experiments do not establish public App-hosted voice;
-neither prototype changes the published feature or protocol boundary.
+postflight completion. The isolated `feat/room-voice` candidate now integrates
+room voice into normal App/Server/Web, with the same room graph and serial route
+operation, separate picture and voice lifetimes, explicit pre-share room creation
+and Host speaking grants. Normal Browser checks cover a three-participant Peer
+relay and embedded SFU, duplex audio, local-mute isolation, picture replacement,
+detached UI and permission retirement. Optional voluntary Peer fanout and local
+picture rotation are included; frp uses the documented existing UDP configuration.
+This is a local test candidate, not a production deployment. Physical audio,
+external-network behavior and high-fanout bandwidth still need field acceptance.
+Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
+The promotional film stays an online-review draft; export follows owner acceptance.
 [TODO](./todo.md) owns upstream follow-up, device acceptance and deferred work;
 release artifacts and operator records own exact delivery results.
 

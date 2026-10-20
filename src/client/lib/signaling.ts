@@ -8,11 +8,13 @@ import {
   type RoutePolicy,
   type ViewerRoutePreference,
   type ServerMessage,
+  type IceConfig,
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
 import { qualitySettingsEqual } from "../media/quality";
 import { debugEvent } from "./debug";
 import { RoomInteractionSession } from "./room-interactions";
+import { RoomVoiceSession } from "../room-voice/session";
 import { getSiteAccess } from "./api";
 
 type WithoutProtocolEnvelope<T> = T extends {
@@ -82,6 +84,8 @@ export class SignalingClient {
   private audioPresenceEnabled = false;
   private hostAudioAvailable: boolean | null = null;
   interactions: RoomInteractionSession | null = null;
+  roomVoice: RoomVoiceSession | null = null;
+  private voiceIceConfig: IceConfig = { iceServers: [] };
   private socket: WebSocket | null = null;
   private stopped = false;
   private authenticatedPeerId: string | null = null;
@@ -100,6 +104,7 @@ export class SignalingClient {
   private visibilityListenerAttached = false;
   private hostQualityIntent: HostQualityIntent | null = null;
   private pendingShareGeneration: string | null = null;
+  private relayVolunteerIntent: { enabled: boolean; capacity: number } | null = null;
 
   constructor(
     private readonly identity: SignalingIdentity,
@@ -127,6 +132,18 @@ export class SignalingClient {
     if (this.stopped || this.identity.role !== "host") return;
     this.remoteInputEnabled = true;
     if (this.authenticatedPeerId) this.send({ type: "subscribe-remote-input" });
+  }
+
+  enableRoomVoice(beforeMicrophone?: () => Promise<void>): RoomVoiceSession | null {
+    if (this.stopped) return null;
+    if (!this.roomVoice) {
+      this.roomVoice = new RoomVoiceSession(message => this.send(message), this.voiceIceConfig, beforeMicrophone);
+      if (this.authenticatedPeerId) {
+        this.roomVoice.authenticated(this.authenticatedPeerId, this.identity.role);
+        this.send({ type: "subscribe-room-voice" });
+      }
+    }
+    return this.roomVoice;
   }
 
   enableAudioPresence(): void {
@@ -160,6 +177,20 @@ export class SignalingClient {
       this.send({ type: "set-viewer-route-preference", preference });
   }
 
+  get relayVolunteerRequest(): Readonly<{ enabled: boolean; capacity: number }> | null {
+    return this.relayVolunteerIntent;
+  }
+
+  setRelayVolunteer(enabled: boolean, capacity: number): boolean {
+    if (this.stopped || this.identity.role !== "viewer") return false;
+    this.relayVolunteerIntent = { enabled, capacity };
+    return this.authenticatedPeerId === null || this.flushRelayVolunteerIntent();
+  }
+
+  private flushRelayVolunteerIntent(): boolean {
+    return this.relayVolunteerIntent !== null && this.send({ type: "set-relay-volunteer", ...this.relayVolunteerIntent });
+  }
+
   start(): void {
     if (this.socket || this.stopped) {
       return;
@@ -172,6 +203,7 @@ export class SignalingClient {
 
   stop(): void {
     this.interactions?.close();
+    this.roomVoice?.close();
     this.stopped = true;
     this.authenticatedPeerId = null;
     this.clearTimers();
@@ -179,6 +211,7 @@ export class SignalingClient {
     this.terminalMessage = null;
     this.hostQualityIntent = null;
     this.pendingShareGeneration = null;
+    this.relayVolunteerIntent = null;
     const socket = this.socket;
     this.socket = null;
     if (socket && socket.readyState < WebSocket.CLOSING) {
@@ -429,6 +462,12 @@ export class SignalingClient {
         debugEvent("signal", "authenticated", { role: this.identity.role, generation });
         this.refreshSignalingWatchdog();
         this.interactions?.authenticated(message.peerId);
+        this.voiceIceConfig = message.iceConfig;
+        if (this.roomVoice) {
+          this.roomVoice.updateIceConfig(message.iceConfig);
+          this.roomVoice.authenticated(message.peerId, this.identity.role);
+          this.send({ type: "subscribe-room-voice" });
+        }
         if (this.remoteInputEnabled) this.send({ type: "subscribe-remote-input" });
         // Discovery can complete after the authentication request was sent.
         if (!routeSelectionRequestedAtAuth && this.identity.role === "viewer" && this.identity.routePreference !== undefined) {
@@ -453,6 +492,7 @@ export class SignalingClient {
         this.hostQualityIntent = null;
       }
       if (this.interactions?.receive(message)) return;
+      if (this.roomVoice?.receive(message)) return;
       if (
         message.type === "host-status" &&
         this.identity.role === "host" &&
@@ -463,6 +503,9 @@ export class SignalingClient {
       }
       this.events.onMessage(message);
       if (message.type === "authenticated") {
+        // The page first sends its ordinary relay report. Restore only this
+        // page's explicit intent after that legacy report, in wire order.
+        this.flushRelayVolunteerIntent();
         this.reconcileHostQualityIntent(message);
       }
     });
@@ -477,6 +520,7 @@ export class SignalingClient {
       this.socket = null;
       this.authenticatedPeerId = null;
       this.interactions?.disconnected();
+      this.roomVoice?.disconnected();
       debugEvent("signal", "closed", { role: this.identity.role, code: event.code,
         reconnecting: !this.stopped && shouldReconnectSignaling(event.code) });
       this.clearSignalingWatchdog();
@@ -785,6 +829,7 @@ export class SignalingClient {
     this.socket = null;
     this.authenticatedPeerId = null;
     this.interactions?.disconnected();
+    this.roomVoice?.disconnected();
     this.clearAuthenticationTimer();
     this.clearSignalingWatchdog();
     if (socket && socket.readyState < WebSocket.CLOSING) {

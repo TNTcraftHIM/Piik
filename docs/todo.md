@@ -198,33 +198,16 @@ experiments and their limits.
 
 ## Local Interaction Prototypes
 
-- [ ] **Optional room voice (#484).** Continue the isolated self-hosted voice
-  and room-owned tree experiments. Keep production,
-  public invitations and the public Demo unchanged; do not recreate the previous
-  P2P voice mesh. The Host approves voice admission
-  and speaking, and can mute or revoke participants; each listener can also mute
-  another participant locally. Voice remains separate from shared-source audio.
-  The isolated prototype carries actual multi-publisher audio with server-enforced
-  consent and retirement. Synthetic voice/sharing coexistence and a separate local
-  media process are exercised; review the experience before product integration.
-  Physical microphones and external networks remain unverified.
-  Reuse the existing room authority and mature media transport; keep voice
-  publications outside the screen-capture lifetime.
-  Assess an App-hosted instance of the same voice forwarder separately, including
-  Viewers reachable only through a video relay and voice without an active share.
-  The room-tree experiment reuses the unmodified controller for Browser/Pion
-  voice, video and separate source audio, including decoded playback, relay
-  departure and independent publication retirement. Its authenticated Browser
-  control now handles negotiation and first-frame commit without a test runner
-  routing SDP or declaring media ready. Unauthorized voice relays
-  make that path unavailable without disturbing video; approval restores it on
-  the same connections. Before integration, complete production App authorization
-  and control, multi-track upload budgeting, physical audio and external-network
-  acceptance under those owners.
-  The [transport assessment](./research/room-interactions.md#room-voice-transport-assessment)
-  separates this local evidence from a production P2P voice path.
-  [Issue #484](https://github.com/TNTcraftHIM/Piik/issues/484)
-  describes the use case; the published product contract is unchanged.
+- [ ] **Room-voice test packages (#484).** Finish the local normal App/Server/Web
+  candidate and distribute it for field acceptance; leave production and the
+  public Demo unchanged. One existing controller serves room voice and picture,
+  including pre-share creation, Host admission/speaking grants and local mute.
+  Normal UI checks cover Peer relaying and embedded SFU; the
+  [transport assessment](./research/room-interactions.md#room-voice-transport-assessment)
+  owns that evidence. Validate physical microphones/echo, mobile behavior,
+  difficult external networks, and concurrent voice/video upload before release.
+  The [test-build guide](./guide/getting-started.md#room-voice-in-test-builds)
+  describes the integrated controls.
 
 - [ ] **Shared-keyboard remote co-play.** Prototype several consented Viewers
   using the existing input channel and media route. Keep one Host source and
@@ -248,8 +231,9 @@ experiments and their limits.
 
 ## Next: P2P Connection And Feedback Evidence
 
-- [ ] **External forwarding and participant relays.** Complete Browser and
-  external-network acceptance for existing friend relays. Before adopting frp
+- [ ] **External forwarding and participant relays.** Field-test the integrated
+  voluntary Peer relay and [optional frp recipe](./operations/self-hosting.md#optional-forward-an-existing-server-with-frp).
+  Before adopting frp
   for a deployment, compare loss/recovery and performance on that network; the
   local SFU media/feedback and STUN controls establish feasibility and the address
   limitation, not public-network performance. Keep the [forwarding assessment](./research/nat-traversal.md#external-forwarding-and-participant-relays)

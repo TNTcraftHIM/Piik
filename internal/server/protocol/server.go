@@ -249,6 +249,14 @@ func DecodeServerMessage(data []byte) (ServerMessage, error) {
 		return nil, err
 	}
 	switch messageType {
+	case "relay-volunteer":
+		return decodeRelayVolunteer(data)
+	case "room-voice-state":
+		return decodeRoomVoiceState(data)
+	case "room-voice-signal":
+		return decodeRoomVoiceSignal(data)
+	case "room-voice-error":
+		return decodeRoomVoiceError(data)
 	case "viewer-route-preference":
 		return decodeViewerRoutePreference(data)
 	case "audio-presence":

@@ -40,6 +40,13 @@ is absent, provided the room service and their admitted sessions remain availabl
 [Rooms and access](./rooms-access.md#room-interactions) owns interaction authority
 and retention; [status](../status.md#accepted-interaction-phase) owns release readiness.
 
+Voice-capable test builds add an explicit **Create room** action before sharing.
+Chat and voice use tabs in the existing interaction window, including its
+detached presentation. Closing or changing that window does not leave voice or
+stop capture. Microphone, admission and connection states stay literal; an
+enabled microphone is not proof that someone is speaking. Host approval and
+each participant's microphone action remain separate.
+
 On capable desktop browsers, the interaction window can move to a Document
 Picture-in-Picture window. It retains the admitted room session's messages,
 reactions and draft. Read visibility and guidance follow its current document.

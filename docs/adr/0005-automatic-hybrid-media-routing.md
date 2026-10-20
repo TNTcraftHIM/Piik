@@ -58,6 +58,12 @@ One transition-overlap reservation may temporarily raise a producer to
 authorized. SFU ingress and subscription egress are independent server resources
 and are not inferred from endpoint child counts.
 
+The room-voice candidate adds an explicit, session-scoped relay volunteer
+override under the [endpoint capacity contract](../standards/routing-transport.md#endpoint-and-server-capacity).
+It retains ordinary caps and one serial overlap reservation, but a capable
+volunteer's admitted fanout may reach 20, with one extra transition slot.
+This exception does not turn an ordinary Viewer into a separate SFU worker.
+
 ### One Graph And Reconcile Loop
 
 One room controller owns:
@@ -77,6 +83,15 @@ Disconnected childless participants are removed naturally. A disconnected
 relay or a relay with reduced capacity accepts no new children; only its
 deterministic overflow children are reassigned. A relay whose ingress fails is
 itself reparented while its descendants remain attached.
+
+### Room Media Lifetime (Candidate)
+
+The room-voice candidate keeps this graph at room lifetime, with independent
+picture generations and voice publications. Its existing serial operation also
+owns video attachment and composite picture/voice readiness; physical facets
+have distinct identities so retiring one cannot remove the others. The
+[room-media contract](../standards/routing-transport.md#room-media) owns that
+extension. No second graph, all-pairs mesh or generic transport framework is added.
 
 ### Deterministic Candidates
 

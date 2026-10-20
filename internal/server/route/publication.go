@@ -86,7 +86,8 @@ func (c *Controller) startPublicationAttach(nowMs int64) bool {
 	for childID, edge := range c.upstreamByViewer.All() {
 		child, _ := c.participants.Get(childID)
 		if child == nil || !child.sessionIs(edge.ChildSessionID) || child.departureConfirmed ||
-			!edge.Usable || !edge.PhysicalActive || edge.VideoGeneration == c.videoGeneration {
+			!edge.Usable || !edge.PhysicalActive || !c.allowsIncoming(childID, edge.Kind) ||
+			edge.VideoGeneration == c.videoGeneration {
 			continue
 		}
 		tuple := CandidateTuple{Kind: edge.Kind, Transport: edge.Transport}
@@ -123,7 +124,7 @@ func (c *Controller) publicationAttachOwned(op *operation) bool {
 	edge, _ := c.upstreamByViewer.Get(op.childPeerID)
 	if child == nil || !child.sessionIs(op.childSessionID) || child.departureConfirmed ||
 		edge == nil || edge.ChildSessionID != op.childSessionID || edge.ConnectionID != op.attachConnectionID ||
-		!edge.Usable || !edge.PhysicalActive {
+		!edge.Usable || !edge.PhysicalActive || !c.allowsIncoming(op.childPeerID, edge.Kind) {
 		return false
 	}
 	tuple := op.candidates[0].Tuple
@@ -164,7 +165,11 @@ func (c *Controller) finishPublicationAttach(op *operation, ready bool) {
 	if ready {
 		edge.VideoConnectionID = op.current.connectionID
 	}
-	c.advanceActiveRevision(op)
+	if ready {
+		c.revision = op.current.revision
+	} else {
+		c.advanceActiveRevision(op)
+	}
 	c.operation = nil
 	c.touchFacts()
 }

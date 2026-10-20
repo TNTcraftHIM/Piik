@@ -54,6 +54,7 @@ type session struct {
 	lastSignalingChallengeAtMs int64
 	authenticated              *authenticatedSession
 	roomInteractions           bool
+	roomVoice                  bool
 	audioPresence              bool
 	remoteInput                bool
 	inputEndpoint              string

@@ -63,9 +63,14 @@ type sfuFallback struct {
 // Every hook is called with mu held and must not block. shareGeneration
 // returns "" when no share exists; routesChanged may be nil.
 type routerHooks struct {
-	sendToSession   func(sessionID string, message protocol.ServerMessage)
-	shareGeneration func(roomID string) string
-	routesChanged   func(roomID string)
+	sendToSession       func(sessionID string, message protocol.ServerMessage)
+	shareGeneration     func(roomID string) string
+	routesChanged       func(roomID string)
+	voiceAllowed        func(roomID, peerID string) bool
+	videoGeneration     func(roomID string) string
+	voiceDemandChanged  func(roomID string)
+	voiceCandidateReady func(roomID, connectionID string) bool
+	voiceRouteFailed    func(roomID, peerID string)
 }
 
 // routerOptions supplies the shared mutex and timer factory.
@@ -145,8 +150,11 @@ type peerSignalDebugInput struct {
 // deadlineGeneration is bumped by every clearDeadline so
 // a callback that lost the Stop race sees it is stale.
 type roomRuntime struct {
-	hostPeerID string
-	controller *route.Controller
+	hostPeerID      string
+	controller      *route.Controller
+	roomMedia       bool
+	mediaGeneration string
+	pendingMedia    *preparedCandidate
 	// Viewer choices survive signaling recovery and share replacement, not leave.
 	viewerSettings     ordered.Map[string, viewerRouteSettings]
 	requested          bool
@@ -156,7 +164,9 @@ type roomRuntime struct {
 }
 
 type viewerRouteSettings struct {
-	capacity int
+	capacity  int
+	sessionID string
+	volunteer bool
 	// Empty means the page has not opted into route selection.
 	preference protocol.ViewerRoutePreference
 }
@@ -277,7 +287,9 @@ func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridA
 		}
 	} else {
 		settings, _ := rm.viewerSettings.Get(input.peerID)
-		settings.preference = ""
+		if settings.sessionID != input.sessionID {
+			settings.sessionID, settings.preference, settings.volunteer = input.sessionID, "", false
+		}
 		if input.routePreference != nil {
 			settings.preference = *input.routePreference
 			if !r.viewerRouteAllowed(input.roomID, settings.preference) {
@@ -287,6 +299,10 @@ func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridA
 		rm.viewerSettings.Set(input.peerID, settings)
 	}
 	if rm.controller != nil {
+		if rm.roomMedia && input.role == protocol.RoleViewer && r.videoGeneration(input.roomID) == "" &&
+			(r.hooks.voiceAllowed == nil || !r.hooks.voiceAllowed(input.roomID, input.peerID)) {
+			return hybridAuthenticationState{routeAssignment: emptyAssignment()}
+		}
 		capacity := r.capacity
 		var preference protocol.ViewerRoutePreference
 		if input.role != protocol.RoleHost {
@@ -300,6 +316,10 @@ func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridA
 			EffectiveDownstreamCapacity: capacity,
 			RoutePreference:             preference,
 		}, r.nowPtr()))
+		if input.role == protocol.RoleViewer {
+			settings, _ := rm.viewerSettings.Get(input.peerID)
+			rm.controller.SetRelayVolunteer(input.peerID, input.sessionID, settings.volunteer, r.nowPtr())
+		}
 	}
 	state := hybridAuthenticationState{routeAssignment: emptyAssignment()}
 	if rm.controller != nil {
@@ -330,7 +350,7 @@ func (r *router) setPaused(roomID string, paused bool) {
 	if rm.controller.Revision() != before {
 		r.broadcastActive(roomID, rm)
 	}
-	if !paused {
+	if !paused || rm.roomMedia {
 		r.requestPump(roomID)
 	}
 }
@@ -561,7 +581,7 @@ func (r *router) resolveActiveViewerMediaEdge(roomID, childPeerID string) (activ
 	}
 	return activeViewerMediaEdge{
 		revision:     snapshot.Revision,
-		connectionID: edge.ConnectionID,
+		connectionID: videoConnectionID(snapshot, edge),
 		upstream:     upstream,
 	}, true
 }
@@ -650,11 +670,15 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 	if !sessionsMatch {
 		return signalAuthorizationDenied
 	}
+	activeConnectionID := videoConnectionID(snapshot, edge)
+	if rm.roomMedia && (!edge.VideoReady || edge.VideoGeneration != snapshot.VideoGeneration || snapshot.VideoGeneration == "") {
+		return signalAuthorizationDenied
+	}
 	if edge.Transport == route.TransportDirect &&
 		parentToChild &&
 		input.signalKind == "description" &&
 		input.descriptionType == "offer" &&
-		input.connectionID != edge.ConnectionID {
+		input.connectionID != activeConnectionID {
 		if strings.HasPrefix(input.connectionID, candidateConnectionIDPrefix) {
 			return signalAuthorizationDenied
 		}
@@ -678,7 +702,7 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 		}
 		return signalAuthorizationDenied
 	}
-	if input.connectionID == edge.ConnectionID {
+	if input.connectionID == activeConnectionID {
 		return signalAuthorizationAllowed
 	}
 	return signalAuthorizationDenied
@@ -790,13 +814,20 @@ func (r *router) handleRouteReady(participant authenticatedRouteParticipant, mes
 		return
 	}
 	current := operation.Current
+	if rm.roomMedia && rm.pendingMedia != nil && rm.pendingMedia.connectionID == current.ConnectionID {
+		ready := message
+		rm.pendingMedia.videoReady = &ready
+		if r.hooks.voiceCandidateReady != nil && !r.hooks.voiceCandidateReady(participant.roomID, current.ConnectionID) {
+			return
+		}
+	}
 	before := controller.Revision()
 	settled := controller.CandidateReady(route.CandidateGuard{
 		ChildPeerID:    participant.peerID,
 		ChildSessionID: participant.sessionID,
 		Revision:       revision,
 		ConnectionID:   current.ConnectionID,
-	}, r.now(), r.commitReservation, route.CandidateProof{RelativeQualityApproved: message.QualityApproved})
+	}, r.now(), r.commitReservation, route.CandidateProof{RelativeQualityApproved: message.QualityApproved, VideoGeneration: operation.VideoGeneration})
 	r.debug(participant.roomID, "route-ready-settled",
 		"participant", r.debugPeer(participant.roomID, participant.peerID),
 		"revision", revision,
@@ -949,16 +980,28 @@ func (r *router) handleRouteFailed(participant authenticatedRouteParticipant, me
 	if revision > snapshot.Revision || (revision != snapshot.Revision && connectionID == "") {
 		return
 	}
-	if participant.role == protocol.RoleHost {
-		if connectionID != "" && controller.InvalidateDirectEdgeFromParent(route.ParentEdgeGuard{
+	if connectionID != "" {
+		logicalConnectionID := connectionID
+		if snapshot.RoomMedia {
+			logicalConnectionID = ""
+		}
+		for _, edge := range snapshot.UpstreamByViewer.Values() {
+			if edge.Kind == route.UpstreamPeer && edge.ParentPeerID == participant.peerID && videoConnectionID(snapshot, edge) == connectionID {
+				logicalConnectionID = edge.ConnectionID
+				break
+			}
+		}
+		if logicalConnectionID != "" && controller.InvalidateDirectEdgeFromParent(route.ParentEdgeGuard{
 			ParentPeerID:    participant.peerID,
 			ParentSessionID: participant.sessionID,
 			RouteRevision:   snapshot.Revision,
-			ConnectionID:    connectionID,
+			ConnectionID:    logicalConnectionID,
 		}, r.nowPtr()) {
 			r.requestPump(participant.roomID)
 			return
 		}
+	}
+	if participant.role == protocol.RoleHost {
 		publication := snapshot.HostPublication
 		if publication == nil || publication.HostSessionID != participant.sessionID ||
 			(connectionID != "" && connectionID != publication.ConnectionID) {
@@ -970,12 +1013,14 @@ func (r *router) handleRouteFailed(participant authenticatedRouteParticipant, me
 			Generation:    publication.Generation,
 			ConnectionID:  publication.ConnectionID,
 		}, r.nowPtr())
-		r.releaseResources(controller.RetireHostPublication(route.PublicationGuard{
-			HostSessionID: participant.sessionID,
-			RouteRevision: controller.Revision(),
-			Generation:    publication.Generation,
-			ConnectionID:  publication.ConnectionID,
-		}))
+		if !snapshot.RoomMedia {
+			r.releaseResources(controller.RetireHostPublication(route.PublicationGuard{
+				HostSessionID: participant.sessionID,
+				RouteRevision: controller.Revision(),
+				Generation:    publication.Generation,
+				ConnectionID:  publication.ConnectionID,
+			}))
+		}
 		r.broadcastActive(participant.roomID, rm)
 		r.requestPump(participant.roomID)
 		return
@@ -983,7 +1028,7 @@ func (r *router) handleRouteFailed(participant authenticatedRouteParticipant, me
 
 	edge, hasEdge := snapshot.UpstreamByViewer.Get(participant.peerID)
 	if !hasEdge || edge.ChildSessionID != participant.sessionID ||
-		(connectionID != "" && connectionID != edge.ConnectionID) {
+		(connectionID != "" && connectionID != videoConnectionID(snapshot, edge)) {
 		return
 	}
 	guard := route.EdgeGuard{
@@ -1031,6 +1076,10 @@ func (r *router) removeViewer(roomID, peerID string) {
 
 // stopRoom preserves Viewer settings across shares.
 func (r *router) stopRoom(roomID string) {
+	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.roomMedia && rm.controller != nil {
+		r.setVideoPublication(roomID, "", false)
+		return
+	}
 	var settings ordered.Map[string, viewerRouteSettings]
 	if rm, _ := r.rooms.Get(roomID); rm != nil {
 		settings = rm.viewerSettings
@@ -1072,6 +1121,9 @@ func (r *router) createController(roomID string, rm *roomRuntime, host authentic
 		QualityConvergenceEnabled: routePolicy != nil && routePolicy.TopologyOptimization,
 		NatPredictionEnabled:      routePolicy != nil && routePolicy.NatPrediction,
 	})
+	if rm.roomMedia {
+		rm.controller.SetVideoPublication(r.videoGeneration(roomID), false, r.now())
+	}
 	rm.controller.UpsertParticipant(route.ParticipantInput{
 		PeerID:                      host.peerID,
 		Role:                        protocol.RoleHost,
@@ -1079,6 +1131,10 @@ func (r *router) createController(roomID string, rm *roomRuntime, host authentic
 		EffectiveDownstreamCapacity: r.capacity,
 	}, r.nowPtr())
 	for _, viewer := range r.store.GetConnectedViewers(roomID) {
+		if rm.roomMedia && r.videoGeneration(roomID) == "" &&
+			(r.hooks.voiceAllowed == nil || !r.hooks.voiceAllowed(roomID, viewer.PeerID)) {
+			continue
+		}
 		settings, _ := rm.viewerSettings.Get(viewer.PeerID)
 		if settings.preference != "" && !r.viewerRouteAllowed(roomID, settings.preference) {
 			settings.preference = protocol.ViewerRouteAuto
@@ -1092,6 +1148,7 @@ func (r *router) createController(roomID string, rm *roomRuntime, host authentic
 			EffectiveDownstreamCapacity: settings.capacity,
 			RoutePreference:             settings.preference,
 		}, r.nowPtr())
+		rm.controller.SetRelayVolunteer(viewer.PeerID, viewer.SessionID, settings.volunteer, r.nowPtr())
 	}
 }
 
@@ -1152,6 +1209,9 @@ func (r *router) assignments(
 	edges := &ordered.Map[string, assignmentEdge]{}
 	for childPeerID, edge := range snapshot.UpstreamByViewer.All() {
 		if !edge.PhysicalActive {
+			continue
+		}
+		if snapshot.RoomMedia && (!edge.VideoReady || edge.VideoGeneration != snapshot.VideoGeneration || snapshot.VideoGeneration == "") {
 			continue
 		}
 		if edge.Kind == route.UpstreamPeer {
@@ -1252,6 +1312,12 @@ func (r *router) assignments(
 // broadcastActive sends to the host first, then viewers in store order,
 // with one routesChanged call at the end.
 func (r *router) broadcastActive(roomID string, rm *roomRuntime) {
+	if rm.roomMedia && r.videoGeneration(roomID) == "" {
+		if r.hooks.routesChanged != nil {
+			r.hooks.routesChanged(roomID)
+		}
+		return
+	}
 	if rm.controller == nil {
 		return
 	}
@@ -1311,6 +1377,9 @@ func (r *router) pathIsPhysical(roomID string, snapshot route.RouteSnapshot, chi
 		seen[current] = struct{}{}
 		edge, ok := snapshot.UpstreamByViewer.Get(current)
 		if !ok || !edge.PhysicalActive || !edge.Usable {
+			return false
+		}
+		if snapshot.RoomMedia && (!edge.VideoReady || edge.VideoGeneration != snapshot.VideoGeneration || snapshot.VideoGeneration == "") {
 			return false
 		}
 		if edge.Kind == route.UpstreamSfu {
@@ -1513,6 +1582,15 @@ func (r *router) sendRoomError(roomID, code, message string) {
 }
 
 func (r *router) sendViewerRouteStatus(roomID, viewerPeerID string, message protocol.RouteStatusMessage) {
+	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.roomMedia && rm.controller != nil {
+		snapshot := rm.controller.Snapshot()
+		if snapshot.VideoGeneration == "" || snapshot.VideoPaused {
+			if message.State == "failed" && r.hooks.voiceRouteFailed != nil {
+				r.hooks.voiceRouteFailed(roomID, viewerPeerID)
+			}
+			return
+		}
+	}
 	if viewer, ok := r.store.GetConnectedViewer(roomID, viewerPeerID); ok {
 		r.hooks.sendToSession(viewer.SessionID, message)
 	}

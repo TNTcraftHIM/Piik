@@ -12,6 +12,29 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+func TestRoomSfuVideoFailureRetainsRoomAdmissionDuringReplacement(t *testing.T) {
+	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true})
+	created := h.createRoom()
+	host, first, _ := h.establishSfuRoom(created)
+	h.settle()
+	h.locked(func() {
+		rm, _ := h.router.rooms.Get(created.RoomID)
+		rm.roomMedia = true
+		rm.controller.SetVideoPublication(testShareGeneration, false, h.router.now())
+		publication := rm.controller.Publication()
+		edge, _ := rm.controller.Snapshot().UpstreamByViewer.Get(first.peerID)
+		fence := resourceFence(publication.Resource)
+		h.router.handleRouteFailed(host, routeFailedMessage(rm.controller.Revision(), "active", publication.ConnectionID))
+		current := rm.controller.Publication()
+		if current == nil || current.Generation != publication.Generation || !current.PhysicalActive {
+			t.Fatal("video failure retired the room publication before replacement")
+		}
+		if !h.admission.HasPublication(fence) || !h.admission.HasSubscription(subscriptionFence(edge.Resource)) {
+			t.Fatal("video failure released room admission used by healthy voice")
+		}
+	})
+}
+
 func TestRoomSfuVideoAttachmentUsesExistingAdmissionAndExactPhysicalIdentity(t *testing.T) {
 	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, withSfu: true})
 	created := h.createRoom()

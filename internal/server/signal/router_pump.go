@@ -21,6 +21,7 @@ type preparedCandidate struct {
 	hostSessionID           string
 	hostSfuConfig           *protocol.SfuConfigMessage
 	viewerSfuConfig         *protocol.SfuConfigMessage
+	videoReady              *protocol.RouteReadyMessage
 }
 
 // prepareResult is one admitted candidate or a typed rejection.
@@ -96,6 +97,9 @@ func (r *router) drivePump(roomID string, rm *roomRuntime, controller *route.Con
 		rm.pumping = false
 		if pending != nil && !pending.result.denied {
 			r.releaseReservation(pending.result.prepared.reservation)
+		}
+		if current, _ := r.rooms.Get(roomID); current == rm && rm.controller != nil && rm.requested && !r.closing {
+			r.requestPump(roomID)
 		}
 		return
 	}
@@ -238,6 +242,7 @@ func (r *router) pumpRoom(
 			r.sendRouteFailures(roomID, begun.FailedPeerIDs, controller.Revision())
 			continue
 		}
+		rm.pendingMedia = &prepared
 		r.sendPrepareMessages(roomID, controller, begun.Operation, prepared)
 		r.debug(roomID, "candidate-prepare-sent",
 			"child", r.debugPeer(roomID, operation.ChildPeerID),
@@ -300,10 +305,16 @@ func (r *router) prepareCandidate(
 	snapshot := controller.Snapshot()
 	child, hasChild := r.store.GetConnectedViewer(roomID, operation.ChildPeerID)
 	shareGeneration := r.hooks.shareGeneration(roomID)
+	if rm.roomMedia {
+		shareGeneration = rm.mediaGeneration
+	}
 	if !hasChild || child.SessionID != operation.ChildSessionID || shareGeneration == "" {
 		return denied(route.RejectionStale)
 	}
 	connectionID := candidateConnectionIDPrefix + opaqueID()
+	if operation.AttachConnectionID != "" {
+		return prepareResult{prepared: preparedCandidate{connectionID: connectionID}}
+	}
 	var overlap *route.Resource
 	if plan.EndpointTransition.Kind == route.TransitionOverlap {
 		producerPeerID := ""
@@ -414,6 +425,14 @@ func (r *router) sendPrepareMessages(
 	operation *route.OperationSnapshot,
 	prepared preparedCandidate,
 ) {
+	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.roomMedia {
+		if r.hooks.routesChanged != nil {
+			r.hooks.routesChanged(roomID)
+		}
+		if operation.VideoGeneration == "" {
+			return
+		}
+	}
 	current := operation.Current
 	candidate := preparedRouteCandidate(operation, current.Tuple, current.ConnectionID)
 	tuple := current.Tuple
@@ -447,6 +466,10 @@ func (r *router) sendPrepareMessages(
 		r.hooks.sendToSession(host.SessionID, *prepared.hostSfuConfig)
 	}
 	r.hooks.sendToSession(child.SessionID, childUpdate)
+	if operation.AttachConnectionID != "" {
+		r.prepareSfuVideoAttachment(roomID, operation)
+		return
+	}
 	if prepared.viewerSfuConfig != nil {
 		r.hooks.sendToSession(child.SessionID, *prepared.viewerSfuConfig)
 		if prepared.hostSfuConfig == nil {

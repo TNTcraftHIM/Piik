@@ -18,6 +18,7 @@ import { METRIC_SCENES } from "./metrics";
 import { ADMISSION_SCENES } from "./admission";
 import { INTERACTION_SCENES } from "./interactions";
 import { REMOTE_SCENES } from "./remote-control";
+import { RELAY_SCENES } from "./relay";
 import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } from "../comic-presentation";
 
 export type { HintKind, HintScene };
@@ -44,6 +45,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-reconnect",
   "hint-copy-code",
   "hint-shuffle-code",
+  "hint-create-room",
   "hint-copy-invite",
   "hint-invite-link",
   "hint-client-link",
@@ -87,6 +89,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-route-p2p-required",
   "hint-route-sfu-required",
   "hint-route-sfu",
+  "hint-relay-volunteer",
   "hint-client-local",
   "hint-app-ready",
   "hint-client-site",
@@ -123,6 +126,7 @@ export const HINT_SCENES: Record<HintKind, HintScene> = {
   ...ADMISSION_SCENES,
   ...INTERACTION_SCENES,
   ...REMOTE_SCENES,
+  ...RELAY_SCENES,
 };
 
 const HINT_KIND_SET: ReadonlySet<string> = new Set(HINT_KINDS);

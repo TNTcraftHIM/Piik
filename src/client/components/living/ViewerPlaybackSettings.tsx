@@ -3,7 +3,7 @@ import type { ViewerRoutePreference } from "../../../shared/protocol";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Btn, Cap, Chip, Pill, RowGroup } from "./primitives";
+import { Btn, Cap, Chip, Pill, RowGroup, SwitchItem } from "./primitives";
 
 export interface ViewerPlaybackSettingsProps {
   pictureFit: VideoFit;
@@ -19,10 +19,16 @@ export interface ViewerPlaybackSettingsProps {
     rejected: boolean;
     onChange: (preference: ViewerRoutePreference) => void;
   };
+  relayVolunteer?: {
+    enabled: boolean;
+    pending: boolean;
+    disabled: boolean;
+    onChange: (enabled: boolean) => void;
+  };
 }
 
-// Local display and incoming-route intent only; media and routing keep their owners.
-export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route, displayActions, reconnect }: ViewerPlaybackSettingsProps & {
+// Local display and connection intent; media and routing keep their owners.
+export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route, relayVolunteer, displayActions, reconnect }: ViewerPlaybackSettingsProps & {
   displayActions: ReactNode; reconnect: ReactNode;
 }) {
   const { t, vis } = useCopy();
@@ -68,6 +74,15 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotat
         {!vis && <p className={route.rejected ? "is-error" : undefined} role={route.rejected ? "status" : undefined}>{t(routeHint)}</p>}
         {vis && route.rejected && <Pill icon="alert" tone="bad" label={t(routeHint)} comic="settings-failed" />}
       </>}
+      {relayVolunteer && <div className="lr-viewer-relay-setting" aria-busy={relayVolunteer.pending}>
+        <RowGroup>
+          {vis && <Glyph name="branch" size={18} />}
+          <SwitchItem checked={relayVolunteer.enabled} disabled={relayVolunteer.disabled}
+            onChange={relayVolunteer.onChange} label={t("playback.relayVolunteer")}
+            note={t("playback.relayVolunteerHint")} hint="hint-relay-volunteer" />
+        </RowGroup>
+        {!vis && <p>{t("playback.relayVolunteerHint")}</p>}
+      </div>}
     </section>
   </div>;
 }

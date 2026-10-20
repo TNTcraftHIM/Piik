@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
 
 This file owns physical evidence limits that change how the product may be
 described. [Status](./status.md) owns the execution/deployment index.
@@ -15,6 +15,10 @@ Go packages embed their Web assets and do not run a Node backend.
 and current release boundary; artifacts own the exact published build.
 
 Bounded current checks cover:
+
+- local candidate room voice through normal Host/Viewer pages on Peer and
+  forced-SFU paths, including three-participant forwarding, real synthetic
+  microphone decoding, source replacement, local mute and grant retirement;
 
 - Native H264/VP8 output, compatible encoding reuse, different weak-budget
   grouping, keyframe-safe retarget and independent retirement;
@@ -32,6 +36,11 @@ Bounded current checks cover:
 The owner confirmed Windows 10 whole-display capture resolved. Chromium
 WebRTC/IP-handling policy explains the verified local-media failure; it is a
 Browser policy limitation, not a Vivaldi-specific transport workaround.
+
+Room-voice checks use synthetic devices on one Windows computer. They do not
+establish physical echo cancellation, difficult-NAT reachability, mobile
+background capture or 21 simultaneous speakers. These remain test-package
+acceptance limits, not claims about the published release.
 
 The Windows capture-border control and borderless previews have physical
 Windows 11 evidence. Unsupported Windows and actual border-permission denial

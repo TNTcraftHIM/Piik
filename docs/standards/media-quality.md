@@ -11,6 +11,14 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
 
 ## Capture And Controls
 
+Optional room voice in capable test builds is separate from source sound and
+Host commentary. It uses Browser microphone capture for Browser and App-backed
+pages, with ordinary speech processing. Moving the Host's microphone between
+commentary and room voice releases the former capture before opening the latter;
+a failed transfer does not open a duplicate microphone. Source sound retains
+its existing mixer, codec and route. Room voice capture belongs to the room
+session rather than the shared source; stopping picture capture does not stop it.
+
 - The Web Host may share a display, application window, Browser tab or camera and may
   stop, synchronously pause/resume audio and video, or switch source.
 - An App-launched Host explicitly chooses either that Browser capture path or

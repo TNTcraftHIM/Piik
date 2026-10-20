@@ -366,7 +366,7 @@ func TestCapabilitiesReportServicesDisabledByDefault(t *testing.T) {
 	server := start(t, Options{Config: testConfig(t)})
 
 	server.do(http.MethodGet, "/api/capabilities").
-		expect(http.StatusOK, `{"sfu":false,"natPrediction":false,"roomInteractions":true,"hostRoomSession":true,"remoteInput":true,"viewerRouteSelection":true,"audioPresence":true,"roomReactionIds":["thumbsup","thumbsdown","laugh","clown","eyeroll","eyes","wow","wave","heart","clap","party","fire","star","sleep","tomato","poop"]}`)
+		expect(http.StatusOK, `{"sfu":false,"natPrediction":false,"roomInteractions":true,"roomVoice":true,"relayVolunteer":true,"hostRoomSession":true,"remoteInput":true,"viewerRouteSelection":true,"audioPresence":true,"roomReactionIds":["thumbsup","thumbsdown","laugh","clown","eyeroll","eyes","wow","wave","heart","clap","party","fire","star","sleep","tomato","poop"]}`)
 
 }
 
@@ -376,7 +376,7 @@ func TestCapabilitiesReportSFUOnlyPolicy(t *testing.T) {
 	configuration.NATPredictionEnabled = true
 	server := start(t, Options{Config: configuration})
 	server.do(http.MethodGet, "/api/capabilities").
-		expect(http.StatusOK, `{"sfu":true,"sfuOnly":true,"natPrediction":false,"roomInteractions":true,"hostRoomSession":true,"remoteInput":true,"viewerRouteSelection":true,"audioPresence":true,"roomReactionIds":["thumbsup","thumbsdown","laugh","clown","eyeroll","eyes","wow","wave","heart","clap","party","fire","star","sleep","tomato","poop"]}`)
+		expect(http.StatusOK, `{"sfu":true,"sfuOnly":true,"natPrediction":false,"roomInteractions":true,"roomVoice":true,"relayVolunteer":true,"hostRoomSession":true,"remoteInput":true,"viewerRouteSelection":true,"audioPresence":true,"roomReactionIds":["thumbsup","thumbsdown","laugh","clown","eyeroll","eyes","wow","wave","heart","clap","party","fire","star","sleep","tomato","poop"]}`)
 }
 
 func TestCapabilitiesReportOptionalNATPredictionWithoutExposingConfiguration(t *testing.T) {
@@ -387,7 +387,7 @@ func TestCapabilitiesReportOptionalNATPredictionWithoutExposingConfiguration(t *
 	server := start(t, Options{Config: configuration})
 
 	server.do(http.MethodGet, "/api/capabilities").
-		expect(http.StatusOK, `{"sfu":false,"natPrediction":true,"roomInteractions":true,"hostRoomSession":true,"remoteInput":true,"viewerRouteSelection":true,"audioPresence":true,"roomReactionIds":["thumbsup","thumbsdown","laugh","clown","eyeroll","eyes","wow","wave","heart","clap","party","fire","star","sleep","tomato","poop"]}`).
+		expect(http.StatusOK, `{"sfu":false,"natPrediction":true,"roomInteractions":true,"roomVoice":true,"relayVolunteer":true,"hostRoomSession":true,"remoteInput":true,"viewerRouteSelection":true,"audioPresence":true,"roomReactionIds":["thumbsup","thumbsdown","laugh","clown","eyeroll","eyes","wow","wave","heart","clap","party","fire","star","sleep","tomato","poop"]}`).
 		expectHeader("Cache-Control", "no-store").
 		expectHeader("X-Content-Type-Options", "nosniff")
 
@@ -430,7 +430,7 @@ func TestSFUListenerFollowsApplicationCloseAndEnd(t *testing.T) {
 				t.Fatal("missing runtime owner")
 			}
 			server.do(http.MethodGet, "/api/capabilities").
-				expect(http.StatusOK, `{"sfu":true,"natPrediction":false,"roomInteractions":true,"hostRoomSession":true,"remoteInput":true,"viewerRouteSelection":true,"audioPresence":true,"roomReactionIds":["thumbsup","thumbsdown","laugh","clown","eyeroll","eyes","wow","wave","heart","clap","party","fire","star","sleep","tomato","poop"]}`)
+				expect(http.StatusOK, `{"sfu":true,"natPrediction":false,"roomInteractions":true,"roomVoice":true,"relayVolunteer":true,"hostRoomSession":true,"remoteInput":true,"viewerRouteSelection":true,"audioPresence":true,"roomReactionIds":["thumbsup","thumbsdown","laugh","clown","eyeroll","eyes","wow","wave","heart","clap","party","fire","star","sleep","tomato","poop"]}`)
 
 			var err error
 			if ending {

@@ -5,8 +5,59 @@ import (
 
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/TNTcraftHIM/Piik/internal/server/room"
+	"github.com/TNTcraftHIM/Piik/internal/server/route"
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 )
+
+func TestRoomVideoFailuresCannotInvalidateAnotherPhysicalFacet(t *testing.T) {
+	h := newRouterHarness(t, routerHarnessOptions{capacity: 2})
+	created := h.createRoom()
+	host := h.connectHost(created, nil, "", "")
+	viewer := h.connectViewer(created, "room-video-replacement")
+	h.locked(func() {
+		h.doComplete(host)
+		h.doComplete(viewer)
+	})
+	prepared := h.waitPrepared(viewer.sessionID)
+	h.locked(func() {
+		h.doReady(viewer, int64(prepared.Revision))
+		rm, _ := h.router.rooms.Get(created.RoomID)
+		controller := rm.controller
+		old, _ := controller.Snapshot().UpstreamByViewer.Get(viewer.peerID)
+		rm.roomMedia = true
+		controller.SetVideoPublication(testShareGeneration, false, h.router.now())
+		controller.SetVideoPublication("", false, h.router.now())
+		controller.SetVideoPublication("room_video_replacement_123", false, h.router.now())
+		op := controller.Reconcile(h.router.now()).Operation
+		if op == nil || op.Reason != route.DemandPublicationAttach {
+			t.Fatal("replacement did not prepare a video attachment")
+		}
+		begun := controller.BeginCurrentCandidate(route.BeginInput{Guard: cursorGuard(op, op.Candidates[op.Cursor]),
+			NowMs: h.router.now(), ConnectionID: "replacement_video_connection_123"})
+		if !begun.Accepted {
+			t.Fatal("replacement attachment did not begin")
+		}
+		op = begun.Operation
+		guard := route.CandidateGuard{ChildPeerID: viewer.peerID, ChildSessionID: viewer.sessionID,
+			Revision: op.Current.Revision, ConnectionID: op.Current.ConnectionID}
+		if !controller.CandidateReady(guard, h.router.now(), nil,
+			route.CandidateProof{VideoGeneration: "room_video_replacement_123"}).Committed {
+			t.Fatal("replacement attachment did not commit")
+		}
+		for _, participant := range []authenticatedRouteParticipant{host, viewer} {
+			h.doFailed(participant, routeFailedMessage(int64(prepared.Revision), "active", old.ConnectionID))
+			edge, ok := controller.Snapshot().UpstreamByViewer.Get(viewer.peerID)
+			if !ok || !edge.Usable || !edge.VideoReady || edge.VideoConnectionID != guard.ConnectionID {
+				t.Fatal("a retired video failure affected its replacement or room voice")
+			}
+		}
+		h.doFailed(host, routeFailedMessage(controller.Revision(), "active", guard.ConnectionID))
+		edge, _ := controller.Snapshot().UpstreamByViewer.Get(viewer.peerID)
+		if edge.Usable {
+			t.Fatal("the current parent video failure did not trigger normal route repair")
+		}
+	})
+}
 
 func TestRouterPreparesSfuForNewAndReauthenticatedViewers(t *testing.T) {
 	for _, reauthenticate := range []bool{false, true} {

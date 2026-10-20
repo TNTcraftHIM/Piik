@@ -4,7 +4,7 @@ import "github.com/TNTcraftHIM/Piik/internal/server/protocol"
 
 // MaxRelayVolunteerChildren is the steady fanout of a willing ordinary peer.
 // The existing single operation may reserve one additional physical copy.
-const MaxRelayVolunteerChildren = 20
+const MaxRelayVolunteerChildren = protocol.MaxViewersPerRoomLimit
 
 // SetRelayVolunteer changes policy for this exact authenticated session. The
 // endpoint's reported capacity remains the physical capability ceiling.

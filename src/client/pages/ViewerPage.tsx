@@ -11,6 +11,7 @@ import {
   DEFAULT_QUALITY_SETTINGS,
   DEFAULT_ROUTE_POLICY,
   MAX_VIEWER_PASSWORD_LENGTH,
+  MAX_VIEWERS_PER_ROOM_LIMIT,
   viewerPasswordSchema,
   type IceConfig,
   type ParticipantPresenceEntry,
@@ -29,6 +30,8 @@ import type { CouchEntry } from "../components/living/Couch";
 import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
+import type { RoomVoiceSession } from "../room-voice/session";
+import { RoomVoicePanel, RoomVoiceControls } from "../room-voice/RoomVoicePanel";
 import { getRuntimeCapabilities } from "../lib/api";
 import { participantColor } from "../components/living/participant-color";
 import { MetricCells } from "../components/living/Metrics";
@@ -129,6 +132,7 @@ import {
   NativeCapableViewerPeer,
 } from "../native/native-viewer-peer";
 import { NativeSenderPeer } from "../native/native-sender-peer";
+import { nativeRelayCapacity } from "../native/wire";
 
 interface ViewerPageProps {
   roomId: string;
@@ -272,14 +276,24 @@ export function ViewerPage({
   const viewerSfuRouteRef = useRef<ViewerSfuRoute | null>(null);
   const signalRef = useRef<SignalingClient | null>(null);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
+  const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
   const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
   const [routePreference, setRoutePreference] = useState<ViewerRoutePreference>("auto");
   const [routePreferencePending, setRoutePreferencePending] = useState(false);
   const [routePreferenceRejected, setRoutePreferenceRejected] = useState(false);
+  const [relayVolunteerSupported, setRelayVolunteerSupported] = useState(false);
+  const [relayVolunteerEnabled, setRelayVolunteerEnabled] = useState(false);
+  const [relayVolunteerPending, setRelayVolunteerPending] = useState(false);
+  const requestRelayVolunteerRef = useRef<((enabled: boolean) => void) | null>(null);
   const [peerOnly, setPeerOnly] = useState(false);
-  useEffect(() => { if (signalStatus !== "connected") setRoutePreferencePending(false); }, [signalStatus]);
+  useEffect(() => {
+    if (signalStatus !== "connected") {
+      setRoutePreferencePending(false);
+      setRelayVolunteerPending(false);
+    }
+  }, [signalStatus]);
   const presentationStateRef = useRef(presentationState);
   presentationStateRef.current = presentationState;
   function dispatchPresentation(action: ViewerPresentationAction): void {
@@ -474,6 +488,8 @@ export function ViewerPage({
       connectionId: string;
     } | null = null;
     let endpointMediaCopyCapacity = MAX_ENDPOINT_MEDIA_CHILDREN;
+    let relayBackendCapacity: number | null = null;
+    let relayVolunteerAvailable = false;
     let viewerAuthorizationGeneration: string | null = null;
     let currentQualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS;
     let currentRoutePolicy: RoutePolicy = DEFAULT_ROUTE_POLICY;
@@ -545,7 +561,7 @@ export function ViewerPage({
         acquireNativeClient,
         () => { nativeViewerAvailable = false; },
         nativeViewerSessionId,
-        MAX_ENDPOINT_MEDIA_CHILDREN,
+        MAX_VIEWERS_PER_ROOM_LIMIT,
       );
     }
 
@@ -623,10 +639,39 @@ export function ViewerPage({
     );
     setInteractionSession(null);
     setRouteOptions(null);
+    setRelayVolunteerSupported(false);
+    setRelayVolunteerEnabled(false);
+    setRelayVolunteerPending(false);
+    requestRelayVolunteerRef.current = enabled => {
+      setRelayVolunteerPending(true);
+      // Keep consent in the signaling owner before asynchronous App discovery.
+      // Until its backend is known, an App gets only the legacy physical bound.
+      const capacity = relayBackendCapacity ?? (clientActivationRef.current ? MAX_ENDPOINT_MEDIA_CHILDREN : MAX_VIEWERS_PER_ROOM_LIMIT);
+      if (!signal.setRelayVolunteer(enabled, capacity)) setRelayVolunteerPending(false);
+      void acquireNativeClient().then(client => {
+        if (!active || relayBackendCapacity !== null) return;
+        const actualCapacity = client
+          ? nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, client.health) : MAX_VIEWERS_PER_ROOM_LIMIT;
+        const intent = signal.relayVolunteerRequest;
+        if (intent && intent.capacity !== actualCapacity) {
+          setRelayVolunteerPending(true);
+          signal.setRelayVolunteer(intent.enabled, actualCapacity);
+        }
+      });
+    };
     setAudioAvailable(null);
     void getRuntimeCapabilities().then(capabilities => {
       if (active && capabilities.audioPresence) signal.enableAudioPresence();
       if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
+      if (active && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice());
+      if (active) {
+        relayVolunteerAvailable = capabilities.relayVolunteer && !capabilities.sfuOnly;
+        setRelayVolunteerSupported(relayVolunteerAvailable);
+        if (relayVolunteerAvailable && relayBackendCapacity !== null) {
+          setRelayVolunteerPending(true);
+          signal.setRelayVolunteer(signal.relayVolunteerRequest?.enabled ?? false, relayBackendCapacity);
+        }
+      }
       if (active && capabilities.remoteInput) inputRoute.enable(identity => signal.send({ type: "subscribe-remote-input", ...identity }));
       if (active && capabilities.viewerRouteSelection) {
         const saved = readRoomPreferences().routePreference;
@@ -744,6 +789,15 @@ export function ViewerPage({
       // Viewer choose the encoded relay source before any child edge exists.
       if (!remoteMediaRef.current?.stream) {
         return null;
+      }
+      const capacity = source
+        ? nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, source.client.health) : MAX_VIEWERS_PER_ROOM_LIMIT;
+      if (relayBackendCapacity !== capacity) {
+        relayBackendCapacity = capacity;
+        if (relayVolunteerAvailable) {
+          setRelayVolunteerPending(true);
+          signal.setRelayVolunteer(signal.relayVolunteerRequest?.enabled ?? false, capacity);
+        }
       }
       const sourceKey = source
         ? `native:${source.sessionId}:${source.connectionId}:${source.generation}`
@@ -1502,6 +1556,17 @@ export function ViewerPage({
       message: ServerMessage,
       authorityToken: number,
     ): Promise<void> {
+      if (message.type === "relay-volunteer") {
+        setRelayVolunteerEnabled(message.enabled);
+        const intent = signal.relayVolunteerRequest;
+        setRelayVolunteerPending(intent !== null && (intent.enabled !== message.enabled ||
+          message.enabled && intent.capacity !== message.capacity));
+        // Withdrawal is a controller handoff. Retain physical room for old
+        // children until its assignments retire them, including on reauth.
+        endpointMediaCopyCapacity = Math.max(endpointMediaCopyCapacity, message.capacity);
+        viewerRelay?.updateCapacity(endpointMediaCopyCapacity);
+        return;
+      }
       if (message.type === "viewer-route-preference") {
         setRoutePreference(message.preference);
         setRoutePreferencePending(false);
@@ -1514,9 +1579,11 @@ export function ViewerPage({
         setViewerPasswordDraft("");
         setViewerPasswordError(null);
         relayChildEvidenceStore.clear();
+        endpointMediaCopyCapacity = currentPeerId === null ? message.endpointMediaCopyCapacity
+          : Math.max(endpointMediaCopyCapacity, message.endpointMediaCopyCapacity);
         currentPeerId = message.peerId;
         setSelfPeerId(message.peerId);
-        endpointMediaCopyCapacity = message.endpointMediaCopyCapacity;
+        setRelayVolunteerPending(signal.relayVolunteerRequest !== null);
         currentAssignment = limitMediaAssignment(
           currentAssignment,
           endpointMediaCopyCapacity,
@@ -1858,6 +1925,7 @@ export function ViewerPage({
     signal.start();
     return () => {
       active = false;
+      requestRelayVolunteerRef.current = null;
       document.removeEventListener("freeze", suspendForPageLifecycle);
       document.removeEventListener("resume", recoverFromPageLifecycle);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
@@ -2284,6 +2352,11 @@ export function ViewerPage({
                     }
                   },
                 } : undefined,
+                relayVolunteer: relayVolunteerSupported ? {
+                  enabled: relayVolunteerEnabled, pending: relayVolunteerPending,
+                  disabled: signalStatus !== "connected" || relayVolunteerPending,
+                  onChange: enabled => requestRelayVolunteerRef.current?.(enabled),
+                } : undefined,
               }}
               videoRef={videoRef}
               stream={remoteMedia?.stream ?? null}
@@ -2354,6 +2427,10 @@ export function ViewerPage({
             )}
           </div>
           <RoomInteractions session={interactionSession}
+            voice={roomVoiceSession ? {
+              content: <RoomVoicePanel session={roomVoiceSession} names={new Map((participantPresence ?? []).map(person => [person.peerId, person.displayName]))} />,
+              controls: <RoomVoiceControls session={roomVoiceSession} />,
+            } : undefined}
             view="viewer"
             host={
               labeledHostPresence

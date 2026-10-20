@@ -32,6 +32,8 @@ import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
+import type { RoomVoiceSession } from "../room-voice/session";
+import { RoomVoicePanel, RoomVoiceControls } from "../room-voice/RoomVoicePanel";
 import { HostAudio } from "../media/host-audio";
 import {
   CaptureSourcePicker,
@@ -384,6 +386,7 @@ export function HostPage({
   const audioAvailableRef = useRef(false);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
+  const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
   const [microphoneVolume, setMicrophoneVolume] = useState(1);
   const [microphoneVoiceProcessing, setMicrophoneVoiceProcessing] = useState(true);
   const [microphonePending, setMicrophonePending] = useState(false);
@@ -461,7 +464,7 @@ export function HostPage({
     useState<HostCreationProfile>(readCreationProfile);
   const creationProfileRef = useRef(creationProfile);
   const [roomMutation, setRoomMutation] = useState<
-    "access" | "replacement" | "sharing" | null
+    "access" | "replacement" | "sharing" | "creation" | null
   >(null);
   const roomMutating = roomMutation !== null;
   const [viewerPasswordEnabled, setViewerPasswordEnabled] = useState(false);
@@ -985,7 +988,7 @@ export function HostPage({
   }
 
   function beginRoomMutation(
-    kind: "access" | "replacement" | "sharing",
+    kind: "access" | "replacement" | "sharing" | "creation",
   ): object | null {
     if (roomMutationRef.current) {
       return null;
@@ -1039,6 +1042,36 @@ export function HostPage({
       disposeResources(false);
       setStatusNotice(message, comic, tone);
       setPhase(idlePhase);
+    }
+  }
+
+  async function createIdleRoom(): Promise<void> {
+    if (!hostRoomSessionAvailable || roomRef.current || phase === "starting") return;
+    const mutation = beginRoomMutation("creation");
+    if (!mutation) return;
+    try {
+      await roomInitializationRef.current;
+      if (roomMutationRef.current !== mutation || roomRef.current) return;
+      const profile = creationProfileRef.current;
+      const response = await createRoom(
+        profile.codeEntryPolicy, profile.roomPassword, readPreferredRoomId(),
+      );
+      const created = hostRoomFromCreated(response);
+      if (roomMutationRef.current !== mutation) {
+        closeAbandonedRoom(created);
+        return;
+      }
+      if (!(await writeHostRoom(created, () => roomMutationRef.current === mutation))) {
+        closeAbandonedRoom(created);
+        throw new Error("Host room is already open in another tab");
+      }
+      roomRef.current = created;
+      setRoom(created);
+      setViewerPasswordEnabled(profile.roomPassword !== null);
+    } catch (error) {
+      if (roomMutationRef.current === mutation) setNoticeError(error, "room");
+    } finally {
+      finishRoomMutation(mutation);
     }
   }
 
@@ -2710,6 +2743,7 @@ export function HostPage({
     remoteInputPeersRef.current = [];
     void getRuntimeCapabilities().then(capabilities => {
       if (signalRef.current === signal && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
+      if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice(releaseCommentaryMicrophone));
       if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
       if (signalRef.current === signal && capabilities.audioPresence) signal.enableAudioPresence();
     }).catch(() => { /* Optional input does not block sharing. */ });
@@ -3078,12 +3112,36 @@ export function HostPage({
       failureCode: hostFailureCode(error, action, "camera") });
   }
 
+  async function releaseCommentaryMicrophone(): Promise<void> {
+    if (sourceSwitchRef.current || qualityChangeRef.current) throw new Error("Microphone operation is busy");
+    const token = {};
+    sourceSwitchRef.current = token;
+    setMicrophonePending(true);
+    try {
+      if (nativeModeRef.current && nativeShareGenerationRef.current) {
+        const client = nativeClientRef.current;
+        if (!client) throw new Error("Native microphone control is unavailable");
+        if (client.health.nativeMedia.microphone) {
+          // A rejected/failed stop must reject the room voice precondition.
+          await client.setMicrophone(nativeShareGenerationRef.current, false, microphoneVolume, "");
+        }
+      }
+      hostAudioRef.current?.releaseMicrophone();
+    } finally {
+      if (sourceSwitchRef.current === token) {
+        setMicrophonePending(false);
+        finishSourceSwitch(token);
+      }
+    }
+  }
+
   async function changeMicrophone(enabled: boolean, deviceId: string, voiceProcessing = microphoneVoiceProcessing): Promise<void> {
     const audio = hostAudioRef.current;
     const generation = activeGenerationRef.current;
     const client = nativeModeRef.current ? nativeClientRef.current : null;
     const shareId = nativeShareGenerationRef.current;
-    if ((!audio && !(client?.health.nativeMedia.microphone && shareId)) || generation === null || sourceSwitchRef.current || qualityChangeRef.current || sharingPausedRef.current) return;
+    if ((!audio && !(client?.health.nativeMedia.microphone && shareId)) || generation === null || sourceSwitchRef.current || qualityChangeRef.current || enabled && sharingPausedRef.current) return;
+    if (enabled) signalRef.current?.roomVoice?.stopMicrophone();
     const token = {};
     sourceSwitchRef.current = token;
     setMicrophonePending(true);
@@ -3999,6 +4057,10 @@ export function HostPage({
             }
           />
           <RoomInteractions session={room ? interactionSession : null}
+            voice={room && roomVoiceSession ? {
+              content: <RoomVoicePanel session={roomVoiceSession} names={new Map(participantPresence.map(person => [person.peerId, person.displayName]))} />,
+              controls: <RoomVoiceControls session={roomVoiceSession} />,
+            } : undefined}
             view="host"
             host={{
               key: hostIdentity,
@@ -4046,7 +4108,11 @@ export function HostPage({
                     passwordEnabled={viewerPasswordEnabled}
                   />
                 ) : null}
-              </> : <RoomCodePlaceholder />}
+              </> : <RoomCodePlaceholder
+                onCreate={hostRoomSessionAvailable ? () => void createIdleRoom() : undefined}
+                disabled={roomMutating || phase === "starting"}
+                busy={roomMutation === "creation"}
+              />}
             </div>
             <div className="lr-host-personal-controls">
               <div className="lr-row-group lr-group-name lr-host-identity-slot">

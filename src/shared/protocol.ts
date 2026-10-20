@@ -235,6 +235,8 @@ export const runtimeCapabilitiesSchema = z.object({
   sfuOnly: z.boolean().optional(),
   natPrediction: z.boolean().default(false),
   roomInteractions: z.boolean().default(false),
+  roomVoice: z.boolean().default(false),
+  relayVolunteer: z.boolean().default(false),
   roomReactionIds: z.array(z.string().max(32).regex(/^[a-z][a-z0-9-]*$/)).max(64).optional(),
   hostRoomSession: z.boolean().default(false),
   remoteInput: z.boolean().default(false),
@@ -329,6 +331,49 @@ const iceCandidateSchema = z
     usernameFragment: z.string().max(256).nullable().optional(),
   })
   .strict();
+
+export const voiceDescriptionSchema = z.object({
+  revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  sdp: sessionDescriptionSchema,
+  tracks: z.array(z.object({ mid: z.string().min(1).max(128), publicationId: opaqueIdSchema }).strict())
+    .max(MAX_PARTICIPANTS_PER_ROOM_LIMIT * 2),
+}).strict();
+export type VoiceDescription = z.infer<typeof voiceDescriptionSchema>;
+
+const voiceSignalShape = {
+  connectionId: opaqueIdSchema,
+  description: voiceDescriptionSchema.optional(),
+  candidate: iceCandidateSchema.optional(),
+  renegotiate: z.literal(true).optional(),
+};
+export const roomVoiceCommandSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("join") }).strict(),
+  z.object({ action: z.literal("leave") }).strict(),
+  z.object({ action: z.literal("permission"), peerId: opaqueIdSchema, listen: z.boolean(), speak: z.boolean() }).strict()
+    .refine(value => !value.speak || value.listen),
+  z.object({ action: z.literal("publish") }).strict(),
+  z.object({ action: z.literal("unpublish"), publicationId: opaqueIdSchema }).strict(),
+]);
+export type RoomVoiceCommand = z.infer<typeof roomVoiceCommandSchema>;
+export const roomVoiceStateSchema = z.object({
+  type: z.literal("room-voice-state"),
+  revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  hostPeerId: opaqueIdSchema.nullable(),
+  members: z.array(z.object({ peerId: opaqueIdSchema, connected: z.boolean(), requested: z.boolean(),
+    listen: z.boolean(), speak: z.boolean(), publicationId: opaqueIdSchema.optional() }).strict())
+    .max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
+  publications: z.array(z.object({ id: opaqueIdSchema, peerId: opaqueIdSchema }).strict())
+    .max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
+  connections: z.array(z.object({ connectionId: opaqueIdSchema, parentPeerId: opaqueIdSchema.optional(),
+    childPeerId: opaqueIdSchema, transport: z.enum(["peer", "sfu"]), pending: z.boolean(),
+    revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    send: z.array(opaqueIdSchema).max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
+    receive: z.array(opaqueIdSchema).max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
+  }).strict()).max(MAX_PARTICIPANTS_PER_ROOM_LIMIT + 1),
+  unavailable: z.array(opaqueIdSchema).max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
+}).strict();
+export type RoomVoiceState = z.infer<typeof roomVoiceStateSchema>;
+export type VoiceConnection = RoomVoiceState["connections"][number];
 
 export const punchPredictionSchema = z.object({
   address: z.ipv4(),
@@ -589,7 +634,7 @@ export const participantRouteAssignmentSchema = z
     upstream: mediaRouteUpstreamSchema,
     childPeerIds: z
       .array(opaqueIdSchema)
-      .max(MAX_ENDPOINT_MEDIA_COPY_CAPACITY)
+      .max(MAX_VIEWERS_PER_ROOM_LIMIT)
       .refine((peerIds) => new Set(peerIds).size === peerIds.length),
     sfuPublicationGeneration: sfuPublicationGenerationSchema.nullable(),
   })
@@ -883,6 +928,13 @@ const signalingChallengeSequenceSchema = z
   .max(Number.MAX_SAFE_INTEGER);
 
 export const clientMessageSchema = z.union([
+  z.object({ type: z.literal("set-relay-volunteer"), enabled: z.boolean(), capacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT) }).strict(),
+  z.object({ type: z.literal("subscribe-room-voice") }).strict(),
+  z.object({ type: z.literal("room-voice-command"), command: roomVoiceCommandSchema }).strict(),
+  z.object({ type: z.literal("room-voice-signal"), ...voiceSignalShape }).strict()
+    .refine(value => Number(!!value.description) + Number(!!value.candidate) + Number(!!value.renegotiate) === 1),
+  z.object({ type: z.literal("room-voice-transport"), connectionId: opaqueIdSchema,
+    state: z.enum(["connected", "failed"]) }).strict(),
   z.object({ type: z.literal("set-viewer-route-preference"), preference: viewerRoutePreferenceSchema }).strict(),
   z.object({ type: z.literal("subscribe-audio-presence") }).strict(),
   z.object({ type: z.literal("set-audio-presence"), shareGeneration: opaqueIdSchema, available: z.boolean() }).strict(),
@@ -1065,6 +1117,12 @@ const authenticatedMessageSchema = z.union([
 ]);
 
 export const serverMessageSchema = z.union([
+  z.object({ type: z.literal("relay-volunteer"), enabled: z.boolean(), capacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT) }).strict(),
+  roomVoiceStateSchema,
+  z.object({ type: z.literal("room-voice-signal"), ...voiceSignalShape }).strict()
+    .refine(value => Number(!!value.description) + Number(!!value.candidate) + Number(!!value.renegotiate) === 1),
+  z.object({ type: z.literal("room-voice-error"),
+    code: z.enum(["not-allowed", "participant-unavailable", "connection-unavailable"]) }).strict(),
   z.object({ type: z.literal("viewer-route-preference"), preference: viewerRoutePreferenceSchema, accepted: z.boolean() }).strict(),
   z.object({ type: z.literal("audio-presence"), available: z.boolean().nullable() }).strict(),
   z.object({ type: z.literal("remote-input-peers"), peers: z.array(z.object({ peerId: opaqueIdSchema,

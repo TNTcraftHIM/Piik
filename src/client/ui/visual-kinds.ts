@@ -62,6 +62,7 @@ export type Set1Kind =
 export type Set2Kind =
   | "hint-copy-code"
   | "hint-shuffle-code"
+  | "hint-create-room"
   | "hint-copy-invite"
   | "hint-invite-link"
   | "hint-client-link"
@@ -167,6 +168,8 @@ export type RemoteHintKind =
   | "hint-remote-mouse-lock"
   | "hint-remote-mouse-release";
 
+export type RelayHintKind = "hint-relay-volunteer";
+
 export type HintKind =
   | Set1Kind
   | Set2Kind
@@ -177,6 +180,7 @@ export type HintKind =
   | MetricHintKind
   | InteractionHintKind
   | RemoteHintKind
+  | RelayHintKind
   | ControlHintKind;
 
 export type ComicTheme = "stage" | "paper";

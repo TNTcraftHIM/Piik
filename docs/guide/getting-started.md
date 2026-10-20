@@ -35,6 +35,7 @@ and use its buttons. Safari may show system controls in video fullscreen.
 | **Picture in picture** | Opens a floating video where supported. |
 | **Volume** | Goes up to 200% with audio boost, or 100% otherwise. Lower it if the sound distorts. |
 | **Playback settings** | **Fit** keeps the whole picture visible; **Fill** crops its edges; **Stretch** fills the area by changing its proportions. Connection settings default to **Auto**; available alternatives depend on the host and site. |
+| **Rotate picture** (test builds) | Switches between portrait and landscape locally, without rotating the device or changing the shared source. |
 
 </details>
 
@@ -312,7 +313,7 @@ limited. System-protected shortcuts and some games may not accept remote input.
 
 ## Chat and reactions
 
-Once the host starts the first share, participants can select **Interact** below the
+Once the host creates a room, participants can select **Interact** below the
 sofa to send messages. Select a person on the sofa to open their reaction menu:
 your own reactions appear above you; reactions sent to a friend fly towards them.
 The interaction window can be moved and resized without rearranging the page.
@@ -335,6 +336,27 @@ messages: refreshing clears them, and late joiners receive no earlier history.
 To keep a copy, use **Chat settings → Export chat** to save the latest messages
 retained on this page (up to 1,000) as a text file.
 Chat travels through the room's server and is **not end-to-end encrypted**.
+
+### Room voice in test builds
+
+The Host may choose **Create room** before sharing, then copy its invitation.
+Open **Interact → Voice** and select **Join voice**. Viewers select
+**Request voice**; the Host can allow listening, allow speaking or remove them.
+Permission never opens a microphone: each speaker selects **Turn on microphone**
+and grants browser access. **Mute for me** changes only your own playback.
+
+Voice stays connected when picture sharing stops. It also stays active when you
+close or detach the interaction window; choose **Leave voice** to leave.
+The Host's source commentary and room microphone hand over the device rather
+than recording it twice. Use headphones; whole-system sound sharing can include
+received voices, so [audio exclusion](#exclude-a-voice-app-from-screen-audio)
+may help on supported App capture paths.
+
+On capable test sites, **Playback settings → Connection → Help relay to more
+viewers** lets a Viewer volunteer more upload for the current visit. It remains
+an ordinary P2P relay; enable it on a stable connection with upload to spare.
+Room voice and this control require the matching test Server/Web, not an older
+public site. External-network and physical-audio testing are still in progress.
 
 ## When something gets in the way
 
