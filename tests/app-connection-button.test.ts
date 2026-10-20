@@ -67,14 +67,14 @@ const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
 function mount(activated = false, state: "idle" | "ready" = "idle") {
-  const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }), location: { replace: vi.fn() } };
+  const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site } });
   const native = {
     discoverNativeConnect: vi.fn(async (_signal: AbortSignal): Promise<string | null> => approval),
     discoverNativeHealth: vi.fn(async (_options: { signal: AbortSignal }): Promise<object | null> => ({})),
     NativeCompatibilityError: class extends Error {},
   };
-  const pending = { current: null as { controller: AbortController } | null };
+  const pending = { current: null as { controller: AbortController; cancel?: () => void } | null };
   const healthCheck = { current: null as AbortController | null };
   const help = { current: { hidePopover: vi.fn(), matches: vi.fn(() => false) } };
   const showHelp = vi.fn();
@@ -99,14 +99,58 @@ function mount(activated = false, state: "idle" | "ready" = "idle") {
     }));
   }
   const activateElsewhere = () => { activated = true; window.dispatchEvent(new Event("activation")); };
-  return { ...operation, popup, window, native, pending, help, showHelp, setState, activateClient, activateElsewhere, onConnected, message };
+  const openApproval = async () => { await operation.connect(); await operation.connect(); };
+  return { ...operation, openApproval, popup, window, native, pending, help, showHelp, setState, activateClient, activateElsewhere, onConnected, message };
 }
 
 describe("App connection approval", () => {
+  it("keeps permission discovery in the original tab and opens only on a later click", async () => {
+    const page = mount();
+    let complete!: (url: string) => void;
+    page.native.discoverNativeConnect.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+    const connecting = page.connect();
+    await settle();
+    expect(page.setState).toHaveBeenLastCalledWith("busy");
+    expect(page.showHelp).toHaveBeenCalledOnce();
+    expect(page.window.open).not.toHaveBeenCalled();
+    complete(approval);
+    await connecting;
+    expect(page.setState).toHaveBeenLastCalledWith("approval");
+    expect(page.window.open).not.toHaveBeenCalled();
+    page.message({ source: null });
+    expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
+    await page.connect();
+    expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
+    expect(page.setState).toHaveBeenLastCalledWith("approving");
+    page.cleanup();
+  });
+
+  it("cancels dismissed discovery and ignores its late result before a retry", async () => {
+    const page = mount();
+    let complete!: (url: string) => void;
+    page.native.discoverNativeConnect.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    const connecting = page.connect();
+    await settle();
+    const first = page.pending.current!;
+    first.cancel!();
+    expect(first.controller.signal.aborted).toBe(true);
+    expect(page.pending.current).toBeNull();
+    expect(page.setState).toHaveBeenLastCalledWith("idle");
+    await page.connect();
+    complete(approval);
+    await connecting;
+    expect(page.setState).toHaveBeenLastCalledWith("approval");
+    expect(page.pending.current).not.toBe(first);
+    expect(page.window.open).not.toHaveBeenCalled();
+    await page.connect();
+    expect(page.window.open).toHaveBeenCalledOnce();
+    page.cleanup();
+  });
+
   it("opens the launcher for an already connected Site without changing approval", async () => {
     const page = mount(true, "ready");
-    await page.connect();
-    expect(page.popup.location.replace).toHaveBeenCalledWith("http://127.0.0.1:39721/client");
+    await page.openApproval();
+    expect(page.window.open).toHaveBeenCalledWith("http://127.0.0.1:39721/client", "_blank");
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.pending.current).toBeNull();
     expect(page.activateClient).not.toHaveBeenCalled();
@@ -120,8 +164,8 @@ describe("App connection approval", () => {
     page.native.discoverNativeConnect.mockResolvedValue(null);
     await page.connect();
     expect(page.setState).toHaveBeenLastCalledWith("unavailable");
-    expect(page.showHelp).toHaveBeenCalledOnce();
-    expect(page.popup.closed).toBe(true);
+    expect(page.showHelp).toHaveBeenCalledTimes(2);
+    expect(page.window.open).not.toHaveBeenCalled();
     expect(page.pending.current).toBeNull();
     expect(page.activateClient).not.toHaveBeenCalled();
     page.cleanup();
@@ -130,10 +174,10 @@ describe("App connection approval", () => {
   it("offers recovery when the browser blocks the approval window", async () => {
     const page = mount();
     page.window.open.mockReturnValue(null);
-    await page.connect();
+    await page.openApproval();
     expect(page.setState).toHaveBeenLastCalledWith("unavailable");
-    expect(page.showHelp).toHaveBeenCalledOnce();
-    expect(page.native.discoverNativeConnect).not.toHaveBeenCalled();
+    expect(page.showHelp).toHaveBeenCalledTimes(2);
+    expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();
     expect(page.activateClient).not.toHaveBeenCalled();
     page.cleanup();
   });
@@ -142,10 +186,10 @@ describe("App connection approval", () => {
     const page = mount();
     let complete!: (health: object) => void;
     page.native.discoverNativeHealth.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
-    await page.connect();
+    await page.openApproval();
     await page.connect();
     expect(page.window.open).toHaveBeenCalledOnce();
-    expect(page.popup.location.replace).toHaveBeenCalledWith(approval);
+    expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
     for (const invalid of [
       { source: {} }, { origin: "http://127.0.0.1:39722" },
       { data: { type: "piik-app-approved", site: "https://another.example" } },
@@ -172,7 +216,7 @@ describe("App connection approval", () => {
     const page = mount();
     if (result === "absent") page.native.discoverNativeHealth.mockResolvedValue(null);
     else page.native.discoverNativeHealth.mockRejectedValue(new Error("network unavailable"));
-    await page.connect();
+    await page.openApproval();
     page.message();
     await settle();
     expect(page.activateClient).not.toHaveBeenCalled();
@@ -180,7 +224,7 @@ describe("App connection approval", () => {
     expect(page.setState).toHaveBeenLastCalledWith("unavailable");
     expect(page.popup.closed).toBe(true);
     expect(page.pending.current).toBeNull();
-    await page.connect();
+    await page.openApproval();
     expect(page.window.open).toHaveBeenCalledTimes(2);
     page.cleanup();
   });
@@ -189,7 +233,7 @@ describe("App connection approval", () => {
     const page = mount();
     let complete!: (health: object) => void;
     page.native.discoverNativeHealth.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
-    await page.connect();
+    await page.openApproval();
     page.message();
     page.cleanup();
     complete({});
@@ -200,10 +244,10 @@ describe("App connection approval", () => {
     expect(page.onConnected).not.toHaveBeenCalled();
     expect(page.popup.closed).toBe(true);
     expect(page.native.discoverNativeHealth.mock.calls[0]![0].signal.aborted).toBe(true);
-    expect(page.setState).toHaveBeenLastCalledWith("busy");
+    expect(page.setState).toHaveBeenLastCalledWith("approving");
   });
 
-  it("never navigates the popup when discovery completes after unmount", async () => {
+  it("never opens an approval page when discovery completes after unmount", async () => {
     const page = mount();
     let complete!: (url: string) => void;
     page.native.discoverNativeConnect.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
@@ -212,21 +256,20 @@ describe("App connection approval", () => {
     page.cleanup();
     complete(approval);
     await connecting;
-    expect(page.popup.location.replace).not.toHaveBeenCalled();
-    expect(page.popup.closed).toBe(true);
+    expect(page.window.open).not.toHaveBeenCalled();
     expect(page.activateClient).not.toHaveBeenCalled();
   });
 
   it("releases a closed approval window on focus and permits retry", async () => {
     const page = mount();
-    await page.connect();
+    await page.openApproval();
     page.popup.closed = true;
     page.window.dispatchEvent(new Event("focus"));
     expect(page.pending.current).toBeNull();
     expect(page.setState).toHaveBeenLastCalledWith("idle");
     page.message();
     expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
-    await page.connect();
+    await page.openApproval();
     expect(page.window.open).toHaveBeenCalledTimes(2);
     page.cleanup();
   });
@@ -264,7 +307,7 @@ describe("App connection approval", () => {
     let complete!: (health: object | null) => void;
     page.native.discoverNativeHealth.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
     await settle();
-    await page.connect();
+    await page.openApproval();
     expect(page.native.discoverNativeHealth.mock.calls[0]![0].signal.aborted).toBe(true);
     page.message();
     await settle();
