@@ -32,7 +32,7 @@ func isBackgroundConvergence(reason DemandReason) bool {
 }
 
 func isAvailabilityOperation(reason DemandReason) bool {
-	return reason != DemandSfuBootstrap && !isBackgroundConvergence(reason)
+	return reason != DemandPublicationAttach && reason != DemandSfuBootstrap && !isBackgroundConvergence(reason)
 }
 
 // operationRequiresNativeCandidateProof returns false for a nil operation.
@@ -76,6 +76,11 @@ func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
 			Released:       released,
 		}
 	}
+	// Attach existing upstreams before asking them to supply a new video child.
+	if c.startPublicationAttach(nowMs) {
+		return ReconcileResult{Operation: c.operationSnapshot(), RemovedPeerIDs: removedPeerIDs,
+			FailedPeerIDs: failedPeerIDs, Released: released}
+	}
 
 	// The loop bound is a count, not an order.
 	for remaining := c.participants.Len(); remaining > 0; remaining-- {
@@ -89,11 +94,11 @@ func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
 			continuation = c.selectDirectContinuation()
 		}
 		qualityChildPeerID := ""
-		if routeChildPeerID == "" && bootstrap == nil && continuation == nil {
+		if routeChildPeerID == "" && bootstrap == nil && continuation == nil && c.videoWorkEnabled() {
 			qualityChildPeerID = c.selectQualityChild(nowMs)
 		}
 		var rootConvergence *rootConvergencePick
-		if routeChildPeerID == "" && bootstrap == nil && continuation == nil && qualityChildPeerID == "" {
+		if routeChildPeerID == "" && bootstrap == nil && continuation == nil && qualityChildPeerID == "" && c.videoWorkEnabled() {
 			rootConvergence = c.takeRootConvergenceIntent()
 		}
 		childPeerID := routeChildPeerID
@@ -203,6 +208,7 @@ func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
 			qualitySource = c.currentQualityOperationSource(childPeerID)
 		}
 		c.operation = &operation{
+			videoGeneration:       c.requiredVideoGeneration(),
 			childPeerID:           childPeerID,
 			childSessionID:        child.sessionID,
 			demandPeerID:          demandPeerID,
@@ -235,7 +241,8 @@ func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
 
 // BeginCurrentCandidate starts the candidate at the guarded cursor with the
 // caller's reservation; every rejection echoes the reservation back in
-// Released. Panics on a reservation that does not match the tuple.
+// Released. Publication attachment takes an empty reservation and preserves
+// the committed edge. Other attempts panic on a mismatched reservation.
 func (c *Controller) BeginCurrentCandidate(input BeginInput) BeginResult {
 	validation := c.validateOrAdvance(input.NowMs, nil)
 	op := c.operation
@@ -246,6 +253,9 @@ func (c *Controller) BeginCurrentCandidate(input BeginInput) BeginResult {
 			Released:      concatResources(validation.released, reservationResources(input.Reservation)),
 			FailedPeerIDs: failedPeerIDsFrom(validation),
 		}
+	}
+	if op.reason == DemandPublicationAttach {
+		return c.beginPublicationAttach(input, op, validation)
 	}
 	plan := op.planAt(op.cursor)
 	if plan == nil || !c.operationCandidateValid(op, *plan, nil) {
@@ -363,6 +373,10 @@ func (c *Controller) SkipCurrentCandidate(guard CandidateCursorGuard, nowMs int6
 			FailedPeerIDs: failedPeerIDsFrom(validation),
 			Released:      validation.released,
 		}
+	}
+	if op.reason == DemandPublicationAttach {
+		c.finishPublicationAttach(op, false)
+		return BeginResult{Accepted: true, FailedPeerIDs: []string{op.childPeerID}, Released: validation.released}
 	}
 	if bucket == RejectionCandidateFailed {
 		if isAvailabilityOperation(op.reason) {
@@ -493,6 +507,16 @@ func (c *Controller) CandidateReady(guard CandidateGuard, nowMs int64, commitRes
 			Released:       validation.released,
 		}
 	}
+	if c.roomMedia && op.videoGeneration != "" && proof.VideoGeneration != op.videoGeneration {
+		return SettleResult{ActiveRevision: c.revision, Released: validation.released}
+	}
+	if c.roomMedia && op.videoGeneration == "" && !att.transportConnected {
+		return SettleResult{ActiveRevision: c.revision, Released: validation.released}
+	}
+	if op.reason == DemandPublicationAttach {
+		c.finishPublicationAttach(op, true)
+		return SettleResult{Accepted: true, Committed: true, ActiveRevision: c.revision, Released: validation.released}
+	}
 	qualityPeer := op.reason == DemandQualityConvergence && att.tuple.Kind == UpstreamPeer
 	relativeP2pProof := qualityPeer && proof.RelativeQualityApproved
 	if relativeP2pProof && att.relativeQualityApprovedAtMs == nil {
@@ -622,8 +646,9 @@ func (c *Controller) CandidateReady(guard CandidateGuard, nowMs int64, commitRes
 	}
 }
 
-// CandidateTransportConnected marks the guarded peer attempt as connected so
-// it survives the direct head start until the operation deadline.
+// CandidateTransportConnected records actual transport establishment. Peer
+// attempts survive the direct head start; room-mode silent Peer/SFU attempts
+// also require this evidence before CandidateReady may commit.
 func (c *Controller) CandidateTransportConnected(guard CandidateGuard, nowMs int64) SettleResult {
 	validation := c.validateOrAdvance(nowMs, nil)
 	op := c.operation
@@ -631,7 +656,7 @@ func (c *Controller) CandidateTransportConnected(guard CandidateGuard, nowMs int
 	if op != nil {
 		att = op.current
 	}
-	if op == nil || att == nil || att.tuple.Kind != UpstreamPeer || !c.guardMatches(guard, op, att) {
+	if op == nil || att == nil || (att.tuple.Kind != UpstreamPeer && !c.roomMedia) || !c.guardMatches(guard, op, att) {
 		return SettleResult{
 			Accepted:       false,
 			FailedPeerIDs:  failedPeerIDsFrom(validation),
@@ -656,6 +681,11 @@ func (c *Controller) CandidateTransportConnected(guard CandidateGuard, nowMs int
 // and advancing the cursor; Accepted reports whether the guard was consumed.
 func (c *Controller) CandidateFailed(guard CandidateGuard, nowMs int64) SettleResult {
 	op := c.operation
+	if op != nil && op.reason == DemandPublicationAttach {
+		validation := c.validateOrAdvance(nowMs, &guard)
+		return SettleResult{Accepted: validation.consumedGuard, FailedPeerIDs: failedPeerIDsFrom(validation),
+			ActiveRevision: c.revision, Released: validation.released}
+	}
 	if op != nil && op.current != nil && c.guardMatches(guard, op, op.current) {
 		c.consumeCurrentAvailabilityOpportunity(op)
 		c.debug("candidate-failed",
@@ -716,6 +746,9 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 	op := c.operation
 	if op == nil {
 		return result
+	}
+	if op.reason == DemandPublicationAttach {
+		return c.validatePublicationAttach(op, nowMs, failedGuard)
 	}
 	if !c.bootstrapOperationOwned(op) {
 		if op.current != nil {
@@ -1014,6 +1047,10 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 			c.directContinuations.Delete(op.childPeerID)
 		}
 	}
+	if c.roomMedia && op.videoGeneration != "" {
+		edge, _ := c.upstreamByViewer.Get(op.childPeerID)
+		edge.VideoGeneration, edge.VideoConnectionID, edge.VideoReady = op.videoGeneration, att.connectionID, true
+	}
 	producerPeerIDs := []string{}
 	if oldPeer {
 		producerPeerIDs = append(producerPeerIDs, old.ParentPeerID)
@@ -1176,16 +1213,18 @@ func (c *Controller) operationSnapshot() *OperationSnapshot {
 		candidates = append(candidates, cloneCandidatePlan(candidate))
 	}
 	snapshot := &OperationSnapshot{
-		ChildPeerID:    op.childPeerID,
-		ChildSessionID: op.childSessionID,
-		DemandPeerID:   op.demandPeerID,
-		Reason:         op.reason,
-		BaseRevision:   op.baseRevision,
-		FactVersion:    op.builtAtFactVersion,
-		Candidates:     candidates,
-		Cursor:         op.cursor,
-		DeadlineAtMs:   op.deadlineAtMs,
-		WakeAtMs:       c.operationWakeAt(op),
+		VideoGeneration:    op.videoGeneration,
+		AttachConnectionID: op.attachConnectionID,
+		ChildPeerID:        op.childPeerID,
+		ChildSessionID:     op.childSessionID,
+		DemandPeerID:       op.demandPeerID,
+		Reason:             op.reason,
+		BaseRevision:       op.baseRevision,
+		FactVersion:        op.builtAtFactVersion,
+		Candidates:         candidates,
+		Cursor:             op.cursor,
+		DeadlineAtMs:       op.deadlineAtMs,
+		WakeAtMs:           c.operationWakeAt(op),
 	}
 	if op.current != nil {
 		current := &CurrentAttempt{
@@ -1241,6 +1280,9 @@ func (c *Controller) advanceExpiredDirectHeadStart(op *operation, nowMs int64, r
 }
 
 func (c *Controller) operationWakeAt(op *operation) int64 {
+	if op.reason == DemandPublicationAttach {
+		return op.deadlineAtMs
+	}
 	currentTuple := op.currentTuple()
 	if currentTuple != nil && currentTuple.Kind == UpstreamPeer &&
 		!(op.current != nil && op.current.transportConnected) &&

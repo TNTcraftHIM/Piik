@@ -54,7 +54,7 @@ func (c *Controller) buildCandidatePlans(childPeerID string, sfuOnly, preferUntr
 	parents := []*participant{}
 	for _, parent := range c.participants.Values() {
 		if parent.sessionID != "" && !parent.departureConfirmed && parent.peerID != childPeerID &&
-			!slices.Contains(descendants, parent.peerID) && c.sourceUsable(parent.peerID) && c.targetFits(parent.peerID, childPeerID) {
+			!slices.Contains(descendants, parent.peerID) && c.sourceUsable(parent.peerID) && c.sourceVideoReady(parent.peerID) && c.targetFits(parent.peerID, childPeerID) {
 			parents = append(parents, parent)
 		}
 	}
@@ -198,7 +198,7 @@ func (c *Controller) candidateValid(childPeerID string, plan CandidatePlan, att 
 		}
 		parent, _ := c.participants.Get(tuple.ParentPeerID)
 		if parent == nil || parent.sessionID == "" || parent.departureConfirmed || (att != nil && parent.sessionID != att.parentSessionID) ||
-			slices.Contains(c.descendantsOf(childPeerID), parent.peerID) || !c.sourceUsable(parent.peerID) ||
+			slices.Contains(c.descendantsOf(childPeerID), parent.peerID) || !c.sourceUsable(parent.peerID) || !c.sourceVideoReady(parent.peerID) ||
 			!c.targetFits(parent.peerID, childPeerID) {
 			return false
 		}

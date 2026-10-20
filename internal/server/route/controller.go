@@ -84,6 +84,8 @@ type attempt struct {
 
 // operation is the single in-flight route operation.
 type operation struct {
+	videoGeneration       string
+	attachConnectionID    string
 	childPeerID           string
 	childSessionID        string
 	demandPeerID          string
@@ -330,6 +332,9 @@ func (c *Controller) Snapshot() RouteSnapshot {
 		publication = &copied
 	}
 	return RouteSnapshot{
+		RoomMedia:        c.roomMedia,
+		VideoGeneration:  c.videoGeneration,
+		VideoPaused:      c.videoPaused,
 		Revision:         c.revision,
 		Paused:           c.paused,
 		FactVersion:      c.factVersion,
@@ -830,6 +835,13 @@ func (c *Controller) RetireHostPublication(guard PublicationGuard) []*Resource {
 // SetPaused pauses (aborting the operation and clearing quality state) or
 // resumes; returns the aborted reservation's resources.
 func (c *Controller) SetPaused(paused bool, nowMs *int64) []*Resource {
+	if c.roomMedia {
+		now := int64(0)
+		if nowMs != nil {
+			now = *nowMs
+		}
+		return c.SetVideoPublication(c.videoGeneration, paused, now)
+	}
 	if c.paused == paused {
 		return []*Resource{}
 	}

@@ -1,0 +1,194 @@
+package route
+
+import "testing"
+
+func commitRoomPeer(t *testing.T, routes *Controller, at int64, connection string) CandidateGuard {
+	t.Helper()
+	must(t, routes.Reconcile(at).Operation)
+	op := beginOperation(t, routes, BeginInput{NowMs: at, ConnectionID: connection, Reservation: direct()})
+	guard := guardFor(op.ChildPeerID, op.Current.Revision, connection)
+	eq(t, routes.CandidateReady(guard, at+1, nil, CandidateProof{}).Accepted, false)
+	eq(t, routes.CandidateTransportConnected(guard, at+1).Accepted, true)
+	eq(t, routes.CandidateReady(guard, at+2, nil, CandidateProof{}).Committed, true)
+	return guard
+}
+
+func voiceTree(t *testing.T) *Controller {
+	t.Helper()
+	routes := newController(1, Options{})
+	routes.SetVideoPublication("", false, 0)
+	addViewer(routes, A, 1, ms(1))
+	commitRoomPeer(t, routes, 2, "voice-a")
+	addViewer(routes, B, 0, ms(5))
+	commitRoomPeer(t, routes, 6, "voice-b")
+	eq(t, edgeOf(t, routes, B).ParentPeerID, A)
+	return routes
+}
+
+func beginVideoAttach(t *testing.T, routes *Controller, at int64, child, connection string) CandidateGuard {
+	t.Helper()
+	op := must(t, routes.Reconcile(at).Operation)
+	eq(t, op.Reason, DemandPublicationAttach)
+	eq(t, op.ChildPeerID, child)
+	eq(t, op.AttachConnectionID, edgeOf(t, routes, child).ConnectionID)
+	eq(t, op.Candidates[0].EndpointTransition.Kind, TransitionNone)
+	begun := routes.BeginCurrentCandidate(BeginInput{
+		Guard: cursorGuard(op), NowMs: at, ConnectionID: connection,
+	})
+	eq(t, begun.Accepted, true)
+	eq(t, len(begun.Released), 0)
+	return guardFor(child, begun.Operation.Current.Revision, connection)
+}
+
+func TestRoomVoiceTreeAttachesVideoSeriallyAndStopPreservesGraph(t *testing.T) {
+	routes := voiceTree(t)
+	before := routes.Snapshot()
+	routes.SetVideoPublication("share-one", false, 10)
+	a := beginVideoAttach(t, routes, 11, A, "video-a")
+	eq(t, routes.CandidateReady(a, 12, nil, CandidateProof{VideoGeneration: "old-share"}).Accepted, false)
+	eq(t, edgeOf(t, routes, A).VideoReady, false)
+	// A connected transport alone does not complete video attachment.
+	eq(t, routes.CandidateTransportConnected(a, 12).Accepted, true)
+	eq(t, routes.Reconcile(13).Operation.ChildPeerID, A)
+	eq(t, routes.CandidateReady(a, 14, nil, CandidateProof{VideoGeneration: "share-one"}).Committed, true)
+	b := beginVideoAttach(t, routes, 15, B, "video-b")
+	eq(t, routes.CandidateReady(b, 16, nil, CandidateProof{VideoGeneration: "share-one"}).Committed, true)
+	noOperation(t, routes.Reconcile(17).Operation)
+	for _, child := range []string{A, B} {
+		edge := edgeOf(t, routes, child)
+		previous, _ := before.UpstreamByViewer.Get(child)
+		eq(t, edge.ConnectionID, previous.ConnectionID)
+		eq(t, edge.ParentPeerID, previous.ParentPeerID)
+		eq(t, edge.VideoGeneration, "share-one")
+		eq(t, edge.VideoReady, true)
+	}
+	eq(t, len(routes.SetVideoPublication("", false, 18)), 0)
+	for _, child := range []string{A, B} {
+		edge := edgeOf(t, routes, child)
+		eq(t, edge.Usable && edge.PhysicalActive, true)
+		eq(t, edge.VideoGeneration, "")
+		eq(t, edge.VideoConnectionID, "")
+		eq(t, edge.VideoReady, false)
+	}
+	noOperation(t, routes.Reconcile(19).Operation)
+	routes.SetVideoPublication("share-two", false, 20)
+	a2 := beginVideoAttach(t, routes, 21, A, "video-a2")
+	eq(t, routes.CandidateReady(a, 22, nil, CandidateProof{VideoGeneration: "share-one"}).Accepted, false)
+	eq(t, routes.CandidateReady(a2, 22, nil, CandidateProof{VideoGeneration: "share-two"}).Committed, true)
+}
+
+func TestFailedPublicationAttachmentDoesNotRetryOrConsumeVoiceOpportunity(t *testing.T) {
+	for _, failure := range []string{"failure", "timeout", "skip"} {
+		t.Run(failure, func(t *testing.T) {
+			routes := voiceTree(t)
+			before := edgeOf(t, routes, A)
+			routes.SetVideoPublication("share", false, 10)
+			if failure == "skip" {
+				op := must(t, routes.Reconcile(11).Operation)
+				eq(t, routes.SkipCurrentCandidate(cursorGuard(op), 12, RejectionCandidateFailed).Accepted, true)
+			} else {
+				guard := beginVideoAttach(t, routes, 11, A, "video-a")
+				if failure == "failure" {
+					eq(t, routes.CandidateFailed(guard, 12).Accepted, true)
+				} else {
+					eq(t, routes.OperationExpired(routes.Operation().DeadlineAtMs).Accepted, true)
+				}
+			}
+			edge := edgeOf(t, routes, A)
+			eq(t, edge.ConnectionID, before.ConnectionID)
+			eq(t, edge.Usable && edge.PhysicalActive, true)
+			eq(t, edge.VideoGeneration, "share")
+			eq(t, edge.VideoReady, false)
+			eq(t, edge.VideoConnectionID, "")
+			child, _ := routes.participants.Get(A)
+			eq(t, child.availabilityExhausted, false)
+			for _, at := range []int64{20_000, 40_000, 80_000} {
+				noOperation(t, routes.Reconcile(at).Operation)
+			}
+			routes.SetVideoPublication("replacement", false, 80_001)
+			beginVideoAttach(t, routes, 80_002, A, "replacement-a")
+		})
+	}
+}
+
+func TestStopCancelsAttachmentAndRejectsLateFrame(t *testing.T) {
+	routes := voiceTree(t)
+	routes.SetVideoPublication("share", false, 10)
+	guard := beginVideoAttach(t, routes, 11, A, "video-a")
+	eq(t, len(routes.SetVideoPublication("", false, 12)), 0)
+	noOperation(t, routes.Operation())
+	eq(t, routes.CandidateReady(guard, 13, nil, CandidateProof{VideoGeneration: "share"}).Accepted, false)
+	eq(t, edgeOf(t, routes, A).ConnectionID, "voice-a")
+	eq(t, edgeOf(t, routes, B).ConnectionID, "voice-b")
+}
+
+func TestVoiceOptInRetainsAlreadyProvenVideo(t *testing.T) {
+	routes := newController(1, Options{})
+	addViewer(routes, A, 0, ms(1))
+	must(t, routes.Reconcile(1).Operation)
+	commitCurrent(t, routes, 2, "existing-video")
+	routes.SetVideoPublication("live-share", false, 4)
+	edge := edgeOf(t, routes, A)
+	eq(t, edge.VideoGeneration, "live-share")
+	eq(t, edge.VideoConnectionID, "existing-video")
+	eq(t, edge.VideoReady, true)
+	noOperation(t, routes.Reconcile(5).Operation)
+}
+
+func TestPausedVideoStillAllowsRoomJoinAndResumeAttaches(t *testing.T) {
+	routes := newController(1, Options{})
+	routes.SetVideoPublication("", false, 0)
+	routes.SetVideoPublication("share", true, 1)
+	addViewer(routes, A, 0, ms(2))
+	commitRoomPeer(t, routes, 3, "voice-a")
+	eq(t, routes.Snapshot().Paused, false)
+	eq(t, routes.Snapshot().VideoPaused, true)
+	eq(t, edgeOf(t, routes, A).VideoReady, false)
+	routes.SetPaused(false, ms(6))
+	beginVideoAttach(t, routes, 7, A, "video-a")
+}
+
+func TestRoomSfuAttachmentKeepsItsAdmittedRoomResources(t *testing.T) {
+	routes := newController(1, Options{SfuEnabled: true, SfuOnly: true})
+	addViewer(routes, A, 0, ms(1))
+	routes.hydrateHostPublication("room-ingress", res("ingress"), "ingress-pc")
+	routes.hydrateEdge(A, sfuEdge("room-ingress", "voice-a", "subscription"))
+	routes.SetVideoPublication("", false, 2)
+	before := routes.Snapshot()
+	routes.SetVideoPublication("share", false, 3)
+	guard := beginVideoAttach(t, routes, 4, A, "video-a")
+	eq(t, routes.CandidateReady(guard, 5, nil, CandidateProof{VideoGeneration: "share"}).Committed, true)
+	eq(t, len(routes.SetVideoPublication("", false, 6)), 0)
+	eq(t, routes.Publication().Resource, before.HostPublication.Resource)
+	old, _ := before.UpstreamByViewer.Get(A)
+	eq(t, edgeOf(t, routes, A).Resource, old.Resource)
+	eq(t, edgeOf(t, routes, A).ConnectionID, old.ConnectionID)
+}
+
+func TestAttachedVideoQualityUsesPhysicalVideoIdentityAndNativeProof(t *testing.T) {
+	routes := newController(2, Options{QualityConvergenceEnabled: true})
+	routes.SetVideoPublication("", false, 0)
+	addViewer(routes, A, 1, ms(1))
+	commitRoomPeer(t, routes, 2, "voice-a")
+	routes.SetVideoPublication("share", false, 5)
+	guard := beginVideoAttach(t, routes, 6, A, "video-a")
+	eq(t, routes.CandidateReady(guard, 7, nil, CandidateProof{VideoGeneration: "share"}).Committed, true)
+	eq(t, observeSenderState(routes, senderState{
+		childPeerID: A, connectionID: "voice-a", state: SenderQualityDegraded, acceptedAtMs: 8,
+	}).Accepted, false)
+	observePersistentDegraded(t, routes, A, "video-a", 10)
+	op := must(t, routes.Reconcile(14).Operation)
+	eq(t, op.Reason, DemandQualityConvergence)
+	begun := beginOperation(t, routes, BeginInput{NowMs: 15, ConnectionID: "replacement", Reservation: direct()})
+	candidate := guardFor(A, begun.Current.Revision, "replacement")
+	eq(t, routes.CandidateReady(candidate, 16, nil, CandidateProof{
+		RelativeQualityApproved: true, VideoGeneration: "share",
+	}).Committed, false)
+	eq(t, routes.ObserveSenderQualityEvidence(senderSample(
+		HOST, A, begun.Current.Revision, "replacement", "replacement-sender", SenderQualityHealthy, 17), nil).Committed, true)
+	eq(t, edgeOf(t, routes, A).VideoConnectionID, "replacement")
+	routes.SetVideoPublication("", false, 18)
+	eq(t, observeSenderState(routes, senderState{
+		childPeerID: A, connectionID: "replacement", state: SenderQualityHealthy, acceptedAtMs: 19,
+	}).Accepted, false)
+}

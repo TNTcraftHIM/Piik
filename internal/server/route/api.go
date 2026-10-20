@@ -115,6 +115,7 @@ const (
 	DemandDirectConvergence  DemandReason = "direct-convergence"
 	DemandQualityConvergence DemandReason = "quality-convergence"
 	DemandRootConvergence    DemandReason = "root-convergence"
+	DemandPublicationAttach  DemandReason = "publication-attach"
 )
 
 // FinalRoute mirrors protocol RouteDiagnosticFinalRoute.
@@ -223,7 +224,11 @@ type CommittedEdge struct {
 	ConnectionID          string
 	Usable                bool
 	PhysicalActive        bool
-	Resource              *Resource
+	// Video attachment belongs to a publication, independently of room transport.
+	VideoGeneration   string
+	VideoConnectionID string
+	VideoReady        bool
+	Resource          *Resource
 	// The acquisition's session key stays fixed when signaling ownership rebinds.
 	opportunityKey string
 }
@@ -257,23 +262,30 @@ type CurrentAttempt struct {
 // OperationSnapshot is a deep copy of the in-flight operation plus the
 // derived WakeAtMs. Current is nil without a live attempt.
 type OperationSnapshot struct {
-	ChildPeerID    string
-	ChildSessionID string
-	DemandPeerID   string
-	Reason         DemandReason
-	BaseRevision   int64
-	FactVersion    int64
-	Candidates     []CandidatePlan
-	Cursor         int
-	DeadlineAtMs   int64
-	WakeAtMs       int64
-	Current        *CurrentAttempt
+	// VideoGeneration fences decoded-frame proof. AttachConnectionID names
+	// the retained room edge only for DemandPublicationAttach.
+	VideoGeneration    string
+	AttachConnectionID string
+	ChildPeerID        string
+	ChildSessionID     string
+	DemandPeerID       string
+	Reason             DemandReason
+	BaseRevision       int64
+	FactVersion        int64
+	Candidates         []CandidatePlan
+	Cursor             int
+	DeadlineAtMs       int64
+	WakeAtMs           int64
+	Current            *CurrentAttempt
 }
 
 // RouteSnapshot is the committed graph as the router reads it.
 // UpstreamByViewer is a fresh insertion-ordered copy (child peerId -> edge);
 // HostPublication is a shallow copy or nil; Operation is nil when idle.
 type RouteSnapshot struct {
+	RoomMedia        bool
+	VideoGeneration  string
+	VideoPaused      bool
 	Revision         int64
 	Paused           bool
 	FactVersion      int64
@@ -387,9 +399,11 @@ type BeginInput struct {
 	HostSessionID           string
 }
 
-// CandidateProof carries the Viewer's one-shot relative quality approval.
+// CandidateProof carries the decoded publication identity in room-media mode
+// and the Viewer's one-shot relative quality approval when required.
 type CandidateProof struct {
 	RelativeQualityApproved bool
+	VideoGeneration         string
 }
 
 // QualityUpstream names the upstream a receiver-side window was measured
@@ -482,6 +496,9 @@ type Controller struct {
 	factVersion                       int64
 	nextJoinOrder                     int64
 	paused                            bool
+	roomMedia                         bool
+	videoGeneration                   string
+	videoPaused                       bool
 	routeTimings                      map[string]*routeTimingRecord
 	qualityObservations               map[string]*routeQualityObservation
 	senderQualityObservations         map[string]*senderQualityObservation

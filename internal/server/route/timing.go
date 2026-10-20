@@ -145,7 +145,7 @@ func (c *Controller) diagnosticParent(edge *CommittedEdge, ordinals map[string]i
 func (c *Controller) diagnosticQuality(childPeerID string, edge *CommittedEdge, nowMs int64) *protocol.RouteDiagnosticQuality {
 	observation := c.qualityObservations[childPeerID]
 	current, _ := c.participants.Get(childPeerID)
-	if c.paused ||
+	if c.paused || !c.videoWorkEnabled() ||
 		observation == nil ||
 		observation.eligibleWindows == 0 ||
 		nowMs >= observation.lastAcceptedAtMs+qualityEvidenceExpiryMs ||
@@ -154,7 +154,7 @@ func (c *Controller) diagnosticQuality(childPeerID string, edge *CommittedEdge, 
 		edge == nil ||
 		!edge.Usable ||
 		!edge.PhysicalActive ||
-		edge.ConnectionID != observation.connectionID ||
+		c.qualityConnectionID(edge) != observation.connectionID ||
 		!qualityObservationMatchesEdge(observation, edge) ||
 		!c.sourceUsableForQuality(edge) {
 		return nil

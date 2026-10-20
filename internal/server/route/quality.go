@@ -10,7 +10,7 @@ import (
 // child's committed edge: rejected on any mismatch, accepted when consumed
 // without aggregation, observed when aggregated.
 func (c *Controller) ObserveQualityEvidence(input RouteQualityEvidenceInput) RouteQualityEvidenceResult {
-	if c.paused ||
+	if c.paused || !c.videoWorkEnabled() ||
 		input.RouteRevision != c.revision ||
 		!isSafeInteger(input.PresentationEpoch) ||
 		input.PresentationEpoch < 0 ||
@@ -28,7 +28,7 @@ func (c *Controller) ObserveQualityEvidence(input RouteQualityEvidenceInput) Rou
 		!edge.Usable ||
 		!edge.PhysicalActive ||
 		edge.ChildSessionID != input.ChildSessionID ||
-		edge.ConnectionID != input.ConnectionID ||
+		c.qualityConnectionID(edge) != input.ConnectionID ||
 		!qualityUpstreamMatches(edge, input.Upstream) ||
 		!c.sourceUsableForQuality(edge) {
 		return QualityEvidenceRejected
@@ -124,7 +124,7 @@ func (c *Controller) ObserveSenderQualityEvidence(input SenderQualityEvidenceInp
 		commitReservation = func(CandidateReservation) bool { return true }
 	}
 	if !c.qualityConvergenceEnabled ||
-		c.paused ||
+		(c.paused || !c.videoWorkEnabled()) ||
 		!isSafeInteger(input.AcceptedAtMs) ||
 		input.AcceptedAtMs < 0 {
 		return c.senderRejected()
@@ -168,7 +168,7 @@ func (c *Controller) ObserveSenderQualityEvidence(input SenderQualityEvidenceInp
 		edge.ParentPeerID != input.ParentPeerID ||
 		edge.ParentSessionID != input.ParentSessionID ||
 		edge.ChildSessionID != child.sessionID ||
-		edge.ConnectionID != input.ConnectionID {
+		c.qualityConnectionID(edge) != input.ConnectionID {
 		return c.senderRejected()
 	}
 	previous := c.senderQualityObservations[input.ChildPeerID]
@@ -277,7 +277,7 @@ func (c *Controller) ObserveSfuPublisherQualityEvidence(input SfuPublisherQualit
 	}
 	host, _ := c.participants.Get(c.hostPeerID)
 	if !c.qualityConvergenceEnabled ||
-		c.paused ||
+		(c.paused || !c.videoWorkEnabled()) ||
 		input.HostPeerID != c.hostPeerID ||
 		host == nil || host.sessionID == "" ||
 		!host.sessionIs(input.HostSessionID) {
@@ -369,7 +369,7 @@ func (c *Controller) ObserveSfuPublisherQualityEvidence(input SfuPublisherQualit
 			result := c.CandidateFailed(guard, input.AcceptedAtMs)
 			settled = &result
 		} else if consecutiveHealthyWindows >= persistentDegradedWindows {
-			result := c.CandidateReady(guard, input.AcceptedAtMs, commitReservation, CandidateProof{})
+			result := c.CandidateReady(guard, input.AcceptedAtMs, commitReservation, CandidateProof{VideoGeneration: op.videoGeneration})
 			settled = &result
 		}
 		if settled != nil {
@@ -462,7 +462,7 @@ func (c *Controller) settleCandidateQuality(op *operation, att *attempt, state S
 		settled = &result
 	} else if att.mediaReady &&
 		(att.tuple.Kind != UpstreamSfu || consecutiveHealthyWindows >= persistentDegradedWindows) {
-		result := c.CandidateReady(guard, acceptedAtMs, commitReservation, CandidateProof{})
+		result := c.CandidateReady(guard, acceptedAtMs, commitReservation, CandidateProof{VideoGeneration: op.videoGeneration})
 		settled = &result
 	}
 	if settled == nil {
@@ -545,7 +545,7 @@ func (c *Controller) senderQualityState(childPeerID string, edge *CommittedEdge,
 		edge.ChildSessionID == observation.childSessionID &&
 		edge.ParentPeerID == observation.parentPeerID &&
 		edge.ParentSessionID == observation.parentSessionID &&
-		edge.ConnectionID == observation.connectionID &&
+		c.qualityConnectionID(edge) == observation.connectionID &&
 		c.sourceUsableForQuality(edge) {
 		return observation.state
 	}
@@ -563,7 +563,7 @@ func (c *Controller) currentQualityOperationSource(childPeerID string) *senderQu
 		observation.childSessionID != edge.ChildSessionID ||
 		observation.parentPeerID != edge.ParentPeerID ||
 		observation.parentSessionID != edge.ParentSessionID ||
-		observation.connectionID != edge.ConnectionID {
+		observation.connectionID != c.qualityConnectionID(edge) {
 		return nil
 	}
 	return &senderQualityIdentity{
@@ -597,7 +597,7 @@ func (c *Controller) senderQualityRegenerationBlocked(childPeerID string, edge *
 	if block.childSessionID != edge.ChildSessionID ||
 		block.parentPeerID != edge.ParentPeerID ||
 		block.parentSessionID != edge.ParentSessionID ||
-		block.connectionID != edge.ConnectionID {
+		block.connectionID != c.qualityConnectionID(edge) {
 		delete(c.senderQualityRegenerationBlocks, childPeerID)
 		return false
 	}
@@ -662,7 +662,7 @@ func (c *Controller) decodedProgressFresh(childPeerID string, edge *CommittedEdg
 		nowMs < *observation.lastDecodedProgressAtMs+qualityEvidenceExpiryMs &&
 		current != nil && current.sessionIs(observation.childSessionID) &&
 		edge.ChildSessionID == observation.childSessionID &&
-		edge.ConnectionID == observation.connectionID &&
+		c.qualityConnectionID(edge) == observation.connectionID &&
 		qualityObservationMatchesEdge(observation, edge) &&
 		c.sourceUsableForQuality(edge)
 }
