@@ -134,6 +134,11 @@ does not establish coverage.
   result. A manual diagnostic may locate a failure, but is not retained as pass
   evidence. Existing `PIIK_CLIENT_*` gate environment names retain their current
   contract; renaming the tools does not change those overrides.
+- `gate:room-voice` exercises normal Host/Viewer pages against a local production
+  server with real fake-device capture. Set `PIIK_ROOM_VOICE_GATE=true`,
+  `CHROME_PATH` and `PIIK_SERVER_EXE`; repeat with `PIIK_ROOM_VOICE_SFU=true`
+  for embedded SFU. Requires `agent-browser` (or `AGENT_BROWSER_PATH`). Reports
+  and screenshots stay under ignored `build/voice-integration`.
 - `gate:network-lab` runs the opt-in [controlled network laboratory](./docs/research/network-lab.md).
   It requires a disposable Linux runner with namespace administration. Its own
   routers contain all firewall and traffic-shaping changes; do not run it on a

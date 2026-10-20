@@ -19,8 +19,19 @@ function LcdDigits({ code }: { code: string }) {
   );
 }
 
-export function RoomCodePlaceholder() {
+export function RoomCodePlaceholder({ onCreate, disabled, busy }: {
+  onCreate?: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+}) {
   const { t } = useCopy();
+  if (onCreate) return (
+    <span className="lr-room-code-create">
+      <Btn icon="door" title="host.createRoom" cap="host.createRoom"
+        hint="hint-create-room" hintText="host.createRoomHint"
+        disabled={disabled} busy={busy} onClick={onCreate} />
+    </span>
+  );
   return (
     <span className="lr-lcd is-empty" role="img" aria-label={t("host.roomCodePending")}>
       <LcdDigits code="----" />

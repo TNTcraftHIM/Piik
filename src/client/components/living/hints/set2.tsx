@@ -127,9 +127,9 @@ ${rmBlock(
 );
 
 /* ------------------------------------------------------------------ */
-/* hint-shuffle-code: slots at rest → slots mid-roll + spark.          */
+/* Create/replace a code: empty/resting slots → rolling slots + spark. */
 /* ------------------------------------------------------------------ */
-const SceneShuffleCode: HintScene = ({ theme }) => (
+const RoomCodeHint = ({ theme, create = false }: Parameters<HintScene>[0] & { create?: boolean }) => (
   <>
     <RoomResultMotion />
     <style>{`
@@ -149,7 +149,9 @@ ${rmBlock(
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     <LcdBase x={41} y={25} />
-    <LcdSlots x={41} y={25} />
+    {create ? <g stroke={INK_STAGE} strokeWidth={2} strokeLinecap="round">
+      {SLOT_DX.map((dx) => <path key={dx} d={`M${42 + dx} 48h7`} />)}
+    </g> : <LcdSlots x={41} y={25} />}
     <g className="vls-room-result">
     <LcdBase x={201} y={25} />
     <LcdSlots x={201} y={25} className="vls-shuf-slots" />
@@ -296,7 +298,8 @@ ${rmBlock(["vls-pass-input"], [[".vls-pass-input", "transform:none;opacity:1"]])
 
 export const SET2_SCENES: Record<Set2Kind, HintScene> = {
   "hint-copy-code": SceneCopyCode,
-  "hint-shuffle-code": SceneShuffleCode,
+  "hint-shuffle-code": RoomCodeHint,
+  "hint-create-room": (props) => <RoomCodeHint {...props} create />,
   "hint-copy-invite": SceneCopyInvite,
   "hint-invite-link": (props) => <InviteLinkHint {...props} />,
   "hint-client-link": HintClientLink,

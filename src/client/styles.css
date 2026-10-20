@@ -894,6 +894,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   text-indent: .15em;
 }
 .lr-lcd.is-empty { border-style: dashed; border-color: var(--control-edge); background: var(--wall-2); color: var(--muted); }
+.lr-room-code-create .lr-btn { min-height: 56px; min-width: 154px; border-style: dashed; }
 .lr-lcd button, .lr-lcd-copy-placeholder {
   display: grid;
   width: 34px; height: 34px;

@@ -31,6 +31,7 @@
     "app-media-gate.ts",
     "app-native-host-gate.ts",
     "embedded-sfu-gate.ts",
+    "room-voice-gate.ts",
     "embedded-sfu-page.ts",
     "app-loopback-gate.ts",
     "app-local-gate.ts",
