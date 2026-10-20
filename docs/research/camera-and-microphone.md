@@ -1,7 +1,7 @@
 # Camera And Host Microphone
 
 Status: integrated into the ordinary Host UI and accepted for release.
-Remaining device coverage belongs to [TODO](../todo.md#awaiting-device-or-reporter-evidence).
+Platform evidence is summarized in [verification status](../verification-status.md#device-evidence-boundary).
 
 ## Scope And Ownership
 

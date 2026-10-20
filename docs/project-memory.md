@@ -36,8 +36,8 @@ unsupported APIs and failed pooling retain ordinary senders. Windows, macOS and
 Linux producers share one encoded-frame
 boundary and Host quality controls. Source replacement retains route and
 connection identity; lower-output adaptation preserves the original and higher
-sibling outputs. [Status](./status.md) owns the remaining physical and release
-acceptance boundary; runtime release descriptors own deployed identity.
+sibling outputs. [Status](./status.md) owns candidate and release readiness;
+runtime release descriptors own deployed identity.
 The Local launcher keeps an optional user-chosen site-access password; leaving it
 blank keeps the self-contained site open.
 
@@ -125,8 +125,9 @@ room authority and the H.264/VP8 sender gate remain. [Status](./status.md)
 indexes source and deployment evidence; protocol rollback requires
 matching Browser and App artifacts, not only an application symlink.
 
-Current work is owned by the [TODO ledger](./todo.md). Open physical evidence is
-owned by [verification status](./verification-status.md). Environment and initial
+Unfinished work is owned by the [TODO ledger](./todo.md).
+[Verification status](./verification-status.md) summarizes material evidence
+boundaries. Environment and initial
 services are owned by [configuration](./standards/configuration.md) and
 [self-hosting](./operations/self-hosting.md); application release is owned by
 [deployment](./deployment.md), with exact deployed identity retained in the

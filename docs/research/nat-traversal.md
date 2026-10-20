@@ -699,8 +699,8 @@ control. No new automatic renomination, probing loop or retry budget is enabled.
 Keep Piik's fresh-interface mux and connection-owned STUN/mapping repairs: the
 newer framework still snapshots its default interface view and caches successful
 universal-mux observations. An upstream release-note match is not sufficient to
-remove these protections. Physical network/device coverage remains in
-[verification status](../verification-status.md#remaining-device-and-network-acceptance).
+remove these protections. [Verification status](../verification-status.md#interpretation)
+summarizes how local evidence applies to device and network claims.
 
 #### Pion Renomination Preflight
 

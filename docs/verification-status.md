@@ -2,191 +2,52 @@
 
 Last updated: 2026-10-20
 
-This file owns physical evidence limits that change how the product may be
-described. [Status](./status.md) owns the execution/deployment index.
-Product modules own behavior; research owns measurements; Git owns completed
-implementation and obsolete package history.
+This file summarizes evidence boundaries that materially affect product claims.
+[Status](./status.md) owns candidate and deployment readiness; research owns
+measurements and platform details.
 
 ## Current Evidence
 
-Windows App and Browser are the owner's primary acceptance targets. Current
-Go packages embed their Web assets and do not run a Node backend.
-[Status](./status.md#accepted-release-contract) owns the accepted contract tuple
-and current release boundary; artifacts own the exact published build.
+Windows App and Browser are the primary acceptance targets. The local room-voice
+candidate passed the normal Host/Viewer flows on P2P and embedded SFU, including
+permissions, forwarding, source replacement and recovery. Native H264/VP8,
+constrained-network recovery, the media lifecycle, responsive UI and packaging
+checks also passed. Exact results stay with their measured artifacts and revision.
 
-Bounded current checks cover:
-
-- local candidate room voice through normal Host/Viewer pages on Peer and
-  forced-SFU paths, including three-participant forwarding, real synthetic
-  microphone decoding, source replacement, local mute and grant retirement;
-
-- Native H264/VP8 output, compatible encoding reuse, different weak-budget
-  grouping, keyframe-safe retarget and independent retirement;
-- Windows live/paused/quiet-source settings, source replacement and subsequent
-  sharing, including media-object continuity where required;
-- Native H264 SFU video and decoded Opus through a profile change and closure;
-- Browser-to-App fanout and App-exit fallback;
-- concurrent Native sessions with independent media and retirement;
-- complete large encoded access-unit transport and bounded queue/cache behavior;
-- Linux container startup as non-root with a read-only filesystem, memory/SQLite
-  restart semantics, diagnostics export, STUN and listener lifecycle; and
-- public embedded-SFU H264/VP8, audio, live profile changes and closure after the
-  coordinated production cutover.
-
-The owner confirmed Windows 10 whole-display capture resolved. Chromium
-WebRTC/IP-handling policy explains the verified local-media failure; it is a
-Browser policy limitation, not a Vivaldi-specific transport workaround.
-
-Room-voice checks use synthetic devices on one Windows computer. They do not
-establish physical echo cancellation, difficult-NAT reachability, mobile
-background capture or 21 simultaneous speakers. These remain test-package
-acceptance limits, not claims about the published release.
-
-The Windows capture-border control and borderless previews have physical
-Windows 11 evidence. Unsupported Windows and actual border-permission denial
-remain device checks. The optional Windows 10 Windhawk procedure is documented
-from its author and has not been tested with Piik on Windows 10.
-
-NAT traversal and Auto codec selection are implemented features, not unfinished
-functionality. On 2026-09-09 the owner confirmed that the new NAT traversal is
-useful in actual use. That field confirmation is accepted; it does not claim a
-population success percentage or identify which candidate won without a trace.
-Neither a statistical NAT campaign nor exhaustive Auto hardware benchmarking
-is required to close this phase. Investigate further only from a new failure
-or a measured improvement worth its implementation and maintenance cost.
+The owner accepted the earlier scoped interaction, Native and Browser media
+phases, including NAT and Auto codec behavior.
 
 ## Device Evidence Boundary
 
-Attended keyboard/mouse control has Windows physical input and local routed
-acceptance for consent, revocation, held-key release and source geometry.
-Browser checks cover mobile touch/zoom/keyboard emulation, detached tools and
-Viewer playback preferences. Physical Android/iOS controllers, mixed-DPI displays,
-commercial games and an actual remote-device session remain unverified.
-macOS builds and packaging pass; Finder/Accessibility, focus, Retina and input
-still need a Mac. Linux compilation and synthetic input/release pass, while
-desktop Portal permissions and capture/input need physical acceptance. The
-[remote-control assessment](./research/room-interactions.md#attended-remote-control-prototype)
-owns the mechanism and game-input limits. These limits do not claim parity with
-dedicated remote-control products.
-
-Windows HDR-to-SDR has synthetic FP16 conversion and decoded
-H.264/VP8 Browser reception evidence. Local displays were in SDR mode; real HDR
-content, SDR white on HDR displays, mixed-display movement, display-mode changes
-and sustained GPU contention still require physical acceptance. The
-[fidelity assessment](./research/media-fidelity.md#hdr-to-sdr) owns measurements.
-These checks do not establish Browser-capture HDR behavior or end-to-end HDR.
-
-Windows source-audio exclusion has bounded parent/child tone-isolation and
-target-exit evidence. It does not establish coverage of arbitrary process trees
-or real voice applications across playback devices. Windows 10 exclusion
-activation and tone isolation still need a physical device check. The
-[audio assessment](./research/native-client-media.md#windows-audio-exclusion)
-owns that distinction.
-
-Room interactions have multi-page Browser evidence for stop/resume, idle-room
-join, Host departure/return, reconnect, invitation revocation and event timing.
-Responsive Browser checks cover narrow portrait and landscape layouts, but not
-real phone keyboards, Safari behavior or every touch/device combination. The
-owner accepted this bounded UI/model walkthrough for phase closure; these
-physical limits remain open and are not release authorization.
-
-The [numeric media controls](./research/native-client-media.md#media-capability-extension-assessment)
-still need physical limited-decoder, camera-orientation, macOS geometry and
-sustained game/4K acceptance. Check live changes and source replacement through
-relay/SFU, and listen across the [audio control range](./research/browser-screen-audio-quality.md#numeric-bitrate-assessment).
-Existing mono/stereo and Windows HDR-to-SDR retain the [fidelity boundary](./research/media-fidelity.md);
-additional codecs, surround delivery and end-to-end HDR are not implemented promises.
-The [camera and microphone assessment](./research/camera-and-microphone.md)
-owns levels, echo, device replacement/native mixing, OBS input synchronization
-and phone permission/orientation/background limits.
-
-Passive App attachment needs cross-device Browser-permission checks for first
-and saved approval, Site replacement/revocation and Local coexistence. Local
-acceptance does not establish every Browser's permission behavior.
-
-The 2026-09-11 functional test acceptance used two genuine Windows App packages
-and matching Server source/Web builds under the same private contract. Both App/Site version
-directions delivered decoded 1080p H264 from an isolated native test window.
-Replacing the Server process preserved SQLite Host authority, private code-entry
-policy, Viewer grant/password authorization and App configuration. Already-open
-Host/Viewer pages reauthenticated without reloading and completed subsequent
-sharing. Exact measured identity belongs to the package descriptors and local
-structured acceptance result; Git retains the preparation history.
-
-This is bounded single-machine Windows evidence. The local Server executables
-were built for Windows from the matching source; this run did not execute the
-Linux release archives. Process replacement used a forced stop on Windows and
-does not promise uninterrupted media. It does not cover game/audio endurance,
-storage faults or the wider device/network matrix.
-
-The first public release passed real Server/three-platform App packaging and
-GitHub/Gitee publication, including anonymous mirror checksum verification.
-These packaging checks do not establish physical macOS/Linux capture or expand the device/network evidence
-below. [Status](./status.md) owns current publication and activation state.
-Intel macOS runners can lack a usable hardware H.264 encoder. In that case,
-the VideoToolbox frame self-test is explicitly skipped; compilation and package
-startup do not establish Intel hardware capture. Verify it on a physical Intel
-Mac with macOS 13 or newer before claiming that device coverage.
-Linux x64 and ARM64 use the same Portal/PipeWire/GStreamer capture path.
-Package startup and headless native regressions do not establish physical
-screen/audio capture or a working hardware H.264 encoder on an ARM64 desktop.
-Verify those capabilities on the target device before claiming device coverage.
-
-## Remaining Device And Network Acceptance
-
-The following are broader coverage and endurance tasks, not automatically new
-implementation mechanisms:
-
-- heterogeneous public-network P2P and multi-hop Browser/Native/SFU-fed relays;
-- Native IPv6 direct connections across separate networks with usable IPv6;
-  local dual-stack checks establish socket and candidate behavior only;
-- Host/Viewer TUN/VPN combinations, migration and all-UDP-blocked bounded failure;
-- two-room public SFU load, real-game audio/video synchronization and sustained
-  packet loss/recovery;
-- weaker Hosts at 720p30, 1080p30 and 1080p60, CPU/GPU contention, thermals,
-  long-running resources and the 20-Viewer bound; and
-- physical mobile autoplay, background/lock, page reclamation, rotation,
-  Wi-Fi/cellular migration and relay survival.
-
-A short 20-Viewer topology run from an earlier revision proves only its tested
-invariants; it is not current-contract endurance or a public-network quality
-guarantee. A direct postflight with both endpoints on one machine proves public
-signaling and local media, not restricted-NAT traversal.
-
-macOS/Linux physical capture/audio/recovery remains explicitly deferred by the
-owner. Linux producer compilation and older Mac SDK/package evidence do not
-prove the current Windows multi-output adaptation contract on those platforms.
+- macOS/Linux builds and bounded native checks are distinct from physical
+  capture and input. Physical platform coverage remains limited.
+- Windows HDR-to-SDR has synthetic GPU and decoded-video evidence; it does not
+  establish Browser-capture HDR conversion or end-to-end HDR. The
+  [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr) owns that boundary.
+- Audio-exclusion availability follows actual platform capability. The
+  [audio assessment](./research/native-client-media.md#windows-audio-exclusion)
+  owns supported interfaces and isolation evidence.
+- Room-voice acceptance uses synthetic microphones. It establishes the route and
+  permission lifecycle, not acoustic echo performance on every physical device.
+- Remote-control UI and routed input have local evidence. OS permissions,
+  protected/admin applications and game compatibility retain the limits in the
+  [input assessment](./research/room-interactions.md#attended-remote-control-prototype).
+- A virtual LAN must carry both HTTP/WebSocket and media UDP. Host firewall
+  permission remains necessary; a proxy-based trial does not establish direct
+  App reachability. [Virtual LAN research](./research/nat-traversal.md#routed-virtual-lan-discovery)
+  owns the measured setup.
 
 ## Adaptation Boundaries
 
-The [encoder-pool research](./research/webrtc-encoder-pool.md) retains both
-successful and unsuccessful observations:
-
-- A prolonged shaped-network run recovered original output about 1.5 seconds
-  after release and stayed near 30 fps; an earlier twelve-second observation
-  missed recovery. The cause of that difference is not established.
-- H264's stock QP adaptation can take tens of seconds to restore full size.
-- Extreme single-core VP8 overload produced multi-second encode gaps that reset
-  the stock CPU detector's samples. That result does not establish normal-device
-  or Browser parity and does not authorize custom CPU thresholds.
-- Equal effective demands can share; incompatible demands may need more encoders.
-  Extra fallback outputs, buffers and recovery keyframes have real costs.
-- The 360-to-187 encode-call result compares a bounded prototype with independent
-  encoders. It is not an old-versus-new Native product CPU benchmark.
-
-The earlier borrowed-child Browser experiment failed independent quality and
-accounting. The independent producer in ADR-0014 now has bounded H264/VP8
-direct/relay, weak-path, lifecycle and A/V evidence on the acceptance candidate;
-[its research](./research/browser-local-encoding-pool.md) owns results and limits.
-The owner authorized its release on 2026-09-09. Browser relay shares local outputs
-among its direct children; it still re-encodes received media. Native/SFU healthy
-forwarding remains encoded.
+WebRTC and LiveKit own adaptation. The
+[encoder-pool research](./research/webrtc-encoder-pool.md) and
+[network controls](./research/network-lab.md#sustained-quality-recovery) distinguish
+Native recovery fixes from Browser-controlled recovery and sustained-loss limits.
+Browser scripts cannot tune the encoder's internal QP thresholds.
 
 ## Interpretation
 
-Configuration/unit/loopback checks prove their named invariants. Physical results
-belong to the tested revision, device and workload. Missing counters remain
-unknown. A new diagnostic collector must be checked in a real exported report,
-including retention and failed-collector information; logging a method call alone
-does not establish useful evidence. Browser/OS suspension remains a physical
-limit rather than a keepalive guarantee.
+Evidence applies to its tested revision, device and workload. Builds and local
+controls establish their named behavior; they do not promise every remote network
+or device or a population NAT success rate. Browser/OS suspension is not a
+keepalive guarantee.
