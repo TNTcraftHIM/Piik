@@ -11,7 +11,7 @@ collect a diagnostic report if the problem persists.
 | --- | --- |
 | App startup fails, or no page opens automatically | Read the reason on the page and in the terminal. If the App is still running, copy its address into your browser. See [App diagnostics](../../cmd/piik-app/README.md#diagnostics) to collect a report; if Local mode lists several addresses, choose an adapter and IP on the launch page. |
 | Public invitation fails to start, or a link shows 1033 | Check the host's App and current link using [public invitation troubleshooting](#public-invitation-fails-or-shows-1033). |
-| Local invitation will not open | Check that both devices are on the same network and can reach each other. Guest Wi-Fi or firewall rules can block local access. |
+| Local invitation will not open | Check that the devices can reach each other, then review the address and Windows firewall permissions in [Local invitation checks](#local-invitation-will-not-open). |
 | Room code says the room does not exist | Open the host's current full invitation link. Codes work only on their original site; a site with empty-room recycling may also have reclaimed it. The host can create a new room; see [joining a room](./getting-started.md#join-a-friends-room). |
 | Cannot create a room (403) | On a self-hosted site, ask the administrator to check the [allowed site address](#room-creation-returns-403). |
 | All room codes are in use | Retry later or use another Piik site. Administrators can enable [empty-room retention](../operations/self-hosting.md#1-configure-and-start-piik) to reclaim unused codes. This is separate from the per-room Viewer limit. |
@@ -36,6 +36,27 @@ collect a diagnostic report if the problem persists.
 For a bug report, include the version, OS/browser, what you expected, and how
 to reproduce it. [Diagnostics and export](../../cmd/piik-app/README.md#diagnostics)
 explains how to collect a local report and what to review before sharing it.
+
+## Local invitation will not open
+
+If the browser times out before showing Piik, check web access first. P2P
+connection has not started at this point.
+
+1. Keep the host's App running. In **Local room**, select an adapter address
+   friends can reach and send the full invitation link. Both devices need a
+   reachable LAN or the same virtual LAN; guest Wi-Fi may isolate them.
+2. On the Windows host, open **Windows Security → Firewall & network protection →
+   Allow an app through firewall**. Check the currently running `piik-app.exe`
+   and allow the network type in use. A virtual adapter may be classified as
+   **Public**; advanced rules can restrict access to that adapter and subnet.
+3. After extracting an update to another folder, check whether the rule still
+   points to the old file. No prompt does not mean access is allowed: add the
+   current App manually if needed. Keep the firewall on and allow the needed app.
+
+Changing permissions may require an administrator; see
+[Microsoft's instructions](https://support.microsoft.com/en-us/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall).
+If the page opens but video does not connect, continue with
+[media connection checks](#when-video-will-not-connect).
 
 ## Sharing does not start after source selection
 
@@ -396,8 +417,9 @@ reachable virtual IPv4 addresses and carry both Piik's web traffic and WebRTC UD
 
 1. Everyone runs the networking tool and joins the same virtual LAN.
 2. If its virtual adapter and IP appear in Piik App's **Local room** address list,
-   the host selects that address and starts sharing. Allow Piik through the
-   Windows firewall for that virtual network; do not disable the whole firewall.
+   the host selects that address and starts sharing. If the page will not open,
+   use [Local invitation checks](#local-invitation-will-not-open) to review
+   Windows firewall permissions for that virtual network.
 3. Send friends the full Piik invitation using that address, not a `localhost`
    address or just a room code. Check picture and sound after the page opens;
    a reachable web page does not establish that media UDP works too.
