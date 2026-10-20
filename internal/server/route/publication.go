@@ -1,5 +1,18 @@
 package route
 
+// SetHostVideoConnectionID replaces only the physical video facet. The logical
+// publication generation/resource continue to own room reachability and voice.
+func (c *Controller) SetHostVideoConnectionID(id string) bool {
+	if !c.roomMedia || c.hostPublication == nil || id == "" {
+		return false
+	}
+	if c.hostPublication.ConnectionID != id {
+		c.hostPublication.ConnectionID = id
+		c.touchFacts()
+	}
+	return true
+}
+
 // SetVideoPublication opts this controller into room media. Room edges survive
 // publication replacement, stop and pause. The returned resources belong only
 // to the canceled operation; the caller retires video facets on stop/replacement.

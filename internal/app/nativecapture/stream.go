@@ -23,6 +23,7 @@ const (
 	captureStopTimeout  = time.Second
 	maxPreviewBytes     = 192 * 1024
 	maxOutputs          = 6
+	MaxOutputGroups     = maxOutputs - 2
 	minOutputBitrate    = 1_000       // Codec rate APIs use whole kbps.
 	MaxVideoBitrate     = 240_000_000 // H.264 Level 5.2 Constrained Baseline video bitrate.
 	maxSources          = 1024
@@ -244,7 +245,7 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 func StartVideo(parent context.Context, executable string, options VideoOptions) (*Stream, error) {
 	if !options.Target.Valid() || !options.Profile.Valid() ||
 		(options.Codec != "auto" && options.Codec != "h264" && options.Codec != "vp8") ||
-		options.OutputGroups < 0 || options.OutputGroups > maxOutputs-2 ||
+		options.OutputGroups < 0 || options.OutputGroups > MaxOutputGroups ||
 		len(options.RestoreToken) > 4096 || !utf8.ValidString(options.RestoreToken) ||
 		strings.ContainsRune(options.RestoreToken, 0) {
 		return nil, errors.New("native video target is invalid")

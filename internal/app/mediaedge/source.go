@@ -64,6 +64,12 @@ type Source struct {
 
 func (source *Source) Codec() string { return source.codec }
 
+// Consumers share the existing bounded encoder groups; transport fanout does
+// not allocate an encoder per child.
+func (source *Source) outputGroupCapacity() int {
+	return min(source.capacity, nativecapture.MaxOutputGroups)
+}
+
 func (source *Source) SetLowestLayerRateControlled(controlled bool) {
 	source.writeMu.Lock()
 	defer source.writeMu.Unlock()
@@ -175,7 +181,7 @@ func (source *Source) beginFrame(timestamp time.Duration, at time.Time) (OutputP
 // ConfigureOutputs installs one validated capture generation's bitrate bounds.
 // A zero slot subsequently means that producer has failed, not a new preset.
 func (source *Source) ConfigureOutputs(ceilings []uint32) error {
-	if len(ceilings) < len(source.formats) || len(ceilings) > len(source.formats)+source.capacity ||
+	if len(ceilings) < len(source.formats) || len(ceilings) > len(source.formats)+source.outputGroupCapacity() ||
 		len(source.formats) != 2 && len(ceilings) != len(source.formats) {
 		return errors.New("native output count does not match the source")
 	}

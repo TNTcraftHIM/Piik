@@ -278,7 +278,9 @@ func (c *Controller) assertGraph() {
 		}
 	}
 	for _, current := range c.participants.Values() {
-		if !protocol.EndpointMediaCopyCountFits(c.usedSlots(current.peerID), c.endpointMediaCopyCapacity, protocol.EndpointMediaCopySteady) {
+		// Admission uses the participant's effective policy. Existing resources
+		// drain through serial handoffs after withdrawal or capacity reduction.
+		if c.usedSlots(current.peerID) > MaxRelayVolunteerChildren {
 			panic(errors.New("Committed route exceeds endpoint capacity"))
 		}
 	}

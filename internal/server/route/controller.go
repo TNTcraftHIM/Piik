@@ -36,6 +36,8 @@ type participant struct {
 	departureConfirmed             bool
 	joinOrder                      int64
 	effectiveDownstreamCapacity    int
+	reportedDownstreamCapacity     int
+	relayVolunteer                 bool
 	availabilityExhausted          bool
 	consumedCandidateOpportunities ordered.Map[string, candidateOpportunity]
 	bootstrapFailureReported       bool
@@ -432,8 +434,9 @@ func (c *Controller) UpsertParticipant(input ParticipantInput, nowMs *int64) []*
 	if (input.PeerID == c.hostPeerID) != (input.Role == protocol.RoleHost) {
 		panic(errors.New("Route Host identity is inconsistent"))
 	}
-	capacity := c.effectiveCapacity(input.EffectiveDownstreamCapacity)
 	current, _ := c.participants.Get(input.PeerID)
+	capacity := c.effectiveCapacity(input.EffectiveDownstreamCapacity,
+		current != nil && current.sessionID == input.SessionID && current.relayVolunteer)
 	released := []*Resource{}
 	if current != nil && current.role != input.Role {
 		panic(errors.New("Route role cannot change"))
@@ -442,6 +445,7 @@ func (c *Controller) UpsertParticipant(input ParticipantInput, nowMs *int64) []*
 		changed := false
 		previousSessionID := current.sessionID
 		if previousSessionID != input.SessionID {
+			current.relayVolunteer = false
 			c.clearOpportunitiesForSessionChange(input.PeerID, input.Role)
 			c.clearQualityForParticipant(input.PeerID)
 			if c.operationUsesParticipantSession(input.PeerID) {
@@ -457,8 +461,10 @@ func (c *Controller) UpsertParticipant(input ParticipantInput, nowMs *int64) []*
 			current.departureConfirmed = false
 			changed = true
 		}
+		current.reportedDownstreamCapacity = input.EffectiveDownstreamCapacity
 		if current.effectiveDownstreamCapacity != capacity {
 			current.effectiveDownstreamCapacity = capacity
+			c.recordCapacityReduction(input.PeerID, nowMs)
 			changed = true
 		}
 		if changed {
@@ -490,6 +496,7 @@ func (c *Controller) UpsertParticipant(input ParticipantInput, nowMs *int64) []*
 		role:                        input.Role,
 		sessionID:                   input.SessionID,
 		effectiveDownstreamCapacity: capacity,
+		reportedDownstreamCapacity:  input.EffectiveDownstreamCapacity,
 		routePreference:             input.RoutePreference,
 		joinOrder:                   c.nextJoinOrder,
 	})
@@ -597,6 +604,8 @@ func (c *Controller) RebindHostIdentity(peerID, sessionID string, nowMs *int64) 
 	c.participants.Delete(previousPeerID)
 	host.peerID = peerID
 	host.sessionID = sessionID
+	host.relayVolunteer = false
+	host.effectiveDownstreamCapacity = c.effectiveCapacity(host.reportedDownstreamCapacity, false)
 	host.departureConfirmed = false
 	c.participants.Set(peerID, host)
 	c.hostPeerID = peerID
@@ -660,16 +669,13 @@ func (c *Controller) SetEffectiveCapacity(peerID, sessionID string, value int, n
 	if current == nil || !current.sessionIs(sessionID) {
 		return false
 	}
-	capacity := c.effectiveCapacity(value)
+	capacity := c.effectiveCapacity(value, current.relayVolunteer)
+	current.reportedDownstreamCapacity = value
 	if current.effectiveDownstreamCapacity == capacity {
 		return true
 	}
 	current.effectiveDownstreamCapacity = capacity
-	if nowMs != nil {
-		for _, childPeerID := range c.overflowPeerChildren(peerID) {
-			c.recordDemand(childPeerID, *nowMs, DemandCapacityReduction)
-		}
-	}
+	c.recordCapacityReduction(peerID, nowMs)
 	c.touchFacts()
 	c.debug("capacity-updated", "participant", c.debugPeer(peerID), "capacity", capacity)
 	return true
@@ -775,7 +781,14 @@ func (c *Controller) AdoptDirectConnection(input AdoptDirectConnectionInput, now
 		input.NewConnectionID == "" {
 		return result
 	}
-	if input.NewConnectionID == edge.ConnectionID {
+	activeConnectionID := edge.ConnectionID
+	if c.roomMedia {
+		if !edge.VideoReady || edge.VideoGeneration != c.videoGeneration || c.videoGeneration == "" {
+			return result
+		}
+		activeConnectionID = edge.VideoConnectionID
+	}
+	if input.NewConnectionID == activeConnectionID {
 		result.Accepted = true
 		return result
 	}
@@ -786,10 +799,14 @@ func (c *Controller) AdoptDirectConnection(input AdoptDirectConnectionInput, now
 		result.Released = c.abortOperation(&nowMs, RejectionAborted)
 	}
 	c.clearQualityForParticipant(input.ChildPeerID)
-	edge.ConnectionID = input.NewConnectionID
-	edge.opportunityKey = c.candidateOpportunityBase(input.ChildPeerID, CandidatePlan{
-		Tuple: CandidateTuple{Kind: edge.Kind, ParentPeerID: edge.ParentPeerID},
-	})
+	if c.roomMedia {
+		edge.VideoConnectionID = input.NewConnectionID
+	} else {
+		edge.ConnectionID = input.NewConnectionID
+		edge.opportunityKey = c.candidateOpportunityBase(input.ChildPeerID, CandidatePlan{
+			Tuple: CandidateTuple{Kind: edge.Kind, ParentPeerID: edge.ParentPeerID},
+		})
+	}
 	if child, ok := c.participants.Get(input.ChildPeerID); ok {
 		child.availabilityExhausted = false
 	}
@@ -927,11 +944,15 @@ func (c *Controller) operationUsesParticipantSession(peerID string) bool {
 
 // effectiveCapacity panics "Effective capacity is invalid" for
 // a negative or unsafe value and clamps to the endpoint capacity.
-func (c *Controller) effectiveCapacity(value int) int {
+func (c *Controller) effectiveCapacity(value int, volunteer bool) int {
 	if !isSafeInteger(int64(value)) || value < 0 {
 		panic(errors.New("Effective capacity is invalid"))
 	}
-	return min(value, c.endpointMediaCopyCapacity)
+	limit := c.endpointMediaCopyCapacity
+	if volunteer {
+		limit = MaxRelayVolunteerChildren
+	}
+	return min(value, limit)
 }
 
 func (c *Controller) touchFacts() { c.factVersion++ }

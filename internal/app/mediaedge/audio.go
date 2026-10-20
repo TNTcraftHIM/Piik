@@ -44,7 +44,7 @@ type AudioSource struct {
 }
 
 func (engine *Engine) NewAudioSource(capacity, bitrate int) (*AudioSource, error) {
-	if capacity < 1 || capacity > 4 {
+	if capacity < 1 || capacity > MaxRelayChildren+1 {
 		return nil, errors.New("native audio source capacity is outside the route bound")
 	}
 	encoder, err := nativeaudio.NewEncoder(bitrate)
@@ -71,7 +71,7 @@ func (engine *Engine) NewAudioSource(capacity, bitrate int) (*AudioSource, error
 }
 
 func (engine *Engine) NewRelayedAudioSource(capacity int) (*AudioSource, error) {
-	if capacity < 1 || capacity > 4 {
+	if capacity < 1 || capacity > MaxRelayChildren+1 {
 		return nil, errors.New("native audio source capacity is outside the route bound")
 	}
 	engine.mu.Lock()

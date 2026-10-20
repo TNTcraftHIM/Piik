@@ -34,7 +34,7 @@ const (
 	maxSTUNURLBytes   = 512
 	maxICEServers     = 8
 	maxURLsPerServer  = 8
-	maxEdgeCapacity   = 3
+	maxEdgeCapacity   = mediaedge.MaxRelayChildren
 )
 
 var identityPattern = regexp.MustCompile("^[A-Za-z0-9_-]{8,256}$")

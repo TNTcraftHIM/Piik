@@ -142,7 +142,7 @@ func (c *Controller) planCandidate(childPeerID string, tuple CandidateTuple) *Ca
 	if copies+1 <= producer.effectiveDownstreamCapacity {
 		return &CandidatePlan{Tuple: tuple, EndpointTransition: EndpointTransition{Kind: TransitionNone, ProducerPeerID: &producer0}}
 	}
-	if copies+1 <= protocol.EndpointMediaCopyLimit(c.endpointMediaCopyCapacity, protocol.EndpointMediaCopyTransition) {
+	if copies+1 <= c.transitionCopyLimit(producer) {
 		return &CandidatePlan{Tuple: tuple, EndpointTransition: EndpointTransition{Kind: TransitionOverlap, ProducerPeerID: &producer0}}
 	}
 	retire := c.retirementFor(childPeerID, producerPeerID, tuple)

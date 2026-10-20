@@ -85,8 +85,8 @@ func (source *Source) configureRelayFormats() error {
 	if width > 0 && height > 0 {
 		lower.Width, lower.Height = min(width/4*2, lower.Width), min(height/4*2, lower.Height)
 	}
-	if len(source.outputBitrates) != 2+source.capacity {
-		source.outputBitrates = make([]uint32, 2+source.capacity)
+	if len(source.outputBitrates) != 2+source.outputGroupCapacity() {
+		source.outputBitrates = make([]uint32, 2+source.outputGroupCapacity())
 	}
 	for slot := range source.outputBitrates {
 		source.outputBitrates[slot] = lower.Bitrate
@@ -220,7 +220,7 @@ func (run *relayRun) serve() {
 	defer close(run.done)
 	defer func() {
 		if cause := context.Cause(run.ctx); cause != nil && !errors.Is(cause, context.Canceled) {
-			for slot := 0; slot < 2+run.owner.source.capacity; slot++ {
+			for slot := 0; slot < 2+run.owner.source.outputGroupCapacity(); slot++ {
 				if slot == 1 {
 					continue
 				}
@@ -233,7 +233,7 @@ func (run *relayRun) serve() {
 	}()
 	backend, _ := relayBackend(run.owner.source.codec, &run.owner.options)
 	backend.Preference = run.plan.profile.Preference
-	backend.Outputs = make([]nativecapture.OutputProfile, run.owner.source.capacity+1)
+	backend.Outputs = make([]nativecapture.OutputProfile, run.owner.source.outputGroupCapacity()+1)
 	for slot := range backend.Outputs {
 		backend.Outputs[slot] = run.plan.output
 	}
@@ -360,7 +360,7 @@ func (run *relayRun) read(stream *nativecapture.Stream) {
 				}
 			}
 		case nativecapture.FrameH264, nativecapture.FrameVP8:
-			if frame.Layer > source.capacity || (frame.Kind == nativecapture.FrameH264) != (source.codec == "h264") {
+			if frame.Layer > source.outputGroupCapacity() || (frame.Kind == nativecapture.FrameH264) != (source.codec == "h264") {
 				err = errors.New("native relay output does not match its source")
 				break
 			}

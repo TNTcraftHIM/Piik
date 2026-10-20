@@ -153,12 +153,24 @@ func (engine *Engine) NewSource(codec string, capacity, layers int, requestKeyFr
 	return engine.newSource(codec, capacity, layers, nil, requestKeyFrame)
 }
 
+// MaxRelayChildren bounds a capable native peer's voluntary steady fanout.
+const MaxRelayChildren = 20
+
+// PhysicalSourceCapacity reserves the single route operation's overlap without
+// changing the ordinary endpoint's existing admission bound.
+func PhysicalSourceCapacity(children int) int {
+	if children > 3 {
+		return children + 1
+	}
+	return children
+}
+
 func (engine *Engine) newSource(codec string, capacity, layers int, relay *RelayOptions, requestKeyFrame func([]int)) (*Source, error) {
 	_, supported := videoCodecs[codec]
 	if !supported {
 		return nil, errors.New("native video codec is unsupported")
 	}
-	if capacity < 1 || capacity > 4 {
+	if capacity < 1 || capacity > MaxRelayChildren+1 {
 		return nil, errors.New("native media source capacity is outside the route bound")
 	}
 	if layers < 1 || layers > 3 {

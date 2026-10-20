@@ -77,7 +77,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		parent = context.Background()
 	}
 	if options.ShareID == "" || len(options.ShareID) > 256 ||
-		options.EdgeCapacity < 1 || options.EdgeCapacity > 3 {
+		options.EdgeCapacity < 1 || options.EdgeCapacity > mediaedge.MaxRelayChildren {
 		return nil, errors.New("native Viewer session input is invalid")
 	}
 	engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{
@@ -176,7 +176,7 @@ func (session *Session) AcceptOffer(
 	mediaReceiver, answer, err := session.engine.NewReceiver(mediaedge.ReceiverOptions{
 		Offer:         offer,
 		ICEServers:    iceServers,
-		EdgeCapacity:  session.edgeCapacity,
+		EdgeCapacity:  mediaedge.PhysicalSourceCapacity(session.edgeCapacity),
 		Relay:         session.relay,
 		PunchedSocket: punchedSocket,
 		Events: mediaedge.ReceiverEvents{

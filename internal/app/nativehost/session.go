@@ -119,6 +119,9 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	if options.ShareID == "" || len(options.ShareID) > 256 {
 		return nil, errors.New("native share identity is invalid")
 	}
+	if options.EdgeCapacity < 1 || options.EdgeCapacity > mediaedge.MaxRelayChildren {
+		return nil, errors.New("native share edge capacity is invalid")
+	}
 	if !options.Profile.Valid() || options.Video.Profile != options.Profile.Video {
 		return nil, errors.New("native share profile is invalid")
 	}
@@ -131,7 +134,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	options.Video.OutputGroups = options.EdgeCapacity
+	options.Video.OutputGroups = min(options.EdgeCapacity, nativecapture.MaxOutputGroups)
 	stream, err := nativecapture.StartVideo(parent, options.CaptureProcess, options.Video)
 	if err != nil {
 		_ = engine.Close()
@@ -172,7 +175,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	session.syncRemoteInputSource(nil)
 	if audioStream != nil || options.MicrophoneMixing {
 		audioSource, audioErr := engine.NewAudioSource(
-			options.EdgeCapacity, options.Profile.AudioBitrate,
+			mediaedge.PhysicalSourceCapacity(options.EdgeCapacity), options.Profile.AudioBitrate,
 		)
 		if audioErr != nil {
 			slog.DebugContext(ctx, "piik-client", "event", "capture-audio-source-failed", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
@@ -450,7 +453,7 @@ func (session *Session) ReplaceSource(
 	options.Codec = session.videoOptions.Codec
 	options.AdapterIndex = session.videoOptions.AdapterIndex
 	options.EncoderIndex = session.videoOptions.EncoderIndex
-	options.OutputGroups = session.edgeCapacity
+	options.OutputGroups = min(session.edgeCapacity, nativecapture.MaxOutputGroups)
 	hasAudio := session.audioSource != nil && session.audioStream != nil
 	currentTarget := session.videoOptions.Target
 	audioOnly := options.Target.Kind != "picker" &&
@@ -610,7 +613,7 @@ func (session *Session) prepareVideo(
 	if err := ctx.Err(); err != nil {
 		return nil, CaptureState{}, err
 	}
-	options.OutputGroups = session.edgeCapacity
+	options.OutputGroups = min(session.edgeCapacity, nativecapture.MaxOutputGroups)
 	// Preparation can be cancelled independently. Installed capture always lives
 	// with the share; cancelling a permission request must not kill its process.
 	replacement, err := nativecapture.StartVideo(
@@ -937,7 +940,7 @@ func (session *Session) runVideo() error {
 					session.mu.Unlock()
 					return fail(errors.New("native capture codec was not applied"))
 				}
-				source, sourceErr := session.engine.NewSource(status.Codec, session.edgeCapacity, min(2, len(status.Outputs)), func(layers []int) {
+				source, sourceErr := session.engine.NewSource(status.Codec, mediaedge.PhysicalSourceCapacity(session.edgeCapacity), min(2, len(status.Outputs)), func(layers []int) {
 					if stream := session.currentStream(); stream != nil {
 						for _, layer := range layers {
 							_ = stream.RequestKeyFrame(layer)
