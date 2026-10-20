@@ -12,15 +12,17 @@ import (
 type drainKind string
 
 const (
-	drainPublication  drainKind = "publication"
-	drainSubscription drainKind = "subscription"
+	drainPublication      drainKind = "publication"
+	drainSubscription     drainKind = "subscription"
+	drainVideoPublication drainKind = "video-publication"
 )
 
 // sfuDrainTask owns one asynchronous exact physical close.
 type sfuDrainTask struct {
-	kind      drainKind
-	fence     sfu.SubscriptionFence
-	operation *drainOperation
+	kind       drainKind
+	fence      sfu.SubscriptionFence
+	operation  *drainOperation
+	closeVideo func() error
 }
 
 // drainOperation is the promise runSfuDrain tracked: done is closed after err
@@ -125,20 +127,43 @@ func (r *router) sendFreshSfuConfig(participant authenticatedRouteParticipant) {
 		return
 	}
 	snapshot := rm.controller.Snapshot()
+	if rm.roomMedia && snapshot.VideoGeneration == "" {
+		return
+	}
 	publication := snapshot.HostPublication
 	if publication == nil || !publication.PhysicalActive {
 		return
 	}
 	connectionID := publication.ConnectionID
+	revision := snapshot.Revision
 	if participant.role == protocol.RoleViewer {
 		edge, ok := snapshot.UpstreamByViewer.Get(participant.peerID)
 		if !ok || edge.Kind != route.UpstreamSfu || !edge.PhysicalActive {
 			return
 		}
 		connectionID = edge.ConnectionID
+		if rm.roomMedia {
+			operation := snapshot.Operation
+			if operation != nil && operation.Current != nil && operation.Reason == route.DemandPublicationAttach &&
+				operation.ChildPeerID == participant.peerID && operation.ChildSessionID == participant.sessionID &&
+				operation.AttachConnectionID == edge.ConnectionID && operation.Current.Tuple.Kind == route.UpstreamSfu {
+				connectionID = operation.Current.ConnectionID
+			} else if edge.VideoReady && edge.VideoConnectionID != "" {
+				connectionID = edge.VideoConnectionID
+			} else {
+				return
+			}
+		}
+	}
+	if rm.roomMedia {
+		if operation := snapshot.Operation; operation != nil && operation.Current != nil &&
+			operation.Current.Tuple.Kind == route.UpstreamSfu &&
+			(participant.role == protocol.RoleHost || operation.ChildPeerID == participant.peerID) {
+			revision = operation.Current.Revision
+		}
 	}
 	r.hooks.sendToSession(participant.sessionID, protocol.SfuConfigMessage{
-		Type: "sfu-config", Revision: protocol.Int(snapshot.Revision),
+		Type: "sfu-config", Revision: protocol.Int(revision),
 		PublicationGeneration: publication.Generation, ConnectionID: connectionID,
 	})
 	if participant.role == protocol.RoleHost && publication.Resource != nil {
@@ -150,6 +175,84 @@ func (r *router) sendFreshSfuConfig(participant authenticatedRouteParticipant) {
 			})
 		}
 	}
+}
+
+// prepareSfuVideoAttachment attaches video to an already admitted room edge.
+// The pump has begun this exact operation and installed the current Host video
+// connection identity before calling it.
+func (r *router) prepareSfuVideoAttachment(roomID string, operation *route.OperationSnapshot) {
+	rm, _ := r.rooms.Get(roomID)
+	if r.sfu == nil || rm == nil || !rm.roomMedia || rm.controller == nil ||
+		operation == nil || operation.Current == nil || operation.Reason != route.DemandPublicationAttach ||
+		operation.Current.Tuple.Kind != route.UpstreamSfu {
+		return
+	}
+	snapshot := rm.controller.Snapshot()
+	current := snapshot.Operation
+	publication := snapshot.HostPublication
+	if current == nil || current.Current == nil || current.Current.ConnectionID != operation.Current.ConnectionID ||
+		publication == nil || publication.Resource == nil || publication.ConnectionID == "" {
+		return
+	}
+	host, hasHost := r.store.GetConnectedHost(roomID)
+	child, hasChild := r.store.GetConnectedViewer(roomID, operation.ChildPeerID)
+	if !hasHost || host.SessionID != publication.HostSessionID ||
+		!hasChild || child.SessionID != operation.ChildSessionID {
+		return
+	}
+	config := protocol.SfuConfigMessage{Type: "sfu-config", Revision: protocol.Int(operation.Current.Revision),
+		PublicationGeneration: publication.Generation}
+	config.ConnectionID = publication.ConnectionID
+	r.hooks.sendToSession(host.SessionID, config)
+	config.ConnectionID = operation.Current.ConnectionID
+	r.hooks.sendToSession(child.SessionID, config)
+	if r.sfu.media.HasPublication(resourceFence(publication.Resource), publication.ConnectionID) {
+		r.prepareSfuSubscriber(roomID, operation, publication.Generation)
+	}
+}
+
+// retireRoomVideo retains room admission and the independent voice transports.
+func (r *router) retireRoomVideo(roomID string, rm *roomRuntime) {
+	if r.sfu == nil || rm == nil || !rm.roomMedia || rm.controller == nil {
+		return
+	}
+	publication := rm.controller.Publication()
+	if publication == nil || publication.Resource == nil {
+		return
+	}
+	fence := resourceFence(publication.Resource)
+	if fence.RoomID == roomID {
+		r.retireSfuVideoPublication(fence, publication.ConnectionID)
+	}
+}
+
+func (r *router) retireSfuVideoPublication(fence sfu.ResourceFence, connectionID string) {
+	if r.sfu == nil {
+		return
+	}
+	var closeVideo func() error
+	if media, ok := r.sfu.media.(interface {
+		RetirePublication(sfu.ResourceFence, string) func() error
+	}); ok {
+		closeVideo = media.RetirePublication(fence, connectionID)
+	} else {
+		// Legacy runtimes cannot detach a reusable room-generation handle.
+		// Their video-only publication fences are unique for each share.
+		if rm, _ := r.rooms.Get(fence.RoomID); rm != nil && rm.roomMedia {
+			return
+		}
+		media := r.sfu.media
+		if media.HasPublication(fence, connectionID) {
+			closeVideo = func() error { return media.ClosePublication(fence) }
+		}
+	}
+	if closeVideo == nil {
+		return
+	}
+	key := sfu.SubscriptionFence{ResourceFence: fence, ConnectionID: connectionID}
+	task := &sfuDrainTask{kind: drainVideoPublication, fence: key, closeVideo: closeVideo}
+	r.sfuDrainTasks.Set(key, task)
+	r.runSfuDrain(key, task)
 }
 
 // scheduleSfuPublicationDrain deletes sibling subscription tasks during
@@ -202,7 +305,9 @@ func (r *router) runSfuDrain(key sfu.SubscriptionFence, task *sfuDrainTask) *dra
 	r.inflight++
 	go func() {
 		var err error
-		if task.kind == drainPublication {
+		if task.kind == drainVideoPublication {
+			err = task.closeVideo()
+		} else if task.kind == drainPublication {
 			err = fallback.media.ClosePublication(task.fence.ResourceFence)
 		} else {
 			err = fallback.media.CloseSubscription(task.fence, task.fence.ConnectionID)

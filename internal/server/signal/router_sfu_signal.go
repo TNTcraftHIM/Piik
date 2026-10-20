@@ -24,6 +24,18 @@ func (r *router) sfuSignalAuthorized(participant authenticatedRouteParticipant, 
 		return fence, false
 	}
 	snapshot := rm.controller.Snapshot()
+	if rm.roomMedia {
+		if snapshot.VideoGeneration == "" {
+			return fence, false
+		}
+		fence.ShareGeneration = rm.mediaGeneration
+		// Opting into voice during an existing share preserves its admitted
+		// resource fence, even though subsequent publications are room-scoped.
+		if publication := snapshot.HostPublication; publication != nil &&
+			publication.Generation == message.PublicationGeneration && publication.Resource != nil {
+			fence.ResourceFence = resourceFence(publication.Resource)
+		}
+	}
 	latestRevision := snapshot.Revision
 	if snapshot.Operation != nil && snapshot.Operation.Current != nil {
 		latestRevision = max(latestRevision, snapshot.Operation.Current.Revision)
@@ -44,10 +56,32 @@ func (r *router) sfuSignalAuthorized(participant authenticatedRouteParticipant, 
 			r.sfu.admission.HasPublication(fence.ResourceFence)
 	}
 	fence.ViewerPeerID = participant.peerID
+	if rm.roomMedia {
+		operation := snapshot.Operation
+		edge, hasEdge := snapshot.UpstreamByViewer.Get(participant.peerID)
+		if hasEdge && edge.Kind == route.UpstreamSfu && edge.PhysicalActive &&
+			edge.ChildSessionID == participant.sessionID && edge.PublicationGeneration == message.PublicationGeneration {
+			active := edge.VideoReady && edge.VideoConnectionID == message.ConnectionID
+			attaching := operation != nil && operation.Current != nil &&
+				operation.Reason == route.DemandPublicationAttach &&
+				operation.Current.Tuple.Kind == route.UpstreamSfu &&
+				operation.ChildPeerID == participant.peerID && operation.ChildSessionID == participant.sessionID &&
+				operation.AttachConnectionID == edge.ConnectionID &&
+				operation.Current.Revision == int64(message.Revision) &&
+				operation.Current.ConnectionID == message.ConnectionID
+			if active || attaching {
+				if edge.Resource == nil {
+					return fence, false
+				}
+				fence = subscriptionFence(edge.Resource)
+				return fence, r.sfu.admission.HasSubscription(fence)
+			}
+		}
+	}
 	if !r.sfu.admission.HasSubscription(fence) {
 		return fence, false
 	}
-	if edge, ok := snapshot.UpstreamByViewer.Get(participant.peerID); ok && edge.PhysicalActive && edge.Kind == route.UpstreamSfu &&
+	if edge, ok := snapshot.UpstreamByViewer.Get(participant.peerID); !rm.roomMedia && ok && edge.PhysicalActive && edge.Kind == route.UpstreamSfu &&
 		edge.PublicationGeneration == message.PublicationGeneration && edge.ConnectionID == message.ConnectionID && edge.ChildSessionID == participant.sessionID {
 		return fence, true
 	}
@@ -113,7 +147,7 @@ func (r *router) handleSfuSignal(participant authenticatedRouteParticipant, mess
 	})
 	if _, allowed := r.sfuSignalAuthorized(participant, message); !allowed {
 		if newPublication {
-			go media.ClosePublication(fence.ResourceFence)
+			r.retireSfuVideoPublication(fence.ResourceFence, message.ConnectionID)
 		}
 		return
 	}
@@ -200,7 +234,10 @@ func sfuConnectionPhase(snapshot route.RouteSnapshot, role protocol.Role, peerID
 	operation := snapshot.Operation
 	if operation != nil && operation.Current != nil && operation.Current.Tuple.Kind == route.UpstreamSfu &&
 		(role == protocol.RoleViewer && operation.ChildPeerID == peerID && operation.Current.ConnectionID == connectionID ||
-			role == protocol.RoleHost && connectionID == generation && (snapshot.HostPublication == nil || snapshot.HostPublication.Generation != generation)) {
+			role == protocol.RoleHost && (connectionID == generation && (snapshot.HostPublication == nil || snapshot.HostPublication.Generation != generation) ||
+				snapshot.RoomMedia && operation.Reason == route.DemandPublicationAttach &&
+					snapshot.HostPublication != nil && snapshot.HostPublication.Generation == generation &&
+					snapshot.HostPublication.ConnectionID == connectionID)) {
 		return "prepare", operation.Current.Revision
 	}
 	return "active", snapshot.Revision
@@ -215,7 +252,8 @@ func (s *Server) HandleSfuMediaEvent(event sfu.MediaEvent) {
 
 func (r *router) handleSfuMediaEvent(event sfu.MediaEvent) {
 	rm, _ := r.rooms.Get(event.Fence.RoomID)
-	if r.closing || rm == nil || rm.controller == nil || r.hooks.shareGeneration(event.Fence.RoomID) != event.Fence.ShareGeneration {
+	if r.closing || rm == nil || rm.controller == nil ||
+		(!rm.roomMedia && r.hooks.shareGeneration(event.Fence.RoomID) != event.Fence.ShareGeneration) {
 		return
 	}
 	peerID, role := event.ViewerPeerID, protocol.RoleViewer
@@ -224,6 +262,16 @@ func (r *router) handleSfuMediaEvent(event sfu.MediaEvent) {
 	}
 	peer, connected := r.connectedPeer(event.Fence.RoomID, peerID)
 	snapshot := rm.controller.Snapshot()
+	if rm.roomMedia {
+		publication := snapshot.HostPublication
+		expectedGeneration := rm.mediaGeneration
+		if publication != nil && publication.Generation == event.Fence.PublicationGeneration && publication.Resource != nil {
+			expectedGeneration = publication.Resource.ShareGeneration
+		}
+		if snapshot.VideoGeneration == "" || expectedGeneration != event.Fence.ShareGeneration {
+			return
+		}
+	}
 	participant := authenticatedRouteParticipant{roomID: event.Fence.RoomID, role: role, peerID: peerID, sessionID: peer.SessionID}
 	phase, revision := sfuConnectionPhase(snapshot, role, peerID, event.Fence.PublicationGeneration, event.ConnectionID)
 	message := protocol.SfuSignalMessage{Type: "sfu-signal", Kind: "candidate", Revision: protocol.Int(revision), PublicationGeneration: event.Fence.PublicationGeneration, ConnectionID: event.ConnectionID}
