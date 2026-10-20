@@ -497,6 +497,7 @@ type Controller struct {
 	nextJoinOrder                     int64
 	paused                            bool
 	roomMedia                         bool
+	voiceListeners                    map[string]bool
 	videoGeneration                   string
 	videoPaused                       bool
 	routeTimings                      map[string]*routeTimingRecord

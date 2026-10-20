@@ -97,7 +97,7 @@ func (c *Controller) sfuBootstrapNeeded(demandPeerID string) bool {
 	}
 	demand, _ := c.participants.Get(demandPeerID)
 	return demand != nil && demand.sessionID != "" &&
-		!c.usableRoute(demandPeerID) &&
+		(!c.usableRoute(demandPeerID) || c.voiceRouteMissing(demandPeerID)) &&
 		c.sfuOpportunityAvailable(demandPeerID)
 }
 

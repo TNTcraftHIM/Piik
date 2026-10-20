@@ -148,6 +148,7 @@ func (s *Server) handleDisconnect(sess *session) {
 		return
 	}
 	s.router.disconnectParticipant(disconnected.RoomID, disconnected.PeerID, sess.sessionID)
+	s.disconnectRoomVoice(disconnected.RoomID, disconnected.PeerID, sess.sessionID)
 	s.sendRemoteInputPeers(disconnected.RoomID)
 	if disconnected.Role == protocol.RoleHost {
 		s.broadcastHostStatus(disconnected.RoomID, false, false)
@@ -170,6 +171,10 @@ func (s *Server) handleDisconnect(sess *session) {
 		}
 		delete(s.viewerGraceTimers, key)
 		if s.store.RemoveDisconnectedViewer(roomID, peerID) {
+			if voice := s.voices[roomID]; voice != nil {
+				delete(voice.members, peerID)
+				s.syncRoomVoice(roomID)
+			}
 			s.clearViewerEvidence(roomID, peerID)
 			s.router.removeViewer(roomID, peerID)
 		}
@@ -181,6 +186,12 @@ func (s *Server) handleDisconnect(sess *session) {
 // The share generation deliberately survives.
 func (s *Server) stopSharing(roomID string) {
 	if current, ok := s.shares[roomID]; ok {
+		if host, connected := s.store.GetConnectedHost(roomID); connected {
+			if sess := s.sessionsByID[host.SessionID]; sess != nil && sess.authenticated != nil &&
+				sess.authenticated.shareGeneration == current.generation {
+				sess.authenticated.shareGeneration = ""
+			}
+		}
 		s.shares[roomID] = roomShare{generation: current.generation}
 	}
 	s.broadcastAudioPresence(roomID)
@@ -212,6 +223,7 @@ func (s *Server) abandonRoom(roomID string) error {
 // closeRoom closes the host session first, then
 // viewers in store order, each told room-closed then closed with 1000.
 func (s *Server) closeRoom(closed room.ClosedRoom) {
+	s.closeRoomVoice(closed.RoomID)
 	s.clearRoomGraceTimers(closed.RoomID)
 	s.clearRoomViewerEvidence(closed.RoomID)
 	s.router.deleteRoom(closed.RoomID)
@@ -254,11 +266,15 @@ func (s *Server) revokeGrantViewers(roomID string, update room.ViewerGrantUpdate
 		}
 
 		for _, viewer := range update.RevokedViewers {
-			if viewer.SessionID == "" {
-				continue
+			if viewer.SessionID != "" {
+				s.closeRevokedViewerSession(viewer.SessionID)
 			}
-			s.closeRevokedViewerSession(viewer.SessionID)
+			if voice := s.voices[roomID]; voice != nil {
+				delete(voice.members, viewer.PeerID)
+			}
 		}
+		s.syncVoiceDemand(roomID)
+		s.syncRoomVoice(roomID)
 	}()
 	s.sendViewerPresence(roomID)
 }
