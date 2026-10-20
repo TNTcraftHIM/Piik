@@ -342,7 +342,10 @@ func testTransportVideoFeedbackAudioAndClose(t *testing.T, repair, withdrawDeman
 			})
 			delta, _ := transport.Output.probeDemand()
 			transport.driveProbeLocked()
-			ended := transport.probe.Result.EndTime != 0 && !transport.prober.IsRunning()
+			// Feedback may finalize the stopped probe in this same call, clearing
+			// its identity and EndTime. Both retired states must stop sending.
+			ended := !transport.prober.IsRunning() && (transport.probe.Id == ccutils.ProbeClusterIdInvalid ||
+				transport.probe.Result.EndTime != 0)
 			transport.mu.Unlock()
 			check(err)
 			if delta != 0 || !ended {
