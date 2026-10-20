@@ -892,6 +892,16 @@ This uses GStreamer 1.28.3 and libportal 0.9.1 on an isolated Alpine runner;
 its probe correctly reports no capture without a desktop session. Actual
 Portal capture and platform packaging remain separate checks.
 
+The square-pixel correction from [#488](https://github.com/TNTcraftHIM/Piik/pull/488)
+constrains the raw desktop source before downstream scaling. This follows
+[GStreamer negotiation](https://gstreamer.freedesktop.org/documentation/plugin-development/advanced/negotiation.html):
+the source selects from downstream caps, so an output-only constraint can leave
+PipeWire choosing an extreme pixel aspect ratio. The headless regression checks
+source fixation and real 3840x2160 to 1920x1080 conversion. The contributor reports
+restored KDE Wayland capture on AMD hardware; that is separate from our build
+checks and does not establish all desktop/driver combinations. Encoded-input
+transcoding keeps its existing path and source-aspect handling.
+
 A uniform-noise 4K1/50 Mbps stress input reached the retained 4 MiB access-unit
 guard in both Native codecs; VP8 produced a 6,199,837-byte frame. The output was
 rejected rather than expanding allocation limits. Large bitrate/low-cadence

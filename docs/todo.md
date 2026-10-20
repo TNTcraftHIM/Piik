@@ -14,19 +14,6 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
-- [ ] **Linux desktop sharing (#488).** Review the [contributor fix](https://github.com/TNTcraftHIM/Piik/pull/488)
-  for PipeWire negotiating an extreme pixel aspect ratio and overflowing the
-  GStreamer scaler. Verify with the existing Linux native check and the reported
-  KDE Wayland case before integration; preserve desktop geometry and the
-  separate encoded-input path.
-
-- [ ] **Remote-control stop shortcut.** Design separately configurable Host
-  emergency-stop and Viewer-release chords using the existing local preference
-  owners. Windows currently reserves Ctrl+Alt+F10 at App startup; a collision
-  disables its input backend. Report the actual registered chord or failure,
-  preserve the visible stop action, and keep shortcut changes out of route or
-  remote-authority identity.
-
 - [ ] **Return LiveKit to an upstream pin.** Native publication now supplies
   unmet encoder demand to the existing allocator through the scoped dependency
   revision submitted in [upstream #5016](https://github.com/livekit/livekit/pull/5016).
@@ -122,11 +109,12 @@ experiments and their limits.
   reports are needed to attribute their cases.
   Do not infer server CPU requirements from an unmatched report.
 
-- [ ] **Linux Portal target identity acceptance (#470).** The
-  [contributor fix](https://github.com/TNTcraftHIM/Piik/pull/470) is integrated
-  with authorship retained. Compilation and headless serial/node-ID targeting
-  checks pass. Verify an actual Portal that omits `pipewire-serial` when physical
-  Linux capture acceptance resumes; headless checks do not exercise desktop capture.
+- [ ] **Linux desktop capture acceptance (#470, #488).** The
+  [target identity](https://github.com/TNTcraftHIM/Piik/pull/470) and
+  [square-pixel](https://github.com/TNTcraftHIM/Piik/pull/488) contributor fixes
+  are integrated with scoped authorship. Verify an actual Portal that omits
+  `pipewire-serial` and the reported KDE Wayland source when physical Linux
+  capture acceptance resumes; headless checks do not exercise desktop capture.
 - [ ] **Windows 11 capture border remains visible.** The new report does not
   identify the affected version, capture path or Windows build. The reviewed
   picker/start/source-change paths preserve the border preference; no additional
