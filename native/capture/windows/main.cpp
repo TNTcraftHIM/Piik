@@ -144,6 +144,7 @@ void PrintAdapters(const std::vector<Adapter>& adapters) {
   }
 }
 
+#ifdef PIIK_H264_FIXTURE
 std::vector<UINT8> SyntheticNv12(
     UINT32 frame_index, const VideoProfile& profile = kDefaultVideoProfile) {
   const auto width = profile.width;
@@ -191,7 +192,6 @@ ComPtr<ID3D11Texture2D> CreateSyntheticTexture(
   return texture;
 }
 
-#ifdef PIIK_H264_FIXTURE
 ComPtr<IMFSample> CreateInputSample(ID3D11Device* device, UINT32 frame_index) {
   auto texture = CreateSyntheticTexture(device, frame_index);
   return CreateSurfaceSample(texture.Get(),
@@ -795,6 +795,49 @@ class FrameConverter final {
   DXGI_COLOR_SPACE_TYPE input_color_ = kDesktopColor;
 };
 
+ComPtr<ID3D11Texture2D> CreateEncoderProbeTexture(
+    ID3D11Device* device, FrameConverter& converter, UINT32 frame_index,
+    const VideoProfile& profile) {
+  std::vector<UINT32> pixels(static_cast<size_t>(profile.width) * profile.height);
+  const UINT32 bar_start = (frame_index * 11) % profile.width;
+  for (UINT32 y = 0; y < profile.height; ++y) {
+    for (UINT32 x = 0; x < profile.width; ++x) {
+      const UINT32 distance = (x + profile.width - bar_start) % profile.width;
+      const UINT32 base = 16 + ((x / 8 + y / 8 + frame_index) % 180);
+      pixels[static_cast<size_t>(y) * profile.width + x] = distance < 96
+          ? 0xffebebeb : 0xff000000 | base |
+              ((96 + frame_index % 64) << 8) | ((160 - frame_index % 64) << 16);
+    }
+  }
+  D3D11_TEXTURE2D_DESC description{};
+  description.Width = profile.width;
+  description.Height = profile.height;
+  description.MipLevels = description.ArraySize = description.SampleDesc.Count = 1;
+  description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  description.Usage = D3D11_USAGE_DEFAULT;
+  description.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+  D3D11_SUBRESOURCE_DATA initial{};
+  initial.pSysMem = pixels.data();
+  initial.SysMemPitch = profile.width * 4;
+  ComPtr<ID3D11Texture2D> source;
+  Check(device->CreateTexture2D(&description, &initial, &source), "codec-probe-source");
+  // Match live capture's GPU-produced NV12 input instead of probing a separate
+  // initialized NV12 upload path. Each conversion owns its output surface.
+  return converter.Convert(source.Get(), profile.width, profile.height,
+      {static_cast<LONG>(profile.width), static_cast<LONG>(profile.height)}, kDesktopColor);
+}
+
+using EncoderProbeTextures = std::array<ComPtr<ID3D11Texture2D>, 8>;
+
+EncoderProbeTextures PrepareEncoderProbeTextures(ID3D11Device* device,
+                                                const VideoProfile& profile) {
+  FrameConverter converter(device, profile);
+  EncoderProbeTextures textures;
+  for (UINT32 index = 0; index < textures.size(); ++index)
+    textures[index] = CreateEncoderProbeTexture(device, converter, index * 7, profile);
+  return textures;
+}
+
 winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice
 CreateCaptureDevice(ID3D11Device* device) {
   ComPtr<IDXGIDevice> dxgi_device;
@@ -1270,15 +1313,11 @@ class ProbeEncoder final : public VideoEncoder {
 };
 
 bool SustainsEncodedCadence(VideoEncoder& hardware, ID3D11Device* device,
-                            const VideoProfile& profile, EncoderClock::time_point deadline) {
+                            const VideoProfile& profile, EncoderClock::time_point deadline,
+                            const EncoderProbeTextures& textures) {
   RequireEncoderTime(deadline);
   const auto [warmup_frames, sample_frames, interval] = CadenceTiming(profile);
   const UINT32 lag = CadenceLagFrames(profile.frame_rate);
-  // Synthesis is CPU work of the probe, not the encoder; prepare it before pacing.
-  std::array<ComPtr<ID3D11Texture2D>, 8> textures;
-  for (UINT32 index = 0; index < textures.size(); ++index) {
-    textures[index] = CreateSyntheticTexture(device, index * 7, profile);
-  }
   AdaptiveEncoder encoder(OutputKind::h264, profile, device,
       [&](const VideoProfile& selected) -> std::unique_ptr<VideoEncoder> {
         if (selected.width != profile.width || selected.height != profile.height ||
@@ -1389,14 +1428,19 @@ VideoEncoderSelection SelectVideoEncoder(
             const auto encoders = EnumerateHardwareEncoders(adapter);
             auto selected = ActivateTransform(encoders, candidate.second, next_device.manager.Get());
             auto next = std::make_unique<LiveEncoder>(std::move(selected), arguments.profile);
-            if (arguments.codec == "auto" && !SustainsEncodedCadence(
-                    *next,
-                    next_device.device.Get(), arguments.profile, deadline)) {
-              Fail("codec-probe-cadence", "hardware H264 did not sustain the target frame rate");
+            if (arguments.codec == "auto") {
+              RequireEncoderTime(deadline);
+              // Synthesis/conversion belongs to setup, outside the paced measurement.
+              const auto textures = PrepareEncoderProbeTextures(next_device.device.Get(), arguments.profile);
+              if (!SustainsEncodedCadence(*next, next_device.device.Get(),
+                      arguments.profile, deadline, textures))
+                Fail("codec-probe-cadence", "hardware H264 did not sustain the target frame rate");
             }
             if (arguments.codec == "h264") {
               // Explicit H264 validates output without Auto's cadence measurement.
-              const auto texture = CreateSyntheticTexture(next_device.device.Get(), 0, arguments.profile);
+              FrameConverter converter(next_device.device.Get(), arguments.profile);
+              const auto texture = CreateEncoderProbeTexture(
+                  next_device.device.Get(), converter, 0, arguments.profile);
               next->Encode(texture.Get(), 0, true, deadline);
             }
             RequireEncoderTime(deadline);

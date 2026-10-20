@@ -285,12 +285,19 @@ void CheckAutoCadenceProbe(ID3D11Device* device) {
   VideoProfile profile;
   profile.width = 64;
   profile.height = 64;
+  // WARP checks cadence independently of hardware video-processor support.
+  DeviceContext context;
+  context.device = device;
+  const std::vector<BYTE> pixels(profile.width * profile.height * 3 / 2, 128);
+  EncoderProbeTextures textures;
+  for (auto& texture : textures)
+    texture = UploadDecodedNV12(context, pixels.data(), profile.width, profile.height);
   UINT32 calls = 0;
   auto probe = [&](std::chrono::milliseconds latency, UINT32 dropped,
                    EncoderClock::time_point deadline, bool cold_only = false) {
     calls = 0;
     CadenceFixtureEncoder encoder(latency, dropped, cold_only, calls);
-    return SustainsEncodedCadence(encoder, device, profile, deadline);
+    return SustainsEncodedCadence(encoder, device, profile, deadline, textures);
   };
   const auto deadline = EncoderClock::now() + std::chrono::seconds(30);
   // Valid output at a fraction of the source rate is the driver defect Auto rejects.
@@ -339,7 +346,10 @@ void CheckOutputSampleAlignment() {
 void CheckSurfaceSample(ID3D11Device* device) {
   Runtime runtime;
   const VideoProfile profile{64, 64, 30, 3'000'000};
-  auto texture = CreateSyntheticTexture(device, 0, profile);
+  DeviceContext context;
+  context.device = device;
+  const std::vector<BYTE> pixels(profile.width * profile.height * 3 / 2, 128);
+  auto texture = UploadDecodedNV12(context, pixels.data(), profile.width, profile.height);
   auto sample = CreateSurfaceSample(texture.Get(), 1'000'000, 333'333);
   ComPtr<IMFMediaBuffer> buffer;
   Check(sample->GetBufferByIndex(0, &buffer), "fixture-sample-buffer");

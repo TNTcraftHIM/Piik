@@ -88,6 +88,38 @@ void CheckColors(const DeviceContext& device, ID3D11Texture2D* texture) {
   if (!correct) throw std::runtime_error("SDR range or matrix changed");
 }
 
+void CheckEncoderProbeTextures(const DeviceContext& device) {
+  const VideoProfile profile{256, 128, 30, 3'000'000};
+  const auto textures = PrepareEncoderProbeTextures(device.device.Get(), profile);
+  std::array<UINT64, 8> fingerprints{};
+  for (size_t index = 0; index < textures.size(); ++index) {
+    D3D11_TEXTURE2D_DESC description{};
+    textures[index]->GetDesc(&description);
+    if (description.Width != profile.width || description.Height != profile.height ||
+        description.Format != DXGI_FORMAT_NV12 ||
+        description.BindFlags != D3D11_BIND_RENDER_TARGET)
+      throw std::runtime_error("Encoder probe does not use live converter surfaces");
+    description.Usage = D3D11_USAGE_STAGING;
+    description.BindFlags = 0;
+    description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ComPtr<ID3D11Texture2D> staging;
+    Check(device.device->CreateTexture2D(&description, nullptr, &staging), "probe-readback");
+    device.context->CopyResource(staging.Get(), textures[index].Get());
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    Check(device.context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped), "probe-map");
+    UINT64 fingerprint = 14695981039346656037ull;
+    const auto* bytes = static_cast<const UINT8*>(mapped.pData);
+    for (UINT32 row = 0; row < profile.height * 3 / 2; ++row)
+      for (UINT32 column = 0; column < profile.width; ++column)
+        fingerprint = (fingerprint ^ bytes[row * mapped.RowPitch + column]) * 1099511628211ull;
+    device.context->Unmap(staging.Get(), 0);
+    for (size_t earlier = 0; earlier < index; ++earlier)
+      if (textures[index].Get() == textures[earlier].Get() || fingerprints[earlier] == fingerprint)
+        throw std::runtime_error("Encoder probe frames lost their distinct retained contents");
+    fingerprints[index] = fingerprint;
+  }
+}
+
 ComPtr<ID3D11Texture2D> LinearBars(const DeviceContext& device, UINT width,
                                  UINT height, const std::array<float, 8>& nits) {
   std::vector<UINT16> pixels(static_cast<size_t>(width) * height * 4);
@@ -178,6 +210,7 @@ int main() {
     if (adapters.empty()) throw std::runtime_error("A physical D3D11 adapter is required");
     for (const auto& adapter : adapters) {
       auto device = CreateDevice(adapter);
+      CheckEncoderProbeTextures(device);
       for (const UINT output_width : {256u, 128u}) {
         VideoProfile profile;
         profile.width = output_width;
