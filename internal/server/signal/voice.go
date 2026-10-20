@@ -111,11 +111,14 @@ func (s *Server) handleRoomVoiceCommand(sess *session, auth *authenticatedSessio
 			return
 		}
 		targetSession, target := s.voiceSession(auth.roomID, command.PeerID)
-		if targetSession == nil || !target.requested {
+		if target == nil || command.Listen && (targetSession == nil || !target.requested) {
 			s.voiceError(sess, "participant-unavailable")
 			return
 		}
 		target.listen, target.speak = command.Listen, command.Listen && command.Speak
+		if !target.listen {
+			target.requested = false
+		}
 		if !target.speak {
 			target.publicationID = ""
 		}

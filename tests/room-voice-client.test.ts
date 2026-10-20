@@ -23,6 +23,19 @@ function setup() {
   return { session, messages };
 }
 
+it("clears a transport failure after the server commits its repaired voice route", () => {
+  const { session } = setup();
+  vi.spyOn(session.endpoint, "reconcile").mockResolvedValue();
+  const pending = { ...room(2), connections: [{ connectionId: "repair_connection_123", parentPeerId: "host", childPeerId: "self",
+    transport: "peer" as const, pending: true, revision: 2, send: [], receive: [] }] };
+  session.receive({ type: "room-voice-error", code: "connection-unavailable" });
+  session.receive(pending);
+  expect(session.getSnapshot().error).toBe("transport");
+  session.receive({ ...pending, revision: 3, connections: [{ ...pending.connections[0]!, pending: false }] });
+  expect(session.getSnapshot().error).toBeNull();
+  session.close();
+});
+
 it("captures only on explicit action and waits for the server publication acknowledgement", async () => {
   const mic = microphone(), getUserMedia = vi.fn(async () => mic.stream);
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });

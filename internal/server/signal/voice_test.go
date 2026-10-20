@@ -241,6 +241,15 @@ func TestRoomVoiceUsesNormalRoomAuthorityAndKeepsGraphAcrossVideo(t *testing.T) 
 	if last.Publications[0].ID == pubID {
 		t.Fatal("publication identity was reused")
 	}
+	voiceCommand(host, map[string]any{"action": "permission", "peerId": viewerID.PeerID, "listen": false, "speak": false})
+	nextVoiceState(t, viewer, func(state protocol.RoomVoiceStateMessage) bool {
+		for _, member := range state.Members {
+			if member.PeerID == viewerID.PeerID {
+				return !member.Requested && !member.Listen && !member.Speak
+			}
+		}
+		return false
+	})
 
 	viewer.sendJSON(map[string]any{"type": "signaling-challenge", "sequence": 42})
 	viewer.next("signaling-challenge-response")

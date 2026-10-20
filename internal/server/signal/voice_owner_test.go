@@ -82,6 +82,37 @@ func TestVoiceOwnersRebindRoomOnlySessionsAndReleaseLastDisconnect(t *testing.T)
 	})
 }
 
+func TestVoiceOwnerCanRevokeDisconnectedMember(t *testing.T) {
+	h, host, viewer, _, viewerID := approvedVoiceOwnerRoom(t)
+	h.closeClient(viewer)
+	nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool {
+		for _, member := range state.Members {
+			if member.PeerID == viewerID.PeerID {
+				return !member.Connected
+			}
+		}
+		return false
+	})
+	voiceCommand(host, map[string]any{"action": "permission", "peerId": viewerID.PeerID, "listen": false, "speak": false})
+	nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool {
+		for _, member := range state.Members {
+			if member.PeerID == viewerID.PeerID {
+				return !member.Requested && !member.Listen && !member.Speak
+			}
+		}
+		return false
+	})
+	viewer = openClient(t, h)
+	authenticate(t, viewer, h.room, protocol.RoleViewer, "owner_viewer_123456", 1, "", presenceOptions{})
+	viewer.sendJSON(map[string]any{"type": "subscribe-room-voice"})
+	state := nextVoiceState(t, viewer, nil)
+	for _, member := range state.Members {
+		if member.PeerID == viewerID.PeerID && (member.Requested || member.Listen || member.Speak || member.PublicationID != "") {
+			t.Fatal("reconnection restored revoked voice authority")
+		}
+	}
+}
+
 func TestVoiceOwnersOptInPreservesPausedPublication(t *testing.T) {
 	h := startHarness(t, harnessOptions{})
 	host := openClient(t, h)

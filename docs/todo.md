@@ -151,8 +151,6 @@ experiments and their limits.
   reauthentication trace on repaired connection-opportunity accounting.
   [#464](https://github.com/TNTcraftHIM/Piik/issues/464) needs matched SFU reports
   after updating; the Viewer-side publication diagnostic was not Host evidence.
-  [#467](https://github.com/TNTcraftHIM/Piik/issues/467) needs the Host/App rejection
-  preceding its 170 ms exhaustion; extending ICE timeouts is not justified.
   For [#465](https://github.com/TNTcraftHIM/Piik/issues/465), isolate local-network
   permission from IP masking using the [local controls](./research/browser-local-encoding-pool.md#local-connection-failure-control).
   [#463](https://github.com/TNTcraftHIM/Piik/issues/463) needs the Mac/phone attempt
