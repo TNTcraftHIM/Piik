@@ -11,6 +11,7 @@ import { useAnchoredPopover } from "./use-anchored-popover";
 import { usePlaybackControlsVisibility } from "./use-playback-controls-visibility";
 import { usePictureInPicture } from "./use-picture-in-picture";
 import { bindPlaybackGestures } from "./playback-gestures";
+import { useVideoRotation } from "./use-video-rotation";
 import { toggleVideoFullscreen, videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import "./playback-controls.css";
 import "./floating-panel.css";
@@ -50,6 +51,7 @@ export function PlaybackControls({
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
   const visibility = usePlaybackControlsVisibility(videoRef, controlsRef, paused || !canPlay);
   const picture = usePictureInPicture(videoRef);
+  useVideoRotation(videoRef, settings?.pictureFit, settings?.pictureRotation ?? 0);
 
   const togglePlayback = () => {
     if (!canPlay) return;

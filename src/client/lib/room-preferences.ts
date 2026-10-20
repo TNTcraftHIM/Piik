@@ -8,6 +8,7 @@ export const REMOTE_KEYBOARD_PAGES = ["letters", "symbols", "functions", "text"]
 
 const roomPreferencesSchema = z.object({
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
+  pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
   routePreference: viewerRoutePreferenceSchema.default("auto"),
   overlayEnabled: z.boolean().default(false),
   overlayAppearance: z.object({

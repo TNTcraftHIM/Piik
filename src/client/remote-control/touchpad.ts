@@ -1,5 +1,6 @@
 import type { RemoteInputEvent } from "./input-session";
 import type { RemoteViewport } from "./viewport";
+import { rotatePictureDelta, type VideoRotation } from "../media/video-geometry";
 
 type Point = { x: number; y: number };
 type Contact = Point & { start: Point };
@@ -19,7 +20,7 @@ export class RemoteTouchpad {
   private frame: number | null = null;
 
   constructor(
-    private readonly picture: () => { width: number; height: number } | null,
+    private readonly picture: () => { width: number; height: number; rotation: VideoRotation } | null,
     private readonly input: (event: RemoteInputEvent) => void,
     private readonly scroll: (deltaY: number) => void,
     private readonly changed: (position: Point) => void,
@@ -71,9 +72,10 @@ export class RemoteTouchpad {
     contact.x = x; contact.y = y;
     const picture = this.picture();
     if (!picture?.width || !picture.height) return;
+    const delta = rotatePictureDelta({ x: dx / picture.width, y: dy / picture.height }, picture.rotation, true);
     this.position = this.viewport.visiblePosition({
-      x: Math.max(0, Math.min(1, this.position.x + dx / picture.width)),
-      y: Math.max(0, Math.min(1, this.position.y + dy / picture.height)),
+      x: Math.max(0, Math.min(1, this.position.x + delta.x)),
+      y: Math.max(0, Math.min(1, this.position.y + delta.y)),
     });
     this.input({ type: "move", ...this.position });
     this.changed(this.position);

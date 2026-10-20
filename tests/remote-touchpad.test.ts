@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { RemoteTouchpad } from "../src/client/remote-control/touchpad";
 import type { RemoteInputEvent } from "../src/client/remote-control/input-session";
+import type { VideoRotation } from "../src/client/media/video-geometry";
 
 it("keeps taps, dragging, two-finger gestures and grant retirement distinct", () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
@@ -8,7 +9,7 @@ it("keeps taps, dragging, two-finger gestures and grant retirement distinct", ()
     const events: RemoteInputEvent[] = [], scroll: number[] = [];
     vi.stubGlobal("requestAnimationFrame", (callback: () => void) => setTimeout(callback, 16));
     vi.stubGlobal("cancelAnimationFrame", clearTimeout);
-    const touchpad = new RemoteTouchpad(() => ({ width: 200, height: 100 }),
+    const touchpad = new RemoteTouchpad(() => ({ width: 200, height: 100, rotation: 0 }),
       event => events.push(event), delta => scroll.push(delta), () => {}, { scale: 1, transform: () => {}, visiblePosition: position => position });
     touchpad.down(1, 20, 20); touchpad.up(1);
     expect(events).toEqual([{ type: "move", x: .5, y: .5 },
@@ -55,7 +56,7 @@ it("keeps pinch/pan local and never turns the remaining finger into a remote cli
   try {
     const input = vi.fn(), scroll = vi.fn(), transform = vi.fn();
     const viewport = { scale: 1, transform, visiblePosition: (position: { x: number; y: number }) => position };
-    const pad = new RemoteTouchpad(() => ({ width: 200, height: 100 }), input, scroll, () => {}, viewport);
+    const pad = new RemoteTouchpad(() => ({ width: 200, height: 100, rotation: 0 }), input, scroll, () => {}, viewport);
     pad.down(1, 40, 50); pad.down(2, 160, 50);
     input.mockClear();
     pad.move(1, 10, 50); pad.move(2, 190, 50);
@@ -85,4 +86,23 @@ it("keeps pinch/pan local and never turns the remaining finger into a remote cli
     vi.advanceTimersByTime(600);
     expect(transform).not.toHaveBeenCalled();
   } finally { vi.useRealTimers(); vi.unstubAllGlobals(); }
+});
+
+it.each([
+  [0, .75, .5], [90, .5, .25], [180, .25, .5], [270, .5, .75],
+] as const)("keeps touch motion aligned with the rotated picture and releases a held drag (%s°)", (rotation, x, y) => {
+  vi.useFakeTimers();
+  try {
+    const events: RemoteInputEvent[] = [];
+    const pad = new RemoteTouchpad(() => ({ width: 200, height: 100, rotation: rotation as VideoRotation }),
+      event => events.push(event), () => {}, () => {}, { scale: 1, transform: () => {}, visiblePosition: position => position });
+    pad.down(1, 20, 20);
+    vi.advanceTimersByTime(500);
+    pad.move(1, 70, 20);
+    expect(events.at(-1)).toEqual({ type: "move", x, y });
+    pad.reset();
+    expect(events.at(-1)).toEqual({ type: "button", button: 0, down: false });
+    pad.up(1);
+    expect(events.filter(event => event.type === "button")).toHaveLength(2);
+  } finally { vi.useRealTimers(); }
 });

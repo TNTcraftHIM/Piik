@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { ViewerRoutePreference } from "../../../shared/protocol";
-import type { VideoFit } from "../../media/video-geometry";
+import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Cap, Chip, Pill, RowGroup } from "./primitives";
@@ -8,6 +8,8 @@ import { Cap, Chip, Pill, RowGroup } from "./primitives";
 export interface ViewerPlaybackSettingsProps {
   pictureFit: VideoFit;
   setPictureFit: (fit: VideoFit) => void;
+  pictureRotation: VideoRotation;
+  setPictureRotation: (rotation: VideoRotation) => void;
   route?: {
     preference: ViewerRoutePreference;
     sfuAvailable: boolean;
@@ -20,7 +22,7 @@ export interface ViewerPlaybackSettingsProps {
 }
 
 // Local display and incoming-route intent only; media and routing keep their owners.
-export function ViewerPlaybackSettings({ pictureFit, setPictureFit, route, displayActions, reconnect }: ViewerPlaybackSettingsProps & {
+export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route, displayActions, reconnect }: ViewerPlaybackSettingsProps & {
   displayActions: ReactNode; reconnect: ReactNode;
 }) {
   const { t, vis } = useCopy();
@@ -36,6 +38,13 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, route, displ
         <Cap k={`playback.fit.${fit}`} />
       </Chip>)}</RowGroup>
       {!vis && <p>{t(pictureFit === "cover" ? "playback.fitCrop" : pictureFit === "fill" ? "playback.fitStretch" : "playback.fitFull")}</p>}
+      <div className="lr-viewer-settings-heading lr-picture-rotation-heading"><h3><Glyph name="refresh" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.rotation")}</span></h3></div>
+      <div className="lr-picture-rotation" role="group" aria-label={t("playback.rotation")}>
+        {([0, 90, 180, 270] as const).map(rotation => <Chip key={rotation}
+          selected={pictureRotation === rotation} title={`${t("playback.rotation")} ${rotation}°`}
+          onClick={() => setPictureRotation(rotation)}>{rotation}°</Chip>)}
+      </div>
+      {!vis && <p>{t("playback.rotationHint")}</p>}
       {displayActions}
     </section>
     <section aria-label={t("playback.connection")}>

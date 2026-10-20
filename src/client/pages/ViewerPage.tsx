@@ -273,6 +273,7 @@ export function ViewerPage({
   const signalRef = useRef<SignalingClient | null>(null);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
+  const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
   const [routePreference, setRoutePreference] = useState<ViewerRoutePreference>("auto");
   const [routePreferencePending, setRoutePreferencePending] = useState(false);
@@ -2264,9 +2265,11 @@ export function ViewerPage({
               overlayAction={<RoomChatToggle session={interactionSession} />}
               overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
               remoteActions={<RemoteControl channel={inputRoute.current} videoRef={videoRef}
-                  pictureFit={pictureFit}
+                  pictureFit={pictureFit} pictureRotation={pictureRotation}
                   available={presentation.overlay === "none" && presentation.hasCurrentFrame} />}
-              settings={{ pictureFit, setPictureFit: fit => {
+              settings={{ pictureFit, pictureRotation, setPictureRotation: rotation => {
+                setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation });
+              }, setPictureFit: fit => {
                 setPictureFit(fit); saveRoomPreferences({ pictureFit: fit });
               },
                 route: routeOptions ? {

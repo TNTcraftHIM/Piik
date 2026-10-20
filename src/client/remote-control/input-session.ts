@@ -1,5 +1,4 @@
 import type { InputTransport } from "./input-route";
-import { videoPictureSize } from "../media/video-geometry";
 import { remoteInputStateSchema, type RemoteInputState } from "./protocol";
 export type { RemoteInputState } from "./protocol";
 export type RemoteInputEvent =
@@ -146,22 +145,4 @@ export class RemoteInputSession {
     this.channel.removeEventListener("message", this.message);
     this.channel.removeEventListener("close", this.closed);
   }
-}
-
-// The input surface can include letterboxing. Its bars are not clickable
-// picture pixels; use the same local fit as Viewer playback, including cropping.
-export function pictureRect(video: HTMLVideoElement): { left: number; top: number; width: number; height: number } | null {
-  if (!video.videoWidth || !video.videoHeight) return null;
-  const rect = video.getBoundingClientRect();
-  const { width, height } = videoPictureSize(video, rect.width, rect.height);
-  if (!width || !height) return null;
-  return { left: rect.left + (rect.width - width) / 2, top: rect.top + (rect.height - height) / 2, width, height };
-}
-
-export function picturePoint(video: HTMLVideoElement, clientX: number, clientY: number): { x: number; y: number } | null {
-  const rect = pictureRect(video);
-  if (!rect) return null;
-  const x = (clientX - rect.left) / rect.width;
-  const y = (clientY - rect.top) / rect.height;
-  return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
 }

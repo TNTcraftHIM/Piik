@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
-import { RemoteInputSession, picturePoint } from "../src/client/remote-control/input-session";
+import { RemoteInputSession } from "../src/client/remote-control/input-session";
+import { picturePoint, rotatePicturePoint, rotatePictureDelta, type VideoRotation } from "../src/client/media/video-geometry";
 import { InputRoute, type InputIdentity } from "../src/client/remote-control/input-route";
 import { remoteInputStateSchema } from "../src/client/remote-control/protocol";
 
@@ -93,7 +94,7 @@ it("binds input to the current request and retires cancelled or replaced grants"
 
 it("maps only visible picture pixels when playback has letterboxing", () => {
   const video = { videoWidth: 1920, videoHeight: 1080,
-    style: { objectFit: "contain" },
+    style: { objectFit: "contain" }, dataset: {},
     getBoundingClientRect: () => ({ left: 100, top: 50, width: 800, height: 600 }),
   } as HTMLVideoElement;
   expect(picturePoint(video, 500, 350)).toEqual({ x: 0.5, y: 0.5 });
@@ -124,6 +125,25 @@ it("ends a pending request when its source becomes unavailable, even before the 
   channel.receive({ platform: "windows", mode: "off", state: "unavailable", intent: "a".repeat(32) });
   expect(session.state?.mode).toBe("off");
   session.dispose();
+});
+
+it.each([
+  [0, { x: .25, y: .75 }], [90, { x: .25, y: .25 }],
+  [180, { x: .75, y: .25 }], [270, { x: .75, y: .75 }],
+] as const)("maps rotated picture pixels and relative motion back to source axes (%s°)", (rotation, shown) => {
+  const video = { videoWidth: 1920, videoHeight: 1080,
+    style: { objectFit: "fill" }, dataset: { pictureRotation: String(rotation) },
+    getBoundingClientRect: () => ({ left: 100, top: 50, width: 800, height: 600 }),
+  } as unknown as HTMLVideoElement;
+  expect(rotatePicturePoint({ x: .25, y: .75 }, rotation)).toEqual(shown);
+  expect(picturePoint(video, 100 + shown.x * 800, 50 + shown.y * 600)).toEqual({ x: .25, y: .75 });
+  expect(picturePoint(video, 99, 50)).toBeNull();
+  const motion = rotatePictureDelta({ x: .1, y: -.2 }, rotation as VideoRotation);
+  expect(rotatePictureDelta(motion, rotation, true)).toEqual({ x: .1, y: -.2 });
+  video.style.objectFit = "contain";
+  const sideways = rotation === 90 || rotation === 270;
+  expect(picturePoint(video, sideways ? 101 : 500, sideways ? 350 : 51)).toBeNull();
+  expect(picturePoint(video, 500, 350)).toEqual({ x: .5, y: .5 });
 });
 
 it("sends a control password only in the request and follows the App policy after cancellation", () => {

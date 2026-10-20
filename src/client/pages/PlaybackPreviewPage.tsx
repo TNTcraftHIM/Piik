@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { VideoFit } from "../media/video-geometry";
+import type { VideoFit, VideoRotation } from "../media/video-geometry";
 import { AppHeader } from "../components/living/Header";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { StageOverlay, StageTv } from "../components/living/Stage";
@@ -7,15 +7,16 @@ import { StatusIndicator } from "../components/living/StatusIndicator";
 import { STATUS_CATALOG } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
 
-function testMedia(withAudio: boolean) {
+function testMedia(withAudio: boolean, portrait: boolean) {
   const canvas = document.createElement("canvas");
-  canvas.width = 640;
+  canvas.width = portrait ? 480 : 640;
   // A 4:3 picture makes contain, crop and stretch visible in the 16:9 player.
-  canvas.height = 480;
+  canvas.height = portrait ? 640 : 480;
   const paint = canvas.getContext("2d")!;
   const started = performance.now();
   let animation = 0;
   function draw(now: number) {
+    paint.setTransform(canvas.width / 640, 0, 0, canvas.height / 480, 0, 0);
     const seconds = (now - started) / 1000;
     paint.fillStyle = "#172c3b";
     paint.fillRect(0, 0, 640, 480);
@@ -28,6 +29,11 @@ function testMedia(withAudio: boolean) {
     paint.fillStyle = "#dfe8f2";
     paint.font = "24px monospace";
     paint.fillText(`${seconds.toFixed(1)} s`, 28, 44);
+    paint.font = "18px monospace";
+    paint.fillText("TOP LEFT", 28, 76);
+    paint.fillText("TOP RIGHT", 510, 44);
+    paint.fillText("BOTTOM LEFT", 28, 452);
+    paint.fillText("BOTTOM RIGHT", 480, 452);
     animation = requestAnimationFrame(draw);
   }
   draw(started);
@@ -65,10 +71,12 @@ export function PlaybackPreviewPage() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [theaterMode, setTheaterMode] = useState(false);
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
+  const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(true);
   const [audioAvailable, setAudioAvailable] = useState(false);
+  const [portraitSource, setPortraitSource] = useState(false);
   const hasAudio = Boolean(stream?.getAudioTracks().length);
 
   function play() {
@@ -79,9 +87,9 @@ export function PlaybackPreviewPage() {
     });
   }
 
-  function start(withAudio: boolean) {
+  function start(withAudio: boolean, portrait = portraitSource) {
     mediaRef.current?.stop();
-    const media = testMedia(withAudio);
+    const media = testMedia(withAudio, portrait);
     mediaRef.current = media;
     setError("");
     setWaiting(false);
@@ -125,6 +133,9 @@ export function PlaybackPreviewPage() {
             {hasAudio ? (english ? "Remove audio track" : "移除音轨") : (english ? "Add quiet test tone" : "加入轻音量测试音")}</button>
           <button className="lr-btn" type="button" disabled={!stream} onClick={() => start(hasAudio)}>
             {english ? "Rebind new stream" : "重新绑定新流"}</button>
+          <button className="lr-btn" type="button" disabled={!stream} onClick={() => {
+            setPortraitSource(!portraitSource); start(hasAudio, !portraitSource);
+          }}>{portraitSource ? (english ? "Use landscape source" : "切换横向画面") : (english ? "Use portrait source" : "切换竖向画面")}</button>
           <button className="lr-btn" type="button" disabled={!hasAudio} onClick={() => {
             mediaRef.current?.setAudioInput(!audioAvailable);
             setAudioAvailable(!audioAvailable);
@@ -140,7 +151,7 @@ export function PlaybackPreviewPage() {
             aria-label={english ? "Local test video" : "本机测试视频"} />
           {waiting && <StageOverlay dim waiting icon={STATUS_CATALOG.joining.icon} message={t(STATUS_CATALOG.joining.labelKey)} comic={STATUS_CATALOG.joining.comic} />}
           <PlaybackControls videoRef={videoRef} stream={stream} audioAvailable={audioAvailable}
-            settings={{ pictureFit, setPictureFit, route: { preference: viewerRoute, onChange: setViewerRoute,
+            settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route: { preference: viewerRoute, onChange: setViewerRoute,
               sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } }}
             audioTrackKey={stream?.getAudioTracks().map((track) => track.id).join(",")}
             canPlay={Boolean(stream) && !waiting} theaterMode={theaterMode} onPlay={play}

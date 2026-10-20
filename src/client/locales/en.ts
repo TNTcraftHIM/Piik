@@ -97,6 +97,8 @@ export const en: Record<CopyKey, string> = {
   "playback.overlay": "On-screen chat",
   "playback.more": "Playback settings",
   "playback.pictureFit": "Picture fit",
+  "playback.rotation": "Picture rotation",
+  "playback.rotationHint": "Turn the picture without device auto-rotation. Applies to playback in this page.",
   "playback.connection": "Connection",
   "playback.fit.contain": "Fit",
   "playback.fit.cover": "Fill",

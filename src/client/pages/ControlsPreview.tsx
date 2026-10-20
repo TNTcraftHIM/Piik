@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { VideoFit } from "../media/video-geometry";
+import type { VideoFit, VideoRotation } from "../media/video-geometry";
 import { Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
 import { RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
@@ -89,6 +89,7 @@ export function ControlsPreview() {
   const [dial, setDial] = useState("60");
   const [theater, setTheater] = useState(false);
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
+  const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
   const video = useRef<HTMLVideoElement>(null);
   const notify = () => setFeedback(en ? "Got it. This is a preview." : "收到，只在预览里演示。" );
@@ -300,7 +301,7 @@ export function ControlsPreview() {
         <video ref={video} poster={POSTER} playsInline inert style={{ objectFit: pictureFit }} />
         <StageOverlay dim waiting icon={STATUS_CATALOG.joining.icon} message={t(STATUS_CATALOG.joining.labelKey)} comic={STATUS_CATALOG.joining.comic} />
         <PlaybackControls videoRef={video} stream={null} canPlay={false} theaterMode={theater} onPlay={notify}
-          settings={{ pictureFit, setPictureFit, route: { preference: viewerRoute, onChange: setViewerRoute,
+          settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route: { preference: viewerRoute, onChange: setViewerRoute,
             sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } }}
           onToggleTheater={() => setTheater(!theater)} onReconnect={notify} reconnectAvailable />
       </StageTv></div>

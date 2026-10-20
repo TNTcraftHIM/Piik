@@ -1,5 +1,4 @@
-import { pictureRect } from "./input-session";
-import { videoPictureSize } from "../media/video-geometry";
+import { pictureRect, rotatePicturePoint, videoBoxSize, videoPictureSize, videoRotation } from "../media/video-geometry";
 
 type Point = { x: number; y: number };
 
@@ -37,12 +36,18 @@ export class RemoteViewport {
     const limitY = Math.max(0, (picture.height * this.scale - height) / 2);
     const x = this.offset.x = Math.max(-limitX, Math.min(limitX, this.offset.x));
     const y = this.offset.y = Math.max(-limitY, Math.min(limitY, this.offset.y));
-    style.transform = this.scale > 1 ? `translate(${x}px, ${y}px) scale(${this.scale})` : "";
+    style.transform = this.scale > 1 ? `translate(${x}px, ${y}px) scale(${this.scale}) var(--picture-transform)` : "";
     // Clip to the original video cell, including when a keyboard occupies the
     // next grid cell. Inverse-transform its edges into the video's local space.
-    const insets = [height / 2 - (height / 2 + y) / this.scale, width / 2 - (width / 2 - x) / this.scale,
-      height / 2 - (height / 2 - y) / this.scale, width / 2 - (width / 2 + x) / this.scale];
-    style.clipPath = this.scale > 1 ? `inset(${insets.map(value => `${value}px`).join(" ")})` : "";
+    const bounds = this.video.getBoundingClientRect(), surface = this.surface.getBoundingClientRect();
+    const box = videoBoxSize(this.video);
+    const corners = [[surface.left, surface.top], [surface.right, surface.bottom]].map(([x, y]) =>
+      rotatePicturePoint({ x: (x - bounds.left) / bounds.width, y: (y - bounds.top) / bounds.height }, videoRotation(this.video), true));
+    const insets = [Math.min(...corners.map(point => point.y)) * box.height,
+      (1 - Math.max(...corners.map(point => point.x))) * box.width,
+      (1 - Math.max(...corners.map(point => point.y))) * box.height,
+      Math.min(...corners.map(point => point.x)) * box.width];
+    style.clipPath = `inset(${insets.map(value => `${value}px`).join(" ")})`;
     this.changed(this.scale > 1);
   }
 
@@ -51,12 +56,13 @@ export class RemoteViewport {
     if (!picture) return position;
     // Keep the local touch cursor in view while panning. No remote input is
     // emitted until the user next moves or clicks, at this visible position.
-    return {
+    const rotated = rotatePicturePoint(position, videoRotation(this.video));
+    return rotatePicturePoint({
       x: Math.max(0, Math.min(1, Math.max((rect.left - picture.left) / picture.width,
-        Math.min((rect.right - picture.left) / picture.width, position.x)))),
+        Math.min((rect.right - picture.left) / picture.width, rotated.x)))),
       y: Math.max(0, Math.min(1, Math.max((rect.top - picture.top) / picture.height,
-        Math.min((rect.bottom - picture.top) / picture.height, position.y)))),
-    };
+        Math.min((rect.bottom - picture.top) / picture.height, rotated.y)))),
+    }, videoRotation(this.video), true);
   }
 
   reset(): void {
