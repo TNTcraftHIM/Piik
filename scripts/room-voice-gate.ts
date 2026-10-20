@@ -16,7 +16,7 @@ const runFile = promisify(execFile);
 const redact = (value: string) => value.replace(/#v=[A-Za-z0-9_-]+/g, "#v=[redacted]");
 type Page = PageHandle & { targetId: string; session: string };
 type Sample = { voice: RoomVoiceState | null; peerId: string | null; inviteUrl: string | null; authentications: number;
-  energy: number; samples: number; bytes: number; playing: number; enabled: boolean; liveMicrophones: number; text: string };
+  energy: number; samples: number; bytes: number; playing: number; mutedPlayback: number; enabled: boolean; liveMicrophones: number; text: string; controls: string[] };
 
 // Observe the normal browser boundary; no alternate session or control protocol.
 const probe = (name: string) => `(() => {
@@ -64,11 +64,11 @@ const probe = (name: string) => `(() => {
         energy+=row.totalAudioEnergy||0;samples+=row.totalSamplesReceived||0;bytes+=row.bytesReceived||0;
       }
     return {voice:gate.voice,peerId:gate.peerId,inviteUrl:gate.inviteUrl,authentications:gate.authentications,energy,samples,bytes,wire:gate.wire,
-      playing:audio.length,enabled:audio.every(node=>node.srcObject.getAudioTracks().every(t=>t.enabled)),
+      playing:audio.length,mutedPlayback:audio.filter(node=>node.muted).length,enabled:audio.every(node=>node.srcObject.getAudioTracks().every(t=>t.enabled)),
       tracks:audio.flatMap(node=>node.srcObject.getAudioTracks().map(t=>({readyState:t.readyState,muted:t.muted,currentTime:node.currentTime}))),
       connections:peers.map(p=>({state:p.connectionState,signaling:p.signalingState,senders:p.getSenders().map(s=>s.track&&({kind:s.track.kind,readyState:s.track.readyState,enabled:s.track.enabled,muted:s.track.muted}))})),
       liveMicrophones:captures.flatMap(s=>s.getAudioTracks()).filter(t=>t.readyState==='live').length,
-      text:document.body.innerText.slice(-1200)};
+      text:document.body.innerText.slice(-1200),controls:[...document.querySelectorAll('button[aria-label]')].map(node=>node.getAttribute('aria-label'))};
   };
 })()`;
 
@@ -229,6 +229,23 @@ async function main(): Promise<void> {
       await until(leaf, state => state.playing === 2 && state.samples > before.samples, "relay continues after local playback mute");
     }
     check("local mute retains enabled incoming track and media progress");
+    await button(viewer, "Deafen");
+    const deafened = await until(viewer, state => !state.liveMicrophones && state.playing > 0 &&
+      state.mutedPlayback === state.playing && state.voice?.publications.length === 1, "deafen stops microphone and local playback");
+    await until(viewer, state => state.enabled && state.samples > deafened.samples, "deafen retains incoming media");
+    if (leaf) {
+      const before = await sample(leaf);
+      await until(leaf, state => state.playing === 1 && state.samples > before.samples, "deafened relay still forwards Host voice");
+    }
+    await button(viewer, "Undeafen");
+    const listening = await sample(viewer);
+    if (listening.liveMicrophones || listening.mutedPlayback !== listening.playing) throw new Error("Undeafen changed microphone or per-person mute");
+    await memberButton(viewer, "Voice Host", "Unmute for me");
+    await until(viewer, state => state.mutedPlayback === 0, "individual mute remains independent of deafen");
+    await button(viewer, "Turn on microphone");
+    await until(viewer, state => state.liveMicrophones === 1 && state.voice?.publications.length === 2, "explicit microphone restart after deafen");
+    if (leaf) await until(leaf, state => state.playing === 2, "relay listeners regain both speakers");
+    check("deafen stops own capture, preserves forwarding and individual mute, and never reopens microphone");
     const beforeVideo = await sample(viewer);
     await button(host, "Hide interaction window");
     await button(host, "Start sharing");
@@ -263,7 +280,7 @@ async function main(): Promise<void> {
     await ui(host, "screenshot", join(OUTPUT, `${arm}-voice-detached.png`));
     await ui(host, "--pin-tab", "tab", host.targetId);
     await evaluate(cdp, host, "documentPictureInPicture.window.close()", Date.now() + 5000);
-    await until(host, state => state.text.includes("Turn off microphone"), "panel returns from detached window");
+    await until(host, state => state.controls.includes("Turn off microphone"), "panel returns from detached window");
     check("actual detached shared voice window preserves capture and audio");
     await memberButton(host, "Voice Viewer", "Mute participant");
     await until(viewer, state => !state.liveMicrophones && !state.voice?.members.find(member => member.peerId === state.peerId)?.publicationId, "revoke stops exact microphone");

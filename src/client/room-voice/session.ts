@@ -3,7 +3,7 @@ import { audioInputConstraints } from "../media/audio-capture";
 import { debugError } from "../lib/debug";
 import { BrowserVoiceEndpoint } from "./browser-endpoint";
 
-export type RoomVoiceError = "microphoneDenied" | "microphoneMissing" | "microphoneFailed" | "transport" | "rejected";
+export type RoomVoiceError = "microphoneUnavailable" | "microphoneDenied" | "microphoneMissing" | "microphoneFailed" | "transport" | "rejected";
 export interface RoomVoiceSnapshot {
   peerId: string;
   role: "host" | "viewer";
@@ -11,6 +11,7 @@ export interface RoomVoiceSnapshot {
   room: RoomVoiceState | null;
   capturePending: boolean;
   microphone: boolean;
+  deafened: boolean;
   autoplayBlocked: boolean;
   muted: ReadonlySet<string>;
   error: RoomVoiceError | null;
@@ -23,7 +24,7 @@ export class RoomVoiceSession {
   readonly endpoint: BrowserVoiceEndpoint;
   private listeners = new Set<() => void>();
   private state: RoomVoiceSnapshot = { peerId: "", role: "viewer", connected: false, room: null,
-    capturePending: false, microphone: false, autoplayBlocked: false, muted: new Set(), error: null };
+    capturePending: false, microphone: false, deafened: false, autoplayBlocked: false, muted: new Set(), error: null };
   private capture: CaptureRequest | null = null;
   private publishing: CaptureRequest | null = null;
   private retiredPublications = new Set<string>();
@@ -47,7 +48,7 @@ export class RoomVoiceSession {
   }
   private refresh(): void {
     this.update({ microphone: this.endpoint.microphone, capturePending: !!this.capture || !!this.publishing,
-      autoplayBlocked: this.endpoint.autoplayBlocked, muted: new Set(this.endpoint.muted) });
+      deafened: this.endpoint.deafened, autoplayBlocked: this.endpoint.autoplayBlocked, muted: new Set(this.endpoint.muted) });
   }
   updateIceConfig(config: IceConfig): void { this.endpoint.updateIceConfig(config); }
   authenticated(peerId: string, role: "host" | "viewer"): void {
@@ -124,7 +125,10 @@ export class RoomVoiceSession {
   }
   async startMicrophone(): Promise<void> {
     const me = this.state.room?.members.find(member => member.peerId === this.state.peerId);
-    if (this.closed || !this.state.connected || !me?.listen || !me.speak || this.capture || this.publishing || this.microphone) return;
+    if (this.closed || !this.state.connected || !me?.listen || !me.speak || this.endpoint.deafened || this.capture || this.publishing || this.microphone) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      this.update({ error: "microphoneUnavailable" }); return;
+    }
     const request: CaptureRequest = {}; this.capture = request;
     this.update({ error: null }); this.refresh();
     let stream: MediaStream | undefined;
@@ -160,6 +164,11 @@ export class RoomVoiceSession {
     this.refresh(); this.schedule();
   }
   muteVoice(peerId: string): void { this.endpoint.mute(peerId, !this.endpoint.muted.has(peerId)); this.refresh(); }
+  deafen(deafened: boolean): void {
+    this.endpoint.deafen(deafened);
+    if (deafened) this.stopMicrophone(); else this.resumeAudio();
+    this.refresh();
+  }
   resumeAudio(): void { void this.endpoint.resume(); }
   disconnected(): void {
     this.epoch++;

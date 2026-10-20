@@ -167,6 +167,8 @@ allows listening and speaking. Approval never opens a microphone. Each speaker
 explicitly starts capture and owns one server-assigned publication; mute,
 revocation and session replacement retire that publication. Local mute changes
 only the listener's playback, including when that listener relays for others.
+Deafening pauses all local room-voice playback and stops the microphone without
+leaving voice or changing forwarding. Undeafening never restarts capture.
 
 Listening permission also authorizes a participant to forward decodable voice.
 A video relay without that permission cannot carry voice; the existing route

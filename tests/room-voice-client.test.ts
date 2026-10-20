@@ -60,6 +60,16 @@ it("captures only on explicit action and waits for the server publication acknow
   } finally { session.close(); }
 });
 
+it("explains an unavailable microphone API without requesting a publication", async () => {
+  vi.stubGlobal("navigator", {});
+  const { session, messages } = setup();
+  try {
+    await session.startMicrophone();
+    expect(session.getSnapshot()).toMatchObject({ error: "microphoneUnavailable", capturePending: false, microphone: false });
+    expect(messages.some(message => message.type === "room-voice-command")).toBe(false);
+  } finally { session.close(); }
+});
+
 it.each(["cancel", "revoke", "disconnect", "close"] as const)("stops a late microphone result after %s without reviving authority", async action => {
   let finish!: (stream: MediaStream) => void;
   const getUserMedia = vi.fn(() => new Promise<MediaStream>(resolve => { finish = resolve; }));
@@ -104,6 +114,25 @@ it("stops admitted microphone capture synchronously when speaking permission is 
   session.receive(room(4, true));
   expect(session.microphone).toBe(false);
   session.close();
+});
+
+it("deafens locally, stops the microphone and requires an explicit microphone restart", async () => {
+  const mic = microphone(), getUserMedia = vi.fn(async () => mic.stream);
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  const { session, messages } = setup();
+  try {
+    await session.startMicrophone(); session.receive(room(2, true, true));
+    session.muteVoice("friend");
+    session.deafen(true);
+    expect(mic.track.stop).toHaveBeenCalledOnce();
+    expect(session.getSnapshot()).toMatchObject({ deafened: true, microphone: false, capturePending: false });
+    expect(messages.at(-1)).toEqual({ type: "room-voice-command", command: { action: "unpublish", publicationId: "publication" } });
+    await session.startMicrophone();
+    session.deafen(false);
+    expect(session.getSnapshot()).toMatchObject({ deafened: false, microphone: false });
+    expect(session.getSnapshot().muted.has("friend")).toBe(true);
+    expect(getUserMedia).toHaveBeenCalledOnce();
+  } finally { session.close(); }
 });
 
 it("does not capture before the existing Host microphone owner has yielded, and cancellation fences that wait", async () => {

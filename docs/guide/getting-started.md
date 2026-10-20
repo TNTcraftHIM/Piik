@@ -344,6 +344,9 @@ Open **Interact → Voice** and select **Join voice**. Viewers select
 **Request voice**; the Host can allow listening, allow speaking or remove them.
 Permission never opens a microphone: each speaker selects **Turn on microphone**
 and grants browser access. **Mute for me** changes only your own playback.
+After joining, the bottom toolbar provides microphone, listening and leave
+controls. **Deafen** pauses room voice and closes your microphone; undeafening
+does not turn it back on. Video sound and voice forwarding remain unaffected.
 
 Voice stays connected when picture sharing stops. It also stays active when you
 close or detach the interaction window; choose **Leave voice** to leave.

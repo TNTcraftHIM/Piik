@@ -14,6 +14,13 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
+- [ ] **Remote-control stop shortcut.** Design separately configurable Host
+  emergency-stop and Viewer-release chords using the existing local preference
+  owners. Windows currently reserves Ctrl+Alt+F10 at App startup; a collision
+  disables its input backend. Report the actual registered chord or failure,
+  preserve the visible stop action, and keep shortcut changes out of route or
+  remote-authority identity.
+
 - [ ] **Return LiveKit to an upstream pin.** Native publication now supplies
   unmet encoder demand to the existing allocator through the scoped dependency
   revision submitted in [upstream #5016](https://github.com/livekit/livekit/pull/5016).
@@ -201,6 +208,12 @@ experiments and their limits.
   no field report currently establishes GC as its cause.
 
 ## Local Interaction Prototypes
+
+- [ ] **Audio-only accompaniment.** Assess sharing one application's audio as
+  a Host source, retaining source-audio quality and stereo independently of
+  speech permissions. Reuse the room route; check source-only readiness and
+  playback before choosing an implementation. Do not use a dummy video or
+  silently send accompaniment through the mono speech publication.
 
 - [ ] **Room-voice test packages (#484).** Finish the local normal App/Server/Web
   candidate and distribute it for field acceptance; leave production and the

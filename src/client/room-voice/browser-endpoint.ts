@@ -38,11 +38,12 @@ export class BrowserVoiceEndpoint {
   private peerId = "";
   private generation = 0;
   readonly muted = new Set<string>();
+  deafened = false;
 
   constructor(private iceConfig: IceConfig, private readonly send: (message: ClientMessage) => boolean, private readonly changed: () => void) {}
 
   get microphone(): boolean { return !!this.source; }
-  get autoplayBlocked(): boolean { return [...this.received.values()].some(binding => binding.blocked); }
+  get autoplayBlocked(): boolean { return !this.deafened && [...this.received.values()].some(binding => binding.blocked); }
   updateIceConfig(config: IceConfig): void { this.iceConfig = config; }
 
   setAuthority(state: RoomVoiceState | null, peerId: string): void {
@@ -184,8 +185,7 @@ export class BrowserVoiceEndpoint {
       if (!connection.config.pending && !binding.audio) {
         const audio = binding.audio = new Audio();
         audio.autoplay = true; audio.hidden = true;
-        const publisher = this.state?.publications.find(pub => pub.id === publicationId)?.peerId;
-        audio.muted = !!publisher && this.muted.has(publisher);
+        this.syncPlaybackMute();
         audio.srcObject = new MediaStream([track]); document.body.append(audio);
         void this.play(binding);
       }
@@ -202,7 +202,17 @@ export class BrowserVoiceEndpoint {
   async resume(): Promise<void> { await Promise.all([...this.received.values()].map(binding => this.play(binding))); }
   mute(peerId: string, muted: boolean): void {
     if (muted) this.muted.add(peerId); else this.muted.delete(peerId);
-    for (const binding of this.received.values()) if (binding.audio && this.state?.publications.find(pub => pub.id === binding.publicationId)?.peerId === peerId) binding.audio.muted = muted;
+    this.syncPlaybackMute();
+  }
+  deafen(deafened: boolean): void {
+    this.deafened = deafened;
+    this.syncPlaybackMute();
+  }
+  private syncPlaybackMute(): void {
+    for (const binding of this.received.values()) if (binding.audio) {
+      const publisher = this.state?.publications.find(pub => pub.id === binding.publicationId)?.peerId;
+      binding.audio.muted = this.deafened || !!publisher && this.muted.has(publisher);
+    }
   }
 
   private async description(connection: Connection, sdp: RTCSessionDescriptionInit, revision: number): Promise<VoiceDescription> {
