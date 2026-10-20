@@ -99,7 +99,8 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
   })));
   return <div className="lr-room-voice">
     <div className="lr-voice-panel-tools">
-      <span>{t(settingsOpen ? "host.microphone.settings" : "voice.participants")}</span>
+      <span>{vis && <Glyph name={settingsOpen ? "microphone" : "users"} size={16} />}
+        <span className={vis ? "visually-hidden" : undefined}>{t(settingsOpen ? "host.microphone.settings" : "voice.participants")}</span></span>
       <Btn icon={settingsOpen ? "headphones" : "sliders"} quiet size="dense"
         title={settingsOpen ? "voice.settingsClose" : "host.microphone.settings"}
         cap={settingsOpen ? "voice.settingsClose" : undefined}
