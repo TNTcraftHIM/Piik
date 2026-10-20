@@ -14,6 +14,10 @@
 
 #include "portal.h"
 
+// Desktop pixels are square. Constrain the source before downstream scaling
+// advertises a PAR range that PipeWire can fixate to 1/G_MAXINT.
+static const char desktop_source_caps[] = "video/x-raw,pixel-aspect-ratio=1/1";
+
 enum {
   kCaptureProtocol = 7,
   kMaxOutputs = 6,
@@ -1199,9 +1203,9 @@ static int capture_video(int count, char **values) {
   } else {
     char *target = pipewire_target(&portal);
     g_string_append_printf(pipeline_text,
-        "pipewiresrc name=source fd=%d %s do-timestamp=true ! "
+        "pipewiresrc name=source fd=%d %s do-timestamp=true ! %s ! "
         "videorate drop-only=true ! video/x-raw,framerate=%u/1 ! tee name=frames ",
-        portal.pipewire_fd, target, run.profile.frame_rate);
+        portal.pipewire_fd, target, desktop_source_caps, run.profile.frame_rate);
     g_free(target);
   }
   for (guint index = 0; index < run.output_count; ++index) {
