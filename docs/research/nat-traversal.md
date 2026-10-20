@@ -1074,10 +1074,19 @@ which retains numeric reflexive candidates even when host candidates are hidden.
 Pure LAN configuration therefore reuses the existing Binding-only STUN service
 on its selected address and App UDP port. Public-link discovery, NAT prediction,
 media routing and authorization retain their owners. The test's temporary HTTP
-proxy used an already firewall-permitted executable; it does not establish
-unmodified App firewall reachability or universal campus-network compatibility.
-No firewall or Browser privacy setting was changed. Full cross-device App
-startup and physical audio remain separate from this video/discovery evidence.
+proxy used an already firewall-permitted executable; that initial control alone
+did not establish direct packaged-App reachability.
+
+A same-day follow-up used the packaged App's ordinary Local invitation directly.
+The remote Browser initially timed out before reaching Piik. The host listened
+on the selected virtual address, but Windows classified the adapter as Public,
+blocked inbound traffic by default and had no rule for the new executable path;
+new-app notifications were disabled. With the owner's approval, inbound rules
+were limited to that App, virtual adapter and subnet: TCP on the web port and
+UDP for discovery/media. The remote TCP connection then reached the App process,
+and the owner confirmed both page and picture worked. No proxy, candidate
+substitution or Browser privacy change was used. This closes the direct
+App-to-Browser trial without claiming universal campus-network compatibility.
 
 ## Primary Sources
 

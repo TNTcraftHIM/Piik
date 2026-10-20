@@ -32,9 +32,9 @@ phases, including NAT and Auto codec behavior.
 - Remote-control UI and routed input have local evidence. OS permissions,
   protected/admin applications and game compatibility retain the limits in the
   [input assessment](./research/room-interactions.md#attended-remote-control-prototype).
-- A virtual LAN must carry both HTTP/WebSocket and media UDP. Host firewall
-  permission remains necessary; a proxy-based trial does not establish direct
-  App reachability. [Virtual LAN research](./research/nat-traversal.md#routed-virtual-lan-discovery)
+- A two-device Windows virtual-LAN trial established direct packaged-App web
+  access and remote video after scoped firewall permission. Other networks must
+  likewise carry HTTP/WebSocket and media UDP. [Virtual LAN research](./research/nat-traversal.md#routed-virtual-lan-discovery)
   owns the measured setup.
 
 ## Adaptation Boundaries
