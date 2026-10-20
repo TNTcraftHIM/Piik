@@ -598,6 +598,7 @@ async function main(): Promise<void> {
       ? remoteOptions() : null;
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
+  const lanAddress = process.env.PIIK_CLIENT_GATE_LAN_ADDRESS?.trim();
   const go = process.env.PIIK_GO?.trim() || "go";
   const tunnel = process.env.PIIK_CLOUDFLARED?.trim() || join(
     BUILD_ROOT,
@@ -712,7 +713,7 @@ async function main(): Promise<void> {
       mode === "one-link" ? "--link" : "--local",
       ...(mode === "one-link"
         ? ["--tunnel-process", tunnel]
-        : []),
+        : lanAddress ? ["--lan-address", lanAddress] : []),
       "--capture-process", captureBinary,
       "--config", appConfig,
       "--port", String(appPort),
