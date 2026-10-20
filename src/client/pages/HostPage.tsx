@@ -401,9 +401,9 @@ export function HostPage({
   const remoteStopShortcut = useCallback(async (key?: number) => {
     const client = nativeClientRef.current;
     const shareId = nativeShareGenerationRef.current;
-    if (!client || !shareId) throw new Error("Native share is unavailable");
+    if (!client || !shareId || !remoteControlState) throw new Error("Native share is unavailable");
     return client.remoteStopShortcut(shareId, key);
-  }, []);
+  }, [remoteControlState]);
   const remoteInputPeersRef = useRef<Extract<ServerMessage, { type: "remote-input-peers" }>["peers"]>([]);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [nativeSources, setNativeSources] =

@@ -60,6 +60,7 @@ type Manager struct {
 	mu           sync.Mutex
 	sink         inputSink
 	connections  map[endpointKey]*connection
+	sessions     map[*Session]struct{}
 	active       *connection
 	closed       bool
 	stop         context.CancelFunc
@@ -149,8 +150,17 @@ func (m *Manager) NewSession() *Session {
 	if m == nil {
 		return nil
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return nil
+	}
 	s := &Session{manager: m, changed: make(chan struct{}, 1), mode: "off"}
 	s.route = inputroute.New(s.receivePacket)
+	if m.sessions == nil {
+		m.sessions = make(map[*Session]struct{})
+	}
+	m.sessions[s] = struct{}{}
 	return s
 }
 
@@ -511,6 +521,8 @@ func (s *Session) Close() {
 			delete(m.connections, id)
 		}
 	}
+	delete(m.sessions, s)
+	m.releaseIdleShortcut()
 	s.notify()
 	m.mu.Unlock()
 	s.route.Close()
@@ -538,12 +550,14 @@ func (m *Manager) Close() {
 	}
 	m.closed = true
 	m.release()
+	stopShortcut := m.stopShortcut
+	m.stopShortcut = nil
 	if closer, ok := m.sink.(io.Closer); ok {
 		_ = closer.Close()
 	}
 	m.mu.Unlock()
-	if m.stopShortcut != nil {
-		m.stopShortcut()
+	if stopShortcut != nil {
+		stopShortcut()
 	}
 	if m.stop != nil {
 		m.stop()

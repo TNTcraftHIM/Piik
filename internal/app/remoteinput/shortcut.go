@@ -26,6 +26,21 @@ func (m *Manager) ensureStopShortcut() error {
 	return err
 }
 
+// Caller holds mu. A configured chord belongs to enabled input sessions, not
+// the App process: idle sharing must leave it available to other applications.
+func (m *Manager) releaseIdleShortcut() {
+	if m.stopShortcut == nil {
+		return
+	}
+	for session := range m.sessions {
+		if session.mode != "off" {
+			return
+		}
+	}
+	m.stopShortcut()
+	m.stopShortcut = nil
+}
+
 func (m *Manager) ReadStopShortcut() (StopShortcut, error) {
 	if !m.SupportsStopShortcut() {
 		return StopShortcut{}, errors.New("remote-control shortcut is unavailable")
@@ -72,6 +87,14 @@ func (m *Manager) SetStopShortcut(key int) (StopShortcut, error) {
 	if m.stopShortcut != nil {
 		m.stopShortcut()
 	}
-	m.stopKey, m.stopShortcut = key, stop
+	if m.stopShortcut == nil {
+		stop()
+	} else {
+		m.stopShortcut = stop
+	}
+	m.stopKey = key
+	for session := range m.sessions {
+		session.notify()
+	}
 	return StopShortcut{key, true}, nil
 }

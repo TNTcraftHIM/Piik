@@ -40,6 +40,9 @@ func TestStopShortcutCollisionAndReplacement(t *testing.T) {
 	if _, err := m.SetStopShortcut(9); err != nil {
 		t.Fatal(err)
 	}
+	if registered[9] {
+		t.Fatal("idle configuration reserved the shortcut")
+	}
 	if err := setTestPolicy(s, "ask", ""); err != nil || s.State().Mode != "ask" || saved != 9 {
 		t.Fatalf("changing the shortcut did not recover the same backend: %v", err)
 	}
@@ -49,6 +52,21 @@ func TestStopShortcutCollisionAndReplacement(t *testing.T) {
 	failSave = true
 	if _, err := m.SetStopShortcut(8); err == nil || registered[8] || !registered[9] || m.stopKey != 9 {
 		t.Fatal("a failed save changed or leaked the shortcut")
+	}
+	other := m.NewSession()
+	other.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"}, nil)
+	if err := setTestPolicy(other, "ask", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := setTestPolicy(s, "off", ""); err != nil || !registered[9] {
+		t.Fatal("disabling one session released another session's shortcut")
+	}
+	other.Close()
+	if registered[9] {
+		t.Fatal("closing the last enabled session retained the shortcut")
+	}
+	if err := setTestPolicy(s, "ask", ""); err != nil || !registered[9] {
+		t.Fatalf("a later control session did not reacquire the shortcut: %v", err)
 	}
 	m.Close()
 	if registered[9] || !registered[10] {

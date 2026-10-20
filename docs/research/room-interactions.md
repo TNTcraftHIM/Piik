@@ -533,9 +533,10 @@ A closed control channel needs a new media
 connection; neither path silently restores a grant. Either side can end control
 from its page. Windows also supplies a local Ctrl+Alt+F10 stop shortcut by default;
 macOS uses Control+Option+F10. The Host can change the function key in the control
-panel; App owns this saved preference. Registration begins on explicit input
-configuration or enabling control, rather than App startup. An occupied key
-fails that operation without disabling capture or the input backend. Replacing
+panel; App owns this saved preference. Configuration probes availability;
+registration lasts only while at least one native session enables control,
+never merely because App is running. An occupied key fails that operation
+without disabling capture or the input backend. Replacing
 the shortcut retains the old binding until registration and saving succeed.
 Viewers independently choose their page-local exit shortcut in the remote
 keyboard; it also works in a detached keyboard window and saves in that Browser.
