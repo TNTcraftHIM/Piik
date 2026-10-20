@@ -68,8 +68,6 @@
 .lr-viewer-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: var(--control-dense-size); margin-bottom: 12px; }
 .lr-viewer-settings h3, .lr-playback-overlay-settings h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; font-weight: 650; }
 .lr-viewer-settings-heading .lr-btn { width: auto; }
-.lr-picture-rotation-heading { margin-top: 16px; }
-.lr-picture-rotation { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .lr-viewer-settings .lr-row-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .lr-viewer-settings .lr-row-group > * { min-width: 0; }
 .lr-viewer-settings .lr-chip { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 40px; padding: 6px; font-size: 12px; white-space: nowrap; }

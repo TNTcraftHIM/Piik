@@ -28,6 +28,7 @@ function PlaybackMotion() {
 .vls-pb-popout{animation:vlsPbPopout var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-pb-popin{animation:vlsPbPopin var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 .vls-pb-unavailable{animation:vlsPbUnavailable var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-pb-rotate{transform-box:fill-box;transform-origin:center;transform:rotate(90deg);animation:vlsPbRotate var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
 @keyframes vlsPbCue{0%,8%,34%,100%{transform:scale(1)}16%{transform:scale(.86)}25%{transform:scale(1.08)}}
 @keyframes vlsPbPlay{0%,18%{transform:translateX(-12px)}40%,100%{transform:none}}
 @keyframes vlsPbFreeze{0%{transform:translateX(-12px)}18%,100%{transform:none}}
@@ -42,6 +43,7 @@ function PlaybackMotion() {
 @keyframes vlsPbPopout{0%,8%{transform:translate(-28px,-14px) scale(1.4)}34%,100%{transform:none}}
 @keyframes vlsPbPopin{0%,8%{transform:translate(32px,16px) scale(.65)}34%,100%{transform:none}}
 @keyframes vlsPbUnavailable{0%,8%,36%,100%{transform:none}16%{transform:translateX(-4px)}26%{transform:translateX(3px)}}
+@keyframes vlsPbRotate{0%,8%{transform:rotate(0)}34%,100%{transform:rotate(90deg)}}
 ${rmBlock(
   ["vls-pb-cue", "vls-pb-play", "vls-pb-freeze", "vls-pb-waves .vls-pb-wave",
     "vls-pb-waves.is-muting .vls-pb-wave", "vls-pb-cross",
@@ -50,6 +52,7 @@ ${rmBlock(
     [".vls-pb-waves.is-muting .vls-pb-wave,.vls-pb-chrome-out", "opacity:0"],
     [".vls-pb-cross,.vls-pb-chrome-in", "opacity:1"]],
 )}
+${rmBlock(["vls-pb-rotate"], [[".vls-pb-rotate", "transform:rotate(90deg)"]])}
 ${rmBlock(["vls-pb-listen", "vls-pb-flat", "vls-pb-unavailable"], [
   [".vls-pb-listen,.vls-pb-unavailable", "transform:none"],
   [".vls-pb-flat", "stroke-dashoffset:0;opacity:1"],
@@ -213,10 +216,31 @@ function PictureFitHint({ theme, fit }: Parameters<HintScene>[0] & { fit: "conta
   </>;
 }
 
+const PictureRotationHint: HintScene = ({ theme }) => <>
+  <PlaybackMotion />
+  {[0, 1].map(index => {
+    const x = index * 160;
+    return <g key={index}>
+      <Frame x={x + 4} w={152} theme={theme} result={index === 1} />
+      <MiniTv x={x + 48} y={13} w={96} h={70} />
+      <g transform={`translate(${x + 96} 48)`}>
+        <g className={index ? "vls-pb-rotate" : undefined}>
+          <rect x={-32} y={-18} width={64} height={36} rx={2} fill="var(--wall-2)" />
+          <circle cx={18} cy={-8} r={5} fill={SKY} />
+          <path d="M-32 18-14-5 1 12 12 2 32 18Z" fill={YOU} />
+          <rect x={-32} y={-18} width={64} height={36} rx={2} fill="none" stroke={FAINT} strokeWidth={1.5} />
+        </g>
+      </g>
+      <Pawn x={x + 26} yb={81} s={11} color={YOU} eyes />
+    </g>;
+  })}
+</>;
+
 export const PLAYBACK_SCENES: Record<PlaybackHintKind, HintScene> = {
   "hint-fit-contain": props => <PictureFitHint {...props} fit="contain" />,
   "hint-fit-cover": props => <PictureFitHint {...props} fit="cover" />,
   "hint-fit-fill": props => <PictureFitHint {...props} fit="fill" />,
+  "hint-picture-rotation": PictureRotationHint,
   "hint-local-play": (props) => <PlaybackHint {...props} paused={false} />,
   "hint-local-pause": (props) => <PlaybackHint {...props} paused />,
   "hint-volume": (props) => <AudioHint {...props} action="volume" />,

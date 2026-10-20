@@ -3,7 +3,7 @@ import type { ViewerRoutePreference } from "../../../shared/protocol";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Cap, Chip, Pill, RowGroup } from "./primitives";
+import { Btn, Cap, Chip, Pill, RowGroup } from "./primitives";
 
 export interface ViewerPlaybackSettingsProps {
   pictureFit: VideoFit;
@@ -31,20 +31,18 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotat
     : `playback.routeHint.${route.preference}` as const;
   return <div className="lr-viewer-settings">
     <section aria-label={t("playback.pictureFit")}>
-      <div className="lr-viewer-settings-heading"><h3><Glyph name="tv" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.pictureFit")}</span></h3></div>
+      <div className="lr-viewer-settings-heading">
+        <h3><Glyph name="tv" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.pictureFit")}</span></h3>
+        <Btn icon="rotatePicture" title="playback.rotation" cap="playback.rotation" size="dense"
+          hint="hint-picture-rotation" hintText="playback.rotationHint" pressed={pictureRotation !== 0}
+          onClick={() => setPictureRotation(pictureRotation === 0 ? 90 : 0)} />
+      </div>
       <RowGroup>{(["contain", "cover", "fill"] as const).map(fit => <Chip key={fit}
         selected={pictureFit === fit} title={t(`playback.fit.${fit}`)} hint={`hint-fit-${fit}`} onClick={() => setPictureFit(fit)}>
         {vis && <Glyph name={fit === "contain" ? "fitContain" : fit === "cover" ? "fitCover" : "fitStretch"} size={20} />}
         <Cap k={`playback.fit.${fit}`} />
       </Chip>)}</RowGroup>
       {!vis && <p>{t(pictureFit === "cover" ? "playback.fitCrop" : pictureFit === "fill" ? "playback.fitStretch" : "playback.fitFull")}</p>}
-      <div className="lr-viewer-settings-heading lr-picture-rotation-heading"><h3><Glyph name="refresh" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.rotation")}</span></h3></div>
-      <div className="lr-picture-rotation" role="group" aria-label={t("playback.rotation")}>
-        {([0, 90, 180, 270] as const).map(rotation => <Chip key={rotation}
-          selected={pictureRotation === rotation} title={`${t("playback.rotation")} ${rotation}°`}
-          onClick={() => setPictureRotation(rotation)}>{rotation}°</Chip>)}
-      </div>
-      {!vis && <p>{t("playback.rotationHint")}</p>}
       {displayActions}
     </section>
     <section aria-label={t("playback.connection")}>

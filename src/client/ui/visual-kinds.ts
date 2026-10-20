@@ -110,6 +110,7 @@ export type PlaybackHintKind =
   | "hint-fit-contain"
   | "hint-fit-cover"
   | "hint-fit-fill"
+  | "hint-picture-rotation"
   | "hint-local-play"
   | "hint-local-pause"
   | "hint-volume"

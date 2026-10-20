@@ -26,6 +26,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-fit-contain",
   "hint-fit-cover",
   "hint-fit-fill",
+  "hint-picture-rotation",
   "hint-share-start",
   "hint-share-stop",
   "hint-microphone-on",
