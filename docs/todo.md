@@ -36,6 +36,12 @@ platform deferrals or establish a diagnosis for unmatched reports.
 
 ## Held By Owner
 
+- [ ] **Separate accompaniment sharing.** Deferred by the owner on 2026-10-20
+  and excluded from the current room-voice candidate. The unfinished prototype
+  is preserved on `spike/audio-accompaniment` (`5e385add`), without acceptance
+  as a working feature. Sharing a music application with source audio remains
+  available; revisit additional audio alongside picture only for an accepted use case.
+
 - [ ] **Remote-control latency and responsiveness.** Scheduled after this release.
   Compare input-to-visible-response timing on the same endpoints, source and
   network against a mature remote-control implementation. Separate input
@@ -206,12 +212,6 @@ experiments and their limits.
   no field report currently establishes GC as its cause.
 
 ## Local Interaction Prototypes
-
-- [ ] **Audio-only accompaniment.** Assess sharing one application's audio as
-  a Host source, retaining source-audio quality and stereo independently of
-  speech permissions. Reuse the room route; check source-only readiness and
-  playback before choosing an implementation. Do not use a dummy video or
-  silently send accompaniment through the mono speech publication.
 
 - [ ] **Room-voice field acceptance (#484).** The normal App/Server/Web test
   packages are ready; leave production and the public Demo unchanged. One
