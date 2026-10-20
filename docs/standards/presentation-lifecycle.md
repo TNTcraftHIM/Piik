@@ -334,6 +334,8 @@ at most 24 Unicode code points, and rejects unsafe control or bidirectional
 characters. It is a label, not an account, authorization identity, or routing
 input. Duplicate names are allowed and receive a room-scoped peer suffix only
 when disambiguation is needed.
+Chat applies the same labeling rule to recorded sender names; repeated messages
+from one peer do not create another identity. Media readiness never owns identity.
 
 Connection details are progressive and use one card shape for P2P, peer relay,
 and SFU Viewers. Summary fields prioritize actual resolution, FPS, bitrate, and

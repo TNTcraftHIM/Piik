@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { normalizeChatText, MAX_CHAT_CODE_POINTS, isThrow, type ReactionId } from "../../../shared/room-interactions";
 import { RoomInteractionSession } from "../../lib/room-interactions";
+import { labelParticipantNames } from "../../lib/viewer-presence";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -65,6 +66,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
     ...couch.entries.map(entry => ({ peerId: entry.key, displayName: entry.name })),
   ];
   const latest = state.messages.at(-1)?.id ?? null;
+  const authors = labelParticipantNames(state.messages.map(message => message.sender));
   const unseenIndex = state.messages.findIndex(message => message.id === lastSeen);
   const unread = latest === lastSeen ? 0 : state.messages.length - unseenIndex - 1;
   const canSend = state.ready && !state.pending && !state.coolingDown;
@@ -211,7 +213,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
               onClick={event => openPanelReactions(participant.peerId, event.currentTarget)}>{avatar}</button>
               : <span className="lr-chat-avatar" aria-hidden="true">{avatar}</span>)}
             <div className="lr-chat-bubble">
-              <span className={continuation ? "visually-hidden" : "lr-chat-author"}>{message.sender.displayName}
+              <span className={continuation ? "visually-hidden" : "lr-chat-author"}>{authors[index]!.label}
                 {message.sender.role === "host" && <span className="visually-hidden"> · {t("common.host")}</span>}</span>
               <p>{message.payload.kind === "chat" && message.payload.text}</p>
             </div>

@@ -70,6 +70,11 @@ These physical checks or reporter diagnoses remain unverified. A local repair or
 successful test is not proof of a reporter's cause; research owns the completed
 experiments and their limits.
 
+- [ ] **Joining participant attribution.** Obtain a matched Browser report if an
+  independent remote Viewer's joining avatar again appears as a different local
+  Viewer. Compare presence/chat peer IDs with the rendered seat; default names
+  and faded waiting colours alone do not establish identity reuse.
+
 - [ ] **macOS bundle startup acceptance (#479).** Verify Finder launch,
   quarantine and capture permissions on a physical Mac. The Mach-O entry and
   helpers are inside `.app`; moved-bundle assembly and both architecture builds

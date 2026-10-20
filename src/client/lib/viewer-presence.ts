@@ -33,19 +33,18 @@ function comparePeerIdentity(
   return left.peerId < right.peerId ? -1 : left.peerId > right.peerId ? 1 : 0;
 }
 
-function labelPresence<T extends PresenceIdentity>(
+export function labelParticipantNames<T extends PresenceIdentity>(
   entries: readonly T[],
 ): LabeledPresence<T>[] {
-  const nameCounts = new Map<string, number>();
+  const peersByName = new Map<string, Set<string>>();
   entries.forEach((entry) => {
-    nameCounts.set(
-      entry.displayName,
-      (nameCounts.get(entry.displayName) ?? 0) + 1,
-    );
+    const peers = peersByName.get(entry.displayName) ?? new Set<string>();
+    peers.add(entry.peerId);
+    peersByName.set(entry.displayName, peers);
   });
   const duplicateNames = new Set(
-    [...nameCounts.entries()]
-      .filter(([, count]) => count > 1)
+    [...peersByName.entries()]
+      .filter(([, peers]) => peers.size > 1)
       .map(([displayName]) => displayName),
   );
   const suffixLengths = entries.map((entry) =>
@@ -66,7 +65,7 @@ function labelPresence<T extends PresenceIdentity>(
     });
     let extended = false;
     for (const indexes of collisions.values()) {
-      if (indexes.length < 2) {
+      if (new Set(indexes.map(index => entries[index].peerId)).size < 2) {
         continue;
       }
       for (const index of indexes) {
@@ -96,7 +95,7 @@ function labelPresence<T extends PresenceIdentity>(
 export function labelParticipantSnapshot(
   participants: readonly ParticipantPresenceEntry[],
 ): LabeledParticipantSnapshot {
-  const labeled = labelPresence(participants);
+  const labeled = labelParticipantNames(participants);
   return {
     host:
       labeled.find(

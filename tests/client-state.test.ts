@@ -47,7 +47,7 @@ import {
   SignalingClient,
 } from "../src/client/lib/signaling.ts";
 import { deriveParticipantTopology } from "../src/client/lib/participant-topology.ts";
-import { labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
+import { labelParticipantNames, labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
 import { qualityEvidenceWindowFromMetrics } from "../src/client/media/viewer-quality-evidence.ts";
 import {
   collectConnectionMetrics,
@@ -83,6 +83,18 @@ function routeAuthenticated(
 }
 
 describe("browser-local display name", () => {
+  it("disambiguates distinct chat senders while retaining repeated and historical names", () => {
+    const first = { peerId: "viewer_AAAAAAsuffix", displayName: "观众" };
+    const other = { peerId: "viewer_BBBBBBsuffix", displayName: "观众" };
+    expect(labelParticipantNames([first, first]).map(sender => sender.label)).toEqual(["观众", "观众"]);
+    const senders = labelParticipantNames([first, first, other, { ...first, displayName: "新昵称" }]);
+    expect(senders[0].label).toBe(senders[1].label);
+    expect(senders[0].label).not.toBe(senders[2].label);
+    expect(senders[0].peerIdSuffix.length).toBeGreaterThan(6);
+    expect(senders.map(sender => sender.displayName)).toEqual(["观众", "观众", "观众", "新昵称"]);
+    expect(senders[3].label).toBe("新昵称");
+  });
+
   it("localizes text defaults and uses visual emoji identities", () => {
     setCopy({ lang: "zh", vis: false });
     expect(defaultViewerDisplayName(false)).toBe("观众");
