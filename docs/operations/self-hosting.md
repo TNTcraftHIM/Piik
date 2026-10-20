@@ -197,6 +197,28 @@ equal `SFU_UDP_PORT`. Do not forward Piik's STUN ports through frp: its UDP prox
 STUN would report. Restart Piik and check HTTPS health, room access and
 **Server media** from another network.
 
+### Using a managed frp provider
+
+Services such as SakuraFrp supply the public server and their own client or
+launcher. Follow the provider's setup instead of copying the private frps token
+configuration above. Check that the chosen node supports both HTTPS web access
+with WebSockets and an ordinary UDP tunnel.
+
+| Endpoint | Local target | Piik setting |
+| --- | --- | --- |
+| Web | `127.0.0.1:8787`, with HTTPS supplied by your proxy or provider | Set `PUBLIC_BASE_URL` to the actual public HTTPS address, including any port. |
+| Media | `127.0.0.1:<assigned UDP port>` | Set `SFU_UDP_PORT` to that same local/public port and `SFU_PUBLIC_IP` to the UDP node's public IPv4. |
+
+For example, if the provider assigns UDP port `30000`, use `30000` for both
+tunnel ports and Piik's `SFU_UDP_PORT`; the web port can remain `8787` locally.
+Keep STUN directly reachable as above. A web-only tunnel carries signaling but
+does not add an SFU media route for strict NAT.
+
+See SakuraFrp's [web setup](https://doc.natfrp.com/app/http.html) and
+[UDP connectivity notes](https://doc.natfrp.com/faq/network.html). Node features,
+access requirements and bandwidth depend on the provider; Piik has not yet
+field-tested this managed service.
+
 ## Keep it running and update
 
 For automatic startup, use the [systemd or container guide](./service-management.md).

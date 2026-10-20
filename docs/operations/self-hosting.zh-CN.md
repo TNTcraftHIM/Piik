@@ -181,6 +181,24 @@ frpc 的本地与公网 UDP 端口必须都等于 `SFU_UDP_PORT`。
 [改变 STUN 所观察到的源地址映射](../research/nat-traversal.md#external-forwarding-and-participant-relays)。
 重启 Piik，从另一网络验证 HTTPS 健康检查、房间访问及**服务器转发**。
 
+### 使用托管 frp 服务
+
+SakuraFrp 等服务会提供公网服务器和自己的客户端或启动器；按服务商教程配置，
+不必套用上面的自建 frps 令牌配置。先确认所选节点同时支持带 WebSocket 的 HTTPS 网页访问和普通 UDP 隧道。
+
+| 端点 | 本地目标 | Piik 设置 |
+| --- | --- | --- |
+| 网页 | `127.0.0.1:8787`，由自己的代理或服务商提供 HTTPS | 将 `PUBLIC_BASE_URL` 设为实际公网 HTTPS 地址，包含所需端口。 |
+| 媒体 | `127.0.0.1:<分配的 UDP 端口>` | 将 `SFU_UDP_PORT` 设为相同的本地／公网端口，`SFU_PUBLIC_IP` 设为 UDP 节点的公网 IPv4。 |
+
+例如，服务商分配 UDP `30000` 时，将隧道的本地、公网端口和 Piik 的 `SFU_UDP_PORT` 都设为 `30000`；
+网页本地端口仍可使用 `8787`。STUN 仍按上文保持直接可达。
+只穿透网页可以承载信令，但不会为严格 NAT 增加 SFU 媒体路线。
+
+可参考 SakuraFrp 的[网页配置](https://doc.natfrp.com/app/http.html)和
+[UDP 连通说明](https://doc.natfrp.com/faq/network.html)。节点功能、访问要求与带宽以服务商为准；
+Piik 尚未完成该托管服务的实际连通与性能验收。
+
 ## 长期运行与更新
 
 需要开机启动时，参阅 [systemd 与容器配置](./service-management.zh-CN.md)。
