@@ -16,13 +16,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it.each(["commit", "expired", "rpc-expired"])("scopes optional connection preparation to its route: %s", async outcome => {
+it.each(["commit", "expired", "rpc-expired"].flatMap(outcome =>
+  [undefined, 20].map(maxRelayChildren => ({ outcome, maxRelayChildren })),
+))("scopes optional connection preparation to its route: $outcome, backend capacity $maxRelayChildren", async ({ outcome, maxRelayChildren }) => {
   vi.useFakeTimers();
   vi.stubGlobal("window", globalThis);
   vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
   vi.stubGlobal("RTCPeerConnection", class { close() {} });
   vi.spyOn(NativeMediaBridge.prototype, "start").mockResolvedValue({} as MediaStream);
   const client = {
+    health: { nativeMedia: { maxRelayChildren } },
     preparePunch: vi.fn(async () => ({ address: "198.51.100.1", port: 40000, step: 1 })),
     runPunch: vi.fn(async () => true), closePunch: vi.fn(async () => undefined),
     receiveOffer: vi.fn(async () => ({ answer: { type: "answer", sdp: "answer" }, audio: false, codec: "vp8" })),
@@ -34,13 +37,14 @@ it.each(["commit", "expired", "rpc-expired"])("scopes optional connection prepar
     iceServers: [{ urls: ["stun:site.example:3478"] }],
     natPredictionStunUrls: ["stun:site.example:3479", "stun:site.example:3480"],
   }, { sendSignal: sent, sendRestartRequest: () => true, onStream: () => {}, onUpdate: () => {}, onRecoveryExhausted: exhausted },
-  { natPredictionEnabled: true, recoveryOwner: "route" }, async () => client, unavailable, "session", 2);
+  { natPredictionEnabled: true, recoveryOwner: "route" }, async () => client, unavailable, "session", 20);
   // The page accepts a failure only while this peer owns that connection.
   exhausted.mockImplementation(() => peer.hasConnectionId("current"));
   const prepare: SignalPayload = { kind: "punch", connectionId: "current", punch: { phase: "prepare", secret: "42".repeat(32) } };
   try {
     await peer.acceptSignal("parent", prepare);
     await vi.advanceTimersByTimeAsync(0);
+    expect(client.preparePunch).toHaveBeenCalledWith("session", "current", expect.anything(), expect.any(String), maxRelayChildren ?? 3);
     await peer.acceptSignal("parent", { kind: "punch", connectionId: "current", punch: {
       phase: "start", prediction: { address: "198.51.100.2", port: 50000, step: 1 },
     } });
@@ -54,7 +58,7 @@ it.each(["commit", "expired", "rpc-expired"])("scopes optional connection prepar
     expect(unavailable).not.toHaveBeenCalled();
     if (outcome === "commit") {
       expect(exhausted).not.toHaveBeenCalled();
-      expect(client.receiveOffer).toHaveBeenCalledWith("session", "current", expect.anything(), expect.anything(), 2, true);
+      expect(client.receiveOffer).toHaveBeenCalledWith("session", "current", expect.anything(), expect.anything(), maxRelayChildren ?? 3, true);
       await peer.acceptSignal("parent", prepare);
       expect(client.preparePunch).toHaveBeenCalledOnce();
     } else {

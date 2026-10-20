@@ -1,10 +1,12 @@
 import type { IceConfig, PunchPrediction, PunchSignal, SignalPayload } from "../../shared/protocol";
 import { debugEvent } from "../lib/debug";
 import { natPredictionSurveyUrls } from "../webrtc/nat-prediction";
+import { nativeRelayCapacity, type NativeHealth } from "./wire";
 
 const PREPARATION_TIMEOUT_MS = 3_500;
 
 export interface NativePunchControl {
+  readonly health?: Pick<NativeHealth, "nativeMedia">;
   preparePunch(shareId: string, connectionId: string, ice: IceConfig, secret: string,
     edgeCapacity?: number, sourceConnectionId?: string): Promise<PunchPrediction | null>;
   runPunch(shareId: string, connectionId: string, remote: PunchPrediction): Promise<boolean>;
@@ -117,7 +119,8 @@ export class NativePunchReceiver {
     if (this.closed) return;
     this.control = control;
     const prediction = control
-      ? await control.preparePunch(this.shareId, this.connectionId, this.ice, secret, this.capacity).catch(() => null)
+      ? await control.preparePunch(this.shareId, this.connectionId, this.ice, secret,
+          nativeRelayCapacity(this.capacity, control.health)).catch(() => null)
       : null;
     if (this.closed) return;
     this.ready = prediction !== null;

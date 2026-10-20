@@ -672,6 +672,9 @@ func TestMissingCaptureKeepsViewerControlAvailable(t *testing.T) {
 	if native.capabilities.Video || native.capabilities.HardwareH264 {
 		t.Fatalf("missing native capture = %+v", native)
 	}
+	if !native.capabilities.ReceiverReuse || native.capabilities.MaxRelayChildren != 20 {
+		t.Fatalf("missing capture lost native receiver capability: %+v", native.capabilities)
+	}
 	control := native.controlFactory(nil)()
 	if control == nil {
 		t.Fatal("missing capture disabled the native Viewer control")

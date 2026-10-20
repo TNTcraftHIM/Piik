@@ -101,6 +101,11 @@ describe("native App private wire", () => {
     expect(nativeHealthSchema.parse({ ...health, nativeMedia: stronger }).nativeMedia).toMatchObject(stronger);
     expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoPixels: 0 } }).success).toBe(false);
     expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoMacroblocksPerSecond: -1 } }).success).toBe(false);
+    expect(nativeHealthSchema.parse({ ...health, nativeMedia: { ...nativeMedia, maxRelayChildren: 20 } })
+      .nativeMedia.maxRelayChildren).toBe(20);
+    for (const maxRelayChildren of [0, 21, 1.5]) {
+      expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxRelayChildren } }).success).toBe(false);
+    }
   });
 
   it.each(["opening", "hello", "close"])("retires App acquisition during %s without waiting for its timeout", async stage => {

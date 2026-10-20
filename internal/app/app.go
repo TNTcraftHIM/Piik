@@ -22,6 +22,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
+	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
@@ -694,7 +695,7 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 	capabilities, err := nativecapture.Discover(ctx, path)
 	if err != nil {
 		return nativeRuntime{captureProcess: path, discoveryErr: err,
-			capabilities: loopback.NativeMediaCapabilities{ReceiverReuse: true}}
+			capabilities: loopback.NativeMediaCapabilities{ReceiverReuse: true, MaxRelayChildren: mediaedge.MaxRelayChildren}}
 	}
 	summary := capabilities.Summary()
 	return nativeRuntime{
@@ -710,6 +711,7 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 			MaxVideoBitrate:              nativecapture.MaxVideoBitrate,
 			MaxAudioBitrate:              nativeaudio.MaxSendBitrate,
 			ReceiverReuse:                true,
+			MaxRelayChildren:             mediaedge.MaxRelayChildren,
 			Video:                        summary.Video,
 			CaptureBorderControl:         summary.CaptureBorderControl,
 			Microphone:                   summary.Microphone,

@@ -27,7 +27,7 @@ import {
 } from "../webrtc/nat-prediction";
 import { NativeClient } from "./client";
 import { NativeMediaBridge } from "./media-bridge";
-import type { NativeClientEvent, NativeVideoCodec } from "./wire";
+import { nativeRelayCapacity, type NativeClientEvent, type NativeVideoCodec } from "./wire";
 import { NativePunchReceiver, punchIceConfig } from "./native-punch";
 
 
@@ -146,7 +146,7 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
                 this.options,
                 client,
                 this.nativeSessionId,
-                this.edgeCapacity,
+                nativeRelayCapacity(this.edgeCapacity, client.health),
                 this.onNativeUnavailable,
               )
             : this.newBrowserPeer();
