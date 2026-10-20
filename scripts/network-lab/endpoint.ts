@@ -28,7 +28,7 @@ export async function endpointWorker(): Promise<void> {
   const sample = () => evaluate<MediaSample>(cdp!, page!, "networkLab.sample()", Date.now() + 5000);
   const click = async (selector: string) => {
     await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
-      `Boolean(document.querySelector(${JSON.stringify(selector)}))`, deadline), Boolean, 10_000);
+      `(()=>{const node=document.querySelector(${JSON.stringify(selector)});return !!node&&!node.disabled&&node.getAttribute('aria-disabled')!=='true';})()`, deadline), Boolean, 10_000);
     await evaluate(cdp!, page!, `document.querySelector(${JSON.stringify(selector)}).click()`, Date.now() + 5000);
   };
   try {
@@ -61,6 +61,7 @@ export async function endpointWorker(): Promise<void> {
           chrome = await launchChrome(process.env.CHROME_PATH!, debugPort, profile, [
             "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run", "--no-default-browser-check",
             "--no-proxy-server", "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling",
+            "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
             "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows",
             `--unsafely-treat-insecure-origin-as-secure=${origin}`,
           ]);
@@ -130,6 +131,15 @@ export async function endpointWorker(): Promise<void> {
           result = logs;
         } else if (request.action === "stop") {
           await click('button[aria-label="Stop sharing"]'); result = true;
+        } else if (request.action === "voice-open" || request.action === "voice-join") {
+          await click('button[aria-label="Interact"]');
+          await click('[role="tab"][id$="-voice-tab"]');
+          await click(`button[aria-label="${request.action === "voice-open" ? "Open room voice" : "Join voice"}"]`);
+          await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
+            `Boolean(document.querySelector('button[aria-label="Turn on microphone"]'))`, deadline), Boolean, 10_000);
+          await click('button[aria-label="Turn on microphone"]'); result = true;
+        } else if (request.action === "voice-sample") {
+          result = await evaluate(cdp!, page!, "networkLab.voiceSample()", Date.now() + 5000);
         } else if (request.action === "screenshot") {
           const shot = await cdp!.call<{ data: string }>("Page.captureScreenshot", { format: "png" }, page!.sessionId, Date.now() + 5000);
           await writeFile(request.output!, Buffer.from(shot.data, "base64")); result = true;

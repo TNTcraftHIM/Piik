@@ -7,18 +7,29 @@ import (
 )
 
 type voiceMember struct {
-	sessionID                string
-	requested, listen, speak bool
-	publicationID            string
+	sessionID     string
+	joined        bool
+	publicationID string
 }
 
-// Room authority owns permission and publication identity. Connections below
+// Room authority owns voice activation and publication identity. Connections below
 // are physical facets of router.controller's graph, never another topology.
 type roomVoice struct {
 	hostPeerID  string
 	revision    int64
 	members     map[string]*voiceMember
 	connections map[string]*voiceEdge
+}
+
+func (v *roomVoice) enabled() bool {
+	host := v.members[v.hostPeerID]
+	return host != nil && host.joined
+}
+
+func (v *roomVoice) leaveAll() {
+	for _, member := range v.members {
+		member.joined, member.publicationID = false, ""
+	}
 }
 
 type voiceEdge struct {
@@ -42,6 +53,7 @@ func (s *Server) voiceRoom(roomID string) *roomVoice {
 	}
 	if host, ok := s.store.GetConnectedHost(roomID); ok {
 		if v.hostPeerID != "" && v.hostPeerID != host.PeerID {
+			v.leaveAll()
 			delete(v.members, v.hostPeerID)
 		}
 		v.hostPeerID = host.PeerID
@@ -84,7 +96,7 @@ func (s *Server) voiceSession(roomID, peerID string) (*session, *voiceMember) {
 
 func (s *Server) voiceAllowed(roomID, peerID string) bool {
 	sess, m := s.voiceSession(roomID, peerID)
-	return sess != nil && m.requested && m.listen
+	return sess != nil && s.voices[roomID].enabled() && m.joined
 }
 
 func (s *Server) handleRoomVoiceCommand(sess *session, auth *authenticatedSession, command protocol.RoomVoiceCommand) {
@@ -99,31 +111,19 @@ func (s *Server) handleRoomVoiceCommand(sess *session, auth *authenticatedSessio
 	}
 	switch command.Action {
 	case "join":
-		m.requested = true
-		if auth.role == protocol.RoleHost {
-			m.listen, m.speak = true, true
+		if auth.role != protocol.RoleHost && !v.enabled() {
+			s.voiceError(sess, "not-enabled")
+			return
 		}
+		m.joined = true
 	case "leave":
-		m.requested, m.listen, m.speak, m.publicationID = false, false, false, ""
-	case "permission":
-		if auth.role != protocol.RoleHost {
-			s.voiceError(sess, "not-allowed")
-			return
-		}
-		targetSession, target := s.voiceSession(auth.roomID, command.PeerID)
-		if target == nil || command.Listen && (targetSession == nil || !target.requested) {
-			s.voiceError(sess, "participant-unavailable")
-			return
-		}
-		target.listen, target.speak = command.Listen, command.Listen && command.Speak
-		if !target.listen {
-			target.requested = false
-		}
-		if !target.speak {
-			target.publicationID = ""
+		if auth.role == protocol.RoleHost {
+			v.leaveAll()
+		} else {
+			m.joined, m.publicationID = false, ""
 		}
 	case "publish":
-		if !m.requested || !m.listen || !m.speak {
+		if !v.enabled() || !m.joined {
 			s.voiceError(sess, "not-allowed")
 			return
 		}

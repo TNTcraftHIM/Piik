@@ -63,12 +63,15 @@ route owners; release artifacts and operator records establish publication and
 postflight completion. The isolated `feat/room-voice` candidate now integrates
 room voice into normal App/Server/Web, with the same room graph and serial route
 operation, separate picture and voice lifetimes, explicit pre-share room creation
-and Host speaking grants. Normal Browser checks cover a three-participant Peer
+and Host-owned room voice activation. Normal Browser checks cover a three-participant Peer
 relay and embedded SFU, duplex audio, local-mute isolation, picture replacement,
-detached UI and permission retirement. Optional voluntary Peer fanout and local
+detached UI and capture retirement. Optional voluntary Peer fanout and local
 picture rotation are included; frp uses the documented existing UDP configuration.
-The candidate has passed local functional, media-recovery and UI acceptance and
-is ready for the owner's walkthrough. It is not a production deployment.
+The candidate derives channel availability from Host membership and uses one
+room microphone for Host and Viewers. Local normal-page acceptance covers both
+P2P and SFU, independent listening, picture continuity and voice-facet recovery.
+Controlled-network voice cases and platform package checks are in progress.
+It is not a production deployment.
 Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
 The promotional film stays an online-review draft; export follows owner acceptance.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;

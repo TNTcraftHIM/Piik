@@ -45,8 +45,9 @@ Voice-capable test builds add an explicit **Create room** action before sharing.
 Chat and voice use tabs in the existing interaction window, including its
 detached presentation. Closing or changing that window does not leave voice or
 stop capture. Microphone, admission and connection states stay literal; an
-enabled microphone is not proof that someone is speaking. Host approval and
-each participant's microphone action remain separate.
+enabled microphone is not proof that someone is speaking. The
+[room voice contract](./rooms-access.md#room-voice) owns channel activation and
+membership, independently of the window and picture publication.
 
 On capable desktop browsers, the interaction window can move to a Document
 Picture-in-Picture window. It retains the admitted room session's messages,
@@ -211,10 +212,10 @@ keyboard shortcut own that action. Desktop double-click toggles the available
 fullscreen action. Remote-control input consumes its own clicks and key presses;
 controls and overlays keep their own immediate behavior.
 
-Host source-audio feedback describes the selected source independently of Host
-microphone commentary. Viewer sound controls require a received audio track and,
+Host source-audio feedback describes the selected source independently of room
+voice. Viewer picture-sound controls require a received audio track and,
 when the Host supplies input availability, an available source or microphone
-input. With no input, sound controls are disabled with the no-audio explanation;
+input (including published commentary from older Hosts). With no input, sound controls are disabled with the no-audio explanation;
 the Viewer's volume and mute preferences remain intact for audio returning.
 Older Hosts without this fact retain received-track feedback. These controls do
 not infer input presence from silence or change capture, transport or relay audio.

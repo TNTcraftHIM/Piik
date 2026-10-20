@@ -171,14 +171,14 @@ export type RemoteHintKind =
 export type RelayHintKind = "hint-relay-volunteer";
 
 export type VoiceHintKind =
+  | "hint-voice-open"
+  | "hint-voice-close"
   | "hint-voice-join"
   | "hint-voice-leave"
-  | "hint-voice-allow-listen"
-  | "hint-voice-allow-speak"
-  | "hint-voice-revoke-speak"
-  | "hint-voice-remove"
   | "hint-voice-microphone-on"
   | "hint-voice-microphone-off"
+  | "hint-voice-microphone-volume"
+  | "hint-voice-microphone-processing"
   | "hint-voice-deafen"
   | "hint-voice-undeafen";
 

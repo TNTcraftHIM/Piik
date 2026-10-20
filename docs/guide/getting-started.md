@@ -351,18 +351,22 @@ Chat travels through the room's server and is **not end-to-end encrypted**.
 ### Room voice in test builds
 
 The Host may choose **Create room** before sharing, then copy its invitation.
-Open **Interact → Voice** and select **Join voice**. Viewers select
-**Request voice**; the Host can allow listening, allow speaking or remove them.
-Permission never opens a microphone: each speaker selects **Turn on microphone**
+Open **Interact → Voice** and select **Open room voice**. Room members can then
+select **Join voice**, without another approval.
+Joining never opens a microphone: each speaker selects **Turn on microphone**
 and grants browser access. **Mute for me** changes only your own playback.
 After joining, the bottom toolbar provides microphone, listening and leave
-controls. **Deafen** pauses room voice and closes your microphone; undeafening
-does not turn it back on. Video sound and voice forwarding remain unaffected.
+controls. **Pause listening** mutes room voice locally; your microphone, video
+sound and voice forwarding remain unaffected. In the voice tab, **Microphone
+settings** offers input device, volume and speech-processing controls.
 
 Voice stays connected when picture sharing stops. It also stays active when you
-close or detach the interaction window; choose **Leave voice** to leave.
-The Host's source commentary and room microphone hand over the device rather
-than recording it twice. Use headphones; whole-system sound sharing can include
+close or detach the interaction window. Viewers choose **Leave voice** to leave;
+the Host's **Close room voice** ends voice for everyone. Reopening does not
+rejoin Viewers or turn on their microphones.
+Host speech uses this same room microphone; viewers join voice to hear it.
+Source sound stays with the picture. Room voice favors timely conversation and
+can arrive ahead of a delayed picture. Use headphones; whole-system sound sharing can include
 received voices, so [audio exclusion](#exclude-a-voice-app-from-screen-audio)
 may help on supported App capture paths.
 

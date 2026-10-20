@@ -267,7 +267,8 @@ One inline settings panel uses picture and sound tabs with the shared sliding
 two-option control. Picture presets lead; a fine-tuning disclosure contains
 picture limits, preference and video encoding, keeping configured limits visible
 when closed. In sound,
-source and microphone inputs precede the mixed output's audio quality. Presets
+source-audio inputs precede source-audio quality; room microphone settings stay
+in the voice panel. Presets
 remain available before sharing starts. Switching tabs does not reset values
 or restart media. Keep the less frequent connection options in a shared
 disclosure below the tabs. Expand in page flow, pushing later content down
@@ -281,7 +282,7 @@ common step is an explicit action; rendering, focus or reopening never changes
 the value. Derive this presentation from the current value, without a second
 setting mode. Shared presentation stays separate
 from the existing setting/resource owners.
-The microphone comic depicts Host commentary gain;
+The microphone comic depicts microphone input gain;
 the Viewer's listening-volume comic remains a different action.
 
 The Viewer bar groups local play/volume/overlay, remote mouse/keyboard, then
@@ -350,9 +351,9 @@ changing the badge does not restyle the UI, wordmark or illustrations.
 | Shared or watched media | Small television, including antenna, body and feet |
 | Browser application | Browser chrome around content; not a second design of television |
 | A captured window or display | Window title bar or display stand, with the shared media metaphor kept distinct |
-| A camera source or Host commentary | `camera` identifies the alternative picture source; `microphone` identifies the enabled Host voice input and `microphoneOff` its muted state. Neither replaces the speaker metaphor for source/playback sound. |
+| A camera source | `camera` identifies the alternative picture source. Source/playback sound retains the speaker metaphor. |
 | Room text and reactions | `chat` opens the conversation, `danmaku` controls its optional picture overlay, `smile` identifies reactions and `send` submits the chosen content. These do not represent media transport or voice. |
-| Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Deafening also closes the microphone; resuming listening never opens it. An enabled input is not a speaking-activity measurement. Host permission and microphone capture stay separate actions. |
+| Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Input, playback and forwarding remain independent. The microphone's green fill shows local input level; a participant's green dot and speaking label use measured activity. An enabled input alone is not speaking evidence. Opening the channel and opening a microphone stay separate actions. |
 | Experimental attended desktop control | `mouse` identifies keyboard/mouse control, distinct from sharing or playback. Permission copy stays literal; an active control marker describes the grant, not media connectivity. |
 | Floating utility placement | `grip` marks a draggable title bar; corner handles resize the window. Closing a panel hides its presentation, not its room session. |
 | Server forwarding media | A server on the media path; opening a Site alone does not imply SFU |

@@ -1769,10 +1769,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-sharing-section .lr-row-group { gap: 8px; }
 .lr-sharing-section .lr-chip { min-height: 40px; padding: 7px 12px; }
 .lr-sharing-audio-controls { display: grid; gap: 20px; min-width: 0; }
-.lr-sharing-audio-controls:has(> .lr-source-audio-settings):has(> .lr-microphone-settings) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lr-sharing-audio-controls > .lr-audio-quality { grid-column: 1 / -1; }
 .lr-sharing-audio-controls > .lr-audio-quality:not(:first-child) { padding-top: 18px; border-top: 1px solid var(--wall-2); }
-.lr-sharing-panel .lr-microphone-settings { max-width: none; }
 .lr-sharing-panel input[type="range"] { appearance: none; background: transparent; }
 .lr-sharing-panel input[type="range"]:disabled { opacity: .55; cursor: default; }
 .lr-sharing-panel input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, var(--action) var(--range-fill), var(--wall-2) var(--range-fill)); }
@@ -1797,7 +1795,7 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .lr-sharing-panel { animation: none; } .lr-sharing-chevron { transition: none; } }
 @container sharing-settings (max-width: 600px) {
   .lr-sharing-panel { padding: 16px; border-radius: 20px; }
-  .lr-sharing-limits, .lr-sharing-audio-controls:has(> .lr-source-audio-settings):has(> .lr-microphone-settings),
+  .lr-sharing-limits,
   .lr-sharing-connection .lr-row-group:has(.lr-switch-item) { grid-template-columns: 1fr; gap: 20px; }
   .lr-sharing-section .lr-tiles { gap: 8px; }
   .lr-sharing-section .lr-tile { padding: 10px 4px; }

@@ -28,22 +28,14 @@ func TestVoiceOnlySfuPreparesWithoutVideoPublication(t *testing.T) {
 		sfu: &SfuFallback{Media: sfutest.New(), Admission: sfu.NewAdmission(sfu.AdmissionOptions{IngressCapacity: 1, EgressCapacity: 2})}})
 	host, viewer := openClient(t, h), openClient(t, h)
 	authenticate(t, host, h.room, protocol.RoleHost, "voice_sfu_host_123", -1, "", presenceOptions{roomSession: true, roomOnly: true})
-	actor := authenticate(t, viewer, h.room, protocol.RoleViewer, "voice_sfu_viewer_123", 1, "", presenceOptions{})
+	authenticate(t, viewer, h.room, protocol.RoleViewer, "voice_sfu_viewer_123", 1, "", presenceOptions{})
 	for _, client := range []*testClient{host, viewer} {
 		client.sendJSON(map[string]any{"type": "subscribe-room-voice"})
 		nextVoiceState(t, client, nil)
 	}
 	voiceCommand(host, map[string]any{"action": "join"})
+	nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool { return state.Enabled })
 	voiceCommand(viewer, map[string]any{"action": "join"})
-	nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool {
-		for _, member := range state.Members {
-			if member.PeerID == actor.PeerID {
-				return member.Requested
-			}
-		}
-		return false
-	})
-	voiceCommand(host, map[string]any{"action": "permission", "peerId": actor.PeerID, "listen": true, "speak": true})
 	state := nextVoiceState(t, viewer, func(state protocol.RoomVoiceStateMessage) bool { return len(state.Connections) > 0 })
 	if len(state.Connections) != 1 || state.Connections[0].Transport != "sfu" || !state.Connections[0].Pending {
 		t.Fatalf("invalid SFU preparation: %+v", state.Connections)
@@ -55,7 +47,7 @@ func voiceCommand(client *testClient, command map[string]any) {
 }
 
 func TestVoiceOnlyRouteFailureDoesNotChangeVideoStatus(t *testing.T) {
-	h, _, viewer, _, viewerID := approvedVoiceOwnerRoom(t)
+	h, _, viewer, _, viewerID := joinedVoiceOwnerRoom(t)
 	h.locked(func() {
 		for _, state := range []string{"waiting", "failed"} {
 			h.server.router.sendViewerRouteStatus(h.room.RoomID, viewerID.PeerID,
@@ -84,18 +76,9 @@ func TestRoomCandidateWaitsForBothPictureAndVoice(t *testing.T) {
 			host.sendJSON(map[string]any{"type": "start-sharing", "shareGeneration": "composite_video_123456",
 				"qualitySettings": protocol.DefaultQualitySettings, "routePolicy": protocol.DefaultRoutePolicy, "sharingPaused": false})
 			host.next("sharing-started")
-			actor := authenticate(t, viewer, h.room, protocol.RoleViewer, "composite_viewer_123456", 1, "", presenceOptions{})
+			authenticate(t, viewer, h.room, protocol.RoleViewer, "composite_viewer_123456", 1, "", presenceOptions{})
 			viewer.sendJSON(map[string]any{"type": "subscribe-room-voice"})
 			voiceCommand(viewer, map[string]any{"action": "join"})
-			nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool {
-				for _, member := range state.Members {
-					if member.PeerID == actor.PeerID {
-						return member.Requested
-					}
-				}
-				return false
-			})
-			voiceCommand(host, map[string]any{"action": "permission", "peerId": actor.PeerID, "listen": true, "speak": true})
 			pending := nextVoiceState(t, viewer, func(state protocol.RoomVoiceStateMessage) bool {
 				return len(state.Connections) == 1 && state.Connections[0].Pending
 			})
@@ -151,18 +134,12 @@ func TestRoomVoiceUsesNormalRoomAuthorityAndKeepsGraphAcrossVideo(t *testing.T) 
 		nextVoiceState(t, client, nil)
 	}
 	voiceCommand(viewer, map[string]any{"action": "join"})
-	nextVoiceState(t, host, func(s protocol.RoomVoiceStateMessage) bool {
-		for _, m := range s.Members {
-			if m.PeerID == viewerID.PeerID {
-				return m.Requested && !m.Listen
-			}
-		}
-		return false
-	})
+	viewer.next("room-voice-error")
 	voiceCommand(viewer, map[string]any{"action": "publish"})
 	viewer.next("room-voice-error")
 	voiceCommand(host, map[string]any{"action": "join"})
-	voiceCommand(host, map[string]any{"action": "permission", "peerId": viewerID.PeerID, "listen": true, "speak": true})
+	nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool { return state.Enabled })
+	voiceCommand(viewer, map[string]any{"action": "join"})
 	pending := nextVoiceState(t, viewer, func(s protocol.RoomVoiceStateMessage) bool {
 		return len(s.Connections) == 1 && s.Connections[0].Pending
 	})
@@ -188,7 +165,12 @@ func TestRoomVoiceUsesNormalRoomAuthorityAndKeepsGraphAcrossVideo(t *testing.T) 
 	nextVoiceState(t, host, func(s protocol.RoomVoiceStateMessage) bool {
 		return len(s.Publications) == 2 && len(s.Connections[0].Receive) == 1
 	})
-	voiceCommand(host, map[string]any{"action": "permission", "peerId": viewerID.PeerID, "listen": true, "speak": false})
+	viewerPub := nextVoiceState(t, viewer, func(s protocol.RoomVoiceStateMessage) bool { return len(s.Publications) == 2 })
+	for _, pub := range viewerPub.Publications {
+		if pub.PeerID == viewerID.PeerID {
+			voiceCommand(viewer, map[string]any{"action": "unpublish", "publicationId": pub.ID})
+		}
+	}
 	nextVoiceState(t, viewer, func(s protocol.RoomVoiceStateMessage) bool {
 		return len(s.Publications) == 1 && s.Publications[0].ID == pubID
 	})
@@ -241,11 +223,11 @@ func TestRoomVoiceUsesNormalRoomAuthorityAndKeepsGraphAcrossVideo(t *testing.T) 
 	if last.Publications[0].ID == pubID {
 		t.Fatal("publication identity was reused")
 	}
-	voiceCommand(host, map[string]any{"action": "permission", "peerId": viewerID.PeerID, "listen": false, "speak": false})
+	voiceCommand(viewer, map[string]any{"action": "leave"})
 	nextVoiceState(t, viewer, func(state protocol.RoomVoiceStateMessage) bool {
 		for _, member := range state.Members {
 			if member.PeerID == viewerID.PeerID {
-				return !member.Requested && !member.Listen && !member.Speak
+				return !member.Joined
 			}
 		}
 		return false

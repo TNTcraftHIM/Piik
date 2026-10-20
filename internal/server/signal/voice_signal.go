@@ -80,7 +80,7 @@ func (s *Server) handleRoomVoiceSignal(sess *session, auth *authenticatedSession
 				tracks = append(tracks, track)
 			}
 		}
-		// A permission update can overtake an offer already in flight. Finish
+		// Leaving voice can overtake an offer already in flight. Finish
 		// its SDP transaction without reviving a retired publication binding.
 		pruned := *description
 		pruned.Tracks = tracks
@@ -119,6 +119,7 @@ func (s *Server) onVoiceMediaEvent(event sfu.VoiceMediaEvent) {
 	if event.State == webrtc.PeerConnectionStateConnected {
 		edge.connected[""] = true
 		s.commitVoiceCandidate(event.RoomID)
+		s.syncRoomVoice(event.RoomID)
 	}
 	if event.State == webrtc.PeerConnectionStateFailed {
 		s.failVoiceConnection(event.RoomID, edge)
@@ -139,6 +140,7 @@ func (s *Server) handleRoomVoiceTransport(sess *session, auth *authenticatedSess
 	}
 	edge.connected[auth.peerID] = true
 	s.commitVoiceCandidate(auth.roomID)
+	s.syncRoomVoice(auth.roomID)
 }
 
 func (s *Server) commitVoiceCandidate(roomID string) {
@@ -229,6 +231,24 @@ func (s *Server) failVoiceConnection(roomID string, edge *voiceEdge) {
 	}
 	edge.connected[edge.child], edge.connected[edge.parent] = false, false
 	snapshot := rm.controller.Snapshot()
+	// A companion audio connection is not evidence that the committed picture
+	// path failed. Recreate that physical facet on the proven route; only the
+	// route owner may replace neighbours or retire the picture connection.
+	for child, current := range snapshot.UpstreamByViewer.All() {
+		if !current.Usable || !current.PhysicalActive || !current.VideoReady ||
+			snapshot.VideoGeneration == "" || current.VideoGeneration != snapshot.VideoGeneration {
+			continue
+		}
+		childFacet := child == edge.child && current.ConnectionID == edge.logicalID
+		rootFacet := edge.child == rm.hostPeerID && edge.transport == "sfu" &&
+			current.Kind == route.UpstreamSfu && current.PublicationGeneration == edge.logicalID
+		if childFacet || rootFacet {
+			s.closeVoiceEdge(roomID, edge)
+			delete(s.voices[roomID].connections, edge.logicalID)
+			s.syncRoomVoice(roomID)
+			return
+		}
+	}
 	if current, ok := snapshot.UpstreamByViewer.Get(edge.child); ok && current.ConnectionID == edge.logicalID {
 		rm.controller.InvalidateEdge(route.EdgeGuard{ChildPeerID: edge.child, ChildSessionID: current.ChildSessionID,
 			ParentSessionID: current.ParentSessionID, RouteRevision: snapshot.Revision, ConnectionID: current.ConnectionID}, s.router.nowPtr())

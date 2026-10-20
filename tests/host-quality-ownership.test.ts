@@ -27,7 +27,7 @@ const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "lo
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
   "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
-  "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "changeMicrophone", "toggleSharingPause",
+  "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleSharingPause",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setStatusNotice", "setNoticeError", "setNoticeErrorKey", "endSharing", "disposeResources", "hostTerminationKey", "copyRoomLink", "isCurrentRoomAuthority",
   "handleRoomAccessFailure", "replaceCurrentRoom", "forgetRoom", "endRoomSession", "readableError"]);
 
@@ -103,7 +103,6 @@ function fixture(launchedByClient = true) {
     qualityPreferenceEditedRef: ref(false), pendingAppQualityPreferenceRef: ref<QualitySettings | null>(null),
     activeGenerationRef: ref<number | null>(1), streamRef: ref<typeof stream | null>(stream), sourceSwitchRef: ref<object | null>(null),
     nativeSourceAudioRef: ref<boolean | undefined>(undefined), audioAvailableRef: ref(false), setMicrophoneEnabled: vi.fn(),
-    microphoneVoiceProcessing: true, setMicrophoneVoiceProcessing: vi.fn(),
     nativeSourceSelectionRef: ref<Record<string, unknown> | null>(null), nativeCaptureTargetKey,
     nativeModeRef: ref(false), nativeClientRef: ref<typeof client | null>(client), nativeShareGenerationRef: ref<string | null>("share"),
     hostAudioRef: ref<{ sourceStream: MediaStream } | null>(null),
@@ -719,7 +718,7 @@ describe("Host quality ownership", () => {
       expect(setMediaPaused).toHaveBeenLastCalledWith(current.streamRef.current, true);
     }
   });
-  it("refreshes source details from the capture input after microphone mixing", async () => {
+  it("refreshes source details from the capture input", async () => {
     const current = fixture(false);
     const source = {} as MediaStream;
     current.hostAudioRef.current = { sourceStream: source };
@@ -940,77 +939,6 @@ describe("Host quality ownership", () => {
     expect(report).toHaveBeenCalledWith("capture", "failed", cause, { action: "capture", source });
   });
 
-  it.each(["success", "replace-failed", "stopped"])("retires the whole microphone operation after stream replacement: %s", async outcome => {
-    const current = fixture();
-    const permission = deferred<MediaStream>();
-    const video = { stop: vi.fn() };
-    const raw = { getVideoTracks: () => [video], getAudioTracks: () => [], getTracks: () => [video] };
-    const mixed = { ...raw, getAudioTracks: () => [{}] } as unknown as MediaStream;
-    const pending = vi.fn();
-    Object.assign(current.context, {
-      hostAudioRef: ref({ sourceStream: raw, setMicrophoneVolume: vi.fn(), setMicrophone: () => permission.promise }),
-      streamRef: ref(raw), retiringStreamRef: ref(null), sharingPausedRef: ref(false),
-      microphoneVolume: 1, setMicrophonePending: pending, setMicrophoneDevices: vi.fn(),
-      setStream: vi.fn(), setMediaPaused: vi.fn(), peersRef: ref(new Map()),
-      hostSfuRouteRef: ref(outcome === "replace-failed" ? { replaceStream: async () => { throw Error("replacement failed"); } } : null),
-    });
-    const changing = current.context.changeMicrophone(true, "");
-    expect(pending).toHaveBeenLastCalledWith(true);
-    if (outcome === "stopped") {
-      current.activeGenerationRef.current = null;
-      current.sourceSwitchRef.current = {};
-      pending.mockClear();
-    }
-    permission.resolve(mixed);
-    await changing;
-    if (outcome === "stopped") {
-      expect(pending).not.toHaveBeenCalled();
-      expect(current.context.setStream).not.toHaveBeenCalled();
-    } else {
-      expect(pending).toHaveBeenLastCalledWith(false);
-      expect(current.sourceSwitchRef.current).toBeNull();
-      expect(video.stop).not.toHaveBeenCalled();
-      if (outcome === "replace-failed") expect(current.setNoticeValue).toHaveBeenLastCalledWith(
-        expect.objectContaining({ key: "host.microphone.unavailable", target: "operation" }));
-    }
-  });
-
-  it("keeps microphone denial as operation feedback without retiring video", async () => {
-    const current = fixture();
-    Object.assign(current.context, {
-      hostAudioRef: ref({ setMicrophoneVolume: vi.fn(), setMicrophone: vi.fn(async () => {
-        throw new DOMException("denied", "NotAllowedError");
-      }) }),
-      sharingPausedRef: ref(false), microphoneVolume: 1, setMicrophonePending: vi.fn(),
-    });
-    await current.context.changeMicrophone(true, "");
-    expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({ key: "host.microphone.denied", target: "operation" }));
-    expect(current.setPhase).not.toHaveBeenCalled();
-    expect(current.track.stop).not.toHaveBeenCalled();
-    expect(current.sourceSwitchRef.current).toBeNull();
-  });
-
-  it.each(["applied", "failed", "stopped"])("commits Browser voice processing only for the current successful input: %s", async outcome => {
-    const current = fixture();
-    const capture = deferred<MediaStream | null>();
-    const setMicrophone = vi.fn(() => capture.promise);
-    Object.assign(current.context, {
-      hostAudioRef: ref({ setMicrophoneVolume: vi.fn(), setMicrophone }),
-      sharingPausedRef: ref(false), microphoneVolume: 1, setMicrophonePending: vi.fn(),
-      setMicrophoneDevices: vi.fn(),
-    });
-    const changing = current.context.changeMicrophone(true, "virtual-input", false);
-    expect(setMicrophone).toHaveBeenCalledWith(true, "virtual-input", false);
-    expect(current.context.setMicrophoneVoiceProcessing).not.toHaveBeenCalled();
-    if (outcome === "stopped") current.activeGenerationRef.current = null;
-    if (outcome === "failed") capture.reject(new Error("Input unavailable"));
-    else capture.resolve(null); // Input replacement keeps the existing mixed stream.
-    await changing;
-    if (outcome === "applied") expect(current.context.setMicrophoneVoiceProcessing).toHaveBeenCalledWith(false);
-    else expect(current.context.setMicrophoneVoiceProcessing).not.toHaveBeenCalled();
-    expect(current.setPhase).not.toHaveBeenCalled();
-    expect(current.track.stop).not.toHaveBeenCalled();
-  });
 
   it("keeps a rejected source change as operation feedback while the current share stays live", async () => {
     const current = fixture();

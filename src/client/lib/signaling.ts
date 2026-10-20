@@ -134,10 +134,10 @@ export class SignalingClient {
     if (this.authenticatedPeerId) this.send({ type: "subscribe-remote-input" });
   }
 
-  enableRoomVoice(beforeMicrophone?: () => Promise<void>): RoomVoiceSession | null {
+  enableRoomVoice(): RoomVoiceSession | null {
     if (this.stopped) return null;
     if (!this.roomVoice) {
-      this.roomVoice = new RoomVoiceSession(message => this.send(message), this.voiceIceConfig, beforeMicrophone);
+      this.roomVoice = new RoomVoiceSession(message => this.send(message), this.voiceIceConfig);
       if (this.authenticatedPeerId) {
         this.roomVoice.authenticated(this.authenticatedPeerId, this.identity.role);
         this.send({ type: "subscribe-room-voice" });

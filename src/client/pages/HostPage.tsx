@@ -21,13 +21,11 @@ import {
   type CodeEntryPolicy,
   type RoutePolicy,
 } from "../../shared/protocol";
-import { browserCaptureDevices } from "../media/capture-devices";
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { WelcomeLine } from "../components/living/WelcomeLine";
 import type { CouchEntry } from "../components/living/Couch";
 import { SharingSettings } from "../components/living/SharingSettings";
 import { HostShareControls } from "../components/living/HostShareControls";
-import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
 import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay } from "../components/living/RoomChatOverlay";
@@ -384,18 +382,9 @@ export function HostPage({
   const [stream, setStream] = useState<MediaStream | null>(null);
   const hostAudioRef = useRef<HostAudio | null>(null);
   const audioAvailableRef = useRef(false);
-  const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
-  const [microphoneVolume, setMicrophoneVolume] = useState(1);
-  const [microphoneVoiceProcessing, setMicrophoneVoiceProcessing] = useState(true);
-  const [microphonePending, setMicrophonePending] = useState(false);
-  const [microphoneDevices, setMicrophoneDevices] = useState({ browser: "", native: "" });
   const [cameraDevice, setCameraDevice] = useState("");
-  const loadMicrophones = useCallback(() => {
-    const client = nativeModeRef.current ? nativeClientRef.current : null;
-    return client ? client.microphones() : browserCaptureDevices("audioinput");
-  }, []);
   const [nativeActive, setNativeActive] = useState(false);
   const [remoteControlState, setRemoteControlState] = useState<RemoteControlState | null>(null);
   const remoteStopShortcut = useCallback(async (key?: number) => {
@@ -950,8 +939,6 @@ export function HostPage({
     hostAudioRef.current?.dispose();
     hostAudioRef.current = null;
     audioAvailableRef.current = false;
-    setMicrophoneEnabled(false);
-    setMicrophonePending(false);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -1317,9 +1304,8 @@ export function HostPage({
           nativeSourceAudioRef.current = event.sourceAudio;
           audioAvailableRef.current = event.sourceAudio || event.microphone;
           signalRef.current?.setAudioAvailable(audioAvailableRef.current);
-          setMicrophoneEnabled(event.microphone);
           setDetails(previous => previous ? { ...previous, hasSourceAudio: event.sourceAudio } : previous);
-          if (event.failed) setNoticeValue({ kind: "key", key: "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
+          if (event.failed) setNoticeValue({ kind: "key", key: "host.sourceAudio.unavailable", target: "operation", comic: "warning", tone: "warn" });
         }
         if (event.type === "share-ended") {
           endSharing(
@@ -2749,7 +2735,7 @@ export function HostPage({
     remoteInputPeersRef.current = [];
     void getRuntimeCapabilities().then(capabilities => {
       if (signalRef.current === signal && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
-      if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice(releaseCommentaryMicrophone));
+      if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice());
       if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
       if (signalRef.current === signal && capabilities.audioPresence) signal.enableAudioPresence();
     }).catch(() => { /* Optional input does not block sharing. */ });
@@ -2848,7 +2834,7 @@ export function HostPage({
     }
     if (captured) {
       if (selection.kind === "browser") {
-        hostAudioRef.current = new HostAudio(captured, setMicrophoneEnabled, selection.source ?? "browser", available => {
+        hostAudioRef.current = new HostAudio(captured, selection.source ?? "browser", available => {
           if (!isCurrentShare(generation, shareGeneration)) return;
           audioAvailableRef.current = available;
           signalRef.current?.setAudioAvailable(available);
@@ -3118,69 +3104,6 @@ export function HostPage({
       failureCode: hostFailureCode(error, action, "camera") });
   }
 
-  async function releaseCommentaryMicrophone(): Promise<void> {
-    if (sourceSwitchRef.current || qualityChangeRef.current) throw new Error("Microphone operation is busy");
-    const token = {};
-    sourceSwitchRef.current = token;
-    setMicrophonePending(true);
-    try {
-      if (nativeModeRef.current && nativeShareGenerationRef.current) {
-        const client = nativeClientRef.current;
-        if (!client) throw new Error("Native microphone control is unavailable");
-        if (client.health.nativeMedia.microphone) {
-          // A rejected/failed stop must reject the room voice precondition.
-          await client.setMicrophone(nativeShareGenerationRef.current, false, microphoneVolume, "");
-        }
-      }
-      hostAudioRef.current?.releaseMicrophone();
-    } finally {
-      if (sourceSwitchRef.current === token) {
-        setMicrophonePending(false);
-        finishSourceSwitch(token);
-      }
-    }
-  }
-
-  async function changeMicrophone(enabled: boolean, deviceId: string, voiceProcessing = microphoneVoiceProcessing): Promise<void> {
-    const audio = hostAudioRef.current;
-    const generation = activeGenerationRef.current;
-    const client = nativeModeRef.current ? nativeClientRef.current : null;
-    const shareId = nativeShareGenerationRef.current;
-    if ((!audio && !(client?.health.nativeMedia.microphone && shareId)) || generation === null || sourceSwitchRef.current || qualityChangeRef.current || enabled && sharingPausedRef.current) return;
-    if (enabled) signalRef.current?.roomVoice?.stopMicrophone();
-    const token = {};
-    sourceSwitchRef.current = token;
-    setMicrophonePending(true);
-    setNoticeValue(null);
-    try {
-      if (client && shareId) {
-        await client.setMicrophone(shareId, enabled, microphoneVolume, deviceId);
-        if (isCurrentGeneration(generation) && nativeClientRef.current === client && sourceSwitchRef.current === token) {
-          setMicrophoneDevices(previous => ({ ...previous, native: deviceId }));
-        }
-        return;
-      }
-      if (!audio) return;
-      audio.setMicrophoneVolume(microphoneVolume);
-      const mixed = await audio.setMicrophone(enabled, deviceId, voiceProcessing);
-      if (!isCurrentGeneration(generation) || hostAudioRef.current !== audio) return;
-      setMicrophoneDevices(previous => ({ ...previous, browser: deviceId }));
-      setMicrophoneVoiceProcessing(voiceProcessing);
-      if (mixed) await replaceBrowserStream(mixed, generation, token);
-    } catch (error) {
-      if (isCurrentGeneration(generation) && sourceSwitchRef.current === token) {
-        debugError("capture", "microphone-failed", error);
-        setNoticeValue({ kind: "key", key: error instanceof DOMException && error.name === "NotAllowedError"
-          ? "host.microphone.denied" : "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
-      }
-    } finally {
-      if (sourceSwitchRef.current === token) {
-        setMicrophonePending(false);
-        finishSourceSwitch(token);
-      }
-    }
-  }
-
   async function replaceBrowserStream(captured: MediaStream, generation: number, token: object): Promise<void> {
     // The caller retires its operation; this function owns only stream resources.
     const previousStream = streamRef.current;
@@ -3192,8 +3115,7 @@ export function HostPage({
 
     retiringStreamRef.current = previousStream;
     const videoChanged = captured.getVideoTracks()[0] !== previousStream.getVideoTracks()[0];
-    // HostAudio owns raw inputs and mixed output. Adding a mixer must not stop
-    // the old stream's audio: that track is still feeding the new output.
+    // HostAudio retires source audio; this operation retires replaced video.
     const retirePrevious = () => previousStream.getVideoTracks().forEach((track) => {
       if (!captured.getTracks().includes(track)) track.stop();
     });
@@ -3756,7 +3678,7 @@ export function HostPage({
                       : nativeSourceAudioRef.current ?? false
                     : true
                 }
-                audioLocked={nativeActive && !nativeClientRef.current?.health.nativeMedia.microphone}
+                audioLocked={false}
                 initialShowCaptureBorder={showCaptureBorder}
                 initialExcludeAudio={nativeSourceSelectionRef.current?.excludeAudio}
               />
@@ -3855,17 +3777,13 @@ export function HostPage({
           </StageTv>
           <HostShareControls
             actions={phase === "live" ? <>
-              <HostMicrophone enabled={microphoneEnabled} pending={microphonePending}
-                unavailable={nativeActive && !nativeClientRef.current?.health.nativeMedia.microphone} paused={sharingPaused} disabled={switchingSource || changingQuality}
-                volume={microphoneVolume}
-                onToggle={() => void changeMicrophone(!microphoneEnabled, microphoneDevices[nativeActive ? "native" : "browser"])} />
               <Btn
                 id="host-switch-source"
                 icon="switchSource"
                 cap={switchingSource && !sourceSwitchRef.current?.audioOnly ? "host.switching" : "host.switchSource"}
                 title="host.switchSource"
                 hint="hint-switch-source"
-                disabled={switchingSource || changingQuality || microphonePending}
+                disabled={switchingSource || changingQuality}
                 onClick={() => void switchSource()}
               />
             </> : null}
@@ -3907,7 +3825,7 @@ export function HostPage({
               title={sharingPaused ? "host.resume" : "host.pause"}
               hint={sharingPaused ? "hint-resume" : "hint-pause"}
               draw="host-share-toggle"
-              disabled={switchingSource || changingQuality || microphonePending}
+              disabled={switchingSource || changingQuality}
               onClick={toggleSharingPause}
             />}
             ending={phase === "live" ? (
@@ -3989,36 +3907,12 @@ export function HostPage({
                 <div className="lr-door-group lr-source-audio-settings">
                   <SwitchItem checked={nativeSourceSelectionRef.current.audio}
                     label={t("host.sourcePicker.systemAudio")} hint={nativeSourceSelectionRef.current.audio ? "hint-stop-audio" : "hint-share-audio"}
-                    disabled={microphonePending || switchingSource || changingQuality || sharingPaused}
+                    disabled={switchingSource || changingQuality || sharingPaused}
                     onChange={audio => changeNativeSourceAudio(audio, nativeSourceSelectionRef.current?.excludeAudio)} />
                   <LiveAudioExclusion load={loadAudioApplications} value={nativeSourceSelectionRef.current.excludeAudio}
-                    disabled={!nativeSourceSelectionRef.current.audio || microphonePending || switchingSource || changingQuality || sharingPaused}
+                    disabled={!nativeSourceSelectionRef.current.audio || switchingSource || changingQuality || sharingPaused}
                     onChange={target => changeNativeSourceAudio(true, target)} />
                 </div>
-              ) : null}
-              {phase === "live" && (!nativeActive || nativeClientRef.current?.health.nativeMedia.microphone) ? (
-                <HostMicrophoneSettings enabled={microphoneEnabled}
-                disabled={microphonePending || switchingSource || changingQuality || sharingPaused}
-                  volume={microphoneVolume} onVolume={volume => {
-                    setMicrophoneVolume(volume);
-                    hostAudioRef.current?.setMicrophoneVolume(volume);
-                    const client = nativeClientRef.current;
-                    const shareId = nativeShareGenerationRef.current;
-                    if (nativeModeRef.current && client && shareId) {
-                      void client.setMicrophoneVolume(shareId, volume).catch(error => {
-                        if (nativeClientRef.current === client && nativeShareGenerationRef.current === shareId) {
-                          debugError("capture", "microphone-volume-failed", error);
-                          setNoticeValue({ kind: "key", key: "host.microphone.unavailable", target: "operation", comic: "warning", tone: "warn" });
-                        }
-                      });
-                    }
-                  }}
-                  native={nativeActive} loadDevices={loadMicrophones}
-                  deviceId={microphoneDevices[nativeActive ? "native" : "browser"]}
-                  onDevice={deviceId => void changeMicrophone(microphoneEnabled, deviceId)}
-                  voiceProcessing={microphoneVoiceProcessing}
-                  onVoiceProcessing={enabled => void changeMicrophone(microphoneEnabled, microphoneDevices.browser, enabled)}
-                />
               ) : null}
               <AudioBitrateControl value={screenAudioBitrate(advancedQuality.maxAudioBitrate)}
                 max={audioBitrateCeiling} disabled={phase === "starting" || switchingSource}
@@ -4065,7 +3959,8 @@ export function HostPage({
           />
           <RoomInteractions session={room ? interactionSession : null}
             voice={room && roomVoiceSession ? {
-              content: <RoomVoicePanel session={roomVoiceSession} names={new Map(participantPresence.map(person => [person.peerId, person.displayName]))} />,
+              content: onSelect => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect}
+                names={new Map(participantPresence.map(person => [person.peerId, person.displayName]))} />,
               controls: <RoomVoiceControls session={roomVoiceSession} />,
             } : undefined}
             view="host"
@@ -4515,6 +4410,7 @@ export function HostPage({
             <Row sub>
               <RouteTree
                 hostPeerId={hostPeerId}
+                voice={roomVoiceSession}
                 hostIdentity={hostIdentity}
                 hostLabel={labeledHostPresence?.label ?? displayName}
                 viewers={viewers}

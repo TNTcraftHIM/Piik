@@ -27,7 +27,7 @@ func TestRoomVoicePolicyFollowsNewShareOnStartAndHostAuthentication(t *testing.T
 			nextVoiceState(t, host, nil)
 			voiceCommand(host, map[string]any{"action": "join"})
 			nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool {
-				return len(state.Members) == 1 && state.Members[0].Listen
+				return len(state.Members) == 1 && state.Members[0].Joined
 			})
 			var previous *route.Controller
 			h.locked(func() {

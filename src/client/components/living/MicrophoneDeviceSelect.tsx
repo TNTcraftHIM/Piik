@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import type { CaptureDevice } from "../../media/capture-devices";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
+import { Tooltip } from "./Tooltip";
 
 // Shared presentation only: the caller owns capture and device replacement.
 export function MicrophoneDeviceSelect({ value, load, onChange, disabled, revision, browser = true }: {
@@ -46,10 +47,12 @@ export function MicrophoneDeviceSelect({ value, load, onChange, disabled, revisi
           {device.label || `${t("host.device.microphone")} ${index + 1}`}
         </option>)}
       </select>
+      <Tooltip kind="hint-refresh-sources" text={vis ? undefined : t("host.device.refresh")}>
       <button type="button" className="lr-btn lr-device-refresh" disabled={busy || disabled}
         aria-label={t("host.device.refresh")} onClick={() => setRefresh(value => value + 1)}>
         <Glyph name="refresh" size={16} className={busy ? "lr-spin" : undefined} />
       </button>
+      </Tooltip>
     </div>
     {failed ? <small role="status">{t("host.device.listFailed")}</small>
       : !vis && browser && !busy && devices.every(device => !device.label) ? <small>{t("host.device.permission.microphone")}</small> : null}

@@ -3,7 +3,7 @@
 export const pageProbe = String.raw`(() => {
   localStorage.setItem('piik:ui-lang','en'); localStorage.setItem('piik:ui-mode','text');
   const peers=[], sockets=[], events=[], errors=[], controls=[];
-  let route=null,natPrediction=null,freezeCapture=()=>{},resumeCapture=()=>{},peerSignalDelay=0,peerSignalReleaseAt=0;
+  let route=null,natPrediction=null,voice=null,freezeCapture=()=>{},resumeCapture=()=>{},peerSignalDelay=0,peerSignalReleaseAt=0;
   let observedVideo=null,frameCallback=0,renderedFrames=0,lastFrameAt=0,maxFrameGapMs=0;
   const observeVideo=video=>{
     if(video===observedVideo)return;
@@ -32,6 +32,7 @@ export const pageProbe = String.raw`(() => {
         let message; try{message=JSON.parse(event.data);}catch{return;}
         if(typeof message.routePolicy?.natPrediction==='boolean')natPrediction=message.routePolicy.natPrediction;
         if(message.type==='route-update'&&message.phase==='active')route=message.assignment.upstream.kind;
+        if(message.type==='room-voice-state')voice=message;
         const value={at:performance.now(),type:message.type,state:message.state,reason:message.reason,scope,
           phase:message.phase,route:message.assignment?.upstream?.kind,connectionId:message.connectionId};
         if(message.type==='punch-prepared')value.predictionStep=message.prediction?.step;
@@ -78,7 +79,16 @@ export const pageProbe = String.raw`(() => {
     sound.stop=()=>{if(stopped)return;stopped=true;osc.stop();void ac.close();stopSound();};
     stream.addTrack(sound);return stream;
   };
-  window.networkLab={freezeCapture:()=>freezeCapture(),resumeCapture:()=>resumeCapture(),delayPeerSignals:ms=>{peerSignalDelay=ms;peerSignalReleaseAt=0;},
+  window.networkLab={async voiceSample(){
+    const audio=[...document.querySelectorAll('audio')].filter(node=>node.srcObject);
+    const ids=new Set(audio.flatMap(node=>node.srcObject.getAudioTracks().map(track=>track.id)));
+    let energy=0,samples=0;
+    for(const peer of peers)if(peer.connectionState==='connected')for(const row of (await peer.getStats()).values())
+      if(row.type==='inbound-rtp'&&row.kind==='audio'&&ids.has(row.trackIdentifier)){
+        energy+=row.totalAudioEnergy||0;samples+=row.totalSamplesDuration||0;
+      }
+    return {energy,samples,playing:audio.length,publications:voice?.publications.length||0};
+  },freezeCapture:()=>freezeCapture(),resumeCapture:()=>resumeCapture(),delayPeerSignals:ms=>{peerSignalDelay=ms;peerSignalReleaseAt=0;},
     resetPlaybackProgress:()=>{renderedFrames=0;lastFrameAt=performance.now();maxFrameGapMs=0;},async signalProbe(){
     const socket=sockets.findLast(s=>!s.url.includes('/control')&&s.readyState===WS.OPEN);
     if(!socket)return false;

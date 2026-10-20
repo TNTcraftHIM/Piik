@@ -46,13 +46,17 @@ describe("network laboratory evidence", () => {
     const sample = { controlOpen: true, playbackPeerId: 0,
       controls: [{ type: "receive-offer", connectionId: "current" }],
       events: [{ scope: "app", type: "edge-state", connectionId: "current", state: "connected" }],
-      stats: [{ type: "selected-pair", peerId: 0, remoteAddress: "127.0.0.1" }],
+      stats: [{ type: "inbound-rtp", kind: "video", peerId: 0 },
+        { type: "selected-pair", peerId: 0, remoteAddress: "127.0.0.1" },
+        { type: "selected-pair", peerId: 1, remoteAddress: "198.51.100.2" },
+        { type: "inbound-rtp", kind: "audio", peerId: 1 }],
     } as unknown as MediaSample;
     expect(() => checkAppPath(sample, "receive-offer", ["10.71.2.2"])).not.toThrow();
     expect(() => checkAppPath({ ...sample, events: [...sample.events, { ...sample.events[0]!, state: "failed" }] }, "receive-offer", ["10.71.2.2"])).toThrow();
     expect(() => checkAppPath({ ...sample, controls: [...sample.controls, { type: "close-receiver", connectionId: "current" }] }, "receive-offer", ["10.71.2.2"])).toThrow();
     expect(() => checkAppPath({ ...sample, playbackPeerId: 1 }, "receive-offer", ["10.71.2.2"])).toThrow();
-    expect(() => checkAppPath({ ...sample, stats: [{ ...sample.stats[0]!, remoteAddress: "198.51.100.11" }] }, "receive-offer", ["10.71.2.2"])).toThrow();
+    expect(() => checkAppPath({ ...sample, stats: sample.stats.map(row => row.type === "selected-pair" && row.peerId === 0
+      ? { ...row, remoteAddress: "198.51.100.11" } : row) }, "receive-offer", ["10.71.2.2"])).toThrow();
   });
 
   it("checks mapping observations rather than trusting a NAT configuration name", () => {

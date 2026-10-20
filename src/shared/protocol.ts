@@ -349,8 +349,6 @@ const voiceSignalShape = {
 export const roomVoiceCommandSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("join") }).strict(),
   z.object({ action: z.literal("leave") }).strict(),
-  z.object({ action: z.literal("permission"), peerId: opaqueIdSchema, listen: z.boolean(), speak: z.boolean() }).strict()
-    .refine(value => !value.speak || value.listen),
   z.object({ action: z.literal("publish") }).strict(),
   z.object({ action: z.literal("unpublish"), publicationId: opaqueIdSchema }).strict(),
 ]);
@@ -358,9 +356,10 @@ export type RoomVoiceCommand = z.infer<typeof roomVoiceCommandSchema>;
 export const roomVoiceStateSchema = z.object({
   type: z.literal("room-voice-state"),
   revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  enabled: z.boolean(),
   hostPeerId: opaqueIdSchema.nullable(),
-  members: z.array(z.object({ peerId: opaqueIdSchema, connected: z.boolean(), requested: z.boolean(),
-    listen: z.boolean(), speak: z.boolean(), publicationId: opaqueIdSchema.optional() }).strict())
+  members: z.array(z.object({ peerId: opaqueIdSchema, connected: z.boolean(), joined: z.boolean(),
+    upstream: mediaRouteUpstreamSchema, publicationId: opaqueIdSchema.optional() }).strict())
     .max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
   publications: z.array(z.object({ id: opaqueIdSchema, peerId: opaqueIdSchema }).strict())
     .max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
@@ -1122,7 +1121,7 @@ export const serverMessageSchema = z.union([
   z.object({ type: z.literal("room-voice-signal"), ...voiceSignalShape }).strict()
     .refine(value => Number(!!value.description) + Number(!!value.candidate) + Number(!!value.renegotiate) === 1),
   z.object({ type: z.literal("room-voice-error"),
-    code: z.enum(["not-allowed", "participant-unavailable", "connection-unavailable"]) }).strict(),
+    code: z.enum(["not-allowed", "not-enabled", "connection-unavailable"]) }).strict(),
   z.object({ type: z.literal("viewer-route-preference"), preference: viewerRoutePreferenceSchema, accepted: z.boolean() }).strict(),
   z.object({ type: z.literal("audio-presence"), available: z.boolean().nullable() }).strict(),
   z.object({ type: z.literal("remote-input-peers"), peers: z.array(z.object({ peerId: opaqueIdSchema,

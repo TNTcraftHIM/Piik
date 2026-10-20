@@ -10,28 +10,43 @@ function microphone() {
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream;
   return { track, stream };
 }
-function room(revision: number, speak = true, publication = false): RoomVoiceState {
-  return { type: "room-voice-state", revision, hostPeerId: "host",
-    members: [{ peerId: "self", connected: true, requested: true, listen: true, speak,
+function room(revision: number, joined = true, publication = false, enabled = true): RoomVoiceState {
+  return { type: "room-voice-state", revision, enabled, hostPeerId: "host",
+    members: [{ peerId: "self", connected: true, joined, upstream: { kind: "none" },
       ...(publication ? { publicationId: "publication" } : {}) }],
     publications: publication ? [{ id: "publication", peerId: "self" }] : [], connections: [], unavailable: [] };
 }
 function setup() {
+  class Context {
+    currentTime = 0;
+    createGain() { return { gain: { value: 1, setTargetAtTime: vi.fn() }, connect: vi.fn() }; }
+    createAnalyser() { return { fftSize: 256, getFloatTimeDomainData: vi.fn() }; }
+    createMediaStreamSource() { return { connect: vi.fn() }; }
+    createMediaStreamDestination() { return { stream: microphone().stream }; }
+    resume = async () => {};
+    close = async () => {};
+  }
+  vi.stubGlobal("AudioContext", Context);
   const messages: ClientMessage[] = [];
   const session = new RoomVoiceSession(message => { messages.push(message); return true; }, { iceServers: [] });
   session.authenticated("self", "viewer"); session.receive(room(1));
   return { session, messages };
 }
 
-it("clears a transport failure after the server commits its repaired voice route", () => {
+it("clears a transport failure after the committed voice transports actually connect", () => {
   const { session } = setup();
   vi.spyOn(session.endpoint, "reconcile").mockResolvedValue();
+  let connected = false;
+  vi.spyOn(session.endpoint, "connected", "get").mockImplementation(() => connected);
   const pending = { ...room(2), connections: [{ connectionId: "repair_connection_123", parentPeerId: "host", childPeerId: "self",
     transport: "peer" as const, pending: true, revision: 2, send: [], receive: [] }] };
   session.receive({ type: "room-voice-error", code: "connection-unavailable" });
   session.receive(pending);
   expect(session.getSnapshot().error).toBe("transport");
   session.receive({ ...pending, revision: 3, connections: [{ ...pending.connections[0]!, pending: false }] });
+  expect(session.getSnapshot().error).toBe("transport");
+  connected = true;
+  session.receive({ ...pending, revision: 4, connections: [{ ...pending.connections[0]!, pending: false }] });
   expect(session.getSnapshot().error).toBeNull();
   session.close();
 });
@@ -70,7 +85,7 @@ it("explains an unavailable microphone API without requesting a publication", as
   } finally { session.close(); }
 });
 
-it.each(["cancel", "revoke", "disconnect", "close"] as const)("stops a late microphone result after %s without reviving authority", async action => {
+it.each(["cancel", "leave", "close-room", "disconnect", "close"] as const)("stops a late microphone result after %s without reviving authority", async action => {
   let finish!: (stream: MediaStream) => void;
   const getUserMedia = vi.fn(() => new Promise<MediaStream>(resolve => { finish = resolve; }));
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
@@ -78,7 +93,8 @@ it.each(["cancel", "revoke", "disconnect", "close"] as const)("stops a late micr
   const starting = session.startMicrophone();
   await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
   if (action === "cancel") session.stopMicrophone();
-  if (action === "revoke") { session.receive(room(2, false)); session.receive(room(3, true)); }
+  if (action === "leave") { session.receive(room(2, false)); session.receive(room(3, true)); }
+  if (action === "close-room") { session.receive(room(2, false, false, false)); session.receive(room(3, true)); }
   if (action === "disconnect") session.disconnected();
   if (action === "close") session.close();
   const mic = microphone(); finish(mic.stream); await starting;
@@ -103,20 +119,28 @@ it("retires an acknowledged publication after cancellation and never attaches it
   session.close();
 });
 
-it("stops admitted microphone capture synchronously when speaking permission is revoked", async () => {
-  const mic = microphone();
-  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: async () => mic.stream } });
+it("closes capture and clears pending publication when the Host closes room voice", async () => {
+  const mic = microphone(), replacement = microphone();
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: vi.fn()
+    .mockResolvedValueOnce(mic.stream).mockResolvedValueOnce(replacement.stream) } });
   const { session } = setup();
-  await session.startMicrophone(); session.receive(room(2, true, true));
-  session.receive(room(3, false));
+  await session.startMicrophone();
+  expect(session.getSnapshot().capturePending).toBe(true);
+  session.receive(room(2, false, false, false));
   expect(mic.track.stop).toHaveBeenCalled();
   expect(session.getSnapshot()).toMatchObject({ microphone: false, capturePending: false });
-  session.receive(room(4, true));
+  session.receive(room(3));
+  await session.startMicrophone(); session.receive(room(4, true, true));
+  expect(session.microphone).toBe(true);
+  session.receive(room(5, false, false, false));
+  expect(replacement.track.stop).toHaveBeenCalled();
+  expect(session.getSnapshot()).toMatchObject({ microphone: false, capturePending: false });
+  session.receive(room(6, true));
   expect(session.microphone).toBe(false);
   session.close();
 });
 
-it("deafens locally, stops the microphone and requires an explicit microphone restart", async () => {
+it("pauses local listening independently of microphone and per-person mute", async () => {
   const mic = microphone(), getUserMedia = vi.fn(async () => mic.stream);
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
   const { session, messages } = setup();
@@ -124,42 +148,35 @@ it("deafens locally, stops the microphone and requires an explicit microphone re
     await session.startMicrophone(); session.receive(room(2, true, true));
     session.muteVoice("friend");
     session.deafen(true);
-    expect(mic.track.stop).toHaveBeenCalledOnce();
-    expect(session.getSnapshot()).toMatchObject({ deafened: true, microphone: false, capturePending: false });
-    expect(messages.at(-1)).toEqual({ type: "room-voice-command", command: { action: "unpublish", publicationId: "publication" } });
-    await session.startMicrophone();
+    expect(mic.track.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot()).toMatchObject({ deafened: true, microphone: true, capturePending: false });
+    expect(messages.some(message => message.type === "room-voice-command" && message.command.action === "unpublish")).toBe(false);
     session.deafen(false);
-    expect(session.getSnapshot()).toMatchObject({ deafened: false, microphone: false });
+    expect(session.getSnapshot()).toMatchObject({ deafened: false, microphone: true });
     expect(session.getSnapshot().muted.has("friend")).toBe(true);
     expect(getUserMedia).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
 
-it("does not capture before the existing Host microphone owner has yielded, and cancellation fences that wait", async () => {
-  const getUserMedia = vi.fn();
+it("keeps the current microphone on a failed input change and replaces only local input on success", async () => {
+  const first = microphone(), replacement = microphone();
+  const getUserMedia = vi.fn().mockResolvedValueOnce(first.stream)
+    .mockRejectedValueOnce(new DOMException("Device busy", "NotReadableError")).mockResolvedValueOnce(replacement.stream);
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
-  let release!: () => void;
-  const session = new RoomVoiceSession(() => true, { iceServers: [] }, () => new Promise<void>(resolve => { release = resolve; }));
-  session.authenticated("self", "host"); session.receive(room(1));
-  const starting = session.startMicrophone();
-  expect(getUserMedia).not.toHaveBeenCalled();
-  session.stopMicrophone(); release(); await starting;
-  expect(getUserMedia).not.toHaveBeenCalled();
+  const { session, messages } = setup();
+  await session.startMicrophone(); session.receive(room(2, true, true));
+  session.setVolume(.5);
+  await session.configureInput({ deviceId: "other", voiceProcessing: false });
+  expect(session.getSnapshot().input).toMatchObject({ deviceId: "", voiceProcessing: true, volume: .5 });
+  expect(first.track.stop).not.toHaveBeenCalled();
+  await session.configureInput({ deviceId: "other", voiceProcessing: false });
+  expect(getUserMedia).toHaveBeenLastCalledWith({ audio: expect.objectContaining({ deviceId: { exact: "other" }, noiseSuppression: false }), video: false });
+  expect(first.track.stop).toHaveBeenCalledOnce();
+  expect(replacement.track.stop).not.toHaveBeenCalled();
+  expect(session.getSnapshot()).toMatchObject({ microphone: true, capturePending: false, input: { deviceId: "other", voiceProcessing: false, volume: .5 } });
+  expect(messages.filter(message => message.type === "room-voice-command")).toEqual([{ type: "room-voice-command", command: { action: "publish" } }]);
   session.close();
-});
-
-it("does not acquire or publish room audio when commentary release fails", async () => {
-  const getUserMedia = vi.fn();
-  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
-  const messages: ClientMessage[] = [];
-  const session = new RoomVoiceSession(message => { messages.push(message); return true; }, { iceServers: [] },
-    async () => { throw new Error("Native stop rejected"); });
-  session.authenticated("self", "host"); session.receive(room(1));
-  await session.startMicrophone();
-  expect(getUserMedia).not.toHaveBeenCalled();
-  expect(messages.some(message => message.type === "room-voice-command" && message.command.action === "publish")).toBe(false);
-  expect(session.getSnapshot()).toMatchObject({ microphone: false, capturePending: false, error: "microphoneFailed" });
-  session.close();
+  expect(replacement.track.stop).toHaveBeenCalledOnce();
 });
 
 it("preserves a valid microphone request and source when an unrelated room voice edge fails", async () => {

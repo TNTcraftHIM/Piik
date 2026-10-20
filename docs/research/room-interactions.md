@@ -13,7 +13,8 @@ owns room/publication lifetime.
 | Concern | Owner | Lifetime |
 | --- | --- | --- |
 | Identity, room membership and access | Existing room store and authenticated signaling session | Current admitted participant |
-| Screen/camera plus Host commentary | Existing capture and media owners | Current share and source |
+| Screen/camera and source sound | Existing capture and media owners | Current share and source |
+| Room microphone and listening | `RoomVoiceSession`, Browser input and room-route adapters | Explicit voice membership, independent of picture sharing |
 | Text and reactions | `signal/interactions.go`, shared protocol and `RoomInteractionSession` | Current authenticated room session; bounded page-local presentation |
 | Chat panel, optional chat overlay and reaction placement | Shared `RoomInteractions` and `RoomChatOverlay`; `RoomInteractionSession` owns bounded events | Current room UI |
 
@@ -257,7 +258,15 @@ Integration update, 2026-10-20: the normal App/Server/Web candidate now uses one
 room controller for voice and picture, with companion Browser audio connections
 on its selected edges and an embedded Opus SFU adapter on the existing UDP mux.
 The earlier experiments below remain design evidence, not the distributable
-implementation. Normal UI checks exercise pre-share room creation, Host grants,
+implementation. Room voice now opens when the Host joins and closes when the
+Host leaves. Room admission replaces per-person voice permissions. All current
+microphone controls use room voice; pausing local listening leaves the microphone
+on. Source sound stays with the picture. This follows the independent media
+source model in [LiveKit](https://docs.livekit.io/intro/basics/rooms-participants-tracks/)
+and the [RTP synchronization boundary](https://www.rfc-editor.org/rfc/rfc8834.html#section-12.2.3):
+sharing a route does not guarantee synchronized playback across independent
+voice and picture connections. Conversation prioritizes timely delivery.
+Normal UI checks exercise pre-share room creation, channel activation,
 duplex capture, a three-participant Peer relay, local mute without interrupting
 forwarding, picture start/stop/restart, detach and authority retirement on P2P
 and forced-SFU arms. These synthetic-device checks do not establish microphone

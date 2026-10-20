@@ -1,6 +1,7 @@
 import type { ClientMessage, IceConfig, RoomVoiceState, VoiceConnection, VoiceDescription } from "../../shared/protocol";
 import { observeDebugConnection } from "../lib/debug-webrtc";
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
+import type { MicrophoneInput } from "../media/microphone-input";
 import { addRemoteIceCandidate, iceServersWithNatPrediction, natPredictionSurveyUrls, NatPredictionCandidateEmitter } from "../webrtc/nat-prediction";
 
 type VoiceSignal = Extract<ClientMessage, { type: "room-voice-signal" }>;
@@ -33,7 +34,7 @@ interface Received {
 export class BrowserVoiceEndpoint {
   private connections = new Map<string, Connection>();
   private received = new Map<string, Received>();
-  private source: { publicationId: string; stream: MediaStream } | null = null;
+  private source: { publicationId: string; input: MicrophoneInput } | null = null;
   private state: RoomVoiceState | null = null;
   private peerId = "";
   private generation = 0;
@@ -43,6 +44,30 @@ export class BrowserVoiceEndpoint {
   constructor(private iceConfig: IceConfig, private readonly send: (message: ClientMessage) => boolean, private readonly changed: () => void) {}
 
   get microphone(): boolean { return !!this.source; }
+  get input(): MicrophoneInput | null { return this.source?.input ?? null; }
+  get connected(): boolean {
+    const active = this.state?.connections.filter(connection => !connection.pending) ?? [];
+    return active.length > 0 && active.every(config => this.connections.get(config.connectionId)?.pc.connectionState === "connected");
+  }
+  async levels(localOnly = false): Promise<ReadonlyMap<string, number>> {
+    const levels = new Map<string, number>();
+    if (this.source) levels.set(this.peerId, this.source.input.level());
+    if (localOnly) return levels;
+    const connections = [...this.connections.values()].filter(connection => !connection.config.pending && connection.pc.connectionState === "connected");
+    await Promise.all(connections.map(async connection => {
+      const stats = await connection.pc.getStats();
+      if (!this.current(connection)) return;
+      for (const binding of this.received.values()) {
+        if (binding.connectionId !== connection.config.connectionId) continue;
+        const publisher = this.state?.publications.find(pub => pub.id === binding.publicationId)?.peerId;
+        if (!publisher) continue;
+        for (const row of stats.values()) if (row.type === "inbound-rtp" && row.kind === "audio" && row.trackIdentifier === binding.track.id) {
+          levels.set(publisher, Math.max(levels.get(publisher) ?? 0, row.audioLevel ?? 0));
+        }
+      }
+    }));
+    return levels;
+  }
   get autoplayBlocked(): boolean { return !this.deafened && [...this.received.values()].some(binding => binding.blocked); }
   updateIceConfig(config: IceConfig): void { this.iceConfig = config; }
 
@@ -61,7 +86,7 @@ export class BrowserVoiceEndpoint {
       }
     }
     const me = state?.members.find(member => member.peerId === peerId);
-    if (this.source && (!me?.speak || !me.listen || !state?.publications.some(pub => pub.id === this.source!.publicationId && pub.peerId === peerId))) this.stopMicrophone();
+    if (this.source && (!state?.enabled || !me?.joined || !state.publications.some(pub => pub.id === this.source!.publicationId && pub.peerId === peerId))) this.stopMicrophone();
     for (const [key, binding] of this.received) {
       const config = allowed.get(binding.connectionId);
       if (!config?.receive.includes(binding.publicationId)) this.removeReceived(key);
@@ -70,15 +95,15 @@ export class BrowserVoiceEndpoint {
     for (const muted of this.muted) if (!state?.members.some(member => member.peerId === muted)) this.muted.delete(muted);
   }
 
-  attach(publicationId: string, stream: MediaStream): void {
+  attach(publicationId: string, input: MicrophoneInput): void {
     const me = this.state?.members.find(member => member.peerId === this.peerId);
-    if (!me?.listen || !me.speak || !this.state?.publications.some(pub => pub.id === publicationId && pub.peerId === this.peerId)) throw new Error("Microphone publication is not authorized");
+    if (!this.state?.enabled || !me?.joined || !this.state.publications.some(pub => pub.id === publicationId && pub.peerId === this.peerId)) throw new Error("Microphone publication is not authorized");
     this.stopMicrophone();
-    this.source = { publicationId, stream };
+    this.source = { publicationId, input };
   }
   stopMicrophone(): void {
     const source = this.source; this.source = null;
-    source?.stream.getTracks().forEach(track => { track.onended = null; track.stop(); });
+    source?.input.close();
   }
 
   private current(connection: Connection): boolean { return this.connections.get(connection.config.connectionId) === connection && !connection.lifetime.signal.aborted; }
@@ -121,7 +146,7 @@ export class BrowserVoiceEndpoint {
     while (connection.localCandidates[0] && this.signal(connection, { candidate: connection.localCandidates[0] })) connection.localCandidates.shift();
   }
   private sourceTrack(publicationId: string): MediaStreamTrack | undefined {
-    if (this.source?.publicationId === publicationId) return this.source.stream.getAudioTracks()[0];
+    if (this.source?.publicationId === publicationId) return this.source.input.stream.getAudioTracks()[0];
     return [...this.received.values()].find(binding => binding.publicationId === publicationId && this.connections.get(binding.connectionId)?.config.pending === false)?.track;
   }
   private async syncSenders(connection: Connection): Promise<void> {

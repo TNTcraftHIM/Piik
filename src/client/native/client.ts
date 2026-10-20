@@ -340,6 +340,7 @@ export class NativeClient {
       {
         ...shareInput,
         ...(excludeAudio ? { excludeAudio } : {}),
+        // Keep a stable output for source-audio toggles during sharing.
         ...(this.health.nativeMedia.microphone ? { microphoneMixing: true } : {}),
         ...(this.health.nativeMedia.remoteInput ? { remoteInput: true } : {}),
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),

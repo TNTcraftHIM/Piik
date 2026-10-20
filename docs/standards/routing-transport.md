@@ -115,7 +115,7 @@ ordinary endpoint child counts are not server capacity.
 ## Room Media
 
 In voice-capable test builds, one room controller and its existing serial
-operation serve both picture and voice. Explicit voice admission can acquire
+operation serve both picture and voice. Opening and joining room voice can acquire
 the graph before sharing; picture start attaches a new video generation and
 picture stop removes that generation while voice remains. Empty rooms allocate
 no media connections, and page entry alone creates no room.
@@ -134,6 +134,12 @@ Video-only attachment to an already committed room edge uses its own fresh
 physical identity and decoded-frame proof. Retired facet callbacks cannot
 invalidate a replacement. Stop, pause and failure statuses describe the affected
 consumer; a voice failure does not become a video error.
+When current decoded-picture proof still establishes a healthy committed path,
+a failed companion voice transport is recreated on that same path without
+invalidating picture readiness or consuming a topology candidate. Without that
+proof, the existing route operation owns repair and alternative selection.
+The topology diagram projects connected room edges for voice as well as picture;
+voice readiness never becomes evidence that a video frame has arrived.
 
 ## Reconciliation
 

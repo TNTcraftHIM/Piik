@@ -2,8 +2,10 @@ import type { ClientMessage, IceConfig, RoomVoiceCommand, RoomVoiceState, Server
 import { audioInputConstraints } from "../media/audio-capture";
 import { debugError } from "../lib/debug";
 import { BrowserVoiceEndpoint } from "./browser-endpoint";
+import { MicrophoneInput } from "../media/microphone-input";
+import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 
-export type RoomVoiceError = "microphoneUnavailable" | "microphoneDenied" | "microphoneMissing" | "microphoneFailed" | "transport" | "rejected";
+export type RoomVoiceError = "microphoneUnavailable" | "microphoneDenied" | "microphoneMissing" | "microphoneFailed" | "transport" | "rejected" | "closed";
 export interface RoomVoiceSnapshot {
   peerId: string;
   role: "host" | "viewer";
@@ -15,16 +17,18 @@ export interface RoomVoiceSnapshot {
   autoplayBlocked: boolean;
   muted: ReadonlySet<string>;
   error: RoomVoiceError | null;
+  input: RoomPreferences["voiceInput"];
 }
-interface CaptureRequest { stream?: MediaStream }
+interface CaptureRequest { input?: MicrophoneInput; settings: RoomPreferences["voiceInput"] }
 
 // One normal room signaling session owns voice. Sharing/capture generations do
-// not enter this lifetime, and an approval never starts microphone capture.
+// not enter this lifetime, and joining never starts microphone capture.
 export class RoomVoiceSession {
   readonly endpoint: BrowserVoiceEndpoint;
   private listeners = new Set<() => void>();
   private state: RoomVoiceSnapshot = { peerId: "", role: "viewer", connected: false, room: null,
-    capturePending: false, microphone: false, deafened: false, autoplayBlocked: false, muted: new Set(), error: null };
+    capturePending: false, microphone: false, deafened: false, autoplayBlocked: false, muted: new Set(), error: null,
+    input: readRoomPreferences().voiceInput };
   private capture: CaptureRequest | null = null;
   private publishing: CaptureRequest | null = null;
   private retiredPublications = new Set<string>();
@@ -33,8 +37,7 @@ export class RoomVoiceSession {
   private closed = false;
   private epoch = 0;
 
-  constructor(private readonly send: (message: ClientMessage) => boolean, iceConfig: IceConfig,
-    private readonly beforeMicrophone: () => Promise<void> = async () => {}) {
+  constructor(private readonly send: (message: ClientMessage) => boolean, iceConfig: IceConfig) {
     this.endpoint = new BrowserVoiceEndpoint(iceConfig, message => this.state.connected && this.send(message), () => {
       this.refresh(); this.schedule();
     });
@@ -42,13 +45,15 @@ export class RoomVoiceSession {
   getSnapshot = (): RoomVoiceSnapshot => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   get microphone(): boolean { return this.endpoint.microphone; }
+  activity = (localOnly = false): Promise<ReadonlyMap<string, number>> => this.endpoint.levels(localOnly);
   private update(patch: Partial<RoomVoiceSnapshot>): void {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach(listener => listener());
   }
   private refresh(): void {
     this.update({ microphone: this.endpoint.microphone, capturePending: !!this.capture || !!this.publishing,
-      deafened: this.endpoint.deafened, autoplayBlocked: this.endpoint.autoplayBlocked, muted: new Set(this.endpoint.muted) });
+      deafened: this.endpoint.deafened, autoplayBlocked: this.endpoint.autoplayBlocked, muted: new Set(this.endpoint.muted),
+      ...(this.state.error === "transport" && !this.state.room?.unavailable.length && this.endpoint.connected ? { error: null } : {}) });
   }
   updateIceConfig(config: IceConfig): void { this.endpoint.updateIceConfig(config); }
   authenticated(peerId: string, role: "host" | "viewer"): void {
@@ -78,20 +83,17 @@ export class RoomVoiceSession {
     if (message.type === "room-voice-state") {
       if (message.revision < (this.state.room?.revision ?? 0)) return true;
       const me = message.members.find(member => member.peerId === this.state.peerId);
-      if (!me?.listen || !me.speak) this.cancelCapture();
-      const repaired = message.connections.some(connection => !connection.pending &&
-        this.state.room?.connections.some(previous => previous.connectionId === connection.connectionId && previous.pending));
-      this.update({ room: message, ...(this.state.error === "transport" && repaired && !message.unavailable.length ? { error: null } : {}) });
+      if (!message.enabled || !me?.joined) { this.cancelCapture(); this.publishing = null; }
+      this.update({ room: message, ...(!message.enabled || this.state.error === "closed" ? { error: null } : {}) });
       // Authority retirement is synchronous even if an SDP operation is pending.
       this.endpoint.setAuthority(message, this.state.peerId);
       const publication = message.publications.find(pub => pub.peerId === this.state.peerId);
       if (publication && this.publishing) {
         const request = this.publishing; this.publishing = null;
-        if (this.capture === request && request.stream && me?.listen && me.speak) {
-          const track = request.stream.getAudioTracks()[0];
-          if (track?.readyState === "live") {
-            this.endpoint.attach(publication.id, request.stream);
-            track.onended = () => this.stopMicrophone();
+        if (this.capture === request && request.input && message.enabled && me?.joined) {
+          if (request.input.stream.getAudioTracks()[0]?.readyState === "live") {
+            this.endpoint.attach(publication.id, request.input);
+            this.rememberInput(request.settings);
             this.capture = null;
           } else this.cancelCapture();
         }
@@ -107,7 +109,7 @@ export class RoomVoiceSession {
       this.enqueue(async () => { await this.endpoint.receive(message); await this.endpoint.reconcile(); this.refresh(); });
     } else if (message.type === "room-voice-error") {
       if (message.code === "not-allowed") { this.cancelCapture(); this.publishing = null; }
-      this.update({ error: message.code === "connection-unavailable" ? "transport" : "rejected" });
+      this.update({ error: message.code === "connection-unavailable" ? "transport" : message.code === "not-enabled" ? "closed" : "rejected" });
       this.refresh();
     }
     return true;
@@ -121,26 +123,47 @@ export class RoomVoiceSession {
   }
   private cancelCapture(): void {
     const request = this.capture; this.capture = null;
-    request?.stream?.getTracks().forEach(track => track.stop());
+    request?.input?.close();
   }
-  async startMicrophone(): Promise<void> {
+  private rememberInput(input: RoomPreferences["voiceInput"]): void {
+    this.update({ input }); saveRoomPreferences({ voiceInput: input });
+  }
+  setVolume(volume: number): void {
+    this.endpoint.input?.volume(volume); this.capture?.input?.volume(volume);
+    if (this.capture) this.capture.settings.volume = volume;
+    this.rememberInput({ ...this.state.input, volume });
+  }
+  async configureInput(patch: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing">>): Promise<void> {
+    const settings = { ...this.state.input, ...patch };
+    if (this.microphone) await this.startMicrophone(settings);
+    else this.rememberInput(settings);
+  }
+  async startMicrophone(settings = this.state.input): Promise<void> {
     const me = this.state.room?.members.find(member => member.peerId === this.state.peerId);
-    if (this.closed || !this.state.connected || !me?.listen || !me.speak || this.endpoint.deafened || this.capture || this.publishing || this.microphone) return;
+    if (this.closed || !this.state.connected || !this.state.room?.enabled || !me?.joined || this.capture || this.publishing) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       this.update({ error: "microphoneUnavailable" }); return;
     }
-    const request: CaptureRequest = {}; this.capture = request;
+    const request: CaptureRequest = { settings: { ...settings } }; this.capture = request;
     this.update({ error: null }); this.refresh();
     let stream: MediaStream | undefined;
     try {
       // Device permission must never block the serialized SDP/authority queue.
-      await this.beforeMicrophone();
-      if (this.capture !== request) return;
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { ...audioInputConstraints(true), channelCount: 1 }, video: false });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { ...audioInputConstraints(settings.voiceProcessing),
+        channelCount: 1, ...(settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {}) }, video: false });
       if (this.capture !== request) return;
       const track = stream.getAudioTracks()[0];
       if (!track || track.readyState !== "live") throw new DOMException("No live microphone", "NotFoundError");
-      track.contentHint = "speech"; request.stream = stream;
+      const input = request.input = new MicrophoneInput(stream, request.settings.volume, () => {
+        if (this.endpoint.input === input || this.capture === request) this.stopMicrophone();
+      });
+      await input.resume();
+      if (this.capture !== request) return;
+      const publication = this.state.room?.publications.find(pub => pub.peerId === this.state.peerId);
+      if (publication && this.microphone) {
+        this.endpoint.attach(publication.id, input); this.capture = null;
+        this.rememberInput(request.settings); this.schedule(); return;
+      }
       this.publishing = request;
       if (!this.command({ action: "publish" })) { this.publishing = null; this.cancelCapture(); }
     } catch (error) {
@@ -150,7 +173,7 @@ export class RoomVoiceSession {
         this.update({ error: name === "NotAllowedError" ? "microphoneDenied" : name === "NotFoundError" ? "microphoneMissing" : "microphoneFailed" });
       }
     } finally {
-      if (this.capture !== request && request.stream !== stream) stream?.getTracks().forEach(track => track.stop());
+      if (!request.input) stream?.getTracks().forEach(track => track.stop());
       this.refresh();
     }
   }
@@ -166,7 +189,7 @@ export class RoomVoiceSession {
   muteVoice(peerId: string): void { this.endpoint.mute(peerId, !this.endpoint.muted.has(peerId)); this.refresh(); }
   deafen(deafened: boolean): void {
     this.endpoint.deafen(deafened);
-    if (deafened) this.stopMicrophone(); else this.resumeAudio();
+    if (!deafened) this.resumeAudio();
     this.refresh();
   }
   resumeAudio(): void { void this.endpoint.resume(); }

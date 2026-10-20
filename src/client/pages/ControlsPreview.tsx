@@ -5,7 +5,6 @@ import { RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
 import { StageOverlay, StageTv } from "../components/living/Stage";
-import { HostMicrophone, HostMicrophoneSettings } from "../components/living/HostMicrophone";
 import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import type { NativeCaptureTarget } from "../native/wire";
 import { RoomInteractions } from "../components/living/RoomInteractions";
@@ -49,7 +48,6 @@ const previewCameras: typeof loadCameraPreviews = async (_signal, publish) => pu
   { id: "built-in", label: "Built-in camera", preview: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 320"><rect width="180" height="320" fill="#dce9e5"/><rect x="106" y="26" width="58" height="102" rx="7" fill="#fbfcf3"/><path d="M135 26v102M106 76h58" stroke="#b2cbc2" stroke-width="4"/><path d="M36 255q0-100 54-100t54 100" fill="#449986"/><circle cx="90" cy="124" r="29" fill="#449986"/><path d="M81 122v4m18-4v4" stroke="#203c3a" stroke-width="5" stroke-linecap="round"/><path d="M0 259h180v61H0" fill="#d8b898"/><rect x="142" y="241" width="21" height="23" rx="5" fill="#fff7e9"/></svg>')}` },
   { id: "usb", label: "USB Camera", preview: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180" fill="#e2c5a8"/><path d="M0 25h320M0 157h320" stroke="#cda987" stroke-width="2"/><rect x="53" y="27" width="163" height="124" rx="5" fill="#fffaf0" transform="rotate(-8 135 89)"/><path d="m97 112 30-35 23 25 18-12 18 19" fill="none" stroke="#689b8a" stroke-width="5" stroke-linejoin="round"/><circle cx="166" cy="57" r="11" fill="#ebbd63"/><path d="m245 64 8 77" stroke="#477b73" stroke-width="7" stroke-linecap="round"/><circle cx="266" cy="35" r="19" fill="#f9f5df"/><circle cx="266" cy="35" r="12" fill="#8c6651"/></svg>')}` },
 ]);
-const previewMicrophones = async () => [{ id: "headset", label: "USB Headset" }, { id: "desk", label: "Desk Microphone" }];
 const previewApplications = async () => SOURCES.sources;
 
 export function ControlsPreview() {
@@ -58,10 +56,6 @@ export function ControlsPreview() {
   const displayPreview = new URLSearchParams(window.location.search).get("source") === "display";
   const [sound, setSound] = useState(true);
   const [excludedAudio, setExcludedAudio] = useState<NativeCaptureTarget | undefined>(SOURCES.sources[2]);
-  const [microphone, setMicrophone] = useState(false);
-  const [microphoneVolume, setMicrophoneVolume] = useState(1);
-  const [voiceProcessing, setVoiceProcessing] = useState(true);
-  const [microphoneDevice, setMicrophoneDevice] = useState("");
   const [sharingSettings, setSharingSettings] = useState(false);
   const [remoteMode, setRemoteMode] = useState<RemoteControlMode>("off");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
@@ -131,8 +125,6 @@ export function ControlsPreview() {
       <section id="sharing-preview" className="cp-card cp-sharing-preview">
         <header><h2>{t("host.advanced")}</h2></header>
         <HostShareControls actions={<>
-          <HostMicrophone enabled={microphone} paused={paused} volume={microphoneVolume}
-            onToggle={() => setMicrophone(value => !value)} />
           <Btn icon="switchSource" title="host.switchSource" cap="host.switchSource" hint="hint-switch-source" onClick={notify} />
           </>}
           settings={<Btn icon="sliders" cap="host.settings.button" title={sharingSettings ? "host.advanced.hide" : "host.advanced"}
@@ -172,9 +164,7 @@ export function ControlsPreview() {
             <SwitchItem checked={sound} onChange={setSound} label={t("host.sourcePicker.systemAudio")}
               hint={sound ? "hint-stop-audio" : "hint-share-audio"} />
             <LiveAudioExclusion load={previewApplications} value={excludedAudio} onChange={setExcludedAudio} disabled={!sound || paused} />
-          </div><HostMicrophoneSettings deviceId={microphoneDevice} onDevice={setMicrophoneDevice} loadDevices={previewMicrophones}
-            native enabled={microphone} disabled={paused} volume={microphoneVolume} onVolume={setMicrophoneVolume}
-            voiceProcessing={voiceProcessing} onVoiceProcessing={setVoiceProcessing} />
+          </div>
           <AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
             disabled={false} onChange={maxAudioBitrate => setQuality(current => ({ ...current, maxAudioBitrate }))} />
           </>}

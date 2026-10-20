@@ -23,7 +23,7 @@ func (s *Server) syncRoomVoice(roomID string) {
 	}
 	pubs := make([]protocol.VoicePublication, 0, len(v.members))
 	for peerID, m := range v.members {
-		if m.publicationID != "" && m.speak && s.voiceAllowed(roomID, peerID) {
+		if m.publicationID != "" && s.voiceAllowed(roomID, peerID) {
 			pubs = append(pubs, protocol.VoicePublication{ID: m.publicationID, PeerID: peerID})
 		}
 	}
@@ -50,8 +50,18 @@ func (s *Server) syncRoomVoice(roomID string) {
 	for _, peerID := range ids {
 		m := v.members[peerID]
 		sess, _ := s.voiceSession(roomID, peerID)
+		upstream := protocol.NoUpstream()
+		for _, edge := range edges {
+			if edge.child == peerID && !edge.pending && edge.connected[edge.child] && edge.connected[edge.parent] {
+				upstream = protocol.SfuUpstream()
+				if edge.transport == "peer" {
+					upstream = protocol.PeerUpstream(edge.parent)
+				}
+				break
+			}
+		}
 		members = append(members, protocol.VoiceMember{PeerID: peerID, Connected: sess != nil,
-			Requested: m.requested, Listen: m.listen, Speak: m.speak, PublicationID: m.publicationID})
+			Joined: m.joined, Upstream: upstream, PublicationID: m.publicationID})
 	}
 	var hostID *string
 	if v.hostPeerID != "" {
@@ -77,7 +87,7 @@ func (s *Server) syncRoomVoice(roomID string) {
 				Send: append([]string{}, edge.send[peerID]...), Receive: append([]string{}, edge.send[other]...)})
 		}
 		sort.Slice(connections, func(i, j int) bool { return connections[i].ConnectionID < connections[j].ConnectionID })
-		s.send(sess, protocol.RoomVoiceStateMessage{Type: "room-voice-state", Revision: protocol.Int(v.revision),
+		s.send(sess, protocol.RoomVoiceStateMessage{Type: "room-voice-state", Revision: protocol.Int(v.revision), Enabled: v.enabled(),
 			HostPeerID: hostID, Members: members, Publications: pubs, Connections: connections,
 			Unavailable: append([]string{}, unavailable[peerID]...)})
 	}
@@ -141,7 +151,7 @@ func (s *Server) roomVoiceEdges(roomID string, v *roomVoice) map[string]*voiceEd
 }
 
 // Every publication takes the unique path in the committed room tree. A relay
-// without listening permission is not a permissible plaintext voice hop.
+// outside voice is not a permissible decoded-audio hop.
 func (s *Server) projectVoiceFlows(roomID string, v *roomVoice, pubs []protocol.VoicePublication) map[string][]string {
 	type hop struct {
 		from, to string

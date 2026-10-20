@@ -16,6 +16,8 @@ const roomPreferencesSchema = z.object({
     opacity: z.number().min(CHAT_OVERLAY_LIMITS.opacity[0]).max(CHAT_OVERLAY_LIMITS.opacity[1]),
   }).default({ scale: 1, opacity: 1 }),
   interactionEffects: z.boolean().default(true),
+  voiceInput: z.object({ deviceId: z.string(), volume: z.number().min(0).max(2), voiceProcessing: z.boolean() })
+    .default({ deviceId: "", volume: 1, voiceProcessing: true }),
   keyboardPage: z.enum(REMOTE_KEYBOARD_PAGES).default("letters"),
   combineKeys: z.boolean().default(false),
   remoteReleaseKey: remoteShortcutKeySchema.default(10),

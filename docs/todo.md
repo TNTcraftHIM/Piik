@@ -8,7 +8,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Now
 
 - [ ] **Room-voice candidate acceptance.** The normal App/Server/Web packages
-  are ready for the owner's walkthrough before integration and release.
+  need final acceptance of Host-opened voice before integration and release,
+  including joined-member routing, topology display and voice-panel reactions.
   [Status](./status.md#current-work) owns the candidate boundary; the
   [test-build guide](./guide/getting-started.md#room-voice-in-test-builds)
   explains its controls. Production and the public Demo remain unchanged.
@@ -17,11 +18,16 @@ own behavior; research and Git/PRs own evidence and completed history.
   supplies the allocator input Piik needs, verify recovery and remove the
   temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
-- [ ] **macOS source-audio startup (#486).** The readiness defect is repaired;
-  the reported full startup timeout and window-filter crash are not yet resolved.
-  Investigate those failures separately from the completed readiness fix.
+- [ ] **macOS source-audio build acceptance (#486).** The candidate drains video
+  before optional audio initialization and replaces the audio-only window filter.
+  Complete Mac SDK compilation of the platform correction; actual source-audio
+  capture has no physical Mac evidence on this Windows workstation.
   [Native media research](./research/native-client-media.md#macos-audio-startup)
   owns the available evidence.
+- [ ] **Auto H.264 on the affected laptop (#437).** New diagnostics show an
+  input-texture creation failure with `DEVICE_HUNG`, followed by software VP8;
+  the reporter says manual H.264 works. Trace the Auto probe/device ownership
+  before attributing the software fallback to network or CPU adaptation.
 - [ ] **New promotional film.** Refine the online Chinese/English draft as a
   standalone introduction: sharing, invitations, Host consent and playing together.
   Improve the party-game example, motion, reading time and soundtrack. Functional

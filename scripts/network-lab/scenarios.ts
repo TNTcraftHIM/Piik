@@ -19,6 +19,7 @@ export interface Scenario {
   sibling?: boolean;
   remap?: boolean;
   qualityRecovery?: boolean;
+  voice?: boolean;
 }
 
 export interface TrialSummary {
@@ -60,6 +61,11 @@ export const scenarios: readonly Scenario[] = [
   { ...baseline, id: "app-browser", host: "app", viewer: "browser" },
   { ...baseline, id: "browser-app", host: "browser", viewer: "app" },
   { ...baseline, id: "app-app", host: "app", viewer: "app" },
+  ...(["browser", "app"] as const).flatMap(host => (["browser", "app"] as const).map(viewer => ({
+    ...baseline, id: `voice-${host}-${viewer}`, host, viewer, voice: true,
+  }))),
+  { ...baseline, id: "voice-sfu-fallback", host: "browser", viewer: "browser", voice: true, fault: "peer-block", sfu: true },
+  { ...baseline, id: "voice-media-outage", host: "app", viewer: "app", voice: true, fault: "udp-block", duringShare: true },
   { ...baseline, id: "delayed-browser", host: "browser", viewer: "browser", fault: "delay" },
   { ...baseline, id: "lossy-browser", host: "browser", viewer: "browser", fault: "loss" },
   { ...baseline, id: "stun-backup", host: "browser", viewer: "browser", fault: "stun-primary" },
@@ -129,7 +135,8 @@ export function checkAppPath(sample: MediaSample, action: "prepare-edge" | "rece
       event.connectionId === control.connectionId)?.state === "connected");
   const local = (row: MediaSample["stats"][number]) => localAddresses.includes(String(row.remoteAddress)) ||
     ["127.0.0.1", "::1", "0:0:0:0:0:0:0:1"].includes(String(row.remoteAddress));
-  const pairs = sample.stats.filter(row => row.type === "selected-pair");
+  const videoPeers = new Set(sample.stats.filter(row => row.kind === "video").map(row => row.peerId));
+  const pairs = sample.stats.filter(row => row.type === "selected-pair" && videoPeers.has(row.peerId));
   const browserWAN = pairs.some(row => !local(row));
   const playbackBridge = action !== "receive-offer" || pairs.some(row => row.peerId === sample.playbackPeerId && local(row));
   if (!sample.controlOpen || !connected || browserWAN || !playbackBridge) {

@@ -2428,7 +2428,8 @@ export function ViewerPage({
           </div>
           <RoomInteractions session={interactionSession}
             voice={roomVoiceSession ? {
-              content: <RoomVoicePanel session={roomVoiceSession} names={new Map((participantPresence ?? []).map(person => [person.peerId, person.displayName]))} />,
+              content: onSelect => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect}
+                names={new Map((participantPresence ?? []).map(person => [person.peerId, person.displayName]))} />,
               controls: <RoomVoiceControls session={roomVoiceSession} />,
             } : undefined}
             view="viewer"
@@ -2648,6 +2649,7 @@ export function ViewerPage({
             <Row sub>
               <RouteTree
                 hostPeerId={labeledHostPresence.peerId}
+                voice={roomVoiceSession}
                 hostLabel={labeledHostPresence.label}
                 viewers={viewers}
                 selfPeerId={selfPeerId}

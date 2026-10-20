@@ -75,6 +75,14 @@ Chrome and a Linux App with Browser-generated H264 ingress; it does not exercise
 physical capture, other Browser engines, real gateway mapping or the public
 invitation provider.
 
+The `voice-browser-browser`, `voice-browser-app`, `voice-app-browser` and
+`voice-app-app` cases additionally open room voice through the normal UI and
+require progressing received audio in both directions. `voice-sfu-fallback`
+blocks direct media, and `voice-media-outage` interrupts then restores UDP while
+picture and voice are active. These cases use Browser microphone capture even
+when picture media uses the App. They reuse the existing routers and cleanup;
+their execution evidence is separate from the previously completed picture matrix.
+
 Actual packets/counters must corroborate each impairment. DevTools accepting a
 network-emulation request is insufficient: an earlier Piik check observed RTP
 outside the requested limits. Keep negative controls, finite deadlines and

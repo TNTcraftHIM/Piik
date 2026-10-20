@@ -11,17 +11,11 @@ func (SubscribeRoomVoiceMessage) isClientMessage() {}
 
 type RoomVoiceCommand struct {
 	Action        string `json:"action"`
-	PeerID        string `json:"peerId,omitempty"`
-	Listen        bool   `json:"listen,omitempty"`
-	Speak         bool   `json:"speak,omitempty"`
 	PublicationID string `json:"publicationId,omitempty"`
 }
 
 func (v RoomVoiceCommand) MarshalJSON() ([]byte, error) {
 	value := map[string]any{"action": v.Action}
-	if v.Action == "permission" {
-		value["peerId"], value["listen"], value["speak"] = v.PeerID, v.Listen, v.Speak
-	}
 	if v.Action == "unpublish" {
 		value["publicationId"] = v.PublicationID
 	}
@@ -41,13 +35,6 @@ func (v *RoomVoiceCommand) UnmarshalJSON(data []byte) error {
 	case "join", "leave", "publish":
 		if len(f) != 1 {
 			return errors.New("unexpected voice command fields")
-		}
-	case "permission":
-		if err = f.require("peerId", "listen", "speak"); err != nil {
-			return err
-		}
-		if len(f) != 4 || !ValidOpaqueID(v.PeerID) || v.Speak && !v.Listen {
-			return errors.New("invalid voice permission")
 		}
 	case "unpublish":
 		if err = f.require("publicationId"); err != nil {
@@ -130,12 +117,11 @@ type RoomVoiceTransportMessage struct {
 func (RoomVoiceTransportMessage) isClientMessage() {}
 
 type VoiceMember struct {
-	PeerID        string `json:"peerId"`
-	Connected     bool   `json:"connected"`
-	Requested     bool   `json:"requested"`
-	Listen        bool   `json:"listen"`
-	Speak         bool   `json:"speak"`
-	PublicationID string `json:"publicationId,omitempty"`
+	PeerID        string             `json:"peerId"`
+	Connected     bool               `json:"connected"`
+	Joined        bool               `json:"joined"`
+	Upstream      MediaRouteUpstream `json:"upstream"`
+	PublicationID string             `json:"publicationId,omitempty"`
 }
 type VoicePublication struct {
 	ID     string `json:"id"`
@@ -154,6 +140,7 @@ type VoiceConnection struct {
 type RoomVoiceStateMessage struct {
 	Type         string             `json:"type"`
 	Revision     Int                `json:"revision"`
+	Enabled      bool               `json:"enabled"`
 	HostPeerID   *string            `json:"hostPeerId"`
 	Members      []VoiceMember      `json:"members"`
 	Publications []VoicePublication `json:"publications"`
@@ -228,7 +215,7 @@ func decodeRoomVoiceState(data []byte) (ServerMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = f.require("type", "revision", "members", "publications", "connections", "unavailable"); err != nil {
+	if err = f.require("type", "revision", "enabled", "members", "publications", "connections", "unavailable"); err != nil {
 		return nil, err
 	}
 	if err = f.requireNullable("hostPeerId"); err != nil {
@@ -249,7 +236,7 @@ func decodeRoomVoiceError(data []byte) (ServerMessage, error) {
 	if err = f.require("type", "code"); err != nil {
 		return nil, err
 	}
-	if !enumOf(v.Code, "not-allowed", "participant-unavailable", "connection-unavailable") {
+	if !enumOf(v.Code, "not-allowed", "not-enabled", "connection-unavailable") {
 		return nil, errors.New("invalid voice error")
 	}
 	return v, nil

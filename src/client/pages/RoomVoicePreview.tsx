@@ -7,10 +7,11 @@ const names = new Map([["preview-host", "Piik"], ["preview-friend", "Piik friend
 function initialState(viewer: boolean): RoomVoiceSnapshot {
   return { peerId: viewer ? "preview-friend" : "preview-host", role: viewer ? "viewer" : "host", connected: true,
     microphone: false, capturePending: false, deafened: false, autoplayBlocked: false, error: null, muted: new Set(),
-    room: { type: "room-voice-state", revision: 1, hostPeerId: "preview-host", publications: [], connections: [], unavailable: [],
+    input: { deviceId: "", volume: 1, voiceProcessing: true },
+    room: { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: "preview-host", publications: [], connections: [], unavailable: [],
       members: [
-        { peerId: "preview-host", connected: true, requested: true, listen: true, speak: true },
-        { peerId: "preview-friend", connected: true, requested: true, listen: viewer, speak: viewer },
+        { peerId: "preview-host", connected: true, joined: true, upstream: { kind: "none" } },
+        { peerId: "preview-friend", connected: true, joined: viewer, upstream: viewer ? { kind: "peer", peerId: "preview-host" } : { kind: "none" } },
       ] },
   };
 }
@@ -25,24 +26,26 @@ export function useRoomVoicePreview(viewer: boolean) {
         ? { ...member, publicationId: state.microphone ? "preview-publication" : undefined } : member),
     } };
     const command = (command: RoomVoiceCommand) => {
-      setState(current => ({ ...current, microphone: command.action === "leave" ? false : current.microphone,
-        room: current.room && { ...current.room, members: current.room.members.map(member => {
-          if (member.peerId !== (command.action === "permission" ? command.peerId : current.peerId)) return member;
-          if (command.action === "permission") return { ...member, listen: command.listen, speak: command.speak, requested: command.listen };
-          if (command.action === "join" || command.action === "leave") {
-            const joined = command.action === "join";
-            return { ...member, requested: joined, listen: joined, speak: joined };
-          }
-          return member;
-        }) },
-      }));
+      if (command.action === "join" || command.action === "leave") {
+        const joined = command.action === "join";
+        setState(current => ({ ...current, microphone: joined && current.microphone,
+          room: current.room && { ...current.room,
+            enabled: current.role === "host" ? joined : current.room.enabled,
+            members: current.room.members.map(member => member.peerId === current.peerId || current.role === "host" && !joined
+              ? { ...member, joined, publicationId: undefined } : member),
+          },
+        }));
+      }
       return true;
     };
     return {
       subscribe: () => () => {}, getSnapshot: () => snapshot, command, resumeAudio: () => {},
       startMicrophone: async () => { setState(current => ({ ...current, microphone: true })); },
       stopMicrophone: () => setState(current => ({ ...current, microphone: false })),
-      deafen: deafened => setState(current => ({ ...current, deafened, microphone: deafened ? false : current.microphone })),
+      deafen: deafened => setState(current => ({ ...current, deafened })),
+      configureInput: async patch => { setState(current => ({ ...current, input: { ...current.input, ...patch } })); },
+      setVolume: volume => setState(current => ({ ...current, input: { ...current.input, volume } })),
+      activity: async () => new Map([[state.peerId, state.microphone ? .12 : 0]]),
       muteVoice: peerId => setState(current => {
         const muted = new Set(current.muted);
         if (muted.has(peerId)) muted.delete(peerId); else muted.add(peerId);
@@ -50,5 +53,6 @@ export function useRoomVoicePreview(viewer: boolean) {
       }),
     };
   }, [state]);
-  return { controls: <RoomVoiceControls session={session} />, content: <RoomVoicePanel session={session} names={names} /> };
+  return { controls: <RoomVoiceControls session={session} />,
+    content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void) => <RoomVoicePanel session={session} names={names} onSelectParticipant={onSelect} /> };
 }

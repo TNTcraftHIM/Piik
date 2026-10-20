@@ -162,21 +162,25 @@ compatibility and design rationale.
 ## Room Voice
 
 Capable test builds add optional room voice to the same authenticated room.
-The Host joins directly; Viewers request admission, and the Host separately
-allows listening and speaking. Approval never opens a microphone. Each speaker
-explicitly starts capture and owns one server-assigned publication; mute,
-revocation and session replacement retire that publication. Local mute changes
+The Host joining opens room voice; leaving closes it for everyone. Channel
+availability is derived from that membership, not a separate switch. Authenticated
+room members can join an open channel without another approval. Joining never
+opens a microphone. Closing clears everyone's voice membership and publications;
+reopening does not rejoin Viewers or restart microphones. Each speaker explicitly
+starts capture and owns one server-assigned publication; mute, leaving and
+session replacement retire that publication. Local mute changes
 only the listener's playback, including when that listener relays for others.
-Deafening pauses all local room-voice playback and stops the microphone without
-leaving voice or changing forwarding. Undeafening never restarts capture.
+Pausing listening mutes all local room-voice playback without changing the
+microphone, membership or forwarding. Microphone and listening are independent.
 
-Listening permission also authorizes a participant to forward decodable voice.
-A video relay without that permission cannot carry voice; the existing route
-controller selects a permitted path or reports that voice is unavailable.
+Joining also authorizes a participant to forward decodable voice. A video relay
+outside voice cannot carry it; the existing route controller selects a joined
+path or reports that voice is unavailable. Local deafening never removes that
+forwarding responsibility.
 This is transport encryption between neighbors, not end-to-end encryption
 against an admitted relay or the SFU operator.
 
-Voice admission and routes outlive picture pause, stop and source replacement.
+Voice membership and routes outlive picture pause, stop and source replacement.
 Leaving voice releases its microphone and forwarding demand; room retirement or
 authorization loss ends the corresponding voice authority. Runtime voice state
 is not persisted. The [routing contract](./routing-transport.md#room-media)

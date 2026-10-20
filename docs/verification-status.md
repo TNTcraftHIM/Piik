@@ -10,7 +10,7 @@ measurements and platform details.
 
 Windows App and Browser are the primary acceptance targets. The local room-voice
 candidate passed the normal Host/Viewer flows on P2P and embedded SFU, including
-permissions, forwarding, source replacement and recovery. Native H264/VP8,
+channel activation, forwarding, source replacement and recovery. Native H264/VP8,
 constrained-network recovery, the media lifecycle, responsive UI and packaging
 checks also passed. Exact results stay with their measured artifacts and revision.
 
@@ -28,7 +28,7 @@ phases, including NAT and Auto codec behavior.
   [audio assessment](./research/native-client-media.md#windows-audio-exclusion)
   owns supported interfaces and isolation evidence.
 - Room-voice acceptance uses synthetic microphones. It establishes the route and
-  permission lifecycle, not acoustic echo performance on every physical device.
+  membership lifecycle, not acoustic echo performance on every physical device.
 - Remote-control UI and routed input have local evidence. OS permissions,
   protected/admin applications and game compatibility retain the limits in the
   [input assessment](./research/room-interactions.md#attended-remote-control-prototype).

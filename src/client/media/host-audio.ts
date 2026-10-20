@@ -1,174 +1,31 @@
 import type { BrowserCaptureSource } from "./quality";
-import { audioInputConstraints } from "./audio-capture";
 
-// The Host session owns capture and lifetime. This helper owns only the raw
-// audio inputs and mixer; transports borrow its single output track.
+// The Host owns the video lifecycle. This helper owns source-audio retirement
+// and reports input availability independently of playback or room voice.
 export class HostAudio {
-  private source: MediaStream;
-  private microphone: MediaStreamTrack | null = null;
-  private context: AudioContext | null = null;
-  private destination: MediaStreamAudioDestinationNode | null = null;
-  private inputs: MediaStreamAudioSourceNode[] = [];
-  private microphoneGain: GainNode | null = null;
-  private microphoneVolume = 1;
-  private microphoneDevice = "";
-  private voiceProcessing = true;
-  private closed = false;
-
-  constructor(source: MediaStream, private changed: (enabled: boolean) => void,
-    private kind: BrowserCaptureSource = "browser", private availabilityChanged: (available: boolean) => void = () => {}) {
-    this.source = source;
+  constructor(private source: MediaStream, private kind: BrowserCaptureSource = "browser",
+    private availabilityChanged: (available: boolean) => void = () => {}) {
     this.watchSource();
   }
-
-  /** Capture facts come from the input, never the mixer destination track. */
   get sourceStream(): MediaStream { return this.source; }
   get sourceKind(): BrowserCaptureSource { return this.kind; }
-  get audioAvailable(): boolean {
-    return this.source.getAudioTracks().some(track => track.readyState === "live") ||
-      Boolean(this.microphone?.enabled && this.microphone.readyState === "live");
-  }
+  get audioAvailable(): boolean { return this.source.getAudioTracks().some(track => track.readyState === "live"); }
   private reportAvailability = () => this.availabilityChanged(this.audioAvailable);
-  private watchSource() {
+  private watchSource(): void {
     this.source.getAudioTracks().forEach(track => track.addEventListener("ended", this.reportAvailability));
   }
-  private unwatchSource() {
+  private unwatchSource(): void {
     this.source.getAudioTracks().forEach(track => track.removeEventListener("ended", this.reportAvailability));
   }
-
   attach(source: MediaStream, kind = this.kind): MediaStream {
     const previous = this.source;
-    this.unwatchSource();
-    this.source = source;
-    this.watchSource();
-    this.kind = kind;
-    const output = this.compose();
+    this.unwatchSource(); this.source = source; this.kind = kind; this.watchSource();
     this.reportAvailability();
-    if (previous !== source) previous.getAudioTracks().forEach((track) => track.stop());
-    return output;
+    if (previous !== source) previous.getAudioTracks().forEach(track => track.stop());
+    return source;
   }
-
-  setMicrophoneVolume(volume: number) {
-    if (this.closed || !Number.isFinite(volume)) return;
-    this.microphoneVolume = Math.max(0, Math.min(2, volume));
-    if (this.microphoneGain && this.context) {
-      this.microphoneGain.gain.setTargetAtTime(this.microphoneVolume, this.context.currentTime, 0.01);
-    }
-  }
-
-  toggleMicrophone(deviceId = this.microphoneDevice): Promise<MediaStream | null> {
-    return this.setMicrophone(!this.microphone?.enabled, deviceId);
-  }
-
-  // Room voice takes the device, while existing sharing senders retain the
-  // mixer output and source audio. Ordinary mute keeps its reusable input.
-  releaseMicrophone(): void {
-    if (this.closed) return;
-    const microphone = this.microphone;
-    this.microphone = null;
-    microphone?.stop();
-    this.compose();
-    this.changed(false);
-    this.reportAvailability();
-  }
-
-  async setMicrophone(enabled: boolean, deviceId: string, voiceProcessing = this.voiceProcessing): Promise<MediaStream | null> {
-    if (this.closed) return null;
-    const sameInput = deviceId === this.microphoneDevice && voiceProcessing === this.voiceProcessing;
-    if (!enabled || (this.microphone && sameInput)) {
-      if (this.microphone && !sameInput) {
-        this.microphone.stop();
-        this.microphone = null;
-        this.compose();
-      }
-      this.microphoneDevice = deviceId;
-      this.voiceProcessing = voiceProcessing;
-      if (this.microphone) this.microphone.enabled = enabled;
-      this.changed(enabled);
-      this.reportAvailability();
-      return null;
-    }
-    const hadContext = !!this.context;
-    if (!this.context) {
-      this.context = new AudioContext();
-      this.destination = this.context.createMediaStreamDestination();
-      this.microphoneGain = this.context.createGain();
-      this.microphoneGain.gain.value = this.microphoneVolume;
-      this.microphoneGain.connect(this.destination);
-    }
-    const resumed = this.context.resume().then(() => true, () => false);
-    let stream: MediaStream | null = null;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: {
-        ...audioInputConstraints(voiceProcessing),
-        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-      } });
-      if (this.closed) return null;
-      if (!await resumed) throw new Error("Audio context unavailable");
-      if (this.closed) return null;
-      const microphone = stream.getAudioTracks()[0];
-      if (!microphone || microphone.readyState === "ended") throw new Error("No live microphone");
-      const previous = this.microphone;
-      this.microphone = microphone;
-      this.microphoneDevice = deviceId;
-      this.voiceProcessing = voiceProcessing;
-      microphone.onended = () => {
-        if (this.closed || this.microphone !== microphone) return;
-        this.microphone = null;
-        this.compose();
-        this.changed(false);
-        this.reportAvailability();
-      };
-      const output = this.compose();
-      previous?.stop();
-      stream = null;
-      this.changed(true);
-      this.reportAvailability();
-      // Existing senders already borrow this destination. A device change is
-      // local input work, not another media/route replacement.
-      return hadContext ? null : output;
-    } catch (error) {
-      if (!hadContext && !this.microphone) this.closeMixer();
-      throw error;
-    } finally {
-      stream?.getTracks().forEach((track) => track.stop());
-    }
-  }
-
-  private compose(): MediaStream {
-    if (!this.context || !this.destination) return this.source;
-    this.inputs.forEach((input) => input.disconnect());
-    this.inputs = [...this.source.getAudioTracks(), this.microphone]
-      .filter((track): track is MediaStreamTrack => !!track && track.readyState === "live")
-      .map((track) => {
-        const input = this.context!.createMediaStreamSource(new MediaStream([track]));
-        // Only the microphone follows the input-volume control. Source audio
-        // and the Viewer's playback volume have separate owners.
-        input.connect(track === this.microphone ? this.microphoneGain! : this.destination!);
-        return input;
-      });
-    const audio = this.destination.stream.getAudioTracks()[0]!;
-    audio.contentHint = "music";
-    return new MediaStream([...this.source.getVideoTracks(), audio]);
-  }
-
-  private closeMixer() {
-    this.inputs.forEach((input) => input.disconnect());
-    this.inputs = [];
-    this.microphoneGain?.disconnect();
-    this.microphoneGain = null;
-    this.destination?.stream.getTracks().forEach((track) => track.stop());
-    void this.context?.close().catch(() => {});
-    this.context = null;
-    this.destination = null;
-  }
-
-  dispose() {
-    this.closed = true;
+  dispose(): void {
     this.unwatchSource();
-    this.microphone?.stop();
-    this.microphone = null;
-    this.source.getAudioTracks().forEach((track) => track.stop());
-    this.closeMixer();
+    this.source.getAudioTracks().forEach(track => track.stop());
   }
 }

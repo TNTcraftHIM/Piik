@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
-import { cleanupRun, withDeadline } from "./browser-gate-harness";
+import { cleanupRun, waitForSample, withDeadline } from "./browser-gate-harness";
 import { endpointWorker } from "./network-lab/endpoint";
 import { Endpoint } from "./network-lab/endpoint-client";
 import { command, LabNetwork, SITE_IP, SITE_IPV6, SITE_ORIGIN } from "./network-lab/network";
@@ -45,6 +45,13 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     const [host, viewer, sibling] = await Promise.all(endpoints.map(endpoint => endpoint.call<MediaSample>("sample")));
     const sample = { elapsedMs: performance.now() - started, host: host!, viewer: viewer!, sibling };
     samples.push(sample); return sample;
+  };
+  const proveVoice = async () => {
+    type VoiceSample = { energy: number; samples: number; playing: number; publications: number };
+    const baseline = await Promise.all(endpoints.slice(0, 2).map(endpoint => endpoint.call<VoiceSample>("voice-sample")));
+    const voice = await waitForSample(async () => Promise.all(endpoints.slice(0, 2).map(endpoint => endpoint.call<VoiceSample>("voice-sample"))),
+      states => states.every((state, index) => state.playing > 0 && state.energy > 0 && state.samples > baseline[index]!.samples && state.publications === 2), 40_000);
+    result.voice = voice;
   };
   const addresses = () => endpoints.map((_, index) => scenario.ipv6 ? network.ipv6(index) : network.publicIP(index));
   const observeQuality = async (name: string, durationMs: number, baseline?: MediaSample) => {
@@ -162,6 +169,11 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
       const { viewer: next, sibling: healthy } = await sampleAll();
       checkContinuity(first, next);
       checkAppPaths();
+      if (scenario.voice) {
+        stage("room-voice");
+        await endpoints[0]!.call("voice-open"); await endpoints[1]!.call("voice-join");
+        await proveVoice();
+      }
       mediaWindows.push({ name: "baseline", startMs: steadyStart, endMs: Date.now(), addresses: addresses() });
       if (values.negative === "frozen-picture") {
         stage("negative-control");
@@ -247,6 +259,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
         if (qualityBaseline) await observeQuality("quality-restored", 90_000, qualityBaseline);
       }
     }
+    if (scenario.voice && connected) { stage("voice-continuity"); await proveVoice(); }
     await endpoints[1]!.call("screenshot", { output: join(output, "viewer.png") });
     result.finalCounters = counters();
     if (!scenario.duringShare) checkFaultHit(scenario.fault, counters().faultDrops);
