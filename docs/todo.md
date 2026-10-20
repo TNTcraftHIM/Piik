@@ -172,12 +172,13 @@ experiments and their limits.
   permissions, control capacity, enumeration and startup. The v1.6.5 Auto-to-VP8
   report needs the Browser exception/assets and actual output; its early
   `stop-share` is not proof of a no-frame timeout. [#419](https://github.com/TNTcraftHIM/Piik/issues/419)
-  still needs a matched App report. The v2.2.1 log in
-  [#437](https://github.com/TNTcraftHIM/Piik/issues/437) exposed Auto admitting a
-  hardware probe with insufficient measurement time. Its local correction
-  preserves the existing VP8 fallback; retest on the affected device. The
-  underlying `DEVICE_HUNG` and subsequent blocked API remain unconfirmed.
-  For `input-texture-create / 0x887a0005`, obtain subsequent candidates and the
+  still needs a matched App report. The new v2.2.2 log in
+  [#437](https://github.com/TNTcraftHIM/Piik/issues/437#issuecomment-6284470067)
+  confirms device loss during Auto's synthetic-input preparation, followed by
+  actual VP8 fallback. The candidate aligns probe input with live GPU conversion;
+  this does not establish the cause of `DEVICE_HUNG`. Retest on the affected device
+  before declaring it fixed. For other `input-texture-create / 0x887a0005` reports,
+  obtain subsequent candidates and the
   final result; [native media research](./research/native-client-media.md#current-boundary)
   owns hardware evidence and limits.
 - [ ] **Native sharing ends unexpectedly.** The v2.0.0 `app/capture/failed` and

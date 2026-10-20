@@ -202,7 +202,7 @@ less initialization and a valid handoff, not a material speedup or a repair for
 an uninterruptible driver call. Concurrent cadence benchmarks are not adopted:
 shared-device contention would change the capability being measured.
 
-The current v2.2.1 report in [#437](https://github.com/TNTcraftHIM/Piik/issues/437)
+The earlier v2.2.1 report in [#437](https://github.com/TNTcraftHIM/Piik/issues/437)
 records device loss after about 3.25 seconds, before the Auto selection finishes.
 The selector could then enter another candidate despite lacking time for its
 required cadence measurement. Admission now uses that same measurement schedule
@@ -210,6 +210,26 @@ before synchronous setup, preserving the existing VP8 fallback. A 750 ms
 remaining-budget control rejects Auto at 30 fps but retains manual H264 and the
 immediate 1 fps probe. This fixes budget admission, not the physical
 `DEVICE_HUNG`; the later blocked API and reporter-device outcome remain unknown.
+
+The [October 20 follow-up](https://github.com/TNTcraftHIM/Piik/issues/437#issuecomment-6284470067)
+contains v2.2.2 App evidence: all six Auto attempts report device loss during
+probe texture creation, with removal reason `DEVICE_HUNG`, then select VP8.
+Four reach active capture; two later hit local-edge preparation deadlines.
+The reporter's separate manual-H264 success is not in this trace. The failing
+API locates detection, not necessarily the GPU operation that caused the hang.
+
+The local candidate now prepares synthetic BGRA through the existing capture
+converter, supplying the same GPU-produced NV12 surface contract as live capture.
+It retains eight distinct frames outside the cadence measurement, and keeps
+deadlines, genuine failures, fallback and the proven encoder instance unchanged.
+[Microsoft permits initialized textures](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11device-createtexture2d);
+this is not a claim that every direct NV12 allocation is invalid.
+[Chromium's MF input handling](https://chromium.googlesource.com/chromium/src/+/main/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc)
+also distinguishes initialized CPU uploads from video-processor output and
+preserves consistent encoder inputs. Local NVIDIA/AMD conversion checks and
+retained-frame checks pass. Single Auto controls selected H264 in 1.7–1.8 seconds,
+with explicit H264 around 0.2 seconds; these are neither a benchmark nor a
+reproduction of the reporter's driver hang. The affected-device retest remains open.
 
 The `input-texture-create / 0x887a0005` report identifies a lost D3D device during
 candidate preparation, not a failed room route or proof that every candidate
