@@ -17,20 +17,21 @@ function room(revision: number, joined = true, publication = false, enabled = tr
     publications: publication ? [{ id: "publication", peerId: "self" }] : [], connections: [], unavailable: [] };
 }
 function setup() {
+  const resume = vi.fn(async () => {});
   class Context {
     currentTime = 0;
     createGain() { return { gain: { value: 1, setTargetAtTime: vi.fn() }, connect: vi.fn() }; }
     createAnalyser() { return { fftSize: 256, getFloatTimeDomainData: vi.fn() }; }
     createMediaStreamSource() { return { connect: vi.fn() }; }
     createMediaStreamDestination() { return { stream: microphone().stream }; }
-    resume = async () => {};
+    resume = resume;
     close = async () => {};
   }
   vi.stubGlobal("AudioContext", Context);
   const messages: ClientMessage[] = [];
   const session = new RoomVoiceSession(message => { messages.push(message); return true; }, { iceServers: [] });
   session.authenticated("self", "viewer"); session.receive(room(1));
-  return { session, messages };
+  return { session, messages, resume };
 }
 
 it("clears a transport failure after the committed voice transports actually connect", () => {
@@ -54,10 +55,11 @@ it("clears a transport failure after the committed voice transports actually con
 it("captures only on explicit action and waits for the server publication acknowledgement", async () => {
   const mic = microphone(), getUserMedia = vi.fn(async () => mic.stream);
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
-  const { session, messages } = setup();
+  const { session, messages, resume } = setup();
   try {
     expect(getUserMedia).not.toHaveBeenCalled();
     await session.startMicrophone();
+    expect(resume.mock.invocationCallOrder[0]).toBeLessThan(getUserMedia.mock.invocationCallOrder[0]!);
     expect(getUserMedia).toHaveBeenCalledWith({ audio: expect.objectContaining({ echoCancellation: true, channelCount: 1 }), video: false });
     expect(session.getSnapshot()).toMatchObject({ microphone: false, capturePending: true });
     expect(messages).toContainEqual({ type: "room-voice-command", command: { action: "publish" } });

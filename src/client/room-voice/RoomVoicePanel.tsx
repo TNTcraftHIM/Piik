@@ -9,12 +9,9 @@ import { Glyph, type GlyphName } from "../ui/icons";
 import type { RoomVoiceSession, RoomVoiceSnapshot } from "./session";
 import "./room-voice.css";
 import { MicrophoneSettings } from "../components/living/MicrophoneSettings";
-import { browserCaptureDevices } from "../media/capture-devices";
-
-const loadMicrophones = () => browserCaptureDevices("audioinput");
 
 export type RoomVoiceView = Pick<RoomVoiceSession, "subscribe" | "getSnapshot" | "resumeAudio" | "command" |
-  "startMicrophone" | "stopMicrophone" | "muteVoice" | "deafen" | "configureInput" | "setVolume" | "activity">;
+  "startMicrophone" | "stopMicrophone" | "muteVoice" | "deafen" | "configureInput" | "setVolume" | "activity" | "microphones">;
 interface Props { session: RoomVoiceView }
 
 function useVoiceLevels(session: RoomVoiceView, enabled: boolean, localOnly = false): ReadonlyMap<string, number> {
@@ -110,7 +107,7 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
         onClick={() => setSettingsOpen(value => !value)} />
     </div>
     {settingsOpen ? <MicrophoneSettings host={state.role === "host"} enabled={state.microphone} disabled={state.capturePending}
-      loadDevices={loadMicrophones} deviceId={state.input.deviceId} onDevice={deviceId => void session.configureInput({ deviceId })}
+      loadDevices={session.microphones} deviceId={state.input.deviceId} onDevice={deviceId => void session.configureInput({ deviceId })}
       volume={state.input.volume} onVolume={value => session.setVolume(value)}
       voiceProcessing={state.input.voiceProcessing} onVoiceProcessing={voiceProcessing => void session.configureInput({ voiceProcessing })} /> : <>
     {!vis && state.role === "viewer" && !state.room?.enabled && <p className="lr-voice-hint">{t("voice.closedHint")}</p>}

@@ -49,9 +49,10 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
   const proveVoice = async () => {
     type VoiceSample = { energy: number; samples: number; playing: number; publications: number };
     const baseline = await Promise.all(endpoints.slice(0, 2).map(endpoint => endpoint.call<VoiceSample>("voice-sample")));
-    const voice = await waitForSample(async () => Promise.all(endpoints.slice(0, 2).map(endpoint => endpoint.call<VoiceSample>("voice-sample"))),
+    let voice: VoiceSample[] = [];
+    await waitForSample(async () => voice = await Promise.all(endpoints.slice(0, 2).map(endpoint => endpoint.call<VoiceSample>("voice-sample"))),
       states => states.every((state, index) => state.playing > 0 && state.energy > 0 && state.samples > baseline[index]!.samples && state.publications === 2), 40_000);
-    result.voice = voice;
+    result.voice = { baseline, received: voice };
   };
   const addresses = () => endpoints.map((_, index) => scenario.ipv6 ? network.ipv6(index) : network.publicIP(index));
   const observeQuality = async (name: string, durationMs: number, baseline?: MediaSample) => {
@@ -264,6 +265,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     result.finalCounters = counters();
     if (!scenario.duringShare) checkFaultHit(scenario.fault, counters().faultDrops);
     await endpoints[0]!.call("stop");
+    if (scenario.voice && connected) { stage("voice-without-picture"); await proveVoice(); }
     signal.throwIfAborted();
     result.passed = true; stage("done");
   } catch (error) { result.error = error instanceof Error ? error.message : String(error); }

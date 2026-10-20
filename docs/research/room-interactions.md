@@ -269,8 +269,10 @@ voice and picture connections. Conversation prioritizes timely delivery.
 Normal UI checks exercise pre-share room creation, channel activation,
 duplex capture, a three-participant Peer relay, local mute without interrupting
 forwarding, picture start/stop/restart, detach and authority retirement on P2P
-and forced-SFU arms. These synthetic-device checks do not establish microphone
-echo behavior, difficult-NAT reachability or 21-person audio capacity.
+and forced-SFU arms. The existing network laboratory also exercises voice across
+Browser/App endpoint combinations, blocked direct paths and UDP interruption.
+These synthetic-device checks do not establish microphone echo behavior, public
+NAT success rates or 21-person all-speaking audio capacity.
 Product owners are [room voice](../standards/rooms-access.md#room-voice) and
 [room media](../standards/routing-transport.md#room-media); the public release
 does not yet include this candidate.

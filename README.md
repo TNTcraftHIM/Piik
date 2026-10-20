@@ -66,8 +66,8 @@ you can also create a room in the online version.
 1. Select **Start sharing**, then choose the picture and audio to share.
 2. Select **Copy invite link** and send it to your friends. Keep the sharing tab open.
 
-Turn on the **Microphone** for commentary; its settings let you choose the input
-device and adjust your voice volume.
+Open **Interact → Voice** to talk together, with or without picture sharing.
+The Host opens voice; everyone joins to listen and chooses when to turn on their microphone.
 
 Piik follows your system language: Chinese or English, with English as the fallback.
 Use **中 / EN / ✦** in the header to switch language or try the visual mode.

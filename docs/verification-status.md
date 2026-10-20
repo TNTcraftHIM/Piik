@@ -10,7 +10,9 @@ measurements and platform details.
 
 Windows App and Browser are the primary acceptance targets. The local room-voice
 candidate passed the normal Host/Viewer flows on P2P and embedded SFU, including
-channel activation, forwarding, source replacement and recovery. Native H264/VP8,
+channel activation, forwarding, source replacement and recovery. Controlled voice
+checks cover Browser/App endpoint combinations, SFU fallback and UDP interruption;
+they do not establish a population connection rate. Native H264/VP8,
 constrained-network recovery, the media lifecycle, responsive UI and packaging
 checks also passed. Exact results stay with their measured artifacts and revision.
 

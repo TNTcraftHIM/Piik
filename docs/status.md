@@ -70,7 +70,8 @@ picture rotation are included; frp uses the documented existing UDP configuratio
 The candidate derives channel availability from Host membership and uses one
 room microphone for Host and Viewers. Local normal-page acceptance covers both
 P2P and SFU, independent listening, picture continuity and voice-facet recovery.
-Controlled-network voice cases and platform package checks are in progress.
+Controlled-network voice cases and platform package checks have passed; the
+refreshed acceptance package is being prepared.
 It is not a production deployment.
 Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
 The promotional film stays an online-review draft; export follows owner acceptance.

@@ -222,6 +222,25 @@ async function main(): Promise<void> {
         connection.parentPeerId === relay.peerId && !connection.pending && connection.receive.length === 2), "two speakers through normal Viewer relay");
       check("two simultaneous publications decoded by a third Viewer through shared relay graph");
     }
+    const beforeMute = await sample(host);
+    const oldPublication = beforeMute.voice!.publications.find(publication => publication.peerId === beforeMute.peerId)!.id;
+    const voiceConnections = beforeMute.voice!.connections.filter(connection => !connection.pending).map(connection => connection.connectionId).sort();
+    await button(host, "Turn off microphone");
+    await until(host, state => state.liveMicrophones === 0 && state.voice?.publications.length === 1 &&
+      !!state.voice.members.find(member => member.peerId === state.peerId)?.joined, "microphone off retains voice membership");
+    await until(viewer, state => state.playing === 0 && state.voice?.publications.length === 1, "retired microphone removed from playback");
+    await button(host, "Turn on microphone");
+    await until(host, state => state.liveMicrophones === 1 && state.voice?.publications.length === 2, "microphone restarts within joined channel");
+    const restarted = await until(viewer, state => state.playing === 1 && state.energy > 0 && state.voice?.publications.length === 2,
+      "replacement microphone produces decoded audio");
+    await until(viewer, state => state.samples > restarted.samples, "replacement microphone continues producing samples");
+    const afterMute = await sample(host);
+    if (afterMute.voice!.publications.find(publication => publication.peerId === afterMute.peerId)!.id === oldPublication ||
+      JSON.stringify(afterMute.voice!.connections.filter(connection => !connection.pending).map(connection => connection.connectionId).sort()) !== JSON.stringify(voiceConnections)) {
+      throw new Error("Microphone restart reused retired publication or replaced the room route");
+    }
+    if (leaf) await until(leaf, state => state.playing === 2 && state.voice?.publications.length === 2, "relay receives replacement microphone exactly once");
+    check("microphone restart replaces its publication without leaving voice, duplicating playback or replacing the route");
     await memberButton(viewer, "Voice Host", "Mute for me");
     const muted = await sample(viewer);
     await until(viewer, state => state.enabled && state.samples > muted.samples, "local mute retains received media");

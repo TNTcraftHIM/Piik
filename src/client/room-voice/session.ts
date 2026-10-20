@@ -3,6 +3,7 @@ import { audioInputConstraints } from "../media/audio-capture";
 import { debugError } from "../lib/debug";
 import { BrowserVoiceEndpoint } from "./browser-endpoint";
 import { MicrophoneInput } from "../media/microphone-input";
+import { browserCaptureDevices } from "../media/capture-devices";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 
 export type RoomVoiceError = "microphoneUnavailable" | "microphoneDenied" | "microphoneMissing" | "microphoneFailed" | "transport" | "rejected" | "closed";
@@ -19,7 +20,7 @@ export interface RoomVoiceSnapshot {
   error: RoomVoiceError | null;
   input: RoomPreferences["voiceInput"];
 }
-interface CaptureRequest { input?: MicrophoneInput; settings: RoomPreferences["voiceInput"] }
+interface CaptureRequest { input?: MicrophoneInput; context?: AudioContext; settings: RoomPreferences["voiceInput"] }
 
 // One normal room signaling session owns voice. Sharing/capture generations do
 // not enter this lifetime, and joining never starts microphone capture.
@@ -46,6 +47,7 @@ export class RoomVoiceSession {
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   get microphone(): boolean { return this.endpoint.microphone; }
   activity = (localOnly = false): Promise<ReadonlyMap<string, number>> => this.endpoint.levels(localOnly);
+  microphones = () => browserCaptureDevices("audioinput");
   private update(patch: Partial<RoomVoiceSnapshot>): void {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach(listener => listener());
@@ -124,6 +126,7 @@ export class RoomVoiceSession {
   private cancelCapture(): void {
     const request = this.capture; this.capture = null;
     request?.input?.close();
+    if (request?.context) void request.context.close().catch(() => {});
   }
   private rememberInput(input: RoomPreferences["voiceInput"]): void {
     this.update({ input }); saveRoomPreferences({ voiceInput: input });
@@ -148,16 +151,21 @@ export class RoomVoiceSession {
     this.update({ error: null }); this.refresh();
     let stream: MediaStream | undefined;
     try {
+      // Resume during the gesture, before a device-permission prompt can consume
+      // user activation. The capture owns this context until input takes it over.
+      const context = request.context = new AudioContext();
+      const resumed = context.resume().then(() => true, () => false);
       // Device permission must never block the serialized SDP/authority queue.
       stream = await navigator.mediaDevices.getUserMedia({ audio: { ...audioInputConstraints(settings.voiceProcessing),
         channelCount: 1, ...(settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {}) }, video: false });
       if (this.capture !== request) return;
       const track = stream.getAudioTracks()[0];
       if (!track || track.readyState !== "live") throw new DOMException("No live microphone", "NotFoundError");
-      const input = request.input = new MicrophoneInput(stream, request.settings.volume, () => {
+      const input = request.input = new MicrophoneInput(stream, context, request.settings.volume, () => {
         if (this.endpoint.input === input || this.capture === request) this.stopMicrophone();
       });
-      await input.resume();
+      request.context = undefined;
+      if (!await resumed) throw new Error("Microphone audio context could not start");
       if (this.capture !== request) return;
       const publication = this.state.room?.publications.find(pub => pub.peerId === this.state.peerId);
       if (publication && this.microphone) {

@@ -156,8 +156,9 @@ its process-audio responsibility, rather than constructing a video-window filter
 The helper initializes CoreGraphics through its public display API before asking
 ScreenCaptureKit for content. This addresses the initialization dependency shown
 by the reported SkyLight filter crash and the [primary implementation](https://github.com/indutny/mac-screen-share/blob/main/addon.mm).
-These Darwin changes still need Mac SDK compilation and physical capture coverage;
-the previous architecture/self-test CI result covers the earlier readiness fix.
+These Darwin changes passed Mac SDK compilation and packaged startup on both
+architectures in candidate CI on 2026-10-20. Physical source/audio capture remains
+unverified here.
 Terminal launch and App launch remain distinct permission contexts under
 [Apple's TCC attribution](https://developer.apple.com/forums/thread/125438).
 

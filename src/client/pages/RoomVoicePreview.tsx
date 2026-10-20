@@ -46,6 +46,7 @@ export function useRoomVoicePreview(viewer: boolean) {
       configureInput: async patch => { setState(current => ({ ...current, input: { ...current.input, ...patch } })); },
       setVolume: volume => setState(current => ({ ...current, input: { ...current.input, volume } })),
       activity: async () => new Map([[state.peerId, state.microphone ? .12 : 0]]),
+      microphones: async () => [{ id: "headset", label: "USB Headset" }, { id: "desk", label: "Desk Microphone" }],
       muteVoice: peerId => setState(current => {
         const muted = new Set(current.muted);
         if (muted.has(peerId)) muted.delete(peerId); else muted.add(peerId);

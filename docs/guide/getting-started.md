@@ -203,7 +203,7 @@ expand **Fine-tune picture** for resolution, frame-rate, bitrate, picture prefer
   selects the nearest available slider value.
   The frame-rate limit depends
   on picture size: for example, 1080p240, 1440p144 and 4K60 are accepted requests.
-- Under **Sound**, adjust source audio and microphone input. **Audio quality**
+- Under **Sound**, adjust source audio. **Audio quality**
   controls the shared audio output: choose a preset or enter an **Audio bitrate limit**
   from 6 to 320 kbps.
 
@@ -216,34 +216,33 @@ when your public-invite address changes.
 
 ## Add your voice
 
-While sharing, select **Microphone** below the picture and
-allow microphone access. Select it again to mute. Open **Sharing settings → Sound** below the picture
-to choose a microphone and adjust its input volume.
-The default volume is 100%, with up to 200% available.
-Source audio and your voice reach viewers together. The Host preview stays muted.
+Open **Interact → Voice**. The Host selects **Open room voice**, and viewers
+select **Join voice** to listen. Each speaker turns on their own microphone;
+joining never starts capture. **Pause listening** leaves your microphone on.
 
-Camera sharing does not enable the microphone automatically. App **Apps / Windows**
-and **Screens** capture use the same controls. Leave the device on **Default device**
-or choose a specific microphone. In the **Camera** tab, allow access if asked,
-then select a picture card to start sharing. Device names and previews depend on
-browser permissions; while a camera is shared, other cameras are listed by name.
-Use headphones to keep speaker sound from feeding back into the microphone.
+**Microphone settings** in that tab provides device selection, input volume
+(default 100%, up to 200%) and **Noise & echo reduction**. These controls apply
+to Browser and App-backed sharing alike, before or during picture sharing.
+Settings stay in this browser's current site; microphones never reopen automatically.
 
-With **Browser** or **Camera** capture, **Noise & echo reduction** in sound
-settings is on by default, asking the browser to handle echo, noise and volume.
-Turn it off for music or a virtual audio input. Device and system effects remain
-controlled by their own settings. App native capture uses device/system audio settings.
+Camera sharing requests only video permission. In the **Camera** tab, allow
+access if asked, then select a picture card. Device names and previews depend
+on browser permissions; while a camera is shared, other cameras are listed by name.
+Use headphones to avoid speaker sound feeding back into the microphone. Usually
+keep speech processing on; turn it off if the selected input already processes voice.
+Device and system effects remain controlled by their own settings.
 
 A camera with a built-in microphone still needs separate video and audio input
 selection. OBS Virtual Camera supplies video only. To include OBS audio, follow
 the [OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tutorial/),
-then select the virtual audio input in Piik's microphone list and turn on the microphone.
+then choose that input in room voice's **Microphone settings** and turn it on.
+This is the conversation channel, separate from the camera picture and source sound.
 
 ### Exclude a voice app from screen audio
 
 On Windows, this control applies to system sound from **Screens**. **Apps / Windows**
-captures only the selected application's process tree; **Camera** uses the separately
-selected microphone or audio input.
+captures only the selected application's process tree. **Camera** shares video;
+its microphone or virtual audio input uses room voice separately.
 
 On supported Windows Apps, open the **Screens** tab and enable **System sound**.
 Under **Exclude application audio**, select a window belonging to the voice app,
@@ -374,7 +373,7 @@ On capable test sites, **Playback settings → Connection → Help relay to more
 viewers** lets a Viewer volunteer more upload for the current visit. It remains
 an ordinary P2P relay; enable it on a stable connection with upload to spare.
 Room voice and this control require the matching test Server/Web, not an older
-public site. External-network and physical-audio testing are still in progress.
+public site.
 
 ## When something gets in the way
 

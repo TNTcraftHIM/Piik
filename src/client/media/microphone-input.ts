@@ -2,14 +2,13 @@
 // borrow the output track; replacing a device never changes room authority.
 export class MicrophoneInput {
   readonly stream: MediaStream;
-  private readonly context: AudioContext;
   private readonly gain: GainNode;
   private readonly analyser: AnalyserNode;
   private readonly samples = new Float32Array(256);
   private closed = false;
 
-  constructor(private readonly captured: MediaStream, volume: number, ended: () => void) {
-    this.context = new AudioContext();
+  constructor(private readonly captured: MediaStream, private readonly context: AudioContext,
+    volume: number, ended: () => void) {
     this.gain = this.context.createGain();
     this.gain.gain.value = volume;
     this.analyser = this.context.createAnalyser();
@@ -22,7 +21,6 @@ export class MicrophoneInput {
     captured.getAudioTracks()[0]!.onended = ended;
   }
 
-  resume(): Promise<void> { return this.context.resume(); }
   volume(value: number): void { this.gain.gain.setTargetAtTime(value, this.context.currentTime, .01); }
   level(): number {
     if (this.closed) return 0;
