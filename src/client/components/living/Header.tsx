@@ -1,5 +1,5 @@
 // App header: brand mark, LED connection state, language selection and theme.
-import { useId, useRef, useState, useSyncExternalStore } from "react";
+import { useId, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { createPortal } from "react-dom";
 import { browserDebugEnabled, debugError, downloadBrowserDebug, withBrowserDebug } from "../../lib/debug";
 import { BrandMark } from "./BrandMark";
@@ -12,6 +12,7 @@ import { Glyph } from "../../ui/icons";
 import { AppConnectionButton } from "./AppConnectionButton";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { useProjectLink } from "../../lib/use-project-link";
+import { Btn } from "./primitives";
 
 export type LedState = "live" | "busy" | "warn" | "bad" | "off";
 
@@ -48,15 +49,18 @@ export function LedStrip({
 }
 
 /** Shared explicit opt-in/export action; starting diagnostics reloads the page. */
-export function BrowserDiagnosticsButton({ quiet = false }: { quiet?: boolean } = {}) {
+export function BrowserDiagnosticsButton({ quiet, size }: Pick<ComponentProps<typeof Btn>, "quiet" | "size"> = {}) {
   const { vis, t } = useCopy();
   const [debugExport, setDebugExport] = useState<"idle" | "busy" | "failed">("idle");
-  const debugTitle = t(!browserDebugEnabled ? "debug.startHint" :
-    debugExport === "failed" ? "debug.exportFailed" : "debug.exportHint");
+  const title = !browserDebugEnabled ? "debug.startHint" :
+    debugExport === "failed" ? "debug.exportFailed" : "debug.exportHint";
+  const debugTitle = t(title);
   const debugButton = (
-    <button
-      type="button" className={`lr-btn is-compact${quiet ? " is-quiet" : ""}${browserDebugEnabled ? " is-on" : ""}`} disabled={debugExport === "busy"}
-      aria-label={debugTitle} aria-busy={debugExport === "busy" || undefined}
+    <Btn
+      size={size} quiet={quiet} tone={browserDebugEnabled ? "on" : undefined}
+      title={title} disabled={debugExport === "busy"} busy={debugExport === "busy"}
+      icon={!browserDebugEnabled ? "cpu" : debugExport === "failed" ? "alert" : "arrowDown"}
+      cap={!browserDebugEnabled ? "debug.start" : debugExport === "failed" ? "common.retry" : "debug.export"}
       onClick={() => {
         if (!browserDebugEnabled) {
           // Start collection before connection owners attach their observers.
@@ -70,14 +74,7 @@ export function BrowserDiagnosticsButton({ quiet = false }: { quiet?: boolean } 
           debugError("export", "collector-failed", error, { collector: "download" });
           setDebugExport("failed");
         });
-      }}
-    >
-      <Glyph name={!browserDebugEnabled ? "cpu" :
-        debugExport === "busy" ? "loader" : debugExport === "failed" ? "alert" : "arrowDown"}
-        size={16} className={debugExport === "busy" ? "lr-spin" : undefined} />
-      {vis ? null : <span className="lr-cap">{t(!browserDebugEnabled ? "debug.start" :
-        debugExport === "failed" ? "common.retry" : "debug.export")}</span>}
-    </button>
+      }} />
   );
   return <Tooltip kind={!browserDebugEnabled ? "debug-start" : debugExport === "failed" ? "debug-export-failed" : "hint-debug-export"}
     tone={debugExport === "failed" ? "bad" : debugExport === "busy" ? "busy" : "off"}
@@ -120,7 +117,7 @@ function BrowserHelpMenu() {
               <Glyph name="book" size={16} />{!vis && <span className="lr-cap">{t("help.troubleshooting")}</span>}
             </a>
           </Tooltip>
-          <BrowserDiagnosticsButton quiet />
+          <BrowserDiagnosticsButton size="compact" quiet />
         </>}
       </nav>
     </div>, document.body)}
