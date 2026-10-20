@@ -1712,7 +1712,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   .lr-meter-cell { justify-content: flex-start; }
   .lr-group-name .lr-name-tag { flex: 1; }
   .lr-viewer-self-slot .lr-name-tag { flex: 0 1 auto; }
-  .lr-toggle { flex: 1; }
+  .lr-row-group > .lr-toggle { flex: 1; }
   .lr-invite-hint, .lr-invite-url { flex: 0 1 auto; max-width: none; min-height: 44px; }
   .lr-invite-field { flex: none; width: 100%; }
   .lr-door-body { padding: 12px; }
