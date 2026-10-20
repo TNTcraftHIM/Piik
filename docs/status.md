@@ -71,7 +71,7 @@ The candidate derives channel availability from Host membership and uses one
 room microphone for Host and Viewers. Local normal-page acceptance covers both
 P2P and SFU, independent listening, picture continuity and voice-facet recovery.
 Controlled-network voice cases and platform package checks have passed; the
-refreshed acceptance package is being prepared.
+refreshed candidate is ready for owner acceptance before integration or publication.
 It is not a production deployment.
 Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
 The promotional film stays an online-review draft; export follows owner acceptance.
