@@ -14,6 +14,12 @@ Release artifacts and operator records own exact delivery; remaining product
 work is listed below. Broader device coverage does not override the owner's
 platform deferrals or establish a diagnosis for unmatched reports.
 
+- [ ] **Linux desktop sharing (#488).** Review the [contributor fix](https://github.com/TNTcraftHIM/Piik/pull/488)
+  for PipeWire negotiating an extreme pixel aspect ratio and overflowing the
+  GStreamer scaler. Verify with the existing Linux native check and the reported
+  KDE Wayland case before integration; preserve desktop geometry and the
+  separate encoded-input path.
+
 - [ ] **Remote-control stop shortcut.** Design separately configurable Host
   emergency-stop and Viewer-release chords using the existing local preference
   owners. Windows currently reserves Ctrl+Alt+F10 at App startup; a collision
