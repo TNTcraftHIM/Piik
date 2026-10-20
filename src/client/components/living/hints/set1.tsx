@@ -322,7 +322,7 @@ ${rmBlock(["vls-capture-choice"], [[".vls-capture-choice", "opacity:1;transform:
   </>;
 }
 
-function MicrophoneHint({ theme, mode }: Parameters<HintScene>[0] & { mode: "on" | "off" | "volume" | "processing" }) {
+export function MicrophoneHint({ theme, mode, host = true }: Parameters<HintScene>[0] & { mode: "on" | "off" | "volume" | "processing"; host?: boolean }) {
   return <>
     <style>{`
 .vls-mic-voice{animation:vlsMicVoice var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
@@ -338,7 +338,7 @@ ${rmBlock(["vls-mic-noise"], [[".vls-mic-noise", "opacity:0"]])}
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     {[0, 160].map((x, index) => <g key={x} transform={`translate(${x} 0)`}>
-      <Pawn x={53} yb={76} s={14} eyes host />
+      <Pawn x={53} yb={76} s={14} eyes host={host} />
       <g transform="translate(78 38)"><Glyph name="microphone" size={27} /></g>
       {mode === "processing" ? <>
         <path className={index === 1 ? "vls-mic-voice" : undefined} d="M113 44q7 8 0 16m7-21q12 13 0 26" stroke={MINT} strokeWidth={2.5} strokeLinecap="round" fill="none" />

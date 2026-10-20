@@ -309,6 +309,7 @@ export const zh = {
   "voice.play": "播放语音",
   "voice.allowListen": "允许收听",
   "voice.allowSpeak": "允许发言",
+  "voice.allowSpeakHint": "允许这位参与者自行开麦。",
   "voice.revokeSpeak": "禁言",
   "voice.remove": "移出语音",
   "voice.decline": "拒绝申请",

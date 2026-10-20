@@ -209,9 +209,9 @@ experiments and their limits.
   playback before choosing an implementation. Do not use a dummy video or
   silently send accompaniment through the mono speech publication.
 
-- [ ] **Room-voice test packages (#484).** Finish the local normal App/Server/Web
-  candidate and distribute it for field acceptance; leave production and the
-  public Demo unchanged. One existing controller serves room voice and picture,
+- [ ] **Room-voice field acceptance (#484).** The normal App/Server/Web test
+  packages are ready; leave production and the public Demo unchanged. One
+  existing controller serves room voice and picture,
   including pre-share creation, Host admission/speaking grants and local mute.
   Normal UI checks cover Peer relaying and embedded SFU; the
   [transport assessment](./research/room-interactions.md#room-voice-transport-assessment)

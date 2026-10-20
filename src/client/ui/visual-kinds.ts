@@ -170,6 +170,18 @@ export type RemoteHintKind =
 
 export type RelayHintKind = "hint-relay-volunteer";
 
+export type VoiceHintKind =
+  | "hint-voice-join"
+  | "hint-voice-leave"
+  | "hint-voice-allow-listen"
+  | "hint-voice-allow-speak"
+  | "hint-voice-revoke-speak"
+  | "hint-voice-remove"
+  | "hint-voice-microphone-on"
+  | "hint-voice-microphone-off"
+  | "hint-voice-deafen"
+  | "hint-voice-undeafen";
+
 export type HintKind =
   | Set1Kind
   | Set2Kind
@@ -181,6 +193,7 @@ export type HintKind =
   | InteractionHintKind
   | RemoteHintKind
   | RelayHintKind
+  | VoiceHintKind
   | ControlHintKind;
 
 export type ComicTheme = "stage" | "paper";

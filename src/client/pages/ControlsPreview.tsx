@@ -34,6 +34,7 @@ import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { PeoplePreview } from "./PeoplePreview";
 import { RemoteControlsPreview } from "./RemoteControlsPreview";
+import { useRoomVoicePreview } from "./RoomVoicePreview";
 import "./controls-preview.css";
 
 const POSTER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="#e8eee6"/><rect x="100" y="60" width="440" height="240" rx="20" fill="#fffdf6"/><path d="M100 100h440" stroke="#c9d7cf" stroke-width="2"/><circle cx="128" cy="81" r="6" fill="#ed9e65"/><circle cx="320" cy="190" r="46" fill="#65b099"/><path d="m310 191 9 9 16-22" fill="none" stroke="#fffdf6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>')}`;
@@ -333,7 +334,7 @@ export function ControlsPreview() {
     </section>
     <section id="interaction-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">09</span><div><h2>{en ? "A little company" : "聊两句，丢个番茄。"}</h2>
-        <p>{en ? "Chat and react in one window. Open reactions beside the message input; supported browsers can keep this window on top." : "聊天和表情都在一个窗口里。点输入区的「发表情」选择互动对象；支持的浏览器可以将窗口置顶。"}</p></div></header>
+        <p>{en ? "Chat, reactions and room voice share one window. This catalogue simulates voice controls without opening your microphone." : "聊天、表情与房间语音共用一个窗口。这里的语音控件仅作演示，不会打开麦克风。"}</p></div></header>
       <InteractionControlsPreview />
     </section>
     <RemoteControlsPreview />
@@ -343,6 +344,7 @@ export function ControlsPreview() {
 function InteractionControlsPreview() {
   const [session, setSession] = useState<RoomInteractionSession | null>(null);
   const [viewer, setViewer] = useState(false);
+  const voice = useRoomVoicePreview(viewer);
   const [crowded, setCrowded] = useState(false);
   const [reaction, setReaction] = useState<ReactionId>("heart");
   const [theater, setTheater] = useTheaterMode();
@@ -390,7 +392,7 @@ function InteractionControlsPreview() {
     <PlaybackControls videoRef={video} stream={null} canPlay={false} onPlay={() => {}}
       theaterMode={theater} onToggleTheater={() => setTheater(value => !value)} onReconnect={() => {}} reconnectAvailable={false}
       overlayAction={<RoomChatToggle session={session} />} overlaySettings={session && <RoomChatOverlaySettings session={session} />} />
-  </StageTv><RoomInteractions session={session}
+  </StageTv><RoomInteractions session={session} voice={voice}
     view={viewer ? "viewer" : "host"} host={{ key: "preview-host", name: "Piik", you: !viewer }} entries={
       Array.from({ length: crowded ? 20 : 1 }, (_, index) => ({
         key: index ? `preview-friend-${index}` : "preview-friend", name: index ? `Friend ${index + 1}` : "Piik friend",

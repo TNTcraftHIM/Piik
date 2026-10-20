@@ -1838,7 +1838,7 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 .lr-microphone-settings output { min-width: 4ch; font-variant-numeric: tabular-nums; text-align: right; }
 .lr-microphone-settings .lr-switch-item .lr-cap { white-space: normal; }
 .lr-capture-device { display: grid; gap: 6px; min-width: 0; padding: 4px 10px 10px; }
-.lr-capture-device label { font-size: 12px; padding: 0; color: var(--muted); }
+.lr-capture-device label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 0; color: var(--muted); }
 .lr-capture-device-controls { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .lr-capture-device select {
   flex: 1; min-width: 0; width: 100%; min-height: 40px; padding: 8px 12px;

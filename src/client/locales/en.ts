@@ -309,6 +309,7 @@ export const en: Record<CopyKey, string> = {
   "voice.play": "Play voice audio",
   "voice.allowListen": "Allow listening",
   "voice.allowSpeak": "Allow speaking",
+  "voice.allowSpeakHint": "Allow this participant to turn on their own microphone.",
   "voice.revokeSpeak": "Mute participant",
   "voice.remove": "Remove from voice",
   "voice.decline": "Decline request",

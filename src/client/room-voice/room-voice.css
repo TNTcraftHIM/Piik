@@ -7,7 +7,8 @@
 .lr-voice-identity > svg { flex: none; width: 28px; height: 34px; }
 .lr-voice-identity > div { min-width: 0; }
 .lr-voice-identity b { display: block; font-size: 13px; overflow-wrap: anywhere; }
-.lr-voice-identity small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+.lr-voice-identity small { display: flex; align-items: center; gap: 5px; margin-top: 3px; color: var(--muted); font-size: 12px; }
+.lr-voice-identity small > svg { flex: none; }
 .lr-voice-member-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .lr-voice-control-error { display: flex; flex-basis: 100%; gap: 6px; align-items: flex-start; margin: 0; color: var(--danger); font-size: 12px; line-height: 1.7; }
 .lr-voice-toolbar { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
