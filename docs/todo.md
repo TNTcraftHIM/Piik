@@ -107,6 +107,10 @@ experiments and their limits.
   allocation recovers; its internal QP settings are not exposed to page scripts.
   Controlled repetition no longer depends on reporter availability; matched
   reports are needed to attribute their cases.
+  The 2026-10-20 matched SFU report independently reproduces clock-rate skew
+  locking delay detection and recovery probing; the candidate's bounded clock
+  allowance passes lossless, real-queue and loss controls. Validate the same
+  field setup after updating before claiming its cause resolved.
   Do not infer server CPU requirements from an unmatched report.
 
 - [ ] **Linux desktop capture acceptance (#470, #488).** The

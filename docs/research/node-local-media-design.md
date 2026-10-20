@@ -589,6 +589,21 @@ Desired maximum, available layers and current forwarding target remain distinct;
 Dynacast is not proof that stopping every currently unselected high layer alone
 provides recovery.
 
+On 2026-10-20, a matched v2.2.2 report supplied a separate reproducible failure:
+receive-clock rate skew accumulates through inherited queue delay, even though
+packet history is bounded. An independent Pion TWCC replay with no loss or real
+queue growth entered congestion after about 752 seconds at +67 ppm and still
+blocked probing after 30 minutes. The field trace's roughly 67 ppm slope is
+consistent with this mechanism, but the archive does not directly measure the
+devices' clock rates or contain full packet feedback for replay.
+The candidate applies [RFC 6817 A.2's virtual faster sender clock](https://www.rfc-editor.org/rfc/rfc6817.html#appendix-A.2)
+only to queue-delay inference, with its documented 500 ppm allowance. Raw rates,
+timestamps, loss, allocator policy and probe ownership are unchanged. Thirty-minute
+controls at 0, +67/-67, +200/-200 and +400 ppm no longer enter false congestion;
+actual growing queues and loss still lower capacity and release probing after
+they clear. This repairs the shared Native/SFU estimator, not Browser-owned GCC,
+and does not assign every historical low-quality report the same cause.
+
 For dormant output admission, the parent can prepare a layer when a child's
 fresh framework video budget covers that layer's existing configured ceiling.
 The active prefix includes this preparation demand, the library target and the

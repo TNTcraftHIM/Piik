@@ -14,6 +14,7 @@
 
 // Modified by Piik: use feedback state; the first receive timestamp can be zero.
 // Track loss membership for the full packet history, independently of ACK count.
+// Tolerate ordinary clock-rate skew in delay inference, retaining raw traffic measurements.
 package sendsidebwe
 
 import (
@@ -231,11 +232,12 @@ func (p *packetGroup) SendWindow() (int64, int64) {
 }
 
 func (p *packetGroup) PropagatedQueuingDelay() int64 {
-	if p.inheritedQueuingDelay+p.aggregateRecvDelta-p.aggregateSendDelta > 0 {
-		return p.inheritedQueuingDelay + p.aggregateRecvDelta - p.aggregateSendDelta
-	}
-
-	return max(0, p.aggregateRecvDelta-p.aggregateSendDelta)
+	// A faster virtual sender clock prevents normal oscillator skew from
+	// accumulating as a permanent queue. RFC 6817 A.2 uses 500 ppm; this changes
+	// only delay inference, never acknowledged rates, packet times or loss.
+	const clockSkewTolerance = 500 // microseconds per second
+	delta := p.aggregateRecvDelta - p.aggregateSendDelta - p.aggregateSendDelta*clockSkewTolerance/1_000_000
+	return max(0, p.inheritedQueuingDelay+delta)
 }
 
 func (p *packetGroup) FinalizedPropagatedQueuingDelay() (int64, bool) {

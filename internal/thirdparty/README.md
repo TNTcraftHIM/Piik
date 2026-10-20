@@ -47,6 +47,10 @@ advances in send order with a receive-time watermark, while older ACKs repair
 counts without rewinding it. Reset reseeds that delay baseline without discarding
 delivery history. Piik's shared
 forwarding package uses this copy for both individual transports and publications.
+Delay inference tolerates ordinary clock-rate skew using RFC 6817 A.2's
+500 ppm virtual-sender-clock allowance; packet timestamps, acknowledged traffic
+and loss remain unadjusted. Long, lossless TWCC controls and real queue/loss
+recovery controls fence this measurement repair.
 Its regression checks use real TWCC feedback and retain the no-feedback and
 idle-before-probe controls. The
 [media research owner](../../docs/research/node-local-media-design.md#send-queue-recovery)
