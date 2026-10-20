@@ -155,10 +155,12 @@ bool piik_input_text(CGEventSourceRef source, const uint16_t *text, size_t lengt
   return post(down, 0) && post(up, 0);
 }
 
-bool piik_input_stop_pressed(void) {
+bool piik_input_stop_pressed(uint16_t key) {
   // Inspect only the local emergency chord; no event tap or key log.
   CGEventSourceStateID state = kCGEventSourceStateHIDSystemState;
   return (CGEventSourceKeyState(state, 59) || CGEventSourceKeyState(state, 62)) &&
          (CGEventSourceKeyState(state, 58) || CGEventSourceKeyState(state, 61)) &&
-         CGEventSourceKeyState(state, 109); // Control + Option + F10
+         !CGEventSourceKeyState(state, 54) && !CGEventSourceKeyState(state, 55) &&
+         !CGEventSourceKeyState(state, 56) && !CGEventSourceKeyState(state, 60) &&
+         CGEventSourceKeyState(state, key);
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
@@ -262,6 +263,24 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			return nil, err
 		}
 		return response(envelope, "remote-control-set"), nil
+	case "get-remote-stop-shortcut", "set-remote-stop-shortcut":
+		var request remoteStopShortcutRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||
+			(envelope.Type == "get-remote-stop-shortcut" && request.Key != 0) ||
+			(envelope.Type == "set-remote-stop-shortcut" && !appconfig.ValidRemoteStopKey(request.Key)) {
+			return nil, protocolViolation("native remote-control shortcut is invalid")
+		}
+		if session.current(request.ShareID) == nil || !session.remoteInput.SupportsStopShortcut() {
+			return nil, errors.New("native remote-control shortcut is unavailable")
+		}
+		var state remoteinput.StopShortcut
+		var err error
+		if envelope.Type == "get-remote-stop-shortcut" {
+			state, err = session.remoteInput.ReadStopShortcut()
+		} else {
+			state, err = session.remoteInput.SetStopShortcut(request.Key)
+		}
+		return remoteStopShortcutResponse{responseEnvelope{envelope.Version, envelope.ID, "remote-stop-shortcut"}, state}, err
 	case "set-microphone":
 		var request microphoneRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||

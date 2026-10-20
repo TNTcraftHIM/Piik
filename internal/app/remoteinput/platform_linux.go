@@ -85,7 +85,7 @@ func (s *portalSink) Reset() error {
 
 // The compositor owns its global stop shortcut. The page's stop action/chord
 // remains available; we do not grab global keys or request a second permission.
-func watchStopShortcut(context.Context, func()) error { return nil }
+func watchStopShortcut(context.Context, int, func()) (func(), error) { return func() {}, nil }
 
 func evdevCode(code string) uint16 {
 	if scan := scanCodes[code]; scan > 0 && scan <= 0x58 {

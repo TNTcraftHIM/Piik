@@ -6,5 +6,5 @@ import (
 	"context"
 )
 
-func newPlatformSink(bool) (inputSink, error)         { return nil, nil }
-func watchStopShortcut(context.Context, func()) error { return nil }
+func newPlatformSink(bool) (inputSink, error)                        { return nil, nil }
+func watchStopShortcut(context.Context, int, func()) (func(), error) { return func() {}, nil }

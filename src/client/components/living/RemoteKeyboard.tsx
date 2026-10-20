@@ -10,6 +10,7 @@ import { panelWindowAPI, SurfaceDocument, usePanelWindow } from "../../ui/panel-
 import { navigateTabs } from "../../ui/tab-navigation";
 import { Btn, Chip } from "./primitives";
 import { Tooltip } from "./Tooltip";
+import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
 import "./floating-panel.css";
 
 type Key = readonly [label: string, code: string, shifted?: string];
@@ -32,11 +33,12 @@ const PAGES = REMOTE_KEYBOARD_PAGES;
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
-export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange }: {
+export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange }: {
   input: (event: RemoteInputEvent) => void; close: () => void;
   mouseControl?: ReactNode; touch: boolean;
   platform: RemoteInputPlatform;
   onSurfaceChange?: (owner: Document) => void;
+  releaseKey: number; onReleaseKeyChange: (key: number) => void;
 }) {
   const { t, vis } = useCopy();
   const id = useId();
@@ -208,6 +210,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       </div>
     </>}
     </div>
+    <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
     {!panelWindow.detached && mouseControl}
     {!vis && touch && <p>{t("remote.touchHelp")}</p>}
   </section></SurfaceDocument.Provider>;

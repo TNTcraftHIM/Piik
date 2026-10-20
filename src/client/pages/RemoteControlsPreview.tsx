@@ -15,6 +15,12 @@ export function RemoteControlsPreview() {
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [lastInput, setLastInput] = useState("");
+  const [releaseKey, setReleaseKey] = useState(10);
+  const [stopKey, setStopKey] = useState(10);
+  const shortcut = useCallback(async (key?: number) => {
+    if (key !== undefined) setStopKey(key);
+    return { key: key ?? stopKey, available: true };
+  }, [stopKey]);
   const input = useCallback((event: RemoteInputEvent) => setLastInput(JSON.stringify(event)), []);
   const closeKeyboard = () => {
     setKeyboardOpen(false);
@@ -34,6 +40,7 @@ export function RemoteControlsPreview() {
         </select>
       </label>
       <HostRemoteControl mode={mode} platform={platform} requests={requests}
+        onShortcut={platform === "linux" ? undefined : shortcut}
         onPolicy={async value => { setMode(value); setRequests([]); }}
         onDecide={async (id, allow) => setRequests(current => allow
           ? current.map(request => request.id === id ? { ...request, state: "active" } : request)
@@ -46,7 +53,8 @@ export function RemoteControlsPreview() {
         expanded={keyboardOpen} controls="preview-remote-keyboard" onClick={() => setKeyboardOpen(value => !value)} />
     </div>
     <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
-      {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch={false} input={input} close={closeKeyboard} />}
+      {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch={false} input={input} close={closeKeyboard}
+        releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
     </div>
     <p className="cp-input-output"><span>{en ? "Latest input" : "最近一次输入"}</span>
       <output>{lastInput || (en ? "Open the keyboard to try it." : "打开键盘即可试用。")}</output>

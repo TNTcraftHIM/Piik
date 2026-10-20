@@ -3,9 +3,53 @@
 package remoteinput
 
 import (
+	"context"
 	"testing"
 	"unsafe"
 )
+
+func TestNativeStopShortcutRegistrationLifetime(t *testing.T) {
+	// Reserve an available chord through the OS API without injecting input.
+	var reserved func()
+	var key int
+	for key = 1; key <= 11; key++ {
+		var err error
+		reserved, err = watchStopShortcut(t.Context(), key, func() {})
+		if err == nil {
+			break
+		}
+	}
+	if reserved == nil {
+		t.Fatal("no test shortcut is available")
+	}
+	t.Cleanup(reserved)
+	m, err := New(t.Context(), false, key, nil)
+	if err != nil || m == nil {
+		t.Fatalf("hotkey collision disabled the input backend: %v", err)
+	}
+	t.Cleanup(m.Close)
+	state, err := m.ReadStopShortcut()
+	if err != nil || state.Available {
+		t.Fatalf("reserved chord was reported usable: %+v, %v", state, err)
+	}
+	reserved()
+	state, err = m.ReadStopShortcut()
+	if err != nil || !state.Available {
+		t.Fatalf("released chord was not available: %+v, %v", state, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	stop, err := watchStopShortcut(ctx, key, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	stop()
+	stop, err = watchStopShortcut(t.Context(), key, func() {})
+	if err != nil {
+		t.Fatalf("cancelled watcher retained its chord: %v", err)
+	}
+	stop()
+}
 
 func TestCommittedTextPackets(t *testing.T) {
 	inputs := textInputs("A中😀")

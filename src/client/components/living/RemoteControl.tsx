@@ -6,6 +6,8 @@ import type { InputTransport } from "../../remote-control/input-route";
 import { RemoteInputSession, type RemoteInputState, type RemoteInputEvent } from "../../remote-control/input-session";
 import { RemoteTouchpad } from "../../remote-control/touchpad";
 import { RemoteViewport } from "../../remote-control/viewport";
+import { matchesRemoteShortcut } from "../../remote-control/protocol";
+import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { RemoteKeyboard } from "./RemoteKeyboard";
 import { Btn } from "./primitives";
 import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
@@ -32,6 +34,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const keyboardDetached = Boolean(keyboardDocument && keyboardDocument !== document);
   const [touch, setTouch] = useState(false);
   const [zoomed, setZoomed] = useState(false);
+  const [releaseKey, setReleaseKey] = useState(() => readRoomPreferences().remoteReleaseKey);
   const session = useRef<RemoteInputSession | null>(null);
   const surface = useRef<HTMLDivElement | null>(null);
   const cursor = useRef<SVGSVGElement | null>(null);
@@ -175,6 +178,16 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     hidden();
     return () => owners.forEach(owner => owner.removeEventListener("visibilitychange", hidden));
   }, [controlled, keyboardDocument, release, reset]);
+  useEffect(() => {
+    if (!controlled) return;
+    const owners = [...new Set([document, ...(keyboardDocument ? [keyboardDocument] : [])])];
+    const stop = (event: KeyboardEvent) => {
+      if (!matchesRemoteShortcut(event, releaseKey)) return;
+      event.preventDefault(); event.stopImmediatePropagation(); release();
+    };
+    owners.forEach(owner => owner.addEventListener("keydown", stop, true));
+    return () => owners.forEach(owner => owner.removeEventListener("keydown", stop, true));
+  }, [controlled, keyboardDocument, release, releaseKey]);
 
   if (!channel || channel.readyState !== "open" || !state || state.mode === "off") return null;
   const point = (clientX: number, clientY: number) => {
@@ -296,7 +309,6 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         onBlur={reset}
         onKeyDown={event => {
           event.preventDefault(); event.stopPropagation();
-          if (event.code === "F10" && event.ctrlKey && event.altKey) { release(); return; }
           if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
@@ -309,6 +321,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           onClick={() => { reset(); viewport.current?.reset(); surface.current?.focus({ preventScroll: true }); }}>1×</button>
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
+        releaseKey={releaseKey} onReleaseKeyChange={key => { setReleaseKey(key); saveRoomPreferences({ remoteReleaseKey: key }); }}
         onSurfaceChange={keyboardSurfaceChanged}
         mouseControl={!touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad" size="compact"
           title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"}

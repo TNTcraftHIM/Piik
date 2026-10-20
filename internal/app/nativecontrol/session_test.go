@@ -104,6 +104,23 @@ func TestReceiveOfferReusePreservesLegacyResponseShape(t *testing.T) {
 	}
 }
 
+func TestRemoteStopShortcutRequiresAnOwnedShare(t *testing.T) {
+	session := New("", nativecapture.Capabilities{}, false, nil)
+	t.Cleanup(func() { _ = session.Close() })
+	for _, command := range []string{"get-remote-stop-shortcut", "set-remote-stop-shortcut"} {
+		key := 0
+		if command == "set-remote-stop-shortcut" {
+			key = 9
+		}
+		request := remoteStopShortcutRequest{requestEnvelope: requestEnvelope{10, "request_shortcut", command}, ShareID: "retired_share", Key: key}
+		payload, _ := json.Marshal(request)
+		result, err := session.Handle(t.Context(), payload)
+		if _, ok := result.(requestFailedResponse); !ok || err != nil {
+			t.Fatalf("missing share must fail the operation, not the connection: %#v, %v", result, err)
+		}
+	}
+}
+
 func TestMain(tests *testing.M) {
 	if path := os.Getenv("PIIK_SOURCE_LIST_FIXTURE"); path != "" {
 		payload, err := os.ReadFile(path)

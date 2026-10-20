@@ -182,9 +182,12 @@ func (s *windowsSink) Reset() error {
 
 // A native hotkey supplies local revocation even while a Browser has focus.
 // It observes this shortcut only; no keyboard hook or key recording is installed.
-func watchStopShortcut(ctx context.Context, stop func()) error {
+func watchStopShortcut(ctx context.Context, key int, stop func()) (func(), error) {
+	ctx, cancel := context.WithCancel(ctx)
 	ready := make(chan error, 1)
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 		tid := windows.GetCurrentThreadId()
@@ -198,15 +201,13 @@ func watchStopShortcut(ctx context.Context, stop func()) error {
 			Private uint32
 		}
 		user32.NewProc("PeekMessageW").Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0, 0)
-		ok, _, _ := user32.NewProc("RegisterHotKey").Call(0, 1, 0x4003, 0x79) // Ctrl+Alt+F10; no repeat.
+		ok, _, _ := user32.NewProc("RegisterHotKey").Call(0, 1, 0x4003, uintptr(0x6f+key)) // Ctrl+Alt+Fn; no repeat.
 		if ok == 0 {
-			ready <- errors.New("Ctrl+Alt+F10 is already in use")
+			ready <- errors.New("remote-control shortcut is already in use")
 			return
 		}
 		defer user32.NewProc("UnregisterHotKey").Call(0, 1)
 		ready <- nil
-		done := make(chan struct{})
-		defer close(done)
 		go func() {
 			select {
 			case <-ctx.Done():
@@ -224,5 +225,10 @@ func watchStopShortcut(ctx context.Context, stop func()) error {
 			}
 		}
 	}()
-	return <-ready
+	if err := <-ready; err != nil {
+		cancel()
+		<-done
+		return nil, err
+	}
+	return func() { cancel(); <-done }, nil
 }

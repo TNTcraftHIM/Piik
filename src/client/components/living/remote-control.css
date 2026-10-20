@@ -41,6 +41,7 @@
 .lr-remote-request-actions > .lr-comic-tip-wrap { flex: 1; }
 .lr-remote-request-actions .lr-btn { width: 100%; }
 .lr-remote-note kbd { white-space: nowrap; font: 12px var(--mono); }
+.lr-remote-shortcut { margin-block: 12px; text-align: start; }
 .lr-remote-touch-cursor { position: absolute; width: 22px; height: 26px; left: 50%; top: 50%; pointer-events: none; filter: drop-shadow(0 1px 2px #0008); }
 .lr-remote-touch-cursor path { fill: #fff; stroke: #22313e; stroke-width: 1.5; stroke-linejoin: round; }
 .lr-remote-zoom { grid-area: 1 / 1 / 2 / 2; z-index: 4; align-self: start; justify-self: end; padding: 8px; }

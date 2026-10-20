@@ -285,7 +285,10 @@ appears when the host enables control and the connection supports it. Browser
 and camera capture cannot receive remote input.
 
 Either person can choose **End control**. On the host's computer, **Ctrl+Alt+F10**
-on Windows or **Control+Option+F10** on macOS also stops control. Changing the
+on Windows or **Control+Option+F10** on macOS also stops control by default.
+Change the function key in the host's **Remote control** panel if it conflicts
+with another app. The viewer can separately change **Exit control shortcut**
+in **Remote keyboard**, including its detached window. Changing the
 shared source or stopping sharing turns remote control off. After a connection
 interruption, the viewer requests control again.
 

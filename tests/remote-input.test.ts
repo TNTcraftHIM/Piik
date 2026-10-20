@@ -2,7 +2,16 @@ import { expect, it, vi } from "vitest";
 import { RemoteInputSession } from "../src/client/remote-control/input-session";
 import { picturePoint, rotatePicturePoint, rotatePictureDelta, type VideoRotation } from "../src/client/media/video-geometry";
 import { InputRoute, type InputIdentity } from "../src/client/remote-control/input-route";
-import { remoteInputStateSchema } from "../src/client/remote-control/protocol";
+import { matchesRemoteShortcut, remoteInputStateSchema } from "../src/client/remote-control/protocol";
+
+it("recognizes only the selected local release chord outside IME composition", () => {
+  const chord = { code: "F9", ctrlKey: true, altKey: true, metaKey: false, shiftKey: false, isComposing: false };
+  expect(matchesRemoteShortcut(chord, 9)).toBe(true);
+  expect(matchesRemoteShortcut(chord, 10)).toBe(false);
+  for (const changed of [{ ctrlKey: false }, { altKey: false }, { shiftKey: true }, { metaKey: true }, { isComposing: true }]) {
+    expect(matchesRemoteShortcut({ ...chord, ...changed }, 9)).toBe(false);
+  }
+});
 
 class Channel extends EventTarget {
   readyState = "open";

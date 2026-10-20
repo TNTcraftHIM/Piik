@@ -88,6 +88,17 @@ type remoteControlStateEvent struct {
 	remoteinput.State
 }
 
+type remoteStopShortcutRequest struct {
+	requestEnvelope
+	ShareID string `json:"shareId"`
+	Key     int    `json:"key,omitempty"`
+}
+
+type remoteStopShortcutResponse struct {
+	responseEnvelope
+	remoteinput.StopShortcut
+}
+
 type audioStateEvent struct {
 	eventEnvelope
 	SourceAudio bool `json:"sourceAudio"`

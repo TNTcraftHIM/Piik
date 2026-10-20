@@ -531,8 +531,18 @@ the recovered path carries a fresh request. App playback and relay descendants
 follow the same rule; interruption releases the upstream grant.
 A closed control channel needs a new media
 connection; neither path silently restores a grant. Either side can end control
-from its page. Windows also supplies a local Ctrl+Alt+F10 stop shortcut; macOS
-uses Control+Option+F10. Linux retains the desktop's sharing controls instead
+from its page. Windows also supplies a local Ctrl+Alt+F10 stop shortcut by default;
+macOS uses Control+Option+F10. The Host can change the function key in the control
+panel; App owns this saved preference. Registration begins on explicit input
+configuration or enabling control, rather than App startup. An occupied key
+fails that operation without disabling capture or the input backend. Replacing
+the shortcut retains the old binding until registration and saving succeed.
+Viewers independently choose their page-local exit shortcut in the remote
+keyboard; it also works in a detached keyboard window and saves in that Browser.
+Both selectors offer F1–F11 with fixed Ctrl+Alt/Option modifiers;
+[Windows reserves F12](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey#remarks).
+The optional App discovery capability gates the new commands, preserving the
+published permission and input-state messages. Linux retains the desktop's sharing controls instead
 of registering a second global key grab. A Host stop (including that local shortcut) also resets automatic
 permission to Ask each time. A Viewer ending their own control leaves the Host's
 policy in place. This adds no service, automatic sharing or control across App

@@ -1,0 +1,77 @@
+package remoteinput
+
+import (
+	"errors"
+
+	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+)
+
+type StopShortcut struct {
+	Key       int  `json:"key"`
+	Available bool `json:"available"`
+}
+
+func (m *Manager) SupportsStopShortcut() bool { return m != nil && m.registerStop != nil }
+
+// Called with the grant lock held. Registration begins with an explicit Host
+// action, so another application's hotkey cannot disable App startup or capture.
+func (m *Manager) ensureStopShortcut() error {
+	if m.registerStop == nil || m.stopShortcut != nil {
+		return nil
+	}
+	stop, err := m.registerStop(m.stopKey)
+	if err == nil {
+		m.stopShortcut = stop
+	}
+	return err
+}
+
+func (m *Manager) ReadStopShortcut() (StopShortcut, error) {
+	if !m.SupportsStopShortcut() {
+		return StopShortcut{}, errors.New("remote-control shortcut is unavailable")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return StopShortcut{}, errors.New("remote input is closed")
+	}
+	state := StopShortcut{Key: m.stopKey, Available: m.stopShortcut != nil}
+	if !state.Available {
+		stop, err := m.registerStop(m.stopKey)
+		state.Available = err == nil
+		if stop != nil {
+			stop()
+		}
+	}
+	return state, nil
+}
+
+func (m *Manager) SetStopShortcut(key int) (StopShortcut, error) {
+	if !m.SupportsStopShortcut() || !appconfig.ValidRemoteStopKey(key) {
+		return StopShortcut{}, errors.New("remote-control shortcut is invalid or unavailable")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return StopShortcut{}, errors.New("remote input is closed")
+	}
+	if key == m.stopKey && m.stopShortcut != nil {
+		return StopShortcut{key, true}, nil
+	}
+	stop, err := m.registerStop(key)
+	if err != nil {
+		return StopShortcut{}, err
+	}
+	if m.saveStopKey != nil {
+		if err := m.saveStopKey(key); err != nil {
+			stop()
+			return StopShortcut{}, err
+		}
+	}
+	// Keep the old working chord until registration and persistence both succeed.
+	if m.stopShortcut != nil {
+		m.stopShortcut()
+	}
+	m.stopKey, m.stopShortcut = key, stop
+	return StopShortcut{key, true}, nil
+}

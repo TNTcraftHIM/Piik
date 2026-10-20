@@ -23,4 +23,4 @@ bool piik_input_pointer(CGEventSourceRef source, double x, double y,
                         uint64_t flags, PiikInputClick *click);
 bool piik_input_scroll(CGEventSourceRef source, int32_t delta, uint64_t flags);
 bool piik_input_text(CGEventSourceRef source, const uint16_t *text, size_t length);
-bool piik_input_stop_pressed(void);
+bool piik_input_stop_pressed(uint16_t key);

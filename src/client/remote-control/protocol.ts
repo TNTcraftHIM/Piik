@@ -2,6 +2,13 @@ import { z } from "zod";
 
 // A text submission still fits one encrypted input packet and the existing queue.
 export const REMOTE_TEXT_BYTES = 2048;
+// F12 is reserved by Windows debuggers, including for global modified chords.
+export const remoteShortcutKeySchema = z.number().int().min(1).max(11);
+export const REMOTE_SHORTCUT_KEYS = Array.from({ length: 11 }, (_, index) => index + 1);
+
+export function matchesRemoteShortcut(event: Pick<KeyboardEvent, "code" | "ctrlKey" | "altKey" | "shiftKey" | "metaKey" | "isComposing">, key: number): boolean {
+  return !event.isComposing && event.ctrlKey && event.altKey && !event.shiftKey && !event.metaKey && event.code === `F${key}`;
+}
 
 export const remoteControlModeSchema = z.enum(["off", "ask", "room", "password"]);
 export type RemoteControlMode = z.infer<typeof remoteControlModeSchema>;

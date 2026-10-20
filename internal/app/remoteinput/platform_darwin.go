@@ -186,8 +186,12 @@ func (s *macSink) Close() error {
 	return nil
 }
 
-func watchStopShortcut(ctx context.Context, stop func()) error {
+func watchStopShortcut(ctx context.Context, key int, stop func()) (func(), error) {
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	code := macKeyCodes["F"+strconv.Itoa(key)]
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 		held := false
@@ -196,7 +200,7 @@ func watchStopShortcut(ctx context.Context, stop func()) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				pressed := bool(C.piik_input_stop_pressed())
+				pressed := bool(C.piik_input_stop_pressed(C.uint16_t(code)))
 				if pressed && !held {
 					stop()
 				}
@@ -204,7 +208,7 @@ func watchStopShortcut(ctx context.Context, stop func()) error {
 			}
 		}
 	}()
-	return nil
+	return func() { cancel(); <-done }, nil
 }
 
 // Physical KeyboardEvent.code -> macOS virtual key, independent of text/IME.

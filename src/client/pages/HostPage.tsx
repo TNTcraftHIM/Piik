@@ -398,6 +398,12 @@ export function HostPage({
   }, []);
   const [nativeActive, setNativeActive] = useState(false);
   const [remoteControlState, setRemoteControlState] = useState<RemoteControlState | null>(null);
+  const remoteStopShortcut = useCallback(async (key?: number) => {
+    const client = nativeClientRef.current;
+    const shareId = nativeShareGenerationRef.current;
+    if (!client || !shareId) throw new Error("Native share is unavailable");
+    return client.remoteStopShortcut(shareId, key);
+  }, []);
   const remoteInputPeersRef = useRef<Extract<ServerMessage, { type: "remote-input-peers" }>["peers"]>([]);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [nativeSources, setNativeSources] =
@@ -3866,6 +3872,7 @@ export function HostPage({
             remote={nativeActive && remoteControlState && <HostRemoteControl
               mode={remoteControlState.mode}
               platform={remoteControlState.platform}
+              onShortcut={nativeClientRef.current?.health.nativeMedia.remoteStopShortcut ? remoteStopShortcut : undefined}
               disabled={sharingPaused || switchingSource}
               requests={remoteControlState.requests.map(request => {
                 return { ...request, name: viewers.find(viewer => viewer.peerId === request.peerId)?.label ?? t("common.name.viewerDefault") };

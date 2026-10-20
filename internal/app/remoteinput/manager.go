@@ -57,12 +57,16 @@ type View struct {
 
 // One manager covers both native sessions: they operate the same physical desktop.
 type Manager struct {
-	mu          sync.Mutex
-	sink        inputSink
-	connections map[endpointKey]*connection
-	active      *connection
-	closed      bool
-	stop        context.CancelFunc
+	mu           sync.Mutex
+	sink         inputSink
+	connections  map[endpointKey]*connection
+	active       *connection
+	closed       bool
+	stop         context.CancelFunc
+	stopKey      int
+	registerStop func(int) (func(), error)
+	stopShortcut func()
+	saveStopKey  func(int) error
 }
 
 type Session struct {
@@ -101,19 +105,24 @@ type endpointKey struct {
 
 // New prepares the platform backend. Input remains disabled until the sharing
 // session enables it; no service, driver or startup entry is installed.
-func New(ctx context.Context, captureInput bool) (*Manager, error) {
+func New(ctx context.Context, captureInput bool, stopKey int, saveStopKey func(int) error) (*Manager, error) {
 	sink, err := newPlatformSink(captureInput)
 	if err != nil || sink == nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	m := &Manager{sink: sink, connections: make(map[endpointKey]*connection), stop: cancel}
-	if err := watchStopShortcut(ctx, func() { m.Revoke() }); err != nil {
-		cancel()
-		if closer, ok := sink.(io.Closer); ok {
-			_ = closer.Close()
+	m := &Manager{sink: sink, connections: make(map[endpointKey]*connection), stop: cancel,
+		stopKey: stopKey, saveStopKey: saveStopKey}
+	stopPressed := make(chan struct{}, 1)
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		m.registerStop = func(key int) (func(), error) {
+			return watchStopShortcut(ctx, key, func() {
+				select {
+				case stopPressed <- struct{}{}:
+				default:
+				}
+			})
 		}
-		return nil, err
 	}
 	// Foreground changes must release held input even when the remote player
 	// is holding a key without sending more events. Only an active grant polls.
@@ -124,6 +133,8 @@ func New(ctx context.Context, captureInput bool) (*Manager, error) {
 			select {
 			case <-ctx.Done():
 				return
+			case <-stopPressed:
+				m.Revoke()
 			case <-ticker.C:
 				m.mu.Lock()
 				m.refreshActive()
@@ -531,6 +542,9 @@ func (m *Manager) Close() {
 		_ = closer.Close()
 	}
 	m.mu.Unlock()
+	if m.stopShortcut != nil {
+		m.stopShortcut()
+	}
 	if m.stop != nil {
 		m.stop()
 	}

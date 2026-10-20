@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { viewerRoutePreferenceSchema } from "../../shared/protocol";
-import { remoteControlModeSchema } from "../remote-control/protocol";
+import { remoteControlModeSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
 
 const STORAGE_KEY = "piik:room-preferences:v1";
 export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1] } as const;
@@ -18,6 +18,7 @@ const roomPreferencesSchema = z.object({
   interactionEffects: z.boolean().default(true),
   keyboardPage: z.enum(REMOTE_KEYBOARD_PAGES).default("letters"),
   combineKeys: z.boolean().default(false),
+  remoteReleaseKey: remoteShortcutKeySchema.default(10),
   remoteControlMode: remoteControlModeSchema.exclude(["off"]).default("ask"),
 });
 export type RoomPreferences = z.infer<typeof roomPreferencesSchema>;
