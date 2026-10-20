@@ -283,6 +283,9 @@ One viewer can control at a time, using a desktop or mobile browser. Update the
 host's App and the room's site, then refresh the viewing page. The control button
 appears when the host enables control and the connection supports it. Browser
 and camera capture cannot receive remote input.
+Viewers need HTTPS or a localhost page for remote control. A LAN or virtual-IP
+HTTP page can play video but lacks the browser cryptography interface required
+for remote control, so no control button appears.
 
 Either person can choose **End control**. On the host's computer, **Ctrl+Alt+F10**
 on Windows or **Control+Option+F10** on macOS also stops control by default.
@@ -291,6 +294,10 @@ with another app. The viewer can separately change **Exit control shortcut**
 in **Remote keyboard**, including its detached window. Changing the
 shared source or stopping sharing turns remote control off. After a connection
 interruption, the viewer requests control again.
+The authorization choice is remembered, but remote control does not turn on
+automatically. If the previous choice was **Room Viewers**, enabling it shows
+the permission explanation first; select **Allow Viewers** to
+apply it. Control passwords are not saved.
 
 On a phone, swipe to move the pointer, tap to click and hold to drag. Two-finger
 tap is right-click; two-finger swipe scrolls. Pinch to zoom, then use two fingers

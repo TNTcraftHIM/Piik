@@ -61,6 +61,8 @@ export const en: Record<CopyKey, string> = {
   "remote.policyLifetime": "Applies to this shared source only. Changing sources or stopping turns remote control off.",
   "remote.password": "Control password",
   "remote.apply": "Apply",
+  "remote.enable": "Enable",
+  "remote.enableRoom": "Allow Viewers",
   "remote.connecting": "Connecting control",
   "remote.reason.password": "Incorrect control password",
   "remote.reason.retry": "Please wait a moment and try again",

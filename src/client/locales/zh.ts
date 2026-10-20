@@ -61,6 +61,8 @@ export const zh = {
   "remote.policyLifetime": "仅当前分享来源有效；换源或停播后关闭远控。",
   "remote.password": "控制密码",
   "remote.apply": "应用",
+  "remote.enable": "开启远控",
+  "remote.enableRoom": "允许观众控制",
   "remote.connecting": "正在取得控制权",
   "remote.reason.password": "控制密码不正确",
   "remote.reason.retry": "请稍等片刻后重试",

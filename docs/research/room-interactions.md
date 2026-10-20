@@ -498,8 +498,10 @@ and the platform [AES-GCM API](https://developer.mozilla.org/en-US/docs/Web/API/
 sessions share the same physical keyboard and pointer. Remote control starts
 off. The Browser remembers the last successfully applied authorization mode;
 the Host must still enable it manually for each new shared source. Ask each time
-is the default. A remembered password mode asks for a new password before
-applying; the password itself is never remembered. Automatic modes accept only
+is the default. Remembered Room Viewers mode opens the existing permission form
+and needs an explicit allow action before becoming active for the new audience.
+A remembered password mode asks for a new password before applying; the password
+itself is never remembered. Automatic modes accept only
 authenticated room Viewers and never displace an active controller. Permission
 belongs to the current shared source; changing sources or stopping turns it off.
 Turning it off also clears pending requests and releases held input, including

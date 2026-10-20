@@ -35,6 +35,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
   const busy = pendingActions.size > 0;
   const pending = requests.filter(request => request.state === "pending").length;
   const controller = requests.find(request => request.state !== "pending");
+  const policyAction = mode !== "off" ? "remote.apply" : draft === "room" ? "remote.enableRoom" : "remote.enable";
   const [shortcut, setShortcut] = useState<RemoteStopShortcut | null>(null);
   useEffect(() => {
     if (!open || !onShortcut) return;
@@ -92,7 +93,8 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
         <SwitchItem checked={mode !== "off"} label={t("remote.title")} hint="hint-remote-control"
           disabled={mode === "off" && (busy || disabled)}
           onChange={enabled => {
-            if (enabled && draft === "password" && !password) setPreparing(true);
+            // A remembered automatic grant is not consent for this audience.
+            if (enabled && (draft === "room" || draft === "password" && !password)) setPreparing(true);
             else void applyPolicy(enabled ? draft : "off", enabled && draft === "password" ? password : undefined);
           }} />
         {pendingActions.has("enable") && mode === "off" && <div className="lr-remote-enable-pending" role="status">
@@ -144,8 +146,9 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
               setPreparing(false); setPassword(""); setDraft(readRoomPreferences().remoteControlMode);
               (surfaceDocument ?? document).getElementById(id)?.querySelector<HTMLButtonElement>('[role="switch"]')?.focus();
             }} />}
-            <Btn icon="check" title="remote.apply" cap="remote.apply" type="submit" tone="primary" size="compact"
-              hint="hint-remote-control" disabled={busy || disabled || (draft === "password" && !password)} />
+            <Btn icon="check" title={policyAction} cap={policyAction}
+              type="submit" tone="primary" size="compact" hint="hint-remote-control" hintText={`remote.help.${draft}`}
+              disabled={busy || disabled || (draft === "password" && !password)} />
           </div>}
         </form>}
         {failedId === "policy" && <p role="alert"><Glyph name="alert" size={14} />

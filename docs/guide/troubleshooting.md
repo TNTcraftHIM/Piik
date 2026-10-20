@@ -426,8 +426,9 @@ reachable virtual IPv4 addresses and carry both Piik's web traffic and WebRTC UD
 4. Keep the networking tool running on every device. If its virtual IP changes,
    select the new address in the App and send a new invitation.
 
-Browser microphone and camera capture require HTTPS or a localhost page.
-Watching through a virtual LAN's HTTP address does not grant those capture APIs.
+Voice, camera capture and remote control require HTTPS or a localhost page.
+A virtual-IP HTTP address can play video but cannot open a microphone or use
+[remote control](./getting-started.md#let-a-friend-control-your-shared-screen).
 
 This may help with some strict NAT combinations, but is not guaranteed to work
 on every campus network. Firewall rules and Browser address discovery still
