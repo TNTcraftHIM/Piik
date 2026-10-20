@@ -155,6 +155,48 @@ To send every room through your server, also set `SFU_ONLY=true` and restart.
 The sharing settings will show **Server media**. Plan server bandwidth for every
 Viewer; this mode does not fall back to P2P if the server route fails.
 
+## Optional: forward an existing server with frp
+
+If Piik runs behind NAT and you control a public frps host, frp can forward its
+existing web and SFU endpoints. P2P ICE discovery remains unchanged.
+
+Run the [HTTPS proxy above](#2-enable-https) on the public host, keeping its
+WebSocket-capable upstream at `127.0.0.1:8787`. Point `share.example.com` and
+`relay.example.com` to that host. Open TCP 7000 for frpc and UDP 7882 for media,
+alongside TCP 80/443; keep the forwarded TCP 8787 private to the HTTPS proxy.
+
+On the public host, configure `frps.toml`:
+
+```toml
+bindPort = 7000
+auth.token = "{{ .Envs.FRP_TOKEN }}"
+transport.tls.force = true
+allowPorts = [{ single = 8787 }, { single = 7882 }]
+```
+
+On the Piik machine, copy [frpc.toml.example](../../deploy/frp/frpc.toml.example)
+to `frpc.toml` and replace `relay.example.com`. Inject the same private, nonempty
+`FRP_TOKEN` into both frp process environments. Validate each file with
+`frps verify -c frps.toml` / `frpc verify -c frpc.toml`, then start each process
+with `-c` and its file. See [frp configuration](https://gofrp.org/en/docs/features/common/configure/)
+and [TCP/UDP forwarding](https://gofrp.org/en/docs/features/tcp-udp/).
+
+Keep Piik's `LISTEN_HOST=127.0.0.1` and update its `.env`:
+
+```dotenv
+PUBLIC_BASE_URL=https://share.example.com
+STUN_URLS=stun:stun.direct.example.com:3478
+SFU_UDP_PORT=7882
+SFU_PUBLIC_IP=203.0.113.10
+```
+
+Replace the example IPv4 with the public frps address and the STUN hostname with
+a directly reachable STUN service. The frpc local and remote UDP ports must both
+equal `SFU_UDP_PORT`. Do not forward Piik's STUN ports through frp: its UDP proxy
+[changes the source mapping](../research/nat-traversal.md#external-forwarding-and-participant-relays)
+STUN would report. Restart Piik and check HTTPS health, room access and
+**Server media** from another network.
+
 ## Keep it running and update
 
 For automatic startup, use the [systemd or container guide](./service-management.md).

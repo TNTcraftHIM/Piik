@@ -140,6 +140,47 @@ TCP 8787 仅供本机反向代理访问。STUN 域名需要直接解析到服务
 分享设置中会显示 **服务器转发**。请为每位观众预留服务器带宽；
 服务器线路失败时，此模式不会改走 P2P。
 
+## 可选：通过 frp 转发已有服务
+
+如果 Piik 位于 NAT 后方，且你有一台公网 frps 主机，可用 frp 转发已有的网页和 SFU 端口。
+P2P 的 ICE 探测方式保持不变。
+
+将[上方的 HTTPS 代理](#2-配置-https)部署在公网主机，仍转发到 `127.0.0.1:8787`，
+并保留 WebSocket 支持。将 `share.example.com` 和 `relay.example.com` 解析到该主机。
+除 TCP 80/443 外，放行供 frpc 连接的 TCP 7000 和媒体使用的 UDP 7882；
+转发后的 TCP 8787 仅供 HTTPS 代理访问，不对公网开放。
+
+在公网主机配置 `frps.toml`：
+
+```toml
+bindPort = 7000
+auth.token = "{{ .Envs.FRP_TOKEN }}"
+transport.tls.force = true
+allowPorts = [{ single = 8787 }, { single = 7882 }]
+```
+
+在 Piik 所在机器，将 [frpc.toml.example](../../deploy/frp/frpc.toml.example)
+复制为 `frpc.toml`，替换其中的 `relay.example.com`。
+为两端的 frp 进程注入相同、非空的私密环境变量 `FRP_TOKEN`。
+分别运行 `frps verify -c frps.toml` / `frpc verify -c frpc.toml` 检查配置，
+再用 `-c` 指定各自的文件启动。具体用法见 [frp 配置说明](https://gofrp.org/zh-cn/docs/features/common/configure/)
+和 [TCP/UDP 转发](https://gofrp.org/zh-cn/docs/features/tcp-udp/)。
+
+Piik 保持 `LISTEN_HOST=127.0.0.1`，并修改 `.env`：
+
+```dotenv
+PUBLIC_BASE_URL=https://share.example.com
+STUN_URLS=stun:stun.direct.example.com:3478
+SFU_UDP_PORT=7882
+SFU_PUBLIC_IP=203.0.113.10
+```
+
+将示例 IPv4 换成 frps 的公网地址，将 STUN 域名换成直接可达的 STUN 服务。
+frpc 的本地与公网 UDP 端口必须都等于 `SFU_UDP_PORT`。
+不要通过 frp 转发 Piik 的 STUN 端口：UDP 代理会
+[改变 STUN 所观察到的源地址映射](../research/nat-traversal.md#external-forwarding-and-participant-relays)。
+重启 Piik，从另一网络验证 HTTPS 健康检查、房间访问及**服务器转发**。
+
 ## 长期运行与更新
 
 需要开机启动时，参阅 [systemd 与容器配置](./service-management.zh-CN.md)。
