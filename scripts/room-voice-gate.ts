@@ -15,7 +15,7 @@ const OUTPUT = join(ROOT, "build", "voice-integration");
 const runFile = promisify(execFile);
 const redact = (value: string) => value.replace(/#v=[A-Za-z0-9_-]+/g, "#v=[redacted]");
 type Page = PageHandle & { targetId: string; session: string };
-type Sample = { voice: RoomVoiceState | null; peerId: string | null; inviteUrl: string | null;
+type Sample = { voice: RoomVoiceState | null; peerId: string | null; inviteUrl: string | null; authentications: number;
   energy: number; samples: number; bytes: number; playing: number; enabled: boolean; liveMicrophones: number; text: string };
 
 // Observe the normal browser boundary; no alternate session or control protocol.
@@ -23,7 +23,7 @@ const probe = (name: string) => `(() => {
   localStorage.setItem('piik:ui-lang','en'); localStorage.setItem('piik:ui-mode','text');
   localStorage.setItem('piik:display-name:v1',${JSON.stringify(name)});
   const peers=[], sockets=[], captures=[], NativePC=RTCPeerConnection, NativeWS=WebSocket;
-  const gate=window.__roomVoiceGate={peers,sockets,captures,voice:null,peerId:null,inviteUrl:null,wire:[]};
+  const gate=window.__roomVoiceGate={peers,sockets,captures,voice:null,peerId:null,inviteUrl:null,wire:[],authentications:0};
   const record=(direction,m)=>{
     if(!m.type.startsWith('room-voice-')&&!['route-diagnostic-snapshot','peer-state'].includes(m.type))return;
     const summary={...m};
@@ -44,7 +44,7 @@ const probe = (name: string) => `(() => {
   window.WebSocket=class extends NativeWS { constructor(...a){super(...a);sockets.push(this);
     this.addEventListener('message',event=>{try{const m=JSON.parse(event.data);
       record('receive',m);if(m.type==='room-voice-state')gate.voice=m;
-      if(m.type==='authenticated')gate.peerId=m.peerId;
+      if(m.type==='authenticated'){gate.peerId=m.peerId;gate.authentications++;gate.voice=null;}
     }catch{}});
   }send(data){try{record('send',JSON.parse(data));}catch{}return super.send(data);}};
   const originalFetch=window.fetch;
@@ -63,7 +63,7 @@ const probe = (name: string) => `(() => {
       if(row.type==='inbound-rtp'&&row.kind==='audio'&&ids.has(row.trackIdentifier)){
         energy+=row.totalAudioEnergy||0;samples+=row.totalSamplesReceived||0;bytes+=row.bytesReceived||0;
       }
-    return {voice:gate.voice,peerId:gate.peerId,inviteUrl:gate.inviteUrl,energy,samples,bytes,wire:gate.wire,
+    return {voice:gate.voice,peerId:gate.peerId,inviteUrl:gate.inviteUrl,authentications:gate.authentications,energy,samples,bytes,wire:gate.wire,
       playing:audio.length,enabled:audio.every(node=>node.srcObject.getAudioTracks().every(t=>t.enabled)),
       tracks:audio.flatMap(node=>node.srcObject.getAudioTracks().map(t=>({readyState:t.readyState,muted:t.muted,currentTime:node.currentTime}))),
       connections:peers.map(p=>({state:p.connectionState,signaling:p.signalingState,senders:p.getSenders().map(s=>s.track&&({kind:s.track.kind,readyState:s.track.readyState,enabled:s.track.enabled,muted:s.track.muted}))})),
@@ -273,9 +273,11 @@ async function main(): Promise<void> {
     if ((await sample(viewer)).liveMicrophones) throw new Error("Permission restored microphone automatically");
     await button(viewer, "Turn on microphone");
     await until(viewer, state => state.liveMicrophones === 1 && state.voice?.publications.length === 2, "explicit microphone restart");
+    const beforeDisconnect = await sample(viewer);
     await evaluate(cdp, viewer, "window.__roomVoiceGate.sockets.at(-1).close()", Date.now() + 5000);
     await until(viewer, state => !state.liveMicrophones, "session loss stops capture");
-    await until(viewer, state => !!state.voice?.members.find(member => member.peerId === state.peerId)?.connected, "normal signaling reconnect");
+    await until(viewer, state => state.authentications > beforeDisconnect.authentications &&
+      !!state.voice?.members.find(member => member.peerId === state.peerId)?.connected, "normal signaling reconnect");
     if ((await sample(viewer)).liveMicrophones) throw new Error("Reconnect restored microphone automatically");
     check("exact signaling disconnect/rejoin retires capture without restoring source");
     result.passed = true;
