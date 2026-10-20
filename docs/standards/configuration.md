@@ -31,7 +31,7 @@ service secret store or an untracked access-restricted environment file.
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `20`; excludes the Host. |
 | `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
 | `STUN_URLS` | Comma-separated advertised `stun:` discovery URLs; at least one is required in production. These are not local bind addresses and may use an unproxied DNS name separate from the Web origin. |
-| `STUN_LISTEN_HOST` | Hosted IPv4 STUN bind address, default `0.0.0.0` when `STUN_URLS` is configured; independent of HTTP `LISTEN_HOST`. Local App construction creates no STUN listeners. |
+| `STUN_LISTEN_HOST` | Hosted IPv4 STUN bind address, default `0.0.0.0` when `STUN_URLS` is configured; independent of HTTP `LISTEN_HOST`. App Local configuration owns its separate LAN endpoint below. |
 | `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478. Hosted startup binds UDP 3479/3480 before advertising the capability. Current pages use it automatically on P2P-first sites; ordinary ICE remains available without it. Firewall reachability remains an operator requirement. |
 
 ### Room capacity
@@ -118,6 +118,14 @@ destinations, the second and third also supply NAT prediction observations;
 one or two use ordinary ICE only. Empty or unset retains the defaults. Local
 LAN mode ignores this setting, and an approved Site supplies its own ICE
 configuration. No settings panel or additional media transport is involved.
+
+LAN mode uses the existing Binding-only STUN service on the selected LAN IPv4
+address and the App's numeric UDP port (default `8787`). This lets Browsers
+discover usable addresses on routed virtual LANs without relying on multicast
+name discovery or contacting a public STUN service. HTTP and STUN have one
+application startup/shutdown owner; public-link mode does not bind this LAN
+endpoint. Allow Piik through the firewall on the selected network for both TCP
+and UDP; STUN carries address discovery, not shared media.
 
 For example, in PowerShell, set `$env:PIIK_STUN_URLS = 'stun:your-stun.example:3478'`
 before running `./piik-app.exe`. Use a service you trust: STUN sees participants'

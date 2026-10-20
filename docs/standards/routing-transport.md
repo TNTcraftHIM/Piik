@@ -336,7 +336,9 @@ encrypted hop-by-hop with DTLS-SRTP but terminates at the SFU; the product does
 not claim operator-blind media without a separately accepted application E2EE
 design. All-UDP-blocked networks currently end in bounded failure.
 
-App Local mode runs this graph without SFU, NAT prediction, or default STUN.
+App Local mode runs this graph without SFU or NAT prediction. Its selected LAN
+address supplies Binding-only STUN on the App's UDP port, so routed virtual
+LANs need not carry Browser mDNS; it uses no public discovery destination.
 One-link mode tunnels only HTTP/WebSocket control and adds public STUN to the
 same Browser/Native P2P edges. Reachable peers form one mixed relay tree; an
 unreachable path adds no route type or score. App-enabled Site pages use that

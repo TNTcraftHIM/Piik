@@ -800,9 +800,16 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 				!slices.Equal(natPredictionSTUNURLs, testCase.natPredictionSTUNURLs) {
 				t.Fatalf("Local STUN selection = %v, %v", stunURLs, natPredictionSTUNURLs)
 			}
+			publicOrigin := ""
+			wantSTUNURLs := []string{"stun:192.168.1.2:8787"}
+			if testCase.link {
+				publicOrigin = "https://public.example.test"
+				wantSTUNURLs = testCase.stunURLs
+			}
 			config, err := serverconfig.Local(serverconfig.LocalOptions{
 				Port:                  8787,
 				PublicAddress:         "192.168.1.2",
+				PublicOrigin:          publicOrigin,
 				AllowedAddresses:      []string{"192.168.1.2"},
 				SiteAccessPassword:    "abcdefghijklmnopqrstuvwxyzABCDEF",
 				STUNURLs:              stunURLs,
@@ -811,7 +818,7 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !slices.Equal(config.STUNURLs, testCase.stunURLs) ||
+			if !slices.Equal(config.STUNURLs, wantSTUNURLs) ||
 				config.NATPredictionEnabled != (len(testCase.natPredictionSTUNURLs) != 0) {
 				t.Fatalf("Local server config = %v, NAT prediction %t",
 					config.STUNURLs, config.NATPredictionEnabled)

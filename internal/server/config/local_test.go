@@ -46,11 +46,11 @@ func TestLocalMapsClientInputs(t *testing.T) {
 	if config.EndpointMediaCopyCapacity != 2 {
 		t.Errorf("EndpointMediaCopyCapacity = %d", config.EndpointMediaCopyCapacity)
 	}
-	if len(config.STUNURLs) != 0 {
+	if !slices.Equal(config.STUNURLs, []string{"stun:192.168.1.10:9123"}) {
 		t.Errorf("STUNURLs = %v", config.STUNURLs)
 	}
-	if len(config.STUNListenAddresses) != 0 {
-		t.Fatalf("Local created STUN listeners: %v", config.STUNListenAddresses)
+	if !slices.Equal(config.STUNListenAddresses, []string{"192.168.1.10:9123"}) {
+		t.Fatalf("Local STUN listener = %v", config.STUNListenAddresses)
 	}
 	if config.NATPredictionEnabled {
 		t.Error("NATPredictionEnabled = true")
@@ -149,6 +149,10 @@ func TestLocalDefaults(t *testing.T) {
 	if config.Port != 8787 {
 		t.Errorf("Port = %d, want the 8787 default", config.Port)
 	}
+	if !slices.Equal(config.STUNURLs, []string{"stun:192.168.1.10:8787"}) ||
+		!slices.Equal(config.STUNListenAddresses, []string{"192.168.1.10:8787"}) {
+		t.Fatalf("Local discovery does not use its default port: %+v", config)
+	}
 	if got := Origin(config.PublicBaseURL); got != "http://192.168.1.10:8787" {
 		t.Errorf("public origin = %q", got)
 	}
@@ -207,20 +211,20 @@ func TestLocalRejects(t *testing.T) {
 		{"unparsable public origin", LocalOptions{PublicAddress: "192.168.1.2",
 			PublicOrigin: "public.example"},
 			"Local public origin must be an HTTPS origin"},
-		{"invalid STUN URL", LocalOptions{PublicAddress: "192.168.1.2",
+		{"invalid STUN URL", LocalOptions{PublicAddress: "192.168.1.2", PublicOrigin: "https://public.example.test",
 			STUNURLs: []string{"turn:turn.test:3478"}},
 			"Local STUN URLs are invalid"},
-		{"invalid prediction STUN URL", LocalOptions{PublicAddress: "192.168.1.2",
+		{"invalid prediction STUN URL", LocalOptions{PublicAddress: "192.168.1.2", PublicOrigin: "https://public.example.test",
 			STUNURLs:              []string{"stun:a.test:3478"},
 			NATPredictionSTUNURLs: []string{"stun:a.test:3479", "stuns:b.test:3480"}},
 			"Local STUN URLs are invalid"},
-		{"single prediction STUN URL", LocalOptions{PublicAddress: "192.168.1.2",
+		{"single prediction STUN URL", LocalOptions{PublicAddress: "192.168.1.2", PublicOrigin: "https://public.example.test",
 			STUNURLs: []string{"stun:a.test:3478"}, NATPredictionSTUNURLs: []string{"stun:a.test:3479"}},
 			"Local STUN URLs are invalid"},
-		{"prediction without ordinary STUN", LocalOptions{PublicAddress: "192.168.1.2",
+		{"prediction without ordinary STUN", LocalOptions{PublicAddress: "192.168.1.2", PublicOrigin: "https://public.example.test",
 			NATPredictionSTUNURLs: []string{"stun:a.test:3479", "stun:a.test:3480"}},
 			"Local STUN URLs are invalid"},
-		{"more ICE URLs than the wire carries", LocalOptions{PublicAddress: "192.168.1.2",
+		{"more ICE URLs than the wire carries", LocalOptions{PublicAddress: "192.168.1.2", PublicOrigin: "https://public.example.test",
 			STUNURLs: []string{
 				"stun:a.test:3478", "stun:b.test:3478", "stun:c.test:3478", "stun:d.test:3478",
 				"stun:e.test:3478", "stun:f.test:3478", "stun:g.test:3478",

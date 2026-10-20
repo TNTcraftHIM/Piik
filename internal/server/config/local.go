@@ -15,11 +15,12 @@ import (
 // process environment.
 type LocalOptions struct {
 	// Port 0 selects the default 8787.
-	Port                  int
-	PublicAddress         string
-	PublicOrigin          string
-	AllowedAddresses      []string
-	SiteAccessPassword    string
+	Port               int
+	PublicAddress      string
+	PublicOrigin       string
+	AllowedAddresses   []string
+	SiteAccessPassword string
+	// Public-link discovery only. Pure LAN uses its selected address and port.
 	STUNURLs              []string
 	NATPredictionSTUNURLs []string
 }
@@ -62,6 +63,15 @@ func Local(options LocalOptions) (Config, error) {
 	// Copy non-nil lists so configured-empty prediction does not derive auxiliary URLs.
 	stunURLs := append([]string{}, options.STUNURLs...)
 	natPredictionSTUNURLs := append([]string{}, options.NATPredictionSTUNURLs...)
+	var stunListeners []string
+	if options.PublicOrigin == "" {
+		// Routed LANs may not carry Browser mDNS. Discover the actual address
+		// through the existing Binding-only service, without public STUN.
+		endpoint := net.JoinHostPort(publicAddress, fmt.Sprint(port))
+		stunURLs = []string{"stun:" + endpoint}
+		stunListeners = []string{endpoint}
+		natPredictionSTUNURLs = []string{}
+	}
 	if len(stunURLs)+len(natPredictionSTUNURLs) > protocol.MaxIceServerURLs ||
 		!allValidStunURLs(stunURLs) ||
 		!allValidStunURLs(natPredictionSTUNURLs) ||
@@ -103,6 +113,7 @@ func Local(options LocalOptions) (Config, error) {
 		MaxViewersPerRoom:         protocol.MaxViewersPerRoomLimit,
 		EndpointMediaCopyCapacity: protocol.DefaultEndpointMediaCopyCapacity,
 		STUNURLs:                  stunURLs,
+		STUNListenAddresses:       stunListeners,
 		NATPredictionEnabled:      len(natPredictionSTUNURLs) == protocol.MaxNatPredictionAuxiliaryStunURLs,
 		NATPredictionSTUNURLs:     natPredictionSTUNURLs,
 	}, nil

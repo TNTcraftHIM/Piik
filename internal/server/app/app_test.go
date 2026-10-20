@@ -747,6 +747,8 @@ func TestLocalSiteAcceptsTheExactPasswordThroughJSON(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The public test address is not an installed interface.
+			configuration.STUNListenAddresses = []string{"127.0.0.1:0"}
 			server := start(t, Options{Config: configuration})
 			origin := config.Origin(configuration.PublicBaseURL)
 			for _, wrong := range []string{"", password + "!"} {

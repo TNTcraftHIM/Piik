@@ -87,8 +87,8 @@ type Config struct {
 	EndpointMediaCopyCapacity int
 	SFU                       *SFUConfig
 	STUNURLs                  []string
-	// STUNListenAddresses is populated only by Hosted configuration. Local
-	// discovery URLs do not make the Client an externally reachable STUN server.
+	// STUNListenAddresses belongs to the application lifecycle. Pure LAN binds
+	// its selected interface; public-link discovery URLs never create listeners.
 	STUNListenAddresses  []string
 	NATPredictionEnabled bool
 	// NATPredictionSTUNURLs is nil when unset, which IceConfig distinguishes

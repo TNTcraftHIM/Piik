@@ -1046,6 +1046,32 @@ physical connection instead of per Engine. Existing connection/copy limits bound
 their number. This changes no public wire format, fixed service port or route
 policy, and is not evidence that any unmatched field report has been resolved.
 
+## Routed Virtual LAN Discovery
+
+A two-Windows-device UU virtual-LAN trial on 2026-10-20 established HTTP,
+WebSocket and decoded video transport. Ordinary LAN ICE stalled with the remote
+Browser's `.local` candidates. A test-only substitution with that verified
+peer's virtual IP restored picture; removing it and restarting the share
+reproduced the stall. This isolates address discovery rather than proving that
+the virtual LAN blocks media UDP.
+
+The subsequent control removed candidate substitution and supplied a local
+STUN endpoint through the temporary signaling fixture. The Browser then
+advertised a server-reflexive candidate on the virtual address; the Native
+sender selected it and the remote Viewer decoded 1920×1080 at about 20 fps,
+with roughly 32 ms RTT and no loss in the sampled windows. This follows the
+[mDNS candidate guidance](https://rtcweb-wg.github.io/mdns-ice-candidates/draft-ietf-mmusic-mdns-ice-candidates.html),
+which retains numeric reflexive candidates even when host candidates are hidden.
+[mDNS itself is local-link discovery](https://www.rfc-editor.org/rfc/rfc6762).
+
+Pure LAN configuration therefore reuses the existing Binding-only STUN service
+on its selected address and App UDP port. Public-link discovery, NAT prediction,
+media routing and authorization retain their owners. The test's temporary HTTP
+proxy used an already firewall-permitted executable; it does not establish
+unmodified App firewall reachability or universal campus-network compatibility.
+No firewall or Browser privacy setting was changed. Full cross-device App
+startup and physical audio remain separate from this video/discovery evidence.
+
 ## Primary Sources
 
 - [RFC 8445: Interactive Connectivity Establishment](https://datatracker.ietf.org/doc/html/rfc8445)

@@ -395,13 +395,15 @@ web traffic and WebRTC UDP, rather than only traffic for selected games.
 
 1. Everyone runs the networking tool and joins the same virtual LAN. Keep it running.
 2. If its virtual adapter and IP appear in Piik App's **Local room** address list,
-   the host selects that address and starts sharing.
+   the host selects that address and starts sharing. Allow Piik through the
+   Windows firewall for that virtual network; do not disable the whole firewall.
 3. Send friends the full Piik invitation using that address, not a `localhost`
    address or just a room code. Check picture and sound after the page opens;
    a reachable web page does not establish that media UDP works too.
 
-This may help with some strict NAT combinations, but UU with Piik has not been
-tested here and is not guaranteed to work on every campus network. If the tool
+This may help with some strict NAT combinations, but is not guaranteed to work
+on every campus network. Firewall rules and Browser address discovery still
+matter. If the tool
 provides no usable virtual address or forwards only game traffic, this procedure
 does not apply. Join only with trusted friends; speed and availability also depend
 on the third-party service.

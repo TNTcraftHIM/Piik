@@ -724,9 +724,9 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 	}
 }
 
-// localSTUNURLs is the Local room authority's ICE configuration. Only --link
-// has a public path, so only --link configures public STUN and the bounded NAT
-// prediction survey. Native edges receive ICE configuration from that authority;
+// localSTUNURLs supplies public-link discovery. Pure LAN discovery is composed
+// by serverconfig.Local on the selected interface. Only --link configures public
+// STUN and the bounded NAT prediction survey. Native edges use that authority;
 // serverconfig.Local deliberately does not inherit Hosted environment settings.
 // An explicit App override replaces every public destination, including the
 // survey pair. With fewer than three servers only ordinary ICE is available.
