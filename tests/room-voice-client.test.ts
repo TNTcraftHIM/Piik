@@ -106,6 +106,20 @@ it("does not capture before the existing Host microphone owner has yielded, and 
   session.close();
 });
 
+it("does not acquire or publish room audio when commentary release fails", async () => {
+  const getUserMedia = vi.fn();
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  const messages: ClientMessage[] = [];
+  const session = new RoomVoiceSession(message => { messages.push(message); return true; }, { iceServers: [] },
+    async () => { throw new Error("Native stop rejected"); });
+  session.authenticated("self", "host"); session.receive(room(1));
+  await session.startMicrophone();
+  expect(getUserMedia).not.toHaveBeenCalled();
+  expect(messages.some(message => message.type === "room-voice-command" && message.command.action === "publish")).toBe(false);
+  expect(session.getSnapshot()).toMatchObject({ microphone: false, capturePending: false, error: "microphoneFailed" });
+  session.close();
+});
+
 it("preserves a valid microphone request and source when an unrelated room voice edge fails", async () => {
   let finish!: (stream: MediaStream) => void;
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: () => new Promise<MediaStream>(resolve => { finish = resolve; }) } });

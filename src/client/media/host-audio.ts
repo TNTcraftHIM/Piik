@@ -60,6 +60,18 @@ export class HostAudio {
     return this.setMicrophone(!this.microphone?.enabled, deviceId);
   }
 
+  // Room voice takes the device, while existing sharing senders retain the
+  // mixer output and source audio. Ordinary mute keeps its reusable input.
+  releaseMicrophone(): void {
+    if (this.closed) return;
+    const microphone = this.microphone;
+    this.microphone = null;
+    microphone?.stop();
+    this.compose();
+    this.changed(false);
+    this.reportAvailability();
+  }
+
   async setMicrophone(enabled: boolean, deviceId: string, voiceProcessing = this.voiceProcessing): Promise<MediaStream | null> {
     if (this.closed) return null;
     const sameInput = deviceId === this.microphoneDevice && voiceProcessing === this.voiceProcessing;

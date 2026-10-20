@@ -45,6 +45,30 @@ function setup() {
 }
 afterEach(() => vi.unstubAllGlobals());
 
+test("room voice handoff releases the muted device while preserving shared audio output", async () => {
+  const { getUserMedia, contexts } = setup();
+  const video = new Track("video"), sound = new Track("audio"), commentary = new Track("audio");
+  const changed = vi.fn();
+  const audio = new HostAudio(media(video, sound), changed);
+  getUserMedia.mockResolvedValue(media(commentary));
+  const mixed = (await audio.toggleMicrophone())!;
+  await audio.toggleMicrophone();
+  expect(commentary.readyState).toBe("live"); // Ordinary mute still reuses it.
+  audio.releaseMicrophone();
+  expect(commentary.stop).toHaveBeenCalledOnce();
+  expect(changed).toHaveBeenLastCalledWith(false);
+  expect(video.stop).not.toHaveBeenCalled();
+  expect(sound.stop).not.toHaveBeenCalled();
+  expect(mixed.getAudioTracks()[0].readyState).toBe("live");
+  expect(contexts[0].close).not.toHaveBeenCalled();
+  const next = new Track("audio");
+  getUserMedia.mockResolvedValue(media(next));
+  expect(await audio.toggleMicrophone()).toBeNull();
+  expect(getUserMedia).toHaveBeenCalledTimes(2);
+  expect(next.readyState).toBe("live");
+  audio.dispose();
+});
+
 test("input availability follows source and microphone independently of the retained mixer track", async () => {
   const { getUserMedia } = setup();
   const source = new Track("audio"), microphone = new Track("audio");
