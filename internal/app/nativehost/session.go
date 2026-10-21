@@ -1174,11 +1174,6 @@ func waitForCaptureProfile(
 				return
 			}
 			if state.State == "active" {
-				if state.Width != profile.Width || state.Height != profile.Height ||
-					state.FPS != profile.Framerate {
-					send(result{stage: "profile-mismatch", err: errors.New("native capture profile was not applied")})
-					return
-				}
 				state.AdapterIndex, state.EncoderIndex = starting.AdapterIndex, starting.EncoderIndex
 				state.unavailableLayers = unavailable
 				send(result{state: state})
@@ -1346,11 +1341,12 @@ func decodeCaptureState(payload []byte) (CaptureState, error) {
 		return CaptureState{}, errors.New("native capture starting state is incomplete")
 	}
 	original := state.Outputs[min(1, len(state.Outputs)-1)]
+	// Output profiles are ceilings; aspect-preserving capture may be smaller.
 	if state.State == "active" &&
 		((state.Codec == "h264" && !nativecapture.SupportedH264ProfileLevelID(state.ProfileLevelID)) ||
 			(state.Codec == "vp8" && state.ProfileLevelID != "") ||
-			state.Width != original.Width ||
-			state.Height != original.Height ||
+			!nativecapture.ValidVideoSize(state.Width, state.Height) ||
+			state.Width > original.Width || state.Height > original.Height ||
 			state.FPS != original.Framerate ||
 			len(state.RestoreToken) > 4096 || !utf8.ValidString(state.RestoreToken) ||
 			strings.ContainsRune(state.RestoreToken, 0)) {

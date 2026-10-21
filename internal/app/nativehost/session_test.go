@@ -344,12 +344,21 @@ func TestPreparedCaptureOutlivesItsPermissionOperation(t *testing.T) {
 	}
 }
 
-func TestCaptureProfileRetainsSelectedBackendFromStarting(t *testing.T) {
+func TestCaptureProfileRetainsSelectedBackendAndFittedSize(t *testing.T) {
 	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "backend")
 	t.Setenv("PIIK_CAPTURE_STARTING", string(captureStatePayload(t,
 		`{"state":"starting","hardwareOnly":true,"codec":"h264","adapterIndex":1,"adapterName":"GPU","adapterIdentity":"0:1","encoderIndex":2,"encoderName":"H264","encoderIdentity":"encoder"}`)))
-	t.Setenv("PIIK_CAPTURE_ACTIVE", string(captureStatePayload(t,
-		`{"state":"active","hardwareOnly":true,"codec":"h264","profileLevelId":"42c01f","width":1280,"height":720,"fps":30}`)))
+	var active CaptureState
+	if err := json.Unmarshal(captureStatePayload(t,
+		`{"state":"active","hardwareOnly":true,"codec":"h264","profileLevelId":"42c01f","width":1280,"height":720,"fps":30}`), &active); err != nil {
+		t.Fatal(err)
+	}
+	active.Width, active.Height = 640, 480
+	payload, err := json.Marshal(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PIIK_CAPTURE_ACTIVE", string(payload))
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -377,6 +386,9 @@ func TestCaptureProfileRetainsSelectedBackendFromStarting(t *testing.T) {
 			}
 			if state.AdapterIndex == nil || *state.AdapterIndex != 1 || state.EncoderIndex == nil || *state.EncoderIndex != 2 {
 				t.Fatalf("active profile lost the actual hardware selection: %+v", state)
+			}
+			if state.Width != 640 || state.Height != 480 {
+				t.Fatalf("active profile lost the actual fitted size: %+v", state)
 			}
 			var unavailable []int
 			if failed != "" {
@@ -489,11 +501,11 @@ func TestCaptureStateUsesOriginalSlotAndBoundsPhysicalGroups(t *testing.T) {
 	if err != nil || len(state.Outputs) != 6 || state.Outputs[5] != state.Outputs[0] {
 		t.Fatalf("independent output groups = %+v, %v", state, err)
 	}
-	wrongOriginal := state
-	wrongOriginal.Width = state.Outputs[5].Width
+	oversized := state
+	oversized.Width = state.Outputs[1].Width + 2
 	tooMany := state
 	tooMany.Outputs = append(tooMany.Outputs, tooMany.Outputs[0])
-	for _, invalid := range []CaptureState{wrongOriginal, tooMany} {
+	for _, invalid := range []CaptureState{oversized, tooMany} {
 		payload, err := json.Marshal(invalid)
 		if err != nil {
 			t.Fatal(err)

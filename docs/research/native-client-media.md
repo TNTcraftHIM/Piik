@@ -135,12 +135,8 @@ and the [upstream audio-capture lifecycle](https://github.com/obsproject/obs-stu
 Existing Go pipe fixtures now cover ready-but-silent audio, audio that never
 becomes ready, video startup in both cases and cancellation of blocked readers.
 Both controls pass without changing Go startup deadlines or adding retries.
-They do not reproduce the report's additional video timeout. Its display-audio
-attempt and window-filter crash refer to different processes; they do not
-establish one failure or an App bundle-identity collision. The native audio
-self-test is part of the Mac capture check. Both Darwin architectures compiled
-and passed that self-test in candidate CI on 2026-10-19; actual source/microphone
-capture and permissions remain unverified on this Windows workstation.
+The native audio self-test is part of the Mac capture check; both Darwin
+architectures compiled and passed it in candidate CI on 2026-10-19.
 
 The 2026-10-20 pipe reproduction establishes a second startup defect: waiting
 for audio readiness before reading video can fill the video pipe and block a
@@ -161,6 +157,15 @@ architectures in candidate CI on 2026-10-20. Physical source/audio capture remai
 unverified here.
 Terminal launch and App launch remain distinct permission contexts under
 [Apple's TCC attribution](https://developer.apple.com/forums/thread/125438).
+
+The subsequent Mac report also identified an App-side geometry mismatch:
+ScreenCaptureKit correctly reports the source's fitted size, but startup required
+exact equality with the selected ceiling. The shared status decoder now admits
+legal even dimensions within the original output ceiling, while retaining the
+codec, frame-rate and output-plan checks. Preparation uses that same validation.
+The process fixture reproduces the previous rejection of a 640x480 source under
+a 1280x720 ceiling and passes with the correction; this does not substitute for
+physical Mac capture.
 
 ## Current Boundary
 
