@@ -135,13 +135,14 @@ Close or Escape dismisses the palette; it also closes if its participant leaves.
 Sending keeps it open for repeated interaction, with the existing short cooldown.
 Confirmation never changes menu visibility; failure stays visible in the card.
 Opening or closing a reaction card preserves the chat draft and unread state.
-The interaction window keeps one composer with an on-demand reaction tray.
-Its recipient strip uses the same room identities and the couch's shared palette.
-The tray shortens the scrollable message list rather than covering messages;
-the input and reading position stay in place. Its composer button or a current
-participant's message avatar opens it and focuses the selected person; Escape
-returns to that opener. Avatars of departed participants remain non-interactive.
-Typing or pressing Escape dismisses the tray; sending a reaction keeps it open.
+The interaction window uses an on-demand reaction page instead of stacking the
+palette beneath the conversation or voice roster. Its recipient strip uses the
+same room identities and shared palette as the couch. The composer button,
+a current participant's message avatar or voice participant opens it and focuses
+the selected person. Return or Escape restores the prior page and opener,
+preserving the draft and reading position; voice quick controls stay available.
+Avatars of departed participants remain non-interactive. Sending a reaction
+keeps the palette open.
 While it is closed, the newest live reaction briefly shows its sender and recipient
 with the same animation renderer.
 It adds neither a message history entry nor an independent expiry timer. Member

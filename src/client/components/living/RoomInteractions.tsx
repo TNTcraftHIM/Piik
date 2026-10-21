@@ -57,8 +57,6 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
   const [visible, setVisible] = useState(false);
   const [following, setFollowing] = useState(true);
   const area = useRef<HTMLDivElement>(null);
-  const panelArea = useRef<HTMLDivElement>(null);
-  const voiceArea = useRef<HTMLDivElement>(null);
   const pickerArea = useRef<HTMLDivElement>(null);
   const anchor = useRef<HTMLButtonElement | null>(null);
   const panelAnchor = useRef<HTMLElement | null>(null);
@@ -80,7 +78,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
   const panelPerson = participants.find(person => person.peerId === panelTarget);
   const latestReaction = state.reactions.at(-1);
   const showVoice = Boolean(voice && page === "voice");
-  const showChat = !settingsOpen && !showVoice;
+  const showChat = !settingsOpen && !showVoice && !panelPerson;
   const rosterKey = participants.map(person => person.peerId).join(",");
   const inspect = target === couch.host?.key && couch.host.onSelect ? () => { if (!couch.host?.selected) couch.host?.onSelect?.(); }
     : couch.entries.some(entry => entry.key === target && entry.selectable !== false) && couch.onSelect
@@ -97,10 +95,17 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
     if (panelTarget && !panelPerson) setPanelTarget(null);
   }, [panelTarget, panelPerson]);
   useLayoutEffect(() => {
-    if (!panelTarget) return;
+    if (!panelTarget) {
+      if (panelAnchor.current) {
+        const opener = panelAnchor.current.isConnected ? panelAnchor.current : (chatDocument ?? document).getElementById(id);
+        opener?.focus({ preventScroll: true });
+      }
+      panelAnchor.current = null;
+      return;
+    }
     const selected = pickerArea.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]');
     selected?.scrollIntoView({ block: "nearest", inline: "nearest" });
-    // Enter the tray on opening, without stealing focus when retargeting.
+    // Enter the palette on opening, without stealing focus when retargeting.
     if (enterPanelPicker.current) selected?.focus({ preventScroll: true });
     enterPanelPicker.current = false;
   }, [panelTarget, chatDocument]);
@@ -129,9 +134,6 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
     if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing || !panelPerson) return;
     event.preventDefault();
     setPanelTarget(null);
-    const opener = panelAnchor.current?.isConnected ? panelAnchor.current
-      : event.currentTarget.ownerDocument.getElementById(`${id}-express`);
-    opener?.focus({ preventScroll: true });
   }
   useLayoutEffect(() => {
     // Moving a popover between documents resets its native scroll offset.
@@ -165,9 +167,13 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
       !log.current?.getClientRects().length) return;
     setLastSeen(latest);
     log.current.scrollTop = log.current.scrollHeight;
-  }, [latest, chatOpen, visible, following, chatDocument, showChat, panelTarget]);
+  }, [latest, chatOpen, visible, following, chatDocument, showChat]);
 
-  const reactionPicker = <div id={`${id}-reactions`} className="lr-floating-scroll lr-interaction-picker" ref={pickerArea} hidden={!panelPerson}>
+  const reactionPicker = <div id={`${id}-reactions`} className="lr-floating-scroll lr-interaction-picker" ref={pickerArea}
+    hidden={!panelPerson} onKeyDown={dismissPicker}>
+    <div className="lr-interaction-picker-heading">
+    <Btn icon="chevron" title={page === "voice" ? "voice.settingsClose" : "interaction.back"}
+      size="dense" quiet hint="hint-collapse" onClick={() => setPanelTarget(null)} />
     <div className="lr-interaction-people-scroll">
       <div className="lr-interaction-people" role="group" aria-label={t("interaction.participant")}>
         {participants.map(person => {
@@ -186,6 +192,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
         })}
       </div>
     </div>
+    </div>
     <RoomReactionGrid person={panelPerson} selfPeerId={state.peerId} reactionIds={state.reactionIds} canSend={canSend} onSend={sendReaction} />
   </div>;
 
@@ -200,10 +207,10 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
         })}
       </p>)}
     </div>
-    <FloatingPanel id={id} trigger={`${id}-toggle`} icon={settingsOpen ? "sliders" : "chat"} className="lr-interaction-panel" detachable
-      title={t(settingsOpen === "voice" ? "host.microphone.settings" : settingsOpen ? "interaction.settings" : "interaction.title")}
+    <FloatingPanel id={id} trigger={`${id}-toggle`} icon={settingsOpen ? "sliders" : panelPerson ? "smile" : "chat"} className="lr-interaction-panel" detachable
+      title={t(settingsOpen === "voice" ? "host.microphone.settings" : settingsOpen ? "interaction.settings" : panelPerson ? "interaction.express" : "interaction.title")}
       onOpenChange={(open, owner) => { setChatOpen(open); setChatDocument(owner); }}>
-      {voice && !settingsOpen && <div className="lr-toggle lr-interaction-tabs" role="tablist" aria-label={t("interaction.title")}
+      {voice && !settingsOpen && !panelPerson && <div className="lr-toggle lr-interaction-tabs" role="tablist" aria-label={t("interaction.title")}
         style={{ "--lr-segments": 2, "--lr-selected-index": showVoice ? 1 : 0 } as CSSProperties} onKeyDown={navigateTabs}>
         {(["chat", "voice"] as const).map(value => <button key={value} type="button" role="tab" id={`${id}-${value}-tab`}
           aria-selected={page === value} aria-controls={`${id}-${value}-page`} tabIndex={page === value ? 0 : -1}
@@ -212,16 +219,17 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
           <span className={vis ? "visually-hidden" : undefined}>{t(`interaction.${value}`)}</span>
         </button>)}
       </div>}
-      {settingsOpen && <>
-        <div className="lr-interaction-back"><Btn icon={settingsOpen === "voice" ? "headphones" : "chat"}
-          title={settingsOpen === "voice" ? "voice.settingsClose" : "interaction.back"}
-          cap={settingsOpen === "voice" ? "voice.settingsClose" : "interaction.back"} size="dense"
-          hint="hint-collapse" onClick={() => setSettingsOpen(null)} /></div>
-        {settingsOpen === "voice" ? voice?.settings : <RoomChatSettings session={session} />}
-      </>}
+      {settingsOpen && <div className="lr-interaction-back"><Btn icon={page === "voice" ? "headphones" : "chat"}
+        title={page === "voice" ? "voice.settingsClose" : "interaction.back"}
+        cap={page === "voice" ? "voice.settingsClose" : "interaction.back"} size="dense"
+        hint="hint-collapse" onClick={() => setSettingsOpen(null)} /></div>}
+      {settingsOpen && (settingsOpen === "voice" ? voice?.settings : <RoomChatSettings session={session} />)}
+      {reactionPicker}
+      {chatOpen && panelPerson && effects &&
+        <ReactionEffects state={state} participants={participants} area={pickerArea} now={session.now} />}
       <div className="lr-interaction-page" id={`${id}-chat-page`} role={voice ? "tabpanel" : undefined}
         aria-labelledby={voice ? `${id}-chat-tab` : undefined} hidden={!showChat}>
-      <div className="lr-interaction-conversation" ref={panelArea} onKeyDown={dismissPicker}>
+      <div className="lr-interaction-conversation">
       <div className="lr-chat-history">
       <div className="lr-chat-log" role="log" aria-label={t("interaction.chat")} aria-live="polite" aria-relevant="additions" tabIndex={0} ref={log}
         onScroll={event => {
@@ -250,19 +258,16 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
           </div>;
         })}
       </div>
-      {!following && !panelPerson && state.messages.length > 0 && <button type="button" className="lr-chat-latest" onClick={() => {
+      {!following && state.messages.length > 0 && <button type="button" className="lr-chat-latest" onClick={() => {
         setFollowing(true); log.current?.focus({ preventScroll: true });
       }}><Glyph name="arrowDown" size={15} /><span className={vis ? "visually-hidden" : undefined}>
         {unread ? t("interaction.unread", { count: String(unread) }) : t("interaction.latest")}</span></button>}
-      {chatOpen && showChat && effects && !panelPerson && latestReaction &&
+      {chatOpen && showChat && effects && latestReaction &&
         <RoomReactionActivity key={latestReaction.id} reaction={latestReaction} participants={participants}
           hostPeerId={couch.host?.key} now={session.now} />}
       </div>
-      {!showVoice && reactionPicker}
-      {chatOpen && showChat && panelPerson && effects &&
-        <ReactionEffects state={state} participants={participants} area={panelArea} now={session.now} />}
       </div>
-      <form className="lr-chat-compose" onKeyDown={dismissPicker} onSubmit={event => {
+      <form className="lr-chat-compose" onSubmit={event => {
         event.preventDefault();
         const text = normalizeChatText(draft);
         if (text && canSend) { setFollowing(true); session.send({ kind: "chat", text }); }
@@ -270,7 +275,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
         <div className="lr-chat-input-row">
         <input value={draft} onChange={event => setDraft(event.target.value)} maxLength={MAX_CHAT_CODE_POINTS * 2}
           aria-label={t("interaction.placeholder")} placeholder={vis ? "···" : t("interaction.placeholder")}
-          name="message" autoComplete="off" onFocus={() => setPanelTarget(null)}
+          name="message" autoComplete="off"
           onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} />
         <Btn type="submit" icon="send" title="interaction.send" hint="hint-chat-send" tone="primary" size="compact" busy={state.pending?.payload.kind === "chat"}
           disabled={!canSend || !normalizeChatText(draft)} />
@@ -279,10 +284,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
           <Btn id={`${id}-express`} icon="smile" title="interaction.express" cap="interaction.express" size="dense" quiet
             hint="hint-reaction-picker"
             expanded={Boolean(panelPerson)} controls={`${id}-reactions`} tone={panelPerson ? "on" : undefined}
-            onClick={() => {
-              if (panelPerson) setPanelTarget(null);
-              else openPanelReactions(state.peerId!, panelArea.current?.ownerDocument.getElementById(`${id}-express`) ?? null);
-            }} />
+            onClick={() => openPanelReactions(state.peerId!, (chatDocument ?? document).getElementById(`${id}-express`))} />
           <RoomChatToggle session={session} size="dense" quiet />
           <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft ? undefined : "hidden" }}>
             {Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>
@@ -293,17 +295,13 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
       </div>
       {voice && <>
         <div className="lr-interaction-page" id={`${id}-voice-page`} role="tabpanel"
-          aria-labelledby={`${id}-voice-tab`} hidden={!showVoice || settingsOpen !== null}>
-          <div className="lr-interaction-conversation" ref={voiceArea} onKeyDown={dismissPicker}
-            onClickCapture={event => { if (!pickerArea.current?.contains(event.target as Node)) setPanelTarget(null); }}>
+          aria-labelledby={`${id}-voice-tab`} hidden={!showVoice || settingsOpen !== null || Boolean(panelPerson)}>
+          <div className="lr-interaction-conversation">
             <div className="lr-floating-scroll lr-voice-history">{chatOpen && showVoice && !settingsOpen && voice.content(openPanelReactions,
               () => { setPanelTarget(null); setSettingsOpen("voice"); })}</div>
             {chatOpen && showVoice && effects && !panelPerson && latestReaction &&
               <RoomReactionActivity key={latestReaction.id} reaction={latestReaction} participants={participants}
                 hostPeerId={couch.host?.key} now={session.now} />}
-            {showVoice && reactionPicker}
-            {chatOpen && showVoice && panelPerson && effects &&
-              <ReactionEffects state={state} participants={participants} area={voiceArea} now={session.now} />}
           </div>
         </div>
         <div className="lr-interaction-voice-controls">{voice.controls}</div>

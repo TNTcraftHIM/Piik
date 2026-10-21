@@ -336,8 +336,8 @@ The window cannot show the game through its background or let mouse clicks pass 
 
 **On screen**, beside the message box or in the viewer's playback bar, shows new
 messages over the picture. It is off by default and only changes your own view.
-Adjust text size and opacity in **Playback settings → On-screen chat**, or in
-the chat window's **Chat settings**. Both use the same local preferences.
+Adjust text size and opacity in the interaction window's **Chat settings**.
+Playback settings remain dedicated to picture display and connection preferences.
 System video fullscreen and picture in picture cannot show these overlays.
 
 Stopping a share keeps the room's chat available. App Local and Public invite

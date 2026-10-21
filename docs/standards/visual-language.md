@@ -141,13 +141,12 @@ platform polyfill installed before UI mounting; controls retain the same
 visibility, focus and dismissal contract. Escape closes
 inner guidance first, then the most recently opened floating panel, then theater
 mode; an IME composition must not dismiss these surfaces.
-The interaction window gives conversation the main space and keeps one stable
-composer. Its reaction entry or a current participant's message avatar reveals
-the same compact recipient strip and shared palette above the input. The tray
-takes space from the scrollable message list without covering it; neither a
-permanent roster nor a second target heading competes with messages. More
-recipients scroll within that strip. Keep the composer in place while picking,
-and preserve the draft and reading position.
+The interaction window gives conversation the main space. Its reaction entry,
+a current participant's message avatar or voice participant opens the same
+recipient strip and shared palette, temporarily replacing the list and composer
+rather than squeezing them into the remaining space. More recipients scroll
+within that strip. Return or Escape restores the previous chat/voice page,
+focus, draft and reading position; voice quick controls remain available.
 Live reactions can appear briefly in the conversation surface without moving its
 layout. Retention and export details belong in settings, not beside every entry.
 Detachable tools reuse the same content in the browser's own always-on-top frame.
@@ -295,8 +294,10 @@ Remote input keeps its own clicks. When controls hide during remote input,
 retain a local pull on the TV bezel, away from the status lamp. Theater and
 fullscreen place it at the screen edge. Ordinary viewing reveals controls on
 mouse movement or a touch tap on the picture, without another button or setting.
-Keep the chat-overlay toggle in the bar; its appearance settings also belong in
-playback settings and reuse the interaction window's controls and local owner.
+Keep the chat-overlay toggle in the bar. Its text size and opacity have one
+entry in interaction settings for both Host and Viewers; playback settings own
+local picture display and connection preferences. Microphone settings belong
+to the voice page. All entries retain their existing local setting owner.
 Shorten the volume slider before moving display modes into settings; keep the
 bar on one line at supported mobile widths.
 Viewer settings use a brief anchored popover, preferring space below the picture

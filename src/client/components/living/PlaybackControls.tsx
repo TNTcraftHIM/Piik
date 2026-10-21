@@ -23,7 +23,7 @@ type PlaybackVisibility = ReturnType<typeof usePlaybackControlsVisibility>;
 export function PlaybackControls({
   videoRef, stream, audioTrackKey, audioAvailable, canPlay, theaterMode, onPlay,
   onToggleTheater, onReconnect, reconnectAvailable,
-  overlayAction, overlaySettings, remoteActions, settings,
+  overlayAction, remoteActions, settings,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>;
   stream: MediaStream | null;
@@ -36,7 +36,6 @@ export function PlaybackControls({
   onReconnect: () => void;
   reconnectAvailable: boolean;
   overlayAction?: ReactNode;
-  overlaySettings?: ReactNode;
   remoteActions?: ReactNode;
   settings?: ViewerPlaybackSettingsProps;
 }) {
@@ -136,14 +135,14 @@ export function PlaybackControls({
       audioRef.current?.setLevel(level);
       audioRef.current?.setMuted(false);
     }} onToggleTheater={onToggleTheater} onReconnect={onReconnect}
-    reconnectAvailable={reconnectAvailable} overlayAction={overlayAction} overlaySettings={overlaySettings} remoteActions={remoteActions} settings={settings} />;
+    reconnectAvailable={reconnectAvailable} overlayAction={overlayAction} remoteActions={remoteActions} settings={settings} />;
 }
 
 // The film shares the rendered controls; the component above alone owns media effects.
 export function PlaybackControlsView({
   controlsRef, visibility, audio, paused, hasAudio, canPlay, theaterMode,
   fullscreen, fullscreenFailed, picture, togglePlayback, toggleFullscreen,
-  toggleMute, setLevel, onToggleTheater, onReconnect, reconnectAvailable, overlayAction, overlaySettings, remoteActions, settings,
+  toggleMute, setLevel, onToggleTheater, onReconnect, reconnectAvailable, overlayAction, remoteActions, settings,
 }: {
   controlsRef?: RefObject<HTMLDivElement | null>; visibility?: PlaybackVisibility;
   audio: ViewerAudioSnapshot; paused: boolean; hasAudio: boolean; canPlay: boolean;
@@ -152,7 +151,7 @@ export function PlaybackControlsView({
   picture: Pick<ReturnType<typeof usePictureInPicture>, "active" | "supported" | "failed" | "toggle">;
   togglePlayback: () => void; toggleFullscreen: () => void; toggleMute: () => void;
   setLevel: (level: number) => void; onToggleTheater: () => void; onReconnect: () => void;
-  reconnectAvailable: boolean; overlayAction?: ReactNode; overlaySettings?: ReactNode; remoteActions?: ReactNode;
+  reconnectAvailable: boolean; overlayAction?: ReactNode; remoteActions?: ReactNode;
   settings?: ViewerPlaybackSettingsProps;
 }) {
   const { t, vis } = useCopy();
@@ -164,7 +163,7 @@ export function PlaybackControlsView({
   useEffect(() => {
     setChin(barRef.current?.closest(".lr-tv")?.querySelector<HTMLElement>(".lr-tv-chin") ?? null);
   }, [barRef]);
-  useAnchoredPopover(barRef, menuRef, { align: "center", minVisibleHeight: settings || overlaySettings ? 160 : Infinity });
+  useAnchoredPopover(barRef, menuRef, { align: "center", minVisibleHeight: settings ? 160 : Infinity });
   const silent = audio.muted || audio.level === 0;
   const percent = Math.round(audio.level * 100);
   const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
@@ -216,7 +215,7 @@ export function PlaybackControlsView({
       </span>
       {remoteActions}
       <span className="lr-playback-view">
-        <PlaybackMore panel={menuRef} settings={settings} overlaySettings={overlaySettings} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
+        <PlaybackMore panel={menuRef} settings={settings} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
           {displayActions(true)}
         </PlaybackMore>
         <span className="lr-playback-secondary">{displayActions(false)}</span>
@@ -240,12 +239,11 @@ export function PlaybackControlsView({
 
 // Native popover owns dismissal and focus return. The same actions above render
 // directly on wide players and in this compact disclosure on narrow players.
-function PlaybackMore({ panel, children, settings, overlaySettings, onReconnect, reconnectAvailable }: {
+function PlaybackMore({ panel, children, settings, onReconnect, reconnectAvailable }: {
   panel: RefObject<HTMLDivElement | null>; children: ReactNode; settings?: ViewerPlaybackSettingsProps;
-  overlaySettings?: ReactNode;
   onReconnect: () => void; reconnectAvailable: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
   const reconnect = <Btn icon="refresh" title="viewer.reconnect" size="dense" hint="hint-reconnect" draw="playback-reconnect"
@@ -256,17 +254,13 @@ function PlaybackMore({ panel, children, settings, overlaySettings, onReconnect,
   const display = <div className="lr-playback-display-menu">{children}</div>;
   return <span className="lr-playback-more">
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
-    <div id={id} ref={panel} className={`lr-floating-surface lr-playback-menu${settings || overlaySettings ? " lr-playback-settings" : ""}`} popover="auto" aria-label={t("playback.more")}
+    <div id={id} ref={panel} className={`lr-floating-surface lr-playback-menu${settings ? " lr-playback-settings" : ""}`} popover="auto" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}
       onClick={event => {
         if (!event.defaultPrevented && event.target instanceof Element && event.target.closest(".lr-playback-display-menu button")) panel.current?.hidePopover();
       }}>
       {settings ? <ViewerPlaybackSettings {...settings} displayActions={display} reconnect={reconnect} />
         : <div className="lr-playback-menu-actions">{display}{reconnect}</div>}
-      {overlaySettings && <section className="lr-playback-overlay-settings" aria-label={t("playback.overlay")}>
-        <h3><Glyph name="danmaku" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.overlay")}</span></h3>
-        {overlaySettings}
-      </section>}
     </div>
   </span>;
 }

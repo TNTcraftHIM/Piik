@@ -8,7 +8,7 @@ import { StageOverlay, StageTv } from "../components/living/Stage";
 import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import type { NativeCaptureTarget } from "../native/wire";
 import { RoomInteractions } from "../components/living/RoomInteractions";
-import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
+import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { RoomInteractionSession } from "../lib/room-interactions";
 import { createOpaqueId } from "../lib/opaque-id";
 import type { InteractionPayload } from "../../shared/protocol";
@@ -381,7 +381,7 @@ function InteractionControlsPreview() {
     <RoomChatOverlay session={session} visible />
     <PlaybackControls videoRef={video} stream={null} canPlay={false} onPlay={() => {}}
       theaterMode={theater} onToggleTheater={() => setTheater(value => !value)} onReconnect={() => {}} reconnectAvailable={false}
-      overlayAction={<RoomChatToggle session={session} />} overlaySettings={session && <RoomChatOverlaySettings session={session} />} />
+      overlayAction={<RoomChatToggle session={session} />} />
   </StageTv><RoomInteractions session={session} voice={voice}
     view={viewer ? "viewer" : "host"} host={{ key: "preview-host", name: "Piik", you: !viewer }} entries={
       Array.from({ length: crowded ? 20 : 1 }, (_, index) => ({

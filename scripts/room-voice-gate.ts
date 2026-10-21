@@ -258,6 +258,7 @@ async function main(): Promise<void> {
       Date.now() + 3000), Boolean, 5000);
     await ui(viewer, "screenshot", join(OUTPUT, `${arm}-voice-reaction.png`));
     check("voice participant picker sends a correctly targeted reaction to the other normal page");
+    await button(host, "Back to voice");
     await button(host, "Microphone settings");
     await button(host, "Back to voice");
     const beforeMute = await sample(host);
