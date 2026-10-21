@@ -182,6 +182,30 @@ it("keeps the current microphone on a failed input change and replaces only loca
   expect(replacement.track.stop).toHaveBeenCalledOnce();
 });
 
+it("keeps person volume local across publication changes and retires it with the participant", () => {
+  const { session, messages } = setup();
+  const friend = { peerId: "friend", connected: true, joined: true, upstream: { kind: "none" as const } };
+  session.receive({ ...room(2), members: [...room(2).members, friend] });
+  session.setPeerVolume("friend", 2);
+  session.setListeningVolume(.5);
+  session.muteVoice("friend");
+  session.receive({ ...room(3), members: [...room(3).members, { ...friend, publicationId: "friend-publication" }],
+    publications: [{ peerId: "friend", id: "friend-publication" }] });
+  expect(session.getSnapshot().peerVolumes.get("friend")).toBe(2);
+  expect(session.getSnapshot().muted.has("friend")).toBe(true);
+  expect(session.getSnapshot().listeningVolume).toBe(.5);
+  expect(messages).toHaveLength(0);
+  session.disconnected();
+  session.authenticated("self", "viewer");
+  session.receive({ ...room(3), members: [...room(3).members, friend] });
+  expect(session.getSnapshot().peerVolumes.get("friend")).toBe(2);
+  expect(session.getSnapshot().muted.has("friend")).toBe(true);
+  session.receive(room(4));
+  expect(session.getSnapshot().peerVolumes.size).toBe(0);
+  expect(session.getSnapshot().muted.has("friend")).toBe(false);
+  session.close();
+});
+
 it("preserves a valid microphone request and source when an unrelated room voice edge fails", async () => {
   let finish!: (stream: MediaStream) => void;
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: () => new Promise<MediaStream>(resolve => { finish = resolve; }) } });

@@ -161,12 +161,14 @@ describe("Viewer local audio", () => {
     });
     const elements = [new PlaybackVideo(), new PlaybackVideo()];
     const outputs = elements.map(element => new ViewerAudio(element as unknown as HTMLAudioElement,
-      vi.fn(), () => context as unknown as AudioContext));
+      vi.fn(), () => context as unknown as AudioContext, 4));
     outputs.forEach(output => { output.bind(new AudioStream([audioTrack()]) as unknown as MediaStream); output.setLevel(2); });
     context.start();
     expect(PlaybackContext.instances).toHaveLength(1);
     expect(gains.map(gain => gain.gain.value)).toEqual([2, 2]);
     expect(elements.every(element => element.muted)).toBe(true);
+    outputs[0].setLevel(4);
+    expect(gains.map(gain => gain.gain.value)).toEqual([4, 2]);
     outputs[0].setMuted(true);
     expect(gains.map(gain => gain.gain.value)).toEqual([0, 2]);
     outputs[0].dispose();

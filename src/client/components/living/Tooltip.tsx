@@ -33,13 +33,13 @@ import { replaySvgAnimations } from "../../ui/animation";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } from "./comic-presentation";
 
-const LONG_PRESS_MS = 500;
+export const LONG_PRESS_MS = 500;
 const TOUCH_HIDE_MS = 1500;
 const PANEL_EXIT_MS = 160;
-const HOVER_ENTER_MS = 500;
+export const HOVER_ENTER_MS = 500;
 // Minimum clearance the re-picked alignment keeps to each viewport edge.
 const EDGE_MARGIN = 8;
-const HOVER_EXIT_GRACE_MS = 160;
+export const HOVER_EXIT_GRACE_MS = 160;
 // Paper panel before its mounted content is measured.
 const FALLBACK_PANEL_HEIGHT = 96;
 

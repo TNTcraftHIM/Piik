@@ -1,4 +1,5 @@
 import { useLayoutEffect, type RefObject } from "react";
+import { useSurfaceDocument } from "../../ui/panel-window";
 
 // Native popovers own visibility, dismissal and focus. This only places a
 // menu beside its anchor, within the document displaying it.
@@ -9,6 +10,7 @@ export function useAnchoredPopover(
     maxHeight?: number; minVisibleHeight?: number; enabled?: boolean;
   } = {},
 ) {
+  const ownerDocument = useSurfaceDocument();
   useLayoutEffect(() => {
     const anchor = trigger.current, menu = panel.current;
     if (!enabled || !anchor || !menu) return;
@@ -69,5 +71,5 @@ export function useAnchoredPopover(
       viewport?.removeEventListener("resize", schedule);
       viewport?.removeEventListener("scroll", schedule);
     };
-  }, [trigger, panel, side, align, maxHeight, minVisibleHeight, enabled]);
+  }, [trigger, panel, side, align, maxHeight, minVisibleHeight, enabled, ownerDocument]);
 }

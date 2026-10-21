@@ -35,6 +35,10 @@ export function Cap({ k }: { k: CopyKey }) {
   return vis ? null : <span className="lr-cap">{t(k)}</span>;
 }
 
+export function BackButton({ onClick }: { onClick: () => void }) {
+  return <Btn icon="arrowLeft" title="common.back" cap="common.back" size="dense" quiet hint="hint-collapse" onClick={onClick} />;
+}
+
 export function Btn({
   id,
   icon,

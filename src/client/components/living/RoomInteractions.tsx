@@ -5,7 +5,7 @@ import { labelParticipantNames } from "../../lib/viewer-presence";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Btn, SwitchItem } from "./primitives";
+import { BackButton, Btn, SwitchItem } from "./primitives";
 import { participantColor } from "./participant-color";
 import { FloatingPanel } from "./FloatingPanel";
 import { PawnSvg } from "./Pawn";
@@ -24,7 +24,7 @@ type Props = CouchProps & {
   session: RoomInteractionSession | null;
   /** The room voice owner supplies controls; moving the panel never moves capture ownership. */
   voice?: {
-    content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void, onSettings: () => void) => ReactNode;
+    content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void) => ReactNode;
     settings: ReactNode;
     controls: ReactNode;
   };
@@ -160,7 +160,8 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
     <FloatingPanel id={id} trigger={`${id}-toggle`} icon={settingsOpen ? "sliders" : "chat"} className="lr-interaction-panel" detachable
       title={t(settingsOpen === "voice" ? "voice.settings" : settingsOpen ? "interaction.settings" : "interaction.title")}
       onOpenChange={(open, owner) => { setChatOpen(open); setChatDocument(owner); setPanelTarget(null); }}>
-      {voice && !settingsOpen && <div className="lr-toggle lr-interaction-tabs" role="tablist" aria-label={t("interaction.title")}
+      {!settingsOpen && <div className="lr-interaction-navigation">
+      {voice && <div className="lr-toggle lr-interaction-tabs" role="tablist" aria-label={t("interaction.title")}
         style={{ "--lr-segments": 2, "--lr-selected-index": showVoice ? 1 : 0 } as CSSProperties} onKeyDown={navigateTabs}>
         {(["chat", "voice"] as const).map(value => <button key={value} type="button" role="tab" id={`${id}-${value}-tab`}
           aria-selected={page === value} aria-controls={`${id}-${value}-page`} tabIndex={page === value ? 0 : -1}
@@ -169,10 +170,11 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
           <span className={vis ? "visually-hidden" : undefined}>{t(`interaction.${value}`)}</span>
         </button>)}
       </div>}
-      {settingsOpen && <div className="lr-interaction-back"><Btn icon={page === "voice" ? "headphones" : "chat"}
-        title={page === "voice" ? "voice.settingsClose" : "interaction.back"}
-        cap={page === "voice" ? "voice.settingsClose" : "interaction.back"} size="dense"
-        hint="hint-collapse" onClick={() => setSettingsOpen(null)} /></div>}
+      <Btn icon="sliders" quiet size="dense" title={showVoice ? "voice.settings" : "interaction.settings"}
+        hint={showVoice ? "hint-advanced" : "hint-chat-settings"}
+        onClick={() => { setPanelTarget(null); setSettingsOpen(showVoice ? "voice" : "chat"); }} />
+      </div>}
+      {settingsOpen && <div className="lr-interaction-back"><BackButton onClick={() => setSettingsOpen(null)} /></div>}
       {settingsOpen && (settingsOpen === "voice" ? voice?.settings : <RoomChatSettings session={session} />)}
       {panelTarget && panelPerson && <RoomQuickReactions key={panelTarget.peerId} id={`${id}-reactions`}
         trigger={panelTarget.trigger} person={panelPerson} selfPeerId={state.peerId} hostPeerId={couch.host?.key}
@@ -241,8 +243,6 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
           <RoomChatToggle session={session} size="dense" quiet />
           <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft ? undefined : "hidden" }}>
             {Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>
-          <Btn icon="sliders" title="interaction.settings" hint="hint-chat-settings" size="dense" quiet
-            onClick={() => { setPanelTarget(null); setSettingsOpen("chat"); }} />
         </div>
       </form>
       </div>
@@ -250,8 +250,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
         <div className="lr-interaction-page" id={`${id}-voice-page`} role="tabpanel"
           aria-labelledby={`${id}-voice-tab`} hidden={!showVoice || settingsOpen !== null}>
           <div className="lr-interaction-conversation">
-            <div className="lr-floating-scroll lr-voice-history">{chatOpen && showVoice && !settingsOpen && voice.content(openPanelReactions,
-              () => { setPanelTarget(null); setSettingsOpen("voice"); })}</div>
+            <div className="lr-floating-scroll lr-voice-history">{chatOpen && showVoice && !settingsOpen && voice.content(openPanelReactions)}</div>
             {chatOpen && showVoice && effects && latestReaction &&
               <RoomReactionActivity key={latestReaction.id} reaction={latestReaction} participants={participants}
                 hostPeerId={couch.host?.key} now={session.now} />}

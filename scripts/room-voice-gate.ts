@@ -197,7 +197,7 @@ async function main(): Promise<void> {
       return current;
     };
     const host = await page(origin, "Voice Host");
-    await until(host, state => state.text.includes("Create room"), "idle Host");
+    await until(host, state => state.controls.includes("Create room"), "idle Host");
     if ((await sample(host)).inviteUrl) throw new Error("Page visit allocated a room");
     await ui(host, "screenshot", join(OUTPUT, `${arm}-idle-room.png`), "--full");
     await button(host, "Create room");
@@ -220,6 +220,24 @@ async function main(): Promise<void> {
     const initial = await until(viewer, state => state.energy > 0 && state.voice?.publications.length === 2, "Viewer receives Host");
     if (!initial.voice?.connections.some(connection => connection.transport === (sfuOnly ? "sfu" : "peer"))) throw new Error("Wrong transport");
     check("Host opens voice, Viewer joins freely, explicit microphones carry bidirectional audio");
+    await cdp.call("Page.bringToFront", {}, host.sessionId, Date.now() + 3000);
+    const microphonePoint = await evaluate<{ x: number; y: number }>(cdp, host,
+      `(()=>{const r=document.querySelector('.lr-voice-quick-controls button[aria-label="Microphone"]').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`, Date.now() + 3000);
+    await cdp.call("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 }, host.sessionId, Date.now() + 3000);
+    await cdp.call("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [microphonePoint] }, host.sessionId, Date.now() + 3000);
+    await waitForSample(() => evaluate<boolean>(cdp!, host,
+      `!!document.querySelector('.lr-audio-volume-popover:popover-open')`, Date.now() + 3000), Boolean, 5000, 50);
+    await cdp.call("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }, host.sessionId, Date.now() + 3000);
+    await ui(host, "focus", '.lr-audio-volume-popover:popover-open input[aria-label="Microphone volume"]');
+    await ui(host, "press", "End");
+    await ui(host, "press", "Escape");
+    await cdp.call("Emulation.setTouchEmulationEnabled", { enabled: false }, host.sessionId, Date.now() + 3000);
+    const afterVolume = await sample(host);
+    if (afterVolume.liveMicrophones !== 1 || afterVolume.voice?.publications.length !== 2 || !await evaluate<boolean>(cdp, host,
+      `!document.querySelector('.lr-audio-volume-popover:popover-open')&&!!document.querySelector('.lr-interaction-panel:popover-open')`, Date.now() + 3000)) {
+      throw new Error("Touch volume adjustment toggled the microphone or closed its containing voice window");
+    }
+    check("touch hold opens volume without muting; keyboard adjustment and Escape retain the voice window");
     let leaf: Page | null = null;
     if (!sfuOnly) {
       leaf = await page(created.inviteUrl!, "Voice Listener");
@@ -264,7 +282,7 @@ async function main(): Promise<void> {
     await ui(viewer, "screenshot", join(OUTPUT, `${arm}-voice-reaction.png`));
     check("voice participant picker sends a correctly targeted reaction to the other normal page");
     await button(host, "Voice settings");
-    await button(host, "Back to voice");
+    await button(host, "Back");
     const beforeMute = await sample(host);
     const oldPublication = beforeMute.voice!.publications.find(publication => publication.peerId === beforeMute.peerId)!.id;
     const voiceConnections = beforeMute.voice!.connections.filter(connection => !connection.pending).map(connection => connection.connectionId).sort();
@@ -284,7 +302,7 @@ async function main(): Promise<void> {
     }
     if (leaf) await until(leaf, state => state.playing === 2 && state.voice?.publications.length === 2, "relay receives replacement microphone exactly once");
     check("microphone restart replaces its publication without leaving voice, duplicating playback or replacing the route");
-    await memberButton(viewer, "Voice Host", "Mute for me");
+    await memberButton(viewer, "Voice Host", "Listen to this person");
     const muted = await sample(viewer);
     await until(viewer, state => state.enabled && state.samples > muted.samples, "local mute retains received media");
     if (leaf) {
@@ -303,14 +321,14 @@ async function main(): Promise<void> {
     await button(viewer, "Listen to voice");
     const listening = await sample(viewer);
     if (listening.liveMicrophones !== 1 || listening.mutedPlayback !== listening.playing) throw new Error("Resuming listening changed microphone or per-person mute");
-    await memberButton(viewer, "Voice Host", "Unmute for me");
+    await memberButton(viewer, "Voice Host", "Listen to this person");
     await until(viewer, state => state.mutedPlayback === 0, "individual mute remains independent of deafen");
     if (leaf) await until(leaf, state => state.playing === 2, "relay listeners regain both speakers");
     check("local listening, microphone and per-person mute remain independent and preserve forwarding");
     await button(host, "Voice settings");
-    await ui(host, "focus", 'input[aria-label="Microphone volume"]');
+    await ui(host, "focus", '.lr-interaction-settings input[aria-label="Microphone volume"]');
     await ui(host, "press", "End");
-    await button(host, "Back to voice");
+    await button(host, "Back");
     check("one room microphone setting surface supplies device, gain and speech processing");
     const beforeVideo = await sample(viewer);
     await button(host, "Hide interaction window");

@@ -3959,7 +3959,7 @@ export function HostPage({
           />
           <RoomInteractions session={room ? interactionSession : null}
             voice={room && roomVoiceSession ? {
-              content: (onSelect, onSettings) => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect} onSettings={onSettings}
+              content: onSelect => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect}
                 names={new Map(participantPresence.map(person => [person.peerId, person.displayName]))} />,
               settings: <RoomVoiceSettings session={roomVoiceSession} />,
               controls: <RoomVoiceControls session={roomVoiceSession} />,

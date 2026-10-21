@@ -79,6 +79,7 @@ permissions and window chrome are verified in the actual platform, not imitated.
 | Switch related content pages | A named tablist with one selected tab and its associated panel; use the shared sliding treatment for short labels, including capture categories, and `navigateTabs` for Arrow/Home/End navigation |
 | Pick a device or an item from a variable list | Existing named selector/menu; use source thumbnails when appearance helps identify the item |
 | Adjust a numeric value | Range slider for quick adjustment, with a visible value; reuse `QualityNumberControl` when exact entry or a wider accepted range is useful |
+| Return within a room tool | Shared `BackButton`: left arrow and **Back**, with the same quiet dense treatment in settings and expanded reactions |
 | Apply several settings together | A named preset tile/chip; allow no preset to be selected when the current values are custom |
 
 Selection, expansion and pending operations describe different facts. Use the
@@ -127,6 +128,14 @@ that every popup should acquire.
 | Choose a source inside the television | TV-local nonmodal dialog; keep its own Tab loop, inner guidance before Escape cancellation, and return focus to the current share action on close. Surrounding room controls remain available to the pointer |
 | Keep a room tool available while watching or working | `FloatingPanel`, as used for interactions and Host remote permissions; retain its position without reflowing the room |
 | Use a tool outside the page | Optional `usePanelWindow` on capable browsers; reuse the same content/session, as with interactions, remote permissions and the docked remote keyboard |
+
+Chat and voice share one settings entry beside their tabs. Returning from either
+settings page or an expanded reaction palette uses `BackButton`, not a destination
+name or content icon. Audio icons keep their direct microphone/listening toggle;
+`AudioVolumeMenu` exposes the shared volume slider on mouse hover, keyboard focus
+or touch hold. It uses the guidance timing constants and anchored popover owner,
+replaces a hint with an actual control, and never widens the participant row.
+Settings remain an explicit touch entry for microphone and master volume.
 
 Persistent room utilities use the shared floating panel without reflowing the
 living room. The shell owns visibility, focus return, movement, resizing and
@@ -365,7 +374,7 @@ changing the badge does not restyle the UI, wordmark or illustrations.
 | A captured window or display | Window title bar or display stand, with the shared media metaphor kept distinct |
 | A camera source | `camera` identifies the alternative picture source. Source/playback sound retains the speaker metaphor. |
 | Room text and reactions | `chat` opens the conversation, `danmaku` controls its optional picture overlay, `smile` identifies reactions and `send` submits the chosen content. These do not represent media transport or voice. |
-| Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Input, playback and forwarding remain independent. Toggle names stay fixed; hints describe the next action. The microphone's green fill shows measured input after gain, not the configured gain percentage; a participant's green dot and speaking label use measured activity. An enabled input alone is not speaking evidence. Opening the channel and opening a microphone stay separate actions. The Host has labelled open/close-room actions, with `stop` and danger styling for closing everyone's voice; a Viewer's `door` leaves only their own voice participation. Joined membership does not use a network-strength symbol. |
+| Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Input, playback and forwarding remain independent. Toggle names stay fixed. The microphone's green fill shows measured input after gain, not the configured gain percentage. Participant microphone state stays visible; measured speech changes only the green dot and accessible speaking description, without replacing the visible status text. An enabled input alone is not speaking evidence. Opening the channel and opening a microphone stay separate actions. The Host has labelled open/close-room actions, with `stop` and danger styling for closing everyone's voice; a Viewer's `door` leaves only their own voice participation. Joined membership does not use a network-strength symbol. |
 | Experimental attended desktop control | `mouse` identifies keyboard/mouse control, distinct from sharing or playback. Permission copy stays literal; an active control marker describes the grant, not media connectivity. |
 | Floating utility placement | `grip` marks a draggable title bar; corner handles resize the window. Closing a panel hides its presentation, not its room session. |
 | Server forwarding media | A server on the media path; opening a Site alone does not imply SFU |

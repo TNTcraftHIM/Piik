@@ -6,7 +6,7 @@ import type { RoomVoiceCommand } from "../../shared/protocol";
 const names = new Map([["preview-host", "Piik"], ["preview-friend", "Piik friend"]]);
 function initialState(viewer: boolean): RoomVoiceSnapshot {
   return { peerId: viewer ? "preview-friend" : "preview-host", role: viewer ? "viewer" : "host", connected: true,
-    microphone: false, capturePending: false, deafened: false, listeningVolume: 1, autoplayBlocked: false, error: null, muted: new Set(),
+    microphone: false, capturePending: false, deafened: false, listeningVolume: 1, peerVolumes: new Map(), autoplayBlocked: false, error: null, muted: new Set(),
     input: { deviceId: "", volume: 1, voiceProcessing: true },
     room: { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: "preview-host", publications: [], connections: [], unavailable: [],
       members: [
@@ -48,6 +48,7 @@ export function useRoomVoicePreview(viewer: boolean) {
       configureInput: async patch => { setState(current => ({ ...current, input: { ...current.input, ...patch } })); },
       setVolume: volume => setState(current => ({ ...current, input: { ...current.input, volume } })),
       setListeningVolume: listeningVolume => setState(current => ({ ...current, listeningVolume })),
+      setPeerVolume: (peerId, volume) => setState(current => ({ ...current, peerVolumes: new Map(current.peerVolumes).set(peerId, volume) })),
       activity: async (localOnly = false) => new Map((snapshot.room?.members ?? [])
         .filter(member => member.joined && member.publicationId && (!localOnly || member.peerId === state.peerId))
         .map((member, index) => [member.peerId, Math.max(0, Math.sin(performance.now() / 350 + index * 2)) * .18
@@ -62,6 +63,6 @@ export function useRoomVoicePreview(viewer: boolean) {
   }, [state]);
   return { controls: <RoomVoiceControls session={session} />,
     settings: <RoomVoiceSettings session={session} />,
-    content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void, onSettings: () => void) =>
-      <RoomVoicePanel session={session} names={names} onSelectParticipant={onSelect} onSettings={onSettings} /> };
+    content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void) =>
+      <RoomVoicePanel session={session} names={names} onSelectParticipant={onSelect} /> };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
-import { Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
+import { BackButton, Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
 import { RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
@@ -94,6 +94,7 @@ export function ControlsPreview() {
         <header><span className="cp-number">01</span><h2>{en ? "Buttons, with a little give" : "按钮，按下去有回应。"}</h2></header>
         <p>{en ? "Hover, press, or use Tab and Enter. The disabled one keeps its explanation." : "悬停、按下，或用 Tab 和回车试试。禁用时也能查看原因。"}</p>
         <div className="cp-tools">
+          <BackButton onClick={notify} />
           <Btn icon="cast" tone="primary" title="host.start" cap="host.start" hint="hint-share-start" onClick={notify} />
           <Btn icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />
           <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}

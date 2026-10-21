@@ -2427,7 +2427,7 @@ export function ViewerPage({
           </div>
           <RoomInteractions session={interactionSession}
             voice={roomVoiceSession ? {
-              content: (onSelect, onSettings) => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect} onSettings={onSettings}
+              content: onSelect => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect}
                 names={new Map((participantPresence ?? []).map(person => [person.peerId, person.displayName]))} />,
               settings: <RoomVoiceSettings session={roomVoiceSession} />,
               controls: <RoomVoiceControls session={roomVoiceSession} />,

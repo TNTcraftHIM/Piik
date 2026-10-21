@@ -44,6 +44,7 @@ export class BrowserVoiceEndpoint {
   private listeningVolume = 1;
   private readonly createPlaybackContext = (): AudioContext => this.playbackContext ??= new AudioContext();
   readonly muted = new Set<string>();
+  readonly peerVolumes = new Map<string, number>();
   deafened = false;
 
   constructor(private iceConfig: IceConfig, private readonly send: (message: ClientMessage) => boolean, private readonly changed: () => void) {}
@@ -98,6 +99,7 @@ export class BrowserVoiceEndpoint {
       else if (config.pending && binding.audio) this.removePlayback(binding);
     }
     for (const muted of this.muted) if (!state?.members.some(member => member.peerId === muted)) this.muted.delete(muted);
+    for (const peer of this.peerVolumes.keys()) if (!state?.members.some(member => member.peerId === peer)) this.peerVolumes.delete(peer);
   }
 
   attach(publicationId: string, input: MicrophoneInput): void {
@@ -224,7 +226,8 @@ export class BrowserVoiceEndpoint {
         audio.autoplay = true; audio.hidden = true;
         const stream = new MediaStream([track]);
         audio.srcObject = stream;
-        binding.playback = new ViewerAudio(audio, () => {}, this.createPlaybackContext);
+        // Independent 0–200% master and person controls compose to at most 4×.
+        binding.playback = new ViewerAudio(audio, () => {}, this.createPlaybackContext, 4);
         binding.playback.bind(stream);
         this.syncPlayback();
         document.body.append(audio);
@@ -254,11 +257,15 @@ export class BrowserVoiceEndpoint {
     this.listeningVolume = volume;
     this.syncPlayback();
   }
+  setPeerVolume(peerId: string, volume: number): void {
+    if (volume === 1) this.peerVolumes.delete(peerId); else this.peerVolumes.set(peerId, volume);
+    this.syncPlayback();
+  }
   private syncPlayback(): void {
     for (const binding of this.received.values()) if (binding.playback) {
       const publisher = this.state?.publications.find(pub => pub.id === binding.publicationId)?.peerId;
       binding.playback.setMuted(this.deafened || !!publisher && this.muted.has(publisher));
-      binding.playback.setLevel(this.listeningVolume);
+      binding.playback.setLevel(this.listeningVolume * (publisher ? this.peerVolumes.get(publisher) ?? 1 : 1));
     }
   }
 

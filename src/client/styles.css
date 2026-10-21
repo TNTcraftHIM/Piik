@@ -1829,6 +1829,10 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 .lr-host-control-group { display: flex; align-items: center; gap: 4px; }
 .lr-host-control-group + .lr-host-control-group { padding-inline-start: 4px; }
 .lr-audio-settings { min-width: 0; max-width: 440px; gap: 6px; }
+.lr-audio-volume-menu { display: inline-flex; flex: none; }
+.lr-audio-volume-popover { position: fixed; inset: auto; margin: 0; width: 224px; padding: 12px; border-radius: 16px; }
+.lr-audio-volume-popover:is(:popover-open, .\:popover-open) { display: grid; }
+.lr-audio-volume-popover > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .lr-audio-settings .lr-capture-device { padding: 0; }
 .lr-source-audio-settings .lr-capture-device { padding: 0; }
 .lr-audio-exclusion-select label { display: flex; align-items: center; gap: 6px; cursor: default; }

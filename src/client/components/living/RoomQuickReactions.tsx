@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactionId } from "../../../shared/room-interactions";
 import { useCopy } from "../../ui/copy";
-import { Btn } from "./primitives";
+import { BackButton, Btn } from "./primitives";
 import { RoomReactionGrid, RoomReactionTarget, type InteractionParticipant } from "./RoomReactionPicker";
 import { useAnchoredPopover } from "./use-anchored-popover";
 
@@ -33,9 +33,9 @@ export function RoomQuickReactions({ id, trigger, person, selfPeerId, hostPeerId
       if (event.target === event.currentTarget && !event.currentTarget.matches(":popover-open")) onClose();
     }}>
     <div className="lr-quick-reactions-heading">
-      <Btn icon={expanded ? "arrowLeft" : "smile"} title={expanded ? "interaction.fewerReactions" : "interaction.moreReactions"}
-        cap={expanded ? "common.back" : undefined} size="dense" quiet hint="hint-reaction-picker"
-        expanded={expanded} onClick={() => setExpanded(value => !value)} />
+      {expanded ? <BackButton onClick={() => setExpanded(false)} />
+        : <Btn icon="smile" title="interaction.moreReactions" size="dense" quiet hint="hint-reaction-picker"
+          onClick={() => setExpanded(true)} />}
       <RoomReactionTarget person={person} selfPeerId={selfPeerId} hostPeerId={hostPeerId} />
     </div>
     <RoomReactionGrid person={person} selfPeerId={selfPeerId} reactionIds={choices} canSend={canSend}

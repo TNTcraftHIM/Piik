@@ -19,6 +19,7 @@ export class ViewerAudio {
     private readonly onChange: (snapshot: ViewerAudioSnapshot) => void,
     // Room voice lends one context to all its local playback sinks.
     private readonly createContext?: () => AudioContext,
+    private readonly maxLevel = 2,
   ) {
     this.level = video.volume;
     this.muted = video.muted;
@@ -50,7 +51,7 @@ export class ViewerAudio {
 
   setLevel(level: number): void {
     if (this.disposed || !Number.isFinite(level)) return;
-    this.level = Math.max(0, Math.min(this.boostAvailable ? 2 : 1, level));
+    this.level = Math.max(0, Math.min(this.boostAvailable ? this.maxLevel : 1, level));
     // iPhone video.volume is system-owned. Explicit adjustment uses the same
     // gain node below and above 100%; untouched playback stays native.
     if (this.level !== 1 && this.boostAvailable && !this.context) {

@@ -20,6 +20,7 @@ export interface RoomVoiceSnapshot {
   error: RoomVoiceError | null;
   input: RoomPreferences["voiceInput"];
   listeningVolume: number;
+  peerVolumes: ReadonlyMap<string, number>;
 }
 interface CaptureRequest { input?: MicrophoneInput; context?: AudioContext; settings: RoomPreferences["voiceInput"] }
 
@@ -30,7 +31,7 @@ export class RoomVoiceSession {
   private listeners = new Set<() => void>();
   private state: RoomVoiceSnapshot = { peerId: "", role: "viewer", connected: false, room: null,
     capturePending: false, microphone: false, deafened: false, autoplayBlocked: false, muted: new Set(), error: null,
-    input: readRoomPreferences().voiceInput, listeningVolume: readRoomPreferences().voiceListeningVolume };
+    input: readRoomPreferences().voiceInput, listeningVolume: readRoomPreferences().voiceListeningVolume, peerVolumes: new Map() };
   private capture: CaptureRequest | null = null;
   private publishing: CaptureRequest | null = null;
   private retiredPublications = new Set<string>();
@@ -57,6 +58,7 @@ export class RoomVoiceSession {
   private refresh(): void {
     this.update({ microphone: this.endpoint.microphone, capturePending: !!this.capture || !!this.publishing,
       deafened: this.endpoint.deafened, autoplayBlocked: this.endpoint.autoplayBlocked, muted: new Set(this.endpoint.muted),
+      peerVolumes: new Map(this.endpoint.peerVolumes),
       ...(this.state.error === "transport" && !this.state.room?.unavailable.length && this.endpoint.connected ? { error: null } : {}) });
   }
   updateIceConfig(config: IceConfig): void { this.endpoint.updateIceConfig(config); }
@@ -142,6 +144,7 @@ export class RoomVoiceSession {
     this.endpoint.setListeningVolume(volume);
     this.update({ listeningVolume: volume }); saveRoomPreferences({ voiceListeningVolume: volume });
   }
+  setPeerVolume(peerId: string, volume: number): void { this.endpoint.setPeerVolume(peerId, volume); this.refresh(); }
   async configureInput(patch: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing">>): Promise<void> {
     const settings = { ...this.state.input, ...patch };
     if (this.microphone) await this.startMicrophone(settings);
