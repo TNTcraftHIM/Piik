@@ -26,6 +26,7 @@ export function LedStrip({
   comic: ComicKind;
 }) {
   const { vis } = useCopy();
+  const tone = state === "busy" ? "warn" : state;
   const strip = (
     <button
       type="button"
@@ -33,15 +34,13 @@ export function LedStrip({
       data-state={state}
       aria-label={label}
     >
-      <i />
-      <i />
-      <i />
+      <span className="lr-connection-bars" aria-hidden="true"><i /><i /><i /></span>
       {vis ? null : <span className="lr-leds-label">{label}</span>}
     </button>
   );
   return (
     <span role="status">
-      <Tooltip toggleOnClick kind={comic} tone={state} motion={state === "busy" || state === "warn" ? "progress" : "still"} text={vis ? undefined : label} place="below" align="start">
+      <Tooltip toggleOnClick kind={comic} tone={tone} motion={state === "busy" || state === "warn" ? "progress" : "still"} text={vis ? undefined : label} place="below" align="start">
         {strip}
       </Tooltip>
     </span>

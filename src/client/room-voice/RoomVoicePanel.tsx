@@ -45,8 +45,7 @@ export function RoomVoiceControls({ session }: Props) {
       hint={state.role === "host" ? "hint-voice-open" : "hint-voice-join"}
       hintText={state.role === "host" ? "voice.openHint" : !state.room?.enabled ? "voice.closedHint" : undefined}
       onClick={() => { session.resumeAudio(); session.command({ action: "join" }); }} /> : <div className="lr-voice-toolbar" role="group" aria-label={t("interaction.voice")}>
-      <span className="lr-voice-joined"><Glyph name="signal" size={16} />
-        <span className={vis ? "visually-hidden" : undefined}>{t("voice.joined")}</span></span>
+      <span className={vis || state.role === "host" ? "visually-hidden" : "lr-voice-joined"}>{t("voice.joined")}</span>
       <div className="lr-voice-quick-controls lr-media-controls">
         <span className="lr-voice-mic"><Btn icon={state.microphone ? "microphone" : "microphoneOff"} title={microphoneTitle}
           size="compact" hint={state.role === "host"
@@ -66,7 +65,10 @@ export function RoomVoiceControls({ session }: Props) {
           size="compact" hint={state.deafened ? "hint-voice-undeafen" : "hint-voice-deafen"}
           hintText={state.deafened ? "voice.undeafenHint" : "voice.deafenHint"}
           pressed={!state.deafened} onClick={() => session.deafen(!state.deafened)} />
-        <Btn icon="door" title={state.role === "host" ? "voice.close" : "voice.leave"} size="compact" quiet
+        <Btn icon={state.role === "host" ? "stop" : "door"}
+          title={state.role === "host" ? "voice.close" : "voice.leave"}
+          cap={state.role === "host" ? "voice.close" : undefined}
+          tone={state.role === "host" ? "danger" : undefined} size="compact" quiet={state.role !== "host"}
           hint={state.role === "host" ? "hint-voice-close" : "hint-voice-leave"}
           hintText={state.role === "host" ? "voice.closeHint" : undefined} disabled={!state.connected}
           onClick={() => session.command({ action: "leave" })} />

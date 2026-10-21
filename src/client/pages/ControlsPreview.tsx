@@ -246,6 +246,7 @@ export function ControlsPreview() {
         <div className="cp-tools">
           <LedStrip state="live" label={t("state.signal.connected")} comic="signal-connected" />
           <LedStrip state="busy" label={t("state.signal.connecting")} comic="signal-connecting" />
+          <LedStrip state="warn" label={t("state.signal.reconnecting")} comic="signal-recovering" />
           <LedStrip state="off" label={t("state.signal.offline")} comic="signal-offline" />
         </div>
         <div className="cp-tools"><Pill icon="check" tone="live" label={t("common.copied")} comic="hint-copy-code" />

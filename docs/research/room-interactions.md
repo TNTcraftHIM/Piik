@@ -138,7 +138,8 @@ Opening or closing a reaction card preserves the chat draft and unread state.
 The interaction window uses a compact attached palette beside the chosen chat
 or voice avatar, without replacing or compressing the list and composer. Its
 quick actions are thumbs up/down and the two throwing props; one's own entry
-omits throws. More reactions exposes the full curated palette. The native
+substitutes laugh and heart. More reactions exposes the full curated palette,
+with a labelled back arrow in its heading. The native
 popover and shared anchored placement own dismissal, focus and viewport fit.
 Clicking the input dismisses it and continues typing; sending keeps it open.
 Changing pages or moving the tool between documents dismisses this brief menu

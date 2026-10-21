@@ -6,6 +6,7 @@ import { RoomReactionGrid, RoomReactionTarget, type InteractionParticipant } fro
 import { useAnchoredPopover } from "./use-anchored-popover";
 
 const QUICK_REACTIONS: readonly ReactionId[] = ["thumbsup", "thumbsdown", "tomato", "poop"];
+const SELF_QUICK_REACTIONS: readonly ReactionId[] = ["thumbsup", "thumbsdown", "laugh", "heart"];
 
 /** Brief person actions leave the conversation and composer available. */
 export function RoomQuickReactions({ id, trigger, person, selfPeerId, hostPeerId, reactionIds, canSend, onSend, onClose }: {
@@ -23,20 +24,21 @@ export function RoomQuickReactions({ id, trigger, person, selfPeerId, hostPeerId
     if (menu.matches(":popover-open")) menu.hidePopover();
     menu.showPopover({ source: trigger });
   }, [trigger]);
-  const choices = expanded ? reactionIds : QUICK_REACTIONS.filter(id => reactionIds.includes(id));
+  const quick = person.peerId === selfPeerId ? SELF_QUICK_REACTIONS : QUICK_REACTIONS;
+  const choices = expanded ? reactionIds : quick.filter(id => reactionIds.includes(id));
   return <div id={id} ref={panel} popover="auto" role="dialog"
     aria-label={t("interaction.withPerson", { name: person.displayName })}
     className={`lr-floating-surface lr-quick-reactions${expanded ? " is-expanded" : ""}`}
     onToggle={event => {
       if (event.target === event.currentTarget && !event.currentTarget.matches(":popover-open")) onClose();
     }}>
-    <RoomReactionTarget person={person} selfPeerId={selfPeerId} hostPeerId={hostPeerId} />
-    <div className="lr-quick-reactions-body">
-      <RoomReactionGrid person={person} selfPeerId={selfPeerId} reactionIds={choices} canSend={canSend}
-        onSend={onSend} compact={!expanded} />
-      <Btn icon={expanded ? "arrowUp" : "smile"} title={expanded ? "interaction.fewerReactions" : "interaction.moreReactions"}
-        size="compact" quiet hint={expanded ? "hint-collapse" : "hint-reaction-picker"}
+    <div className="lr-quick-reactions-heading">
+      <Btn icon={expanded ? "arrowLeft" : "smile"} title={expanded ? "interaction.fewerReactions" : "interaction.moreReactions"}
+        cap={expanded ? "common.back" : undefined} size="dense" quiet hint="hint-reaction-picker"
         expanded={expanded} onClick={() => setExpanded(value => !value)} />
+      <RoomReactionTarget person={person} selfPeerId={selfPeerId} hostPeerId={hostPeerId} />
     </div>
+    <RoomReactionGrid person={person} selfPeerId={selfPeerId} reactionIds={choices} canSend={canSend}
+      onSend={onSend} compact={!expanded} />
   </div>;
 }

@@ -63,6 +63,7 @@ const PATHS = {
   link: { body: (<><path pathLength={1} d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path pathLength={1} d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></>) },
   linkOff: { body: (<><path pathLength={1} d="M10 13a5 5 0 0 0 7.54.54l1.1-1.1M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><path pathLength={1} d="m3 3 18 18"/></>) },
   arrowRight: { body: (<><path pathLength={1} d="M4 12h16m-6.5-6.5L20 12l-6.5 6.5"/></>) },
+  arrowLeft: { body: (<><path pathLength={1} d="M20 12H4m6.5-6.5L4 12l6.5 6.5"/></>) },
   arrowUp: { body: (<><path pathLength={1} d="M12 20V4m-6.5 6.5L12 4l6.5 6.5"/></>) },
   arrowDown: { body: (<><path pathLength={1} d="M12 4v16m-6.5-6.5L12 20l6.5-6.5"/></>) },
   key: { body: (<><circle pathLength={1} cx="7.5" cy="15.5" r="4.5"/><path pathLength={1} d="m11 12.5 9.5-9.5M14.5 6l3 3M17.5 3l3 3"/></>) },

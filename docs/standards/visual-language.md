@@ -143,9 +143,11 @@ inner guidance first, then the most recently opened floating panel, then theater
 mode; an IME composition must not dismiss these surfaces.
 The interaction window keeps its conversation and composer available while
 reacting. A current participant's message avatar or voice avatar opens a small
-attached palette with thumbs up/down and the two throwing props; the composer
-entry targets oneself and omits throws. More reactions expands the same curated
-choices on demand. Do not add a second roster or reflow the list. The native
+attached palette with thumbs up/down and the two throwing props; one's own
+entry uses laugh and heart in place of throws. Throwing props keep their distinct
+cards and toss captions, including in the compact palette. More reactions expands
+the same curated choices on demand, with a labelled back arrow in the heading.
+Do not add a second roster or reflow the list. The native
 popover owns outside-click and Escape dismissal; sending keeps it open for
 repeated interaction. The couch retains its movable full palette. Both surfaces
 reuse target identity, reaction buttons and the existing send owner.
@@ -356,7 +358,7 @@ changing the badge does not restyle the UI, wordmark or illustrations.
 | A captured window or display | Window title bar or display stand, with the shared media metaphor kept distinct |
 | A camera source | `camera` identifies the alternative picture source. Source/playback sound retains the speaker metaphor. |
 | Room text and reactions | `chat` opens the conversation, `danmaku` controls its optional picture overlay, `smile` identifies reactions and `send` submits the chosen content. These do not represent media transport or voice. |
-| Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Input, playback and forwarding remain independent. The microphone's green fill shows local input level; a participant's green dot and speaking label use measured activity. An enabled input alone is not speaking evidence. Opening the channel and opening a microphone stay separate actions. |
+| Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Input, playback and forwarding remain independent. The microphone's green fill shows local input level; a participant's green dot and speaking label use measured activity. An enabled input alone is not speaking evidence. Opening the channel and opening a microphone stay separate actions. The Host has labelled open/close-room actions, with `stop` and danger styling for closing everyone's voice; a Viewer's `door` leaves only their own voice participation. Joined membership does not use a network-strength symbol. |
 | Experimental attended desktop control | `mouse` identifies keyboard/mouse control, distinct from sharing or playback. Permission copy stays literal; an active control marker describes the grant, not media connectivity. |
 | Floating utility placement | `grip` marks a draggable title bar; corner handles resize the window. Closing a panel hides its presentation, not its room session. |
 | Server forwarding media | A server on the media path; opening a Site alone does not imply SFU |
@@ -434,13 +436,13 @@ type checking rather than silently render a warning triangle.
 | Restriction / 受限 | `lock` | Restricted entry, concealed password or a setting fixed by availability; show the affected object. A lock never promises anonymity or secure media. |
 | Site and public entry / 站点与公开入口 | `globe` | Browser/Site entry or code-based public entry. It does not claim internet reachability. |
 | Preferred destination / 默认去处 | `star` | A user-selected default, such as the App's startup Site. It is a preference, not authorization or connection health. |
-| Connections / 连接 | `network`, `branch`, `signal`, `wifiOff`, `server` | Topology, branching, signaling, disconnected signaling and the named server. A server on a media path means forwarding; a Site backend or control-link server alone does not imply SFU. An invitation chain does not represent signaling. |
+| Connections / 连接 | `network`, `branch`, `signal`, `wifiOff`, `server` | Topology, branching, signaling, disconnected signaling and the named server. The header's rising bars show only signaling state: three steady green for connected, two animated yellow for connecting/recovering, all grey for offline. Active bars have equal brightness; this is neither a signal-strength measurement nor a media-quality claim. The television lamp owns sharing/viewing state. A server on a media path means forwarding; a Site backend or control-link server alone does not imply SFU. An invitation chain does not represent signaling. |
 | Playback / 播放 | `play`, `pause`, `stop` | Play/resume, pause, end. The control label states whether it affects local viewing or the Host's share. Stop is distinct from a paused or idle room. |
 | Audio / 声音 | `speaker`, `speakerOff` | Audio and mute/no audio, qualified by the source or local playback label. A source track's presence does not establish delivered sound. |
 | Size and viewing mode / 尺寸与观看模式 | `expand`, `contract`, `pip`, `pipExit`, `theater`, `theaterExit`, `fitContain`, `fitCover`, `fitStretch`, `rotatePicture` | Expand/restore, enter/leave picture in picture or theatre mode; contain, proportional crop and stretch change only local picture fit. Picture rotation switches the local landscape/portrait view. The same size symbol can accompany a resolution measurement. |
 | Local actions / 本地操作 | `copy`, `save`, `pencil`, `eye`, `eyeOff` | Copy, save, edit, reveal and conceal the named object. An action icon does not prove completion. |
 | Text appearance / 文字外观 | `textSize`, `opacity` | Relative text size and opacity. These are local display preferences, not message delivery states. |
-| Repeat and disclosure / 重试与展开 | `refresh`, `chevron`, `arrowRight` | Repeat/refresh, expand/collapse, proceed/enter. Direction follows the control's action; no arrow alone establishes delivery. |
+| Repeat and disclosure / 重试与展开 | `refresh`, `chevron`, `arrowRight`, `arrowLeft` | Repeat/refresh, expand/collapse, proceed/enter and return. Direction follows the control's action; no arrow alone establishes delivery. |
 | Transfer and upgrade / 传输与更新 | `arrowUp`, `arrowDown` | Outbound/inbound or upload/download, qualified by the adjacent label. An explicit update label may use the upward arrow for upgrade; neither arrow is a connection-quality rating. |
 | Diagnostics / 诊断 | `cpu` | Technical diagnostics in the labelled diagnostic control; in metrics the same processor identifies encoding work. The surrounding control or measured field states the scope. |
 | Help / 帮助 | `help`, `book` | Open product help or read a guide, respectively; current build identity belongs with this low-frequency information, separate from media settings and App connection state. |

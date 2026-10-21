@@ -73,19 +73,18 @@ button.lr-chat-avatar:focus-visible { outline-offset: -3px; }
 .lr-person-menu-portrait .lr-person { width: 30px; height: 36px; }
 .lr-quick-reactions { position: fixed; inset: auto; width: 264px; max-width: calc(100vw - 16px); margin: 0; padding: 8px; border-radius: 18px; overflow: auto; overscroll-behavior: contain; }
 .lr-quick-reactions.is-expanded { width: 288px; }
-.lr-quick-reactions .lr-person-menu-target { margin-bottom: 6px; }
+.lr-quick-reactions-heading { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.lr-quick-reactions-heading > .lr-person-menu-target { flex: 1; min-width: 0; margin: 0; }
+.lr-quick-reactions:not(.is-expanded) .lr-person-menu-target { order: -1; }
+.lr-quick-reactions-heading > .lr-comic-tip-wrap { flex: none; }
 .lr-quick-reactions .lr-person-menu-portrait { width: 24px; height: 30px; }
 .lr-quick-reactions .lr-person-menu-portrait .lr-person { width: 20px; height: 26px; }
-.lr-quick-reactions-body { display: flex; align-items: center; gap: 4px; }
-.lr-quick-reactions-body > .lr-reaction-grid { flex: 1; min-width: 0; }
-.lr-quick-reactions-body > .lr-comic-tip-wrap { flex: none; }
-.lr-quick-reactions.is-expanded .lr-quick-reactions-body { display: block; }
-.lr-quick-reactions.is-expanded .lr-quick-reactions-body > .lr-comic-tip-wrap { display: flex; justify-content: flex-end; margin-top: 4px; }
 .lr-reaction-grid { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; }
-.lr-reaction-grid.is-compact { display: flex; }
+.lr-reaction-grid.is-compact { display: flex; align-items: center; }
 .lr-reaction-grid button { min-width: 0; min-height: 44px; cursor: pointer; touch-action: manipulation; }
-.lr-reaction-grid.is-compact button { flex: none; width: var(--control-compact-size); height: var(--control-compact-size); margin: 0; padding: 0; }
-.lr-reaction-grid.is-compact .lr-reaction-prop > svg { width: 32px; height: 32px; }
+.lr-reaction-grid.is-compact button { flex: 1; width: var(--control-compact-size); height: var(--control-compact-size); margin: 0; padding: 0; }
+.lr-reaction-grid.is-compact .lr-reaction-prop { height: auto; padding: 4px 0; gap: 0; font-size: 11px; }
+.lr-reaction-grid.is-compact .lr-reaction-prop > svg { width: 28px; height: 28px; }
 .lr-reaction-option { grid-column: span 2; padding: 4px 0; font-size: 26px; line-height: 1; }
 .lr-reaction-prop { grid-column: span 7; display: grid; place-items: center; height: auto; margin-top: 6px; padding: 6px 4px; gap: 4px; border-width: 1px; border-radius: 14px; background: var(--wall); font-size: 12px; font-weight: 600; line-height: 1.3; white-space: normal; text-wrap: balance; }
 .lr-reaction-prop > svg { width: 26px; height: 26px; }
