@@ -19,7 +19,8 @@
 .lr-remote-modes > .lr-comic-tip-wrap { min-width: 0; }
 .lr-remote-modes button { min-width: 0; padding: 6px 4px; line-height: 1.3; white-space: normal; }
 .lr-remote-policy-actions { display: flex; align-items: center; gap: 8px; }
-.lr-remote-settings > .lr-remote-policy-actions > * { flex: 1; }
+.lr-remote-settings > .lr-remote-policy-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.lr-remote-settings > .lr-remote-policy-actions > * { min-width: 0; }
 .lr-remote-settings .lr-remote-policy-actions .lr-btn { width: 100%; }
 .lr-remote-policy-actions .lr-input { flex: 1; min-width: 0; }
 .lr-remote-policy-actions .lr-input input { min-width: 0; width: 100%; }

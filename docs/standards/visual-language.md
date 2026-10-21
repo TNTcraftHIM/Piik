@@ -247,7 +247,9 @@ the colour, outline and selected position without decorative displacement.
 The shared button uses the same pressed value for `aria-pressed` and its selected
 treatment; active state remains distinct from hover in both themes.
 Disclosure buttons keep a stable visible caption, while their expanded state and
-accessible action describe opening or closing. Neutral panel borders stay quieter
+accessible action describe opening or closing. Related tool captions use the same
+grammatical form: name the feature rather than mixing feature names with instructions
+to show them. Neutral panel borders stay quieter
 than the controls inside them; nested diagnostic panels retain their softer fill.
 Keep room identity, invitation and admission controls ahead of expanded topology
 and connection details, so inspecting a route does not displace room actions.

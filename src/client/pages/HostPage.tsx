@@ -4097,7 +4097,7 @@ export function HostPage({
                   title={
                     showConnectionDetails
                       ? "host.details.hide"
-                      : "host.details"
+                      : "host.details.show"
                   }
                   hint={showConnectionDetails ? "hint-collapse" : "hint-details"}
                   tone={showConnectionDetails ? "on" : undefined}

@@ -318,7 +318,7 @@ function Screen({ shot }: { shot: Shot }) {
                   <Btn icon="pencil" cap="common.edit" title="host.nameEdit" hint="hint-rename" />
                 </div>
                 <div className={`lr-row-group lr-group-actions ${viewer ? "lr-viewer-actions-slot" : "lr-host-diagnostics-slot"}`}>
-                  <Btn icon="gauge" cap="host.details" title="host.details" hint="hint-details" disabled={!live} />
+                  <Btn icon="gauge" cap="host.details" title="host.details.show" hint="hint-details" disabled={!live} />
                   <Btn icon="network" cap="host.topology" title="host.topology.show" hint="hint-topology" />
                 </div>
               </div>

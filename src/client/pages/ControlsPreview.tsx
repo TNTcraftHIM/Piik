@@ -98,7 +98,7 @@ export function ControlsPreview() {
           <Btn icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />
           <Btn icon={paused ? "play" : "pause"} title={paused ? "host.resume" : "host.pause"} cap={paused ? "host.resume" : "host.pause"}
             hint={paused ? "hint-resume" : "hint-pause"} draw="preview-pause" pressed={paused} onClick={() => setPaused(!paused)} />
-          <Btn icon="gauge" tone="on" title="host.details" cap="host.details" hint="hint-details" pressed onClick={notify} />
+          <Btn icon="gauge" tone="on" title="host.details.hide" cap="host.details" hint="hint-collapse" pressed onClick={notify} />
           <Btn icon="refresh" title="viewer.reconnect" cap="viewer.reconnect" hint="hint-reconnect" disabled />
           <Btn icon="cast" title="host.starting" cap="host.starting" busy disabled hint="hint-share-start" />
         </div>
@@ -106,7 +106,7 @@ export function ControlsPreview() {
           <Btn icon="switchSource" title="host.switchSource" hint="hint-switch-source" onClick={notify} />
           <Btn icon="link" title="host.invite.copy" hint="hint-copy-invite" onClick={notify} />
           <Btn icon="linkOff" title="host.invite.revoke" hint="hint-revoke-invite" onClick={notify} />
-          <Btn icon="network" title="host.topology" hint="hint-topology" onClick={notify} />
+          <Btn icon="network" title="host.topology.show" hint="hint-topology" onClick={notify} />
           <Btn icon="sliders" title="host.advanced" hint="hint-advanced" onClick={notify} />
         </div>
         <p>{en ? "The same button family has regular, compact and dense sizes. Quiet actions keep a usable target without a visible frame."

@@ -56,7 +56,7 @@ export const zh = {
   "remote.mode.room": "房间观众",
   "remote.mode.password": "控制密码",
   "remote.help.ask": "收到请求后，由你决定是否允许控制。",
-  "remote.help.room": "本房间观众可直接取得空闲控制权，操作这台电脑。",
+  "remote.help.room": "无人控制时，房间观众可直接操作电脑。",
   "remote.help.password": "观众输入控制密码后，可操作这台电脑。",
   "remote.policyLifetime": "仅当前分享来源有效；换源或停播后关闭远控。",
   "remote.password": "控制密码",
@@ -582,7 +582,8 @@ export const zh = {
   "host.advanced.codec.vp8Hint": "兼容优先",
   "host.advanced.codec.h264Hint": "硬件优先",
 
-  "host.details": "显示连接详情",
+  "host.details": "连接详情",
+  "host.details.show": "显示连接详情",
   "host.details.hide": "隐藏连接详情",
   "host.topology": "连接拓扑",
   "host.topology.show": "显示连接拓扑",

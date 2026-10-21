@@ -144,8 +144,9 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
     viewport?.addEventListener("resize", resize);
     viewport?.addEventListener("scroll", resize);
     window.addEventListener("resize", resize);
-    // Content-sized palettes still fit after a target, language or status change.
-    const observer = new ResizeObserver(resize);
+    // Content changes keep the chosen top-left corner; viewport changes above
+    // retain relative placement. Both still constrain the panel to the viewport.
+    const observer = new ResizeObserver(() => place({ x: panel.offsetLeft, y: panel.offsetTop }));
     observer.observe(panel);
     return () => {
       placePanel.current = null;

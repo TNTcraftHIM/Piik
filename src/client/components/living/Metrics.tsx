@@ -230,7 +230,7 @@ export function MetricCells({
       }}
     >
       <Glyph name="chevron" size={15} />
-      {vis ? null : <span className="lr-cap">{moreTitle}</span>}
+      {vis ? null : <span className="lr-cap">{t("stats.more")}</span>}
     </button>
   );
 

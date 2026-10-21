@@ -2547,7 +2547,7 @@ export function ViewerPage({
                     icon="gauge"
                     cap="host.details"
                     title={
-                      showConnectionDetails ? "host.details.hide" : "host.details"
+                      showConnectionDetails ? "host.details.hide" : "host.details.show"
                     }
                     hint={showConnectionDetails ? "hint-collapse" : "hint-details"}
                     tone={showConnectionDetails ? "on" : undefined}

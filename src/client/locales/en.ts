@@ -56,7 +56,7 @@ export const en: Record<CopyKey, string> = {
   "remote.mode.room": "Room Viewers",
   "remote.mode.password": "Password",
   "remote.help.ask": "Decide whether to allow each control request.",
-  "remote.help.room": "Any Viewer in this room can control this computer when no one else is controlling it.",
+  "remote.help.room": "Any room Viewer can take control when no one else has it.",
   "remote.help.password": "Viewers can control this computer after entering the control password.",
   "remote.policyLifetime": "Applies to this shared source only. Changing sources or stopping turns remote control off.",
   "remote.password": "Control password",
@@ -582,7 +582,8 @@ export const en: Record<CopyKey, string> = {
   "host.advanced.codec.vp8Hint": "Compatibility first",
   "host.advanced.codec.h264Hint": "Hardware first",
 
-  "host.details": "Show connection details",
+  "host.details": "Connection details",
+  "host.details.show": "Show connection details",
   "host.details.hide": "Hide connection details",
   "host.topology": "Connection topology",
   "host.topology.show": "Show connection topology",
