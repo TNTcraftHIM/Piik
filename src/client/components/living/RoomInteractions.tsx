@@ -158,7 +158,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
       </p>)}
     </div>
     <FloatingPanel id={id} trigger={`${id}-toggle`} icon={settingsOpen ? "sliders" : "chat"} className="lr-interaction-panel" detachable
-      title={t(settingsOpen === "voice" ? "host.microphone.settings" : settingsOpen ? "interaction.settings" : "interaction.title")}
+      title={t(settingsOpen === "voice" ? "voice.settings" : settingsOpen ? "interaction.settings" : "interaction.title")}
       onOpenChange={(open, owner) => { setChatOpen(open); setChatDocument(owner); setPanelTarget(null); }}>
       {voice && !settingsOpen && <div className="lr-toggle lr-interaction-tabs" role="tablist" aria-label={t("interaction.title")}
         style={{ "--lr-segments": 2, "--lr-selected-index": showVoice ? 1 : 0 } as CSSProperties} onKeyDown={navigateTabs}>

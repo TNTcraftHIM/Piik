@@ -15,8 +15,10 @@ export class ViewerAudio {
   private disposed = false;
 
   constructor(
-    private readonly video: HTMLVideoElement,
+    private readonly video: HTMLMediaElement,
     private readonly onChange: (snapshot: ViewerAudioSnapshot) => void,
+    // Room voice lends one context to all its local playback sinks.
+    private readonly createContext?: () => AudioContext,
   ) {
     this.level = video.volume;
     this.muted = video.muted;
@@ -53,7 +55,7 @@ export class ViewerAudio {
     // gain node below and above 100%; untouched playback stays native.
     if (this.level !== 1 && this.boostAvailable && !this.context) {
       try {
-        this.context = new AudioContext();
+        this.context = this.createContext ? this.createContext() : new AudioContext();
         this.gain = this.context.createGain();
         this.gain.gain.value = 0;
         this.gain.connect(this.context.destination);
@@ -167,7 +169,7 @@ export class ViewerAudio {
     this.context = null;
     if (context) {
       context.removeEventListener("statechange", this.sync);
-      void context.close().catch(() => undefined);
+      if (!this.createContext) void context.close().catch(() => undefined);
     }
   }
 }

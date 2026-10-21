@@ -6,7 +6,7 @@ import type { RoomVoiceCommand } from "../../shared/protocol";
 const names = new Map([["preview-host", "Piik"], ["preview-friend", "Piik friend"]]);
 function initialState(viewer: boolean): RoomVoiceSnapshot {
   return { peerId: viewer ? "preview-friend" : "preview-host", role: viewer ? "viewer" : "host", connected: true,
-    microphone: false, capturePending: false, deafened: false, autoplayBlocked: false, error: null, muted: new Set(),
+    microphone: false, capturePending: false, deafened: false, listeningVolume: 1, autoplayBlocked: false, error: null, muted: new Set(),
     input: { deviceId: "", volume: 1, voiceProcessing: true },
     room: { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: "preview-host", publications: [], connections: [], unavailable: [],
       members: [
@@ -47,9 +47,11 @@ export function useRoomVoicePreview(viewer: boolean) {
       deafen: deafened => setState(current => ({ ...current, deafened })),
       configureInput: async patch => { setState(current => ({ ...current, input: { ...current.input, ...patch } })); },
       setVolume: volume => setState(current => ({ ...current, input: { ...current.input, volume } })),
+      setListeningVolume: listeningVolume => setState(current => ({ ...current, listeningVolume })),
       activity: async (localOnly = false) => new Map((snapshot.room?.members ?? [])
         .filter(member => member.joined && member.publicationId && (!localOnly || member.peerId === state.peerId))
-        .map((member, index) => [member.peerId, Math.max(0, Math.sin(performance.now() / 350 + index * 2)) * .18])),
+        .map((member, index) => [member.peerId, Math.max(0, Math.sin(performance.now() / 350 + index * 2)) * .18
+          * (member.peerId === state.peerId ? state.input.volume : 1)])),
       microphones: async () => [{ id: "headset", label: "USB Headset" }, { id: "desk", label: "Desk Microphone" }],
       muteVoice: peerId => setState(current => {
         const muted = new Set(current.muted);

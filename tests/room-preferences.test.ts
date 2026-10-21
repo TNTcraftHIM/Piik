@@ -16,9 +16,11 @@ function storage() {
 it("keeps independent room-tool choices across reads without storing private runtime fields", () => {
   const values = storage();
   saveRoomPreferences({ pictureFit: "cover", pictureRotation: 270, routePreference: "p2p", keyboardPage: "text", combineKeys: true });
-  saveRoomPreferences({ interactionEffects: false, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8 });
+  saveRoomPreferences({ interactionEffects: false, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8,
+    voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
   expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 270, routePreference: "p2p", keyboardPage: "text",
-    combineKeys: true, interactionEffects: false, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8 });
+    combineKeys: true, interactionEffects: false, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8,
+    voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
 
   // Storage accepts only the preference contract, even if a caller supplies a
   // room snapshot with credentials, text or actual held input by mistake.

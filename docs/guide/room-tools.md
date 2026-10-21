@@ -45,9 +45,12 @@ LAN HTTP pages can still join and listen. For voice input or remote control over
 a LAN or virtual LAN, see the [virtual-LAN options](./troubleshooting.md#optional-a-virtual-lan).
 After joining, the bottom toolbar provides microphone, listening and leave
 controls. **Pause listening** mutes room voice locally; your microphone, video
-sound and voice forwarding remain unaffected. In the voice tab, **Microphone
-settings** offers input device, input volume (100% by default, up to 200%) and
-noise/echo reduction. Browser and App-backed sharing use these same controls.
+sound and voice forwarding remain unaffected. In the voice tab, **Voice settings**
+offers input device, microphone and listening volumes (both 0%–200%, default
+100%), and noise/echo reduction. Listening volume only changes room voice for
+you. The microphone icon's green fill rises with your actual input level;
+a slashed icon means the microphone is off. Browser and App-backed sharing use
+these same controls.
 
 Voice stays connected when picture sharing stops. It also stays active when you
 close or detach the interaction window. Viewers choose **Leave voice** to leave;

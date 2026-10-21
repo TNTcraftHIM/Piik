@@ -136,8 +136,8 @@ export async function endpointWorker(): Promise<void> {
           await click('[role="tab"][id$="-voice-tab"]');
           await click(`button[aria-label="${request.action === "voice-open" ? "Open room voice" : "Join voice"}"]`);
           await waitForSample(deadline => evaluate<boolean>(cdp!, page!,
-            `Boolean(document.querySelector('button[aria-label="Turn on microphone"]'))`, deadline), Boolean, 10_000);
-          await click('button[aria-label="Turn on microphone"]'); result = true;
+            `Boolean(document.querySelector('button[aria-label="Microphone"][aria-pressed="false"]'))`, deadline), Boolean, 10_000);
+          await click('button[aria-label="Microphone"][aria-pressed="false"]'); result = true;
         } else if (request.action === "voice-sample") {
           result = await evaluate(cdp!, page!, "networkLab.voiceSample()", Date.now() + 5000);
         } else if (request.action === "screenshot") {

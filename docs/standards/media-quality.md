@@ -18,6 +18,9 @@ remain local to the Browser origin; joining and microphone activation are never
 remembered. Stopping picture capture does not stop room voice. Source audio stays
 with the picture; room voice prioritizes interactive latency and is not promised
 to remain synchronized with a delayed picture.
+Microphone gain and local voice listening volume each range from 0% to 200%,
+defaulting to 100%. Listening gain, deafen and per-person mute affect only local
+playback, never forwarding or the picture's source audio.
 
 - The Web Host may share a display, application window, Browser tab or camera and may
   stop, synchronously pause/resume audio and video, or switch source.

@@ -148,13 +148,14 @@ it("pauses local listening independently of microphone and per-person mute", asy
   const { session, messages } = setup();
   try {
     await session.startMicrophone(); session.receive(room(2, true, true));
+    session.setListeningVolume(2);
     session.muteVoice("friend");
     session.deafen(true);
     expect(mic.track.stop).not.toHaveBeenCalled();
-    expect(session.getSnapshot()).toMatchObject({ deafened: true, microphone: true, capturePending: false });
+    expect(session.getSnapshot()).toMatchObject({ deafened: true, microphone: true, capturePending: false, listeningVolume: 2 });
     expect(messages.some(message => message.type === "room-voice-command" && message.command.action === "unpublish")).toBe(false);
     session.deafen(false);
-    expect(session.getSnapshot()).toMatchObject({ deafened: false, microphone: true });
+    expect(session.getSnapshot()).toMatchObject({ deafened: false, microphone: true, listeningVolume: 2, input: { volume: 1 } });
     expect(session.getSnapshot().muted.has("friend")).toBe(true);
     expect(getUserMedia).toHaveBeenCalledOnce();
   } finally { session.close(); }

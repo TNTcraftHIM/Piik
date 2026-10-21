@@ -19,6 +19,7 @@ export interface RoomVoiceSnapshot {
   muted: ReadonlySet<string>;
   error: RoomVoiceError | null;
   input: RoomPreferences["voiceInput"];
+  listeningVolume: number;
 }
 interface CaptureRequest { input?: MicrophoneInput; context?: AudioContext; settings: RoomPreferences["voiceInput"] }
 
@@ -29,7 +30,7 @@ export class RoomVoiceSession {
   private listeners = new Set<() => void>();
   private state: RoomVoiceSnapshot = { peerId: "", role: "viewer", connected: false, room: null,
     capturePending: false, microphone: false, deafened: false, autoplayBlocked: false, muted: new Set(), error: null,
-    input: readRoomPreferences().voiceInput };
+    input: readRoomPreferences().voiceInput, listeningVolume: readRoomPreferences().voiceListeningVolume };
   private capture: CaptureRequest | null = null;
   private publishing: CaptureRequest | null = null;
   private retiredPublications = new Set<string>();
@@ -42,6 +43,7 @@ export class RoomVoiceSession {
     this.endpoint = new BrowserVoiceEndpoint(iceConfig, message => this.state.connected && this.send(message), () => {
       this.refresh(); this.schedule();
     });
+    this.endpoint.setListeningVolume(this.state.listeningVolume);
   }
   getSnapshot = (): RoomVoiceSnapshot => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -135,6 +137,10 @@ export class RoomVoiceSession {
     this.endpoint.input?.volume(volume); this.capture?.input?.volume(volume);
     if (this.capture) this.capture.settings.volume = volume;
     this.rememberInput({ ...this.state.input, volume });
+  }
+  setListeningVolume(volume: number): void {
+    this.endpoint.setListeningVolume(volume);
+    this.update({ listeningVolume: volume }); saveRoomPreferences({ voiceListeningVolume: volume });
   }
   async configureInput(patch: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing">>): Promise<void> {
     const settings = { ...this.state.input, ...patch };

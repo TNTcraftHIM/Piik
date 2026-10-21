@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import { Btn } from "../components/living/primitives";
 import { MicrophoneSettings } from "../components/living/MicrophoneSettings";
+import { AudioVolumeControl } from "../components/living/AudioVolumeControl";
 import { PawnSvg } from "../components/living/Pawn";
 import { Tooltip } from "../components/living/Tooltip";
 import { participantColor } from "../components/living/participant-color";
@@ -11,7 +12,7 @@ import type { RoomVoiceSession, RoomVoiceSnapshot } from "./session";
 import "./room-voice.css";
 
 export type RoomVoiceView = Pick<RoomVoiceSession, "subscribe" | "getSnapshot" | "resumeAudio" | "command" |
-  "startMicrophone" | "stopMicrophone" | "muteVoice" | "deafen" | "configureInput" | "setVolume" | "activity" | "microphones">;
+  "startMicrophone" | "stopMicrophone" | "muteVoice" | "deafen" | "configureInput" | "setVolume" | "setListeningVolume" | "activity" | "microphones">;
 interface Props { session: RoomVoiceView }
 
 function useVoiceLevels(session: RoomVoiceView, enabled: boolean, localOnly = false): ReadonlyMap<string, number> {
@@ -46,11 +47,11 @@ export function RoomVoiceControls({ session }: Props) {
   return <>
     <div className="lr-voice-toolbar lr-media-controls" role="group" aria-label={t("interaction.voice")}>
       {joined && <div className="lr-voice-quick-controls">
-        <Btn icon={state.microphone ? "microphone" : "microphoneOff"} title={microphoneTitle}
+        <Btn icon={state.microphone ? "microphone" : "microphoneOff"} title="host.device.microphone"
           size="compact" hint={state.capturePending ? "hint-close" : state.role === "host"
             ? state.microphone ? "hint-microphone-off" : "hint-microphone-on"
             : state.microphone ? "hint-voice-microphone-off" : "hint-voice-microphone-on"}
-          hintText={microphoneUnavailable ? "voice.error.microphoneUnavailable" : undefined}
+          hintText={microphoneUnavailable ? "voice.error.microphoneUnavailable" : microphoneTitle}
           pressed={state.microphone} busy={state.capturePending} disabled={!state.connected || microphoneUnavailable}
           iconOverlay={state.microphone && !state.capturePending && <svg className="lr-voice-mic-level" viewBox="0 0 24 24" aria-hidden="true">
             <defs><clipPath id={meterId}><rect x="9.7" y="2.7" width="4.6" height="11.6" rx="2.3" /></clipPath></defs>
@@ -60,7 +61,7 @@ export function RoomVoiceControls({ session }: Props) {
             session.resumeAudio();
             if (state.microphone || state.capturePending) session.stopMicrophone(); else void session.startMicrophone();
           }} />
-        <Btn icon={state.deafened ? "headphonesOff" : "headphones"} title={state.deafened ? "voice.undeafen" : "voice.deafen"}
+        <Btn icon={state.deafened ? "headphonesOff" : "headphones"} title="voice.listening"
           size="compact" hint={state.deafened ? "hint-voice-undeafen" : "hint-voice-deafen"}
           hintText={state.deafened ? "voice.undeafenHint" : "voice.deafenHint"}
           pressed={!state.deafened} onClick={() => session.deafen(!state.deafened)} />
@@ -86,11 +87,16 @@ function memberStatus(member: NonNullable<RoomVoiceSnapshot["room"]>["members"][
 // Capture and transport belong to the session above this movable window.
 export function RoomVoiceSettings({ session }: Props) {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  return <div className="lr-floating-scroll lr-interaction-settings">
+  const { t } = useCopy();
+  return <div className="lr-floating-scroll lr-interaction-settings lr-voice-settings">
     <MicrophoneSettings host={state.role === "host"} enabled={state.microphone} disabled={state.capturePending}
       loadDevices={session.microphones} deviceId={state.input.deviceId} onDevice={deviceId => void session.configureInput({ deviceId })}
       volume={state.input.volume} onVolume={value => session.setVolume(value)}
       voiceProcessing={state.input.voiceProcessing} onVoiceProcessing={voiceProcessing => void session.configureInput({ voiceProcessing })} />
+    <div className="lr-door-group lr-audio-settings" role="group" aria-label={t("voice.listening")}>
+      <AudioVolumeControl volume={state.listeningVolume} onVolume={value => session.setListeningVolume(value)}
+        label="voice.listeningVolume" icon="headphones" hint="hint-volume" hintText="voice.listeningVolumeHint" />
+    </div>
   </div>;
 }
 
@@ -110,7 +116,7 @@ export function RoomVoicePanel({ session, names, onSelectParticipant, onSettings
     <div className="lr-voice-panel-tools">
       <span>{vis && <Glyph name="users" size={16} />}
         <span className={vis ? "visually-hidden" : undefined}>{t("voice.participants")}</span></span>
-      <Btn icon="sliders" quiet size="dense" title="host.microphone.settings"
+      <Btn icon="sliders" quiet size="dense" title="voice.settings"
         hint="hint-advanced"
         onClick={onSettings} />
     </div>

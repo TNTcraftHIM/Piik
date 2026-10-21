@@ -2,6 +2,7 @@ import type { ClientMessage, IceConfig, RoomVoiceState, VoiceConnection, VoiceDe
 import { observeDebugConnection } from "../lib/debug-webrtc";
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
 import type { MicrophoneInput } from "../media/microphone-input";
+import { ViewerAudio } from "../media/viewer-audio";
 import { addRemoteIceCandidate, iceServersWithNatPrediction, natPredictionSurveyUrls, NatPredictionCandidateEmitter } from "../webrtc/nat-prediction";
 
 type VoiceSignal = Extract<ClientMessage, { type: "room-voice-signal" }>;
@@ -26,6 +27,7 @@ interface Received {
   publicationId: string;
   track: MediaStreamTrack;
   audio?: HTMLAudioElement;
+  playback?: ViewerAudio;
   blocked: boolean;
 }
 
@@ -38,6 +40,9 @@ export class BrowserVoiceEndpoint {
   private state: RoomVoiceState | null = null;
   private peerId = "";
   private generation = 0;
+  private playbackContext: AudioContext | null = null;
+  private listeningVolume = 1;
+  private readonly createPlaybackContext = (): AudioContext => this.playbackContext ??= new AudioContext();
   readonly muted = new Set<string>();
   deafened = false;
 
@@ -186,7 +191,14 @@ export class BrowserVoiceEndpoint {
   }
 
   private removePlayback(binding: Received): void {
-    if (binding.audio) { binding.audio.pause(); binding.audio.srcObject = null; binding.audio.remove(); binding.audio = undefined; }
+    if (binding.audio) {
+      binding.audio.pause(); binding.playback?.dispose(); binding.playback = undefined;
+      binding.audio.srcObject = null; binding.audio.remove(); binding.audio = undefined;
+    }
+    if (![...this.received.values()].some(received => received.playback)) {
+      const context = this.playbackContext; this.playbackContext = null;
+      if (context) void context.close().catch(() => {});
+    }
     binding.blocked = false;
   }
   private removeReceived(key: string): void {
@@ -210,8 +222,12 @@ export class BrowserVoiceEndpoint {
       if (!connection.config.pending && !binding.audio) {
         const audio = binding.audio = new Audio();
         audio.autoplay = true; audio.hidden = true;
-        this.syncPlaybackMute();
-        audio.srcObject = new MediaStream([track]); document.body.append(audio);
+        const stream = new MediaStream([track]);
+        audio.srcObject = stream;
+        binding.playback = new ViewerAudio(audio, () => {}, this.createPlaybackContext);
+        binding.playback.bind(stream);
+        this.syncPlayback();
+        document.body.append(audio);
         void this.play(binding);
       }
     }
@@ -220,6 +236,7 @@ export class BrowserVoiceEndpoint {
   private async play(binding: Received): Promise<void> {
     const audio = binding.audio;
     if (!audio) return;
+    binding.playback?.resume();
     try { await audio.play(); if (binding.audio !== audio) return; binding.blocked = false; }
     catch { if (binding.audio !== audio) return; binding.blocked = true; }
     this.changed();
@@ -227,16 +244,21 @@ export class BrowserVoiceEndpoint {
   async resume(): Promise<void> { await Promise.all([...this.received.values()].map(binding => this.play(binding))); }
   mute(peerId: string, muted: boolean): void {
     if (muted) this.muted.add(peerId); else this.muted.delete(peerId);
-    this.syncPlaybackMute();
+    this.syncPlayback();
   }
   deafen(deafened: boolean): void {
     this.deafened = deafened;
-    this.syncPlaybackMute();
+    this.syncPlayback();
   }
-  private syncPlaybackMute(): void {
-    for (const binding of this.received.values()) if (binding.audio) {
+  setListeningVolume(volume: number): void {
+    this.listeningVolume = volume;
+    this.syncPlayback();
+  }
+  private syncPlayback(): void {
+    for (const binding of this.received.values()) if (binding.playback) {
       const publisher = this.state?.publications.find(pub => pub.id === binding.publicationId)?.peerId;
-      binding.audio.muted = this.deafened || !!publisher && this.muted.has(publisher);
+      binding.playback.setMuted(this.deafened || !!publisher && this.muted.has(publisher));
+      binding.playback.setLevel(this.listeningVolume);
     }
   }
 

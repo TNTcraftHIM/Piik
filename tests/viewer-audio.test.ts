@@ -152,6 +152,35 @@ describe("Viewer local audio", () => {
     audio.dispose();
   });
 
+  it("shares a lent context while muting and retiring each voice sink independently", () => {
+    const context = new PlaybackContext();
+    const gains: PlaybackContext["gain"][] = [];
+    vi.spyOn(context, "createGain").mockImplementation(() => {
+      const gain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      gains.push(gain); return gain;
+    });
+    const elements = [new PlaybackVideo(), new PlaybackVideo()];
+    const outputs = elements.map(element => new ViewerAudio(element as unknown as HTMLAudioElement,
+      vi.fn(), () => context as unknown as AudioContext));
+    outputs.forEach(output => { output.bind(new AudioStream([audioTrack()]) as unknown as MediaStream); output.setLevel(2); });
+    context.start();
+    expect(PlaybackContext.instances).toHaveLength(1);
+    expect(gains.map(gain => gain.gain.value)).toEqual([2, 2]);
+    expect(elements.every(element => element.muted)).toBe(true);
+    outputs[0].setMuted(true);
+    expect(gains.map(gain => gain.gain.value)).toEqual([0, 2]);
+    outputs[0].dispose();
+    expect(gains[0].disconnect).toHaveBeenCalledOnce();
+    expect(context.close).not.toHaveBeenCalled();
+    outputs[1].setLevel(0);
+    expect(gains[1].gain.value).toBe(0);
+    outputs[1].setLevel(1.5);
+    expect(gains[1].gain.value).toBe(1.5);
+    outputs[1].dispose();
+    expect(context.close).not.toHaveBeenCalled();
+    void context.close();
+  });
+
   it("uses current preferences after resume and ignores completions after disposal", async () => {
     const video = new PlaybackVideo();
     const onChange = vi.fn();

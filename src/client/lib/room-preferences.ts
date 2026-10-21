@@ -18,6 +18,7 @@ const roomPreferencesSchema = z.object({
   interactionEffects: z.boolean().default(true),
   voiceInput: z.object({ deviceId: z.string(), volume: z.number().min(0).max(2), voiceProcessing: z.boolean() })
     .default({ deviceId: "", volume: 1, voiceProcessing: true }),
+  voiceListeningVolume: z.number().min(0).max(2).default(1),
   keyboardPage: z.enum(REMOTE_KEYBOARD_PAGES).default("letters"),
   combineKeys: z.boolean().default(false),
   remoteReleaseKey: remoteShortcutKeySchema.default(10),

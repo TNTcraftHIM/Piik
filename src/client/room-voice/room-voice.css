@@ -1,4 +1,5 @@
 .lr-room-voice { padding-block: 14px 4px; }
+.lr-voice-settings { display: grid; align-content: start; gap: 16px; }
 .lr-voice-panel-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
 .lr-voice-panel-tools .lr-btn { flex: none; }
 .lr-voice-mic-level { position: absolute; left: 50%; top: 50%; width: var(--control-icon-size); height: var(--control-icon-size); transform: translate(-50%, -50%); pointer-events: none; fill: var(--live); }
