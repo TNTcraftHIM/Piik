@@ -21,7 +21,7 @@ type PlaybackVisibility = ReturnType<typeof usePlaybackControlsVisibility>;
 // Reflect the existing media element; binding, autoplay recovery and room
 // presentation retain their existing owners.
 export function PlaybackControls({
-  videoRef, stream, audioTrackKey, audioAvailable, canPlay, theaterMode, onPlay,
+  videoRef, stream, audioTrackKey, audioAvailable, canPlay, theaterMode, onPlay, onPause,
   onToggleTheater, onReconnect, reconnectAvailable,
   overlayAction, remoteActions, settings,
 }: {
@@ -32,9 +32,10 @@ export function PlaybackControls({
   canPlay: boolean;
   theaterMode: boolean;
   onPlay: () => void;
+  onPause?: () => void;
   onToggleTheater: () => void;
-  onReconnect: () => void;
-  reconnectAvailable: boolean;
+  onReconnect?: () => void;
+  reconnectAvailable?: boolean;
   overlayAction?: ReactNode;
   remoteActions?: ReactNode;
   settings?: ViewerPlaybackSettingsProps;
@@ -61,6 +62,7 @@ export function PlaybackControls({
       onPlay();
     } else {
       video.pause();
+      onPause?.();
     }
   };
   const toggleFullscreen = () => {
@@ -150,8 +152,8 @@ export function PlaybackControlsView({
   fullscreenFailed?: boolean;
   picture: Pick<ReturnType<typeof usePictureInPicture>, "active" | "supported" | "failed" | "toggle">;
   togglePlayback: () => void; toggleFullscreen: () => void; toggleMute: () => void;
-  setLevel: (level: number) => void; onToggleTheater: () => void; onReconnect: () => void;
-  reconnectAvailable: boolean; overlayAction?: ReactNode; remoteActions?: ReactNode;
+  setLevel: (level: number) => void; onToggleTheater: () => void; onReconnect?: () => void;
+  reconnectAvailable?: boolean; overlayAction?: ReactNode; remoteActions?: ReactNode;
   settings?: ViewerPlaybackSettingsProps;
 }) {
   const { t, vis } = useCopy();
@@ -241,16 +243,16 @@ export function PlaybackControlsView({
 // directly on wide players and in this compact disclosure on narrow players.
 function PlaybackMore({ panel, children, settings, onReconnect, reconnectAvailable }: {
   panel: RefObject<HTMLDivElement | null>; children: ReactNode; settings?: ViewerPlaybackSettingsProps;
-  onReconnect: () => void; reconnectAvailable: boolean;
+  onReconnect?: () => void; reconnectAvailable?: boolean;
 }) {
   const { t } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
-  const reconnect = <Btn icon="refresh" title="viewer.reconnect" size="dense" hint="hint-reconnect" draw="playback-reconnect"
+  const reconnect = onReconnect ? <Btn icon="refresh" title="viewer.reconnect" size="dense" hint="hint-reconnect" draw="playback-reconnect"
     cap="viewer.reconnect" disabled={!reconnectAvailable} onClick={() => {
       panel.current?.hidePopover();
       onReconnect();
-    }} />;
+    }} /> : null;
   const display = <div className="lr-playback-display-menu">{children}</div>;
   return <span className="lr-playback-more">
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />

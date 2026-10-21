@@ -71,7 +71,7 @@ export function PawnDetail({
   route: "p2p" | "sfu" | null;
   metrics?: ConnectionMetrics | null;
   direction: "send" | "receive";
-  tag?: { icon: "arrowUp" | "loader"; label: string };
+  tag?: { icon: "arrowUp" | "loader" | "headphones"; label: string };
   error?: MediaFailure | null;
   expanded: boolean;
   onToggleMetrics: (expanded: boolean) => void;

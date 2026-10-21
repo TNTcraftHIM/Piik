@@ -87,7 +87,11 @@ func (s *Server) syncRoomVoice(roomID string) {
 				Send: append([]string{}, edge.send[peerID]...), Receive: append([]string{}, edge.send[other]...)})
 		}
 		sort.Slice(connections, func(i, j int) bool { return connections[i].ConnectionID < connections[j].ConnectionID })
-		s.send(sess, protocol.RoomVoiceStateMessage{Type: "room-voice-state", Revision: protocol.Int(v.revision), Enabled: v.enabled(),
+		bitrate := protocol.Int(0)
+		if sess.roomVoiceBitrate {
+			bitrate = v.bitrate
+		}
+		s.send(sess, protocol.RoomVoiceStateMessage{Type: "room-voice-state", Bitrate: bitrate, Revision: protocol.Int(v.revision), Enabled: v.enabled(),
 			HostPeerID: hostID, Members: members, Publications: pubs, Connections: connections,
 			Unavailable: append([]string{}, unavailable[peerID]...)})
 	}

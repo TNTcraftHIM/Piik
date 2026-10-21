@@ -236,6 +236,7 @@ export const runtimeCapabilitiesSchema = z.object({
   natPrediction: z.boolean().default(false),
   roomInteractions: z.boolean().default(false),
   roomVoice: z.boolean().default(false),
+  roomVoiceBitrate: z.boolean().optional(),
   relayVolunteer: z.boolean().default(false),
   roomReactionIds: z.array(z.string().max(32).regex(/^[a-z][a-z0-9-]*$/)).max(64).optional(),
   hostRoomSession: z.boolean().default(false),
@@ -351,10 +352,12 @@ export const roomVoiceCommandSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("leave") }).strict(),
   z.object({ action: z.literal("publish") }).strict(),
   z.object({ action: z.literal("unpublish"), publicationId: opaqueIdSchema }).strict(),
+  z.object({ action: z.literal("bitrate"), bitrate: maxAudioBitrateSchema }).strict(),
 ]);
 export type RoomVoiceCommand = z.infer<typeof roomVoiceCommandSchema>;
 export const roomVoiceStateSchema = z.object({
   type: z.literal("room-voice-state"),
+  bitrate: maxAudioBitrateSchema.optional(),
   revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   enabled: z.boolean(),
   hostPeerId: opaqueIdSchema.nullable(),
@@ -928,7 +931,7 @@ const signalingChallengeSequenceSchema = z
 
 export const clientMessageSchema = z.union([
   z.object({ type: z.literal("set-relay-volunteer"), enabled: z.boolean(), capacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT) }).strict(),
-  z.object({ type: z.literal("subscribe-room-voice") }).strict(),
+  z.object({ type: z.literal("subscribe-room-voice"), bitrate: z.literal(true).optional() }).strict(),
   z.object({ type: z.literal("room-voice-command"), command: roomVoiceCommandSchema }).strict(),
   z.object({ type: z.literal("room-voice-signal"), ...voiceSignalShape }).strict()
     .refine(value => Number(!!value.description) + Number(!!value.candidate) + Number(!!value.renegotiate) === 1),

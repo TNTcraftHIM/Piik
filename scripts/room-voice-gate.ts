@@ -326,6 +326,24 @@ async function main(): Promise<void> {
     if (leaf) await until(leaf, state => state.playing === 2, "relay listeners regain both speakers");
     check("local listening, microphone and per-person mute remain independent and preserve forwarding");
     await button(host, "Voice settings");
+    const routesBeforeBitrate = (await sample(viewer)).voice!.connections.map(connection => connection.connectionId).sort();
+    await ui(host, "fill", '.lr-voice-settings input[name="audioBitrate"]', "96");
+    await ui(host, "press", "Enter");
+    for (const participant of [host, viewer, ...(leaf ? [leaf] : [])]) {
+      await until(participant, state => state.voice?.bitrate === 96_000, "room bitrate reaches each participant");
+      await waitForSample(() => evaluate<boolean>(cdp!, participant, `(() => {
+        const senders=window.__roomVoiceGate.peers.filter(peer=>peer.connectionState==='connected'&&
+          peer.getTransceivers().every(transceiver=>transceiver.receiver.track.kind==='audio'))
+          .flatMap(peer=>peer.getSenders()).filter(sender=>sender.track);
+        return senders.length===0||senders.every(sender=>sender.getParameters().encodings[0]?.maxBitrate===96000);
+      })()`, Date.now() + 3000), Boolean, 5000);
+    }
+    if (JSON.stringify((await sample(viewer)).voice!.connections.map(connection => connection.connectionId).sort()) !== JSON.stringify(routesBeforeBitrate)) {
+      throw new Error("Changing voice bitrate replaced the room route");
+    }
+    const afterBitrate = await sample(viewer);
+    await until(viewer, state => state.samples > afterBitrate.samples, "audio continues after bitrate change");
+    check("Host room bitrate applies live to source and relay senders without replacing the route");
     await ui(host, "focus", '.lr-interaction-settings input[aria-label="Microphone volume"]');
     await ui(host, "press", "End");
     await button(host, "Back");
@@ -337,6 +355,18 @@ async function main(): Promise<void> {
     await ui(host, "click", 'button[aria-label^="Share camera:"]');
     await until(host, state => state.text.includes("Stop sharing"), "camera sharing starts alongside voice");
     await until(viewer, state => state.samples > beforeVideo.samples && state.voice?.publications.length === 2, "voice survives video start");
+    await cdp.call("Page.bringToFront", {}, host.sessionId, Date.now() + 3000);
+    await ui(host, "hover", ".lr-tv video");
+    await waitForSample(() => evaluate<boolean>(cdp!, host, "!!document.querySelector('.lr-tv video')&&!document.querySelector('.lr-tv video').paused", Date.now() + 3000), Boolean, 5000);
+    if (!await evaluate<boolean>(cdp, host, "document.querySelector('.lr-tv video').muted", Date.now() + 3000)) throw new Error("Host preview started with sound");
+    await button(host, "Pause on this device");
+    const locallyPaused = await sample(viewer);
+    await until(viewer, state => state.videoFrames > locallyPaused.videoFrames && state.samples > locallyPaused.samples, "local Host pause preserves outgoing picture and voice");
+    await cdp.call("Page.bringToFront", {}, viewer.sessionId, Date.now() + 3000);
+    await cdp.call("Page.bringToFront", {}, host.sessionId, Date.now() + 3000);
+    if (!await evaluate<boolean>(cdp, host, "document.querySelector('.lr-tv video').paused", Date.now() + 3000)) throw new Error("Focus restored an explicitly paused Host preview");
+    await button(host, "Play");
+    check("Host local playback starts muted; pause and focus changes preserve sharing and voice");
     if (legacyViewer) await until(legacyViewer, state => state.videoFrames > 0 && state.voice === null && state.authentications === 1,
       "older Viewer receives picture without unsupported voice events");
     await button(host, "Stop sharing");
@@ -413,6 +443,13 @@ async function main(): Promise<void> {
       !!state.voice?.members.find(member => member.peerId === state.peerId)?.connected, "normal signaling reconnect");
     if ((await sample(viewer)).liveMicrophones) throw new Error("Reconnect restored microphone automatically");
     check("closing room voice retires all audio; reopening and reconnect never restart microphones");
+    if (leaf) {
+      const departedId = (await sample(leaf)).peerId;
+      await cdp.call("Target.closeTarget", { targetId: leaf.targetId }, undefined, Date.now() + 3000);
+      await waitForSample(() => evaluate<boolean>(cdp!, host,
+        `!document.querySelector('.lr-voice-member[data-room-peer="${departedId}"]')`, Date.now() + 3000), Boolean, 5000);
+      check("departed voice member leaves the visible roster without waiting for reconnect grace");
+    }
     result.passed = true;
   } catch (error) {
     result.error = redact(error instanceof Error ? error.message : String(error));

@@ -3,7 +3,7 @@ import { createOpaqueId } from "../lib/opaque-id";
 import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
 import { observeDebugConnection } from "../lib/debug-webrtc";
 import type { ConnectionMetrics } from "../types";
-import { preferScreenAudioStereo } from "../webrtc/screen-audio-sdp";
+import { preferScreenAudioStereo } from "../webrtc/opus-receive-sdp";
 import { requireReceivingVideo } from "../webrtc/video-codec";
 import { RemoteInputChannel } from "../webrtc/remote-input-channel";
 import {

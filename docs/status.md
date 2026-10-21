@@ -78,6 +78,10 @@ Controlled-network voice cases and platform package checks have passed; the
 release artifacts and operator records establish publication and deployment.
 Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
 The promotional film stays an online-review draft; export follows owner acceptance.
+The next local candidate adds room-aware connection presentation, a Host-owned
+room voice bitrate ceiling and shared local playback controls for the Host.
+It awaits owner acceptance; the route controller and published wire identifiers
+are unchanged.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;
 release artifacts and operator records own exact delivery results.
 

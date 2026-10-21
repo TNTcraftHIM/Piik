@@ -190,7 +190,7 @@ describe("viewer quality evidence", () => {
     const first = presentViewerQualityEvidence(null, evidence, 0);
     expect(deriveParticipantStatus(participant, true, first).labelKey).toBe("state.peer.stuttering");
     expect(deriveParticipantStatus({ ...participant, mediaReady: false }, true, first).tone).toBe("busy");
-    expect(deriveParticipantStatus({ ...participant, mediaReady: false }, false, first).tone).toBe("off");
+    expect(deriveParticipantStatus({ ...participant, mediaReady: false }, false, first).labelKey).toBe("state.peer.present");
     expect(deriveParticipantStatus({ ...participant, upstream: { kind: "sfu" } }, true, first).tone).toBe("live");
     expect(deriveParticipantStatus(participant, true,
       refreshViewerQualityEvidencePresentation(first, VIEWER_QUALITY_EVIDENCE_EXPIRY_MS)).tone).toBe("live");

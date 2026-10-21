@@ -24,6 +24,14 @@ multiply. Per-person levels belong to the current participant identity and retir
 with it. Listening gain, deafen and per-person mute affect only local playback,
 never forwarding or the picture's source audio.
 
+Room voice defaults to 32 kbps mono, with 32/64/96 kbps shortcuts and a 6..320
+kbps sender ceiling in the Host's voice settings. Source and Peer-relay senders
+use the same room ceiling; WebRTC may send less as speech or network conditions
+change. Receive SDP accepts Opus's full 6..510 kbps range independently of that
+sender setting, following [RFC 7587](https://www.rfc-editor.org/rfc/rfc7587#section-6.1).
+Published older pages can still join without the optional bitrate extension;
+their senders and negotiated receive limits may retain the earlier 32 kbps bound.
+
 - The Web Host may share a display, application window, Browser tab or camera and may
   stop, synchronously pause/resume audio and video, or switch source.
 - An App-launched Host explicitly chooses either that Browser capture path or

@@ -46,6 +46,37 @@ func voiceCommand(client *testClient, command map[string]any) {
 	client.sendJSON(map[string]any{"type": "room-voice-command", "command": command})
 }
 
+func TestRoomVoiceBitrateIsHostOwnedAndOptedIn(t *testing.T) {
+	h := startHarness(t, harnessOptions{})
+	host, viewer, old := openClient(t, h), openClient(t, h), openClient(t, h)
+	authenticate(t, host, h.room, protocol.RoleHost, "bitrate_host_123456", -1, "", presenceOptions{roomSession: true, roomOnly: true})
+	authenticate(t, viewer, h.room, protocol.RoleViewer, "bitrate_viewer_123456", 1, "", presenceOptions{})
+	authenticate(t, old, h.room, protocol.RoleViewer, "bitrate_older_123456", 1, "", presenceOptions{})
+	for _, client := range []*testClient{host, viewer} {
+		client.sendJSON(map[string]any{"type": "subscribe-room-voice", "bitrate": true})
+		nextVoiceState(t, client, func(state protocol.RoomVoiceStateMessage) bool { return state.Bitrate == 32_000 })
+	}
+	old.sendJSON(map[string]any{"type": "subscribe-room-voice"})
+	if initial := nextVoiceState(t, old, nil); initial.Bitrate != 0 {
+		t.Fatal("new field sent to an older subscription")
+	}
+	voiceCommand(host, map[string]any{"action": "bitrate", "bitrate": 96_000})
+	state := nextVoiceState(t, viewer, func(state protocol.RoomVoiceStateMessage) bool { return state.Bitrate == 96_000 })
+	if state.Enabled || len(state.Publications) != 0 || len(state.Connections) != 0 {
+		t.Fatal("quality setting activated voice")
+	}
+	if next := nextVoiceState(t, old, func(next protocol.RoomVoiceStateMessage) bool { return next.Revision >= state.Revision }); next.Bitrate != 0 {
+		t.Fatal("new field sent to an older subscription")
+	}
+	voiceCommand(viewer, map[string]any{"action": "bitrate", "bitrate": 64_000})
+	viewer.next("room-voice-error")
+	h.locked(func() {
+		if h.server.voices[h.room.RoomID].bitrate != 96_000 {
+			t.Fatal("Viewer changed room bitrate")
+		}
+	})
+}
+
 func TestVoiceOnlyRouteFailureDoesNotChangeVideoStatus(t *testing.T) {
 	h, _, viewer, _, viewerID := joinedVoiceOwnerRoom(t)
 	h.locked(func() {

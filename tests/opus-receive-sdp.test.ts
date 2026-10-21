@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parse } from "sdp-transform";
 
-import { preferScreenAudioStereo } from "../src/client/webrtc/screen-audio-sdp.ts";
+import { preferRoomVoiceAudio, preferScreenAudioStereo } from "../src/client/webrtc/opus-receive-sdp.ts";
 
 function answerSdp(opusFmtp: string | null = "minptime=10;useinbandfec=1"): string {
   return [
@@ -25,6 +25,15 @@ function answerSdp(opusFmtp: string | null = "minptime=10;useinbandfec=1"): stri
 }
 
 describe("preferScreenAudioStereo", () => {
+  it("lets all voice media sections negotiate mono bitrate without changing picture SDP", () => {
+    const sdp = answerSdp() + answerSdp().slice(answerSdp().indexOf("m=audio"));
+    const offered = preferRoomVoiceAudio({ type: "offer", sdp });
+    const sections = parse(offered.sdp!).media;
+    expect(sections.filter(media => media.type === "audio").map(media => media.fmtp[0]?.config))
+      .toEqual(Array(2).fill("minptime=10;useinbandfec=1;stereo=0;maxaveragebitrate=510000"));
+    expect(sections.filter(media => media.type === "video")).toEqual(parse(sdp).media.filter(media => media.type === "video"));
+    expect(preferRoomVoiceAudio(offered)).toEqual(offered);
+  });
   it("adds exact stereo and bitrate tokens without changing FEC or video fmtp", () => {
     const result = preferScreenAudioStereo({
       type: "answer",

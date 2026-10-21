@@ -53,14 +53,16 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   the known failure boundary: unknown/session/settings failures must not default
   to capture advice, and retiring a share must retain a known App control or
   media-connection failure instead of replacing it with a generic stop notice.
-- Host couch: each Viewer has one round lamp. Grey means waiting for the share,
-  blue means waiting for the media path, green means committed `mediaReady`, and
-  amber means a recent receive freeze. The Host's own pawn has no duplicate
+- Host couch: each Viewer has one round lamp. Green can mean room presence,
+  a committed voice route or picture readiness; the label and comic identify
+  which fact is available. Blue means an active media path is still being built,
+  and amber means a recent picture receive freeze. The Host's own pawn has no duplicate
   lamp. `deriveParticipantStatus` supplies both the couch and Host overview;
   neither stores another copy of the status.
-- Viewer couch: pawns have no round lamps. While awaiting media readiness a
-  pawn's body breathes gently; it becomes still when ready. This expresses the
-  same roster fact without claiming to know other Viewers' quality.
+- Viewer couch: pawns have no round lamps. While awaiting an active media path a
+  pawn's body breathes gently; idle room members and connected voice participants
+  do not wait for a picture to become still. This expresses the same room facts
+  without claiming to know other Viewers' quality.
 - Header: the page's connection to the room server. Its control-link comics
   show a Browser and server, not a failed video path. A media-route failure can
   coexist with a healthy server connection, and vice versa.
@@ -112,8 +114,12 @@ small source can legitimately need little data. Do not introduce UI thresholds
 or a new quality score.
 
 Current roster messages expose committed `mediaReady` to both roles, not a
-complete remote quality/failure state. Missing readiness means waiting or
-recovery, not confirmed disconnection; departed participants leave the roster.
+complete remote quality/failure state. Room voice supplies its own committed
+upstream. Sofa status, topology and connection details use one projection of
+these facts without setting picture readiness from a voice connection. Voice-only
+details show that route without inventing picture metrics. Missing readiness
+means waiting only when the corresponding media is requested, not confirmed
+disconnection; departed participants leave the roster.
 Viewer receive evidence is shared with its parent and the Host, not with every
 other Viewer. No additional remote-quality broadcast is needed.
 

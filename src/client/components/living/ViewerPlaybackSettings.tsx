@@ -51,7 +51,7 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotat
       {!vis && <p>{t(pictureFit === "cover" ? "playback.fitCrop" : pictureFit === "fill" ? "playback.fitStretch" : "playback.fitFull")}</p>}
       {displayActions}
     </section>
-    <section aria-label={t("playback.connection")}>
+    {(route || relayVolunteer || reconnect) && <section aria-label={t("playback.connection")}>
       <div className="lr-viewer-settings-heading">
         <h3><Glyph name="branch" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.connection")}</span></h3>
         {reconnect}
@@ -83,6 +83,6 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotat
         </RowGroup>
         {!vis && <p>{t("playback.relayVolunteerHint")}</p>}
       </div>}
-    </section>
+    </section>}
   </div>;
 }

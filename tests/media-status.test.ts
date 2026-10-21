@@ -6,6 +6,7 @@ import {
   type ViewerPresentationAction,
 } from "../src/client/media/viewer-presentation";
 import { deriveHostStatus, deriveParticipantStatus, deriveViewerStatus } from "../src/client/ui/media-status";
+import type { RoomVoiceState } from "../src/shared/protocol";
 
 const playingActions: ViewerPresentationAction[] = [
   { type: "access", access: "ready" },
@@ -152,5 +153,19 @@ describe("media status projection", () => {
       .toMatchObject({ labelKey: "state.peer.routing", comic: "signal-connecting" });
     expect(deriveParticipantStatus({ mediaReady: true, upstream: { kind: "sfu" } }, true))
       .toMatchObject({ tone: "live", comic: "media-ready" });
+  });
+
+  it("keeps room presence and voice connected after the picture stops", () => {
+    const viewer = { peerId: "viewer", upstream: { kind: "none" as const } };
+    const voice: RoomVoiceState = { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: "host",
+      members: [{ peerId: "viewer", connected: true, joined: true, upstream: { kind: "sfu" } }],
+      publications: [], connections: [], unavailable: [] };
+    expect(deriveParticipantStatus(viewer, false)).toMatchObject({ tone: "live", labelKey: "state.peer.present" });
+    expect(deriveParticipantStatus(viewer, false, undefined, voice)).toMatchObject({ tone: "live", labelKey: "state.peer.voiceConnected" });
+    expect(deriveParticipantStatus(viewer, true, undefined, voice)).toMatchObject({ labelKey: "state.peer.voiceConnected" });
+    voice.members[0]!.upstream = { kind: "none" };
+    expect(deriveParticipantStatus(viewer, false, undefined, voice)).toMatchObject({ tone: "busy" });
+    voice.enabled = false;
+    expect(deriveParticipantStatus(viewer, false, undefined, voice)).toMatchObject({ labelKey: "state.peer.present" });
   });
 });

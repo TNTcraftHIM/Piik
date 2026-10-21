@@ -28,9 +28,16 @@ import { SharingSettings } from "../components/living/SharingSettings";
 import { HostShareControls } from "../components/living/HostShareControls";
 import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import { RoomInteractions } from "../components/living/RoomInteractions";
-import { RoomChatOverlay } from "../components/living/RoomChatOverlay";
+import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
+import { PlaybackControls } from "../components/living/PlaybackControls";
+import { useTheaterMode } from "../components/living/use-theater-mode";
+import { isPictureInPicture } from "../components/living/use-picture-in-picture";
+import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
+import type { VideoFit } from "../media/video-geometry";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
+import { useRoomVoiceState } from "../room-voice/use-room-voice-state";
+import { participantConnection } from "../lib/participant-connection";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { HostAudio } from "../media/host-audio";
 import {
@@ -136,7 +143,7 @@ import {
   qualitySettingsEqual,
   qualitySettingsLabel,
   screenAudioBitrate,
-  MAX_SCREEN_AUDIO_BITRATE,
+  MAX_AUDIO_SEND_BITRATE,
   setMediaPaused,
   videoQualitySettingsEqual,
   type QualitySettings,
@@ -384,6 +391,7 @@ export function HostPage({
   const audioAvailableRef = useRef(false);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
+  const roomVoice = useRoomVoiceState(roomVoiceSession);
   const [cameraDevice, setCameraDevice] = useState("");
   const [nativeActive, setNativeActive] = useState(false);
   const [remoteControlState, setRemoteControlState] = useState<RemoteControlState | null>(null);
@@ -546,6 +554,10 @@ export function HostPage({
   const [changingQuality, setChangingQuality] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
   const [localPreviewPaused, setLocalPreviewPaused] = useState(false);
+  const previewPausedByUser = useRef(false);
+  const [theaterMode, setTheaterMode] = useTheaterMode();
+  const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
+  const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
   const [joiningRoom, setJoiningRoom] = useState(false);
@@ -670,6 +682,10 @@ export function HostPage({
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
     }
+    if (!stream) {
+      previewPausedByUser.current = false;
+      setTheaterMode(false);
+    }
   }, [stream]);
 
   useEffect(() => {
@@ -692,6 +708,7 @@ export function HostPage({
       const shouldPause = shouldPauseLocalPreview(
         document.visibilityState,
         document.hasFocus(),
+        isPictureInPicture(video),
       );
       if (document.visibilityState !== "visible") {
         resetSenderQualityAuthority();
@@ -703,7 +720,7 @@ export function HostPage({
         video.pause();
         return;
       }
-      if (streamRef.current) {
+      if (streamRef.current && !previewPausedByUser.current) {
         void video.play().catch(() => undefined);
       }
     };
@@ -712,12 +729,19 @@ export function HostPage({
     window.addEventListener("blur", syncPreviewPlayback);
     window.addEventListener("focus", syncPreviewPlayback);
     window.addEventListener("pagehide", resetSenderQualityAuthority);
+    const video = videoRef.current;
+    video?.addEventListener("enterpictureinpicture", syncPreviewPlayback);
+    video?.addEventListener("leavepictureinpicture", syncPreviewPlayback);
+    video?.addEventListener("webkitpresentationmodechanged", syncPreviewPlayback);
     syncPreviewPlayback();
     return () => {
       document.removeEventListener("visibilitychange", syncPreviewPlayback);
       window.removeEventListener("blur", syncPreviewPlayback);
       window.removeEventListener("focus", syncPreviewPlayback);
       window.removeEventListener("pagehide", resetSenderQualityAuthority);
+      video?.removeEventListener("enterpictureinpicture", syncPreviewPlayback);
+      video?.removeEventListener("leavepictureinpicture", syncPreviewPlayback);
+      video?.removeEventListener("webkitpresentationmodechanged", syncPreviewPlayback);
     };
   }, [stream]);
 
@@ -2735,7 +2759,7 @@ export function HostPage({
     remoteInputPeersRef.current = [];
     void getRuntimeCapabilities().then(capabilities => {
       if (signalRef.current === signal && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
-      if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice());
+      if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice(capabilities.roomVoiceBitrate));
       if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
       if (signalRef.current === signal && capabilities.audioPresence) signal.enableAudioPresence();
     }).catch(() => { /* Optional input does not block sharing. */ });
@@ -3509,7 +3533,7 @@ export function HostPage({
     return {
       key: viewer.peerId,
       name: viewer.label,
-      status: deriveParticipantStatus(viewer, phase === "live", viewerQualityEvidence.get(viewer.peerId)),
+      status: deriveParticipantStatus(viewer, phase === "live", viewerQualityEvidence.get(viewer.peerId), roomVoice),
     };
   });
 
@@ -3517,10 +3541,16 @@ export function HostPage({
     route: "p2p" | "sfu" | null;
     metrics: ConnectionMetrics | null;
     direction: "send" | "receive";
-    tag?: { icon: "loader"; label: string };
+    tag?: { icon: "loader" | "headphones"; label: string };
     error: MediaFailure | null;
   };
   const detailForViewer = (viewer: (typeof viewers)[number]): ViewerDetail => {
+    const connection = participantConnection(viewer, roomVoice);
+    if (connection.medium === "voice" && connection.ready) return {
+      route: connection.upstream.kind === "sfu" ? "sfu" : "p2p",
+      metrics: null, direction: "receive", error: null,
+      tag: { icon: "headphones", label: t("state.peer.voiceConnected") },
+    };
     const snapshot =
       viewer.upstream.kind === "peer" && viewer.upstream.peerId === hostPeerId
         ? peerSnapshots.get(viewer.peerId)
@@ -3551,7 +3581,7 @@ export function HostPage({
           : null,
       metrics: detailMetrics,
       direction: hasCurrentQualityEvidence ? "receive" : "send",
-      tag: hasCommittedMedia
+      tag: hasCommittedMedia || phase !== "live" && connection.medium !== "voice"
         ? undefined
         : {
             icon: "loader",
@@ -3607,9 +3637,9 @@ export function HostPage({
   const titleContent = titleFrames(hostStatus.titleFrameKey);
   useDocumentTitle([room?.roomId, titleContent.label, hostStatus.titleMarker], titleContent.variations,
     `${lang}:${vis}:${hostStatus.titleFrameKey}:${room?.roomId ?? ""}`);
-  const audioBitrateCeiling = Math.min(MAX_SCREEN_AUDIO_BITRATE, nativeActive
-    ? nativeClientRef.current?.health.nativeMedia.maxAudioBitrate ?? MAX_SCREEN_AUDIO_BITRATE
-    : MAX_SCREEN_AUDIO_BITRATE);
+  const audioBitrateCeiling = Math.min(MAX_AUDIO_SEND_BITRATE, nativeActive
+    ? nativeClientRef.current?.health.nativeMedia.maxAudioBitrate ?? MAX_AUDIO_SEND_BITRATE
+    : MAX_AUDIO_SEND_BITRATE);
   const videoLimits = videoCaptureLimits(nativeActive ? nativeClientRef.current?.health.nativeMedia : undefined);
 
   return (
@@ -3626,7 +3656,7 @@ export function HostPage({
         }
       />
 
-      <main className="lr-room">
+      <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
         <h1 className="visually-hidden">
           {t("host.title", { name: hostPresence?.displayName ?? displayName })}
         </h1>
@@ -3650,8 +3680,20 @@ export function HostPage({
             </>}
           >
             {stream ? (
-              <video ref={videoRef} autoPlay muted playsInline />
+              <video ref={videoRef} muted playsInline tabIndex={0}
+                style={{ objectFit: pictureFit }} aria-label={t("host.stageAria")} />
             ) : null}
+            {stream && <PlaybackControls videoRef={videoRef} stream={stream}
+              audioAvailable={audioAvailableRef.current}
+              canPlay={phase === "live" && !nativeSources && !sharingPaused && !localPreviewPaused}
+              theaterMode={theaterMode} onToggleTheater={() => setTheaterMode(value => !value)}
+              onPlay={() => { previewPausedByUser.current = false; void videoRef.current?.play().catch(() => undefined); }}
+              onPause={() => { previewPausedByUser.current = true; }}
+              overlayAction={<RoomChatToggle session={interactionSession} />}
+              settings={{ pictureFit, pictureRotation,
+                setPictureFit: fit => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
+                setPictureRotation: rotation => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
+              }} />}
             <RoomChatOverlay session={room ? interactionSession : null}
               visible={phase === "live" && !nativeSources && !sharingPaused && !(switchingSource && !sourceSwitchRef.current?.audioOnly) && !localPreviewPaused} />
             {nativeSources ? (

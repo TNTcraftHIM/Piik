@@ -126,25 +126,13 @@ ul { margin: 0; padding: 0; list-style: none; }
   border-radius: 999px;
   background: var(--wall-2);
 }
-.lr-leds i {
-  width: 6px; height: 5px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--ink) 58%, var(--wall-2));
-  transition: background 300ms ease;
-}
-.lr-connection-bars { display: inline-flex; align-items: flex-end; gap: 3px; height: 15px; }
-.lr-connection-bars i:nth-child(2) { height: 9px; }
-.lr-connection-bars i:nth-child(3) { height: 13px; }
-.lr-leds[data-state="live"] i { background: var(--live); }
-.lr-leds[data-state="busy"] i:nth-child(-n+2) { animation: lr-led-chase 1s ease-in-out infinite; background: var(--warn); }
-.lr-leds[data-state="busy"] i:nth-child(2) { animation-delay: .15s; }
-.lr-leds[data-state="warn"] i:nth-child(-n+2) { background: var(--warn); animation: lr-led-beat 1.1s ease-in-out infinite; }
-.lr-leds[data-state="bad"] i:first-child { background: var(--danger); }
+.lr-leds > svg { flex: none; color: var(--muted); }
+.lr-leds[data-state="live"] > svg { color: var(--live); }
+.lr-leds:is([data-state="busy"], [data-state="warn"]) > svg { color: var(--warn); animation: lr-led-turn 1.5s linear infinite; }
+.lr-leds[data-state="bad"] > svg { color: var(--danger); }
 .lr-leds-label { margin-left: 4px; font-size: 11.5px; font-weight: 700; opacity: .8; white-space: nowrap; }
 
-/* Informative bars retain contrast throughout their small status gesture. */
-@keyframes lr-led-beat { 50% { transform: scale(.8); } }
-@keyframes lr-led-chase { 50% { transform: translateY(-2px); } }
+@keyframes lr-led-turn { to { transform: rotate(360deg); } }
 
 @keyframes lr-blink { 50% { opacity: .3; } }
 

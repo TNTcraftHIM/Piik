@@ -1,6 +1,8 @@
-import { useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Btn } from "../components/living/primitives";
 import { MicrophoneSettings } from "../components/living/MicrophoneSettings";
+import { AudioBitrateControl } from "../components/living/QualityPresets";
+import { MAX_AUDIO_SEND_BITRATE } from "../media/quality";
 import { AudioVolumeControl } from "../components/living/AudioVolumeControl";
 import { AudioVolumeMenu } from "../components/living/AudioVolumeMenu";
 import { PawnSvg } from "../components/living/Pawn";
@@ -10,6 +12,7 @@ import { labelParticipantNames } from "../lib/viewer-presence";
 import { useCopy, type CopyKey } from "../ui/copy";
 import { Glyph, type GlyphName } from "../ui/icons";
 import type { RoomVoiceSession, RoomVoiceSnapshot } from "./session";
+import { MicrophoneLevel } from "./MicrophoneLevel";
 import "./room-voice.css";
 
 export type RoomVoiceView = Pick<RoomVoiceSession, "subscribe" | "getSnapshot" | "resumeAudio" | "command" |
@@ -36,8 +39,7 @@ export function RoomVoiceControls({ session }: Props) {
   const { t, vis } = useCopy();
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const me = state.room?.members.find(member => member.peerId === state.peerId);
-  const levels = useVoiceLevels(session, state.microphone, true), meterId = useId();
-  const level = Math.min(1, (levels.get(state.peerId) ?? 0) * 5);
+  const levels = useVoiceLevels(session, state.microphone, true);
   const microphoneUnavailable = !state.microphone && !state.capturePending && !navigator.mediaDevices?.getUserMedia;
   const joined = Boolean(me?.joined);
   const host = state.role === "host";
@@ -56,10 +58,7 @@ export function RoomVoiceControls({ session }: Props) {
             : state.capturePending ? "hint-close" : undefined}
           hintText={microphoneUnavailable ? "voice.error.microphoneUnavailable" : "voice.captureCancel"}
           pressed={state.microphone} busy={state.capturePending} disabled={!state.connected || microphoneUnavailable}
-          iconOverlay={state.microphone && !state.capturePending && <svg className="lr-voice-mic-level" viewBox="0 0 24 24" aria-hidden="true">
-            <defs><clipPath id={meterId}><rect x="9.7" y="2.7" width="4.6" height="11.6" rx="2.3" /></clipPath></defs>
-            <rect x="9.7" y={14.3 - 11.6 * level} width="4.6" height={11.6 * level} clipPath={`url(#${meterId})`} />
-          </svg>}
+          iconOverlay={state.microphone && !state.capturePending && <MicrophoneLevel level={levels.get(state.peerId) ?? 0} />}
           onClick={() => {
             session.resumeAudio();
             if (state.microphone || state.capturePending) session.stopMicrophone(); else void session.startMicrophone();
@@ -85,7 +84,6 @@ export function RoomVoiceControls({ session }: Props) {
 }
 
 function memberStatus(member: NonNullable<RoomVoiceSnapshot["room"]>["members"][number]): { label: CopyKey; icon: GlyphName } {
-  if (!member.connected) return { label: "voice.offline", icon: "wifiOff" };
   if (member.publicationId) return { label: "voice.microphoneActive", icon: "microphone" };
   return member.joined ? { label: "voice.microphoneInactive", icon: "microphoneOff" } : { label: "voice.outside", icon: "door" };
 }
@@ -95,6 +93,9 @@ export function RoomVoiceSettings({ session }: Props) {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const { t } = useCopy();
   return <div className="lr-floating-scroll lr-interaction-settings lr-voice-settings">
+    {state.role === "host" && state.room?.bitrate !== undefined && <AudioBitrateControl purpose="voice"
+      value={state.room.bitrate} max={MAX_AUDIO_SEND_BITRATE} disabled={!state.connected}
+      onChange={bitrate => session.command({ action: "bitrate", bitrate })} />}
     <MicrophoneSettings host={state.role === "host"} enabled={state.microphone} disabled={state.capturePending}
       loadDevices={session.microphones} deviceId={state.input.deviceId} onDevice={deviceId => void session.configureInput({ deviceId })}
       volume={state.input.volume} onVolume={value => session.setVolume(value)}
@@ -114,7 +115,7 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
   const { t, vis } = useCopy();
   const me = state.room?.members.find(member => member.peerId === state.peerId);
   const levels = useVoiceLevels(session, Boolean(me?.joined));
-  const members = labelParticipantNames((state.room?.members ?? []).map(member => ({
+  const members = labelParticipantNames((state.room?.members ?? []).filter(member => member.connected).map(member => ({
     ...member, displayName: names?.get(member.peerId) ?? t("voice.participant"),
   })));
   return <div className="lr-room-voice">
@@ -133,7 +134,7 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
         const speaking = !!member.publicationId && (levels.get(member.peerId) ?? 0) > .01;
         return <article className="lr-voice-member" key={member.peerId} data-room-peer={member.peerId}>
           <div className="lr-voice-identity">
-            {onSelectParticipant && member.connected ? <Tooltip kind="hint-reaction-picker"
+            {onSelectParticipant ? <Tooltip kind="hint-reaction-picker"
               text={vis ? undefined : t("interaction.withPerson", { name: member.label })}>
               <button type="button" className="lr-voice-avatar"
               aria-label={t("interaction.withPerson", { name: member.label })}
@@ -141,8 +142,10 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
               <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />
             </button></Tooltip> : <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />}
             <div><Tooltip overflow={{ text: member.label, selector: ".lr-voice-name" }}><b><span className="lr-voice-name">{member.label}</span>{member.peerId === state.peerId && <span className={vis ? "visually-hidden" : undefined}>{` · ${t("voice.self")}`}</span>}</b></Tooltip>
-              <small><Glyph name={status.icon} size={14} />
-                <span className="lr-voice-activity" data-speaking={speaking || undefined} aria-hidden="true" />
+              <small><span className="lr-voice-member-mic" data-speaking={speaking || undefined}>
+                <Glyph name={status.icon} size={20} />
+                {member.publicationId && <MicrophoneLevel level={levels.get(member.peerId) ?? 0} />}
+              </span>
                 <span className={vis ? "visually-hidden" : undefined}>{t(status.label)}</span>
                 {speaking && <span className="visually-hidden">{t("voice.speaking")}</span>}</small></div>
           </div>

@@ -221,7 +221,7 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 	case "set-relay-volunteer":
 		return decodeSetRelayVolunteer(data)
 	case "subscribe-room-voice":
-		return decodeEmptyClientMessage(data, SubscribeRoomVoiceMessage{Type: messageType})
+		return decodeSubscribeRoomVoice(data)
 	case "room-voice-command":
 		return decodeRoomVoiceCommand(data)
 	case "room-voice-signal":

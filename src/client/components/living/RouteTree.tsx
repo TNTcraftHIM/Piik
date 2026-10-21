@@ -1,10 +1,12 @@
 // The connection topology as a real tree: the host roots direct P2P
 // viewers and the SFU node; relay children hang off their parent viewer.
 // Data comes from deriveParticipantTopology.
-import { memo, useState, useSyncExternalStore } from "react";
+import { memo, useState } from "react";
 
 import type { LabeledViewerPresence } from "../../lib/viewer-presence";
 import type { RoomVoiceSession } from "../../room-voice/session";
+import { useRoomVoiceState } from "../../room-voice/use-room-voice-state";
+import { participantConnection } from "../../lib/participant-connection";
 import { useElementWidth } from "../../lib/use-element-width";
 import {
   deriveParticipantTopology,
@@ -31,8 +33,6 @@ interface TreeNode {
 
 const ROW_BASE = 40;
 const DEFAULT_TOPOLOGY_WIDTH = 640;
-const noVoiceSubscription = () => () => {};
-const noVoiceSnapshot = () => null;
 const PAWN_CENTER_X = 20;
 const PAWN_SCALE = 0.82;
 const PAWN_CENTER_Y = 24;
@@ -116,14 +116,10 @@ export const RouteTree = memo(function RouteTree({
   const [routeRef, containerWidth] = useElementWidth(DEFAULT_TOPOLOGY_WIDTH);
   const [hoveredPeerId, setHoveredPeerId] = useState<string | null>(null);
   const layoutConfig = topologyLayoutForWidth(containerWidth);
-  const roomVoice = useSyncExternalStore(voice?.subscribe ?? noVoiceSubscription, voice?.getSnapshot ?? noVoiceSnapshot, noVoiceSnapshot)?.room;
-  // Presence retains picture readiness. Only this diagram projects the shared
-  // room graph, including connected voice while no picture is being published.
+  const roomVoice = useRoomVoiceState(voice);
   const topologyViewers = viewers.map((viewer): LabeledViewerPresence => {
-    if (viewer.mediaReady || !roomVoice?.enabled) return viewer;
-    const member = roomVoice.members.find(member => member.peerId === viewer.peerId);
-    return member?.connected && member.joined && member.upstream.kind !== "none"
-      ? { ...viewer, upstream: member.upstream, mediaReady: true } : viewer;
+    const connection = participantConnection(viewer, roomVoice);
+    return { ...viewer, upstream: connection.upstream, mediaReady: connection.ready ? true : undefined };
   });
   const topology = deriveParticipantTopology(hostPeerId, topologyViewers);
   const selectable = new Set(

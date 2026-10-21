@@ -31,6 +31,8 @@ import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
+import { useRoomVoiceState } from "../room-voice/use-room-voice-state";
+import { participantConnection } from "../lib/participant-connection";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { getRuntimeCapabilities } from "../lib/api";
 import { participantColor } from "../components/living/participant-color";
@@ -277,6 +279,7 @@ export function ViewerPage({
   const signalRef = useRef<SignalingClient | null>(null);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
+  const roomVoice = useRoomVoiceState(roomVoiceSession);
   const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
@@ -663,7 +666,7 @@ export function ViewerPage({
     void getRuntimeCapabilities().then(capabilities => {
       if (active && capabilities.audioPresence) signal.enableAudioPresence();
       if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
-      if (active && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice());
+      if (active && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice(capabilities.roomVoiceBitrate));
       if (active) {
         relayVolunteerAvailable = capabilities.relayVolunteer && !capabilities.sfuOnly;
         setRelayVolunteerSupported(relayVolunteerAvailable);
@@ -2269,11 +2272,13 @@ export function ViewerPage({
     return {
       key: viewer.peerId,
       name: viewer.label,
-      status: deriveParticipantStatus(viewer, presentationState.host === "online" || presentationState.host === "paused"),
+      status: deriveParticipantStatus(viewer, presentationState.host === "online" || presentationState.host === "paused", undefined, roomVoice),
       you: isSelf,
       selectable: isChild ? undefined : false,
     };
   });
+  const ownVoiceRoute = participantConnection({ peerId: selfPeerId ?? undefined, upstream: { kind: "none" } }, roomVoice).upstream;
+  const detailRoute = routePresentation.route ?? (ownVoiceRoute.kind === "peer" ? "p2p" : ownVoiceRoute.kind === "sfu" ? "sfu" : null);
   const selectableRelayChildren = viewers
     .filter(
       (viewer) =>
@@ -2554,7 +2559,7 @@ export function ViewerPage({
                     expanded={showConnectionDetails}
                     controls="viewer-details-panel"
                     disabled={
-                      !routePresentation.route &&
+                      !detailRoute &&
                       !relaySnapshot &&
                       freshRelayChildEvidence.length === 0
                     }
@@ -2585,12 +2590,13 @@ export function ViewerPage({
               </div>
             </div>
           </div>
-          {showConnectionDetails && routePresentation.route ? (
+          {showConnectionDetails && detailRoute ? (
             <Row sub>
               <div id="viewer-details-panel" style={{ display: "contents" }}>
-                <MeterTag icon="arrowDown" label={t("stats.title")} />
-                <RouteGlyph route={routePresentation.route} />
-                {routeMetrics ? (
+                <MeterTag icon={routePresentation.route ? "arrowDown" : "headphones"}
+                  label={t(routePresentation.route ? "stats.title" : "state.peer.voiceConnected")} />
+                <RouteGlyph route={detailRoute} />
+                {routePresentation.route && routeMetrics ? (
                   <MetricCells
                     metrics={routeMetrics}
                     direction="receive"

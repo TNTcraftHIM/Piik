@@ -70,7 +70,7 @@ export function captureFramerateCeiling(size: QualityResolution, limits = VIDEO_
 }
 
 export function supportsCaptureProfile(profile: QualityProfile, limits = VIDEO_CAPTURE_LIMITS,
-  maxAudioBitrate = MAX_SCREEN_AUDIO_BITRATE): boolean {
+  maxAudioBitrate = MAX_AUDIO_SEND_BITRATE): boolean {
   return qualitySettingsSchema.safeParse(profile).success &&
     Number.isInteger(profile.maxFramerate) && profile.maxFramerate >= MIN_VIDEO_FRAMERATE &&
     profile.maxFramerate <= captureFramerateCeiling(profile.resolution, limits) &&
@@ -137,8 +137,8 @@ export const SCREEN_AUDIO_BITRATES = {
 } as const;
 export type ScreenAudioPreset = keyof typeof SCREEN_AUDIO_BITRATES;
 // Current 20 ms output leaves room for RTP/SRTP overhead within a 1200-byte packet.
-export const MAX_SCREEN_AUDIO_BITRATE = 320_000;
-export const SCREEN_AUDIO_RECEIVE_MAX_BITRATE = MAX_AUDIO_BITRATE;
+export const MAX_AUDIO_SEND_BITRATE = 320_000;
+export const OPUS_RECEIVE_MAX_BITRATE = MAX_AUDIO_BITRATE;
 
 export function startupVideoProfile(
   profile: QualityProfile,
@@ -458,10 +458,10 @@ export async function configureVideoSender(
   return senderParameterReadback(requested, applied);
 }
 
-export function screenAudioSenderCeiling(current: RTCRtpSendParameters, requestedMaxBitrate: number): number {
+export function audioSenderCeiling(current: RTCRtpSendParameters, requestedMaxBitrate: number): number {
   // Some Browsers accept setParameters above the negotiated Opus receive limit.
   // Keep that limit on this sender, never on the shared capture or sibling edges.
-  let ceiling = Math.min(requestedMaxBitrate, MAX_SCREEN_AUDIO_BITRATE);
+  let ceiling = Math.min(requestedMaxBitrate, MAX_AUDIO_SEND_BITRATE);
   for (const codec of current.codecs ?? []) {
     if (codec.mimeType.toLowerCase() !== "audio/opus") continue;
     let receiveLimit: number | undefined;
@@ -488,7 +488,7 @@ export function screenAudioSenderCeiling(current: RTCRtpSendParameters, requeste
   return ceiling;
 }
 
-export async function configureScreenAudioSender(
+export async function configureAudioSender(
   sender: RTCRtpSender,
   requestedMaxBitrate: number,
 ): Promise<AudioSenderParameterReadback> {
@@ -500,7 +500,7 @@ export async function configureScreenAudioSender(
   if (parameters.encodings.length === 0) {
     parameters.encodings = [{}];
   }
-  parameters.encodings[0]!.maxBitrate = screenAudioSenderCeiling(current, requestedMaxBitrate);
+  parameters.encodings[0]!.maxBitrate = audioSenderCeiling(current, requestedMaxBitrate);
   await sender.setParameters(parameters);
   const appliedMaxBitrate =
     sender.getParameters().encodings[0]?.maxBitrate ?? null;

@@ -6,6 +6,10 @@ type PictureVideo = HTMLVideoElement & {
   webkitSetPresentationMode?: (mode: string) => void;
 };
 
+export function isPictureInPicture(video: PictureVideo): boolean {
+  return document.pictureInPictureElement === video || video.webkitPresentationMode === "picture-in-picture";
+}
+
 export async function leavePictureInPicture(video: PictureVideo): Promise<void> {
   if (document.pictureInPictureElement === video) {
     await document.exitPictureInPicture();
@@ -28,7 +32,7 @@ export function usePictureInPicture(videoRef: RefObject<HTMLVideoElement | null>
         (document.pictureInPictureEnabled && video.requestPictureInPicture) ||
         (video.webkitSetPresentationMode && video.webkitSupportsPresentationMode?.("picture-in-picture")),
       ));
-      setActive(document.pictureInPictureElement === video || video.webkitPresentationMode === "picture-in-picture");
+      setActive(isPictureInPicture(video));
       setFailed(false);
     };
     const events = ["enterpictureinpicture", "leavepictureinpicture", "webkitpresentationmodechanged", "loadedmetadata", "emptied"];
@@ -45,7 +49,7 @@ export function usePictureInPicture(videoRef: RefObject<HTMLVideoElement | null>
     if (!video) return;
     setFailed(false);
     try {
-      if (document.pictureInPictureElement === video || video.webkitPresentationMode === "picture-in-picture") {
+      if (isPictureInPicture(video)) {
         await leavePictureInPicture(video);
       } else {
         if (document.pictureInPictureEnabled && video.requestPictureInPicture) {

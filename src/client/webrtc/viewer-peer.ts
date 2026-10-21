@@ -14,7 +14,7 @@ import {
   decodedVideoFrames,
   type StatsAccumulator,
 } from "./stats";
-import { preferScreenAudioStereo } from "./screen-audio-sdp";
+import { preferScreenAudioStereo } from "./opus-receive-sdp";
 import { requireReceivingVideo, VideoReceiveRejectedError } from "./video-codec";
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 import {

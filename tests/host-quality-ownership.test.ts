@@ -4,7 +4,7 @@ import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import {
   QUALITY_PROFILES, qualitySettingsEqual, qualitySettingsLabel, qualityResolutionEqual,
-  screenAudioBitrate, videoQualitySettingsEqual, supportsCaptureProfile, videoCaptureLimits, MAX_SCREEN_AUDIO_BITRATE,
+  screenAudioBitrate, videoQualitySettingsEqual, supportsCaptureProfile, videoCaptureLimits, MAX_AUDIO_SEND_BITRATE,
   type QualitySettings,
 } from "../src/client/media/quality";
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
@@ -118,7 +118,7 @@ function fixture(launchedByClient = true) {
     applyCaptureProfile: vi.fn(async (_stream: unknown, profile: QualitySettings) => { physical = profile; }),
     captureDetails: () => ({}),
     qualitySettingsEqual, qualityResolutionEqual, videoQualitySettingsEqual, screenAudioBitrate, qualitySettingsLabel,
-    supportsCaptureProfile, videoLimits: videoCaptureLimits(), audioBitrateCeiling: MAX_SCREEN_AUDIO_BITRATE,
+    supportsCaptureProfile, videoLimits: videoCaptureLimits(), audioBitrateCeiling: MAX_AUDIO_SEND_BITRATE,
     say: (key: string) => key, syncHostSfuQualityWarning: () => null,
     NativeSenderPeer, discardPreparedHostChild: vi.fn(), removePeer: vi.fn(), startPeer: vi.fn(async () => undefined),
     nativePreviewTailRef: ref(Promise.resolve()), setSwitchingSource: vi.fn(),

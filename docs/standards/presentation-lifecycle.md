@@ -48,6 +48,8 @@ stop capture. Microphone, admission and connection states stay literal; an
 enabled microphone is not proof that someone is speaking. The
 [room voice contract](./rooms-access.md#room-voice) owns channel activation and
 membership, independently of the window and picture publication.
+The visible voice roster follows connected room members immediately; the
+server's reconnect grace does not keep a departed person on screen.
 
 On capable desktop browsers, the interaction window can move to a Document
 Picture-in-Picture window. It retains the admitted room session's messages,
@@ -242,8 +244,12 @@ overlays or the custom bar. See the [PiP specification](https://w3c.github.io/pi
 and [Safari integration](https://developer.apple.com/documentation/webkitjs/adding_picture_in_picture_to_your_safari_media_controls).
 
 Local playback actions never change Host capture or another Viewer. Reconnect
-retains the existing route-operation owner. The Host preview remains muted and
-has no media controls; explicit Host actions own authoritative pause and stop.
+retains the existing route-operation owner. The Host preview reuses the same
+local playback controls and starts muted. Local pause, listening, fit, rotation,
+theater and fullscreen affect only that preview; the separately labelled sharing
+controls own authoritative pause and stop. A hidden or unfocused Host page still
+suspends local preview, except while its video is in Picture-in-Picture. Returning
+to the page preserves an explicit local pause.
 
 Autoplay rejection exposes the play action. A connection, track object,
 or `playing` event alone is not proof that the current route is visible. The
@@ -282,8 +288,9 @@ black screen, ICE-connected state, or unproved `playing` event.
   cannot turn an unproved frame into playback or ordinary quality into failure.
 - The Host's couch and Viewer overview share the
   [participant projection](./media-status.md#projection-rules). The
-  Host's own pawn has no additional lamp. Committed `mediaReady` owns readiness;
+  Host's own pawn has no additional lamp. Committed `mediaReady` owns picture readiness;
   transport diagnostics and quality samples cannot override it in either direction.
+  Room presence and a committed voice route remain valid without a picture.
 - Viewers do not infer another Viewer's quality or diagnose missing readiness
   as terminal failure; roster readiness and quality evidence remain distinct.
 - An overlay explains the absence of a usable picture, authoritative Host pause,

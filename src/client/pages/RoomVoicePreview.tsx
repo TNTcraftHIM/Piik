@@ -8,7 +8,7 @@ function initialState(viewer: boolean): RoomVoiceSnapshot {
   return { peerId: viewer ? "preview-friend" : "preview-host", role: viewer ? "viewer" : "host", connected: true,
     microphone: false, capturePending: false, deafened: false, listeningVolume: 1, peerVolumes: new Map(), autoplayBlocked: false, error: null, muted: new Set(),
     input: { deviceId: "", volume: 1, voiceProcessing: true },
-    room: { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: "preview-host", publications: [], connections: [], unavailable: [],
+    room: { type: "room-voice-state", bitrate: 32_000, revision: 1, enabled: true, hostPeerId: "preview-host", publications: [], connections: [], unavailable: [],
       members: [
         { peerId: "preview-host", connected: true, joined: true,
           publicationId: viewer ? "preview-host-publication" : undefined, upstream: { kind: "none" } },
@@ -28,6 +28,7 @@ export function useRoomVoicePreview(viewer: boolean) {
         ? { ...member, publicationId: state.microphone ? "preview-publication" : undefined } : member),
     } };
     const command = (command: RoomVoiceCommand) => {
+      if (command.action === "bitrate") setState(current => ({ ...current, room: current.room && { ...current.room, bitrate: command.bitrate } }));
       if (command.action === "join" || command.action === "leave") {
         const joined = command.action === "join";
         setState(current => ({ ...current, microphone: joined && current.microphone,

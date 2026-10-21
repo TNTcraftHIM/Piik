@@ -82,6 +82,7 @@ func (s *Server) route(
 			NatPrediction:        s.config.NATPredictionEnabled && !(s.config.SFU != nil && s.config.SFU.Only),
 			RoomInteractions:     true,
 			RoomVoice:            true,
+			RoomVoiceBitrate:     true,
 			RelayVolunteer:       true,
 			RoomReactionIDs:      protocol.RoomReactionIDs,
 			RemoteInput:          true,

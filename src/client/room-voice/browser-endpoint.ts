@@ -3,6 +3,8 @@ import { observeDebugConnection } from "../lib/debug-webrtc";
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
 import type { MicrophoneInput } from "../media/microphone-input";
 import { ViewerAudio } from "../media/viewer-audio";
+import { configureAudioSender, audioSenderCeiling } from "../media/quality";
+import { preferRoomVoiceAudio } from "../webrtc/opus-receive-sdp";
 import { addRemoteIceCandidate, iceServersWithNatPrediction, natPredictionSurveyUrls, NatPredictionCandidateEmitter } from "../webrtc/nat-prediction";
 
 type VoiceSignal = Extract<ClientMessage, { type: "room-voice-signal" }>;
@@ -271,17 +273,26 @@ export class BrowserVoiceEndpoint {
 
   private async description(connection: Connection, sdp: RTCSessionDescriptionInit, revision: number): Promise<VoiceDescription> {
     connection.descriptionSent = false;
-    await this.wait(connection, () => connection.pc.setLocalDescription(sdp));
+    await this.wait(connection, () => connection.pc.setLocalDescription(preferRoomVoiceAudio(sdp)));
     const local = connection.pc.localDescription!;
     const tracks: VoiceDescription["tracks"] = [];
     for (const [publicationId, sender] of connection.senders) {
       const mid = connection.pc.getTransceivers().find(item => item.sender === sender)?.mid;
       if (mid === null || mid === undefined || !connection.config.send.includes(publicationId)) continue;
       tracks.push({ mid, publicationId });
-      const parameters = sender.getParameters();
-      if (parameters.encodings.length) { parameters.encodings[0]!.maxBitrate = 32_000; await this.wait(connection, () => sender.setParameters(parameters)); }
     }
+    await this.configureSenders(connection);
     return { revision, sdp: { type: local.type as "offer" | "answer", sdp: local.sdp }, tracks };
+  }
+  private async configureSenders(connection: Connection): Promise<void> {
+    const bitrate = this.state?.bitrate ?? 32_000;
+    for (const sender of connection.senders.values()) {
+      const parameters = sender.getParameters();
+      if (!parameters.encodings.length || !parameters.codecs?.length) continue;
+      if (parameters.encodings[0]?.maxBitrate !== audioSenderCeiling(parameters, bitrate)) {
+        await this.wait(connection, () => configureAudioSender(sender, bitrate));
+      }
+    }
   }
   private sendDescription(connection: Connection, description: VoiceDescription): void {
     if (!this.signal(connection, { description })) throw new Error("Voice signaling unavailable");
@@ -295,6 +306,7 @@ export class BrowserVoiceEndpoint {
       const connection = this.connections.get(config.connectionId) ?? this.create(config);
       try {
         await this.syncSenders(connection);
+        await this.configureSenders(connection);
         this.bindReceivers(connection);
         if (connection.pc.connectionState === "connected") this.report(connection, "connected");
         else if (connection.pc.connectionState === "failed" || connection.pc.connectionState === "closed") { this.report(connection, "failed"); continue; }
@@ -349,7 +361,7 @@ export class BrowserVoiceEndpoint {
       connection.dirty = false;
       const answer = await this.wait(connection, () => connection.pc.createAnswer());
       this.sendDescription(connection, await this.description(connection, answer, description.revision));
-    }
+    } else await this.configureSenders(connection);
   }
 
   private retire(connection: Connection): void {

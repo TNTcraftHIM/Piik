@@ -85,6 +85,7 @@ export class SignalingClient {
   private hostAudioAvailable: boolean | null = null;
   interactions: RoomInteractionSession | null = null;
   roomVoice: RoomVoiceSession | null = null;
+  private roomVoiceBitrate = false;
   private voiceIceConfig: IceConfig = { iceServers: [] };
   private socket: WebSocket | null = null;
   private stopped = false;
@@ -134,13 +135,14 @@ export class SignalingClient {
     if (this.authenticatedPeerId) this.send({ type: "subscribe-remote-input" });
   }
 
-  enableRoomVoice(): RoomVoiceSession | null {
+  enableRoomVoice(bitrate = false): RoomVoiceSession | null {
     if (this.stopped) return null;
+    this.roomVoiceBitrate = bitrate;
     if (!this.roomVoice) {
       this.roomVoice = new RoomVoiceSession(message => this.send(message), this.voiceIceConfig);
       if (this.authenticatedPeerId) {
         this.roomVoice.authenticated(this.authenticatedPeerId, this.identity.role);
-        this.send({ type: "subscribe-room-voice" });
+        this.send({ type: "subscribe-room-voice", ...(this.roomVoiceBitrate ? { bitrate: true as const } : {}) });
       }
     }
     return this.roomVoice;
@@ -466,7 +468,7 @@ export class SignalingClient {
         if (this.roomVoice) {
           this.roomVoice.updateIceConfig(message.iceConfig);
           this.roomVoice.authenticated(message.peerId, this.identity.role);
-          this.send({ type: "subscribe-room-voice" });
+          this.send({ type: "subscribe-room-voice", ...(this.roomVoiceBitrate ? { bitrate: true as const } : {}) });
         }
         if (this.remoteInputEnabled) this.send({ type: "subscribe-remote-input" });
         // Discovery can complete after the authentication request was sent.

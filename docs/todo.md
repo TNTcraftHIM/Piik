@@ -7,6 +7,16 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Room presentation follow-up acceptance.** Review the local candidate's
+  room/voice presence, immediate departure display, Host room-voice bitrate,
+  microphone activity, signaling indicator and Host local playback. The shared
+  route controller and outgoing sharing authority remain unchanged.
+- [ ] **Native quality on a bursty virtual-LAN path.** A live v2.3.0 observation
+  reproduced VP8 resolution/cadence drops and multi-second receive-buffer growth.
+  Raising the same connection's ceiling from 3 to 8 Mbps did not eliminate them.
+  Evidence is saved outside the checkout in `v2.3.0/live-7510/`. A Host report or
+  a same-path Browser-source comparison is needed to separate endpoint stalls
+  from transport congestion. The receiver alone does not establish a Piik defect.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the

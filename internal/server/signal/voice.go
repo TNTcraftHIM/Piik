@@ -16,6 +16,7 @@ type voiceMember struct {
 // are physical facets of router.controller's graph, never another topology.
 type roomVoice struct {
 	hostPeerID  string
+	bitrate     protocol.Int
 	revision    int64
 	members     map[string]*voiceMember
 	connections map[string]*voiceEdge
@@ -48,7 +49,7 @@ func (s *Server) voiceRoom(roomID string) *roomVoice {
 	}
 	v := s.voices[roomID]
 	if v == nil {
-		v = &roomVoice{members: make(map[string]*voiceMember), connections: make(map[string]*voiceEdge)}
+		v = &roomVoice{bitrate: 32_000, members: make(map[string]*voiceMember), connections: make(map[string]*voiceEdge)}
 		s.voices[roomID] = v
 	}
 	if host, ok := s.store.GetConnectedHost(roomID); ok {
@@ -110,6 +111,14 @@ func (s *Server) handleRoomVoiceCommand(sess *session, auth *authenticatedSessio
 		return
 	}
 	switch command.Action {
+	case "bitrate":
+		if auth.role != protocol.RoleHost || !sess.roomVoiceBitrate {
+			s.voiceError(sess, "not-allowed")
+			return
+		}
+		v.bitrate = command.Bitrate
+		s.syncRoomVoice(auth.roomID)
+		return
 	case "join":
 		if auth.role != protocol.RoleHost && !v.enabled() {
 			s.voiceError(sess, "not-enabled")

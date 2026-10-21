@@ -7,7 +7,7 @@ import {
   createStatsAccumulator,
   decodedVideoFrames,
 } from "../webrtc/stats";
-import { preferScreenAudioStereo } from "../webrtc/screen-audio-sdp";
+import { preferScreenAudioStereo } from "../webrtc/opus-receive-sdp";
 import { requireReceivingVideo, VideoReceiveRejectedError } from "../webrtc/video-codec";
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 import { SfuPeer, type SfuConnectionConfig } from "./peer";
