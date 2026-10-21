@@ -25,6 +25,7 @@ import (
 
 type consoleView struct {
 	mode, state, entry, invite string
+	certificate                string
 	protected                  bool
 	problem                    error
 	browserError               error
@@ -113,6 +114,7 @@ var consoleCopy = map[string][3]string{
 	"entry":                      {"Open in browser", "打开网页", "□"},
 	"launcher":                   {"App launcher", "App 启动页", "☆"},
 	"invite":                     {"Site address", "站点地址", "↗"},
+	"certificate":                {"Local certificate · SHA-256", "本地证书 · SHA-256", "TLS SHA-256"},
 	"access":                     {"Site access", "站点准入", ""},
 	"open":                       {"Open", "开放", "○"},
 	"password":                   {"Password protected", "已设置密码", "*"},
@@ -427,6 +429,9 @@ func (model consoleModel) content(styled bool) string {
 		}
 	}
 	accessPicture := ""
+	if !compact && model.view.certificate != "" {
+		fmt.Fprintf(&out, "\n%s\n%s\n", muted.Render(model.text("certificate")), model.view.certificate)
+	}
 	if !compact && model.view.entry != "" && (model.view.mode == "local" || model.view.mode == "link") {
 		access := "open"
 		if model.view.protected {

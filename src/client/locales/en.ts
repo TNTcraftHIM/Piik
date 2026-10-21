@@ -214,6 +214,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.lanAddress": "Local invitation address",
   "client.launch.chooseAddress": "Choose an address",
   "client.launch.lanHint": "Choose an address on the same network as your friends.",
+  "client.launch.localHTTPS": "Local invitations use HTTPS. Confirm the local certificate on your first visit.",
   "client.launch.lanUnavailable": "No local network address is available. Connect to a network and refresh this page.",
   "client.launch.localAccess": "Site passphrase (optional)",
   "client.launch.accessSettings": "Site passphrase",

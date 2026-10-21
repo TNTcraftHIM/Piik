@@ -81,8 +81,13 @@ func Local(options LocalOptions) (Config, error) {
 		return Config{}, errors.New("Local STUN URLs are invalid")
 	}
 
-	// Local is loopback/LAN HTTP; its origin always spells out the port.
-	origin := func(host string) string { return fmt.Sprintf("http://%s:%d", host, port) }
+	// Loopback keeps the Host's stable HTTP origin. Local invitations use TLS;
+	// the public tunnel still forwards the existing plain HTTP service.
+	lanScheme := "https"
+	if options.PublicOrigin != "" {
+		lanScheme = "http"
+	}
+	origin := func(scheme, host string) string { return fmt.Sprintf("%s://%s:%d", scheme, host, port) }
 	var publicBaseURL *url.URL
 	if options.PublicOrigin != "" {
 		parsed, err := publicHTTPSOrigin(options.PublicOrigin)
@@ -91,15 +96,15 @@ func Local(options LocalOptions) (Config, error) {
 		}
 		publicBaseURL = parsed
 	} else {
-		publicBaseURL = &url.URL{Scheme: "http", Host: fmt.Sprintf("%s:%d", publicAddress, port), Path: "/"}
+		publicBaseURL = &url.URL{Scheme: "https", Host: fmt.Sprintf("%s:%d", publicAddress, port), Path: "/"}
 	}
 
 	allowedOrigins := map[string]struct{}{
-		origin("localhost"): {},
-		origin("127.0.0.1"): {},
+		origin("http", "localhost"): {},
+		origin("http", "127.0.0.1"): {},
 	}
 	for _, address := range allowedAddresses {
-		allowedOrigins[origin(address)] = struct{}{}
+		allowedOrigins[origin(lanScheme, address)] = struct{}{}
 	}
 	allowedOrigins[Origin(publicBaseURL)] = struct{}{}
 

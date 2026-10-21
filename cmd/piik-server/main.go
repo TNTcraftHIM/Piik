@@ -27,6 +27,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/app"
 	"github.com/TNTcraftHIM/Piik/internal/server/config"
 	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
+	"github.com/TNTcraftHIM/Piik/internal/tlsconfig"
 )
 
 // shutdownTimeout bounds the ordered stop (signaling, listener, room store).
@@ -138,6 +139,9 @@ func serve(debug bool) (returnedErr error) {
 		"host", configuration.ListenHost, "port", port, "publicUrl", config.Origin(configuration.PublicBaseURL),
 		"sqlite", configuration.RoomDatabasePath != "", "siteAccessProtected", configuration.SiteAccessPassword != "",
 		"sfu", configuration.SFU != nil, "natPrediction", configuration.NATPredictionEnabled)
+	if configuration.TLS != nil {
+		logger.Info("HTTPS certificate", "sha256", tlsconfig.Fingerprint(configuration.TLS))
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	// One bounded background lookup never delays serving. Join it before closing

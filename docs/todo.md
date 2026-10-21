@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-20
+Last reviewed: 2026-10-21
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -59,12 +59,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Parked Product Work
 
-- **LAN HTTPS entry.** Assess for the next version so ordinary and virtual LANs
-  can use microphones and attended remote control without a public tunnel or
-  project-owned domain. Local self-signed HTTPS is a candidate; check browser
-  certificate exceptions, phone access and address/certificate lifetime before
-  choosing the entry flow. Retain the existing room and consent owners; do not
-  require global browser security overrides or automatic root-CA installation.
 - **Platform output.** A registered receiver may act as an ordinary Viewer after
   the [platform-output gate](./research/platform-output.md) passes.
 - **Additional languages.** Review community catalogs and rendered UI through

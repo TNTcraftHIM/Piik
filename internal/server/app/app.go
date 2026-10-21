@@ -18,6 +18,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -51,9 +52,9 @@ const (
 type Options struct {
 	// Config is the loaded server configuration; cmd owns config.Load / Local.
 	Config config.Config
-	// Listener is optional prebound TCP ownership transferred on successful New.
-	// It lets the Local App reserve its HTTP port before opening a tunnel.
-	Listener *net.TCPListener
+	// Listeners transfers prebound HTTP/TLS sockets on successful New. The Local
+	// App serves its loopback and LAN entries through the same authority.
+	Listeners []net.Listener
 	// Assets is the built Browser UI. A nil FS serves the API only.
 	Assets fs.FS
 	// Now returns Unix milliseconds; nil uses the wall clock.
@@ -85,9 +86,9 @@ type Server struct {
 	mediaMux      ice.UDPMux
 	signalOptions signal.Options
 	httpServer    *http.Server
-	// Listen binds unless New received an already owned listener. Shutdown waits
-	// for startupDone before reading it; closing before Listen also releases it.
-	listener net.Listener
+	// Listen binds unless New received owned listeners. Shutdown waits for
+	// startupDone before reading them; closing before Listen also releases them.
+	listeners []net.Listener
 	// STUN shares the same startup/shutdown owner, never the advertised ICE URLs.
 	stunServer *stun.Server
 
@@ -142,9 +143,7 @@ func New(options Options) (*Server, error) {
 		logger:      logger,
 		startupDone: make(chan struct{}),
 	}
-	if options.Listener != nil {
-		server.listener = options.Listener
-	}
+	server.listeners = append([]net.Listener(nil), options.Listeners...)
 	if options.Assets != nil {
 		server.frontend = staticHandler(options.Assets, http.HandlerFunc(notFoundJSON))
 	}
@@ -172,6 +171,7 @@ func New(options Options) (*Server, error) {
 	}
 	server.httpServer = &http.Server{
 		Handler:           server,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelDebug),
 		ReadHeaderTimeout: headersTimeout,
 		ReadTimeout:       requestTimeout,
 		IdleTimeout:       keepAliveTimeout,
@@ -227,20 +227,24 @@ func (s *Server) Listen(ctx context.Context) (int, error) {
 func (s *Server) start(ctx context.Context) (int, error) {
 	// Bind first. A listener owned by another process must fail before
 	// the room database is opened.
-	listener := s.listener
 	var err error
-	if listener == nil {
+	if len(s.listeners) == 0 {
 		address := net.JoinHostPort(s.config.ListenHost, strconv.Itoa(s.config.Port))
-		listener, err = net.Listen("tcp", address)
+		listener, err := net.Listen("tcp", address)
 		if err != nil {
 			return 0, err
 		}
+		if s.config.TLS != nil {
+			listener = tls.NewListener(listener, s.config.TLS)
+		}
+		s.listeners = []net.Listener{listener}
 	}
-	s.listener = listener
 	if len(s.config.STUNListenAddresses) > 0 {
 		s.stunServer, err = stun.Listen(ctx, s.config.STUNListenAddresses)
 		if err != nil {
-			_ = listener.Close()
+			for _, listener := range s.listeners {
+				_ = listener.Close()
+			}
 			return 0, fmt.Errorf("Piik STUN listener failed: %w", err)
 		}
 	}
@@ -268,15 +272,17 @@ func (s *Server) start(ctx context.Context) (int, error) {
 			IngressCapacity: room.Capacity, EgressCapacity: room.Capacity * s.config.MaxViewersPerRoom,
 		})}
 	}
-	go func() {
-		// Report permanent accept failures so an unexpectedly stopped HTTP
-		// listener is visible to the operator.
-		if err := s.httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
-			s.logger.Error("Piik HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
-			s.logger.Debug("http-listener-failed", diagnostics.Error(err))
-		}
-	}()
-	port := listener.Addr().(*net.TCPAddr).Port
+	for _, listener := range s.listeners {
+		go func() {
+			// Report permanent accept failures so an unexpectedly stopped HTTP
+			// listener is visible to the operator.
+			if err := s.httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
+				s.logger.Error("Piik HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
+				s.logger.Debug("http-listener-failed", diagnostics.Error(err))
+			}
+		}()
+	}
+	port := s.listeners[0].Addr().(*net.TCPAddr).Port
 
 	if err := s.reconcile(); err != nil {
 		// Give the database and the listener back before reporting.
@@ -304,8 +310,8 @@ func (s *Server) start(ctx context.Context) (int, error) {
 // already closed HTTP listener is harmless.
 func (s *Server) stopServing(ctx context.Context) error {
 	err := s.httpServer.Shutdown(ctx)
-	if s.listener != nil {
-		_ = s.listener.Close()
+	for _, listener := range s.listeners {
+		_ = listener.Close()
 	}
 	if s.stunServer != nil {
 		err = errors.Join(err, s.stunServer.Close())

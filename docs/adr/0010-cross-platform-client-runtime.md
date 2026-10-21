@@ -79,7 +79,11 @@ topologies and makes a saved Site unavailable while another room source runs.
    the Site cannot approve itself. A popup message requests an authorized health
    recheck, not authorization. Clearing Site data requires connecting again.
 7. A self-contained Local deployment serves reachable LAN peers without a
-   central Piik service. Its explicit `--link` mode starts one accountless
+   central Piik service. Local serves an in-memory self-signed HTTPS entry on
+   the selected LAN IP and retains the Host's HTTP loopback entry at the same
+   port. Both belong to the shared service lifecycle; certificate confirmation
+   and optional Hosted TLS follow the [configuration owner](../standards/configuration.md).
+   Its explicit `--link` mode starts one accountless
    Cloudflare Quick Tunnel for the same HTTP/WebSocket surface. The App
    reserves the exact IPv4 listener before creating that tunnel, then applies
    its HTTPS origin before the server starts serving that listener. It retains the same

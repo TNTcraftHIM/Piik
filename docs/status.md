@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -69,6 +69,10 @@ detached UI and capture retirement. Optional voluntary Peer fanout and local
 picture rotation are included; frp uses the documented existing UDP configuration.
 Windows x64 Server packaging also joins this candidate through the existing
 release inventory; Docker images remain Linux-only.
+App Local invitations now use HTTPS on the selected LAN address; the Host keeps
+its loopback entry. Hosted Server also supports optional direct HTTPS with a
+temporary local certificate or supplied certificate files. Both use the same
+room authority and require the browser to accept the certificate.
 The candidate derives channel availability from Host membership and uses one
 room microphone for Host and Viewers. Local normal-page acceptance covers both
 P2P and SFU, independent listening, picture continuity and voice-facet recovery.

@@ -58,6 +58,38 @@ Docker 会自动选择对应架构的镜像。
 请保留 `piik-data` 数据卷，房间数据和可选诊断文件都保存在其中。
 更新与备份见[容器维护说明](./service-management.zh-CN.md#容器)。
 
+## 无域名的内网部署
+
+NAS、家用服务器或虚拟局域网可以直接使用 Piik 提供的 HTTPS，无需另装反向代理。
+在服务端程序旁创建 `.env`，填写以下配置，将所有 `192.168.1.10` 换成服务器在该网络中的 IP：
+
+```dotenv
+PIIK_ENV=production
+LISTEN_HOST=0.0.0.0
+PORT=8787
+PUBLIC_BASE_URL=https://192.168.1.10:8787
+TLS_SELF_SIGNED=true
+STUN_URLS=stun:192.168.1.10:3478
+```
+
+在该目录先运行 `./piik-server --check-config`，检查通过后运行 `./piik-server`；Windows 加上 `.exe`。
+在该网络放行 TCP 8787 和 UDP 3478，然后用各台设备打开上述 **HTTPS** 地址。
+不需要公网 IP 或域名。如果使用 Docker Compose，还需把网页端口映射
+`127.0.0.1:8787:8787/tcp` 改为 `8787:8787/tcp`，让内网设备可以访问。
+
+浏览器会提示证书不受信任。请先核对证书的 SHA-256 指纹，与服务端启动时的
+**HTTPS certificate** 信息一致后再继续，见[本地证书确认说明](../guide/troubleshooting.zh-CN.md#本地-https-证书提示)。
+临时证书只保存在内存中，重启 Piik 后会更换，需要重新确认。
+开麦、摄像头和远控仍需浏览器支持相关接口，并完成各自的正常授权。
+
+如果已有自己的证书，关闭 `TLS_SELF_SIGNED`，同时设置 `TLS_CERT_FILE` 和 `TLS_KEY_FILE`，
+指向 PEM 格式的证书和私钥文件。Docker 中需将文件只读挂载，并使用容器内的路径。
+证书需覆盖 `PUBLIC_BASE_URL` 中的域名或 IP；
+`--check-config` 会检查文件配对、地址与有效期，替换文件后需重启 Piik。
+Piik 不负责申请或续期证书。长期对外服务的站点建议使用下方自动管理证书的 HTTPS 代理。
+网页端口被占用时，先停止占用服务，或同时修改 `PORT` 与 `PUBLIC_BASE_URL` 中的端口，
+再重新发送邀请。
+
 ## 对外提供服务
 
 准备一台受支持的服务器，以及一个指向服务器公网 IP 的域名。

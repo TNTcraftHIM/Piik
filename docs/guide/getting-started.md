@@ -106,6 +106,9 @@ See the [App guide](../../cmd/piik-app/README.md) for package and runtime detail
 
 For Local room and Public invite, expand **Site passphrase** to set an optional
 access passphrase.
+Local invitations use HTTPS. On first access, confirm the local certificate
+against the Host's App terminal before continuing; see the
+[certificate guide](./troubleshooting.md#local-https-certificate-warning).
 Once the room service starts, click the connected **App** button at the top right
 to return to the launcher, manage site access or reopen the room. The App terminal
 also keeps an **App launcher** address. To change between Local room and Public
@@ -356,7 +359,7 @@ Open **Interact → Voice** and select **Open room voice**. Room members can the
 select **Join voice**, without another approval.
 Joining never opens a microphone: each speaker selects **Turn on microphone**
 and grants browser access. **Mute for me** changes only your own playback.
-Microphone capture needs a browser-trusted HTTPS or localhost page; ordinary
+Microphone capture needs a browser-accepted HTTPS or localhost page; ordinary
 LAN HTTP pages can still join and listen. For voice input or remote control over
 a LAN or virtual LAN, see the [virtual-LAN options](./troubleshooting.md#optional-a-virtual-lan).
 After joining, the bottom toolbar provides microphone, listening and leave

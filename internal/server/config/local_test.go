@@ -55,14 +55,14 @@ func TestLocalMapsClientInputs(t *testing.T) {
 	if config.NATPredictionEnabled {
 		t.Error("NATPredictionEnabled = true")
 	}
-	if got := config.PublicBaseURL.String(); got != "http://192.168.1.10:9123/" {
+	if got := config.PublicBaseURL.String(); got != "https://192.168.1.10:9123/" {
 		t.Errorf("PublicBaseURL = %q", got)
 	}
 	want := map[string]struct{}{
-		"http://localhost:9123":    {},
-		"http://127.0.0.1:9123":    {},
-		"http://192.168.1.10:9123": {},
-		"http://10.0.0.8:9123":     {},
+		"http://localhost:9123":     {},
+		"http://127.0.0.1:9123":     {},
+		"https://192.168.1.10:9123": {},
+		"https://10.0.0.8:9123":     {},
 	}
 	if !reflect.DeepEqual(config.AllowedOrigins, want) {
 		t.Errorf("AllowedOrigins = %v, want %v", config.AllowedOrigins, want)
@@ -153,7 +153,7 @@ func TestLocalDefaults(t *testing.T) {
 		!slices.Equal(config.STUNListenAddresses, []string{"192.168.1.10:8787"}) {
 		t.Fatalf("Local discovery does not use its default port: %+v", config)
 	}
-	if got := Origin(config.PublicBaseURL); got != "http://192.168.1.10:8787" {
+	if got := Origin(config.PublicBaseURL); got != "https://192.168.1.10:8787" {
 		t.Errorf("public origin = %q", got)
 	}
 	// A configured (empty) prediction list stays non-nil so IceConfig does not

@@ -62,7 +62,10 @@ sole private IPv4. If several addresses remain possible, choose an interface
 and IP in the launcher. Public invite and use through a Site need no LAN selection.
 When bypassing the launcher with `--local`, use `--lan-address <address>` to
 resolve an ambiguous choice. The selected address is checked again at startup;
-it affects Local invitation links, while ICE selects media paths independently.
+it selects the Local HTTPS entry and invitation address, while ICE selects media paths independently.
+Local invitations use HTTPS on that address; the Host keeps its HTTP loopback
+page. First access requires [confirming the local certificate](../../docs/guide/troubleshooting.md#local-https-certificate-warning)
+against the App terminal. The certificate stays in memory and changes on restart.
 
 To use a Piik Site, keep the App running and click **App** at the top of the Site.
 Confirm its address on the local approval page. The App remembers one approved

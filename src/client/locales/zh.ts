@@ -214,6 +214,7 @@ export const zh = {
   "client.launch.lanAddress": "局域网邀请地址",
   "client.launch.chooseAddress": "选择地址",
   "client.launch.lanHint": "选择与朋友处于同一网络的地址。",
+  "client.launch.localHTTPS": "局域网邀请使用本地 HTTPS；首次访问需确认本地证书。",
   "client.launch.lanUnavailable": "没有可用的局域网地址，请连接网络后刷新页面",
   "client.launch.localAccess": "站点口令（可选）",
   "client.launch.accessSettings": "站点口令",

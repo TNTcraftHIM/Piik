@@ -222,6 +222,9 @@ export function LauncherForm({
         ) : null}
       </div>
 
+      {mode === "local" && <p className={vis ? "visually-hidden" : "lr-client-access-hint"}>
+        {t("client.launch.localHTTPS")}
+      </p>}
       <Btn
         icon="arrowRight"
         title="client.launch.go"

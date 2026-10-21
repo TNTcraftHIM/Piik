@@ -25,6 +25,8 @@ service secret store or an untracked access-restricted environment file.
 | `PORT` | Positive TCP port, default `8787`; the tracked release wrapper supports only that default. |
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |
 | `ALLOWED_ORIGINS` | Unset or empty follows `PUBLIC_BASE_URL`. A non-empty comma-separated list replaces that default; include every trusted browser origin (scheme, host and port). Wildcard is invalid. |
+| `TLS_SELF_SIGNED` | Optional direct HTTPS, default `false`. `true` generates an in-memory certificate for the exact `PUBLIC_BASE_URL` host; it changes on restart and requires browser confirmation. Requires an HTTPS public origin; cannot combine with certificate files. |
+| `TLS_CERT_FILE` / `TLS_KEY_FILE` | Optional PEM certificate chain and private key, configured together. Direct HTTPS uses the existing `LISTEN_HOST`/`PORT`. Startup and `--check-config` validate the pair, host and validity dates. Files are read at startup; renewal and restart remain the operator's responsibility. |
 | `SITE_ACCESS_PASSWORD` | Optional in every environment. Unset or empty allows entry without a site password. A configured value is matched exactly, including spaces and Unicode; there are no password length or character rules. General HTTP request limits still apply. Room ownership and Viewer admission remain independent. |
 | `ROOM_DATABASE_PATH` | Hosted defaults to `rooms.sqlite` in its working directory when unset or blank. An explicit absolute file path selects another SQLite file; `:memory:` opts into process-memory room authority. App Local remains in memory. |
 | `ROOM_EMPTY_TIMEOUT_SECONDS` | Integer `0..31536000`, default `0` (disabled). Positive values enable empty-room expiry and oldest-empty reclamation under allocation pressure. Apply at Server startup; App Local retains its process-only lifecycle. |
@@ -119,8 +121,13 @@ one or two use ordinary ICE only. Empty or unset retains the defaults. Local
 LAN mode ignores this setting, and an approved Site supplies its own ICE
 configuration. No settings panel or additional media transport is involved.
 
-LAN mode uses the existing Binding-only STUN service on the selected LAN IPv4
-address and the App's numeric UDP port (default `8787`). This lets Browsers
+LAN mode retains the Host's HTTP loopback entry and serves HTTPS on the selected
+LAN IPv4 address at the same TCP port. Both listeners share one HTTP server,
+room authority and shutdown owner. Its self-signed certificate and private key
+live only in memory for that run; the App terminal displays the SHA-256
+fingerprint for manual confirmation. No CA is installed and no TLS files are saved.
+The selected LAN address also runs the existing Binding-only STUN service on
+the App's numeric UDP port (default `8787`). This lets Browsers
 discover usable addresses on routed virtual LANs without relying on multicast
 name discovery or contacting a public STUN service. HTTP and STUN have one
 application startup/shutdown owner; public-link mode does not bind this LAN
@@ -156,8 +163,8 @@ For Local mode, the launcher selects a sole active address or sole private IPv4
 address automatically. With several choices it shows interface names and IPs;
 an ambiguous choice must be selected before launch. `--lan-address` preselects
 an active address. Selection applies to this launch and is revalidated at startup.
-It sets the local invitation origin; HTTP still listens on the existing wildcard
-listener and ICE remains free to use available media interfaces. Public Link
+It sets the local HTTPS listener and invitation origin; the Host keeps its
+HTTP loopback entry and ICE remains free to use available media interfaces. Public Link
 and use through an approved Site require no local address selection.
 
 Command-line options select entry and local runtime behavior:
@@ -167,7 +174,7 @@ Command-line options select entry and local runtime behavior:
 | `--site <origin>` / `--local` | Save and use a Site, or select the self-contained Local mode. Mutually exclusive. |
 | `--link` | Create a public Viewer invitation for Local mode. |
 | `--config <path>` | Select another App configuration file. |
-| `--lan-address <IPv4>` / `--port <port>` | Override the Local invitation address or HTTP port (default `8787`). |
+| `--lan-address <IPv4>` / `--port <port>` | Override the Local invitation address or web port (default `8787`). |
 | `--capture-process <path>` / `--tunnel-process <path>` | Override packaged native capture or public tunnel helpers. Ordinary installations use the packaged paths. |
 | `--debug` / `--log-dir <path>` | Enable diagnostics or choose their destination as described below. |
 
@@ -294,7 +301,7 @@ project references and the reasons for this collection boundary.
 | UDP 3478 | public | in-process STUN-only Piik listener |
 | UDP 3479/3480 | public when NAT prediction is enabled | in-process auxiliary STUN-only Piik listeners |
 | UDP 7882 (or `SFU_UDP_PORT`) | public when SFU enabled | in-process Piik WebRTC media |
-| TCP 8787 | private | Piik application |
+| TCP 8787 | private behind a proxy, or reachable within the chosen LAN for direct HTTPS | Piik application |
 
 TCP 3478, TCP/TLS 5349, TURN relay ranges, media TCP, and other media
 ports remain closed. HTTPS/WSS transport is independent of the UDP-only media
@@ -316,8 +323,9 @@ test requires a second public IPv4.
 
 ## Bounds
 
-- Site-access requests are rate-limited at the reverse proxy and use constant-
-  time secret comparison in the application.
+- Site access uses constant-time secret comparison in the application. Reverse-
+  proxy deployments also configure request rate limits there; direct HTTPS does
+  not add a proxy rate limiter.
 - HTTP body, WebSocket payload, total/unauthed connections, room count, Viewer
   count, output buffers, endpoint copies, and SFU resources are bounded.
 - The four-digit code space fixes the maximum managed Host publications at

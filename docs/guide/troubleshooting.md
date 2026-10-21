@@ -24,7 +24,8 @@ collect a diagnostic report if the problem persists.
 | Yellow outline around the shared window or screen | This is Windows' capture indicator. See [capture borders](#yellow-capture-border-on-windows) for Windows 11 controls and an optional Windows 10 workaround. |
 | Picture but no source sound | Unmute the video. The host should choose a source with shareable audio and enable sound in the source picker. Camera video and audio inputs are selected separately; see [audio settings](./getting-started.md#add-your-voice). |
 | Cannot hear someone speaking | Both people must join **Interact → Voice**; the Host opens voice first. Check the speaker's microphone, input device and volume, then your local listening/mute controls. Microphone access needs HTTPS or a localhost page. |
-| LAN page cannot open a microphone, or remote controls are missing | Ordinary LAN HTTP pages lack the required secure browser APIs; a networking tool does not change that. See the [HTTPS options for virtual LANs](#optional-a-virtual-lan), which also apply to ordinary LANs. |
+| LAN page cannot open a microphone, or remote controls are missing | Open the complete HTTPS invitation from the current App. Older HTTP links lack secure browser APIs; see [virtual LANs](#optional-a-virtual-lan). |
+| Certificate warning on a local invitation | Verify the local certificate with the Host before continuing; see [certificate confirmation](#local-https-certificate-warning). |
 | Screen sharing includes a voice app's audio | Windows App screen capture can [exclude application audio](./getting-started.md#exclude-a-voice-app-from-screen-audio). This does not remove echo from speakers picked up by a microphone. |
 | Virtual microphone has echo, or remains audible when muted in Piik | Temporarily turn off **System sound** to compare. A mixer's playback can enter source audio separately from Piik's microphone; check its [audio routing](./getting-started.md#exclude-a-voice-app-from-screen-audio). |
 | Page opens but video will not connect | Use **Reconnect** if available, or refresh the viewing page. See [connection troubleshooting](#when-video-will-not-connect) if it still fails. |
@@ -54,10 +55,38 @@ connection has not started at this point.
    points to the old file. No prompt does not mean access is allowed: add the
    current App manually if needed. Keep the firewall on and allow the needed app.
 
+If App reports **the local port is unavailable**, close an older Piik instance
+using it. If another application needs that port, start Piik with `--port 9876`
+and send the newly generated invitation. Both the web and local STUN ports must
+be available; changing only the URL will not move the service.
+
 Changing permissions may require an administrator; see
 [Microsoft's instructions](https://support.microsoft.com/en-us/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall).
 If the page opens but video does not connect, continue with
 [media connection checks](#when-video-will-not-connect).
+
+## Local HTTPS certificate warning
+
+Piik App's **Local room**, and servers using `TLS_SELF_SIGNED=true`, generate a
+local certificate without asking a public certificate authority. The browser
+therefore shows a certificate warning before opening the invitation.
+
+1. Check that the address is the one the Host intended to share.
+2. Open the warning's certificate details and compare its **SHA-256 fingerprint**
+   with **Local certificate · SHA-256** in the Host's App terminal, or the
+   Server's **HTTPS certificate** startup message. Ask the Host over your usual
+   trusted chat if you are on another device.
+3. If it matches, use the browser's **Advanced → Continue** option where available.
+   Then allow microphone access or request remote control normally.
+
+The temporary certificate changes after an App/Server restart. A different
+fingerprint needs confirmation again; the App saves no certificate files and
+does not install a trusted CA. Do not disable browser security checks globally.
+If the browser cannot accept an exception, use a site with a certificate that
+device already trusts; administrators can follow the [HTTPS deployment guide](../operations/self-hosting.md#2-enable-https).
+
+These instructions apply to an expected local self-signed certificate. An
+unexpected warning on a public HTTPS site needs investigation by its operator.
 
 ## Sharing does not start after source selection
 
@@ -427,27 +456,20 @@ reachable virtual IPv4 addresses and carry both Piik's web traffic and WebRTC UD
 4. Keep the networking tool running on every device. If its virtual IP changes,
    select the new address in the App and send a new invitation.
 
-Ordinary and virtual LANs follow the same [browser rules](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts). An HTTP page at a LAN IP
-can play video, chat, and join an open voice channel to listen. Microphone capture,
-browser camera capture and [remote control](./getting-started.md#let-a-friend-control-your-shared-screen)
-need a browser-trusted HTTPS page. `localhost` means the current device; it is
-not a replacement for your friend's address.
+The current App's **Local room** sends an HTTPS invitation on the selected
+virtual IP. Confirm its [local certificate](#local-https-certificate-warning)
+on first access. This lets a supported browser use microphone, camera and
+[remote control](./getting-started.md#let-a-friend-control-your-shared-screen)
+without a public tunnel; ordinary LANs work the same way.
 
-For microphone input or remote control, keep the networking tool running on every
-device and choose a web entry:
+Keep the networking tool running. If a local certificate exception is not
+available in your browser, use a reachable **Public invite** or self-hosted
+HTTPS site with a trusted certificate. Media still tries available routes,
+including the virtual LAN; connection details show the selected addresses.
 
-- If Public invite is reachable, the Host creates a **Public invite** in the App
-  and sends its full HTTPS invitation. Web and signaling use HTTPS while media
-  still tries available paths, including the virtual LAN. Connection details
-  show the selected addresses.
-- If Public invite is unreachable, use a self-hosted HTTPS site everyone can
-  access, approve that site in the App, and send an invitation generated there.
-  An administrator can also host it inside the LAN with a domain and a
-  browser-trusted TLS certificate; see the [deployment guide](../operations/self-hosting.md).
-
-Changing `http` to `https` in the address alone does not enable HTTPS: the service
-must provide trusted TLS. Without a reachable HTTPS entry, the LAN HTTP option
-still supports watching and listening, but not microphone capture or remote control.
+Older Apps and plain HTTP sites can watch, chat and join voice to listen, but
+cannot use the secure capture/control APIs. Changing the URL scheme alone does
+not enable HTTPS. `localhost` means the current device, not your friend's computer.
 
 This may help with some strict NAT combinations, but is not guaranteed to work
 on every campus network. Firewall rules and Browser address discovery still

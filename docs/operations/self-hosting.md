@@ -63,6 +63,44 @@ the sample `.env` also shows how to enable SFU fallback. Keep the `piik-data`
 volume, which stores room data and optional diagnostics. See
 [container maintenance](./service-management.md#container) for updates and backups.
 
+## Private LAN without a domain
+
+For a NAS, home server or virtual LAN, Piik can serve HTTPS directly. Save the
+following as `.env` beside the server binary, replacing every `192.168.1.10`
+with the server's address on that network:
+
+```dotenv
+PIIK_ENV=production
+LISTEN_HOST=0.0.0.0
+PORT=8787
+PUBLIC_BASE_URL=https://192.168.1.10:8787
+TLS_SELF_SIGNED=true
+STUN_URLS=stun:192.168.1.10:3478
+```
+
+From that directory, run `./piik-server --check-config`, then `./piik-server`
+(use `.exe` on Windows).
+Allow TCP 8787 and UDP 3478 on that network. Open the **HTTPS** address on each
+device; no public IP, domain or reverse proxy is needed. With Docker Compose,
+also change the web port mapping from `127.0.0.1:8787:8787/tcp` to
+`8787:8787/tcp` so LAN devices can reach it.
+
+The browser will warn about the self-signed certificate. Compare its SHA-256
+fingerprint with the server's **HTTPS certificate** startup message before
+continuing; see [local certificate confirmation](../guide/troubleshooting.md#local-https-certificate-warning).
+The certificate stays in memory and changes when Piik restarts, so confirm the
+new one after a restart. Browser microphone, camera and remote control still
+require their ordinary permissions and supported APIs.
+
+To keep your own certificate, turn off `TLS_SELF_SIGNED` and set both
+`TLS_CERT_FILE` and `TLS_KEY_FILE` to its PEM files. With Docker, mount those
+files read-only and use their paths inside the container. The certificate must cover
+the host in `PUBLIC_BASE_URL`. `--check-config` checks the pair and validity;
+restart Piik after replacing the files. Piik does not obtain or renew these
+certificates. For a long-running public site, use the automatic HTTPS proxy below.
+If the web port is occupied, stop the conflicting service or change both `PORT`
+and the port in `PUBLIC_BASE_URL`, then send new invitations.
+
 ## Put it online
 
 You need a supported server and a domain pointing to its public IP.

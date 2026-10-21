@@ -28,6 +28,10 @@ interface GateReport {
   bootstrapRemoved: boolean;
   hostReady: boolean;
   lanInvite: boolean;
+  lanSecureContext: boolean;
+  lanMicrophone: boolean;
+  lanEncryptedInput: boolean;
+  lanSignalingConnected: boolean;
   appExited: boolean;
   browserExited: boolean;
   portsClosed: boolean;
@@ -74,6 +78,10 @@ async function main(): Promise<void> {
     bootstrapRemoved: false,
     hostReady: false,
     lanInvite: false,
+    lanSecureContext: false,
+    lanMicrophone: false,
+    lanEncryptedInput: false,
+    lanSignalingConnected: false,
     appExited: false,
     browserExited: false,
     portsClosed: false,
@@ -132,6 +140,8 @@ async function main(): Promise<void> {
       "--no-first-run",
       "--no-proxy-server",
       "--disable-logging",
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
     ]);
     browser.stdout.resume();
     browser.stderr.resume();
@@ -156,7 +166,7 @@ async function main(): Promise<void> {
         value.hostReady,
       15_000,
     );
-    report.lanInvite = await evaluate<boolean>(
+    const invitation = await evaluate<string>(
       cdp,
       page,
       `fetch('/api/rooms', {
@@ -164,13 +174,43 @@ async function main(): Promise<void> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ codeEntryPolicy: 'open' }),
       }).then(async (response) => {
-        if (!response.ok) return false;
+        if (!response.ok) throw new Error('Room creation failed');
         const room = await response.json();
-        return typeof room.inviteUrl === 'string' &&
-          room.inviteUrl.startsWith(${JSON.stringify(`http://${lanAddress}:${appPort}/r/`)});
+        return room.inviteUrl;
       })`,
       Date.now() + 5_000,
     );
+    report.lanInvite = invitation.startsWith(`https://${lanAddress}:${appPort}/r/`);
+    const viewer = await createPage(cdp, invitation, `(() => {
+      const NativeWS=WebSocket;
+      window.WebSocket=class extends NativeWS {
+        constructor(...args){super(...args);this.addEventListener('message',event=>{
+          try {if(JSON.parse(event.data).type==='authenticated')window.__localGateAuthenticated=true;}catch{}
+        });}
+      };
+    })()`);
+    // Exercise Chrome's actual certificate exception. No global TLS bypass or
+    // browser trust-store change is part of this gate or the shipped App.
+    await evaluate(cdp, viewer, `document.getElementById('details-button')?.click();
+      document.getElementById('proceed-link')?.click();`, Date.now() + 5_000);
+    await waitForSample(deadline => evaluate(cdp!, viewer,
+      "Boolean(window.__localGateAuthenticated)", deadline), Boolean, 15_000);
+    report.lanSignalingConnected = true;
+    const capabilities = await evaluate<{ secure: boolean; microphone: boolean; encryption: boolean }>(cdp, viewer,
+      `(async()=>{
+        const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+        const microphone=stream.getAudioTracks().some(track=>track.readyState==='live');
+        stream.getTracks().forEach(track=>track.stop());
+        const key=await crypto.subtle.generateKey({name:'AES-GCM',length:128},false,['encrypt','decrypt']);
+        const iv=crypto.getRandomValues(new Uint8Array(12));
+        const text=new TextEncoder().encode('Piik LAN input');
+        const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,text);
+        const plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ciphertext);
+        return {secure:isSecureContext,microphone,encryption:new TextDecoder().decode(plaintext)==='Piik LAN input'};
+      })()`, Date.now() + 5_000);
+    report.lanSecureContext = capabilities.secure;
+    report.lanMicrophone = capabilities.microphone;
+    report.lanEncryptedInput = capabilities.encryption;
   } catch (error) {
     report.error = error instanceof Error ? error.message : String(error);
   } finally {
@@ -189,7 +229,8 @@ async function main(): Promise<void> {
   }
   report.passed = report.appStarted && report.localServerReady &&
     report.bootstrapAuthenticated && report.bootstrapRemoved && report.hostReady &&
-    report.lanInvite && report.appExited && report.browserExited &&
+    report.lanInvite && report.lanSecureContext && report.lanMicrophone &&
+    report.lanEncryptedInput && report.lanSignalingConnected && report.appExited && report.browserExited &&
     report.portsClosed && report.profileRemoved && report.error === null;
   process.stdout.write(`${JSON.stringify(report)}\n`);
   if (!report.passed) process.exitCode = 1;

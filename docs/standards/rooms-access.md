@@ -73,8 +73,8 @@ Three independent authorities exist:
    active. It authorizes room creation, Host role, and code-only Viewer
    attempts; it is not a room credential, and Viewer-grant admission cannot
    create or renew it. Cookie transport attributes follow the configured
-   destination: public HTTPS retains the Secure host-prefixed cookie, while a
-   separately configured HTTP LAN origin can use its HTTP cookie. Login,
+   destination: HTTPS retains the Secure host-prefixed cookie, while a
+   separately configured HTTP origin, such as App loopback, uses its HTTP cookie. Login,
    renewal, room creation and WebSocket admission use that same selection.
    Cookie signatures use a random process key independent of the password;
    restarting the Server/App requires site-password entry again. This does not
