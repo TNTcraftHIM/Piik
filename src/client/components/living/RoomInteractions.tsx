@@ -22,7 +22,11 @@ import "./room-interactions.css";
 type Props = CouchProps & {
   session: RoomInteractionSession | null;
   /** The room voice owner supplies controls; moving the panel never moves capture ownership. */
-  voice?: { content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void) => ReactNode; controls: ReactNode };
+  voice?: {
+    content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void, onSettings: () => void) => ReactNode;
+    settings: ReactNode;
+    controls: ReactNode;
+  };
 };
 
 export function RoomInteractions(props: Props) {
@@ -43,7 +47,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDocument, setChatDocument] = useState<Document | null>(null);
   const detached = Boolean(chatDocument && chatDocument !== document);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<"chat" | "voice" | null>(null);
   const [page, setPage] = useState<"chat" | "voice">("chat");
   const [effects, setEffects] = useState(() => readRoomPreferences().interactionEffects);
   const [target, setTarget] = useState<string | null>(null);
@@ -196,8 +200,8 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
         })}
       </p>)}
     </div>
-    <FloatingPanel id={id} trigger={`${id}-toggle`} icon="chat" className="lr-interaction-panel" detachable
-      title={t(settingsOpen ? "interaction.settings" : "interaction.title")}
+    <FloatingPanel id={id} trigger={`${id}-toggle`} icon={settingsOpen ? "sliders" : "chat"} className="lr-interaction-panel" detachable
+      title={t(settingsOpen === "voice" ? "host.microphone.settings" : settingsOpen ? "interaction.settings" : "interaction.title")}
       onOpenChange={(open, owner) => { setChatOpen(open); setChatDocument(owner); }}>
       {voice && !settingsOpen && <div className="lr-toggle lr-interaction-tabs" role="tablist" aria-label={t("interaction.title")}
         style={{ "--lr-segments": 2, "--lr-selected-index": showVoice ? 1 : 0 } as CSSProperties} onKeyDown={navigateTabs}>
@@ -209,9 +213,11 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
         </button>)}
       </div>}
       {settingsOpen && <>
-        <div className="lr-interaction-back"><Btn icon="chat" title="interaction.back" cap="interaction.back" size="dense"
-          hint="hint-chat-open" onClick={() => setSettingsOpen(false)} /></div>
-        <RoomChatSettings session={session} />
+        <div className="lr-interaction-back"><Btn icon={settingsOpen === "voice" ? "headphones" : "chat"}
+          title={settingsOpen === "voice" ? "voice.settingsClose" : "interaction.back"}
+          cap={settingsOpen === "voice" ? "voice.settingsClose" : "interaction.back"} size="dense"
+          hint="hint-collapse" onClick={() => setSettingsOpen(null)} /></div>
+        {settingsOpen === "voice" ? voice?.settings : <RoomChatSettings session={session} />}
       </>}
       <div className="lr-interaction-page" id={`${id}-chat-page`} role={voice ? "tabpanel" : undefined}
         aria-labelledby={voice ? `${id}-chat-tab` : undefined} hidden={!showChat}>
@@ -281,16 +287,17 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
           <span className="lr-chat-count" aria-hidden="true" style={{ visibility: draft ? undefined : "hidden" }}>
             {Array.from(draft).length} / {MAX_CHAT_CODE_POINTS}</span>
           <Btn icon="sliders" title="interaction.settings" hint="hint-chat-settings" size="dense" quiet
-            onClick={() => { setPanelTarget(null); setSettingsOpen(true); }} />
+            onClick={() => { setPanelTarget(null); setSettingsOpen("chat"); }} />
         </div>
       </form>
       </div>
       {voice && <>
         <div className="lr-interaction-page" id={`${id}-voice-page`} role="tabpanel"
-          aria-labelledby={`${id}-voice-tab`} hidden={!showVoice || settingsOpen}>
+          aria-labelledby={`${id}-voice-tab`} hidden={!showVoice || settingsOpen !== null}>
           <div className="lr-interaction-conversation" ref={voiceArea} onKeyDown={dismissPicker}
             onClickCapture={event => { if (!pickerArea.current?.contains(event.target as Node)) setPanelTarget(null); }}>
-            <div className="lr-floating-scroll lr-voice-history">{chatOpen && showVoice && voice.content(openPanelReactions)}</div>
+            <div className="lr-floating-scroll lr-voice-history">{chatOpen && showVoice && !settingsOpen && voice.content(openPanelReactions,
+              () => { setPanelTarget(null); setSettingsOpen("voice"); })}</div>
             {chatOpen && showVoice && effects && !panelPerson && latestReaction &&
               <RoomReactionActivity key={latestReaction.id} reaction={latestReaction} participants={participants}
                 hostPeerId={couch.host?.key} now={session.now} />}

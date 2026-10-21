@@ -23,7 +23,7 @@
 .lr-interaction-picker { flex: 0 1 auto; max-height: calc(100% - 60px); padding-block: 4px 6px; border-top: 1px solid var(--wall-2); }
 .lr-interaction-picker[hidden] { display: none; }
 .lr-interaction-picker:not([hidden]) { transform-origin: center bottom; animation: lr-floating-enter 150ms var(--spring); }
-.lr-interaction-back { flex: none; padding: 14px 0 0; }
+.lr-interaction-back { flex: none; padding: 8px 0 0; }
 .lr-interaction-activity { position: absolute; z-index: 2; right: 4px; bottom: 8px; max-width: calc(100% - 8px); padding-top: 68px; pointer-events: none; --gift-arc: 30px; --gift-lift: 30px; }
 .lr-interaction-activity-people, .lr-interaction-activity-people > span { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .lr-interaction-activity-people { padding: 8px 12px; border: 1px solid var(--control-edge); border-radius: 18px; background: color-mix(in srgb, var(--paper) 96%, transparent); box-shadow: var(--control-shadow); }
@@ -68,12 +68,11 @@ button.lr-chat-avatar:focus-visible { outline-offset: -3px; }
 .lr-chat-tools .lr-btn { flex: none; }
 .lr-chat-tools .lr-chat-count { padding: 0 4px; }
 .lr-chat-compose[hidden] { display: none; }
-.lr-chat-settings { flex: 1; padding-block: 18px; }
-.lr-chat-settings > p { margin: 0 0 20px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.lr-chat-settings > .lr-chat-overlay-settings { margin-bottom: 22px; }
-.lr-chat-export { display: grid; justify-items: start; gap: 8px; padding-top: 16px; border-top: 1px solid var(--wall-2); }
+.lr-interaction-settings { flex: 1; padding-block: 4px 0; }
+.lr-chat-settings > p { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.lr-chat-settings > .lr-chat-overlay-settings { margin-bottom: 16px; }
+.lr-chat-export { display: grid; justify-items: start; gap: 8px; padding-top: 12px; border-top: 1px solid var(--wall-2); }
 .lr-chat-export > p { margin: 0 0 6px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.lr-chat-export small { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .lr-chat-count { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .lr-interaction-status { display: flex; flex: none; align-items: center; gap: 6px; min-height: 24px; margin-top: 6px; font-size: 11px; line-height: 1.5; color: var(--muted); }
 .lr-interaction-status > svg { flex: none; }

@@ -273,6 +273,9 @@ and forced-SFU arms. The existing network laboratory also exercises voice across
 Browser/App endpoint combinations, blocked direct paths and UDP interruption.
 These synthetic-device checks do not establish microphone echo behavior, public
 NAT success rates or 21-person all-speaking audio capacity.
+`PIIK_ROOM_VOICE_LEGACY_WEB` optionally points the same normal-page gate at an
+older checkout and records its revision, checking that an older Viewer retains
+picture playback without subscribing to voice events.
 Product owners are [room voice](../standards/rooms-access.md#room-voice) and
 [room media](../standards/routing-transport.md#room-media); the public release
 does not yet include this candidate.

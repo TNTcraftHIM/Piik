@@ -25,7 +25,7 @@ const probe = (name: string) => `(() => {
   const peers=[], sockets=[], captures=[], NativePC=RTCPeerConnection, NativeWS=WebSocket;
   const gate=window.__roomVoiceGate={peers,sockets,captures,voice:null,peerId:null,inviteUrl:null,wire:[],authentications:0};
   const record=(direction,m)=>{
-    if(!m.type.startsWith('room-voice-')&&!['route-diagnostic-snapshot','peer-state'].includes(m.type))return;
+    if(!m.type.startsWith('room-voice-')&&!['room-interaction','route-diagnostic-snapshot','peer-state'].includes(m.type))return;
     const summary={...m};
     if(m.description)summary.description={revision:m.description.revision,type:m.description.sdp.type,tracks:m.description.tracks,
       media:m.description.sdp.sdp.split('\\r\\n').filter(line=>/^m=|^a=mid:|^a=(sendrecv|sendonly|recvonly|inactive)/.test(line))};
@@ -107,15 +107,19 @@ async function main(): Promise<void> {
   const serverPort = Number(process.env.PIIK_ROOM_VOICE_PORT || (sfuOnly ? 19162 : 19161));
   const [vitePort, debugPort, mediaPort] = await Promise.all([reservePort(), reservePort(), udpPort()]);
   const origin = `http://127.0.0.1:${vitePort}`, backend = `http://127.0.0.1:${serverPort}`;
+  const legacyRoot = process.env.PIIK_ROOM_VOICE_LEGACY_WEB;
+  const legacyPort = legacyRoot ? await reservePort() : null;
+  const legacyOrigin = legacyPort ? `http://127.0.0.1:${legacyPort}` : null;
+  const legacyRevision = legacyRoot ? (await runFile("git", ["-C", legacyRoot, "rev-parse", "HEAD"], { windowsHide: true })).stdout.trim() : null;
   const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
   await mkdir(OUTPUT, { recursive: true });
   const audio = join(OUTPUT, "microphone.wav");
   await writeFile(audio, audioFixture());
   let server: ChildProcessWithoutNullStreams | null = null, chrome: ChildProcessWithoutNullStreams | null = null;
-  let cdp: CdpConnection | null = null, vite: ViteDevServer | null = null;
+  let cdp: CdpConnection | null = null, vite: ViteDevServer | null = null, legacyVite: ViteDevServer | null = null;
   let serverLog = "";
   const pages: Page[] = [];
-  const result = { arm, passed: false, stage: "start", checks: [] as string[], error: null as string | null,
+  const result = { arm, legacyRevision, passed: false, stage: "start", checks: [] as string[], error: null as string | null,
     diagnostics: [] as unknown[], cleanup: null as unknown };
   const ui = async (page: Page, ...args: string[]) => {
     if (args[0] === "click") await waitForSample(() => evaluate<boolean>(cdp!, page,
@@ -157,7 +161,7 @@ async function main(): Promise<void> {
       env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, PIIK_ENV: "development",
         LISTEN_HOST: "127.0.0.1", PORT: String(serverPort), PIIK_LOG_DIR: join(OUTPUT, `${arm}-logs`),
         ROOM_DATABASE_PATH: join(profile, "rooms.sqlite"), PIIK_DEBUG: "route",
-        PUBLIC_BASE_URL: origin, ALLOWED_ORIGINS: origin, SFU_LISTEN_HOST: "127.0.0.1",
+        PUBLIC_BASE_URL: origin, ALLOWED_ORIGINS: [origin, legacyOrigin].filter(Boolean).join(","), SFU_LISTEN_HOST: "127.0.0.1",
         SFU_UDP_PORT: String(mediaPort), SFU_PUBLIC_IP: "127.0.0.1", SFU_ONLY: String(sfuOnly),
         ENDPOINT_MEDIA_COPY_CAPACITY: "1" } });
     server.stdout.resume();
@@ -166,6 +170,11 @@ async function main(): Promise<void> {
     vite = await createViteServer({ root: ROOT, logLevel: "error", server: { host: "127.0.0.1", port: vitePort, watch: null,
       strictPort: true, proxy: { "/api": { target: backend }, "/healthz": { target: backend }, "/signal": { target: backend, ws: true } } } });
     await vite.listen();
+    if (legacyRoot && legacyPort) {
+      legacyVite = await createViteServer({ root: legacyRoot, logLevel: "error", optimizeDeps: { entries: ["index.html"] }, server: { host: "127.0.0.1", port: legacyPort,
+        watch: null, strictPort: true, proxy: { "/api": { target: backend }, "/healthz": { target: backend }, "/signal": { target: backend, ws: true } } } });
+      await legacyVite.listen();
+    }
     chrome = await launchChrome(chromePath, debugPort, profile, ["--headless=new", "--no-first-run",
       "--window-size=1280,900",
       // Chromium excludes loopback ICE by default; this gate's SFU binds only localhost.
@@ -222,6 +231,35 @@ async function main(): Promise<void> {
         connection.parentPeerId === relay.peerId && !connection.pending && connection.receive.length === 2), "two speakers through normal Viewer relay");
       check("two simultaneous publications decoded by a third Viewer through shared relay graph");
     }
+    let legacyViewer: Page | null = null;
+    if (legacyOrigin) {
+      const invitation = new URL(created.inviteUrl!);
+      legacyViewer = await page(`${legacyOrigin}${invitation.pathname}${invitation.hash}`, "Older Viewer");
+      await until(legacyViewer, state => state.authentications === 1 && state.controls.includes("Interact"), "older Viewer joins before picture sharing");
+    }
+    result.stage = "voice-only topology";
+    for (const [index, participant] of [host, viewer].entries()) {
+      await button(participant, "Hide interaction window");
+      await button(participant, "Show connection topology");
+      await waitForSample(() => evaluate<boolean>(cdp!, participant, `(() => {
+        const state=window.__roomVoiceGate.voice, tree=document.getElementById('room-topology');
+        const expected=state?.members.filter(member=>member.peerId!==state.hostPeerId&&member.connected&&member.joined&&member.upstream.kind!=='none').length;
+        return expected>0&&tree?.querySelectorAll('.lr-route-edge:not(.is-pending)').length>=expected;
+      })()`, Date.now() + 3000), Boolean, 5000);
+      await ui(participant, "screenshot", join(OUTPUT, `${arm}-voice-topology-${index}.png`), "--full");
+      await button(participant, "Hide connection topology");
+      await openVoice(participant);
+    }
+    check("Host and Viewer topology display connected voice routes before picture sharing");
+    await button(host, "Interact with Voice Viewer");
+    await button(host, "Toss poop");
+    await waitForSample(() => evaluate<boolean>(cdp!, viewer,
+      `window.__roomVoiceGate.wire.some(message=>message.direction==='receive'&&message.type==='room-interaction'&&message.payload.kind==='reaction'&&message.payload.reaction==='poop'&&message.payload.targetPeerId===window.__roomVoiceGate.peerId)`,
+      Date.now() + 3000), Boolean, 5000);
+    await ui(viewer, "screenshot", join(OUTPUT, `${arm}-voice-reaction.png`));
+    check("voice participant picker sends a correctly targeted reaction to the other normal page");
+    await button(host, "Microphone settings");
+    await button(host, "Back to voice");
     const beforeMute = await sample(host);
     const oldPublication = beforeMute.voice!.publications.find(publication => publication.peerId === beforeMute.peerId)!.id;
     const voiceConnections = beforeMute.voice!.connections.filter(connection => !connection.pending).map(connection => connection.connectionId).sort();
@@ -276,6 +314,8 @@ async function main(): Promise<void> {
     await ui(host, "click", 'button[aria-label^="Share camera:"]');
     await until(host, state => state.text.includes("Stop sharing"), "camera sharing starts alongside voice");
     await until(viewer, state => state.samples > beforeVideo.samples && state.voice?.publications.length === 2, "voice survives video start");
+    if (legacyViewer) await until(legacyViewer, state => state.videoFrames > 0 && state.voice === null && state.authentications === 1,
+      "older Viewer receives picture without unsupported voice events");
     await button(host, "Stop sharing");
     const stopped = await sample(viewer);
     await until(viewer, state => state.samples > stopped.samples && state.voice?.publications.length === 2, "voice survives video stop");
@@ -312,6 +352,12 @@ async function main(): Promise<void> {
     }
     const closedVoice = await sample(viewer);
     await until(viewer, state => state.videoFrames > closedVoice.videoFrames, "picture continues after channel close");
+    if (legacyViewer) {
+      const legacyBefore = await sample(legacyViewer);
+      await until(legacyViewer, state => state.videoFrames > legacyBefore.videoFrames && state.voice === null && state.authentications === 1,
+        "older Viewer retains picture after voice closes");
+      check("older Web keeps picture sharing across voice activation and retirement without unsupported messages");
+    }
     await button(host, "Open room voice");
     await until(viewer, state => !!state.voice?.enabled, "Host reopens room voice");
     if ((await sample(viewer)).liveMicrophones || (await sample(viewer)).voice?.members.find(member => member.peerId === (beforeVideo.peerId))?.joined) {
@@ -358,8 +404,9 @@ async function main(): Promise<void> {
     process.stderr.write(`${result.error}\n${redact(serverLog)}\n`);
   } finally {
     for (const page of pages) try { await ui(page, "close"); } catch { /* cleanupRun owns remaining Chrome */ }
+    if (legacyVite) await legacyVite.close();
     if (vite) await vite.close();
-    const cleanup = await cleanupRun({ cdp, native: null, chrome, server, profile, ports: [serverPort, vitePort, debugPort] });
+    const cleanup = await cleanupRun({ cdp, native: null, chrome, server, profile, ports: [serverPort, vitePort, debugPort, ...(legacyPort ? [legacyPort] : [])] });
     result.cleanup = cleanup;
     if (!Object.values(cleanup).every(Boolean)) {
       result.passed = false;

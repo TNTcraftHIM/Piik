@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { RoomVoiceControls, RoomVoicePanel, type RoomVoiceView } from "../room-voice/RoomVoicePanel";
+import { RoomVoiceControls, RoomVoicePanel, RoomVoiceSettings, type RoomVoiceView } from "../room-voice/RoomVoicePanel";
 import type { RoomVoiceSnapshot } from "../room-voice/session";
 import type { RoomVoiceCommand } from "../../shared/protocol";
 
@@ -55,5 +55,7 @@ export function useRoomVoicePreview(viewer: boolean) {
     };
   }, [state]);
   return { controls: <RoomVoiceControls session={session} />,
-    content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void) => <RoomVoicePanel session={session} names={names} onSelectParticipant={onSelect} /> };
+    settings: <RoomVoiceSettings session={session} />,
+    content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void, onSettings: () => void) =>
+      <RoomVoicePanel session={session} names={names} onSelectParticipant={onSelect} onSettings={onSettings} /> };
 }

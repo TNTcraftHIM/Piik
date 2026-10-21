@@ -7,9 +7,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Room-voice candidate acceptance.** The normal App/Server/Web packages
-  need final acceptance of Host-opened voice before integration and release,
-  including joined-member routing, topology display and voice-panel reactions.
+- [ ] **Room-voice candidate acceptance.** The refreshed normal App/Server/Web
+  candidate is ready for owner acceptance before integration and release.
   [Status](./status.md#current-work) owns the candidate boundary; the
   [test-build guide](./guide/getting-started.md#room-voice-in-test-builds)
   explains its controls. Production and the public Demo remain unchanged.
@@ -78,6 +77,13 @@ own behavior; research and Git/PRs own evidence and completed history.
   justifies the [pairing and input boundary](./research/camera-and-microphone.md#phone-microphone-assessment).
 - **Mobile controlled endpoints.** Separate scope from desktop keyboard/mouse
   control and the co-play prototypes above.
+- **Android App assessment.** Evaluate native phone screen sharing and source
+  audio beyond the existing mobile Browser features. Start with Android's
+  [MediaProjection](https://developer.android.com/media/grow/media-projection)
+  permission/foreground-service lifecycle and
+  [playback-capture limits](https://developer.android.com/media/platform/av-capture),
+  then assess reuse of the Go room/transport core. This is separate from the
+  current voice candidate; a website wrapper alone does not add screen capture.
 - **Multiple simultaneous sharers.** Define publication/subscription ownership
   before prototyping. The [party-mode assessment](./research/room-interactions.md#multiple-sharers-assessment-not-implemented)
   owns the proposal; the current one-Host contract remains.

@@ -31,7 +31,7 @@ import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
-import { RoomVoicePanel, RoomVoiceControls } from "../room-voice/RoomVoicePanel";
+import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { HostAudio } from "../media/host-audio";
 import {
   CaptureSourcePicker,
@@ -3959,8 +3959,9 @@ export function HostPage({
           />
           <RoomInteractions session={room ? interactionSession : null}
             voice={room && roomVoiceSession ? {
-              content: onSelect => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect}
+              content: (onSelect, onSettings) => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect} onSettings={onSettings}
                 names={new Map(participantPresence.map(person => [person.peerId, person.displayName]))} />,
+              settings: <RoomVoiceSettings session={roomVoiceSession} />,
               controls: <RoomVoiceControls session={roomVoiceSession} />,
             } : undefined}
             view="host"

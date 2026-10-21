@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import { Btn } from "../components/living/primitives";
+import { MicrophoneSettings } from "../components/living/MicrophoneSettings";
 import { PawnSvg } from "../components/living/Pawn";
 import { Tooltip } from "../components/living/Tooltip";
 import { participantColor } from "../components/living/participant-color";
@@ -8,7 +9,6 @@ import { useCopy, type CopyKey } from "../ui/copy";
 import { Glyph, type GlyphName } from "../ui/icons";
 import type { RoomVoiceSession, RoomVoiceSnapshot } from "./session";
 import "./room-voice.css";
-import { MicrophoneSettings } from "../components/living/MicrophoneSettings";
 
 export type RoomVoiceView = Pick<RoomVoiceSession, "subscribe" | "getSnapshot" | "resumeAudio" | "command" |
   "startMicrophone" | "stopMicrophone" | "muteVoice" | "deafen" | "configureInput" | "setVolume" | "activity" | "microphones">;
@@ -85,32 +85,36 @@ function memberStatus(member: NonNullable<RoomVoiceSnapshot["room"]>["members"][
 }
 
 // Capture and transport belong to the session above this movable window.
-export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & {
+export function RoomVoiceSettings({ session }: Props) {
+  const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  return <div className="lr-floating-scroll lr-interaction-settings">
+    <MicrophoneSettings host={state.role === "host"} enabled={state.microphone} disabled={state.capturePending}
+      loadDevices={session.microphones} deviceId={state.input.deviceId} onDevice={deviceId => void session.configureInput({ deviceId })}
+      volume={state.input.volume} onVolume={value => session.setVolume(value)}
+      voiceProcessing={state.input.voiceProcessing} onVoiceProcessing={voiceProcessing => void session.configureInput({ voiceProcessing })} />
+  </div>;
+}
+
+export function RoomVoicePanel({ session, names, onSelectParticipant, onSettings }: Props & {
   names?: ReadonlyMap<string, string>;
   onSelectParticipant?: (peerId: string, trigger: HTMLButtonElement) => void;
+  onSettings: () => void;
 }) {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const { t, vis } = useCopy();
   const me = state.room?.members.find(member => member.peerId === state.peerId);
-  const levels = useVoiceLevels(session, Boolean(me?.joined) && !settingsOpen);
+  const levels = useVoiceLevels(session, Boolean(me?.joined));
   const members = labelParticipantNames((state.room?.members ?? []).map(member => ({
     ...member, displayName: names?.get(member.peerId) ?? t("voice.participant"),
   })));
   return <div className="lr-room-voice">
     <div className="lr-voice-panel-tools">
-      <span>{vis && <Glyph name={settingsOpen ? "microphone" : "users"} size={16} />}
-        <span className={vis ? "visually-hidden" : undefined}>{t(settingsOpen ? "host.microphone.settings" : "voice.participants")}</span></span>
-      <Btn icon={settingsOpen ? "headphones" : "sliders"} quiet size="dense"
-        title={settingsOpen ? "voice.settingsClose" : "host.microphone.settings"}
-        cap={settingsOpen ? "voice.settingsClose" : undefined}
-        hint={settingsOpen ? "hint-collapse" : state.role === "host" ? "hint-microphone-processing" : "hint-voice-microphone-processing"} expanded={settingsOpen}
-        onClick={() => setSettingsOpen(value => !value)} />
+      <span>{vis && <Glyph name="users" size={16} />}
+        <span className={vis ? "visually-hidden" : undefined}>{t("voice.participants")}</span></span>
+      <Btn icon="sliders" quiet size="dense" title="host.microphone.settings"
+        hint={state.role === "host" ? "hint-microphone-processing" : "hint-voice-microphone-processing"}
+        onClick={onSettings} />
     </div>
-    {settingsOpen ? <MicrophoneSettings host={state.role === "host"} enabled={state.microphone} disabled={state.capturePending}
-      loadDevices={session.microphones} deviceId={state.input.deviceId} onDevice={deviceId => void session.configureInput({ deviceId })}
-      volume={state.input.volume} onVolume={value => session.setVolume(value)}
-      voiceProcessing={state.input.voiceProcessing} onVoiceProcessing={voiceProcessing => void session.configureInput({ voiceProcessing })} /> : <>
     {!vis && state.role === "viewer" && !state.room?.enabled && <p className="lr-voice-hint">{t("voice.closedHint")}</p>}
     {state.room?.unavailable.length ? <p className="lr-voice-hint" role="status"><Glyph name="network" size={16} />
       <span className={vis ? "visually-hidden" : undefined}>{t("voice.unavailable")}</span></p> : null}
@@ -141,7 +145,6 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
         </article>;
       })}
     </div>
-    </>}
     {vis && <span className="visually-hidden">{t("interaction.voice")}</span>}
   </div>;
 }

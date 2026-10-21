@@ -34,6 +34,5 @@ export function MicrophoneSettings({ enabled, disabled, volume, onVolume, device
             label={t("host.microphone.voiceProcessing")} note={t("host.microphone.voiceProcessingHint")}
             hint={host ? "hint-microphone-processing" : "hint-voice-microphone-processing"} />
         </div>
-        {!vis && <small>{t("host.microphone.voiceProcessingUsage")}</small>}
   </div>;
 }
