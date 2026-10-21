@@ -13,6 +13,7 @@
 }
 button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .lr-btn {
+  position: relative;
   display: inline-grid;
   grid-auto-flow: column;
   align-items: center;

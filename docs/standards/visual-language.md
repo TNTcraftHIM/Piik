@@ -435,6 +435,7 @@ type checking rather than silently render a warning triangle.
 | Meaning / 含义 | Symbols | Use and boundary |
 | --- | --- | --- |
 | Participants and room / 人与房间 | `users`, `couch`, `door` | People, shared room, room entry. Use the shared pawn for a person and `HostMark` for Host authority. |
+| Create / 创建 | `plus` | Create the named object. An empty room-code frame uses this action before the room exists; the resulting code replaces it in place. |
 | Shared screen / 共享画面 | `tv`, `MiniTv`, 📺 | Media or its sharing source. The TV beside the Host name identifies the source; the crown on a person identifies the role. |
 | Start and choose a source / 分享与选源 | `cast`, `share`, `switchSource` | Start sharing, capture a screen, replace the current capture source respectively. A captured window keeps window chrome or a display stand. |
 | Capture source / 采集来源 | `window`, `display` | An application window or a whole display; these nouns remain distinct from the source-switch action. |

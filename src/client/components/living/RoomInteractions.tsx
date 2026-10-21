@@ -16,6 +16,7 @@ import { RoomQuickReactions } from "./RoomQuickReactions";
 import { RoomReactionActivity } from "./RoomReactionActivity";
 import { RoomChatToggle } from "./RoomChatOverlay";
 import { RoomChatSettings } from "./RoomChatSettings";
+import { Tooltip } from "./Tooltip";
 import { navigateTabs } from "../../ui/tab-navigation";
 import "./room-interactions.css";
 
@@ -195,10 +196,12 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
           const participant = participants.find(person => person.peerId === message.sender.peerId);
           const avatar = <PawnSvg color={participantColor(message.sender.peerId)} host={message.sender.role === "host"} />;
           return <div key={message.id} className={`lr-chat-message${message.isSelf ? " is-self" : ""}${continuation ? " is-continuation" : ""}`}>
-            {!continuation && (participant ? <button type="button" className="lr-chat-avatar"
+            {!continuation && (participant ? <Tooltip className="lr-chat-avatar" kind="hint-reaction-picker"
+              text={vis ? undefined : t("interaction.withPerson", { name: participant.displayName })}>
+              <button type="button"
               aria-label={t("interaction.withPerson", { name: participant.displayName })}
               aria-expanded={panelTarget?.peerId === participant.peerId} aria-controls={`${id}-reactions`}
-              onClick={event => openPanelReactions(participant.peerId, event.currentTarget)}>{avatar}</button>
+              onClick={event => openPanelReactions(participant.peerId, event.currentTarget)}>{avatar}</button></Tooltip>
               : <span className="lr-chat-avatar" aria-hidden="true">{avatar}</span>)}
             <div className="lr-chat-bubble">
               <span className={continuation ? "visually-hidden" : "lr-chat-author"}>{authors[index]!.label}
@@ -282,10 +285,11 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
         <Glyph name={state.error ? "alert" : "network"} size={14} />
         <span className={vis ? "visually-hidden" : undefined}>{t(state.error ? `interaction.error.${state.error}` : "interaction.reconnecting")}</span>
       </div> : null}
-      {inspect && <button type="button" className="lr-person-menu-details" onClick={() => { document.getElementById(menuId)?.hidePopover(); inspect(); }}>
+      {inspect && <Tooltip className="lr-person-menu-details-hint" kind="hint-details" text={vis ? undefined : t("host.details")}>
+      <button type="button" className="lr-person-menu-details" onClick={() => { document.getElementById(menuId)?.hidePopover(); inspect(); }}>
         <Glyph name="gauge" size={16} />{!vis && t("host.details")}
         <span className="visually-hidden">{vis && t("host.details")}</span>
-      </button>}
+      </button></Tooltip>}
       {target === state.peerId && <div className="lr-interaction-effects">
         <SwitchItem checked={effects} onChange={enabled => {
           setEffects(enabled); saveRoomPreferences({ interactionEffects: enabled });

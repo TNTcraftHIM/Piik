@@ -24,20 +24,29 @@ export function RoomCodePlaceholder({ onCreate, disabled, busy }: {
   disabled?: boolean;
   busy?: boolean;
 }) {
-  const { t } = useCopy();
-  if (onCreate) return (
-    <span className="lr-room-code-create">
-      <Btn icon="door" title="host.createRoom" cap="host.createRoom"
-        hint="hint-create-room" hintText="host.createRoomHint"
-        disabled={disabled} busy={busy} onClick={onCreate} />
+  const { t, vis } = useCopy();
+  const contents = <>
+    <LcdDigits code="----" />
+    <span className="lr-lcd-action" aria-hidden="true">
+      <Glyph name={onCreate ? busy ? "loader" : "plus" : "copy"} size={16}
+        className={busy ? "lr-spin" : undefined} />
     </span>
+  </>;
+  if (onCreate) return (
+    <Tooltip kind="hint-create-room" text={vis ? undefined : t("host.createRoomHint")}>
+      <button type="button" className="lr-lcd is-empty is-create"
+        aria-label={t("host.createRoom")} aria-busy={busy || undefined} disabled={disabled}
+        onClick={event => {
+          onCreate();
+          if (event.detail !== 0) event.currentTarget.blur();
+        }}>
+        {contents}
+      </button>
+    </Tooltip>
   );
   return (
     <span className="lr-lcd is-empty" role="img" aria-label={t("host.roomCodePending")}>
-      <LcdDigits code="----" />
-      <span className="lr-lcd-copy-placeholder" aria-hidden="true">
-        <Glyph name="copy" size={16} />
-      </span>
+      {contents}
     </span>
   );
 }

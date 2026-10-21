@@ -64,8 +64,8 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotat
             selected={route.preference === preference} title={t(`playback.route.${preference}`)}
             disabled={route.disabled || Boolean(locked)}
             hint={locked ? preference === "p2p" ? "hint-route-sfu-required" : "hint-route-p2p-required"
-              : preference === "auto" ? undefined : preference === "p2p" ? "hint-route-p2p" : "hint-route-sfu"}
-            hintText={locked ? t(locked) : undefined}
+              : preference === "auto" ? "hint-route-auto" : preference === "p2p" ? "hint-route-p2p" : "hint-route-sfu"}
+            hintText={t(locked ?? `playback.routeHint.${preference}`)}
             onClick={() => { if (route.preference !== preference) route.onChange(preference); }}>
             {vis && <Glyph name={preference === "auto" ? "branch" : preference === "p2p" ? "link" : "server"} size={17} />}
             <Cap k={`playback.route.${preference}`} />

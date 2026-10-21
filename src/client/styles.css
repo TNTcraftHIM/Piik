@@ -895,13 +895,15 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   text-indent: .15em;
 }
 .lr-lcd.is-empty { border-style: dashed; border-color: var(--control-edge); background: var(--wall-2); color: var(--muted); }
-.lr-room-code-create .lr-btn { min-height: 56px; min-width: 154px; border-style: dashed; }
-.lr-lcd button, .lr-lcd-copy-placeholder {
+.lr-lcd.is-create { transition: var(--control-motion), background-color 140ms ease, border-color 140ms ease; }
+.lr-lcd.is-create:is(:hover, :focus-visible):not(:disabled) { background: var(--control-hover); border-color: var(--ink); color: var(--ink); transform: var(--control-hover-transform); }
+.lr-lcd.is-create:active:not(:disabled) { transform: var(--control-press-transform); transition-duration: 80ms; }
+.lr-lcd button, .lr-lcd-action {
   display: grid;
   width: 34px; height: 34px;
   place-items: center;
 }
-.lr-lcd-copy-placeholder { opacity: .45; }
+.lr-lcd.is-empty:not(.is-create) .lr-lcd-action { opacity: .45; }
 .lr-lcd button {
   border: 0;
   border-radius: 8px;

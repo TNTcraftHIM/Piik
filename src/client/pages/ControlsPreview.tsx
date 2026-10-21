@@ -238,7 +238,9 @@ export function ControlsPreview() {
           <SwitchItem checked={invalid} onChange={setInvalid} label={en ? "Show error" : "看看错误态"} />
         </div>
         {invalid ? <p id="preview-input-error" className="cp-input-error" role="alert">{en ? "That password did not match. Try again." : "密码没对上，再试一次。"}</p> : null}
-        <div className="cp-tools"><RoomCodePlaceholder /><RoomChip roomId={roomCode} onReplace={() => setRoomCode(code => code === "6020" ? "2048" : "6020")} /></div>
+        <div className="cp-tools"><RoomCodePlaceholder /><RoomCodePlaceholder onCreate={notify} />
+          <RoomCodePlaceholder onCreate={notify} disabled busy />
+          <RoomChip roomId={roomCode} onReplace={() => setRoomCode(code => code === "6020" ? "2048" : "6020")} /></div>
         <RoomCodeInput value={dial} onChange={setDial} />
       </section>
       <section id="feedback-preview" className="cp-card">

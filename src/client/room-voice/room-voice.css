@@ -1,7 +1,6 @@
 .lr-room-voice { padding-block: 14px 4px; }
 .lr-voice-panel-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
 .lr-voice-panel-tools .lr-btn { flex: none; }
-.lr-voice-mic { display: inline-flex; position: relative; }
 .lr-voice-mic-level { position: absolute; left: 50%; top: 50%; width: var(--control-icon-size); height: var(--control-icon-size); transform: translate(-50%, -50%); pointer-events: none; fill: var(--live); }
 .lr-voice-activity { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--control-edge); transition: background-color 140ms ease, box-shadow 140ms ease; }
 .lr-voice-activity[data-speaking] { background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 15%, transparent); }

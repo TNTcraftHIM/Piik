@@ -309,7 +309,7 @@ export function AppLauncherPage() {
               <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOnStart")}</span>
             </label>}
             <div className="lr-client-approval-actions">
-              <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"}
+              <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"} hint="hint-close"
                 onClick={() => window.close()} />
               {!approvalCurrent && <Btn icon="check" title="client.connect.approve" cap="client.connect.approve" tone="primary"
                 hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void changeSite(requestedSite, "site", openOnApproval)} />}

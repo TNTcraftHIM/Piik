@@ -294,6 +294,28 @@ const HintTheaterExit: HintScene = ({ theme }) => (
   <TheaterHint theme={theme} exit />
 );
 
+const HintRouteAuto: HintScene = ({ theme }) => <>
+  <style>{`
+.vls-auto-direct{animation:vlsAutoDirect var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+.vls-auto-forward{animation:vlsAutoForward var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsAutoDirect{0%,12%,62%,100%{opacity:0}26%,48%{opacity:1}}
+@keyframes vlsAutoForward{0%,56%{opacity:0}74%,100%{opacity:1}}
+${rmBlock(["vls-auto-direct", "vls-auto-forward"], [[".vls-auto-direct", "opacity:1"], [".vls-auto-forward", "opacity:0"]])}
+  `}</style>
+  {[0, 160].map((x, index) => <g key={x}>
+    <Frame x={x + 4} w={152} theme={theme} result={Boolean(index)} />
+    <path d={`M${x + 38} 59h84M${x + 38} 55l30-25m24 0 30 25`} fill="none"
+      stroke={FAINT} strokeWidth={2} strokeDasharray="3 4" />
+    <ServerBox x={x + 66} y={17} w={28} h={24} />
+    {index === 1 && <>
+      <path className="vls-auto-direct" d={`M${x + 38} 59h84`} fill="none" stroke={INK} strokeWidth={3} strokeLinecap="round" />
+      <path className="vls-auto-forward" d={`M${x + 38} 55l30-25m24 0 30 25`} fill="none" stroke={INK} strokeWidth={3} strokeLinecap="round" />
+    </>}
+    <Pawn x={x + 32} yb={80} s={10} eyes host gaze={1} />
+    <Pawn x={x + 128} yb={80} s={10} color={SKY} eyes gaze={-1} />
+  </g>)}
+</>;
+
 /* hint-route-p2p: [two pawns apart] → [direct neutral arc pawn→pawn,
    route dot on the apex]. Demo: arc draws 6-28%, both pawns hop 30-42%,
    panel-1 pair blinks at 64%; rest ~58%. */
@@ -465,6 +487,7 @@ export const SET4_SCENES: Record<Set4Kind, HintScene> = {
   "hint-join-go": HintJoinGo,
   "hint-theater": HintTheater,
   "hint-theater-exit": HintTheaterExit,
+  "hint-route-auto": HintRouteAuto,
   "hint-route-p2p": HintRouteP2p,
   "hint-route-p2p-required": HintRouteP2pRequired,
   "hint-route-sfu": HintRouteSfu,

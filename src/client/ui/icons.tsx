@@ -40,6 +40,7 @@ const PATHS = {
   flag: { body: (<><path pathLength={1} d="M5 22V3h14l-4 5 4 5H5"/></>) },
   heart: { body: (<><path pathLength={1} d="M12 21 3.6 12.6C-2 7 5.5.5 12 7 18.5.5 26 7 20.4 12.6Z"/></>) },
   bulb: { body: (<><path pathLength={1} d="M8 17v-2c-6-5-3-13 4-13s10 8 4 13v2ZM9 21h6m-3-4v-7m-3 0 3 3 3-3"/></>) },
+  plus: { body: <path pathLength={1} d="M12 5v14M5 12h14" /> },
   copy: { body: (<><rect pathLength={1} x="9" y="9" width="12" height="12" rx="2"/><path pathLength={1} d="M5 15V5a2 2 0 0 1 2-2h10"/></>) },
   check: { body: (<><path pathLength={1} d="M4 12.5 9.5 18 20 6.5"/></>) },
   refresh: { body: (<><path pathLength={1} d="M3 12a9 9 0 0 1 9-9 9.7 9.7 0 0 1 6.7 2.7L21 8"/><path pathLength={1} d="M21 3v5h-5"/><path pathLength={1} d="M21 12a9 9 0 0 1-9 9 9.7 9.7 0 0 1-6.7-2.7L3 16"/><path pathLength={1} d="M8 16H3v5"/></>) },

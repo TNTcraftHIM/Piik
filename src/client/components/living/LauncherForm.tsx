@@ -126,7 +126,7 @@ export function LauncherForm({
           <div className="lr-client-site-actions">
             <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={openSiteOnStart}
               hint="hint-client-site" disabled={siteBusy} onClick={onToggleStartupSite} />
-            <Btn icon="x" title="client.connect.remove" size="dense" hint="hint-client-site" disabled={siteBusy} onClick={onRemoveSite} />
+            <Btn icon="x" title="client.connect.remove" size="dense" hint="hint-close" disabled={siteBusy} onClick={onRemoveSite} />
           </div>
         </div>}
       </section>

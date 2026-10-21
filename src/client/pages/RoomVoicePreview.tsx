@@ -10,8 +10,10 @@ function initialState(viewer: boolean): RoomVoiceSnapshot {
     input: { deviceId: "", volume: 1, voiceProcessing: true },
     room: { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: "preview-host", publications: [], connections: [], unavailable: [],
       members: [
-        { peerId: "preview-host", connected: true, joined: true, upstream: { kind: "none" } },
-        { peerId: "preview-friend", connected: true, joined: viewer, upstream: viewer ? { kind: "peer", peerId: "preview-host" } : { kind: "none" } },
+        { peerId: "preview-host", connected: true, joined: true,
+          publicationId: viewer ? "preview-host-publication" : undefined, upstream: { kind: "none" } },
+        { peerId: "preview-friend", connected: true, joined: true,
+          publicationId: viewer ? undefined : "preview-friend-publication", upstream: { kind: "peer", peerId: "preview-host" } },
       ] },
   };
 }
@@ -45,7 +47,9 @@ export function useRoomVoicePreview(viewer: boolean) {
       deafen: deafened => setState(current => ({ ...current, deafened })),
       configureInput: async patch => { setState(current => ({ ...current, input: { ...current.input, ...patch } })); },
       setVolume: volume => setState(current => ({ ...current, input: { ...current.input, volume } })),
-      activity: async () => new Map([[state.peerId, state.microphone ? .12 : 0]]),
+      activity: async (localOnly = false) => new Map((snapshot.room?.members ?? [])
+        .filter(member => member.joined && member.publicationId && (!localOnly || member.peerId === state.peerId))
+        .map((member, index) => [member.peerId, Math.max(0, Math.sin(performance.now() / 350 + index * 2)) * .18])),
       microphones: async () => [{ id: "headset", label: "USB Headset" }, { id: "desk", label: "Desk Microphone" }],
       muteVoice: peerId => setState(current => {
         const muted = new Set(current.muted);

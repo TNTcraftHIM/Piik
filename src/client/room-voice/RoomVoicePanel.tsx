@@ -46,21 +46,20 @@ export function RoomVoiceControls({ session }: Props) {
   return <>
     <div className="lr-voice-toolbar lr-media-controls" role="group" aria-label={t("interaction.voice")}>
       {joined && <div className="lr-voice-quick-controls">
-        <span className="lr-voice-mic"><Btn icon={state.microphone ? "microphone" : "microphoneOff"} title={microphoneTitle}
-          size="compact" hint={state.role === "host"
+        <Btn icon={state.microphone ? "microphone" : "microphoneOff"} title={microphoneTitle}
+          size="compact" hint={state.capturePending ? "hint-close" : state.role === "host"
             ? state.microphone ? "hint-microphone-off" : "hint-microphone-on"
             : state.microphone ? "hint-voice-microphone-off" : "hint-voice-microphone-on"}
           hintText={microphoneUnavailable ? "voice.error.microphoneUnavailable" : undefined}
           pressed={state.microphone} busy={state.capturePending} disabled={!state.connected || microphoneUnavailable}
+          iconOverlay={state.microphone && !state.capturePending && <svg className="lr-voice-mic-level" viewBox="0 0 24 24" aria-hidden="true">
+            <defs><clipPath id={meterId}><rect x="9.7" y="2.7" width="4.6" height="11.6" rx="2.3" /></clipPath></defs>
+            <rect x="9.7" y={14.3 - 11.6 * level} width="4.6" height={11.6 * level} clipPath={`url(#${meterId})`} />
+          </svg>}
           onClick={() => {
             session.resumeAudio();
             if (state.microphone || state.capturePending) session.stopMicrophone(); else void session.startMicrophone();
           }} />
-          {state.microphone && <svg className="lr-voice-mic-level" viewBox="0 0 24 24" aria-hidden="true">
-            <defs><clipPath id={meterId}><rect x="9.7" y="2.7" width="4.6" height="11.6" rx="2.3" /></clipPath></defs>
-            <rect x="9.7" y={14.3 - 11.6 * level} width="4.6" height={11.6 * level} clipPath={`url(#${meterId})`} />
-          </svg>}
-        </span>
         <Btn icon={state.deafened ? "headphonesOff" : "headphones"} title={state.deafened ? "voice.undeafen" : "voice.deafen"}
           size="compact" hint={state.deafened ? "hint-voice-undeafen" : "hint-voice-deafen"}
           hintText={state.deafened ? "voice.undeafenHint" : "voice.deafenHint"}
@@ -112,7 +111,7 @@ export function RoomVoicePanel({ session, names, onSelectParticipant, onSettings
       <span>{vis && <Glyph name="users" size={16} />}
         <span className={vis ? "visually-hidden" : undefined}>{t("voice.participants")}</span></span>
       <Btn icon="sliders" quiet size="dense" title="host.microphone.settings"
-        hint={state.role === "host" ? "hint-microphone-processing" : "hint-voice-microphone-processing"}
+        hint="hint-advanced"
         onClick={onSettings} />
     </div>
     {!vis && state.role === "viewer" && !state.room?.enabled && <p className="lr-voice-hint">{t("voice.closedHint")}</p>}
@@ -126,11 +125,13 @@ export function RoomVoicePanel({ session, names, onSelectParticipant, onSettings
         const speaking = !!member.publicationId && (levels.get(member.peerId) ?? 0) > .01;
         return <article className="lr-voice-member" key={member.peerId} data-room-peer={member.peerId}>
           <div className="lr-voice-identity">
-            {onSelectParticipant && member.connected ? <button type="button" className="lr-voice-avatar"
+            {onSelectParticipant && member.connected ? <Tooltip kind="hint-reaction-picker"
+              text={vis ? undefined : t("interaction.withPerson", { name: member.label })}>
+              <button type="button" className="lr-voice-avatar"
               aria-label={t("interaction.withPerson", { name: member.label })}
               onClick={event => onSelectParticipant(member.peerId, event.currentTarget)}>
               <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />
-            </button> : <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />}
+            </button></Tooltip> : <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />}
             <div><Tooltip overflow={{ text: member.label, selector: "b" }}><b>{member.label}{member.peerId === state.peerId && <span className={vis ? "visually-hidden" : undefined}>{` · ${t("voice.self")}`}</span>}</b></Tooltip>
               <small><Glyph name={status.icon} size={14} />
                 <span className="lr-voice-activity" data-speaking={speaking || undefined} aria-hidden="true" />

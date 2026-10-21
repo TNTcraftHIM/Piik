@@ -49,7 +49,7 @@ export function Couch({
   participantAction,
   footerAction,
 }: CouchProps) {
-  const { t } = useCopy();
+  const { t, vis } = useCopy();
   const [couchRef, containerWidth] = useElementWidth();
   const count = entries.length + (host ? 1 : 0);
   const capacity = Math.max(2, Math.min(8, Math.floor((containerWidth - 64) / 72)));
@@ -65,6 +65,10 @@ export function Couch({
     ? [host.name, host.name === t("common.host") ? null : t("common.host"),
         host.you ? t("common.you") : null].filter(Boolean).join(" · ")
     : undefined;
+  const personHint = (name: string) => participantAction
+    ? { kind: "hint-reaction-picker" as const, text: vis ? undefined : t("interaction.express"),
+        overflow: { text: name, selector: ".lr-pawn-name" } }
+    : { overflow: { text: name, selector: ".lr-pawn-name" } };
 
   return (
     <div ref={couchRef} className="lr-couch">
@@ -87,7 +91,7 @@ export function Couch({
           aria-label={`${t("common.host")} · ${t("common.viewers")}`}
         >
           {host ? (
-            <span className="lr-seat" data-room-peer={host.key} style={seatStyle(0)}><Tooltip overflow={{ text: host.name, selector: ".lr-pawn-name" }}>
+            <span className="lr-seat" data-room-peer={host.key} style={seatStyle(0)}><Tooltip {...personHint(host.name)}>
               {host.onSelect || participantAction ? (
                   <button
                     type="button"
@@ -151,7 +155,7 @@ export function Couch({
               </button>
             );
             return (
-              <span key={entry.key} className="lr-seat" data-room-peer={entry.key} style={seatStyle(index + (host ? 1 : 0))}><Tooltip overflow={{ text: entry.name, selector: ".lr-pawn-name" }}>
+              <span key={entry.key} className="lr-seat" data-room-peer={entry.key} style={seatStyle(index + (host ? 1 : 0))}><Tooltip {...personHint(entry.name)}>
                 {pawn}
               </Tooltip></span>
             );

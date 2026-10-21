@@ -86,6 +86,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-join-go",
   "hint-theater",
   "hint-theater-exit",
+  "hint-route-auto",
   "hint-route-p2p",
   "hint-route-p2p-required",
   "hint-route-sfu-required",
