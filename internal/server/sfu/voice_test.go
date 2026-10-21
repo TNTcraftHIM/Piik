@@ -371,6 +371,39 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 	}
 }
 
+func TestVoiceFullRoomAdmitsBothPublicationReplacementFacets(t *testing.T) {
+	service := NewMedia(MediaOptions{})
+	t.Cleanup(func() {
+		if err := service.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	configure := func(peer, connection string) error {
+		return service.ConfigureVoice(VoiceConnectionPlan{
+			RoomID: "1234", PeerID: peer, SessionID: "session_" + peer, ConnectionID: connection,
+		}, func(VoiceMediaEvent) {})
+	}
+	if err := configure("host", "committed_host"); err != nil {
+		t.Fatal(err)
+	}
+	for i := range maxVoicePublications - 1 {
+		if err := configure(fmt.Sprintf("viewer_%d", i), fmt.Sprintf("committed_%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Publication replacement retains the full committed graph while the one
+	// route operation connects both a new Host junction and its first child.
+	if err := configure("host", "replacement_host"); err != nil {
+		t.Fatalf("replacement Host facet was rejected: %v", err)
+	}
+	if err := configure("viewer_0", "replacement_child"); err != nil {
+		t.Fatalf("replacement child facet was rejected: %v", err)
+	}
+	if err := configure("viewer_1", "excess_transition"); err == nil {
+		t.Fatal("room admitted a connection beyond the publication replacement allowance")
+	}
+}
+
 func TestVoicePlanBoundsAndMediaShutdown(t *testing.T) {
 	service := NewMedia(MediaOptions{})
 	plan := VoiceConnectionPlan{RoomID: "1234", PeerID: "peer", SessionID: "session", ConnectionID: "connection"}

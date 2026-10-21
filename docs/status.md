@@ -27,9 +27,9 @@ and Git/PRs own completed history.
   mascot, concrete media waits use their owning comic, and waiting captions are
   secondary to literal status. Website reduced-motion preference and player
   tooltip placement follow the same presentation owners.
-- Camera sharing and Host microphone commentary are accepted product features.
-  Both Browser and native App audio use the existing media routes; device
-  selection and sharing settings keep their current resource owners. The
+- Camera sharing and room voice are accepted product features. Source audio
+  follows the picture; room voice owns Host and Viewer microphones under the
+  same route controller. Device selection and sharing settings keep their owners. The
   [capture assessment](./research/camera-and-microphone.md) owns platform behavior
   and platform limits.
 
@@ -49,8 +49,7 @@ also accepts an optional SFU-only policy through the same route controller.
 Windows native capture and thumbnails share automatic HDR-to-SDR conversion.
 The [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr) owns its evidence
 and the distinction from Browser capture and end-to-end HDR.
-Room voice is outside this published phase; Host microphone commentary remains.
-These features are published.
+Room voice supplies Host and Viewer speech separately from source audio.
 Release artifacts and operator deployment records own delivery completion;
 [TODO](./todo.md#now) owns remaining work.
 
@@ -60,25 +59,23 @@ The current 2.x release line retains attended keyboard/mouse control, Viewer
 playback settings and the interaction window, with the maintenance media and lifecycle
 repairs. The accepted maintenance phase preserves the published protocols and
 route owners; release artifacts and operator records establish publication and
-postflight completion. The isolated `feat/room-voice` candidate now integrates
-room voice into normal App/Server/Web, with the same room graph and serial route
-operation, separate picture and voice lifetimes, explicit pre-share room creation
+postflight completion. Room voice integrates normal App/Server/Web, with the same
+room graph and serial route operation, separate picture and voice lifetimes, explicit pre-share room creation
 and Host-owned room voice activation. Normal Browser checks cover a three-participant Peer
 relay and embedded SFU, duplex audio, local-mute isolation, picture replacement,
 detached UI and capture retirement. Optional voluntary Peer fanout and local
 picture rotation are included; frp uses the documented existing UDP configuration.
-Windows x64 Server packaging also joins this candidate through the existing
+Windows x64 Server packaging uses the existing
 release inventory; Docker images remain Linux-only.
 App Local invitations now use HTTPS on the selected LAN address; the Host keeps
 its loopback entry. Hosted Server also supports optional direct HTTPS with a
 temporary local certificate or supplied certificate files. Both use the same
 room authority and require the browser to accept the certificate.
-The candidate derives channel availability from Host membership and uses one
+Channel availability derives from Host membership and uses one
 room microphone for Host and Viewers. Local normal-page acceptance covers both
 P2P and SFU, independent listening, picture continuity and voice-facet recovery.
 Controlled-network voice cases and platform package checks have passed; the
-refreshed candidate is ready for owner acceptance before integration or publication.
-It is not a production deployment.
+release artifacts and operator records establish publication and deployment.
 Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
 The promotional film stays an online-review draft; export follows owner acceptance.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;

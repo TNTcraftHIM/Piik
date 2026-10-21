@@ -28,7 +28,7 @@ on browser permissions; while a camera is shared, other cameras are listed by na
 A camera with a built-in microphone still needs separate video and audio input
 selection. OBS Virtual Camera supplies video only. To include OBS audio, follow
 the [OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tutorial/),
-then choose that input in [room voice’s microphone settings](./room-tools.md#room-voice-in-test-builds) and turn it on.
+then choose that input in [room voice’s microphone settings](./room-tools.md#room-voice) and turn it on.
 This is the conversation channel, separate from the camera picture and source sound.
 
 ## Exclude a voice app from screen audio
@@ -72,7 +72,7 @@ over the picture or tap it to show the bar.
 | **Picture in picture** | Opens a floating video where supported. |
 | **Volume** | Goes up to 200% with audio boost, or 100% otherwise. Lower it if the sound distorts. |
 | **Playback settings** | **Fit** keeps the whole picture visible; **Fill** crops its edges; **Stretch** fills the area by changing its proportions. Connection settings default to **Auto**; available alternatives depend on the host and site. |
-| **Rotate picture** (test builds) | Switches between portrait and landscape locally, without rotating the device or changing the shared source. |
+| **Rotate picture** | Switches between portrait and landscape locally, without rotating the device or changing the shared source. |
 
 ### Connection preferences
 
@@ -80,7 +80,7 @@ Leave the connection setting on **Auto** unless comparing a specific route.
 The choices depend on the Host and site; selecting a route does not make an
 unavailable server or blocked network reachable.
 
-On capable test sites, **Playback settings → Connection → Help relay to more
+On supporting sites, **Playback settings → Connection → Help relay to more
 viewers** lets a Viewer volunteer more upload for the current visit. It remains
 an ordinary P2P relay; enable it on a stable connection with upload to spare.
-This option requires the matching test Server/Web, not an older public site.
+This option requires updated Server/Web pages; older sites do not offer it.

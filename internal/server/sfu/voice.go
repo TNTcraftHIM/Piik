@@ -116,14 +116,15 @@ func (media *Media) ConfigureVoice(plan VoiceConnectionPlan, emit func(VoiceMedi
 	}
 	c := v.connections[plan.key()]
 	if c == nil {
-		// One committed connection per member and the room's one transition.
+		// One committed connection per member. The room's one transition may
+		// replace both the Host junction and its first child connection.
 		roomCount := 0
 		for key := range v.connections {
 			if key.room == plan.RoomID {
 				roomCount++
 			}
 		}
-		if roomCount >= maxVoicePublications+1 {
+		if roomCount >= maxVoicePublications+2 {
 			v.mu.Unlock()
 			return errors.New("voice connection capacity is exhausted")
 		}

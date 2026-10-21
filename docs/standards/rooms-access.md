@@ -161,7 +161,7 @@ compatibility and design rationale.
 
 ## Room Voice
 
-Capable test builds add optional room voice to the same authenticated room.
+Optional room voice uses the same authenticated room.
 The Host joining opens room voice; leaving closes it for everyone. Channel
 availability is derived from that membership, not a separate switch. Authenticated
 room members can join an open channel without another approval. Joining never
@@ -184,8 +184,7 @@ Voice membership and routes outlive picture pause, stop and source replacement.
 Leaving voice releases its microphone and forwarding demand; room retirement or
 authorization loss ends the corresponding voice authority. Runtime voice state
 is not persisted. The [routing contract](./routing-transport.md#room-media)
-owns placement and recovery; [status](../status.md#current-work) distinguishes
-the local candidate from the published product.
+owns placement and recovery; [status](../status.md#current-work) indexes delivery.
 
 ## Persistence Modes
 

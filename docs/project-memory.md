@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -104,11 +104,11 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-The local room-voice candidate integrates normal App/Server/Web rather than a
+Room voice integrates normal App/Server/Web rather than a
 standalone demo. It keeps room authority and one route controller while picture
 generations and explicitly joined voice publications have separate
-lifetimes. Production remains on the published feature boundary; [status](./status.md#current-work)
-owns candidate readiness and [room media](./standards/routing-transport.md#room-media)
+lifetimes. [Status](./status.md#current-work)
+indexes delivery and [room media](./standards/routing-transport.md#room-media)
 owns the new behavior.
 
 Optional attended keyboard/mouse control follows the committed media route back

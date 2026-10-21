@@ -174,10 +174,13 @@ export type RelayHintKind = "hint-relay-volunteer";
 export type VoiceHintKind =
   | "hint-voice-open"
   | "hint-voice-close"
+  | "hint-voice-closed"
   | "hint-voice-join"
   | "hint-voice-leave"
   | "hint-voice-microphone-on"
   | "hint-voice-microphone-off"
+  | "hint-voice-host-microphone-unavailable"
+  | "hint-voice-microphone-unavailable"
   | "hint-voice-microphone-volume"
   | "hint-voice-microphone-processing"
   | "hint-voice-deafen"

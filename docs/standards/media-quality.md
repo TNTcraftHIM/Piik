@@ -11,7 +11,7 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
 
 ## Capture And Controls
 
-Capable test builds use room voice for both Host and Viewer microphones, separate
+Room voice handles both Host and Viewer microphones, separate
 from source sound. One Browser capture owner supplies device selection, input
 gain and optional speech processing, including on App-backed pages. Settings
 remain local to the Browser origin; joining and microphone activation are never

@@ -95,7 +95,7 @@ participants retain their established protocol and automatic behavior.
 Every non-server endpoint has one server-authoritative steady outbound media-
 copy cap `C`, default `2` and configurable only as `1`, `2`, or `3`.
 
-Capable test builds also let a Viewer volunteer to relay to more participants
+A Viewer can also volunteer to relay to more participants
 for the current visit. That explicit intent raises its permitted fanout only to
 the endpoint's reported capability, at most the room's 20-Viewer limit. Ordinary
 participants keep the configured cap. Withdrawing consent schedules affected
@@ -114,7 +114,7 @@ ordinary endpoint child counts are not server capacity.
 
 ## Room Media
 
-In voice-capable test builds, one room controller and its existing serial
+One room controller and its existing serial
 operation serve both picture and voice. Opening and joining room voice can acquire
 the graph before sharing; picture start attaches a new video generation and
 picture stop removes that generation while voice remains. Empty rooms allocate

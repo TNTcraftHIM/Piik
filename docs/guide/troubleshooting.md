@@ -405,7 +405,7 @@ In voice-capable builds:
 
 If voice reports a connection failure, compare [WebRTC settings](#browser-webrtc-restrictions)
 and another network. Picture playback alone does not establish that voice works.
-For feature availability, see [room voice in test builds](./room-tools.md#room-voice-in-test-builds).
+For feature availability, see [room voice](./room-tools.md#room-voice).
 
 ### Echo or unwanted application audio
 

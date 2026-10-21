@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-20
+Last updated: 2026-10-21
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -8,8 +8,8 @@ measurements and platform details.
 
 ## Current Evidence
 
-Windows App and Browser are the primary acceptance targets. The local room-voice
-candidate passed the normal Host/Viewer flows on P2P and embedded SFU, including
+Windows App and Browser are the primary acceptance targets. Room voice
+passed the normal Host/Viewer flows on P2P and embedded SFU, including
 channel activation, forwarding, source replacement and recovery. Controlled voice
 checks cover Browser/App endpoint combinations, SFU fallback and UDP interruption;
 they do not establish a population connection rate. Native H264/VP8,

@@ -434,8 +434,8 @@ describe("RouteTree", () => {
 
     expect(html.match(/class="lr-route-hit"/g)).toHaveLength(1);
     expect(html).toContain('<button class="lr-route-hit" type="button"');
-    expect(html).toContain('aria-label="Bob · 显示连接详情"');
-    expect(html).not.toContain('aria-label="Alice · 显示连接详情"');
+    expect(html).toContain('aria-label="Bob · 连接详情"');
+    expect(html).not.toContain('aria-label="Alice · 连接详情"');
   });
 
   it("keeps truncated Host, unselectable and pending names in visible tooltip targets", () => {
@@ -454,7 +454,7 @@ describe("RouteTree", () => {
       // The hidden topology list retains every full identity before client
       // layout measures clipping; generic static spans must not be named.
       expect(html).toContain(`${name}${suffix}`);
-      if (index === 2) expect(targets[index]).toContain(`aria-label="${name}${suffix} · 显示连接详情"`);
+      if (index === 2) expect(targets[index]).toContain(`aria-label="${name}${suffix} · 连接详情"`);
       else expect(targets[index]).not.toContain("aria-label=");
       expect(targets[index]).toMatch(/class="lr-route-label lr-route-name[^>]*>[^<]*…<\/span>/);
       expect(targets[index]).toContain('popover="manual"');

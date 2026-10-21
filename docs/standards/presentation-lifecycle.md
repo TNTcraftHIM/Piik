@@ -41,7 +41,7 @@ is absent, provided the room service and their admitted sessions remain availabl
 [Rooms and access](./rooms-access.md#room-interactions) owns interaction authority
 and retention; [status](../status.md#accepted-interaction-phase) owns release readiness.
 
-Voice-capable test builds add an explicit **Create room** action before sharing.
+The Host can explicitly **Create room** before sharing.
 Chat and voice use tabs in the existing interaction window, including its
 detached presentation. Closing or changing that window does not leave voice or
 stop capture. Microphone, admission and connection states stay literal; an

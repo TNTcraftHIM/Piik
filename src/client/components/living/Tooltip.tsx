@@ -123,21 +123,26 @@ export function Tooltip({
 
   useLayoutEffect(() => {
     const element = overflow ? wrapRef.current?.querySelector<HTMLElement>(overflow.selector) : null;
-    if (!element || !overflow) {
+    const view = element?.ownerDocument.defaultView;
+    if (!element || !overflow || !view) {
       setOverflowing(false);
       return;
     }
-    let disposed = false;
+    let disposed = false, frame = 0;
     const measure = () => {
       // SVG topology labels are shortened before rendering; HTML names use CSS.
       if (!disposed) setOverflowing(element.textContent !== overflow.text || element.scrollWidth > element.clientWidth);
     };
     measure();
-    const observer = new ResizeObserver(measure);
+    // A clipped label can change its focus wrapper; measure outside resize delivery.
+    const observer = new ResizeObserver(() => {
+      view.cancelAnimationFrame(frame);
+      frame = view.requestAnimationFrame(measure);
+    });
     observer.observe(element);
     // Font loading can change scrollWidth without changing the clipped box.
     void element.ownerDocument.fonts?.ready.then(measure);
-    return () => { disposed = true; observer.disconnect(); };
+    return () => { disposed = true; observer.disconnect(); view.cancelAnimationFrame(frame); };
   }, [overflow?.selector, overflow?.text, trigger?.type, trigger?.key, ownerDocument]);
 
   useLayoutEffect(() => {

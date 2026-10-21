@@ -322,7 +322,7 @@ ${rmBlock(["vls-capture-choice"], [[".vls-capture-choice", "opacity:1;transform:
   </>;
 }
 
-export function MicrophoneHint({ theme, mode, host = true }: Parameters<HintScene>[0] & { mode: "on" | "off" | "volume" | "processing"; host?: boolean }) {
+export function MicrophoneHint({ theme, mode, host = true }: Parameters<HintScene>[0] & { mode: "on" | "off" | "volume" | "processing" | "unavailable"; host?: boolean }) {
   return <>
     <style>{`
 .vls-mic-voice{animation:vlsMicVoice var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
@@ -331,16 +331,22 @@ export function MicrophoneHint({ theme, mode, host = true }: Parameters<HintScen
 @keyframes vlsMicGain{0%,12%{transform:translateX(0)}40%,100%{transform:translateX(28px)}}
 .vls-mic-noise{animation:vlsMicNoise var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
 @keyframes vlsMicNoise{0%,12%{opacity:.6}40%,100%{opacity:0}}
+.vls-mic-unavailable{transform-box:fill-box;transform-origin:center;animation:vlsMicUnavailable var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsMicUnavailable{0%,10%{transform:translateX(-2px) rotate(-8deg)}26%{transform:translateX(1px) rotate(4deg)}42%,100%{transform:none}}
 ${rmBlock(["vls-mic-voice"], [[".vls-mic-voice", "opacity:1;transform:none"]])}
 ${rmBlock(["vls-mic-gain"], [[".vls-mic-gain", "transform:translateX(28px)"]])}
 ${rmBlock(["vls-mic-noise"], [[".vls-mic-noise", "opacity:0"]])}
+${rmBlock(["vls-mic-unavailable"], [[".vls-mic-unavailable", "transform:none"]], false)}
 `}</style>
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     {[0, 160].map((x, index) => <g key={x} transform={`translate(${x} 0)`}>
       <Pawn x={53} yb={76} s={14} eyes host={host} />
-      <g transform="translate(78 38)"><Glyph name="microphone" size={27} /></g>
-      {mode === "processing" ? <>
+      <g transform="translate(78 38)"><g className={mode === "unavailable" && index === 1 ? "vls-mic-unavailable" : undefined}>
+        <Glyph name="microphone" size={27} />
+      </g></g>
+      {mode === "unavailable" ? <path d="m77 67 31-33" stroke={index ? "var(--comic-tone)" : FAINT} strokeWidth={3} strokeLinecap="round" />
+        : mode === "processing" ? <>
         <path className={index === 1 ? "vls-mic-voice" : undefined} d="M113 44q7 8 0 16m7-21q12 13 0 26" stroke={MINT} strokeWidth={2.5} strokeLinecap="round" fill="none" />
         <path className={index === 1 ? "vls-mic-noise" : undefined} d="m37 24 3-4 3 4 3-4m28 1 4 3 4-3 4 3m28 56 3-4 3 4 3-4" stroke={FAINT} strokeWidth={2} strokeLinecap="round" fill="none" opacity={index === 1 ? 0 : .6} />
       </> : mode === "volume" ? <>

@@ -34,7 +34,7 @@ To keep a copy, use **Chat settings → Export chat** to save the latest message
 retained on this page (up to 1,000) as a text file.
 Chat travels through the room's server and is **not end-to-end encrypted**.
 
-## Room voice in test builds
+## Room voice
 
 The Host may choose **Create room** before sharing, then copy its invitation.
 Open **Interact → Voice** and select **Open room voice**. Room members can then

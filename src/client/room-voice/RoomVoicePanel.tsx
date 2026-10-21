@@ -41,16 +41,18 @@ export function RoomVoiceControls({ session }: Props) {
   const microphoneUnavailable = !state.microphone && !state.capturePending && !navigator.mediaDevices?.getUserMedia;
   const joined = Boolean(me?.joined);
   const host = state.role === "host";
+  const voiceClosed = !host && state.room?.enabled === false;
   const actionTitle = host ? joined ? "voice.close" : "voice.open" : joined ? "voice.leave" : "voice.join";
-  const actionHint = host ? joined ? "hint-voice-close" : "hint-voice-open" : joined ? "hint-voice-leave" : "hint-voice-join";
-  const actionExplanation = host ? joined ? "voice.closeHint" : "voice.openHint" : !state.room?.enabled ? "voice.closedHint" : undefined;
+  const actionHint = host ? joined ? "hint-voice-close" : "hint-voice-open"
+    : joined ? "hint-voice-leave" : voiceClosed ? "hint-voice-closed" : "hint-voice-join";
+  const actionExplanation = host ? joined ? "voice.closeHint" : "voice.openHint" : voiceClosed ? "voice.closedHint" : undefined;
   return <>
     <div className="lr-voice-toolbar lr-media-controls" role="group" aria-label={t("interaction.voice")}>
       {joined && <div className="lr-voice-quick-controls">
         <AudioVolumeMenu volume={state.input.volume} onVolume={volume => session.setVolume(volume)}
           label="host.microphone.volume" icon="microphone" disabled={microphoneUnavailable || state.capturePending}>
         <Btn icon={state.microphone ? "microphone" : "microphoneOff"} title="host.device.microphone"
-          size="compact" hint={microphoneUnavailable ? host ? "hint-microphone-on" : "hint-voice-microphone-on"
+          size="compact" hint={microphoneUnavailable ? host ? "hint-voice-host-microphone-unavailable" : "hint-voice-microphone-unavailable"
             : state.capturePending ? "hint-close" : undefined}
           hintText={microphoneUnavailable ? "voice.error.microphoneUnavailable" : "voice.captureCancel"}
           pressed={state.microphone} busy={state.capturePending} disabled={!state.connected || microphoneUnavailable}
@@ -138,7 +140,7 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
               onClick={event => onSelectParticipant(member.peerId, event.currentTarget)}>
               <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />
             </button></Tooltip> : <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />}
-            <div><Tooltip overflow={{ text: member.label, selector: "b" }}><b>{member.label}{member.peerId === state.peerId && <span className={vis ? "visually-hidden" : undefined}>{` · ${t("voice.self")}`}</span>}</b></Tooltip>
+            <div><Tooltip overflow={{ text: member.label, selector: ".lr-voice-name" }}><b><span className="lr-voice-name">{member.label}</span>{member.peerId === state.peerId && <span className={vis ? "visually-hidden" : undefined}>{` · ${t("voice.self")}`}</span>}</b></Tooltip>
               <small><Glyph name={status.icon} size={14} />
                 <span className="lr-voice-activity" data-speaking={speaking || undefined} aria-hidden="true" />
                 <span className={vis ? "visually-hidden" : undefined}>{t(status.label)}</span>

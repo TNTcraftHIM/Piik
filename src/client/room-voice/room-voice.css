@@ -15,7 +15,9 @@
 .lr-voice-avatar:focus-visible { outline-offset: -3px; }
 .lr-voice-avatar > svg { width: 28px; height: 34px; }
 .lr-voice-identity > div { min-width: 0; }
-.lr-voice-identity b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lr-voice-identity b { display: flex; font-size: 13px; white-space: nowrap; }
+.lr-voice-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lr-voice-name + span { flex: none; }
 .lr-voice-identity small { display: flex; align-items: center; gap: 5px; margin-top: 3px; color: var(--muted); font-size: 12px; }
 .lr-voice-identity small > svg { flex: none; }
 .lr-voice-member-controls { display: flex; flex: none; gap: 6px; align-items: center; }
