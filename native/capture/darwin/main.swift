@@ -72,13 +72,18 @@ private struct VideoImage {
               scale.isFinite, scale > 0, contentScale.isFinite, contentScale > 0 else {
             return nil
         }
-        let crop = CGRect(x: rect.minX * scale, y: rect.minY * scale,
-                          width: rect.width * scale, height: rect.height * scale)
+        let reportedCrop = CGRect(x: rect.minX * scale, y: rect.minY * scale,
+                                  width: rect.width * scale, height: rect.height * scale)
         let bounds = CGRect(x: 0, y: 0, width: CVPixelBufferGetWidth(buffer),
                             height: CVPixelBufferGetHeight(buffer))
-        guard crop.minX.isFinite, crop.minY.isFinite,
-              crop.width.isFinite, crop.height.isFinite,
-              crop.width > 0, crop.height > 0, bounds.contains(crop) else { return nil }
+        // Scaling metadata can cross a pixel edge fractionally. Keep the clean
+        // aperture inside the surface while rejecting more than half a pixel.
+        guard reportedCrop.minX.isFinite, reportedCrop.minY.isFinite,
+              reportedCrop.width.isFinite, reportedCrop.height.isFinite,
+              reportedCrop.width > 0, reportedCrop.height > 0,
+              bounds.insetBy(dx: -0.5, dy: -0.5).contains(reportedCrop) else { return nil }
+        let crop = reportedCrop.intersection(bounds)
+        guard !crop.isEmpty else { return nil }
         let size = CGSize(width: crop.width / contentScale, height: crop.height / contentScale)
         guard size.width.isFinite, size.height.isFinite else { return nil }
         // Set once before sharing the retained buffer with the output workers.
@@ -1196,6 +1201,26 @@ private func geometrySelfTest() throws {
     outside[.contentRect] = CGRect(x: 700, y: 0, width: 200, height: 300).dictionaryRepresentation
     guard VideoImage(buffer, attachments: outside) == nil else {
         throw CaptureFailure(description: "out-of-bounds capture content was accepted")
+    }
+    let fullHD = try syntheticPixelBuffer(width: 1920, height: 1080)
+    var rounded: [SCStreamFrameInfo: Any] = [
+        .contentRect: CGRect(x: 0, y: 0, width: 864.0000319480896,
+                             height: 540.000019967556).dictionaryRepresentation,
+        .scaleFactor: CGFloat(2), .contentScale: CGFloat(0.5837838053703308),
+    ]
+    guard VideoImage(fullHD, attachments: rounded) != nil,
+          CVImageBufferGetCleanRect(fullHD).height == 1080 else {
+        throw CaptureFailure(description: "fractional capture edge discarded a valid frame")
+    }
+    rounded[.contentRect] = CGRect(x: -0.00002, y: -0.00002,
+                                  width: 960.00004, height: 540.00004).dictionaryRepresentation
+    guard VideoImage(fullHD, attachments: rounded) != nil,
+          CVImageBufferGetCleanRect(fullHD) == CGRect(x: 0, y: 0, width: 1920, height: 1080) else {
+        throw CaptureFailure(description: "fractional capture origin escaped the surface")
+    }
+    rounded[.contentRect] = CGRect(x: 0, y: 0, width: 960, height: 540.5).dictionaryRepresentation
+    guard VideoImage(fullHD, attachments: rounded) == nil else {
+        throw CaptureFailure(description: "capture overflow beyond subpixel rounding was accepted")
     }
     // Generated Constrained Baseline: 3856x2176 storage, 3840x2160 visible.
     // Exercise CoreMedia's SPS interpretation without allocating a decoder.
