@@ -182,6 +182,25 @@ product code and App/Server build inputs still follow the release boundary.
 Check links, language switching, search, keyboard/mobile use and the static
 HTML fallback when changing the public documentation.
 
+### Guide screenshots
+
+With `agent-browser` installed, start `npm run dev -- --host 127.0.0.1`.
+After changing pictured controls or copy, run in another terminal:
+
+```sh
+node scripts/update-guide-images.mjs http://127.0.0.1:5173
+npm run build:website
+```
+
+The script captures `/__tooltip-preview` production components with sample data,
+both languages, light theme and reduced motion, then closes its own session.
+`AGENT_BROWSER_PATH` overrides the CLI path. Inspect `docs/assets/guide/` before
+committing with UI/copy changes. Keep example captions; use no live-room data,
+hand-edited text or duplicate mockups.
+
+The build stages `docs/assets/` and rewrites Markdown image paths to hashed URLs.
+GitHub and the docs center share the sources; README links to the full tutorial.
+
 ## Downloads
 
 The Windows, macOS and Linux App cards use fixed filenames and each provider's

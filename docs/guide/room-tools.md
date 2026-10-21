@@ -36,26 +36,34 @@ Chat travels through the room's server and is **not end-to-end encrypted**.
 
 ## Room voice
 
-The Host may choose **Create room** before sharing, then copy its invitation.
-Open **Interact → Voice** and select **Open room voice**. Room members can then
-select **Join voice**, without another approval.
-Joining never opens a microphone: each speaker selects the **Microphone** button
-and grants browser access. A person's speaker button mutes them only for you.
+1. The Host creates a room and sends its invitation; no picture share is needed.
+2. The Host opens **Interact → Voice** and selects **Open room voice**.
+   Room members can then select **Join voice**, without another approval.
+3. To speak, select **Microphone** and grant browser access. Joining alone never
+   turns on your microphone.
+
+![Room voice with two sample participants. Microphone and listening controls are at the bottom; voice settings are beside the tabs.](../assets/guide/room-voice.en.png)
+
+*Host view with sample participants. A Viewer sees Leave voice instead of Close room voice.*
+
 Microphone capture needs a browser-accepted HTTPS or localhost page; ordinary
 LAN HTTP pages can still join and listen. For voice input or remote control over
 a LAN or virtual LAN, see the [virtual-LAN options](./troubleshooting.md#optional-a-virtual-lan).
-After joining, the bottom toolbar provides microphone, listening and leave
-controls. The headphone button pauses room voice locally; your microphone, video
-sound and voice forwarding remain unaffected. **Voice settings**
-offers input device, microphone and listening volumes (both 0%–200%, default
-100%), and noise/echo reduction. Listening volume only changes room voice for
-you. The microphone icon's green fill rises with your actual input level;
-a slashed icon means the microphone is off. Browser and App-backed sharing use
-these same controls. Hover over a microphone, headphone or person's speaker
-button to adjust its volume directly; on touchscreens, press and hold it.
-A person's local 0%–200% level combines with the master listening level and
-does not change what anyone else hears. Participant microphone status stays
-visible while the green dot indicates speech.
+
+- **Microphone:** a slashed icon means off; its green fill rises with your input
+  level. Participant labels stay stable, and their microphone icon lights up
+  when speech is received.
+- **Listening:** the headphone button pauses room voice only for you. A person's
+  speaker button mutes just that person locally. Neither changes your microphone
+  or the shared picture's sound.
+- **Volume:** hover over the microphone, headphones or a person's speaker to
+  adjust it; on touchscreens, press and hold. Each level is 0%–200%, default 100%.
+  A person's volume combines with your master listening level.
+
+**Voice settings**, beside the tabs, contains the input device, microphone and
+listening volumes, and noise/echo reduction. On supporting sites, the Host can
+also set **Room voice bitrate**; the default is 32 kbps per speaker.
+Browser and App-backed sharing use these same voice controls.
 
 Voice stays connected when picture sharing stops. It also stays active when you
 close or detach the interaction window. Viewers choose **Leave voice** to leave;

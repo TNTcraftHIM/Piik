@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitepress';
-import { pages, documentLink, repository } from '../pages.mjs';
+import { pages, documentLink, documentImage, repository } from '../pages.mjs';
 import { githubSlug } from '../../../scripts/markdown-slug.mjs';
 import { THEME_STORAGE_KEY } from '../../../src/client/ui/theme.ts';
 
@@ -104,6 +104,7 @@ export default defineConfig({
         if (!page) return;
         for (const token of state.tokens.flatMap(token => token.children ?? [])) {
           if (token.type === 'link_open') token.attrSet('href', documentLink(token.attrGet('href'), page.source));
+          if (token.type === 'image') token.attrSet('src', documentImage(token.attrGet('src'), page.source));
         }
       });
     },

@@ -74,17 +74,10 @@ Use **中 / EN / ✦** in the header to switch language or try the visual mode.
 The App can create a local room or temporary public invitation, and stays
 available to supply capture for an approved site. Keep it running while sharing.
 
-Download a ZIP beginning with **`piik-app`**. The filename also identifies the platform:
+[**Illustrated getting started →**](./docs/guide/getting-started.md) · [**Troubleshooting →**](./docs/guide/troubleshooting.md)
 
-| Filename contains | Platform |
-| --- | --- |
-| `windows-amd64` | Windows x64 |
-| `darwin-arm64` | Apple silicon; native capture requires macOS 13+ |
-| `darwin-amd64` | Intel Mac; native capture requires macOS 13+ |
-| `linux-amd64` | Linux x64 |
-| `linux-arm64` | Linux ARM64 |
-
-[**Getting started →**](./docs/guide/getting-started.md) · [**Troubleshooting →**](./docs/guide/troubleshooting.md)
+The guide walks through choosing an App download, selecting a source and inviting
+friends. Download packages begin with **`piik-app`**; self-hosting is optional.
 
 Browser capture requires HTTPS or `localhost`. Windows App and desktop browser
 sharing are the primary tested paths. Physical-device coverage for the macOS and

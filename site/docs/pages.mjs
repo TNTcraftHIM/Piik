@@ -24,13 +24,20 @@ export const pages = [
 
 export const repository = 'https://github.com/TNTcraftHIM/Piik';
 
-// Markdown keeps repository-relative links; only the generated view uses web routes.
-export function documentLink(href, source) {
-  if (/^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(href)) return href;
+function repositoryReference(href, source) {
+  if (/^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(href)) return null;
   const [, pathname, suffix] = href.match(/^([^?#]*)(.*)$/);
-  if (!pathname) return href;
+  if (!pathname) return null;
   const decoded = decodeURIComponent(pathname);
   const target = posix.normalize(decoded.startsWith('/') ? decoded.slice(1) : posix.join(posix.dirname(source), decoded));
+  return { target, suffix };
+}
+
+// Markdown keeps repository-relative links; only the generated view uses web routes.
+export function documentLink(href, source) {
+  const reference = repositoryReference(href, source);
+  if (!reference) return href;
+  const { target, suffix } = reference;
   const page = pages.find(page => page.source === target);
   if (page) {
     const current = pages.find(page => page.source === source);
@@ -38,4 +45,12 @@ export function documentLink(href, source) {
     return `./${relative}${suffix}`;
   }
   return `${repository}/blob/main/${target}${suffix}`;
+}
+
+// Keep images local to the documentation build so Vite can hash and bundle them.
+export function documentImage(src, source) {
+  const reference = repositoryReference(src, source);
+  if (!reference || !reference.target.startsWith('docs/assets/')) return src;
+  const current = pages.find(page => page.source === source);
+  return `./${posix.relative(posix.dirname(current.path), reference.target.slice('docs/'.length))}${reference.suffix}`;
 }

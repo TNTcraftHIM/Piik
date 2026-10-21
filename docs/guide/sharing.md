@@ -64,6 +64,9 @@ app to a different playback device.
 
 The playback bar changes only your own viewing and listening. Move the pointer
 over the picture or tap it to show the bar.
+The Host has the same local playback controls; its preview starts muted.
+Pausing that preview does not pause the share sent to friends. Use **Pause sharing**
+below the picture to pause sharing for everyone.
 
 | Control | What it does |
 | --- | --- |

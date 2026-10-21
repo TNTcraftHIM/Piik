@@ -2,8 +2,9 @@
 
 English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../README.md)
 
-Piik shares one person's screen with up to 20 invited viewers. This guide covers
-watching, using Piik online, using Piik App and sharing through an existing site.
+Piik shares one person's screen with up to 20 invited viewers.
+Watching only needs an invitation and a browser; sharing starts with a picture
+source and an invitation to send.
 
 [Join a room](#join-a-friends-room) · [Use online](#use-piik-online) ·
 [Piik App](#share-with-piik-app) · [Existing site](#share-from-an-existing-site) ·
@@ -20,11 +21,10 @@ and choose **Public invite**. To share without installing, open
 3. Move the pointer over the picture or tap it to show the playback bar.
 
 The playback bar controls only your own picture and sound.
-Use the playback button to pause or resume; on a computer, double-click the picture to enter or
-leave fullscreen where supported. On a phone, tap the picture to show the bar
-and use its buttons. Safari may show system controls in video fullscreen.
+See [playback controls](./sharing.md#playback-controls) for fullscreen, display and sound options.
 
-See [playback controls](./sharing.md#playback-controls) for display and sound options.
+<details>
+<summary>Only have a room code, or an old invitation?</summary>
 
 With just a four-digit room code, open the same Piik site and choose
 **Join a room**. You may need the site's passphrase and the room's password.
@@ -37,6 +37,8 @@ require the invitation credential. This switch does not revoke existing invites.
 
 If an old link no longer works, ask the host for the current invitation.
 App Local rooms and temporary public invitations end when that App run stops.
+
+</details>
 
 ## Use Piik online
 
@@ -65,12 +67,15 @@ restrictive networks may load the page but block video.
    **Screens** as available. Pick the actual source and sound option.
 5. Copy and send the room invitation. Keep both the App and sharing tab open.
 
+![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.png)
+
+*Windows App source selection with sample windows. Browser and Camera do not
+require App capture; the other tabs depend on the connected App.*
+
 If macOS blocks the first launch, follow the [Mac opening steps](./troubleshooting.md#macos-blocks-first-launch).
 
-Click the launcher's update button to download the new App. **Gitee mirror**
-provides an alternative if the download is slow or unavailable. A new major
-version includes a compatibility warning that links to the upgrade instructions;
-read them before replacing your App.
+<details>
+<summary>Which download should I choose?</summary>
 
 | Filename contains | Platform |
 | --- | --- |
@@ -86,23 +91,34 @@ coverage for the macOS and Linux apps is still limited;
 Linux native capture also needs [system components](../../native/capture/linux/README.md).
 See the [App guide](../../cmd/piik-app/README.md) for package and runtime details.
 
+</details>
+
 ### Choose an App mode
 
-| Mode | When to choose it | What to keep in mind |
-| --- | --- | --- |
-| **Local room** | Friends are on the same local network. | With multiple interfaces, expand **Local invitation address** and select the interface and IP on your friends' network. Your computer must be reachable from theirs. A local site passphrase is optional. |
-| **Public invite** | Friends are elsewhere and you want a temporary invitation. | Needs Internet access. The public address lasts for this App run. |
+![The App mode selector: Public invite is selected; Local room is the alternative.](../assets/guide/app-modes.en.png)
+
+- **Public invite:** send a temporary web link to friends elsewhere. It needs
+  Internet access and lasts until you close the App.
+- **Local room:** friends are on the same LAN or virtual LAN. Your computer
+  must be reachable from theirs. If needed, expand **Local invitation address**
+  and select the network interface your friends use.
 
 For Local room and Public invite, expand **Site passphrase** to set an optional
 access passphrase.
 Local invitations use HTTPS. On first access, confirm the local certificate
 against the Host's App terminal before continuing; see the
 [certificate guide](./troubleshooting.md#local-https-certificate-warning).
+
+<details>
+<summary>Return to the launcher or change mode</summary>
+
 Once the room service starts, click the connected **App** button at the top right
 to return to the launcher, manage site access or reopen the room. The App terminal
 also keeps an **App launcher** address. To change between Local room and Public
 invite, close and reopen the App, then choose again. This ends the previous room
 and generates a new public-invitation address.
+
+</details>
 
 ### Use App with an existing site
 
@@ -119,6 +135,9 @@ selector; its list updates as soon as the connection completes.
 If connection fails, the App button offers **Retry** and **Download App**.
 You can still share and watch in your browser.
 
+<details>
+<summary>Remembering, revoking and bookmarking a site</summary>
+
 The browser remembers the connection to an approved site. Reconnect after
 changing browsers, using a private window or clearing site data. In the App
 launcher, **×** revokes a site and **☆** makes it open next time; approving a
@@ -126,13 +145,20 @@ different site replaces the previous one. See the [App reference](../../cmd/piik
 for these options and returning to the launcher. A new public-invite address needs
 its own approval.
 
-**A page that opens does not guarantee a video connection.** Public invite gives
-your room a temporary web address; picture and sound still travel between
-participants. This mode has no media-server fallback, and the temporary address
-has no uptime guarantee. All modes need a working UDP media path.
-The [App guide](../../cmd/piik-app/README.md#modes) explains the connection setup.
+</details>
+
+If a page opens but the picture cannot connect, see
+[media connection troubleshooting](./troubleshooting.md#when-video-will-not-connect).
+Public invite provides a web address; picture and sound still connect between
+participants, without a media-server fallback.
 
 ### Upgrading
+
+<details>
+<summary>Replace an App or update an existing site</summary>
+
+The launcher's update button downloads the new App; **Gitee mirror** is an
+alternative if the download is slow or unavailable.
 
 **Piik 2.x and 1.x cannot be used together.** The App and the site it connects to
 need the same major version. Different 2.x versions preserve established sharing
@@ -148,6 +174,8 @@ Read the release notes on
   connecting to that site and refresh all sharing and viewing pages.
 
 Restarting an App or Server interrupts active shares.
+
+</details>
 
 ## Share from an existing site
 
