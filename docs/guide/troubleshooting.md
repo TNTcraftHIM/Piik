@@ -10,6 +10,7 @@ collect a diagnostic report if the problem persists.
 | What you see | Try this |
 | --- | --- |
 | App startup fails, or no page opens automatically | Read the reason on the page and in the terminal. If the App is still running, copy its address into your browser. See [App diagnostics](../../cmd/piik-app/README.md#diagnostics) to collect a report; if Local mode lists several addresses, choose an adapter and IP on the launch page. |
+| macOS says the App is damaged or the developer cannot be verified | Check the download and follow [macOS first-launch steps](#macos-blocks-first-launch). |
 | Public invitation fails to start, or a link shows 1033 | Check the host's App and current link using [public invitation troubleshooting](#public-invitation-fails-or-shows-1033). |
 | Local invitation will not open | Check that the devices can reach each other, then review the address and Windows firewall permissions in [Local invitation checks](#local-invitation-will-not-open). |
 | Room code says the room does not exist | Open the host's current full invitation link. Codes work only on their original site; a site with empty-room recycling may also have reclaimed it. The host can create a new room; see [joining a room](./getting-started.md#join-a-friends-room). |
@@ -38,6 +39,29 @@ collect a diagnostic report if the problem persists.
 For a bug report, include the version, OS/browser, what you expected, and how
 to reproduce it. [Diagnostics and export](../../cmd/piik-app/README.md#diagnostics)
 explains how to collect a local report and what to review before sharing it.
+
+## macOS blocks first launch
+
+Current Mac builds are not Developer ID-signed or notarized. macOS can block
+their first launch; the wording alone does not identify a damaged download.
+
+1. Download the matching Mac ZIP from the project's Releases and compare its
+   SHA-256 with the checksum published for that release. In Terminal, run
+   `shasum -a256 ~/Downloads/piik-app-darwin-arm64.zip` (use `darwin-amd64` on Intel).
+   If it differs, download again rather than bypassing the warning.
+2. Move the complete `Piik App.app` to Applications. Try opening it, then check
+   **System Settings → Privacy & Security → Open Anyway**, as described in
+   [Apple's first-launch guidance](https://support.apple.com/102445).
+3. If **Open Anyway** is unavailable and the official ZIP's checksum matches,
+   you can remove the download quarantine from this App only, then reopen it:
+
+   ```sh
+   xattr -dr com.apple.quarantine "/Applications/Piik App.app"
+   ```
+
+Use the App's actual path if you kept it elsewhere. Keep system-wide security
+checks enabled. A capture or audio failure after launch is a separate problem;
+collect a diagnostic report using the link above.
 
 ## Local invitation will not open
 

@@ -78,6 +78,8 @@ restrictive networks may load the page but block video.
    **Screens** as available. Pick the actual source and sound option.
 5. Copy and send the room invitation. Keep both the App and sharing tab open.
 
+If macOS blocks the first launch, follow the [Mac opening steps](./troubleshooting.md#macos-blocks-first-launch).
+
 Click the launcher's update button to download the new App. **Gitee mirror**
 provides an alternative if the download is slow or unavailable. A new major
 version includes a compatibility warning that links to the upgrade instructions;

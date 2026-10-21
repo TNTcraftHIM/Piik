@@ -9,6 +9,7 @@ Piik App 通过系统浏览器中的 Piik 网页界面，提供本地房间与�
 完整解压对应平台的程序包。Windows 和 Linux 保留 App 程序旁的 `runtime` 目录，
 分别运行 `piik-app.exe` 或 `./piik-app`。
 macOS 打开 `Piik App.app`，也可以将整个 `.app` 移到「应用程序」。
+首次打开被拦截时，按 [Mac 打开说明](../../docs/guide/troubleshooting.zh-CN.md#macos-提示已损坏或无法验证开发者)处理。
 启动页会在系统浏览器中打开。Linux 原生采集所需的系统依赖见
 [Linux 采集指南](../../native/capture/linux/README.md)。
 
