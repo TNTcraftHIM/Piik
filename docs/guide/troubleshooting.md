@@ -24,6 +24,7 @@ collect a diagnostic report if the problem persists.
 | Yellow outline around the shared window or screen | This is Windows' capture indicator. See [capture borders](#yellow-capture-border-on-windows) for Windows 11 controls and an optional Windows 10 workaround. |
 | Picture but no source sound | Unmute the video. The host should choose a source with shareable audio and enable sound in the source picker. Camera video and audio inputs are selected separately; see [audio settings](./getting-started.md#add-your-voice). |
 | Cannot hear someone speaking | Both people must join **Interact → Voice**; the Host opens voice first. Check the speaker's microphone, input device and volume, then your local listening/mute controls. Microphone access needs HTTPS or a localhost page. |
+| LAN page cannot open a microphone, or remote controls are missing | Ordinary LAN HTTP pages lack the required secure browser APIs; a networking tool does not change that. See the [HTTPS options for virtual LANs](#optional-a-virtual-lan), which also apply to ordinary LANs. |
 | Screen sharing includes a voice app's audio | Windows App screen capture can [exclude application audio](./getting-started.md#exclude-a-voice-app-from-screen-audio). This does not remove echo from speakers picked up by a microphone. |
 | Virtual microphone has echo, or remains audible when muted in Piik | Temporarily turn off **System sound** to compare. A mixer's playback can enter source audio separately from Piik's microphone; check its [audio routing](./getting-started.md#exclude-a-voice-app-from-screen-audio). |
 | Page opens but video will not connect | Use **Reconnect** if available, or refresh the viewing page. See [connection troubleshooting](#when-video-will-not-connect) if it still fails. |
@@ -426,9 +427,27 @@ reachable virtual IPv4 addresses and carry both Piik's web traffic and WebRTC UD
 4. Keep the networking tool running on every device. If its virtual IP changes,
    select the new address in the App and send a new invitation.
 
-Voice, camera capture and remote control require HTTPS or a localhost page.
-A virtual-IP HTTP address can play video but cannot open a microphone or use
-[remote control](./getting-started.md#let-a-friend-control-your-shared-screen).
+Ordinary and virtual LANs follow the same [browser rules](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts). An HTTP page at a LAN IP
+can play video, chat, and join an open voice channel to listen. Microphone capture,
+browser camera capture and [remote control](./getting-started.md#let-a-friend-control-your-shared-screen)
+need a browser-trusted HTTPS page. `localhost` means the current device; it is
+not a replacement for your friend's address.
+
+For microphone input or remote control, keep the networking tool running on every
+device and choose a web entry:
+
+- If Public invite is reachable, the Host creates a **Public invite** in the App
+  and sends its full HTTPS invitation. Web and signaling use HTTPS while media
+  still tries available paths, including the virtual LAN. Connection details
+  show the selected addresses.
+- If Public invite is unreachable, use a self-hosted HTTPS site everyone can
+  access, approve that site in the App, and send an invitation generated there.
+  An administrator can also host it inside the LAN with a domain and a
+  browser-trusted TLS certificate; see the [deployment guide](../operations/self-hosting.md).
+
+Changing `http` to `https` in the address alone does not enable HTTPS: the service
+must provide trusted TLS. Without a reachable HTTPS entry, the LAN HTTP option
+still supports watching and listening, but not microphone capture or remote control.
 
 This may help with some strict NAT combinations, but is not guaranteed to work
 on every campus network. Firewall rules and Browser address discovery still

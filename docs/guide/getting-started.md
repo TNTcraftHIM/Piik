@@ -356,6 +356,9 @@ Open **Interact → Voice** and select **Open room voice**. Room members can the
 select **Join voice**, without another approval.
 Joining never opens a microphone: each speaker selects **Turn on microphone**
 and grants browser access. **Mute for me** changes only your own playback.
+Microphone capture needs a browser-trusted HTTPS or localhost page; ordinary
+LAN HTTP pages can still join and listen. For voice input or remote control over
+a LAN or virtual LAN, see the [virtual-LAN options](./troubleshooting.md#optional-a-virtual-lan).
 After joining, the bottom toolbar provides microphone, listening and leave
 controls. **Pause listening** mutes room voice locally; your microphone, video
 sound and voice forwarding remain unaffected. In the voice tab, **Microphone

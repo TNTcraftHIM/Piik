@@ -37,21 +37,21 @@ export function RoomVoiceControls({ session }: Props) {
   const levels = useVoiceLevels(session, state.microphone, true), meterId = useId();
   const level = Math.min(1, (levels.get(state.peerId) ?? 0) * 5);
   const microphoneTitle = state.capturePending ? "voice.captureCancel" : state.microphone ? "voice.microphoneOff" : "voice.microphoneOn";
+  const microphoneUnavailable = !state.microphone && !state.capturePending && !navigator.mediaDevices?.getUserMedia;
+  const joined = Boolean(me?.joined);
+  const host = state.role === "host";
+  const actionTitle = host ? joined ? "voice.close" : "voice.open" : joined ? "voice.leave" : "voice.join";
+  const actionHint = host ? joined ? "hint-voice-close" : "hint-voice-open" : joined ? "hint-voice-leave" : "hint-voice-join";
+  const actionExplanation = host ? joined ? "voice.closeHint" : "voice.openHint" : !state.room?.enabled ? "voice.closedHint" : undefined;
   return <>
-    {!me?.joined ? <Btn icon="headphones" size="compact"
-      title={state.role === "host" ? "voice.open" : "voice.join"}
-      cap={state.role === "host" ? "voice.open" : "voice.join"}
-      disabled={!state.connected || !state.room || state.role === "viewer" && !state.room.enabled}
-      hint={state.role === "host" ? "hint-voice-open" : "hint-voice-join"}
-      hintText={state.role === "host" ? "voice.openHint" : !state.room?.enabled ? "voice.closedHint" : undefined}
-      onClick={() => { session.resumeAudio(); session.command({ action: "join" }); }} /> : <div className="lr-voice-toolbar" role="group" aria-label={t("interaction.voice")}>
-      <span className={vis || state.role === "host" ? "visually-hidden" : "lr-voice-joined"}>{t("voice.joined")}</span>
-      <div className="lr-voice-quick-controls lr-media-controls">
+    <div className="lr-voice-toolbar lr-media-controls" role="group" aria-label={t("interaction.voice")}>
+      {joined && <div className="lr-voice-quick-controls">
         <span className="lr-voice-mic"><Btn icon={state.microphone ? "microphone" : "microphoneOff"} title={microphoneTitle}
           size="compact" hint={state.role === "host"
             ? state.microphone ? "hint-microphone-off" : "hint-microphone-on"
             : state.microphone ? "hint-voice-microphone-off" : "hint-voice-microphone-on"}
-          pressed={state.microphone} busy={state.capturePending} disabled={!state.connected}
+          hintText={microphoneUnavailable ? "voice.error.microphoneUnavailable" : undefined}
+          pressed={state.microphone} busy={state.capturePending} disabled={!state.connected || microphoneUnavailable}
           onClick={() => {
             session.resumeAudio();
             if (state.microphone || state.capturePending) session.stopMicrophone(); else void session.startMicrophone();
@@ -65,15 +65,13 @@ export function RoomVoiceControls({ session }: Props) {
           size="compact" hint={state.deafened ? "hint-voice-undeafen" : "hint-voice-deafen"}
           hintText={state.deafened ? "voice.undeafenHint" : "voice.deafenHint"}
           pressed={!state.deafened} onClick={() => session.deafen(!state.deafened)} />
-        <Btn icon={state.role === "host" ? "stop" : "door"}
-          title={state.role === "host" ? "voice.close" : "voice.leave"}
-          cap={state.role === "host" ? "voice.close" : undefined}
-          tone={state.role === "host" ? "danger" : undefined} size="compact" quiet={state.role !== "host"}
-          hint={state.role === "host" ? "hint-voice-close" : "hint-voice-leave"}
-          hintText={state.role === "host" ? "voice.closeHint" : undefined} disabled={!state.connected}
-          onClick={() => session.command({ action: "leave" })} />
-      </div>
-    </div>}
+      </div>}
+      <Btn icon={!joined ? "headphones" : host ? "stop" : "door"}
+        title={actionTitle} cap={actionTitle} tone={joined && host ? "danger" : undefined} size="compact"
+        hint={actionHint} hintText={actionExplanation}
+        disabled={!state.connected || !state.room || !joined && !host && !state.room.enabled}
+        onClick={() => { if (!joined) session.resumeAudio(); session.command({ action: joined ? "leave" : "join" }); }} />
+    </div>
     {state.autoplayBlocked && <Btn icon="play" title="voice.play" cap="voice.play" size="compact" hint="hint-local-play" onClick={() => session.resumeAudio()} />}
     {state.error && <p className="lr-voice-control-error" role="alert"><Glyph name="alert" size={16} />
       <span className={vis ? "visually-hidden" : undefined}>{t(`voice.error.${state.error}`)}</span></p>}

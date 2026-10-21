@@ -58,7 +58,7 @@ export function RoomReactionGrid({ person, selfPeerId, reactionIds, canSend, onS
       aria-label={t(`interaction.reaction.${reaction}`)} aria-disabled={!canSend || !person}
       onClick={() => { if (canSend && person) onSend(reaction, self ? undefined : person.peerId); }}>
       <ReactionIcon reaction={reaction} />
-      {isThrow(reaction) && !vis && <span>{t(compact ? "interaction.toss" : `interaction.reaction.${reaction}`)}</span>}
+      {isThrow(reaction) && !vis && !compact && <span>{t(`interaction.reaction.${reaction}`)}</span>}
     </button>)}
   </div>;
 }

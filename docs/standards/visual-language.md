@@ -144,8 +144,8 @@ mode; an IME composition must not dismiss these surfaces.
 The interaction window keeps its conversation and composer available while
 reacting. A current participant's message avatar or voice avatar opens a small
 attached palette with thumbs up/down and the two throwing props; one's own
-entry uses laugh and heart in place of throws. Throwing props keep their distinct
-cards and toss captions, including in the compact palette. More reactions expands
+entry uses laugh and heart in place of throws. Throwing props keep the full
+palette's distinct card styling; compact buttons omit captions. More reactions expands
 the same curated choices on demand, with a labelled back arrow in the heading.
 Do not add a second roster or reflow the list. The native
 popover owns outside-click and Escape dismissal; sending keeps it open for
@@ -287,6 +287,11 @@ setting mode. Shared presentation stays separate
 from the existing setting/resource owners.
 The microphone comic depicts microphone input gain;
 the Viewer's listening-volume comic remains a different action.
+Room voice retains one bottom toolbar: open/join and close/leave share its right
+action position; microphone and listening controls appear to the left after
+joining. Use the shared media-control styling for both states. Missing browser
+microphone capability disables capture with a contextual explanation, without
+disabling listening.
 
 The Viewer bar groups local play/volume/overlay, remote mouse/keyboard, then
 settings/display modes, with fullscreen at the outer edge. Quiet dividers mark
