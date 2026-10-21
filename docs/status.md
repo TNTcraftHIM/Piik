@@ -67,6 +67,8 @@ and Host-owned room voice activation. Normal Browser checks cover a three-partic
 relay and embedded SFU, duplex audio, local-mute isolation, picture replacement,
 detached UI and capture retirement. Optional voluntary Peer fanout and local
 picture rotation are included; frp uses the documented existing UDP configuration.
+Windows x64 Server packaging also joins this candidate through the existing
+release inventory; Docker images remain Linux-only.
 The candidate derives channel availability from Host membership and uses one
 room microphone for Host and Viewers. Local normal-page acceptance covers both
 P2P and SFU, independent listening, picture continuity and voice-facet recovery.

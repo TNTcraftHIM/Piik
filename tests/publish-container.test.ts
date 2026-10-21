@@ -7,10 +7,13 @@ vi.mock("../scripts/release-artifacts.mjs", () => ({ readReleaseArtifacts: artif
 const version = "v1.2.1", revision = "a".repeat(40), digest = "b".repeat(64);
 const repository = "TNTcraftHIM/Piik", image = `piik-candidate:${revision}`;
 const tag = `ghcr.io/tntcrafthim/piik:${version}`;
-const servers = ["amd64", "arm64"].map(arch => ({
+const linuxServers = ["amd64", "arm64"].map(arch => ({
   name: `piik-aaaaaaa-${arch}-runtime.tar.gz`, sha256: arch === "amd64" ? digest : "d".repeat(64), arch,
   goos: "linux",
 }));
+const servers = [...linuxServers, {
+  name: "piik-aaaaaaa-windows-amd64-runtime.zip", sha256: "e".repeat(64), arch: "amd64", goos: "windows",
+}];
 type Scenario = { existing?: boolean; draft?: boolean; badArchive?: boolean;
   wrongSource?: boolean; wrongImage?: boolean; remoteMismatch?: boolean;
   registryError?: boolean; newerRelease?: boolean; largeCommit?: boolean;
@@ -77,7 +80,7 @@ const indexes = () => command.mock.calls.filter(([program, args]) => program ===
   .map(([, args]) => args.slice(4));
 
 describe("container publication", () => {
-  it("publishes both verified Server images under one version and latest index", async () => {
+  it("publishes only Linux Server images under one version and latest index", async () => {
     await publish();
     expect(artifacts).toHaveBeenCalledWith("artifacts", version, revision);
     expect(pushes()).toEqual([`${tag}-amd64`, `${tag}-arm64`]);

@@ -108,6 +108,9 @@ extract it, and run:
 ./piik-server
 ```
 
+Windows x64 uses `piik-<revision>-windows-amd64-runtime.zip`; extract it and run
+`./piik-server.exe` in PowerShell. The same configuration applies.
+
 Open `http://localhost:8787` to try it locally. For a public site, configure your
 domain, HTTPS reverse proxy and STUN address. Room data is stored in SQLite.
 For containers, use the [Docker Compose setup](./docs/operations/self-hosting.md#docker-compose).

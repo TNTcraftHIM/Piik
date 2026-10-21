@@ -14,23 +14,26 @@ participants' capture and encoding work.
 
 ## Try it locally
 
-These instructions support Linux x64 and ARM64.
+Server packages are available for Linux x64/ARM64 and Windows x64.
 
 Download the Server archive matching your machine
 from [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases)
 or the [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases).
-Use `uname -m` to check the architecture:
+On Linux, use `uname -m` to check the architecture:
 
-| Architecture | Archive |
+| Platform | Archive |
 | --- | --- |
-| `x86_64` (x64) | `piik-<revision>-runtime.tar.gz` |
-| `aarch64` (ARM64) | `piik-<revision>-linux-arm64-runtime.tar.gz` |
+| Linux `x86_64` (x64) | `piik-<revision>-runtime.tar.gz` |
+| Linux `aarch64` (ARM64) | `piik-<revision>-linux-arm64-runtime.tar.gz` |
+| Windows x64 | `piik-<revision>-windows-amd64-runtime.zip` |
 
-Extract it and run the following in its directory:
+Extract it and run the following in its directory on Linux:
 
 ```sh
 ./piik-server
 ```
+
+On Windows, open PowerShell in the extracted directory and run `./piik-server.exe`.
 
 Open `http://localhost:8787`. This is a local trial; use the configuration below
 to let friends connect over the internet. To start a temporary room on your computer,
@@ -62,7 +65,7 @@ volume, which stores room data and optional diagnostics. See
 
 ## Put it online
 
-You need a Linux x64 or ARM64 server and a domain pointing to its public IP.
+You need a supported server and a domain pointing to its public IP.
 The example uses `share.example.com`; replace it with your domain.
 
 ### 1. Configure and start Piik
@@ -84,6 +87,9 @@ Run these commands from that directory as a regular user:
 ./piik-server --check-config
 ./piik-server
 ```
+
+On Windows, use `./piik-server.exe --check-config` and `./piik-server.exe` in
+PowerShell. The same `.env` file and ports apply.
 
 The server reads `.env` automatically and stores rooms in `rooms.sqlite` in the
 working directory. A blank `SITE_ACCESS_PASSWORD` allows
@@ -221,7 +227,9 @@ field-tested this managed service.
 
 ## Keep it running and update
 
-For automatic startup, use the [systemd or container guide](./service-management.md).
+On Linux, use the [systemd or container guide](./service-management.md) for automatic
+startup. On Windows, run the executable under your existing service manager or
+Task Scheduler; Piik does not install a Windows service.
 Keep `.env` and `rooms.sqlite` across updates. Back up room data while the server is
 stopped, replace the executable with the new release, then restart and check
 health and room access. Read release notes before an upgrade that changes data formats.

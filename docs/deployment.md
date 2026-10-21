@@ -51,6 +51,12 @@ the archive, manifest, and descriptor together to `/opt/piik/uploads`.
 ARM64 file names include `-linux-arm64` after the revision; x64 names stay
 unchanged. The deployment wrapper rejects a package for another host architecture.
 
+`--os windows --arch amd64` packages the same Server core as
+`piik-<revision>-windows-amd64-runtime.zip`, with `piik-server.exe` in place of the
+Linux executable. It uses the same descriptor and checksum inventory; containers
+and `release-server.sh` remain Linux-only. Windows operation follows the
+[self-hosting guide](./operations/self-hosting.md).
+
 Public Release pages expose the runnable packages and put package checksums in
 the release body. Retain the original complete build output outside the checkout
 for later managed deployment or mirror retries: descriptors and manifests are

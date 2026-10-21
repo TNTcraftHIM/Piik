@@ -12,22 +12,25 @@ Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服
 
 ## 先在本机试用
 
-以下操作适用于 Linux x64 和 ARM64 服务器。
+服务端提供 Linux x64／ARM64 和 Windows x64 程序包。
 
 从 [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) 或
 [Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载对应架构的服务端程序包。
-可运行 `uname -m` 查看架构：
+Linux 可运行 `uname -m` 查看架构：
 
-| 架构 | 程序包 |
+| 平台 | 程序包 |
 | --- | --- |
-| `x86_64`（x64） | `piik-<revision>-runtime.tar.gz` |
-| `aarch64`（ARM64） | `piik-<revision>-linux-arm64-runtime.tar.gz` |
+| Linux `x86_64`（x64） | `piik-<revision>-runtime.tar.gz` |
+| Linux `aarch64`（ARM64） | `piik-<revision>-linux-arm64-runtime.tar.gz` |
+| Windows x64 | `piik-<revision>-windows-amd64-runtime.zip` |
 
-解压后，在该目录运行：
+Linux 解压后，在该目录运行：
 
 ```sh
 ./piik-server
 ```
+
+Windows 解压后，在该目录打开 PowerShell，运行 `./piik-server.exe`。
 
 打开 `http://localhost:8787` 即可试用。需要让朋友通过互联网访问时，
 继续完成下方配置。如果只想在自己的电脑上临时开房间，可直接使用 [Piik App](../guide/getting-started.zh-CN.md#用-piik-app-分享)。
@@ -57,7 +60,7 @@ Docker 会自动选择对应架构的镜像。
 
 ## 对外提供服务
 
-准备一台 Linux x64 或 ARM64 服务器，以及一个指向服务器公网 IP 的域名。
+准备一台受支持的服务器，以及一个指向服务器公网 IP 的域名。
 下文以 `share.example.com` 为例，请替换成自己的域名。
 
 ### 1. 配置并启动 Piik
@@ -79,6 +82,9 @@ SITE_ACCESS_PASSWORD=
 ./piik-server --check-config
 ./piik-server
 ```
+
+Windows 请在 PowerShell 中改用 `./piik-server.exe --check-config` 和
+`./piik-server.exe`；`.env` 文件和端口配置相同。
 
 程序会自动读取 `.env`，并将房间数据保存在工作目录的 `rooms.sqlite` 中。
 `SITE_ACCESS_PASSWORD` 留空时，进入站点无须口令；
@@ -201,7 +207,8 @@ Piik 尚未完成该托管服务的实际连通与性能验收。
 
 ## 长期运行与更新
 
-需要开机启动时，参阅 [systemd 与容器配置](./service-management.zh-CN.md)。
+Linux 开机启动可参考 [systemd 与容器配置](./service-management.zh-CN.md)。
+Windows 可使用已有的服务管理工具或任务计划程序；Piik 不会安装 Windows 服务。
 更新时保留 `.env` 和 `rooms.sqlite`：停止服务、备份房间数据、替换新版程序，再启动并检查健康状态和房间访问。
 涉及数据格式变化的版本，请先阅读发布说明。
 

@@ -87,6 +87,3 @@ own behavior; research and Git/PRs own evidence and completed history.
 - **Multiple simultaneous sharers.** Define publication/subscription ownership
   before prototyping. The [party-mode assessment](./research/room-interactions.md#multiple-sharers-assessment-not-implemented)
   owns the proposal; the current one-Host contract remains.
-- **Windows x64 Server packaging (#485).** Review package descriptors, container
-  filtering and mirror inventory. Remove the contributor's unrelated history-check
-  fallback before integration; current Linux Server and Windows App support remain.

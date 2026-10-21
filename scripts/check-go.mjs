@@ -80,7 +80,7 @@ function checkCore() {
     ["piik-app", "piik-peer-gate"].map((command) => ({ target, command })),
   );
   builds.push(...SERVER_PACKAGE_TARGETS.map(target => ({
-    target: { ...target, id: `linux-${target.goarch}`, cgo: false }, command: "piik-server",
+    target: { ...target, id: `${target.goos}-${target.goarch}`, cgo: false }, command: "piik-server",
   })));
   for (const { target, command } of builds) {
     const outputName = target.goos === "windows"
