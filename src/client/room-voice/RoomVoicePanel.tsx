@@ -93,9 +93,6 @@ export function RoomVoiceSettings({ session }: Props) {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const { t } = useCopy();
   return <div className="lr-floating-scroll lr-interaction-settings lr-voice-settings">
-    {state.role === "host" && state.room?.bitrate !== undefined && <AudioBitrateControl purpose="voice"
-      value={state.room.bitrate} max={MAX_AUDIO_SEND_BITRATE} disabled={!state.connected}
-      onChange={bitrate => session.command({ action: "bitrate", bitrate })} />}
     <MicrophoneSettings host={state.role === "host"} enabled={state.microphone} disabled={state.capturePending}
       loadDevices={session.microphones} deviceId={state.input.deviceId} onDevice={deviceId => void session.configureInput({ deviceId })}
       volume={state.input.volume} onVolume={value => session.setVolume(value)}
@@ -104,6 +101,9 @@ export function RoomVoiceSettings({ session }: Props) {
       <AudioVolumeControl volume={state.listeningVolume} onVolume={value => session.setListeningVolume(value)}
         label="voice.listeningVolume" icon="headphones" hint="hint-volume" hintText="voice.listeningVolumeHint" />
     </div>
+    {state.role === "host" && state.room?.bitrate !== undefined && <AudioBitrateControl purpose="voice"
+      value={state.room.bitrate} max={MAX_AUDIO_SEND_BITRATE} disabled={!state.connected}
+      onChange={bitrate => session.command({ action: "bitrate", bitrate })} />}
   </div>;
 }
 

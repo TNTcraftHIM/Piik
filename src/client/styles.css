@@ -1054,6 +1054,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-input input[type="password"]:not(:placeholder-shown) { letter-spacing: .25em; }
 .lr-quality-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; min-width: 0; }
 .lr-quality-heading > .lr-comic-tip-wrap { margin-inline-start: auto; max-width: 100%; }
+.lr-quality-heading:has(.lr-quality-number) { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.lr-quality-heading:has(.lr-quality-number) .lr-cap { white-space: normal; }
+.lr-quality-heading .lr-door-glyph > svg { flex: none; }
 .lr-input.lr-quality-number, .lr-input.lr-video-size {
   height: 38px; padding: 0 10px; border-width: 1px; border-radius: 12px;
   background: var(--wall); max-width: 100%; font-family: var(--mono);
