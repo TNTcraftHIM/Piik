@@ -326,6 +326,8 @@ limited. System-protected shortcuts and some games may not accept remote input.
 Once the host creates a room, participants can select **Interact** below the
 sofa to send messages. Select a person on the sofa to open their reaction menu:
 your own reactions appear above you; reactions sent to a friend fly towards them.
+Chat and voice avatars also open a quick reaction menu; **More reactions**
+shows the full palette while the conversation stays available.
 The interaction window can be moved and resized without rearranging the page.
 
 Supported desktop browsers show **Open in always-on-top window** in its top-right

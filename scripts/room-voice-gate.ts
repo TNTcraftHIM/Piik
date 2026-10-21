@@ -252,13 +252,17 @@ async function main(): Promise<void> {
     }
     check("Host and Viewer topology display connected voice routes before picture sharing");
     await button(host, "Interact with Voice Viewer");
+    await waitForSample(() => evaluate<boolean>(cdp!, host, `(() => {
+      const menu=document.querySelector('.lr-quick-reactions'), roster=document.querySelector('.lr-voice-history');
+      return !!menu?.matches(':popover-open')&&menu.querySelectorAll('.lr-reaction-grid button').length===4&&
+        !!roster?.getClientRects().length&&!!document.querySelector('.lr-voice-toolbar')?.getClientRects().length;
+    })()`, Date.now() + 3000), Boolean, 5000);
     await button(host, "Toss poop");
     await waitForSample(() => evaluate<boolean>(cdp!, viewer,
       `window.__roomVoiceGate.wire.some(message=>message.direction==='receive'&&message.type==='room-interaction'&&message.payload.kind==='reaction'&&message.payload.reaction==='poop'&&message.payload.targetPeerId===window.__roomVoiceGate.peerId)`,
       Date.now() + 3000), Boolean, 5000);
     await ui(viewer, "screenshot", join(OUTPUT, `${arm}-voice-reaction.png`));
     check("voice participant picker sends a correctly targeted reaction to the other normal page");
-    await button(host, "Back to voice");
     await button(host, "Microphone settings");
     await button(host, "Back to voice");
     const beforeMute = await sample(host);

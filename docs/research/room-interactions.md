@@ -120,7 +120,7 @@ confirmation without locking draft editing or introducing a message queue.
 The conversation entry shares the couch footer with its participant count,
 separate from the Host's sharing controls. Theater hides the seating and count,
 retaining the same compact conversation entry and focus target.
-Selecting a person opens the compact reaction palette in the shared floating
+Selecting a person on the couch opens the reaction palette in the shared floating
 shell, initially beside the selected person (below when space permits). Each
 opening anchors there before allowing free movement. Its portrait and name identify the
 target even after moving the window. Selecting a different participant keeps its
@@ -129,21 +129,23 @@ The default palette height follows its content, bounded by the visible viewport.
 One's own palette expresses a reaction above oneself and holds the local effects switch; other
 people's palettes offer targeted expressions and two throwing props. The props form
 a compact pair of named action buttons beneath the expression grid, using the
-shared button motion. The same palette serves both the couch and conversation.
+shared button motion.
 Connection details remain secondary when that participant has inspectable data.
 Close or Escape dismisses the palette; it also closes if its participant leaves.
 Sending keeps it open for repeated interaction, with the existing short cooldown.
 Confirmation never changes menu visibility; failure stays visible in the card.
 Opening or closing a reaction card preserves the chat draft and unread state.
-The interaction window uses an on-demand reaction page instead of stacking the
-palette beneath the conversation or voice roster. Its recipient strip uses the
-same room identities and shared palette as the couch. The composer button,
-a current participant's message avatar or voice participant opens it and focuses
-the selected person. Return or Escape restores the prior page and opener,
-preserving the draft and reading position; voice quick controls stay available.
-Avatars of departed participants remain non-interactive. Sending a reaction
-keeps the palette open.
-While it is closed, the newest live reaction briefly shows its sender and recipient
+The interaction window uses a compact attached palette beside the chosen chat
+or voice avatar, without replacing or compressing the list and composer. Its
+quick actions are thumbs up/down and the two throwing props; one's own entry
+omits throws. More reactions exposes the full curated palette. The native
+popover and shared anchored placement own dismissal, focus and viewport fit.
+Clicking the input dismisses it and continues typing; sending keeps it open.
+Changing pages or moving the tool between documents dismisses this brief menu
+without changing the session, draft or reading position. Avatars of departed
+participants remain non-interactive. Both menus use the same target heading,
+reaction buttons and send owner.
+The newest live reaction briefly shows its sender and recipient
 with the same animation renderer.
 It adds neither a message history entry nor an independent expiry timer. Member
 controls and reactions open on demand within the small companion window. Only

@@ -17,41 +17,48 @@ export function RoomReactionPicker({ person, selfPeerId, hostPeerId, reactionIds
   canSend: boolean;
   onSend: (reaction: ReactionId, targetPeerId?: string) => void;
 }) {
-  const { t, vis } = useCopy();
-  const self = person?.peerId === selfPeerId;
   return <>
-    <div className="lr-person-menu-target" role="group"
-      aria-label={person ? t("interaction.withPerson", { name: person.displayName }) : t("interaction.express")}>
-      <span className="lr-person-menu-name">
-        <span className="lr-person-menu-portrait">{person
-          ? <PawnSvg color={participantColor(person.peerId)} host={person.peerId === hostPeerId} />
-          : <Glyph name="smile" size={22} />}</span>
-        <span>{!vis && <small>{t(self ? "interaction.express" : "interaction.toPerson")}</small>}
-          <Tooltip overflow={{ text: person?.displayName ?? t("interaction.participant"), selector: "b" }}>
-            <b>{person?.displayName ?? t("interaction.participant")}</b>
-          </Tooltip></span>
-      </span>
-    </div>
+    <RoomReactionTarget person={person} selfPeerId={selfPeerId} hostPeerId={hostPeerId} />
     <RoomReactionGrid person={person} selfPeerId={selfPeerId} reactionIds={reactionIds} canSend={canSend} onSend={onSend} />
   </>;
 }
 
-export function RoomReactionGrid({ person, selfPeerId, reactionIds, canSend, onSend }: {
+export function RoomReactionTarget({ person, selfPeerId, hostPeerId }: {
+  person: InteractionParticipant | undefined; selfPeerId: string | null; hostPeerId?: string;
+}) {
+  const { t, vis } = useCopy();
+  const self = person?.peerId === selfPeerId;
+  return <div className="lr-person-menu-target" role="group"
+    aria-label={person ? t("interaction.withPerson", { name: person.displayName }) : t("interaction.express")}>
+    <span className="lr-person-menu-name">
+      <span className="lr-person-menu-portrait">{person
+        ? <PawnSvg color={participantColor(person.peerId)} host={person.peerId === hostPeerId} />
+        : <Glyph name="smile" size={22} />}</span>
+      <span>{!vis && <small>{t(self ? "interaction.express" : "interaction.toPerson")}</small>}
+        <Tooltip overflow={{ text: person?.displayName ?? t("interaction.participant"), selector: "b" }}>
+          <b>{person?.displayName ?? t("interaction.participant")}</b>
+        </Tooltip></span>
+    </span>
+  </div>;
+}
+
+export function RoomReactionGrid({ person, selfPeerId, reactionIds, canSend, onSend, compact = false }: {
   person: InteractionParticipant | undefined;
   selfPeerId: string | null;
   reactionIds: readonly ReactionId[];
   canSend: boolean;
   onSend: (reaction: ReactionId, targetPeerId?: string) => void;
+  compact?: boolean;
 }) {
   const { t, vis } = useCopy();
   const self = person?.peerId === selfPeerId;
-  return <div className="lr-reaction-grid">
+  return <div className={`lr-reaction-grid${compact ? " is-compact" : ""}`}>
     {reactionIds.filter(reaction => !isThrow(reaction) || (person && !self)).map(reaction => <button key={reaction} type="button"
-      className={isThrow(reaction) ? "lr-btn lr-reaction-prop" : "lr-btn is-compact is-quiet lr-reaction-option"}
+      className={isThrow(reaction) ? `lr-btn lr-reaction-prop${compact ? " is-compact is-quiet" : ""}` : "lr-btn is-compact is-quiet lr-reaction-option"}
       aria-label={t(`interaction.reaction.${reaction}`)} aria-disabled={!canSend || !person}
       onClick={() => { if (canSend && person) onSend(reaction, self ? undefined : person.peerId); }}>
       <ReactionIcon reaction={reaction} />
-      {isThrow(reaction) && !vis && <span>{t(`interaction.reaction.${reaction}`)}</span>}
+      {isThrow(reaction) && !vis && !compact && <span>{t(`interaction.reaction.${reaction}`)}</span>}
     </button>)}
   </div>;
 }

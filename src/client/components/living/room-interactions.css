@@ -1,5 +1,4 @@
 .lr-room-interactions { position: relative; width: min(960px, 100%); margin: 0 auto; }
-.lr-interaction-panel { --gift-arc: 40px; --gift-lift: 32px; }
 .lr-interaction-tabs { flex: none; margin-top: 12px; }
 .lr-interaction-page { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .lr-interaction-page[hidden] { display: none; }
@@ -9,24 +8,6 @@
 .lr-interaction-conversation { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .lr-interaction-conversation[hidden] { display: none; }
 .lr-interaction-conversation .lr-reaction-flight { overflow: hidden; }
-.lr-interaction-picker-heading { display: flex; flex: none; align-items: center; gap: 8px; margin-block: auto 4px; border-bottom: 1px solid var(--wall-2); }
-.lr-interaction-picker-heading > :first-child { flex: none; }
-.lr-interaction-picker-heading > :first-child .lr-btn > .lr-glyph { rotate: 90deg; }
-.lr-interaction-people-scroll { flex: 1; min-width: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px 0; }
-.lr-interaction-people { display: flex; gap: 4px; width: max-content; min-width: 100%; }
-.lr-interaction-people > span { display: flex; flex: none; max-width: 148px; }
-.lr-interaction-people .lr-comic-tip-wrap { width: 100%; }
-.lr-interaction-people .lr-pawn { display: flex; width: 100%; min-width: 0; min-height: 44px; gap: 6px; padding: 6px 10px; border-radius: 14px; transition: transform 150ms var(--spring), background-color 140ms ease; }
-.lr-interaction-people .lr-pawn.is-you::after { display: none; }
-.lr-interaction-people .lr-person { flex: none; width: 22px; height: 28px; }
-.lr-interaction-panel .lr-interaction-people .lr-pawn-name { min-width: 0; max-width: 100%; margin: 0; padding: 0; font-size: 12px; font-weight: 600; line-height: 1.4; background: none; color: inherit; box-shadow: none; }
-.lr-interaction-panel .lr-interaction-people .lr-pawn:is(:hover, :focus-visible) { background: var(--control-hover); }
-.lr-interaction-people .lr-pawn:focus-visible { outline-offset: -3px; }
-.lr-interaction-panel .lr-interaction-people .lr-pawn[aria-pressed="true"] { background: var(--control-selected); color: var(--control-selected-ink); box-shadow: inset 0 0 0 1px var(--action); }
-.lr-interaction-picker { position: relative; display: flex; flex: 1; flex-direction: column; padding-block: 8px 6px; }
-.lr-interaction-picker > .lr-reaction-grid { flex: none; margin-bottom: auto; }
-.lr-interaction-picker[hidden] { display: none; }
-.lr-interaction-picker:not([hidden]) { transform-origin: center bottom; animation: lr-floating-enter 150ms var(--spring); }
 .lr-interaction-back { flex: none; padding: 8px 0 0; }
 .lr-interaction-activity { position: absolute; z-index: 2; right: 4px; bottom: 8px; max-width: calc(100% - 8px); padding-top: 68px; pointer-events: none; --gift-arc: 30px; --gift-lift: 30px; }
 .lr-interaction-activity-people, .lr-interaction-activity-people > span { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -90,8 +71,21 @@ button.lr-chat-avatar:focus-visible { outline-offset: -3px; }
 .lr-person-menu-name b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; }
 .lr-person-menu-portrait { display: grid; place-items: center; width: 34px; height: 40px; flex: none; }
 .lr-person-menu-portrait .lr-person { width: 30px; height: 36px; }
+.lr-quick-reactions { position: fixed; inset: auto; width: 264px; max-width: calc(100vw - 16px); margin: 0; padding: 8px; border-radius: 18px; overflow: auto; overscroll-behavior: contain; }
+.lr-quick-reactions.is-expanded { width: 288px; }
+.lr-quick-reactions .lr-person-menu-target { margin-bottom: 6px; }
+.lr-quick-reactions .lr-person-menu-portrait { width: 24px; height: 30px; }
+.lr-quick-reactions .lr-person-menu-portrait .lr-person { width: 20px; height: 26px; }
+.lr-quick-reactions-body { display: flex; align-items: center; gap: 4px; }
+.lr-quick-reactions-body > .lr-reaction-grid { flex: 1; min-width: 0; }
+.lr-quick-reactions-body > .lr-comic-tip-wrap { flex: none; }
+.lr-quick-reactions.is-expanded .lr-quick-reactions-body { display: block; }
+.lr-quick-reactions.is-expanded .lr-quick-reactions-body > .lr-comic-tip-wrap { display: flex; justify-content: flex-end; margin-top: 4px; }
 .lr-reaction-grid { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; }
+.lr-reaction-grid.is-compact { display: flex; }
 .lr-reaction-grid button { min-width: 0; min-height: 44px; cursor: pointer; touch-action: manipulation; }
+.lr-reaction-grid.is-compact button { flex: none; width: var(--control-compact-size); height: var(--control-compact-size); margin: 0; padding: 0; }
+.lr-reaction-grid.is-compact .lr-reaction-prop > svg { width: 32px; height: 32px; }
 .lr-reaction-option { grid-column: span 2; padding: 4px 0; font-size: 26px; line-height: 1; }
 .lr-reaction-prop { grid-column: span 7; display: grid; place-items: center; height: auto; margin-top: 6px; padding: 6px 4px; gap: 4px; border-width: 1px; border-radius: 14px; background: var(--wall); font-size: 12px; font-weight: 600; line-height: 1.3; white-space: normal; text-wrap: balance; }
 .lr-reaction-prop > svg { width: 26px; height: 26px; }
@@ -221,9 +215,7 @@ button.lr-chat-avatar:focus-visible { outline-offset: -3px; }
 [data-comic-reduced-motion] .lr-reaction-body { transform: none !important; }
 [data-comic-reduced-motion] .lr-reaction-glyph { animation: none; }
 [data-comic-reduced-motion] .lr-reaction-accents { display: none; }
-[data-comic-reduced-motion] .lr-interaction-picker { animation: none; }
 @media (prefers-reduced-motion: reduce) {
-  .lr-interaction-picker { animation: none !important; }
   .lr-reaction-projectile { animation: none; transform: translate(var(--to-x), calc(var(--to-y) - 33px)); }
   .is-gift .lr-reaction-projectile { transform: translate(var(--to-x), calc(var(--to-y) - var(--gift-lift, 76px))); }
   .lr-reaction-body { transform: none !important; }

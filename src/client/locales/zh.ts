@@ -355,6 +355,8 @@ export const zh = {
   "interaction.send": "发送",
   "interaction.reactions": "表情与小道具",
   "interaction.express": "发表情",
+  "interaction.moreReactions": "更多表情",
+  "interaction.fewerReactions": "收起更多表情",
   "interaction.toPerson": "送给",
   "interaction.withPerson": "与 {name} 互动",
   "interaction.participant": "房间成员",

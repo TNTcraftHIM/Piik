@@ -132,7 +132,7 @@ Persistent room utilities use the shared floating panel without reflowing the
 living room. The shell owns visibility, focus return, movement, resizing and
 viewport/keyboard bounds; contents retain their domain state. Support title-bar
 dragging, corner resizing and equivalent keyboard controls without a second
-placement menu. An interaction palette starts beside its chosen
+placement menu. The couch's full interaction palette starts beside its chosen
 participant, stays open after sending and keeps its position when retargeted.
 One-shot settings and guidance retain their existing disclosures. Anchored
 menus use native popovers and shared viewport placement; a small parent panel
@@ -141,12 +141,14 @@ platform polyfill installed before UI mounting; controls retain the same
 visibility, focus and dismissal contract. Escape closes
 inner guidance first, then the most recently opened floating panel, then theater
 mode; an IME composition must not dismiss these surfaces.
-The interaction window gives conversation the main space. Its reaction entry,
-a current participant's message avatar or voice participant opens the same
-recipient strip and shared palette, temporarily replacing the list and composer
-rather than squeezing them into the remaining space. More recipients scroll
-within that strip. Return or Escape restores the previous chat/voice page,
-focus, draft and reading position; voice quick controls remain available.
+The interaction window keeps its conversation and composer available while
+reacting. A current participant's message avatar or voice avatar opens a small
+attached palette with thumbs up/down and the two throwing props; the composer
+entry targets oneself and omits throws. More reactions expands the same curated
+choices on demand. Do not add a second roster or reflow the list. The native
+popover owns outside-click and Escape dismissal; sending keeps it open for
+repeated interaction. The couch retains its movable full palette. Both surfaces
+reuse target identity, reaction buttons and the existing send owner.
 Live reactions can appear briefly in the conversation surface without moving its
 layout. Retention and export details belong in settings, not beside every entry.
 Detachable tools reuse the same content in the browser's own always-on-top frame.

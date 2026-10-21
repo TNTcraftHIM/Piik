@@ -355,6 +355,8 @@ export const en: Record<CopyKey, string> = {
   "interaction.send": "Send",
   "interaction.reactions": "Reactions",
   "interaction.express": "React",
+  "interaction.moreReactions": "More reactions",
+  "interaction.fewerReactions": "Show quick reactions",
   "interaction.toPerson": "To",
   "interaction.withPerson": "Interact with {name}",
   "interaction.participant": "a room participant",
