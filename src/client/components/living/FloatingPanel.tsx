@@ -120,8 +120,8 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
       const preferredHeight = preferredSize.current.height;
       panel.style.height = preferredHeight === undefined ? "auto" : `${Math.min(preferredHeight, maxHeight)}px`;
       const freeX = Math.max(0, maxWidth - panel.offsetWidth), freeY = Math.max(0, maxHeight - panel.offsetHeight);
-      // Keep the chosen relative position when the keyboard or viewport changes.
-      // Only deliberate movement writes it; a narrow viewport must not erase it.
+      // Coordinates preserve the chosen corner after movement or content changes;
+      // a viewport-only resize retains the stored relative position.
       if (point) {
         if (freeX) position.current.x = Math.max(0, Math.min(1, (point.x - left) / freeX));
         if (freeY) position.current.y = Math.max(0, Math.min(1, (point.y - top) / freeY));

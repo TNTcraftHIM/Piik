@@ -1,46 +1,34 @@
+---
+outline: 2
+---
+
 # Troubleshooting
 
 English · [简体中文](./troubleshooting.zh-CN.md) · [Documentation](./README.md)
 
-Find the symptom below and try the suggested checks. Stop when it works;
-collect a diagnostic report if the problem persists.
+Find your symptom below. Try its checks in order and stop when it works.
+If it persists, [save a diagnostic report](#reporting-a-problem) before refreshing.
 
 ## Common problems
 
-| What you see | Try this |
-| --- | --- |
-| App startup fails, or no page opens automatically | Read the reason on the page and in the terminal. If the App is still running, copy its address into your browser. See [App diagnostics](../../cmd/piik-app/README.md#diagnostics) to collect a report; if Local mode lists several addresses, choose an adapter and IP on the launch page. |
-| macOS says the App is damaged or the developer cannot be verified | Check the download and follow [macOS first-launch steps](#macos-blocks-first-launch). |
-| Public invitation fails to start, or a link shows 1033 | Check the host's App and current link using [public invitation troubleshooting](#public-invitation-fails-or-shows-1033). |
-| Local invitation will not open | Check that the devices can reach each other, then review the address and Windows firewall permissions in [Local invitation checks](#local-invitation-will-not-open). |
-| Room code says the room does not exist | Open the host's current full invitation link. Codes work only on their original site; a site with empty-room recycling may also have reclaimed it. The host can create a new room; see [joining a room](./getting-started.md#join-a-friends-room). |
-| Cannot create a room (403) | On a self-hosted site, ask the administrator to check the [allowed site address](#room-creation-returns-403). |
-| All room codes are in use | Retry later or use another Piik site. Administrators can enable [empty-room retention](../operations/self-hosting.md#1-configure-and-start-piik) to reclaim unused codes. This is separate from the per-room Viewer limit. |
-| No screen picker | Allow the browser or App to record the screen when the OS asks. Browser capture needs HTTPS or `localhost`; try sharing from a desktop computer. |
-| No App windows or screens listed | Check the message in the source picker, then follow [App source troubleshooting](#app-windows-or-screens-are-missing). **Browser** → **Choose what to share** opens the browser's screen, window or tab chooser. |
-| Sharing fails after selecting a source | Click the error icon below the TV for details and guidance, then follow [sharing startup checks](#sharing-does-not-start-after-source-selection). |
-| H264 fails to start, or sharing stops just after source selection | Try **Auto** or **VP8**, then follow [Windows H264 and graphics checks](#h264-sharing-fails-on-windows). |
-| Game capture is black, shows only the desktop, or stops when entering the game | Compare sources and window modes using [game capture checks](#game-capture-is-black-or-sharing-stops). |
-| HDR picture looks too bright or washed out | On Windows, try App capture or temporarily turn off HDR; see [HDR capture](#hdr-picture-looks-too-bright-or-washed-out). |
-| Yellow outline around the shared window or screen | This is Windows' capture indicator. See [capture borders](#yellow-capture-border-on-windows) for Windows 11 controls and an optional Windows 10 workaround. |
-| Picture but no source sound | Unmute the video. The host should choose a source with shareable audio and enable sound in the source picker. Camera video and audio inputs are selected separately; see [audio settings](./getting-started.md#add-your-voice). |
-| Cannot hear someone speaking | Both people must join **Interact → Voice**; the Host opens voice first. Check the speaker's microphone, input device and volume, then your local listening/mute controls. Microphone access needs HTTPS or a localhost page. |
-| LAN page cannot open a microphone, or remote controls are missing | Open the complete HTTPS invitation from the current App. Older HTTP links lack secure browser APIs; see [virtual LANs](#optional-a-virtual-lan). |
-| Certificate warning on a local invitation | Verify the local certificate with the Host before continuing; see [certificate confirmation](#local-https-certificate-warning). |
-| Screen sharing includes a voice app's audio | Windows App screen capture can [exclude application audio](./getting-started.md#exclude-a-voice-app-from-screen-audio). This does not remove echo from speakers picked up by a microphone. |
-| Virtual microphone has echo, or remains audible when muted in Piik | Temporarily turn off **System sound** to compare. A mixer's playback can enter source audio separately from Piik's microphone; check its [audio routing](./getting-started.md#exclude-a-voice-app-from-screen-audio). |
-| Page opens but video will not connect | Use **Reconnect** if available, or refresh the viewing page. See [connection troubleshooting](#when-video-will-not-connect) if it still fails. |
-| WebRTC or IP-leak protection is enabled | Check whether it blocks media connections using [browser WebRTC settings](#browser-webrtc-restrictions). |
-| Connection fails on a campus or restricted network | Compare with a phone hotspot, then review [SFU and virtual LAN options](#campus-networks-and-strict-nat). |
-| Picture repeatedly blurs, stutters or stops | Identify who is affected, then follow [picture quality and interruption checks](#picture-blurs-stutters-or-stops). |
-| Phone fullscreen has black bars, or the button does not work | Video keeps its proportions by default. Try landscape orientation, or choose **Fill** or **Stretch** in the page's **Playback settings**. Use the playback bar's **Fullscreen** button; system video fullscreen depends on the browser. See [viewing controls](./getting-started.md#join-a-friends-room). |
-| Sharing stops after sleep or suspension | Wake the device and return to the sharing tab; start sharing again if needed. Browser and OS suspension can interrupt capture or playback. |
+- [Opening App and joining a room](#opening-app-and-joining-a-room): startup, invitation links, certificates and room access.
+- [Starting a share](#starting-a-share): source lists, capture permissions and encoders.
+- [Picture and playback](#picture-and-playback): connection, quality, games and fullscreen.
+- [Sound and browser permissions](#sound-and-browser-permissions): source sound, voice, echo and remote control.
+- [Advanced network checks](#advanced-network-checks): WebRTC, STUN, campus networks and virtual LANs.
 
-For a bug report, include the version, OS/browser, what you expected, and how
-to reproduce it. [Diagnostics and export](../../cmd/piik-app/README.md#diagnostics)
-explains how to collect a local report and what to review before sharing it.
+## Opening App and joining a room
 
-## macOS blocks first launch
+### App startup fails, or no page opens
+
+1. Read the reason on the launch page and in the terminal. If the App is still
+   running, copy its displayed address into your browser.
+2. If Local mode lists several addresses, choose the adapter and IP that friends
+   can reach. See [Local invitation checks](#local-invitation-will-not-open).
+3. If startup still fails, retry with **Debug launch** enabled and save the complete
+   error and an [App report](#reporting-a-problem).
+
+### macOS blocks first launch
 
 Current Mac builds are not Developer ID-signed or notarized. macOS can block
 their first launch; the wording alone does not identify a damaged download.
@@ -60,10 +48,62 @@ their first launch; the wording alone does not identify a damaged download.
    ```
 
 Use the App's actual path if you kept it elsewhere. Keep system-wide security
-checks enabled. A capture or audio failure after launch is a separate problem;
-collect a diagnostic report using the link above.
+checks enabled.
 
-## Local invitation will not open
+### Public invitation fails or shows 1033
+
+App **Public invite** uses Cloudflare Tunnel to provide a temporary web address.
+Reachability varies by network, and [Quick Tunnels have no uptime guarantee](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/#limitations).
+`public invitation service exited before connecting` means the helper exited
+before connecting; `exit status 1` alone does not identify the cause.
+[Cloudflare error 1033](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1033/)
+means that the address currently has no available tunnel connection. This differs
+from a page that opens but reports **No media route available**.
+
+1. **Viewers: confirm the link.** Ask the host to check that the App is running
+   and the computer is awake, then send the current invitation. Use a new link
+   after the App restarts; the old address may no longer work.
+2. **Hosts: read the failure details.** Check that the complete App package was
+   extracted. Save the full error from the launch page or terminal, including
+   any detail after the exit code, and try again with **Debug launch**
+   enabled.
+3. **Compare networks.** Try a phone hotspot. Check whether DNS, a proxy or a
+   firewall blocks Cloudflare Tunnel; adjust only relevant rules. Ask the
+   administrator about a school or workplace network.
+
+<details>
+<summary>Advanced: tunnel errors, proxy routing and port 7844</summary>
+
+If you use a proxy, confirm that it actually routes the `cloudflared` process.
+Browser proxy settings or `HTTP_PROXY`/`HTTPS_PROXY` alone do not route the
+currently bundled tunnel helper through a proxy.
+
+The error details help identify which stage failed:
+
+| Error contains | What to check |
+| --- | --- |
+| `failed to request quick Tunnel` or `api.trycloudflare.com` | The temporary address could not be allocated. Read the cause that follows: check DNS for lookup errors, or outbound HTTPS, proxy rules and service status for connection timeouts. |
+| QUIC timeout, `dial tcp ...:7844` or `TLS handshake with edge` | The connection to a Cloudflare tunnel endpoint failed. Check outbound rules for `cloudflared`, including whether a proxy or game accelerator affects the connection. |
+
+Piik already enables HTTP/2 (TCP) fallback when QUIC (UDP) fails. Both use outbound
+port `7844`. If neither path is reachable, repeated attempts cannot fix it;
+loading ordinary websites does not establish that this port is accessible.
+See [Cloudflare's connection troubleshooting](https://developers.cloudflare.com/tunnel/troubleshooting/)
+for the requirements. You do not need to open an inbound port on your router.
+
+</details>
+
+**To continue without a public invite:** keep App running, open
+[Piik online](https://demo.piik.tv) or another reachable site, and
+[authorize App capture](./getting-started.md#use-app-with-an-existing-site).
+Send the new site's room invitation; the old link does not lead to this room.
+Piik online needs no site passphrase and remains P2P-only, without SFU fallback.
+If the page opens but video does not connect, follow
+[media connection troubleshooting](#when-video-will-not-connect).
+If the unavailable address is a self-hosted site rather than the App's
+temporary address, ask that site's administrator to check its service.
+
+### Local invitation will not open
 
 If the browser times out before showing Piik, check web access first. P2P
 connection has not started at this point.
@@ -89,7 +129,7 @@ Changing permissions may require an administrator; see
 If the page opens but video does not connect, continue with
 [media connection checks](#when-video-will-not-connect).
 
-## Local HTTPS certificate warning
+### Local HTTPS certificate warning
 
 Piik App's **Local room**, and servers using `TLS_SELF_SIGNED=true`, generate a
 local certificate without asking a public certificate authority. The browser
@@ -112,34 +152,17 @@ device already trusts; administrators can follow the [HTTPS deployment guide](..
 These instructions apply to an expected local self-signed certificate. An
 unexpected warning on a public HTTPS site needs investigation by its operator.
 
-## Sharing does not start after source selection
+### Room code does not work
 
-The error icon below the TV explains the current failure. Click it for suggested
-checks, a copyable failure summary and browser diagnostics. The summary contains
-the Web version, message and error code, without invitation links or source names.
+Open the Host's current full invitation link first. A room code works only on
+its original Piik site. A site with empty-room recycling may have reclaimed the
+room; the Host can create a new one. See [joining a room](./getting-started.md#join-a-friends-room).
 
-- **App disconnected or request timed out:** check that the App is running and
-  responding, then click **App** at the top of the site to connect. Allow local network
-  access if the browser asks. A timeout alone does not establish a graphics fault.
-- **App could not start the selected source:** try an ordinary window or screen,
-  then compare with the **Browser** source picker. On Windows, try **Auto** or
-  **VP8** and follow [graphics checks](#h264-sharing-fails-on-windows).
-- **Browser cannot read the source or permission is missing:** keep the source
-  open, allow screen recording and select the source again from the sharing page.
-  For a camera, also check whether another application has exclusive use of it.
-- **Media connection failed:** check [browser WebRTC settings](#browser-webrtc-restrictions)
-  and local network permission. For **room creation HTTP 403**, use the next section.
+If all room codes on the site are in use, retry later or use another Piik site.
+Administrators can configure [empty-room retention](../operations/self-hosting.md#1-configure-and-start-piik)
+to reclaim unused codes. This is separate from the per-room Viewer limit.
 
-Stop when sharing works. Otherwise, enable diagnostics before reproducing it once:
-the Web button collects browser reports only. For App capture, also enable
-**Debug launch** on its mode selection page, then press `D` in the terminal to export.
-Send the reports from that attempt with the copied failure summary and the source
-type you selected. You can still report without logs; a generic failure screenshot
-alone usually cannot distinguish capture, encoding and connection causes.
-Logs stay on your device; review private information before sharing them.
-See [diagnostics and export](../../cmd/piik-app/README.md#diagnostics) for details.
-
-## Room creation returns 403
+### Room creation returns 403
 
 Piik rejects room creation from a browser address that the server has not allowed,
 even when the page opens normally. The site administrator should:
@@ -157,13 +180,20 @@ reverse proxy preserves the browser's `Origin` header. A 403 from the proxy or
 WAF itself needs its own logs; do not disable origin validation to bypass it.
 See [Server deployment](../operations/self-hosting.md) for the configuration.
 
-## App windows or screens are missing
+## Starting a share
 
-Keep Piik App running on the computer where you are sharing. Click **App** at
-the top of the site, then confirm its address on the local approval page.
-If the browser asks for local-network access, allow it, then
-refresh the source list. If access was previously blocked, review this site's
-browser permissions first.
+### No screen picker
+
+Allow screen recording when your OS asks. Browser screen capture needs HTTPS or
+`localhost`; try sharing from a desktop computer. In the source picker, choose
+**Browser → Choose what to share** to open the browser's screen, window or tab
+chooser. Missing App sources are covered below.
+
+### App windows or screens are missing
+
+Keep App running on the sharing computer. Select **App** at the top of the site,
+confirm the site on the local approval page, and allow browser local-network
+access if asked. Refresh the list; review this site's permissions if previously blocked.
 
 The source picker distinguishes these outcomes:
 
@@ -179,11 +209,28 @@ Local-network permission lets the page contact the App. It is separate from
 the WebRTC media settings described below. An unreachable App alone does not
 prove that permission was denied.
 
-## H264 sharing fails on Windows
+### Sharing does not start after source selection
 
-If selecting a window or screen returns you to the start screen, or reports a
-sharing failure, it may involve capture, encoding or the Browser-to-App media
-connection. The message alone does not identify a graphics-driver problem.
+Click the error icon below the TV for suggested checks, a copyable failure
+summary and browser diagnostics.
+
+- **App disconnected or request timed out:** check that the App is running and
+  responding, then click **App** at the top of the site to connect. Allow local network
+  access if the browser asks. A timeout alone does not establish a graphics fault.
+- **App could not start the selected source:** try an ordinary window or screen,
+  then compare with the **Browser** source picker. On Windows, try **Auto** or
+  **VP8** and follow [graphics checks](#h264-sharing-fails-on-windows).
+- **Browser cannot read the source or permission is missing:** keep the source
+  open, allow screen recording and select the source again from the sharing page.
+  For a camera, also check whether another application has exclusive use of it.
+- **Media connection failed:** check [browser WebRTC settings](#browser-webrtc-restrictions)
+  and local network permission. For **room creation HTTP 403**, check [site configuration](#room-creation-returns-403).
+
+
+If it still fails, [collect matching Web and App reports](#reporting-a-problem)
+with the copied failure summary and selected source type.
+
+### H264 sharing fails on Windows
 
 1. **Compare codecs on the same source.** In **Sharing settings → Picture → Fine-tune picture**, change the
    video codec from **H264** to **Auto** or **VP8**, then start sharing again.
@@ -200,13 +247,62 @@ connection. The message alone does not identify a graphics-driver problem.
    **Let Windows decide** ([Microsoft's graphics settings](https://support.microsoft.com/en-us/windows/hardware/display-graphics/optimizations-for-windowed-games-in-windows-11)).
 
 The Windows preference is a browser-side check, not a guarantee of H264 support.
-Piik App selects its native encoder separately; changing Chrome's GPU preference
-does not select the App's capture GPU. If App capture still fails, keep the codec
-comparison and export the App and browser reports for the same attempt. Include
-your GPU model, driver version, source type and whether VP8 works. If both codecs
-fail, also check [WebRTC restrictions](#browser-webrtc-restrictions).
+Piik App selects its native encoder separately; Chrome's preference does not
+select App's capture GPU. If it still fails, [save reports](#reporting-a-problem)
+with the codec comparison. If both codecs fail, also check
+[WebRTC restrictions](#browser-webrtc-restrictions).
 
-## Game capture is black or sharing stops
+## Picture and playback
+
+### When video will not connect
+
+**No media route available** means Piik has not found a working path to deliver
+the picture to your device. Web pages and media use different connections;
+the message alone does not identify the cause.
+
+1. **Retry the viewing page.** Use **Reconnect** if available; otherwise refresh
+   or reopen the invitation. Let each attempt finish. One or two fresh attempts
+   are enough to compare; repeated refreshes cannot remove a network restriction.
+2. **Check browser WebRTC settings.** Browser settings, VPNs and privacy extensions
+   can block media for both Host and Viewer. Follow the [WebRTC checks](#browser-webrtc-restrictions).
+3. **Try another network**, such as a phone hotspot. Check your VPN/proxy's UDP
+   policy; ask the administrator on a managed network.
+4. **Invite a friend on another network.** A Viewer who receives the picture and
+   has spare forwarding capacity may give Piik another path to you. Piik chooses
+   it automatically; extra people help only when those connections work.
+
+Still failing? Continue with [advanced network checks](#advanced-network-checks)
+and collect reports from the Host and affected Viewer for the same attempt.
+
+### Picture blurs, stutters or stops
+
+Brief blur can result from automatic adjustments to network or encoding load.
+If it recurs or never recovers, compare the following:
+
+1. **Identify who is affected.** Is it the host's preview, every viewer or just
+   one viewer? Note the time and whether it recovers on its own. A clear host
+   preview does not establish that viewers' connections are healthy.
+2. **Change one thing at a time.** The host can try a lower resolution or frame
+   rate under **Sharing settings → Picture**, and check CPU/GPU load while the game runs.
+   An affected viewer can compare another browser or a phone hotspot. Increasing
+   bitrate does not necessarily help.
+3. **Check the actual codec.** Open the host's **Connection details** and
+   read **Video codec**. On Windows, Auto may select VP8 when H264 is unavailable,
+   its check cannot finish, or it cannot sustain the selected frame rate.
+   Software encoding competes with the game for CPU time. For **Browser** capture,
+   follow the [graphics checks](#h264-sharing-fails-on-windows), or compare the App's
+   window/screen capture. The App tries available hardware encoders independently.
+   VP8 alone does not establish a GPU fault; forcing H264 after a failed check may
+   make performance worse.
+4. **Save reports from the affected period.** Follow [report collection](#reporting-a-problem) for the Host and affected Viewer;
+   App capture also needs an App report. Try **Reconnect** if the picture does
+   not recover. Export before refreshing.
+
+If sharing stopped altogether, read the reason below the TV and follow
+[sharing startup checks](#sharing-does-not-start-after-source-selection). If the
+host is still sharing but viewers cannot receive video, follow [connection checks](#when-video-will-not-connect).
+
+### Game capture is black or sharing stops
 
 Check that you selected the game's window or the screen displaying it, then try
 the game's borderless window mode. Compare an ordinary window, and try both App
@@ -215,10 +311,9 @@ for capture; one game failing does not establish that every source is affected.
 
 If Piik returns to the start screen after you enter a game, read the reason below
 the TV and follow [sharing startup checks](#sharing-does-not-start-after-source-selection).
-Include the game, window mode, source type, codec and matching App/browser reports
-in your feedback. A missing picture alone does not identify an encoder fault.
+Include the game and window mode in your [report](#reporting-a-problem).
 
-## HDR picture looks too bright or washed out
+### HDR picture looks too bright or washed out
 
 Windows App capture through **Apps / Windows** or **Screens** converts HDR to SDR
 for viewers. The **Browser** picker uses browser capture instead; some HDR sources
@@ -226,18 +321,17 @@ can look overexposed. This is a known limitation. Try the App categories above,
 or temporarily turn off HDR in Windows display settings and select the source again.
 Higher resolution or bitrate cannot restore clipped highlights.
 
-If the picture still looks wrong, report the source type, HDR setting, GPU and
-display model, with a comparison of the source and viewer pictures. Technical
-background is in [HDR capture notes](../research/media-fidelity.md#hdr-to-sdr).
+If it persists, report the HDR setting and GPU/display model with source/viewer
+comparison pictures. See [HDR capture notes](../research/media-fidelity.md#hdr-to-sdr) for background.
 
-## Yellow capture border on Windows
+### Yellow capture border on Windows
 
 Windows draws this outline to identify the window or display being captured.
-On supported Windows versions, the App source picker offers **Show capture border**,
+When the App's capture runtime supports it, the source picker offers **Show capture border**,
 off by default. Windows permissions or another active capture can still require
 the border. Windows 10 does not provide this control for its capture API.
 
-### Windows 11: the border is still visible
+#### Windows 11: the border is still visible
 
 1. Select **Apps / Windows** or **Screens** in Piik and leave **Show capture border**
    off. A Browser-selected source uses the browser's own capture indicator.
@@ -248,10 +342,12 @@ the border. Windows 10 does not provide this control for its capture API.
 
 Windows requires consent and can retain the border when another capture requests
 it ([Microsoft's API documentation](https://learn.microsoft.com/en-us/uwp/api/windows.graphics.capture.graphicscapturesession.isborderrequired)).
-If it persists, include the Windows version, selected source type and an
-[App diagnostic report](../../cmd/piik-app/README.md#diagnostics) with your feedback.
+If it persists, include the Windows version and an [App report](#reporting-a-problem).
 
-### Optional Windows 10 workaround
+<details>
+<summary>Advanced: optional Windows 10 workaround</summary>
+
+#### Optional Windows 10 workaround
 
 [DWM Custom Projection Border](https://windhawk.net/mods/dwm-custom-projection-border)
 is a third-party Windhawk mod for x64 Windows that can hide the border while keeping the same
@@ -274,153 +370,71 @@ See the [mod author's instructions](https://github.com/ramensoftware/windhawk-mo
 and [Windhawk's process settings](https://github.com/ramensoftware/windhawk/wiki/Injection-targets-and-critical-system-processes)
 for current setup details.
 
-## Public invitation fails or shows 1033
+</details>
 
-App **Public invite** uses Cloudflare Tunnel to provide a temporary web address.
-Reachability varies by network, and [Quick Tunnels have no uptime guarantee](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/#limitations).
-`public invitation service exited before connecting` means the helper exited
-before connecting; `exit status 1` alone does not identify the cause.
-[Cloudflare error 1033](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1033/)
-means that the address currently has no available tunnel connection. This differs
-from a page that opens but reports **No media route available**.
+### Fullscreen or playback after sleep
 
-1. **Viewers: confirm the link.** Ask the host to check that the App is running
-   and the computer is awake, then send the current invitation. Use a new link
-   after the App restarts; the old address may no longer work.
-2. **Hosts: read the failure details.** Check that the complete App package was
-   extracted. Save the full error from the launch page or terminal, including
-   any detail after the exit code, and try again with **Debug launch**
-   enabled. The App retries early tunnel-process exits within its startup deadline.
-3. **Compare networks.** Try a phone hotspot. Check whether DNS, a proxy or a
-   firewall blocks Cloudflare Tunnel; adjust only relevant rules. Ask the
-   administrator about a school or workplace network.
+- **Phone fullscreen has black bars:** video preserves its proportions. Try
+  landscape orientation, or select **Fill** or **Stretch** under **Playback settings**.
+- **Fullscreen button does not work:** use the playback bar's **Fullscreen** button.
+  System video fullscreen depends on the browser; see [viewing controls](./getting-started.md#join-a-friends-room).
+- **Sharing stops after sleep or suspension:** wake the device and return to the
+  sharing tab. Start sharing again if needed; browser and OS suspension can
+  interrupt capture or playback.
 
-If you use a proxy, confirm that it actually routes the `cloudflared` process.
-Browser proxy settings or `HTTP_PROXY`/`HTTPS_PROXY` alone do not route the
-currently bundled tunnel helper through a proxy.
+## Sound and browser permissions
 
-The error details help identify which stage failed:
+### Picture but no source sound
 
-| Error contains | What to check |
-| --- | --- |
-| `failed to request quick Tunnel` or `api.trycloudflare.com` | The temporary address could not be allocated. Read the cause that follows: check DNS for lookup errors, or outbound HTTPS, proxy rules and service status for connection timeouts. |
-| QUIC timeout, `dial tcp ...:7844` or `TLS handshake with edge` | The connection to a Cloudflare tunnel endpoint failed. Check outbound rules for `cloudflared`, including whether a proxy or game accelerator affects the connection. |
+1. Unmute the video and check your playback volume.
+2. The Host should select a source with shareable audio and enable its sound in
+   the source picker. Available sound depends on the source and platform.
+3. Camera video and microphone inputs are selected separately. For a built-in
+   camera microphone or OBS audio, see [camera and audio inputs](./sharing.md#cameras-and-virtual-audio-inputs).
 
-Piik already enables HTTP/2 (TCP) fallback when QUIC (UDP) fails. Both use outbound
-port `7844`. If neither path is reachable, repeated attempts cannot fix it;
-loading ordinary websites does not establish that this port is accessible.
-See [Cloudflare's connection troubleshooting](https://developers.cloudflare.com/tunnel/troubleshooting/)
-for the requirements. You do not need to open an inbound port on your router.
+### Cannot hear someone speaking
 
-**To continue without a public invite:** keep the App running and open
-[Piik online](https://demo.piik.tv) or another reachable Piik site. Follow
-[Use App with an existing site](./getting-started.md#use-app-with-an-existing-site)
-to authorize App window/screen capture, then send your friends the new site's
-room invitation. The old public-invitation link does not lead to this new room.
-Piik online needs no site passphrase. This bypasses the temporary Cloudflare web
-address; the online site remains P2P-only, with no SFU fallback.
-If the page opens but video does not connect, follow
-[media connection troubleshooting](#when-video-will-not-connect).
-Include the App version, failure time and [App diagnostic report](../../cmd/piik-app/README.md#diagnostics)
-in feedback. If the unavailable address is a self-hosted site rather than the App's
-temporary address, ask that site's administrator to check its service.
+In voice-capable builds:
 
-## Picture blurs, stutters or stops
+1. Both people join **Interact → Voice**; the Host selects **Open room voice** first.
+   Joining only starts listening. Each speaker must turn on their own microphone.
+2. The speaker checks browser microphone permission, input device and input volume
+   in **Microphone settings**. Microphone access needs HTTPS or `localhost`.
+3. Check whether you paused listening or muted that person locally. These controls
+   are separate from video mute; **Pause listening** leaves your microphone on.
 
-Brief blur can result from automatic adjustments to network or encoding load.
-If it recurs or never recovers, compare the following:
+If voice reports a connection failure, compare [WebRTC settings](#browser-webrtc-restrictions)
+and another network. Picture playback alone does not establish that voice works.
+For feature availability, see [room voice in test builds](./room-tools.md#room-voice-in-test-builds).
 
-1. **Identify who is affected.** Is it the host's preview, every viewer or just
-   one viewer? Note the time and whether it recovers on its own. A clear host
-   preview does not establish that viewers' connections are healthy.
-2. **Change one thing at a time.** The host can try a lower resolution or frame
-   rate under **Sharing settings → Picture**, and check CPU/GPU load while the game runs.
-   An affected viewer can compare another browser or a phone hotspot. Increasing
-   bitrate does not necessarily help.
-3. **Check the actual codec.** Open the host's **Show connection details** and
-   read **Video codec**. On Windows, Auto may select VP8 when H264 is unavailable,
-   its check cannot finish, or it cannot sustain the selected frame rate.
-   Software encoding competes with the game for CPU time. For **Browser** capture,
-   follow the [graphics checks](#h264-sharing-fails-on-windows), or compare the App's
-   window/screen capture. The App tries available hardware encoders independently.
-   VP8 alone does not establish a GPU fault; forcing H264 after a failed check may
-   make performance worse.
-4. **Save reports from the affected period.** Enable diagnostics on the host and
-   affected viewer pages before reproducing; App capture also needs an App report.
-   Try **Reconnect** if the picture does not recover. Export before refreshing.
+### Echo or unwanted application audio
 
-If sharing stopped altogether, read the reason below the TV and follow
-[sharing startup checks](#sharing-does-not-start-after-source-selection). If the
-host is still sharing but viewers cannot receive video, continue with the checks below.
+Use headphones if speakers are feeding sound back into a microphone. Windows
+App screen capture can [exclude a voice app from source audio](./sharing.md#exclude-a-voice-app-from-screen-audio);
+this does not remove acoustic echo.
 
-## When video will not connect
+If a virtual microphone remains audible when muted in Piik, temporarily turn off
+**System sound**. If that removes it, the mixer's playback output is also entering
+source audio. Check its playback/monitoring route or share only the desired app's
+window audio. Piik's microphone mute does not mute that separate source.
 
-**No media route available** means Piik has not found a working path to deliver
-the picture to your device. Loading the page and receiving media use different
-connections, so one can work while the other fails.
+### Microphone or remote controls are unavailable
 
-NAT (Network Address Translation) lets several devices share an Internet address.
-Routers and providers differ in how they map addresses and admit incoming traffic;
-some combinations make direct connections difficult. Firewalls and browser
-policies can also block media. The message alone does not identify the cause.
+1. Open the complete HTTPS invitation generated by the current App. For a local
+   invitation, [confirm its certificate](#local-https-certificate-warning) first.
+   A plain HTTP LAN page can play video, chat and listen to voice, but cannot use
+   the secure microphone/camera capture or remote-control APIs. Changing only the
+   URL scheme does not enable HTTPS; `localhost` means the current device.
+2. For a microphone, review this site's browser permission and selected input.
+3. For remote control, update the Host's App and the site, then refresh the Viewer
+   page. The Host must use App window/screen capture and enable control; Browser
+   and camera capture cannot receive remote input. Follow the
+   [authorization steps](./room-tools.md#let-a-friend-control-your-shared-screen).
 
-STUN helps discover an address for direct connections; it does not relay the
-picture. An unreachable STUN service can therefore leave chat working while
-media fails. App Public invite already uses multiple discovery services; one
-STUN error alone does not mean every path failed. On self-hosted sites,
-administrators should check that `STUN_URLS`
-points to reachable UDP services; an HTTP reverse proxy does not forward STUN.
-App users who need different providers can set
-[`PIIK_STUN_URLS`](../standards/configuration.md#piik-app-configuration)
-before starting Public invite. This replaces every built-in discovery address;
-choose trusted services, since they see the participants' public IP addresses.
-Compare the diagnostic reports from both peers before assigning the cause.
+If your browser cannot accept the local certificate, use a reachable **Public
+invite** or an HTTPS site with a trusted certificate.
 
-Try these in order, stopping when the picture arrives:
-
-1. **Retry the viewing page.** Choose **Reconnect** if it is available. If it is
-   disabled or does not help, refresh the viewing page or reopen the invitation.
-   Let each connection attempt finish. One or two fresh attempts can be worth
-   trying; repeated refreshes cannot remove a network restriction.
-2. **Check browser WebRTC settings.** Browser settings or VPN/privacy extensions
-   can block media even while the page loads. This affects both sharing and viewing;
-   follow [browser WebRTC checks](#browser-webrtc-restrictions) below.
-3. **Try another network.** For example, test a phone hotspot. If you use a VPN
-   or proxy, check its UDP policy; ask the administrator on a managed network.
-4. **Enable usable IPv6.** Check that your provider, router and device support it.
-   When both peers have working IPv6, Piik can try that direct path alongside
-   IPv4. It does not bypass firewall rules; keep IPv4 enabled too.
-5. **Check your own router, if you manage it.** On a trusted home network,
-   supported UPnP, PCP or NAT-PMP settings can let the App's native media path
-   request a port mapping. Browser-only capture does not request these mappings.
-   If a modem and router both perform NAT, follow your model's bridge/AP-mode
-   instructions to remove the extra layer. Carrier-grade NAT is upstream of your
-   router; ask your provider about available public IPv4 or IPv6 service.
-   Back up settings before changing the router's operating mode.
-6. **Invite a friend on another network.** A Viewer who can receive the picture
-   and has spare forwarding capacity may give Piik another path to you. Piik
-   chooses this automatically; extra people help only when those connections work.
-7. **Use a site with media fallback.** Its operator must enable SFU forwarding.
-   If the site offers **Privacy mode**, the Host must turn it off before sharing.
-   Sites configured for **Server media** already require SFU. The public
-   `demo.piik.tv` site and the App's **Public invite** mode do not provide SFU.
-   [Self-hosting](../operations/self-hosting.md#optional-media-fallback) is an
-   advanced option. Both P2P and SFU media currently use UDP; a network that blocks
-   UDP entirely still needs a different network or an administrator's help.
-
-Router menus vary by model. These manufacturer guides explain
-[IPv6 prerequisites](https://support.google.com/googlehome/answer/6361450),
-[UPnP](https://support.google.com/googlehome/answer/6274337), and
-[double NAT with a modem and router](https://www.tp-link.com/us/support/faq/3113/).
-The [WebRTC connection guide](https://webrtc.org/getting-started/peer-connections)
-explains discovery and connection checks in more technical detail.
-
-If these steps do not help, collect a [Debug report](../../cmd/piik-app/README.md#diagnostics)
-from the affected Viewer and, if possible, the Host for the same attempt. Include
-the time, Piik version and network type when reporting the problem.
-For a self-hosted site using SFU, also include the Server report. Successful Host
-upload or subscription setup alone does not establish that the Viewer received
-and decoded the picture; the reports from both sides help locate the failing step.
+## Advanced network checks
 
 ### Browser WebRTC restrictions
 
@@ -443,24 +457,52 @@ Allowing these connections can expose network addresses to WebRTC peers; change
 only the relevant setting. See [Chrome's policy reference](https://developer.chrome.com/docs/extensions/reference/api/privacy#property-network)
 and [Vivaldi's privacy settings](https://help.vivaldi.com/desktop/privacy/privacy-settings/).
 
+### STUN, IPv6 and router checks
+
+NAT lets several devices share an Internet address. Some routers or provider
+networks make direct connections harder; firewalls and browser policies can
+also block media. Check the parts you manage:
+
+1. **STUN discovery:** STUN finds addresses for direct connections; it does not
+   relay the picture. An unreachable service can leave chat working while media
+   fails. App Public invite already uses several discovery services; one STUN
+   error does not mean every path failed. Self-hosted administrators should check
+   that `STUN_URLS` points to reachable UDP services. HTTP reverse proxies do not
+   forward STUN. App users can set [`PIIK_STUN_URLS`](../standards/configuration.md#piik-app-configuration)
+   before starting Public invite to replace all built-in discovery addresses.
+   Choose trusted providers, since they see participants' public IP addresses.
+2. **IPv6:** when the provider, router and both devices have usable IPv6, Piik can
+   try that direct path alongside IPv4. Keep IPv4 enabled too; IPv6 still obeys
+   firewall rules.
+3. **Home router:** supported UPnP, PCP or NAT-PMP can let App's native media path
+   request port mappings. Browser-only capture does not request them. If both a
+   modem and router perform NAT, your model's bridge/AP-mode instructions may
+   remove a layer. Back up settings before changing its operating mode.
+   Carrier-grade NAT is upstream; ask your provider about public IPv4 or IPv6.
+
+Router menus vary. See manufacturer guidance on
+[IPv6](https://support.google.com/googlehome/answer/6361450),
+[UPnP](https://support.google.com/googlehome/answer/6274337), and
+[double NAT](https://www.tp-link.com/us/support/faq/3113/), or the
+[WebRTC connection guide](https://webrtc.org/getting-started/peer-connections)
+for discovery details. Compare both peers' reports before assigning a cause.
+
 ### Campus networks and strict NAT
 
-A campus network can work with Piik, but a shared Internet gateway or restrictive
-firewall may make direct connections harder. Try a phone hotspot first: if the
-same invitation works there, focus on the original network's restrictions.
+Compare the same invitation on a phone hotspot first. If it works there, focus
+on the original network's shared gateway or firewall restrictions.
 
-For regular use, consider **self-hosting a Piik site with SFU media forwarding**.
-This gives viewers a server path when direct connections fail. Follow the
-[deployment guide](../operations/self-hosting.md#optional-media-fallback), including
-its public-address and UDP-port requirements. Keep Piik App running, open the new
-site in your browser and select **App** at the top to approve its local access.
-Send invitations generated by that site.
+For regular use, an operator can [enable SFU media fallback](../operations/self-hosting.md#optional-media-fallback)
+on a self-hosted Piik site. If it offers **Privacy mode**, the Host must turn it
+off before sharing; a site configured for **Server media** already requires SFU.
+Keep App running, open the new site and select **App** to approve local access,
+then send that site's invitation.
 
-The public demo and App Public invite mode remain P2P-only. SFU also requires
-usable UDP; deploying a server alone does not remove the original network's
-restrictions on media UDP.
+The public `demo.piik.tv` site and App **Public invite** provide P2P only. Both P2P
+and SFU media currently need UDP. Deploying a server does not bypass a network
+that blocks media UDP entirely; use another network or ask its administrator.
 
-#### Optional: a virtual LAN
+### Optional: a virtual LAN
 
 If hosting a server is inconvenient, you can also try a third-party virtual LAN
 to put your friends on the same virtual network. For example,
@@ -480,39 +522,46 @@ reachable virtual IPv4 addresses and carry both Piik's web traffic and WebRTC UD
 4. Keep the networking tool running on every device. If its virtual IP changes,
    select the new address in the App and send a new invitation.
 
-The current App's **Local room** sends an HTTPS invitation on the selected
-virtual IP. Confirm its [local certificate](#local-https-certificate-warning)
-on first access. This lets a supported browser use microphone, camera and
-[remote control](./getting-started.md#let-a-friend-control-your-shared-screen)
-without a public tunnel; ordinary LANs work the same way.
+**Local room** sends an HTTPS invitation on the selected virtual IP. Confirm its
+[local certificate](#local-https-certificate-warning) on first access. Microphone,
+camera and remote control can then work without a public tunnel, just as on an
+ordinary LAN. If unavailable, check [browser permissions](#microphone-or-remote-controls-are-unavailable).
+Connection details show the selected media addresses.
 
-Keep the networking tool running. If a local certificate exception is not
-available in your browser, use a reachable **Public invite** or self-hosted
-HTTPS site with a trusted certificate. Media still tries available routes,
-including the virtual LAN; connection details show the selected addresses.
+Use an updated App for address discovery on routed virtual LANs. This method
+needs a usable virtual address and media UDP; it cannot work with tools that
+forward only game traffic. Firewalls, browser discovery and the third-party
+service still affect availability. Join only with trusted friends.
 
-Older Apps and plain HTTP sites can watch, chat and join voice to listen, but
-cannot use the secure capture/control APIs. Changing the URL scheme alone does
-not enable HTTPS. `localhost` means the current device, not your friend's computer.
-
-This may help with some strict NAT combinations, but is not guaranteed to work
-on every campus network. Firewall rules and Browser address discovery still
-matter. The current test App adds local address discovery for routed virtual
-LANs; earlier releases may open the page but remain stuck connecting to media.
-If the tool provides no usable virtual address or forwards only game traffic,
-this procedure does not apply. Join only with trusted friends; speed and
-availability also depend on the third-party service.
-
-Other tools such as [ZeroTier](https://docs.zerotier.com/start/) and
+[ZeroTier](https://docs.zerotier.com/start/) and
 [Tailscale](https://tailscale.com/docs/how-to/quickstart) also create private
-networks. Check that the tool supports everyone's devices and the requirements
-above before following the same Piik steps. Other tools and platforms have not
-yet been tested with Piik.
+networks. Check device support and the requirements above; these alternatives
+have not been tested with Piik.
 
-Already have a reachable server? [The frp recipe](../operations/self-hosting.md#optional-forward-an-existing-server-with-frp)
-forwards an existing Piik site's web and SFU endpoints. It needs a public frps
-host and is an administrator option, rather than the same virtual-LAN setup.
-Forwarding the web page alone does not forward WebRTC media.
+For administrators with a public server, the [frp recipe](../operations/self-hosting.md#optional-forward-an-existing-server-with-frp)
+forwards an existing site's web and SFU endpoints through frps. Forwarding the
+web page alone does not forward WebRTC media.
 
-Ready to host a site for your group? Follow [self-hosting](../operations/self-hosting.md).
+## Reporting a problem
+
+Include the Piik version, OS/browser, time, expected result and reproduction steps.
+For capture problems, add the source type, codec, GPU/driver and whether another
+source or VP8 works. For network problems, add the network type.
+
+Enable diagnostics before reproducing once, then export before refreshing:
+
+- **Web:** use the page's diagnostics button. A sharing failure's error icon below
+  the TV also provides a copyable summary; it contains the Web version, message
+  and code, without invitation links or source names.
+- **App capture:** also enable **Debug launch** on the App's mode selection page,
+  then press `D` in the terminal to export its report.
+- **Connection failure:** collect the affected Viewer and Host reports for the
+  same attempt. For self-hosted SFU, include the Server report too. Host upload or
+  subscription setup alone does not prove that the Viewer received the picture.
+
+Reports stay on your device. Review private information before sharing them;
+[diagnostics and export](../../cmd/piik-app/README.md#diagnostics) explains their contents.
+You can still report without logs; a generic failure screenshot alone may not
+identify the failing stage.
+
 For other guides, return to [the documentation home](./README.md).

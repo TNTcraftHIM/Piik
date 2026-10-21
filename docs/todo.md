@@ -10,7 +10,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Room-voice candidate acceptance.** The refreshed normal App/Server/Web
   candidate is ready for owner acceptance before integration and release.
   [Status](./status.md#current-work) owns the candidate boundary; the
-  [test-build guide](./guide/getting-started.md#room-voice-in-test-builds)
+  [test-build guide](./guide/room-tools.md#room-voice-in-test-builds)
   explains its controls. Production and the public Demo remain unchanged.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream

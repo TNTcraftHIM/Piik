@@ -36,6 +36,11 @@ use the product; technical details link to the relevant owner. English/Chinese
 entry guides are intentional translations and must change together; technical
 references keep one version.
 
+First-use guides stop at a working room. Detailed controls belong to task guides,
+symptom-based checks to troubleshooting, and build/release procedures to maintainer
+references. Remove repaired incident narratives instead of appending them to the
+reader's path; retain checks for current platform and network limitations.
+
 The public documentation website renders selected repository Markdown without
 owning another copy. Its [reader index](../guide/README.md) serves usage and support;
 the repository map remains the developer/maintainer entry. The

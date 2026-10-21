@@ -4,24 +4,17 @@
 
 For using Piik, troubleshooting or self-hosting, start with the
 [reader documentation](./guide/README.md) · [中文文档中心](./guide/README.zh-CN.md).
-This page also indexes developer and maintainer references.
+This page indexes developer and maintainer references.
 
-## Guides And References
+## Developer And Maintainer Entry Points
 
 | Task | Guide |
 | --- | --- |
-| Use Piik online | [Open the online site](https://demo.piik.tv) · [Online sharing guide](./guide/getting-started.md#use-piik-online) |
-| Watch a friend or share my first screen | [Getting started](./guide/getting-started.md) |
-| Choose an App mode or fix sound and connection trouble | [First-use help](./guide/getting-started.md#choose-an-app-mode) |
-| Page opens but video will not connect / 网页能打开，画面连不上 | [Connection troubleshooting](./guide/getting-started.md#when-video-will-not-connect) · [中文排查](./guide/getting-started.zh-CN.md#画面连接不上) |
-| Run Piik App, check platform requirements, or build a package | [App guide](../cmd/piik-app/README.md) · [中文 App 指南](../cmd/piik-app/README.zh-CN.md) |
 | Try or change the source code | [Run from source](#run-from-source) |
 | Find a directory or the module responsible for a behavior | [Repository layout and module map](./standards/engineering.md#repository-layout) |
 | Find the shared product, design and lifecycle rules | [Standards index](./standards/README.md) |
-| Host a site for my group | [Self-hosting](./operations/self-hosting.md) · [中文部署](./operations/self-hosting.zh-CN.md) |
-| Keep a server running with systemd or Docker | [Service management](./operations/service-management.md) · [中文服务管理](./operations/service-management.zh-CN.md) |
-| Set passwords, ports, or room storage | [Configuration](./standards/configuration.md) |
-| Update my server | [Server updates](./operations/self-hosting.md#keep-it-running-and-update) |
+| Deploy or configure a service | [Self-hosting](./operations/self-hosting.md) · [Configuration](./standards/configuration.md) · [Service management](./operations/service-management.md) |
+| Build App packages and native capture | [App development](../cmd/piik-app/DEVELOPMENT.md) |
 | Build, publish or recover a maintained release | [Maintainer release tooling](./deployment.md) |
 | Send a useful bug report | [Diagnostics and export](./standards/configuration.md#diagnostics) |
 | Translate Piik or improve wording | [Translation guide](./guide/translating.md) · [中文翻译教程](./guide/translating.zh-CN.md) |
@@ -66,8 +59,8 @@ computer; remote invitations need a reachable origin as described in
 [configuration](./standards/configuration.md).
 Browser capture requires `localhost` or HTTPS.
 
-For the self-contained App, follow [App development](../cmd/piik-app/README.md#development)
-and [packaging](../cmd/piik-app/README.md#packaging), including the platform's
+For the self-contained App, follow [App development](../cmd/piik-app/DEVELOPMENT.md#run-from-source)
+and [packaging](../cmd/piik-app/DEVELOPMENT.md#packaging), including the platform's
 native capture requirements.
 
 ## Work on Piik

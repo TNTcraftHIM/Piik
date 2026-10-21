@@ -13,16 +13,18 @@ Choose a guide for what you want to do.
 | Share my screen | [Download Piik App](https://piik.tv/?lang=en#download), then follow [the App steps](./getting-started.md#share-with-piik-app). |
 | Use Piik without installing | [Open the online site](https://demo.piik.tv) and follow [the online guide](./getting-started.md#use-piik-online). |
 | Use my group's Piik site | [Connect the App or share in a browser](./getting-started.md#share-from-an-existing-site). |
-| Understand App options | [Modes, platform requirements and diagnostics](../../cmd/piik-app/README.md). |
+
+## Use the room tools
+
+- [Sharing and playback](./sharing.md): picture quality, cameras, source sound and viewing controls.
+- [Chat, voice and remote control](./room-tools.md): reactions, conversations and letting a friend take control.
+- [App reference](../../cmd/piik-app/README.md): saved modes, site access, command-line options and diagnostics.
 
 ## Get help
 
-[Troubleshooting](./troubleshooting.md) starts from the symptom you see. Common checks:
-
-- [Public invitation failure or 1033](./troubleshooting.md#public-invitation-fails-or-shows-1033), or [room creation returns 403](./troubleshooting.md#room-creation-returns-403).
-- [Sharing will not start](./troubleshooting.md#sharing-does-not-start-after-source-selection), [missing App sources](./troubleshooting.md#app-windows-or-screens-are-missing), or [H264 and graphics checks](./troubleshooting.md#h264-sharing-fails-on-windows).
-- [Video will not connect](./troubleshooting.md#when-video-will-not-connect), including WebRTC settings and [campus-network / virtual-LAN options](./troubleshooting.md#campus-networks-and-strict-nat).
-- [Blur or stuttering](./troubleshooting.md#picture-blurs-stutters-or-stops), or [HDR overexposure](./troubleshooting.md#hdr-picture-looks-too-bright-or-washed-out).
+[Troubleshooting](./troubleshooting.md) groups checks by what is failing:
+opening Piik or an invitation, starting a share, picture and sound, or the media connection.
+Start with that symptom; advanced network checks come after the basic steps.
 
 Still stuck? [Report a problem](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
 with your version, system, browser and reproduction steps. The
@@ -32,7 +34,8 @@ with your version, system, browser and reproduction steps. The
 
 <p><a href="../operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik Server with Docker Compose"></a></p>
 
-Self-hosting is an advanced option requiring a server, domain and network configuration.
+Self-hosting is an advanced option. Public sites need a reachable address, HTTPS
+and network configuration; App users do not need to deploy a server.
 
 - [Deploy Piik Server](../operations/self-hosting.md) with Docker Compose or the server package.
 - [Keep it running and update](../operations/service-management.md).
