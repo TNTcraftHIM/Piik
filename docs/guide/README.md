@@ -7,12 +7,10 @@ Choose a guide for what you want to do.
 
 ## Start using Piik
 
-| I want to… | Start here |
-| --- | --- |
-| Watch a friend | [Open an invitation](./getting-started.md#join-a-friends-room); no installation needed. |
-| Share my screen | [Download Piik App](https://piik.tv/?lang=en#download), then follow [the App steps](./getting-started.md#share-with-piik-app). |
-| Use Piik without installing | [Open the online site](https://demo.piik.tv) and follow [the online guide](./getting-started.md#use-piik-online). |
-| Use my group's Piik site | [Connect the App or share in a browser](./getting-started.md#share-from-an-existing-site). |
+- **Watch a friend:** [open an invitation](./getting-started.md#join-a-friends-room); no installation needed.
+- **Share my screen:** [download Piik App](https://piik.tv/?lang=en#download), then follow [the App steps](./getting-started.md#share-with-piik-app).
+- **Use Piik without installing:** [open the online site](https://demo.piik.tv) and follow [the online guide](./getting-started.md#use-piik-online).
+- **Use my group's Piik site:** [connect the App or share in a browser](./getting-started.md#share-from-an-existing-site).
 
 ## Use the room tools
 
