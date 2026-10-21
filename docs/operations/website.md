@@ -86,6 +86,40 @@ rollback restores the previous executable while keeping current room data. This
 Caddy installation needs a scoped updater; the nginx-specific maintainer wrapper
 does not manage it.
 
+## Maintenance
+
+Website HTML bypasses Cloudflare's edge cache and sends `Cache-Control: no-cache`
+so Browsers revalidate it. Content-hashed scripts, styles and images keep their
+ordinary cache policy. This keeps an older homepage from referring to assets
+removed by a later Pages deployment. These rules match only the website hosts;
+the Demo has its own cache owner above.
+
+Copy [the maintenance example](./maintenance.env.example) to
+`.env.maintenance.local` in the checkout and fill in local credentials and targets.
+The file is ignored by Git. Use Node's built-in env-file option:
+
+```sh
+node --env-file=.env.maintenance.local scripts/release-maintenance.mjs website-check
+node --env-file=.env.maintenance.local scripts/release-maintenance.mjs website-purge
+node --env-file=.env.maintenance.local scripts/release-maintenance.mjs server-check
+```
+
+The website check reads the two rule phases, checks fresh HTML and compares the
+root/index asset references. Purge removes only those website entry points from
+Cloudflare; it cannot clear visitors' Browser caches. The Server check uses SSH
+to inspect the managed Linux `piik` service, its running package and public health.
+It changes no service, firewall or configuration. Keep separate ignored env files
+for different Server targets, or use existing SSH aliases; do not copy private
+connection details into the scripts. [Server deployment](../deployment.md) owns
+package upload, atomic cutover and recovery; these checks do not replace it.
+
+Rule changes remain explicit infrastructure work: save the current rule phases
+and define their scoped rollback before modifying them. The maintenance commands
+do not rewrite rules or manage DNS. See Cloudflare's
+[cache-rule order](https://developers.cloudflare.com/cache/how-to/cache-rules/order/)
+and [response-header rules](https://developers.cloudflare.com/rules/transform/response-header-modification/):
+edge eligibility and the Browser's cache header have separate owners.
+
 ## Preview
 
 With the repository's development dependencies installed:
