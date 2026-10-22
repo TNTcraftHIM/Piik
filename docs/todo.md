@@ -7,12 +7,12 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Integrated presentation release.** Local acceptance is complete for
-  room/voice presence, Host source-volume controls, multiple App approvals,
-  compact controls, floating tools and
-  illustrated guidance. Present the candidate for owner review, then prepare
-  its bilingual release notes before publication. The new voice/danmaku
-  settings make this a compatible minor release under the current version rules.
+- [ ] **Integrated presentation release.** The owner accepted the candidate on
+  2026-10-22; scope is frozen and bilingual release notes are prepared. Finish
+  cross-platform release checks, then obtain publication authorization for the
+  compatible minor release. Local acceptance covers room/voice presence, Host
+  source-volume controls, multiple App approvals, compact controls, floating
+  tools and illustrated guidance.
 - [ ] **Native quality on a bursty virtual-LAN path.** A live v2.3.0 observation
   reproduced VP8 resolution/cadence drops and multi-second receive-buffer growth.
   Raising the same connection's ceiling from 3 to 8 Mbps did not eliminate them.
