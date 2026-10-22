@@ -197,6 +197,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.linkHint": "Create one temporary public invitation link",
   "client.launch.room": "Create a room on this device",
   "client.connect.action": "Connect Piik App",
+  "client.connect.hint": "Connect App for the full Piik experience.",
   "client.connect.discovering": "Looking for Piik App…",
   "client.connect.permissionHint": "If your browser asks, allow access to this device or local network to find App.",
   "client.connect.found": "Piik App found. Open its page to continue.",

@@ -80,10 +80,11 @@ Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
 The integrated local candidate adds room-aware connection presentation, a Host-owned
 room voice bitrate ceiling, Host playback with outgoing source-volume control,
 and independent App approvals for multiple Sites with one starred startup choice.
-The owner accepted the candidate on 2026-10-22 and its scope is frozen. Local
-visual and functional acceptance has passed on Windows, and bilingual release
-notes are prepared. Cross-platform release checks and publication remain. The
-route controller and published wire identifiers are unchanged.
+Functional acceptance and cross-platform candidate checks have passed, and
+bilingual release notes are prepared. The owner requested a final review of the
+latest website and App guidance on 2026-10-22; publication waits for that review
+and release authorization. The route controller and published wire identifiers
+are unchanged.
 The website selects the accepted promotional film A as its only film, with shared
 brand motion and task-based illustrated guides. The former 1.0 remains in Git history.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;

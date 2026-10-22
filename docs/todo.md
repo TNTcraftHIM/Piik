@@ -7,12 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Integrated presentation release.** The owner accepted the candidate on
-  2026-10-22; scope is frozen and bilingual release notes are prepared. Finish
-  cross-platform release checks, then obtain publication authorization for the
-  compatible minor release. Local acceptance covers room/voice presence, Host
-  source-volume controls, multiple App approvals, compact controls, floating
-  tools and illustrated guidance.
+- [ ] **Integrated presentation release.** Functional and cross-platform candidate
+  checks have passed; bilingual release notes are prepared. The owner requested
+  a final review of the latest website and App guidance on 2026-10-22. Complete
+  that review and obtain release authorization before publishing.
 - [ ] **Native quality on a bursty virtual-LAN path.** A live v2.3.0 observation
   reproduced VP8 resolution/cadence drops and multi-second receive-buffer growth.
   Raising the same connection's ceiling from 3 to 8 Mbps did not eliminate them.

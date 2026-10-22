@@ -197,6 +197,7 @@ export const zh = {
   "client.launch.linkHint": "生成一个临时公网邀请链接",
   "client.launch.room": "在这台设备上创建房间",
   "client.connect.action": "连接 Piik App",
+  "client.connect.hint": "连接 App，获得更完整的体验。",
   "client.connect.discovering": "正在查找 Piik App…",
   "client.connect.permissionHint": "如果浏览器询问，请允许访问此设备或本地网络，以查找 App。",
   "client.connect.found": "已找到 Piik App，请打开 App 页面继续。",
