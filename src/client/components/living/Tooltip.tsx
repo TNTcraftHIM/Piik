@@ -187,7 +187,9 @@ export function Tooltip({
     const right = x + vw, bottom = y + vh;
     tipRef.current?.style.setProperty("--tooltip-max-width", `${Math.max(0, vw - EDGE_MARGIN * 2)}px`);
     tipRef.current?.style.setProperty("--tooltip-max-height", `${Math.max(0, vh - EDGE_MARGIN * 2)}px`);
-    const rect = wrap.getBoundingClientRect();
+    // Grid/flex layouts may stretch the interaction wrapper beyond its control.
+    // Aim at the visible trigger rather than the wrapper's unused space.
+    const rect = (wrap.firstElementChild ?? wrap).getBoundingClientRect();
     // Popovers and fullscreen present a separate subtree. Their DOM ancestors
     // outside that surface retain page geometry and cannot place its hints.
     const surface = wrap.closest<HTMLElement>("[popover], :fullscreen");
@@ -318,7 +320,7 @@ export function Tooltip({
     // their inset without scrolling the page. Follow that owner's final layout.
     const surface = wrapRef.current?.closest<HTMLElement>("[popover]");
     const observer = new ResizeObserver(schedulePick);
-    for (const element of [wrapRef.current, tipRef.current, surface]) if (element) observer.observe(element);
+    for (const element of [wrapRef.current, wrapRef.current?.firstElementChild, tipRef.current, surface]) if (element) observer.observe(element);
     const movement = new MutationObserver(schedulePick);
     if (surface) movement.observe(surface, { attributes: true, attributeFilter: ["style"] });
     schedulePick();

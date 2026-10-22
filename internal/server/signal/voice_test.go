@@ -54,7 +54,7 @@ func TestRoomVoiceBitrateIsHostOwnedAndOptedIn(t *testing.T) {
 	authenticate(t, old, h.room, protocol.RoleViewer, "bitrate_older_123456", 1, "", presenceOptions{})
 	for _, client := range []*testClient{host, viewer} {
 		client.sendJSON(map[string]any{"type": "subscribe-room-voice", "bitrate": true})
-		nextVoiceState(t, client, func(state protocol.RoomVoiceStateMessage) bool { return state.Bitrate == 32_000 })
+		nextVoiceState(t, client, func(state protocol.RoomVoiceStateMessage) bool { return state.Bitrate == 64_000 })
 	}
 	old.sendJSON(map[string]any{"type": "subscribe-room-voice"})
 	if initial := nextVoiceState(t, old, nil); initial.Bitrate != 0 {

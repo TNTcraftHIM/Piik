@@ -74,7 +74,7 @@ app to a different playback device.
 
 Move the pointer over the picture or tap it to show the playback bar.
 
-- **Adjust your own playback:** use the bar on the picture to pause, mute or change volume. The Host's preview starts muted.
+- **Playback and sound:** pausing the picture affects only your own preview. The Host's volume changes the shared sound for everyone (0%–200%); Viewer volume changes only their own listening. The Host's preview stays muted to avoid playing the source twice. Room voice has separate controls.
 - **Pause the picture for friends:** select **Pause sharing** below the picture. This affects everyone watching.
 - **Control your microphone and listening:** open **Interact → Voice**. These controls are separate from picture sound.
 

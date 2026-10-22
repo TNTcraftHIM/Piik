@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -181,7 +182,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		slog.Debug("piik-client", "event", "quality-preference-load-failed", diagnostics.Error(preferenceErr))
 	}
 	control, err := loopback.Start(ctx, loopback.Options{
-		AllowedOrigins:    allowedOrigins(config.Site, options.Port),
+		AllowedOrigins:    allowedOrigins(config.ApprovedSites(), options.Port),
 		NativeMedia:       nativeMedia.capabilities,
 		NewControl:        nativeMedia.controlFactory(input),
 		Presentation:      options.console.setLanguage,
@@ -256,7 +257,7 @@ func runLauncher(
 	if err != nil {
 		slog.Debug("Could not restore the last launcher mode", diagnostics.Error(err))
 	}
-	startupSite, err := launcher.LoadStartupSite(configPath, config.Site)
+	startupSite, err := launcher.LoadStartupSite(configPath, config.ApprovedSites()...)
 	if err != nil {
 		slog.Debug("Could not restore the startup Site", diagnostics.Error(err))
 	}
@@ -273,7 +274,7 @@ func runLauncher(
 			return config, err
 		}
 		config = next
-		err := control.SetAllowedOrigins(append(allowedOrigins(config.Site, initialOptions.Port), launcherOrigin))
+		err := control.SetAllowedOrigins(append(allowedOrigins(config.ApprovedSites(), initialOptions.Port), launcherOrigin))
 		return config, err
 	}
 	launch, err := launcher.Start(
@@ -285,12 +286,22 @@ func runLauncher(
 			SaveStartupSite: func(site string) error {
 				return launcher.SaveStartupSite(configPath, site)
 			},
-			Site: config.Site, Version: buildVersion(), Revision: BuildRevision,
+			Sites: config.ApprovedSites(), Version: buildVersion(), Revision: BuildRevision,
 			LocalAccessPassword: config.LocalAccessPassword,
 			Debug:               options.Debug, LANAddress: options.LANAddress,
-			ChangeSite: func(site string) (string, error) {
-				current, err := updateConfig(func(next *appconfig.Config) { next.Site = site })
-				return current.Site, err
+			ChangeSite: func(site string, allowed bool) ([]string, error) {
+				current, err := updateConfig(func(next *appconfig.Config) {
+					sites := next.ApprovedSites()
+					if allowed {
+						if !slices.Contains(sites, site) {
+							sites = append(sites, site)
+						}
+					} else {
+						sites = slices.DeleteFunc(sites, func(value string) bool { return value == site })
+					}
+					next.SetApprovedSites(sites)
+				})
+				return current.ApprovedSites(), err
 			},
 			EnableDebug: func() error {
 				configMu.Lock()
@@ -316,7 +327,7 @@ func runLauncher(
 	}
 	configMu.Lock()
 	launcherOrigin = launchAddress.Scheme + "://" + launchAddress.Host
-	err = control.SetAllowedOrigins(append(allowedOrigins(config.Site, options.Port), launcherOrigin))
+	err = control.SetAllowedOrigins(append(allowedOrigins(config.ApprovedSites(), options.Port), launcherOrigin))
 	configMu.Unlock()
 	if err != nil {
 		return errors.Join(failure.NativeControl, err)
@@ -434,11 +445,12 @@ func applyMode(config appconfig.Config, options Options) (appconfig.Config, erro
 		return appconfig.Config{}, errors.New("choose either --site or --local")
 	}
 	if options.SiteSet {
-		var err error
-		config.Site, err = appconfig.NormalizeSite(options.Site)
-		if err != nil || config.Site == "" {
+		site, err := appconfig.NormalizeSite(options.Site)
+		if err != nil || site == "" {
 			return appconfig.Config{}, errors.New("Piik Site must be an HTTP or HTTPS origin")
 		}
+		sites, _ := appconfig.NormalizeSites(append([]string{site}, config.ApprovedSites()...))
+		config.SetApprovedSites(sites)
 	}
 	return config, nil
 }
@@ -701,15 +713,12 @@ func (runtime nativeRuntime) controlFactory(input *remoteinput.Manager) func() l
 	}
 }
 
-func allowedOrigins(site string, localPort int) []string {
+func allowedOrigins(sites []string, localPort int) []string {
 	origins := []string{
 		fmt.Sprintf("http://localhost:%d", localPort),
 		fmt.Sprintf("http://127.0.0.1:%d", localPort),
 	}
-	if site = strings.TrimSpace(site); site != "" {
-		origins = append(origins, site)
-	}
-	return origins
+	return append(origins, sites...)
 }
 
 func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRuntime {
@@ -740,6 +749,7 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 			Video:                        summary.Video,
 			CaptureBorderControl:         summary.CaptureBorderControl,
 			Microphone:                   summary.Microphone,
+			ShareVolume:                  true,
 			ProcessAudio:                 summary.ProcessAudio,
 			ProcessAudioExclusion:        summary.ProcessAudioExclusion,
 			SystemAudio:                  summary.SystemAudio,

@@ -8,7 +8,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Now
 
 - [ ] **Integrated presentation release.** Local acceptance is complete for
-  room/voice presence, Host playback, compact controls, floating tools and
+  room/voice presence, Host source-volume controls, multiple App approvals,
+  compact controls, floating tools and
   illustrated guidance. Present the candidate for owner review, then prepare
   its bilingual release notes before publication. The new voice/danmaku
   settings make this a compatible minor release under the current version rules.

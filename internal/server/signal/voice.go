@@ -49,7 +49,7 @@ func (s *Server) voiceRoom(roomID string) *roomVoice {
 	}
 	v := s.voices[roomID]
 	if v == nil {
-		v = &roomVoice{bitrate: 32_000, members: make(map[string]*voiceMember), connections: make(map[string]*voiceEdge)}
+		v = &roomVoice{bitrate: 64_000, members: make(map[string]*voiceMember), connections: make(map[string]*voiceEdge)}
 		s.voices[roomID] = v
 	}
 	if host, ok := s.store.GetConnectedHost(roomID); ok {

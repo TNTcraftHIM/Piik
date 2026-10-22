@@ -24,13 +24,17 @@ multiply. Per-person levels belong to the current participant identity and retir
 with it. Listening gain, deafen and per-person mute affect only local playback,
 never forwarding or the picture's source audio.
 
-Room voice defaults to 32 kbps mono, with 32/64/96 kbps shortcuts and a 6..320
+Room voice defaults to 64 kbps mono, with Saver/Standard/Clear shortcuts at
+32/64/96 kbps and a 6..320
 kbps sender ceiling in the Host's voice settings. Source and Peer-relay senders
 use the same room ceiling; WebRTC may send less as speech or network conditions
 change. Receive SDP accepts Opus's full 6..510 kbps range independently of that
 sender setting, following [RFC 7587](https://www.rfc-editor.org/rfc/rfc7587#section-6.1).
 Published older pages can still join without the optional bitrate extension;
 their senders and negotiated receive limits may retain the earlier 32 kbps bound.
+Opus's [speech guidance](https://www.rfc-editor.org/rfc/rfc7587#section-3.1.1)
+places fullband mono speech at 28–40 kbps; 64 kbps leaves headroom for expressive
+speech and is also used in [Discord's documented voice-channel example](https://github.com/discord/discord-api-docs/blob/main/developers/resources/channel.mdx#guild-voice-channel-example).
 
 - The Web Host may share a display, application window, Browser tab or camera and may
   stop, synchronously pause/resume audio and video, or switch source.
@@ -438,6 +442,11 @@ detector, periodic quality controller, manual SFU layer selector, or
 application-defined whole-room lowest-common-denominator target.
 
 ## Screen Audio
+
+The Host's playback volume adjusts shared source sound from 0% to 200%, starting
+at 100% for each share. Browser gain precedes outgoing fanout; native gain
+precedes the shared Opus encoder. Source replacement preserves the level, and
+room voice remains independent. Viewer volume adds only local listening gain.
 
 Piik supports mono and stereo Opus content through the existing audio
 track. Mono inputs remain valid; Browser and Native mixing use a stereo output.

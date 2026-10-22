@@ -1382,6 +1382,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-door-glyph { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .lr-door-glyph .lr-cap { font-size: 13px; }
 .lr-switch-item { display: inline-flex; align-items: center; gap: 9px; }
+.lr-switch-item > label { cursor: pointer; user-select: none; }
+.lr-switch-item:has(.lr-switch:is(:disabled, [aria-disabled="true"])) > label { cursor: default; }
 
 /* ---------- join / access ---------- */
 
@@ -1418,9 +1420,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-connect-toggle > svg:last-child { transition: transform 180ms var(--spring); }
 .lr-client-connect-guide[open] .lr-client-connect-toggle > svg:last-child { transform: rotate(180deg); }
 .lr-client-connect-steps { padding: 4px 0 8px; }
-.lr-client-approved-site { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
-.lr-client-approved-site a { display: flex; flex: 1 1 auto; align-items: baseline; gap: 4px; min-width: 0; overflow-wrap: anywhere; color: var(--ink); font: 12px/1.6 var(--mono); text-underline-offset: 3px; }
-.lr-client-approved-site a > span { flex: none; }
+.lr-client-approved-site { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
+.lr-client-approved-site a { min-width: 0; overflow-wrap: anywhere; color: var(--ink); font: 12px/1.6 var(--mono); text-underline-offset: 3px; }
+.lr-client-approved-sites { display: grid; grid-column: 1 / -1; gap: 8px; min-width: 0; max-height: 240px; overflow-y: auto; scrollbar-width: thin; padding: 4px; margin: -4px; }
+.lr-client-approved-site + .lr-client-approved-site { border-top: 1px solid var(--line); padding-top: 8px; }
 .lr-client-site-actions { display: flex; flex: none; align-items: center; gap: 8px; margin-inline-start: auto; }
 .lr-client-launch-section { justify-self: start; margin: 5px 0 -8px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .lr-client-approval {
@@ -1441,7 +1444,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-approval-origin > svg { flex: none; }
 .lr-client-approval-origin > strong { flex: 1; min-width: 0; font-weight: 650; }
 .lr-client-approval-origin > .lr-client-approval-check { color: var(--live); }
-.lr-client-approval p.lr-client-approval-replace { padding-top: 12px; border-top: 1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size: 12px; }
 .lr-client-approval-startup { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 13px; line-height: 1.5; cursor: pointer; }
 .lr-client-approval-startup input { width: 18px; height: 18px; margin: 0 2px 0 0; flex: none; accent-color: var(--action); }
 .lr-client-approval-startup > svg { flex: none; }

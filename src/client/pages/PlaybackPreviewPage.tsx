@@ -11,6 +11,7 @@ import { STATUS_CATALOG } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { PreviewRemoteInput } from "./preview-remote-input";
+import { HostAudio } from "../media/host-audio";
 
 type PreviewRole = "host" | "viewer";
 
@@ -92,8 +93,8 @@ export function PlaybackPreviewPage() {
         </label>)}
       </div>
       </div>
-      <p>{role === "host" ? english ? "Host playback starts muted. This local video and chat sample opens no room, microphone or screen capture."
-        : "房主本机预览默认静音。仅本机示例画面与消息，不开房间、不访问麦克风、不采集屏幕。"
+      <p>{role === "host" ? english ? "The Host volume adjusts shared sound; local preview stays muted. This sample opens no room, microphone or screen capture."
+        : "房主音量调整分享输出，本机预览保持静音。仅使用示例画面与消息，不开房间、不访问麦克风、不采集屏幕。"
         : english ? "Viewer playback and connection settings, with local sample video and messages. No room or capture is opened."
           : "观众播放与连接设置，使用本机示例画面与消息，不开房间、不采集屏幕。"}</p>
     </header>
@@ -110,6 +111,8 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const { session, receiveSample } = usePreviewInteractions(viewer);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRef = useRef<ReturnType<typeof testMedia> | null>(null);
+  const sourceAudio = useRef<HostAudio | null>(null);
+  const [shareVolume, setShareVolume] = useState({ level: 1, muted: false });
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [theaterMode, setTheaterMode] = useTheaterMode();
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
@@ -129,13 +132,19 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
     });
   }
 
-  function start(withAudio: boolean, portrait = portraitSource) {
+  async function start(withAudio: boolean, portrait = portraitSource) {
+    sourceAudio.current?.dispose();
+    sourceAudio.current = null;
     mediaRef.current?.stop();
     const media = testMedia(withAudio, portrait);
     mediaRef.current = media;
     setError("");
     setWaiting(false);
-    setStream(media.stream);
+    if (!viewer) {
+      sourceAudio.current = new HostAudio(media.stream);
+      sourceAudio.current.setVolume(shareVolume.muted ? 0 : shareVolume.level);
+    }
+    setStream(await sourceAudio.current?.outputStream() ?? media.stream);
     setAudioAvailable(withAudio);
     if (media.audio) void media.audio.resume().catch((cause: unknown) => setError(String(cause)));
   }
@@ -145,7 +154,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
     video.srcObject = stream;
     if (stream) play();
   }, [stream]);
-  useEffect(() => () => mediaRef.current?.stop(), []);
+  useEffect(() => () => { sourceAudio.current?.dispose(); mediaRef.current?.stop(); }, []);
   useEffect(() => {
     const input = new PreviewRemoteInput();
     setRemoteInput(input);
@@ -195,6 +204,9 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
           {waiting && <StageOverlay dim waiting icon={STATUS_CATALOG.joining.icon} message={t(STATUS_CATALOG.joining.labelKey)} comic={STATUS_CATALOG.joining.comic} />}
           <RoomChatOverlay session={session} visible={Boolean(stream) && !waiting} />
           <PlaybackControls videoRef={videoRef} stream={stream} audioAvailable={audioAvailable}
+            sharingAudio={viewer ? undefined : { ...shareVolume, available: true, onChange: (level, muted) => {
+              sourceAudio.current?.setVolume(muted ? 0 : level); setShareVolume({ level, muted });
+            } }}
             settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route: viewer ? { preference: viewerRoute, onChange: setViewerRoute,
               sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } : undefined }}
             audioTrackKey={stream?.getAudioTracks().map((track) => track.id).join(",")}

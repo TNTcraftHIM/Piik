@@ -75,7 +75,7 @@ a LAN or virtual LAN, see the [virtual-LAN options](./troubleshooting.md#optiona
 
 **Voice settings**, beside the tabs, contains the input device, microphone and
 listening volumes, and noise/echo reduction. On supporting sites, the Host can
-also set **Room voice bitrate**; the default is 32 kbps per speaker.
+also set **Room voice bitrate**; the default is 64 kbps per speaker.
 Browser and App-backed sharing use these same voice controls.
 
 Voice stays connected when picture sharing stops. It also stays active when you

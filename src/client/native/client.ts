@@ -219,7 +219,7 @@ export class NativeClient {
   private readonly listeners = new Set<(event: NativeClientEvent) => void>();
   private readonly closeListeners = new Set<() => void>();
   private closed = false;
-  private microphoneVolumeUpdate: { shareId: string; volume: number; done: Promise<void> } | null = null;
+  private audioVolumeUpdate: { type: "set-microphone" | "set-share-volume"; shareId: string; volume: number; done: Promise<void> } | null = null;
 
   private constructor(
     readonly health: NativeHealth,
@@ -690,17 +690,26 @@ export class NativeClient {
   // queue dozens of slider events ahead of Stop or reopen a lost microphone.
   setMicrophoneVolume(shareId: string, volume: number): Promise<void> {
     if (!this.health.nativeMedia.microphone) return Promise.reject(new Error("Piik App microphone is unavailable"));
-    const active = this.microphoneVolumeUpdate;
-    if (active?.shareId === shareId) { active.volume = volume; return active.done; }
-    const update = { shareId, volume, done: Promise.resolve() };
-    this.microphoneVolumeUpdate = update;
+    return this.setAudioVolume("set-microphone", shareId, volume);
+  }
+
+  setShareVolume(shareId: string, volume: number): Promise<void> {
+    if (!this.health.nativeMedia.shareVolume) return Promise.reject(new Error("Piik App share volume is unavailable"));
+    return this.setAudioVolume("set-share-volume", shareId, volume);
+  }
+
+  private setAudioVolume(type: "set-microphone" | "set-share-volume", shareId: string, volume: number): Promise<void> {
+    const active = this.audioVolumeUpdate;
+    if (active?.shareId === shareId && active.type === type) { active.volume = volume; return active.done; }
+    const update = { type, shareId, volume, done: Promise.resolve() };
+    this.audioVolumeUpdate = update;
     update.done = (async () => {
       do {
         const sent = update.volume;
-        await this.request("set-microphone", { shareId, volume: sent }, nativeAckResponseSchema);
+        await this.request(type, { shareId, volume: sent }, nativeAckResponseSchema);
         if (sent === update.volume) break;
-      } while (this.microphoneVolumeUpdate === update && !this.closed);
-    })().finally(() => { if (this.microphoneVolumeUpdate === update) this.microphoneVolumeUpdate = null; });
+      } while (this.audioVolumeUpdate === update && !this.closed);
+    })().finally(() => { if (this.audioVolumeUpdate === update) this.audioVolumeUpdate = null; });
     return update.done;
   }
 
@@ -723,7 +732,7 @@ export class NativeClient {
   }
 
   async stopShare(shareId: string): Promise<void> {
-    if (this.microphoneVolumeUpdate?.shareId === shareId) this.microphoneVolumeUpdate = null;
+    if (this.audioVolumeUpdate?.shareId === shareId) this.audioVolumeUpdate = null;
     await this.request("stop-share", { shareId }, nativeAckResponseSchema);
   }
 
@@ -738,7 +747,7 @@ export class NativeClient {
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    this.microphoneVolumeUpdate = null;
+    this.audioVolumeUpdate = null;
     this.rejectPending();
     this.listeners.clear();
     this.closeListeners.clear();

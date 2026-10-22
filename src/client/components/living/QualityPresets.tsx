@@ -138,6 +138,9 @@ const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioPreset, CopyKey> = {
   music: "host.advanced.audio.music",
   "very-high": "host.advanced.audio.veryHigh",
 };
+const VOICE_QUALITY_CAPTIONS: Record<ScreenAudioPreset, CopyKey> = {
+  saver: "voice.quality.saver", music: "voice.quality.standard", "very-high": "voice.quality.clear",
+};
 
 function QualityNumberControl({ value, min, max, step, unit, name, label, disabled, onChange, className, children }: {
   value: number;
@@ -277,6 +280,7 @@ export function AudioBitrateControl({ value, max, disabled, onChange, purpose = 
   const { t, vis } = useCopy();
   const title = purpose === "voice" ? "voice.bitrate" : "host.advanced.audio";
   const presets = purpose === "voice" ? { saver: 32_000, music: 64_000, "very-high": 96_000 } : SCREEN_AUDIO_BITRATES;
+  const captions = purpose === "voice" ? VOICE_QUALITY_CAPTIONS : AUDIO_QUALITY_CAPTIONS;
   return <QualityNumberControl value={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
     name="audioBitrate" unit="kbps" label={t(purpose === "voice" ? "voice.bitrate" : "host.advanced.audioBitrate")} className="lr-door-group lr-audio-quality"
     disabled={disabled} onChange={kbps => onChange(kbps * 1_000)}>
@@ -291,10 +295,9 @@ export function AudioBitrateControl({ value, max, disabled, onChange, purpose = 
         {(Object.keys(SCREEN_AUDIO_BITRATES) as ScreenAudioPreset[]).map(preset => {
           const bitrate = presets[preset];
           return <Chip key={preset} selected={value === bitrate} disabled={disabled || bitrate > max}
-            title={t("host.audio.title", { label: t(purpose === "voice" ? "voice.bitrate" : AUDIO_QUALITY_CAPTIONS[preset]), kbps: String(bitrate / 1_000) })}
+            title={t("host.audio.title", { label: t(captions[preset]), kbps: String(bitrate / 1_000) })}
             hint="hint-audio-quality" onClick={() => select(bitrate / 1_000)}>
-            {purpose === "voice" ? <span className="lr-audio-rate">{bitrate / 1_000}</span>
-              : <><Cap k={AUDIO_QUALITY_CAPTIONS[preset]} /><small className="lr-audio-rate">{bitrate / 1_000}</small></>}
+            <Cap k={captions[preset]} /><small className="lr-audio-rate">{bitrate / 1_000}</small>
           </Chip>;
         })}
       </div>

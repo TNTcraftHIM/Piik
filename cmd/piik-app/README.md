@@ -29,7 +29,7 @@ capture requires macOS 13 or newer on Apple silicon or Intel.
   approved Site. Choose **Local room** or **Public invite** to start a room
   service on this device and enter the normal Host page.
   Star an approved Site in the launcher to open it on startup instead;
-  turn the star off to restore the launcher. Replacing or revoking the Site clears this choice.
+  turn the star off to restore the launcher. Revoking that Site also clears its star.
 - The launcher remembers the last mode confirmed with **Open Piik**. Without a
   saved Local/Public choice, it selects Public invite and waits for confirmation.
 - The default launcher checks official releases after it opens, using GitHub
@@ -76,9 +76,9 @@ An approved Site supplies its own `STUN_URLS`; App Local rooms configure no publ
 ### Approved Site
 
 To use a Piik Site, keep the App running and click **App** at the top of the Site.
-Confirm its address on the local approval page. The App remembers one approved
-Site, which the launcher can open or revoke. Approving another replaces it and
-ends the previous Site's App connections; Local rooms remain independent.
+Confirm its address on the local approval page. The App remembers each approved
+Site, which the launcher can open or revoke independently. Revoking a Site ends
+only its App connections; other approved Sites and Local rooms remain independent.
 Click the connected **App** button on a Site to reopen the launcher. If the Site
 will not open, use the **App launcher** address in the App terminal instead.
 The browser remembers activation, so later visits reuse the running App with

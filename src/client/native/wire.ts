@@ -50,6 +50,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       systemAudio: z.boolean().default(false),
       processAudioExclusion: z.boolean().default(false),
       microphone: z.boolean().default(false),
+      shareVolume: z.boolean().optional(),
       // API availability, not Windows approval or observed border visibility.
       captureBorderControl: z.boolean().default(false),
       hardwareH264: z.boolean().default(false),
@@ -270,6 +271,7 @@ export const nativeAckResponseSchema = z
       "share-stopped",
       "share-paused",
       "microphone-set",
+      "share-volume-set",
       "remote-control-set",
       "publication-answer-accepted",
       "publication-candidate-accepted",

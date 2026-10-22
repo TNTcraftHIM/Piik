@@ -151,8 +151,8 @@ You can still share and watch in your browser.
 
 The browser remembers the connection to an approved site. Reconnect after
 changing browsers, using a private window or clearing site data. In the App
-launcher, **×** revokes a site and **☆** makes it open next time; approving a
-different site replaces the previous one. See the [App reference](../../cmd/piik-app/README.md#modes)
+launcher, **×** revokes that site and **☆** chooses the one site to open next time.
+Approving another site keeps existing approvals. See the [App reference](../../cmd/piik-app/README.md#modes)
 for these options and returning to the launcher. A new public-invite address needs
 its own approval.
 

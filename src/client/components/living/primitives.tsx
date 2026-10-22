@@ -1,6 +1,6 @@
 // Living-room control primitives. Every glyph control keeps its copy in
 // tooltip/aria; text modes add a visible caption from the same catalog.
-import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import { useId, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Tooltip } from "./Tooltip";
 import { participantColor } from "./participant-color";
 import type { ComicKind } from "./Comic";
@@ -280,40 +280,38 @@ export function SwitchItem({
   hint?: HintKind;
 }) {
   const { vis, t } = useCopy();
+  const id = useId();
   const wrapped = Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
   const description = note ? `${label} · ${note}` : label;
   const tooltipText = disabled || locked ? description
     : `${t(checked ? "common.disable" : "common.enable", { name: label })}${note ? ` · ${note}` : ""}`;
-  const item = (
-    <span className="lr-switch-item">
-      <button
-        type="button"
-        className="lr-switch"
-        role="switch"
-        aria-checked={checked}
-        aria-label={description}
-        disabled={disabled && !softDisabled}
-        aria-disabled={softDisabled || undefined}
-        style={softDisabled ? SOFT_DISABLED_STYLE : undefined}
-        onClick={
-          softDisabled
-            ? blockSoftDisabledClick
-            : (event) => {
-                onChange(!checked);
-                if (wrapped) blurAfterPointerClick(event);
-              }
-        }
-      />
-      {locked ? <Glyph name="lock" size={12} /> : null}
-      {vis ? null : <span className="lr-cap">{label}</span>}
-    </span>
+  const control = (
+    <button
+      id={id}
+      type="button"
+      className="lr-switch"
+      role="switch"
+      aria-checked={checked}
+      aria-label={description}
+      disabled={disabled && !softDisabled}
+      aria-disabled={softDisabled || undefined}
+      style={softDisabled ? SOFT_DISABLED_STYLE : undefined}
+      onClick={
+        softDisabled
+          ? blockSoftDisabledClick
+          : (event) => {
+              onChange(!checked);
+              if (wrapped) blurAfterPointerClick(event);
+            }
+      }
+    />
   );
-  return hint ? (
-    <Tooltip kind={hint} text={vis ? undefined : tooltipText}>{item}</Tooltip>
-  ) : (
-    item
-  );
+  return <span className="lr-switch-item">
+    {hint ? <Tooltip kind={hint} text={vis ? undefined : tooltipText}>{control}</Tooltip> : control}
+    {locked ? <Glyph name="lock" size={12} /> : null}
+    {vis ? null : <label className="lr-cap" htmlFor={id}>{label}</label>}
+  </span>;
 }
 
 export function NameTag({ name, identity }: { name: string; identity: string }) {

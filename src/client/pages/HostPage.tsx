@@ -388,6 +388,8 @@ export function HostPage({
     useState<SignalConnectionState>("offline");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const hostAudioRef = useRef<HostAudio | null>(null);
+  const [shareVolume, setShareVolume] = useState({ level: 1, muted: false });
+  const shareVolumeChangeRef = useRef<object | null>(null);
   const audioAvailableRef = useRef(false);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
@@ -963,6 +965,8 @@ export function HostPage({
     hostAudioRef.current?.dispose();
     hostAudioRef.current = null;
     audioAvailableRef.current = false;
+    shareVolumeChangeRef.current = null;
+    setShareVolume({ level: 1, muted: false });
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -1948,6 +1952,23 @@ export function HostPage({
     }
   }
 
+  function changeShareVolume(level: number, muted: boolean): void {
+    const generation = activeGenerationRef.current;
+    const shareId = nativeShareGenerationRef.current;
+    if (generation === null) return;
+    const token = {};
+    shareVolumeChangeRef.current = token;
+    const volume = muted ? 0 : level;
+    const update = nativeModeRef.current && shareId
+      ? nativeClientRef.current!.setShareVolume(shareId, volume)
+      : Promise.resolve(hostAudioRef.current?.setVolume(volume));
+    void update.then(() => {
+      if (isCurrentGeneration(generation) && shareVolumeChangeRef.current === token) setShareVolume({ level, muted });
+    }).catch(error => {
+      if (isCurrentGeneration(generation) && shareVolumeChangeRef.current === token) setNoticeError(error, "sourceAudio");
+    });
+  }
+
   function toggleSharingPause(): void {
     const activeStream = streamRef.current;
     const nativeClient = nativeClientRef.current;
@@ -2866,6 +2887,20 @@ export function HostPage({
           if (source) setDetails(captureDetails(source));
         });
         audioAvailableRef.current = hostAudioRef.current.audioAvailable;
+        try {
+          captured = await hostAudioRef.current.outputStream();
+        } catch (error) {
+          captured.getVideoTracks().forEach(track => track.stop());
+          if (isCurrentShare(generation, shareGeneration)) {
+            endSharing({ key: "host.stopNotice" });
+            setNoticeError(error, "sourceAudio");
+          }
+          return;
+        }
+        if (!isCurrentShare(generation, shareGeneration)) {
+          captured.getTracks().forEach(track => track.stop());
+          return;
+        }
         if (selection.source === "camera") setCameraDevice(selection.deviceId ?? "");
       }
       streamRef.current = captured;
@@ -2876,7 +2911,7 @@ export function HostPage({
           captureDetails(captured, true, nativeSourceAudioRef.current),
         );
       } else {
-        setDetails(captureDetails(captured));
+        setDetails(captureDetails(hostAudioRef.current?.sourceStream ?? captured));
         const codec = await resolveStreamVideoCodec(captured);
         if (isCurrentShare(generation, shareGeneration)) {
           videoCodecRef.current = codec;
@@ -3107,9 +3142,14 @@ export function HostPage({
 
     try {
       if (source === "camera") setCameraDevice(deviceId);
-      captured = hostAudioRef.current?.attach(captured, source) ?? captured;
+      captured = await hostAudioRef.current?.attach(captured, source) ?? captured;
+      if (!isCurrentGeneration(generation) || sourceSwitchRef.current !== token) {
+        captured.getTracks().forEach(track => track.stop());
+        return;
+      }
       await replaceBrowserStream(captured, generation, token);
     } catch (error) {
+      if (captured !== streamRef.current) captured.getVideoTracks().forEach(track => track.stop());
       if (isCurrentGeneration(generation)) setNoticeError(error, "source");
     } finally {
       finishSourceSwitch(token);
@@ -3684,6 +3724,8 @@ export function HostPage({
                 style={{ objectFit: pictureFit }} aria-label={t("host.stageAria")} />
             ) : null}
             {stream && <PlaybackControls videoRef={videoRef} stream={stream}
+              sharingAudio={{ ...shareVolume, available: !nativeActive || !!nativeClientRef.current?.health.nativeMedia.shareVolume,
+                onChange: changeShareVolume }}
               audioAvailable={audioAvailableRef.current}
               canPlay={phase === "live" && !nativeSources && !sharingPaused && !localPreviewPaused}
               theaterMode={theaterMode} onToggleTheater={() => setTheaterMode(value => !value)}

@@ -24,14 +24,30 @@ function setup() {
 }
 afterEach(() => vi.unstubAllGlobals());
 
-test("source-audio availability follows live input and replacement without owning video or room voice", () => {
+test("source-audio availability follows live input and replacement without owning video or room voice", async () => {
+  vi.stubGlobal("MediaStream", Stream);
+  const output = new Track("audio");
+  const gain = { gain: { value: 1, setTargetAtTime: vi.fn() }, connect: vi.fn(), disconnect: vi.fn() };
+  const close = vi.fn(() => Promise.resolve());
+  vi.stubGlobal("AudioContext", class {
+    currentTime = 0;
+    createGain = () => gain;
+    createMediaStreamDestination = () => ({ stream: media(output) });
+    createMediaStreamSource = () => ({ connect: vi.fn(), disconnect: vi.fn() });
+    resume = () => Promise.resolve();
+    close = close;
+  });
   const video = new Track("video"), sound = new Track("audio"), next = new Track("audio");
   const changed = vi.fn(), audio = new HostAudio(media(video, sound), "browser", changed);
   expect(audio.audioAvailable).toBe(true);
+  const outgoing = await audio.outputStream();
+  expect(outgoing.getAudioTracks()).toEqual([output]);
+  audio.setVolume(2);
+  expect(gain.gain.setTargetAtTime).toHaveBeenLastCalledWith(2, 0, .01);
   sound.stop(); sound.dispatchEvent(new Event("ended"));
   expect(changed).toHaveBeenLastCalledWith(false);
   const replacement = media(video, next);
-  expect(audio.attach(replacement, "camera")).toBe(replacement);
+  expect((await audio.attach(replacement, "camera")).getAudioTracks()).toEqual([output]);
   expect(audio.sourceStream).toBe(replacement);
   expect(audio.sourceKind).toBe("camera");
   expect(changed).toHaveBeenLastCalledWith(true);
@@ -40,6 +56,8 @@ test("source-audio availability follows live input and replacement without ownin
   audio.dispose(); changed.mockClear();
   expect(next.stop).toHaveBeenCalledOnce();
   expect(video.stop).not.toHaveBeenCalled();
+  expect(output.stop).toHaveBeenCalledOnce();
+  expect(close).toHaveBeenCalledOnce();
   next.dispatchEvent(new Event("ended"));
   expect(changed).not.toHaveBeenCalled();
 });

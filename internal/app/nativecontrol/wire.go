@@ -63,6 +63,12 @@ type microphoneRequest struct {
 	DeviceID *string  `json:"deviceId,omitempty"`
 }
 
+type shareVolumeRequest struct {
+	requestEnvelope
+	ShareID string   `json:"shareId"`
+	Volume  *float64 `json:"volume"`
+}
+
 type remoteControlRequest struct {
 	requestEnvelope
 	ShareID   string `json:"shareId"`

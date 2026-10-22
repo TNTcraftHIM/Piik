@@ -1387,3 +1387,10 @@ func (session *Session) SetMicrophone(enabled *bool, gain *float64, deviceID *st
 	}
 	return session.mixer.setMicrophone(session.captureProcess, enabled, gain, deviceID)
 }
+
+func (session *Session) SetVolume(volume float64) error {
+	if session.ctx.Err() != nil {
+		return session.ctx.Err()
+	}
+	return session.audioSource.SetVolume(volume)
+}

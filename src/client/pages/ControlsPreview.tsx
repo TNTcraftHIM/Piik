@@ -64,8 +64,8 @@ export function ControlsPreview() {
   const [majorUpdate, setMajorUpdate] = useState(false);
   const releaseVersion = majorUpdate ? "v3.0.0" : "v2.2.0";
   const releaseURL = `https://github.com/TNTcraftHIM/Piik/releases/tag/${releaseVersion}`;
-  const [launchSite, setLaunchSite] = useState("https://demo.piik.tv");
-  const [openSiteOnStart, setOpenSiteOnStart] = useState(false);
+  const [launchSites, setLaunchSites] = useState(["https://demo.piik.tv"]);
+  const [startupSite, setStartupSite] = useState("");
   const [launchPassword, setLaunchPassword] = useState("");
   const [launchLan, setLaunchLan] = useState("192.0.2.10");
   const [policy, setPolicy] = useState<"open" | "private">("open");
@@ -313,11 +313,13 @@ export function ControlsPreview() {
         <button className="lr-btn" type="button" aria-pressed={majorUpdate} onClick={() => setMajorUpdate(value => !value)}>
           {en ? "Preview major update" : "预览跨大版本更新"}
         </button>
+        <SwitchItem checked={launchSites.length > 1} label={en ? "Many approved sites" : "多个已授权站点"}
+          onChange={many => { setLaunchSites(many ? ["https://demo.piik.tv", "https://friends.example.org", "https://screen-sharing-with-friends.preview.example.org:8443", "https://movie-night.example.net", "https://192.0.2.10:8787", "https://weekend-games.example.org"] : ["https://demo.piik.tv"]); setStartupSite(""); }} />
       </div>
       <div className="lr-client-launch">
         <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
-          openSiteOnStart={openSiteOnStart} onToggleStartupSite={() => setOpenSiteOnStart(value => !value)}
-          site={launchSite} onRemoveSite={() => { setLaunchSite(""); setOpenSiteOnStart(false); }}
+          startupSite={startupSite} onToggleStartupSite={site => setStartupSite(value => value === site ? "" : site)}
+          sites={launchSites} onRemoveSite={site => { setLaunchSites(sites => sites.filter(value => value !== site)); if (startupSite === site) setStartupSite(""); }}
           lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
             { address: "192.0.2.10", name: "Wi-Fi" },
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },

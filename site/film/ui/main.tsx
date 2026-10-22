@@ -208,10 +208,10 @@ function Screen({ shot }: { shot: Shot }) {
       {launcher ? (
         <main className="lr-client-launch">
           <LauncherForm
-            openSiteOnStart={false} onToggleStartupSite={() => {}}
+            startupSite="" onToggleStartupSite={() => {}}
             mode={shot}
             onModeChange={noop}
-            site=""
+            sites={[]}
             onRemoveSite={noop}
             localAccessPassword=""
             onLocalAccessPasswordChange={noop}

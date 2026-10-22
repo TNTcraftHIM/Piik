@@ -60,13 +60,13 @@ promise game-overlay transparency, click-through or exclusive-fullscreen coverag
 
 Piik App opens this same application in the system Browser. Its startup surface
 offers Local and temporary public invitation; the running App is already
-available to its approved Site before either mode starts. The desktop App entry
+available to its approved Sites before either mode starts. The desktop App entry
 is omitted on known mobile platforms; Browser and camera actions retain their
 own capability checks. A Site's explicit App action discovers the local approval
-page, where the user confirms its exact origin. The launcher shows and revokes
-that approval. Starring the approved Site makes an ordinary App launch open it;
+page, where the user confirms its exact origin. The launcher lists approvals and
+revokes each independently. Starring one approved Site makes an ordinary App launch open it;
 without a star, the launcher opens. This preference grants no access and starts
-no room. Replacing or revoking approval clears it; explicit CLI entry keeps
+no room. Revoking that Site clears its star; other approvals leave it intact. Explicit CLI entry keeps
 precedence. The ready App button and terminal launcher address return to its
 management page in every mode. Local/public room startup is one selection per
 App run; reopening the launcher does not stop or replace that room. Changing
@@ -230,7 +230,7 @@ the Viewer's volume and mute preferences remain intact for audio returning.
 Older Hosts without this fact retain received-track feedback. These controls do
 not infer input presence from silence or change capture, transport or relay audio.
 
-Volume starts on native audio output. An explicit setting away from 100% activates
+Viewer volume starts on native audio output. An explicit setting away from 100% activates
 a local Web Audio stream source and gain, from silence to 200% amplitude. This also
 avoids iPhone's system-owned `video.volume`. This output
 exclusively owns sound while running, follows video pause and user mute, and
@@ -241,6 +241,13 @@ native controls at at most 100%, rather than running two outputs.
 
 This uses the standard [Web Audio stream-source and gain nodes](https://www.w3.org/TR/webaudio/).
 The gain is amplitude scaling, so loud source peaks can clip above 100%.
+
+The Host reuses this bar, but its sound controls own outgoing source volume,
+0–200%, initially 100%. Preview sound remains muted. Browser capture applies
+gain before its outgoing track; Native capture applies it before the shared
+Opus encoder. Source replacement retains volume, a new share resets it, and
+room voice is independent. Older Apps without source-volume capability retain
+sharing but disable this control with an update hint.
 
 Picture-in-picture uses the browser's native video window, including Safari's
 presentation-mode API. Native enter/leave events own its displayed state; closing

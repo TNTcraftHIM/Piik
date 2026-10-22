@@ -1,4 +1,4 @@
-import { useId, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
@@ -35,8 +35,8 @@ const MODES: Array<{
 export function LauncherForm({
   mode,
   onModeChange,
-  site,
-  openSiteOnStart,
+  sites,
+  startupSite,
   onToggleStartupSite,
   onRemoveSite,
   siteBusy,
@@ -52,10 +52,10 @@ export function LauncherForm({
 }: {
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
-  site: string;
-  openSiteOnStart: boolean;
-  onToggleStartupSite: () => void;
-  onRemoveSite: () => void;
+  sites: readonly string[];
+  startupSite: string;
+  onToggleStartupSite: (site: string) => void;
+  onRemoveSite: (site: string) => void;
   siteBusy?: boolean;
   siteError?: string;
   target?: string;
@@ -73,6 +73,22 @@ export function LauncherForm({
 }) {
   const { vis, t } = useCopy();
   const accessHintId = useId();
+  const standbyRef = useRef<HTMLElement>(null);
+  const removalFocus = useRef<{ site: string; index: number } | null>(null);
+  useLayoutEffect(() => {
+    const pending = removalFocus.current;
+    if (!pending) return;
+    if (sites.includes(pending.site)) {
+      if (!siteBusy) removalFocus.current = null;
+      return;
+    }
+    removalFocus.current = null;
+    const section = standbyRef.current;
+    if (!section || section.ownerDocument.activeElement !== section.ownerDocument.body) return;
+    // Wait for confirmed removal, then keep keyboard users beside the next action.
+    const next = section.ownerDocument.getElementById(`${accessHintId}-remove-${Math.min(pending.index, sites.length - 1)}`);
+    (next ?? section.querySelector("summary"))?.focus();
+  }, [sites, siteBusy, accessHintId]);
   const accessField = (
     <label className="lr-input lr-client-access">
       <Glyph name="key" size={18} />
@@ -102,7 +118,7 @@ export function LauncherForm({
 
       {children}
 
-      <section className="lr-client-standby" aria-label={t("client.connect.standby")}>
+      <section ref={standbyRef} className="lr-client-standby" aria-label={t("client.connect.standby")}>
         <details className="lr-client-connect-guide">
           <summary>
             <span className="lr-client-standby-state">
@@ -121,14 +137,18 @@ export function LauncherForm({
           </div>
         </details>
         {siteError && <p role="alert">{siteError}</p>}
-        {site && <div className="lr-client-approved-site">
+        {sites.length > 0 && <div className="lr-client-approved-sites" role="list">{sites.map((site, index) => <div key={site} className="lr-client-approved-site" role="listitem">
           <a href={`${site}/#piik-client=1`} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true"> ↗</span></a>
           <div className="lr-client-site-actions">
-            <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={openSiteOnStart}
-              hint="hint-client-site" disabled={siteBusy} onClick={onToggleStartupSite} />
-            <Btn icon="x" title="client.connect.remove" size="dense" hint="hint-close" disabled={siteBusy} onClick={onRemoveSite} />
+            <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={startupSite === site}
+              hint="hint-client-site" disabled={siteBusy} onClick={() => onToggleStartupSite(site)} />
+            <Btn id={`${accessHintId}-remove-${index}`} icon="x" title="client.connect.remove" size="dense" hint="hint-close" disabled={siteBusy} onClick={() => {
+              const button = standbyRef.current?.ownerDocument.activeElement;
+              removalFocus.current = button?.id === `${accessHintId}-remove-${index}` ? { site, index } : null;
+              onRemoveSite(site);
+            }} />
           </div>
-        </div>}
+        </div>)}</div>}
       </section>
 
       {roomError ?? (target ? <a className="lr-btn is-primary" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>

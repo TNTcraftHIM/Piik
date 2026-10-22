@@ -106,6 +106,7 @@ function fixture(launchedByClient = true) {
     nativeSourceSelectionRef: ref<Record<string, unknown> | null>(null), nativeCaptureTargetKey,
     nativeModeRef: ref(false), nativeClientRef: ref<typeof client | null>(client), nativeShareGenerationRef: ref<string | null>("share"),
     hostAudioRef: ref<{ sourceStream: MediaStream } | null>(null),
+    shareVolumeChangeRef: ref<object | null>(null), setShareVolume: vi.fn(),
     nativeMediaIngressRef: ref<ReturnType<typeof ingress> | null>(null), nativeMediaBridgeRef: ref(null),
     nativeInputRoute: new InputRoute(() => {}),
     nativeEventCleanupRef: ref(null), nativeShareCleanupRef: ref(Promise.resolve()),
@@ -1248,7 +1249,7 @@ describe("Host quality ownership", () => {
     const setResolvedVideoCodec = vi.fn();
     Object.assign(current.context, {
       phase: "idle", captureBrowserSource: async () => captured,
-      HostAudio: class { audioAvailable = false; }, setStream: vi.fn(), watchCaptureEnd: vi.fn(),
+      HostAudio: class { audioAvailable = false; outputStream = async () => captured; }, setStream: vi.fn(), watchCaptureEnd: vi.fn(),
       resolveStreamVideoCodec, startBrowserNativeIngress, setResolvedVideoCodec,
     });
     current.disposeResources.mockImplementation(() => {

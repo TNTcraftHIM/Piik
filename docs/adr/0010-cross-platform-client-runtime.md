@@ -44,7 +44,7 @@ topologies and makes a saved Site unavailable while another room source runs.
 3. Discovery returns a per-process `instanceToken`. The WebSocket subprotocol
    echoes it so the Browser connects to the process it discovered. This value is
    public process identity, not authentication. The listener accepts the current
-   Local Host origin and the one user-saved Site origin. Origin and Host
+   Local Host origin and user-approved Site origins. Origin and Host
    validation plus the Browser's local-network permission own this boundary.
 4. Native control starts with a strict `hello` handshake. Up to two participant
    control sessions may coexist; each retains its own share and media lifetime.
@@ -154,18 +154,18 @@ topologies and makes a saved Site unavailable while another room source runs.
     A participant on an approved Site consumes that Site's
     configured STUN survey. Both feed the same connection-local prediction
     adapter; Native additionally owns its UDP socket and best-effort port mapping.
-11. One App configuration owns the optional Site origin and an optional,
+11. One App configuration owns the approved Site origins and an optional,
     user-chosen Local access password. A blank value leaves the Local site open;
     a value gates that site through the existing SiteAccess authority. The
     App bootstraps a selected page through a fragment consumed before
     authentication; the page retains only the non-secret App opt-in at its
     origin. Friends use the existing room invitation grant. No App-specific
-    room authorization system is added. Site replacement/revocation uses this
+    room authorization system is added. Individual Site revocation uses this
     same configuration owner, immediately denies new control requests from the
     old origin and cancels its existing sessions. Retirement is bounded and does
-    not wait for unrelated Local sessions. Cleanup failure never restores the
-    revoked permission; concurrent approval pages must review a changed Site
-    before replacing it.
+    not wait for unrelated Local or approved-Site sessions. Cleanup failure never
+    restores revoked permission. Adding an approval preserves existing grants;
+    the separate startup preference selects only one approved Site.
 12. Local authority shutdown first ends every in-memory room through the current
     `room-closed` path, then closes signaling and HTTP. The App cancels the
     server context, calls that end-then-close sequence under one bounded

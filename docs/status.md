@@ -78,7 +78,8 @@ Controlled-network voice cases and platform package checks have passed; the
 release artifacts and operator records establish publication and deployment.
 Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
 The integrated local candidate adds room-aware connection presentation, a Host-owned
-room voice bitrate ceiling and shared local playback controls for the Host.
+room voice bitrate ceiling, Host playback with outgoing source-volume control,
+and independent App approvals for multiple Sites with one starred startup choice.
 Local visual and functional acceptance has passed on Windows; owner review and
 release notes remain before publication. The route controller and published wire
 identifiers are unchanged.
