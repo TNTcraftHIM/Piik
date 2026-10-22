@@ -1,23 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240" role="img" aria-labelledby="title desc">
-  <title id="title">Two kinds of sound, two controls</title>
-  <desc id="desc">The shared window's picture and sound use playback volume. A microphone uses room voice listening controls.</desc>
-  <style>
-    :root{--ink:#29374a;--blue:#2765ce;--mint:#d9eddf;--orange:#f8dfb2}
-    @media(prefers-color-scheme:dark){:root{--ink:#f6f3eb;--blue:#a7c6ff;--mint:#344d43;--orange:#594b38}}
-    .ink{fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-    text{fill:var(--ink);font:600 20px system-ui,sans-serif}.note{font-size:18px;font-weight:400}
-    .route{fill:none;stroke:var(--blue);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-  </style>
-  <rect width="400" height="112" rx="16" fill="var(--mint)"/>
-  <rect y="128" width="400" height="112" rx="16" fill="var(--orange)"/>
-  <g class="ink">
-    <rect x="48" y="16" width="52" height="36" rx="6"/><path d="M48 28h52M58 22h1m7 0h1M59 44l10-9 9 6 10-7"/>
-    <rect x="64" y="144" width="20" height="30" rx="10"/><path d="M54 164v9a20 20 0 0 0 40 0v-9m-20 29v10m-10 0h20"/>
-  </g>
-  <path class="route" d="M175 55h40m-8-7 8 7-8 7M175 182h40m-8-7 8 7-8 7"/>
-  <text x="18" y="78">Shared window</text>
-  <text class="note" x="18" y="101">picture + sound</text>
-  <text x="237" y="50">Playback</text><text x="237" y="76">volume</text>
-  <text x="18" y="226">Microphone</text>
-  <text x="237" y="177">Voice</text><text x="237" y="203">listening</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="332" viewBox="0 0 600 332" role="img" aria-labelledby="title desc"><title id="title">Two sounds, separate controls</title><desc id="desc">Source audio follows the shared picture and its playback volume. Microphones use room voice and its listening controls.</desc><style>/* Shared theme for the App, website and documentation. Status and selection
+   have separate roles; illustrations keep their own colours. */
+:root {
+  --wall: #f3f5f8;
+  --wall-2: #e5eaf2;
+  --paper: #fffefb;
+  --ink: #29374a;
+  --muted: color-mix(in srgb, var(--ink) 75%, var(--paper));
+  --line: color-mix(in srgb, var(--ink) 20%, var(--paper));
+  /* Primary actions keep their identity; selection/focus follows the theme. */
+  --primary: #2765ce;
+  --primary-ink: #fff;
+  --action: #3478e5;
+  --action-deep: var(--primary);
+  --action-ink: var(--primary-ink);
+  --action-text: #2055b2;
+  --idle: #8ea3b8;
+  --busy: #3478e5;
+  --live: #2fa66a;
+  --warn: #d98e04;
+  --danger: #d64541;
+  --control-hover: #eef3ff;
+  --control-selected: #e5efff;
+  --control-selected-ink: #214c9b;
+  --control-edge: color-mix(in srgb, var(--ink) 57%, var(--paper));
+  --surface-rim: rgb(255 255 255 / .95);
+  --surface-shade: rgb(36 53 78 / .18);
+  --surface-glaze: linear-gradient(165deg, rgb(255 255 255 / .6), transparent 65%, rgb(51 89 147 / .025));
+  --control-shadow: 0 3px 0 var(--surface-shade), 0 5px 10px color-mix(in srgb, var(--surface-shade) 45%, transparent);
+  --panel-shadow: inset 0 1px 0 var(--surface-rim), 0 3px 0 var(--surface-shade), 0 16px 36px color-mix(in srgb, var(--surface-shade) 55%, transparent);
+  --piik-dark-wall: #242a34;
+  --piik-dark-wall-2: #2c3543;
+  --piik-dark-paper: #354153;
+  --piik-dark-ink: #f6f3eb;
+  --piik-dark-action: #f6f3eb;
+  --piik-dark-action-ink: #29374a;
+  --piik-dark-action-text: var(--piik-dark-action);
+  --piik-dark-hover: #414f67;
+  --piik-dark-selected: var(--piik-dark-action);
+  --piik-dark-selected-ink: var(--piik-dark-action-ink);
+}
+@media (prefers-color-scheme: dark) { :root {
+  --wall: var(--piik-dark-wall);
+  --wall-2: var(--piik-dark-wall-2);
+  --paper: var(--piik-dark-paper);
+  --ink: var(--piik-dark-ink);
+  --busy: #82b1ff;
+  --live: #3fb97a;
+  --warn: #e8a33d;
+  --danger: #e25a52;
+  --action: var(--piik-dark-action);
+  --action-deep: var(--piik-dark-action);
+  --action-ink: var(--piik-dark-action-ink);
+  --action-text: var(--piik-dark-action-text);
+  --control-hover: var(--piik-dark-hover);
+  --control-selected: var(--piik-dark-selected);
+  --control-selected-ink: var(--piik-dark-selected-ink);
+  --control-edge: color-mix(in srgb, var(--ink) 48%, var(--paper));
+  --surface-rim: rgb(222 234 255 / .12);
+  --surface-shade: rgb(6 12 22 / .38);
+  --surface-glaze: linear-gradient(165deg, rgb(224 237 255 / .06), transparent 65%, rgb(0 0 0 / .035));
+} }
+
+  text { fill: var(--ink); font: 600 26px system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif; text-anchor: middle; }
+  .node { fill: var(--paper); stroke: var(--control-edge); stroke-width: 2; }
+  .input { fill: var(--control-selected); }
+  .glyph { color: var(--ink); }
+  .source .glyph { color: var(--control-selected-ink); }
+  .source text { fill: var(--control-selected-ink); }
+  .path { fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style><g transform="translate(0 0)"><g class="source"><rect class="node input" x="12" y="4" width="220" height="146" rx="22"></rect><g class="glyph" transform="translate(95 21)"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="lr-glyph"><rect pathLength="1" x="2" y="4" width="20" height="16" rx="2"></rect><path pathLength="1" d="M2 9h20M6 6.5h.01M9 6.5h.01"></path></svg></g><text x="122" y="118">Source audio</text></g><rect class="node" x="368" y="4" width="220" height="146" rx="22"></rect><g class="glyph" transform="translate(451 21)"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="lr-glyph"><path pathLength="1" d="M4 9v6h4l5 4V5L8 9H4Z"></path><path pathLength="1" d="M16 9a4.2 4.2 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"></path></svg></g><path class="path" d="M250 77h96m-9-9 9 9-9 9"></path><text x="478" y="118">Playback volume</text></g><g transform="translate(0 170)"><g class="source"><rect class="node input" x="12" y="4" width="220" height="146" rx="22"></rect><g class="glyph" transform="translate(95 21)"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="lr-glyph"><rect pathLength="1" x="9" y="2" width="6" height="13" rx="3"></rect><path pathLength="1" d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"></path></svg></g><text x="122" y="118">Microphone</text></g><rect class="node" x="368" y="4" width="220" height="146" rx="22"></rect><g class="glyph" transform="translate(451 21)"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="lr-glyph"><path pathLength="1" d="M3 14v-2a9 9 0 0 1 18 0v2"></path><rect pathLength="1" x="3" y="12" width="5" height="9" rx="2"></rect><rect pathLength="1" x="16" y="12" width="5" height="9" rx="2"></rect></svg></g><path class="path" d="M250 77h96m-9-9 9 9-9 9"></path><text x="478" y="118">Voice volume</text></g></svg>

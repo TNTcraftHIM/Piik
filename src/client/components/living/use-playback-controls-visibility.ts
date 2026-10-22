@@ -69,8 +69,8 @@ export function usePlaybackControlsVisibility(
         show();
       }
     }, options);
-    // Compact strips share a transparent root spanning the picture. Track
-    // entry/exit through their actual descendants, not that root's rectangle.
+    // Popovers remain descendants in the top layer; moving between the bar and
+    // its controls must not briefly start an idle timeout.
     controls.addEventListener("pointerover", (event) => {
       if (event.pointerType !== "touch" && !(event.relatedTarget instanceof Node && controls.contains(event.relatedTarget))) {
         hoveringControls = true;

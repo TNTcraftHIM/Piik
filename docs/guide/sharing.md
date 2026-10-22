@@ -94,8 +94,8 @@ Move the pointer over the picture or tap it to show the playback bar.
 
 </div>
 
-On narrow screens, picture in picture, theater mode and fullscreen appear at the
-upper-right edge of the picture. The volume slider stays in the lower playback bar.
+On narrow screens, the bar uses two adjacent rows. Volume, picture in picture,
+theater mode and fullscreen stay directly available without opening settings.
 
 ### Connection preferences
 

@@ -57,12 +57,12 @@
   21% { transform: rotate(2deg); }
 }
 @keyframes lr-brand-eye-open {
-  0%, 20%, 29%, 100% { opacity: 0; transform: scaleY(.15); }
-  22%, 26% { opacity: 1; transform: scale(1); }
+  0%, 24% { opacity: 1; transform: scaleY(1); }
+  29%, 100% { opacity: 0; transform: scaleY(.15); }
 }
 @keyframes lr-brand-eye-wink {
-  0%, 20%, 29%, 100% { opacity: 1; }
-  22%, 26% { opacity: 0; }
+  0%, 24% { opacity: 0; }
+  29%, 100% { opacity: 1; }
 }
 @keyframes lr-brand-sparkle {
   0%, 27% { opacity: 0; transform: scale(.12) rotate(-20deg); }

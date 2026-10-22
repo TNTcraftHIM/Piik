@@ -304,27 +304,19 @@ joining. Use the shared media-control styling for both states. Missing browser
 microphone capability disables capture with a contextual explanation, without
 disabling listening.
 
-The Viewer bar groups local play/volume/overlay, remote mouse/keyboard, then
-settings/display modes, with fullscreen at the outer edge. Quiet dividers mark
-these responsibilities at every width. Show the remote group only when the Host
-offers control; keep both entries in place and enable the keyboard on control grant.
-The capsule floats inside the picture's lower edge with a small inset. Watching
-and remote input share that geometry; granting or ending control never moves it.
-Remote input keeps its own clicks. When controls hide during remote input,
-retain a local pull on the TV bezel, away from the status lamp. Theater and
-fullscreen place it at the screen edge. Ordinary viewing reveals controls on
-mouse movement or a touch tap on the picture, without another button or setting.
-Keep the chat-overlay toggle in the bar. Its text size and opacity have one
-entry in interaction settings for both Host and Viewers; playback settings own
-local picture display and connection preferences. Microphone settings belong
-to the voice page. All entries retain their existing local setting owner.
-Shorten the volume slider before moving display modes into settings; keep the
-bar on one line at supported mobile widths.
-Viewer settings use a brief anchored popover, preferring space below the picture
-without resizing it. Picture fit owns the narrow-screen overflow for display
-modes; incoming-route settings own reconnect. Use equal-width choices and stack
-these groups on narrow screens. Fit, proportional crop and stretch change local
-display only, separate from the Host's picture settings.
+Playback follows the [shared playback owner](./presentation-lifecycle.md#playback-ownership).
+Keep related controls together at the picture's lower edge: local playback and
+sound, remote input, viewing options, then window modes with fullscreen last.
+Common actions remain directly available; detailed preferences use an anchored
+popover. A narrow player may use two adjacent rows in the same capsule to preserve
+usable controls, not send window actions to a distant corner. One visibility
+owner hides the complete surface. Grants, pause and source changes do not move
+the bar or resize the picture. Remote input retains its local bezel pull.
+Playback settings own on-screen chat appearance and connection preferences;
+chat settings own records, and voice settings own microphone processing.
+Viewer settings prefer space below the picture without resizing it. Use equal-width
+choices and stack groups on narrow screens. Fit, proportional crop and stretch
+change local display only, separate from the Host's picture settings.
 Persistent interaction and remote-permission tools may use the shared floating
 window; the remote keyboard docks outside the picture and can detach on capable
 browsers. One-step actions and brief adjustments do not need movable windows.
@@ -356,7 +348,8 @@ dark backgrounds rather than judging only an enlarged master. This follows
 and [GNOME's detail guidance](https://developer.gnome.org/hig/guidelines/app-icons.html#detail).
 Inline brand
 marks keep the same wink identity and outline. Their standard gesture keeps the
-body and feet still: a short antenna sway, wink, then two gold sparks. The
+body and feet still: the face appears with both eyes open, followed by a short
+antenna sway, wink, then two gold sparks. The
 [shared brand animation](../../src/client/components/living/brand-mark.css)
 owns timing, sparkle origins and trajectories for the product, website and
 film closing card; looping presentations leave a quiet interval between gestures.

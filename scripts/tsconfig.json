@@ -23,6 +23,8 @@
     "../vitest.config.ts",
     "../site/film/ui/main.tsx",
     "../site/film/ui/website.ts",
+    "update-guide-diagrams.tsx",
+    "../src/client/ui/icons.tsx",
     "access-privacy-gate.ts",
     "browser-local-pool-probe.ts",
     "network-lab.ts",

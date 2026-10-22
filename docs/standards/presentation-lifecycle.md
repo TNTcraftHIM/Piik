@@ -202,10 +202,10 @@ Frequent viewing actions stay directly
 reachable; on-screen chat appearance and connection preferences stay in playback
 settings, while chat settings own records. Picture fit has one direct cycling control.
 Narrow players keep volume, PiP, theater and fullscreen directly available.
-Window actions use a separate strip at the upper-right edge; playback, sound,
-remote input and viewing options retain one lower row. Shorten the volume slider
-and hide only its percentage readout before crowding these actions. Both strips
-retain one visibility owner and 44px control height.
+Keep one capsule at the lower edge. Shorten the volume slider and hide its
+percentage before wrapping: narrow players put playback/sound and remote input
+on the first row, with viewing and window actions on the second. Both rows retain
+one visibility owner and 44px control height; none becomes a distant toolbar.
 Playing video hides the bar
 after two idle seconds, following [Media Chrome's default](https://github.com/muxinc/media-chrome/blob/main/docs/src/pages/docs/en/components/media-controller.md#autohide).
 Pause or unavailable playback keeps it visible. Control hover, keyboard focus,

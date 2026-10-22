@@ -14,6 +14,9 @@ const browser = process.env.AGENT_BROWSER_PATH || (process.platform === 'win32'
   ? join(process.env.APPDATA, 'npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe')
   : 'agent-browser');
 const execute = promisify(execFile);
+await execute(process.execPath, [fileURLToPath(import.meta.resolve('tsx/cli')), '--tsconfig',
+  fileURLToPath(new URL('./tsconfig.json', import.meta.url)),
+  fileURLToPath(new URL('./update-guide-diagrams.tsx', import.meta.url))]);
 const run = async (...args) => {
   const { stdout } = await execute(browser, ['--session', 'piik-guide-images', ...args], { timeout: 30000 });
   return stdout;
@@ -46,6 +49,8 @@ async function capture(selector, name, directory = output) {
   await evaluate(`(async () => {
     const target = document.querySelector(${JSON.stringify(selector)});
     await Promise.all(Array.from(target.querySelectorAll('img')).map(img => img.decode()));
+    // Fixed top-layer panels need a settled viewport origin for element captures.
+    scrollTo(0, 0);
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   })()`);
   await run('screenshot', selector, join(directory, `${name}.png`));
@@ -65,17 +70,20 @@ try {
       await openSection('source-preview', lang, theme);
       await run('click', '#source-preview .cp-stage-action button');
       await run('wait', '.lr-source-picker-list img');
-      await capture('#source-preview .cp-stage', `share-source.${suffix}`);
+      await evaluate(`document.querySelector('#source-preview .lr-tv-screen').style.minHeight = '650px'`);
+      await capture('#source-preview .lr-source-picker-panel', `share-source.${suffix}`);
 
       await openSection('sharing-preview', lang, theme);
       await run('click', '#sharing-preview button[aria-controls="preview-sharing-settings"]');
       await capture('.lr-sharing-panel', `sharing-settings.${suffix}`);
 
+      await run('set', 'viewport', '1280', '420');
       await openSection('interaction-preview', lang, theme);
       await run('click', `#interaction-preview button[aria-label="${lang === 'en' ? 'Interact' : '互动'}"]`);
       await run('wait', '.lr-interaction-panel');
       await run('click', '.lr-interaction-panel [role="tab"][id$="-voice-tab"]');
       await capture('.lr-interaction-panel', `room-voice.${suffix}`);
+      await run('set', 'viewport', '1280', '900');
 
       await openSection('sharing-troubleshooting', lang, theme, '/__status-preview');
       await run('click', '#sharing-troubleshooting article:first-child button');
