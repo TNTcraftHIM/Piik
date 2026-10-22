@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type AnimationEvent } from "react";
+import { useEffect, useRef } from "react";
 import { bindSvgReplayOnPointerEnter } from "../../ui/animation";
 
 export type BrandMotion = "static" | "once" | "loop";
@@ -11,29 +11,18 @@ export function BrandMark({
   motion?: BrandMotion;
 }) {
   const animated = motion !== "static";
-  const [loopPhase, setLoopPhase] = useState<"intro" | "active">("intro");
   const motionClass =
     motion === "loop"
-      ? ` is-animated is-loop-${loopPhase}`
+      ? " is-animated"
       : motion === "once"
         ? " is-once"
         : "";
   const markRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
-    if (motion === "loop") setLoopPhase("intro");
-  }, [motion]);
-
-  useEffect(() => {
     if (motion !== "once" || !markRef.current) return;
     return bindSvgReplayOnPointerEnter(markRef.current);
   }, [motion]);
-
-  const finishLoopIntro = (event: AnimationEvent<SVGPathElement>): void => {
-    if (motion === "loop" && event.animationName === "lr-brand-sparkle-alt") {
-      setLoopPhase("active");
-    }
-  };
 
   return (
     <svg
@@ -83,7 +72,6 @@ export function BrandMark({
         <path
           pathLength={1}
           d="m25 17.2 .45 1.1 1.1.45-1.1.45-.45 1.1-.45-1.1-1.1-.45 1.1-.45.45-1.1Z"
-          onAnimationEnd={finishLoopIntro}
         />
       </g>
     </svg>

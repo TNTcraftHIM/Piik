@@ -11,6 +11,7 @@ import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { BrandMark } from "../components/living/BrandMark";
 import { SharingSettings } from "../components/living/SharingSettings";
 import { HostShareControls } from "../components/living/HostShareControls";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
@@ -334,6 +335,16 @@ export function ControlsPreview() {
       <InteractionControlsPreview />
     </section>
     <RemoteControlsPreview />
+    <section id="brand-preview" className="cp-section">
+      <header className="cp-section-head"><span className="cp-number">11</span><h2>{en ? "Brand motion" : "Mascot 动画"}</h2></header>
+      <div className="cp-tools">
+        {(["static", "once", "loop"] as const).map(motion => <figure className="cp-control-sample" key={motion}>
+          <BrandMark size={88} motion={motion} />
+          <figcaption>{motion === "static" ? en ? "Static" : "静态"
+            : motion === "once" ? en ? "Hover to replay" : "悬停重播" : en ? "Loop" : "循环"}</figcaption>
+        </figure>)}
+      </div>
+    </section>
   </>;
 }
 
