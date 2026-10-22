@@ -353,8 +353,8 @@ antenna sway, wink, then two gold sparks. The
 [shared brand animation](../../src/client/components/living/brand-mark.css)
 owns timing, sparkle origins and trajectories for the product, website and
 film closing card; looping presentations leave a quiet interval between gestures.
-Reduced motion shows the static wink. A held film ending may use only the shared
-blink after its entrance, while the wordmark and address remain still.
+Reduced motion shows the static wink. A held film ending continues the complete
+shared gesture, while the wordmark and address remain still.
 Their stroke inherits the local surface's text colour:
 dark ink on light surfaces, light ink on dark surfaces, including deliberately
 light panels within a dark page. Gold sparkles remain a brand accent in both

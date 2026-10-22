@@ -1,0 +1,1112 @@
+{
+ "film": "F",
+ "title": "出金了！ · GOLD! (9:16 social cut)",
+ "bpm": 140,
+ "beatsPerBar": 4,
+ "bars": 21,
+ "length": 36.0,
+ "fps": 60,
+ "sampleRate": 48000,
+ "positionNote": "[bar, beat], 1-indexed; seconds = ((bar-1)*4 + (beat-1)) * 60/140. Bar = 1.7143 s. 21 bars = exactly 36.000 s.",
+ "key": "A minor / C major (royal-road chorus colour shared with films A and C: Fmaj9 - G - Em7 - Am7).",
+ "style": "Industrial electro-funk at 140: tight kick/clap, 16th hats, rubber bass, offbeat house stabs, glitch blips; the drop is a full future-bass explosion (supersaw on every beat, 808, vocal-chop hook). Cute on top, steel underneath.",
+ "sections": [
+  {
+   "id": "terminal",
+   "bar": 1,
+   "bars": 1,
+   "chords": [
+    "Am9"
+   ],
+   "music": "Cold open on the summon terminal: sub pulse, ticking hats, glitch blips, filtered pad. Boot hit [1,1]; caption slam [1,3]."
+  },
+  {
+   "id": "host",
+   "bar": 2,
+   "bars": 1,
+   "chords": [
+    "Fmaj9"
+   ],
+   "music": "Tuan's two lines over a held pad; [2,4] mouse click leads into the groove."
+  },
+  {
+   "id": "share",
+   "bar": 3,
+   "bars": 2,
+   "chords": [
+    "Am7",
+    "Fmaj7"
+   ],
+   "music": "Groove A at [3,1]: electro-funk kick/clap, rubber bass, offbeat house stabs. LIVE at [4,1] (big accent), broadcast pulse [4,1.5], feature title [4,2]."
+  },
+  {
+   "id": "invite",
+   "bar": 5,
+   "bars": 2,
+   "chords": [
+    "Dm7",
+    "E7sus4 E7"
+   ],
+   "music": "Groove A continues; three phone pops, three rising taps [6,1] [6,1.5] [6,2]; stamp [6,3]."
+  },
+  {
+   "id": "party",
+   "bar": 7,
+   "bars": 2,
+   "chords": [
+    "Fmaj7 G6",
+    "Em7 Am7"
+   ],
+   "music": "Groove B, fuller (royal road): vocal chops + plucks under chat pops and danmaku ticks. [8,3] the ten-pull click, [8,4] card deal."
+  },
+  {
+   "id": "dud",
+   "bar": 9,
+   "bars": 2,
+   "chords": [
+    "Dm7",
+    "Fmaj7 E7"
+   ],
+   "music": "Ten flips on 16ths [9,1]-[9,3.25] over a thinned groove; [9,3.5] dud thud and TRUE SILENCE until [10,1] (Tuan: '...'). Bar 10: comic bouncy groove under the tomato rain and laughter."
+  },
+  {
+   "id": "control",
+   "bar": 11,
+   "bars": 2,
+   "chords": [
+    "Am7",
+    "Fmaj7 G"
+   ],
+   "music": "Mission groove: driving 8th bass, stabs. Yuan's cut-in [11,1], request chime [11,3], ALLOW click [12,1] (handover zap), her cursor glides in."
+  },
+  {
+   "id": "tension",
+   "bar": 13,
+   "bars": 2,
+   "chords": [
+    "Fmaj7 G",
+    "Am G/B"
+   ],
+   "music": "Summon charge: riser from [13,1] to [14,4.5], kick 4-on-floor -> 8ths, snare roll, filter opening; tier chimes [13,3] [14,1] [14,3]. 8th-note breath [14,4.5]->[15,1]."
+  },
+  {
+   "id": "drop",
+   "bar": 15,
+   "bars": 2,
+   "chords": [
+    "Fmaj9 G",
+    "Em7 Am7"
+   ],
+   "music": "DROP at [15,1]: the rainbow reveal. Supersaw chords on every beat with sidechain, 808, vocal-chop hook; the four screams land with the downbeat. Caption slam [15,3]; firework pops every beat of bar 16."
+  },
+  {
+   "id": "payoff",
+   "bar": 17,
+   "bars": 1,
+   "chords": [
+    "Fmaj9 G6"
+   ],
+   "music": "Breakdown: plucks + music box under Tuan's '...That's MY account.' and Yuan's 'You're welcome~'."
+  },
+  {
+   "id": "spec",
+   "bar": 18,
+   "bars": 2,
+   "chords": [
+    "Am7 Fmaj7",
+    "C G"
+   ],
+   "music": "Driving groove, one stab per spec row (7 rows on 8th notes [18,2]..[19,1]); bar 19 beats 2-4 hold the complete sheet."
+  },
+  {
+   "id": "outro",
+   "bar": 20,
+   "bars": 2,
+   "chords": [
+    "Cmaj9",
+    "Cmaj9"
+   ],
+   "music": "Final Cmaj9 hit with the Piik sonic logo (piik_chirp) at [20,1]; ring out, silent by 36.0 s."
+  }
+ ],
+ "hits": [
+  [
+   1,
+   1
+  ],
+  [
+   1,
+   3
+  ],
+  [
+   3,
+   1
+  ],
+  [
+   4,
+   1
+  ],
+  [
+   4,
+   2
+  ],
+  [
+   6,
+   3
+  ],
+  [
+   7,
+   1
+  ],
+  [
+   8,
+   3
+  ],
+  [
+   10,
+   1
+  ],
+  [
+   11,
+   1
+  ],
+  [
+   12,
+   1
+  ],
+  [
+   13,
+   1
+  ],
+  [
+   14,
+   1
+  ],
+  [
+   15,
+   1
+  ],
+  [
+   15,
+   3
+  ],
+  [
+   18,
+   1
+  ],
+  [
+   19,
+   1
+  ],
+  [
+   20,
+   1
+  ]
+ ],
+ "stops": [
+  {
+   "from": [
+    9,
+    3.5
+   ],
+   "to": [
+    10,
+    1
+   ],
+   "note": "the dud: true silence, only the thud and Tuan's '...'"
+  },
+  {
+   "from": [
+    14,
+    4.5
+   ],
+   "to": [
+    15,
+    1
+   ],
+   "note": "an 8th-note breath before the reveal"
+  }
+ ],
+ "sfx": [
+  {
+   "at": [
+    1,
+    1
+   ],
+   "name": "f_boot"
+  },
+  {
+   "at": [
+    1,
+    1.5
+   ],
+   "name": "label_tick"
+  },
+  {
+   "at": [
+    1,
+    2
+   ],
+   "name": "edit_glitch",
+   "gain": -4
+  },
+  {
+   "at": [
+    1,
+    3
+   ],
+   "name": "text_slam"
+  },
+  {
+   "at": [
+    1,
+    4
+   ],
+   "name": "label_tick"
+  },
+  {
+   "at": [
+    1,
+    4.5
+   ],
+   "name": "label_tick"
+  },
+  {
+   "at": [
+    2,
+    1
+   ],
+   "name": "cut_swish"
+  },
+  {
+   "at": [
+    2,
+    4
+   ],
+   "name": "ui_click"
+  },
+  {
+   "at": [
+    3,
+    1
+   ],
+   "name": "panel_slide"
+  },
+  {
+   "at": [
+    3,
+    2
+   ],
+   "name": "ui_hover"
+  },
+  {
+   "at": [
+    3,
+    3
+   ],
+   "name": "ui_click"
+  },
+  {
+   "at": [
+    3,
+    4
+   ],
+   "name": "f_lock"
+  },
+  {
+   "at": [
+    4,
+    1
+   ],
+   "name": "f_click"
+  },
+  {
+   "at": [
+    4,
+    1
+   ],
+   "name": "live_on"
+  },
+  {
+   "at": [
+    4,
+    1.5
+   ],
+   "name": "f_pulse"
+  },
+  {
+   "at": [
+    4,
+    2
+   ],
+   "name": "text_slam",
+   "pitch": 2
+  },
+  {
+   "at": [
+    5,
+    1
+   ],
+   "name": "ui_click"
+  },
+  {
+   "at": [
+    5,
+    1.5
+   ],
+   "name": "paste_tick"
+  },
+  {
+   "at": [
+    5,
+    2
+   ],
+   "name": "pop",
+   "note": 84
+  },
+  {
+   "at": [
+    5,
+    3
+   ],
+   "name": "send_whoosh"
+  },
+  {
+   "at": [
+    5,
+    3.5
+   ],
+   "name": "window_pop",
+   "note": 72
+  },
+  {
+   "at": [
+    5,
+    4
+   ],
+   "name": "window_pop",
+   "note": 76
+  },
+  {
+   "at": [
+    5,
+    4.5
+   ],
+   "name": "window_pop",
+   "note": 79
+  },
+  {
+   "at": [
+    6,
+    1
+   ],
+   "name": "pop_friend",
+   "note": 79
+  },
+  {
+   "at": [
+    6,
+    1.5
+   ],
+   "name": "pop_friend",
+   "note": 84
+  },
+  {
+   "at": [
+    6,
+    2
+   ],
+   "name": "pop_friend",
+   "note": 88
+  },
+  {
+   "at": [
+    6,
+    1
+   ],
+   "name": "counter_tick"
+  },
+  {
+   "at": [
+    6,
+    1.5
+   ],
+   "name": "counter_tick"
+  },
+  {
+   "at": [
+    6,
+    2
+   ],
+   "name": "counter_tick"
+  },
+  {
+   "at": [
+    6,
+    3
+   ],
+   "name": "stamp"
+  },
+  {
+   "at": [
+    7,
+    1
+   ],
+   "name": "panel_slide"
+  },
+  {
+   "at": [
+    7,
+    1.5
+   ],
+   "name": "chat_pop"
+  },
+  {
+   "at": [
+    7,
+    2.5
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    7,
+    3
+   ],
+   "name": "voice_on"
+  },
+  {
+   "at": [
+    7,
+    3.5
+   ],
+   "name": "chat_pop"
+  },
+  {
+   "at": [
+    7,
+    4
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    8,
+    1
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    8,
+    1.5
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    8,
+    3
+   ],
+   "name": "f_click"
+  },
+  {
+   "at": [
+    8,
+    4
+   ],
+   "name": "f_deal"
+  },
+  {
+   "at": [
+    9,
+    1.0
+   ],
+   "name": "f_flip",
+   "note": 79
+  },
+  {
+   "at": [
+    9,
+    1.25
+   ],
+   "name": "f_flip",
+   "note": 77
+  },
+  {
+   "at": [
+    9,
+    1.5
+   ],
+   "name": "f_flip",
+   "note": 76
+  },
+  {
+   "at": [
+    9,
+    1.75
+   ],
+   "name": "f_flip",
+   "note": 74
+  },
+  {
+   "at": [
+    9,
+    2.0
+   ],
+   "name": "f_flip",
+   "note": 72
+  },
+  {
+   "at": [
+    9,
+    2.25
+   ],
+   "name": "f_flip",
+   "note": 71
+  },
+  {
+   "at": [
+    9,
+    2.5
+   ],
+   "name": "f_flip",
+   "note": 69
+  },
+  {
+   "at": [
+    9,
+    2.75
+   ],
+   "name": "f_flip",
+   "note": 67
+  },
+  {
+   "at": [
+    9,
+    3.0
+   ],
+   "name": "f_flip",
+   "note": 65
+  },
+  {
+   "at": [
+    9,
+    3.25
+   ],
+   "name": "f_flip",
+   "note": 64
+  },
+  {
+   "at": [
+    9,
+    3.5
+   ],
+   "name": "f_dud"
+  },
+  {
+   "at": [
+    9,
+    4.5
+   ],
+   "name": "throw_whoosh"
+  },
+  {
+   "at": [
+    10,
+    1
+   ],
+   "name": "splat"
+  },
+  {
+   "at": [
+    10,
+    1.5
+   ],
+   "name": "poop_boing"
+  },
+  {
+   "at": [
+    10,
+    2
+   ],
+   "name": "splat",
+   "pitch": 2
+  },
+  {
+   "at": [
+    10,
+    2.5
+   ],
+   "name": "splat",
+   "pitch": -2
+  },
+  {
+   "at": [
+    10,
+    2
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    10,
+    3
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    10,
+    3.5
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    11,
+    1
+   ],
+   "name": "cutin_whoosh"
+  },
+  {
+   "at": [
+    11,
+    3
+   ],
+   "name": "request_chime"
+  },
+  {
+   "at": [
+    11,
+    4
+   ],
+   "name": "ui_hover"
+  },
+  {
+   "at": [
+    12,
+    1
+   ],
+   "name": "f_click"
+  },
+  {
+   "at": [
+    12,
+    1
+   ],
+   "name": "handover_zap"
+  },
+  {
+   "at": [
+    12,
+    2
+   ],
+   "name": "control_on"
+  },
+  {
+   "at": [
+    12,
+    3
+   ],
+   "name": "whoosh_short"
+  },
+  {
+   "at": [
+    12,
+    4
+   ],
+   "name": "ui_hover"
+  },
+  {
+   "at": [
+    13,
+    1
+   ],
+   "name": "f_click"
+  },
+  {
+   "at": [
+    13,
+    1
+   ],
+   "name": "f_charge",
+   "until": [
+    14,
+    4.5
+   ]
+  },
+  {
+   "at": [
+    13,
+    1.5
+   ],
+   "name": "panel_slam"
+  },
+  {
+   "at": [
+    13,
+    3
+   ],
+   "name": "f_tier",
+   "note": 76
+  },
+  {
+   "at": [
+    14,
+    1
+   ],
+   "name": "f_tier",
+   "note": 81
+  },
+  {
+   "at": [
+    14,
+    3
+   ],
+   "name": "f_tier",
+   "note": 88
+  },
+  {
+   "at": [
+    15,
+    1
+   ],
+   "name": "f_burst"
+  },
+  {
+   "at": [
+    15,
+    1
+   ],
+   "name": "rainbow_shimmer"
+  },
+  {
+   "at": [
+    15,
+    1
+   ],
+   "name": "crowd_cheer"
+  },
+  {
+   "at": [
+    15,
+    3
+   ],
+   "name": "text_slam",
+   "pitch": 4
+  },
+  {
+   "at": [
+    16,
+    1
+   ],
+   "name": "firework_pop",
+   "note": 84
+  },
+  {
+   "at": [
+    16,
+    2
+   ],
+   "name": "firework_pop",
+   "note": 88
+  },
+  {
+   "at": [
+    16,
+    3
+   ],
+   "name": "firework_pop",
+   "note": 91
+  },
+  {
+   "at": [
+    16,
+    4
+   ],
+   "name": "firework_pop",
+   "note": 86
+  },
+  {
+   "at": [
+    16,
+    1.5
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    16,
+    2.5
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    16,
+    3.5
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    17,
+    3.5
+   ],
+   "name": "throw_whoosh"
+  },
+  {
+   "at": [
+    17,
+    4
+   ],
+   "name": "sparkle"
+  },
+  {
+   "at": [
+    18,
+    1
+   ],
+   "name": "panel_slide"
+  },
+  {
+   "at": [
+    18,
+    2.0
+   ],
+   "name": "row_decode"
+  },
+  {
+   "at": [
+    18,
+    2.5
+   ],
+   "name": "row_decode"
+  },
+  {
+   "at": [
+    18,
+    3.0
+   ],
+   "name": "row_decode"
+  },
+  {
+   "at": [
+    18,
+    3.5
+   ],
+   "name": "row_decode"
+  },
+  {
+   "at": [
+    18,
+    4.0
+   ],
+   "name": "row_decode"
+  },
+  {
+   "at": [
+    18,
+    4.5
+   ],
+   "name": "row_decode"
+  },
+  {
+   "at": [
+    19,
+    1.0
+   ],
+   "name": "row_decode"
+  },
+  {
+   "at": [
+    20,
+    1
+   ],
+   "name": "piik_chirp"
+  },
+  {
+   "at": [
+    20,
+    3
+   ],
+   "name": "text_pop"
+  },
+  {
+   "at": [
+    21,
+    1
+   ],
+   "name": "label_blip"
+  }
+ ],
+ "lines": [
+  {
+   "at": [
+    2,
+    1
+   ],
+   "who": "tuan",
+   "mood": "hesitant",
+   "zh": "这么重要的时刻……",
+   "en": "A moment like this...",
+   "beats": 1.9
+  },
+  {
+   "at": [
+    2,
+    3
+   ],
+   "who": "tuan",
+   "mood": "cocky",
+   "zh": "得有人见证。",
+   "en": "needs witnesses.",
+   "beats": 1.9
+  },
+  {
+   "at": [
+    7,
+    3
+   ],
+   "who": "yuan",
+   "mood": "excited",
+   "zh": "冲！",
+   "en": "Go go go!",
+   "beats": 0.75
+  },
+  {
+   "at": [
+    8,
+    2
+   ],
+   "who": "tuan",
+   "mood": "cocky",
+   "zh": "看好了！",
+   "en": "Watch this!",
+   "beats": 0.9
+  },
+  {
+   "at": [
+    9,
+    4
+   ],
+   "who": "tuan",
+   "mood": "hesitant",
+   "zh": "……",
+   "en": "...",
+   "beats": 0.9
+  },
+  {
+   "at": [
+    10,
+    1.5
+   ],
+   "who": "dian",
+   "mood": "laugh",
+   "zh": "哈哈哈哈！",
+   "en": "Hahaha!",
+   "beats": 1.5
+  },
+  {
+   "at": [
+    10,
+    2.5
+   ],
+   "who": "cong",
+   "mood": "laugh",
+   "zh": "哈哈哈哈哈",
+   "en": "Hahahaha",
+   "beats": 1.4
+  },
+  {
+   "at": [
+    11,
+    1
+   ],
+   "who": "yuan",
+   "mood": "excited",
+   "zh": "让我来！沾沾欧气。",
+   "en": "Move over. I'm lucky.",
+   "beats": 2.5
+  },
+  {
+   "at": [
+    15,
+    1
+   ],
+   "who": "tuan",
+   "mood": "exclaim",
+   "zh": "出金了！！！",
+   "en": "GOLD!!!",
+   "beats": 1.6
+  },
+  {
+   "at": [
+    15,
+    1
+   ],
+   "who": "yuan",
+   "mood": "exclaim",
+   "zh": "出金了！！！",
+   "en": "GOLD!!!",
+   "beats": 1.6
+  },
+  {
+   "at": [
+    15,
+    1
+   ],
+   "who": "dian",
+   "mood": "exclaim",
+   "zh": "啊啊啊！！",
+   "en": "AAAH!!",
+   "beats": 1.6
+  },
+  {
+   "at": [
+    15,
+    1
+   ],
+   "who": "cong",
+   "mood": "exclaim",
+   "zh": "啊啊啊啊！",
+   "en": "AAAAH!",
+   "beats": 1.6
+  },
+  {
+   "at": [
+    17,
+    1
+   ],
+   "who": "tuan",
+   "mood": "sheepish",
+   "zh": "……这是我的号。",
+   "en": "...That's MY account.",
+   "beats": 1.75
+  },
+  {
+   "at": [
+    17,
+    3
+   ],
+   "who": "yuan",
+   "mood": "cheerful",
+   "zh": "不客气~",
+   "en": "You're welcome~",
+   "beats": 1.0
+  }
+ ],
+ "newSfxNotes": {
+  "f_boot": "industrial terminal power-on: relay clunk + low thump + rising digital chirp",
+  "f_lock": "corner brackets clamping onto the window: two metal clicks + short resonant ping",
+  "f_click": "heavy tactile button press (deeper than ui_click)",
+  "f_pulse": "broadcast pulse: soft sonar ping with a quick echo",
+  "f_deal": "ten cards dealt: fast swish with ticks",
+  "f_flip": "pitched card flip (note)",
+  "f_dud": "the dud: deflating low womp + dull thud",
+  "f_charge": "summon charge riser (until): rising noise + pitch, peaks at the end",
+  "f_tier": "tier-up chime (note), brighter each time",
+  "f_burst": "THE rainbow burst: huge impact, sub drop, glass shimmer cascade"
+ }
+}

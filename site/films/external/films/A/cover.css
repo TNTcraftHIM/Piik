@@ -1,0 +1,74 @@
+@font-face {
+  font-family: 'Cover Sans';
+  src: url('../../assets/fonts/subset/A-cover/NotoSansSC-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: block;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #121b24; }
+#cover {
+  --ink: #192530; --cream: #f6f2e8; --yellow: #ffd05a;
+  position: absolute; width: 1920px; height: 1080px; overflow: hidden; transform-origin: 0 0;
+  background: var(--yellow); color: var(--ink); font-family: 'Cover Sans', sans-serif;
+  -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
+}
+.diagonal { position: absolute; inset: 0; background: var(--ink); clip-path: polygon(75% 0, 100% 0, 100% 100%, 49% 100%); }
+.diagonal::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(-55deg, transparent 0 27px, #ffffff06 27px 50px); }
+header { position: absolute; top: 52px; left: 90px; right: 90px; display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: baseline; gap: 14px; font: 700 106px/1 Arimo, Arial, sans-serif; letter-spacing: -6px; }
+.brand-art { width: 118px; height: 118px; translate: 0 10.555556%; }
+.brand-art svg { display: block; width: 100%; height: 100%; }
+.edition { color: var(--cream); text-align: right; }
+.edition b { font-size: 56px; font-weight: 900; letter-spacing: 3px; }
+.edition span { display: block; margin-top: 5px; font: 600 20px/1 'Barlow Condensed'; letter-spacing: 4px; }
+.headline { position: absolute; left: 82px; top: 300px; z-index: 3; transform: rotate(-4deg); }
+.kicker { margin: 0 0 28px 20px; font-size: 38px; font-weight: 800; }
+h1 { margin: 0; font-weight: 900; line-height: 1; letter-spacing: -9px; }
+h1 > span { display: block; width: max-content; }
+.line-one { padding: 0 20px 24px; font-size: 176px; }
+.line-two { position: relative; padding: 18px 36px 30px; background: var(--ink); color: var(--cream); font-size: 180px; box-shadow: 12px 12px 0 var(--cream); }
+.subline { width: max-content; margin-top: 43px; padding: 13px 22px 16px; font-size: 45px; line-height: 1.2; font-weight: 900; background: var(--cream); }
+.subline > span { margin: 0 14px; opacity: .45; }
+.scene { position: absolute; top: 240px; left: 1005px; width: 820px; height: 540px; }
+.backplate { position: absolute; inset: -22px -14px -25px -24px; background: var(--cream); transform: rotate(-4deg); }
+.display { position: absolute; inset: 0; background: var(--ink); border: 9px solid var(--ink); box-shadow: 18px 20px 0 #0d141b; transform: rotate(5deg); }
+.display-title { height: 58px; padding: 0 16px; display: flex; align-items: center; gap: 12px; color: var(--cream); }
+.display-title b { font-size: 27px; }
+.display-title > span:last-child { margin-left: auto; font: 600 18px/1 'Barlow Condensed'; letter-spacing: 3px; opacity: .7; }
+.live-dot { width: 13px; height: 13px; border-radius: 50%; background: #e4572e; }
+.game { position: absolute; inset: 58px 0 53px; overflow: hidden; }
+.game > svg { width: 100%; height: 100%; }
+.display-footer { position: absolute; bottom: 0; left: 0; right: 0; height: 53px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; font-size: 25px; font-weight: 800; color: var(--cream); }
+.host-label::before, .viewer-label::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 12px; background: var(--green); border-radius: 50%; }
+.viewer-label::before { background: var(--blue); }
+.cursor { position: absolute; width: 110px; left: 515px; top: 355px; transform: rotate(-12deg); filter: drop-shadow(7px 10px 0 #0005); }
+.audience { position: absolute; width: 600px; height: 250px; left: 105px; top: 500px; overflow: visible; }
+footer { position: absolute; bottom: 44px; left: 100px; right: 90px; display: flex; align-items: center; justify-content: space-between; font-size: 34px; font-weight: 800; }
+.divider { padding: 0 20px; opacity: .4; }
+.url { font: 700 38px/1 Arimo, Arial, sans-serif; color: var(--cream); }
+.paper { position: absolute; inset: 0; opacity: .18; pointer-events: none; mix-blend-mode: multiply; }
+
+/* The narrower format is composed separately, not cropped from the widescreen. */
+#cover.classic { width: 1440px; }
+.classic .diagonal { clip-path: polygon(82% 0, 100% 0, 100% 100%, 54% 100%); }
+.classic header { left: 62px; right: 62px; }
+.classic .brand { font-size: 89px; }
+.classic .brand-art { width: 99px; height: 99px; }
+.classic .edition b { font-size: 38px; letter-spacing: 1px; }
+.classic .edition span { font-size: 16px; letter-spacing: 2px; }
+.classic .headline { left: 55px; top: 330px; }
+.classic .kicker { font-size: 28px; margin-left: 15px; }
+.classic .line-one { font-size: 134px; padding-left: 15px; }
+.classic .line-two { font-size: 138px; padding: 18px 25px 25px; }
+.classic .subline { font-size: 32px; margin-top: 38px; }
+.classic .subline > span { margin: 0 10px; }
+.classic .scene { left: 748px; top: 300px; width: 610px; height: 440px; }
+.classic .display-title { height: 48px; }
+.classic .display-title b { font-size: 23px; }
+.classic .display-title > span:last-child { font-size: 15px; letter-spacing: 1px; }
+.classic .game { top: 48px; bottom: 45px; }
+.classic .display-footer { height: 45px; font-size: 20px; }
+.classic .cursor { width: 85px; left: 370px; top: 280px; }
+.classic .audience { width: 540px; height: 225px; left: 35px; top: 423px; }
+.classic footer { left: 70px; right: 62px; bottom: 55px; font-size: 29px; }
+.classic .divider { padding: 0 14px; }

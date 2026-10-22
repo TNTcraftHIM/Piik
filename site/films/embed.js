@@ -1,0 +1,10 @@
+import './external/engine/player.js';
+const parameters = new URLSearchParams(location.search);
+const id = parameters.get('film') || 'A';
+const player = document.createElement('piik-promo');
+player.setAttribute('film', id);
+player.setAttribute('lang', parameters.get('lang') || 'en');
+document.documentElement.lang = player.getAttribute('lang');
+document.title = `Piik · ${id}`;
+if (id === 'C' || id === 'F') document.body.style.setProperty('--ratio', 9 / 16);
+document.body.append(player);

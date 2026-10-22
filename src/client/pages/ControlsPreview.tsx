@@ -84,7 +84,7 @@ export function ControlsPreview() {
   const [roomCode, setRoomCode] = useState("6020");
   const [feedback, setFeedback] = useState("");
   const [dial, setDial] = useState("60");
-  const [theater, setTheater] = useState(false);
+  const [theater, setTheater] = useTheaterMode();
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
@@ -297,14 +297,14 @@ export function ControlsPreview() {
     <section id="playback-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">07</span><div><h2>{en ? "The playback bar" : "播放时，顺手就能找到。"}</h2>
         <p>{en ? "This bar shows its waiting state. The playback test page includes a moving picture, volume and picture in picture." : "这里展示等待画面时的播放栏；动态画面、音量和小窗可进入完整播放预览试用。"}</p></div></header>
-      <div className="cp-stage"><StageTv label={t("playback.controls")} indicator={<StatusIndicator status={STATUS_CATALOG.joining} />}>
+      <div className={theater ? "lr-room is-theater" : "cp-stage"}><div className="lr-scene"><StageTv label={t("playback.controls")} indicator={<StatusIndicator status={STATUS_CATALOG.joining} />}>
         <video ref={video} poster={POSTER} playsInline inert style={{ objectFit: pictureFit }} />
         <StageOverlay dim waiting icon={STATUS_CATALOG.joining.icon} message={t(STATUS_CATALOG.joining.labelKey)} comic={STATUS_CATALOG.joining.comic} />
         <PlaybackControls videoRef={video} stream={null} canPlay={false} theaterMode={theater} onPlay={notify}
           settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route: { preference: viewerRoute, onChange: setViewerRoute,
             sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } }}
           onToggleTheater={() => setTheater(!theater)} onReconnect={notify} reconnectAvailable />
-      </StageTv></div>
+      </StageTv></div></div>
       <p><a href="/__playback-preview">{en ? "Open the full playback preview" : "进入完整播放预览"} →</a></p>
     </section>
     <section id="launcher-preview" className="cp-section">

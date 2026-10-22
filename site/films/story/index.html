@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Piik · 今晚，缺个对手</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="./studies.css">
+  <script type="module" src="./player.js"></script>
+</head>
+<body>
+  <header><a href="../" class="brand" data-brand aria-label="Piik"></a><span>PIIK / A²</span><a href="#notes">制作说明 ↗</a></header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">A² 精修 · 分享屏幕 / 朋友到场 / 一起参与</p><h1>今晚，<br><span>缺个对手。</span></h1></div>
+      <p>保留故事，打磨每一次参与。<br>先共享屏幕，再一起看、聊、接手玩。<br></p>
+    </section>
+    <section class="review-player" aria-label="声画样片播放器">
+      <div id="stage" tabindex="-1">
+        <svg id="art" viewBox="0 0 1600 900" role="img" aria-label="Piik 声画样片"></svg>
+        <div id="ui-clip" hidden><iframe id="product-ui" title="现有 Piik 界面演示" sandbox="allow-scripts" src="./ui/index.html?lang=zh-CN&artwork=party" tabindex="-1"></iframe></div>
+        <svg id="front" viewBox="0 0 1600 900" aria-hidden="true"></svg>
+        <div id="curtain"><button id="start" aria-label="播放当前样片"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7Z"/></svg><span>播放声画样片</span></button></div>
+        <div id="subtitles" aria-live="off" hidden></div>
+      </div>
+      <div class="transport">
+        <button id="play" aria-label="播放"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="play-shape" d="m8 5 11 7-11 7Z"/></svg></button>
+        <button id="restart" aria-label="从头播放" title="从头播放 · R"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8a8 8 0 1 1-1 7M5 3v5h5"/></svg></button>
+        <span id="time">00:00</span>
+        <input id="seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="播放位置">
+        <button id="sound" aria-label="声音" aria-pressed="true" title="声音 · M"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4Zm13-1a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg></button>
+        <button id="fullscreen" aria-label="全屏" title="全屏 · F"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/></svg></button>
+      </div>
+      <audio id="audio" preload="none"></audio>
+      <p id="player-status" role="status"></p>
+    </section>
+    <div class="chapters" id="chapters" aria-label="跳转镜头"></div>
+    <section class="direction-copy"><div><p class="eyebrow" id="style"></p><h2 id="name"></h2></div><p id="description"></p></section>
+    <section class="frames-section"><div class="section-label"><h2>关键画面</h2><span>点击跳到对应镜头</span></div><div class="frames" id="frames"></div><p id="verdict"></p></section>
+    <section id="notes" class="notes">
+      <div><h2>先分享，再一起参与</h2><p>朋友首先看到房主的屏幕，再通过语音和经房主确认的远控参与同一局。双人夺旗里的起跳、失误和冲线，给后面的吐槽一个看得懂的理由。</p><p>界面复用当前产品组件。游戏采用 CC0 像素素材制作，是原创演示场景，不是已发行游戏录像、实测延迟或异地网络实录。</p></div>
+      <div><h2>同一个故事，再精致一些</h2><p>保留 A 的音乐和已经认可的剧情。纸条字幕跟随角色颜色，大色块承接动作，最后回到 Piik、屏幕共享和朋友的沙发。</p><p>这是待评审的完整叙事样片，尚未导出发布。先在线确认效果，再完成双语成片。</p></div>
+    </section>
+    <details class="credits"><summary>音乐、模拟语音、游戏与字体来源</summary><p>音乐由 Kevin MacLeod（incompetech.com）创作，按 <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> 使用。本地样片剪辑、淡入淡出并混合角色声音与音效。</p><ul><li>A²：<a href="https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500054">Funky Chunk</a> · 115 BPM</li></ul><p>游戏素材：Kenney，<a href="https://kenney.nl/assets/pixel-platformer">Pixel Platformer 1.2</a>，<a href="./pixel-platformer-NOTICE.txt">CC0 许可</a>；关卡和回合是原创演示场景。</p><p>角色声音：Josh Simmons，animalese.js 字母录音，CC BY 4.0；经音高、滤波和节奏处理。字体：Anton、Noto Sans SC，SIL Open Font License。<a href="./NOTICE.txt">完整署名与修改说明</a>。</p></details>
+  </main>
+  <footer><span>PIIK / Share the good stuff.</span><span>本地创意评审 · 未发布</span></footer>
+</body>
+</html>

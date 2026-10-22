@@ -1,16 +1,17 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-21
+Last reviewed: 2026-10-22
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Room presentation follow-up acceptance.** Review the local candidate's
-  room/voice presence, immediate departure display, Host room-voice bitrate,
-  microphone activity, signaling indicator and Host local playback. The shared
-  route controller and outgoing sharing authority remain unchanged.
+- [ ] **Integrated presentation acceptance.** Polish and verify room/voice
+  presence, Host playback, compact controls, floating tools, guidance and the
+  website/documentation surfaces together. Include live room-voice bitrate
+  updates and departure display; preserve the shared route and capture owners.
+  Publication waits until this accepted result and its release notes are ready.
 - [ ] **Native quality on a bursty virtual-LAN path.** A live v2.3.0 observation
   reproduced VP8 resolution/cadence drops and multi-second receive-buffer growth.
   Raising the same connection's ceiling from 3 to 8 Mbps did not eliminate them.
@@ -22,11 +23,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   supplies the allocator input Piik needs, verify recovery and remove the
   temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
-- [ ] **New promotional film.** Refine the online Chinese/English draft as a
-  standalone introduction: sharing, invitations, Host consent and playing together.
-  Improve the party-game example, motion, reading time and soundtrack. Functional
-  work takes priority; export only after the owner accepts the online preview.
-  Depict published functionality rather than multi-controller prototypes.
+- [ ] **Film E upload covers.** Prepare feature-led Chinese 16:9 and 4:3 covers
+  after the current product polish. The accepted A film and its Chinese export
+  are complete; the [film studio](../site/films/README.md) owns reusable sources.
 
 ## Held By Owner
 

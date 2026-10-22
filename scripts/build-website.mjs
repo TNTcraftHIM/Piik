@@ -1,8 +1,10 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { extname, relative, resolve } from "node:path";
 import { build } from "esbuild";
+import { createHash } from "node:crypto";
 import { writeWebLicenseNotices } from "./package-licenses.mjs";
+import { meta as filmMeta } from "../site/films/external/films/A/film.js";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { tsImport } from "tsx/esm/api";
@@ -16,6 +18,7 @@ await cp(source, output, {
   recursive: true,
   filter: (path) =>
     path !== fileURLToPath(new URL("docs", source)) &&
+    path !== fileURLToPath(new URL("films", source)) &&
     !path.endsWith(".js") &&
     !path.endsWith(".css") &&
     !path.endsWith(".ts") &&
@@ -40,6 +43,7 @@ const [{ locales }, { Glyph }] = await Promise.all([
 const welcomePools = [locales.en, locales.zh].map(locale => locale.playful.welcome.map(({ text }) =>
   renderToStaticMarkup(createElement("span", { lang: locale.tag }, `“${text}”`))));
 const homepage = (await readFile(new URL("index.html", source), "utf8"))
+  .replace(/<span class="film-length">.*?<\/span>/, `<span class="film-length">${Math.round(filmMeta.duration)}s</span>`)
   .replace(/<p id="welcome-line">.*?<\/p>/, `<p id="welcome-line">${welcomePools.map(pool => pool[0] ?? "").join("")}</p>`)
   // Reuse the product's icon and copy owners without a React runtime on the homepage.
   .replace(/<template id="theme-(light|dark)"><\/template>/g, (_, target) =>
@@ -51,25 +55,42 @@ const homepage = (await readFile(new URL("index.html", source), "utf8"))
 await writeFile(new URL("index.html", output), homepage.replace(
   '</body>', `<template id="welcome-lines">${welcomePools.flat().join('')}</template></body>`,
 ));
-// The opening shot uses the current homepage, with only its film clock adapter
-// substituted for the ordinary page script. Keep its layout and copy in one place.
-await writeFile(new URL("film/ui/website.html", output),
-  homepage
-    .replace('<head>', '<head><base href="../../" />')
-    .replace('<script type="module" src="./main.js"></script>', '<script src="./film/ui/website.js" defer></script>')
-    .replace('</body>', (await readFile(new URL("film/ui/index.html", source), "utf8")).match(/<svg id="cursor"[\s\S]*?<\/svg>/)[0] + '</body>'),
-);
-// Static controls use the product icon owner without shipping another React
-// runtime to the film page. The live demonstration remains its isolated bundle.
-const filmPage = new URL("film/index.html", output);
-await writeFile(filmPage, (await readFile(filmPage, "utf8")).replace(
-  /<span data-glyph="([a-zA-Z]+)"><\/span>/g,
-  (_, name) => renderToStaticMarkup(createElement(Glyph, { name, size: 21 })),
-));
-writeWebLicenseNotices(
-  fileURLToPath(new URL("../", import.meta.url)),
-  fileURLToPath(new URL("film/ui/third-party-licenses.txt", output)),
-);
+// Publish only the selected film's runtime. A content identity covers its relative
+// script, font and audio tree so HTML never mixes generations across caches.
+const external = new URL('films/external/', source);
+const runtimeFiles = [];
+async function collect(directory) {
+  for (const entry of (await readdir(new URL(directory, external), { withFileTypes: true })).sort((a,b) => a.name.localeCompare(b.name, 'en'))) {
+    const path = directory + entry.name;
+    if (entry.isDirectory()) await collect(path + '/');
+    else runtimeFiles.push(path);
+  }
+}
+for (const directory of ['films/A/', 'assets/fonts/subset/A-en/', 'assets/fonts/subset/A-zh/', 'out/A/']) await collect(directory);
+for (const file of ['art.js', 'brand-mark.css', 'cast.js', 'core.js', 'film.css', 'fonts.js', 'icons.js', 'player.js', 'tex.js', 'type.js']) runtimeFiles.push('engine/' + file);
+for (const file of await readdir(new URL('assets/fonts/', external))) if (file.endsWith('-OFL.txt')) runtimeFiles.push('assets/fonts/' + file);
+runtimeFiles.push('licenses/Piik-MIT.txt');
+const contents = new Map();
+const hash = createHash('sha256');
+for (const file of runtimeFiles.sort()) {
+  let bytes = await readFile(file === 'engine/brand-mark.css'
+    ? new URL('../src/client/components/living/brand-mark.css', import.meta.url)
+    : new URL(file, external));
+  if (file === 'engine/player.js') {
+    const registry = /export const FILMS = \{[\s\S]*?\n\};/;
+    const player = bytes.toString();
+    if (!registry.test(player)) throw new Error('Selected-film build requires the external player registry.');
+    bytes = Buffer.from(player.replace(registry, "export const FILMS = { A: () => import('../films/A/film.js') };"));
+  }
+  contents.set(file, bytes);
+  hash.update(file).update(bytes);
+}
+const runtime = 'runtime-' + hash.digest('hex').slice(0, 16);
+for (const [file, bytes] of contents) {
+  const location = new URL('film/' + runtime + '/' + file, output);
+  await mkdir(new URL('./', location), { recursive: true });
+  await writeFile(location, bytes);
+}
 const sharedBuild = {
   outdir: fileURLToPath(output),
   entryNames: "[dir]/[name]-[hash]",
@@ -83,32 +104,23 @@ const pageEntries = {
   "assets/brand": fileURLToPath(new URL("assets/brand.css", source)),
   "film/player": fileURLToPath(new URL("film/player.js", source)),
   "film/film": fileURLToPath(new URL("film/film.css", source)),
-  "film/playback-controls": fileURLToPath(new URL("../src/client/components/living/playback-controls.css", import.meta.url)),
-  "film/brand-mark": fileURLToPath(new URL("../src/client/components/living/brand-mark.css", import.meta.url)),
-};
-const demoEntries = {
-  "film/ui/ui": fileURLToPath(new URL("film/ui/main.tsx", source)),
-  "film/ui/website": fileURLToPath(new URL("film/ui/website.ts", source)),
 };
 const pageAssets = await build({
   ...sharedBuild,
   entryPoints: pageEntries,
   format: "esm",
+  plugins: [{ name: "selected-film", setup(builder) {
+    builder.onResolve({ filter: /^\.\.\/films\/external\/engine\/player\.js$/ }, () => ({ path: `./${runtime}/engine/player.js`, external: true }));
+  } }],
 });
+// This inert fixture is still the README screenshot source; the homepage never loads it.
+const demoEntries = { 'film/ui/ui': fileURLToPath(new URL('film/ui/main.tsx', source)) };
 const demoAssets = await build({
-  ...sharedBuild,
-  entryPoints: demoEntries,
-  format: "iife",
-  jsx: "automatic",
-  legalComments: "linked",
-  define: {
-    "import.meta": "piikFilmBuild",
-    "process.env.NODE_ENV": '"production"',
-  },
-  banner: {
-    js: "const piikFilmBuild = { url: document.currentScript.src, env: { DEV: false } };",
-  },
+  ...sharedBuild, entryPoints: demoEntries, format: 'iife', jsx: 'automatic', legalComments: 'linked',
+  define: { 'import.meta': 'piikFilmBuild', 'process.env.NODE_ENV': '"production"' },
+  banner: { js: 'const piikFilmBuild = { url: document.currentScript.src, env: { DEV: false } };' },
 });
+writeWebLicenseNotices(fileURLToPath(new URL('../', import.meta.url)), fileURLToPath(new URL('film/ui/third-party-licenses.txt', output)));
 // HTML and its scripts/styles must share a content identity across CDN caches.
 // Bundle imports too, so a fresh entry cannot load a stale fixed-name dependency.
 const assets = new Map();
@@ -122,8 +134,7 @@ for (const [path, metadata] of Object.entries({ ...pageAssets.metafile.outputs, 
   if (metadata.cssBundle) assets.set(name + ".css", outputPath(metadata.cssBundle));
 }
 for (const [page, base] of [
-  ["index.html", ""], ["film/index.html", "film/"],
-  ["film/ui/index.html", "film/ui/"], ["film/ui/website.html", ""],
+  ["index.html", ""], ["film/index.html", "film/"], ["film/ui/index.html", "film/ui/"],
 ]) {
   const location = new URL(page, output);
   const html = (await readFile(location, "utf8")).replace(
@@ -139,5 +150,5 @@ for (const [page, base] of [
 }
 await buildDocumentation();
 console.log(
-  "Website built in build/site (static files, including the shared product UI).",
+  "Website built in build/site (selected film A and the isolated README fixture).",
 );

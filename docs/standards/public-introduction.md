@@ -119,9 +119,8 @@ The short comics illustrate choosing, inviting and joining, following the
 shared motion grammar and whole-control replay rule. The optional film starts
 only after an explicit action and has native buttons and a seek slider. Open it
 within the homepage, loading its single player on demand; closing it unloads
-playback. Keep one homepage playback entry; the player document also supports
-local recording. Fullscreen watching keeps touch controls available; hiding
-them is an explicit recording action.
+playback. Keep one homepage playback entry. Fullscreen watching keeps touch
+controls available.
 Both READMEs share the friendly opening and room illustration. Their feature,
 limitation and setup sections use the factual register in the copy guide.
 
@@ -153,13 +152,14 @@ Use static HTML, CSS, SVG and small scripts for the homepage and film; no router
 CMS, translation dependency or new application backend. The documentation section
 uses VitePress's standard navigation and search with Piik's colours and mascot.
 It compiles existing Markdown; [website operations](../operations/website.md#documentation-build)
-owns its publication list and build boundary. The film's isolated
-demonstration frame bundles the existing React product components and styles,
-using staged inputs. It cannot access storage, run capture or contact the room
-service. The film clock owns its actions and decorative CSS animation positions.
-Rebuilding the site picks up component/style/copy changes; changes to the actual
-workflow still require reviewing the sequence and camera framing. Do not replace
-shared controls with a second hand-drawn UI or retain obsolete screenshot plates.
+owns its publication list and build boundary. The selected public film A uses
+authored artwork; its pictured interfaces require deliberate updates when the
+product changes. The separate `/film/ui/` README fixture bundles existing React
+product components and styles with staged inputs. It cannot run capture or
+contact the room service. Rebuilding that fixture picks up component/style/copy
+changes; workflow changes still require reviewing its sequence and framing.
+Use real components for current product screenshots; distinguish authored film
+artwork and frozen review snapshots from automatically rebuilt product UI.
 The existing App/Web
 continues to own sharing. The homepage explains it rather than simulating a
 second room authority. Public copies of advanced product/research documents

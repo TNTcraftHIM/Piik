@@ -1,0 +1,3 @@
+/* Film G — 作战会议 MISSION BRIEFING. Components style themselves inline (films/G/kit.js); no :root variables, so the
+   same rules work in the standalone page and inside the <piik-promo> shadow root. */
+#stage { background: #0e0b0d; color: #f6f2e8; }

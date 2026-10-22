@@ -1,0 +1,3 @@
+/* Film E — pixel JRPG. The whole frame is one 480×270 canvas scaled ×4 with nearest-neighbour sampling. */
+#stage { background: #000; }
+#stage canvas { image-rendering: pixelated; image-rendering: crisp-edges; }

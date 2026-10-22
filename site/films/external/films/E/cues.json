@@ -1,0 +1,1207 @@
+{
+ "film": "E",
+ "title": "打倒无聊 · DEFEAT BOREDOM",
+ "bpm": 150,
+ "beatsPerBar": 4,
+ "bars": 36,
+ "length": 58.0,
+ "fps": 60,
+ "sampleRate": 48000,
+ "positionNote": "[bar, beat] 1-indexed; seconds = ((bar-1)*4 + (beat-1)) * 0.4. Bar = 1.6 s. 36 bars = 57.6 s + 0.4 s tail = 58.000 s.",
+ "key": "A minor (battle) / C major (party, victory, end)",
+ "style": "Original chiptune: two pulse channels (12.5/25/50 % duty), stepped triangle bass, LFSR noise drums; dry, punchy, a touch of room. Cute and heroic, never harsh.",
+ "sections": [
+  {
+   "id": "room",
+   "bar": 1,
+   "bars": 3,
+   "chords": [
+    "Am7",
+    "Fmaj7",
+    "Dm7"
+   ],
+   "music": "Sleepy night loop: soft 12.5% arpeggio, triangle whole notes, no drums."
+  },
+  {
+   "id": "swirl",
+   "bar": 4,
+   "bars": 1,
+   "chords": [
+    "E7"
+   ],
+   "music": "Battle transition: descending arpeggio swoop + snare roll; silence at [4,4.5]."
+  },
+  {
+   "id": "battleA",
+   "bar": 5,
+   "bars": 4,
+   "chords": [
+    "Am",
+    "F",
+    "G",
+    "E"
+   ],
+   "music": "Battle theme A (driving 8th triangle bass, noise beat, menacing-cute pulse riff). Hit [5,1] (boss drop), tiny stab [7,2], comedic droop at [8,1] (yawn)."
+  },
+  {
+   "id": "piik",
+   "bar": 9,
+   "bars": 3,
+   "chords": [
+    "F",
+    "G",
+    "C"
+   ],
+   "music": "Hope motif: lighter drums, bright arpeggios. Sting at [10,3] (LIVE)."
+  },
+  {
+   "id": "join",
+   "bar": 12,
+   "bars": 3,
+   "chords": [
+    "C",
+    "Am",
+    "F G"
+   ],
+   "music": "Three rising party-join fanfares at [12,1] [12,3] [13,1]; build from [13,3]; snare roll in bar 14."
+  },
+  {
+   "id": "battleB",
+   "bar": 15,
+   "bars": 10,
+   "chords": [
+    "C",
+    "G",
+    "Am",
+    "F",
+    "C",
+    "G",
+    "F",
+    "E7",
+    "Am",
+    "E7"
+   ],
+   "music": "Heroic battle theme B. Stat-up arps [16,1-2.5]; barrage 16ths [17,3]-[18,2]; super-effective sting [18,3]; splat [19,4] then STOP [20,1]-[20,3]; tension from [20,3]; dual-tech riser bar 23; four big hits [24,1..4]."
+  },
+  {
+   "id": "victory",
+   "bar": 25,
+   "bars": 4,
+   "chords": [
+    "C",
+    "F",
+    "G",
+    "C"
+   ],
+   "music": "[25,1] boss defeated (crash + held chord); original victory fanfare bars 25-28; level-up arps [26,3-4.5]; item jingle [27,1]."
+  },
+  {
+   "id": "stats",
+   "bar": 29,
+   "bars": 4,
+   "chords": [
+    "Fmaj7",
+    "Em7",
+    "Dm7",
+    "G"
+   ],
+   "music": "Chill shop-menu groove under nine stat rows on beats."
+  },
+  {
+   "id": "end",
+   "bar": 33,
+   "bars": 4,
+   "chords": [
+    "C",
+    "C",
+    "C",
+    "C"
+   ],
+   "music": "[33,1] final C hit with the Piik sonic logo; short end jingle; ring out, silent by 58 s."
+  }
+ ],
+ "hits": [
+  [
+   5,
+   1
+  ],
+  [
+   7,
+   2
+  ],
+  [
+   10,
+   3
+  ],
+  [
+   12,
+   1
+  ],
+  [
+   12,
+   3
+  ],
+  [
+   13,
+   1
+  ],
+  [
+   15,
+   1
+  ],
+  [
+   18,
+   3
+  ],
+  [
+   19,
+   4
+  ],
+  [
+   23,
+   1
+  ],
+  [
+   24,
+   1
+  ],
+  [
+   24,
+   2
+  ],
+  [
+   24,
+   3
+  ],
+  [
+   24,
+   4
+  ],
+  [
+   25,
+   1
+  ],
+  [
+   33,
+   1
+  ]
+ ],
+ "stops": [
+  {
+   "from": [
+    4,
+    4.5
+   ],
+   "to": [
+    5,
+    1
+   ],
+   "note": "breath before the boss lands"
+  },
+  {
+   "from": [
+    20,
+    1
+   ],
+   "to": [
+    20,
+    3
+   ],
+   "note": "comic silence after the tomato"
+  }
+ ],
+ "boxes": [
+  {
+   "key": "room1",
+   "who": "sys",
+   "at": [
+    1,
+    1.5
+   ],
+   "type": 2.5,
+   "until": [
+    2,
+    3
+   ]
+  },
+  {
+   "key": "room2",
+   "who": "tuan",
+   "at": [
+    2,
+    3
+   ],
+   "type": 1.5,
+   "until": [
+    3,
+    4
+   ]
+  },
+  {
+   "key": "appear",
+   "who": "sys",
+   "at": [
+    5,
+    1.5
+   ],
+   "type": 2.0,
+   "until": [
+    6,
+    3
+   ]
+  },
+  {
+   "key": "attack",
+   "who": "sys",
+   "at": [
+    7,
+    1
+   ],
+   "type": 2.0,
+   "until": [
+    8,
+    1
+   ]
+  },
+  {
+   "key": "yawn",
+   "who": "boss",
+   "at": [
+    8,
+    1
+   ],
+   "type": 1.25,
+   "until": [
+    8,
+    3
+   ]
+  },
+  {
+   "key": "moodDown",
+   "who": "sys",
+   "at": [
+    8,
+    3
+   ],
+   "type": 1.5,
+   "until": [
+    9,
+    1
+   ]
+  },
+  {
+   "key": "share",
+   "who": "sys",
+   "at": [
+    10,
+    1
+   ],
+   "type": 1.5,
+   "until": [
+    11,
+    1
+   ]
+  },
+  {
+   "key": "invite",
+   "who": "sys",
+   "at": [
+    11,
+    2
+   ],
+   "type": 2.0,
+   "until": [
+    12,
+    1
+   ]
+  },
+  {
+   "key": "joinYuan",
+   "who": "sys",
+   "at": [
+    12,
+    1
+   ],
+   "type": 1.0,
+   "until": [
+    12,
+    3
+   ]
+  },
+  {
+   "key": "joinDian",
+   "who": "sys",
+   "at": [
+    12,
+    3
+   ],
+   "type": 1.0,
+   "until": [
+    13,
+    1
+   ]
+  },
+  {
+   "key": "joinCong",
+   "who": "sys",
+   "at": [
+    13,
+    1
+   ],
+   "type": 1.0,
+   "until": [
+    14,
+    1
+   ]
+  },
+  {
+   "key": "oneScreen",
+   "who": "sys",
+   "at": [
+    14,
+    1
+   ],
+   "type": 2.0,
+   "until": [
+    15,
+    1
+   ]
+  },
+  {
+   "key": "voice",
+   "who": "yuan",
+   "at": [
+    15,
+    2
+   ],
+   "type": 1.5,
+   "until": [
+    16,
+    1
+   ]
+  },
+  {
+   "key": "moraleUp",
+   "who": "sys",
+   "at": [
+    16,
+    1
+   ],
+   "type": 1.5,
+   "until": [
+    17,
+    1
+   ]
+  },
+  {
+   "key": "barrage",
+   "who": "dian",
+   "at": [
+    17,
+    1
+   ],
+   "type": 1.5,
+   "until": [
+    18,
+    3
+   ]
+  },
+  {
+   "key": "superEff",
+   "who": "sys",
+   "at": [
+    18,
+    3
+   ],
+   "type": 1.0,
+   "until": [
+    19,
+    1
+   ]
+  },
+  {
+   "key": "tomato",
+   "who": "cong",
+   "at": [
+    19,
+    1
+   ],
+   "type": 1.5,
+   "until": [
+    20,
+    1
+   ]
+  },
+  {
+   "key": "hitTuan",
+   "who": "sys",
+   "at": [
+    20,
+    1
+   ],
+   "type": 1.0,
+   "until": [
+    20,
+    3
+   ]
+  },
+  {
+   "key": "hehe",
+   "who": "cong",
+   "at": [
+    20,
+    3
+   ],
+   "type": 0.75,
+   "until": [
+    21,
+    1
+   ]
+  },
+  {
+   "key": "still",
+   "who": "boss",
+   "at": [
+    21,
+    1
+   ],
+   "type": 1.0,
+   "until": [
+    21,
+    3
+   ]
+  },
+  {
+   "key": "remote",
+   "who": "tuan",
+   "at": [
+    22,
+    1
+   ],
+   "type": 1.5,
+   "until": [
+    23,
+    1
+   ]
+  },
+  {
+   "key": "dual",
+   "who": "sys",
+   "at": [
+    23,
+    1
+   ],
+   "type": 1.0,
+   "until": [
+    24,
+    1
+   ]
+  },
+  {
+   "key": "defeat",
+   "who": "sys",
+   "at": [
+    25,
+    2
+   ],
+   "type": 2.0,
+   "until": [
+    26,
+    1
+   ]
+  },
+  {
+   "key": "exp",
+   "who": "sys",
+   "at": [
+    26,
+    1
+   ],
+   "type": 2.0,
+   "until": [
+    27,
+    1
+   ]
+  },
+  {
+   "key": "loot",
+   "who": "sys",
+   "at": [
+    27,
+    1
+   ],
+   "type": 2.0,
+   "until": [
+    28,
+    3
+   ]
+  }
+ ],
+ "voices": {
+  "sys": {
+   "desc": "narrator: neutral 50% pulse blip around A5"
+  },
+  "tuan": {
+   "desc": "25% pulse, mid (E5), bouncy"
+  },
+  "yuan": {
+   "desc": "25% pulse, higher (A5), smooth"
+  },
+  "dian": {
+   "desc": "12.5% pulse, highest (C6), quick"
+  },
+  "cong": {
+   "desc": "50% pulse, low (D5) with a wobble"
+  },
+  "boss": {
+   "desc": "low triangle 'blorp' (A3)"
+  }
+ },
+ "sfx": [
+  {
+   "at": [
+    1,
+    1
+   ],
+   "name": "e_room_in"
+  },
+  {
+   "at": [
+    3,
+    3
+   ],
+   "name": "e_glitch"
+  },
+  {
+   "at": [
+    4,
+    1
+   ],
+   "name": "e_swirl",
+   "until": [
+    4,
+    4.5
+   ]
+  },
+  {
+   "at": [
+    4,
+    4.5
+   ],
+   "name": "e_flash"
+  },
+  {
+   "at": [
+    5,
+    1
+   ],
+   "name": "e_boss_drop"
+  },
+  {
+   "at": [
+    6,
+    1
+   ],
+   "name": "e_hpfill",
+   "until": [
+    6,
+    2
+   ]
+  },
+  {
+   "at": [
+    6,
+    3
+   ],
+   "name": "e_menu_open"
+  },
+  {
+   "at": [
+    7,
+    1
+   ],
+   "name": "e_select"
+  },
+  {
+   "at": [
+    7,
+    2
+   ],
+   "name": "e_hit_tiny"
+  },
+  {
+   "at": [
+    8,
+    1
+   ],
+   "name": "e_yawn"
+  },
+  {
+   "at": [
+    8,
+    3
+   ],
+   "name": "e_stat_down"
+  },
+  {
+   "at": [
+    9,
+    1
+   ],
+   "name": "e_menu_open"
+  },
+  {
+   "at": [
+    9,
+    1.5
+   ],
+   "name": "e_menu_move"
+  },
+  {
+   "at": [
+    9,
+    2
+   ],
+   "name": "e_menu_move"
+  },
+  {
+   "at": [
+    9,
+    2.5
+   ],
+   "name": "e_select"
+  },
+  {
+   "at": [
+    9,
+    3
+   ],
+   "name": "e_menu_open",
+   "pitch": 5
+  },
+  {
+   "at": [
+    9,
+    4
+   ],
+   "name": "e_select"
+  },
+  {
+   "at": [
+    10,
+    1
+   ],
+   "name": "e_share"
+  },
+  {
+   "at": [
+    10,
+    3
+   ],
+   "name": "e_live"
+  },
+  {
+   "at": [
+    11,
+    1
+   ],
+   "name": "e_select"
+  },
+  {
+   "at": [
+    11,
+    1.5
+   ],
+   "name": "e_letter"
+  },
+  {
+   "at": [
+    11,
+    2
+   ],
+   "name": "e_whoosh",
+   "pitch": 0
+  },
+  {
+   "at": [
+    11,
+    2.25
+   ],
+   "name": "e_whoosh",
+   "pitch": 3
+  },
+  {
+   "at": [
+    11,
+    2.5
+   ],
+   "name": "e_whoosh",
+   "pitch": 7
+  },
+  {
+   "at": [
+    12,
+    1
+   ],
+   "name": "e_portal"
+  },
+  {
+   "at": [
+    12,
+    1
+   ],
+   "name": "e_join",
+   "note": 72
+  },
+  {
+   "at": [
+    12,
+    3
+   ],
+   "name": "e_portal"
+  },
+  {
+   "at": [
+    12,
+    3
+   ],
+   "name": "e_join",
+   "note": 76
+  },
+  {
+   "at": [
+    13,
+    1
+   ],
+   "name": "e_portal"
+  },
+  {
+   "at": [
+    13,
+    1
+   ],
+   "name": "e_join",
+   "note": 79
+  },
+  {
+   "at": [
+    13,
+    3
+   ],
+   "name": "e_tag"
+  },
+  {
+   "at": [
+    15,
+    1
+   ],
+   "name": "e_turn"
+  },
+  {
+   "at": [
+    15,
+    2
+   ],
+   "name": "e_voice",
+   "until": [
+    16,
+    1
+   ]
+  },
+  {
+   "at": [
+    16,
+    1
+   ],
+   "name": "e_stat_up",
+   "note": 76
+  },
+  {
+   "at": [
+    16,
+    1.5
+   ],
+   "name": "e_stat_up",
+   "note": 79
+  },
+  {
+   "at": [
+    16,
+    2
+   ],
+   "name": "e_stat_up",
+   "note": 84
+  },
+  {
+   "at": [
+    16,
+    2.5
+   ],
+   "name": "e_stat_up",
+   "note": 88
+  },
+  {
+   "at": [
+    17,
+    1
+   ],
+   "name": "e_turn"
+  },
+  {
+   "at": [
+    17,
+    3
+   ],
+   "name": "e_dmk",
+   "pitch": 0
+  },
+  {
+   "at": [
+    17,
+    3.5
+   ],
+   "name": "e_dmk",
+   "pitch": 2
+  },
+  {
+   "at": [
+    17,
+    4
+   ],
+   "name": "e_dmk",
+   "pitch": 4
+  },
+  {
+   "at": [
+    17,
+    4.5
+   ],
+   "name": "e_dmk",
+   "pitch": 5
+  },
+  {
+   "at": [
+    18,
+    1
+   ],
+   "name": "e_dmk",
+   "pitch": 7
+  },
+  {
+   "at": [
+    18,
+    1.5
+   ],
+   "name": "e_dmk",
+   "pitch": 9
+  },
+  {
+   "at": [
+    18,
+    2
+   ],
+   "name": "e_dmk",
+   "pitch": 11
+  },
+  {
+   "at": [
+    18,
+    2.5
+   ],
+   "name": "e_dmk",
+   "pitch": 12
+  },
+  {
+   "at": [
+    18,
+    3
+   ],
+   "name": "e_super"
+  },
+  {
+   "at": [
+    19,
+    1
+   ],
+   "name": "e_turn"
+  },
+  {
+   "at": [
+    19,
+    3
+   ],
+   "name": "e_throw"
+  },
+  {
+   "at": [
+    19,
+    4
+   ],
+   "name": "e_splat"
+  },
+  {
+   "at": [
+    21,
+    1
+   ],
+   "name": "e_boss_laugh"
+  },
+  {
+   "at": [
+    21,
+    3
+   ],
+   "name": "e_menu_open"
+  },
+  {
+   "at": [
+    21,
+    3.5
+   ],
+   "name": "e_menu_move"
+  },
+  {
+   "at": [
+    21,
+    4
+   ],
+   "name": "e_select"
+  },
+  {
+   "at": [
+    22,
+    2
+   ],
+   "name": "e_kb_pass",
+   "until": [
+    22,
+    3
+   ]
+  },
+  {
+   "at": [
+    22,
+    3
+   ],
+   "name": "e_tag"
+  },
+  {
+   "at": [
+    23,
+    1
+   ],
+   "name": "e_cutin"
+  },
+  {
+   "at": [
+    23,
+    2
+   ],
+   "name": "e_charge",
+   "until": [
+    24,
+    1
+   ]
+  },
+  {
+   "at": [
+    24,
+    1
+   ],
+   "name": "e_combo",
+   "pitch": 0
+  },
+  {
+   "at": [
+    24,
+    2
+   ],
+   "name": "e_combo",
+   "pitch": 3
+  },
+  {
+   "at": [
+    24,
+    3
+   ],
+   "name": "e_combo",
+   "pitch": 7
+  },
+  {
+   "at": [
+    24,
+    4
+   ],
+   "name": "e_combo_big"
+  },
+  {
+   "at": [
+    25,
+    1
+   ],
+   "name": "e_defeat"
+  },
+  {
+   "at": [
+    26,
+    3
+   ],
+   "name": "e_lvup",
+   "note": 72
+  },
+  {
+   "at": [
+    26,
+    3.5
+   ],
+   "name": "e_lvup",
+   "note": 76
+  },
+  {
+   "at": [
+    26,
+    4
+   ],
+   "name": "e_lvup",
+   "note": 79
+  },
+  {
+   "at": [
+    26,
+    4.5
+   ],
+   "name": "e_lvup",
+   "note": 84
+  },
+  {
+   "at": [
+    27,
+    1
+   ],
+   "name": "e_item"
+  },
+  {
+   "at": [
+    28,
+    4
+   ],
+   "name": "e_wipe"
+  },
+  {
+   "at": [
+    29,
+    1
+   ],
+   "name": "e_menu_open",
+   "pitch": 2
+  },
+  {
+   "at": [
+    29,
+    2
+   ],
+   "name": "e_row",
+   "pitch": 0
+  },
+  {
+   "at": [
+    29,
+    3
+   ],
+   "name": "e_row",
+   "pitch": 2
+  },
+  {
+   "at": [
+    29,
+    4
+   ],
+   "name": "e_row",
+   "pitch": 4
+  },
+  {
+   "at": [
+    30,
+    1
+   ],
+   "name": "e_row",
+   "pitch": 5
+  },
+  {
+   "at": [
+    30,
+    2
+   ],
+   "name": "e_row",
+   "pitch": 7
+  },
+  {
+   "at": [
+    30,
+    3
+   ],
+   "name": "e_row",
+   "pitch": 9
+  },
+  {
+   "at": [
+    30,
+    4
+   ],
+   "name": "e_row",
+   "pitch": 11
+  },
+  {
+   "at": [
+    31,
+    1
+   ],
+   "name": "e_row",
+   "pitch": 12
+  },
+  {
+   "at": [
+    31,
+    2
+   ],
+   "name": "e_row",
+   "pitch": 14
+  },
+  {
+   "at": [
+    33,
+    1
+   ],
+   "name": "piik_chirp"
+  },
+  {
+   "at": [
+    33,
+    1
+   ],
+   "name": "e_sparkle"
+  },
+  {
+   "at": [
+    33,
+    3
+   ],
+   "name": "e_tag"
+  },
+  {
+   "at": [
+    34,
+    1
+   ],
+   "name": "e_tag",
+   "pitch": 5
+  },
+  {
+   "at": [
+    34,
+    3
+   ],
+   "name": "e_start"
+  }
+ ]
+}

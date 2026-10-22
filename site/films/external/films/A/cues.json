@@ -1,0 +1,1399 @@
+{
+ "film": "A",
+ "title": "预告状 · THE CALLING CARD",
+ "bpm": 128,
+ "beatsPerBar": 4,
+ "bars": 34,
+ "fps": 60,
+ "sampleRate": 48000,
+ "positionNote": "All positions are [bar, beat], 1-indexed, beat may be fractional (2.5 = the 'and' of beat 2). seconds = ((bar-1)*4 + (beat-1)) * 60/bpm. Bar = 1.875 s, beat = 0.46875 s. Film length = 34 bars = 63.75 s.",
+ "key": "A minor / C major (Dorian vamps in verses, 'royal road' IV-V-iii-vi in choruses, ends on C major)",
+ "style": "Syncopated acid-jazz funk: tight live-feel drums with 16th hats and light swing (~54%), slap/synth funk bass, FM electric piano comping, punchy synth-brass stabs, a catchy lead hook (brass/whistle-like synth). Cute, cheeky, groovy, never harsh. Comedic touches allowed (sad trombone, slide whistle).",
+ "sections": [
+  {
+   "id": "cold",
+   "bar": 1,
+   "bars": 4,
+   "chords": [
+    "Am9",
+    "Am9",
+    "Am9",
+    "D9"
+   ],
+   "music": "Bars 1-2: intro, groove heard 'through a TV' (band-passed, lo-fi, crackle). Bass slide-in at [2,3]. Bars 3-4: filter fully opens at [3,1]; groove A (Am9 | D9). Stabs on [3,1], [3,3], [4,1] (panel slams)."
+  },
+  {
+   "id": "idea",
+   "bar": 5,
+   "bars": 2,
+   "chords": [
+    "Fmaj9",
+    "E7#9"
+   ],
+   "music": "Thin out: kick + hats + held EP pad, rising line under ransom words. Band hit on [6,1]. Leave space at [6,3] for the mascot 'piik!' chirp."
+  },
+  {
+   "id": "step1",
+   "bar": 7,
+   "bars": 2,
+   "chords": [
+    "Am9",
+    "D9"
+   ],
+   "music": "Verse groove back in. Brass stab on [8,1] (click) and [8,3] (LIVE stamp)."
+  },
+  {
+   "id": "step2",
+   "bar": 9,
+   "bars": 2,
+   "chords": [
+    "Am9",
+    "D9"
+   ],
+   "music": "Groove continues; small stab [9,2]; leave room for card-throw whoosh at [10,1]."
+  },
+  {
+   "id": "step3",
+   "bar": 11,
+   "bars": 2,
+   "chords": [
+    "Fmaj9",
+    "E7sus4"
+   ],
+   "music": "Build: notification dings at [11,1] [11,3] [12,1] sit on chord tones. From [12,1]: snare roll + riser into the drop. Bar 12 beat 4 can be a short gap (pickup)."
+  },
+  {
+   "id": "fullhouse",
+   "bar": 13,
+   "bars": 2,
+   "chords": [
+    "Fmaj7",
+    "G6"
+   ],
+   "music": "DROP / chorus 1 starts with crash at [13,1]. Landing accents (toms or bass hits) on [13,1] [13,2] [13,3]. Lead hook starts."
+  },
+  {
+   "id": "warmup",
+   "bar": 15,
+   "bars": 4,
+   "chords": [
+    "Em7",
+    "Am7",
+    "Dm9",
+    "G13"
+   ],
+   "music": "Chorus continues, a bit lighter under dialogue at [17,1]-[18,4] (duck ~4 dB)."
+  },
+  {
+   "id": "handover",
+   "bar": 19,
+   "bars": 2,
+   "chords": [
+    "E7sus4",
+    "E7b9"
+   ],
+   "music": "Tension: bass pedal on E, staccato 8th strings/EP. Full music STOP at [20,3]-[21,1] (only a riser/heartbeat)."
+  },
+  {
+   "id": "vs",
+   "bar": 21,
+   "bars": 2,
+   "chords": [
+    "Am",
+    "Am"
+   ],
+   "music": "Huge hit [21,1] (brass + low boom + crash), then battle drums with tom fills. Hit [22,3] (FIGHT!). Fill into [23,1]."
+  },
+  {
+   "id": "fight",
+   "bar": 23,
+   "bars": 4,
+   "chords": [
+    "Fmaj7",
+    "G6",
+    "Em7",
+    "Am7"
+   ],
+   "music": "Chorus 2, highest energy (double-time hats, brass melody). Big hits [25,2] and [25,3] (K.O. with cymbal). Bar 26: band stops, comedic 'sad trombone' descending phrase (4 notes, last one with wobble) over light percussion."
+  },
+  {
+   "id": "more",
+   "bar": 27,
+   "bars": 2,
+   "chords": [
+    "Dm9",
+    "Em7",
+    "Fmaj7",
+    "G6",
+    "Am9",
+    "Bm7b5",
+    "C6/9"
+   ],
+   "music": "Stop-time: full-band hits ONLY on [27,1] [27,3] [27,4] [28,1] [28,2] [28,3] [28,4], bass climbing D-E-F-G-A-B-C, silence (or only closed hat ticks) between hits."
+  },
+  {
+   "id": "facts",
+   "bar": 29,
+   "bars": 3,
+   "chords": [
+    "Fmaj7",
+    "G6",
+    "Em7 Am7"
+   ],
+   "music": "Chorus-lite groove. Brass hits on [29,1] [29,3] [30,1] [30,3] [31,1]. Fill [31,3]-[31,4]."
+  },
+  {
+   "id": "end",
+   "bar": 32,
+   "bars": 3,
+   "chords": [
+    "Dm9 G13",
+    "Cmaj9",
+    "Cmaj9"
+   ],
+   "music": "Bar 32: an 8-note jingle on 8th notes (one note per character of '来，看点好康的。'), resolving to C at [33,1]. [33,1]: final big Cmaj9 hit + mascot chirp, ring out through bar 34, fade to silence by the end of [34,4]."
+  }
+ ],
+ "hits": [
+  [
+   3,
+   1
+  ],
+  [
+   3,
+   3
+  ],
+  [
+   4,
+   1
+  ],
+  [
+   6,
+   1
+  ],
+  [
+   8,
+   1
+  ],
+  [
+   8,
+   3
+  ],
+  [
+   9,
+   2
+  ],
+  [
+   13,
+   1
+  ],
+  [
+   14,
+   1
+  ],
+  [
+   21,
+   1
+  ],
+  [
+   22,
+   3
+  ],
+  [
+   25,
+   2
+  ],
+  [
+   25,
+   3
+  ],
+  [
+   27,
+   1
+  ],
+  [
+   27,
+   3
+  ],
+  [
+   27,
+   4
+  ],
+  [
+   28,
+   1
+  ],
+  [
+   28,
+   2
+  ],
+  [
+   28,
+   3
+  ],
+  [
+   28,
+   4
+  ],
+  [
+   29,
+   1
+  ],
+  [
+   29,
+   3
+  ],
+  [
+   30,
+   1
+  ],
+  [
+   30,
+   3
+  ],
+  [
+   31,
+   1
+  ],
+  [
+   33,
+   1
+  ]
+ ],
+ "stops": [
+  {
+   "from": [
+    20,
+    3
+   ],
+   "to": [
+    21,
+    1
+   ]
+  },
+  {
+   "from": [
+    26,
+    1
+   ],
+   "to": [
+    27,
+    1
+   ],
+   "note": "only the sad trombone + light percussion"
+  }
+ ],
+ "sfx": [
+  {
+   "at": [
+    1,
+    1
+   ],
+   "name": "tv_on"
+  },
+  {
+   "at": [
+    1,
+    3
+   ],
+   "name": "box_in"
+  },
+  {
+   "at": [
+    2,
+    3
+   ],
+   "name": "whoosh_short",
+   "gain": -6
+  },
+  {
+   "at": [
+    2,
+    3.5
+   ],
+   "name": "sigh_deflate"
+  },
+  {
+   "at": [
+    3,
+    1
+   ],
+   "name": "panel_slam"
+  },
+  {
+   "at": [
+    3,
+    3
+   ],
+   "name": "panel_slam"
+  },
+  {
+   "at": [
+    4,
+    1
+   ],
+   "name": "panel_slam"
+  },
+  {
+   "at": [
+    4,
+    3
+   ],
+   "name": "type_tick"
+  },
+  {
+   "at": [
+    4,
+    3.5
+   ],
+   "name": "type_tick"
+  },
+  {
+   "at": [
+    4,
+    4
+   ],
+   "name": "type_tick"
+  },
+  {
+   "at": [
+    4,
+    4.5
+   ],
+   "name": "type_tick"
+  },
+  {
+   "at": [
+    5,
+    1
+   ],
+   "name": "cutin_whoosh"
+  },
+  {
+   "at": [
+    5,
+    2
+   ],
+   "name": "shing"
+  },
+  {
+   "at": [
+    5,
+    3
+   ],
+   "name": "ransom_slap",
+   "note": 69
+  },
+  {
+   "at": [
+    5,
+    3.5
+   ],
+   "name": "ransom_slap",
+   "note": 72
+  },
+  {
+   "at": [
+    5,
+    4
+   ],
+   "name": "ransom_slap",
+   "note": 76
+  },
+  {
+   "at": [
+    6,
+    1
+   ],
+   "name": "ransom_slap",
+   "note": 69
+  },
+  {
+   "at": [
+    6,
+    1.25
+   ],
+   "name": "ransom_slap",
+   "note": 71
+  },
+  {
+   "at": [
+    6,
+    1.5
+   ],
+   "name": "ransom_slap",
+   "note": 72
+  },
+  {
+   "at": [
+    6,
+    1.75
+   ],
+   "name": "ransom_slap",
+   "note": 74
+  },
+  {
+   "at": [
+    6,
+    2
+   ],
+   "name": "ransom_slap",
+   "note": 76
+  },
+  {
+   "at": [
+    6,
+    2.25
+   ],
+   "name": "ransom_slap",
+   "note": 79
+  },
+  {
+   "at": [
+    6,
+    3
+   ],
+   "name": "piik_chirp"
+  },
+  {
+   "at": [
+    6,
+    4
+   ],
+   "name": "sparkle"
+  },
+  {
+   "at": [
+    7,
+    1
+   ],
+   "name": "panel_slam",
+   "gain": -4
+  },
+  {
+   "at": [
+    7,
+    1
+   ],
+   "name": "card_fly"
+  },
+  {
+   "at": [
+    7,
+    1.25
+   ],
+   "name": "card_fly"
+  },
+  {
+   "at": [
+    7,
+    1.5
+   ],
+   "name": "card_fly"
+  },
+  {
+   "at": [
+    7,
+    1.75
+   ],
+   "name": "card_fly"
+  },
+  {
+   "at": [
+    7,
+    3.5
+   ],
+   "name": "ui_hover"
+  },
+  {
+   "at": [
+    8,
+    1
+   ],
+   "name": "ui_click"
+  },
+  {
+   "at": [
+    8,
+    1
+   ],
+   "name": "card_flip"
+  },
+  {
+   "at": [
+    8,
+    2
+   ],
+   "name": "whoosh_up"
+  },
+  {
+   "at": [
+    8,
+    3
+   ],
+   "name": "stamp"
+  },
+  {
+   "at": [
+    9,
+    1
+   ],
+   "name": "panel_slam",
+   "gain": -4
+  },
+  {
+   "at": [
+    9,
+    1.5
+   ],
+   "name": "ui_click"
+  },
+  {
+   "at": [
+    9,
+    2
+   ],
+   "name": "ui_confirm"
+  },
+  {
+   "at": [
+    9,
+    3
+   ],
+   "name": "card_flip"
+  },
+  {
+   "at": [
+    10,
+    1
+   ],
+   "name": "card_throw"
+  },
+  {
+   "at": [
+    10,
+    2
+   ],
+   "name": "whoosh_short",
+   "pitch": 0
+  },
+  {
+   "at": [
+    10,
+    2.25
+   ],
+   "name": "whoosh_short",
+   "pitch": 3
+  },
+  {
+   "at": [
+    10,
+    2.5
+   ],
+   "name": "whoosh_short",
+   "pitch": 7
+  },
+  {
+   "at": [
+    11,
+    1
+   ],
+   "name": "notif_ding",
+   "note": 81
+  },
+  {
+   "at": [
+    11,
+    1.5
+   ],
+   "name": "pop",
+   "note": 81
+  },
+  {
+   "at": [
+    11,
+    3
+   ],
+   "name": "notif_ding",
+   "note": 84
+  },
+  {
+   "at": [
+    11,
+    3.5
+   ],
+   "name": "pop",
+   "note": 84
+  },
+  {
+   "at": [
+    12,
+    1
+   ],
+   "name": "notif_ding",
+   "note": 88
+  },
+  {
+   "at": [
+    12,
+    1
+   ],
+   "name": "riser_short",
+   "until": [
+    13,
+    1
+   ]
+  },
+  {
+   "at": [
+    12,
+    1.5
+   ],
+   "name": "pop",
+   "note": 88
+  },
+  {
+   "at": [
+    12,
+    3
+   ],
+   "name": "stamp"
+  },
+  {
+   "at": [
+    13,
+    1
+   ],
+   "name": "plop_land",
+   "note": 65
+  },
+  {
+   "at": [
+    13,
+    1
+   ],
+   "name": "counter_tick"
+  },
+  {
+   "at": [
+    13,
+    2
+   ],
+   "name": "plop_land",
+   "note": 69
+  },
+  {
+   "at": [
+    13,
+    2
+   ],
+   "name": "counter_tick"
+  },
+  {
+   "at": [
+    13,
+    3
+   ],
+   "name": "plop_land",
+   "note": 72,
+   "gain": 2
+  },
+  {
+   "at": [
+    13,
+    3
+   ],
+   "name": "counter_tick"
+  },
+  {
+   "at": [
+    13,
+    4
+   ],
+   "name": "pop",
+   "note": 77
+  },
+  {
+   "at": [
+    14,
+    1
+   ],
+   "name": "title_slam"
+  },
+  {
+   "at": [
+    14,
+    3
+   ],
+   "name": "whoosh_short",
+   "gain": -8
+  },
+  {
+   "at": [
+    15,
+    1.25
+   ],
+   "name": "pop",
+   "note": 76,
+   "gain": -4
+  },
+  {
+   "at": [
+    15,
+    2
+   ],
+   "name": "pop",
+   "note": 79,
+   "gain": -4
+  },
+  {
+   "at": [
+    15,
+    2
+   ],
+   "name": "label_blip"
+  },
+  {
+   "at": [
+    15,
+    2.75
+   ],
+   "name": "pop",
+   "note": 81,
+   "gain": -4
+  },
+  {
+   "at": [
+    15,
+    3
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    15,
+    3.5
+   ],
+   "name": "pop",
+   "note": 84,
+   "gain": -4
+  },
+  {
+   "at": [
+    15,
+    3.5
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    15,
+    4
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    16,
+    1
+   ],
+   "name": "throw_whoosh"
+  },
+  {
+   "at": [
+    16,
+    1
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    16,
+    1
+   ],
+   "name": "label_blip"
+  },
+  {
+   "at": [
+    16,
+    1.5
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    16,
+    2
+   ],
+   "name": "splat"
+  },
+  {
+   "at": [
+    16,
+    2
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    16,
+    2
+   ],
+   "name": "label_blip"
+  },
+  {
+   "at": [
+    16,
+    3
+   ],
+   "name": "throw_whoosh"
+  },
+  {
+   "at": [
+    16,
+    3
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    16,
+    4
+   ],
+   "name": "poop_boing"
+  },
+  {
+   "at": [
+    17,
+    1
+   ],
+   "name": "voice_on"
+  },
+  {
+   "at": [
+    17,
+    1.5
+   ],
+   "name": "label_blip"
+  },
+  {
+   "at": [
+    18,
+    1
+   ],
+   "name": "box_in"
+  },
+  {
+   "at": [
+    18,
+    3
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    18,
+    3.5
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    18,
+    4
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    18,
+    4.5
+   ],
+   "name": "danmaku_tick"
+  },
+  {
+   "at": [
+    19,
+    1
+   ],
+   "name": "request_chime"
+  },
+  {
+   "at": [
+    19,
+    2.5
+   ],
+   "name": "ui_click"
+  },
+  {
+   "at": [
+    19,
+    3
+   ],
+   "name": "ui_confirm"
+  },
+  {
+   "at": [
+    19,
+    3
+   ],
+   "name": "handover_zap"
+  },
+  {
+   "at": [
+    20,
+    1
+   ],
+   "name": "box_in"
+  },
+  {
+   "at": [
+    20,
+    3
+   ],
+   "name": "tension_riser",
+   "until": [
+    21,
+    1
+   ]
+  },
+  {
+   "at": [
+    21,
+    1
+   ],
+   "name": "vs_impact"
+  },
+  {
+   "at": [
+    21,
+    3
+   ],
+   "name": "name_slam"
+  },
+  {
+   "at": [
+    21,
+    4
+   ],
+   "name": "name_slam"
+  },
+  {
+   "at": [
+    22,
+    1
+   ],
+   "name": "sting"
+  },
+  {
+   "at": [
+    22,
+    3
+   ],
+   "name": "fight_slam"
+  },
+  {
+   "at": [
+    23,
+    1
+   ],
+   "name": "bonk",
+   "pitch": 0
+  },
+  {
+   "at": [
+    23,
+    2.5
+   ],
+   "name": "bonk",
+   "pitch": 2
+  },
+  {
+   "at": [
+    23,
+    3
+   ],
+   "name": "bonk",
+   "pitch": -2
+  },
+  {
+   "at": [
+    24,
+    1
+   ],
+   "name": "bonk",
+   "pitch": 3
+  },
+  {
+   "at": [
+    24,
+    2
+   ],
+   "name": "bonk",
+   "pitch": 0
+  },
+  {
+   "at": [
+    24,
+    2.5
+   ],
+   "name": "bonk",
+   "pitch": 5
+  },
+  {
+   "at": [
+    24,
+    3
+   ],
+   "name": "crowd_ooh"
+  },
+  {
+   "at": [
+    24,
+    4
+   ],
+   "name": "bonk",
+   "pitch": -3
+  },
+  {
+   "at": [
+    25,
+    1
+   ],
+   "name": "cutin_whoosh"
+  },
+  {
+   "at": [
+    25,
+    1.25
+   ],
+   "name": "shing"
+  },
+  {
+   "at": [
+    25,
+    2
+   ],
+   "name": "hit_heavy"
+  },
+  {
+   "at": [
+    25,
+    3
+   ],
+   "name": "ko_impact"
+  },
+  {
+   "at": [
+    25,
+    3.5
+   ],
+   "name": "crowd_cheer"
+  },
+  {
+   "at": [
+    26,
+    1
+   ],
+   "name": "splat"
+  },
+  {
+   "at": [
+    26,
+    1.5
+   ],
+   "name": "splat",
+   "pitch": 3
+  },
+  {
+   "at": [
+    26,
+    2
+   ],
+   "name": "splat",
+   "pitch": -2
+  },
+  {
+   "at": [
+    26,
+    2.25
+   ],
+   "name": "poop_boing"
+  },
+  {
+   "at": [
+    26,
+    2.5
+   ],
+   "name": "splat",
+   "pitch": 5
+  },
+  {
+   "at": [
+    26,
+    3
+   ],
+   "name": "box_in"
+  },
+  {
+   "at": [
+    27,
+    1
+   ],
+   "name": "title_slam"
+  },
+  {
+   "at": [
+    27,
+    3
+   ],
+   "name": "cut_swish"
+  },
+  {
+   "at": [
+    27,
+    4
+   ],
+   "name": "cut_swish"
+  },
+  {
+   "at": [
+    28,
+    1
+   ],
+   "name": "cut_swish"
+  },
+  {
+   "at": [
+    28,
+    2
+   ],
+   "name": "cut_swish"
+  },
+  {
+   "at": [
+    28,
+    3
+   ],
+   "name": "cut_swish"
+  },
+  {
+   "at": [
+    28,
+    4
+   ],
+   "name": "cut_swish"
+  },
+  {
+   "at": [
+    29,
+    1
+   ],
+   "name": "fact_slam"
+  },
+  {
+   "at": [
+    29,
+    3
+   ],
+   "name": "fact_slam"
+  },
+  {
+   "at": [
+    30,
+    1
+   ],
+   "name": "fact_slam"
+  },
+  {
+   "at": [
+    30,
+    3
+   ],
+   "name": "fact_slam"
+  },
+  {
+   "at": [
+    31,
+    1
+   ],
+   "name": "fact_slam"
+  },
+  {
+   "at": [
+    31,
+    3
+   ],
+   "name": "card_throw"
+  },
+  {
+   "at": [
+    32,
+    1
+   ],
+   "name": "ransom_slap",
+   "note": 76
+  },
+  {
+   "at": [
+    32,
+    1.5
+   ],
+   "name": "ransom_slap",
+   "note": 79
+  },
+  {
+   "at": [
+    32,
+    2
+   ],
+   "name": "ransom_slap",
+   "note": 81
+  },
+  {
+   "at": [
+    32,
+    2.5
+   ],
+   "name": "ransom_slap",
+   "note": 84
+  },
+  {
+   "at": [
+    32,
+    3
+   ],
+   "name": "ransom_slap",
+   "note": 86
+  },
+  {
+   "at": [
+    32,
+    3.5
+   ],
+   "name": "ransom_slap",
+   "note": 84
+  },
+  {
+   "at": [
+    32,
+    4
+   ],
+   "name": "ransom_slap",
+   "note": 81
+  },
+  {
+   "at": [
+    32,
+    4.5
+   ],
+   "name": "ransom_slap",
+   "note": 79
+  },
+  {
+   "at": [
+    33,
+    1
+   ],
+   "name": "piik_chirp"
+  },
+  {
+   "at": [
+    33,
+    1
+   ],
+   "name": "sparkle"
+  },
+  {
+   "at": [
+    33,
+    3
+   ],
+   "name": "sparkle",
+   "gain": -6
+  }
+ ],
+ "lines": [
+  {
+   "at": [
+    1,
+    3
+   ],
+   "who": "tuan",
+   "mood": "bored",
+   "zh": "……又是跟电脑打。",
+   "en": "…CPU again.",
+   "beats": 3
+  },
+  {
+   "at": [
+    17,
+    1
+   ],
+   "who": "yuan",
+   "mood": "calm",
+   "zh": "要不……我来跟你打？",
+   "en": "Want me to play you?",
+   "beats": 3.5
+  },
+  {
+   "at": [
+    18,
+    1
+   ],
+   "who": "tuan",
+   "mood": "cocky",
+   "zh": "来啊！谁怕谁！",
+   "en": "Bring it!",
+   "beats": 2.5
+  },
+  {
+   "at": [
+    20,
+    1
+   ],
+   "who": "tuan",
+   "mood": "cocky",
+   "zh": "键盘给你，输了别哭。",
+   "en": "Keyboard's yours. Don't cry.",
+   "beats": 2
+  },
+  {
+   "at": [
+    26,
+    3
+   ],
+   "who": "tuan",
+   "mood": "whiny",
+   "zh": "……刚才不算！",
+   "en": "…That didn't count!",
+   "beats": 2
+  },
+  {
+   "at": [
+    26,
+    2
+   ],
+   "who": "cong",
+   "mood": "laugh",
+   "zh": "哈哈哈哈哈",
+   "en": "",
+   "beats": 2,
+   "subtitle": false
+  }
+ ],
+ "voices": {
+  "tuan": {
+   "desc": "阿团, host, green with crown. Mid pitch (~185 Hz), round, confident. Moods: bored (slow, low, falling), cocky (bouncy, rising), whiny (higher, wobbly)."
+  },
+  "yuan": {
+   "desc": "小圆, blue, the calm skilled one. ~250 Hz, smooth and soft, slightly breathy, unhurried."
+  },
+  "dian": {
+   "desc": "阿点, purple, hype friend. ~320 Hz, bubbly. (Only cheers / crowd reactions.)"
+  },
+  "cong": {
+   "desc": "大聪明, coral/pink, goofy troublemaker. ~150 Hz, wobbly, used for laughs and crowd reactions."
+  }
+ }
+}

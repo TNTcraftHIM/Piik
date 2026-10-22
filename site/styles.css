@@ -75,10 +75,7 @@ h1 { font-size: clamp(49px, 5.7vw, 76px); line-height: 1.06; margin-block: 22px 
 .film-preview > summary { justify-content:flex-start; padding:14px 0; }
 .film-preview > summary::after { content:none; }
 .film-collapse { margin-left:auto; font-size:12px; color:var(--muted); }
-.film-preview iframe { display:block; width:100%; height:calc(56.25cqw + 144px); border:0; }
-@container (max-width:740px) {
-  .film-preview iframe { height:calc(56.25cqw + 196px); }
-}
+.film-preview iframe { display:block; width:100%; aspect-ratio:16 / 9; height:auto; border:0; border-radius:16px; overflow:hidden; }
 .download-help { margin-top:22px; text-align:center; }
 .download-help > .button { margin-bottom:14px; }
 .download-help p { max-width:760px; margin:6px auto 0; color:var(--muted); font-size:13px; }

@@ -1,0 +1,32 @@
+html,body { width:1100px; height:740px; margin:0; overflow:hidden; background:var(--wall); }
+#camera { width:1100px; transform-origin:0 0; }
+.lr-app { min-height:740px; }
+.sample-game { display:block; width:100%; height:100%; grid-area:1 / 1 / -1 / -1; min-height:0; }
+.film-chat { position:absolute; z-index:40; left:0; top:0; width:1100px; height:740px; display:flex; flex-direction:column; background:#e8f3ef; color:#203037; }
+.film-chat header { display:flex; align-items:center; gap:21px; padding:28px 42px; border-bottom:2px solid #20303722; background:#faf5e7; }
+.chat-avatar { display:grid; place-items:center; width:65px; height:65px; border-radius:20px; background:#f3cc68; }
+.film-chat header div { display:grid; gap:8px; }
+.film-chat small { font-size:14px; letter-spacing:.08em; color:#53696b; }
+.film-chat strong { font-size:27px; }
+.chat-messages { display:flex; flex:1; flex-direction:column; align-items:flex-start; gap:42px; padding:48px 42px; }
+.chat-bubble { margin:0; border:1px solid #b5c7bd; border-radius:20px; padding:23px 28px; background:#faf5e7; font-size:24px; }
+.chat-mine { align-self:flex-end; background:#b8e2c9; }
+.chat-mine span { margin-left:22px; color:#37765a; }
+.chat-compose { display:flex; gap:18px; padding:28px 36px; border-top:1px solid #b5c7bd; background:#faf5e7; }
+.chat-compose input { flex:1; min-width:0; padding:19px 23px; border:2px solid #b5c7bd; border-radius:16px; font-size:24px; color:inherit; background:#fffefa; }
+.chat-compose button { display:flex; align-items:center; gap:12px; padding:16px 25px; border:0; border-radius:16px; font:700 23px var(--font); color:#faf5e7; background:#203037; }
+#cursor { position:absolute; left:0; top:0; z-index:100; pointer-events:none; transform-origin:0 0; }
+[hidden] { display:none !important; }
+/* The film supplies actions and samples; these controls retain product markup. */
+body { pointer-events:none; }
+/* Film close-ups frame the actual panel at a readable scale. Keep its native
+   placement effect from moving a paused shot after React has settled. */
+body:is([data-feature="voice"], [data-feature="arrive"]) .lr-interaction-panel {
+  left:520px !important; top:32px !important; width:420px !important;
+  height:480px !important; max-height:480px !important;
+  transform:scale(1.2) !important; transform-origin:top left;
+}
+body[data-feature="control"] .lr-remote-panel {
+  left:540px !important; top:32px !important; width:360px !important;
+  max-height:520px !important; transform:scale(1.15) !important; transform-origin:top left;
+}

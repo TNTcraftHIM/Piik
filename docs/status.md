@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-21
+Last updated: 2026-10-22
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -77,11 +77,12 @@ P2P and SFU, independent listening, picture continuity and voice-facet recovery.
 Controlled-network voice cases and platform package checks have passed; the
 release artifacts and operator records establish publication and deployment.
 Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
-The promotional film stays an online-review draft; export follows owner acceptance.
-The next local candidate adds room-aware connection presentation, a Host-owned
+The integrated local candidate adds room-aware connection presentation, a Host-owned
 room voice bitrate ceiling and shared local playback controls for the Host.
-It awaits owner acceptance; the route controller and published wire identifiers
+It is in visual and functional acceptance; the route controller and published wire identifiers
 are unchanged.
+The website selects the accepted promotional film A as its only film, with shared
+brand motion and task-based illustrated guides. The former 1.0 remains in Git history.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;
 release artifacts and operator records own exact delivery results.
 

@@ -5,5 +5,4 @@
 /* Align the feet with the wordmark baseline, allowing for the SVG's bottom inset. */
 .footer-identity { align-items:baseline; }
 .identity .mascot,.footer-identity > svg { translate:0 .1em; }
-.identity-dot { color:#e4572e; }
 @media(max-width:740px) { .identity { font-size:28px; gap:7px; } .identity .mascot { width:30px; height:30px; } }

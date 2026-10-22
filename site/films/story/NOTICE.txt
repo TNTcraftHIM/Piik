@@ -1,0 +1,41 @@
+Piik A² narrative film — not a public release.
+
+Music: Kevin MacLeod (incompetech.com).
+"Funky Chunk".
+Licensed under Creative Commons Attribution 4.0 International.
+https://creativecommons.org/licenses/by/4.0/
+Source recordings: https://incompetech.com/music/royalty-free/
+The local excerpts are trimmed to their measured beat, faded, reduced under
+dialogue, and mixed with character voices and original short percussion.
+No endorsement is implied. Retain this credit with any distributed recording.
+
+Character voice samples: Copyright (c) 2014 Josh Simmons.
+animalese.wav from revision 6f18a90 of https://github.com/Acedio/animalese.js
+CC BY 4.0. The source bank and license are retained in scripts/assets/.
+Voices use the existing Piik soft voice treatment: short pitch-shaped,
+interpolated and filtered syllables. Captions supply the words.
+
+Fonts: Anton (The Anton Project Authors), Noto Sans SC (Adobe).
+SIL Open Font License 1.1; full licenses accompany the local font assets.
+Noto Sans SC is a Google Fonts text subset for this review, served locally.
+https://github.com/google/fonts/tree/main/ofl/notosanssc
+
+Original film art and code: Piik contributors, MIT.
+Product UI: current Piik components in the existing inert film sandbox.
+These cuts contain no third-party gameplay footage.
+
+Pixel Platformer 1.2 sprites: Kenney, CC0 1.0.
+https://kenney.nl/assets/pixel-platformer
+Source archive: https://kenney.nl/media/pages/assets/pixel-platformer/33bb4921eb-1696667883/kenney_pixel-platformer.zip
+Original notice reproduced in pixel-platformer-NOTICE.txt.
+party-sprites.js embeds unmodified tilemap_packed.png and
+tilemap-characters_packed.png. The level, race choreography and film composition
+are original. It is an editorial game scenario, not a recording of a shipped game
+or remote session, product latency benchmark, or endorsement by the artist.
+
+Offline preview inputs: assets/story.mp3, display.woff2 and Anton are local.
+To edit the soundtrack, run node site/films/story/sound.mjs with FFmpeg on PATH
+or FFMPEG set to its executable. The full Funky Chunk source is cached in
+ignored build/films/story/funky-chunk-source.mp3; the script downloads it from
+https://incompetech.com/music/royalty-free/mp3-royaltyfree/Funky%20Chunk.mp3
+when absent. It writes the finished mix to assets/story.mp3.

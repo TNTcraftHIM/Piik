@@ -42,7 +42,7 @@ import {
 } from "../../../src/client/media/viewer-presentation";
 import { gameMarkup, createGame } from "../../assets/game.js";
 import { sketchMarkup } from "../../assets/sketch.js";
-import { BEAT, INVITE_CUES } from "../score.js";
+import { BEAT, INVITE_CUES } from "./score.js";
 import { point } from "./cursor";
 import "../../../src/client/styles.css";
 import "./ui.css";

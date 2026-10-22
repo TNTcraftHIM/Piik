@@ -1,0 +1,6 @@
+/* Film C — 沙发够长 PLENTY OF ROOM (9:16) */
+#stage { background: #ffd05a; color: #192530; }
+.big { position: absolute; white-space: nowrap; font: 900 120px/1 "Noto Sans SC"; color: #192530; }
+.sticker { position: absolute; white-space: nowrap; font: 900 120px/1.05 "Noto Sans SC"; color: #192530; paint-order: stroke fill; -webkit-text-stroke: 22px #fffefb; filter: drop-shadow(10px 12px 0 rgba(25,37,48,.9)); }
+.lab { font: 800 26px/1 "Barlow Condensed"; letter-spacing: .24em; text-transform: uppercase; white-space: nowrap; }
+.mono { font-family: "JetBrains Mono"; font-weight: 700; white-space: nowrap; }

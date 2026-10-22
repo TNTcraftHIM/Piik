@@ -130,15 +130,27 @@ npm run build:website
 npm run preview:website
 ```
 
-Open `http://127.0.0.1:18890`. Rebuild after editing source. The build bundles the
-film's real product components into an isolated demonstration frame; publishing
-`build/site/` needs no Node runtime or backend. Vite preview supplies HTTP byte
+Open `http://127.0.0.1:18890`. Rebuild after editing source. The homepage loads
+the selected A film only when opened and unloads it when closed. Its authored
+artwork does not automatically follow product UI changes. The build separately
+keeps the real component fixture at `/film/ui/index.html` for README screenshots;
+the homepage and A do not load that fixture. Publishing `build/site/` needs no
+Node runtime or backend. Vite preview supplies HTTP byte
 ranges for seeking the soundtrack. Keep asset links relative so both a custom
 domain and GitHub's `/Piik/` project path work. For a nested deployment, set
 `PIIK_DOCS_BASE=/Piik/docs/` when building; ordinary custom-domain builds use `/docs/`.
 
+Promotional-film candidates have a separate build so ordinary website rebuilds
+cannot remove the review gallery. Run `npm run build:films`, then
+`npm run preview:films`, and open `http://127.0.0.1:18896`.
+The [film studio](../../site/films/README.md) owns the retained films, embedding
+instructions and source updates. The ordinary build includes only A's required
+runtime, fonts, audio and notices; other candidates and the former 1.0 stay out
+of `build/site/`. The gallery's `/website/` is a copy of that ordinary build.
+
 The homepage, film and demonstration frames use content-hashed script/style
-bundles. Their HTML references come from the same build, including imported
+bundles; A's relative runtime tree also has one content-hashed directory.
+Their HTML references come from the same build, including imported
 dependencies; fixed filenames must not mix a new page with cached old controls
 or styles. Publish the complete output together.
 

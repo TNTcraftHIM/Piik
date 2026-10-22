@@ -1,0 +1,25 @@
+// The public homepage uses A; this independent gallery retains the other directions.
+export const films = [
+  { id: 'a', mark: 'A', title: ['The Calling Card', '预告状'],
+    description: ['An invitation brings distant friends onto one sofa.', '一张预告状，把散落各处的朋友叫到同一张沙发上。'],
+    duration: 64, aspect: '16 / 9', languages: ['en', 'zh-CN'], path: './embed.html?film=A' },
+  { id: 'e', mark: 'E', title: ['Defeat Boredom', '打倒无聊'],
+    description: ['Voice, chat and remote play become the party’s battle skills.', '把开麦、弹幕和远控变成招式，合力打倒「无聊」。'],
+    duration: 58, aspect: '16 / 9', languages: ['en', 'zh-CN'], path: './embed.html?film=E' },
+  { id: 'story', mark: 'A²', title: ['One More Player', '今晚，缺个对手'],
+    description: ['Our latest narrative draft. Chinese artwork; English finishing remains.', '我们最新的叙事样片。保留中文精修版，英文画面尚待完成。'],
+    duration: 63, aspect: '16 / 9', languages: ['zh-CN'], path: './story/?embedded=1', standalone: './story/', controls: true },
+  { id: 'c', mark: 'C', title: ['Plenty of Room', '沙发够长'],
+    description: ['One link, a growing sofa, and twenty friends.', '一个链接，一张越坐越长的沙发。'],
+    duration: 20, aspect: '9 / 16', languages: ['en', 'zh-CN'], path: './embed.html?film=C' },
+  { id: 'f', mark: 'F', title: ['Gold!', '出金了！'],
+    description: ['A lucky pull needs friends to witness it.', '攒了三个月的十连，得有人见证。'],
+    duration: 36, aspect: '9 / 16', languages: ['en', 'zh-CN'], path: './embed.html?film=F' },
+  { id: 'd', mark: 'D', title: ['Click, and Watch Together', '一起看，咔哒一下'],
+    description: ['A gentle walkthrough using Piik’s interface.', '用实际界面串起分享、加入和一起玩的过程。'],
+    duration: 52, aspect: '16 / 9', languages: ['en', 'zh-CN'], path: './embed.html?film=D' },
+  { id: 'g', mark: 'G', title: ['Mission Briefing', '作战会议'],
+    description: ['A graphic mission board built around the actual interface.', '把实际操作组织成一场热闹的作战会议。'],
+    duration: 46, aspect: '16 / 9', languages: ['en', 'zh-CN'], path: './embed.html?film=G' },
+
+];

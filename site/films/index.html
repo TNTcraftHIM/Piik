@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex"><meta name="color-scheme" content="light dark">
+  <title>Piik · Film studio</title>
+  <link rel="icon" href="./website/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./gallery.css">
+  <script type="module" src="./gallery.js"></script>
+</head>
+<body>
+  <header class="studio-header">
+    <a href="./" class="identity" data-brand aria-label="Piik"></a>
+    <span class="studio-label"><span lang="en">FILM STUDIO</span><span lang="zh-CN">宣传片工作台</span></span>
+    <div class="lr-lang" role="group" aria-label="Language"><button type="button" data-language="zh-CN" lang="zh-CN" aria-label="简体中文" aria-pressed="false">中</button><button type="button" data-language="en" lang="en" aria-label="English" aria-pressed="true">EN</button></div>
+  </header>
+  <main>
+    <section class="introduction">
+      <div><p class="eyebrow"><span lang="en">ONE PIIK · SEVEN FILMS</span><span lang="zh-CN">同一个 Piik，七种讲法</span></p><h1><span lang="en">Share the good stuff.</span><span lang="zh-CN">来，看点好康的。</span></h1></div>
+      <p><span lang="en">Watch the selected film and compare the other directions.</span><span lang="zh-CN">看看官网新片，也比较其他方向。</span></p>
+    </section>
+    <section class="screen" aria-labelledby="film-title">
+      <div class="film-heading"><div><span id="film-mark"></span><h2 id="film-title"></h2></div><a id="open-film" target="_blank" rel="noopener"><span lang="en">Open separately ↗</span><span lang="zh-CN">单独打开 ↗</span></a></div>
+      <div class="player-space"><iframe id="film-player" title="Piik film" allow="fullscreen" allowfullscreen></iframe></div>
+      <div class="film-caption"><p id="film-description"></p><span id="film-meta"></span></div>
+    </section>
+    <nav id="film-list" aria-label="Films"></nav>
+    <p class="studio-note"><span lang="en">Playback starts on click. Switching films stops the previous one. A is selected for the website; the other directions remain review drafts.</span><span lang="zh-CN">点击播放，切换时停止上一支。官网选用 A，其他方向保留为评审样片。</span></p>
+  </main>
+  <footer><span>Piik · Share the good stuff.</span><a href="./website/"><span lang="en">Website preview ↗</span><span lang="zh-CN">官网预览 ↗</span></a></footer>
+</body>
+</html>

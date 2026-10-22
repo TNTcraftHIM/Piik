@@ -1,0 +1,535 @@
+{
+ "film": "C",
+ "title": "沙发够长 · PLENTY OF ROOM (9:16 social cut)",
+ "bpm": 150,
+ "beatsPerBar": 4,
+ "bars": 12,
+ "length": 20.0,
+ "fps": 60,
+ "sampleRate": 48000,
+ "positionNote": "[bar, beat], 1-indexed; seconds = ((bar-1)*4 + (beat-1)) * 0.4. Bar = 1.6 s. 12 bars = 19.2 s + 0.8 s tail = 20.000 s total.",
+ "key": "C major, bright. Shares the 'royal road' chorus colour with film A (Fmaj9 - G - Em7 - Am7).",
+ "style": "Kawaii future bass, half-time feel (snare on 3): glossy detuned supersaw chords with sidechain pumping and pitch-bend swells, round sub/808, sparkly plucks and music-box bells, cute formant 'vocal chop' blips, crisp claps. Bouncy, sugary, punchy — the most 'impact' of the three films but still cute.",
+ "sections": [
+  {
+   "id": "intro",
+   "bar": 1,
+   "bars": 2,
+   "chords": [
+    "Fmaj7",
+    "G6"
+   ],
+   "music": "Sparse and a little lonely-but-cheeky: music-box melody + soft pluck, light shaker. Host lands at [1,1] (plop sfx)."
+  },
+  {
+   "id": "build",
+   "bar": 3,
+   "bars": 4,
+   "chords": [
+    "Am7",
+    "Fmaj7",
+    "C",
+    "G"
+   ],
+   "music": "Drums enter at [3,1]; every friend arriving is a pitched pop in SFX (quarters in bars 3-4, 8ths in bars 5-6) — keep the music supportive, chords swelling. Bar 6: snare roll + riser. Hit with the stamp at [6,3]; tiny gap at [6,4.5]."
+  },
+  {
+   "id": "drop",
+   "bar": 7,
+   "bars": 2,
+   "chords": [
+    "Fmaj9",
+    "G",
+    "Em7",
+    "Am7"
+   ],
+   "music": "DROP at [7,1]: full future-bass chorus (two chords per bar), main hook lead. Accents line up with the emoji-firework pops on every beat of bars 7-8."
+  },
+  {
+   "id": "post",
+   "bar": 9,
+   "bars": 2,
+   "chords": [
+    "Fmaj9",
+    "G6"
+   ],
+   "music": "Lighter groove under four text slams at [9,1] [9,3] [10,1] [10,3] (short stabs on each)."
+  },
+  {
+   "id": "outro",
+   "bar": 11,
+   "bars": 2,
+   "chords": [
+    "Fmaj9 -> Cmaj9",
+    "Cmaj9"
+   ],
+   "music": "Final Cmaj9 hit at [11,1] with the Piik sonic logo (piik_chirp, same sound as films A/B). Ring out and be silent by 20.0 s."
+  }
+ ],
+ "hits": [
+  [
+   3,
+   1
+  ],
+  [
+   6,
+   3
+  ],
+  [
+   7,
+   1
+  ],
+  [
+   7,
+   2
+  ],
+  [
+   7,
+   3
+  ],
+  [
+   7,
+   4
+  ],
+  [
+   8,
+   1
+  ],
+  [
+   8,
+   2
+  ],
+  [
+   8,
+   3
+  ],
+  [
+   8,
+   4
+  ],
+  [
+   9,
+   1
+  ],
+  [
+   9,
+   3
+  ],
+  [
+   10,
+   1
+  ],
+  [
+   10,
+   3
+  ],
+  [
+   11,
+   1
+  ]
+ ],
+ "stops": [
+  {
+   "from": [
+    6,
+    4.5
+   ],
+   "to": [
+    7,
+    1
+   ],
+   "note": "an 8th-note breath before the drop"
+  }
+ ],
+ "sfx": [
+  {
+   "at": [
+    1,
+    1
+   ],
+   "name": "plop_land",
+   "note": 60
+  },
+  {
+   "at": [
+    1,
+    3
+   ],
+   "name": "text_pop"
+  },
+  {
+   "at": [
+    2,
+    1
+   ],
+   "name": "text_pop"
+  },
+  {
+   "at": [
+    2,
+    1
+   ],
+   "name": "whoosh_short",
+   "gain": -6
+  },
+  {
+   "at": [
+    2,
+    3
+   ],
+   "name": "send_whoosh"
+  },
+  {
+   "at": [
+    3,
+    1
+   ],
+   "name": "pop_friend",
+   "note": 72
+  },
+  {
+   "at": [
+    3,
+    2
+   ],
+   "name": "pop_friend",
+   "note": 74
+  },
+  {
+   "at": [
+    3,
+    3
+   ],
+   "name": "pop_friend",
+   "note": 76
+  },
+  {
+   "at": [
+    3,
+    4
+   ],
+   "name": "pop_friend",
+   "note": 79
+  },
+  {
+   "at": [
+    4,
+    1
+   ],
+   "name": "pop_friend",
+   "note": 81
+  },
+  {
+   "at": [
+    4,
+    2
+   ],
+   "name": "pop_friend",
+   "note": 84
+  },
+  {
+   "at": [
+    4,
+    3
+   ],
+   "name": "pop_friend",
+   "note": 86
+  },
+  {
+   "at": [
+    4,
+    4
+   ],
+   "name": "pop_friend",
+   "note": 88
+  },
+  {
+   "at": [
+    5,
+    1
+   ],
+   "name": "pop_friend",
+   "note": 76
+  },
+  {
+   "at": [
+    5,
+    1.5
+   ],
+   "name": "pop_friend",
+   "note": 79
+  },
+  {
+   "at": [
+    5,
+    2
+   ],
+   "name": "pop_friend",
+   "note": 81
+  },
+  {
+   "at": [
+    5,
+    2.5
+   ],
+   "name": "pop_friend",
+   "note": 84
+  },
+  {
+   "at": [
+    5,
+    3
+   ],
+   "name": "pop_friend",
+   "note": 86
+  },
+  {
+   "at": [
+    5,
+    3.5
+   ],
+   "name": "pop_friend",
+   "note": 88
+  },
+  {
+   "at": [
+    5,
+    4
+   ],
+   "name": "pop_friend",
+   "note": 91
+  },
+  {
+   "at": [
+    5,
+    4.5
+   ],
+   "name": "pop_friend",
+   "note": 93
+  },
+  {
+   "at": [
+    6,
+    1
+   ],
+   "name": "pop_friend",
+   "note": 96
+  },
+  {
+   "at": [
+    6,
+    1.5
+   ],
+   "name": "pop_friend",
+   "note": 98
+  },
+  {
+   "at": [
+    6,
+    2
+   ],
+   "name": "pop_friend",
+   "note": 100
+  },
+  {
+   "at": [
+    6,
+    1
+   ],
+   "name": "riser_short",
+   "until": [
+    7,
+    1
+   ]
+  },
+  {
+   "at": [
+    6,
+    3
+   ],
+   "name": "stamp"
+  },
+  {
+   "at": [
+    7,
+    1
+   ],
+   "name": "impact_big"
+  },
+  {
+   "at": [
+    7,
+    1
+   ],
+   "name": "firework_pop",
+   "note": 84
+  },
+  {
+   "at": [
+    7,
+    2
+   ],
+   "name": "firework_pop",
+   "note": 88
+  },
+  {
+   "at": [
+    7,
+    3
+   ],
+   "name": "splat"
+  },
+  {
+   "at": [
+    7,
+    3
+   ],
+   "name": "firework_pop",
+   "note": 91
+  },
+  {
+   "at": [
+    7,
+    4
+   ],
+   "name": "firework_pop",
+   "note": 86
+  },
+  {
+   "at": [
+    8,
+    1
+   ],
+   "name": "firework_pop",
+   "note": 84
+  },
+  {
+   "at": [
+    8,
+    2
+   ],
+   "name": "firework_pop",
+   "note": 88
+  },
+  {
+   "at": [
+    8,
+    3
+   ],
+   "name": "poop_boing"
+  },
+  {
+   "at": [
+    8,
+    3
+   ],
+   "name": "firework_pop",
+   "note": 91
+  },
+  {
+   "at": [
+    8,
+    4
+   ],
+   "name": "firework_pop",
+   "note": 96
+  },
+  {
+   "at": [
+    9,
+    1
+   ],
+   "name": "text_slam"
+  },
+  {
+   "at": [
+    9,
+    3
+   ],
+   "name": "text_slam",
+   "pitch": 2
+  },
+  {
+   "at": [
+    10,
+    1
+   ],
+   "name": "text_slam",
+   "pitch": 4
+  },
+  {
+   "at": [
+    10,
+    3
+   ],
+   "name": "text_slam",
+   "pitch": 5
+  },
+  {
+   "at": [
+    11,
+    1
+   ],
+   "name": "piik_chirp"
+  },
+  {
+   "at": [
+    11,
+    1
+   ],
+   "name": "sparkle"
+  },
+  {
+   "at": [
+    11,
+    3
+   ],
+   "name": "sparkle",
+   "gain": 0
+  },
+  {
+   "at": [
+    12,
+    1
+   ],
+   "name": "label_blip",
+   "gain": 3
+  }
+ ],
+ "lines": [
+  {
+   "at": [
+    1,
+    3
+   ],
+   "who": "tuan",
+   "mood": "bored",
+   "zh": "一个人看片，",
+   "en": "Movie night, alone,",
+   "beats": 2
+  },
+  {
+   "at": [
+    2,
+    1
+   ],
+   "who": "tuan",
+   "mood": "bored",
+   "zh": "有点冷清。",
+   "en": "a bit lonely.",
+   "beats": 2
+  }
+ ],
+ "voices": {
+  "tuan": {
+   "desc": "Same 阿团 voice as films A/B."
+  }
+ },
+ "newSfxNotes": {
+  "text_pop": "soft bubbly pop for a caption appearing",
+  "pop_friend": "THE key sound: a cute round 'bloop' + tiny squish of a friend landing on the sofa, tuned to the note; must stay pleasant up to MIDI 100",
+  "impact_big": "drop impact: sub boom + bright noise burst + cymbal, cute not aggressive",
+  "firework_pop": "emoji firework: pitched pop + glitter tail (note given)",
+  "text_slam": "short punchy slam with a tiny pitched tick on top (pitch param)"
+ }
+}

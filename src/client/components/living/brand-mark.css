@@ -1,4 +1,5 @@
 .lr-brand-mark { display: block; flex: 0 0 auto; overflow: visible; }
+.identity-dot { color: #e4572e; }
 .lr-brand-loader { display: grid; width: 88px; height: 88px; place-items: center; color: currentColor; }
 .lr-brand-eye-open, .lr-brand-sparkles { opacity: 0; }
 .lr-brand-sparkles { stroke: #d7982b; stroke-width: 1.2; fill: #f4c14d; }
@@ -6,8 +7,8 @@
 
 /* One gesture for the product, website and film: antenna, wink, two sparks.
    Only the antenna moves; the frame, feet and lockup keep their position. */
-.lr-brand-mark:is(.is-animated, .is-once) { --brand-cycle: 4.8s; --brand-repeat: 1; }
-.lr-brand-mark.is-animated { --brand-repeat: infinite; }
+.lr-brand-mark:is(.is-animated, .is-once) { --brand-cycle: 4.8s; --brand-repeat: 1; --brand-end-open: 0; }
+.lr-brand-mark.is-animated { --brand-repeat: infinite; --brand-end-open: 1; }
 .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-shell > * {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
@@ -58,11 +59,13 @@
 }
 @keyframes lr-brand-eye-open {
   0%, 24% { opacity: 1; transform: scaleY(1); }
-  29%, 100% { opacity: 0; transform: scaleY(.15); }
+  29%, 96% { opacity: 0; transform: scaleY(.15); }
+  100% { opacity: var(--brand-end-open); transform: scaleY(var(--brand-end-open)); }
 }
 @keyframes lr-brand-eye-wink {
   0%, 24% { opacity: 0; }
-  29%, 100% { opacity: 1; }
+  29%, 96% { opacity: 1; }
+  100% { opacity: calc(1 - var(--brand-end-open)); }
 }
 @keyframes lr-brand-sparkle {
   0%, 27% { opacity: 0; transform: scale(.12) rotate(-20deg); }

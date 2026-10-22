@@ -1,0 +1,57 @@
+/* Film A — 预告状 THE CALLING CARD. graphic collage × industrial microtype on the Piik palette. */
+:root, :host {
+  --ink: #192530; --ink2: #121b24; --night: #0d141b; --cream: #f6f2e8; --paper: #fffefb;
+  --yellow: #ffd05a; --yellow2: #ffc634; --gold: #eaaa38; --red: #ff4a3d; --tomato: #e96c55;
+  --green: oklch(0.7015 0.1204 148.3619); --blue: oklch(0.7100 0.1156 235.7427);
+  --purple: oklch(0.7347 0.1109 308.7381); --orange: oklch(0.75 0.13 55);
+}
+#stage { background: var(--night); color: var(--cream); }
+.zh { font-family: "Noto Sans SC"; font-weight: 900; }
+.zhs { font-family: "Smiley Sans"; }
+.anton { font-family: Anton; letter-spacing: .01em; }
+.hud { font-family: "Barlow Condensed"; font-weight: 600; text-transform: uppercase; letter-spacing: .16em; }
+.mono { font-family: "JetBrains Mono"; font-weight: 600; }
+.nowrap { white-space: nowrap; }
+.center { display: flex; align-items: center; justify-content: center; }
+
+/* Angular dialog box */
+.dlg { position: absolute; transform-origin: 0% 100%; }
+.dlg .plate { position: absolute; left: 0; top: 0; background: var(--ink2); border: 6px solid var(--cream); box-shadow: 14px 14px 0 var(--yellow), 14px 14px 0 6px var(--ink2); transform: skewX(-12deg); }
+.dlg .name { position: absolute; padding: 6px 22px 8px; background: var(--yellow); color: var(--ink); border: 5px solid var(--ink2); font: 900 40px/1 "Noto Sans SC"; transform: rotate(-5deg); white-space: nowrap; }
+.dlg .name small { font: 600 20px/1 "Barlow Condensed"; letter-spacing: .14em; margin-left: 10px; vertical-align: middle; }
+.dlg .zhline { position: absolute; font: 900 58px/1.1 "Noto Sans SC"; color: var(--cream); white-space: nowrap; }
+.dlg .enline { position: absolute; font: 600 26px/1 "Barlow Condensed"; letter-spacing: .16em; color: var(--yellow); text-transform: uppercase; white-space: nowrap; }
+.dlg .tail { position: absolute; width: 0; height: 0; }
+
+/* microtype callouts */
+.callout { position: absolute; white-space: nowrap; }
+.callout .box { position: absolute; display: flex; align-items: baseline; gap: 12px; padding: 8px 16px 9px; background: var(--cream); color: var(--ink); border-left: 10px solid var(--red); }
+.callout .box b { font: 900 34px/1 "Noto Sans SC"; }
+.callout .box i { font: 600 20px/1 "Barlow Condensed"; letter-spacing: .18em; font-style: normal; }
+
+/* danmaku */
+.dm { position: absolute; white-space: nowrap; font: 800 50px/1 "Noto Sans SC"; color: #fff; -webkit-text-stroke: 9px var(--ink2); paint-order: stroke fill; letter-spacing: .02em; }
+.dm.y { color: var(--yellow); }
+.dm.p { color: #ffb3c7; }
+.dm.b { color: #a9dcff; }
+
+/* stamp */
+.stamp { position: absolute; padding: 10px 30px 14px; border: 10px solid var(--red); color: var(--red); font: 900 74px/1 "Noto Sans SC"; white-space: nowrap; border-radius: 14px; }
+.stamp small { display: block; font: 800 26px/1.2 "Barlow Condensed"; letter-spacing: .3em; text-align: center; margin-top: 6px; }
+
+/* screen bezel */
+.bezel { position: absolute; background: #1b2733; border-radius: 30px; box-shadow: 0 0 0 4px #0b1117, 0 30px 80px rgba(0,0,0,.55); }
+.bezel .content { position: absolute; left: 18px; top: 18px; right: 18px; bottom: 18px; border-radius: 16px; overflow: hidden; background: #0c1219; }
+.bezel .gloss { position: absolute; inset: 18px; border-radius: 16px; background: linear-gradient(160deg, rgba(255,255,255,.10), transparent 35%); pointer-events: none; }
+
+.live { position: absolute; display: flex; align-items: center; gap: 12px; padding: 10px 18px; background: var(--red); color: #fff; font: 900 30px/1 Anton; letter-spacing: .08em; border-radius: 10px; box-shadow: 6px 6px 0 var(--ink2); }
+.live i { width: 16px; height: 16px; border-radius: 50%; background: #fff; display: block; }
+
+/* The film clock owns the entrance; its held ending continues the shared gesture. */
+#stage .lr-brand-mark * { animation-play-state: paused; }
+#stage[data-ending-idle] .lr-brand-mark * { animation-play-state: running; }
+.a-ending-features { position: absolute; left: 200px; top: 705px; width: 1520px; height: 112px; display: grid; grid-template-columns: repeat(3, 1fr); align-items: center; background: var(--cream); color: var(--ink2); clip-path: polygon(1.5% 0, 100% 0, 98.5% 100%, 0 100%); }
+.a-ending-feature { display: flex; justify-content: center; align-items: center; gap: 24px; font: 900 42px/1 "Noto Sans SC"; white-space: nowrap; }
+.a-ending-feature + .a-ending-feature { border-left: 2px solid var(--ink2); }
+.a-ending-feature svg { flex: none; }
+.a-ending-features.is-english .a-ending-feature { font: 800 36px/1 "Barlow Condensed"; letter-spacing: .02em; }
