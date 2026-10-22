@@ -84,7 +84,7 @@
 @container media-stage (max-width: 760px) {
   /* Window actions stay direct at the upper edge; playback keeps one lower row.
      Both strips remain under the same visibility and interaction owner. */
-  .lr-tv-screen > .lr-playback { position: absolute; inset: 0; grid-area: 1 / 1 / 3 / 2; width: 100%; max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; pointer-events: none; }
+  .lr-tv-screen > .lr-playback.lr-media-controls { position: absolute; inset: 0; grid-area: 1 / 1 / 3 / 2; width: 100%; max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; pointer-events: none; }
   .lr-playback :is(.lr-playback-main, .lr-playback-window) { position: absolute; display: flex; align-items: center; gap: 4px; width: max-content; max-width: calc(100% - 16px); padding: 4px; border: 1px solid var(--control-edge); border-radius: 20px; background: var(--surface-glaze) var(--paper); box-shadow: 0 3px 0 color-mix(in srgb, var(--ink) 8%, transparent); pointer-events: auto; }
   .lr-playback-main { left: 50%; bottom: max(8px, env(safe-area-inset-bottom)); translate: -50% 0; }
   .lr-playback-window { top: 8px; right: 8px; }

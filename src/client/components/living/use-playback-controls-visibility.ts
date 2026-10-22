@@ -69,14 +69,16 @@ export function usePlaybackControlsVisibility(
         show();
       }
     }, options);
-    controls.addEventListener("pointerenter", (event) => {
-      if (event.pointerType !== "touch") {
+    // Compact strips share a transparent root spanning the picture. Track
+    // entry/exit through their actual descendants, not that root's rectangle.
+    controls.addEventListener("pointerover", (event) => {
+      if (event.pointerType !== "touch" && !(event.relatedTarget instanceof Node && controls.contains(event.relatedTarget))) {
         hoveringControls = true;
         show();
       }
     }, options);
-    controls.addEventListener("pointerleave", (event) => {
-      if (event.pointerType !== "touch") {
+    controls.addEventListener("pointerout", (event) => {
+      if (event.pointerType !== "touch" && !(event.relatedTarget instanceof Node && controls.contains(event.relatedTarget))) {
         hoveringControls = false;
         scheduleHide();
       }

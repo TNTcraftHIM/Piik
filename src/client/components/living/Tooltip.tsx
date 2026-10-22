@@ -223,7 +223,7 @@ export function Tooltip({
     const sideTop = Math.max(y + EDGE_MARGIN, Math.min(centerY - panelHeight / 2, bottom - panelHeight - EDGE_MARGIN));
     const fitsSideVertically = sideTop >= y + EDGE_MARGIN && sideTop + panelHeight <= (bottom || Infinity) - EDGE_MARGIN;
     // Use empty side space only when the whole panel fits close to its control.
-    // Otherwise clear the entire playback bar, including its narrow second row.
+    // Otherwise clear the entire strip that owns this control.
     if (playback) {
       // The screen edge is the side boundary when available, so a side panel
       // never hangs over the picture while clearing the bar.
