@@ -290,6 +290,7 @@ html[lang="zh-CN"] .eyebrow { letter-spacing: .13em; }
   h1, html[lang="zh-CN"] h1 { font-size: clamp(34px, 11.5vw, 43px); }
   .hero-actions .button { gap: 18px; padding-inline: 18px; }
   .site-header { column-gap: 8px; }
+  .site-header nav { column-gap: 8px; }
   .preferences { gap: 6px; }
   .steps li { grid-template-columns: 99px 1fr; column-gap: 10px; }
   .steps h3 { font-size: 16px; }

@@ -76,6 +76,7 @@ export function ControlsPreview() {
   const [name, setName] = useState("Piik friend");
   const [invalid, setInvalid] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(displayPreview);
+  const [sourceRevision, setSourceRevision] = useState(0);
   const [sourceState, setSourceState] = useState<NativeSourceList["kind"] | "empty">("ready");
   const [captureBorderAvailable, setCaptureBorderAvailable] = useState(true);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
@@ -270,13 +271,16 @@ export function ControlsPreview() {
         {en ? ["Available", "Loading", "App unavailable", "Update needed", "Capture unavailable", "Read failed", "Empty list"][index] : ["正常", "读取中", "App 未连接", "需要更新", "无法采集", "读取失败", "空列表"][index]}</Chip>)}
         <SwitchItem checked={captureBorderAvailable} onChange={setCaptureBorderAvailable}
           label={en ? "Windows border control" : "Windows 边框控制"} />
-        <a className="lr-btn" href="/__tooltip-preview?source=display#source-preview" onClick={() => setSourceOpen(true)}>
+        <a className="lr-btn" href="/__tooltip-preview?source=display#source-preview" onClick={() => {
+          // The same URL does not remount the picker or reset its selected tab.
+          setSourceState("ready"); setSourceOpen(true); setSourceRevision(value => value + 1);
+        }}>
           <Glyph name="speakerOff" size={18} />{t("host.sourcePicker.excludeAudio")}
         </a>
       </div>
       <div className="cp-stage"><StageTv hasEntry label={t("host.sourcePicker.title")}>
         <img className="cp-poster" src={POSTER} alt="" />
-        {sourceOpen ? <CaptureSourcePicker nativeSources={sourceState === "empty" ? { ...SOURCES, sources: [], captureBorderControl: captureBorderAvailable }
+        {sourceOpen ? <CaptureSourcePicker key={sourceRevision} nativeSources={sourceState === "empty" ? { ...SOURCES, sources: [], captureBorderControl: captureBorderAvailable }
           : sourceState === "ready" ? { ...SOURCES, captureBorderControl: captureBorderAvailable } : { kind: sourceState }}
           initialShowCaptureBorder={showCaptureBorder}
           initialTab={displayPreview ? "display" : "window"}

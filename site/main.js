@@ -137,6 +137,9 @@ function syncThemeControl() {
 theme.addEventListener('click', (event) => {
   if (event.detail !== 0) theme.blur();
   applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  const url = new URL(location.href);
+  url.searchParams.set('theme', currentTheme());
+  history.replaceState(history.state, '', url);
 });
 subscribeTheme(() => {
   syncThemeControl();
