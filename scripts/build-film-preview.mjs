@@ -19,7 +19,7 @@ await cp(new URL('external/', source), new URL('external/', output), {
     path !== fileURLToPath(new URL('external/README.md', source)),
 });
 await cp(new URL('../src/client/components/living/brand-mark.css', import.meta.url), new URL('external/engine/brand-mark.css', output));
-await build({ entryPoints: ['gallery.js', 'gallery.css'].map(file => fileURLToPath(new URL(file, source))),
+await build({ entryPoints: ['gallery.js', 'gallery.css', 'player-theme.css'].map(file => fileURLToPath(new URL(file, source))),
   outdir: fileURLToPath(output), bundle: true, format: 'esm', minify: true, logLevel: 'warning' });
 
 const story = new URL('story/', source), storyOutput = new URL('story/', output);

@@ -1,3 +1,5 @@
-html,body { margin:0; min-height:100%; background:#0d141b; }
+@import "../films/player-theme.css";
+
+html,body { margin:0; min-height:100%; background:var(--piik-dark-wall); }
 body { display:grid; place-items:center; }
 piik-promo { width:min(100vw,calc(100dvh * 16 / 9)); }

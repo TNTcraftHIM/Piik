@@ -1,0 +1,3 @@
+/* Film controls inherit the same colour, size and motion tokens as the site. */
+@import "../../src/client/ui/palette.css";
+@import "../../src/client/components/living/button.css";

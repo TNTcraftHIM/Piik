@@ -11,30 +11,41 @@ export const FILMS = {
 };
 
 const UI_CSS = `
-:host { all: initial; display: block; position: relative; container-type: inline-size; font: 16px/1.2 system-ui, sans-serif; color: #192530; width: 100%; aspect-ratio: var(--ar, 16 / 9); background: #0d141b; overflow: hidden; border-radius: var(--piik-radius, 0px); contain: content; -webkit-tap-highlight-color: transparent; }
+:host { all: initial; display: block; position: relative; container-type: inline-size; font: 16px/1.2 system-ui, sans-serif; color: var(--ink); width: 100%; aspect-ratio: var(--ar, 16 / 9); background: var(--piik-dark-wall); overflow: hidden; border-radius: var(--piik-radius, 0px); contain: content; -webkit-tap-highlight-color: transparent; }
 :host([hidden]) { display: none; }
 .pk-frame { position: absolute; inset: 0; }
 #wrap { position: absolute; left: 0; top: 0; overflow: hidden; }
 #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-.pk-cover { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(13,20,27,.0), rgba(13,20,27,.35)); cursor: pointer; transition: opacity .25s; }
+.pk-cover { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(transparent, color-mix(in srgb, var(--piik-dark-wall) 24%, transparent)); cursor: pointer; transition: opacity .25s; }
 .pk-cover[hidden], .pk-loading[hidden], .pk-status:empty { display: none; }
-.pk-big { width: clamp(64px, 11%, 120px); aspect-ratio: 1; border-radius: 50%; border: 0; background: #fffefb; color: #192530; box-shadow: 0 6px 0 rgba(25,37,48,.35), 0 14px 30px rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; cursor: pointer; transform: translateY(0); transition: transform .12s, box-shadow .12s; }
-.pk-big:hover { transform: translateY(-2px); } .pk-big:active { transform: translateY(4px); box-shadow: 0 2px 0 rgba(25,37,48,.35), 0 8px 18px rgba(0,0,0,.3); }
-.pk-big svg { width: 42%; height: 42%; margin-left: 8%; }
-.pk-bar { position: absolute; left: clamp(6px, 1.2cqw, 12px); right: clamp(6px, 1.2cqw, 12px); bottom: clamp(6px, 1.2cqw, 12px); height: clamp(30px, 4.6cqw, 44px); display: flex; align-items: center; gap: clamp(4px, 1cqw, 10px); padding: 0 clamp(4px, 1cqw, 10px); border-radius: 22px; background: rgba(255,254,251,.94); color: #192530; box-shadow: 0 3px 0 rgba(25,37,48,.25), 0 10px 24px rgba(0,0,0,.22); font: 600 13px/1 system-ui, sans-serif; opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; }
-:host(:hover) .pk-bar, .pk-bar.show, :host(:focus-within) .pk-bar { opacity: 1; transform: none; }
-.pk-bar button { width: clamp(24px, 3.2cqw, 30px); height: clamp(24px, 3.2cqw, 30px); border: 0; border-radius: 15px; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
-.pk-bar button:hover { background: rgba(25,37,48,.08); }
-.pk-bar svg { width: clamp(14px, 1.9cqw, 18px); height: clamp(14px, 1.9cqw, 18px); }
-.pk-track { flex: 1; min-width: 0; height: 30px; margin: 0; accent-color: #d69e12; cursor: pointer; }
-.pk-time { min-width: clamp(60px, 8cqw, 76px); font-size: clamp(11px, 1.4cqw, 13px); text-align: right; font-variant-numeric: tabular-nums; }
-.pk-lang { width: auto !important; padding: 0 8px !important; font: 800 12px/1 system-ui, sans-serif; letter-spacing: .04em; }
-.pk-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #f6f2e8; font: 600 13px system-ui, sans-serif; letter-spacing: .12em; opacity: .6; }
+.pk-big { width: clamp(56px, 9cqw, 88px); aspect-ratio: 1; border-radius: 50%; border: var(--control-border-width) solid var(--control-edge); background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); display: grid; place-items: center; cursor: pointer; transition: var(--control-motion), background-color 140ms ease; }
+.pk-big:is(:hover,:focus-visible) { transform: var(--control-hover-transform); background: var(--control-hover); }
+.pk-big:active { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
+.pk-big svg { width: 40%; height: 40%; translate: 1px; }
+.pk-bar { position: absolute; inset: auto 0 0; display: grid; padding: 12px clamp(12px, 2cqw, 24px) max(6px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, color-mix(in srgb, var(--piik-dark-wall) 92%, transparent)); color: var(--piik-dark-ink); font: 600 12px/1 system-ui, sans-serif; opacity: 0; pointer-events: none; transform: translateY(6px); transition: opacity 180ms ease, transform 220ms var(--spring); }
+.pk-bar.show, :host(:focus-visible) .pk-bar, .pk-bar:has(:focus-visible, :active) { opacity: 1; pointer-events: auto; transform: none; }
+.pk-row { display: flex; align-items: center; gap: 4px; }
+.pk-bar button { flex: none; width: var(--control-dense-size); height: var(--control-dense-size); border: 0; border-radius: 50%; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; padding: 0; transition: var(--control-motion), background-color 140ms ease; }
+.pk-bar button[hidden] { display: none; }
+.pk-bar button:is(:hover,:focus-visible) { background: color-mix(in srgb, currentColor 14%, transparent); transform: var(--control-hover-transform); }
+.pk-bar button:active { transform: var(--control-press-transform); transition-duration: 80ms; }
+.pk-bar svg { width: var(--control-icon-size); height: var(--control-icon-size); }
+button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+.pk-track { appearance: none; width: 100%; min-width: 0; height: 20px; padding: 0; margin: 0; background: transparent; color: inherit; cursor: pointer; }
+.pk-track::-webkit-slider-runnable-track { height: 3px; border-radius: 3px; background: linear-gradient(to right, currentColor var(--progress, 0%), color-mix(in srgb, currentColor 30%, transparent) var(--progress, 0%)); }
+.pk-track::-moz-range-track { height: 3px; border-radius: 3px; background: linear-gradient(to right, currentColor var(--progress, 0%), color-mix(in srgb, currentColor 30%, transparent) var(--progress, 0%)); }
+.pk-track::-webkit-slider-thumb { appearance: none; width: 9px; height: 9px; margin-top: -3px; border: 0; border-radius: 50%; background: currentColor; }
+.pk-track::-moz-range-thumb { width: 9px; height: 9px; border: 0; border-radius: 50%; background: currentColor; }
+.pk-time { margin-inline: 6px auto; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 500; }
+.pk-lang { font: 700 12px/1 system-ui, sans-serif; }
+.pk-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--piik-dark-ink); font: 600 13px system-ui, sans-serif; opacity: .8; }
 :host([controls="none"]) .pk-bar { display: none; }
-:host(:not([data-playing])) .pk-bar { opacity: 1; transform: none; }
-button:focus-visible, input:focus-visible { outline: 3px solid #3778c8; outline-offset: 2px; }
-.pk-status { position: absolute; top: 12px; left: 12px; right: 12px; margin: 0; padding: 10px 14px; background: #fffefb; color: #192530; font: 14px/1.4 system-ui, sans-serif; border-radius: 12px; }
-@media (hover: none) { .pk-bar { opacity: 1; transform: none; } }
+:host(:not([data-playing]):not([data-ended])) .pk-bar { opacity: 1; pointer-events: auto; transform: none; }
+button:focus-visible, input:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.pk-status { position: absolute; top: 12px; left: 12px; right: 12px; margin: 0; padding: 10px 14px; background: var(--paper); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; border-radius: 12px; }
+@media (pointer: coarse) { .pk-bar button { width: var(--control-compact-size); height: var(--control-compact-size); } }
+@container (max-width: 360px) { .pk-row { gap: 2px; } .pk-time { margin-inline: 4px auto; font-size: 11px; } }
+@media (hover: hover) { .pk-bar:hover { opacity: 1; pointer-events: auto; transform: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
 `;
 const ICON = {
@@ -43,6 +54,8 @@ const ICON = {
   sound: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>',
   mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10Z"/><path d="m17 9 5 6m0-6-5 6"/></svg>',
   full: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  exitFull: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5"/></svg>',
+  replay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a9 9 0 1 1 1 7M3 4v6h6"/></svg>',
 };
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -55,10 +68,10 @@ export class PiikPromo extends HTMLElement {
     root.innerHTML = '<style>' + UI_CSS + '</style><style class="film"></style>' +
       '<div class="pk-frame"><div id="wrap"></div></div><div class="pk-loading" role="status"></div>' +
       '<div class="pk-cover" hidden><button type="button" class="pk-big">' + ICON.play + '</button></div>' +
-      '<div class="pk-bar" part="controls"><button type="button" class="pk-pp"></button>' +
-      '<input class="pk-track" type="range" min="0" max="0" step="0.01" value="0">' +
+      '<div class="pk-bar" part="controls"><input class="pk-track" type="range" min="0" max="0" step="0.01" value="0">' +
+      '<div class="pk-row"><button type="button" class="pk-pp"></button><button type="button" class="pk-snd"></button>' +
       '<span class="pk-time">0:00 / 0:00</span><button type="button" class="pk-lang"></button>' +
-      '<button type="button" class="pk-snd"></button><button type="button" class="pk-fs">' + ICON.full + '</button></div>' +
+      '<button type="button" class="pk-fs"></button></div></div>' +
       '<p class="pk-status" role="status"></p><audio preload="none"></audio>';
     this.$ = sel => root.querySelector(sel);
     this.audio = this.$('audio');
@@ -110,6 +123,12 @@ export class PiikPromo extends HTMLElement {
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.pause(); else this.sync(); }, options);
     window.addEventListener('pagehide', () => this.pause(), options);
     document.addEventListener('fullscreenchange', () => this.sync(), options);
+    for (const type of ['pointermove', 'pointerdown', 'pointerup', 'keydown']) {
+      this.addEventListener(type, () => this.showControls(), options);
+    }
+    this.addEventListener('pointerleave', event => {
+      if (event.pointerType !== 'touch') this.hideControls();
+    }, options);
     this._motion.addEventListener('change', () => { if (this._motion.matches) this.pause(); }, options);
     this._ro = new ResizeObserver(() => this.fit());
     this._ro.observe(this);
@@ -125,6 +144,7 @@ export class PiikPromo extends HTMLElement {
   }
   disconnectedCallback() {
     this.pause();
+    this.hideControls();
     this._loadController?.abort();
     this._loadController = null;
     this._loading = null;
@@ -152,6 +172,16 @@ export class PiikPromo extends HTMLElement {
   set currentTime(value) { this.seek(value); }
   get muted() { return this.audio.muted; }
   set muted(value) { this.audio.muted = !!value; this.sync(); }
+  showControls() {
+    clearTimeout(this._controlsTimer);
+    this.$('.pk-bar').classList.add('show');
+    // As in room playback, idle controls yield the picture after two seconds.
+    this._controlsTimer = setTimeout(() => this.hideControls(), 2000);
+  }
+  hideControls() {
+    clearTimeout(this._controlsTimer);
+    this.$('.pk-bar').classList.remove('show');
+  }
   status(en, zh) { this.$('.pk-status').textContent = this.lang2() === 'zh' ? zh : en; }
   sync() {
     const zh = this.lang2() === 'zh';
@@ -160,23 +190,27 @@ export class PiikPromo extends HTMLElement {
     this.toggleAttribute('data-playing', this.playing);
     this.setAttribute('role', 'group');
     this.setAttribute('aria-label', this.meta?.title[this.lang2()] || label('Piik film', 'Piik 短片'));
-    this.$('.pk-pp').innerHTML = this.playing ? ICON.pause : ICON.play;
+    this.$('.pk-pp').innerHTML = this.playing ? ICON.pause : this.t >= this.duration && this.duration ? ICON.replay : ICON.play;
     this.$('.pk-pp').setAttribute('aria-label', play);
     this.$('.pk-big').setAttribute('aria-label', play);
     const heldEnd = this.meta?.holdEnd && this.duration && this.t >= this.duration;
+    this.toggleAttribute('data-ended', !!heldEnd);
     this.$('.pk-cover').hidden = this.playing || !!this._loading || heldEnd;
     this.film?.stage.toggleAttribute('data-ending-idle', !!heldEnd && !this.playing && this.isConnected && this._inView && !document.hidden);
     this.$('.pk-track').disabled = !this.film;
     this.$('.pk-track').max = String(this.duration);
-    this.$('.pk-track').value = String(this.currentTime);
+    this.$('.pk-track').value = String(this._poster ? 0 : this.currentTime);
     this.$('.pk-track').setAttribute('aria-label', label('Film position', '播放进度'));
     this.$('.pk-lang').textContent = zh ? 'EN' : '中';
     this.$('.pk-lang').setAttribute('aria-label', zh ? 'Switch to English' : '切换到简体中文');
     this.$('.pk-snd').innerHTML = this.muted ? ICON.mute : ICON.sound;
     this.$('.pk-snd').setAttribute('aria-label', this.muted ? label('Unmute', '开启声音') : label('Mute', '静音'));
     this.$('.pk-snd').setAttribute('aria-pressed', String(this.muted));
-    this.$('.pk-fs').setAttribute('aria-label', document.fullscreenElement === this ? label('Exit fullscreen', '退出全屏') : label('Fullscreen', '全屏'));
+    const fullscreen = document.fullscreenElement === this;
+    this.$('.pk-fs').innerHTML = fullscreen ? ICON.exitFull : ICON.full;
+    this.$('.pk-fs').setAttribute('aria-label', fullscreen ? label('Exit fullscreen', '退出全屏') : label('Fullscreen', '全屏'));
     this.$('.pk-fs').hidden = !document.fullscreenEnabled;
+    for (const button of this.shadowRoot.querySelectorAll('.pk-bar button')) button.title = button.getAttribute('aria-label');
     this.$('.pk-loading').hidden = !this._loading;
     this.$('.pk-loading').textContent = label('Loading film…', '正在加载短片…');
   }
@@ -337,8 +371,10 @@ export class PiikPromo extends HTMLElement {
     if (!this.film) return;
     const t = this.currentTime;
     this.film.render(Math.min(this.duration - 1e-3, Math.max(0, t)));
-    this.$('.pk-track').value = String(t);
-    const value = fmt(t) + ' / ' + fmt(this.duration);
+    const position = this._poster ? 0 : t;
+    this.$('.pk-track').value = String(position);
+    this.$('.pk-track').style.setProperty('--progress', `${position / this.duration * 100}%`);
+    const value = fmt(position) + ' / ' + fmt(this.duration);
     this.$('.pk-track').setAttribute('aria-valuetext', value);
     if (this.$('.pk-time').textContent !== value) {
       this.$('.pk-time').textContent = value;
