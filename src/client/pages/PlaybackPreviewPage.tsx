@@ -3,7 +3,7 @@ import type { VideoFit, VideoRotation } from "../media/video-geometry";
 import { AppHeader } from "../components/living/Header";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { RemoteControl } from "../components/living/RemoteControl";
-import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
+import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { StageOverlay, StageTv } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { useTheaterMode } from "../components/living/use-theater-mode";
@@ -201,6 +201,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
             canPlay={Boolean(stream) && !waiting} theaterMode={theaterMode} onPlay={play}
             onToggleTheater={() => setTheaterMode((value) => !value)}
             overlayAction={<RoomChatToggle session={session} />}
+            overlaySettings={session && <RoomChatOverlaySettings session={session} />}
             remoteActions={viewer && remote ? <RemoteControl channel={remoteInput} videoRef={videoRef}
               available={Boolean(stream) && !waiting} pictureFit={pictureFit} pictureRotation={pictureRotation} /> : undefined}
             onReconnect={viewer ? () => start(hasAudio) : undefined} reconnectAvailable={viewer && Boolean(stream)} />

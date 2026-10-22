@@ -34,8 +34,11 @@ The window cannot show the game through its background or let mouse clicks pass 
 **On screen**, beside the message box or in the playback bar, shows new
 messages over the picture. It is off by default and only changes your own view.
 The settings button beside the Chat/Voice tabs opens the current page's settings;
-**Back** returns to that page. **Chat settings** contains text size and opacity.
-Playback settings remain dedicated to picture display and connection preferences.
+**Back** returns to that page. **Playback settings → On-screen chat** contains
+text size, opacity, scroll speed and **Use participant colors**. Colors follow
+the sender's seat; white is the default. These choices only affect your picture.
+Speed changes apply to new messages, so moving text does not jump.
+**Chat settings** keeps the chat export action.
 System video fullscreen and picture in picture cannot show these overlays.
 
 Stopping a share keeps the room's chat available. App Local and Public invite

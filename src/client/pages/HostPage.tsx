@@ -28,7 +28,7 @@ import { SharingSettings } from "../components/living/SharingSettings";
 import { HostShareControls } from "../components/living/HostShareControls";
 import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import { RoomInteractions } from "../components/living/RoomInteractions";
-import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
+import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 import { isPictureInPicture } from "../components/living/use-picture-in-picture";
@@ -3690,6 +3690,7 @@ export function HostPage({
               onPlay={() => { previewPausedByUser.current = false; void videoRef.current?.play().catch(() => undefined); }}
               onPause={() => { previewPausedByUser.current = true; }}
               overlayAction={<RoomChatToggle session={interactionSession} />}
+              overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
               settings={{ pictureFit, pictureRotation,
                 setPictureFit: fit => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
                 setPictureRotation: rotation => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },

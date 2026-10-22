@@ -28,7 +28,7 @@ import {
 import { AppHeader, LedStrip } from "../components/living/Header";
 import type { CouchEntry } from "../components/living/Couch";
 import { RoomInteractions } from "../components/living/RoomInteractions";
-import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
+import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
 import { useRoomVoiceState } from "../room-voice/use-room-voice-state";
@@ -2336,6 +2336,7 @@ export function ViewerPage({
             />
             <PlaybackControls
               overlayAction={<RoomChatToggle session={interactionSession} />}
+              overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
               remoteActions={<RemoteControl channel={inputRoute.current} videoRef={videoRef}
                   pictureFit={pictureFit} pictureRotation={pictureRotation}
                   available={presentation.overlay === "none" && presentation.hasCurrentFrame} />}

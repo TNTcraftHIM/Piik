@@ -197,7 +197,9 @@ cancellation alone must not invalidate frame proof or disable local playback.
 
 The bar floats at the picture's lower edge. Group playback and sound, remote input,
 then picture display and window actions. Frequent viewing actions stay directly
-reachable; connection preferences stay in settings. Narrow screens shorten the
+reachable; on-screen chat appearance and connection preferences stay in playback
+settings, while chat settings own records. Picture fit has one direct cycling control.
+Narrow screens shorten the
 volume slider and move secondary display actions into settings before crowding
 input, rotation or fullscreen, preserving one row and 44px control height;
 the percentage readout hides on narrow screens.

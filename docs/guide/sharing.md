@@ -85,17 +85,17 @@ Move the pointer over the picture or tap it to show the playback bar.
 | Control | What it does |
 | --- | --- |
 | **Volume** | Goes up to 200% with audio boost, or 100% otherwise. Lower it if the sound distorts. |
-| **Picture fit** | Click to cycle: **Fit** keeps the whole picture visible; **Fill** crops its edges; **Stretch** changes its proportions. You can also choose directly in playback settings. |
+| **Picture fit** | Click to cycle: **Fit** keeps the whole picture visible; **Fill** crops its edges; **Stretch** changes its proportions. |
 | **Rotate picture** | Switches between portrait and landscape locally, without rotating the device or changing the shared source. |
 | **Theater mode** | Expands the picture inside the browser tab. |
 | **Picture in picture** | Opens a floating video where supported. |
 | **Fullscreen** | Expands the picture to the full screen. |
-| **Playback settings** | Choose picture fit and connection preferences. Connections default to **Auto**; available alternatives depend on the host and site. |
+| **Playback settings** | Adjust on-screen chat and connection preferences. Connections default to **Auto**; available alternatives depend on the host and site. |
 
 </div>
 
 On narrow screens, theater mode and picture in picture move into playback settings.
-When remote controls are also present, choose picture fit there too.
+When remote controls are also present, the volume slider hides; mute stays directly accessible.
 
 ### Connection preferences
 

@@ -16,10 +16,10 @@ function storage() {
 it("keeps independent room-tool choices across reads without storing private runtime fields", () => {
   const values = storage();
   saveRoomPreferences({ pictureFit: "cover", pictureRotation: 270, routePreference: "p2p", keyboardPage: "text", combineKeys: true });
-  saveRoomPreferences({ interactionEffects: false, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8,
+  saveRoomPreferences({ remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8,
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
   expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 270, routePreference: "p2p", keyboardPage: "text",
-    combineKeys: true, interactionEffects: false, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8,
+    combineKeys: true, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8,
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
 
   // Storage accepts only the preference contract, even if a caller supplies a
@@ -35,6 +35,8 @@ it("keeps independent room-tool choices across reads without storing private run
   expect(readRoomPreferences().pictureFit).toBe("cover");
   values.set("piik:room-preferences:v1", JSON.stringify({ pictureFit: "cover", pictureRotation: 45 }));
   expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 0 });
+  values.set("piik:room-preferences:v1", JSON.stringify({ overlayAppearance: { scale: 1.2, opacity: .7 } }));
+  expect(readRoomPreferences().overlayAppearance).toEqual({ scale: 1.2, opacity: .7, speed: 1, colorBySender: false });
 });
 
 it("rejects malformed saved data and invalid patches while retaining useful defaults", () => {
@@ -54,10 +56,10 @@ it("restores overlay choices in a new room without restoring messages or room au
   storage();
   const first = new RoomInteractionSession(() => true);
   first.setOverlayEnabled(true);
-  first.setOverlayAppearance({ scale: 100, opacity: -1 });
+  first.setOverlayAppearance({ scale: 100, opacity: -1, speed: .8, colorBySender: true });
   first.close();
   const next = new RoomInteractionSession(() => true);
-  expect(next.getSnapshot()).toMatchObject({ overlayEnabled: true, overlayAppearance: { scale: 1.3, opacity: .4 },
+  expect(next.getSnapshot()).toMatchObject({ overlayEnabled: true, overlayAppearance: { scale: 1.3, opacity: .4, speed: .8, colorBySender: true },
     ready: false, peerId: null, messages: [], overlayMessages: [], reactions: [], pending: null });
   next.close();
 });

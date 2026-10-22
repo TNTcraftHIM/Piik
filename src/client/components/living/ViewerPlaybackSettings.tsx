@@ -28,26 +28,20 @@ export interface ViewerPlaybackSettingsProps {
 }
 
 // Local display and connection intent; media and routing keep their owners.
-export function ViewerPlaybackSettings({ pictureFit, setPictureFit, route, relayVolunteer, displayActions, reconnect }: ViewerPlaybackSettingsProps & {
-  displayActions: ReactNode; reconnect: ReactNode;
+export function ViewerPlaybackSettings({ route, relayVolunteer, overlaySettings, displayActions, reconnect }: Pick<ViewerPlaybackSettingsProps, "route" | "relayVolunteer"> & {
+  overlaySettings?: ReactNode; displayActions: ReactNode; reconnect: ReactNode;
 }) {
   const { t, vis } = useCopy();
   const routeHint = route?.rejected ? "playback.routeRejected" : route?.sfuOnly ? "playback.routeSfuOnly"
     : route?.peerOnly ? "playback.routePeerOnly" : !route?.sfuAvailable ? "playback.routeNoSfu"
     : `playback.routeHint.${route.preference}` as const;
   return <div className="lr-viewer-settings">
-    <section aria-label={t("playback.pictureFit")}>
+    {overlaySettings && <section aria-label={t("playback.overlay")}>
       <div className="lr-viewer-settings-heading">
-        <h3><Glyph name="tv" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.pictureFit")}</span></h3>
+        <h3><Glyph name="danmaku" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.overlay")}</span></h3>
       </div>
-      <RowGroup>{(["contain", "cover", "fill"] as const).map(fit => <Chip key={fit}
-        selected={pictureFit === fit} title={t(`playback.fit.${fit}`)} hint={`hint-fit-${fit}`} onClick={() => setPictureFit(fit)}>
-        {vis && <Glyph name={fit === "contain" ? "fitContain" : fit === "cover" ? "fitCover" : "fitStretch"} size={20} />}
-        <Cap k={`playback.fit.${fit}`} />
-      </Chip>)}</RowGroup>
-      {!vis && <p>{t(pictureFit === "cover" ? "playback.fitCrop" : pictureFit === "fill" ? "playback.fitStretch" : "playback.fitFull")}</p>}
-      {displayActions}
-    </section>
+      {overlaySettings}
+    </section>}
     {(route || relayVolunteer || reconnect) && <section aria-label={t("playback.connection")}>
       <div className="lr-viewer-settings-heading">
         <h3><Glyph name="branch" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.connection")}</span></h3>
@@ -81,5 +75,6 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, route, relay
         {!vis && <p>{t("playback.relayVolunteerHint")}</p>}
       </div>}
     </section>}
+    {displayActions}
   </div>;
 }

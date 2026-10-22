@@ -15,7 +15,7 @@ import {
 import { CaptureSourcePicker } from "../../../src/client/components/living/CaptureSourcePicker";
 import { RoomInteractions } from "../../../src/client/components/living/RoomInteractions";
 import { RoomInteractionSession } from "../../../src/client/lib/room-interactions";
-import { RoomChatToggle } from "../../../src/client/components/living/RoomChatOverlay";
+import { RoomChatOverlaySettings, RoomChatToggle } from "../../../src/client/components/living/RoomChatOverlay";
 import { HostShareControls } from "../../../src/client/components/living/HostShareControls";
 import { PlaybackControlsView } from "../../../src/client/components/living/PlaybackControls";
 import { StatusIndicator } from "../../../src/client/components/living/StatusIndicator";
@@ -238,7 +238,8 @@ function Screen({ shot }: { shot: Shot }) {
                 settings={{ pictureFit: "contain", setPictureFit: noop, pictureRotation: 0, setPictureRotation: noop,
                   route: { preference: "auto", onChange: noop, sfuAvailable: true, sfuOnly: false, peerOnly: false,
                     disabled: false, rejected: false } }}
-                overlayAction={<RoomChatToggle session={session} />} />}
+                overlayAction={<RoomChatToggle session={session} />}
+                overlaySettings={<RoomChatOverlaySettings session={session} />} />}
               {shot === "picker" && (
                 <CaptureSourcePicker
                   nativeSources={{
