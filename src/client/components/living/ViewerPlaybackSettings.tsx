@@ -28,8 +28,8 @@ export interface ViewerPlaybackSettingsProps {
 }
 
 // Local display and connection intent; media and routing keep their owners.
-export function ViewerPlaybackSettings({ route, relayVolunteer, overlaySettings, displayActions, reconnect }: Pick<ViewerPlaybackSettingsProps, "route" | "relayVolunteer"> & {
-  overlaySettings?: ReactNode; displayActions: ReactNode; reconnect: ReactNode;
+export function ViewerPlaybackSettings({ route, relayVolunteer, overlaySettings, reconnect }: Pick<ViewerPlaybackSettingsProps, "route" | "relayVolunteer"> & {
+  overlaySettings?: ReactNode; reconnect: ReactNode;
 }) {
   const { t, vis } = useCopy();
   const routeHint = route?.rejected ? "playback.routeRejected" : route?.sfuOnly ? "playback.routeSfuOnly"
@@ -75,6 +75,5 @@ export function ViewerPlaybackSettings({ route, relayVolunteer, overlaySettings,
         {!vis && <p>{t("playback.relayVolunteerHint")}</p>}
       </div>}
     </section>}
-    {displayActions}
   </div>;
 }

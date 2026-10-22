@@ -57,6 +57,7 @@ export function Btn({
   type = "button",
   hint,
   hintText,
+  hintVars,
   hintTone,
   hintMotion,
   draw,
@@ -81,6 +82,7 @@ export function Btn({
   hint?: ComicKind | HintKind;
   /** Optional explanation beyond the control's accessible name. */
   hintText?: CopyKey;
+  hintVars?: Record<string, string>;
   hintTone?: ComicTone;
   hintMotion?: ComicMotion;
   /** Draw-in spot id for state-beat toggle icons (see Glyph). */
@@ -130,7 +132,7 @@ export function Btn({
     </button>
   );
   return hint ? (
-    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText) : label}>{button}</Tooltip>
+    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
   ) : (
     button
   );

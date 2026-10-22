@@ -193,8 +193,8 @@ export function Tooltip({
     const surface = wrap.closest<HTMLElement>("[popover], :fullscreen");
     const insideSurface = (element: HTMLElement | null) => element && (!surface || surface.contains(element)) ? element : null;
     // A wrapped control row remains one working area, including on narrow screens.
-    const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-playback, .lr-source-picker-options, .lr-host-share-controls"));
-    const playback = controlBar?.classList.contains("lr-playback");
+    const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-playback-main, .lr-playback-window, .lr-playback, .lr-source-picker-options, .lr-host-share-controls"));
+    const playback = Boolean(controlBar?.closest(".lr-playback"));
     const avoid = controlBar?.getBoundingClientRect() ?? rect;
     const screen = insideSurface(wrap.closest<HTMLElement>(".lr-tv-screen"));
     const player = screen?.getBoundingClientRect();

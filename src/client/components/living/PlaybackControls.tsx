@@ -161,26 +161,24 @@ export function PlaybackControlsView({
   const controlsId = useId();
   const localControlsRef = useRef<HTMLDivElement>(null);
   const barRef = controlsRef ?? localControlsRef;
-  const menuRef = useRef<HTMLDivElement>(null);
   const [chin, setChin] = useState<HTMLElement | null>(null);
   useEffect(() => {
     setChin(barRef.current?.closest(".lr-tv")?.querySelector<HTMLElement>(".lr-tv-chin") ?? null);
   }, [barRef]);
-  useAnchoredPopover(barRef, menuRef, { align: "center", minVisibleHeight: settings || overlaySettings ? 160 : Infinity });
   const silent = audio.muted || audio.level === 0;
   const percent = Math.round(audio.level * 100);
   const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
     : picture.active ? "playback.exitPip" : !canPlay ? "playback.pipWaiting" : "playback.pip";
   const theaterTitle = theaterMode ? "viewer.theater.exit" : "viewer.theater";
   const nextFit = settings?.pictureFit === "contain" ? "cover" : settings?.pictureFit === "cover" ? "fill" : "contain";
-  const displayActions = (caption: boolean) => <>
+  const displayActions = <>
     <Btn icon={picture.active ? "pipExit" : "pip"} draw="playback-pip" title={pipTitle}
-      cap={caption ? (picture.active ? "playback.exitPip" : "playback.pip") : undefined} hintTone={picture.failed ? "bad" : undefined}
+      hintTone={picture.failed ? "bad" : undefined}
       hint={!picture.supported || picture.failed || (!picture.active && !canPlay) ? "hint-pip-unavailable" : picture.active ? "hint-pip-exit" : "hint-pip"}
       pressed={picture.active} disabled={!picture.supported || (!picture.active && !canPlay)}
       onClick={() => { void picture.toggle(); }} />
     {!fullscreen.active && <Btn icon={theaterMode ? "theaterExit" : "theater"} draw="playback-theater" title={theaterTitle}
-      cap={caption ? theaterTitle : undefined} hint={theaterMode ? "hint-theater-exit" : "hint-theater"}
+      hint={theaterMode ? "hint-theater-exit" : "hint-theater"}
       pressed={theaterMode} onClick={onToggleTheater} />}
   </>;
   const reveal = <button type="button" className="lr-playback-reveal" aria-label={t("playback.showControls")}
@@ -192,46 +190,50 @@ export function PlaybackControlsView({
   return <>
     <div id={controlsId} ref={barRef} className={`lr-playback lr-host-share-controls lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
       role="group" aria-label={t("playback.controls")}>
-      <span className="lr-playback-watch">
-        <Btn icon={paused ? "play" : "pause"}
-          draw="playback-state"
-          title={paused ? "playback.play" : "playback.pause"}
-          hint={paused ? "hint-local-play" : "hint-local-pause"}
-          disabled={!canPlay} onClick={togglePlayback} />
-        <Btn icon={!hasAudio || silent ? "speakerOff" : "speaker"}
-          draw="playback-sound"
-          title={!hasAudio ? "playback.noAudio" : silent ? "playback.unmute" : "playback.mute"}
-          hint={!hasAudio ? "hint-no-audio" : silent ? "hint-unmute" : "hint-mute"} disabled={!hasAudio}
-          onClick={toggleMute} />
-        <Tooltip kind={!hasAudio ? "hint-no-audio" : audio.boostAvailable ? "hint-volume" : "hint-volume-basic"}
-          text={vis ? undefined : t(!hasAudio ? "playback.noAudio" : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic")}
-          className="lr-playback-volume">
-          <input type="range" min={0} max={audio.boostAvailable ? 200 : 100} step={1}
-            value={hasAudio ? percent : 0} disabled={!hasAudio}
-            aria-label={t(audio.boostAvailable ? "playback.volume" : "playback.volumeBasic")}
-            aria-valuetext={hasAudio ? `${percent}%` : t("playback.noAudio")}
-            onChange={(event) => setLevel(Number(event.target.value) / 100)} />
-        </Tooltip>
-        <span className={`lr-playback-level${hasAudio && percent > 100 ? " is-boosted" : ""}`} aria-hidden="true">
-          {hasAudio ? `${percent}%` : null}
+      <div className="lr-playback-main">
+        <span className="lr-playback-watch">
+          <Btn icon={paused ? "play" : "pause"}
+            draw="playback-state"
+            title={paused ? "playback.play" : "playback.pause"}
+            hint={paused ? "hint-local-play" : "hint-local-pause"}
+            disabled={!canPlay} onClick={togglePlayback} />
+          <Btn icon={!hasAudio || silent ? "speakerOff" : "speaker"}
+            draw="playback-sound"
+            title={!hasAudio ? "playback.noAudio" : silent ? "playback.unmute" : "playback.mute"}
+            hint={!hasAudio ? "hint-no-audio" : silent ? "hint-unmute" : "hint-mute"} disabled={!hasAudio}
+            onClick={toggleMute} />
+          <Tooltip kind={!hasAudio ? "hint-no-audio" : audio.boostAvailable ? "hint-volume" : "hint-volume-basic"}
+            text={vis ? undefined : t(!hasAudio ? "playback.noAudio" : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic")}
+            className="lr-playback-volume">
+            <input type="range" min={0} max={audio.boostAvailable ? 200 : 100} step={1}
+              value={hasAudio ? percent : 0} disabled={!hasAudio}
+              aria-label={t(audio.boostAvailable ? "playback.volume" : "playback.volumeBasic")}
+              aria-valuetext={hasAudio ? `${percent}%` : t("playback.noAudio")}
+              onChange={(event) => setLevel(Number(event.target.value) / 100)} />
+          </Tooltip>
+          <span className={`lr-playback-level${hasAudio && percent > 100 ? " is-boosted" : ""}`} aria-hidden="true">
+            {hasAudio ? `${percent}%` : null}
+          </span>
         </span>
-        {overlayAction}
-      </span>
-      {remoteActions}
-      <span className="lr-playback-view">
-        {settings && <>
-          <span className="lr-playback-fit"><Btn
-            icon={settings.pictureFit === "contain" ? "fitContain" : settings.pictureFit === "cover" ? "fitCover" : "fitStretch"}
-            title={`playback.fit.${settings.pictureFit}`} hint={`hint-fit-${settings.pictureFit}`} hintText="playback.fitCycle"
-            onClick={() => settings.setPictureFit(nextFit)} /></span>
-          <Btn icon="rotatePicture" title="playback.rotation" hint="hint-picture-rotation" hintText="playback.rotationHint"
-            pressed={settings.pictureRotation !== 0}
-            onClick={() => settings.setPictureRotation(settings.pictureRotation === 0 ? 90 : 0)} />
-        </>}
-        <PlaybackMore panel={menuRef} settings={settings} overlaySettings={overlaySettings} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
-          {displayActions(true)}
-        </PlaybackMore>
-        <span className="lr-playback-secondary">{displayActions(false)}</span>
+        {remoteActions}
+        <span className="lr-playback-view" role="group" aria-label={t("playback.viewControls")}>
+          {overlayAction}
+          {settings && <>
+            <span className="lr-playback-fit"><Btn
+              icon={settings.pictureFit === "contain" ? "fitContain" : settings.pictureFit === "cover" ? "fitCover" : "fitStretch"}
+              title="playback.changeFit" hint={`hint-fit-${settings.pictureFit}`} hintText="playback.fitCycle"
+              hintVars={{ current: t(`playback.fit.${settings.pictureFit}`), next: t(`playback.fit.${nextFit}`) }}
+              onClick={() => settings.setPictureFit(nextFit)} /></span>
+            <Btn icon="rotatePicture" title="playback.rotation" hint="hint-picture-rotation" hintText="playback.rotationHint"
+              pressed={settings.pictureRotation !== 0}
+              onClick={() => settings.setPictureRotation(settings.pictureRotation === 0 ? 90 : 0)} />
+          </>}
+          <PlaybackMore anchor={barRef} settings={settings} overlaySettings={overlaySettings}
+            onReconnect={onReconnect} reconnectAvailable={reconnectAvailable} />
+        </span>
+      </div>
+      <span className="lr-playback-window" role="group" aria-label={t("playback.windowControls")}>
+        {displayActions}
         {fullscreen.supported && !theaterMode ? (
           <Btn icon={fullscreen.active ? "contract" : "expand"}
             draw="playback-fullscreen"
@@ -250,31 +252,28 @@ export function PlaybackControlsView({
   </>;
 }
 
-// Native popover owns dismissal and focus return. The same actions above render
-// directly on wide players and in this compact disclosure on narrow players.
-function PlaybackMore({ panel, children, settings, overlaySettings, onReconnect, reconnectAvailable }: {
-  panel: RefObject<HTMLDivElement | null>; children: ReactNode; settings?: ViewerPlaybackSettingsProps; overlaySettings?: ReactNode;
+// Only detailed preferences belong here; direct playback actions stay outside.
+function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnectAvailable }: {
+  anchor: RefObject<HTMLDivElement | null>; settings?: ViewerPlaybackSettingsProps; overlaySettings?: ReactNode;
   onReconnect?: () => void; reconnectAvailable?: boolean;
 }) {
   const { t } = useCopy();
   const id = useId();
+  const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const available = Boolean(overlaySettings || settings?.route || settings?.relayVolunteer || onReconnect);
+  useAnchoredPopover(anchor, panel, { align: "center", minVisibleHeight: 160, enabled: available });
   const reconnect = onReconnect ? <Btn icon="refresh" title="viewer.reconnect" size="dense" hint="hint-reconnect" draw="playback-reconnect"
     cap="viewer.reconnect" disabled={!reconnectAvailable} onClick={() => {
       panel.current?.hidePopover();
       onReconnect();
     }} /> : null;
-  const display = <div className="lr-playback-display-menu">{children}</div>;
-  const detailed = Boolean(overlaySettings || settings?.route || settings?.relayVolunteer || reconnect);
+  if (!available) return null;
   return <span className="lr-playback-more">
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
-    <div id={id} ref={panel} className={`lr-floating-surface lr-playback-menu${detailed ? " lr-playback-settings" : ""}`} popover="auto" aria-label={t("playback.more")}
-      onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}
-      onClick={event => {
-        if (!event.defaultPrevented && event.target instanceof Element && event.target.closest(".lr-playback-display-menu button")) panel.current?.hidePopover();
-      }}>
-      {detailed ? <ViewerPlaybackSettings {...settings} overlaySettings={overlaySettings} displayActions={display} reconnect={reconnect} />
-        : <div className="lr-playback-menu-actions">{children}</div>}
+    <div id={id} ref={panel} className="lr-floating-surface lr-playback-menu lr-playback-settings" popover="auto" aria-label={t("playback.more")}
+      onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
+      <ViewerPlaybackSettings {...settings} overlaySettings={overlaySettings} reconnect={reconnect} />
     </div>
   </span>;
 }

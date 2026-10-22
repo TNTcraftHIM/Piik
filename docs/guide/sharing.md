@@ -94,8 +94,8 @@ Move the pointer over the picture or tap it to show the playback bar.
 
 </div>
 
-On narrow screens, theater mode and picture in picture move into playback settings.
-When remote controls are also present, the volume slider hides; mute stays directly accessible.
+On narrow screens, picture in picture, theater mode and fullscreen appear at the
+upper-right edge of the picture. The volume slider stays in the lower playback bar.
 
 ### Connection preferences
 
