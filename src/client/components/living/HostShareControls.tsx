@@ -7,7 +7,7 @@ export function HostShareControls({ actions, settings, remote, pause, ending }: 
 }) {
   const { t } = useCopy();
   return <div className="lr-host-controls">
-    <div className="lr-host-share-controls lr-media-controls" role="group" aria-label={t("host.shareControls")}>
+    <div className="lr-host-share-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("host.shareControls")}>
       {(actions || pause || ending) && <div className="lr-host-action-dock">
         {actions && <div className="lr-host-control-group">{actions}</div>}
         {(pause || ending) && <div className="lr-host-control-group">{pause}{ending}</div>}

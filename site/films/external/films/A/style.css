@@ -1,5 +1,5 @@
 /* Film A — 预告状 THE CALLING CARD. graphic collage × industrial microtype on the Piik palette. */
-:root, :host {
+#stage {
   --ink: #192530; --ink2: #121b24; --night: #0d141b; --cream: #f6f2e8; --paper: #fffefb;
   --yellow: #ffd05a; --yellow2: #ffc634; --gold: #eaaa38; --red: #ff4a3d; --tomato: #e96c55;
   --green: oklch(0.7015 0.1204 148.3619); --blue: oklch(0.7100 0.1156 235.7427);

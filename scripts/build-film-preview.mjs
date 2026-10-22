@@ -1,9 +1,10 @@
 // The complete studio stays independent of the website's selected A runtime.
-import { cp, mkdir, rm } from 'node:fs/promises';
+import { cp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { writeWebLicenseNotices } from './package-licenses.mjs';
+import { buildFilmControls } from './build-film-controls.mjs';
 
 const source = new URL('../site/films/', import.meta.url);
 const output = new URL('../build/film-preview/', import.meta.url);
@@ -19,6 +20,7 @@ await cp(new URL('external/', source), new URL('external/', output), {
     path !== fileURLToPath(new URL('external/README.md', source)),
 });
 await cp(new URL('../src/client/components/living/brand-mark.css', import.meta.url), new URL('external/engine/brand-mark.css', output));
+await writeFile(new URL('external/engine/playback-controls.js', output), await buildFilmControls());
 await build({ entryPoints: ['gallery.js', 'gallery.css', 'player-theme.css'].map(file => fileURLToPath(new URL(file, source))),
   outdir: fileURLToPath(output), bundle: true, format: 'esm', minify: true, logLevel: 'warning' });
 

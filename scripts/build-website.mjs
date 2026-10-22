@@ -9,6 +9,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { tsImport } from "tsx/esm/api";
 import { buildDocumentation } from "../site/docs/build.mjs";
+import { buildFilmControls } from "./build-film-controls.mjs";
 
 const source = new URL("../site/", import.meta.url);
 const output = new URL("../build/site/", import.meta.url);
@@ -67,13 +68,14 @@ async function collect(directory) {
   }
 }
 for (const directory of ['films/A/', 'assets/fonts/subset/A-en/', 'assets/fonts/subset/A-zh/', 'out/A/']) await collect(directory);
-for (const file of ['art.js', 'brand-mark.css', 'cast.js', 'core.js', 'film.css', 'fonts.js', 'icons.js', 'player.js', 'tex.js', 'type.js']) runtimeFiles.push('engine/' + file);
+for (const file of ['art.js', 'brand-mark.css', 'cast.js', 'core.js', 'film.css', 'fonts.js', 'icons.js', 'player.js', 'playback-controls.js', 'tex.js', 'type.js']) runtimeFiles.push('engine/' + file);
 for (const file of await readdir(new URL('assets/fonts/', external))) if (file.endsWith('-OFL.txt')) runtimeFiles.push('assets/fonts/' + file);
 runtimeFiles.push('licenses/Piik-MIT.txt');
 const contents = new Map();
 const hash = createHash('sha256');
+const controls = await buildFilmControls();
 for (const file of runtimeFiles.sort()) {
-  let bytes = await readFile(file === 'engine/brand-mark.css'
+  let bytes = file === 'engine/playback-controls.js' ? controls : await readFile(file === 'engine/brand-mark.css'
     ? new URL('../src/client/components/living/brand-mark.css', import.meta.url)
     : new URL(file, external));
   if (file === 'engine/player.js') {

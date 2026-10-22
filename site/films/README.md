@@ -51,9 +51,10 @@ The ordinary website build selects only A's required runtime assets from
 output. The homepage initially downloads no film runtime, fonts or audio.
 No external fetch or audio regeneration is needed to build the previews.
 
-The external runtime supports direct embedding:
+The built external runtime supports direct embedding:
 
 ```html
+<link rel="stylesheet" href="./player-theme.css">
 <script type="module" src="./external/engine/player.js"></script>
 <piik-promo film="A" lang="en"></piik-promo>
 ```

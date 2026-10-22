@@ -188,7 +188,7 @@ export function PlaybackControlsView({
   </button>;
 
   return <>
-    <div id={controlsId} ref={barRef} className={`lr-playback lr-host-share-controls lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
+    <div id={controlsId} ref={barRef} className={`lr-playback lr-host-share-controls lr-media-toolbar lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
       role="group" aria-label={t("playback.controls")}>
       <div className="lr-playback-main">
         <span className="lr-playback-watch">

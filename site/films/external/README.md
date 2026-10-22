@@ -29,7 +29,9 @@ is retained only in Git history.
 
 Import `engine/player.js` and mount `<piik-promo film="A" lang="en">`.
 Load `../player-theme.css` alongside it for Piik's shared control tokens; both
-website and studio builds include this stylesheet.
+website and studio builds include this stylesheet and generate
+`engine/playback-controls.js` from the product's button, toolbar and icon owners.
+Use the built runtime when embedding; the player does not ship a React runtime.
 Languages are `zh` and `en`; omitting `lang` uses the document language.
 `play()`, `pause()`, `seek(seconds)`, `currentTime`, `duration` and `muted` belong
 to that element. Playback uses one native audio element; audio loads on play.

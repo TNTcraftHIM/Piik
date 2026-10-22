@@ -1,5 +1,6 @@
 // Candidate film player. Each instance owns one native audio clock and one film.
 import { loadFonts } from './fonts.js';
+import { CONTROL_CSS, ICON } from './playback-controls.js';
 
 export const FILMS = {
   A: () => import('../films/A/film.js'),
@@ -11,52 +12,35 @@ export const FILMS = {
 };
 
 const UI_CSS = `
-:host { all: initial; display: block; position: relative; container-type: inline-size; font: 16px/1.2 system-ui, sans-serif; color: var(--ink); width: 100%; aspect-ratio: var(--ar, 16 / 9); background: var(--piik-dark-wall); overflow: hidden; border-radius: var(--piik-radius, 0px); contain: content; -webkit-tap-highlight-color: transparent; }
+:host { all: initial; display: block; position: relative; container-type: inline-size; font: 16px/1.2 system-ui, sans-serif; color: var(--ink); color-scheme: inherit; width: 100%; aspect-ratio: var(--ar, 16 / 9); background: var(--piik-dark-wall); overflow: hidden; border-radius: var(--piik-radius, 0px); contain: content; -webkit-tap-highlight-color: transparent; }
 :host([hidden]) { display: none; }
+.pk-bar, .pk-bar *, .pk-cover, .pk-cover *, .pk-status { box-sizing: border-box; }
 .pk-frame { position: absolute; inset: 0; }
 #wrap { position: absolute; left: 0; top: 0; overflow: hidden; }
 #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .pk-cover { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(transparent, color-mix(in srgb, var(--piik-dark-wall) 24%, transparent)); cursor: pointer; transition: opacity .25s; }
 .pk-cover[hidden], .pk-loading[hidden], .pk-status:empty { display: none; }
-.pk-big { width: clamp(56px, 9cqw, 88px); aspect-ratio: 1; border-radius: 50%; border: var(--control-border-width) solid var(--control-edge); background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); display: grid; place-items: center; cursor: pointer; transition: var(--control-motion), background-color 140ms ease; }
-.pk-big:is(:hover,:focus-visible) { transform: var(--control-hover-transform); background: var(--control-hover); }
-.pk-big:active { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
-.pk-big svg { width: 40%; height: 40%; translate: 1px; }
-.pk-bar { position: absolute; inset: auto 0 0; display: grid; padding: 12px clamp(12px, 2cqw, 24px) max(6px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, color-mix(in srgb, var(--piik-dark-wall) 92%, transparent)); color: var(--piik-dark-ink); font: 600 12px/1 system-ui, sans-serif; opacity: 0; pointer-events: none; transform: translateY(6px); transition: opacity 180ms ease, transform 220ms var(--spring); }
+.pk-big { --button-size: clamp(56px, 9cqw, 88px); --button-icon-size: clamp(24px, 4cqw, 36px); width: var(--button-size); padding: 0; }
+.pk-bar { position: absolute; inset: auto 8px max(8px, env(safe-area-inset-bottom)); width: min(640px, calc(100% - 16px)); flex-wrap: nowrap; gap: 4px; font: 600 12px/1.2 system-ui, sans-serif; opacity: 0; pointer-events: none; transform: translateY(6px); transition: opacity 180ms ease, transform 220ms var(--spring); }
 .pk-bar.show, :host(:focus-visible) .pk-bar, .pk-bar:has(:focus-visible, :active) { opacity: 1; pointer-events: auto; transform: none; }
-.pk-row { display: flex; align-items: center; gap: 4px; }
-.pk-bar button { flex: none; width: var(--control-dense-size); height: var(--control-dense-size); border: 0; border-radius: 50%; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; padding: 0; transition: var(--control-motion), background-color 140ms ease; }
+.pk-bar .lr-btn { flex: none; min-width: 0; width: var(--control-compact-size); padding: 0; }
 .pk-bar button[hidden] { display: none; }
-.pk-bar button:is(:hover,:focus-visible) { background: color-mix(in srgb, currentColor 14%, transparent); transform: var(--control-hover-transform); }
-.pk-bar button:active { transform: var(--control-press-transform); transition-duration: 80ms; }
-.pk-bar svg { width: var(--control-icon-size); height: var(--control-icon-size); }
-button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
-.pk-track { appearance: none; width: 100%; min-width: 0; height: 20px; padding: 0; margin: 0; background: transparent; color: inherit; cursor: pointer; }
-.pk-track::-webkit-slider-runnable-track { height: 3px; border-radius: 3px; background: linear-gradient(to right, currentColor var(--progress, 0%), color-mix(in srgb, currentColor 30%, transparent) var(--progress, 0%)); }
-.pk-track::-moz-range-track { height: 3px; border-radius: 3px; background: linear-gradient(to right, currentColor var(--progress, 0%), color-mix(in srgb, currentColor 30%, transparent) var(--progress, 0%)); }
-.pk-track::-webkit-slider-thumb { appearance: none; width: 9px; height: 9px; margin-top: -3px; border: 0; border-radius: 50%; background: currentColor; }
-.pk-track::-moz-range-thumb { width: 9px; height: 9px; border: 0; border-radius: 50%; background: currentColor; }
-.pk-time { margin-inline: 6px auto; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 500; }
-.pk-lang { font: 700 12px/1 system-ui, sans-serif; }
+button { font-family: inherit; cursor: pointer; touch-action: manipulation; }
+.pk-track { flex: 1; width: 100%; min-width: 24px; height: var(--control-compact-size); padding: 0; margin: 0 4px; accent-color: var(--action); cursor: pointer; }
+.pk-time { flex: none; margin-inline: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 500; }
 .pk-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--piik-dark-ink); font: 600 13px system-ui, sans-serif; opacity: .8; }
 :host([controls="none"]) .pk-bar { display: none; }
 :host(:not([data-playing]):not([data-ended])) .pk-bar { opacity: 1; pointer-events: auto; transform: none; }
-button:focus-visible, input:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .pk-status { position: absolute; top: 12px; left: 12px; right: 12px; margin: 0; padding: 10px 14px; background: var(--paper); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; border-radius: 12px; }
-@media (pointer: coarse) { .pk-bar button { width: var(--control-compact-size); height: var(--control-compact-size); } }
-@container (max-width: 360px) { .pk-row { gap: 2px; } .pk-time { margin-inline: 4px auto; font-size: 11px; } }
+@container (max-width: 420px) {
+  .pk-time { display: none; }
+  .pk-bar { gap: 2px; }
+  .pk-cover { padding-bottom: calc(var(--control-compact-size) + 22px); }
+}
 @media (hover: hover) { .pk-bar:hover { opacity: 1; pointer-events: auto; transform: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
 `;
-const ICON = {
-  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.8v14.4a1 1 0 0 0 1.52.86l11.4-7.2a1 1 0 0 0 0-1.72L8.52 3.94A1 1 0 0 0 7 4.8Z"/></svg>',
-  pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4.2" height="16" rx="1.2"/><rect x="13.8" y="4" width="4.2" height="16" rx="1.2"/></svg>',
-  sound: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>',
-  mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10Z"/><path d="m17 9 5 6m0-6-5 6"/></svg>',
-  full: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
-  exitFull: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5"/></svg>',
-  replay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a9 9 0 1 1 1 7M3 4v6h6"/></svg>',
-};
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 
@@ -65,13 +49,14 @@ export class PiikPromo extends HTMLElement {
   constructor() {
     super();
     const root = this.attachShadow({ mode: 'open' });
-    root.innerHTML = '<style>' + UI_CSS + '</style><style class="film"></style>' +
+    root.innerHTML = '<style>' + CONTROL_CSS + UI_CSS + '</style><style class="film"></style>' +
       '<div class="pk-frame"><div id="wrap"></div></div><div class="pk-loading" role="status"></div>' +
-      '<div class="pk-cover" hidden><button type="button" class="pk-big">' + ICON.play + '</button></div>' +
-      '<div class="pk-bar" part="controls"><input class="pk-track" type="range" min="0" max="0" step="0.01" value="0">' +
-      '<div class="pk-row"><button type="button" class="pk-pp"></button><button type="button" class="pk-snd"></button>' +
-      '<span class="pk-time">0:00 / 0:00</span><button type="button" class="pk-lang"></button>' +
-      '<button type="button" class="pk-fs"></button></div></div>' +
+      '<div class="pk-cover" hidden><button type="button" class="lr-btn pk-big">' + ICON.play + '</button></div>' +
+      '<div class="pk-bar lr-media-toolbar lr-media-controls" part="controls" role="group">' +
+      '<button type="button" class="lr-btn pk-pp"></button><button type="button" class="lr-btn pk-snd"></button>' +
+      '<input class="pk-track" type="range" min="0" max="0" step="0.01" value="0">' +
+      '<span class="pk-time">0:00 / 0:00</span><button type="button" class="lr-btn pk-lang"></button>' +
+      '<button type="button" class="lr-btn pk-fs"></button></div>' +
       '<p class="pk-status" role="status"></p><audio preload="none"></audio>';
     this.$ = sel => root.querySelector(sel);
     this.audio = this.$('audio');
@@ -190,7 +175,8 @@ export class PiikPromo extends HTMLElement {
     this.toggleAttribute('data-playing', this.playing);
     this.setAttribute('role', 'group');
     this.setAttribute('aria-label', this.meta?.title[this.lang2()] || label('Piik film', 'Piik 短片'));
-    this.$('.pk-pp').innerHTML = this.playing ? ICON.pause : this.t >= this.duration && this.duration ? ICON.replay : ICON.play;
+    this.$('.pk-bar').setAttribute('aria-label', label('Playback controls', '播放控制'));
+    this.$('.pk-pp').innerHTML = this.playing ? ICON.pause : this.t >= this.duration && this.duration ? ICON.refresh : ICON.play;
     this.$('.pk-pp').setAttribute('aria-label', play);
     this.$('.pk-big').setAttribute('aria-label', play);
     const heldEnd = this.meta?.holdEnd && this.duration && this.t >= this.duration;
@@ -203,11 +189,11 @@ export class PiikPromo extends HTMLElement {
     this.$('.pk-track').setAttribute('aria-label', label('Film position', '播放进度'));
     this.$('.pk-lang').textContent = zh ? 'EN' : '中';
     this.$('.pk-lang').setAttribute('aria-label', zh ? 'Switch to English' : '切换到简体中文');
-    this.$('.pk-snd').innerHTML = this.muted ? ICON.mute : ICON.sound;
+    this.$('.pk-snd').innerHTML = this.muted ? ICON.speakerOff : ICON.speaker;
     this.$('.pk-snd').setAttribute('aria-label', this.muted ? label('Unmute', '开启声音') : label('Mute', '静音'));
     this.$('.pk-snd').setAttribute('aria-pressed', String(this.muted));
     const fullscreen = document.fullscreenElement === this;
-    this.$('.pk-fs').innerHTML = fullscreen ? ICON.exitFull : ICON.full;
+    this.$('.pk-fs').innerHTML = fullscreen ? ICON.contract : ICON.expand;
     this.$('.pk-fs').setAttribute('aria-label', fullscreen ? label('Exit fullscreen', '退出全屏') : label('Fullscreen', '全屏'));
     this.$('.pk-fs').hidden = !document.fullscreenEnabled;
     for (const button of this.shadowRoot.querySelectorAll('.pk-bar button')) button.title = button.getAttribute('aria-label');
@@ -373,7 +359,6 @@ export class PiikPromo extends HTMLElement {
     this.film.render(Math.min(this.duration - 1e-3, Math.max(0, t)));
     const position = this._poster ? 0 : t;
     this.$('.pk-track').value = String(position);
-    this.$('.pk-track').style.setProperty('--progress', `${position / this.duration * 100}%`);
     const value = fmt(position) + ' / ' + fmt(this.duration);
     this.$('.pk-track').setAttribute('aria-valuetext', value);
     if (this.$('.pk-time').textContent !== value) {

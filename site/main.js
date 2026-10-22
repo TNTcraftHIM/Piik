@@ -82,7 +82,7 @@ function syncFilmPreferences() {
   const preference = currentThemePreference() ?? 'system';
   target.searchParams.set('theme', preference);
   filmLink.href = target.href;
-  if (film.open) filmFrame.contentWindow?.postMessage({type:'piik-film-preferences',lang:root.lang}, location.origin);
+  if (film.open) filmFrame.contentWindow?.postMessage({type:'piik-film-preferences',lang:root.lang,theme:preference}, location.origin);
 }
 const copy = {
   en: {

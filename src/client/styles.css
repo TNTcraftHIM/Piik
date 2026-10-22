@@ -2,6 +2,7 @@
 @import "./components/living/pawn.css";
 @import "./components/living/brand-mark.css";
 @import "./components/living/button.css";
+@import "./components/living/media-controls.css";
 @import "./components/living/segmented-control.css";
 @import "./ui/glyph.css";
 
@@ -936,15 +937,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-help-menu.is-visual nav .lr-btn { width: var(--control-compact-size); justify-content: center; }
 .lr-cap { font-size: var(--control-label-size); font-weight: 600; color: inherit; white-space: nowrap; }
 
-/* Sharing and local playback have distinct owners, but one control grammar. */
-:where(.lr-media-controls) .lr-btn {
-  --button-size: var(--control-compact-size);
-  padding: 0 12px;
-  border: 0; border-radius: 12px; box-shadow: none;
-  background: transparent; color: inherit;
-}
-.lr-media-controls .lr-btn.is-danger { color: var(--danger); }
-
 .lr-chip {
   display: inline-flex;
   align-items: center;
@@ -1808,12 +1800,6 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
   .lr-sharing-section .lr-tile small { max-width: 8ch; min-height: 2.8em; line-height: 1.4; }
 }
 .lr-host-controls { width: 100%; margin-top: 12px; container: host-controls / inline-size; }
-.lr-host-share-controls {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
-  width: fit-content; max-width: 100%; margin: 0 auto; padding: 6px; color: var(--ink);
-  background: var(--surface-glaze) var(--paper); border: 1px solid var(--control-edge);
-  border-radius: 20px; box-shadow: 0 3px 0 color-mix(in srgb, var(--ink) 8%, transparent);
-}
 .lr-host-action-dock, .lr-host-tool-dock { display: flex; align-items: center; gap: 4px; }
 .lr-host-action-dock + .lr-host-tool-dock { padding-inline-start: 8px; border-inline-start: 1px solid var(--control-edge); }
 .lr-host-control-group { display: flex; align-items: center; gap: 4px; }
