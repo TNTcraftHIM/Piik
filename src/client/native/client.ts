@@ -712,6 +712,14 @@ export class NativeClient {
     await this.request("set-remote-control-policy", { shareId, mode, ...(password !== undefined ? { password } : {}) }, nativeAckResponseSchema, null);
   }
 
+  async setRemoteCoPlay(shareId: string, enabled: boolean): Promise<void> {
+    await this.request("set-remote-input-co-play", { shareId, enabled }, nativeAckResponseSchema);
+  }
+
+  async giveRemotePointer(shareId: string, requestId: string): Promise<void> {
+    await this.request("set-remote-input-pointer", { shareId, requestId }, nativeAckResponseSchema);
+  }
+
   async remoteStopShortcut(shareId: string, key?: number): Promise<RemoteStopShortcut> {
     if (!this.health.nativeMedia.remoteStopShortcut) throw new Error("Piik App shortcut settings are unavailable");
     return this.request(key === undefined ? "get-remote-stop-shortcut" : "set-remote-stop-shortcut",

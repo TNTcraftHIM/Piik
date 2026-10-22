@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { appPackageTarget, appPackageDirectory, goBuildEnvironment, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
 import { writeAppPlatformAssets } from "./app-icons.mjs";
 import { writeAppLicenseNotices } from "./package-licenses.mjs";
+import { prepareGamepadClient } from "./gamepad-client.mjs";
 import { tarExecutable } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { isReleaseVersion } from "./release-version.mjs";
@@ -157,19 +158,20 @@ const positional = process.argv.slice(2, 4);
 const options = process.argv.slice(4);
 if (positional.length !== 2 || options.length % 2 !== 0) {
   fail(
-    "Usage: node scripts/assemble-app.mjs <server-release.json> <new-output-directory> --target <target> [--capture <executable>] [--tunnel <executable>]",
+    "Usage: node scripts/assemble-app.mjs <server-release.json> <new-output-directory> --target <target> [--capture <executable>] [--tunnel <executable>] [--gamepad-client <ViGEmClient.dll>]",
   );
 }
 
 let targetArgument = null;
 let captureArgument = null;
 let tunnelArgument = null;
+let gamepadArgument = null;
 for (let index = 0; index < options.length; index += 2) {
   const name = options[index];
   const value = options[index + 1];
   if (
     !value ||
-    (name !== "--target" && name !== "--capture" && name !== "--tunnel")
+    !["--target", "--capture", "--tunnel", "--gamepad-client"].includes(name)
   ) {
     fail("App package option is invalid");
   }
@@ -179,12 +181,17 @@ for (let index = 0; index < options.length; index += 2) {
     captureArgument = value;
   } else if (name === "--tunnel" && tunnelArgument === null) {
     tunnelArgument = value;
+  } else if (name === "--gamepad-client" && gamepadArgument === null) {
+    gamepadArgument = value;
   } else {
     fail("App package option is duplicated");
   }
 }
 const target = appPackageTarget(targetArgument);
 if (!target) fail("App package target is invalid");
+if (gamepadArgument && (target.goos !== "windows" || target.goarch !== "amd64")) {
+  fail("Gamepad client requires the Windows x64 App target");
+}
 if (target.cgo && process.platform !== target.nodePlatform) {
   fail(`App target ${target.id} requires a native macOS runner with its SDK and cgo`);
 }
@@ -194,6 +201,7 @@ const descriptorPath = realpathSync(resolve(positional[0]));
 const outputRoot = resolve(process.cwd(), positional[1]);
 const capturePath = captureArgument ? realpathSync(resolve(captureArgument)) : null;
 const tunnelPath = tunnelArgument ? realpathSync(resolve(tunnelArgument)) : null;
+const gamepadPath = gamepadArgument ? realpathSync(resolve(gamepadArgument)) : null;
 assertOutputDirectory(repositoryRoot, outputRoot, target);
 if (capturePath && !target.captureName) {
   fail("Capture runtime is invalid for the App package target");
@@ -229,6 +237,7 @@ try {
   // release revision, so this reproduces that release's Web assets.
   runNpm(["run", "build:web"], repositoryRoot);
   mkdirSync(runtimeRoot, { recursive: true });
+  const packagedGamepad = prepareGamepadClient(runtimeRoot, gamepadPath);
 
   let packagedCapture = null;
   if (capturePath) {
@@ -293,6 +302,7 @@ try {
     app: relative(packageRoot, appPath).replaceAll("\\", "/"),
     nativeCapture: packagedCapture ? relative(packageRoot, packagedCapture).replaceAll("\\", "/") : null,
     publicTunnel: packagedTunnel ? relative(packageRoot, packagedTunnel).replaceAll("\\", "/") : null,
+    gamepadClient: packagedGamepad ? relative(packageRoot, packagedGamepad).replaceAll("\\", "/") : null,
     platformAssets,
   })}\n`);
 } catch (error) {

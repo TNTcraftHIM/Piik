@@ -56,7 +56,7 @@
 .lr-remote-keyboard { min-height: 0; max-height: 65dvh; overflow-y: auto; overscroll-behavior: contain; outline: none; }
 .lr-remote-keyboard > .lr-remote-panel-header { position: sticky; top: -10px; z-index: 1; background: var(--paper); }
 .lr-remote-keyboard > * { max-width: 640px; margin-inline: auto; }
-.lr-remote-keyboard .lr-remote-key-pages { --selection-item-size: calc(var(--control-compact-size) - 12px); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 12px; }
+.lr-remote-keyboard .lr-remote-key-pages { --selection-item-size: calc(var(--control-compact-size) - 12px); display: grid; grid-template-columns: repeat(var(--lr-segments), minmax(0, 1fr)); margin-bottom: 12px; }
 .lr-remote-keyboard .lr-remote-key-pages button { min-width: 0; padding: 4px 8px; }
 .lr-remote-key-row { display: flex; justify-content: center; gap: 4px; margin-bottom: 6px; }
 .lr-remote-key-row .lr-chip { flex: 1; }

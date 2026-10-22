@@ -160,6 +160,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 	}
 	defer input.Close()
 	nativeMedia.capabilities.RemoteInput = input != nil
+	nativeMedia.capabilities.RemoteCoPlay = input != nil
 	nativeMedia.capabilities.RemoteStopShortcut = input.SupportsStopShortcut()
 	recordContext := func(selected Options, config appconfig.Config) {
 		if recorder == nil {

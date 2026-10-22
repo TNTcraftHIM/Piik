@@ -2,6 +2,23 @@ import type { GlyphName } from "../ui/icons";
 
 // Canonical catalog: add keys here first; every other locale must match it.
 export const zh = {
+  "remote.coPlay": "多人同乐",
+  "remote.coPlayHelp": "共用键盘，鼠标交给一位玩家。切换此项会结束当前控制。",
+  "remote.device.keyboard": "键盘",
+  "remote.device.keyboardMouse": "键鼠",
+  "remote.device.gamepad": "手柄",
+  "remote.keyboardOnly": "键盘控制中",
+  "remote.givePointer": "交出鼠标",
+  "remote.takePointer": "收回鼠标",
+  "remote.gamepad": "使用手柄",
+  "remote.gamepadActive": "停止手柄",
+  "remote.gamepadWaiting": "连接标准布局手柄并按任意按钮",
+  "remote.gamepadUnsupported": "当前浏览器无法读取手柄",
+  "remote.gamepadHelp": "使用本页第一个已连接的标准手柄，在房主电脑上独立操作。请保持本页在前台。",
+  "remote.gamepadHostHelp": "玩家可各用独立虚拟手柄，手柄驱动为可选安装。",
+  "remote.gamepadSetup": "虚拟手柄设置",
+  "remote.gamepadMissing": "可直接共用键盘。使用手柄需由房主安装可选驱动。",
+  "remote.reason.gamepad": "虚拟手柄不可用，请检查房主驱动及空闲手柄位。",
   "remote.keyboard": "远程键盘",
   "remote.keyboardRequiresControl": "取得控制权后可使用远程键盘",
   "remote.keyPages": "键盘分区",

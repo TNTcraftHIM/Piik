@@ -1,12 +1,18 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-21
+Last reviewed: 2026-10-22
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Remote co-play candidate acceptance.** Review the normal App/Web flow on
+  `feat/shared-input-co-play`: concurrent keyboard players, explicit mouse
+  handoff, optional Windows x64 gamepads and per-player retirement. Verify the
+  candidate package's fixed SDK input and tutorial, then prepare owner review
+  before integration. The [input contract](./standards/rooms-access.md#remote-control)
+  owns behavior. No kernel driver is bundled or installed by Piik.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -40,18 +46,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   Keep Cloudflare Quick Tunnel. The [provider assessment](./research/cross-platform-client-runtime.md#alternative-invitation-providers)
   owns alternatives and tradeoffs.
 
-## Local Interaction Prototypes
-
-- [ ] **Shared-keyboard remote co-play.** Review the isolated Host-plus-two-Viewer
-  prototype before product integration. Reuse the encrypted input route and
-  consent owner, with per-participant held keys and one explicit pointer owner.
-  The recording-sink trial does not implement desktop injection or game support.
-- [ ] **Optional virtual gamepads.** Continue the isolated input-backend
-  experiment authorized on 2026-10-19. The Host supplies any optional dependency;
-  do not install or bundle a kernel driver. Review maintained backends, licensing,
-  privileges and device retirement before integration. The
-  [input assessment](./research/room-interactions.md#remote-co-play) owns the design.
-
 ## Parked Product Work
 
 - **Platform output.** A registered receiver may act as an ordinary Viewer after
@@ -76,7 +70,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 - **Phone as a Host microphone.** Revisit only for a concrete use case that
   justifies the [pairing and input boundary](./research/camera-and-microphone.md#phone-microphone-assessment).
 - **Mobile controlled endpoints.** Separate scope from desktop keyboard/mouse
-  control and the co-play prototypes above.
+  control and the co-play candidate above.
 - **Android App assessment.** Evaluate native phone screen sharing and source
   audio beyond the existing mobile Browser features. Start with Android's
   [MediaProjection](https://developer.android.com/media/grow/media-projection)

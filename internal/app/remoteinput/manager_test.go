@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -350,6 +351,386 @@ func TestCommittedMultilineText(t *testing.T) {
 	}
 }
 
+func coPlaySession(t *testing.T, m *Manager, extended ...bool) (*Session, []*connection) {
+	t.Helper()
+	t.Cleanup(m.Close)
+	s := m.NewSession()
+	t.Cleanup(s.Close)
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
+	if err := setTestPolicy(s, "room", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetCoPlay(true); err != nil {
+		t.Fatal(err)
+	}
+	var peers []protocol.RemoteInputPeer
+	for i := range extended {
+		peers = append(peers, protocol.RemoteInputPeer{PeerID: "viewer-" + string(rune('a'+i)),
+			EndpointID: strings.Repeat(string(rune('a'+i)), 32), Secret: strings.Repeat(string(rune('a'+i)), 64)})
+	}
+	if err := s.SetPeers(peers); err != nil {
+		t.Fatal(err)
+	}
+	var connections []*connection
+	for i, peer := range peers {
+		c := m.connections[endpointKey{s, peer.EndpointID}]
+		c.edgeID, c.epoch = c.id, strings.Repeat("e", 32)
+		if extended[i] {
+			sendTestInput(m, c, inputEvent{Type: "capabilities"})
+		}
+		connections = append(connections, c)
+	}
+	return s, connections
+}
+
+type recordedGamepad struct {
+	state     gamepadReport
+	updateErr error
+	closed    bool
+}
+
+func (p *recordedGamepad) Update(report gamepadReport) error {
+	if p.closed {
+		return errors.New("recorded gamepad is closed")
+	}
+	if p.updateErr != nil {
+		return p.updateErr
+	}
+	p.state = report
+	return nil
+}
+
+func (p *recordedGamepad) Close() error {
+	if p.closed {
+		return nil
+	}
+	err := p.Update(gamepadReport{})
+	p.closed = true
+	return err
+}
+
+type recordedGamepads struct {
+	devices []*recordedGamepad
+	openErr error
+	closed  bool
+}
+
+func (b *recordedGamepads) Open() (gamepadDevice, error) {
+	if b.openErr != nil {
+		return nil, b.openErr
+	}
+	p := &recordedGamepad{}
+	b.devices = append(b.devices, p)
+	return p, nil
+}
+
+func (b *recordedGamepads) Close() error {
+	b.closed = true
+	for _, device := range b.devices {
+		_ = device.Close()
+	}
+	return nil
+}
+
+func TestCoPlayGamepadGrantIsolationAndRetirement(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 32), resets: make(chan struct{}, 16), focused: true}
+	pads := &recordedGamepads{}
+	m := &Manager{sink: sink, gamepads: pads, connections: map[endpointKey]*connection{}}
+	s, players := coPlaySession(t, m, true, true, true)
+	a, b, keyboard := players[0], players[1], players[2]
+	sendTestInput(m, a, inputEvent{Type: "request", Device: "gamepad"})
+	if a.grant == "" || a.pad == nil || m.active != nil {
+		t.Fatal("first gamepad did not receive an independent grant without the pointer")
+	}
+	sendTestInput(m, keyboard, inputEvent{Type: "request"})
+	sendTestInput(m, b, inputEvent{Type: "request", Device: "gamepad"})
+	if keyboard.grant == "" || b.grant == "" || m.active != keyboard || m.owner != s {
+		t.Fatal("gamepad ownership blocked the first keyboard or sibling gamepad")
+	}
+	state := s.State()
+	if state.Gamepad == nil || !*state.Gamepad {
+		t.Fatal("Host state omitted the available gamepad backend")
+	}
+	for _, view := range state.Requests {
+		if (view.Device == "gamepad") != (view.PeerID != keyboard.peerID) {
+			t.Fatal("Host state confused keyboard and gamepad grants")
+		}
+	}
+	reportA := gamepadReport{Buttons: 0x1000, LeftX: 12000}
+	reportB := gamepadReport{Buttons: 0x2000, RightTrigger: 190}
+	sendTestInput(m, a, inputEvent{Type: "gamepad", Gamepad: &reportA})
+	sendTestInput(m, b, inputEvent{Type: "gamepad", Gamepad: &reportB})
+	first, second := pads.devices[0], pads.devices[1]
+	if first.state != reportA || second.state != reportB {
+		t.Fatal("gamepad reports crossed grant ownership")
+	}
+	for _, event := range []inputEvent{
+		{Type: "key", Code: "KeyA", Down: true}, {Type: "button", Down: true},
+		{Type: "move", X: 0.5, Y: 0.5}, {Type: "text", Text: "text"},
+	} {
+		sendTestInput(m, a, event)
+	}
+	sendTestInput(m, keyboard, inputEvent{Type: "gamepad", Gamepad: &reportB})
+	if len(sink.events) != 0 || first.state != reportA || second.state != reportB || s.GivePointer(a.requestID) == nil {
+		t.Fatal("gamepad permission crossed into keyboard/pointer input")
+	}
+	sendTestInput(m, a, inputEvent{Type: "reset"})
+	if first.state != (gamepadReport{}) || second.state != reportB || keyboard.grant == "" {
+		t.Fatal("reset changed another player's device")
+	}
+	sink.focused = false
+	m.refreshActive()
+	if !a.suspended || !b.suspended || !keyboard.suspended || second.state != (gamepadReport{}) {
+		t.Fatal("source focus loss did not neutralize and suspend each gamepad")
+	}
+	sendTestInput(m, b, inputEvent{Type: "gamepad", Gamepad: &reportB})
+	if second.state != (gamepadReport{}) {
+		t.Fatal("unfocused source accepted gamepad input")
+	}
+	sink.focused = true
+	sendTestInput(m, b, inputEvent{Type: "gamepad", Gamepad: &reportB})
+	sendTestInput(m, keyboard, inputEvent{Type: "key", Code: "KeyB", Down: true})
+	<-sink.events
+	s.receivePacket(a.edgeID, inputroute.Packet{ID: a.id, Epoch: a.epoch, Closed: true})
+	if !first.closed || a.pad != nil || a.grant != "" || b.grant == "" || !keyboard.keys["KeyB"] {
+		t.Fatal("one route retirement changed a sibling grant")
+	}
+	second.updateErr = errors.New("driver write failed")
+	sendTestInput(m, b, inputEvent{Type: "gamepad", Gamepad: &reportB})
+	if !second.closed || b.pad != nil || b.grant != "" || keyboard.grant == "" || m.active != keyboard || !keyboard.keys["KeyB"] {
+		t.Fatal("one gamepad failure retired healthy input owners")
+	}
+	a.edgeID = "replacement-edge"
+	sendTestInput(m, a, inputEvent{Type: "request", Device: "gamepad"})
+	third := pads.devices[2]
+	sendTestInput(m, a, inputEvent{Type: "gamepad", Gamepad: &reportA})
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"}, nil)
+	if !third.closed || third.state != (gamepadReport{}) || a.grant != "" || keyboard.grant != "" || m.owner != nil {
+		t.Fatal("source replacement retained a gamepad or keyboard grant")
+	}
+	data, _ := json.Marshal(s.State())
+	if strings.Contains(string(data), "gamepad") || strings.Contains(string(data), "device") {
+		t.Fatal("default Host state added gamepad fields to the published baseline")
+	}
+	m.Close()
+	if !pads.closed {
+		t.Fatal("Manager retirement did not close its gamepad backend")
+	}
+}
+
+func TestCoPlayGamepadAdmissionAndFailure(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 16), resets: make(chan struct{}, 16), focused: true}
+	pads := &recordedGamepads{}
+	m := &Manager{sink: sink, gamepads: pads, connections: map[endpointKey]*connection{}}
+	s, players := coPlaySession(t, m, true, true, true, true, true, false)
+	if err := setTestPolicy(s, "ask", ""); err != nil {
+		t.Fatal(err)
+	}
+	a := players[0]
+	sendTestInput(m, a, inputEvent{Type: "request", Device: "gamepad"})
+	if !a.requested || a.pad != nil || s.State().Requests[0].Device != "gamepad" {
+		t.Fatal("pending request created a device or lost its input kind")
+	}
+	pads.openErr = errors.New("no driver slot")
+	for len(s.changed) > 0 {
+		<-s.changed
+	}
+	if s.Decide(a.requestID, true) == nil || a.requested || a.grant != "" || len(s.State().Requests) != 0 || len(s.changed) == 0 {
+		t.Fatal("failed device creation retained approval or omitted the Host notification")
+	}
+	pads.openErr = nil
+	if err := setTestPolicy(s, "room", ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range players[:5] {
+		sendTestInput(m, c, inputEvent{Type: "request", Device: "gamepad"})
+	}
+	if len(pads.devices) != 4 || players[4].grant != "" || players[4].requested || m.active != nil {
+		t.Fatal("remote gamepad capacity was exceeded or a failed request retained authority")
+	}
+	legacy := players[5]
+	sendTestInput(m, legacy, inputEvent{Type: "request", Device: "gamepad"})
+	if legacy.grant != "" || len(pads.devices) != 4 {
+		t.Fatal("legacy Guest acquired an unnegotiated gamepad")
+	}
+	sendTestInput(m, players[4], inputEvent{Type: "request", Device: "other"})
+	if players[4].grant != "" {
+		t.Fatal("unknown input-device kind acquired a grant")
+	}
+	sendTestInput(m, players[4], inputEvent{Type: "request"})
+	if players[4].grant == "" || m.active != players[4] {
+		t.Fatal("full gamepad capacity blocked keyboard input")
+	}
+	_, other := coPlaySession(t, m, true)
+	sendTestInput(m, other[0], inputEvent{Type: "request", Device: "gamepad"})
+	if other[0].grant != "" || m.owner != s {
+		t.Fatal("another source acquired a gamepad while the desktop was owned")
+	}
+	m.Revoke()
+	for _, pad := range pads.devices {
+		if !pad.closed || pad.state != (gamepadReport{}) {
+			t.Fatal("Host panic stop retained a virtual gamepad")
+		}
+	}
+	if m.owner != nil || m.active != nil {
+		t.Fatal("Host panic stop retained an input owner")
+	}
+}
+
+func sendTestInput(m *Manager, c *connection, event inputEvent) {
+	if event.Type == "request" && event.Intent == "" {
+		event.Intent = strings.Repeat("f", 32)
+	}
+	if event.Grant == "" {
+		event.Grant = c.grant
+	}
+	data, _ := json.Marshal(event)
+	m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: data}, c.epoch)
+}
+
+func TestCoPlayKeyboardAndPointerOwnership(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 64), resets: make(chan struct{}, 16), focused: true}
+	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+	s, players := coPlaySession(t, m, true, true)
+	a, b := players[0], players[1]
+	for _, c := range players {
+		sendTestInput(m, c, inputEvent{Type: "request"})
+	}
+	if a.grant == "" || b.grant == "" || m.active != a || m.owner != s {
+		t.Fatal("co-play did not grant two keyboards and the first pointer")
+	}
+	state := s.State()
+	if !state.CoPlay || len(state.Requests) != 2 {
+		t.Fatal("Host cannot see both grants")
+	}
+	for _, view := range state.Requests {
+		if view.Pointer == nil || *view.Pointer != (view.ID == a.requestID) {
+			t.Fatal("Host pointer assignment is missing or ambiguous")
+		}
+	}
+	for _, c := range players {
+		sendTestInput(m, c, inputEvent{Type: "key", Code: "KeyA", Down: true})
+		sendTestInput(m, c, inputEvent{Type: "key", Code: "KeyA", Down: true})
+	}
+	if len(sink.events) != 1 || !(<-sink.events).Down {
+		t.Fatal("shared key or repeated keydown was injected twice")
+	}
+	sendTestInput(m, a, inputEvent{Type: "key", Code: "KeyA"})
+	sendTestInput(m, b, inputEvent{Type: "move", X: 0.5, Y: 0.5})
+	sendTestInput(m, b, inputEvent{Type: "button", Down: true})
+	sendTestInput(m, b, inputEvent{Type: "text", Text: "hello"})
+	if len(sink.events) != 0 || len(sink.resets) != 0 {
+		t.Fatal("one player released another's key or used an unowned pointer/text reset")
+	}
+	sendTestInput(m, a, inputEvent{Type: "button", Down: true})
+	sendTestInput(m, a, inputEvent{Type: "key", Code: "KeyW", Down: true})
+	for len(sink.events) > 0 {
+		<-sink.events
+	}
+	if err := s.GivePointer(b.requestID); err != nil {
+		t.Fatal(err)
+	}
+	if event := <-sink.events; event.Type != "button" || event.Down || !a.keys["KeyW"] || m.active != b {
+		t.Fatal("pointer handoff failed to release the old buttons or kept no keyboard")
+	}
+	sendTestInput(m, a, inputEvent{Type: "move", X: 0.5, Y: 0.5})
+	sendTestInput(m, b, inputEvent{Type: "move", X: 0.5, Y: 0.5})
+	if len(sink.events) != 1 {
+		t.Fatal("pointer move ownership was not transferred")
+	}
+	<-sink.events
+	if err := s.Decide(a.requestID, false); err != nil {
+		t.Fatal(err)
+	}
+	if event := <-sink.events; event.Type != "key" || event.Code != "KeyW" || event.Down {
+		t.Fatal("personal revocation failed to release the player's distinct key")
+	}
+	if len(sink.events) != 0 || len(sink.resets) != 0 || b.grant == "" || s.mode != "room" {
+		t.Fatal("personal revocation reset another player or changed the room policy")
+	}
+	if err := s.GivePointer(""); err != nil {
+		t.Fatal(err)
+	}
+	if m.active != nil || m.owner != s {
+		t.Fatal("returning the pointer released keyboard ownership")
+	}
+	sendTestInput(m, b, inputEvent{Type: "reset"})
+	if event := <-sink.events; event.Code != "KeyA" || event.Down {
+		t.Fatal("reset did not release the final key holder")
+	}
+	sendTestInput(m, b, inputEvent{Type: "key", Code: "KeyB", Down: true})
+	<-sink.events
+	m.Revoke()
+	if b.grant != "" || m.owner != nil || len(sink.resets) != 1 || s.mode != "ask" {
+		t.Fatal("Host stop missed keyboard-only players")
+	}
+}
+
+func TestCoPlayRetirementAndLegacyAdmission(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 64), resets: make(chan struct{}, 16), focused: true}
+	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+	s, players := coPlaySession(t, m, true, true, false)
+	a, b, legacy := players[0], players[1], players[2]
+	sendTestInput(m, legacy, inputEvent{Type: "request"})
+	sendTestInput(m, a, inputEvent{Type: "request"})
+	if legacy.grant == "" || a.grant != "" || m.active != legacy || s.GivePointer("") == nil {
+		t.Fatal("legacy client was admitted without exclusive full control")
+	}
+	sendTestInput(m, legacy, inputEvent{Type: "release", Intent: legacy.intent})
+	for _, c := range []*connection{a, b} {
+		sendTestInput(m, c, inputEvent{Type: "request"})
+	}
+	sendTestInput(m, legacy, inputEvent{Type: "request"})
+	if a.grant == "" || b.grant == "" || legacy.grant != "" {
+		t.Fatal("busy legacy guest acquired keyboard-only control")
+	}
+	other, others := coPlaySession(t, m, true)
+	sendTestInput(m, others[0], inputEvent{Type: "request"})
+	if others[0].grant != "" || other.Decide(a.requestID, false) == nil || other.GivePointer(a.requestID) == nil {
+		t.Fatal("another native session acquired or changed the active desktop source")
+	}
+	for _, c := range []*connection{a, b} {
+		sendTestInput(m, c, inputEvent{Type: "key", Code: "KeyA", Down: true})
+	}
+	<-sink.events
+	s.RevokeEdge(a.edgeID)
+	if a.grant != "" || b.grant == "" || len(sink.events) != 0 || m.owner != s {
+		t.Fatal("one route loss released another player's held key")
+	}
+	sink.focused = false
+	m.refreshActive()
+	m.refreshActive()
+	if !b.suspended || len(b.keys) != 0 || len(sink.resets) != 1 {
+		t.Fatal("keyboard-only source did not suspend once")
+	}
+	sink.focused = true
+	m.refreshActive()
+	if b.suspended || len(sink.events) != 0 {
+		t.Fatal("focus recovery replayed held keys")
+	}
+	sendTestInput(m, b, inputEvent{Type: "key", Code: "KeyB", Down: true})
+	<-sink.events
+	oldGrant := b.grant
+	s.Pause(true)
+	if b.grant != "" || len(sink.resets) != 2 {
+		t.Fatal("pause retained co-play input")
+	}
+	s.Pause(false)
+	sendTestInput(m, b, inputEvent{Type: "key", Code: "KeyC", Down: true, Grant: oldGrant})
+	if len(sink.events) != 0 {
+		t.Fatal("resume restored a stale grant")
+	}
+	sendTestInput(m, b, inputEvent{Type: "request"})
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"}, nil)
+	if b.grant != "" || m.owner != nil || s.State().CoPlay || s.State().Mode != "off" {
+		t.Fatal("source replacement inherited co-play authorization")
+	}
+	data, _ := json.Marshal(s.State())
+	if strings.Contains(string(data), "coPlay") || strings.Contains(string(data), "pointer") {
+		t.Fatal("default Host state added fields to the published baseline")
+	}
+}
+
 // Exercise the consent/retirement owner over real SCTP channels. No OS input
 // is injected by this test; the platform acceptance uses a dedicated window.
 func TestAttendedGrantLifecycle(t *testing.T) {
@@ -372,7 +753,11 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = viewer.Close() })
 	channels := make(chan *webrtc.DataChannel, 2)
-	type observedState struct{ peer, state string }
+	type observedState struct {
+		peer, state     string
+		capabilities    []string
+		coPlay, pointer *bool
+	}
 	states := make(chan observedState, 128)
 	bindings := map[string]protocol.RemoteInputPeer{}
 	ciphers := map[string]*inputCipher{}
@@ -401,10 +786,13 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 				return
 			}
 			var value struct {
-				State string `json:"state"`
+				State        string   `json:"state"`
+				Capabilities []string `json:"capabilities"`
+				CoPlay       *bool    `json:"coPlay"`
+				Pointer      *bool    `json:"pointer"`
 			}
 			if json.Unmarshal(plain, &value) == nil {
-				states <- observedState{c.Label(), value.State}
+				states <- observedState{c.Label(), value.State, value.Capabilities, value.CoPlay, value.Pointer}
 			}
 		})
 		c.OnOpen(func() { channels <- c })
@@ -471,22 +859,26 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		}
 		t.Fatal("grant state did not settle")
 	}
-	request := func(peer string) *connection {
+	send := func(peer string, event inputEvent) {
 		t.Helper()
-		intent := make([]byte, 16)
-		_, _ = rand.Read(intent)
 		cipher := ciphers[peer]
 		cipher.sent++
 		header := make([]byte, 20)
 		binary.BigEndian.PutUint64(header, cipher.sent)
 		_, _ = rand.Read(header[8:])
-		plain := []byte(`{"type":"request","intent":"` + hex.EncodeToString(intent) + `"}`)
+		plain, _ := json.Marshal(event)
 		epoch := bindings[peer].EndpointID
 		data := cipher.aead.Seal(header, header[8:], plain, inputAAD(0, header[:8], epoch))
 		packet, _ := json.Marshal(inputroute.Packet{ID: bindings[peer].EndpointID, Epoch: epoch, Data: base64.StdEncoding.EncodeToString(data)})
 		if err := peers[peer].SendText(string(packet)); err != nil {
 			t.Fatal(err)
 		}
+	}
+	request := func(peer string) *connection {
+		t.Helper()
+		intent := make([]byte, 16)
+		_, _ = rand.Read(intent)
+		send(peer, inputEvent{Type: "request", Intent: hex.EncodeToString(intent)})
 		var found *connection
 		wait(func() bool {
 			for _, c := range m.connections {
@@ -647,6 +1039,37 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	key(first, nextGrant)
 	if first.suspended || len(sink.events) != 4 || sink.target != sink.geometry {
 		t.Fatal("window movement/focus recovery did not use the current target")
+	}
+	// Old strict readers get precisely the baseline until this exact Guest opts
+	// into the extension, including when another Guest has already opted in.
+	for len(states) > 0 {
+		<-states
+	}
+	waitReply := func(peer string, extended bool) observedState {
+		t.Helper()
+		deadline := time.After(3 * time.Second)
+		for {
+			select {
+			case state := <-states:
+				if state.peer == peer && (state.coPlay != nil) == extended {
+					return state
+				}
+			case <-deadline:
+				t.Fatal("input state reply missing")
+			}
+		}
+	}
+	send("first", inputEvent{Type: "sync"})
+	if state := waitReply("first", false); state.pointer != nil || len(state.capabilities) != 0 {
+		t.Fatal("baseline sync added unnegotiated fields")
+	}
+	send("first", inputEvent{Type: "capabilities"})
+	if state := waitReply("first", true); *state.coPlay || state.pointer == nil || !*state.pointer || len(state.capabilities) != 1 || state.capabilities[0] != "coPlay" {
+		t.Fatal("extended Guest did not receive the explicit single-controller capability state")
+	}
+	send("second", inputEvent{Type: "sync"})
+	if state := waitReply("second", false); state.pointer != nil || len(state.capabilities) != 0 {
+		t.Fatal("one Guest opted another Guest into the extension")
 	}
 	s.Close()
 	key(first, nextGrant)

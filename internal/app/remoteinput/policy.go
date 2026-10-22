@@ -106,6 +106,9 @@ func (s *Session) setPolicy(mode string, password [32]byte) {
 
 func (s *Session) applyPolicy(mode string, password [32]byte) {
 	s.mode, s.password = mode, password
+	if s.manager.owner == s {
+		s.manager.release()
+	}
 	s.manager.releaseIdleShortcut()
 	for _, c := range s.manager.connections {
 		if c.owner == s {

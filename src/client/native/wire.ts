@@ -45,6 +45,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       maxRelayChildren: z.number().int().min(1).max(20).optional(),
       remoteInput: z.boolean().optional(),
       remoteStopShortcut: z.boolean().optional(),
+      remoteCoPlay: z.boolean().optional(),
       video: z.boolean().default(false),
       processAudio: z.boolean().default(false),
       systemAudio: z.boolean().default(false),
@@ -288,10 +289,12 @@ const remoteControlRequestSchema = z.object({
   id: opaqueIdentifierSchema,
   peerId: opaqueIdentifierSchema,
   state: z.enum(["pending", "active", "suspended"]),
+  pointer: z.boolean().optional(),
+  device: z.literal("gamepad").optional(),
 }).strict();
 export type RemoteControlRequest = z.infer<typeof remoteControlRequestSchema>;
 
-export const remoteControlStateSchema = z.object({ mode: remoteControlModeSchema, platform: remoteInputPlatformSchema, requests: z.array(remoteControlRequestSchema) });
+export const remoteControlStateSchema = z.object({ mode: remoteControlModeSchema, platform: remoteInputPlatformSchema, requests: z.array(remoteControlRequestSchema), coPlay: z.boolean().optional(), gamepad: z.boolean().optional() });
 export type RemoteControlState = z.infer<typeof remoteControlStateSchema>;
 
 export const nativeEventSchema = z.discriminatedUnion("type", [

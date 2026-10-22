@@ -12,6 +12,7 @@ export function RemoteControlsPreview() {
   const en = lang === "en";
   const [platform, setPlatform] = useState<RemoteInputPlatform>("windows");
   const [mode, setMode] = useState<RemoteControlMode>("off");
+  const [coPlay, setCoPlay] = useState(false);
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [lastInput, setLastInput] = useState("");
@@ -40,6 +41,10 @@ export function RemoteControlsPreview() {
         </select>
       </label>
       <HostRemoteControl mode={mode} platform={platform} requests={requests}
+        coPlay={coPlay} gamepad={platform === "windows"}
+        onCoPlay={async enabled => { setCoPlay(enabled); setRequests([]); }}
+        onPointer={async id => setRequests(current => current.map(request =>
+          request.device === "gamepad" ? request : { ...request, pointer: request.id === id }))}
         onShortcut={platform === "linux" ? undefined : shortcut}
         onPolicy={async value => { setMode(value); setRequests([]); }}
         onDecide={async (id, allow) => setRequests(current => allow
@@ -49,11 +54,20 @@ export function RemoteControlsPreview() {
         setMode("ask");
         setRequests([{ id: "preview-request", peerId: "preview-friend", state: "pending", name: "Piik friend" }]);
       }}>{en ? "Receive a sample request" : "模拟收到控制请求"}</button>
+      <button type="button" className="lr-btn" onClick={() => {
+        setMode("ask"); setCoPlay(true);
+        setRequests([
+          { id: "preview-player-one", peerId: "preview-player-one", state: "active", name: "Player 1", pointer: true },
+          { id: "preview-player-two", peerId: "preview-player-two", state: "active", name: "Player 2", pointer: false },
+          { id: "preview-gamepad", peerId: "preview-gamepad", state: "pending", name: "Player 3", device: "gamepad", pointer: false },
+        ]);
+      }}>{en ? "Co-play: two keyboards and a gamepad" : "同乐示例：双键盘与手柄"}</button>
       <Btn id="preview-remote-keyboard-toggle" icon="keyboard" title="remote.keyboard" cap="remote.keyboard" hint="hint-remote-keyboard"
         expanded={keyboardOpen} controls="preview-remote-keyboard" onClick={() => setKeyboardOpen(value => !value)} />
     </div>
     <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
       {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch={false} input={input} close={closeKeyboard}
+        allowText={!coPlay}
         releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
     </div>
     <p className="cp-input-output"><span>{en ? "Latest input" : "最近一次输入"}</span>

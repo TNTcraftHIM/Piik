@@ -16,6 +16,7 @@ Choose a guide for what you want to do.
 
 - [Sharing and playback](./sharing.md): picture quality, cameras, source sound and viewing controls.
 - [Chat, voice and remote control](./room-tools.md): reactions, conversations and letting a friend take control.
+- [Remote control and playing together](./remote-control.md): permissions, shared keyboards, mouse handoff and gamepads.
 - [App reference](../../cmd/piik-app/README.md): saved modes, site access, command-line options and diagnostics.
 
 ## Get help

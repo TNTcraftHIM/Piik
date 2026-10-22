@@ -21,6 +21,20 @@ export const remoteInputStateSchema = z.object({
   platform: remoteInputPlatformSchema,
   grant: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   intent: z.string().regex(/^[0-9a-f]{32}$/).optional(),
-  reason: z.enum(["password", "retry", "busy"]).optional(),
+  reason: z.enum(["password", "retry", "busy", "gamepad"]).optional(),
+  capabilities: z.array(z.string().min(1).max(32)).max(16).optional(),
+  coPlay: z.boolean().optional(),
+  pointer: z.boolean().optional(),
+  device: z.literal("gamepad").optional(),
 }).strict();
 export type RemoteInputState = z.infer<typeof remoteInputStateSchema>;
+
+export interface RemoteGamepadReport {
+  buttons: number;
+  leftTrigger: number;
+  rightTrigger: number;
+  leftX: number;
+  leftY: number;
+  rightX: number;
+  rightY: number;
+}

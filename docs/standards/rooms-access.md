@@ -186,6 +186,37 @@ authorization loss ends the corresponding voice authority. Runtime voice state
 is not persisted. The [routing contract](./routing-transport.md#room-media)
 owns placement and recovery; [status](../status.md#current-work) indexes delivery.
 
+## Remote Control
+
+Remote input belongs to one active App-owned window or screen share. The Host
+explicitly enables it for that source using Ask each time, Room Viewers or a
+separate control password. Viewer identity and requests reuse authenticated room
+membership; grants and encrypted input stay bound to the current route and source.
+Changing the source, stopping sharing, authorization loss or route retirement
+releases the corresponding grants and held input. Reconnection requires a new grant.
+
+The default is one keyboard/mouse controller. The Host may opt into **Play
+together**, allowing concurrent approved Viewers to share the existing keyboard.
+Held keys belong to each grant; releasing one participant cannot release another's
+still-held keys. One remote keyboard grant may own the pointer; the Host can
+transfer it or take it back. Changing co-play mode ends current grants. Input
+still belongs to one process-wide source owner, not multiple simultaneous shares.
+
+Optional Windows x64 gamepad grants create independent Xbox 360 devices through
+ViGEmClient and an already-installed ViGEmBus. Piik may ship the MIT user-mode
+client; the Host installs the optional driver. Each approved gamepad owns its
+device and cannot inject keyboard or mouse input. There are at most four remote
+devices, subject to the four XInput slots shared with the Host's existing devices.
+Driver connection and target creation determine availability; keyboard input
+continues when the optional backend is unavailable.
+
+Losing shared-window focus releases held input and neutralizes gamepads while
+keeping grants suspended. Ending a gamepad grant neutralizes and removes only
+its device; a device failure retires only the affected grant. The Host's stop
+shortcut ends all remote input. The [reader guide](../guide/remote-control.md)
+owns usage and driver setup; [interaction research](../research/room-interactions.md#remote-co-play)
+owns backend rationale and measurements.
+
 ## Persistence Modes
 
 - **Stable mode (Hosted default):** one exact-schema SQLite owner persists room

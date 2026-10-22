@@ -94,6 +94,7 @@ LICENSE
 THIRD-PARTY-NOTICES.txt
 runtime/native/piik-capture[.exe] # supported native-media packages
 runtime/tunnel/cloudflared[.exe] # packages that support --link
+ViGEmClient.dll                # optional Windows x64 gamepad client
 ```
 
 The executable embeds the Browser assets of the consumed application release and
@@ -104,6 +105,28 @@ interoperability follows the
 For a native Host smoke run, launch the App and select a window in the Host
 page, then open its invitation on another device. Choose the mode for that
 network as described in the [App guide](./README.md#modes).
+
+### Optional Gamepad Client
+
+For this co-play prototype, supply the native x64 `ViGEmClient.dll` from the
+official [Nefarius.ViGEm.Client 1.21.256 NuGet package](https://www.nuget.org/packages/Nefarius.ViGEm.Client/1.21.256)
+as a local build input. Its netstandard assembly contains the Costura resource
+`costura64.vigemclient.dll`. The package SHA-256 is
+`ff460031b33e0882cd1166fe2d072d0fe97578480c61ed85dccfa6c930fdb55e`;
+the extracted native DLL (file version 1.21.233.0) must have SHA-256
+`00303f99e1968d523fbd08a7c691d60d145b7335059ec593947841d124c10875`.
+The packager checks that fixed DLL digest before copying it beside the App:
+
+```sh
+node scripts/package-app-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/app-candidate --gamepad-client /local/sdk/ViGEmClient.dll
+```
+
+Manual `scripts/assemble-app.mjs` assembly accepts the same `--gamepad-client`
+option. Omitting it creates an App without gamepad support. The MIT notice is
+included in `THIRD-PARTY-NOTICES.txt`. Only Windows x64 accepts this SDK input;
+no build step downloads or installs a kernel driver. The Host follows the
+[gamepad setup guide](../../docs/guide/remote-control.md#gamepads) to install
+the optional driver.
 
 ### Desktop Icons
 

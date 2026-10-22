@@ -74,54 +74,6 @@ speech, or turn it off when the selected input already processes your voice.
 
 ## Let a friend control your shared screen
 
-1. Share through Piik App using **Apps / Windows** or **Screens**.
-2. Open **Remote control** below the picture and turn it on. It starts with
-   **Ask each time**.
-3. Your friend selects **Request control** in their playback bar. Choose
-   **Allow control** on your sharing page when their request arrives.
-
-When sharing a window, switch back to that window after allowing control. Input
-pauses while another window is active and resumes when you return.
-
-One viewer can control at a time, using a desktop or mobile browser. Update the
-host's App and the room's site, then refresh the viewing page. The control button
-appears when the host enables control and the connection supports it. Browser
-and camera capture cannot receive remote input.
-Viewers need HTTPS or a localhost page for remote control. A LAN or virtual-IP
-HTTP page can play video but lacks the browser cryptography interface required
-for remote control, so no control button appears.
-
-Either person can choose **End control**. On the host's computer, **Ctrl+Alt+F10**
-on Windows or **Control+Option+F10** on macOS also stops control by default.
-Change the function key in the host's **Remote control** panel if it conflicts
-with another app. Shortcut choices are saved in this site's browser storage;
-each site is configured independently. The viewer can separately change **Exit control shortcut**
-in **Remote keyboard**, including its detached window. Changing the
-shared source or stopping sharing turns remote control off. After a connection
-interruption, the viewer requests control again.
-The authorization choice is remembered, but remote control does not turn on
-automatically. If the previous choice was **Room Viewers**, enabling it shows
-the permission explanation first; select **Allow Viewers** to
-apply it. Control passwords are not saved.
-
-On a phone, swipe to move the pointer, tap to click and hold to drag. Two-finger
-tap is right-click; two-finger swipe scrolls. Pinch to zoom, then use two fingers
-to move around the enlarged picture. **Remote keyboard** provides keys,
-shortcuts and text input. On a computer, **Game mouse** captures continuous
-mouse movement; press **Esc** to release it.
-
-<details>
-<summary>Permissions and platform support</summary>
-
-**Room Viewers** allows a room member to take idle control without asking each
-time; **Password** requires a separate control password. These choices apply
-only to the current shared source. Control gives access to the computer's mouse
-and keyboard, so allow people you trust. It is not limited to what is visible
-inside the video.
-
-macOS asks for Accessibility permission. Linux needs a supported desktop Portal
-and currently controls a selected screen, not an application window. Windows
-is the primary physically tested host; macOS/Linux device acceptance is still
-limited. System-protected shortcuts and some games may not accept remote input.
-
-</details>
+Share an App window or screen, enable **Remote control**, then approve your friend.
+See [remote control and playing together](./remote-control.md) for keyboard, mouse,
+multiplayer and optional gamepad setup.

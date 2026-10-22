@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { RemoteControlRequest, RemoteStopShortcut } from "../../native/wire";
 import type { RemoteControlMode, RemoteInputPlatform } from "../../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
+import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Btn, NameTag, SwitchItem } from "./primitives";
@@ -12,7 +13,7 @@ import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
 import "./remote-control.css";
 
 // Form drafts stay here; the App snapshot owns applied authorization.
-export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy, onDecide, onShortcut }: {
+export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy, onDecide, onShortcut, coPlay = false, gamepad, onCoPlay, onPointer }: {
   mode: RemoteControlMode;
   platform: RemoteInputPlatform;
   requests: (RemoteControlRequest & { name: string })[];
@@ -20,10 +21,16 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
   onPolicy: (mode: RemoteControlMode, password?: string) => Promise<void>;
   onDecide: (id: string, allow: boolean) => Promise<void>;
   onShortcut?: (key?: number) => Promise<RemoteStopShortcut>;
+  coPlay?: boolean;
+  gamepad?: boolean;
+  onCoPlay?: (enabled: boolean) => Promise<void>;
+  onPointer?: (id: string) => Promise<void>;
 }) {
-  const { t, vis } = useCopy();
+  const { t, vis, lang } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
+  const gamepadGuide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}remote-control.html#gamepads`,
+    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/remote-control${lang === "zh" ? ".zh-CN" : ""}.md`, open && coPlay);
   const [surfaceDocument, setSurfaceDocument] = useState<Document | null>(null);
   const detached = Boolean(surfaceDocument && surfaceDocument !== document);
   const [draft, setDraft] = useState(() => mode === "off" ? readRoomPreferences().remoteControlMode : mode);
@@ -103,6 +110,17 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
             if (enabled && (draft === "room" || draft === "password" && !password)) setPreparing(true);
             else void applyPolicy(enabled ? draft : "off", enabled && draft === "password" ? password : undefined);
           }} />
+        {mode !== "off" && onCoPlay && <>
+          <SwitchItem checked={coPlay} label={t("remote.coPlay")} hint="hint-remote-control"
+            disabled={busy || disabled} onChange={enabled => void perform("coplay", () => onCoPlay(enabled))} />
+          {!vis && <p className="lr-remote-note">{t("remote.coPlayHelp")}</p>}
+          {coPlay && platform === "windows" && gamepad !== undefined && <p className="lr-remote-note">
+            <Glyph name="gamepad" size={14} />{" "}
+            <span className={vis ? "visually-hidden" : undefined}>{t(gamepad ? "remote.gamepadHostHelp" : "remote.gamepadMissing")} </span>
+            <a href={gamepadGuide} target="_blank" rel="noopener noreferrer">{t("remote.gamepadSetup")}</a>
+          </p>}
+          {failedId === "coplay" && <p role="alert">{t("remote.decisionFailed")}</p>}
+        </>}
         {pendingActions.has("enable") && mode === "off" && <div className="lr-remote-enable-pending" role="status">
           <Glyph name="loader" size={18} className="lr-spin" />
           <Btn icon="x" cap="remote.cancel" title="remote.cancel" hint="hint-remote-stop"
@@ -111,18 +129,25 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
         {requests.length > 0 && <div className="lr-remote-requests">
           {[...requests].sort((a, b) => Number(a.state === "pending") - Number(b.state === "pending")).map(request => <div className="lr-remote-request" key={request.id} role="group" aria-label={request.name}>
             <div><NameTag name={request.name} identity={request.peerId} />
-              <p><Glyph name={request.state === "suspended" ? "pause" : request.state === "active" ? "mouse" : "clock"} size={14} />
-                <span className={vis ? "visually-hidden" : undefined}>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.controlling" : "remote.waiting")}</span></p>
+              <p><Glyph name={request.device === "gamepad" ? "gamepad" : request.pointer === false || coPlay && request.state === "pending" ? "keyboard" : "mouse"} size={14} />
+                <span className={vis ? "visually-hidden" : undefined}>
+                  {t(request.device === "gamepad" ? "remote.device.gamepad" : request.pointer === false || coPlay && request.state === "pending" ? "remote.device.keyboard" : "remote.device.keyboardMouse")}
+                  {" · "}{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.controlling" : "remote.waiting")}
+                </span></p>
               {failedId === request.id && <p role="alert"><Glyph name="alert" size={14} />
                 <span className={vis ? "visually-hidden" : undefined}>{t("remote.decisionFailed")}</span></p>}</div>
             <div className="lr-remote-request-actions">
+              {coPlay && onPointer && request.device !== "gamepad" && request.state !== "pending" && <Btn icon="mouse"
+                title={request.pointer ? "remote.takePointer" : "remote.givePointer"} cap={request.pointer ? "remote.takePointer" : "remote.givePointer"}
+                hint="hint-remote-control" disabled={busy || disabled}
+                onClick={() => void perform(request.id, () => onPointer(request.pointer ? "" : request.id))} />}
               <Btn icon="x" title={request.state !== "pending" ? "remote.stop" : "remote.decline"} cap={request.state !== "pending" ? "remote.stop" : "remote.decline"}
                 hint="hint-remote-stop" disabled={pendingActions.has(`stop:${request.id}`)} onClick={() => void perform(`stop:${request.id}`, () => onDecide(request.id, false))} />
               {request.state === "pending" && <Btn icon="check" tone="primary" title="remote.allow" cap="remote.allow" hint="hint-remote-control"
                 disabled={busy || disabled} onClick={() => void perform(request.id, () => onDecide(request.id, true))} />}
             </div>
           </div>)}
-          {!vis && pending > 0 && <p className="lr-remote-note">{t("remote.consent")}</p>}
+          {!vis && requests.some(request => request.state === "pending" && request.device !== "gamepad") && <p className="lr-remote-note">{t("remote.consent")}</p>}
         </div>}
         {(mode !== "off" || preparing) && <form className="lr-remote-settings" onSubmit={event => {
             event.preventDefault();

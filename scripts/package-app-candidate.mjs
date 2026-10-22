@@ -309,9 +309,9 @@ function verifyPlatformAssets(root, target) {
   }
 }
 
-if (process.argv.length !== 5) {
+if (process.argv.length !== 5 && !(process.argv.length === 7 && process.argv[5] === "--gamepad-client")) {
   fail(
-    "Usage: node scripts/package-app-candidate.mjs <server-release-directory> <target> <new-output-directory>",
+    "Usage: node scripts/package-app-candidate.mjs <server-release-directory> <target> <new-output-directory> [--gamepad-client <ViGEmClient.dll>]",
   );
 }
 
@@ -320,6 +320,8 @@ const serverRoot = realpathSync(resolve(process.argv[2]));
 const target = appPackageTarget(process.argv[3]);
 const outputRoot = resolve(process.cwd(), process.argv[4]);
 if (!target) fail("App package target is invalid");
+const gamepadClient = process.argv[6] ? realpathSync(resolve(process.argv[6])) : null;
+if (gamepadClient && target.id !== "windows-amd64") fail("Gamepad client requires the Windows x64 App target");
 if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch) {
   fail(`App candidate ${target.id} requires its native runner`);
 }
@@ -369,6 +371,7 @@ try {
     tunnel,
   ];
   if (capture) assembleArguments.push("--capture", capture);
+  if (gamepadClient) assembleArguments.push("--gamepad-client", gamepadClient);
   run(process.execPath, assembleArguments, repositoryRoot);
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });

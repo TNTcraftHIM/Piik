@@ -3,6 +3,7 @@ import { RemoteInputSession } from "../src/client/remote-control/input-session";
 import { picturePoint, rotatePicturePoint, rotatePictureDelta, type VideoRotation } from "../src/client/media/video-geometry";
 import { InputRoute, type InputIdentity } from "../src/client/remote-control/input-route";
 import { matchesRemoteShortcut, remoteInputStateSchema } from "../src/client/remote-control/protocol";
+import { RemoteGamepad } from "../src/client/remote-control/gamepad";
 
 it("recognizes only the selected local release chord outside IME composition", () => {
   const chord = { code: "F9", ctrlKey: true, altKey: true, metaKey: false, shiftKey: false, isComposing: false };
@@ -21,6 +22,66 @@ class Channel extends EventTarget {
   close() { this.readyState = "closed"; this.dispatchEvent(new Event("close")); }
   receive(value: object) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) })); }
 }
+
+it("maps standard gamepads into one negotiated grant and resets on focus loss, unplug and retirement", () => {
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  channel.receive({ platform: "windows", mode: "ask", state: "ready" });
+  expect(channel.sent.at(-1)).toEqual({ type: "capabilities" });
+  const beforeNegotiation = channel.sent.length;
+  session.request(undefined, "gamepad");
+  expect(channel.sent).toHaveLength(beforeNegotiation);
+  channel.receive({ platform: "windows", mode: "ask", state: "ready", coPlay: true, capabilities: ["coPlay", "gamepad"] });
+  session.request(undefined, "gamepad");
+  const intent = channel.sent.at(-1)?.intent;
+  expect(channel.sent.at(-1)).toMatchObject({ type: "request", device: "gamepad" });
+  const grant = "d".repeat(64);
+  channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant, device: "gamepad", pointer: false, coPlay: true });
+  const beforeInput = channel.sent.length;
+  session.input({ type: "key", code: "KeyW", down: true });
+  session.input({ type: "button", button: 0, down: true });
+  expect(channel.sent).toHaveLength(beforeInput);
+
+  const pad = { index: 1, connected: true, mapping: "standard", axes: [-1, -1, 1, 1],
+    buttons: Array.from({ length: 17 }, (_, index) => ({ pressed: [0, 1, 4, 8, 9, 10, 12].includes(index), value: index === 6 ? .5 : index === 7 ? 1 : 0 })),
+  } as unknown as Gamepad;
+  let pads: (Gamepad | null)[] = [{ ...pad, index: 0, mapping: "" } as Gamepad, pad];
+  let focused = true;
+  const page = Object.assign(new EventTarget(), { hidden: false, hasFocus: () => focused });
+  const frames = new Map<number, FrameRequestCallback>();
+  let sequence = 0;
+  const owner = Object.assign(new EventTarget(), { navigator: { getGamepads: () => pads },
+    requestAnimationFrame: (frame: FrameRequestCallback) => { frames.set(++sequence, frame); return sequence; },
+    cancelAnimationFrame: (id: number) => frames.delete(id),
+  });
+  const tick = (time: number) => {
+    const entry = frames.entries().next().value!;
+    frames.delete(entry[0]); entry[1](time);
+  };
+  const controller = new RemoteGamepad(event => session.input(event), () => {}, owner as unknown as Window, page as unknown as Document);
+  try {
+    tick(0); tick(17);
+    const report = { type: "gamepad", grant, gamepad: { buttons: 0x3171,
+      leftTrigger: 128, rightTrigger: 255, leftX: -32768, leftY: 32767, rightX: 32767, rightY: -32768 } };
+    expect(channel.sent.slice(-2)).toEqual([report, report]);
+    focused = false; owner.dispatchEvent(new Event("blur"));
+    expect(channel.sent.at(-1)).toEqual({ type: "reset", grant });
+    expect(frames.size).toBe(0);
+    focused = true; owner.dispatchEvent(new Event("focus")); tick(34);
+    expect(channel.sent.at(-1)).toEqual(report);
+    pads = [];
+    owner.dispatchEvent(Object.assign(new Event("gamepaddisconnected"), { gamepad: pad }));
+    expect(channel.sent.at(-1)).toEqual({ type: "reset", grant });
+    tick(51);
+    expect(channel.sent.at(-1)).toEqual({ type: "reset", grant });
+    page.hidden = true; page.dispatchEvent(new Event("visibilitychange"));
+    expect(frames.size).toBe(0);
+  } finally { controller.dispose(); session.dispose(); }
+  expect(frames.size).toBe(0);
+  expect(channel.sent.at(-1)).toEqual({ type: "release", intent });
+  owner.dispatchEvent(new Event("focus"));
+  expect(frames.size).toBe(0);
+});
 
 it.each(["windows", "darwin", "linux"] as const)("keeps the Host platform in local request state (%s)", platform => {
   const channel = new Channel();
