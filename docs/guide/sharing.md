@@ -74,11 +74,9 @@ app to a different playback device.
 
 Move the pointer over the picture or tap it to show the playback bar.
 
-| You want to… | Use… | Who is affected? |
-| --- | --- | --- |
-| Pause watching or mute source sound | The playback bar on the picture | Only you. The Host's preview starts muted. |
-| Pause the picture for friends | **Pause sharing**, below the picture | Everyone watching. |
-| Mute your microphone or stop hearing voices | **Interact → Voice** | Your voice controls; separate from picture sound. |
+- **Adjust your own playback:** use the bar on the picture to pause, mute or change volume. The Host's preview starts muted.
+- **Pause the picture for friends:** select **Pause sharing** below the picture. This affects everyone watching.
+- **Control your microphone and listening:** open **Interact → Voice**. These controls are separate from picture sound.
 
 <div class="guide-control-reference">
 

@@ -79,8 +79,9 @@ release artifacts and operator records establish publication and deployment.
 Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
 The integrated local candidate adds room-aware connection presentation, a Host-owned
 room voice bitrate ceiling and shared local playback controls for the Host.
-It is in visual and functional acceptance; the route controller and published wire identifiers
-are unchanged.
+Local visual and functional acceptance has passed on Windows; owner review and
+release notes remain before publication. The route controller and published wire
+identifiers are unchanged.
 The website selects the accepted promotional film A as its only film, with shared
 brand motion and task-based illustrated guides. The former 1.0 remains in Git history.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;

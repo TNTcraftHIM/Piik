@@ -367,8 +367,9 @@ async function main(): Promise<void> {
     if (!await evaluate<boolean>(cdp, host, "document.querySelector('.lr-tv video').paused", Date.now() + 3000)) throw new Error("Focus restored an explicitly paused Host preview");
     await button(host, "Play");
     check("Host local playback starts muted; pause and focus changes preserve sharing and voice");
-    if (legacyViewer) await until(legacyViewer, state => state.videoFrames > 0 && state.voice === null && state.authentications === 1,
-      "older Viewer receives picture without unsupported voice events");
+    if (legacyViewer) await until(legacyViewer, state => state.videoFrames > 0 && state.voice !== null
+      && state.voice.bitrate === undefined && state.authentications === 1,
+      "published Viewer receives picture and voice state without the new bitrate field");
     await button(host, "Stop sharing");
     const stopped = await sample(viewer);
     await until(viewer, state => state.samples > stopped.samples && state.voice?.publications.length === 2, "voice survives video stop");
@@ -407,9 +408,10 @@ async function main(): Promise<void> {
     await until(viewer, state => state.videoFrames > closedVoice.videoFrames, "picture continues after channel close");
     if (legacyViewer) {
       const legacyBefore = await sample(legacyViewer);
-      await until(legacyViewer, state => state.videoFrames > legacyBefore.videoFrames && state.voice === null && state.authentications === 1,
+      await until(legacyViewer, state => state.videoFrames > legacyBefore.videoFrames && state.voice?.enabled === false
+        && state.voice.bitrate === undefined && state.authentications === 1,
         "older Viewer retains picture after voice closes");
-      check("older Web keeps picture sharing across voice activation and retirement without unsupported messages");
+      check("published Web keeps picture and existing voice state without the unrequested bitrate field");
     }
     await button(host, "Open room voice");
     await until(viewer, state => !!state.voice?.enabled, "Host reopens room voice");

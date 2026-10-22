@@ -5,11 +5,9 @@ English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 These tools belong to the room. You can chat before or after a picture share;
 remote control requires an active App window or screen share.
 
-| You want to… | Open… | Before you start |
-| --- | --- | --- |
-| Send a message or reaction | [Interact → Chat](#chat-and-reactions) | Join the room. |
-| Talk with friends | [Interact → Voice](#room-voice) | The Host opens room voice; each speaker enables their own microphone. |
-| Take a turn on the shared computer | [Remote control](#let-a-friend-control-your-shared-screen) | The Host shares an App window/screen and allows control. |
+- **[Chat and reactions](#chat-and-reactions):** join the room and open **Interact → Chat**.
+- **[Room voice](#room-voice):** the Host opens room voice; each speaker enables their own microphone.
+- **[Remote control](#let-a-friend-control-your-shared-screen):** the Host shares an App window/screen, then enables and authorizes control.
 
 ## Chat and reactions
 
