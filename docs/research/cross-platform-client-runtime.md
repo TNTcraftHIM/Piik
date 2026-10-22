@@ -144,10 +144,9 @@ On Windows with Chrome for Testing 151.0.7922.138:
   30+ H.264 RTP packets to a Linux Pion Viewer over selected direct paths using
   a reflexive candidate. Stopping the App closed the URL.
 
-The one-link gate used the official Windows amd64 `cloudflared` 2026.8.3 asset
-with SHA-256 `83e726ed18ea78c5ad5213c4c3a3a27051393950d2bc8ed4de69bec12d14eaae`.
-The sidecar remains an explicit package input rather than a linked App
-dependency.
+The [App package target inventory](../../scripts/app-package-targets.mjs) owns
+the official `cloudflared` version and per-platform archive checksums. The
+sidecar remains an explicit package input rather than a linked App dependency.
 
 The peer topology gate now treats native `getStats()` RTP identity and frame
 totals as its portable core proof. Detailed Piik quality metrics enrich a
@@ -182,8 +181,8 @@ gate also serves the invitation page and upgrades its WebSocket from an external
 US host, then confirms App exit and link retirement. These bounded checks do not
 establish regional reachability, uninterrupted connector availability or the
 cause of reports without matching diagnostics. Upstream
-[Quick Tunnel setup](https://github.com/cloudflare/cloudflared/blob/2026.8.3/cmd/cloudflared/tunnel/quick_tunnel.go)
-and [protocol fallback](https://github.com/cloudflare/cloudflared/blob/2026.8.3/supervisor/tunnel.go)
+[Quick Tunnel setup](https://github.com/cloudflare/cloudflared/blob/2026.10.3/cmd/cloudflared/tunnel/quick_tunnel.go)
+and [protocol fallback](https://github.com/cloudflare/cloudflared/blob/2026.10.3/supervisor/tunnel.go)
 own the dependency behavior. An early-exit fixture confirms fourth-start recovery
 and bounded exhaustion; these checks do not identify a reporter's API or network
 failure or guarantee four starts when earlier attempts consume the deadline.
@@ -209,8 +208,8 @@ both the assigned origin and a registered connection; later reconnection belongs
 to cloudflared, while process exit ends that App's public-link runtime. This
 HTTP failure precedes WebRTC candidate exchange and is distinct from media-route
 exhaustion on an already reachable site.
-The pinned [supervisor](https://github.com/cloudflare/cloudflared/blob/2026.8.3/supervisor/supervisor.go)
-uses [indefinite retries with bounded exponential backoff](https://github.com/cloudflare/cloudflared/blob/2026.8.3/retry/backoffhandler.go)
+The pinned [supervisor](https://github.com/cloudflare/cloudflared/blob/2026.10.3/supervisor/supervisor.go)
+uses [indefinite retries with bounded exponential backoff](https://github.com/cloudflare/cloudflared/blob/2026.10.3/retry/backoffhandler.go)
 for recoverable edge disconnects. Piik's four-start acquisition limit is not a
 four-reconnect limit after readiness. Restarting the Quick Tunnel process would
 allocate a new public address rather than repair the old invitation.
@@ -232,8 +231,8 @@ outside this path. Operator-managed tunnels belong with self-hosted Sites.
 | [cpolar](https://www.cpolar.com/docs) | HTTP(S), WebSocket and selectable mainland/Hong Kong regions. | Requires account/token setup; free addresses may change within 24 hours. Region choice is not proof of access from every ISP. |
 | [frp](https://gofrp.org/en/docs/overview/) | Open-source HTTP(S) forwarding with operator-selected hosting. | Someone must run the public endpoint, domain/TLS and admission. It is not a hosted, account-free service by itself. |
 
-The pinned cloudflared has two separate proxy gaps: [Quick Tunnel allocation](https://github.com/cloudflare/cloudflared/blob/2026.8.3/cmd/cloudflared/tunnel/quick_tunnel.go)
-constructs an HTTP transport without `ProxyFromEnvironment`, and [edge dialing](https://github.com/cloudflare/cloudflared/blob/2026.8.3/edgediscovery/dial.go)
+The pinned cloudflared has two separate proxy gaps: [Quick Tunnel allocation](https://github.com/cloudflare/cloudflared/blob/2026.10.3/cmd/cloudflared/tunnel/quick_tunnel.go)
+constructs an HTTP transport without `ProxyFromEnvironment`, and [edge dialing](https://github.com/cloudflare/cloudflared/blob/2026.10.3/edgediscovery/dial.go)
 uses a direct TCP dialer. Browser proxy settings or `HTTP_PROXY`/`HTTPS_PROXY`
 alone therefore do not route these connections. [Community #1076](https://github.com/cloudflare/cloudflared/issues/1076)
 reports the same distinction; the still-open [proxy PR #1514](https://github.com/cloudflare/cloudflared/pull/1514)
@@ -350,7 +349,7 @@ undecided.
 - [Cloudflare public STUN endpoint](https://developers.cloudflare.com/realtime/turn/)
 - [Cloudflare Quick Tunnels](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)
 - [Cloudflare Tunnel WebSockets](https://developers.cloudflare.com/cloudflare-one/faq/cloudflare-tunnels-faq/)
-- [cloudflared releases](https://github.com/cloudflare/cloudflared/releases/tag/2026.8.3)
+- [cloudflared releases](https://github.com/cloudflare/cloudflared/releases/tag/2026.10.3)
 - [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455.html)
 - [W3C Screen Capture](https://www.w3.org/TR/screen-capture/)
 - [Microsoft Windows Graphics Capture](https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture)

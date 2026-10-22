@@ -1421,7 +1421,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-connect-guide[open] .lr-client-connect-toggle > svg:last-child { transform: rotate(180deg); }
 .lr-client-connect-steps { padding: 4px 0 8px; }
 .lr-client-approved-site { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
-.lr-client-approved-site a { min-width: 0; overflow-wrap: anywhere; color: var(--ink); font: 12px/1.6 var(--mono); text-underline-offset: 3px; }
+.lr-client-approved-site a { min-width: 0; word-break: break-all; text-wrap: balance; color: var(--ink); font: 12px/1.6 var(--mono); text-underline-offset: 3px; }
 .lr-client-approved-sites { display: grid; grid-column: 1 / -1; gap: 8px; min-width: 0; max-height: 240px; overflow-y: auto; scrollbar-width: thin; padding: 4px; margin: -4px; }
 .lr-client-approved-site + .lr-client-approved-site { border-top: 1px solid var(--line); padding-top: 8px; }
 .lr-client-site-actions { display: flex; flex: none; align-items: center; gap: 8px; margin-inline-start: auto; }
@@ -1460,7 +1460,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-launch-technical > summary:focus-visible { outline: 2px solid var(--action); outline-offset: 4px; border-radius: 3px; }
 .lr-client-launch-detail { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font: 13px/1.6 var(--mono); }
 .lr-client-release { display: grid; justify-items: center; gap: 6px; max-width: 100%; }
-.lr-client-release-mirror { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; color: var(--muted); font-size: 12px; text-underline-offset: 3px; }
+.lr-client-release-mirror { display: inline-block; min-height: 28px; color: var(--muted); font-size: 12px; line-height: 28px; text-underline-offset: 3px; }
+.lr-client-release-mirror > .lr-glyph { vertical-align: middle; }
 .lr-client-release-mirror:is(:hover, :focus-visible) { color: var(--ink); }
 .lr-client-release-warning { max-width: 42ch; color: var(--muted); font-size: 12px; line-height: 1.6; text-align: center; text-underline-offset: 3px; }
 .lr-client-update {
