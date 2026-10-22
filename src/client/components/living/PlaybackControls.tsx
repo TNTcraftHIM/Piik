@@ -171,6 +171,7 @@ export function PlaybackControlsView({
   const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
     : picture.active ? "playback.exitPip" : !canPlay ? "playback.pipWaiting" : "playback.pip";
   const theaterTitle = theaterMode ? "viewer.theater.exit" : "viewer.theater";
+  const nextFit = settings?.pictureFit === "contain" ? "cover" : settings?.pictureFit === "cover" ? "fill" : "contain";
   const displayActions = (caption: boolean) => <>
     <Btn icon={picture.active ? "pipExit" : "pip"} draw="playback-pip" title={pipTitle}
       cap={caption ? (picture.active ? "playback.exitPip" : "playback.pip") : undefined} hintTone={picture.failed ? "bad" : undefined}
@@ -217,6 +218,15 @@ export function PlaybackControlsView({
       </span>
       {remoteActions}
       <span className="lr-playback-view">
+        {settings && <>
+          <span className="lr-playback-fit"><Btn
+            icon={settings.pictureFit === "contain" ? "fitContain" : settings.pictureFit === "cover" ? "fitCover" : "fitStretch"}
+            title={`playback.fit.${settings.pictureFit}`} hint={`hint-fit-${settings.pictureFit}`} hintText="playback.fitCycle"
+            onClick={() => settings.setPictureFit(nextFit)} /></span>
+          <Btn icon="rotatePicture" title="playback.rotation" hint="hint-picture-rotation" hintText="playback.rotationHint"
+            pressed={settings.pictureRotation !== 0}
+            onClick={() => settings.setPictureRotation(settings.pictureRotation === 0 ? 90 : 0)} />
+        </>}
         <PlaybackMore panel={menuRef} settings={settings} onReconnect={onReconnect} reconnectAvailable={reconnectAvailable}>
           {displayActions(true)}
         </PlaybackMore>

@@ -5,8 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 // Capture the real controls with the catalogue's sample data, never a live room.
-// Start the product dev preview first; pass its URL as the sole argument.
+// Pass the product dev URL, and optionally a built website URL for README captures.
 const preview = new URL('/__tooltip-preview', process.argv[2] || 'http://127.0.0.1:5173');
+// The README fixture is bundled by build:website; it is separate from the dev catalogue.
+const readmePreview = process.argv[3] ? new URL('/film/ui/index.html', process.argv[3]) : null;
 const output = fileURLToPath(new URL('../docs/assets/guide/', import.meta.url));
 const browser = process.env.AGENT_BROWSER_PATH || (process.platform === 'win32'
   ? join(process.env.APPDATA, 'npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe')
@@ -38,7 +40,7 @@ async function openSection(section, lang, theme, path = '/__tooltip-preview') {
   })()`);
 }
 
-async function capture(selector, name) {
+async function capture(selector, name, directory = output) {
   await run('wait', selector);
   await run('mouse', 'move', '1', '1');
   await evaluate(`(async () => {
@@ -46,7 +48,7 @@ async function capture(selector, name) {
     await Promise.all(Array.from(target.querySelectorAll('img')).map(img => img.decode()));
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   })()`);
-  await run('screenshot', selector, join(output, `${name}.png`));
+  await run('screenshot', selector, join(directory, `${name}.png`));
   console.log(`${name}.png`);
 }
 
@@ -78,6 +80,20 @@ try {
       await openSection('sharing-troubleshooting', lang, theme, '/__status-preview');
       await run('click', '#sharing-troubleshooting article:first-child button');
       await capture('dialog.lr-share-help[open]', `share-failure.${suffix}`);
+    }
+  }
+  if (readmePreview) {
+    await run('set', 'viewport', '1160', '1040');
+    for (const theme of ['light', 'dark']) {
+      await run('set', 'media', theme, 'reduced-motion');
+      for (const lang of ['en', 'zh']) {
+        const url = new URL(readmePreview);
+        url.search = new URLSearchParams({ still: 'viewer', lang, theme });
+        await run('open', url.href);
+        await run('wait', '.is-still .lr-app');
+        await evaluate('document.fonts.ready');
+        await capture('.is-still .lr-app', 'room-' + lang + '-' + theme, join(output, '..'));
+      }
     }
   }
 } finally {

@@ -235,6 +235,9 @@ function Screen({ shot }: { shot: Shot }) {
                 picture={{ supported: true, active: false, failed: false, toggle: async () => {} }}
                 togglePlayback={noop} toggleFullscreen={noop} toggleMute={noop} setLevel={noop}
                 onToggleTheater={noop} onReconnect={noop} reconnectAvailable
+                settings={{ pictureFit: "contain", setPictureFit: noop, pictureRotation: 0, setPictureRotation: noop,
+                  route: { preference: "auto", onChange: noop, sfuAvailable: true, sfuOnly: false, peerOnly: false,
+                    disabled: false, rejected: false } }}
                 overlayAction={<RoomChatToggle session={session} />} />}
               {shot === "picker" && (
                 <CaptureSourcePicker

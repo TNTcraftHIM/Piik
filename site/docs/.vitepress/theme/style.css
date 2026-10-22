@@ -23,6 +23,7 @@
 .vp-doc a { text-underline-offset: 3px; }
 .vp-doc :is(p, a) { overflow-wrap: anywhere; }
 .vp-doc td { overflow-wrap: break-word; }
+.vp-doc .guide-control-reference :is(th, td):first-child { min-width: 8em; }
 /* The same Markdown theme hints also work when the guides are read on GitHub. */
 html:not(.dark) .vp-doc img[src$="#gh-dark-mode-only"],
 html.dark .vp-doc img[src$="#gh-light-mode-only"] { display: none; }

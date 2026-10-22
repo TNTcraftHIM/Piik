@@ -57,7 +57,7 @@
 .lr-playback-level.is-boosted { color: var(--action-text); }
 .lr-playback > :is(.lr-remote-controls, .lr-playback-view) { display: inline-flex; align-items: center; flex: none; gap: 4px; }
 .lr-playback > :is(.lr-remote-controls, .lr-playback-view)::before { content: ""; flex: none; width: 1px; height: 20px; margin-right: 4px; background: var(--control-edge); }
-.lr-playback-secondary { display: inline-flex; align-items: center; gap: inherit; }
+.lr-playback-secondary, .lr-playback-fit { display: inline-flex; align-items: center; gap: inherit; }
 .lr-playback-more { display: inline-flex; }
 .lr-playback-menu { position: fixed; inset: auto; margin: 0; padding: 8px; max-width: calc(100vw - 16px); overflow: auto; overscroll-behavior: contain; }
 .lr-playback-menu:is(:popover-open, .\:popover-open) { display: grid; gap: 6px; animation: lr-language-open 180ms var(--spring); }
@@ -99,6 +99,9 @@
   .lr-playback-volume { flex: 1; }
   .lr-playback > :is(.lr-remote-controls, .lr-playback-view) { gap: 2px; }
   .lr-playback > :is(.lr-remote-controls, .lr-playback-view)::before { margin-right: 0; }
+  /* During remote input, keep keyboard, rotation and fullscreen within reach.
+     The explicit fit choices remain in settings when the row is this narrow. */
+  .lr-playback:has(.lr-remote-controls) .lr-playback-fit { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lr-playback, .lr-playback .lr-btn, .lr-playback-reveal, .lr-playback-reveal > svg { transition: none; }

@@ -132,7 +132,8 @@ apply it. Control passwords are not saved.
 
 On a phone, swipe to move the pointer, tap to click and hold to drag. Two-finger
 tap is right-click; two-finger swipe scrolls. Pinch to zoom, then use two fingers
-to move around the enlarged picture. **Remote keyboard** provides keys,
+to move around the enlarged picture, or pinch inward to return to the original
+size. **Remote keyboard** provides keys,
 shortcuts and text input. On a computer, **Game mouse** captures continuous
 mouse movement; press **Esc** to release it.
 

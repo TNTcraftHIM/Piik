@@ -208,6 +208,24 @@ hand-edited text or duplicate mockups.
 The build stages `docs/assets/` and rewrites Markdown image paths to hashed URLs.
 GitHub and the docs center share the sources; README links to the full tutorial.
 
+To refresh the README's four room PNGs in the same run, pass an already-built
+website preview as the second URL:
+
+```sh
+node scripts/update-guide-images.mjs http://127.0.0.1:5173 http://127.0.0.1:18890
+```
+
+Build that preview from the current UI first. The README captures use the
+[film's real-component fixture](../../site/film/README.md), with sample people
+and generated game artwork. The room illustration and quickstart SVG are
+authored explanations, not screenshots.
+
+`build:website` bundles current components and guides and checks the generated
+hero artwork; it does not take screenshots. `check-docs.mjs` checks local
+Markdown/HTML image targets and document links, not screenshot freshness or
+visual accuracy. Refresh affected PNGs with the capture command, inspect them,
+then rebuild to publish updated guide assets.
+
 ## Downloads
 
 The Windows, macOS and Linux App cards use fixed filenames and each provider's

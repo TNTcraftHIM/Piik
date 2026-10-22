@@ -195,9 +195,12 @@ audio consumer; it preserves current-frame proof and Viewer-local playback.
 A pending `play()` canceled by pause or rebinding is not a media failure;
 cancellation alone must not invalidate frame proof or disable local playback.
 
-The bar floats at the picture's lower edge. Narrow screens shorten the volume
-slider and move secondary display actions into settings, preserving one row and
-44px control height; the percentage readout hides on narrow screens.
+The bar floats at the picture's lower edge. Group playback and sound, remote input,
+then picture display and window actions. Frequent viewing actions stay directly
+reachable; connection preferences stay in settings. Narrow screens shorten the
+volume slider and move secondary display actions into settings before crowding
+input, rotation or fullscreen, preserving one row and 44px control height;
+the percentage readout hides on narrow screens.
 Playing video hides the bar
 after two idle seconds, following [Media Chrome's default](https://github.com/muxinc/media-chrome/blob/main/docs/src/pages/docs/en/components/media-controller.md#autohide).
 Pause or unavailable playback keeps it visible. Control hover, keyboard focus,

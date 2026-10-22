@@ -3,7 +3,7 @@ import type { ViewerRoutePreference } from "../../../shared/protocol";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Btn, Cap, Chip, Pill, RowGroup, SwitchItem } from "./primitives";
+import { Cap, Chip, Pill, RowGroup, SwitchItem } from "./primitives";
 
 export interface ViewerPlaybackSettingsProps {
   pictureFit: VideoFit;
@@ -28,7 +28,7 @@ export interface ViewerPlaybackSettingsProps {
 }
 
 // Local display and connection intent; media and routing keep their owners.
-export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route, relayVolunteer, displayActions, reconnect }: ViewerPlaybackSettingsProps & {
+export function ViewerPlaybackSettings({ pictureFit, setPictureFit, route, relayVolunteer, displayActions, reconnect }: ViewerPlaybackSettingsProps & {
   displayActions: ReactNode; reconnect: ReactNode;
 }) {
   const { t, vis } = useCopy();
@@ -39,9 +39,6 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotat
     <section aria-label={t("playback.pictureFit")}>
       <div className="lr-viewer-settings-heading">
         <h3><Glyph name="tv" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.pictureFit")}</span></h3>
-        <Btn icon="rotatePicture" title="playback.rotation" cap="playback.rotation" size="dense"
-          hint="hint-picture-rotation" hintText="playback.rotationHint" pressed={pictureRotation !== 0}
-          onClick={() => setPictureRotation(pictureRotation === 0 ? 90 : 0)} />
       </div>
       <RowGroup>{(["contain", "cover", "fill"] as const).map(fit => <Chip key={fit}
         selected={pictureFit === fit} title={t(`playback.fit.${fit}`)} hint={`hint-fit-${fit}`} onClick={() => setPictureFit(fit)}>

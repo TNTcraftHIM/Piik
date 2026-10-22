@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
 import { AppHeader } from "../components/living/Header";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { RemoteControl } from "../components/living/RemoteControl";
 import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { StageOverlay, StageTv } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
@@ -9,6 +10,7 @@ import { useTheaterMode } from "../components/living/use-theater-mode";
 import { STATUS_CATALOG } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
 import { usePreviewInteractions } from "./use-preview-interactions";
+import { PreviewRemoteInput } from "./preview-remote-input";
 
 type PreviewRole = "host" | "viewer";
 
@@ -103,6 +105,8 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const { lang, t } = useCopy();
   const english = lang === "en";
   const viewer = role === "viewer";
+  const [remote, setRemote] = useState(() => new URLSearchParams(location.search).get("remote") === "1");
+  const [remoteInput, setRemoteInput] = useState<PreviewRemoteInput | null>(null);
   const { session, receiveSample } = usePreviewInteractions(viewer);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRef = useRef<ReturnType<typeof testMedia> | null>(null);
@@ -142,6 +146,11 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
     if (stream) play();
   }, [stream]);
   useEffect(() => () => mediaRef.current?.stop(), []);
+  useEffect(() => {
+    const input = new PreviewRemoteInput();
+    setRemoteInput(input);
+    return () => input.close();
+  }, []);
 
   return <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
       {!theaterMode ? <header style={{ margin: "20px 0" }}>
@@ -166,7 +175,16 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
             session?.setOverlayEnabled(true);
             receiveSample({ kind: "chat", text: english ? "I'm here. Save me a seat!" : "来了，给我留个位置！" });
           }}>{english ? "Receive sample on-screen chat" : "模拟收到朋友弹幕"}</button>
+          {viewer && <button className="lr-btn" type="button" aria-pressed={remote} onClick={() => {
+            const url = new URL(location.href);
+            if (remote) url.searchParams.delete("remote"); else url.searchParams.set("remote", "1");
+            history.replaceState(history.state, "", url);
+            setRemote(value => !value);
+          }}>{english ? "Remote-control demo" : "远控演示"}</button>}
         </div>
+        {viewer && remote && <p>{english
+          ? "Start the picture, then select the mouse button to try local controls. Pinch to zoom in or back out to the original size. No input leaves this preview."
+          : "开启测试画面后，点击播控里的鼠标按钮试用。双指放大或缩回原始比例；操作只在此预览内模拟。"}</p>}
         {error ? <p role="alert">{error}</p> : null}
       </header> : null}
       <div className="lr-scene">
@@ -183,6 +201,8 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
             canPlay={Boolean(stream) && !waiting} theaterMode={theaterMode} onPlay={play}
             onToggleTheater={() => setTheaterMode((value) => !value)}
             overlayAction={<RoomChatToggle session={session} />}
+            remoteActions={viewer && remote ? <RemoteControl channel={remoteInput} videoRef={videoRef}
+              available={Boolean(stream) && !waiting} pictureFit={pictureFit} pictureRotation={pictureRotation} /> : undefined}
             onReconnect={viewer ? () => start(hasAudio) : undefined} reconnectAvailable={viewer && Boolean(stream)} />
         </StageTv>
       </div>

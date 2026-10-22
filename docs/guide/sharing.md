@@ -80,14 +80,22 @@ Move the pointer over the picture or tap it to show the playback bar.
 | Pause the picture for friends | **Pause sharing**, below the picture | Everyone watching. |
 | Mute your microphone or stop hearing voices | **Interact → Voice** | Your voice controls; separate from picture sound. |
 
+<div class="guide-control-reference">
+
 | Control | What it does |
 | --- | --- |
-| **Theater mode** | Expands the picture inside the browser tab. |
-| **Fullscreen** | Expands the picture to the full screen. |
-| **Picture in picture** | Opens a floating video where supported. |
 | **Volume** | Goes up to 200% with audio boost, or 100% otherwise. Lower it if the sound distorts. |
-| **Playback settings** | **Fit** keeps the whole picture visible; **Fill** crops its edges; **Stretch** fills the area by changing its proportions. Connection settings default to **Auto**; available alternatives depend on the host and site. |
+| **Picture fit** | Click to cycle: **Fit** keeps the whole picture visible; **Fill** crops its edges; **Stretch** changes its proportions. You can also choose directly in playback settings. |
 | **Rotate picture** | Switches between portrait and landscape locally, without rotating the device or changing the shared source. |
+| **Theater mode** | Expands the picture inside the browser tab. |
+| **Picture in picture** | Opens a floating video where supported. |
+| **Fullscreen** | Expands the picture to the full screen. |
+| **Playback settings** | Choose picture fit and connection preferences. Connections default to **Auto**; available alternatives depend on the host and site. |
+
+</div>
+
+On narrow screens, theater mode and picture in picture move into playback settings.
+When remote controls are also present, choose picture fit there too.
 
 ### Connection preferences
 
