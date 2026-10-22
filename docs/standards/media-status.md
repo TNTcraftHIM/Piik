@@ -91,9 +91,12 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   why the Host is absent: use neutral waiting. Only the explicit sharing-stop
   event establishes an intentional stop; do not reconstruct it from a retained
   share generation or remembered messages.
-- Topology: unready edges use the blue pending treatment. Readiness alone cannot
-  distinguish initial connection from recovery, so this view does not invent a
-  warning. Confirmed interruption remains owned by the status projection.
+- Topology: requested media connections use blue pending edges and pawns until
+  ready. Idle room members remain visible without a media edge or pending
+  treatment. Committed picture or room-voice upstreams supply the displayed
+  routes; confirmed interruption follows the shared status projection.
+  Connection details group picture/source sound and room voice separately,
+  with each group's own route, state and available metrics.
 - Title: keeps the primary activity, with a compact warning for an applicable
   problem. Losing focus alone never means waiting for media.
 - Recovery: every projection is recomputed from current facts. A warning requires
@@ -115,9 +118,9 @@ or a new quality score.
 
 Current roster messages expose committed `mediaReady` to both roles, not a
 complete remote quality/failure state. Room voice supplies its own committed
-upstream. Sofa status, topology and connection details use one projection of
-these facts without setting picture readiness from a voice connection. Voice-only
-details show that route without inventing picture metrics. Missing readiness
+upstream. Sofa status and topology share an aggregate connection projection;
+details retain each media facet's own evidence. Voice connectivity never sets
+picture readiness or supplies picture metrics. Missing readiness
 means waiting only when the corresponding media is requested, not confirmed
 disconnection; departed participants leave the roster.
 Viewer receive evidence is shared with its parent and the Host, not with every

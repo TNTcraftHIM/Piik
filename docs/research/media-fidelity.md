@@ -1,8 +1,8 @@
 # Media Fidelity
 
 Reviewed 2026-10-13. [Media quality](../standards/media-quality.md) owns behavior;
-[TODO](../todo.md) owns remaining work. These synthetic checks do not establish
-all-device acceptance or full HDR support.
+[TODO](../todo.md) owns remaining work. The checks below use synthetic media;
+end-to-end HDR is outside the current format set.
 
 ## Stereo
 
@@ -23,8 +23,7 @@ SFU-only arms retained more than 77 dB separation in both channels at the 64 kbp
 ceiling, including normal video reception. Source changes and subscription
 recovery retain the existing audio gate. Run `npm run gate:embedded-sfu` with `PIIK_EMBEDDED_SFU_GATE=true`,
 `CHROME_PATH`, and optional `PIIK_EMBEDDED_SFU_ONLY=true`; it cleans up its own
-processes and ports. This is synthetic local evidence, not an acoustic or
-public-network measurement.
+processes and ports. The gate uses synthetic input on loopback.
 
 A local Chrome 154 check through the production Host/Viewer peers retained more
 than 57 dB separation after direct reception and after one decoding/re-encoding
@@ -32,17 +31,16 @@ relay, with a third tone mixed as Host microphone input. The receiver used its
 normal video playback sink; a receiver-only Web Audio probe without playback
 returned silence and was not a fidelity result. The Native Opus regression test
 independently requires more than 20 dB decoded separation at all three bitrates.
-These checks support keeping the existing stereo path. They do not cover every
-physical source device, browser or acoustic setup, and do not establish surround
-sound support.
+Retain the existing stereo path. Physical devices and acoustic setups need
+separate checks; surround sound requires the format changes described below.
 
 ## SDR Conversion
 
 [#445](https://github.com/TNTcraftHIM/Piik/issues/445) reports washed-out Native
 capture on an SDR Windows 10 system. The reporter
 [confirmed the updated release resolved the overexposure](https://github.com/TNTcraftHIM/Piik/issues/445#issuecomment-5958654848)
-on 2026-10-02. That field result does not establish the proposed explanation:
-Microsoft documents full-range RGB as the
+on 2026-10-02. The proposed default-range explanation conflicts with Microsoft's
+documentation of full-range RGB as the
 [video processor's default input range](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ns-d3d11-d3d11_video_processor_color_space).
 The confirmed gap was that `FrameConverter` left its input/output range and
 matrix implicit. The same converter handles BGRA capture and decoded NV12
@@ -64,8 +62,7 @@ The fixture encoded 256x128 color bars with the production converter/encoder,
 injected those keyframes into a local VP8 PeerConnection without the color-space
 RTP extension, and sampled the playing video into a canvas. The experimental
 conversion also restored red/green/blue bars to within one channel value of the
-source. This establishes a bounded SDR defect, not the cause of every color
-report.
+source. This reproduces the SDR conversion defect with controlled input.
 
 WebCodecs and WebRTC are not interchangeable acceptance paths: explicit BT.709
 looked correct through WebCodecs but shifted primary colors through this WebRTC
@@ -99,23 +96,22 @@ Radeon adapters. RTX H.264/VP8 encoding followed by Chrome 154 WebRTC playback
 also passed direct reception, decode/scale/re-encode and explicitly tagged
 BT.709 H.264 input to both output codecs; sampled RGB errors were at most 5/255.
 AMD hardware encoding was not accepted locally: MFT activation returned
-`0x8007000e` before color configuration. These local checks do not establish
-coverage of all hardware encoders, HDR content or missing upstream color declarations.
+`0x8007000e` before color configuration. HDR input and missing upstream color
+declarations require separate checks.
 
 ## HDR To SDR
 
 [#420](https://github.com/TNTcraftHIM/Piik/issues/420) initially reported
 overexposure with both App and Browser capture. On 2026-10-04 the reporter
 confirmed that native App capture was corrected in v1.7, while Browser capture
-remained overexposed. This is one machine's evidence, not all-device acceptance.
+remained overexposed on that machine.
 
 The previous native WGC frame pool and thumbnails requested BGRA8, discarding
 HDR range before the existing 8-bit H.264/VP8 encoder. Microsoft's
 [capture guidance](https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture)
 warns that HDR needs floating-point capture throughout the input pipeline to
 avoid clipping. Reducing brightness after encoding cannot restore clipped
-highlights. This is a confirmed implementation gap, not proof that every
-reported Browser failure has the same cause.
+highlights. The native pipeline therefore needed floating-point input before conversion.
 
 The implementation uses one `CaptureSdrConverter` before native output fanout and in
 thumbnails. HDR displays use an scRGB FP16 pool, then Windows Direct2D's
@@ -139,8 +135,7 @@ The retained `-CheckColor` probe passed on RTX 4070 SUPER and AMD Radeon:
 0–1000-nit neutral bars preserved distinguishable highlights, source white
 80/240/80 nits and SDR/HDR size changes preserved ownership and ordinary SDR
 colors. Production H.264/VP8 output decoded over Chrome 154 WebRTC reproduced the
-converted SDR gray bars within 1/255. These are synthetic input checks, not
-observations of an HDR game or the reporter's machine.
+converted SDR gray bars within 1/255 using synthetic input on local SDR monitors.
 
 Warmed GPU timestamp measurements for conversion, including the owned input
 copy, had the following local medians. Dimensions are captured input sizes,
@@ -151,9 +146,8 @@ not newly supported sharing presets.
 | RTX 4070 SUPER | 0.045 ms | 0.240 ms |
 | AMD Radeon | 2.39 ms | 11.17 ms |
 
-HDR conversion has a real GPU cost on weaker devices. These bounded measurements
-exclude encoding and do not establish gaming/endurance performance. Current
-monitors were SDR: physical HDR highlights, SDR content on HDR displays,
+HDR conversion adds GPU work, especially on weaker devices. The timings exclude
+encoding and were measured on SDR monitors. Physical HDR highlights, SDR content on HDR displays,
 thumbnails, mixed displays and mode changes under load remain unaccepted.
 Browser capture owns its own conversion; inspect the acquired frame before
 assigning a downstream bug.
@@ -187,9 +181,8 @@ have different compatibility boundaries.
 The [W3C HDR interoperability discussion](https://github.com/w3c/webrtc-extensions/issues/253)
 documents Chrome decoding with VP9 profile 2 and color-space RTP metadata, while
 capture controls, interoperability tests and metadata standardization remain
-work areas. This supports a possible experiment, not universal Browser HDR.
-A local Windows Chrome 152 capability query advertised VP9 profile 2; it did
-not exercise HDR capture, encoding, display, Native reception or mixed viewers.
+work areas. A local Windows Chrome 152 capability query advertised VP9 profile 2.
+HDR capture, encoding, display, Native reception and mixed Viewers need an end-to-end experiment.
 
 [RFC 7587](https://www.rfc-editor.org/rfc/rfc7587.html#section-7)
 defines ordinary Opus RTP mono/stereo negotiation. Libwebrtc has a separate
@@ -198,12 +191,11 @@ with stream counts and channel mapping. Chromium's
 [SDP handling](https://chromium.googlesource.com/chromium/src/third_party/+/refs/heads/main/blink/renderer/modules/peerconnection/rtc_peer_connection.cc)
 notes that the Browser does not generate multiopus itself. The same local
 capability query offered ordinary Opus with two channels and no multiopus.
-These facts do not establish that manual negotiation is impossible; they rule
-out assuming that an existing Opus connection automatically becomes surround.
+Surround would require explicit multiopus negotiation and channel-layout support.
 
 Recommendation: retain stereo and HDR-to-SDR for the current candidate. Do not
 reserve speculative wire fields or promise full HDR/surround. Reopen an isolated
 prototype when a concrete source/receiver pair justifies it; first verify actual
 decoded colors or channel separation and a mixed-capability relay path. Reuse
 SDP/RTP format negotiation where it suffices rather than creating a second codec
-negotiation protocol. This assessment adds no feature or new release requirement.
+negotiation protocol.

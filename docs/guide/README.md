@@ -2,8 +2,7 @@
 
 English · [简体中文](./README.zh-CN.md) · [Website](https://piik.tv/?lang=en)
 
-Share your screen with friends, or open their invitation to watch in your browser.
-Choose a guide for what you want to do.
+Choose a guide to start sharing, use room tools or solve a problem.
 
 ## Start using Piik
 
@@ -39,8 +38,8 @@ with your version, system, browser and reproduction steps. Follow the
 
 <p><a href="../operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik Server with Docker Compose"></a></p>
 
-Self-hosting is an advanced option. Public sites need a reachable address, HTTPS
-and network configuration; App users do not need to deploy a server.
+For a permanent group site, deploy Piik Server on a reachable address with HTTPS
+and the required network ports.
 
 - [Deploy Piik Server](../operations/self-hosting.md) with Docker Compose or the server package.
 - [Keep it running and update](../operations/service-management.md).

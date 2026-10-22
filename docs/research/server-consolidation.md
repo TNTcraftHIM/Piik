@@ -8,34 +8,18 @@
 
 ## Current Ownership
 
-`cmd/piik-server` (Hosted) and `cmd/piik-app` (App) compose the
-same application from `internal/server` and own only their defaults,
-reachability, and lifecycle policy. Within that scope `protocol` owns wire types,
-strict decoding, and shared scalars; `config` owns environment validation plus
-the Hosted and Local compositions; `room` owns room authority, participants, and
-the SQLite database; `route` decides graph transitions without I/O; `signal`
-executes signaling and SFU effects under one lock; `sfu` owns admission and
-embedded media through the shared Pion/LiveKit adapter; `app` owns HTTP
-composition, site access, static assets, and lifecycle; and `webassets` carries
-the embedded Browser bundle.
-`internal/app` keeps the native, launcher, and platform boundaries and
-supervises no server process. These are useful boundaries, not duplication to
-remove.
+`cmd/piik-server` and `cmd/piik-app` compose one Go core with the same embedded
+Browser assets. The App adds its launcher and native capabilities without a
+supervised server process. [ADR-0012](../adr/0012-shared-go-backend-core.md)
+records that decision; the [module map](../standards/engineering.md#module-map)
+owns current package responsibilities.
 
 ## Structural Simplification
 
-1. Room expiry and abandonment share one `terminateRoom` path in `signal`.
-   Preserve the distinct semantics of stopping a share, ending a room, and
-   restarting a persistent server.
-2. The Hybrid connection-ID mirror is gone. The viewer-quality evidence path
-   and the active media-edge lookup read the connection identity from the
-   committed edge, and the evidence gate keeps its own last-observation
-   identity; router tests cover in-place connection adoption during a rebuild
-   and exact direct/peer-relayed evidence sources.
-
-These are structural simplifications, not reproduced functional failures.
-The [engineering reference](../standards/engineering.md#ablation-and-review)
-requires a concrete ownership gain before further extraction.
+Consolidation removed the server supervisor and runtime dependency tree. Later
+structural cleanup joined room-expiry/abandonment retirement and removed the
+mirrored connection-ID state. Those changes reduced competing owners;
+Git/PRs retain their implementation history.
 
 ## Product Choice
 
@@ -55,17 +39,9 @@ internal/app       -> current native and platform boundaries
 one React/Vite static artifact -> embedded in both binaries
 ```
 
-Use packages for cohesive owners and files for local concerns. Do not introduce
-a framework layer per file, a second product API, or a multi-module build.
-Hosted and Local construct the same validated application options; entry points
-own their defaults, reachability and lifecycle policy.
-
-Each room keeps one serialized state owner. Go HTTP/WebSocket handlers must not
-mutate room, share and route maps independently. Run password derivation and
-media-transport I/O outside that owner, then apply results only while the exact
-session, share and operation identities still match. Preserve the existing distinction
-between decisions and effects rather than replacing Node serialization with
-unrelated locks around each map.
+Hosted and Local construct the same validated application options. One signaling
+lock serializes room mutations, while password derivation and media-transport I/O
+run outside it and revalidate their exact identities before applying results.
 
 ## Reusable Components
 
@@ -84,20 +60,11 @@ unrelated locks around each map.
 
 ## Minimum Acceptance
 
-Preserve exact Host/session replacement, grant revocation, atomic room replacement,
-SQLite restart continuity and Local shutdown semantics. Exercise one graph and
-one operation through Peer, SFU, same-edge regeneration, bounded overlap and
-rollback, including stale asynchronous completions. Preserve short-lived SFU
-authority and release resources only after physical drain confirmation.
-
-Use the same Browser contract scenarios against Hosted and Local, plus one
-physical mixed Browser/App media flow. Package size, startup and idle memory
-are measured below. Keep one strict wire contract and one schema owner;
-avoid hand-maintained parallel TypeScript/Go validation rules. The Node server,
-bundled runtime, supervisor and old packaging paths retire in this same accepted
-integration boundary, preserving [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md)
-and [ADR-0010](../adr/0010-cross-platform-client-runtime.md) as amended by
-[ADR-0012](../adr/0012-shared-go-backend-core.md).
+The port retained room authority, atomic replacement/revocation, SQLite restart
+and Local shutdown behavior, and the single route operation's prepare/commit/
+rollback semantics. [ADR-0012](../adr/0012-shared-go-backend-core.md) records the
+unchanged wire and storage boundary. Package size, startup and idle memory are
+measured below; ongoing verification follows CONTRIBUTING.
 
 ## Measured Before And After
 
@@ -151,5 +118,6 @@ Node runtime and dependency tree it used to ship beside its Go executable.
 
 The first two starts of a freshly built binary took 469 ms and 336 ms, which is
 consistent with on-access antivirus scanning of a new executable; the median
-above is the steady state. Not measured: throughput or latency under load, which
-this port does not change, and the Linux deployment host.
+above is the steady state. That original comparison measured neither load
+throughput/latency nor the Linux deployment host; the later signaling check is
+reported separately above.

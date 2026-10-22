@@ -129,15 +129,14 @@ Each primary encoded frame is cloned into both writable streams. With the
 secondary connection established before primary encoding starts, VP8 encoded
 208 frames once and both receivers decoded 208 at about 30 fps. H264 encoded
 206 frames once and both receivers decoded 206. The secondary reported zero
-encoded frames and zero encode time in both runs. This is clean-path frame
-reuse, not whole-process CPU savings or hardware-acceleration evidence.
+encoded frames and zero encode time in both runs. The probe measured clean-path
+frame reuse; whole-process CPU and hardware acceleration were not measured.
 
 It has three concrete failures/limits:
 
 - The secondary sender's `framesSent` stayed zero despite sending the complete
-  payload. Its `qualityLimitationReason=none` is not useful proof that the
-  borrowed encoding fits that connection. Existing Piik sender evidence
-  cannot consume those counters unchanged.
+  payload. Its `qualityLimitationReason=none` omits the borrowed encoding's
+  constraints, so existing sender diagnostics need different accounting.
 - In a VP8 late-join arm, the secondary received bytes but decoded zero frames
   and sent 34 PLI requests. Those requests did not make the primary encoder
   produce a recovery frame. Merely copying frames does not connect all feedback.
@@ -156,21 +155,18 @@ applies those checks when restrictions are enabled. Its
 can deliver a written frame to the sole registered sink. No metadata rewriting
 or disabled-standard-check browser flag was needed by this legacy probe.
 
-Therefore "pure Browser reuse is impossible" is too broad. A current Chromium
-legacy path is executable; a portable, correctly adapting production adapter is
-not established. The standard transform is after encoding, not an encoder
-factory injection API. Unproven bandwidth/probe behavior, PLI routing, truthful
-stats, non-Chromium compatibility and API lifetime remain reasons not to ship
-this shortcut. No fallback switch, polling quality controller or transport
-replacement was added to the product. [Results](./data/browser-encoded-fanout.json)
-retain only selected public counters, not candidates, addresses or frame data.
+The Chromium legacy path executes frame reuse, but production use requires
+independent adaptation, PLI routing, accurate stats, browser compatibility and
+a supported API lifetime. The standard transform runs after encoding and supplies
+no encoder-factory injection API. Keep this shortcut out of the product.
+[Results](./data/browser-encoded-fanout.json) retain selected public counters;
+candidates, addresses and frame data are excluded.
 
 Run `node scripts/browser-encoded-fanout-probe.mjs`, optionally `--h264`,
 `--late-join` or `--limit-secondary`, and open the printed loopback URL in an isolated Chrome session.
 The page closes its PCs/tracks and posts the result; the server exits on result
 or at its 60-second deadline. Output stays under ignored `build/encoder-pool`.
-These observations are not an assertion that every arm should decode: late join
-is the explicit negative control.
+Late join is the explicit negative control and is expected to fail decoding.
 
 ### September 9 Continuation Plan
 
@@ -221,11 +217,9 @@ probe's missing recovery request; it does not connect future B feedback to A.
 | Standard transform, A original and B constructor-copy | A decodes 207 frames | B sends zero bytes and decodes nothing |
 | Standard transform, constructor-copy also written to A | A encodes 210 frames but sends zero bytes | No delivery |
 
-The standard-transform cases completed without JavaScript errors. The tested
-`new RTCEncodedVideoFrame(frame)` constructor is not a re-ownership API;
-foreign-owner frames are discarded under the
-[standard stream-processing contract](https://www.w3.org/TR/webrtc-encoded-transform/#stream-processing).
-This does not claim every cloning operation has identical ownership behavior.
+The standard-transform cases completed without JavaScript errors. With the tested
+`new RTCEncodedVideoFrame(frame)` constructor, foreign-owner frames were discarded
+under the [standard stream-processing contract](https://www.w3.org/TR/webrtc-encoded-transform/#stream-processing).
 
 Legacy B reports zero encoded/sent frames even while payload bytes increase.
 A's receiver observes repeated RTCP sender reports; B's has no corresponding
@@ -233,8 +227,8 @@ remote-outbound report in these zero-encoder runs. The pinned native
 [RTP sender](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/call/rtp_video_sender.cc)
 updates frame/timing accounting before the
 [transform delegate's injection point](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/rtp_rtcp/source/rtp_sender_video_frame_transformer_delegate.cc).
-Borrowing below that point bypasses those updates. This exposes an unverified
-audio/video-clock boundary, not a measured audible desynchronization claim.
+Borrowing below that point bypasses those updates. Audio/video-clock behavior
+needs a separate measurement; this probe recorded no audible synchronization result.
 
 **Decision for this experiment: no product integration of A-as-producer fanout.** The saved encode is real,
 but the shared master's limitation damages a healthy sibling and the borrowed
@@ -243,11 +237,11 @@ live dummy encoder, independent budget polling, master election or timestamp
 projection would introduce new ownership and recovery work rather than preserve
 the current native adaptation contract. This standard-transform arm tested
 foreign-frame ownership, not replacement of a sender's own frame payload.
-It does not reject an independent local producer. The later
+An independent local producer is a separate design. The later
 [node-local producer/carrier experiments](./browser-local-encoding-pool.md)
 establish a working standard-transform prototype with separate findings and
-remaining quality/accounting obligations. Product media still uses normal
-Browser senders and the verified optional App fanout pending that acceptance.
+remaining quality/accounting obligations. That document and
+[ADR-0014](../adr/0014-browser-node-local-encoding-pool.md) own the subsequent integration.
 
 A relevant future input API is Chromium's experimental
 [`RTCEncodedSource` implementation](https://chromium-review.googlesource.com/c/chromium/src/+/8097283),

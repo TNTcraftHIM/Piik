@@ -12,9 +12,8 @@ small, bounded upload target. The repository therefore explored whether an
 ordinary browser Viewer could relay the received screen stream to another
 Viewer.
 
-This ADR records that experiment and its reusable evidence. It does not set the
-current endpoint capacity, SFU topology, server-assisted transport, fallback
-sequence, or resource accounting. ADR-0005 owns current routing invariants.
+This ADR retains experiment evidence. [ADR-0005](./0005-automatic-hybrid-media-routing.md)
+owns current routing and capacity.
 
 ## Experiment
 
@@ -59,8 +58,7 @@ The experiment established these durable facts:
 - loopback tests can prove graph and signaling invariants but cannot establish
   real-device encoding cost, target-network latency, or production capacity.
 
-Historical capacity-two and capacity-three runs remain measurement evidence.
-They do not authorize a current release tier or a browser-specific policy.
+The capacity-two and capacity-three runs measured the historical configuration.
 
 ## Experiment gates
 
@@ -80,17 +78,9 @@ claim unsupported by measurements.
 
 ## Current interpretation
 
-Peer relay is part of the deployed Browser route owned by ADR-0005. This ADR
-retains only the experiment evidence used to evaluate that route; its historical
-policy and gates do not independently authorize current behavior.
-
-The current accepted endpoint rule is one server-authoritative downstream
-capacity for every non-server endpoint, default `2` and statically configurable
-as `1`, `2`, or `3`; upstream receive is free and role or user agent does not
-create an exception. ADR-0005 owns the implemented and deployed Browser route
-for direct/SFU publication, subscription, transport, server admission, and
-migration overlap. Real heterogeneous-network and resource validation remains
-open.
+Peer relay is integrated under ADR-0005. Current capacity and transport policy
+belong to [routing](../standards/routing-transport.md); physical evidence limits
+belong to [verification status](../verification-status.md).
 
 ## Consequences
 
@@ -113,8 +103,9 @@ Negative:
 - ADR-0001 remains the direct browser P2P baseline.
 - ADR-0005 owns current automatic routing and capacity invariants.
 - ADR-0007 owns path-quality evidence and representation behavior.
-- A future native shared-encode sender or relay requires its own decision and
-  evidence; this experiment does not pre-approve it.
+- [ADR-0013](./0013-embedded-node-local-media.md) and
+  [ADR-0014](./0014-browser-node-local-encoding-pool.md) own later Native and
+  Browser encoding reuse.
 
 ## References
 

@@ -37,6 +37,3 @@ real-network validation are indexed by [status](../status.md) and
 [ADR-0004](./0004-peer-assisted-media-experiment.md)
 owns only historical peer-assisted evidence. Access and room lifetime are owned
 by [ADR-0002](./0002-memory-resident-protected-rooms.md).
-
-This historical record does not authorize a capacity, SFU/TURN order, topology,
-runtime migration, or release gate.

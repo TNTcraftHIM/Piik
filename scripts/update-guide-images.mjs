@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 
 // Capture the real controls with the catalogue's sample data, never a live room.
 // Pass the product dev URL, and optionally a built website URL for README captures.
-const preview = new URL('/__tooltip-preview', process.argv[2] || 'http://127.0.0.1:5173');
+const preview = new URL('/__tooltip-preview', process.argv[2] || 'http://127.0.0.1:8787');
 // The README fixture is bundled by build:website; it is separate from the dev catalogue.
 const readmePreview = process.argv[3] ? new URL('/film/ui/index.html', process.argv[3]) : null;
 const output = fileURLToPath(new URL('../docs/assets/guide/', import.meta.url));

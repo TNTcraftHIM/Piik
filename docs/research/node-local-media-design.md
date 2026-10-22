@@ -5,8 +5,7 @@ tradeoffs, the shared Native/SFU implementation boundaries and subsequent
 recovery evidence. [ADR-0013](../adr/0013-embedded-node-local-media.md) owns the
 accepted model; [media quality](../standards/media-quality.md) owns current
 behavior. The architecture is published. [Verification status](../verification-status.md)
-retains unresolved physical limits; controlled results do not establish a
-diagnosis for unmatched field reports.
+retains physical platform limits.
 
 The 2026-09-08 [WebRTC encoder-pool review](./webrtc-encoder-pool.md) qualifies
 the original fixed-output experiment: output construction and forwarding
@@ -138,8 +137,7 @@ registering the subscriber, leaving a notification gap. The shared Source
 refreshes that metadata after successful registration; DownTrack keeps its
 highest observed layers, so a concurrent newer notification cannot be undone.
 This boundary serves both Native outputs and SFU publication. A controlled
-discovery in that gap reproduces the failure without retries or network loss;
-it does not establish the cause of unmatched field reports.
+discovery in that gap reproduces the failure without retries or network loss.
 
 The parent reads child state at actual capture InputBegin. A controlled layer
 switch uses the existing DownTrack resync before outputs for that input, retaining
@@ -292,8 +290,8 @@ this checks the assembled bitstreams, not Browser WebRTC playout.
 These are separate serial runs, not a statistical latency guarantee. Regression
 controls independently reproduce both missing-whole-frame and partial-frame
 waiting for VP8/H264. This correction belongs to Native relay derivation;
-ordinary Browser P2P has its own receiver/jitter buffer. It does not establish
-the cause of an unmatched field report or fix encoder resolution hysteresis.
+ordinary Browser P2P has its own receiver/jitter buffer. Encoder resolution
+hysteresis is separate.
 
 Received-size updates exposed another Native relay boundary: `WriteRTP` called
 the full profile updater whenever an upstream keyframe changed dimensions.
@@ -356,8 +354,8 @@ or three on 3478/3479/3480 when prediction is enabled. `STUN_LISTEN_HOST`
 defaults to `0.0.0.0` and is separate from HTTP binding. Existing `STUN_URLS`
 remain advertised discovery addresses: their DNS may intentionally differ
 from the Web origin, so they must not be resolved as local bind addresses.
-The Local App constructor supplies no listeners; using public discovery
-does not turn an App into a public STUN service.
+App Local supplies a Binding-only listener on its selected LAN IPv4 and numeric
+UDP port. Public-link mode uses public discovery and binds no STUN listener.
 
 The application binds HTTP and every required UDP listener before opening the
 room database or accepting signaling. Failed startup returns all sockets;
@@ -512,8 +510,7 @@ output before the 1.2 Mbps output fits. Both eventually restore the higher outpu
 The retained network gate checks the intermediate phase as well as final recovery.
 A separate two-child control uses real Windows VP8 encoding and Browser decoding:
 the constrained child recovers after release while the healthy child retains its
-original dimensions. These checks do not establish the cause of an unmatched
-physical Host's low-resolution session.
+original dimensions.
 
 Native publication exposed a separate boundary: the full allocator probes
 spatial deficiency, so it can stop exploring once a sole active RID fits at its
@@ -558,8 +555,7 @@ frame-age P95 below 100 ms; delayed bursts did not count.
 | Same sustained constraint, 5 Mbps output | 1.10 Mbps | 4.95 Mbps | Before remained limited; candidate recovered in about 12 seconds |
 
 Final windows retained 30 frame arrivals/s, with per-window frame-age P95 below
-37 ms for the candidates. These synthetic RTP measurements are not decoded
-quality or a field diagnosis. The [real encoder replay](./webrtc-encoder-pool.md#budget-restoration)
+37 ms for the candidates. The [real encoder replay](./webrtc-encoder-pool.md#budget-restoration)
 separately measures the resulting resolution. The retained publication gate also
 passes pause/resume and source replacement. Nil/disabled callbacks and media
 probing retain their policy; removing demand fails the upstream regressions.
@@ -577,14 +573,7 @@ behavior are unchanged. The retained
 network gate exercises video-only and real Opus 320/96/320 kbps cases, requiring
 sustained high video and decoded audio after recovery. The former subtraction
 fails a matched trace but can be masked by later probe traffic; a passing
-recovery alone does not establish correct accounting. This is not proof of
-perceptual audio quality or behavior on every physical network.
-
-No reset, retry owner or minimum quality is added. These are bounded local traces,
-not a field diagnosis, success-rate or game-latency claim.
-Ordinary focused checks cover NACK repair, no-RR probe admission, zero-write
-termination and exact shutdown. These checks do not establish physical recovery
-outside the [verified boundaries](../verification-status.md).
+recovery alone does not establish correct accounting.
 Desired maximum, available layers and current forwarding target remain distinct;
 Dynacast is not proof that stopping every currently unselected high layer alone
 provides recovery.
@@ -601,8 +590,7 @@ only to queue-delay inference, with its documented 500 ppm allowance. Raw rates,
 timestamps, loss, allocator policy and probe ownership are unchanged. Thirty-minute
 controls at 0, +67/-67, +200/-200 and +400 ppm no longer enter false congestion;
 actual growing queues and loss still lower capacity and release probing after
-they clear. This repairs the shared Native/SFU estimator, not Browser-owned GCC,
-and does not assign every historical low-quality report the same cause.
+they clear. This repairs the shared Native/SFU estimator; Browser owns its GCC.
 
 For dormant output admission, the parent can prepare a layer when a child's
 fresh framework video budget covers that layer's existing configured ceiling.
@@ -620,8 +608,8 @@ connection. Removing only dormant-output probe demand in an isolated control
 leaves about 294 kbps, no active probe and no higher output after release.
 The fixture uses the production `RequiredActiveCount` to activate outputs;
 configured demand never substitutes for measured source bitrate. This verifies
-the shared forwarding adapter used by SFU subscribers, not a complete hosted
-Browser/SFU session or a field-report diagnosis.
+the shared forwarding adapter used by SFU subscribers, rather than a complete
+hosted Browser/SFU session.
 
 ### Persistent Loss With Low Source Utilization
 

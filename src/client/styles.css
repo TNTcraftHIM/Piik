@@ -1197,6 +1197,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   font-weight: 800;
 }
 .lr-pawn-detail .lr-meter { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(126px, 1fr)); }
+.lr-pawn-detail-picture, .lr-pawn-detail > .lr-voice-connection-details { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
 /* ---------- topology tree ---------- */
 
 .lr-route {
@@ -1209,6 +1210,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   box-sizing: border-box;
 }
 .lr-route > svg { display: block; width: 100%; max-width: 880px; height: auto; margin: 0 auto; }
+.lr-route-idle { margin: 2px 0 8px; color: var(--muted); font-size: 12px; text-align: center; }
 .lr-route:focus-visible { border-radius: 10px; outline-color: var(--ink); }
 .lr-route-edge {
   fill: none;

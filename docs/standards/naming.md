@@ -54,10 +54,14 @@ Formal means clear and factual, not bureaucratic. Keep detailed procedures free
 of jokes and promotional slogans; do not carry the website's playful headings
 into technical instructions.
 
-State the requirement, action or result directly. Omit negative comparisons that
-answer an abandoned design or an internal discussion: “解压后运行” is enough;
-listing the runtimes a packaged App does not require adds no useful next step.
-Include an exclusion only when it resolves a real reader choice or limitation.
+Answer the reader's question first. State confirmed behavior, decisions and
+results directly. An unresolved question names the missing fact and next action.
+Use concrete conditions instead of stacked qualifiers. Omit stock disclaimers,
+repeated test-scope caveats and defenses against objections the reader has not
+raised. “解压后运行” needs no account of runtimes the package does not require.
+Give a limitation where it changes the reader's choice or next step; research
+owns experimental conditions and verification details. This rule applies to
+agent replies as well as UI, README and documentation copy.
 
 Write tutorials from an explicit starting point: what the reader needs, which
 visible action to take, and what appears next. Distinguish watching an invitation,
@@ -65,8 +69,8 @@ creating an App room, using an existing site, and deploying a server. Say where
 the site or download comes from; “follow the prompts” cannot stand in for a
 missing prerequisite. Mark passwords and audio options as conditional when they
 are optional. Keep App and Server package names distinguishable at download links.
-Public platform notes say what has been tested and invite useful feedback;
-internal phrases such as “this phase's acceptance target” belong in status.
+Public platform notes name supported features and requirements; internal
+acceptance records belong in status and research.
 
 Present the public online site as a usable entry for real rooms and sharing.
 Offer the App download first and direct browser use alongside it; keep the
@@ -85,8 +89,8 @@ availability and limitations beside the claim or action they qualify; do not
 hide them behind a collapse. Never promote an implementation mechanism such as
 encoding reuse or STUN as an unexplained headline. Explain technical terms on
 first use even in detailed documentation. Plain wording must preserve the
-original bounds: “开箱即用” does not promise offline use or guaranteed connection,
-and reduced repeated work does not establish a universal CPU saving.
+original bounds: state network requirements beside “开箱即用” and distinguish
+encoding reuse from measured CPU savings.
 Lead performance copy with the user benefit (low latency, efficient sharing),
 then explain the supporting mechanism and its conditions. “Lowest latency”,
 “zero delay” and comparative resource savings require matching measurements;

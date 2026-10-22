@@ -10,8 +10,8 @@ Choose the relevant check:
 - **Logs mention STUN, or you manage the router:** [discovery and router checks](#stun-ipv6-and-router-checks).
 - **Using Tailscale, ZeroTier or UU:** [virtual LAN steps](#optional-a-virtual-lan).
 
-Web pages, invitations and chat use different connections from picture and sound.
-Entering a room or sending a message does not establish that media can connect.
+Web pages and chat use a separate connection from picture and sound.
+For media failures, check WebRTC UDP and the route options below.
 
 ![The Host and friend access the site for web and chat; picture and sound use a separate direct or forwarded media connection.](../assets/guide/network-paths.en.svg)
 
@@ -29,13 +29,13 @@ For regular use, choose an option that fits your group:
 - **Everyone can install a networking tool:** use the [virtual LAN steps](#optional-a-virtual-lan) below with the App's **Local room**.
 - **The required connections are blocked:** use an available network or ask its administrator to review access.
 
-> **Online and Public invite limits:** `demo.piik.tv` and App **Public invite** are P2P-only, without server media fallback. Both P2P and SFU media currently need UDP; hosting the web page alone does not resolve blocked media UDP.
+> **Media requires UDP.** `demo.piik.tv` and App **Public invite** use P2P-only media.
+> SFU forwarding requires a site with that feature enabled and a reachable UDP endpoint.
 
 ## Browser WebRTC restrictions
 
-Browser WebRTC settings, VPNs and privacy extensions may block picture and sound.
-This can also affect the Browser-to-App connection on the same computer;
-successful source selection does not prove that media can connect.
+Browser WebRTC settings, VPNs and privacy extensions can block media UDP,
+including the browser-to-App connection on the same computer.
 
 1. Open the same invitation in a browser profile with default settings and no relevant privacy extensions.
 2. If it works, check **WebRTC** or **IP-leak protection** in the original browser and restore a policy that allows WebRTC UDP.
@@ -49,8 +49,8 @@ the browser default. Chrome extensions may control this policy without a visible
 browser switch. Vivaldi provides **Settings → Privacy and Security → WebRTC IP
 Handling → Broadcast IP for Best WebRTC Performance**.
 
-Hiding local IP addresses alone does not necessarily block WebRTC. Direct connections
-can expose network addresses to peers; change only the relevant setting. See
+Direct connections can expose network addresses to peers. Change the setting
+that blocks UDP, keeping other privacy settings as needed. See
 [Chrome's policy reference](https://developer.chrome.com/docs/extensions/reference/api/privacy#property-network)
 and [Vivaldi's privacy settings](https://help.vivaldi.com/desktop/privacy/privacy-settings/).
 
@@ -64,8 +64,8 @@ Only change the parts you manage.
 <details>
 <summary>STUN discovery and settings</summary>
 
-App Public invite uses several discovery services. **One STUN error does not
-mean every path failed.** To replace all built-in addresses, set
+STUN discovers the addresses devices can use to connect. App Public invite tries
+several services; if discovery fails, replace the built-in addresses with
 [`PIIK_STUN_URLS`](../standards/configuration.md#piik-app-configuration) before
 starting Public invite. Site operators should check that `STUN_URLS` points to
 reachable UDP services; an HTTP reverse proxy does not forward STUN.
@@ -118,24 +118,20 @@ not suffice. Choose a tool available to everyone in your group:
 3. **Send the complete invitation.** Friends open the HTTPS invitation on that virtual IP. On first access, [confirm the local certificate](./troubleshooting.md#local-https-certificate-warning) with the Host before entering. Do not send `localhost` or only a room code.
 4. **Check picture and sound.** Everyone keeps the networking tool running; the Host also keeps Piik App running. If the virtual IP changes, the Host selects the new address and sends a new invitation.
 
-Piik has been tested across Windows devices using UU. Tailscale and ZeroTier
-have not yet been tested with Piik; use the checks below to verify your setup.
-
 If something fails, start with the first failing step:
 
 - **Page will not open:** check [local invitations and firewall permissions](./troubleshooting.md#local-invitation-will-not-open) for that virtual network.
-- **Page opens, media will not connect:** check that the tool carries media UDP and review [browser WebRTC settings](#browser-webrtc-restrictions). Web connectivity does not establish media connectivity.
+- **Page opens, media will not connect:** check that the tool carries media UDP and review [browser WebRTC settings](#browser-webrtc-restrictions).
 - **Microphone or remote control is unavailable:** use the App-generated HTTPS invitation, confirm its certificate, then check [browser permissions](./troubleshooting.md#microphone-or-remote-controls-are-unavailable). Supporting browsers can use these features without a public tunnel, just as on an ordinary LAN.
 
-Join only with trusted friends. Firewalls, browser address discovery and the
-third-party service still affect availability.
+Join only with trusted friends.
 
 <details>
 <summary>Use frp with an existing server</summary>
 
 For administrators with a public server, the [frp recipe](../operations/self-hosting.md#optional-forward-an-existing-server-with-frp)
-forwards an existing site's web and SFU endpoints through frps. Forwarding the
-web page alone does not forward WebRTC media.
+forwards an existing site's web and SFU endpoints through frps. Configure both
+web and media forwarding.
 
 </details>
 

@@ -16,12 +16,11 @@ a selected surface as temporarily inaccessible. A minimized captured window may
 therefore mute or interrupt its track even when the capturing document is active.
 
 Capture constraints are post-selection preferences. The browser may downscale or
-decimate frames, so a requested maximum frame rate is not proof of capture-source
-or encoded progress. A local preview and an `RTCPeerConnection` are independent
-consumers of the same `MediaStreamTrack`; a paused or throttled preview does not
-by itself prove that transmission stopped.
+decimate frames; measure source and encoded progress separately from the requested
+maximum frame rate. A local preview and an `RTCPeerConnection` independently
+consume the same `MediaStreamTrack`, so preview playback can pause while transmission continues.
 
-Current Chromium evidence narrows, but does not remove, the platform boundary:
+Chromium applies the following capture policies:
 
 - active capture contributes to renderer/process priority policy;
 - a live or muted `MediaStreamTrack` opts its frame out of aggressive throttling
@@ -33,11 +32,10 @@ Current Chromium evidence narrows, but does not remove, the platform boundary:
 - desktop capture runs in the browser capture subsystem, applies a CPU budget,
   and may intentionally produce no duplicate frames for unchanged content.
 
-These are browser implementation policies, not Web API guarantees of capture
-FPS, encoder throughput, or remote presentation. The Screen Wake Lock API only
-tries to keep a visible document's screen awake and is not a capture-priority
-control. Browser energy and sleeping controls are user-side experimental
-variables, not application keepalive mechanisms.
+Actual capture FPS, encoder throughput and remote presentation still depend on
+the selected surface and system load. Screen Wake Lock keeps a visible document's
+screen awake; it does not control capture priority. Treat browser energy and
+sleeping controls as experimental variables.
 
 The open report must distinguish: document/UI sampling delay, selected-surface
 inaccessibility, capture or encode pressure, WebRTC congestion adaptation,
@@ -70,16 +68,11 @@ focused boundaries and was paused at hidden/minimized boundaries, while outbound
 and decoded progress stayed near 30 fps. Every end sample reported
 `qualityLimitationReason = "none"`.
 
-Rates used monotonic counter deltas over the same outbound-RTP RTCStats timestamp
-interval. Source and inbound timestamps and raw stats identities were not
-retained independently, so this was not a complete interval-aligned proof.
-
-This screening did not reproduce an immediate background drop. It also did not
-exercise a real game/load, a separate physical receiver, audio, CPU/GPU
-correlation, repeated randomized order, or a hold beyond five minutes. It is a
-negative screening result, not product acceptance and not evidence that all
-machines, browsers, capture surfaces, or sustained background states behave the
-same way.
+Rates used monotonic counter deltas over the outbound-RTP RTCStats interval.
+Source/inbound timestamps and raw stats identities were not retained independently.
+The screening found no immediate background drop on this loopback setup.
+Real game load, a separate physical receiver, audio, CPU/GPU correlation,
+randomized ordering and holds beyond five minutes remain unmeasured here.
 
 ## Reproducible Diagnostic Evidence
 
@@ -139,9 +132,7 @@ browser policy under test; they are not product timeouts or quality thresholds.
 
 ## Mobile Boundary
 
-Desktop Host capture evidence does not establish mobile Viewer background
-playback or the survival of browser-owned work after OS suspension. Mobile
-acceptance must separately observe:
+Mobile Viewer playback has a separate browser/OS lifecycle. Observe:
 
 - visible versus background document state;
 - screen lock and unlock;
@@ -149,9 +140,8 @@ acceptance must separately observe:
 - Wi-Fi/cellular transition and foreground recovery; and
 - whether the exact pre-suspension media identity survived or was re-created.
 
-A mobile browser cannot promise background execution beyond its browser/OS
-lifecycle. Recovery must be judged from newly decoded and presented media after
-foregrounding, not from delayed JavaScript timers or a desktop result.
+The browser/OS may suspend background execution. After foregrounding, verify
+recovery from newly decoded and presented media.
 
 ## Privacy And Evidence Handling
 

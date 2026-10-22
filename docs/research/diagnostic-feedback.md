@@ -1,8 +1,8 @@
 # Diagnostic Feedback
 
 Reviewed 2026-09-09. [Configuration](../standards/configuration.md#diagnostics)
-owns current activation, contents, bounds and disclosure. This note records the
-references and integration decisions; it is not another logging API contract.
+owns current activation, contents, bounds and disclosure. This note records
+references and integration decisions.
 
 ## Mature References
 
@@ -47,7 +47,5 @@ and disclosure beyond the diagnostic result; none is required by this design.
 Focused checks exercise split stderr chunks, actual Pion secret formats,
 structured media statistics, log rotation/reopen and partial export. Existing
 Native/Browser owner checks retain asynchronous setting and media behavior.
-Physical acceptance must inspect an exported bundle from the running code, not
-only assert that instrumentation methods were called. A report is not guaranteed
-to reconstruct events that occurred before Debug was enabled or outside its
-explicit retained history.
+For runtime acceptance, inspect an exported bundle from the running code.
+Reports contain events recorded after Debug activation and within its retained history.

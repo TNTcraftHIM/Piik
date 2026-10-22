@@ -23,10 +23,10 @@ The retained measurements prove:
 - the product helper delivered H.264 video and process-tree audio to one Chrome
   Viewer.
 
-It does not prove two-Viewer product fanout, heterogeneous congestion feedback,
-loss/retransmission correctness, audio synchronization, reconnect isolation,
-public networks, endurance, packaging, update/signing, cross-platform behavior,
-or distribution licensing. Native remains outside the current release.
+This historical candidate stopped before two-Viewer product fanout, heterogeneous
+congestion feedback, loss/retransmission, audio synchronization, reconnect,
+public-network, endurance and distribution checks. Later Native implementation
+and acceptance are recorded in [Native client media](./native-client-media.md).
 
 ## Candidate Shape
 
@@ -56,7 +56,7 @@ audio fallback hidden behind a hardware-only source choice.
 
 A stack of bounded fixtures established progressively narrower facts:
 
-| Gate | Retained result | Missing proof |
+| Gate | Retained result | Unmeasured or unresolved |
 | --- | --- | --- |
 | One Pion RTP source, two bindings | Equivalent payload reached two transport-local SSRCs. | No encoder or Browser. |
 | WebCodecs VP8, two Chrome receivers | One encoder object produced 120 outputs; both decoded. | Physical/hardware encoder identity. |
@@ -77,8 +77,8 @@ accounting.
 Chrome accepted H.264 Annex-B 1280x720@30 with `prefer-hardware` and produced
 360/360 frames, but Browser-process GPU samples showed no attributed
 `VideoEncode` activity. The emitted SPS was `42041f`, not the requested codec
-string. This proves usable chunks and in-band recovery units, not hardware
-selection or exact WebRTC fmtp compatibility. VP8 `prefer-hardware` was rejected
+string. The chunks carried usable in-band recovery units; hardware selection
+and exact WebRTC fmtp compatibility remained unresolved. VP8 `prefer-hardware` was rejected
 on the same Windows system.
 
 ### Media Foundation Fixture
@@ -109,12 +109,11 @@ loopback; it did not alter the wider stop line.
 The Windows helper reuses the same encoder source with WGC capture and
 process-tree WASAPI loopback. One bounded run delivered 203 rendered 1280x720
 frames and 500 Opus packets to a Chrome Viewer. The exact helper PID and adapter
-LUID matched nonzero `VideoEncode`. This is a one-Viewer functional proof, not a
-resource or product release claim.
+LUID matched nonzero `VideoEncode`. The smoke covered one Viewer.
 
 ## Remaining Gates
 
-Before native product consideration, one current-wire candidate must prove:
+The original candidate's remaining acceptance requirements were:
 
 1. current room/Host authorization and source-generation cleanup;
 2. exact emitted H.264 profile negotiation and unmodified Chrome, Edge, Firefox,
@@ -138,7 +137,7 @@ make a diagnostic gate pass.
 Pion is MIT and coder/websocket is ISC. The Windows APIs use installed hardware
 MFTs; vendor codec binaries are not redistributed. Direct NVENC would require a
 separate NVIDIA Video Codec SDK and redistribution review. H.264 patent and
-project licensing remain unresolved before executable distribution. No
+project licensing required review before executable distribution. No
 proprietary or GPL/AGPL implementation code was copied.
 
 ## Primary Sources

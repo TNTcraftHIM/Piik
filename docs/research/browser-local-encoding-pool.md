@@ -81,17 +81,15 @@ their implementation. All workloads ran serially.
 | VP8, received-track relay | One local producer supplied two children at 1080p; source-age p95 was about 71/122 ms, with played audio present. |
 | Actual hidden page | Native fake source continued at its available 20 fps; both receivers decoded 200 frames in ten seconds. The first run had a temporary profile-cleanup failure, recorded separately from media behavior. |
 
-The source generates moving bars and a frame-ID barcode. It is not a game
-perceptual-quality benchmark. Played audio is recaptured from the receiving
-video element; this is element-level synchronization, not physical speakers
-or display scanout. Hidden-page checks use a native fake source because a
-background canvas timer is itself throttled. They establish neither real-game
-60 fps endurance nor background audio timing.
+The source generates moving bars and a frame-ID barcode. Played audio is
+recaptured from the receiving video element. Hidden-page checks use a native
+fake source because background canvas timers are throttled. Game quality,
+physical speaker/display synchronization, 60 fps endurance and background
+audio timing require separate measurements.
 
 The constrained runs use a test-only forward UDP bridge with about 250 ms
-maximum queued service; reverse feedback is unshaped. They are not a model of
-public NAT, geographic RTT or every congestion/loss pattern. Reduced quality
-and temporary stalls under real constraints remain possible.
+maximum queued service; reverse feedback is unshaped. Public NAT and geographic
+RTT are outside this fixture.
 
 A 2026-09-30 actual-tab fault check separated A at 400 kbps from healthy B,
 then failed only A's producer. Both H264 and VP8 retained the outgoing
@@ -99,7 +97,7 @@ connections, returned to ordinary encoding and retired all pooled groups.
 B retained 1904x1048 at about 30 fps; its largest observed frame-callback gap
 around fallback was 271 ms for H264 and 80 ms for VP8. Source-wide fallback
 therefore has a measurable handoff cost, even without a resolution drop or
-connection failure. This does not establish low-end hardware capacity.
+connection failure.
 
 An unmatched negotiated codec is instead connection-local. A Chrome 154
 late-Viewer control reproduced all members losing pooling when only the new
@@ -107,8 +105,7 @@ Viewer advertised different codec parameters. Scoped fallback now preserves
 the first Viewer's producer and delivers fresh pictures to both Viewers in
 VP8 1080p and H264 4K controls. Unit counterfactuals cover admission and active
 codec changes; producer failure retains its existing source-wide fallback.
-These controls establish membership isolation, not enforcement of physical
-decoder limits or the cause of field quality fluctuations.
+The controls exercise membership isolation using negotiated codec differences.
 
 ### Local Connection Failure Control
 
@@ -118,21 +115,19 @@ and two receivers. Discarding only the producer's ICE candidates triggered its
 eight-second timeout; both existing P2P connections then delivered 30 ordinary
 decoded frames each, retaining the source and no producer groups.
 
-This loopback-origin diagnostic does not test public-origin permission,
-Chrome/Firefox LAN interoperability or public-path quality. In
+This diagnostic uses a loopback origin. In
 [#465](https://github.com/TNTcraftHIM/Piik/issues/465), the successful repeat
 changed permission and IP masking together. Neither is an isolated cause;
 [HTTP App discovery](https://developer.chrome.com/blog/local-network-access)
 and [WebRTC connectivity](https://chromestatus.com/feature/5065884686876672)
-need separate evidence. This control is not a release acceptance gate.
+need separate evidence.
 
 ### Balanced Startup And Recovery
 
 Serial Chrome 152 checks on 2026-09-25 reproduced two composition defects in
 VP8, 1080p30, motion + balanced, with a 5 Mbps ceiling. A forward-only UDP
-shaper limited A to 400 kbps; B remained unshaped. These synthetic-source runs
-establish delivered dimensions and recovery, not game perceptual quality or the
-cause of reports without diagnostics.
+shaper limited A to 400 kbps; B remained unshaped. The synthetic-source runs
+measure delivered dimensions and recovery.
 
 - A group's local warmup spent its five-frame startup protection before any
   child published its frames. Restoring balanced then allowed native initial
@@ -167,9 +162,8 @@ H264 with played audio also returned to 1080p; its unconstrained child retained
 caused native downscaling: the repaired VP8/audio path briefly reached 180p,
 then regained 1080p about 13 seconds after pulse start. The previous pool's
 no-audio pulse ended the 40-second recovery at 360p. Audio changes the bandwidth
-composition, so these pulse runs do not establish an exact speedup. Normal
-WebRTC can also temporarily reduce resolution after a pulse; this repair does
-not promise blur-free delivery under changing network or device load.
+composition, so compare recovery speed with matched audio. WebRTC can temporarily
+reduce resolution after a pulse.
 
 A single-consumer control, retaining its mature producer, recovered without
 the deeper dual-consumer drop. Together with the publication-start control,
@@ -195,11 +189,9 @@ the same probe bundle; these are single-run observations, not averages.
 B retained 1080p throughout all four runs, with no reported connection failure.
 The pooled traces created one separate producer for constrained A, then rejoined
 the retained healthy producer; they did not show repeated producer churn.
-The deeper VP8 dip is a measured adaptation tradeoff, not by itself a confirmed
-defect or a requirement to impose a resolution floor. These results do not
-establish the cause of an unknown reporter's blur or stream loss, nor test Native
-capture's separate keyframe-request path. Any further change must preserve
-healthy-child isolation and framework-owned adaptation.
+The deeper VP8 dip is an adaptation tradeoff. Preserve healthy-child isolation
+and framework-owned adaptation in further changes. Native capture has a separate
+keyframe-request path.
 
 A further control retained two separate producers from startup, disallowing
 cross-member group compatibility only in an ignored copy of the same probe.
@@ -222,8 +214,7 @@ With duplicate carrier filtering removed in both runs, the VP8/audio pulse's
 cold-producer preparation-to-selection interval was 1,712 ms before this repair
 and 67 ms afterward. A regained 1080p at 12.7 s and 9.2 s after pulse start
 respectively; B stayed at 1080p. The final run had no queue overflow, backward
-source IDs or missed played-audio pulses. These are single-run observations,
-not an average recovery guarantee. Both reached 270p during adaptation. A final H264
+source IDs or missed played-audio pulses. Both reached 270p during adaptation. A final H264
 pulse reached 720p and regained 1080p at 6.7 s; B stayed at 1080p and neither
 output overflowed its queue.
 
@@ -274,11 +265,10 @@ retained carrier age stayed below 49 ms. Supplemental clock draws were tested
 but added no benefit over removing the duplicate limit, so no pump or timer was
 added. The four-frame bound and dependency-chain recovery remain intact.
 
-These checks establish a redundant filtering cost, not lossless delivery under
-all load. A 60 fps short-pulse run still recorded four overflows on constrained A
-and none on B; both recovered, and B retained 1080p. They do not establish
-sustained 60 fps or game quality. Cold-producer adaptation remains separate from
-carrier recovery. Raw traces and ablation fixtures remain ignored artifacts.
+Removing redundant filtering reduced overflows. A 60 fps short-pulse run still
+recorded four on constrained A and none on B; both recovered, and B retained
+1080p. Cold-producer adaptation remains separate from carrier recovery.
+Raw traces and ablation fixtures remain ignored artifacts.
 
 VP8 and H264 checks on the final implementation cover live 720p60 settings,
 quiet-source 480p30 changes, pause/resume, source replacement and injected
@@ -287,9 +277,8 @@ returned to ordinary sending on the existing connections. H264 source replacemen
 had an approximately 0.5 s picture transition: the matching audio pulse arrived,
 but its brief picture marker did not. Ordinary frames resumed before the new
 pool selected output, so that gap is not a producer-readiness wait. Earlier
-fixtures also have source-transition gaps; these observations do not establish
-gap-free replacement or a new regression. They cover bounded synthetic media
-lifecycle, not real-game endurance or every physical device.
+fixtures also have source-transition gaps, so the comparison leaves their
+regression origin unresolved.
 
 The [canvas capture draft](https://w3c.github.io/mediacapture-fromelement/#html-canvas-element-media-capture-extensions)
 models `requestFrame()` as a pending request, not a counted queue of clock ticks.
@@ -309,8 +298,7 @@ unavailable; server summaries cannot reconstruct those local owners.
 
 Serial comparisons on 2026-09-29/30 used synthetic motion, played audio,
 1080p30 / balanced / 5 Mbps and a test-only UDP bridge. They distinguish
-Canvas input from real `getDisplayMedia` capture. Each case is bounded evidence,
-not a public-network reproduction or a population result.
+Canvas input from real `getDisplayMedia` capture.
 
 | Input / Browser | Constraint and recovery result |
 | --- | --- |
@@ -369,8 +357,7 @@ The bare control retains the same source, receiver and shaper while replacing
 HostPeer/pooling with a plain PeerConnection, codec preference and initial sender
 limits. Producer traces show restored allocation reaching the pooled encoder
 before its resolution recovered. All three retained their connections and
-cleaned up. These single runs isolate a mechanism, not a ranking or field
-diagnosis. A separate 2.5 Mbps, one-second shared-encoding control retained
+cleaned up. A separate 2.5 Mbps, one-second shared-encoding control retained
 1080p without packet loss; a 400 kbps limit is severe congestion for this scene,
 even when brief. H264 recovery latency therefore cannot all be attributed to
 Piik's pool, nor can every small network disturbance be called over-sensitive.
@@ -381,8 +368,7 @@ separate transport recovery from Native encoding and frame assembly.
 pulses, each followed by 40 unconstrained seconds, took the bare tab sender from
 778p to 418p and then 238p; the actual Piik pool comparison ended at 148p.
 Targets recovered to about 5 Mbps and actual captured frames remained reduced.
-These single runs establish reachability in both paths, not that the pool is
-worse or that every brief blur has this cause. The fixture retained 300 ms RTT.
+The persistent state occurred in both paths. The fixture retained 300 ms RTT.
 
 A standalone HTML reproduction removed Piik, audio and the network shaper
 entirely. It connected two local PeerConnections, captured its own moving tab,
@@ -406,11 +392,9 @@ Changing only the scene to simple moving bars restored full size in about
 12 seconds. Restoring the textured scene then retained full size for the
 remaining 30 seconds. The sender made only its two startup parameter writes;
 no pool, reconnect, preference reset or frame reset caused that recovery.
-This confirms a content-dependent stable state, not merely stale samples or
-a blocked recovery operation. Restored bandwidth alone does not require this
-scaler to restore resolution. The scaler and default-threshold source matched
-inspected upstream main on that date; this does not establish every device's
-behavior or the field report's cause.
+This confirms a content-dependent stable state. The scaler can retain reduced
+resolution after bandwidth recovers. Its default-threshold source matched
+inspected upstream main on that date.
 
 A matched three-arm comparison used fixed 5 Mbps, alternating 5.0/4.9 Mbps
 every 500 ms, and repeated identical 5 Mbps writes. Native reconfiguration
@@ -476,9 +460,8 @@ and ordinary fallback; played audio remains present. Brief video stalls remain.
 
 The bounded H264 and VP8 two-Viewer controls for this admission repair retained
 the healthy sibling at 1048p and about 29 fps through both recovery intervals.
-The constrained Viewer still adapted and recovered. This establishes one
-avoidable sibling degradation path, not the field room's cause or elimination
-of all brief blur. The affected admission rules predate the display-isolation
+The constrained Viewer still adapted and recovered. The comparison reproduces
+an avoidable sibling degradation path. The affected admission rules predate the display-isolation
 repair. Raw observations stay in ignored fixtures; comparisons read native stats
 without calling the producer's startup-transition helper.
 
@@ -514,8 +497,7 @@ logs confirm this second cold start. On the same isolated 1904x1048 textured tab
 seeding only the local answer with that 4 Mbps allocation increased VP8 output
 in the first second from 6 to 27 frames; its first sampled target was 3.33 Mbps
 rather than 2.70 Mbps. The 400 kbps control retained its native 333 kbps initial
-encoder target and two first-second frames with either version. These bounded
-results do not promise faster first frames or remove weak-network adaptation.
+encoder target and two first-second frames with either version.
 
 The hint uses the existing Host-bounded allocation, not a multiplier or floor.
 WebRTC reads the send configuration from the
@@ -529,7 +511,7 @@ application writes this hint once per producer, not on each budget change.
 The full two-Viewer VP8 follow-up retained the healthy child at 1048p through
 two one-second 400 kbps / 4% loss pulses at 40 ms configured RTT. The constrained
 child still down-adapted and froze during recovery, but regained 1048p within
-each 40-second recovery window. This is not a freeze-free claim. A separate
+each 40-second recovery window. A separate
 audio/loss check delivered all 97 scheduled audio pulses to both played outputs;
 H264 quiet-start, live/paused settings, source replacement and ordinary-fallback
 checks passed. All owned test connections, processes and profiles retired.
@@ -549,12 +531,12 @@ in the replay. These results do not support removing dependency recovery or
 startup protection, growing queues or repeatedly resetting encoders. Matched
 field evidence and broader transport/allocation effects remain open.
 The rate/loss run with audio retained all 65 pulses after startup at both
-played outputs, despite video stalls; this does not establish gap-free video.
+played outputs despite video stalls.
 A separate six-second complete RTP-media drop on one child, preserving RTCP
 and signaling, resumed its played video 157 ms after release for VP8 and 128 ms
 for H264. Both healthy siblings retained full dimensions; H264 still recorded
 brief sibling stalls. All post-release audio pulses arrived. This bounded local
-check does not establish recovery for an interrupted relay or reporter's network.
+check used one directly connected child; interrupted relays need a separate case.
 
 A matched single-Viewer control separates pool handoffs from ordinary adaptation.
 Pooled sending used one producer with no handoffs; ordinary sending used no pool
@@ -614,7 +596,7 @@ the shared source. A fake-device input exercising the same raw-frame path retain
 20 fps during a verified hidden-page interval; self-tab capture could not enter
 hidden state in that fixture. Physical background/device coverage remains open.
 A matched full-resolution pair consumed 12.30 versus 12.46 whole-fixture CPU-seconds
-over 15 seconds. This single-machine sample is not a low-end performance guarantee.
+over 15 seconds on this machine.
 
 **Carrier cadence must not adapt the picture twice.** Two one-second rate/loss
 pulses exposed a separate starvation loop: after the second pulse the producer
@@ -643,7 +625,6 @@ and allocation from real incoming layers. The repaired real-tab check decoded
 15 fps with the Host hidden, including original/half-size switching, resumed
 delivery, track replacement and retirement. RTP regression tests cover both
 Transport and Publication; restoring either old cap makes its test fail.
-This does not identify the field room's H264 degradation cause.
 
 **Upstream repair boundary.** Chromium's
 [feedback forwarding change](https://chromium-review.googlesource.com/c/chromium/src/+/2386743)
@@ -757,7 +738,7 @@ picture and also works with the single-pulse controls. Set
 recovery observation; product code owns all adaptation. Results go to ignored
 `build/browser-local-pool`; summarize with
 `node scripts/browser-local-pool-summary.mjs <result.json>`.
-A successful process exit does not establish visual/performance parity.
+Review decoded output and cost measurements alongside the process result.
 `--display` captures only the isolated probe tab. It records actual source-frame
 sizes and checks that sender adaptation does not shrink capture; its receiver
 observations establish frame progress, not barcode-based glass-to-glass latency
@@ -769,8 +750,8 @@ For real tab capture through the shared forwarding path, set `CHROME_PATH`,
 `PIIK_EMBEDDED_SFU_CODEC=h264` or `vp8`, then run `npm run gate:embedded-sfu`.
 This separate arm verifies a hidden Host, decoded original/half-size layers,
 resumed delivery, video-track replacement, profile changes and retirement.
-Track replacement uses a clone of the same visual source; it does not establish
-different-device switching or audio/video synchronization.
+Track replacement uses a clone of the same visual source. Different-device
+switching and audio/video synchronization need separate cases.
 
 ## Primary References And Remaining Boundaries
 

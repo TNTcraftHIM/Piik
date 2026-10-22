@@ -99,8 +99,8 @@ compatibility path. The completed cutover is retained in Git; current
    retention retires only empty rooms and resets the empty interval on restart.
 5. Explicit deletion/replacement releases codes; the allocation bound is unchanged.
 6. Corrupt/mismatched/multiply owned state fails before accepting traffic.
-7. Surviving Host/Viewer tabs reauthenticate and rebuild a fresh route; no test
-   labels that bounded rebuild as uninterrupted media.
+7. Surviving Host/Viewer tabs reauthenticate and rebuild a fresh route with a
+   bounded media interruption.
 
 ### SQLite I/O Failure Boundary
 
@@ -111,7 +111,7 @@ and sustained failures. Rejected writes did not become accepted authority;
 while the fault persisted, further writes failed. After removing the fault,
 reads, a new mutation and reopening the database retained the expected rows.
 Read-only, page-capacity and deferred-constraint failures are also covered by
-the ordinary room tests. This is not power-loss or filesystem-durability proof.
+the ordinary room tests. Power loss and filesystem durability were outside this experiment.
 
 SQLite can roll back automatically after an I/O or capacity error, so a separate
 application transaction flag cannot reliably describe it. The owner now issues

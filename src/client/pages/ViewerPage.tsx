@@ -33,6 +33,7 @@ import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
 import { useRoomVoiceState } from "../room-voice/use-room-voice-state";
 import { participantConnection } from "../lib/participant-connection";
+import { VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { getRuntimeCapabilities } from "../lib/api";
 import { participantColor } from "../components/living/participant-color";
@@ -2262,31 +2263,32 @@ export function ViewerPage({
       (entry): entry is { viewer: typeof entry.viewer; evidence: ViewerQualityEvidence } =>
         entry.evidence !== null,
     );
+  const pictureActive = presentationState.host === "online" || presentationState.host === "paused";
   const couchEntries: CouchEntry[] = viewers.map((viewer) => {
     const isSelf = selfPeerId !== null && viewer.peerId === selfPeerId;
+    const upstream = participantConnection(viewer, pictureActive, roomVoice).upstream;
     const isChild =
       !isSelf &&
       selfPeerId !== null &&
-      viewer.upstream.kind === "peer" &&
-      viewer.upstream.peerId === selfPeerId;
+      upstream.kind === "peer" &&
+      upstream.peerId === selfPeerId;
     return {
       key: viewer.peerId,
       name: viewer.label,
-      status: deriveParticipantStatus(viewer, presentationState.host === "online" || presentationState.host === "paused", undefined, roomVoice),
+      status: deriveParticipantStatus(viewer, pictureActive, undefined, roomVoice),
       you: isSelf,
       selectable: isChild ? undefined : false,
     };
   });
-  const ownVoiceRoute = participantConnection({ peerId: selfPeerId ?? undefined, upstream: { kind: "none" } }, roomVoice).upstream;
-  const detailRoute = routePresentation.route ?? (ownVoiceRoute.kind === "peer" ? "p2p" : ownVoiceRoute.kind === "sfu" ? "sfu" : null);
   const selectableRelayChildren = viewers
     .filter(
-      (viewer) =>
-        selfPeerId !== null &&
-        viewer.upstream.kind === "peer" &&
-        viewer.upstream.peerId === selfPeerId,
+      (viewer) => {
+        const upstream = participantConnection(viewer, pictureActive, roomVoice).upstream;
+        return selfPeerId !== null && upstream.kind === "peer" && upstream.peerId === selfPeerId;
+      },
     )
     .map((viewer) => viewer.peerId);
+  const selectedRelayChild = viewers.find(viewer => viewer.peerId === selectedPawn && selectableRelayChildren.includes(viewer.peerId));
 
   return (
     <div className="lr-app">
@@ -2560,7 +2562,8 @@ export function ViewerPage({
                     expanded={showConnectionDetails}
                     controls="viewer-details-panel"
                     disabled={
-                      !detailRoute &&
+                      !routePresentation.route &&
+                      !roomVoiceSession &&
                       !relaySnapshot &&
                       freshRelayChildEvidence.length === 0
                     }
@@ -2591,13 +2594,12 @@ export function ViewerPage({
               </div>
             </div>
           </div>
-          {showConnectionDetails && detailRoute ? (
-            <Row sub>
-              <div id="viewer-details-panel" style={{ display: "contents" }}>
-                <MeterTag icon={routePresentation.route ? "arrowDown" : "headphones"}
-                  label={t(routePresentation.route ? "stats.title" : "state.peer.voiceConnected")} />
-                <RouteGlyph route={detailRoute} />
-                {routePresentation.route && routeMetrics ? (
+          {showConnectionDetails ? (
+            <div id="viewer-details-panel">
+              {routePresentation.route ? <Row sub>
+                <MeterTag icon="arrowDown" label={t("stats.sharedMedia")} />
+                <RouteGlyph route={routePresentation.route} />
+                {routeMetrics ? (
                   <MetricCells
                     metrics={routeMetrics}
                     direction="receive"
@@ -2605,8 +2607,9 @@ export function ViewerPage({
                     onToggle={setRouteMetricsExpanded}
                   />
                 ) : null}
-              </div>
-            </Row>
+              </Row> : null}
+              {roomVoiceSession ? <Row sub><VoiceConnectionDetails session={roomVoiceSession} /></Row> : null}
+            </div>
           ) : null}
           {showConnectionDetails && relaySnapshot ? (
             <Row sub>
@@ -2636,26 +2639,26 @@ export function ViewerPage({
                 </Row>
               ))
             : null}
-          {selectedPawn !== null && selectedChildEvidence ? (
+          {selectedRelayChild ? (
             <PawnDetail
-              pawnKey={selectedPawn}
-              name={
-                viewers.find((viewer) => viewer.peerId === selectedPawn)
-                  ?.label ?? selectedPawn
-              }
+              pawnKey={selectedRelayChild.peerId}
+              name={selectedRelayChild.label}
               route={null}
-              metrics={metricsFromQualityEvidence(selectedChildEvidence)}
+              metrics={selectedChildEvidence ? metricsFromQualityEvidence(selectedChildEvidence) : null}
               direction="receive"
-              tag={{ icon: "arrowUp", label: t("stats.downstream") }}
+              tag={selectedChildEvidence ? { icon: "arrowUp", label: t("stats.downstream") } : undefined}
               expanded={pawnMetricsExpanded}
               onToggleMetrics={setPawnMetricsExpanded}
               onClose={() => setSelectedPawn(null)}
-            />
+            >
+              <VoiceConnectionDetails session={roomVoiceSession} peerId={selectedRelayChild.peerId} />
+            </PawnDetail>
           ) : null}
           {showTopology && labeledHostPresence ? (
             <Row sub>
               <RouteTree
                 hostPeerId={labeledHostPresence.peerId}
+                pictureActive={pictureActive}
                 voice={roomVoiceSession}
                 hostLabel={labeledHostPresence.label}
                 viewers={viewers}

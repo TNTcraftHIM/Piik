@@ -5,12 +5,8 @@ English · [简体中文](./self-hosting.zh-CN.md) · [Documentation](../guide/R
 Piik Server packages the web interface, room management and optional media
 forwarding in **one server binary**. Extract and run it; room data is stored in SQLite.
 
-The default P2P configuration handles room management, signaling and STUN; shared
-video and audio travel between participants. Enabling SFU adds media-forwarding
-bandwidth and processing on the server. For a small server, start with the default
-and measure CPU, memory and network use with your intended number of rooms and
-viewers before enabling SFU. Lowering picture resolution primarily reduces
-participants' capture and encoding work.
+By default, the server handles room management, signaling and connection discovery
+(STUN); shared video and audio travel between participants (P2P).
 
 ## Try it locally
 
@@ -165,11 +161,9 @@ share.example.com {
 Reload Caddy. It obtains and renews the certificate automatically when DNS points
 to the server and TCP 80/443 are reachable. See [Caddy's HTTPS proxy guide](https://caddyserver.com/docs/quick-starts/reverse-proxy#https).
 
-For nginx, see the [configuration example](../../deploy/nginx/piik.conf.example).
-If you copied an older example, change its `Permissions-Policy` to
-`camera=(self), microphone=(self), geolocation=()` and reload nginx. Empty
-camera/microphone allowlists prevent Browser capture even when the user grants
-permission; `self` allows this site to request access.
+For nginx, use the [configuration example](../../deploy/nginx/piik.conf.example).
+Set `Permissions-Policy` to `camera=(self), microphone=(self), geolocation=()`
+and reload nginx. The `self` allowlists let this site request camera and microphone access.
 
 ### 3. Open the ports and verify
 
@@ -190,8 +184,10 @@ Add `SFU_UDP_PORT=7882` to `.env`, allow UDP 7882, and restart Piik to enable
 automatic SFU fallback. When the server is behind NAT, also set `SFU_PUBLIC_IP`
 to its reachable public IPv4 address and forward the same external and internal
 UDP port as `SFU_UDP_PORT`. The same binary provides the fallback.
-Allow server forwarding capacity and outbound bandwidth for Viewers actually
-using the SFU.
+SFU forwards media through your server, adding processing and outbound bandwidth
+for each Viewer using it. On a small server, measure CPU, memory and network use
+with your intended room and Viewer count. Lowering picture resolution primarily
+reduces participants' capture and encoding work.
 The Host must turn off **Privacy mode** before sharing to allow this route.
 Both direct and SFU media need a usable UDP connection.
 
@@ -259,9 +255,8 @@ Keep STUN directly reachable as above. A web-only tunnel carries signaling but
 does not add an SFU media route for strict NAT.
 
 See SakuraFrp's [web setup](https://doc.natfrp.com/app/http.html) and
-[UDP connectivity notes](https://doc.natfrp.com/faq/network.html). Node features,
-access requirements and bandwidth depend on the provider; Piik has not yet
-field-tested this managed service.
+[UDP connectivity notes](https://doc.natfrp.com/faq/network.html) for its node
+features, access requirements and bandwidth limits.
 
 ## Keep it running and update
 

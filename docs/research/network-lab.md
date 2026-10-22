@@ -1,9 +1,8 @@
 # Controlled Network Laboratory
 
-This document owns the laboratory's method and evidence limits. Product routing
-remains in [routing and transport](../standards/routing-transport.md); pending
-work remains in [TODO](../todo.md). The laboratory does not authorize NAT or
-adaptation changes.
+This document describes the laboratory's method and results. Product routing
+belongs to [routing and transport](../standards/routing-transport.md); pending
+work belongs to [TODO](../todo.md).
 
 ## Design And References
 
@@ -11,8 +10,8 @@ Reviewed on 2026-10-13:
 
 - [Tailscale NAT Lab](https://github.com/tailscale/tailscale/issues/13038)
   combines precise in-memory models with real systems attached to a virtual
-  Internet. Keep both layers: a model regression cannot establish complete App
-  or Browser behavior.
+  Internet. Keep model regressions for precise transport behavior and real-process
+  checks for the complete App/Browser path.
 - [WebRTC Network Emulation Framework](https://webrtc.googlesource.com/src/+/HEAD/test/network/g3doc/index.md)
   separates endpoints, routes, traffic behavior and measurements. Preserve
   directional links and distinguish simulated time from real-process timing.
@@ -57,23 +56,24 @@ The laboratory is complete only when the following are executable and verified:
 6. Repeatable scenario inputs, software/kernel identity, seeds, observed fault
    counters and bounded timelines accompany a structured report. Paired
    enhancement on/off comparisons use the same scenario and endpoints. Report
-   counts and distributions without presenting a model pass rate as Internet
-   success probability.
+   counts and distributions for those controlled scenarios.
 7. A documented command and opt-in Linux CI entry run the same checks. Exercise
    failed/cancelled runs as well as passing runs; verify that a deliberately
    missing fault or broken media path cannot produce a passing report.
 
 ## Boundaries
 
-The fast layer already uses Pion vnet in `internal/app/mediaedge` and
-`internal/media/forwarding`. It exercises production transport with synthetic
-media, not every Browser/OS behavior. The process layer uses Linux namespaces,
-kernel NAT/firewall rules and traffic shaping. Neither layer establishes
-Windows/macOS driver behavior, physical radio scheduling, mobile suspension or
-the distribution of real-world NATs. The current process matrix uses desktop
-Chrome and a Linux App with Browser-generated H264 ingress; it does not exercise
-physical capture, other Browser engines, real gateway mapping or the public
-invitation provider.
+The fast layer uses Pion vnet in `internal/app/mediaedge` and
+`internal/media/forwarding` with production transport and synthetic media.
+The process layer uses Linux namespaces, kernel NAT/firewall rules and traffic
+shaping. Its current matrix uses desktop Chrome and a Linux App with
+Browser-generated H264 ingress. The local lifecycle gate uses the same endpoint
+owners on loopback, including the Native receive/playback bridge and Browser SFU.
+
+Physical capture, Windows/macOS drivers, radio scheduling, mobile suspension,
+other Browser engines, real gateway mapping and the public invitation provider
+need separate checks. Trial counts and timings describe the named controlled
+scenarios; field connection rates require sampled deployment evidence.
 
 The `voice-browser-browser`, `voice-browser-app`, `voice-app-browser` and
 `voice-app-app` cases additionally open room voice through the normal UI and
@@ -117,7 +117,7 @@ with the same inputs and alternates run order. Ordinary STUN destinations stay
 available in both cases through the existing lab STUN service. `distributions.json`
 reports trial/failure counts and nearest-rank timing summaries for validated
 media trials; unavailable and timed-out attempts never become zero-millisecond
-successes. Small trial counts are observations, not population estimates.
+successes.
 `--verify` (CI `network_lab: verify`) runs negative controls against the actual
 runner: missing fault, frozen picture (before and after an impairment), partially failed setup, and cancellation
 during calibration or sharing. Each must fail for its intended reason and leave
@@ -134,9 +134,9 @@ The `quality-peer`, `quality-sfu-uplink` and `quality-sfu-downlink` cases use th
 same moving 720p Browser source. They establish 45 seconds of baseline, constrain
 one direction to 600 kbps for 30 seconds, then observe 90 seconds beyond resumed media. The
 final observation must retain the original connection and source resolution for
-at least ten seconds, with advancing pictures and audio. This is an
-unconstrained-fixture recovery check, not a product resolution floor or proof of
-game quality. Frame cadence, bitrate, loss, repair, freezes and QP remain separate
+at least ten seconds, with advancing pictures and audio. This checks recovery
+after removing the constraint; production WebRTC continues to own adaptation.
+Frame cadence, bitrate, loss, repair, freezes and QP remain separate
 measurements. These longer cases cap captures at 500,000 packets, retaining only
 each packet's first 96 bytes; ordinary cases keep their 100,000-packet bound.
 
@@ -146,8 +146,6 @@ on 2026-10-14 passed all 37 scenarios and six negative controls on candidate
 scenarios produced advancing decoded audio/video. Blocked UDP, the two
 random-mapping profiles and the three Browser-containing sequential-mapping
 cases produced bounded unavailability; there were no observation timeouts.
-A passing failure observation is not a
-successful connection or an Internet success-rate measurement.
 The [paired comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38301455274)
 also passed eight trials across two seeds with alternating enhancement on/off
 order. All four ordinary App/App trials delivered media; all four random-mapping
@@ -162,8 +160,8 @@ and socket adoption for the same connection. Packet captures confirmed SRTP and
 reverse SRTCP on that tuple. The enhanced App/App case now requires media; its
 disabled control remains observational so an ordinary-ICE improvement can pass.
 Browser/Browser and both mixed directions exhausted their routes with either
-setting in this profile. This establishes one complete product path through sequential
-kernel NAT, not a field success rate or general benefit for Browser participants.
+setting in this profile. Coordinated preparation enabled the complete App/App
+path through this sequential kernel NAT; Browser-containing pairs remained unavailable.
 
 The [mixed-endpoint recovery comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38433591403)
 passed eighteen trials: three address-change runs per endpoint pair and three
@@ -175,13 +173,12 @@ showed repeated old primary packets before the fix and negotiated RTX without
 repeated primary sequence numbers afterward. Pion's existing
 [RFC 4588](https://www.rfc-editor.org/rfc/rfc4588) repair handles reception;
 no new recovery timer or relaxed replay check was added. The other endpoint pairs
-retained their prior recovery range. These controlled observations establish a
-media-recovery repair, not a change in NAT reachability or Internet success rate.
+retained their prior recovery range. Preserving RTX repaired media recovery.
 The [shared-receiver acceptance](https://github.com/TNTcraftHIM/Piik/actions/runs/38439642180)
 adds three SFU-only outage trials, three SFU fallback trials and three further
 Browser/App address-change trials. All delivered media and cleaned up their
 resources. SFU outage recovery took about 4.9 seconds; repeated Browser/App
-recovery ranged from 4.9 to 11.1 seconds, so 4.9 seconds is not a guaranteed bound.
+recovery ranged from 4.9 to 11.1 seconds.
 The SFU-only fixture verifies the locked server-media control and disabled
 NAT policy; it does not attempt to enable a hidden P2P setting.
 
@@ -191,7 +188,7 @@ arrived after 16 later packets, but failed after 96, beyond Pion's default
 64-packet SRTP replay window. Offering the associated RTX codec lets LiveKit
 repair the delayed loss through its separate sequence space. A receiver declining
 RTX retains ordinary NACK within the primary replay window. This applies to
-Native and SFU outputs; it does not establish the cause of unmatched field stalls.
+Native and SFU outputs.
 
 App Host checks must use the real H264 Browser-to-App ingress and App WAN sender;
 launching an App alongside a Browser-only VP8 share is not an App-path test.
@@ -249,12 +246,11 @@ lifecycle, and the two fallback cases delay real Peer signaling for 15 seconds
 to exercise SFU commitment followed by direct continuation. Video-frame callbacks
 check that the working route keeps presenting during that continuation.
 
-These are real local UI, room and media paths, not simulated route messages.
+These cases exercise the local UI, room and media paths.
 App senders use Browser H.264 ingress and Native fanout; App receivers use the
 Native receive/playback bridge. Each local App has its own approved origin, and
 the gate checks the exact control origin and current Native edge. SFU fallback
-uses Browser publication/subscription here. This gate does not validate physical
-Native capture/publication, real NATs or Internet connection success rates.
+uses Browser publication/subscription here.
 
 Reports under ignored `build/media-lifecycle/` record source identity, binary
 hashes, Browser versions, stage samples, screenshots and resource cleanup.
@@ -269,8 +265,8 @@ and Pion transport gates, rather than interpreting a CDP throttle as UDP shaping
 
 On 2026-10-15, all seven cases passed twice on Windows with Chrome
 154.0.8037.98, including cleanup. The four SFU-to-Peer continuation windows
-had maximum presented-frame gaps of 76--118 ms on loopback; these are not WAN
-latency guarantees. Frozen-picture and cancellation controls failed for their
+had maximum presented-frame gaps of 76--118 ms on loopback.
+Frozen-picture and cancellation controls failed for their
 intended reasons and cleaned up. The route regression separately covers a connected
 Peer reaching its operation deadline before a first frame: untried fallback must
 survive that deadline, while each attempted route retains its finite budget.
@@ -283,9 +279,8 @@ stall during a P2P/SFU switch while RTP reception continued. Removing only that
 extra observer, retaining pixel readback, decoded-frame counters and Piik's own
 first-frame observer, passed six Auto/P2P/SFU transitions against the same current
 Server: the moving VP8 picture sustained about 30 fps. Installed Chrome
-155.0.8059.84 also passed with the continuous observer. This establishes a
-probe-dependent browser interaction, not a Piik route failure or a particular
-upstream fix. Recheck a failed probe with passive frame counters and changing
+155.0.8059.84 also passed with the continuous observer. The receiver stall depended
+on the extra observer in Chromium 152. Recheck a failed probe with passive frame counters and changing
 pixels before adding playback resets or transport workarounds.
 
 ## Sustained Quality Recovery
@@ -295,8 +290,7 @@ P2P stage comparisons also use the existing
 with recorded UDP limits and decoded frames, and
 [coupled Native encoding/transport controls](./webrtc-encoder-pool.md#budget-restoration).
 Compare restored allocation, encoded dimensions and received/decoded progress
-separately. Single-codec recovery and an unblocked packet stream do not establish
-recovery of every receiver or perceptual quality.
+separately for each receiver. Evaluate perceptual quality with a matching source.
 
 The CPU-only `TestPublicationConstrainedRecovery` gate complements the Browser
 cases below. It runs the actual Native publication allocator and Pion transport
@@ -330,8 +324,7 @@ Source-resolution recovery is measured separately from resumed decoding.
 
 Final twenty-second windows delivered 29.3–29.4 decoded fps with no new freezes.
 The impaired SFU paths did pause, and the Browser encoder's bitrate/quantization
-recovered gradually after dimensions returned. These results do not establish
-instantaneous or perceptually lossless recovery. The forwarding SFU can pause
+recovered gradually after dimensions returned. The forwarding SFU can pause
 when no received layer fits a child's capacity; it does not create a lower
 encoding for that child.
 
@@ -340,6 +333,6 @@ codec or confirmed route. Piik already forwards encoded video without server
 decoding/transcoding. An opaque UDP relay changes transport feedback and delivery
 semantics; its reported improvement does not isolate CPU, network or an SFU cause.
 The [queue/probe repairs](./node-local-media-design.md#send-queue-recovery) address
-confirmed mechanisms present in v1.9.2, but this run is candidate acceptance,
-not a matched old/new reproduction of that report. It does not measure a cloud
-server's CPU requirement, H264 behavior, multi-Viewer load or hours-long stability.
+confirmed mechanisms present in v1.9.2. Diagnosing that report requires a matched
+old/new reproduction with its route and codec. Cloud-server sizing, H264,
+multi-Viewer load and hours-long stability need their own workloads.

@@ -146,6 +146,7 @@ describe("RouteTree", () => {
 
     const html = renderToStaticMarkup(
       createElement(RouteTree, {
+        pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -197,6 +198,7 @@ describe("RouteTree", () => {
 
     const html = renderToStaticMarkup(
       createElement(RouteTree, {
+        pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -244,6 +246,7 @@ describe("RouteTree", () => {
 
     const html = renderToStaticMarkup(
       createElement(RouteTree, {
+        pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -283,6 +286,7 @@ describe("RouteTree", () => {
 
     const html = renderToStaticMarkup(
       createElement(RouteTree, {
+        pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -301,6 +305,7 @@ describe("RouteTree", () => {
     const hostPeerId = "host-color-identity";
     const html = renderToStaticMarkup(
       createElement(RouteTree, {
+        pictureActive: true,
         hostPeerId,
         hostLabel: "Host",
         viewers: [],
@@ -331,6 +336,7 @@ describe("RouteTree", () => {
 
     const html = renderToStaticMarkup(
       createElement(RouteTree, {
+        pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -348,7 +354,7 @@ describe("RouteTree", () => {
     expect(html).toContain(hostName);
   });
 
-  it("distinguishes ready, pending, and selected viewers", () => {
+  it("distinguishes idle room members from requested, ready, and selected media paths", () => {
     const { host, viewers } = labelParticipantSnapshot([
       {
         role: "host",
@@ -379,6 +385,7 @@ describe("RouteTree", () => {
 
     const html = renderToStaticMarkup(
       createElement(RouteTree, {
+        pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -397,6 +404,21 @@ describe("RouteTree", () => {
     );
     expect(html).toContain("Awaiting media");
     expect(html).toContain("← Host");
+
+    for (const upstream of [{ kind: "none" }, { kind: "peer", peerId: "host" }] as const) {
+      const idle = renderToStaticMarkup(createElement(RouteTree, {
+        pictureActive: false,
+        hostPeerId: host?.peerId ?? null,
+        hostLabel: host?.label ?? "Host",
+        viewers: viewers.filter(viewer => viewer.peerId === "pending").map(viewer => ({ ...viewer, upstream })),
+        selectedPeerId: "pending",
+      }));
+      expect(idle.match(/class="lr-person"/g)).toHaveLength(2);
+      expect(idle).toContain("Pending · 已在房间");
+      expect(idle).toContain('class="lr-route-node is-selected"');
+      expect(idle).not.toContain("is-pending");
+      expect(idle).not.toContain("lr-route-edge");
+    }
   });
 
   it("exposes only authorized topology nodes as detail controls", () => {
@@ -424,6 +446,7 @@ describe("RouteTree", () => {
     ]);
     const html = renderToStaticMarkup(
       createElement(RouteTree, {
+        pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -441,6 +464,7 @@ describe("RouteTree", () => {
   it("keeps truncated Host, unselectable and pending names in visible tooltip targets", () => {
     const name = "这是一个需要完整查看而不是只能读省略号的参与者名字";
     const html = renderToStaticMarkup(createElement(RouteTree, {
+      pictureActive: true,
       hostPeerId: "host", hostLabel: `${name}房主`,
       viewers: labelParticipantSnapshot([
         { role: "viewer", peerId: "ready", displayName: `${name}观众`, upstream: { kind: "peer", peerId: "host" }, mediaReady: true },
@@ -488,6 +512,7 @@ describe("RouteTree", () => {
     const { host, viewers } = labelParticipantSnapshot(participants);
     const html = renderToStaticMarkup(
       createElement(RouteTree, {
+        pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,

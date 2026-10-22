@@ -75,9 +75,7 @@ A prototype needs a named sender Browser and physical receiver. It must prove:
   and no credential in URLs or retained receiver state; and
 - comparison with built-in tab/screen mirroring on the same sender and display.
 
-Until that gate exists, feature detection alone cannot justify a control. A
-native helper, custom encoded transport, or server restream is not authorized by
-this research.
+Feature detection alone cannot establish those receiver capabilities.
 
 ## Primary Sources
 

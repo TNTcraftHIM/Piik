@@ -370,8 +370,6 @@ release descriptions and tags. Unknown files or provenance require review.
 Check capacity before upload. Cleanup may reclaim versions outside the two
 retained stable versions; never delete either retained version to make an
 unverified replacement fit. Exhausted storage leaves a pending preview.
-Target authentication, uploads, anonymous metadata/CORS and the complete matching
-Server/three-platform App downloads and SHA-256 checks passed for the public release.
 Use API metadata in the Browser; ordinary asset-link redirects are not guaranteed
 to permit cross-origin fetch, even when a normal download works.
 

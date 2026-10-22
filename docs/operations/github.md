@@ -1,14 +1,13 @@
 # GitHub Repository And Releases
 
-[Versioning](../standards/versioning.md) owns release meaning and compatibility;
-[CONTRIBUTING](../../CONTRIBUTING.md) owns review and local validation. This file
-owns the one-time GitHub settings. The source repository is public; automatic
-package publication has its own activation gate below.
+Use this runbook for GitHub repository settings, package publication and mirror
+recovery. Release policy is in [versioning](../standards/versioning.md); review
+and local validation are in [CONTRIBUTING](../../CONTRIBUTING.md).
 
 ## Main And Pull Requests
 
-Use squash merging only, with the PR title and body as the squash commit. These
-repository settings are applied. Keep automatic branch deletion off: the normal
+Use squash merging only, with the PR title and body as the squash commit.
+Keep automatic branch deletion off: the normal
 cleanup step checks local worktrees and remaining references first.
 
 Protect `main` with PRs required, zero mandatory peer approvals for the solo
@@ -19,9 +18,9 @@ check settings remain a repository-owner decision. PR/issue
 templates live in `.github/`; [naming](../../CONTRIBUTING.md#commit-pr-and-branch-names)
 is shared with automatic version selection.
 
-These protections are active, including conversation resolution. GitHub Pages
-uses the **GitHub Actions** publishing source and the `piik.tv` custom domain;
-the repository homepage points to `https://piik.tv`. The dedicated Website
+Require conversation resolution as well. GitHub Pages uses the **GitHub Actions**
+publishing source and the `piik.tv` custom domain; set the repository homepage to
+`https://piik.tv`. The dedicated Website
 workflow publishes the static site under [website operations](./website.md).
 
 ## Enable Automatic Publication Once
@@ -99,8 +98,7 @@ Read retries cover the complete JSON or attachment body, not just response
 headers. A partial attachment is discarded and its checksum starts again on
 the next bounded attempt. Uploads and other mutations are not blindly retried
 after an ambiguous timeout; rerunning inventories existing attachments first.
-Operation and package progress identify which transfer failed without recording
-tokens. A successful retry does not by itself identify the earlier network cause.
+Progress output identifies the failed transfer without recording tokens.
 For a separate retry, dispatch it on `main` with the **original CI run ID**:
 
 ```sh
@@ -138,8 +136,7 @@ Use the release's actual version and full `target_commitish` SHA, with
 `GITEE_TOKEN` supplied through the publisher environment. `--dry-run` after the
 three arguments checks local identity, checksums and attachment sizes without
 publishing. The [release-source policy](../standards/versioning.md#release-sources)
-owns provenance, selection and quota limits. The first public release passed
-complete matching mirror download acceptance for every Server and App package.
+owns provenance, selection and quota limits.
 
 Release postflight applies the [two-version mirror retention policy](../standards/versioning.md#release-sources).
 After verifying the latest mirror and its fallback against GitHub, inventory

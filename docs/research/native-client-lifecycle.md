@@ -4,8 +4,8 @@
 - Scope: Windows capture idle/border semantics, native loopback input isolation, and
   Browser visibility of an unexpected App disconnect.
 - Status: quiet-source, preview-queue and App-crash checks pass. The owner
-  confirmed Windows 10 monitor sharing resolved; game-specific window replacement
-  is not established by the quiet-source checks.
+  confirmed Windows 10 monitor sharing resolved. Game-specific window replacement
+  remains a separate capture case.
 
 ## Current Evidence
 
@@ -34,8 +34,7 @@ Fresh-profile Windows/Chrome 152 checks confirmed a real prompt, successful
 discovery after granting access, and source-list recovery by refreshing after
 the discovery deadline. Optional Viewer discovery consults the permission before
 waiting; later grants can be used by later connections without replacing healthy
-Browser media. These checks do not identify the original missing-window
-reporter's cause or establish other browsers' permission behavior.
+Browser media. These checks used Windows/Chrome 152.
 
 ### Viewer Control Retirement
 
@@ -47,8 +46,7 @@ The Viewer room owner now releases control on access loss and rejects discovery
 that completes after retirement. A rendered optional-transport fixture retained
 the denied pages across four invitation generations: each new generation used
 Native reception with changing decoded pixels, old grants remained rejected,
-and revocation cleared media resources. This is local synthetic-media evidence;
-it does not establish physical network or all Browser navigation behavior.
+and revocation cleared media resources using local synthetic media.
 
 ## Scope Decisions
 
@@ -80,8 +78,7 @@ runtime change for either is claimed here.
 - On 2026-09-04, a blank Windows Notepad window was selected as a native source.
   The capture process stayed alive beyond seven seconds without a new source
   change, grew from 7,664 to 16,095 output bytes after a `K` request, and then
-  exited cleanly. This validates the quiet-source and retained-frame path on the
-  current Windows host; it does not claim a cross-version Windows matrix.
+  exited cleanly, exercising the quiet-source and retained-frame path on that Windows host.
 - The same day, the local Native Host gate started a real Host/Viewer share,
   terminated the App process, and observed the Host return to its start-share
   control within the bounded gate. Browser, capture, server, ports, and profile
@@ -90,8 +87,7 @@ runtime change for either is claimed here.
   hardware-H.264 frames at the 720p30 profile and exited normally. A separate
   source-window check stayed alive through 7.02 seconds without frames while
   minimized, then produced 17 frames within 540 ms of restoration. All owned
-  processes, ports and profiles were cleaned up. Neither check establishes the
-  reported Windows 10 monitor-start failure or game HWND recreation as fixed.
+  processes, ports and profiles were cleaned up. Both checks used Windows 11 and retained target identity.
 - On 2026-09-08, the current multi-output Windows VP8 Host gate captured only
   its own animated Chrome window. Live presets, paused changes, minimize/change
   resolution/restore/another change, and source replacement preserved the
@@ -99,8 +95,7 @@ runtime change for either is claimed here.
   delivered 30 new Viewer frames. Server-accepted Native quality evidence and
   process/port/profile cleanup passed. The gate's stale Node JSON-log assertion
   was corrected to the current Go text format, without changing evidence
-  eligibility. This is not H264 overload, Win10, or game-window replacement
-  evidence. The same owned-window sequence subsequently passed H264. Further
+  eligibility. The same owned-window sequence subsequently passed H264. Further
   physical runs use the serialized plan in [TODO](../todo.md).
 
 The multi-output Windows worker initially reapplied the source's frame-rate
@@ -112,7 +107,7 @@ its output limiter. No capture ceiling, media clock or quality setting changed.
 In the same owned-window H264 720p15 SFU gate, the reported Native output went
 from 12 fps before this correction to 15 fps after it. Both runs decoded 300
 720p frames, applied a live 480p change and cleaned up. This is a local cadence
-comparison, not a claim about hardware overload or all games.
+comparison using an owned source window.
 
 ## Open Capture Reports
 
@@ -123,10 +118,10 @@ capture, including fullscreen games, works. `CreateForMonitor` supports Windows
 request has been established. Community reports of disabled capture services or
 invalid display contexts are leads, not a diagnosis of this user's machine.
 Projected WinRT exceptions now reach the existing capture-error boundary instead
-of escaping `std::exception`; that correction alone does not prove startup fixed.
+of escaping `std::exception`.
 On 2026-09-09, the owner confirmed whole-display sharing works and closed this
-report. That field confirmation does not establish which earlier correction or
-environment change resolved it; no further workaround is justified by this report.
+report. The confirmation did not isolate a particular code or environment change;
+keep the report closed unless new evidence reopens it.
 
 The original converter always fitted the captured pixel aspect into the output:
 1280x960 into 1920x1080 yielded 1440x1080 content and 240-pixel side bars, even
@@ -140,8 +135,8 @@ pixels. Output profile dimensions and the one-encode media path are unchanged.
 Display metadata refreshes on source geometry changes and existing periodic
 keyframes, without another timer or display-setting writes. Unknown/custom
 scaling, ambiguous cloned outputs and normal windows keep captured aspect.
-This does not prove fidelity to monitor-side scaling or vendor-private game
-panel-fit/MPO transforms: those may not appear in desktop display-path metadata.
+Monitor-side scaling and vendor-private game panel-fit/MPO transforms may be
+absent from desktop display-path metadata.
 The CPU geometry check covers stretch, ordinary aspect, rotation and already-
 scaled input; the reported game's physical comparison remains acceptance work.
 
@@ -172,8 +167,7 @@ The end-to-end review did confirm a separate presentation defect: share
 termination during a pending update cleared its token but retained the advanced
 draft. A restart used the last applied settings while controls could show the
 failed draft. Cleanup now restores the applied settings through the existing
-commit helper; no new state or recovery mechanism was added. This alone is not
-claimed as the cause of CS2 capture termination.
+commit helper. Capture termination remains a separate failure.
 
 The later owner-supplied `cbdd751` CS2 diagnostic bundle records three 720p30
 update requests, all rejected while the existing 1080p30 share remains live.
@@ -200,8 +194,8 @@ retained 1080p. Restoring the source delivered 720p in 1,868 ms; the next 1080p
 request delivered in 480 ms, retaining the media object. Both updates succeeded;
 all processes, ports and Browser profiles closed. This closes the reproduced
 quiet-source timeout defect. CS2 foreground automation did not complete that
-same post-fix sequence, so this does not establish game-specific display-mode
-or HWND replacement behavior.
+same post-fix sequence; game-specific display-mode and HWND replacement
+behavior remain separate cases.
 
 That same bundle also contains two independent `adaptive-output` capture
 failures at H264 1440p60, one without a settings update in progress. A controlled
@@ -217,17 +211,16 @@ two copies of that actual keyframe byte-for-byte with zero paced drops or
 assembly loss. The 500-packet comparison dropped 1,182 packets and reconstructed
 none. Active fixture heap usage increased by roughly ten to thirteen MiB;
 LiveKit's packet cache still grows lazily and all queues remain bounded. Go
-capture and transport now share the encoded-frame bounds owner. This fixes a
-reproduced legal-input failure, not proof that every compound `adaptive-output`
-error in the field had the same cause; distinct failure stages preserve that
-remaining distinction.
+capture and transport now share the encoded-frame bounds owner. The fix admits
+this legal input; distinct `adaptive-output` failure stages remain available
+for diagnosing other capture failures.
 
 The `cbdd751` Vivaldi bundle shows two successful Native H264 1080p30 capture
 starts followed by a local outbound PeerConnection remaining connecting for
 about 7.985 seconds. The Browser bridge's eight-second startup timeout then
-stops the Native share cleanly. This is a local media-bridge failure boundary,
-not evidence that Windows capture or the control WebSocket failed. That bundle
-does not distinguish ICE from DTLS or a Browser policy. Current diagnostics
+stops the Native share cleanly. The local media bridge failed after capture and
+control startup. The bundle did not distinguish ICE from
+DTLS or Browser policy. Current diagnostics
 record those states and candidate-type counts separately; the UI reports a
 connection error. The subsequent `0675265` bundle shows four successful capture
 starts, each with two Native UDP host candidates, no usable remote candidates,
@@ -280,16 +273,15 @@ The repeated fullscreen case retained the connection and resumed decoded
 720p output after restoration. A controlled production-path check then held
 Native output for 35 seconds without announcing Host pause: the visible Viewer
 decoded no new frames, kept the same connected media, and decoded again when
-output resumed. This is bounded device evidence, not proof of
-all game/driver recovery or the separate immediate share-start failure report.
+output resumed. The check covers retained-source silence and recovery.
 Some focus changes did not remain foreground throughout a sampling window;
 only recorded window states and receiver progress establish those transitions.
 
 On 2026-10-15, the actual Windows window-capture gate passed separately with
 Auto selecting H264 and with manual VP8. Both retained playback through live,
 paused and background profile changes, restored the source window, and shared
-again after source termination; all owned resources closed. This does not
-reproduce the new v2.0.0 `app/capture/failed` report. That key reports a failed
+again after source termination; all owned resources closed. The v2.0.0
+`app/capture/failed` report needs a separate reproduction. That key reports a failed
 Native source lifetime; the App's capture-process and share-ended diagnostics
 are needed to identify which capture, codec or stream operation failed.
 
@@ -302,7 +294,6 @@ with the [current target size](https://learn.microsoft.com/en-us/uwp/api/windows
 before reconfiguring the pool or encoder, replacing the one-shot restoration
 flag. The Auto/H.264 window gate then passed restoration, profile changes,
 resizing, source replacement and source-exit recovery on the same media object.
-This local reproduction does not identify the unmatched game/driver reports.
 
 ## Keyframe Request Ownership
 
@@ -319,13 +310,11 @@ Three requests produced three recovery frames. Sending each request again
 immediately after reading the next `FrameBegin`, without an inserted delay,
 produced three pairs of consecutive recovery frames in both repetitions.
 The direct-source duplicate is removed at request ownership; relay and manual
-frame-plan delivery remain. This demonstrates duplicate encoded output, not
-its network cost or the cause of reported blur/disconnection. Full App/relay
+frame-plan delivery remain. This reproduces duplicate encoded output. Full App/relay
 behavior was checked separately: the Windows App VP8 gate passed playback,
 quiet-source restoration, profile changes and source replacement. The real
 Native relay fixture retained shared/split/rejoined lower outputs and independent
-retirement with one decoder. These bounded checks do not establish public-network
-or other hardware acceptance.
+retirement with one decoder.
 
 ## Windows Capture Borders
 
@@ -348,9 +337,8 @@ Windows enforces permission and can honor the preference if consent changes
 during capture. The earlier `Allowed` guard incorrectly made the first
 permission result decide the session's lasting preference. The 2026-10-07 review
 removed that guard; native checks and local capture/stop cycles with the border
-preference off/on/off passed. A visible denied-to-allowed transition and the new
-reporter's setup remain unverified; this correction does not establish the
-reported cause or guarantee border visibility.
+preference off/on/off passed. A visible denied-to-allowed transition and the
+reporter's setup remain unverified.
 
 On Windows 11 build 26200, a 2026-09-21 controlled native-window check confirmed
 borderless permission was allowed and the default capture had no border. A
@@ -371,9 +359,8 @@ killed without this drain. The stream joins the drain before closing completes;
 pipe when the process ends. Subprocess regression checks cover explicit stop,
 parent cancellation, concurrent stop, blocked output and an unresponsive child.
 The earlier real WGC cancellation check exited normally and cleared the border.
-This establishes a retirement defect and its local repair, not the cause of
-every reported Windows 11 border: denied consent and other active captures
-remain distinct Windows-owned limits.
+The check reproduces and repairs premature process retirement. Denied consent
+and other active captures remain distinct Windows-owned border conditions.
 
 The source-preview call chain has a separate, finite lifetime. Closing the
 picker invalidates queued thumbnails and their results; it does not kill the
@@ -407,7 +394,7 @@ is a borderless alternative for a selected display. It is not window-isolated
 capture: cropping the desktop can expose overlapping windows. Do not silently
 substitute it for a selected window. [OBS's display capture implementation](https://github.com/obsproject/obs-studio/blob/master/plugins/win-capture/duplicator-monitor-capture.c)
 also retains distinct DXGI/WGC paths and selects WGC for some multi-adapter
-laptops; a mature implementation does not establish universal DXGI availability.
+laptops. DXGI availability depends on the selected output and adapter.
 OBS is a design reference, not source to copy into Piik's MIT implementation.
 
 The pinned WebRTC SDK already contains `ScreenCapturerWinDirectx` and
@@ -441,5 +428,5 @@ a WGC border. Retain window scope and the existing encoder/output/stop owners.
 - `npm run check` and the relevant App checks pass; no credentials or raw
   media identifiers enter logs or documentation.
 
-Cross-version capture and browser matrices remain separate acceptance work. They
-are not claimed by the current Windows gate.
+Cross-version capture and Browser coverage are tracked in
+[verification status](../verification-status.md).

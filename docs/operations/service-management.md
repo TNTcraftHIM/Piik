@@ -37,12 +37,11 @@ to match the host. Set `PIIK_IMAGE` in `.env`
 to pin a version or image digest. Updates are explicit; pulling an image does not
 replace a running container.
 
-The [runtime Dockerfile](../../deploy/container/Dockerfile) wraps the verified
-Server archive, including its Web UI, license notices and `REVISION`.
-Its pinned [Distroless non-root base](https://github.com/GoogleContainerTools/distroless)
-includes CA certificates and has no shell or package manager. The
-[release workflow](../standards/versioning.md#container-distribution) owns
-building, checking and publishing the image.
+The [runtime Dockerfile](../../deploy/container/Dockerfile) packages the Server,
+Web UI, license notices and `REVISION` on a pinned
+[Distroless non-root base](https://github.com/GoogleContainerTools/distroless).
+It includes CA certificates and has no shell or package manager.
+Image publishing follows the [release workflow](../standards/versioning.md#container-distribution).
 
 Use the existing [production configuration](../standards/configuration.md).
 Keep `LISTEN_HOST=0.0.0.0` inside the container and retain the host's existing
@@ -93,14 +92,14 @@ The bare-metal `release-server.sh` wrapper does not manage containers.
 - `/healthz` returns `{"status":"ok"}` locally and through the public origin.
 - Piik and the HTTPS proxy are active with expected restart counts and bounded
   logs/resources; Piik owns the configured STUN/SFU UDP listeners.
-- The official Trickle ICE sample obtains an ordinary UDP `srflx` candidate from
+- The [Trickle ICE sample](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/) obtains an ordinary UDP `srflx` candidate from
   the configured STUN service and no relay candidate.
 - A direct room presents media on two networks when Peer ICE succeeds.
-- When SFU is enabled, a constrained route creates one managed Host publication
-  and only admitted subscriptions over embedded SFU UDP; Peer descendants remain ordinary P2P.
+- When SFU is enabled, verify **Server media** from another network: the Host
+  publishes once and only authorized Viewers subscribe over the SFU's UDP port.
+  Viewers relaying from a participant continue to use P2P.
 - Blocking all UDP reaches a clear bounded failure.
 - Restarting Piik in stable mode retains room authority while Browser
   sessions and media reconnect from fresh process state.
 
-Representative network, mobile, audio, 20-Viewer, and long-running evidence is
-tracked in [verification status](../verification-status.md), not in this runbook.
+For broader network, platform and capacity results, see [verification status](../verification-status.md).

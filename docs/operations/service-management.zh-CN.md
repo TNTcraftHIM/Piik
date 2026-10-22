@@ -32,11 +32,10 @@ Docker 会按主机架构选择 **linux/amd64** 或 **linux/arm64**。
 在 `.env` 中设置 `PIIK_IMAGE` 可固定版本或镜像摘要。
 更新需要手动执行；仅拉取镜像不会替换正在运行的容器。
 
-[运行时 Dockerfile](../../deploy/container/Dockerfile)封装已验证的 Server 压缩包，
-包括网页界面、许可证声明和 `REVISION`。固定版本的
-[Distroless 非 root 基础镜像](https://github.com/GoogleContainerTools/distroless)
-包含 CA 证书，没有 shell 或包管理器。镜像的构建、检查和发布由
-[发布流程](../standards/versioning.md#container-distribution)管理。
+[运行时 Dockerfile](../../deploy/container/Dockerfile)将 Server、网页界面、许可证声明和
+`REVISION` 打包到固定版本的 [Distroless 非 root 基础镜像](https://github.com/GoogleContainerTools/distroless)。
+镜像包含 CA 证书，没有 shell 或包管理器；镜像发布遵循
+[发布流程](../standards/versioning.md#container-distribution)。
 
 使用既有的[生产配置](../standards/configuration.md)。容器内保留 `LISTEN_HOST=0.0.0.0`，
 并继续使用主机已有的 HTTPS/WebSocket 代理。使用 Docker 端口映射且启用 SFU 时，
@@ -81,12 +80,11 @@ docker compose logs --tail=50 piik
 - 本地和公网来源的 `/healthz` 都返回 `{"status":"ok"}`。
 - Piik 与 HTTPS 代理处于运行状态，重启次数符合预期，日志和资源使用有界；
   Piik 占有配置中的 STUN/SFU UDP 监听器。
-- 官方 Trickle ICE 示例能从配置的 STUN 服务取得普通 UDP `srflx` 候选，不出现 relay 候选。
+- [Trickle ICE 示例](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)能从配置的 STUN 服务取得普通 UDP `srflx` 候选，不出现 relay 候选。
 - Peer ICE 成功时，两个网络上的设备能在直连房间中显示媒体。
-- 启用 SFU 时，受限路由通过内嵌 SFU UDP 创建一个受管理的房主发布，且只接纳已授权订阅；
-  Peer 后代节点继续使用普通 P2P。
+- 启用 SFU 时，从另一网络验证**服务器转发**：房主只发布一次，已授权观众通过 SFU 的 UDP 端口订阅。
+  通过参与者转发的观众继续使用 P2P。
 - 阻断全部 UDP 后，在有限时间内进入明确的失败状态。
 - 使用持久化模式时，重启 Piik 保留房间权威状态；浏览器会话和媒体从新进程状态重新连接。
 
-代表性网络、移动端、音频、20 位观众和长时间运行的证据由
-[验证状态](../verification-status.md)跟踪，不记录在本操作手册中。
+更多网络、平台与容量验证结果见[验证状态](../verification-status.md)。

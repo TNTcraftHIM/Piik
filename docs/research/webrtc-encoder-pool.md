@@ -1,19 +1,17 @@
 # WebRTC Adaptation And Encoder Reuse
 
-Reviewed: 2026-09-08. Source-backed review and synthetic VP8/H264 feasibility probes,
-not an accepted engine replacement. [ADR-0013](../adr/0013-embedded-node-local-media.md)
-owns the direct-child/shared-output model. [Status](../status.md) owns current
-adoption; this investigation asks whether retaining mature encoder
-control while sharing compatible encoding work is smaller and more complete
-than extending the current Native fixed-output candidate.
+Initial review: 2026-09-08. This records the source review, failed factory-cache
+approach, shared-pipeline experiments and Windows product integration.
+[ADR-0013](../adr/0013-embedded-node-local-media.md) owns the accepted
+direct-child/shared-output model; [status](../status.md) indexes release readiness.
 
 ## Pinned Baseline
 
-The installed Chrome is 152.0.7977.82. Its [DEPS][chromium-deps] pins libwebrtc
+The review used Chrome 152.0.7977.82. Its [DEPS][chromium-deps] pins libwebrtc
 to `6f37672d358475cd17544121a12494da454d85fb`; WebRTC references below use that
 revision, not a floating upstream branch. Source shows available mechanisms,
 not which field trials or hardware encoder a particular runtime selected.
-The Piik comparison uses the `3c192ddd` candidate, not production.
+The initial Piik comparison used candidate `3c192ddd`.
 
 ## Actual Control Ownership
 
@@ -68,20 +66,20 @@ across independent PeerConnections. Adding a third preset cannot establish parit
 
 ## The Current Native Gap
 
-`nativecapture.ScreenShareOutputs` constructs original plus half-size outputs
-at the same FPS. `mediaedge.Source.BeginFrame` chooses activation and lowers the
-lowest encoder's bitrate from its consumers' budgets. Windows `OutputWorker`
-keeps one fixed profile for its lifetime. At 1080p the lowest nominal output is
-960x540, not a dynamically shrinking fallback. Bounded raw mailboxes isolate
-overload but do not automatically reduce the requested encoding work.
+At that baseline, `nativecapture.ScreenShareOutputs` constructed original plus
+half-size outputs at the same FPS. `mediaedge.Source.BeginFrame` chose activation
+and lowered the lowest encoder's bitrate from its consumers' budgets. Windows
+`OutputWorker` kept one fixed profile for its lifetime. At 1080p the lowest
+nominal output was 960x540. Bounded raw mailboxes isolated overload but did not
+reduce the requested encoding work.
 
 Pion supplies transport; LiveKit media components supply BWE, forwarding,
 allocation, recovery and pacing. They do not supply the omitted libwebrtc raw
 source/encoder resource-adaptation chain. The current source-RTP cost adjustment
 also is not the full `RtpVideoSender` overhead/protection calculation. These are
-concrete missing integrations, not evidence that either library is defective.
-The existing constrained-codec recovery evidence remains valid within its scope,
-but cannot establish Browser-equivalent behavior below the fixed lowest size.
+the missing integrations that motivated this investigation. The
+[Windows product attachment](#windows-product-attachment) below adds the complete
+encoder-adaptation pipeline while retaining Pion/LiveKit transport.
 
 ## Where A Pool Can Fit
 
@@ -225,7 +223,7 @@ contain no frame payloads or private identifiers.
 - **The shared-encoder abstraction passes a narrow executable feasibility
   check when physical correction state shares that owner.** It reuses real
   encoding, retains stock spatial adaptation and can split/rejoin safely in
-  this VP8 case. No engine replacement has been selected or integrated.
+  this VP8 case. The later product integration instead shares complete pipelines.
 - The group invokes correction on actual frames, with rate-write deduplication;
   stock VSE does so on rate/configuration/FPS updates. The algorithm is reused,
   but this cadence change must not be described as an otherwise identical move.
@@ -237,10 +235,8 @@ contain no frame payloads or private identifiers.
   overhead, received-source bypass and perceptual parity remain unverified.
   These are integration gates, not reasons to disable mature adaptation.
 
-The reusable boundary is an encoding instance plus its encoder-side state, not
-just `Encode(frame)`. Before product replacement, resolve those remaining
-feedback owners through upstream interfaces; do not accumulate quality formulas
-or silently reintroduce per-child encoders as the ordinary product model.
+The reusable boundary is an encoding instance plus its encoder-side state.
+The scheduling controls below test whether that ownership is sufficient.
 
 ## Cross-Level Reuse
 
@@ -305,9 +301,9 @@ and paused/lower forwarding demand. It does not need to choose pixel dimensions;
 VSE and stock `VideoAdapter` can make that decision from the actual raw input.
 A healthy original consumer needs neither VSE nor a fabricated raw frame.
 
-The owning source can reuse `OnDemandChanged` to signal work, never reenter
-transport synchronously under its locks. This callback is not currently wired
-by Native `NewEdge`; current relay demand is reevaluated at input markers.
+At this stage, the owning source could reuse `OnDemandChanged` to signal work
+without reentering transport synchronously under its locks. Native `NewEdge`
+did not wire that callback; relay demand was reevaluated at input markers.
 Budget-to-payload conversion, dynamic output association in bounded source slots,
 physical resource feedback and decoder-safe switching remain concrete integration
 work. Connecting those owners is narrower than replacing the transport engine,
@@ -565,7 +561,7 @@ inputs; the separate shaped-network gate owns automatic estimator evidence.
 A subsequent [native encoder experiment](./realtime-quality-adaptation.md#native-encoder-policy-experiments)
 tested replacing this partition with one common output: either the maximum or
 the harmonic mean of the active requests. These are policy ablations, not a
-a replacement for independent receiver eligibility and dependency ownership.
+replacement for independent receiver eligibility and dependency ownership.
 The real Native VP8 fixture supplied 1280x720 motion, with requests of
 80 kbps and 1.25 Mbps for twenty seconds, then equal requests and retirement.
 The independent groups retained the healthy receiver's 640x360 output at
@@ -662,6 +658,8 @@ CPU controller.
 
 ## Replacement And Preservation Map
 
+For a later transport-engine replacement, retain these responsibilities:
+
 | Current owner | Treatment if a pool-backed engine is proved |
 | --- | --- |
 | Go room/controller, embedded STUN, SFU service lifecycle | Preserve. A codec experiment does not alter authority, NAT policy or single-operation routing. |
@@ -677,26 +675,13 @@ unrelated page rewrite or platform-adapter deletion is justified by this review.
 
 ## Integration Gates
 
-1. Reuse the now-executed native VSE/VP8 boundary; do not repeat a mock-only
-   factory probe or fetch a second full engine to show buffer reuse. Validate
-   hardware H264 and physical-resource feedback with the existing capture adapter.
-2. Measure source replacement, overload, real scheduling, perceptual quality,
-   transport overhead and actual CPU/GPU cost. Preserve correction/drop/resource
-   feedback with explicit owners before accepting the product integration.
-   The delayed-codec counterexample above means the per-sender factory cache
-   cannot be selected as-is; evaluate shared complete encoding pipelines before
-   adding another resource/membership coordination layer.
-3. Connect the separately verified encoded bypass and shared lower derivation
-   through that same representation owner. If preserving stock
-   control requires substantial VSE/source patches or a custom rate/quality
-   policy, report that cost instead of calling it a small factory adapter.
-4. The narrow pass permits an isolated implementation candidate, not release
-   approval. Select the integration through an ADR refinement after resolving
-   the remaining owners. Preserve the current candidate; never merge it solely
-   to manufacture a new branch base. Follow
-   the stable executable paths and serialized physical workload rules in
-   CONTRIBUTING. The quiet-source update defect has real WGC acceptance and the
-   owner closed the Win10 display report; distinct game failures require fresh evidence.
+The integrated Windows path uses complete shared VSE pipelines, native capture
+and relay derivation, with H264/VP8 adaptation, source replacement and retirement
+evidence above. The delayed-codec controls reject the per-sender factory cache;
+the common-rate controls reject combining incompatible consumer budgets.
+
+Severe CPU overload, physical non-Windows capture, mixed hardware and perceptual
+quality retain the limits in [verification status](../verification-status.md).
 
 [chromium-deps]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/DEPS
 [chromium-hint]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc

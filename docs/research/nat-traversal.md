@@ -23,8 +23,8 @@ On 2026-08-31, Chrome 151 on Windows gathered a host plus IPv4 srflx candidate
 through the self-hosted STUN endpoint and independently through Cloudflare's
 official STUN endpoint while the machine used TUN and fake-IP DNS. With both
 configured, Chromium emitted one deduplicated srflx candidate. No raw address or
-port was retained. This proves endpoint reachability and candidate
-deduplication; it does not classify the NAT or prove another direct path.
+port was retained. The run measured endpoint reachability and candidate
+deduplication; both destinations reported the same mapping.
 
 ### ICE Recovery Boundaries
 
@@ -60,9 +60,8 @@ beside a healthy fixture exposes the latter's synthetic srflx result after 4 ms,
 while gathering remains incomplete at 15 seconds. Closed-port controls did not
 produce the same result; a closed port is not a silent-drop fixture. The
 [upstream candidate path](https://webrtc.googlesource.com/src/+/refs/heads/main/p2p/base/stun_port.cc)
-emits successful mappings separately from gathering completion. These controls
-do not reproduce the reporter's network or establish its
-final connection cause. The [WebRTC event specification](https://www.w3.org/TR/webrtc/#rtcicecandidateerrorevent)
+emits successful mappings separately from gathering completion.
+The [WebRTC event specification](https://www.w3.org/TR/webrtc/#rtcicecandidateerrorevent)
 owns error semantics; compare the attempt's gathered and selected candidates too.
 
 The follow-up also found a separate Native provenance gap on Sites with extra
@@ -81,8 +80,8 @@ destination hide an equal survey response. The corrected collector preserves
 both identities; the existing predictor still deduplicates eligible mappings,
 so repeated equal mappings cannot establish a three-point pattern. ICE retains
 ownership of actual remote endpoint connectivity.
-This does not identify the public-invitation report's cause, whose configured
-set already contains exactly three destinations.
+The public-invitation report's configured set already contains exactly three
+destinations; it needs separate diagnosis.
 
 ### SFU Behind Server NAT
 
@@ -94,26 +93,25 @@ changes, fresh decoding after Viewer reauthentication and retirement all pass.
 Windows Native H264/Opus also passes through QEMU UDP forwarding and the Linux
 NAT, decoding 300 720p frames in Chrome 154, changing to 480p, recovering its
 subscription and reauthenticating after local media loss. The App captures a
-dedicated generated window; this does not reproduce a phone or carrier network.
+dedicated generated window.
 
 The published v1.9.2 Windows App/capture and Linux Server artifacts, verified
 against their release hashes and paired with that revision's Browser source,
 also pass this Native H264/Opus startup control: 300 decoded 720p frames, a 480p
 change, subscription recovery and retirement. This original-release control
 excludes reauthentication after lost local media, which has a separate confirmed
-repair below. The desktop control does not establish physical phone or carrier
-network coverage.
+repair below. Both controls use desktop endpoints behind controlled NAT.
 
 Blocking only the Viewer process's UDP preserves connected Host ingress and
 LiveKit's `downtrack bound`, but the Viewer remains connecting without RTP or
 decoded frames. Its transport fails after about 15 seconds and the controller
-rejects that candidate without committing a publication. Thus binding plus
-healthy ingress cannot establish Viewer readiness or a controller defect.
+rejects that candidate without committing a publication. Healthy ingress and
+track binding precede Viewer decoding.
 A separate control discards only the Viewer's RTP/RTCP datagrams while allowing
 STUN and DTLS. Both endpoints connect and the exact subscription binds, but no
 Viewer frames arrive; the existing 20-second operation deadline then expires.
-Connected endpoints, a bound track and an operation timeout do not identify a
-unique cause; diagnosis requires the affected Viewer's transport/decode evidence.
+Diagnose the affected Viewer's transport and decode progress alongside the
+connection and binding events.
 Neither control changes a product deadline, retry or first-frame rule.
 
 ## Browser Prediction Preflight
@@ -193,7 +191,7 @@ Each Native connection requests a dual-stack wildcard UDP socket through Go and 
 UDP mux. IPv4 remains usable on IPv4-only systems, and concrete IPv4 bindings
 remain IPv4-only. Usable IPv6 interfaces can supply direct ICE candidates on the
 same port; IPv4 discovery, prediction and gateway mapping retain their current
-owners. IPv6 does not remove firewall restrictions or prove a reachable peer.
+owners. ICE checks still need a firewall-permitted path.
 
 On 2026-09-05, the unmodified Pion srflx gatherer contacted three public STUN
 destinations from three different temporary local ports, despite the media
@@ -209,8 +207,7 @@ The same build carried a public-link session to an independent Linux Pion
 Viewer: 35 H.264 RTP packets arrived over a selected direct host-to-srflx pair,
 while the Quick Tunnel carried signaling only. The active TUN network yielded
 one distinct mapped endpoint across the public survey, so no port sequence or
-prediction was claimed. The result proves shared-socket discovery and transport,
-not public-survey availability or a predicted-path success rate.
+prediction was emitted. The run verified shared-socket discovery and transport.
 
 Native Site and public-link P2P connections also request one PCP, UPnP, or NAT-PMP
 mapping for that same socket. The returned port is advertised as a
@@ -224,7 +221,7 @@ both the ordinary gatherer and the bounded supplemental work, and retirement
 discards that gathering generation's late output.
 A local UDP-forwarding gate then withheld every ordinary Host candidate and
 connected Pion ICE/DTLS in 1.26 seconds through the advertised `mp1` endpoint.
-That proves the same-socket ICE mechanism, not rescue through a physical NAT.
+The gate verifies same-socket ICE through a controlled UDP forwarder.
 
 ### Gateway And Survey Limits
 
@@ -235,8 +232,7 @@ The repaired adapter retains `MappedExternalPort` on creation and renewal,
 sends lifetime-zero deletion under [RFC 6886](https://www.rfc-editor.org/rfc/rfc6886.html#section-3.4),
 and propagates discovery, mapping and deletion cancellation to socket I/O.
 Packet-level loopback regressions cover reassignment, renewal, deletion,
-cancellation and the existing PCPv6 combination. They do not establish physical
-router coverage or a higher field connection-success rate.
+cancellation and the existing PCPv6 combination using loopback packets.
 
 Piik bounds a mapping caller's wait to three seconds. Optional PCPv6 operations
 have a two-second bound in both gateway adapters, leaving time to return a
@@ -259,8 +255,7 @@ Caller cancellation and router lease expiry remain distinct lifecycle boundaries
 The gateway selector and its NAT-PMP/PCPv6 combination retain one mapping owner;
 ordinary ICE candidates remain independent.
 
-Binding all three STUN listeners proves local startup, not public reachability.
-A local self-probe also cannot prove traversal through an operator's firewall.
+Check public STUN reachability from outside the deployment firewall.
 Missing prediction may reflect unreachable survey destinations or insufficient
 distinct mappings. Library packet logs remain disabled because they expose
 remote addresses; future health summaries must retain that privacy boundary.
@@ -276,15 +271,15 @@ candidate independently from the self-hosted endpoint, Xiaomi, Bilibili, and
 Cloudflare within a five-second bound. `stun.qq.com:3478` produced none in the
 same ordered run. Candidate events and local candidate stats preserved the exact
 STUN `url`, but the destinations supplied no selected-path benefit. They remain
-research evidence only; the product has no independent or third-party STUN
-configuration.
+reachability measurements. [Configuration](../standards/configuration.md) owns
+the product's STUN destinations.
 
 A second real-Chrome loopback rewrote only one remote candidate foundation to
 `sp1`, established the data channel, and read `sp1` from the selected remote
 candidate stats. The product can therefore report `predicted | ordinary |
 unknown` selection without retaining or uploading addresses, ports, foundations,
-or STUN URLs. Field acceptance still requires target-network outcomes; this
-preflight proves the attribution mechanism, not prediction prevalence.
+or STUN URLs. The run verifies attribution; target-network outcomes measure
+prediction prevalence.
 
 The first flagship field runs emitted six predicted candidates in one 8545
 generation and selected none. Later 8545 and 5643 generations did not form the
@@ -526,9 +521,8 @@ In Pion's sequential endpoint-dependent NAT fixture, coordinated first sends
 connect the otherwise timing-sensitive bilateral tuple. Three unrelated mappings
 after observation defeat that simple first-tuple guess; the pool still connects.
 The current candidate policy can also occasionally win through favorable check
-scheduling. This is evidence for more deliberate coordination, not a newly proven
-unreachable NAT class or a public success-rate claim. Merely preallocating sockets
-does not establish the same benefit. Six unrelated mappings and blocked peer UDP
+scheduling. Coordination improves this fixture's timing; preallocating sockets
+alone did not reproduce that benefit. Six unrelated mappings and blocked peer UDP
 defeat this pool's bounded prediction.
 
 The pool uses eight sockets, at most 64 requests plus 64 authenticated replies,
@@ -555,8 +549,7 @@ actual Receiver and returns SRTCP key-frame feedback after socket transfer,
 including 250 ms of peer-start skew. It retains the proved remote tuple rather
 than replacing it with a later, destination-dependent STUN mapping. Other
 controls cover early/late cancellation, source/Engine retirement, premature
-commit, resource limits, stale signaling and Browser decline. These establish
-bounded composition, not a physical difficult-network success-rate improvement.
+commit, resource limits, stale signaling and Browser decline.
 The candidate's send window is 800 ms within a 1.1-second hard bound; the earlier
 isolated experiment's shorter window is not its product timing.
 
@@ -582,8 +575,7 @@ one response by 250 ms completed preparation in 250 ms. A silent destination
 returned no prediction at the existing 1.5-second survey deadline. The Browser
 caller supplies exactly three destinations, so skipping a failed destination
 cannot supply the three successful observations required by this preparation.
-Keep the current failure-to-ordinary-ICE behavior; these controls establish
-bounded recovery and failure, not a physical-network success-rate benefit.
+Keep the current failure-to-ordinary-ICE behavior.
 
 The Windows Browser-to-App fanout gate also exercises the actual room retry,
 both Native control preparations and ordinary ICE continuation when the mapping
@@ -668,8 +660,7 @@ to use the peer-reflexive preference instead of the source candidate's preferenc
 The old value could tie a peer-reflexive pair with a host pair and add an
 unnecessary acceptance wait. The upstream regression fails with the old pin and
 passes with the correction, as do Piik's existing Native, STUN and SFU checks.
-This corrects candidate selection; it does not establish a new reachable NAT
-class or a field success rate.
+The correction removes the unnecessary candidate-selection wait.
 
 WebRTC's DTLS v3.1.13 dependency also includes
 [queued-buffer ownership and handshake-retransmission corrections](https://github.com/pion/dtls/compare/v3.1.10...v3.1.13).
@@ -684,8 +675,7 @@ its generated `.local` candidate before the fixture's four-second deadline.
 v2.2.2 resolved the same name in about 12 ms; another fresh old resolver still
 timed out. The upstream repair sends separate A/AAAA questions without the
 unicast-response bit that Chromium rejects. This fixes an address-resolution
-boundary useful to App-to-Browser edges; it is not a field success-rate result
-or proof of the cause of an unmatched report. Peer-reflexive discovery can also
+boundary useful to App-to-Browser edges. Peer-reflexive discovery can also
 let a connection succeed despite failed mDNS resolution.
 
 The package-major adaptations retain Pion's STUN transaction owner and SRTP
@@ -718,8 +708,7 @@ Both Browsers answered with only `trickle`; the enabled Pion call nevertheless
 sent the older nomination attribute. Thus receiving new frames alone cannot
 establish compatible path migration. In these fixtures, steady Binding requests
 also rose from 3 to 27-75 per five seconds, depending on interface enumeration.
-These are local transport controls, not physical-network success measurements or
-a defect in Piik's currently disabled feature. Reopen only for negotiated Browser
+Keep this disabled feature outside the product. Reopen only for negotiated Browser
 support and bounded probe/recovery behavior; do not add UA exceptions, a second
 recovery loop or a Browser fork to enable this option.
 
@@ -774,9 +763,8 @@ Raw Bind also consumed bare inner STUN, requiring a test-only packet prefix.
 After peer removal it could still deliver UDP without peer identity; raw
 reception is not authentication. A product adapter would need supported
 framing and existing room/cryptographic authorization, not just another socket.
-The refreshed full probe suite and longer-window matrix passed, including
-controls that expect connection failure. They do not establish a new reason
-to include Magicsock in this candidate.
+The refreshed suite and longer-window matrix passed, including expected
+connection failures. Keep Magicsock excluded: the matched matrix found no added direct path.
 
 #### Reachability And Cost
 
@@ -879,8 +867,7 @@ A Windows control decoded through `127.0.0.1` in Chrome 154 but failed in
 Firefox 155; Firefox decoded using the current wildcard bind and a non-loopback
 pair. Mozilla keeps
 [ICE loopback disabled by default](https://searchfox.org/firefox-main/source/modules/libpref/init/all.js).
-These observations establish a compatibility limit, not every Browser permission
-or public-Site behavior. Keep the existing address policy.
+Keep the existing address policy to preserve Firefox compatibility.
 
 Complete App controls on October 10, 2026 reproduced the consequence in a
 disposable Linux namespace. Chromium 152 retained its loopback bridge after a
@@ -926,8 +913,7 @@ queue and the local playback leg isolated, all six ordinary/experimental
 unchanged, address-change and short-loss controls retained fresh decoded
 content after relay closure. The
 [send-queue assessment](./node-local-media-design.md#send-queue-recovery)
-owns the constrained-bandwidth comparison and adopted correction. This is not
-proof that every brief blur or unmatched interruption shares that cause.
+owns the constrained-bandwidth comparison and adopted correction.
 
 The same full-room work found a denied Viewer retaining its App control slot
 across repeated invitation generations. The
@@ -989,7 +975,6 @@ again while ordinary SDP renegotiation keeps its collector. Regression checks
 exercise a healthy encoded-media sibling, concurrent/canceled gatherings,
 Engine shutdown and both address families. Replacing only the implementation
 with the prior revision makes the address-refresh and transaction tests fail.
-These controlled checks do not assign a cause to unmatched field reports.
 
 The missing case in the earlier shared-socket preflight was a retained Engine
 whose router mapping changed between gatherings. Proving one socket, a new
@@ -1002,8 +987,7 @@ requested lease elapsed. A router restart can lose that mapping sooner. Each
 actual gathering now refreshes a successful mapping through the existing bounded
 gateway owner; ordinary renegotiation does not. A retained-owner fixture changes
 the allocated external port between gatherings and verifies the new result.
-Failed attempts still obey the existing cancellation and cleanup rules; this
-adds no periodic renewal loop or claim of improved field success rates.
+Failed attempts still obey the existing cancellation and cleanup rules.
 
 A separate Chrome 152 Windows loopback probe on 2026-10-04 changed a STUN
 fixture's reported mapping across four gatherings on one PeerConnection and
@@ -1050,8 +1034,7 @@ prompt cancellation followed by bounded cleanup.
 
 The cost is one ephemeral UDP socket and, when enabled, one gateway mapping per
 physical connection instead of per Engine. Existing connection/copy limits bound
-their number. This changes no public wire format, fixed service port or route
-policy, and is not evidence that any unmatched field report has been resolved.
+their number. Public wire format, fixed service ports and route policy retain their owners.
 
 ## Routed Virtual LAN Discovery
 
@@ -1086,7 +1069,7 @@ were limited to that App, virtual adapter and subnet: TCP on the web port and
 UDP for discovery/media. The remote TCP connection then reached the App process,
 and the owner confirmed both page and picture worked. No proxy, candidate
 substitution or Browser privacy change was used. This closes the direct
-App-to-Browser trial without claiming universal campus-network compatibility.
+App-to-Browser trial on this virtual LAN.
 
 ## Primary Sources
 

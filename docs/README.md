@@ -20,8 +20,7 @@ This page indexes developer and maintainer references.
 | Translate Piik or improve wording | [Translation guide](./guide/translating.md) · [中文翻译教程](./guide/translating.zh-CN.md) |
 | Check release and platform readiness | [Current status](./status.md) |
 
-The introduction, getting-started, App, self-hosting, service-management and translation guides are available in English and Chinese.
-Technical references keep one shared version.
+Reader guides are available in English and Chinese. Technical references use one shared version.
 
 ## Run from source
 
@@ -91,7 +90,7 @@ and [website preview and publishing](./operations/website.md).
 | Host and viewer behavior | [Presentation and lifecycle](./standards/presentation-lifecycle.md) |
 | Why a design was chosen | [Architecture decisions](./adr/) |
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
-| Camera and Host microphone | [Capture scope and limits](./research/camera-and-microphone.md) |
+| Camera and room voice | [Capture scope and limits](./research/camera-and-microphone.md) |
 | Text, reactions and floating room tools | [Room-interaction design](./research/room-interactions.md) |
 | Stereo verification and HDR-to-SDR assessment | [Media fidelity](./research/media-fidelity.md) |
 

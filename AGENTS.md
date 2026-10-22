@@ -19,6 +19,8 @@ scale of the change; routine design choices within an authorized task need no
 separate design document or approval.
 Detailed criteria stay in [visual language](./docs/standards/visual-language.md)
 and [engineering](./docs/standards/engineering.md).
+Responses and reader-facing copy follow the
+[direct-language rule](./docs/standards/naming.md#voice-and-terminology).
 
 ## Authority And Scope
 

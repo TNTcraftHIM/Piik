@@ -118,8 +118,7 @@ each message retains its accessible author. Hiding and reopening preserves the
 reader's position; a latest-message action resumes following. Sending waits for
 confirmation without locking draft editing or introducing a message queue.
 The conversation entry shares the couch footer with its participant count,
-separate from the Host's sharing controls. Theater hides the seating and count,
-retaining the same compact conversation entry and focus target.
+separate from the Host's sharing controls.
 Selecting a person on the couch opens the reaction palette in the shared floating
 shell, initially beside the selected person (below when space permits). Each
 opening anchors there before allowing free movement. Its portrait and name identify the
@@ -149,9 +148,8 @@ reaction buttons and send owner.
 The newest live reaction briefly shows its sender and recipient
 with the same animation renderer.
 It adds neither a message history entry nor an independent expiry timer. Member
-controls and reactions open on demand within the small companion window. Only
-unobscured chat following the latest messages consumes
-unread messages. The detached window uses the same room session, event expiry and
+controls and reactions open on demand within the small companion window. The
+detached window uses the same room session, event expiry and
 sending controls as the couch shortcut.
 Self expressions follow the sender's head, including idle and interaction motion.
 Only that sender's newest self expression replaces their earlier one. A targeted
@@ -243,18 +241,17 @@ without introducing lockstep waiting or frame-by-frame simulation.
 
 ## History Direction (Not Yet Implemented)
 
-History ownership remains undecided. A Host cache can also miss live messages and
-is unavailable while the Host is absent; treating its copy as server-confirmed
-history would change message authority. Compare that cost with a bounded room-server
-memory buffer before adding replay. Either design needs explicit access and
-retention boundaries. Recovered text would enter the log, never replay old
-danmaku or reaction effects. Current behavior remains the no-history contract above.
+Manual TXT export saves the page's retained messages. Automatic local history is
+parked in [TODO](../todo.md#parked-product-work): it needs a stable room incarnation,
+bounded retention and deletion. A Host cache cannot stand in for server-confirmed
+history because it can miss messages and is unavailable while the Host is absent. Any future
+replay would populate text only, without replaying danmaku or reactions.
 
 ## Audio Boundary
 
-The published Host microphone remains commentary mixed into the shared source.
-Text, reactions and danmaku introduce no microphone capture or additional media
-peers. Room voice is an isolated prototype, not a published capability.
+Current microphone controls use room voice, independently of picture/source
+audio. Older published Host commentary remains supported through its existing
+source mixer. Text, reactions and danmaku use signaling and open no microphone.
 
 ### Room Voice Transport Assessment
 
@@ -281,8 +278,8 @@ NAT success rates or 21-person all-speaking audio capacity.
 older checkout and records its revision, checking that an older Viewer retains
 picture playback without subscribing to voice events.
 Product owners are [room voice](../standards/rooms-access.md#room-voice) and
-[room media](../standards/routing-transport.md#room-media); the public release
-does not yet include this candidate.
+[room media](../standards/routing-transport.md#room-media);
+[status](../status.md) tracks publication.
 
 Reviewed 2026-10-19. The owner requested optional self-hosted voice and assessment
 of App-hosted voice. The local prototype forwards independent Opus publications,
@@ -664,10 +661,10 @@ DOM fullscreen, zoom/pan coordinate alignment and Host revocation passed;
 physical Android/iOS soft keyboards and Safari's native fullscreen remain device
 checks, not established by emulation.
 
-Remote control can target an additive 2.x release under the
-[compatibility contract](../standards/versioning.md#extending-interfaces): advertise
-an optional capability, and exchange new commands/events only between supported,
-opted-in sessions. Existing sharing and old command/event shapes remain intact.
+Remote control uses the additive 2.x
+[compatibility contract](../standards/versioning.md#extending-interfaces): it
+advertises an optional capability and exchanges new commands/events only between
+supported, opted-in sessions. Existing sharing and old command/event shapes remain intact.
 Site capability and App discovery readers already tolerate unknown descriptions;
 this is an extension point, not proof of end-to-end compatibility. Local crossed
 builds of the published 2.1.0 page/App and this prototype completed native window

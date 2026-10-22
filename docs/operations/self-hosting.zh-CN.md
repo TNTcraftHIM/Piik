@@ -5,10 +5,7 @@
 Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服务端程序**中。
 解压后即可运行，房间数据保存在 SQLite 中。
 
-默认的 P2P 配置由服务器负责房间管理、信令和 STUN，画面与声音在参与者之间传输。
-启用 SFU 后，服务器还会承担媒体转发的带宽和处理开销。配置较低的服务器可以先用默认设置，
-按预计的房间数和观众数观察 CPU、内存与网络占用，再决定是否开启 SFU。
-降低画面分辨率主要减轻参与者设备的采集和编码负担。
+默认由服务器负责房间管理、信令和连接探测（STUN），画面与声音在参与者之间传输（P2P）。
 
 ## 先在本机试用
 
@@ -149,9 +146,9 @@ share.example.com {
 重新加载 Caddy。域名解析正确且 TCP 80/443 可访问时，它会自动申请和续期证书。
 具体操作见 [Caddy 的 HTTPS 代理说明](https://caddyserver.com/docs/quick-starts/reverse-proxy#https)。
 
-nginx 可参考[配置示例](../../deploy/nginx/piik.conf.example)。如果沿用了旧示例，请将
-`Permissions-Policy` 改为 `camera=(self), microphone=(self), geolocation=()`，然后重新加载 nginx。
-摄像头和麦克风的空白允许列表会阻止浏览器采集，即使用户已授权；`self` 允许本站请求访问。
+nginx 可使用[配置示例](../../deploy/nginx/piik.conf.example)。将 `Permissions-Policy` 设为
+`camera=(self), microphone=(self), geolocation=()`，然后重新加载 nginx。
+其中的 `self` 允许本站请求摄像头和麦克风权限。
 
 ### 3. 放行端口并检查
 
@@ -170,7 +167,9 @@ TCP 8787 仅供本机反向代理访问。STUN 域名需要直接解析到服务
 如果服务器处于 NAT 后方，还需将 `SFU_PUBLIC_IP` 设置为外部可达的公网 IPv4 地址。
 公网和内部映射的 UDP 端口都应与 `SFU_UDP_PORT` 一致。
 这项功能由同一个服务端程序提供。
-服务器需要为实际经由 SFU 观看的观众承担转发负载和出口带宽。
+SFU 通过服务器转发媒体，每位使用它的观众都会增加处理负载和出口带宽。
+配置较低的服务器应按预计房间数和观众数观察 CPU、内存与网络占用。
+降低画面分辨率主要减轻参与者设备的采集和编码负担。
 房主需要在开始分享前关闭 **隐私模式**，才会允许使用这条线路。
 直连和 SFU 媒体都需要可用的 UDP 通路。
 
@@ -233,9 +232,8 @@ SakuraFrp 等服务会提供公网服务器和自己的客户端或启动器；�
 网页本地端口仍可使用 `8787`。STUN 仍按上文保持直接可达。
 只穿透网页可以承载信令，但不会为严格 NAT 增加 SFU 媒体路线。
 
-可参考 SakuraFrp 的[网页配置](https://doc.natfrp.com/app/http.html)和
-[UDP 连通说明](https://doc.natfrp.com/faq/network.html)。节点功能、访问要求与带宽以服务商为准；
-Piik 尚未完成该托管服务的实际连通与性能验收。
+节点功能、访问要求与带宽限制见 SakuraFrp 的[网页配置](https://doc.natfrp.com/app/http.html)和
+[UDP 连通说明](https://doc.natfrp.com/faq/network.html)。
 
 ## 长期运行与更新
 

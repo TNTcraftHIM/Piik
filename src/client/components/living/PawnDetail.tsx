@@ -1,6 +1,7 @@
 // Per-viewer drill-down: name, route glyph, primary metrics, expandable
 // detailed metrics. Host sees every Viewer; a Viewer uses this only for relay
 // children because its own route already has the canonical details panel.
+import type { ReactNode } from "react";
 import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import { Glyph } from "../../ui/icons";
@@ -65,6 +66,7 @@ export function PawnDetail({
   expanded,
   onToggleMetrics,
   onClose,
+  children,
 }: {
   pawnKey: string;
   name: string;
@@ -76,6 +78,7 @@ export function PawnDetail({
   expanded: boolean;
   onToggleMetrics: (expanded: boolean) => void;
   onClose: () => void;
+  children?: ReactNode;
 }) {
   const copy = useCopy();
   const { t, vis } = copy;
@@ -86,24 +89,6 @@ export function PawnDetail({
         <PawnSvg color={participantColor(pawnKey)} identity={pawnKey} />
       </span>
       <span className="lr-pawn-detail-name">{name}</span>
-      {tag ? (
-        <span className="lr-meter-cell">
-          <Glyph name={tag.icon} size={16} />
-          {vis ? <span className="visually-hidden">{tag.label}</span> : <b>{tag.label}</b>}
-        </span>
-      ) : null}
-      {errorText ? (
-        <Pill icon="alert" tone="bad" label={errorText} comic="route-failed" alert />
-      ) : null}
-      {route ? <RouteGlyph route={route} /> : null}
-      {metrics ? (
-        <MetricCells
-          metrics={metrics}
-          direction={direction}
-          expanded={expanded}
-          onToggle={onToggleMetrics}
-        />
-      ) : null}
       <Tooltip kind="hint-close" text={vis ? undefined : t("common.close")}>
         <button
           type="button"
@@ -118,6 +103,33 @@ export function PawnDetail({
           <Glyph name="x" size={16} />
         </button>
       </Tooltip>
+      {route || metrics || tag || error ? (
+        <div className="lr-pawn-detail-picture" role="group" aria-label={t("stats.sharedMedia")}>
+          <span className="lr-meter-tag">
+            <Glyph name="tv" size={17} />
+            <span className={vis ? "visually-hidden" : "lr-cap"}>{t("stats.sharedMedia")}</span>
+          </span>
+          {tag ? (
+            <span className="lr-meter-cell">
+              <Glyph name={tag.icon} size={16} />
+              {vis ? <span className="visually-hidden">{tag.label}</span> : <b>{tag.label}</b>}
+            </span>
+          ) : null}
+          {errorText ? (
+            <Pill icon="alert" tone="bad" label={errorText} comic="route-failed" alert />
+          ) : null}
+          {route ? <RouteGlyph route={route} /> : null}
+          {metrics ? (
+            <MetricCells
+              metrics={metrics}
+              direction={direction}
+              expanded={expanded}
+              onToggle={onToggleMetrics}
+            />
+          ) : null}
+        </div>
+      ) : null}
+      {children}
     </div>
   );
 }

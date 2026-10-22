@@ -33,9 +33,8 @@ direct and Browser-relay payload tracked the selected sender ceiling, while the
 then-enabled SFU RED path was approximately double its nominal audio payload.
 
 That measurement justified treating RED and an audio ceiling as separate
-decisions. Current values and LiveKit options are intentionally not mirrored
-here; they are owned by the product module and code. Disabling RED does not prove
-that Opus in-band FEC is enabled or disabled.
+decisions. [Media quality](../standards/media-quality.md#screen-audio) and code
+own current values and LiveKit options. Opus in-band FEC has its own setting.
 
 ## Retained Functional Evidence
 
@@ -45,9 +44,9 @@ audio energy advanced at all tested historical ceilings and after source
 replacement. The active-audio display also stopped reporting the old constant
 `1 kbps` placeholder.
 
-These runs prove track/sender continuity and stats ownership. They do not prove
-perceptual music quality, encoded stereo, all capture-source combinations,
-weak-network behavior, real-game A/V synchronization, or mobile playback.
+These runs measured track/sender continuity and stats ownership with generated
+audio. Listening quality, stereo fidelity, physical capture combinations,
+weak networks, game A/V synchronization and mobile playback need separate checks.
 
 ## Open Evidence
 
@@ -58,29 +57,27 @@ weak-network behavior, real-game A/V synchronization, or mobile playback.
 
 ## Numeric Bitrate Assessment
 
-Checked 2026-10-09 for the 2.0 candidate. The published 1.x product retains its
-preset contract. Candidate numeric requests and supported limits are owned by
-[media quality](../standards/media-quality.md#screen-audio); these measurements
-do not establish audible improvement or accept a public release.
+Checked 2026-10-09 for the 2.0 candidate. Numeric requests and supported limits
+are owned by [media quality](../standards/media-quality.md#screen-audio).
+The measurements below cover runtime continuity and packet limits.
 
 For scope review on 2026-10-11, [RFC 7587](https://www.rfc-editor.org/rfc/rfc7587.html#section-3.1.1)
 recommends 64..128 kbps for fullband stereo music with 20 ms frames, and
 [LiveKit's high-quality stereo preset](https://github.com/livekit/client-sdk-js/blob/main/src/room/track/options.ts)
-uses 128 kbps. These support retaining the current default; they are neither
-codec maxima nor proof of quality for every source. Higher custom settings
-remain subject to the measured packet and receiver bounds below.
+uses 128 kbps. Retain that default. Higher custom settings remain subject to the
+measured packet and receiver bounds below; the recommended range is below the codec maximum.
 
 The existing Go Opus encoder accepted live 128/192/256/320/96/128 kbps changes
 without replacement. A 48 kHz stereo tone/noise input continued decoding into
 960 samples per channel; the existing deterministic tests also verify stereo
 separation at 256/320 kbps and rejection of invalid updates without replacing
-the last setting. This establishes encoding continuity, not audible benefit.
+the last setting. The check measured encoding continuity; it included no listening comparison.
 
 A Chrome 152 loopback used the actual sender primitive, generated stereo audio,
 and decoded PCM measurement. The same PeerConnections remained connected while
 changing those ceilings. Received payload tracked approximately 96/128/192/256/320
-kbps, with decoded samples advancing and nonzero waveform energy. This is a
-local Browser check, not relay/SFU, mobile, impaired-network or listening acceptance.
+kbps, with decoded samples advancing and nonzero waveform energy. This loopback
+check used a direct Browser connection and generated audio.
 
 Two controls constrain the replacement design:
 
@@ -94,9 +91,8 @@ Two controls constrain the replacement design:
   of 641 bytes at 256 kbps and 801 at 320 kbps. At 510 kbps, all 150 frames
   produced RTP packets larger than a 1200-byte packetizer budget. Pinned
   [Pion's Opus payloader](https://github.com/pion/rtp/blob/v1.10.5/codecs/opus_packet.go)
-  keeps each Opus payload intact. This is a packet-size result, not measured
-  network loss; accepting the codec's maximum requires a transport/packet-duration
-  decision. Do not equate the codec range with every route's safe operating range.
+  keeps each Opus payload intact. Supporting 510 kbps therefore requires a
+  transport or packet-duration decision; this check measured packet size rather than loss.
 - Silence/tone/noise/impulse transitions expose a separate peak: the former
   gopus v0.1.1 encoder produces a 1234-byte payload at 320 kbps. Its single-stream
   CELT path also ignores the output budget and fails with a smaller buffer.
@@ -104,8 +100,8 @@ Two controls constrain the replacement design:
   the adapter now reserves packet overhead at the encoding boundary using
   [Opus's instantaneous size limit](https://opus-codec.org/docs/opus_api-1.6/group__opus__encoder.html).
   The retained regression decodes complete 20 ms frames across transients and
-  live bitrate changes. This does not diagnose any field interruption or change
-  the average bitrate controls, stereo format or route model.
+  live bitrate changes. Average bitrate controls, stereo format and routing retain
+  their existing owners.
 
 The [media extension proposal](./native-client-media.md#audio-and-ui-proposal)
 owns the UI and contract rationale. The candidate enforces a Browser sender's
@@ -129,14 +125,13 @@ Native and SFU adapter controls reject an insufficient answer before binding it.
 In a full-UI SFU-only room, that rejection exhausts only the limited Viewer's
 route and retires its connection. The Host, healthy sibling and subsequent
 capable Viewer continue; the service Debug event retains the receive-limit
-cause. Stop retires the remaining media. These are controlled SDP-limit checks,
-not physical low-capability decoder measurements.
+cause. Stop retires the remaining media. These checks imposed SDP receive limits
+on capable decoders.
 A native real-Opus control through
 6 Mbps -> 500 kbps -> 6 Mbps shaping retains decoded audio during live
 320/96/320 kbps changes, with sustained high video after the shared
 [probe measurement and video-budget repairs](./node-local-media-design.md#send-queue-recovery).
-These are local runtime checks; physical networks, mobile playback and listening
-remain open.
+Physical-network, mobile-playback and listening checks remain open.
 
 RFC 7587 gives an omitted receive bitrate a mode-dependent default, not an
 unrestricted value, and asks receivers to ignore out-of-range preferences.

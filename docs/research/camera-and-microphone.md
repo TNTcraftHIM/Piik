@@ -1,9 +1,14 @@
 # Camera And Host Microphone
 
-Status: integrated into the ordinary Host UI and accepted for release.
-Platform evidence is summarized in [verification status](../verification-status.md#device-evidence-boundary).
+Camera capture is integrated. This note also retains the original Host-commentary
+design, whose mixed-audio capability supports older Sites. The current UI uses
+independent [room voice](../standards/rooms-access.md#room-voice).
+[Media quality](../standards/media-quality.md) owns current capture and sound behavior;
+[verification status](../verification-status.md#device-evidence-boundary) summarizes platform coverage.
 
 ## Scope And Ownership
+
+### Camera Capture
 
 The existing source picker offers Browser, Camera, Window and Screen in that
 order, defaulting to Window when an App is detected. Without an App, it shows
@@ -13,8 +18,10 @@ There is one active picture; capture, replacement, pause and stop retain their
 existing Host session and route owners. Camera permission never includes an
 implicit microphone request. HTTPS or localhost is required for device capture.
 
-The Host microphone mixes commentary with Browser source audio into one outgoing
-audio track through Web Audio. The existing P2P, relay and SFU senders borrow
+### Original Host Commentary
+
+The original Host-commentary design mixes the microphone with Browser source
+audio into one outgoing track through Web Audio. The P2P, relay and SFU senders borrow
 that stream. Microphone mute preserves the mixed track and source replacement
 preserves microphone intent. Denial or unplugging leaves healthy video alone;
 retiring the share closes audio resources and discards late permission results.
@@ -25,9 +32,8 @@ App native screen/window capture mixes selected-device microphone PCM with sourc
 audio before the existing Opus encoder. Windows uses WASAPI, macOS uses
 AVAudioEngine and Linux uses PulseAudio/PipeWire through GStreamer. Platform
 converters supply 48 kHz stereo PCM; one 20 ms output clock consumes each input
-once, with a bounded queue and silence for missing samples. This bounds backlog;
-it does not replace platform resampling or establish long-term clock-drift and
-echo-cancellation performance.
+once, with a bounded queue and silence for missing samples. Platform converters
+own resampling; long-term clock drift and echo cancellation need device measurements.
 
 New App/page pairs opt into a stable mixed audio track from share startup, even
 with source sound disabled. Opening or muting the microphone and replacing the
@@ -39,13 +45,11 @@ not hold the control reader. Device loss retires only that audio input.
 
 Windows native capture and the App-to-Viewer path have local acceptance evidence.
 macOS/Linux microphone compilation is checked by native-platform packaging.
-Real audio-level/echo checks, macOS/Linux device acceptance and actual phone
-capture remain physical evidence limits; synthetic tests do not establish
-those results. The owner authorized release with those limits retained. The
+Real audio-level/echo checks, macOS/Linux device acceptance and phone capture
+remain unmeasured on physical devices in this assessment. The
 Host preview remains muted on every path.
 
-This scope adds no room messages, ports, chat, Viewer microphone or emoji
-interactions. Microphone, pause, source replacement and stop share one action
+The original commentary UI keeps microphone, pause, source replacement and stop in one action
 row below the picture, outside the playback controls and television status.
 Their order and meaning stay the same in Chinese, English and pure-visual modes.
 Source-sound details describe the raw capture input; microphone intent and
@@ -80,10 +84,8 @@ unverified device coverage.
 
 OBS's [Windows virtual-camera output](https://github.com/obsproject/obs-studio/blob/a1fbf1015f4079b79dc9ef4f6abecf67920e93cf/plugins/win-dshow/virtualcam.c)
 uses `raw_video` and writes raw NV12 frames, not an encoded H.264 stream. Virtual
-camera alone therefore does not require an OBS encode/decode round trip before
-Piik's encoder. Source decoding, composition, pixel conversion and copies may
-still cost resources. Do not promise a zero-copy path or describe every virtual
-camera setup as double encoding.
+camera therefore supplies raw video to Piik's encoder. Source decoding,
+composition, pixel conversion and copies still consume resources.
 
 Direct OBS ingestion is not currently implemented. OBS's
 [WHIP output](https://obsproject.com/kb/whip-streaming-guide) would be the relevant
@@ -91,6 +93,8 @@ standard to evaluate if a measured virtual-camera bottleneck justified another
 input. It would still need an explicit publication/admission lifecycle and
 integration with Piik's existing media owner; an RTMP listener alone would not
 provide that. Keep this outside the current microphone/camera change.
+
+### Camera Selection
 
 Camera selection belongs in the existing Camera tab and uses the same named
 thumbnail cards as window/display selection. Entering the
@@ -107,7 +111,9 @@ failure with an already-ended old camera retires sharing normally. This does
 not suppress a user's screen-share Stop action. Some phones require releasing
 the old camera before opening another; seamless switching is not established.
 
-The input-volume control adjusts microphone input from
+### Original Microphone Gain
+
+The original input-volume control adjusts microphone input from
 0–200% through smoothed input gain. It does not change source audio or Viewer playback volume,
 reopen permission, or replace the outgoing track. Its value lasts for the Host
 page lifetime; new page loads use 100%. Mute remains a separate direct action.
@@ -121,8 +127,8 @@ Use the ordinary development or embedded Server entry described in
 [the contributor guide](../../CONTRIBUTING.md).
 Start a share from the normal Host page, select a source, then join through its
 ordinary invitation in another browser tab. Use headphones for same-device
-microphone tests. Browser-emulated mobile layout and synthetic devices do not
-establish actual iOS/Android permission, orientation, background or audio behavior.
+microphone tests. Check iOS/Android permission, orientation, background and audio
+behavior on physical devices.
 
 ## Phone Microphone Assessment
 
@@ -138,11 +144,10 @@ grant, one incoming audio connection and a decoded/resampled input for native
 mixing. The existing Host share must own that input's mute, replacement and
 retirement; input loss must leave healthy picture/source audio running. Phone
 capture still requires a secure origin and explicit microphone permission.
-The transport adds latency, and physical phone echo/background/lock behavior
-is not established by Browser emulation or a loopback audio test.
+The transport adds latency; measure phone echo, background and lock behavior on
+physical devices.
 
-This is a source/API assessment, not an implemented or device-verified feature.
-Keep it outside the current candidate until a concrete use case justifies that
+Phone input is unimplemented. Keep it outside the current candidate until a concrete use case justifies that
 pairing and input ownership. An audio device already exposed by the operating
 system can use Piik's existing microphone selector without this extension.
 

@@ -9,7 +9,7 @@
 - **日志提到 STUN，或准备检查自家路由器：** [地址发现与路由器](#stunipv6-与路由器检查)。
 - **准备使用 UU、Tailscale 或 ZeroTier：** [虚拟局域网使用步骤](#可选虚拟局域网)。
 
-网页、邀请和聊天与画面、声音使用不同的连接。因此，能进房间或发消息，并不代表媒体已连通。
+网页与聊天、画面与声音使用不同的连接。媒体连接失败时，检查 WebRTC UDP 和下方的连接方案。
 
 ![房主和朋友通过站点访问网页与聊天；画面和声音使用独立的直连或转发连接。](../assets/guide/network-paths.zh-CN.svg)
 
@@ -25,12 +25,13 @@
 - **朋友们可以安装组网工具：** 按下方[虚拟局域网步骤](#可选虚拟局域网)，通过 App 的 **本地房间** 分享。
 - **所需的连接被网络阻断：** 换用可用网络，或请网络管理员检查放行。
 
-> **在线版与公网邀请的边界：** `demo.piik.tv` 和 App 的 **公网邀请** 都是纯 P2P，没有服务器媒体兜底。P2P 和 SFU 媒体目前均需要 UDP；仅搭建网页服务不能解决媒体 UDP 被阻断的问题。
+> **媒体需要 UDP。** `demo.piik.tv` 和 App 的 **公网邀请** 使用纯 P2P。
+> 服务器转发需要站点启用 SFU，并且 UDP 端点可达。
 
 ## 浏览器限制了 WebRTC
 
-浏览器的 WebRTC 设置、VPN 或隐私扩展可能阻止画面和声音连接。
-这也会影响同一台电脑上的网页与 App；能选到来源，不代表媒体连接一定可用。
+浏览器的 WebRTC 设置、VPN 或隐私扩展可能阻止媒体 UDP，
+包括同一台电脑上的浏览器与 App 之间的连接。
 
 1. 用默认设置、未启用相关隐私扩展的浏览器打开同一邀请，对照能否观看。
 2. 如果新配置可以观看，检查原浏览器中的 **WebRTC** 或 **IP 泄露保护** 选项，恢复允许 WebRTC UDP 的策略。
@@ -43,7 +44,7 @@
 Chrome 的扩展可能控制此策略，即使浏览器没有显式开关。
 Vivaldi 在 **设置 → 隐私和安全 → WebRTC IP 处理** 中提供 **广播 IP 以获得最佳 WebRTC 性能**。
 
-仅隐藏本机 IP 不一定会阻止 WebRTC。允许直连可能向对端暴露网络地址，只调整相关选项即可。
+直连可能向对端暴露网络地址。调整阻止 UDP 的设置，其他隐私设置可按需保留。
 参考 [Chrome 策略说明](https://developer.chrome.com/docs/extensions/reference/api/privacy#property-network)
 与 [Vivaldi 隐私设置](https://help.vivaldi.com/desktop/privacy/privacy-settings/)（英文）。
 
@@ -56,8 +57,8 @@ Vivaldi 在 **设置 → 隐私和安全 → WebRTC IP 处理** 中提供 **广�
 <details>
 <summary>STUN：地址发现与服务配置</summary>
 
-App 公网邀请使用多个地址发现服务，**单个 STUN 报错不代表全部线路失败**。
-需要更换时，在启动公网邀请前设置 [`PIIK_STUN_URLS`](../standards/configuration.md#piik-app-configuration)，替换所有内置地址。
+STUN 用于发现设备可连接的地址。App 公网邀请会尝试多个服务；地址发现失败时，
+在启动公网邀请前设置 [`PIIK_STUN_URLS`](../standards/configuration.md#piik-app-configuration)，替换内置地址。
 自部署管理员应检查 `STUN_URLS` 是否指向可达的 UDP 服务；HTTP 反向代理不能转发 STUN。
 
 STUN 服务会接收到参与者的公网 IP，请选择信任的服务。
@@ -103,21 +104,19 @@ STUN 服务会接收到参与者的公网 IP，请选择信任的服务。
 3. **发送完整邀请。** 朋友打开该虚拟 IP 下的 HTTPS 邀请，首次访问先与房主[核对本地证书](./troubleshooting.zh-CN.md#本地-https-证书提示)，再进入房间。不要发送 `localhost` 地址或只发房间号。
 4. **确认画面和声音。** 所有设备保持组网工具运行，房主同时保持 Piik App 运行。虚拟 IP 变化后，房主需重新选择地址并发送新邀请。
 
-Piik 已通过 UU 在 Windows 设备间实测；Tailscale、ZeroTier 尚未与 Piik 实测，可按下方步骤检查实际连通性。
-
 遇到问题时，按最先失败的一步检查：
 
 - **网页打不开：** 先查[本地邀请与防火墙](./troubleshooting.zh-CN.md#本地邀请打不开)，确认 Piik 可通过该虚拟网络访问。
-- **网页能开，画面连不上：** 检查工具是否传输媒体 UDP，以及[浏览器 WebRTC 设置](#浏览器限制了-webrtc)。网页连通不代表媒体连通。
+- **网页能开，画面连不上：** 检查工具是否传输媒体 UDP，以及[浏览器 WebRTC 设置](#浏览器限制了-webrtc)。
 - **不能开麦或远控：** 使用 App 生成的 HTTPS 邀请，确认证书，再查[浏览器权限](./troubleshooting.zh-CN.md#无法使用麦克风或远程控制)。支持的浏览器无需公网隧道即可使用这些功能，普通局域网同样适用。
 
-仅与信任的朋友组网；防火墙、浏览器地址发现与第三方服务仍会影响可用性。
+仅与信任的朋友组网。
 
 <details>
 <summary>通过 frp 转发已有服务器</summary>
 
 有公网服务器的管理员可按 [frp 教程](../operations/self-hosting.zh-CN.md#可选通过-frp-转发已有服务)，
-通过 frps 转发已有站点的网页和 SFU 端点；只转发网页不能同时转发 WebRTC 媒体。
+通过 frps 转发已有站点的网页和 SFU 端点，需同时配置网页与媒体转发。
 
 </details>
 

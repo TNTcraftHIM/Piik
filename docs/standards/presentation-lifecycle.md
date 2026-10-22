@@ -258,9 +258,9 @@ an explanation. The native window contains video and system controls, not page
 overlays or the custom bar. See the [PiP specification](https://w3c.github.io/picture-in-picture/)
 and [Safari integration](https://developer.apple.com/documentation/webkitjs/adding_picture_in_picture_to_your_safari_media_controls).
 
-Local playback actions never change Host capture or another Viewer. Reconnect
-retains the existing route-operation owner. The Host preview reuses the same
-local playback controls and starts muted. Local pause, listening, fit, rotation,
+Viewer-local playback actions never change Host capture or another Viewer.
+Reconnect retains the existing route-operation owner. The Host preview reuses
+the picture controls and starts muted. Local pause, fit, rotation,
 theater and fullscreen affect only that preview; the separately labelled sharing
 controls own authoritative pause and stop. A hidden or unfocused Host page still
 suspends local preview, except while its video is in Picture-in-Picture. Returning
@@ -382,7 +382,7 @@ ordinary connection details do not collect or expose that report.
 
 Current scope includes Web Host, Web Viewer, Browser relay, and optional Native
 Host/Viewer media beneath those same pages. Desktop and mobile Browsers are
-Viewer targets; mobile Web capture, reliable background relay, App-owned SFU,
+Viewer targets; mobile screen capture, reliable background relay, App-owned SFU,
 and physical non-Windows native acceptance remain later platform work.
 
 ## Primary References

@@ -100,7 +100,8 @@ pause, settings/source rollback, producer failure and bounded retirement.
 Compare useful delivery and whole-node CPU/GPU cost with ordinary senders;
 fewer full-size encodes alone do not justify adoption. Sampling intervals,
 test budgets and fixture thresholds remain research evidence, not product rules.
-Implementation and physical acceptance are tracked in [TODO](../todo.md).
+The [pool research](../research/browser-local-encoding-pool.md) retains implementation
+evidence; [verification status](../verification-status.md) owns remaining platform limits.
 
 ## API And Primary References
 

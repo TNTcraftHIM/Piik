@@ -2,8 +2,7 @@
 
 [English](./README.md) · 简体中文 · [官网](https://piik.tv/?lang=zh-CN)
 
-分享自己的屏幕，或者打开朋友的邀请链接，在浏览器里一起看。
-按你想做的事，选择下面的指南。
+按你要做的事查找指南：开始分享、使用房间工具，或解决遇到的问题。
 
 ## 开始使用
 
@@ -38,7 +37,7 @@
 
 <p><a href="../operations/self-hosting.zh-CN.md#使用-docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 Piik Server"></a></p>
 
-自部署属于进阶操作；公网服务需要可访问的地址、HTTPS 与网络配置，普通 App 用户无须部署。
+需要长期使用的群组站点时，可部署 Piik Server，准备可访问的地址、HTTPS 和所需网络端口。
 
 - [部署 Piik Server](../operations/self-hosting.zh-CN.md)：使用 Docker Compose 或服务端程序包。
 - [长期运行与更新](../operations/service-management.zh-CN.md)。

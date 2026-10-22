@@ -2,7 +2,8 @@
 
 - Reviewed: 2026-08-30
 - Scope: Browser game capture, codecs, startup adaptation, relay, and LiveKit
-- Status: current evidence; product behavior is owned by
+- Status: dated Browser/external-LiveKit measurements and later recovery evidence;
+  current product behavior is owned by
   [media quality](../standards/media-quality.md) and
   [ADR-0007](../adr/0007-path-isolated-representation-quality.md)
 
@@ -26,9 +27,9 @@
 - LiveKit's default screen-share representations, Dynacast, and server send-side
   BWE support weak and strong subscribers. Forcing a permanent lower encoding or
   single HIGH both regress a valid cohort.
-- Current route quality evidence is diagnostic. Receiver-only freeze/loss data
-  cannot prove an unconnected parent is better or authorize parent-wide/SFU
-  routing changes.
+- Route convergence uses exact persistent sender evidence and real candidate
+  media under ADR-0005. Receiver-only freeze/loss data cannot establish an
+  unconnected parent's quality.
 
 ## Go GC Attribution
 
@@ -43,8 +44,7 @@ relevant boundary is the selected media path:
 
 The [Browser adaptation comparisons](./browser-local-encoding-pool.md#sustained-h264-recovery)
 include low-output recovery in an isolated Chrome/Node harness without a Go
-process. Go GC is therefore not necessary for those reproductions; this does
-not diagnose every field blur, drop or Native/SFU interruption.
+process. Go GC is therefore not necessary for those reproductions.
 
 Go's [GC guide](https://go.dev/doc/gc-guide#Latency) distinguishes brief global
 pauses from concurrent CPU cost, allocation assists and scheduling delays. A
@@ -212,7 +212,7 @@ chain near 30 fps with NVIDIA MFT encode and D3D11 decode at both stages. These
 short runs prove cadence and negotiation, not steady game quality or whole-
 Browser CPU cost.
 
-The current Auto gate therefore uses a local H.264-only PeerConnection with a
+The Auto gate uses a local H.264-only PeerConnection with a
 deterministic moving Canvas track at the share target. It verifies negotiated
 codec, source progress, and encoded progress rather than trusting capability,
 GPU name, or `powerEfficientEncoder`. Unsupported, failed, slow, or inconclusive
@@ -320,7 +320,7 @@ connections. This is an A/B input, not evidence to raise video priority.
 
 Forcing a lower encoding permanently consumed the same Host-to-SFU congestion
 budget and reduced HIGH performance. Publishing only HIGH abandoned constrained
-subscribers. Current ownership is therefore:
+subscribers. That external-service version's tested publication policy was:
 
 - one Host publication for all SFU subscribers;
 - no custom `screenShareSimulcastLayers` and no backup codec;
@@ -400,8 +400,8 @@ in [background capture research](./browser-background-capture.md), not Web
 keepalive features.
 
 The Media Capture specification copies a track's constraints when it is cloned,
-then lets each clone change constraints independently. Current Host Peer senders
-trust those copied constraints when constructed, while the SFU publisher applies
+then lets each clone change constraints independently. At this review, Host Peer
+senders trusted those copied constraints, while the SFU publisher applied
 the same profile again immediately after creating an equivalent clone. Removing
 only that initial duplicate application should preserve constraints; clearing
 clone constraints altogether would change the source/sink contract and requires
@@ -417,9 +417,10 @@ does not change page visibility. Silent audio, animation loops, or command-line
 throttling flags are therefore not product keepalive mechanisms.
 
 The mature resource choices remain bounded Browser P2P copies, one bounded SFU
-publication when its accepted route condition applies, or a future native/shared
-encoder. LiveKit Dynacast can stop unused SFU representations; it cannot combine
-independent P2P encoders.
+publication when its accepted route condition applies, and compatible encoding
+reuse under [ADR-0013](../adr/0013-embedded-node-local-media.md) and
+[ADR-0014](../adr/0014-browser-node-local-encoding-pool.md). LiveKit Dynacast
+controls SFU representations independently of P2P encoding reuse.
 
 ### Current Pipeline Screening
 
@@ -488,14 +489,10 @@ each Browser receive-buffer/decode/encode hop has cumulative cost. Removing that
 cost requires encoded forwarding or fewer hops; it is not grounds to change the
 accepted capacity, SFU, bitrate or degradation settings.
 
-Static route loading was the remaining proven application-level duplication.
-The old entry parsed Host, Viewer and Join pages for every route. Immediate
-route-specific prefetch plus React lazy execution reduced the common JavaScript
-asset from 717.36 KB / 193.03 KB gzip to 454.53 KB / 123.71 KB gzip. Host and
-Viewer then load only their own page plus the shared codec chunk; Join adds a
-1.97 KB chunk. A three-Viewer media gate retained all route, capacity, quality
-and decoded-frame checks. This changes download, parse and retained module work,
-not media behavior or settings.
+Route-specific prefetch and lazy page execution reduced the common JavaScript
+asset from 717.36 KB / 193.03 KB gzip to 454.53 KB / 123.71 KB gzip; Join added
+a 1.97 KB chunk. A three-Viewer media gate retained route, capacity, quality
+and decoded-frame checks. This measures module-loading cost, not media throughput.
 
 ### Recovery Ownership
 
@@ -529,9 +526,7 @@ not identify a particular Browser's build. Piik's
 [Browser controls](./browser-local-encoding-pool.md#sustained-h264-recovery)
 include both successful recovery and content-dependent encoder hysteresis after
 allocation recovered. Native controls separately cover budget restoration,
-dormant outputs, source replacement and retirement. Neither set establishes a
-single cause for unmatched field reports; no reset loop, minimum quality or
-second congestion controller follows from the shared symptom.
+dormant outputs, source replacement and retirement.
 
 The [Native encoder control](./webrtc-encoder-pool.md#budget-restoration) also
 separates restored allocation from later resolution recovery; that delay is not
@@ -609,8 +604,7 @@ neither loses the request nor mislabels a delta frame. A separate 720p30 physica
 MFT encode/decode control suppressed one force command after one second:
 the previous implementation failed at `bitstream-recovery-unit`; the repair
 decoded all 75 incumbent frames, supplied a new viewer's recovery on the next
-frame and decoded its remaining 45 frames. This establishes controlled behavior,
-not a diagnosis of an untraced user's driver failure.
+frame and decoded its remaining 45 frames.
 
 Color conversion already has an explicit matrix/range owner and fidelity checks;
 Piik retains its tagged BT.601 WebRTC SDR contract. Individual talker loss also
@@ -682,11 +676,12 @@ connection establishment separately.
 
 ## Quality Shadow
 
-Strict v13 reports renderer-derived freeze/pause deltas only for exact current
-foreground presentation with continuing decoded progress. Identity and
-presentation changes establish a new baseline; missing fields remain unknown.
-The controller retains one bounded fresh aggregate per child for the Host-only
-acceptance snapshot. It does not change routes, capacity, SFU use, or media
+At Browser/server v13, the shadow path reported renderer-derived freeze/pause
+deltas only for exact current foreground presentation with continuing decoded
+progress. Identity and presentation changes establish a new baseline; missing
+fields remain unknown.
+The controller retained one bounded fresh aggregate per child for the Host-only
+acceptance snapshot. It did not change routes, capacity, SFU use, or media
 settings.
 
 A controlled production direct-P2P canvas run injected packet-loss pulses:
@@ -777,26 +772,14 @@ percentages, and tuning loops are not adopted for this Browser product.
 
 ## Open Evidence
 
-- Real games and sustained CPU/GPU contention across weaker Hosts and operating
-  systems.
-- Public-network and game-content resource behavior with two Host P2P copies,
-  one LiveKit publication, and bounded candidate overlap. Current evidence does
-  not calibrate a safe dynamic endpoint-capacity rule.
-- Background SFU-to-P2P convergence currently proves availability before
-  replacement; comparative non-regression remains a route decision to validate,
-  not an accepted weighted quality policy.
-- Exact Chrome 153+ Intel and AMD default H.264 behavior without diagnostic
-  feature overrides.
-- Codec cost and quality after stock BWE reaches steady state.
-- Mixed P2P/SFU public-network quality, long-running thermals, A/V sync, mobile
-  lifecycle, and 20-Viewer resource admission.
-- Controlled and production correlation of Host SFU active representations,
-  subscribed-quality changes, keyframe reacquisition, and Viewer freezes before
-  changing Dynacast policy or its delay.
-- Current-Browser A/B of the duplicate initial SFU clone constraint application,
-  source-only versus independently constrained clones across live profile
-  changes, and default two-layer screen-share publication versus any proposed
-  representation or priority change.
+The measurements above leave real-game cost, weaker hardware, sustained thermal
+load, mobile lifecycle and mixed public-network behavior unmeasured. H264
+results remain specific to their recorded Browser/adapter cohorts.
+
+The historical external-SFU traces did not isolate Dynacast as the cause of
+freezes. Current Native, Browser-pool and embedded-SFU evidence lives in their
+linked assessments; [verification status](../verification-status.md) summarizes
+physical limits and [TODO](../todo.md) owns concrete follow-up work.
 
 ## Primary Sources
 

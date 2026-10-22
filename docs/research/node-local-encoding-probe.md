@@ -1,7 +1,8 @@
 # Node-Local Encoding Cost Probe
 
 Measured: 2026-09-07. This is a component experiment, not a media-policy decision.
-[Node-local adaptive reuse](./node-local-adaptation.md) owns the design model.
+[Node-local adaptive reuse](./node-local-adaptation.md) records the policy comparison;
+[ADR-0013](../adr/0013-embedded-node-local-media.md) owns the accepted model.
 [Full measurement data](./data/node-local-vp8.json) includes both rounds, phase
 counts, timings, keyframe sizes and measured source digests.
 
@@ -113,9 +114,7 @@ node scripts/encoded-variants-probe.mjs
 
 Create the `build/embedded-media` directory first. The Node entry runs 32 bounded
 processes sequentially with frame/count checks and writes its report under that
-directory. No default CI, application dependency, capture, room or production
-configuration was changed. All generated executables stay in this stable build
-path. The clock-ablation arm exists only to reproduce the observed pause effect.
+directory. The clock-ablation arm exists only to reproduce the observed pause effect.
 
 ## Primary Sources
 

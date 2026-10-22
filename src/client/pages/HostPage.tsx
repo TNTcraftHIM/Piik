@@ -37,7 +37,7 @@ import type { VideoFit } from "../media/video-geometry";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
 import { useRoomVoiceState } from "../room-voice/use-room-voice-state";
-import { participantConnection } from "../lib/participant-connection";
+import { VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { HostAudio } from "../media/host-audio";
 import {
@@ -3581,16 +3581,11 @@ export function HostPage({
     route: "p2p" | "sfu" | null;
     metrics: ConnectionMetrics | null;
     direction: "send" | "receive";
-    tag?: { icon: "loader" | "headphones"; label: string };
+    tag?: { icon: "loader"; label: string };
     error: MediaFailure | null;
   };
   const detailForViewer = (viewer: (typeof viewers)[number]): ViewerDetail => {
-    const connection = participantConnection(viewer, roomVoice);
-    if (connection.medium === "voice" && connection.ready) return {
-      route: connection.upstream.kind === "sfu" ? "sfu" : "p2p",
-      metrics: null, direction: "receive", error: null,
-      tag: { icon: "headphones", label: t("state.peer.voiceConnected") },
-    };
+    if (phase !== "live") return { route: null, metrics: null, direction: "receive", error: null };
     const snapshot =
       viewer.upstream.kind === "peer" && viewer.upstream.peerId === hostPeerId
         ? peerSnapshots.get(viewer.peerId)
@@ -3621,7 +3616,7 @@ export function HostPage({
           : null,
       metrics: detailMetrics,
       direction: hasCurrentQualityEvidence ? "receive" : "send",
-      tag: hasCommittedMedia || phase !== "live" && connection.medium !== "voice"
+      tag: hasCommittedMedia
         ? undefined
         : {
             icon: "loader",
@@ -3654,7 +3649,7 @@ export function HostPage({
     },
   );
   const hostDiagnosticsAvailable = Boolean(
-    (details && (stream || nativeActive)) || viewerOverviewEntries.length > 0,
+    (details && (stream || nativeActive)) || roomVoiceSession || viewerOverviewEntries.length > 0,
   );
 
   const noticeText = noticeValue
@@ -4467,7 +4462,10 @@ export function HostPage({
               </div>
             </Row>
           ) : null}
-          {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
+          {showConnectionDetails && roomVoiceSession ? (
+            <Row sub><VoiceConnectionDetails session={roomVoiceSession} /></Row>
+          ) : null}
+          {showConnectionDetails && phase === "live" && viewerOverviewEntries.length > 0 ? (
             <ViewerOverview
               entries={viewerOverviewEntries}
               selectedKey={selectedPawn}
@@ -4490,12 +4488,15 @@ export function HostPage({
               expanded={metricsExpanded}
               onToggleMetrics={setMetricsExpanded}
               onClose={() => setSelectedPawn(null)}
-            />
+            >
+              <VoiceConnectionDetails session={roomVoiceSession} peerId={selectedViewer.peerId} />
+            </PawnDetail>
           ) : null}
           {showTopology ? (
             <Row sub>
               <RouteTree
                 hostPeerId={hostPeerId}
+                pictureActive={phase === "live"}
                 voice={roomVoiceSession}
                 hostIdentity={hostIdentity}
                 hostLabel={labeledHostPresence?.label ?? displayName}

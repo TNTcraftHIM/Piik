@@ -67,8 +67,7 @@ Sources:
 
 ### Instructions And Skills
 
-Reviewed: 2026-10-17. These are source-derived design considerations, not a
-benchmark of agent reliability or another set of mandatory instructions.
+Reviewed: 2026-10-22.
 
 OpenAI's current guidance favors task-scoped references, short skill descriptions
 and explicit completion boundaries. Its documented OSS workflow separates
@@ -105,8 +104,27 @@ Sources:
 The earlier community reports about
 [small-task expansion](https://www.reddit.com/r/codex/comments/1vf5elq/how_do_you_stop_codexclaude_from_overengineering/)
 and [ignored context](https://www.reddit.com/r/codex/comments/1ujnwxb/codex_quality_issues_in_realworld_coding_ignored/)
-motivate inspecting useful output and execution cost; they are anecdotes, not
-statistical evidence about a model.
+describe task expansion and repeated work during ordinary development.
+
+### Direct Communication
+
+Reviewed: 2026-10-22.
+
+OpenAI recommends concise, factual delivery and brief, specific instructions.
+The community Humanizer skill identifies stacked qualifiers, knowledge-limit
+disclaimers, draft narration and replies to objections the reader never raised.
+Its adopted issue #198 supplies a useful edit: remove the abandoned objection
+and state the actual point.
+
+Piik's [copy owner](../standards/naming.md#voice-and-terminology) applies this to
+agent replies and reader documentation: answer first, state usable conditions,
+then give the next action. Research keeps measured conditions and results.
+
+Sources:
+
+- [OpenAI Codex prompting guide](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide)
+- [OpenAI reasoning best practices](https://developers.openai.com/api/docs/guides/reasoning-best-practices)
+- [Humanizer skill](https://github.com/blader/humanizer/blob/main/SKILL.md) and its adopted [invisible-context defenses report](https://github.com/blader/humanizer/issues/198)
 
 ## Applicability
 

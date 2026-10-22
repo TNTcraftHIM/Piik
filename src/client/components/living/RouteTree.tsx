@@ -7,6 +7,7 @@ import type { LabeledViewerPresence } from "../../lib/viewer-presence";
 import type { RoomVoiceSession } from "../../room-voice/session";
 import { useRoomVoiceState } from "../../room-voice/use-room-voice-state";
 import { participantConnection } from "../../lib/participant-connection";
+import { deriveParticipantStatus } from "../../ui/media-status";
 import { useElementWidth } from "../../lib/use-element-width";
 import {
   deriveParticipantTopology,
@@ -95,6 +96,7 @@ export const RouteTree = memo(function RouteTree({
   hostIdentity,
   hostLabel,
   viewers,
+  pictureActive,
   voice,
   selfPeerId,
   selectedPeerId,
@@ -106,19 +108,20 @@ export const RouteTree = memo(function RouteTree({
   hostIdentity?: string | null;
   hostLabel: string;
   viewers: readonly LabeledViewerPresence[];
+  pictureActive: boolean;
   voice?: Pick<RoomVoiceSession, "subscribe" | "getSnapshot"> | null;
   selfPeerId?: string | null;
   selectedPeerId?: string | null;
   selectablePeerIds?: readonly string[];
   onSelectPeer?: (peerId: string) => void;
 }) {
-  const { t } = useCopy();
+  const { t, vis } = useCopy();
   const [routeRef, containerWidth] = useElementWidth(DEFAULT_TOPOLOGY_WIDTH);
   const [hoveredPeerId, setHoveredPeerId] = useState<string | null>(null);
   const layoutConfig = topologyLayoutForWidth(containerWidth);
   const roomVoice = useRoomVoiceState(voice);
   const topologyViewers = viewers.map((viewer): LabeledViewerPresence => {
-    const connection = participantConnection(viewer, roomVoice);
+    const connection = participantConnection(viewer, pictureActive, roomVoice);
     return { ...viewer, upstream: connection.upstream, mediaReady: connection.ready ? true : undefined };
   });
   const topology = deriveParticipantTopology(hostPeerId, topologyViewers);
@@ -197,7 +200,8 @@ export const RouteTree = memo(function RouteTree({
       y: ROW_BASE + row * spacing,
     };
     row += 1;
-    return { viewer, ...point };
+    const status = deriveParticipantStatus(viewer, pictureActive, undefined, roomVoice);
+    return { viewer, ...point, waiting: status.pulse === true, status };
   });
 
   let height = Math.max(140, row * spacing + 64);
@@ -344,6 +348,9 @@ export const RouteTree = memo(function RouteTree({
       <span id={topologyTitleId} className="visually-hidden">
         {t("host.topology")}
       </span>
+      {nodes.length === 0 && pendingPos.every(point => !point.waiting) ? (
+        <p className={vis ? "visually-hidden" : "lr-route-idle"}>{t("host.topology.idle")}</p>
+      ) : null}
       <svg
         viewBox={`0 0 ${width} ${height}`}
         aria-label={t("host.topology")}
@@ -397,7 +404,7 @@ export const RouteTree = memo(function RouteTree({
           </>
         ) : null}
 
-        {pendingPos.map((point) => (
+        {pendingPos.filter(point => point.waiting).map((point) => (
           <path
             key={`edge-pending-${point.viewer.peerId}`}
             d={linkPath(hostPos, point)}
@@ -466,7 +473,7 @@ export const RouteTree = memo(function RouteTree({
           return (
             <g
               key={`pending-${point.viewer.peerId}`}
-              className={`lr-route-node is-pending${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
+              className={`lr-route-node${point.waiting ? " is-pending" : ""}${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
               transform={`translate(${centeredPawnX(point.x, PAWN_SCALE)}, ${centeredPawnY(point.y, PAWN_SCALE)}) scale(${PAWN_SCALE})`}
             >
               <PawnSvg color={participantColor(point.viewer.peerId)} identity={point.viewer.peerId} />
@@ -485,7 +492,7 @@ export const RouteTree = memo(function RouteTree({
 
         {renderName(hostPeerId ?? "host", hostLabel, hostPos, " is-host")}
         {nodes.map(node => renderName(node.key, node.label, pos.get(node.key)!))}
-        {pendingPos.map(point => renderName(point.viewer.peerId, point.viewer.label, point, " is-pending"))}
+        {pendingPos.map(point => renderName(point.viewer.peerId, point.viewer.label, point, point.waiting ? " is-pending" : ""))}
       </svg>
 
       <ul className="visually-hidden">
@@ -506,9 +513,9 @@ export const RouteTree = memo(function RouteTree({
             </li>
           );
         })}
-        {topology.pending.map((viewer) => (
+        {pendingPos.map(({ viewer, status }) => (
           <li key={`sr-pending-${viewer.peerId}`}>
-            {viewer.label} · {t("host.topology.pending")}
+            {viewer.label} · {t(status.labelKey)}
           </li>
         ))}
       </ul>

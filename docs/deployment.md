@@ -1,35 +1,29 @@
 # Server Release And Recovery
 
-This file owns routine immutable Server releases. Initial service setup is
-in [self-hosting operations](./operations/self-hosting.md); environment and ports
-are in [configuration reference](./standards/configuration.md). Exact production
-identity is owned by the immutable release descriptor, runtime `REVISION`, and
-deployment record. [Status](./status.md) owns only the compact current product
-and operational snapshot; it is not a per-release ledger.
+Use this runbook to update an existing Server from an immutable package.
+For first installation, see [self-hosting](./operations/self-hosting.md); for
+settings and ports, see [configuration](./standards/configuration.md).
+Record exact deployment identity in the release descriptor, runtime `REVISION`
+and operator deployment record.
 
 The tracked `release-server.sh` updates an existing Go deployment with embedded
 media, bare-metal nginx, nftables, and application port 8787. It requires an
-existing running Go release. Another proxy, firewall owner, application port,
-first installation, or initial embedded-media cutover needs its own scoped
-bootstrap/updater; do not call this wrapper generic.
+existing running Go release. Other proxies, firewalls or application ports,
+first installations and initial embedded-media cutovers need a scoped updater.
 Its firewall check compares the nftables ruleset without traffic counters; it
 does not depend on a particular table name. Coordinate other firewall writers
 outside the cutover window. See [nft output options](https://netfilter.org/projects/nftables/manpage.html).
 
 ## Release Boundary
 
-A routine Server release changes only the built Piik server binary and
-the Browser assets it embeds. It does not change infrastructure,
-service units, proxy/firewall rules, secrets, media listener configuration, or
-persistent room state.
+A routine Server release replaces the binary and its embedded Browser assets.
+Keep infrastructure, service units, proxy/firewall rules, secrets, media listener
+configuration and persistent room state unchanged. If the task changes any of
+these, record its exact pre-change value and recovery procedure first, and use
+a scoped updater rather than extending the routine wrapper with one-off branches.
 
-Any task that touches one of those excluded surfaces must first record its exact
-pre-change value and a recovery procedure for that surface. Do not complicate the
-routine Server wrapper with one-off infrastructure branches.
-
-The pre-cutover Server release is guaranteed only through bounded health
-and postflight. It has no retention contract afterward and is not a maintained
-backup; Git and immutable artifacts own history.
+Retain the pre-cutover release through bounded health and postflight checks.
+Retention ends afterward; maintain any required backups separately.
 
 ## Build Host
 
@@ -79,8 +73,7 @@ Assembly refuses a dirty or different revision and emits one directory with the
 App executable, the Browser assets taken from that release and embedded in
 it, the selected sidecars, notices, and matching `REVISION`. Its required target
 is one of `windows-amd64`, `linux-amd64`, `linux-arm64`, `darwin-arm64` or `darwin-amd64`; every supplied
-binary input must match it. It does not create an installer, auto-updater,
-release tag, or compatibility bundle.
+binary input must match it.
 
 Darwin App assembly runs on macOS with its SDK and cgo enabled: the pinned
 LiveKit dependency's [Darwin CPU statistics](https://github.com/mackerelio/go-osstat/blob/v0.2.8/cpu/cpu_darwin_cgo.go)
@@ -94,11 +87,10 @@ embeds the icon in the Go executable, Linux emits a freedesktop desktop entry
 under `share/`, and macOS emits a self-contained `.app` with an ICNS resource.
 The macOS `CFBundleExecutable` names the real Mach-O App binary in
 `Contents/MacOS`; its relative `runtime/`, license notices and `REVISION` live
-beside it. Moving the `.app` must retain every runtime dependency. This follows
-[Apple's bundle relocation guidance](https://developer.apple.com/forums/thread/724969)
-and avoids a shell entry that reaches outside the bundle. Package checks execute
-the extracted entry and helpers; Finder/Gatekeeper and desktop permissions still
-need macOS acceptance.
+beside it. Keep every runtime dependency inside the relocated `.app`, following
+[Apple's bundle relocation guidance](https://developer.apple.com/forums/thread/724969).
+Package checks execute the extracted entry and helpers. Check Finder/Gatekeeper
+and desktop permissions separately on macOS.
 
 CI and local release-candidate builds use the same wrapper on the target's
 native operating system:
@@ -117,12 +109,10 @@ runtime from the extracted ZIP, and emits one `.zip` plus its SHA-256 file.
 App ZIPs use ordinary Store/Deflate compression and relative entry names without
 `.` or `..` path segments; include hidden files and preserve executable modes on
 Unix. Windows packaging also checks every entry through Windows Explorer's ZIP
-reader. A successful extraction by the writer's own library does not establish
-compatibility with the user's default archive tool.
+reader.
 
-Retain the descriptor and successful deployment output as release metadata. Do
-not create a follow-up source commit solely to duplicate their revision, asset,
-or hashes.
+Retain the descriptor and successful deployment output as release metadata,
+rather than copying revisions, asset names and hashes into source commits.
 
 Manual `app_checks=true` dispatch packages both Server architectures and all App
 candidates after validation. Once [automatic publication](./operations/github.md)
@@ -144,17 +134,14 @@ untagged local candidates use `development`. Schema-2 package descriptors carry
 the same pair and artifact hashes. The [version policy](./standards/versioning.md)
 owns ordering and first-public-release readiness.
 
-The default App launcher starts immediately, then checks GitHub Releases in the
-background, falling back to the Gitee mirror if GitHub is unavailable. The
-[release-source policy](./standards/versioning.md#release-sources) owns selection
-and provenance checks. It shows a link only when
-the latest stable release is newer, the same version has a known different source
-SHA, or a development build can choose the official release. These notices are
-distinct; a different SHA alone is not called newer.
-The request sends no current revision, credentials, room data, or media data;
-network errors, private-repository responses, and missing releases are treated
-as no notice. Checking does not download an archive, replace files, or interrupt
-a running share; the user can follow the update link to download the App ZIP.
+The App launcher starts immediately and checks GitHub Releases in the background,
+using Gitee if GitHub is unavailable. It offers a download link for a newer
+stable version, a known different build of the same version, or an official
+release for a development build. These notices use distinct labels.
+The check follows the [release-source policy](./standards/versioning.md#release-sources)
+and sends no current revision, credentials, room data or media data. An unavailable
+check produces no notice. Downloading and replacing the App remain manual;
+checking leaves the running share active.
 
 An operator can perform the corresponding read-only Server check:
 
@@ -162,9 +149,8 @@ An operator can perform the corresponding read-only Server check:
 bash deploy/check-release.sh
 ```
 
-The Server also checks once in the background after startup and logs an available
-release with its download URL. It does not delay startup, periodically poll,
-notify room participants or install anything.
+The Server checks once in the background after startup and logs any available
+release and download URL. Updates remain manual; room participants receive no notice.
 
 The script runs the deployed binary's `--check-release`, using that binary's
 injected identity, and prints one JSON result with versions, available source
@@ -236,8 +222,7 @@ Verify only the surfaces relevant to the release:
 - infrastructure, config, secrets, ports, and persistent state not named by the
   task are unchanged.
 
-Representative network, mobile, audio, 20-Viewer, and endurance evidence belongs
-to [verification status](./verification-status.md), not routine postflight.
+For broader network, platform and capacity results, see [verification status](./verification-status.md).
 
 ## Recovery
 

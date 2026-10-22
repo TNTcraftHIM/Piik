@@ -54,7 +54,7 @@ export function ViewerOverview({
       <div className="lr-viewer-overview-scroll">
         <div className="lr-viewer-overview-head">
           <span>{vis ? <Glyph name="users" size={14} /> : t("common.viewers")}</span>
-          <span>{vis ? <Glyph name="network" size={14} /> : t("host.topology")}</span>
+          <span>{vis ? <Glyph name="tv" size={14} /> : t("host.settings.picture")}</span>
           {heading("stats.resolution")}
           {heading("stats.fps")}
           {heading("stats.bitrate")}

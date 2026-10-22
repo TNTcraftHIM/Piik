@@ -87,9 +87,7 @@ manager until evidence requires one.
 
 The [design proposal](./node-local-media-design.md) takes the maximum-demand
 envelope as the first integration candidate for an already-needed encoder group,
-while preserving zero-transcode relay paths and leaving hardware/network
-acceptance explicit. No source runtime, wire, dependency or production change
-was made by this probe.
+while preserving zero-transcode relay paths.
 
 ## Reproduction
 
@@ -100,7 +98,6 @@ node scripts/encoded-variants-browser.mjs
 Open the printed loopback URL in an isolated Chrome and activate its one button.
 The bounded worker posts its structured result to
 `build/embedded-media/browser-variants-result.json`. Close the browser and stop
-the probe server afterward. This is opt-in research, not a new default CI job.
-Input is synthetic; it captures no user screen or private media.
+the probe server afterward.
 
 Reference: [WebCodecs processing and resource model](https://www.w3.org/TR/webcodecs/).

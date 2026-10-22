@@ -21,19 +21,16 @@ PR; maintainers can help identify what still needs verification.
 讨论时请结合实际场景提出建议，尊重不同意见；分享截图或日志前移除隐私内容。
 无法运行的检查请如实说明，便于维护者协助验证。
 
-Review contributions by their practical value, evidence and fit with the product,
-not their line count. A small fix that identifies and resolves a real defect is
-valuable. Duplicate work already independently resolved, personal preferences or
-low-value changes may be declined; merging is not an attribution mechanism.
-Retain authorship for accepted contributions and credit substantive discoveries
-accurately, without attributing independently written code to a PR author.
-Keep contributor patch commits limited to their necessary changes; put maintainer
-adaptations and unrelated work in separate commits. Preserve a useful original
-patch commit at integration instead of adding its author as co-author of an
-entire phase's squash commit.
-评审看实际价值、证据和产品定位，不看代码行数。发现并解决真实问题的小修复同样值得接纳；
-已经独立解决的重复工作、个人偏好或收益很低的改动可以不合并，不为增加贡献者名单而合并。
-保留已接纳贡献的作者信息，如实说明有价值的问题发现；独立编写的代码不应冒记为他人共同编写。
+Review contributions by practical value, evidence and product fit. Small fixes
+are welcome; duplicate work, personal preferences or changes with little benefit
+may be declined. Credit accepted patches and substantive discoveries accurately.
+Keep contributor patches separate from maintainer adaptations and unrelated
+work. At integration, preserve a useful original patch commit with its author;
+do not assign authorship of independently written code or an entire phase's
+squash commit to that contributor.
+评审看实际价值、证据和产品定位，小修复同样欢迎。重复工作、个人偏好或收益很低的改动可以不合并。
+如实保留已接纳补丁的作者信息，并认可有价值的问题发现。贡献者补丁应与维护者调整及无关改动分开；
+集成时保留有用的原始补丁提交，不将独立编写的代码或整个阶段的 squash 提交冒记为贡献者共同编写。
 
 ## Lean Workflow
 
@@ -44,19 +41,20 @@ This is the default for an ordinary scoped implementation or bug fix.
 3. Make the smallest coherent change under the repo-tracked [`ponytail` skill](./.agents/skills/ponytail/SKILL.md).
 4. Run the focused tests or checks that exercise the changed behavior, inspect the pending diff, stage requested files, and report the result and evidence.
 
-Do not automatically create a truth checkpoint, edit status/memory, run `npm run check`, request independent reviews, open or merge a pull request, deploy, or clean branches/worktrees for every small change. Do not record ordinary UI details, self-evident implementation, one-off fixes, routine test output, or completed history in long-lived truth documents.
+For small changes, focused checks and the staged diff complete this workflow.
+Truth checkpoints, status/memory updates, full checks, independent reviews, PRs,
+deployment and branch/worktree cleanup require their relevant integration scope
+or user request. Keep routine UI details, implementation, test output and
+completed fixes out of long-lived truth documents.
 
 ## Full Integration And Release Workflow
 
 Use this path only when the owner explicitly requests it or when closing a major phase or changing a public contract, route/security model, infrastructure, persistent/irreversible state, or release boundary.
 
-`main` is intentionally low-frequency. It is not a staging branch: all
-intermediate implementation, experiments, evidence collection, release notes,
-and cleanup stay in branches/worktrees. One complete, user-accepted phase lands
-through one squash PR after its related checks and acceptance are finished;
-leave `main` alone until the next material phase. Only a user-authorized P0/P1
-emergency may use a separate PR, and that PR must still contain one coherent
-fix.
+Keep intermediate implementation, experiments, evidence, release notes and
+cleanup in branches/worktrees. After checks and user acceptance, integrate one
+complete phase through one squash PR. Update `main` again only for the next
+material phase or a user-authorized P0/P1 emergency PR containing one coherent fix.
 
 1. Create one short-lived branch/worktree from exact canonical `main`, following the [branch naming convention](#commit-pr-and-branch-names).
 2. Update only the single durable owner for changed semantics and any materially changed current snapshot. If semantics remain disputed, record a hold and stop dependent work.
@@ -64,19 +62,21 @@ fix.
 4. Keep accepted truth checkpoints and dependent candidates on branches until the phase is complete. Rebase or rebuild a retained candidate from exact `main` only when starting a new phase, preserving main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts.
 5. Open one pull request for the complete phase, resolve required review/checks, meet the [release approval boundary](./docs/standards/versioning.md#automatic-publication) before a publishing merge, squash-merge it once, deploy that merged revision when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
 
-One coherent phase should leave one meaningful squash commit on `main`. Include
-its source, tests, owned semantic documentation, and materially changed status
-snapshot in that boundary. Do not open a follow-up pull request whose only
-purpose is to copy the deployed revision, asset name, or artifact hashes into
-the repository. Exact deployment identity belongs to the immutable release
-descriptor, runtime `REVISION`, and deployment record. Preserve separate commits
-only when they carry independently useful history.
+Include the phase's source, tests, owned semantic documentation and materially
+changed status snapshot in that squash commit. Exact deployed revisions, asset
+names and hashes stay in the immutable release descriptor, runtime `REVISION`
+and deployment record; do not create follow-up metadata PRs. Preserve separate
+commits only when they carry independently useful history.
 
 Update `main` through PRs only; branch checkpoints and generated release metadata
 do not bypass that boundary. Never force-push shared branches or rewrite shared
 history without explicit approval.
 
-For deployment work, a routine application-only release verifies a new immutable artifact, switches to it atomically, and guarantees the pre-cutover application release only through bounded health and postflight checks; it has no retention contract afterward and is not a maintained backup. Define recovery only for the infrastructure, configuration, secrets, persistent state, or irreversible surfaces the task actually touches, before changing them.
+For an application-only deployment, verify the immutable artifact, switch
+atomically, and retain the prior application through bounded health and
+postflight checks. Retention ends after those checks; it is not a maintained
+backup. Before changing infrastructure, configuration, secrets, persistent state
+or irreversible surfaces, define recovery for each affected surface.
 
 Use the [version/compatibility policy](./docs/standards/versioning.md) to classify
 release changes. An incompatible signaling cutover forces old pages to reload
@@ -105,9 +105,8 @@ protocol identifiers; use normal language-specific identifier conventions.
 
 ## Verification Entrypoints
 
-Every retained test must be collected by a documented verification entry point.
-Confirm runner inclusion when adding or moving a test; a file's presence alone
-does not establish coverage.
+Every retained test must run through a documented verification entry point.
+When adding or moving a test, confirm that the runner collects it.
 
 - `npm run check` owns deterministic Web type-check, unit, and build acceptance.
 - `npm run check:go` owns Go formatting, unit tests, vet, Windows/Linux
@@ -186,7 +185,8 @@ reserve `spike/` for experiments. No issue number is required. 中文说明：PR
 
 ## Pull Request Scope
 
-A pull request should explain the problem, the chosen design, verification performed, user-visible or operational effects, and remaining risks.
+A pull request should explain the problem, resulting behavior, design,
+verification, and material user or operational effects and risks.
 
 Before a product-changing integration PR is accepted, fill its exact `## Release notes` section
 with concise public copy in English followed by Chinese: user-visible changes,
@@ -216,4 +216,7 @@ On native PowerShell, this equivalent is available:
 ./scripts/install-hooks.ps1
 ```
 
-The pre-commit hook runs the POSIX repository hygiene check. The PowerShell entry implements the same checks for native Windows use, and CI runs the POSIX entry. Both read the tracked path manifest in `scripts/required-project-paths.txt`; changes to checker behavior must update and verify both in the same pull request.
+The pre-commit hook and CI run the POSIX repository hygiene check; native Windows
+uses the equivalent PowerShell entry. Both read
+`scripts/required-project-paths.txt`. Update and verify both entries in the same
+PR when changing checker behavior.

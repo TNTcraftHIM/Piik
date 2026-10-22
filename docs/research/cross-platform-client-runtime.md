@@ -100,7 +100,7 @@ Current WebView2 exposes `getDisplayMedia` screen-capture events and its
 Evergreen runtime updates independently; WebKitGTK exposes display capture and
 uses GStreamer for WebRTC. Electron instead bundles one Chromium and Node but
 makes the App responsible for shipping those updates and adds substantial
-package size. These facts do not prove equivalent Piik media behavior.
+package size.
 
 Only a reproduced Browser-launch failure should open a comparative physical
 gate for Electron, Tauri, Wails, Neutralino, or another shell. That gate must
@@ -110,11 +110,9 @@ result selects one UI runtime; it does not create parallel products.
 
 ## Current Evidence
 
-The runs below are pre-port evidence: they exercised the package that bundled a
-Node runtime and an extracted application tree. Their capture, discovery, media,
-and network results still apply; every package composition, startup, and
-shutdown claim must be re-verified on the single-binary App before that build
-is accepted.
+The runs below exercised the former Node-bundled package. They retain capture,
+discovery and network observations from that revision. Current single-binary
+packaging and startup checks follow [App development](../../cmd/piik-app/DEVELOPMENT.md).
 
 On Windows with Chrome for Testing 151.0.7922.138:
 
@@ -165,8 +163,8 @@ The preceding Quick Tunnel allocation is a single HTTPS request with a 15-second
 dependency timeout; failure exits before transport fallback applies. The exit
 code alone does not identify that cause. An abnormal exit now retains the latest
 sanitized dependency error or plain stderr detail in the existing failure result.
-This is the last reported observation, not a classification or a complete log;
-match the same run's `public-tunnel` diagnostics when the detail is insufficient.
+This detail contains the last reported error. Use the same run's `public-tunnel`
+diagnostics for the full retained context.
 Piik retries a child that exits before readiness, up to four starts with a
 one-second pause between starts, all within the same 30-second acquisition
 deadline. The previous child, output readers and temporary config retire before
@@ -178,14 +176,12 @@ TCP forwarder. The previous arguments timed out at 30 seconds without trying TCP
 The candidate connected in about 11 seconds, served the public page and echoed a
 WebSocket message, then joined the child on close. The ordinary-network App link
 gate also serves the invitation page and upgrades its WebSocket from an external
-US host, then confirms App exit and link retirement. These bounded checks do not
-establish regional reachability, uninterrupted connector availability or the
-cause of reports without matching diagnostics. Upstream
+US host, then confirms App exit and link retirement. Regional reachability and
+long-running connector behavior need separate measurements. Upstream
 [Quick Tunnel setup](https://github.com/cloudflare/cloudflared/blob/2026.10.3/cmd/cloudflared/tunnel/quick_tunnel.go)
 and [protocol fallback](https://github.com/cloudflare/cloudflared/blob/2026.10.3/supervisor/tunnel.go)
 own the dependency behavior. An early-exit fixture confirms fourth-start recovery
-and bounded exhaustion; these checks do not identify a reporter's API or network
-failure or guarantee four starts when earlier attempts consume the deadline.
+and bounded exhaustion. Earlier attempts can consume the deadline before four starts.
 
 A 2026-10-08 Windows check against a deliberately refused local allocation API
 confirmed that cloudflared 2026.8.3 emits its final allocation error as plain
@@ -196,11 +192,10 @@ observed failure. The launcher applies its existing redaction and display limit.
 
 The public App log in [#452](https://github.com/TNTcraftHIM/Piik/issues/452),
 reviewed on 2026-10-07, records a QUIC timeout followed by a TCP port-7844
-connect timeout within that deadline. Thus fallback ran; the report does not
-establish a local port-80/443 collision. Its accelerator dependency remains a
-network-path hypothesis requiring the same endpoint with/without the accelerator.
-The attachment contains no capture start, so it cannot diagnose the separately
-reported H.264 failure.
+connect timeout within that deadline. Fallback ran and both outbound transports
+failed. Compare the same endpoint with/without the accelerator to test its
+effect on the network path. The attachment ends before capture starts;
+the H.264 report needs capture diagnostics.
 
 [HTTP 1033](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1033/)
 means Cloudflare cannot find a healthy tunnel connector. App readiness requires
@@ -217,9 +212,8 @@ allocate a new public address rather than repair the old invitation.
 ### Alternative Invitation Providers
 
 Reviewed 2026-10-16 against provider documentation and upstream discussions.
-No matched evidence establishes a universally more reachable replacement for
-Quick Tunnel, especially across mainland networks. These are candidates, not
-accepted Piik integrations. Viewers must only open the invitation in a Browser;
+Keep Quick Tunnel for this phase. The alternatives below remain candidates;
+their regional reachability needs direct comparison. Viewers must only open the invitation in a Browser;
 requiring their own account, extra software or proxy/network configuration is
 outside this path. Operator-managed tunnels belong with self-hosted Sites.
 
@@ -228,15 +222,15 @@ outside this path. Operator-managed tunnels belong with self-hosted Sites.
 | [localhost.run](https://localhost.run/docs/forever-free/) | Account-free HTTPS/SSH; the bounded probe below passes Piik HTTP and signaling, including an in-process Go client. | Free domains rotate and are speed-limited. Anonymous reconnection changed the URL; the cold page load was slow. |
 | [Pinggy](https://pinggy.io/) | Account-free temporary tunnels and several global regions. | Free tunnels expire after 60 minutes and show a [browser screening page](https://pinggy.io/docs/http_tunnels/screening/). Paid service changes that boundary. |
 | [ngrok](https://ngrok.com/docs/pricing-limits/free-plan-limits) | Account-bound domains; free endpoints have no session timeout. | Account/token setup, usage quotas and a browser interstitial prevent a transparent free replacement. |
-| [cpolar](https://www.cpolar.com/docs) | HTTP(S), WebSocket and selectable mainland/Hong Kong regions. | Requires account/token setup; free addresses may change within 24 hours. Region choice is not proof of access from every ISP. |
+| [cpolar](https://www.cpolar.com/docs) | HTTP(S), WebSocket and selectable mainland/Hong Kong regions. | Requires account/token setup; free addresses may change within 24 hours. Check access from the intended ISP. |
 | [frp](https://gofrp.org/en/docs/overview/) | Open-source HTTP(S) forwarding with operator-selected hosting. | Someone must run the public endpoint, domain/TLS and admission. It is not a hosted, account-free service by itself. |
 
 The pinned cloudflared has two separate proxy gaps: [Quick Tunnel allocation](https://github.com/cloudflare/cloudflared/blob/2026.10.3/cmd/cloudflared/tunnel/quick_tunnel.go)
 constructs an HTTP transport without `ProxyFromEnvironment`, and [edge dialing](https://github.com/cloudflare/cloudflared/blob/2026.10.3/edgediscovery/dial.go)
 uses a direct TCP dialer. Browser proxy settings or `HTTP_PROXY`/`HTTPS_PROXY`
 alone therefore do not route these connections. [Community #1076](https://github.com/cloudflare/cloudflared/issues/1076)
-reports the same distinction; the still-open [proxy PR #1514](https://github.com/cloudflare/cloudflared/pull/1514)
-does not establish a working Quick Tunnel fix. For users with an existing proxy,
+reports the same distinction; [proxy PR #1514](https://github.com/cloudflare/cloudflared/pull/1514)
+was still open at review. For users with an existing proxy,
 process/transparent routing must actually cover cloudflared; avoid routing Piik's
 unrelated media traffic through it. DNS overrides and another retry cannot repair
 an unreachable edge. Cloudflare's [China Network](https://developers.cloudflare.com/china-network/)
@@ -281,16 +275,14 @@ WebSocket ownership. Probe sources and results stay in ignored
 
 The remaining tradeoff is service behavior. Reconnecting `nokey` allocated a
 different origin; the retired URL no longer served the fixture. A fresh,
-unregistered Ed25519 key was refused, so this check did not establish account-free
-address retention. The [provider FAQ](https://localhost.run/docs/faq/) documents
-free-name rotation after a few hours and SSH keepalives/restarts, not seamless
-anonymous URL recovery. TCP port 22 being reachable here does not establish
-mainland ISP coverage or an advantage over Cloudflare's transports.
+unregistered Ed25519 key was refused. The [provider FAQ](https://localhost.run/docs/faq/)
+documents free-name rotation after a few hours and SSH keepalives/restarts.
+Anonymous address retention and regional reachability require separate testing.
 
 One cold Piik load reached DOMContentLoaded at 18.4 seconds and load at 20.3
-seconds; its 592 kB main script took 17.1 seconds. This is an observed run, not a
-regional benchmark or proof that the documented free-tier speed limit was the
-only cause. The tunnel carries the page and signaling, not Piik's P2P video.
+seconds; its 592 kB main script took 17.1 seconds. The run did not isolate the
+free-tier speed limit from other network delay. The tunnel carries the page and
+signaling; Piik video remains P2P.
 Together, address turnover and page-load cost favor evaluating it as an initial
 invitation fallback rather than replacing Cloudflare by default or switching an
 active room's address silently.
@@ -325,11 +317,13 @@ or update infrastructure.
 The evidence supports direct manual downloads with an optional release-note
 link and inline major-upgrade guidance. The accepted behavior belongs to
 [versioning](../standards/versioning.md#major-upgrade-guidance). Historical
-clients still follow their released behavior; a notice cannot substitute for
-actual App/Site compatibility checks. The scope of a future 2.0 break remains
-undecided.
+clients still follow their released behavior. App/Site compatibility follows
+the current [public compatibility contract](../standards/versioning.md#public-compatibility-promise).
 
 ## Remaining Gates
+
+These are gaps from the original runtime assessment. [TODO](../todo.md) owns
+current work and deferrals; [verification status](../verification-status.md) owns platform coverage.
 
 - Run the exact clean-revision package on macOS; Linux amd64 is proved.
 - Prove a physical second-device LAN Viewer on desktop, Android, and iOS.

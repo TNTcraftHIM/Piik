@@ -96,11 +96,10 @@ nominated non-relay UDP pair. The explicit empty list retained LiveKit's
 remotely signaled SFU candidate while suppressing additional Browser STUN
 gathering; it did not disable ICE.
 
-The result supports isolating Browser SFU PCs from external ICE servers in that
-environment. It does not prove a universal TUN/VPN defect, a candidate-type
-contract, fixed Browser socket allocation, mobile behavior, or public-network
-success. Ordinary peer PCs and LiveKit server-side public-IP discovery are
-separate ICE domains.
+The result supports isolating Browser SFU PCs from external ICE servers in this
+Chrome/Mihomo environment. Other VPNs, mobile Browsers and public networks need
+their own measurements. Ordinary peer PCs and LiveKit server-side public-IP
+discovery are separate ICE domains.
 
 Relevant pinned sources are LiveKit's
 [join-response construction](https://github.com/livekit/livekit/blob/v1.13.5/pkg/service/roommanager.go),
@@ -151,9 +150,9 @@ never selected and widens credential scope beyond the exact route demand.
 
 A later exact-edge TURN candidate narrows that scope but still adds a third
 application candidate with separate credential issuance, allocation admission,
-endpoint rebuild, recovery, expiry, and failure ownership. The functional
-ability to relay one edge did not prove a need beyond the existing bounded SFU
-fallback, so neither candidate is retained as a product route.
+endpoint rebuild, recovery, expiry, and failure ownership. This duplicates the
+existing bounded SFU fallback at extra ownership cost; neither candidate is
+retained as a product route.
 
 The useful-payload cost comparison explains the pressure. For `K` Host-to-
 Viewer edges that all require TURN at bitrate `B`:
@@ -168,10 +167,9 @@ At `K=1`, both central paths carry `2B`, so traffic alone chooses neither. At
 `3B`; TURN also preserves two Host sender pipelines. Mixed representations use
 measured `B_pub` and `sum(B_s)`, so the SFU advantage is not assumed.
 
-This no-go is an application-scope decision, not a claim that TURN is broken.
-Coturn remains a valid BSD-3-Clause STUN/TURN implementation, and LiveKit
-supports TCP and embedded/external TURN options. Framework capability alone
-does not require enabling every transport in Piik.
+Keep TURN outside Piik's route set. Coturn remains a valid BSD-3-Clause
+STUN/TURN implementation, and LiveKit supports TCP and embedded/external TURN
+for deployments that need those transports.
 
 ## SFU Admission Evidence
 

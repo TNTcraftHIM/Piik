@@ -161,11 +161,17 @@ describe("media status projection", () => {
       members: [{ peerId: "viewer", connected: true, joined: true, upstream: { kind: "sfu" } }],
       publications: [], connections: [], unavailable: [] };
     expect(deriveParticipantStatus(viewer, false)).toMatchObject({ tone: "live", labelKey: "state.peer.present" });
+    expect(deriveParticipantStatus(viewer, false).pulse).toBeUndefined();
+    expect(deriveParticipantStatus(viewer, true)).toMatchObject({ tone: "busy", labelKey: "state.peer.routing", pulse: true });
     expect(deriveParticipantStatus(viewer, false, undefined, voice)).toMatchObject({ tone: "live", labelKey: "state.peer.voiceConnected" });
+    expect(deriveParticipantStatus(viewer, false, undefined, voice).pulse).toBeUndefined();
     expect(deriveParticipantStatus(viewer, true, undefined, voice)).toMatchObject({ labelKey: "state.peer.voiceConnected" });
     voice.members[0]!.upstream = { kind: "none" };
-    expect(deriveParticipantStatus(viewer, false, undefined, voice)).toMatchObject({ tone: "busy" });
+    expect(deriveParticipantStatus(viewer, false, undefined, voice)).toMatchObject({ tone: "busy", pulse: true });
+    expect(deriveParticipantStatus({ ...viewer, upstream: { kind: "sfu" } }, false, undefined, voice))
+      .toMatchObject({ tone: "busy", labelKey: "state.peer.routing", pulse: true });
     voice.enabled = false;
     expect(deriveParticipantStatus(viewer, false, undefined, voice)).toMatchObject({ labelKey: "state.peer.present" });
+    expect(deriveParticipantStatus(viewer, false, undefined, voice).pulse).toBeUndefined();
   });
 });

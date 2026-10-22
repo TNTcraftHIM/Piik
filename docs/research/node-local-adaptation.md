@@ -1,10 +1,10 @@
 # Node-Local Adaptive Encoded Reuse
 
-Reviewed: 2026-09-07. [ADR-0013](../adr/0013-embedded-node-local-media.md) now owns
-the accepted model and highest-demand envelope. Codec backends and timing
-values still need implementation evidence. ADR-0007 remains the runtime contract.
-The [design proposal](./node-local-media-design.md) narrows implementation from
-the measurements below; it does not reopen the agreed topology/reuse model.
+Reviewed: 2026-09-07. This records the initial policy comparison.
+[ADR-0013](../adr/0013-embedded-node-local-media.md) owns the accepted
+direct-child model and highest-demand envelope;
+[implementation evidence](./node-local-media-design.md) records the integrated
+Native/SFU adapter and later recovery work.
 
 ## Agreed Model
 
@@ -21,41 +21,31 @@ alongside an identical `high` encoding.
 - Adaptive reuse: local derivation, shared lower outputs, independent child
   delivery and quality recovery, usable by Native App and the server.
 
-These share media-source and lifetime concepts but need separate acceptance.
-A forwarding-only SFU library does not provide the second workstream by itself;
-server-side derivation needs real decoding/encoding capacity. Pure Browser
+These share media-source and lifetime concepts. A forwarding-only SFU library
+supplies no transcoder; derivation needs decoding/encoding capacity. Pure Browser
 peers can consume normal WebRTC outputs and benefit from capable upstreams,
 but have no generic cross-PeerConnection encoded-forwarding API.
 
 ## Existing Building Blocks And Gaps
 
-- `mediaedge.Source` already forwards encoded RTP to multiple Pion edges.
-- Native GCC observations currently drive route evidence, not the shared
-  encoder. A sustained weak edge may use a measured Browser-sender exception.
-  That exception is not yet a reusable derived-encoding pool.
-- Existing capture encoders, generation fences, keyframe requests and bounded
-  route operations are reusable. A new standalone quality controller, global
-  node score or periodic rebalancer is not assumed.
-- Current routing reacts primarily to persistently degraded senders. A healthy
-  edge forwarding already-low input may not trigger a move. Transport health
-  and available source quality must be distinguished before claiming recovery.
-- Simulcast, encoder allocation, active encoding, layer forwarding and bandwidth
-  probing are different operations. Pausing a representation must not be
-  mistaken for destroying its codec object or reopening capture.
+The initial `mediaedge.Source` supplied encoded Pion fanout, capture generations
+and keyframe ownership, but no reusable derived-output pool. The later adapter
+connects direct-child budgets to shared local outputs while retaining per-edge
+transport. [Encoder-pool research](./webrtc-encoder-pool.md) records why each
+output needs a complete adaptation pipeline.
+
+Simulcast construction, encoder allocation, active encoding, layer forwarding
+and bandwidth probing remain separate operations. Pausing a representation
+does not mean destroying its codec or reopening capture. Healthy transport of
+already-low input likewise does not establish that a better source is available.
 
 ## Open Choices
 
-- Always encode all configured lower outputs, enable all after the first weak
-  child, or activate only the representations currently demanded.
-- Keep unused encoder resources warm or release them; decide from cold-start,
-  first-keyframe, GPU-session, memory and idle-CPU measurements.
-- Use a bounded representation set and one parameter owner per shared output.
-  Determine which mature component owns demand grouping and adaptation; do not
-  assume that independent child GCC loops can all mutate one shared encoder.
-- Coordinate a usable-frame handoff before switching, preserve unaffected
-  branches, and avoid repeated downgrade/recovery churn.
-- Check server software-transcode cost and platform-native hardware availability
-  independently. A network-capable parent is not necessarily a capable encoder.
+The initial choices were exact demand versus a highest-demand envelope, cold
+versus retained codecs, and which component should own shared adaptation and
+safe handoff. ADR-0013 selects the envelope for an already-needed group; the
+current implementation shares complete adaptive outputs only across compatible
+direct-child budgets. The comparisons below explain that choice.
 
 ## Simulcast And Dynacast Findings
 
@@ -107,13 +97,11 @@ outputs against the maximum-demand envelope, not shared versus unshared media.
 | Finite outputs activated only as needed | Avoids unused representations and shares compatible demands | Cold start and churn if codecs are constantly destroyed/recreated |
 | Demand activation with bounded warm retention or a minimal fallback output | Potential compromise between steady cost and transition delay | Requires measurements to justify retention or pre-encoding; not free memory/session capacity |
 
-The owner's 2026-09-07 preference makes the LiveKit-style maximum-demand
-envelope a first-class candidate: keep the highest requested representation and
-its lower fallbacks active; stop unused higher outputs when all direct children
-need less. Compare it with exact demand activation, not with an assumption that
-exact demand is inherently better. Prefer the simpler envelope if its measured
-cost is small and switching is better. Good network capacity alone does not
-prove spare encoding capacity or cheap lower outputs.
+The owner's 2026-09-07 preference led to comparing the LiveKit-style
+maximum-demand envelope with exact activation on equal terms. The envelope
+keeps the highest requested representation and lower fallbacks active, stopping
+unused upper outputs when all direct children need less. Good network capacity
+alone does not prove spare encoding capacity or cheap lower outputs.
 
 Both policies retain the original source authority and the ability to recover;
 stopping an unneeded high output does not lower capture or discard the best
@@ -145,42 +133,22 @@ retire their resources immediately; warm retention cannot revive a retired sourc
 | Pion mediadevices | Go codec-controller and raw-frame broadcast interface reference | Cgo/native codecs still exist; not a reason to replace the working capture adapters |
 | GStreamer `tee`/queues and codec elements | Shared decode/frame flow and isolated output branches | `webrtcsink` currently encodes per consumer, so it does not directly solve shared derived output |
 
-No candidate has yet demonstrated the complete local derivation, reuse and
-recovery contract. The current inLive probe proves forwarding only. A small SFU
-library does not by itself replace a transcoder. Do not add FFmpeg/GStreamer or
-change the current Native codec stack on documentation claims alone.
+At this review, the inLive probe established forwarding only. Later derivation,
+reuse and recovery results are in [the implementation record](./node-local-media-design.md).
 
 ## Focused Comparison Plan
 
-Use the same source, codec, frame rate and direct-child count for each arm:
+Both component comparisons hold source, codec, cadence and child demand fixed.
+The [Native VP8 probe](./node-local-encoding-probe.md) measures CPU work and
+timestamp-sensitive warm-codec resume. The
+[VP8/H264 decode probe](./node-local-browser-probe.md) adds scaling, two decoders
+and received-source relay derivation. They separate codec lifecycle and
+decode/scale costs from small representation bookkeeping.
 
-1. Healthy children: verify no derived encode is added just for fanout.
-2. One weak child, then two compatible weak children: verify one derived output
-   is sufficient for both and the original branch stays unchanged.
-3. Bandwidth drop/recovery and short oscillation: compare cold versus retained
-   encoder startup, first usable frame, freezes, CPU/GPU, memory and actual RTP
-   traffic. Count extra decoders and CPU/GPU frame copies as well as encoders;
-   Browser-decoded preview frames are not automatically zero-copy Native input.
-   Measure extra IDR/probe traffic, not only the selected bitrate.
-4. Low inherited input on an otherwise healthy edge: distinguish lack of better
-   source from lack of link capacity; exercise higher-input recovery or the
-   existing bounded route operation without a new global optimization loop.
-5. Source replacement, child departure and stop: verify generations and release
-   of decoder/encoder surfaces, tracks and queues.
-
-The first [CPU-only encoder comparison](./node-local-encoding-probe.md) is complete.
-It compares existing Native VP8 encodes and scripted direct-child demand, not
-network adaptation or playback. It supports keeping the maximum-demand envelope
-as a candidate, but also exposes timestamp-sensitive resume behavior in a naive
-warm-encoder composition. Validate mature multi-resolution pause/resume semantics
-before implementing retention. H264 hardware, relay decode/scale and actual
-receiver switching remain open; no production policy changed.
-The subsequent [software-preference decode comparison](./node-local-browser-probe.md)
-now includes VP8/H264, scaling and two real VideoDecoders, plus received-source
-relay derivation. It measures local component readiness only, not WebRTC delivery
-or congestion. The design treats representation bookkeeping as small and puts
-the remaining overhead work in codec lifecycle, shared decode/surfaces and the
-transport library's switching/probing path.
+Actual RTP switching, compatible weak-child sharing, independent recovery,
+source replacement and retirement are recorded in the later implementation and
+encoder-pool evidence. Physical platform limits remain in
+[verification status](../verification-status.md).
 
 ## Primary References
 
@@ -202,16 +170,5 @@ transport library's switching/probing path.
 
 ## 中文确认
 
-核心是“只负责直属下游”：有合适编码就转发，缺少低档才由直属上级按需派生，
-相同需求复用派生输出。不是 Host 为全树预编码所有档位，也不是每条弱边独立
-编码。Host 同样遵守此规则。基准档、常用档的名字不能造成重复编码。
-
-拓扑优化负责修复上游输入质量受限，局部媒体模块负责可用表示的派生、复用和
-选择。稳定传输低画质不等于路径已经最优；现有优化不能直接视为已覆盖这种
-恢复。当前先研究按需/预编码策略及成熟实现，尚未改动生产媒体或路由。
-
-优先把 LiveKit 式“最高需求档及以下保持编码”与精确按需启用作为平等候选，
-不预设后者更优；若常备低档成本小、切换更好，就选择更简单的策略。所有直属
-下游都不需要高档时可以停掉高档输出，但不修改捕获或丢弃最好的输入来源。
-先用已有 VP8 编码器短时测量成本和关键帧启停，不把结果外推成 H264 硬件或
-真实网络验收。具体库、档位与启停时间仍未作为生产决策。
+直属上级转发已有合适编码，按需派生缺少的低档，并复用相同需求的输出。
+本页保留初始策略比较；ADR-0013 已接受最高需求包络，后续实现与实测由链接文档承接。

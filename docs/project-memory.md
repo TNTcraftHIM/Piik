@@ -104,12 +104,9 @@ implementation and routine UI detail.
 
 ## Current Snapshot
 
-Room voice integrates normal App/Server/Web rather than a
-standalone demo. It keeps room authority and one route controller while picture
-generations and explicitly joined voice publications have separate
-lifetimes. [Status](./status.md#current-work)
-indexes delivery and [room media](./standards/routing-transport.md#room-media)
-owns the new behavior.
+Room voice and picture share one route controller with separate publication
+lifetimes, owned by [room media](./standards/routing-transport.md#room-media).
+[Status](./status.md#current-work) indexes the current candidate and release hold.
 
 Optional attended keyboard/mouse control follows the committed media route back
 to the native Host. One source-scoped grant admits one controller; source change,
@@ -117,19 +114,12 @@ stop and revocation retire it. It adds no separate connection planner or listene
 Viewer playback preferences and the combined interaction window remain local
 presentation owners under the existing 2.x compatibility boundary.
 
-The current contract tuple is owned by [status](./status.md#accepted-release-contract).
-Embedded SFU SDP/ICE and demand travel over the
-authenticated room WebSocket, without an external room service or media token.
-Committed first-frame readiness, bounded candidate-relative progress, durable
-room authority and the H.264/VP8 sender gate remain. [Status](./status.md)
-indexes source and deployment evidence; protocol rollback requires
-matching Browser and App artifacts, not only an application symlink.
+The current contract tuple is in [status](./status.md#accepted-release-contract).
+Embedded SFU control uses the authenticated room WebSocket. The routing and media
+owners above define first-frame readiness, candidate progress and codec admission.
 
 Unfinished work is owned by the [TODO ledger](./todo.md).
-[Verification status](./verification-status.md) summarizes material evidence
-boundaries. Environment and initial
-services are owned by [configuration](./standards/configuration.md) and
-[self-hosting](./operations/self-hosting.md); application release is owned by
-[deployment](./deployment.md), with exact deployed identity retained in the
-release descriptor and deployment record.
-Git history and pull requests own completed timelines.
+[Verification status](./verification-status.md) summarizes material evidence limits.
+[Configuration](./standards/configuration.md), [self-hosting](./operations/self-hosting.md)
+and [deployment](./deployment.md) own setup and updates; release metadata and
+operator records retain deployed identity. Git/PRs retain completed history.
