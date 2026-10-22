@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
 import { BackButton, Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
 import { RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
@@ -9,9 +9,6 @@ import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import type { NativeCaptureTarget } from "../native/wire";
 import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
-import { RoomInteractionSession } from "../lib/room-interactions";
-import { createOpaqueId } from "../lib/opaque-id";
-import type { InteractionPayload } from "../../shared/protocol";
 import { REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { SharingSettings } from "../components/living/SharingSettings";
@@ -34,6 +31,7 @@ import { useCopy } from "../ui/copy";
 import { PeoplePreview } from "./PeoplePreview";
 import { RemoteControlsPreview } from "./RemoteControlsPreview";
 import { useRoomVoicePreview } from "./RoomVoicePreview";
+import { usePreviewInteractions } from "./use-preview-interactions";
 import "./controls-preview.css";
 
 const POSTER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360"><rect width="640" height="360" fill="#e8eee6"/><rect x="100" y="60" width="440" height="240" rx="20" fill="#fffdf6"/><path d="M100 100h440" stroke="#c9d7cf" stroke-width="2"/><circle cx="128" cy="81" r="6" fill="#ed9e65"/><circle cx="320" cy="190" r="46" fill="#65b099"/><path d="m310 191 9 9 16-22" fill="none" stroke="#fffdf6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>')}`;
@@ -340,35 +338,14 @@ export function ControlsPreview() {
 }
 
 function InteractionControlsPreview() {
-  const [session, setSession] = useState<RoomInteractionSession | null>(null);
   const [viewer, setViewer] = useState(false);
+  const { session, receiveSample } = usePreviewInteractions(viewer);
   const voice = useRoomVoicePreview(viewer);
   const [crowded, setCrowded] = useState(false);
   const [reaction, setReaction] = useState<ReactionId>("heart");
   const [theater, setTheater] = useTheaterMode();
   const video = useRef<HTMLVideoElement>(null);
   const { t, lang } = useCopy();
-  useEffect(() => {
-    const sender = viewer
-      ? { peerId: "preview-friend", role: "viewer" as const, displayName: "Piik friend" }
-      : { peerId: "preview-host", role: "host" as const, displayName: "Piik" };
-    const model = new RoomInteractionSession(message => {
-      queueMicrotask(() => {
-        if (message.type === "subscribe-room-interactions") model.receive({ type: "room-interactions-ready", serverTime: Date.now() });
-        if (message.type === "send-room-interaction") model.receive({ type: "room-interaction", id: createOpaqueId(),
-          requestId: message.requestId, occurredAt: Date.now(), sender, payload: message.payload });
-      });
-      return true;
-    }, Date.now, REACTION_IDS);
-    model.authenticated(sender.peerId);
-    setSession(model);
-    return () => model.close();
-  }, [viewer]);
-  const receiveSample = (payload: InteractionPayload) => session?.receive({
-    type: "room-interaction", id: createOpaqueId(), requestId: createOpaqueId(), occurredAt: Date.now(),
-    sender: viewer ? { peerId: "preview-host", role: "host", displayName: "Piik" }
-      : { peerId: "preview-friend", role: "viewer", displayName: "Piik friend" }, payload,
-  });
   return <><div className="cp-tools">
     <SwitchItem checked={viewer} onChange={setViewer} label={lang === "en" ? "Viewer perspective" : "观众视角"} />
     <SwitchItem checked={crowded} onChange={setCrowded} label={lang === "en" ? "20 viewers" : "20 位观众"} />

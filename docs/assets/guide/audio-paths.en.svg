@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240" role="img" aria-labelledby="title desc">
+  <title id="title">Two kinds of sound, two controls</title>
+  <desc id="desc">The shared window's picture and sound use playback volume. A microphone uses room voice listening controls.</desc>
+  <style>
+    :root{--ink:#29374a;--blue:#2765ce;--mint:#d9eddf;--orange:#f8dfb2}
+    @media(prefers-color-scheme:dark){:root{--ink:#f6f3eb;--blue:#a7c6ff;--mint:#344d43;--orange:#594b38}}
+    .ink{fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+    text{fill:var(--ink);font:600 20px system-ui,sans-serif}.note{font-size:18px;font-weight:400}
+    .route{fill:none;stroke:var(--blue);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+  </style>
+  <rect width="400" height="112" rx="16" fill="var(--mint)"/>
+  <rect y="128" width="400" height="112" rx="16" fill="var(--orange)"/>
+  <g class="ink">
+    <rect x="48" y="16" width="52" height="36" rx="6"/><path d="M48 28h52M58 22h1m7 0h1M59 44l10-9 9 6 10-7"/>
+    <rect x="64" y="144" width="20" height="30" rx="10"/><path d="M54 164v9a20 20 0 0 0 40 0v-9m-20 29v10m-10 0h20"/>
+  </g>
+  <path class="route" d="M175 55h40m-8-7 8 7-8 7M175 182h40m-8-7 8 7-8 7"/>
+  <text x="18" y="78">Shared window</text>
+  <text class="note" x="18" y="101">picture + sound</text>
+  <text x="237" y="50">Playback</text><text x="237" y="76">volume</text>
+  <text x="18" y="226">Microphone</text>
+  <text x="237" y="177">Voice</text><text x="237" y="203">listening</text>
+</svg>

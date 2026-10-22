@@ -141,13 +141,15 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
               onClick={event => onSelectParticipant(member.peerId, event.currentTarget)}>
               <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />
             </button></Tooltip> : <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />}
-            <div><Tooltip overflow={{ text: member.label, selector: ".lr-voice-name" }}><b><span className="lr-voice-name">{member.label}</span>{member.peerId === state.peerId && <span className={vis ? "visually-hidden" : undefined}>{` · ${t("voice.self")}`}</span>}</b></Tooltip>
-              <small><span className="lr-voice-member-mic" data-speaking={speaking || undefined}>
+            <Tooltip className="lr-voice-name-tip" overflow={{ text: member.label, selector: ".lr-voice-name" }}><b><span className="lr-voice-name">{member.label}</span>{member.peerId === state.peerId && <span className={vis ? "visually-hidden" : undefined}>{` · ${t("voice.self")}`}</span>}</b></Tooltip>
+            <Tooltip kind={member.joined ? member.publicationId ? "hint-voice-microphone-on" : "hint-voice-microphone-off" : "hint-voice-join"}
+              text={vis ? undefined : t(status.label)}>
+              <span className="lr-voice-member-mic" data-speaking={speaking || undefined} tabIndex={0} role="img"
+                aria-label={speaking ? `${t(status.label)} · ${t("voice.speaking")}` : t(status.label)}>
                 <Glyph name={status.icon} size={20} />
                 {member.publicationId && <MicrophoneLevel level={levels.get(member.peerId) ?? 0} />}
               </span>
-                <span className={vis ? "visually-hidden" : undefined}>{t(status.label)}</span>
-                {speaking && <span className="visually-hidden">{t("voice.speaking")}</span>}</small></div>
+            </Tooltip>
           </div>
           {member.peerId !== state.peerId && me?.joined && member.joined && <div className="lr-voice-member-controls">
             <span className="lr-voice-person-volume" aria-hidden="true">{Math.round((state.peerVolumes.get(member.peerId) ?? 1) * 100)}%</span>

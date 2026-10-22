@@ -126,13 +126,12 @@ ul { margin: 0; padding: 0; list-style: none; }
   border-radius: 999px;
   background: var(--wall-2);
 }
-.lr-leds > svg { flex: none; color: var(--muted); }
-.lr-leds[data-state="live"] > svg { color: var(--live); }
-.lr-leds:is([data-state="busy"], [data-state="warn"]) > svg { color: var(--warn); animation: lr-led-turn 1.5s linear infinite; }
-.lr-leds[data-state="bad"] > svg { color: var(--danger); }
+.lr-connection-dots { display: inline-flex; flex: none; align-items: center; gap: 4px; height: 18px; color: var(--muted); }
+.lr-connection-dots > i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.lr-leds[data-state="live"] .lr-connection-dots { color: var(--live); }
+.lr-leds:is([data-state="busy"], [data-state="warn"]) .lr-connection-dots { color: var(--warn); animation: lr-blink 1.5s ease-in-out infinite; }
+.lr-leds[data-state="bad"] .lr-connection-dots { color: var(--danger); }
 .lr-leds-label { margin-left: 4px; font-size: 11.5px; font-weight: 700; opacity: .8; white-space: nowrap; }
-
-@keyframes lr-led-turn { to { transform: rotate(360deg); } }
 
 @keyframes lr-blink { 50% { opacity: .3; } }
 

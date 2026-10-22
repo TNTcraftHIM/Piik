@@ -5,14 +5,23 @@ English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 These tools belong to the room. You can chat before or after a picture share;
 remote control requires an active App window or screen share.
 
+| You want to… | Open… | Before you start |
+| --- | --- | --- |
+| Send a message or reaction | [Interact → Chat](#chat-and-reactions) | Join the room. |
+| Talk with friends | [Interact → Voice](#room-voice) | The Host opens room voice; each speaker enables their own microphone. |
+| Take a turn on the shared computer | [Remote control](#let-a-friend-control-your-shared-screen) | The Host shares an App window/screen and allows control. |
+
 ## Chat and reactions
 
-Once the host creates a room, participants can select **Interact** below the
-sofa to send messages. Select a person on the sofa to open their reaction menu:
-your own reactions appear above you; reactions sent to a friend fly towards them.
-Chat and voice avatars also open a quick reaction menu; **More reactions**
-shows the full palette while the conversation stays available.
-The interaction window can be moved and resized without rearranging the page.
+1. Select **Interact** below the sofa, then open **Chat** and send a message.
+2. Select a person on the sofa or an avatar in Chat/Voice to open their reaction
+   menu. **More reactions** opens the full palette.
+3. Move or resize the interaction window to keep it beside what you are watching.
+
+Your own reactions appear above you; reactions sent to a friend fly towards them.
+
+<details>
+<summary>Keep chat above a game</summary>
 
 Supported desktop browsers show **Open in always-on-top window** in its top-right
 corner. You can read messages, see reactions and select someone to interact with
@@ -20,7 +29,9 @@ while playing. Keep the Piik page open; closing the small window returns it to t
 Use a windowed or borderless game; exclusive fullscreen may cover the window.
 The window cannot show the game through its background or let mouse clicks pass through.
 
-**On screen**, beside the message box or in the viewer's playback bar, shows new
+</details>
+
+**On screen**, beside the message box or in the playback bar, shows new
 messages over the picture. It is off by default and only changes your own view.
 The settings button beside the Chat/Voice tabs opens the current page's settings;
 **Back** returns to that page. **Chat settings** contains text size and opacity.
@@ -42,7 +53,8 @@ Chat travels through the room's server and is **not end-to-end encrypted**.
 3. To speak, select **Microphone** and grant browser access. Joining alone never
    turns on your microphone.
 
-![Room voice with two sample participants. Microphone and listening controls are at the bottom; voice settings are beside the tabs.](../assets/guide/room-voice.en.png)
+![Room voice with two sample participants. Microphone and listening controls are at the bottom; voice settings are beside the tabs.](../assets/guide/room-voice.en.png#gh-light-mode-only)
+![Room voice with two sample participants. Microphone and listening controls are at the bottom; voice settings are beside the tabs.](../assets/guide/room-voice.en.dark.png#gh-dark-mode-only)
 
 *Host view with sample participants. A Viewer sees Leave voice instead of Close room voice.*
 
@@ -51,7 +63,7 @@ LAN HTTP pages can still join and listen. For voice input or remote control over
 a LAN or virtual LAN, see the [virtual-LAN options](./troubleshooting.md#optional-a-virtual-lan).
 
 - **Microphone:** a slashed icon means off; its green fill rises with your input
-  level. Participant labels stay stable, and their microphone icon lights up
+  level. Participant names stay stable, and their microphone icon lights up
   when speech is received.
 - **Listening:** the headphone button pauses room voice only for you. A person's
   speaker button mutes just that person locally. Neither changes your microphone
@@ -69,6 +81,10 @@ Voice stays connected when picture sharing stops. It also stays active when you
 close or detach the interaction window. Viewers choose **Leave voice** to leave;
 the Host's **Close room voice** ends voice for everyone. Reopening does not
 rejoin Viewers or turn on their microphones.
+
+<details>
+<summary>Source sound, echo and remembered settings</summary>
+
 Host speech uses this same room microphone; viewers join voice to hear it.
 Source sound stays with the picture. Room voice favors timely conversation and
 can arrive ahead of a delayed picture. Use headphones; whole-system sound sharing can include
@@ -79,6 +95,8 @@ Microphone and master listening settings stay in this browser on the current
 site; person volumes apply to current room participants. Settings never reopen
 your microphone automatically. Keep noise and echo reduction on for ordinary
 speech, or turn it off when the selected input already processes your voice.
+
+</details>
 
 ## Let a friend control your shared screen
 

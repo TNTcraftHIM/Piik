@@ -7,20 +7,30 @@ and source sound you share, plus controls that affect only your own viewing.
 
 ## Picture and sound settings
 
-Open **Sharing settings** below the picture. Choose a picture preset first;
-expand **Fine-tune picture** to adjust resolution, frame rate, bitrate, picture
-preference or video codec. Resolution is a ceiling: the source keeps its proportions,
-including portrait and ultrawide pictures.
+1. Below the picture, open **Sharing settings → Picture**.
+2. Choose a preset. Use **Fine-tune picture** only when you need a specific
+   resolution, frame rate, bitrate, picture preference or codec.
+3. Open **Sound** to choose the source audio and its output quality.
 
-Sliders cover common values. To go beyond them, enter a custom value within the
-range shown by the field; **Use common range** returns to a nearby slider value.
-Under **Sound**, choose the source audio and its output quality. Actual picture
-and sound still adapt to the source, device and available bandwidth.
+![Sharing settings on the Picture tab, with presets above the collapsed fine-tuning controls.](../assets/guide/sharing-settings.en.png#gh-light-mode-only)
+![Sharing settings on the Picture tab, with presets above the collapsed fine-tuning controls.](../assets/guide/sharing-settings.en.dark.png#gh-dark-mode-only)
+
+*Actual controls with sample settings. Start with a preset; expand only what you need.*
+
+| Setting | What to expect |
+| --- | --- |
+| Resolution | A ceiling. Portrait and ultrawide sources keep their proportions. |
+| Slider or custom value | Sliders cover common values. Type within the field's allowed range for other values; **Use common range** returns to a nearby slider value. |
+| Picture and sound quality | Both still adapt to the source, device and available bandwidth. |
 
 Applied settings are remembered for the current site. Opening Piik through an
 updated App also keeps sharing-quality settings when a public-invite address changes.
 
 ## Cameras and virtual audio inputs
+
+Picture sound and conversation use separate controls. Muting one does not mute the other.
+
+![Source sound travels with the shared picture and uses video volume. A microphone travels through room voice and uses voice listening controls.](../assets/guide/audio-paths.en.svg)
 
 Camera sharing requests only video permission. In the **Camera** tab, allow
 access if asked, then select a picture card. Device names and previews depend
@@ -62,11 +72,13 @@ app to a different playback device.
 
 ## Playback controls
 
-The playback bar changes only your own viewing and listening. Move the pointer
-over the picture or tap it to show the bar.
-The Host has the same local playback controls; its preview starts muted.
-Pausing that preview does not pause the share sent to friends. Use **Pause sharing**
-below the picture to pause sharing for everyone.
+Move the pointer over the picture or tap it to show the playback bar.
+
+| You want to… | Use… | Who is affected? |
+| --- | --- | --- |
+| Pause watching or mute source sound | The playback bar on the picture | Only you. The Host's preview starts muted. |
+| Pause the picture for friends | **Pause sharing**, below the picture | Everyone watching. |
+| Mute your microphone or stop hearing voices | **Interact → Voice** | Your voice controls; separate from picture sound. |
 
 | Control | What it does |
 | --- | --- |

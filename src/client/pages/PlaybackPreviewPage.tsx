@@ -2,10 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
 import { AppHeader } from "../components/living/Header";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { StageOverlay, StageTv } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
+import { useTheaterMode } from "../components/living/use-theater-mode";
 import { STATUS_CATALOG } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
+import { usePreviewInteractions } from "./use-preview-interactions";
+
+type PreviewRole = "host" | "viewer";
 
 function testMedia(withAudio: boolean, portrait: boolean) {
   const canvas = document.createElement("canvas");
@@ -64,12 +69,45 @@ function testMedia(withAudio: boolean, portrait: boolean) {
 }
 
 export function PlaybackPreviewPage() {
+  const { lang } = useCopy();
+  const english = lang === "en";
+  const [role, setRole] = useState<PreviewRole>(() => new URLSearchParams(location.search).get("role") === "host" ? "host" : "viewer");
+  function chooseRole(next: PreviewRole) {
+    const url = new URL(location.href);
+    url.searchParams.set("role", next);
+    history.replaceState(history.state, "", url);
+    setRole(next);
+  }
+  return <div className="lr-app">
+    <AppHeader homeHref={`/__playback-preview?role=${role}`} />
+    <header className="lr-room" style={{ flex: "none", paddingBottom: 0, paddingTop: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+      <h1 style={{ margin: 0 }}>{english ? "Playback controls" : "播放控件预览"}</h1>
+      <div className="lr-toggle" role="group" aria-label={english ? "Preview role" : "预览角色"}>
+        {(["host", "viewer"] as const).map(value => <label key={value}>
+          <input type="radio" name="playback-preview-role" value={value} checked={role === value} onChange={() => chooseRole(value)} />
+          <span>{value === "host" ? english ? "Host preview" : "房主本机预览" : english ? "Viewer playback" : "观众播放"}</span>
+        </label>)}
+      </div>
+      </div>
+      <p>{role === "host" ? english ? "Host playback starts muted. This local video and chat sample opens no room, microphone or screen capture."
+        : "房主本机预览默认静音。仅本机示例画面与消息，不开房间、不访问麦克风、不采集屏幕。"
+        : english ? "Viewer playback and connection settings, with local sample video and messages. No room or capture is opened."
+          : "观众播放与连接设置，使用本机示例画面与消息，不开房间、不采集屏幕。"}</p>
+    </header>
+    <PlaybackSample key={role} role={role} />
+  </div>;
+}
+
+function PlaybackSample({ role }: { role: PreviewRole }) {
   const { lang, t } = useCopy();
   const english = lang === "en";
+  const viewer = role === "viewer";
+  const { session, receiveSample } = usePreviewInteractions(viewer);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRef = useRef<ReturnType<typeof testMedia> | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [theaterMode, setTheaterMode] = useState(false);
+  const [theaterMode, setTheaterMode] = useTheaterMode();
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
@@ -104,26 +142,9 @@ export function PlaybackPreviewPage() {
     if (stream) play();
   }, [stream]);
   useEffect(() => () => mediaRef.current?.stop(), []);
-  useEffect(() => {
-    if (!theaterMode) return;
-    function exit(event: KeyboardEvent) {
-      if (event.key === "Escape" && !event.defaultPrevented) setTheaterMode(false);
-    }
-    document.body.classList.add("lr-theater-open");
-    window.addEventListener("keydown", exit);
-    return () => {
-      document.body.classList.remove("lr-theater-open");
-      window.removeEventListener("keydown", exit);
-    };
-  }, [theaterMode]);
 
-  return <div className="lr-app">
-    <AppHeader homeHref="/__playback-preview" />
-    <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
+  return <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
       {!theaterMode ? <header style={{ margin: "20px 0" }}>
-        <h1>{english ? "Playback controls" : "播放控件预览"}</h1>
-        <p>{english ? "Local test video only. Sound starts only when requested; no room or capture is opened."
-          : "仅本机测试画面；点击才加入轻音量测试音，不开房间、不采集屏幕。"}</p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <button className="lr-btn" type="button" onClick={() => start(false)}>
             {english ? "Start picture only" : "开启无声测试画面"}</button>
@@ -141,24 +162,29 @@ export function PlaybackPreviewPage() {
             setAudioAvailable(!audioAvailable);
           }}>{audioAvailable ? (english ? "Stop audio input, keep track" : "关闭声音输入，保留音轨")
               : (english ? "Restore audio input" : "恢复声音输入")}</button>
+          <button className="lr-btn" type="button" disabled={!stream || waiting || !session} onClick={() => {
+            session?.setOverlayEnabled(true);
+            receiveSample({ kind: "chat", text: english ? "I'm here. Save me a seat!" : "来了，给我留个位置！" });
+          }}>{english ? "Receive sample on-screen chat" : "模拟收到朋友弹幕"}</button>
         </div>
         {error ? <p role="alert">{error}</p> : null}
       </header> : null}
       <div className="lr-scene">
         <StageTv live={Boolean(stream)} label={english ? "Local test picture" : "本机测试画面"}
           indicator={<StatusIndicator status={waiting ? STATUS_CATALOG.joining : stream ? STATUS_CATALOG.connected : STATUS_CATALOG.idle} />}>
-          <video ref={videoRef} playsInline tabIndex={0} inert={!stream} style={{ objectFit: pictureFit }}
+          <video ref={videoRef} playsInline muted={!viewer} tabIndex={0} inert={!stream} style={{ objectFit: pictureFit }}
             aria-label={english ? "Local test video" : "本机测试视频"} />
           {waiting && <StageOverlay dim waiting icon={STATUS_CATALOG.joining.icon} message={t(STATUS_CATALOG.joining.labelKey)} comic={STATUS_CATALOG.joining.comic} />}
+          <RoomChatOverlay session={session} visible={Boolean(stream) && !waiting} />
           <PlaybackControls videoRef={videoRef} stream={stream} audioAvailable={audioAvailable}
-            settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route: { preference: viewerRoute, onChange: setViewerRoute,
-              sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } }}
+            settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route: viewer ? { preference: viewerRoute, onChange: setViewerRoute,
+              sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } : undefined }}
             audioTrackKey={stream?.getAudioTracks().map((track) => track.id).join(",")}
             canPlay={Boolean(stream) && !waiting} theaterMode={theaterMode} onPlay={play}
             onToggleTheater={() => setTheaterMode((value) => !value)}
-            onReconnect={() => start(hasAudio)} reconnectAvailable={Boolean(stream)} />
+            overlayAction={<RoomChatToggle session={session} />}
+            onReconnect={viewer ? () => start(hasAudio) : undefined} reconnectAvailable={viewer && Boolean(stream)} />
         </StageTv>
       </div>
-    </main>
-  </div>;
+    </main>;
 }

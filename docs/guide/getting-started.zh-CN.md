@@ -9,9 +9,18 @@ Piik 支持一位房主分享屏幕，最多 20 位受邀观众通过浏览器�
 [Piik App](#用-piik-app-分享) · [已有站点](#使用已有站点分享) ·
 [房间工具](./room-tools.zh-CN.md) · [问题排查](./troubleshooting.zh-CN.md)
 
-观众只需要浏览器和邀请链接。
-分享画面推荐下载 Piik App，选择 **公网邀请**。
-想免安装，可以打开[在线版](https://demo.piik.tv)，直接在浏览器里创建房间并分享。
+先选适合你的入口：
+
+| 你想做什么 | 从这里开始 |
+| --- | --- |
+| 看朋友的画面 | [打开对方的邀请](#加入朋友的房间)，不必安装。 |
+| 分享给其他网络的朋友 | [Piik App → 公网邀请](#用-piik-app-分享)，保持 App 运行。 |
+| 免安装分享 | 在浏览器里[使用在线版](#使用在线版)。 |
+| 使用你们自己的站点 | [打开已有站点](#使用已有站点分享)，按需连接 App 采集。 |
+
+分享的顺序都一样：**选好画面 → 发出邀请 → 一起看**。
+
+![三个步骤：选择窗口、复制房间邀请、和朋友一起坐上沙发。](../assets/quickstart.svg)
 
 ## 加入朋友的房间
 
@@ -61,7 +70,8 @@ App 的本地房间和临时公网邀请会随本次 App 退出而结束。
    然后选定要分享的画面与声音。
 5. 复制房间邀请发给朋友。分享期间保持 App 和分享标签页打开。
 
-![App 选源界面：浏览器、摄像头、程序 / 窗口和屏幕四种来源，下方为窗口预览与来源声音开关。](../assets/guide/share-source.zh-CN.png)
+![App 选源界面：浏览器、摄像头、程序 / 窗口和屏幕四种来源，下方为窗口预览与来源声音开关。](../assets/guide/share-source.zh-CN.png#gh-light-mode-only)
+![App 选源界面：浏览器、摄像头、程序 / 窗口和屏幕四种来源，下方为窗口预览与来源声音开关。](../assets/guide/share-source.zh-CN.dark.png#gh-dark-mode-only)
 
 *使用示例窗口的 Windows App 选源界面。浏览器和摄像头不依赖 App 采集，其他选项取决于已连接的 App。*
 
@@ -87,7 +97,8 @@ Linux 原生采集还需要[系统组件](../../native/capture/linux/README.md)�
 
 ### 选择 App 模式
 
-![App 模式选择：已选中公网邀请，也可以选择本地房间。](../assets/guide/app-modes.zh-CN.png)
+![App 模式选择：已选中公网邀请，也可以选择本地房间。](../assets/guide/app-modes.zh-CN.png#gh-light-mode-only)
+![App 模式选择：已选中公网邀请，也可以选择本地房间。](../assets/guide/app-modes.zh-CN.dark.png#gh-dark-mode-only)
 
 - **公网邀请：** 给异地朋友发一个临时网页链接。需要互联网连接，关闭 App 后链接失效。
 - **本地房间：** 朋友在同一局域网或虚拟局域网，对方需要能连接到你的电脑。

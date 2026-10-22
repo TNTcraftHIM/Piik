@@ -193,7 +193,14 @@ npm run build:website
 ```
 
 The script captures `/__tooltip-preview` production components with sample data,
-both languages, light theme and reduced motion, then closes its own session.
+both languages, light/dark themes and reduced motion, then closes its own session.
+It crops to the mode selector, source picker, sharing settings, voice panel and
+sample sharing-failure dialog;
+keep each capture beside the task it explains. Markdown uses GitHub's
+`#gh-light-mode-only` / `#gh-dark-mode-only` image hints, which the documentation
+theme also follows when its appearance control changes. Do not invert or tint
+screenshots: capture the actual theme. SVG explanations inherit the page's
+colour scheme and remain sharp at smaller sizes.
 `AGENT_BROWSER_PATH` overrides the CLI path. Inspect `docs/assets/guide/` before
 committing with UI/copy changes. Keep example captions; use no live-room data,
 hand-edited text or duplicate mockups.

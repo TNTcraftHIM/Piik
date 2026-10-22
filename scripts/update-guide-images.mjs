@@ -16,17 +16,21 @@ const run = async (...args) => {
   const { stdout } = await execute(browser, ['--session', 'piik-guide-images', ...args], { timeout: 30000 });
   return stdout;
 };
-const evaluate = script => run('eval', script);
+const evaluate = script => run('eval', '-b', Buffer.from(script).toString('base64'));
 
-async function openSection(section, lang) {
-  await run('open', preview.href);
+async function openSection(section, lang, theme, path = '/__tooltip-preview') {
+  await run('open', new URL(path, preview).href);
   await run('wait', `#${section}`);
   await run('click', `.lr-top button[aria-label="${lang === 'en' ? 'English' : '简体中文'}"]`);
+  await evaluate(`localStorage.setItem('piik:ui-theme', ${JSON.stringify(theme)})`);
+  await run('reload');
+  await run('wait', `#${section}`);
   await evaluate(`(async () => {
     const style = document.createElement('style');
     style.textContent = ${JSON.stringify(`
-      .lr-top, .lr-tooltip-preview > :not(#${section}),
-      #${section} > .cp-section-head, #${section} > .cp-tools { display: none !important; }
+      .lr-top, .lr-tooltip-preview > :not(#${section}):not(:has(#${section})),
+      #control-preview > :not(#${section}),
+      #${section} > header, #${section} > .cp-tools { display: none !important; }
     `)};
     document.head.append(style);
     await document.fonts.ready;
@@ -49,21 +53,32 @@ async function capture(selector, name) {
 await mkdir(output, { recursive: true });
 try {
   await run('set', 'viewport', '1280', '900');
-  await run('set', 'media', 'light', 'reduced-motion');
-  for (const [lang, suffix] of [['en', 'en'], ['zh', 'zh-CN']]) {
-    await openSection('launcher-preview', lang);
-    await capture('.lr-client-modes', `app-modes.${suffix}`);
+  for (const theme of ['light', 'dark']) {
+    await run('set', 'media', theme, 'reduced-motion');
+    for (const [lang, locale] of [['en', 'en'], ['zh', 'zh-CN']]) {
+      const suffix = `${locale}${theme === 'dark' ? '.dark' : ''}`;
+      await openSection('launcher-preview', lang, theme);
+      await capture('.lr-client-modes', `app-modes.${suffix}`);
 
-    await openSection('source-preview', lang);
-    await run('click', '#source-preview .cp-stage-action button');
-    await run('wait', '.lr-source-picker-list img');
-    await capture('#source-preview .cp-stage', `share-source.${suffix}`);
+      await openSection('source-preview', lang, theme);
+      await run('click', '#source-preview .cp-stage-action button');
+      await run('wait', '.lr-source-picker-list img');
+      await capture('#source-preview .cp-stage', `share-source.${suffix}`);
 
-    await openSection('interaction-preview', lang);
-    await run('click', `#interaction-preview button[aria-label="${lang === 'en' ? 'Interact' : '互动'}"]`);
-    await run('wait', '.lr-interaction-panel');
-    await run('click', '.lr-interaction-panel [role="tab"][id$="-voice-tab"]');
-    await capture('.lr-interaction-panel', `room-voice.${suffix}`);
+      await openSection('sharing-preview', lang, theme);
+      await run('click', '#sharing-preview button[aria-controls="preview-sharing-settings"]');
+      await capture('.lr-sharing-panel', `sharing-settings.${suffix}`);
+
+      await openSection('interaction-preview', lang, theme);
+      await run('click', `#interaction-preview button[aria-label="${lang === 'en' ? 'Interact' : '互动'}"]`);
+      await run('wait', '.lr-interaction-panel');
+      await run('click', '.lr-interaction-panel [role="tab"][id$="-voice-tab"]');
+      await capture('.lr-interaction-panel', `room-voice.${suffix}`);
+
+      await openSection('sharing-troubleshooting', lang, theme, '/__status-preview');
+      await run('click', '#sharing-troubleshooting article:first-child button');
+      await capture('dialog.lr-share-help[open]', `share-failure.${suffix}`);
+    }
   }
 } finally {
   await run('close');

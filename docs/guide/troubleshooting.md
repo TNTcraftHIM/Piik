@@ -11,11 +11,19 @@ If it persists, [save a diagnostic report](#reporting-a-problem) before refreshi
 
 ## Common problems
 
-- [Opening App and joining a room](#opening-app-and-joining-a-room): startup, invitation links, certificates and room access.
-- [Starting a share](#starting-a-share): source lists, capture permissions and encoders.
-- [Picture and playback](#picture-and-playback): connection, quality, games and fullscreen.
-- [Sound and browser permissions](#sound-and-browser-permissions): source sound, voice, echo and remote control.
-- [Advanced network checks](#advanced-network-checks): WebRTC, STUN, campus networks and virtual LANs.
+Start at the first thing that fails:
+
+| What you see | Check first |
+| --- | --- |
+| App does not open, or invitation will not load | [App and room entry](#opening-app-and-joining-a-room). |
+| Source picker is missing or sharing will not start | [Source and capture checks](#starting-a-share). |
+| Page opens, but the picture will not connect | [Media connection](#when-video-will-not-connect); a working web page does not prove media can connect. |
+| Picture blurs or stutters | [Picture quality](#picture-blurs-stutters-or-stops). |
+| Picture works, but no game/movie sound | [Source sound](#picture-but-no-source-sound). |
+| Cannot hear a friend, or cannot use the microphone | [Room voice](#cannot-hear-someone-speaking) and [permissions](#microphone-or-remote-controls-are-unavailable). |
+
+Leave [advanced network checks](#advanced-network-checks) until the matching
+symptom's simple checks have failed. Change one thing at a time.
 
 ## Opening App and joining a room
 
@@ -181,6 +189,14 @@ WAF itself needs its own logs; do not disable origin validation to bypass it.
 See [Server deployment](../operations/self-hosting.md) for the configuration.
 
 ## Starting a share
+
+When sharing fails, select the error icon below the TV. It opens the reason,
+checks for that stage and **Copy failure details**; follow the checks before retrying.
+
+![Sharing failure dialog with a sample capture error, suggested checks and the Copy failure details action.](../assets/guide/share-failure.en.png#gh-light-mode-only)
+![Sharing failure dialog with a sample capture error, suggested checks and the Copy failure details action.](../assets/guide/share-failure.en.dark.png#gh-dark-mode-only)
+
+*Sample App capture error. Your message and checks depend on what failed.*
 
 ### No screen picker
 

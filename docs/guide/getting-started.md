@@ -10,9 +10,18 @@ source and an invitation to send.
 [Piik App](#share-with-piik-app) · [Existing site](#share-from-an-existing-site) ·
 [Room tools](./room-tools.md) · [Troubleshooting](./troubleshooting.md)
 
-Viewers need a browser and an invitation. To start sharing, download Piik App
-and choose **Public invite**. To share without installing, open
-[Piik online](https://demo.piik.tv) and create a room in your browser.
+Choose your starting point:
+
+| You want to… | Start here |
+| --- | --- |
+| Watch a friend | [Open their invitation](#join-a-friends-room). No installation. |
+| Share with friends elsewhere | [Piik App → Public invite](#share-with-piik-app). Keep App running. |
+| Share without installing | [Piik online](#use-piik-online), in your browser. |
+| Use your group's site | [Open that site](#share-from-an-existing-site); App capture is optional. |
+
+The sharing flow is the same: **choose a source → send the invitation → watch together**.
+
+![Three steps: pick a window, copy its room invitation, and join friends on the sofa.](../assets/quickstart.svg)
 
 ## Join a friend's room
 
@@ -67,7 +76,8 @@ restrictive networks may load the page but block video.
    **Screens** as available. Pick the actual source and sound option.
 5. Copy and send the room invitation. Keep both the App and sharing tab open.
 
-![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.png)
+![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.png#gh-light-mode-only)
+![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.dark.png#gh-dark-mode-only)
 
 *Windows App source selection with sample windows. Browser and Camera do not
 require App capture; the other tabs depend on the connected App.*
@@ -95,7 +105,8 @@ See the [App guide](../../cmd/piik-app/README.md) for package and runtime detail
 
 ### Choose an App mode
 
-![The App mode selector: Public invite is selected; Local room is the alternative.](../assets/guide/app-modes.en.png)
+![The App mode selector: Public invite is selected; Local room is the alternative.](../assets/guide/app-modes.en.png#gh-light-mode-only)
+![The App mode selector: Public invite is selected; Local room is the alternative.](../assets/guide/app-modes.en.dark.png#gh-dark-mode-only)
 
 - **Public invite:** send a temporary web link to friends elsewhere. It needs
   Internet access and lasts until you close the App.
