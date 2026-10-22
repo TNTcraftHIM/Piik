@@ -116,7 +116,7 @@ App 在独立 Windows 控制台中启动时，启动或运行错误会保留在�
 **为什么网页能打开、屏幕也能采集，却无法分享或观看？**
 
 浏览器设置、扩展或管理策略可能阻止 WebRTC UDP，包括本机网页与 App 之间的媒体连接。
-按文档中心的 [浏览器 WebRTC 排查](../../docs/guide/troubleshooting.zh-CN.md#浏览器限制了-webrtc)操作。
+按文档中心的 [浏览器 WebRTC 排查](../../docs/guide/network.zh-CN.md#浏览器限制了-webrtc)操作。
 特定编码失败时，另见 [Windows H264 排查](../../docs/guide/troubleshooting.zh-CN.md#windows-上-h264-分享失败)。
 
 ### 诊断

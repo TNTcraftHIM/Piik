@@ -61,7 +61,7 @@ Chat travels through the room's server and is **not end-to-end encrypted**.
 
 Microphone capture needs a browser-accepted HTTPS or localhost page; ordinary
 LAN HTTP pages can still join and listen. For voice input or remote control over
-a LAN or virtual LAN, see the [virtual-LAN options](./troubleshooting.md#optional-a-virtual-lan).
+a LAN or virtual LAN, see the [virtual-LAN options](./network.md#optional-a-virtual-lan).
 
 - **Microphone:** a slashed icon means off; its green fill rises with your input
   level. Participant names stay stable, and their microphone icon lights up

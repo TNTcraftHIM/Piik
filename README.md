@@ -83,7 +83,8 @@ Browser capture requires HTTPS or `localhost`. Windows App and desktop browser
 sharing are the primary tested paths. Physical-device coverage for the macOS and
 Linux apps is still limited; [test results and feedback are welcome](https://github.com/TNTcraftHIM/Piik/issues).
 P2P-only modes, including the App's temporary public
-link and the online version, may not connect on restrictive networks.
+link and the online version, may not connect on restrictive networks. For campus
+networks, failed media connections or virtual LANs, see [network checks and connection options](./docs/guide/network.md).
 
 ## Self-hosting
 

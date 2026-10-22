@@ -342,7 +342,7 @@ export const zh = {
   "voice.error.microphoneUnavailable": "此页面无法使用麦克风，请通过 HTTPS 或本机地址访问。",
   "voice.error.microphoneMissing": "没有找到可用的麦克风。",
   "voice.error.microphoneFailed": "未能打开麦克风，请重试。",
-  "voice.error.transport": "语音未能连接，房间仍可继续使用。",
+  "voice.error.transport": "语音未能连接，房间仍可使用。请换个网络或浏览器重试。",
   "voice.error.rejected": "语音操作未获接受，请重新加入语音后重试。",
   "voice.error.closed": "房主尚未开启房间语音。",
   "interaction.settings": "聊天设置",

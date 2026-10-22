@@ -22,10 +22,14 @@ Start at the first thing that fails:
 | Picture works, but no game/movie sound | [Source sound](#picture-but-no-source-sound). |
 | Cannot hear a friend, or cannot use the microphone | [Room voice](#cannot-hear-someone-speaking) and [permissions](#microphone-or-remote-controls-are-unavailable). |
 
-Leave [advanced network checks](#advanced-network-checks) until the matching
+Leave [advanced network checks](./network.md) until the matching
 symptom's simple checks have failed. Change one thing at a time.
 
 ## Opening App and joining a room
+
+[Startup](#app-startup-fails-or-no-page-opens) · [macOS](#macos-blocks-first-launch) ·
+[Public invite / 1033](#public-invitation-fails-or-shows-1033) · [Local invitation](#local-invitation-will-not-open) ·
+[Local certificate](#local-https-certificate-warning) · [Room code](#room-code-does-not-work) · [Room creation 403](#room-creation-returns-403)
 
 ### App startup fails, or no page opens
 
@@ -190,6 +194,9 @@ See [Server deployment](../operations/self-hosting.md) for the configuration.
 
 ## Starting a share
 
+[No picker](#no-screen-picker) · [Missing windows](#app-windows-or-screens-are-missing) ·
+[Source selected, sharing fails](#sharing-does-not-start-after-source-selection) · [H264 failure](#h264-sharing-fails-on-windows)
+
 When sharing fails, select the error icon below the TV. It opens the reason,
 checks for that stage and **Copy failure details**; follow the checks before retrying.
 
@@ -239,7 +246,7 @@ summary and browser diagnostics.
 - **Browser cannot read the source or permission is missing:** keep the source
   open, allow screen recording and select the source again from the sharing page.
   For a camera, also check whether another application has exclusive use of it.
-- **Media connection failed:** check [browser WebRTC settings](#browser-webrtc-restrictions)
+- **Media connection failed:** check [browser WebRTC settings](./network.md#browser-webrtc-restrictions)
   and local network permission. For **room creation HTTP 403**, check [site configuration](#room-creation-returns-403).
 
 
@@ -266,9 +273,13 @@ The Windows preference is a browser-side check, not a guarantee of H264 support.
 Piik App selects its native encoder separately; Chrome's preference does not
 select App's capture GPU. If it still fails, [save reports](#reporting-a-problem)
 with the codec comparison. If both codecs fail, also check
-[WebRTC restrictions](#browser-webrtc-restrictions).
+[WebRTC restrictions](./network.md#browser-webrtc-restrictions).
 
 ## Picture and playback
+
+[No connection](#when-video-will-not-connect) · [Blur / stutter](#picture-blurs-stutters-or-stops) ·
+[Black game capture](#game-capture-is-black-or-sharing-stops) · [Washed-out HDR](#hdr-picture-looks-too-bright-or-washed-out) ·
+[Capture border](#yellow-capture-border-on-windows) · [Fullscreen / sleep](#fullscreen-or-playback-after-sleep)
 
 ### When video will not connect
 
@@ -280,14 +291,14 @@ the message alone does not identify the cause.
    or reopen the invitation. Let each attempt finish. One or two fresh attempts
    are enough to compare; repeated refreshes cannot remove a network restriction.
 2. **Check browser WebRTC settings.** Browser settings, VPNs and privacy extensions
-   can block media for both Host and Viewer. Follow the [WebRTC checks](#browser-webrtc-restrictions).
+   can block media for both Host and Viewer. Follow the [WebRTC checks](./network.md#browser-webrtc-restrictions).
 3. **Try another network**, such as a phone hotspot. Check your VPN/proxy's UDP
    policy; ask the administrator on a managed network.
 4. **Invite a friend on another network.** A Viewer who receives the picture and
    has spare forwarding capacity may give Piik another path to you. Piik chooses
    it automatically; extra people help only when those connections work.
 
-Still failing? Continue with [advanced network checks](#advanced-network-checks)
+Still failing? Continue with [advanced network checks](./network.md)
 and collect reports from the Host and affected Viewer for the same attempt.
 
 ### Picture blurs, stutters or stops
@@ -400,6 +411,9 @@ for current setup details.
 
 ## Sound and browser permissions
 
+[Source sound](#picture-but-no-source-sound) · [Room voice](#cannot-hear-someone-speaking) ·
+[Echo / unwanted sound](#echo-or-unwanted-application-audio) · [Microphone / control permissions](#microphone-or-remote-controls-are-unavailable)
+
 ### Picture but no source sound
 
 1. Unmute the video and check your playback volume.
@@ -419,7 +433,7 @@ In voice-capable builds:
 3. Check whether you paused listening or muted that person locally. These controls
    are separate from video mute; **Pause listening** leaves your microphone on.
 
-If voice reports a connection failure, compare [WebRTC settings](#browser-webrtc-restrictions)
+If voice reports a connection failure, compare [WebRTC settings](./network.md#browser-webrtc-restrictions)
 and another network. Picture playback alone does not establish that voice works.
 For feature availability, see [room voice](./room-tools.md#room-voice).
 
@@ -452,111 +466,23 @@ invite** or an HTTPS site with a trusted certificate.
 
 ## Advanced network checks
 
-### Browser WebRTC restrictions
-
-WebRTC carries Piik's picture and sound. Disabling it or blocking non-proxied UDP
-can prevent viewing and even the local Browser-to-App media connection. Successful
-source selection does not prove that connection works. Hiding local IP addresses
-alone does not necessarily block WebRTC.
-
-1. Open the same invitation in a browser profile with default settings and no
-   VPN/privacy extensions. If that works, check the original profile's WebRTC or
-   IP-leak protection settings.
-2. Restore a policy that allows WebRTC UDP. A policy named `disable_non_proxied_udp`
-   is restrictive; the browser default is a useful comparison. Vivaldi exposes
-   **Settings → Privacy and Security → WebRTC IP Handling → Broadcast IP for Best WebRTC Performance**.
-   Chrome extensions can control this policy even without a visible browser switch.
-3. Reload the affected Piik page and retry. If a school or company manages the
-   setting, ask its administrator to review it.
-
-Allowing these connections can expose network addresses to WebRTC peers; change
-only the relevant setting. See [Chrome's policy reference](https://developer.chrome.com/docs/extensions/reference/api/privacy#property-network)
-and [Vivaldi's privacy settings](https://help.vivaldi.com/desktop/privacy/privacy-settings/).
-
-### STUN, IPv6 and router checks
-
-NAT lets several devices share an Internet address. Some routers or provider
-networks make direct connections harder; firewalls and browser policies can
-also block media. Check the parts you manage:
-
-1. **STUN discovery:** STUN finds addresses for direct connections; it does not
-   relay the picture. An unreachable service can leave chat working while media
-   fails. App Public invite already uses several discovery services; one STUN
-   error does not mean every path failed. Self-hosted administrators should check
-   that `STUN_URLS` points to reachable UDP services. HTTP reverse proxies do not
-   forward STUN. App users can set [`PIIK_STUN_URLS`](../standards/configuration.md#piik-app-configuration)
-   before starting Public invite to replace all built-in discovery addresses.
-   Choose trusted providers, since they see participants' public IP addresses.
-2. **IPv6:** when the provider, router and both devices have usable IPv6, Piik can
-   try that direct path alongside IPv4. Keep IPv4 enabled too; IPv6 still obeys
-   firewall rules.
-3. **Home router:** supported UPnP, PCP or NAT-PMP can let App's native media path
-   request port mappings. Browser-only capture does not request them. If both a
-   modem and router perform NAT, your model's bridge/AP-mode instructions may
-   remove a layer. Back up settings before changing its operating mode.
-   Carrier-grade NAT is upstream; ask your provider about public IPv4 or IPv6.
-
-Router menus vary. See manufacturer guidance on
-[IPv6](https://support.google.com/googlehome/answer/6361450),
-[UPnP](https://support.google.com/googlehome/answer/6274337), and
-[double NAT](https://www.tp-link.com/us/support/faq/3113/), or the
-[WebRTC connection guide](https://webrtc.org/getting-started/peer-connections)
-for discovery details. Compare both peers' reports before assigning a cause.
+If the page opens but picture or voice will not connect, use the [network guide](./network.md). Choose a section below:
 
 ### Campus networks and strict NAT
 
-Compare the same invitation on a phone hotspot first. If it works there, focus
-on the original network's shared gateway or firewall restrictions.
+Choose a connection option for campus or work networks. [View steps](./network.md#campus-networks-and-strict-nat).
 
-For regular use, an operator can [enable SFU media fallback](../operations/self-hosting.md#optional-media-fallback)
-on a self-hosted Piik site. If it offers **Privacy mode**, the Host must turn it
-off before sharing; a site configured for **Server media** already requires SFU.
-Keep App running, open the new site and select **App** to approve local access,
-then send that site's invitation.
+### Browser WebRTC restrictions
 
-The public `demo.piik.tv` site and App **Public invite** provide P2P only. Both P2P
-and SFU media currently need UDP. Deploying a server does not bypass a network
-that blocks media UDP entirely; use another network or ask its administrator.
+Check settings when the same invitation works in another browser. [View steps](./network.md#browser-webrtc-restrictions).
+
+### STUN, IPv6 and router checks
+
+Read discovery logs or check a router you manage. [View steps](./network.md#stun-ipv6-and-router-checks).
 
 ### Optional: a virtual LAN
 
-If hosting a server is inconvenient, you can also try a third-party virtual LAN
-to put your friends on the same virtual network. For example,
-[UU's official guide (Chinese)](https://uu.163.com/blog/lan-multiplayer-guide-net.html)
-offers LAN and general-purpose multiplayer rooms. Choose general-purpose LAN
-networking, rather than acceleration limited to one game. The tool must provide
-reachable virtual IPv4 addresses and carry both Piik's web traffic and WebRTC UDP.
-
-1. Everyone runs the networking tool and joins the same virtual LAN.
-2. If its virtual adapter and IP appear in Piik App's **Local room** address list,
-   the host selects that address and starts sharing. If the page will not open,
-   use [Local invitation checks](#local-invitation-will-not-open) to review
-   Windows firewall permissions for that virtual network.
-3. Send friends the full Piik invitation using that address, not a `localhost`
-   address or just a room code. Check picture and sound after the page opens;
-   a reachable web page does not establish that media UDP works too.
-4. Keep the networking tool running on every device. If its virtual IP changes,
-   select the new address in the App and send a new invitation.
-
-**Local room** sends an HTTPS invitation on the selected virtual IP. Confirm its
-[local certificate](#local-https-certificate-warning) on first access. Microphone,
-camera and remote control can then work without a public tunnel, just as on an
-ordinary LAN. If unavailable, check [browser permissions](#microphone-or-remote-controls-are-unavailable).
-Connection details show the selected media addresses.
-
-Use an updated App for address discovery on routed virtual LANs. This method
-needs a usable virtual address and media UDP; it cannot work with tools that
-forward only game traffic. Firewalls, browser discovery and the third-party
-service still affect availability. Join only with trusted friends.
-
-[ZeroTier](https://docs.zerotier.com/start/) and
-[Tailscale](https://tailscale.com/docs/how-to/quickstart) also create private
-networks. Check device support and the requirements above; these alternatives
-have not been tested with Piik.
-
-For administrators with a public server, the [frp recipe](../operations/self-hosting.md#optional-forward-an-existing-server-with-frp)
-forwards an existing site's web and SFU endpoints through frps. Forwarding the
-web page alone does not forward WebRTC media.
+Use Local room over Tailscale, ZeroTier or UU. [View steps](./network.md#optional-a-virtual-lan).
 
 ## Reporting a problem
 

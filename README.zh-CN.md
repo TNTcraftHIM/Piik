@@ -77,7 +77,7 @@ Piik App 可创建本地房间或临时公网邀请，也能在后台为已授�
 浏览器采集需要 HTTPS 或 `localhost`。目前主要测试 Windows 版 Piik App 和桌面浏览器分享。
 macOS 和 Linux 版 Piik App 仍需更多实机测试，欢迎有设备的朋友试用并[反馈问题](https://github.com/TNTcraftHIM/Piik/issues)。
 Piik App 的公网邀请和在线版使用纯 P2P 连接，
-在受限网络下可能无法连通。
+在受限网络下可能无法连通。校园网、画面连接失败或虚拟局域网的用法，见[网络排查与连接方案](./docs/guide/network.zh-CN.md)。
 
 ## 自行部署
 

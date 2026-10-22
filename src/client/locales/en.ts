@@ -342,7 +342,7 @@ export const en: Record<CopyKey, string> = {
   "voice.error.microphoneUnavailable": "The microphone is unavailable on this page. Use HTTPS or a localhost address.",
   "voice.error.microphoneMissing": "No available microphone was found.",
   "voice.error.microphoneFailed": "The microphone could not be started. Try again.",
-  "voice.error.transport": "Voice could not connect. The room remains open.",
+  "voice.error.transport": "Voice could not connect. The room remains open. Try another network or browser.",
   "voice.error.rejected": "The voice action was not accepted. Rejoin voice and try again.",
   "voice.error.closed": "The Host has not opened room voice.",
   "interaction.settings": "Chat settings",

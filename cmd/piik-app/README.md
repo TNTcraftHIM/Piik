@@ -144,7 +144,7 @@ redirected or automated runs exit directly.
 
 Browser settings, extensions or managed policies can block WebRTC UDP, including
 the local Browser-to-App media connection. Follow the documentation center's
-[browser WebRTC checks](../../docs/guide/troubleshooting.md#browser-webrtc-restrictions).
+[browser WebRTC checks](../../docs/guide/network.md#browser-webrtc-restrictions).
 For codec-specific failures, see [Windows H264 troubleshooting](../../docs/guide/troubleshooting.md#h264-sharing-fails-on-windows).
 
 ### Diagnostics

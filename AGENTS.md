@@ -10,7 +10,9 @@ usability, coherence, maintainability and appropriate extensibility.
 
 Before changing behavior or presentation, establish the intended user flow,
 state/resource owner, lifecycle and what would demonstrate a complete result.
-Inspect existing components and mature approaches, then choose the simplest
+Inspect existing components. For non-trivial design or debugging, first consult
+relevant standards, mature implementations and primary evidence; establish why
+the approach fits Piik rather than relying on intuition alone. Choose the simplest
 coherent design that meets those needs. Simplicity must not discard requested
 functionality, visual quality or necessary safety. Design and verify at the
 scale of the change; routine design choices within an authorized task need no
@@ -124,8 +126,8 @@ invocation; follow their relevant guidance without importing unrelated workflows
   storage and live generations, and owns the public compatibility design.
   Preserve published compatibility promises; remove replaced private experiments
   without aliases, dual readers/writers or migrations for stale private clients.
-- Use primary sources for non-trivial design and bugs. Add focused tests in
-  proportion to risk; batch full browser/network/endurance checks at acceptance.
+- Add focused tests in proportion to risk; batch full browser/network/endurance
+  checks at acceptance.
 - Keep scripts deterministic, fast, cross-platform and CI-runnable.
 - Before finishing material work, inspect status, report untracked artifacts,
   and stage requested files unless told otherwise.

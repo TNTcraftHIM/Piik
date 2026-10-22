@@ -7,10 +7,18 @@
 
 ## 开始使用
 
-- **看朋友的分享：** [打开邀请链接](./getting-started.zh-CN.md#加入朋友的房间)，无须安装。
-- **分享自己的屏幕：** [下载 Piik App](https://piik.tv/?lang=zh-CN#download)，再按 [App 使用步骤](./getting-started.zh-CN.md#用-piik-app-分享)操作。
-- **免安装使用：** 打开[在线版](https://demo.piik.tv)，参阅[在线版教程](./getting-started.zh-CN.md#使用在线版)。
-- **使用已有的 Piik 站点：** [配合 App 使用，或直接在浏览器中分享](./getting-started.zh-CN.md#使用已有站点分享)。
+<div class="guide-task-index">
+
+- **[看朋友的分享](./getting-started.zh-CN.md#加入朋友的房间)**<br>
+  打开邀请链接，用电脑或手机浏览器观看，无须安装。
+- **[分享自己的屏幕](./getting-started.zh-CN.md#用-piik-app-分享)**<br>
+  下载并运行 Piik App，选好画面，发送邀请。
+- **[免安装使用](./getting-started.zh-CN.md#使用在线版)**<br>
+  在在线版中分享屏幕或摄像头。
+- **[使用已有站点](./getting-started.zh-CN.md#使用已有站点分享)**<br>
+  直接用浏览器分享，也可连接 App 使用更多功能。
+
+</div>
 
 ## 使用房间工具
 
@@ -20,12 +28,11 @@
 
 ## 遇到问题
 
-[问题排查](./troubleshooting.zh-CN.md)按打不开 App 或邀请、无法开始分享、画面与声音、
-媒体连接等现象分类。先看对应的常规步骤，需要时再进入进阶网络排查。
+- **App、分享或声音异常：** 从[问题排查的症状索引](./troubleshooting.zh-CN.md#常见问题)开始。
+- **校园网、画面连不上或虚拟局域网：** 查看[进阶网络排查](./network.zh-CN.md)，按现象选择连接方案。
 
 仍然没解决？可以[反馈问题](https://github.com/TNTcraftHIM/Piik/issues/new/choose)，
-附上版本、系统、浏览器和复现步骤。需要收集报告时，参阅
-[诊断说明](../../cmd/piik-app/README.zh-CN.md#诊断)。
+附上版本、系统、浏览器和复现步骤。需要收集报告时，按[反馈说明](./troubleshooting.zh-CN.md#反馈问题)导出。
 
 ## 为朋友搭建站点
 

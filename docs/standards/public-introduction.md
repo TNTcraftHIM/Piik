@@ -31,9 +31,9 @@ platforms, audience size, sound and sharing across networks. Order them along
 the visitor's decisions: device and installation requirements, joining friends,
 shared media, then advanced hosting. Keep related questions together and place
 material limitations beside their answers. Specific errors and recovery procedures
-belong in the troubleshooting guide, linked directly from the header, the end
-of the FAQ and the footer in the selected language. Keep these steps in one
-reader guide; App references link to it rather than maintaining a second copy.
+belong in the troubleshooting and network guides, linked from the header,
+FAQ and footer in the selected language. App references link to the relevant
+guide rather than maintaining a second copy.
 Do not duplicate troubleshooting steps on the homepage.
 
 Search titles, descriptions and repository topics describe the actual product:
@@ -41,6 +41,31 @@ private screen sharing, watching together and optional self-hosting. Use natural
 Chinese and English phrases in the relevant introduction; preserve the brand
 line in the visible headline. Follow [Google's title guidance](https://developers.google.com/search/docs/appearance/title-link):
 avoid keyword lists, unrelated product names and unsupported performance claims.
+
+## Reader guidance
+
+Use [Diátaxis](https://diataxis.fr/how-to-guides/) to distinguish first-use
+tutorials, task instructions, explanations and configuration reference. Keep
+the public site and README focused on choosing an entry; guides supply the steps.
+Apply these rules in the rendered page as well as its Markdown:
+
+- Start with the reader's task or visible symptom. Put prerequisites and the
+  next useful action before optional mechanisms; keep essential safety and
+  success checks beside the action, outside optional disclosures.
+- Give long pages linked section indexes and descriptive, parallel headings.
+  Separate substantial tasks when one page's outline becomes hard to scan.
+- Put diagrams or real UI captures beside the step or relationship they explain.
+  Keep necessary text available without the image; remove decorative repetition.
+- Use formal, direct instructions and consistent UI labels. Check that a reader
+  can choose the right entry, perform the task and find the next check on mobile.
+
+References reviewed 2026-10-22:
+[Microsoft's scannable-content and navigation guidance](https://learn.microsoft.com/en-us/style-guide/scannable-content/),
+[Google's large-document course](https://developers.google.com/tech-writing/two/large-docs),
+[W3C's headings and link guidance](https://www.w3.org/WAI/tips/writing/), and
+[Mayer and Fiorella's coherence, signaling and spatial-contiguity principles](https://doi.org/10.1017/9781108894333.019).
+These inform design choices; Piik's rendered acceptance establishes usability,
+not a general claim about attention or clinical outcomes.
 
 ## Presentation
 

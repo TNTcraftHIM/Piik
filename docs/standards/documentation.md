@@ -45,8 +45,9 @@ The public documentation website renders selected repository Markdown without
 owning another copy. Its [reader index](../guide/README.md) serves usage and support;
 the repository map remains the developer/maintainer entry. The
 [website runbook](../operations/website.md#documentation-build) owns generation and
-publication. Keep all troubleshooting procedures in their guide, with short links
-from introductions rather than duplicate answers.
+publication. General symptoms and report collection belong to the troubleshooting
+guide; browser/network connection procedures belong to the network guide.
+Introductions and the general guide link to those procedures rather than duplicate them.
 
 ## Updating A Rule
 

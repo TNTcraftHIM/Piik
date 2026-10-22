@@ -204,7 +204,7 @@ node scripts/update-guide-images.mjs http://127.0.0.1:5173
 npm run build:website
 ```
 
-The script first regenerates the audio-path diagrams from the product icon and
+The script first regenerates the audio and network diagrams from the product icon and
 palette owners, then captures `/__tooltip-preview` production components with sample data,
 both languages, light/dark themes and reduced motion, then closes its own session.
 It crops to the mode selector, source picker, sharing settings, voice panel and
@@ -214,7 +214,7 @@ keep each capture beside the task it explains. Markdown uses GitHub's
 theme also follows when its appearance control changes. Do not invert or tint
 screenshots: capture the actual theme. SVG explanations inherit the page's
 colour scheme and remain sharp at smaller sizes. `scripts/update-guide-diagrams.tsx`
-generates the audio-path SVGs and embeds the shared palette in the three-step
+generates the audio-path, network-path and virtual-LAN SVGs and embeds the shared palette in the three-step
 illustration; `build:website` checks these generated parts for source freshness.
 Adjust capture viewport/panel size to show complete choices and avoid unused space;
 do not edit controls or labels inside the saved image.

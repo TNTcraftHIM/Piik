@@ -23,6 +23,11 @@
 .vp-doc a { text-underline-offset: 3px; }
 .vp-doc :is(p, a) { overflow-wrap: anywhere; }
 .vp-doc td { overflow-wrap: break-word; }
+.vp-doc .guide-task-index > ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 0; }
+.vp-doc .guide-task-index > ul > li { margin: 0; padding: 14px 18px; list-style: none; border: 1px solid var(--line); border-radius: 12px; }
+@media (max-width: 640px) {
+  .vp-doc .guide-task-index > ul { grid-template-columns: 1fr; }
+}
 .vp-doc .guide-control-reference :is(th, td):first-child { min-width: 8em; }
 /* The same Markdown theme hints also work when the guides are read on GitHub. */
 html:not(.dark) .vp-doc img[src$="#gh-dark-mode-only"],
