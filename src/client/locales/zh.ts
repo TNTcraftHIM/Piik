@@ -306,7 +306,6 @@ export const zh = {
   "voice.join": "加入语音",
   "voice.settings": "语音设置",
   "voice.details.title": "房间语音",
-  "voice.details.closed": "尚未开启",
   "voice.details.joined": "已加入语音",
   "voice.details.unavailable": "语音线路不可用",
   "voice.details.partial": "部分语音未连通",

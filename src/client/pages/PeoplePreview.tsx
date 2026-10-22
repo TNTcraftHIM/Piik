@@ -39,7 +39,7 @@ export function PeoplePreview() {
   const [longNames, setLongNames] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(initialMode !== "mixed");
   const hostName = en ? "Amu" : "阿沐";
   const peerCount = Math.max(1, Math.floor(count * .6));
   const sourceActive = !["room", "voice", "stopped"].includes(mode);
@@ -73,7 +73,7 @@ export function PeoplePreview() {
   const roomVoice = voice?.getSnapshot().room;
   const connectionFor = (viewer: (typeof viewers)[number]) => participantConnection(viewer, sourceActive, roomVoice);
   const routeFor = (viewer: (typeof viewers)[number]) => {
-    const upstream = connectionFor(viewer).upstream;
+    const upstream = viewer.upstream;
     return upstream.kind === "none" ? null : upstream.kind === "sfu" ? "sfu" as const : "p2p" as const;
   };
   const selectable = viewers.filter((viewer) => {
@@ -86,7 +86,10 @@ export function PeoplePreview() {
     status: deriveParticipantStatus(viewer, sourceActive, undefined, roomVoice), selectable: selectable.includes(viewer.peerId),
   }));
   const selectedViewer = viewers.find((viewer) => viewer.peerId === selected && selectable.includes(viewer.peerId));
-  const select = (key: string) => setSelected((current) => current === key ? null : key);
+  const select = (key: string) => {
+    setSelected((current) => current === key ? null : key);
+    setOverviewOpen(true);
+  };
   return <section id="people-preview" className="cp-section">
     <header className="cp-section-head"><span className="cp-number">05</span><div>
       <h2>{en ? "A seat for everyone" : "人多，也坐得下。"}</h2>
@@ -124,22 +127,22 @@ export function PeoplePreview() {
     {!sourceActive && <p className="cp-note">{en
       ? voiceActive ? "Voice routes stay visible without a picture. Select a person to inspect their route." : "Everyone is in the room. Media connections begin when sharing or voice starts."
       : voiceActive ? "没有分享画面时，语音线路仍会显示。点击小人查看对应连接。" : "大家都在房间里。开始分享或加入语音后，再建立媒体连接。"}</p>}
+    <details className="cp-disclosure" open={overviewOpen} onToggle={event => setOverviewOpen(event.currentTarget.open)}>
+      <summary>{t("host.details")}</summary>
+      {overviewOpen && <VoiceConnectionDetails voice={voice?.getSnapshot()} />}
+      {overviewOpen && view === "host" && count > 0 ? <ViewerOverview entries={entries.map((entry, index) => ({ ...entry, metrics: null,
+        route: sourceActive ? routeFor(viewers[index]!) : null,
+      }))} pictureActive={sourceActive} voice={voice?.getSnapshot()} selectedKey={selectedViewer?.peerId ?? null} onSelect={select} /> : null}
+      {overviewOpen && selectedViewer ? <PawnDetail pawnKey={selectedViewer.peerId} name={selectedViewer.label}
+        route={sourceActive ? routeFor(selectedViewer) : null}
+        direction="send" expanded={expanded} onToggleMetrics={setExpanded} onClose={() => setSelected(null)}>
+        <VoiceConnectionDetails voice={voice?.getSnapshot()} peerId={selectedViewer.peerId} />
+      </PawnDetail> : null}
+    </details>
     <div className="cp-connection-panel">
-      {voice ? <VoiceConnectionDetails session={voice} /> : null}
       <RouteTree hostPeerId={HOST_ID} hostLabel={hostName} viewers={viewers} pictureActive={sourceActive} voice={voice}
         selfPeerId={view === "viewer" ? self : HOST_ID} selectedPeerId={selectedViewer?.peerId}
         selectablePeerIds={selectable} onSelectPeer={select} />
     </div>
-    {selectedViewer ? <PawnDetail pawnKey={selectedViewer.peerId} name={selectedViewer.label}
-      route={sourceActive ? routeFor(selectedViewer) : null}
-      direction="send" expanded={expanded} onToggleMetrics={setExpanded} onClose={() => setSelected(null)}>
-      <VoiceConnectionDetails session={voice} peerId={selectedViewer.peerId} />
-    </PawnDetail> : null}
-    {view === "host" && count > 0 ? <details className="cp-disclosure" onToggle={event => setOverviewOpen(event.currentTarget.open)}>
-      <summary>{t("host.viewerOverview")}</summary>
-      {overviewOpen ? <ViewerOverview entries={entries.map((entry, index) => ({ ...entry, metrics: null,
-        route: routeFor(viewers[index]!),
-      }))} selectedKey={selectedViewer?.peerId ?? null} onSelect={select} /> : null}
-    </details> : null}
   </section>;
 }

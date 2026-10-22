@@ -36,8 +36,8 @@ import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preference
 import type { VideoFit } from "../media/video-geometry";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
-import { useRoomVoiceState } from "../room-voice/use-room-voice-state";
-import { VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
+import { useRoomVoiceSnapshot } from "../room-voice/use-room-voice-state";
+import { describeVoiceConnection, VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { HostAudio } from "../media/host-audio";
 import {
@@ -393,7 +393,9 @@ export function HostPage({
   const audioAvailableRef = useRef(false);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
-  const roomVoice = useRoomVoiceState(roomVoiceSession);
+  const roomVoiceSnapshot = useRoomVoiceSnapshot(roomVoiceSession);
+  const roomVoice = roomVoiceSnapshot?.connected ? roomVoiceSnapshot.room : null;
+  const ownVoiceConnection = describeVoiceConnection(roomVoiceSnapshot);
   const [cameraDevice, setCameraDevice] = useState("");
   const [nativeActive, setNativeActive] = useState(false);
   const [remoteControlState, setRemoteControlState] = useState<RemoteControlState | null>(null);
@@ -3649,7 +3651,7 @@ export function HostPage({
     },
   );
   const hostDiagnosticsAvailable = Boolean(
-    (details && (stream || nativeActive)) || roomVoiceSession || viewerOverviewEntries.length > 0,
+    showConnectionDetails || (details && (stream || nativeActive)) || ownVoiceConnection || viewerOverviewEntries.length > 0,
   );
 
   const noticeText = noticeValue
@@ -4462,12 +4464,14 @@ export function HostPage({
               </div>
             </Row>
           ) : null}
-          {showConnectionDetails && roomVoiceSession ? (
-            <Row sub><VoiceConnectionDetails session={roomVoiceSession} /></Row>
+          {showConnectionDetails && ownVoiceConnection ? (
+            <Row sub><VoiceConnectionDetails voice={roomVoiceSnapshot} /></Row>
           ) : null}
-          {showConnectionDetails && phase === "live" && viewerOverviewEntries.length > 0 ? (
+          {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
             <ViewerOverview
               entries={viewerOverviewEntries}
+              pictureActive={phase === "live"}
+              voice={roomVoiceSnapshot}
               selectedKey={selectedPawn}
               onSelect={(peerId) =>
                 setSelectedPawn((current) =>
@@ -4489,7 +4493,7 @@ export function HostPage({
               onToggleMetrics={setMetricsExpanded}
               onClose={() => setSelectedPawn(null)}
             >
-              <VoiceConnectionDetails session={roomVoiceSession} peerId={selectedViewer.peerId} />
+              <VoiceConnectionDetails voice={roomVoiceSnapshot} peerId={selectedViewer.peerId} />
             </PawnDetail>
           ) : null}
           {showTopology ? (

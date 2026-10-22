@@ -7,6 +7,8 @@ import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { Tooltip } from "./Tooltip";
 import { METRIC_PRESENTATION, type MetricLabel } from "./metric-presentation";
+import type { RoomVoiceSnapshot } from "../../room-voice/session";
+import { describeVoiceConnection } from "../../room-voice/VoiceConnectionDetails";
 
 export interface ViewerOverviewEntry {
   key: string;
@@ -24,12 +26,17 @@ export function ViewerOverview({
   entries,
   selectedKey,
   onSelect,
+  pictureActive,
+  voice,
 }: {
   entries: readonly ViewerOverviewEntry[];
   selectedKey: string | null;
   onSelect: (key: string) => void;
+  pictureActive: boolean;
+  voice?: RoomVoiceSnapshot | null;
 }) {
   const { t, vis } = useCopy();
+  const voiceActive = voice?.room?.enabled === true;
   const unknown = vis ? "—" : t("stats.unknown");
   const numberValue = (
     value: number | null | undefined,
@@ -47,19 +54,22 @@ export function ViewerOverview({
 
   return (
     <section
-      className="lr-viewer-overview"
+      className={`lr-viewer-overview${pictureActive ? " has-picture" : ""}${voiceActive ? " has-voice" : ""}`}
       id="host-viewer-overview"
       aria-label={t("host.viewerOverview")}
     >
       <div className="lr-viewer-overview-scroll">
         <div className="lr-viewer-overview-head">
           <span>{vis ? <Glyph name="users" size={14} /> : t("common.viewers")}</span>
+          {pictureActive && <>
           <span>{vis ? <Glyph name="tv" size={14} /> : t("host.settings.picture")}</span>
           {heading("stats.resolution")}
           {heading("stats.fps")}
           {heading("stats.bitrate")}
           {heading("stats.loss")}
           {heading("stats.rtt")}
+          </>}
+          {voiceActive && <span>{vis ? <Glyph name="headphones" size={14} /> : t("voice.details.title")}</span>}
         </div>
         <div className="lr-viewer-overview-body">
           {entries.map((entry) => {
@@ -73,6 +83,9 @@ export function ViewerOverview({
               ? formatPacketLossPercent(metrics.packetLossPercent, unknown)
               : unknown;
             const rtt = numberValue(metrics?.rttMs, 0, " ms");
+            const voiceDetail = describeVoiceConnection(voice, entry.key);
+            const voiceLabel = t(voiceDetail?.status.labelKey ?? "voice.outside");
+            const voiceRoute = voiceDetail?.upstream.kind === "peer" ? "P2P" : voiceDetail?.upstream.kind === "sfu" ? "SFU" : null;
             const route =
               entry.route === "sfu"
                 ? "SFU"
@@ -84,7 +97,8 @@ export function ViewerOverview({
                 type="button"
                 className={`lr-viewer-overview-row${selectedKey === entry.key ? " is-selected" : ""}`}
                 aria-pressed={selectedKey === entry.key}
-                aria-label={`${entry.name} · ${statusLabel} · ${route}`}
+                aria-label={[entry.name, statusLabel, pictureActive ? route : null,
+                  voiceActive ? `${t("voice.details.title")} · ${voiceRoute ?? voiceLabel}` : null].filter(Boolean).join(" · ")}
                 onClick={() => onSelect(entry.key)}
               >
                 <span className="lr-viewer-overview-person">
@@ -98,7 +112,7 @@ export function ViewerOverview({
                     {vis ? null : <small>{statusLabel}</small>}
                   </span>
                 </span>
-                <span className={`lr-viewer-overview-route is-${entry.route ?? "pending"}`}>
+                {pictureActive && <><span className={`lr-viewer-overview-route is-${entry.route ?? "pending"}`}>
                   <Glyph
                     name={
                       entry.route === "sfu"
@@ -128,6 +142,13 @@ export function ViewerOverview({
                 <span>{bitrate}</span>
                 <span>{loss}</span>
                 <span>{rtt}</span>
+                </>}
+                {voiceActive && <span className="lr-viewer-overview-voice" data-tone={voiceDetail?.status.tone ?? "off"}>
+                  <Glyph name={voiceDetail?.status.icon ?? "headphonesOff"} size={14} />
+                  <span><b className={!voiceRoute && vis ? "visually-hidden" : undefined}>{voiceRoute ?? voiceLabel}</b>
+                    {voiceRoute && <small className={vis ? "visually-hidden" : undefined}>{voiceLabel}</small>}
+                  </span>
+                </span>}
               </button>
             );
             return (

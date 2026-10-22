@@ -95,8 +95,10 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   ready. Idle room members remain visible without a media edge or pending
   treatment. Committed picture or room-voice upstreams supply the displayed
   routes; confirmed interruption follows the shared status projection.
-  Connection details group picture/source sound and room voice separately,
-  with each group's own route, state and available metrics.
+- Connection details: fields and overview columns follow the current media
+  consumers. Show picture/source-sound information while sharing, voice
+  information for joined voice participants, and both when both are used.
+  Each group retains its own route, state and available metrics.
 - Title: keeps the primary activity, with a compact warning for an applicable
   problem. Losing focus alone never means waiting for media.
 - Recovery: every projection is recomputed from current facts. A warning requires

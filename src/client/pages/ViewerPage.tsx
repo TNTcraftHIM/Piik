@@ -31,9 +31,9 @@ import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
-import { useRoomVoiceState } from "../room-voice/use-room-voice-state";
+import { useRoomVoiceSnapshot } from "../room-voice/use-room-voice-state";
 import { participantConnection } from "../lib/participant-connection";
-import { VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
+import { describeVoiceConnection, VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { getRuntimeCapabilities } from "../lib/api";
 import { participantColor } from "../components/living/participant-color";
@@ -280,7 +280,9 @@ export function ViewerPage({
   const signalRef = useRef<SignalingClient | null>(null);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
-  const roomVoice = useRoomVoiceState(roomVoiceSession);
+  const roomVoiceSnapshot = useRoomVoiceSnapshot(roomVoiceSession);
+  const roomVoice = roomVoiceSnapshot?.connected ? roomVoiceSnapshot.room : null;
+  const ownVoiceConnection = describeVoiceConnection(roomVoiceSnapshot);
   const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
@@ -2562,8 +2564,9 @@ export function ViewerPage({
                     expanded={showConnectionDetails}
                     controls="viewer-details-panel"
                     disabled={
+                      !showConnectionDetails &&
                       !routePresentation.route &&
-                      !roomVoiceSession &&
+                      !ownVoiceConnection &&
                       !relaySnapshot &&
                       freshRelayChildEvidence.length === 0
                     }
@@ -2608,7 +2611,7 @@ export function ViewerPage({
                   />
                 ) : null}
               </Row> : null}
-              {roomVoiceSession ? <Row sub><VoiceConnectionDetails session={roomVoiceSession} /></Row> : null}
+              {ownVoiceConnection ? <Row sub><VoiceConnectionDetails voice={roomVoiceSnapshot} /></Row> : null}
             </div>
           ) : null}
           {showConnectionDetails && relaySnapshot ? (
@@ -2651,7 +2654,7 @@ export function ViewerPage({
               onToggleMetrics={setPawnMetricsExpanded}
               onClose={() => setSelectedPawn(null)}
             >
-              <VoiceConnectionDetails session={roomVoiceSession} peerId={selectedRelayChild.peerId} />
+              <VoiceConnectionDetails voice={roomVoiceSnapshot} peerId={selectedRelayChild.peerId} />
             </PawnDetail>
           ) : null}
           {showTopology && labeledHostPresence ? (

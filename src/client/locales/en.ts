@@ -306,7 +306,6 @@ export const en: Record<CopyKey, string> = {
   "voice.join": "Join voice",
   "voice.settings": "Voice settings",
   "voice.details.title": "Room voice",
-  "voice.details.closed": "Not open",
   "voice.details.joined": "Joined voice",
   "voice.details.unavailable": "Voice path unavailable",
   "voice.details.partial": "Some voices not connected",
