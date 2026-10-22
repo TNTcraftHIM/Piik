@@ -166,10 +166,10 @@ async function main(): Promise<void> {
     })()`, Date.now() + 3000), Boolean, 5000);
     await button(participant, "Show connection details");
     await waitForSample(() => evaluate<boolean>(cdp!, participant, `(() => {
-      const details=document.querySelector('.lr-voice-connection-details');
-      return !!details&&/Voice connected|Joined voice/.test(details.textContent)&&!document.querySelector('.lr-pawn-detail-picture')&&
-        !/\\d+(\\.\\d+)? fps/.test(details.textContent)&&
-        details.textContent.includes(String(window.__roomVoiceGate.voice.bitrate/1000)+' kbps');
+      const details=[...document.querySelectorAll('.lr-media-detail')].filter(node=>node.getAttribute('aria-label')?.startsWith('Voice'));
+      return details.length>0&&details.every(node=>!node.textContent.includes(' fps'))&&
+        details.some(node=>[...node.querySelectorAll('button[aria-label]')].some(cell=>/^Audio bitrate .*\\d+ kbps$/.test(cell.getAttribute('aria-label'))))&&
+        details.some(node=>[...node.querySelectorAll('button[aria-label]')].some(cell=>/^RTT .*\\d+ ms$/.test(cell.getAttribute('aria-label'))));
     })()`, Date.now() + 3000), Boolean, 5000);
     await ui(participant, "screenshot", join(OUTPUT, `${arm}-${name}.png`), "--full");
     await button(participant, "Hide connection details");

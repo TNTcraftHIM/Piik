@@ -6,6 +6,17 @@ import { ViewerAudio } from "../media/viewer-audio";
 import { configureAudioSender, audioSenderCeiling } from "../media/quality";
 import { preferRoomVoiceAudio } from "../webrtc/opus-receive-sdp";
 import { addRemoteIceCandidate, iceServersWithNatPrediction, natPredictionSurveyUrls, NatPredictionCandidateEmitter } from "../webrtc/nat-prediction";
+import { collectConnectionMetricsFromReport, createStatsAccumulator, type StatsAccumulator } from "../webrtc/stats";
+import type { ConnectionMetrics } from "../types";
+
+export interface VoiceConnectionMetric {
+  connectionId: string;
+  peerId: string;
+  viaPeerId: string | null;
+  direction: "send" | "receive";
+  route: "p2p" | "sfu";
+  metrics: ConnectionMetrics;
+}
 
 type VoiceSignal = Extract<ClientMessage, { type: "room-voice-signal" }>;
 interface Connection {
@@ -23,6 +34,7 @@ interface Connection {
   offerRevision: number;
   remoteRevision: number;
   reported: RTCPeerConnectionState | null;
+  metrics: Map<string, StatsAccumulator>;
 }
 interface Received {
   connectionId: string;
@@ -75,6 +87,37 @@ export class BrowserVoiceEndpoint {
       }
     }));
     return levels;
+  }
+  async connectionMetrics(): Promise<readonly VoiceConnectionMetric[]> {
+    const connections = [...this.connections.values()].filter(connection => !connection.config.pending && connection.pc.connectionState === "connected");
+    const samples = await Promise.all(connections.map(async connection => {
+      const report = await connection.pc.getStats();
+      if (!this.current(connection) || connection.config.pending || connection.pc.connectionState !== "connected") return [];
+      const samples: VoiceConnectionMetric[] = [], retained = new Set<string>();
+      const { config } = connection;
+      const viaPeerId = config.transport === "sfu" ? null : config.parentPeerId === this.peerId ? config.childPeerId : config.parentPeerId ?? null;
+      const sample = (publicationId: string, track: MediaStreamTrack, direction: "send" | "receive") => {
+        const publication = this.state?.publications.find(publication => publication.id === publicationId);
+        if (!publication || track.readyState === "ended") return;
+        const key = `${direction}/${publicationId}`;
+        retained.add(key);
+        const previous = connection.metrics.get(key) ?? createStatsAccumulator();
+        connection.metrics.set(key, previous);
+        samples.push({ connectionId: config.connectionId, peerId: publication.peerId, viaPeerId,
+          direction, route: config.transport === "sfu" ? "sfu" : "p2p",
+          metrics: collectConnectionMetricsFromReport(report, direction, previous,
+            { kind: "audio", trackIdentifier: track.id, audioTrackIdentifier: track.id }) });
+      };
+      for (const binding of this.received.values()) {
+        if (binding.connectionId === config.connectionId && config.receive.includes(binding.publicationId)) sample(binding.publicationId, binding.track, "receive");
+      }
+      for (const [publicationId, sender] of connection.senders) {
+        if (config.send.includes(publicationId) && sender.track) sample(publicationId, sender.track, "send");
+      }
+      for (const key of connection.metrics.keys()) if (!retained.has(key)) connection.metrics.delete(key);
+      return samples;
+    }));
+    return samples.flat();
   }
   get autoplayBlocked(): boolean { return !this.deafened && [...this.received.values()].some(binding => binding.blocked); }
   updateIceConfig(config: IceConfig): void { this.iceConfig = config; }
@@ -135,7 +178,7 @@ export class BrowserVoiceEndpoint {
         connection.localCandidates.push(candidate); this.flushCandidates(connection);
       }, natPredictionSurveyUrls(this.iceConfig.iceServers, this.iceConfig.natPredictionStunUrls)),
       queuedCandidates: [], localCandidates: [], senders: new Map(), remote: new Map(), dirty: this.isOfferer(config),
-      requested: false, descriptionSent: false, offerRevision: 0, remoteRevision: 0, reported: null };
+      requested: false, descriptionSent: false, offerRevision: 0, remoteRevision: 0, reported: null, metrics: new Map() };
     this.connections.set(config.connectionId, connection);
     observeDebugConnection(pc, { connectionId: config.connectionId, role: "room-voice" });
     pc.onicecandidate = event => { if (this.current(connection)) connection.candidates.add(event.candidate); };
@@ -366,6 +409,7 @@ export class BrowserVoiceEndpoint {
 
   private retire(connection: Connection): void {
     this.connections.delete(connection.config.connectionId);
+    connection.metrics.clear();
     connection.lifetime.abort(); connection.candidates.discard(); connection.pc.close();
     for (const [key, binding] of this.received) if (binding.connectionId === connection.config.connectionId) this.removeReceived(key);
   }

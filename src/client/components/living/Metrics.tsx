@@ -7,7 +7,7 @@ import { Tooltip } from "./Tooltip";
 import { Pill } from "./primitives";
 import type { ConnectionMetrics } from "../../types";
 import { formatPacketLossPercent } from "../connection-details";
-import { METRIC_PRESENTATION, type MetricLabel } from "./metric-presentation";
+import { METRIC_PRESENTATION, metricHintText, type MetricLabel } from "./metric-presentation";
 import type { ComicKind, HintKind } from "../../ui/visual-kinds";
 import type { ComicTone } from "./comic-presentation";
 
@@ -20,6 +20,8 @@ interface MetricValue {
   /** Visual mode shows the glyph alone; the value stays in the a11y name. */
   glyphOnly?: boolean;
 }
+
+interface MetricGroup { label: CopyKey; values: MetricValue[] }
 
 // One display for each observed sender reason. Unknown reasons remain explicit;
 // none describes this field, not a verdict about the whole connection.
@@ -34,11 +36,12 @@ const QUALITY_REASONS = {
 export function codecContractWarnings(
   metrics: ConnectionMetrics,
   t: (key: CopyKey, vars?: Record<string, string>) => string,
+  media: "video" | "audio" = "video",
 ): string[] {
   const warnings: string[] = [];
   const codecName = (codec: string) => codec.split("/").at(-1) ?? codec;
   if (
-    metrics.codec &&
+    media === "video" && metrics.codec &&
     !["video/h264", "video/vp8"].includes(metrics.codec.toLowerCase())
   ) {
     warnings.push(t("stats.warn.codec", { codec: codecName(metrics.codec) }));
@@ -53,8 +56,11 @@ function secondaryMetrics(
   metrics: ConnectionMetrics,
   direction: "send" | "receive",
   t: (key: CopyKey, vars?: Record<string, string>) => string,
-): MetricValue[] {
-  const values: MetricValue[] = [];
+  media: "video" | "audio",
+): MetricGroup[] {
+  const groups: MetricGroup[] = [];
+  let values: MetricValue[] = [];
+  const group = (label: CopyKey) => { values = []; groups.push({ label, values }); };
   const readable = (value: number | null, digits = 0): string =>
     value === null || !Number.isFinite(value) ? t("stats.unknown") : value.toFixed(digits);
   const addNumber = (
@@ -67,7 +73,23 @@ function secondaryMetrics(
       values.push({ label, value: `${readable(value, digits)} ${unit}` });
     }
   };
+  if (media === "audio") {
+    group("stats.group.encoding");
+    if (metrics.audioCodec) values.push({ label: "voice.details.codec", value: metrics.audioCodec.split("/").at(-1)! });
+    if (direction === "receive") {
+      group("stats.group.playback");
+      addNumber("stats.audioBuffer", metrics.audioJitterBufferDelayMs, "ms", 1);
+      if (metrics.audioConcealedSamplesPercent !== null) values.push({ label: "stats.audioConcealedRate",
+        value: formatPacketLossPercent(metrics.audioConcealedSamplesPercent, t("stats.unknown")) });
+      addNumber("stats.audioConcealed", metrics.intervalAudioConcealmentEvents, "", 0);
+    }
+    return groups.filter(group => group.values.length);
+  }
+  group("stats.group.network");
   addNumber("stats.rtt", metrics.rttMs, "ms");
+  if (direction === "send") addNumber("stats.outgoing", metrics.availableOutgoingKbps, "kbps");
+  else addNumber("stats.jitter", metrics.jitterMs, "ms", 1);
+  group("stats.group.encoding");
   if (metrics.codec) {
     values.push({
       label: "stats.codec",
@@ -76,7 +98,6 @@ function secondaryMetrics(
   }
 
   if (direction === "send") {
-    addNumber("stats.outgoing", metrics.availableOutgoingKbps, "kbps");
     if (metrics.qualityLimitationReason) {
       const { valueKey, ...presentation } = Object.hasOwn(QUALITY_REASONS, metrics.qualityLimitationReason)
         ? QUALITY_REASONS[metrics.qualityLimitationReason as keyof typeof QUALITY_REASONS]
@@ -125,13 +146,15 @@ function secondaryMetrics(
     }
     addNumber("stats.encodeMs", metrics.intervalEncodeMs, "ms", 1);
   } else {
-    addNumber("stats.jitter", metrics.jitterMs, "ms", 1);
+    group("stats.group.playback");
     addNumber("stats.dropped", metrics.intervalFramesDropped, "", 0);
     addNumber("stats.decodeMs", metrics.intervalDecodeMs, "ms", 1);
     addNumber("stats.freezeCount", metrics.intervalFreezeCount, "", 0);
     addNumber("stats.freezeDuration", metrics.intervalFreezeDurationMs, "ms", 1);
+    addNumber("stats.videoBuffer", metrics.videoJitterBufferDelayMs, "ms", 1);
   }
 
+  group("stats.group.sourceAudio");
   addNumber("stats.audio", metrics.audioBitrateKbps, "kbps");
   if (metrics.audioPacketLossPercent !== null) {
     values.push({
@@ -143,7 +166,6 @@ function secondaryMetrics(
 
   if (direction === "receive") {
     addNumber("stats.playoutDelta", metrics.audioVideoPlayoutDeltaMs, "ms", 1);
-    addNumber("stats.videoBuffer", metrics.videoJitterBufferDelayMs, "ms", 1);
     addNumber("stats.audioBuffer", metrics.audioJitterBufferDelayMs, "ms", 1);
     if (metrics.audioConcealedSamplesPercent !== null) {
       values.push({
@@ -154,7 +176,7 @@ function secondaryMetrics(
     addNumber("stats.audioConcealed", metrics.intervalAudioConcealmentEvents, "", 0);
   }
 
-  return values;
+  return groups.filter(group => group.values.length);
 }
 
 export function MetricCell({ icon, label, value, glyphOnly, hint, tone = "off" }: MetricValue) {
@@ -162,8 +184,8 @@ export function MetricCell({ icon, label, value, glyphOnly, hint, tone = "off" }
   const display = vis && value === t("stats.unknown") ? "—" : value;
   return (
     <Tooltip toggleOnClick kind={hint ?? METRIC_PRESENTATION[label].hint} tone={tone} motion={tone === "warn" ? "still" : "demo"}
-      text={vis ? undefined : `${t(label)} · ${display}`}>
-    <button type="button" className="lr-meter-cell" aria-label={`${t(label)} · ${display}`}
+      text={vis ? undefined : metricHintText(label, t, display)}>
+    <button type="button" className="lr-meter-cell" data-metric={label} aria-label={`${t(label)} · ${display}`}
       style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}>
       <Glyph name={icon ?? METRIC_PRESENTATION[label].icon} size={16} />
       {vis ? (
@@ -189,14 +211,21 @@ export function MetricCells({
   direction,
   expanded,
   onToggle,
+  media = "video",
 }: {
   metrics: ConnectionMetrics;
   direction: "send" | "receive";
   expanded: boolean;
   onToggle: (expanded: boolean) => void;
+  media?: "video" | "audio";
 }) {
   const { t, vis } = useCopy();
-  const primary: MetricValue[] = [
+  const primary: MetricValue[] = media === "audio" ? [
+    { label: "stats.audio", value: metrics.bitrateKbps === null ? t("stats.unknown") : `${metrics.bitrateKbps.toFixed(0)} kbps` },
+    { label: "stats.rtt", value: metrics.rttMs === null ? t("stats.unknown") : `${metrics.rttMs.toFixed(0)} ms` },
+    { label: "stats.audioLoss", value: formatPacketLossPercent(metrics.packetLossPercent, t("stats.unknown")) },
+    { label: "stats.audioJitter", value: metrics.jitterMs === null ? t("stats.unknown") : `${metrics.jitterMs.toFixed(1)} ms` },
+  ] : [
     { label: "stats.resolution", value: metrics.resolution ?? t("stats.unknown") },
     {
       label: "stats.fps",
@@ -212,8 +241,8 @@ export function MetricCells({
     },
     { label: "stats.loss", value: formatPacketLossPercent(metrics.packetLossPercent, t("stats.unknown")) },
   ];
-  const secondary = secondaryMetrics(metrics, direction, t);
-  const warnings = codecContractWarnings(metrics, t);
+  const secondary = secondaryMetrics(metrics, direction, t, media);
+  const warnings = codecContractWarnings(metrics, t, media);
   const secondaryId = useId();
   const moreTitle = t(expanded ? "stats.less" : "stats.more");
   const moreButton = (
@@ -245,8 +274,11 @@ export function MetricCells({
             {moreButton}
           </Tooltip>
           {expanded ? (
-            <div id={secondaryId} className="lr-meter" role="group" aria-label={t("stats.more")}>
-              {secondary.map((value) => <MetricCell key={value.label} {...value} />)}
+            <div id={secondaryId} className="lr-metric-groups" role="group" aria-label={t("stats.more")}>
+              {secondary.map(group => <section className="lr-metric-group" key={group.label} aria-label={t(group.label)}>
+                <h4 className={vis ? "visually-hidden" : "lr-metric-group-label"}>{t(group.label)}</h4>
+                <div className="lr-meter">{group.values.map(value => <MetricCell key={value.label} {...value} />)}</div>
+              </section>)}
             </div>
           ) : null}
         </>

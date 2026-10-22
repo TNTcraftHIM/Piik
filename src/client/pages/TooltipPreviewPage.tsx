@@ -10,7 +10,7 @@ import { COMIC_KINDS, getComicPresentation, type ComicTone, type ComicMotion } f
 import { useCopy, type CopyKey } from "../ui/copy";
 import { replaySvgAnimations } from "../ui/animation";
 import { MetricCells } from "../components/living/Metrics";
-import { EMPTY_METRICS } from "../types";
+import { PREVIEW_METRICS } from "./preview-metrics";
 import { usePreviewAnchor } from "./use-preview-anchor";
 
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
@@ -134,21 +134,7 @@ function MetricPreview() {
   const [reason, setReason] = useState("other");
   const [sendExpanded, setSendExpanded] = useState(true);
   const [receiveExpanded, setReceiveExpanded] = useState(true);
-  const metrics = {
-    ...EMPTY_METRICS,
-    resolution: "1920x1080", framesPerSecond: 59.8, bitrateKbps: 7200,
-    packetLossPercent: .2, rttMs: 24, codec: "video/H264",
-    availableOutgoingKbps: 12000, qualityLimitationReason: reason,
-    captureWidth: 2560, captureHeight: 1440, captureFramesPerSecond: 60,
-    mediaSourceFramesPerSecond: 60, encoderImplementation: "Sample encoder",
-    powerEfficientEncoder: true, intervalEncodeMs: 2.4,
-    jitterMs: 1.2, intervalFramesDropped: 2, intervalDecodeMs: 1.4,
-    intervalFreezeCount: 1, intervalFreezeDurationMs: 120,
-    audioBitrateKbps: 96, audioPacketLossPercent: .1, audioJitterMs: .8,
-    audioVideoPlayoutDeltaMs: 3, videoJitterBufferDelayMs: 12,
-    audioJitterBufferDelayMs: 15, audioConcealedSamplesPercent: .2,
-    intervalAudioConcealmentEvents: 1,
-  };
+  const metrics = { ...PREVIEW_METRICS, qualityLimitationReason: reason };
   return <section id="metrics-preview" className="cp-section">
     <h2>{en ? "Connection metrics" : "连接数据"}</h2>
     <p>{en ? "Sample observations in the actual detail cells. Sender limits do not describe the receiver's playback."

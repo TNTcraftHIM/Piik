@@ -36,7 +36,7 @@ import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preference
 import type { VideoFit } from "../media/video-geometry";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
-import { useRoomVoiceSnapshot } from "../room-voice/use-room-voice-state";
+import { useRoomVoiceMetrics, useRoomVoiceSnapshot } from "../room-voice/use-room-voice-state";
 import { describeVoiceConnection, VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { HostAudio } from "../media/host-audio";
@@ -566,6 +566,7 @@ export function HostPage({
   const [showTopology, setShowTopology] = useState(false);
   const [joiningRoom, setJoiningRoom] = useState(false);
   const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
+  const voiceMetrics = useRoomVoiceMetrics(roomVoiceSession, showConnectionDetails || selectedPawn !== null, roomVoice);
   const [joinRoomCode, setJoinRoomCode] = useState("");
   const [joinRejectedAttempt, setJoinRejectedAttempt] = useState(0);
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -4465,13 +4466,15 @@ export function HostPage({
             </Row>
           ) : null}
           {showConnectionDetails && ownVoiceConnection ? (
-            <Row sub><VoiceConnectionDetails voice={roomVoiceSnapshot} /></Row>
+            <Row sub><VoiceConnectionDetails voice={roomVoiceSnapshot} metrics={voiceMetrics}
+              peerName={id => viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault")} /></Row>
           ) : null}
           {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
             <ViewerOverview
               entries={viewerOverviewEntries}
               pictureActive={phase === "live"}
               voice={roomVoiceSnapshot}
+              voiceMetrics={voiceMetrics}
               selectedKey={selectedPawn}
               onSelect={(peerId) =>
                 setSelectedPawn((current) =>
@@ -4493,7 +4496,8 @@ export function HostPage({
               onToggleMetrics={setMetricsExpanded}
               onClose={() => setSelectedPawn(null)}
             >
-              <VoiceConnectionDetails voice={roomVoiceSnapshot} peerId={selectedViewer.peerId} />
+              <VoiceConnectionDetails voice={roomVoiceSnapshot} peerId={selectedViewer.peerId} metrics={voiceMetrics}
+                peerName={id => id === hostPeerId ? displayName : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault")} />
             </PawnDetail>
           ) : null}
           {showTopology ? (

@@ -99,6 +99,12 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   consumers. Show picture/source-sound information while sharing, voice
   information for joined voice participants, and both when both are used.
   Each group retains its own route, state and available metrics.
+  Voice reuses the media metric cells and WebRTC sampler for actual bitrate,
+  interval loss, jitter and connection RTT; an unset measurement stays unknown.
+  A relay/SFU RTT describes the observed hop, not publisher-to-listener latency.
+  Primary metrics give the current picture/audio quality; expanded measurements
+  group network, encoding/capture, playback and source audio by their subject.
+  An inactive room-voice channel has no column or empty placeholder.
 - Title: keeps the primary activity, with a compact warning for an applicable
   problem. Losing focus alone never means waiting for media.
 - Recovery: every projection is recomputed from current facts. A warning requires

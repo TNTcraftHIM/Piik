@@ -8,8 +8,9 @@ export const METRIC_PRESENTATION = {
   "stats.fps": { icon: "frames", hint: "hint-metric-fps" },
   "stats.bitrate": { icon: "gauge", hint: "hint-metric-bitrate" },
   "stats.loss": { icon: "packetLoss", hint: "hint-metric-loss" },
-  "stats.rtt": { icon: "clock", hint: "hint-metric-rtt" },
+  "stats.rtt": { icon: "clock", hint: "hint-metric-rtt", description: "stats.rttHint" },
   "stats.codec": { icon: "puzzle", hint: "hint-codec" },
+  "voice.details.codec": { icon: "puzzle", hint: "hint-codec" },
   "stats.outgoing": { icon: "gauge", hint: "hint-metric-outgoing" },
   "stats.qualityState": { icon: "sliders", hint: "hint-metric-quality" },
   "stats.capture": { icon: "share", hint: "hint-metric-capture" },
@@ -29,6 +30,12 @@ export const METRIC_PRESENTATION = {
   "stats.audioBuffer": { icon: "clock", hint: "hint-metric-audio-buffer" },
   "stats.audioConcealedRate": { icon: "audioRepair", hint: "hint-metric-concealment-rate" },
   "stats.audioConcealed": { icon: "audioRepair", hint: "hint-metric-concealments" },
-} satisfies Partial<Record<CopyKey, { icon: GlyphName; hint: HintKind }>>;
+} satisfies Partial<Record<CopyKey, { icon: GlyphName; hint: HintKind; description?: CopyKey }>>;
 
 export type MetricLabel = keyof typeof METRIC_PRESENTATION;
+
+export function metricHintText(label: MetricLabel, t: (key: CopyKey) => string, value?: string): string {
+  const presentation = METRIC_PRESENTATION[label];
+  const heading = value === undefined ? t(label) : `${t(label)} · ${value}`;
+  return "description" in presentation ? `${heading}\n${t(presentation.description)}` : heading;
+}

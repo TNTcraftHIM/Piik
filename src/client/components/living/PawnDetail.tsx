@@ -104,7 +104,7 @@ export function PawnDetail({
         </button>
       </Tooltip>
       {route || metrics || tag || error ? (
-        <div className="lr-pawn-detail-picture" role="group" aria-label={t("stats.sharedMedia")}>
+        <div className="lr-media-detail" role="group" aria-label={t("stats.sharedMedia")}>
           <span className="lr-meter-tag">
             <Glyph name="tv" size={17} />
             <span className={vis ? "visually-hidden" : "lr-cap"}>{t("stats.sharedMedia")}</span>

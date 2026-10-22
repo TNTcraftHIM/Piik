@@ -25,5 +25,3 @@
 .lr-voice-toolbar { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; }
 .lr-voice-toolbar > .lr-comic-tip-wrap { flex: none; margin-left: auto; }
 .lr-voice-quick-controls { display: flex; flex: none; gap: 6px; align-items: center; }
-.lr-voice-connection-details { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
-.lr-voice-connection-details > .lr-meter-cell { color: var(--muted); }

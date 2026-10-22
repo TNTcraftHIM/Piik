@@ -31,7 +31,7 @@ import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
-import { useRoomVoiceSnapshot } from "../room-voice/use-room-voice-state";
+import { useRoomVoiceMetrics, useRoomVoiceSnapshot } from "../room-voice/use-room-voice-state";
 import { participantConnection } from "../lib/participant-connection";
 import { describeVoiceConnection, VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
@@ -283,6 +283,7 @@ export function ViewerPage({
   const roomVoiceSnapshot = useRoomVoiceSnapshot(roomVoiceSession);
   const roomVoice = roomVoiceSnapshot?.connected ? roomVoiceSnapshot.room : null;
   const ownVoiceConnection = describeVoiceConnection(roomVoiceSnapshot);
+  const voiceMetrics = useRoomVoiceMetrics(roomVoiceSession, showConnectionDetails || selectedPawn !== null, roomVoice);
   const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
@@ -2611,7 +2612,8 @@ export function ViewerPage({
                   />
                 ) : null}
               </Row> : null}
-              {ownVoiceConnection ? <Row sub><VoiceConnectionDetails voice={roomVoiceSnapshot} /></Row> : null}
+              {ownVoiceConnection ? <Row sub><VoiceConnectionDetails voice={roomVoiceSnapshot} metrics={voiceMetrics}
+                peerName={id => id === labeledHostPresence?.peerId ? labeledHostPresence.label : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault")} /></Row> : null}
             </div>
           ) : null}
           {showConnectionDetails && relaySnapshot ? (
@@ -2654,7 +2656,8 @@ export function ViewerPage({
               onToggleMetrics={setPawnMetricsExpanded}
               onClose={() => setSelectedPawn(null)}
             >
-              <VoiceConnectionDetails voice={roomVoiceSnapshot} peerId={selectedRelayChild.peerId} />
+              <VoiceConnectionDetails voice={roomVoiceSnapshot} peerId={selectedRelayChild.peerId} metrics={voiceMetrics}
+                peerName={id => id === labeledHostPresence?.peerId ? labeledHostPresence.label : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault")} />
             </PawnDetail>
           ) : null}
           {showTopology && labeledHostPresence ? (

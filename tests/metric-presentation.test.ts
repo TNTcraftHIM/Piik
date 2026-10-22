@@ -71,9 +71,24 @@ describe("observed metric presentation", () => {
       expect(html.includes(t("en", "stats.resolution"))).toBe(pictureActive);
       expect(html.includes(t("en", "voice.details.title"))).toBe(voiceActive);
     }
-    const details = renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice }));
-    expect(details).toContain("96 kbps");
+    const details = renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice,
+      metrics: [{ connectionId: "voice", peerId: "friend", viaPeerId: "host", direction: "send", route: "p2p",
+        metrics: { ...EMPTY_METRICS, bitrateKbps: 82, packetLossPercent: .5, jitterMs: 2, rttMs: 48, audioCodec: "audio/opus" } }],
+    }));
+    expect(details).toContain("82 kbps");
+    expect(details).toContain("48 ms");
+    expect(details).toContain("0.5%");
+    expect(details).not.toContain("96 kbps");
+    expect(details).not.toContain(t("en", "stats.warn.codec", { codec: "opus" }));
     expect(details).not.toContain(t("en", "stats.fps"));
+    const receiveOnly = [{ connectionId: "relay", peerId: "other-viewer", viaPeerId: "host", direction: "receive" as const, route: "p2p" as const,
+      metrics: { ...EMPTY_METRICS, bitrateKbps: 64, rttMs: 28 } }];
+    const received = renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice, metrics: receiveOnly, peerName: id => id === "host" ? "Host" : "Friend" }));
+    expect(received).toContain("64 kbps");
+    expect(received).toContain(t("en", "voice.details.receiveFrom", { name: "Friend" }));
+    expect(received).toContain(t("en", "voice.details.via", { name: "Host" }));
+    voice.error = "transport";
+    expect(renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice }))).toContain(t("en", "voice.details.unavailable"));
     expect(renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice: null }))).toBe("");
     voice.room!.members[0]!.joined = false;
     expect(renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice }))).toBe("");
