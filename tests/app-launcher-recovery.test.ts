@@ -30,7 +30,7 @@ const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: ($
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const saved = {
-  site: "https://site.example", startupSite: "", localAccessPassword: "saved password", defaultMode: "local",
+  sites: ["https://site.example"], startupSite: "", localAccessPassword: "saved password", defaultMode: "local",
   revision: "test", version: "development", debug: false,
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
@@ -39,7 +39,7 @@ const response = (state: typeof saved & { detail?: string } = saved) => ({ ok: t
 function mount(fetch: ReturnType<typeof vi.fn>) {
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
-    "Mode", "LocalAccessPassword", "Lan", "Version", "Target", "Starting", "Site", "StartupSite",
+    "Mode", "LocalAccessPassword", "Lan", "Version", "Target", "Starting", "Sites", "StartupSite",
     "AppDebug", "Debug", "Error", "Loading", "Update", "RemoteControlPrototype",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
@@ -52,7 +52,7 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
   const actions = runInNewContext(executable, {
     ...setters, z, fetch, window, checkReleaseUpdate,
     stateChanges: { current: { revision: 0, pending: 0 } },
-    siteBusy: false, debugBusy: false, starting: false, site: saved.site,
+    siteBusy: false, debugBusy: false, starting: false, sites: saved.sites,
     mode: "link", lang: "en", vis: false, debug: false, appDebug: false, localAccessPassword: "",
     consoleLanguage: () => "en", launchURL: (target: string) => target, t: (key: string) => key,
     setTimeout: (callback: () => void, delay: number) => {
@@ -61,7 +61,7 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
       return nextTimer;
     },
     clearTimeout: (id: number) => timers.delete(id),
-  }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
+  }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
   return { state, setters, ...actions, checkReleaseUpdate, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
       expect(timers.size).toBe(1);
@@ -79,18 +79,18 @@ describe("App launcher state recovery", () => {
     const fetch = vi.fn(async () => response());
     const page = mount(fetch);
     await settle();
-    fetch.mockResolvedValueOnce(response({ ...saved, site: nextSite }))
+    fetch.mockResolvedValueOnce(response({ ...saved, sites: [...saved.sites, nextSite] }))
       .mockImplementationOnce(() => new Promise(resolve => { finishStartup = resolve; }));
     const approval = page.changeSite(nextSite, "site", true);
     await settle();
-    expect(page.state).toMatchObject({ Site: nextSite, StartupSite: "", SiteBusy: true });
+    expect(page.state).toMatchObject({ Sites: [...saved.sites, nextSite], StartupSite: "", SiteBusy: true });
     expect(fetch.mock.calls[2]).toEqual(["/api/client-launcher/startup-site", expect.objectContaining({
-      body: JSON.stringify({ site: nextSite, expectedSite: nextSite }),
+      body: JSON.stringify({ site: nextSite }),
     })]);
-    finishStartup({ ...response({ ...saved, site: nextSite, startupSite: savedStartup ? nextSite : "" }),
+    finishStartup({ ...response({ ...saved, sites: [...saved.sites, nextSite], startupSite: savedStartup ? nextSite : "" }),
       ok: savedStartup, status: savedStartup ? 200 : 503 });
     await approval;
-    expect(page.state).toMatchObject({ Site: nextSite, SiteBusy: false,
+    expect(page.state).toMatchObject({ Sites: [...saved.sites, nextSite], SiteBusy: false,
       StartupSite: savedStartup ? nextSite : "", SiteError: savedStartup ? undefined : "client.connect.saveFailed" });
     page.cleanup();
   });
@@ -103,7 +103,7 @@ describe("App launcher state recovery", () => {
     page.focus();
     await settle();
     expect(page.state).toMatchObject({
-      Error: null, Loading: false, Site: saved.site, Mode: "local",
+      Error: null, Loading: false, Sites: saved.sites, Mode: "local",
       LocalAccessPassword: saved.localAccessPassword, Lan: saved.lan,
     });
     Object.assign(page.state, { Mode: "link", LocalAccessPassword: "edited", Lan: { selected: "192.0.2.2" } });
@@ -149,14 +149,14 @@ describe("App launcher state recovery", () => {
       let resolveRead!: (value: ReturnType<typeof response>) => void;
       let rejectRead!: (error: Error) => void;
       const fetch = vi.fn(async (_url: string, options?: { method?: string }) => options?.method === "POST"
-        ? { ok: true, status: 200, json: async () => ({ site: "", startupSite: "", target: "https://room.example" }) }
+        ? { ok: true, status: 200, json: async () => ({ sites: [], startupSite: "", target: "https://room.example" }) }
         : response());
       const page = mount(fetch);
       await settle();
       fetch.mockImplementationOnce(() => new Promise((resolve, reject) => { resolveRead = resolve; rejectRead = reject; }));
       page.focus();
-      if (operation === "site") await page.changeSite("");
-      if (operation === "startup-site") await page.changeSite(saved.site, "startup-site");
+      if (operation === "site") await page.changeSite(saved.sites[0]!, "site", false, false);
+      if (operation === "startup-site") await page.changeSite(saved.sites[0]!, "startup-site");
       if (operation === "debug") await page.enableDebug();
       if (operation === "launch") await page.launch({ preventDefault() {} });
       const committed = { ...page.state };
@@ -166,10 +166,10 @@ describe("App launcher state recovery", () => {
       expect(page.state).toEqual(committed);
       // One existing poll recovers the current App fact without restoring user edits.
       page.state.LocalAccessPassword = "unsaved";
-      fetch.mockResolvedValueOnce(response({ ...saved, site: "", debug: true }));
+      fetch.mockResolvedValueOnce(response({ ...saved, sites: [], debug: true }));
       page.retry();
       await settle();
-      expect(page.state).toMatchObject({ Site: "", Debug: true, LocalAccessPassword: "unsaved" });
+      expect(page.state).toMatchObject({ Sites: [], Debug: true, LocalAccessPassword: "unsaved" });
       page.cleanup();
     }
   });
@@ -180,11 +180,11 @@ describe("App launcher state recovery", () => {
       ? new Promise(resolve => pending.push(resolve)) : Promise.resolve(response()));
     const page = mount(fetch);
     await settle();
-    const approve = page.changeSite("");
+    const approve = page.changeSite(saved.sites[0]!, "site", false, false);
     const debug = page.enableDebug();
     page.focus();
     expect(fetch).toHaveBeenCalledTimes(3);
-    pending[0]!({ ok: true, status: 200, json: async () => ({ site: "", startupSite: "" }) });
+    pending[0]!({ ok: true, status: 200, json: async () => ({ sites: [], startupSite: "" }) });
     await approve;
     page.retry();
     expect(fetch).toHaveBeenCalledTimes(3);
