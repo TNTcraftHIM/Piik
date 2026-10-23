@@ -24,6 +24,8 @@ camera capture cannot receive remote input.
 
 ## Play together
 
+Play together and virtual gamepads are candidate features awaiting acceptance.
+
 1. In the Host's **Remote control** panel, enable **Play together**. Changing
    this option ends current control; players then request it again.
 2. Each friend selects **Request control**. Approve them using the same
@@ -31,14 +33,14 @@ camera capture cannot receive remote input.
 3. In the game, assign different keyboard bindings to each player, such as
    WASD and arrow keys. The game must support sharing one keyboard.
 
-The Host and approved friends share the computer's existing keyboard. Each
-friend's held keys are tracked separately, so leaving releases only their input.
-Keyboard co-play needs no extra driver. Text insertion is available in ordinary
-remote control; during co-play, use the keyboard keys.
+The Host and approved friends share the computer's existing keyboard and mouse.
+Each friend's held keys and mouse buttons are tracked separately, so leaving
+releases only their input. Keyboard and mouse co-play needs no extra driver.
+Text insertion is available in ordinary remote control; during co-play, use the
+keyboard keys.
 
-There is still one mouse pointer. The first approved keyboard player receives
-it; the Host can select **Give mouse** beside another player or **Take back mouse**
-to keep it locally. The other players retain keyboard control.
+Everyone controls the same mouse pointer; movements and clicks from approved
+players apply together. Use the Host's stop action or shortcut to end control.
 
 ## Gamepads
 
@@ -50,8 +52,9 @@ the Host's optional ViGEmBus driver creates the virtual device.
    [ViGEmBus 1.22.0 release](https://github.com/nefarius/ViGEmBus/releases/tag/v1.22.0)
    and follow its restart prompt. ViGEm is end-of-life; 1.22.0 is its final
    installer and removes the old updater. If it is already installed, reuse it.
-2. Open a Windows x64 co-play App package with `ViGEmClient.dll` beside
-   `piik-app.exe`. Enable **Remote control → Play together**.
+2. Extract and open the Windows x64 co-play App package, then enable
+   **Remote control → Play together**. The package includes the required client
+   component; no extra files need to be copied.
 3. On each friend's computer, connect a standard-layout gamepad, open the
    viewing page and press a controller button so the browser recognizes it.
    Select **Use gamepad** and obtain the Host's approval.
@@ -66,7 +69,7 @@ A gamepad grant controls only that virtual controller. Ending it removes the
 device; losing page or shared-window focus returns its controls to neutral.
 
 If **Use gamepad** is missing, check the Host's driver and App package, then
-turn **Play together** off and on. Keyboard co-play and ordinary remote control
+turn **Play together** off and on. Keyboard/mouse co-play and ordinary remote control
 remain available without the gamepad driver. Piik does not install or bundle it.
 
 ## End control

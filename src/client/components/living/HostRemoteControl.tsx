@@ -13,7 +13,7 @@ import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
 import "./remote-control.css";
 
 // Form drafts stay here; the App snapshot owns applied authorization.
-export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy, onDecide, onShortcut, coPlay = false, gamepad, onCoPlay, onPointer }: {
+export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy, onDecide, onShortcut, coPlay = false, gamepad, onCoPlay }: {
   mode: RemoteControlMode;
   platform: RemoteInputPlatform;
   requests: (RemoteControlRequest & { name: string })[];
@@ -24,7 +24,6 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
   coPlay?: boolean;
   gamepad?: boolean;
   onCoPlay?: (enabled: boolean) => Promise<void>;
-  onPointer?: (id: string) => Promise<void>;
 }) {
   const { t, vis, lang } = useCopy();
   const id = useId();
@@ -103,7 +102,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
         }
       }}>
       <div className="lr-floating-scroll lr-remote-panel-body">
-        <SwitchItem checked={mode !== "off"} label={t("remote.title")} hint="hint-remote-control"
+        <SwitchItem checked={mode !== "off"} label={t("remote.title")} icon="mouse" hint="hint-remote-control"
           disabled={mode === "off" && (busy || disabled || shortcutUnavailable)}
           onChange={enabled => {
             // A remembered automatic grant is not consent for this audience.
@@ -111,13 +110,17 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
             else void applyPolicy(enabled ? draft : "off", enabled && draft === "password" ? password : undefined);
           }} />
         {mode !== "off" && onCoPlay && <>
-          <SwitchItem checked={coPlay} label={t("remote.coPlay")} hint="hint-remote-control"
+          <SwitchItem checked={coPlay} label={t("remote.coPlay")} icon="users" hint="hint-remote-control"
             disabled={busy || disabled} onChange={enabled => void perform("coplay", () => onCoPlay(enabled))} />
           {!vis && <p className="lr-remote-note">{t("remote.coPlayHelp")}</p>}
-          {coPlay && platform === "windows" && gamepad !== undefined && <p className="lr-remote-note">
+          {coPlay && gamepad !== undefined && <p className="lr-remote-note">
             <Glyph name="gamepad" size={14} />{" "}
             <span className={vis ? "visually-hidden" : undefined}>{t(gamepad ? "remote.gamepadHostHelp" : "remote.gamepadMissing")} </span>
-            <a href={gamepadGuide} target="_blank" rel="noopener noreferrer">{t("remote.gamepadSetup")}</a>
+            <Tooltip kind="hint-remote-control" text={vis ? undefined : t("remote.gamepadSetup")}>
+              <a href={gamepadGuide} target="_blank" rel="noopener noreferrer" aria-label={t("remote.gamepadSetup")}>
+                {vis ? <Glyph name="help" size={16} /> : t("remote.gamepadSetup")}
+              </a>
+            </Tooltip>
           </p>}
           {failedId === "coplay" && <p role="alert">{t("remote.decisionFailed")}</p>}
         </>}
@@ -127,21 +130,17 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
             onClick={() => void applyPolicy("off")} />
         </div>}
         {requests.length > 0 && <div className="lr-remote-requests">
-          {[...requests].sort((a, b) => Number(a.state === "pending") - Number(b.state === "pending")).map(request => <div className="lr-remote-request" key={request.id} role="group" aria-label={request.name}>
+          {[...requests].sort((a, b) => Number(a.state === "pending") - Number(b.state === "pending")).map(request => <div className={`lr-remote-request${request.state === "pending" ? " is-pending" : ""}`} key={request.id} role="group" aria-label={request.name}>
             <div><NameTag name={request.name} identity={request.peerId} />
-              <p><Glyph name={request.device === "gamepad" ? "gamepad" : request.pointer === false || coPlay && request.state === "pending" ? "keyboard" : "mouse"} size={14} />
+              <p><Glyph name={request.device === "gamepad" ? "gamepad" : "mouse"} size={14} />
                 <span className={vis ? "visually-hidden" : undefined}>
-                  {t(request.device === "gamepad" ? "remote.device.gamepad" : request.pointer === false || coPlay && request.state === "pending" ? "remote.device.keyboard" : "remote.device.keyboardMouse")}
+                  {t(request.device === "gamepad" ? "remote.device.gamepad" : "remote.device.keyboardMouse")}
                   {" · "}{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.controlling" : "remote.waiting")}
                 </span></p>
               {failedId === request.id && <p role="alert"><Glyph name="alert" size={14} />
                 <span className={vis ? "visually-hidden" : undefined}>{t("remote.decisionFailed")}</span></p>}</div>
             <div className="lr-remote-request-actions">
-              {coPlay && onPointer && request.device !== "gamepad" && request.state !== "pending" && <Btn icon="mouse"
-                title={request.pointer ? "remote.takePointer" : "remote.givePointer"} cap={request.pointer ? "remote.takePointer" : "remote.givePointer"}
-                hint="hint-remote-control" disabled={busy || disabled}
-                onClick={() => void perform(request.id, () => onPointer(request.pointer ? "" : request.id))} />}
-              <Btn icon="x" title={request.state !== "pending" ? "remote.stop" : "remote.decline"} cap={request.state !== "pending" ? "remote.stop" : "remote.decline"}
+              <Btn icon="x" title={request.state !== "pending" ? "remote.stop" : "remote.decline"} cap={request.state === "pending" ? "remote.decline" : undefined}
                 hint="hint-remote-stop" disabled={pendingActions.has(`stop:${request.id}`)} onClick={() => void perform(`stop:${request.id}`, () => onDecide(request.id, false))} />
               {request.state === "pending" && <Btn icon="check" tone="primary" title="remote.allow" cap="remote.allow" hint="hint-remote-control"
                 disabled={busy || disabled} onClick={() => void perform(request.id, () => onDecide(request.id, true))} />}

@@ -52,11 +52,10 @@ type inputSink interface {
 }
 
 type View struct {
-	ID      string `json:"id"`
-	PeerID  string `json:"peerId"`
-	State   string `json:"state"`
-	Pointer *bool  `json:"pointer,omitempty"`
-	Device  string `json:"device,omitempty"`
+	ID     string `json:"id"`
+	PeerID string `json:"peerId"`
+	State  string `json:"state"`
+	Device string `json:"device,omitempty"`
 }
 
 // One manager covers both native sessions: they operate the same physical desktop.
@@ -66,8 +65,7 @@ type Manager struct {
 	gamepads     gamepadBackend
 	connections  map[endpointKey]*connection
 	sessions     map[*Session]struct{}
-	active       *connection // The optional pointer owner within that source.
-	owner        *Session    // The one source allowed to inject into the desktop.
+	owner        *Session // The one source allowed to inject into the desktop.
 	closed       bool
 	stop         context.CancelFunc
 	stopKey      int
@@ -337,12 +335,11 @@ func (m *Manager) reply(c *connection, state, reason string) {
 		Reason       string   `json:"reason,omitempty"`
 		Capabilities []string `json:"capabilities,omitempty"`
 		CoPlay       *bool    `json:"coPlay,omitempty"`
-		Pointer      *bool    `json:"pointer,omitempty"`
 		Device       string   `json:"device,omitempty"`
 	}{Platform: runtime.GOOS, State: state, Grant: c.grant, Intent: c.intent, Mode: c.owner.mode, Reason: reason}
 	if c.extended {
-		coPlay, pointer := c.owner.coPlay, m.active == c
-		value.Capabilities, value.CoPlay, value.Pointer = []string{"coPlay"}, &coPlay, &pointer
+		coPlay := c.owner.coPlay
+		value.Capabilities, value.CoPlay = []string{"coPlay"}, &coPlay
 		if m.gamepads != nil {
 			value.Capabilities = append(value.Capabilities, "gamepad")
 		}
@@ -418,13 +415,13 @@ func (m *Manager) refreshActive() (bounds, bool) {
 	return b, focused
 }
 
-// release retires the desktop's source owner, including keyboard-only players.
+// release retires every input grant belonging to the desktop's source owner.
 func (m *Manager) release() {
 	if m.owner == nil {
 		return
 	}
 	s := m.owner
-	m.active, m.owner = nil, nil
+	m.owner = nil
 	_ = m.sink.Reset()
 	for _, c := range m.connections {
 		if c.owner == s && c.grant != "" {
@@ -451,7 +448,14 @@ func (m *Manager) clearHeld(c *connection) error {
 			err = errors.Join(err, m.sink.Apply(bounds{}, inputEvent{Type: "key", Code: code}))
 		}
 	}
-	return errors.Join(err, m.clearPointer(c))
+	buttons := c.buttons
+	c.buttons = nil
+	for button := range buttons {
+		if !m.buttonHeld(button) {
+			err = errors.Join(err, m.sink.Apply(bounds{}, inputEvent{Type: "button", Button: button}))
+		}
+	}
+	return err
 }
 
 func (m *Manager) keyHeld(code string) bool {
@@ -463,13 +467,13 @@ func (m *Manager) keyHeld(code string) bool {
 	return false
 }
 
-func (m *Manager) clearPointer(c *connection) error {
-	var err error
-	for button := range c.buttons {
-		err = errors.Join(err, m.sink.Apply(bounds{}, inputEvent{Type: "button", Button: button}))
+func (m *Manager) buttonHeld(button int) bool {
+	for _, c := range m.connections {
+		if c.buttons[button] {
+			return true
+		}
 	}
-	c.buttons = nil
-	return err
+	return false
 }
 
 func (m *Manager) releaseConnection(c *connection) {
@@ -489,9 +493,6 @@ func (m *Manager) releaseConnection(c *connection) {
 		return
 	}
 	c.grant, c.suspended = "", false
-	if m.active == c {
-		m.active = nil
-	}
 	for _, other := range m.connections {
 		if other.owner == c.owner && other.grant != "" {
 			return
@@ -530,20 +531,23 @@ func (m *Manager) applyCoPlay(c *connection, b bounds, event inputEvent) error {
 			}
 		}
 	case "button":
-		if m.active != c || event.Button < 0 || event.Button > 4 || c.buttons[event.Button] == event.Down {
+		if event.Button < 0 || event.Button > 4 || c.buttons[event.Button] == event.Down {
 			return nil
 		}
+		held := m.buttonHeld(event.Button)
 		if c.buttons == nil {
 			c.buttons = make(map[int]bool)
 		}
 		if event.Down {
 			c.buttons[event.Button] = true
+			if held {
+				return nil
+			}
 		} else {
 			delete(c.buttons, event.Button)
-		}
-	case "move", "relative", "wheel":
-		if m.active != c {
-			return nil
+			if m.buttonHeld(event.Button) {
+				return nil
+			}
 		}
 	}
 	return m.sink.Apply(b, event)
@@ -804,10 +808,6 @@ func (s *Session) State() State {
 		if c.owner == s && (c.requested || c.grant != "") {
 			view := View{ID: c.requestID, PeerID: c.peerID, State: m.state(c)}
 			view.Device = c.device
-			if s.coPlay {
-				pointer := m.active == c
-				view.Pointer = &pointer
-			}
 			state.Requests = append(state.Requests, view)
 		}
 	}
@@ -843,55 +843,6 @@ func (s *Session) SetCoPlay(enabled bool) error {
 		if c.owner == s {
 			m.revoke(c)
 		}
-	}
-	s.notify()
-	return nil
-}
-
-// GivePointer transfers only mouse input between current keyboard grantees.
-// An empty ID returns the pointer to the Host without revoking their keyboards.
-func (s *Session) GivePointer(id string) error {
-	if s == nil {
-		return errors.New("remote input is unavailable")
-	}
-	m := s.manager
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.closed || !s.available() || !s.coPlay || m.owner != s {
-		return errors.New("remote input is unavailable")
-	}
-	var next *connection
-	if id != "" {
-		for _, c := range m.connections {
-			if c.owner == s && c.requestID == id && c.grant != "" && c.edgeID != "" && c.device != "gamepad" {
-				next = c
-				break
-			}
-		}
-		if next == nil {
-			return errors.New("request is no longer available")
-		}
-	}
-	previous := m.active
-	if previous == next {
-		return nil
-	}
-	if previous != nil {
-		// A legacy Guest cannot represent keyboard-only permission.
-		if !previous.extended {
-			return errors.New("guest does not support pointer handoff")
-		}
-		if err := m.clearPointer(previous); err != nil {
-			m.release()
-			return err
-		}
-	}
-	m.active = next
-	if previous != nil {
-		m.send(previous, m.state(previous))
-	}
-	if next != nil {
-		m.send(next, m.state(next))
 	}
 	s.notify()
 	return nil
@@ -963,20 +914,10 @@ func (m *Manager) grant(c *connection) error {
 			return err
 		}
 	}
-	firstKeyboard := c.device != "gamepad"
-	for _, other := range m.connections {
-		if other.grant != "" && other.device != "gamepad" {
-			firstKeyboard = false
-			break
-		}
-	}
 	token := make([]byte, 32)
 	_, _ = rand.Read(token)
 	c.grant, c.requested = hex.EncodeToString(token), false
 	m.owner = c.owner
-	if firstKeyboard {
-		m.active = c
-	}
 	m.refreshActive()
 	if c.grant != "" {
 		m.send(c, m.state(c))

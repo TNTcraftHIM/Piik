@@ -4,8 +4,10 @@ import "errors"
 
 var errGamepadUnavailable = errors.New("virtual gamepad output unavailable")
 
+// Button bits follow W3C standard indices. Sticks use signed 16-bit values,
+// with Y increasing downward; triggers use 0..255. Native formats stay local.
 type gamepadReport struct {
-	Buttons      uint16 `json:"buttons"`
+	Buttons      uint32 `json:"buttons"`
 	LeftTrigger  uint8  `json:"leftTrigger"`
 	RightTrigger uint8  `json:"rightTrigger"`
 	LeftX        int16  `json:"leftX"`
@@ -29,15 +31,6 @@ type gamepadBackend interface {
 func (m *Manager) assignGamepad(c *connection) error {
 	if !c.extended || !c.owner.coPlay || m.gamepads == nil {
 		return errGamepadUnavailable
-	}
-	count := 0
-	for _, other := range m.connections {
-		if other.pad != nil {
-			count++
-		}
-	}
-	if count >= 4 {
-		return errors.New("all four remote gamepad slots are occupied")
 	}
 	pad, err := m.gamepads.Open()
 	if err != nil {
@@ -63,7 +56,7 @@ func (m *Manager) receiveGamepad(c *connection, event inputEvent) {
 		}
 		return
 	}
-	if event.Type != "gamepad" || event.Gamepad == nil || event.Gamepad.Buttons & ^uint16(0xf3ff) != 0 {
+	if event.Type != "gamepad" || event.Gamepad == nil || event.Gamepad.Buttons & ^uint32((1<<17)-1) != 0 {
 		return
 	}
 	if _, focused := m.refreshActive(); !focused {

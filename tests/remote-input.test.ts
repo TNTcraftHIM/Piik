@@ -36,7 +36,7 @@ it("maps standard gamepads into one negotiated grant and resets on focus loss, u
   const intent = channel.sent.at(-1)?.intent;
   expect(channel.sent.at(-1)).toMatchObject({ type: "request", device: "gamepad" });
   const grant = "d".repeat(64);
-  channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant, device: "gamepad", pointer: false, coPlay: true });
+  channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant, device: "gamepad", coPlay: true });
   const beforeInput = channel.sent.length;
   session.input({ type: "key", code: "KeyW", down: true });
   session.input({ type: "button", button: 0, down: true });
@@ -61,8 +61,8 @@ it("maps standard gamepads into one negotiated grant and resets on focus loss, u
   const controller = new RemoteGamepad(event => session.input(event), () => {}, owner as unknown as Window, page as unknown as Document);
   try {
     tick(0); tick(17);
-    const report = { type: "gamepad", grant, gamepad: { buttons: 0x3171,
-      leftTrigger: 128, rightTrigger: 255, leftX: -32768, leftY: 32767, rightX: 32767, rightY: -32768 } };
+    const report = { type: "gamepad", grant, gamepad: { buttons: 0x1713,
+      leftTrigger: 128, rightTrigger: 255, leftX: -32768, leftY: -32768, rightX: 32767, rightY: 32767 } };
     expect(channel.sent.slice(-2)).toEqual([report, report]);
     focused = false; owner.dispatchEvent(new Event("blur"));
     expect(channel.sent.at(-1)).toEqual({ type: "reset", grant });

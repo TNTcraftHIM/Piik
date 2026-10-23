@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -76,9 +76,12 @@ room microphone for Host and Viewers. Local normal-page acceptance covers both
 P2P and SFU, independent listening, picture continuity and voice-facet recovery.
 Controlled-network voice cases and platform package checks have passed; the
 release artifacts and operator records establish publication and deployment.
-Shared-keyboard and optional Windows virtual-gamepad prototypes now use the
-normal App/Web input and authorization surfaces. They remain separate from the
-maintenance candidate pending owner acceptance.
+Shared keyboard/mouse and optional Windows ViGEm virtual-gamepad prototypes
+use the normal App/Web input and authorization surfaces. Linux uinput passed
+an isolated real-kernel gate; desktop permissions and game recognition remain
+unverified. The macOS virtual-HID
+implementation needs its Apple entitlement and a macOS build/runtime check.
+These remain separate from the maintenance candidate pending owner acceptance.
 The promotional film stays an online-review draft; export follows owner acceptance.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;
 release artifacts and operator records own exact delivery results.

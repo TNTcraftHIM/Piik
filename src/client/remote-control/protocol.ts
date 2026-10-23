@@ -24,11 +24,12 @@ export const remoteInputStateSchema = z.object({
   reason: z.enum(["password", "retry", "busy", "gamepad"]).optional(),
   capabilities: z.array(z.string().min(1).max(32)).max(16).optional(),
   coPlay: z.boolean().optional(),
-  pointer: z.boolean().optional(),
   device: z.literal("gamepad").optional(),
 }).strict();
 export type RemoteInputState = z.infer<typeof remoteInputStateSchema>;
 
+// Button bits follow W3C standard indices; sticks are signed 16-bit, Y down,
+// and triggers are unsigned 8-bit. Native SDK layouts stay in Host adapters.
 export interface RemoteGamepadReport {
   buttons: number;
   leftTrigger: number;

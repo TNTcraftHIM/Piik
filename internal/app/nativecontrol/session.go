@@ -230,17 +230,6 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			return nil, errors.New("native share does not exist")
 		}
 		return response(envelope, "remote-control-set"), host.SetRemoteCoPlay(*request.Enabled)
-	case "set-remote-input-pointer":
-		var request remotePointerRequest
-		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||
-			(request.RequestID != "" && !validIdentities(request.RequestID)) {
-			return nil, protocolViolation("native pointer owner is invalid")
-		}
-		host := session.current(request.ShareID)
-		if host == nil {
-			return nil, errors.New("native share does not exist")
-		}
-		return response(envelope, "remote-control-set"), host.GiveRemotePointer(request.RequestID)
 	case "set-remote-control-policy":
 		var request remoteControlPolicyRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) {

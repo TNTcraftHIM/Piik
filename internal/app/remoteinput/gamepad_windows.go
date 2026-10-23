@@ -38,6 +38,38 @@ type vigemGamepad struct {
 	closed  bool
 }
 
+// Native XUSB_REPORT layout, separate from the platform-neutral wire report.
+type xusbReport struct {
+	Buttons      uint16
+	LeftTrigger  uint8
+	RightTrigger uint8
+	LeftX        int16
+	LeftY        int16
+	RightX       int16
+	RightY       int16
+}
+
+func toXUSBReport(report gamepadReport) xusbReport {
+	var buttons uint16
+	// W3C standard buttons -> ViGEm XUSB_BUTTON. Triggers use their analog
+	// fields; Guide is supported by the SDK's published 0x0400 constant.
+	for index, mask := range [...]uint16{0x1000, 0x2000, 0x4000, 0x8000, 0x0100, 0x0200, 0, 0, 0x0020, 0x0010, 0x0040, 0x0080, 0x0001, 0x0002, 0x0004, 0x0008, 0x0400} {
+		if report.Buttons&(1<<index) != 0 {
+			buttons |= mask
+		}
+	}
+	invertY := func(value int16) int16 {
+		if value == -32768 {
+			return 32767
+		}
+		return -value
+	}
+	return xusbReport{
+		Buttons: buttons, LeftTrigger: report.LeftTrigger, RightTrigger: report.RightTrigger,
+		LeftX: report.LeftX, LeftY: invertY(report.LeftY), RightX: report.RightX, RightY: invertY(report.RightY),
+	}
+}
+
 func openGamepadBackend() (gamepadBackend, error) {
 	executable, err := os.Executable()
 	if err != nil {
@@ -100,6 +132,11 @@ func (b *vigemGamepadBackend) Open() (gamepadDevice, error) {
 	if b.dll == nil {
 		return nil, errors.New("virtual gamepad backend is closed")
 	}
+	// XInput has four controller positions, shared with physical controllers.
+	// ViGEm owns actual bus allocation; never claim or reset an existing device.
+	if len(b.devices) >= 4 {
+		return nil, errors.New("all four Windows remote gamepad slots are occupied")
+	}
 	target, _, _ := b.targetAlloc.Call()
 	if target == 0 {
 		return nil, errors.New("virtual Xbox 360 allocation failed")
@@ -123,8 +160,8 @@ func (b *vigemGamepadBackend) updateLocked(target uintptr, report gamepadReport)
 	// reference. SDK: nefarius/ViGEmClient b66d02d57e32cc8595369c53418b843e958649b4.
 	var storage [32]byte
 	offset := (-uintptr(unsafe.Pointer(&storage[0]))) & 15
-	data := (*gamepadReport)(unsafe.Pointer(&storage[offset]))
-	*data = report
+	data := (*xusbReport)(unsafe.Pointer(&storage[offset]))
+	*data = toXUSBReport(report)
 	result, _, _ := b.updateTarget.Call(b.client, target, uintptr(unsafe.Pointer(data)))
 	runtime.KeepAlive(&storage)
 	return vigemResult("write virtual Xbox 360 report", result)

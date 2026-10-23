@@ -1,0 +1,53 @@
+package remoteinput
+
+import "encoding/binary"
+
+// Generic HID gamepad: 13 buttons, an eight-way D-pad, four signed stick axes,
+// and two unsigned trigger axes. No physical controller identity is impersonated.
+var gamepadHIDDescriptor = [...]byte{
+	0x05, 0x01, 0x09, 0x05, 0xa1, 0x01, // Generic Desktop / Game Pad
+	0x05, 0x09, 0x19, 0x01, 0x29, 0x0d, // Button 1..13
+	0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x0d, 0x81, 0x02,
+	0x75, 0x03, 0x95, 0x01, 0x81, 0x03, // byte alignment
+	0x05, 0x01, 0x09, 0x39, // Hat Switch, clockwise from up; 8 = neutral
+	0x15, 0x00, 0x25, 0x07, 0x35, 0x00, 0x46, 0x3b, 0x01, 0x65, 0x14,
+	0x75, 0x04, 0x95, 0x01, 0x81, 0x42,
+	0x75, 0x04, 0x95, 0x01, 0x81, 0x03,
+	0x65, 0x00, 0x35, 0x00, 0x45, 0x00, // reset hat units and physical bounds
+	0x09, 0x30, 0x09, 0x31, 0x09, 0x33, 0x09, 0x34, // X, Y, Rx, Ry
+	0x16, 0x00, 0x80, 0x26, 0xff, 0x7f,
+	0x75, 0x10, 0x95, 0x04, 0x81, 0x02,
+	0x09, 0x32, 0x09, 0x35, // Z, Rz triggers
+	0x15, 0x00, 0x26, 0xff, 0x00, 0x75, 0x08, 0x95, 0x02, 0x81, 0x02,
+	0xc0,
+}
+
+const gamepadHIDReportSize = 13
+
+func gamepadHIDReport(report gamepadReport) [gamepadHIDReportSize]byte {
+	var data [gamepadHIDReportSize]byte
+	// W3C buttons 12..15 become the hat; button 16 (Guide) follows button 11.
+	buttons := uint16(report.Buttons&0x0fff | (report.Buttons>>4)&0x1000)
+	binary.LittleEndian.PutUint16(data[:2], buttons)
+	x, y := 0, 0
+	if report.Buttons&(1<<12) != 0 {
+		y--
+	}
+	if report.Buttons&(1<<13) != 0 {
+		y++
+	}
+	if report.Buttons&(1<<14) != 0 {
+		x--
+	}
+	if report.Buttons&(1<<15) != 0 {
+		x++
+	}
+	// Opposite D-pad directions cancel on each axis.
+	hat := [3][3]byte{{7, 0, 1}, {6, 8, 2}, {5, 4, 3}}
+	data[2] = hat[y+1][x+1]
+	for i, axis := range [...]int16{report.LeftX, report.LeftY, report.RightX, report.RightY} {
+		binary.LittleEndian.PutUint16(data[3+i*2:], uint16(axis))
+	}
+	data[11], data[12] = report.LeftTrigger, report.RightTrigger
+	return data
+}

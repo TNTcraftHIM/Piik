@@ -47,7 +47,6 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const active = state?.state === "active" && canControl && channel?.readyState === "open";
   const controlled = (state?.state === "active" || state?.state === "suspended") && canControl && channel?.readyState === "open";
   const gamepadControl = state?.device === "gamepad";
-  const pointerControl = !gamepadControl && state?.pointer !== false;
   const input = useCallback((event: RemoteInputEvent) => session.current?.input(event), []);
   const reset = useCallback(() => { touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
   const closeKeyboard = () => {
@@ -92,7 +91,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   useEffect(() => {
     const video = videoRef.current;
     const element = surface.current;
-    if (!controlled || !pointerControl || !video || !element) { setTouch(false); return; }
+    if (!controlled || gamepadControl || !video || !element) { setTouch(false); return; }
     const updateCursor = () => {
       const picture = pictureRect(video);
       const rect = surface.current?.getBoundingClientRect();
@@ -127,7 +126,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       observer.disconnect(); video.removeEventListener("resize", refresh);
       current.reset(); view.reset(); touchpad.current = null; viewport.current = null;
     };
-  }, [controlled, pointerControl, channel, videoRef]);
+  }, [controlled, gamepadControl, channel, videoRef]);
   useEffect(() => { viewport.current?.refresh(); }, [pictureFit]);
   useEffect(() => {
     reset(); viewport.current?.reset(); viewport.current?.refresh();
@@ -153,10 +152,10 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     };
   }, [release, videoRef]);
   useEffect(() => {
-    if (!controlled) return;
+    if (!controlled || gamepadControl) return;
     const element = surface.current;
     element?.focus({ preventScroll: true });
-    const wheel = (event: WheelEvent) => { event.preventDefault(); if (pointerControl) session.current?.scroll(event.deltaY, event.deltaMode); };
+    const wheel = (event: WheelEvent) => { event.preventDefault(); session.current?.scroll(event.deltaY, event.deltaMode); };
     element?.addEventListener("wheel", wheel, { passive: false });
     // Release can land outside the picture after a drag. Observe it for this
     // grant only; the native owner ignores buttons it never pressed.
@@ -176,7 +175,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       if (document.pointerLockElement === element) document.exitPointerLock();
       setLocked(false); setLockFailed(false);
     };
-  }, [controlled, channel, release, reset, pointerControl]);
+  }, [controlled, gamepadControl, channel, release, reset]);
   useEffect(() => {
     if (!controlled) return;
     const owners = [...new Set([document, ...(keyboardDocument ? [keyboardDocument] : [])])];
@@ -221,7 +220,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     : state.state === "suspended" ? "remote.suspended" : state.state === "failed" ? "remote.failed"
     : state.state === "pending" ? state.mode === "ask" ? "remote.pending" : "remote.connecting"
     : gamepadControl && controlled ? gamepadConnected ? "remote.gamepadHelp" : "remote.gamepadWaiting"
-    : controlled && !pointerControl ? "remote.keyboardOnly" : undefined;
+    : undefined;
   const parent = videoRef.current?.parentElement;
   return <>
     <span className="lr-remote-controls" role="group" aria-label={t("remote.title")}>
@@ -283,7 +282,6 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         onContextMenu={event => event.preventDefault()}
         onAuxClick={event => event.preventDefault()}
         onPointerMove={event => {
-          if (!pointerControl) return;
           if (event.pointerType === "touch") {
             event.preventDefault(); event.stopPropagation();
             touchpad.current?.move(event.pointerId, event.clientX, event.clientY); return;
@@ -301,7 +299,6 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           }
         }}
         onPointerDown={event => {
-          if (!pointerControl) return;
           if (document.pointerLockElement !== surface.current) event.currentTarget.setPointerCapture(event.pointerId);
           if (event.pointerType === "touch") {
             event.preventDefault(); event.stopPropagation(); setTouch(true);
@@ -310,7 +307,6 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           }
         }}
         onPointerUp={event => {
-          if (!pointerControl) return;
           if (event.pointerType === "touch") {
             event.preventDefault(); event.stopPropagation(); touchpad.current?.up(event.pointerId);
           }
@@ -320,7 +316,6 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         // Pointer down/up report the first/last mouse button only. Mouse events
         // preserve chords such as holding right to aim while left clicks fire.
         onMouseDown={event => {
-          if (!pointerControl) { event.currentTarget.focus({ preventScroll: true }); return; }
           if (event.button > 4) return;
           event.preventDefault(); surface.current?.focus({ preventScroll: true });
           if (document.pointerLockElement === surface.current) { input({ type: "button", button: event.button, down: true }); return; }
@@ -352,7 +347,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         allowText={!state.coPlay}
         releaseKey={releaseKey} onReleaseKeyChange={key => { setReleaseKey(key); saveRoomPreferences({ remoteReleaseKey: key }); }}
         onSurfaceChange={keyboardSurfaceChanged}
-        mouseControl={pointerControl && !touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad" size="compact"
+        mouseControl={!touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad" size="compact"
           title={lockFailed ? "remote.lockFailed" : locked ? "remote.releaseMouse" : "remote.gameMouse"}
           cap={locked ? "remote.releaseMouse" : "remote.gameMouse"} pressed={locked}
           hint={locked ? "hint-remote-mouse-release" : "hint-remote-mouse-lock"}

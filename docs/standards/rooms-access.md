@@ -196,19 +196,23 @@ Changing the source, stopping sharing, authorization loss or route retirement
 releases the corresponding grants and held input. Reconnection requires a new grant.
 
 The default is one keyboard/mouse controller. The Host may opt into **Play
-together**, allowing concurrent approved Viewers to share the existing keyboard.
-Held keys belong to each grant; releasing one participant cannot release another's
-still-held keys. One remote keyboard grant may own the pointer; the Host can
-transfer it or take it back. Changing co-play mode ends current grants. Input
+together**, allowing concurrent approved Viewers to share the existing keyboard
+and mouse. Held keys and mouse buttons belong to each grant; releasing one
+participant cannot release another's still-held inputs. All approved keyboard/mouse
+grants contribute to the same pointer, with no per-player mouse assignment or
+join-order priority. Changing co-play mode ends current grants. Input
 still belongs to one process-wide source owner, not multiple simultaneous shares.
 
 Optional Windows x64 gamepad grants create independent Xbox 360 devices through
 ViGEmClient and an already-installed ViGEmBus. Piik may ship the MIT user-mode
 client; the Host installs the optional driver. Each approved gamepad owns its
-device and cannot inject keyboard or mouse input. There are at most four remote
-devices, subject to the four XInput slots shared with the Host's existing devices.
-Driver connection and target creation determine availability; keyboard input
-continues when the optional backend is unavailable.
+device and cannot inject keyboard or mouse input. Windows is subject to the four
+XInput slots shared with the Host's existing devices; slot limits belong to the
+platform backend. Driver connection and target creation determine availability;
+keyboard/mouse input continues when the optional backend is unavailable.
+Linux uinput and macOS virtual-HID backends remain unverified prototypes, with
+platform permissions and evidence limits recorded in the
+[co-play assessment](../research/room-interactions.md#remote-co-play).
 
 Losing shared-window focus releases held input and neutralizes gamepads while
 keeping grants suspended. Ending a gamepad grant neutralizes and removes only

@@ -59,7 +59,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 		m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: data}, c.epoch)
 	}
 	request(first, "")
-	if s.State().Mode != "off" || first.requested || m.active != nil {
+	if s.State().Mode != "off" || first.requested || m.owner != nil {
 		t.Fatal("ordinary sharing accepted a control request before opt-in")
 	}
 	if err := setTestPolicy(s, "ask", ""); err != nil {
@@ -67,29 +67,29 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	}
 	request(first, "")
 	oldRequest := first.requestID
-	if !first.requested || m.active != nil {
+	if !first.requested || m.owner != nil {
 		t.Fatal("Ask each time did not require Host approval")
 	}
 	if err := setTestPolicy(s, "room", ""); err != nil {
 		t.Fatal(err)
 	}
-	if m.active != nil || first.requested || s.Decide(oldRequest, true) == nil {
+	if m.owner != nil || first.requested || s.Decide(oldRequest, true) == nil {
 		t.Fatal("policy change inherited an old request")
 	}
 	request(first, "")
-	if m.active != first {
+	if first.grant == "" {
 		t.Fatal("explicit room policy did not grant control")
 	}
 	request(second, "")
-	if m.active != first || second.requested {
+	if first.grant == "" || second.grant != "" || second.requested {
 		t.Fatal("automatic request displaced an active controller")
 	}
 	m.Revoke()
-	if m.active != nil || s.State().Mode != "ask" {
+	if m.owner != nil || s.State().Mode != "ask" {
 		t.Fatal("local stop did not disable automatic access")
 	}
 	request(second, "")
-	if !second.requested || m.active != nil {
+	if !second.requested || m.owner != nil {
 		t.Fatal("local stop allowed automatic re-entry")
 	}
 	if setTestPolicy(s, "password", "") == nil {
@@ -99,22 +99,22 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	request(first, "wrong")
-	if m.active != nil || first.requested {
+	if m.owner != nil || first.requested {
 		t.Fatal("incorrect password acquired control")
 	}
 	request(second, "shared-secret")
-	if m.active != nil {
+	if m.owner != nil {
 		t.Fatal("changing endpoints bypassed password attempt pacing")
 	}
 	s.passwordRetry = time.Time{}
 	request(first, "shared-secret")
-	if m.active != first {
+	if first.grant == "" {
 		t.Fatal("correct password did not authorize control")
 	}
 	if err := s.Decide(first.requestID, false); err != nil {
 		t.Fatal(err)
 	}
-	if m.active != nil || s.State().Mode != "ask" {
+	if m.owner != nil || s.State().Mode != "ask" {
 		t.Fatal("Host stop left automatic access enabled")
 	}
 	if err := setTestPolicy(s, "room", ""); err != nil {
@@ -122,11 +122,11 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	}
 	request(first, "")
 	s.RevokeEdge("root-edge")
-	if m.active != nil {
+	if m.owner != nil {
 		t.Fatal("route loss retained input")
 	}
 	request(first, "")
-	if m.active != first {
+	if first.grant == "" {
 		t.Fatal("room policy could not authorize a fresh request")
 	}
 	oldGrant := first.grant
@@ -137,7 +137,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	s.Pause(false)
 	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"key","code":"KeyA","down":true,"grant":"` + oldGrant + `"}`)}, first.epoch)
 	request(second, "")
-	if m.active != nil || second.requested || len(sink.events) != 0 {
+	if m.owner != nil || second.requested || len(sink.events) != 0 {
 		t.Fatal("disabled remote control retained input or accepted a new request")
 	}
 	if err := setTestPolicy(s, "room", ""); err != nil {
@@ -145,11 +145,11 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	}
 	request(first, "")
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "2"}, nil)
-	if m.active != nil || s.State().Mode != "off" {
+	if m.owner != nil || s.State().Mode != "off" {
 		t.Fatal("source replacement inherited permission")
 	}
 	request(second, "")
-	if second.requested || m.active != nil {
+	if second.requested || m.owner != nil {
 		t.Fatal("replacement source accepted input without opt-in")
 	}
 	if err := setTestPolicy(s, "room", ""); err != nil {
@@ -160,16 +160,16 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	if err := s.SetPeers(peers[1:]); err != nil {
 		t.Fatal(err)
 	}
-	if m.active != nil || first.grant != "" || m.connections[endpointKey{s, first.id}] != nil {
+	if m.owner != nil || first.grant != "" || m.connections[endpointKey{s, first.id}] != nil {
 		t.Fatal("room membership removal retained the active input grant")
 	}
 	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"key","code":"KeyA","down":true,"grant":"` + revokedGrant + `"}`)}, first.epoch)
 	request(first, "")
-	if m.active != nil || first.requested || len(sink.events) != 0 {
+	if m.owner != nil || first.requested || len(sink.events) != 0 {
 		t.Fatal("removed endpoint regained input with its old grant or key")
 	}
 	request(second, "")
-	if m.active != second {
+	if second.grant == "" {
 		t.Fatal("membership removal interrupted the remaining authenticated endpoint")
 	}
 }
@@ -204,7 +204,7 @@ func TestRouteReplacementRequiresApprovalAndIgnoresOldClosure(t *testing.T) {
 		if err := s.Decide(views[0].ID, true); err != nil {
 			t.Fatal(err)
 		}
-		return m.active.grant
+		return m.connections[endpointKey{s, peer.EndpointID}].grant
 	}
 	oldEpoch, newEpoch := strings.Repeat("c", 32), strings.Repeat("d", 32)
 	oldGrant := request(oldEpoch)
@@ -213,12 +213,12 @@ func TestRouteReplacementRequiresApprovalAndIgnoresOldClosure(t *testing.T) {
 		t.Fatal("replacement retained old input")
 	}
 	s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: oldEpoch, Closed: true})
-	m.receive(m.active, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + newEpoch + `"}`)}, oldEpoch)
-	if m.active == nil || m.active.grant != newGrant {
+	m.receive(m.connections[endpointKey{s, peer.EndpointID}], webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + newEpoch + `"}`)}, oldEpoch)
+	if m.owner == nil || m.connections[endpointKey{s, peer.EndpointID}].grant != newGrant {
 		t.Fatal("old descendant closure retired the new grant")
 	}
 	s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: newEpoch, Closed: true})
-	if m.active != nil || len(sink.resets) != 2 {
+	if m.owner != nil || len(sink.resets) != 2 {
 		t.Fatal("current route loss did not release input")
 	}
 }
@@ -365,8 +365,9 @@ func coPlaySession(t *testing.T, m *Manager, extended ...bool) (*Session, []*con
 	}
 	var peers []protocol.RemoteInputPeer
 	for i := range extended {
+		digit := hex.EncodeToString([]byte{byte(i + 1)})
 		peers = append(peers, protocol.RemoteInputPeer{PeerID: "viewer-" + string(rune('a'+i)),
-			EndpointID: strings.Repeat(string(rune('a'+i)), 32), Secret: strings.Repeat(string(rune('a'+i)), 64)})
+			EndpointID: strings.Repeat(digit, 16), Secret: strings.Repeat(digit, 32)})
 	}
 	if err := s.SetPeers(peers); err != nil {
 		t.Fatal(err)
@@ -410,12 +411,24 @@ func (p *recordedGamepad) Close() error {
 }
 
 type recordedGamepads struct {
-	devices []*recordedGamepad
-	openErr error
-	closed  bool
+	devices  []*recordedGamepad
+	capacity int
+	openErr  error
+	closed   bool
 }
 
 func (b *recordedGamepads) Open() (gamepadDevice, error) {
+	if b.capacity > 0 {
+		active := 0
+		for _, device := range b.devices {
+			if !device.closed {
+				active++
+			}
+		}
+		if active >= b.capacity {
+			return nil, errors.New("backend device capacity reached")
+		}
+	}
 	if b.openErr != nil {
 		return nil, b.openErr
 	}
@@ -439,12 +452,12 @@ func TestCoPlayGamepadGrantIsolationAndRetirement(t *testing.T) {
 	s, players := coPlaySession(t, m, true, true, true)
 	a, b, keyboard := players[0], players[1], players[2]
 	sendTestInput(m, a, inputEvent{Type: "request", Device: "gamepad"})
-	if a.grant == "" || a.pad == nil || m.active != nil {
+	if a.grant == "" || a.pad == nil || m.owner != s {
 		t.Fatal("first gamepad did not receive an independent grant without the pointer")
 	}
 	sendTestInput(m, keyboard, inputEvent{Type: "request"})
 	sendTestInput(m, b, inputEvent{Type: "request", Device: "gamepad"})
-	if keyboard.grant == "" || b.grant == "" || m.active != keyboard || m.owner != s {
+	if keyboard.grant == "" || b.grant == "" || m.owner != s {
 		t.Fatal("gamepad ownership blocked the first keyboard or sibling gamepad")
 	}
 	state := s.State()
@@ -471,7 +484,7 @@ func TestCoPlayGamepadGrantIsolationAndRetirement(t *testing.T) {
 		sendTestInput(m, a, event)
 	}
 	sendTestInput(m, keyboard, inputEvent{Type: "gamepad", Gamepad: &reportB})
-	if len(sink.events) != 0 || first.state != reportA || second.state != reportB || s.GivePointer(a.requestID) == nil {
+	if len(sink.events) != 0 || first.state != reportA || second.state != reportB {
 		t.Fatal("gamepad permission crossed into keyboard/pointer input")
 	}
 	sendTestInput(m, a, inputEvent{Type: "reset"})
@@ -497,7 +510,7 @@ func TestCoPlayGamepadGrantIsolationAndRetirement(t *testing.T) {
 	}
 	second.updateErr = errors.New("driver write failed")
 	sendTestInput(m, b, inputEvent{Type: "gamepad", Gamepad: &reportB})
-	if !second.closed || b.pad != nil || b.grant != "" || keyboard.grant == "" || m.active != keyboard || !keyboard.keys["KeyB"] {
+	if !second.closed || b.pad != nil || b.grant != "" || keyboard.grant == "" || !keyboard.keys["KeyB"] {
 		t.Fatal("one gamepad failure retired healthy input owners")
 	}
 	a.edgeID = "replacement-edge"
@@ -520,9 +533,9 @@ func TestCoPlayGamepadGrantIsolationAndRetirement(t *testing.T) {
 
 func TestCoPlayGamepadAdmissionAndFailure(t *testing.T) {
 	sink := &recordedInput{events: make(chan inputEvent, 16), resets: make(chan struct{}, 16), focused: true}
-	pads := &recordedGamepads{}
+	pads := &recordedGamepads{capacity: 5}
 	m := &Manager{sink: sink, gamepads: pads, connections: map[endpointKey]*connection{}}
-	s, players := coPlaySession(t, m, true, true, true, true, true, false)
+	s, players := coPlaySession(t, m, true, true, true, true, true, true, false)
 	if err := setTestPolicy(s, "ask", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -542,23 +555,23 @@ func TestCoPlayGamepadAdmissionAndFailure(t *testing.T) {
 	if err := setTestPolicy(s, "room", ""); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range players[:5] {
+	for _, c := range players[:6] {
 		sendTestInput(m, c, inputEvent{Type: "request", Device: "gamepad"})
 	}
-	if len(pads.devices) != 4 || players[4].grant != "" || players[4].requested || m.active != nil {
+	if len(pads.devices) != 5 || players[5].grant != "" || players[5].requested {
 		t.Fatal("remote gamepad capacity was exceeded or a failed request retained authority")
 	}
-	legacy := players[5]
+	legacy := players[6]
 	sendTestInput(m, legacy, inputEvent{Type: "request", Device: "gamepad"})
-	if legacy.grant != "" || len(pads.devices) != 4 {
+	if legacy.grant != "" || len(pads.devices) != 5 {
 		t.Fatal("legacy Guest acquired an unnegotiated gamepad")
 	}
-	sendTestInput(m, players[4], inputEvent{Type: "request", Device: "other"})
-	if players[4].grant != "" {
+	sendTestInput(m, players[5], inputEvent{Type: "request", Device: "other"})
+	if players[5].grant != "" {
 		t.Fatal("unknown input-device kind acquired a grant")
 	}
-	sendTestInput(m, players[4], inputEvent{Type: "request"})
-	if players[4].grant == "" || m.active != players[4] {
+	sendTestInput(m, players[5], inputEvent{Type: "request"})
+	if players[5].grant == "" {
 		t.Fatal("full gamepad capacity blocked keyboard input")
 	}
 	_, other := coPlaySession(t, m, true)
@@ -572,7 +585,7 @@ func TestCoPlayGamepadAdmissionAndFailure(t *testing.T) {
 			t.Fatal("Host panic stop retained a virtual gamepad")
 		}
 	}
-	if m.owner != nil || m.active != nil {
+	if m.owner != nil {
 		t.Fatal("Host panic stop retained an input owner")
 	}
 }
@@ -588,7 +601,7 @@ func sendTestInput(m *Manager, c *connection, event inputEvent) {
 	m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: data}, c.epoch)
 }
 
-func TestCoPlayKeyboardAndPointerOwnership(t *testing.T) {
+func TestCoPlaySharedKeyboardAndMouse(t *testing.T) {
 	sink := &recordedInput{events: make(chan inputEvent, 64), resets: make(chan struct{}, 16), focused: true}
 	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
 	s, players := coPlaySession(t, m, true, true)
@@ -596,73 +609,72 @@ func TestCoPlayKeyboardAndPointerOwnership(t *testing.T) {
 	for _, c := range players {
 		sendTestInput(m, c, inputEvent{Type: "request"})
 	}
-	if a.grant == "" || b.grant == "" || m.active != a || m.owner != s {
-		t.Fatal("co-play did not grant two keyboards and the first pointer")
-	}
-	state := s.State()
-	if !state.CoPlay || len(state.Requests) != 2 {
-		t.Fatal("Host cannot see both grants")
-	}
-	for _, view := range state.Requests {
-		if view.Pointer == nil || *view.Pointer != (view.ID == a.requestID) {
-			t.Fatal("Host pointer assignment is missing or ambiguous")
-		}
+	if a.grant == "" || b.grant == "" || m.owner != s || len(s.State().Requests) != 2 {
+		t.Fatal("co-play did not admit both players")
 	}
 	for _, c := range players {
 		sendTestInput(m, c, inputEvent{Type: "key", Code: "KeyA", Down: true})
 		sendTestInput(m, c, inputEvent{Type: "key", Code: "KeyA", Down: true})
+		sendTestInput(m, c, inputEvent{Type: "button", Button: 0, Down: true})
+		sendTestInput(m, c, inputEvent{Type: "button", Button: 0, Down: true})
 	}
-	if len(sink.events) != 1 || !(<-sink.events).Down {
-		t.Fatal("shared key or repeated keydown was injected twice")
+	if len(sink.events) != 2 {
+		t.Fatal("shared held input was injected twice")
 	}
-	sendTestInput(m, a, inputEvent{Type: "key", Code: "KeyA"})
-	sendTestInput(m, b, inputEvent{Type: "move", X: 0.5, Y: 0.5})
-	sendTestInput(m, b, inputEvent{Type: "button", Down: true})
-	sendTestInput(m, b, inputEvent{Type: "text", Text: "hello"})
-	if len(sink.events) != 0 || len(sink.resets) != 0 {
-		t.Fatal("one player released another's key or used an unowned pointer/text reset")
-	}
-	sendTestInput(m, a, inputEvent{Type: "button", Down: true})
-	sendTestInput(m, a, inputEvent{Type: "key", Code: "KeyW", Down: true})
 	for len(sink.events) > 0 {
 		<-sink.events
 	}
-	if err := s.GivePointer(b.requestID); err != nil {
-		t.Fatal(err)
+	sendTestInput(m, a, inputEvent{Type: "key", Code: "KeyA"})
+	sendTestInput(m, a, inputEvent{Type: "button", Button: 0})
+	sendTestInput(m, b, inputEvent{Type: "text", Text: "hello"})
+	if len(sink.events) != 0 || len(sink.resets) != 0 {
+		t.Fatal("a player released another player's input or reset shared input through text")
 	}
-	if event := <-sink.events; event.Type != "button" || event.Down || !a.keys["KeyW"] || m.active != b {
-		t.Fatal("pointer handoff failed to release the old buttons or kept no keyboard")
+	for _, c := range players {
+		sendTestInput(m, c, inputEvent{Type: "move", X: .5, Y: .5})
 	}
-	sendTestInput(m, a, inputEvent{Type: "move", X: 0.5, Y: 0.5})
-	sendTestInput(m, b, inputEvent{Type: "move", X: 0.5, Y: 0.5})
-	if len(sink.events) != 1 {
-		t.Fatal("pointer move ownership was not transferred")
+	sendTestInput(m, b, inputEvent{Type: "relative", DX: 10, DY: -4})
+	sendTestInput(m, a, inputEvent{Type: "wheel", Delta: 120})
+	if len(sink.events) != 4 {
+		t.Fatal("authorized players cannot share pointer movement and scrolling")
 	}
-	<-sink.events
+	for len(sink.events) > 0 {
+		<-sink.events
+	}
+	sendTestInput(m, a, inputEvent{Type: "key", Code: "KeyW", Down: true})
+	sendTestInput(m, a, inputEvent{Type: "button", Button: 1, Down: true})
+	for len(sink.events) > 0 {
+		<-sink.events
+	}
 	if err := s.Decide(a.requestID, false); err != nil {
 		t.Fatal(err)
 	}
-	if event := <-sink.events; event.Type != "key" || event.Code != "KeyW" || event.Down {
-		t.Fatal("personal revocation failed to release the player's distinct key")
+	if len(sink.events) != 2 {
+		t.Fatal("personal revocation did not release only distinct held input")
 	}
-	if len(sink.events) != 0 || len(sink.resets) != 0 || b.grant == "" || s.mode != "room" {
-		t.Fatal("personal revocation reset another player or changed the room policy")
+	for len(sink.events) > 0 {
+		event := <-sink.events
+		if event.Down || !(event.Type == "key" && event.Code == "KeyW" || event.Type == "button" && event.Button == 1) {
+			t.Fatal("personal revocation changed a sibling's input")
+		}
 	}
-	if err := s.GivePointer(""); err != nil {
-		t.Fatal(err)
-	}
-	if m.active != nil || m.owner != s {
-		t.Fatal("returning the pointer released keyboard ownership")
+	if b.grant == "" || !b.keys["KeyA"] || !b.buttons[0] || len(sink.resets) != 0 || s.mode != "room" {
+		t.Fatal("revocation disrupted another player")
 	}
 	sendTestInput(m, b, inputEvent{Type: "reset"})
-	if event := <-sink.events; event.Code != "KeyA" || event.Down {
-		t.Fatal("reset did not release the final key holder")
+	if len(sink.events) != 2 {
+		t.Fatal("final holder reset missed a key or mouse button")
+	}
+	for len(sink.events) > 0 {
+		if (<-sink.events).Down {
+			t.Fatal("reset pressed input")
+		}
 	}
 	sendTestInput(m, b, inputEvent{Type: "key", Code: "KeyB", Down: true})
 	<-sink.events
 	m.Revoke()
 	if b.grant != "" || m.owner != nil || len(sink.resets) != 1 || s.mode != "ask" {
-		t.Fatal("Host stop missed keyboard-only players")
+		t.Fatal("Host stop left a player active")
 	}
 }
 
@@ -673,7 +685,7 @@ func TestCoPlayRetirementAndLegacyAdmission(t *testing.T) {
 	a, b, legacy := players[0], players[1], players[2]
 	sendTestInput(m, legacy, inputEvent{Type: "request"})
 	sendTestInput(m, a, inputEvent{Type: "request"})
-	if legacy.grant == "" || a.grant != "" || m.active != legacy || s.GivePointer("") == nil {
+	if legacy.grant == "" || a.grant != "" {
 		t.Fatal("legacy client was admitted without exclusive full control")
 	}
 	sendTestInput(m, legacy, inputEvent{Type: "release", Intent: legacy.intent})
@@ -682,11 +694,11 @@ func TestCoPlayRetirementAndLegacyAdmission(t *testing.T) {
 	}
 	sendTestInput(m, legacy, inputEvent{Type: "request"})
 	if a.grant == "" || b.grant == "" || legacy.grant != "" {
-		t.Fatal("busy legacy guest acquired keyboard-only control")
+		t.Fatal("legacy guest entered a concurrent-input session")
 	}
 	other, others := coPlaySession(t, m, true)
 	sendTestInput(m, others[0], inputEvent{Type: "request"})
-	if others[0].grant != "" || other.Decide(a.requestID, false) == nil || other.GivePointer(a.requestID) == nil {
+	if others[0].grant != "" || other.Decide(a.requestID, false) == nil {
 		t.Fatal("another native session acquired or changed the active desktop source")
 	}
 	for _, c := range []*connection{a, b} {
@@ -701,7 +713,7 @@ func TestCoPlayRetirementAndLegacyAdmission(t *testing.T) {
 	m.refreshActive()
 	m.refreshActive()
 	if !b.suspended || len(b.keys) != 0 || len(sink.resets) != 1 {
-		t.Fatal("keyboard-only source did not suspend once")
+		t.Fatal("shared-input source did not suspend once")
 	}
 	sink.focused = true
 	m.refreshActive()
@@ -754,9 +766,9 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	t.Cleanup(func() { _ = viewer.Close() })
 	channels := make(chan *webrtc.DataChannel, 2)
 	type observedState struct {
-		peer, state     string
-		capabilities    []string
-		coPlay, pointer *bool
+		peer, state  string
+		capabilities []string
+		coPlay       *bool
 	}
 	states := make(chan observedState, 128)
 	bindings := map[string]protocol.RemoteInputPeer{}
@@ -789,10 +801,9 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 				State        string   `json:"state"`
 				Capabilities []string `json:"capabilities"`
 				CoPlay       *bool    `json:"coPlay"`
-				Pointer      *bool    `json:"pointer"`
 			}
 			if json.Unmarshal(plain, &value) == nil {
-				states <- observedState{c.Label(), value.State, value.Capabilities, value.CoPlay, value.Pointer}
+				states <- observedState{c.Label(), value.State, value.Capabilities, value.CoPlay}
 			}
 		})
 		c.OnOpen(func() { channels <- c })
@@ -1060,15 +1071,15 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		}
 	}
 	send("first", inputEvent{Type: "sync"})
-	if state := waitReply("first", false); state.pointer != nil || len(state.capabilities) != 0 {
+	if state := waitReply("first", false); len(state.capabilities) != 0 {
 		t.Fatal("baseline sync added unnegotiated fields")
 	}
 	send("first", inputEvent{Type: "capabilities"})
-	if state := waitReply("first", true); *state.coPlay || state.pointer == nil || !*state.pointer || len(state.capabilities) != 1 || state.capabilities[0] != "coPlay" {
+	if state := waitReply("first", true); *state.coPlay || len(state.capabilities) != 1 || state.capabilities[0] != "coPlay" {
 		t.Fatal("extended Guest did not receive the explicit single-controller capability state")
 	}
 	send("second", inputEvent{Type: "sync"})
-	if state := waitReply("second", false); state.pointer != nil || len(state.capabilities) != 0 {
+	if state := waitReply("second", false); len(state.capabilities) != 0 {
 		t.Fatal("one Guest opted another Guest into the extension")
 	}
 	s.Close()

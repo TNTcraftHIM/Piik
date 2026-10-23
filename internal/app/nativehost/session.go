@@ -587,10 +587,6 @@ func (session *Session) SetRemoteCoPlay(enabled bool) error {
 	return session.remoteInput.SetCoPlay(enabled)
 }
 
-func (session *Session) GiveRemotePointer(id string) error {
-	return session.remoteInput.GivePointer(id)
-}
-
 func (session *Session) syncRemoteInputSource(change *remoteinput.PolicyChange) {
 	session.mu.Lock()
 	target := session.videoOptions.Target

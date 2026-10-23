@@ -289,7 +289,6 @@ const remoteControlRequestSchema = z.object({
   id: opaqueIdentifierSchema,
   peerId: opaqueIdentifierSchema,
   state: z.enum(["pending", "active", "suspended"]),
-  pointer: z.boolean().optional(),
   device: z.literal("gamepad").optional(),
 }).strict();
 export type RemoteControlRequest = z.infer<typeof remoteControlRequestSchema>;

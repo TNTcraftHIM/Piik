@@ -1,20 +1,22 @@
 import type { RemoteInputEvent } from "./input-session";
 import type { RemoteGamepadReport } from "./protocol";
 
-// Standard Gamepad layout → XInput report. Browser Y points down; XInput Y points up.
+// Standard Gamepad layout. Platform backends own native device formats.
 // https://www.w3.org/TR/gamepad/#remapping
 export function gamepadReport(pad: Pick<Gamepad, "buttons" | "axes">): RemoteGamepadReport {
-  const buttons = [0x1000, 0x2000, 0x4000, 0x8000, 0x100, 0x200, 0, 0,
-    0x20, 0x10, 0x40, 0x80, 0x1, 0x2, 0x4, 0x8];
-  const axis = (index: number, invert = false) => {
-    const value = Math.max(-1, Math.min(1, (pad.axes[index] ?? 0) * (invert ? -1 : 1)));
+  let buttons = 0;
+  for (let index = 0; index < 17; index++) {
+    if (pad.buttons[index]?.pressed) buttons |= 1 << index;
+  }
+  const axis = (index: number) => {
+    const value = Math.max(-1, Math.min(1, pad.axes[index] ?? 0));
     return Math.round(value * (value < 0 ? 32768 : 32767));
   };
   const trigger = (index: number) => Math.round(Math.max(0, Math.min(1, pad.buttons[index]?.value ?? 0)) * 255);
   return {
-    buttons: buttons.reduce((mask, bit, index) => mask | (pad.buttons[index]?.pressed ? bit : 0), 0),
+    buttons,
     leftTrigger: trigger(6), rightTrigger: trigger(7),
-    leftX: axis(0), leftY: axis(1, true), rightX: axis(2), rightY: axis(3, true),
+    leftX: axis(0), leftY: axis(1), rightX: axis(2), rightY: axis(3),
   };
 }
 

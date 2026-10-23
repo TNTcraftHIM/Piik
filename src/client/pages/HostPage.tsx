@@ -3798,12 +3798,6 @@ export function HostPage({
                 if (!client || !shareId) throw new Error("Native share is unavailable");
                 await client.setRemoteCoPlay(shareId, enabled);
               } : undefined}
-              onPointer={async id => {
-                const client = nativeClientRef.current;
-                const shareId = nativeShareGenerationRef.current;
-                if (!client || !shareId) throw new Error("Native share is unavailable");
-                await client.giveRemotePointer(shareId, id);
-              }}
               onShortcut={nativeClientRef.current?.health.nativeMedia.remoteStopShortcut ? remoteStopShortcut : undefined}
               disabled={sharingPaused || switchingSource}
               requests={remoteControlState.requests.map(request => {

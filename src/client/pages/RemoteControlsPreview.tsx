@@ -43,8 +43,6 @@ export function RemoteControlsPreview() {
       <HostRemoteControl mode={mode} platform={platform} requests={requests}
         coPlay={coPlay} gamepad={platform === "windows"}
         onCoPlay={async enabled => { setCoPlay(enabled); setRequests([]); }}
-        onPointer={async id => setRequests(current => current.map(request =>
-          request.device === "gamepad" ? request : { ...request, pointer: request.id === id }))}
         onShortcut={platform === "linux" ? undefined : shortcut}
         onPolicy={async value => { setMode(value); setRequests([]); }}
         onDecide={async (id, allow) => setRequests(current => allow
@@ -57,11 +55,11 @@ export function RemoteControlsPreview() {
       <button type="button" className="lr-btn" onClick={() => {
         setMode("ask"); setCoPlay(true);
         setRequests([
-          { id: "preview-player-one", peerId: "preview-player-one", state: "active", name: "Player 1", pointer: true },
-          { id: "preview-player-two", peerId: "preview-player-two", state: "active", name: "Player 2", pointer: false },
-          { id: "preview-gamepad", peerId: "preview-gamepad", state: "pending", name: "Player 3", device: "gamepad", pointer: false },
+          { id: "preview-player-one", peerId: "preview-player-one", state: "active", name: "Player 1" },
+          { id: "preview-player-two", peerId: "preview-player-two", state: "active", name: "Player 2" },
+          { id: "preview-gamepad", peerId: "preview-gamepad", state: "pending", name: "Player 3", device: "gamepad" },
         ]);
-      }}>{en ? "Co-play: two keyboards and a gamepad" : "同乐示例：双键盘与手柄"}</button>
+      }}>{en ? "Co-play: shared keyboard/mouse and a gamepad" : "同乐示例：共用键鼠与手柄"}</button>
       <Btn id="preview-remote-keyboard-toggle" icon="keyboard" title="remote.keyboard" cap="remote.keyboard" hint="hint-remote-keyboard"
         expanded={keyboardOpen} controls="preview-remote-keyboard" onClick={() => setKeyboardOpen(value => !value)} />
     </div>

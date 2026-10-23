@@ -114,7 +114,6 @@ export class RemoteInputSession {
 
   input(event: RemoteInputEvent): void {
     if (event.type !== "reset" && ((this.state?.device === "gamepad") !== (event.type === "gamepad"))) return;
-    if (this.state?.pointer === false && ["move", "relative", "button", "wheel"].includes(event.type)) return;
     if (this.state?.coPlay && event.type === "text") return;
     if (event.type === "move" || event.type === "relative") {
       if (this.state?.state !== "active") return;

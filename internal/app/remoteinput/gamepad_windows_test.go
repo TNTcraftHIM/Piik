@@ -12,11 +12,40 @@ import (
 )
 
 func TestGamepadReportABI(t *testing.T) {
-	var report gamepadReport
+	var report xusbReport
 	if unsafe.Sizeof(report) != 12 || unsafe.Offsetof(report.LeftTrigger) != 2 ||
 		unsafe.Offsetof(report.RightTrigger) != 3 || unsafe.Offsetof(report.LeftX) != 4 ||
 		unsafe.Offsetof(report.LeftY) != 6 || unsafe.Offsetof(report.RightX) != 8 || unsafe.Offsetof(report.RightY) != 10 {
 		t.Fatal("gamepad report no longer matches the ViGEm XUSB_REPORT layout")
+	}
+}
+
+func TestGamepadXUSBMapping(t *testing.T) {
+	// SDK Common.h XUSB_BUTTON values. Browser trigger buttons are analog in
+	// XUSB_REPORT; Guide is independent of the ordinary face/shoulder buttons.
+	wantButtons := []uint16{0x1000, 0x2000, 0x4000, 0x8000, 0x100, 0x200, 0, 0, 0x20, 0x10, 0x40, 0x80, 1, 2, 4, 8, 0x400}
+	for index, want := range wantButtons {
+		if got := toXUSBReport(gamepadReport{Buttons: 1 << index}).Buttons; got != want {
+			t.Errorf("W3C button %d: got 0x%04x, want 0x%04x", index, got, want)
+		}
+	}
+	if got := toXUSBReport(gamepadReport{}); got != (xusbReport{}) {
+		t.Fatalf("neutral report must release every control: %+v", got)
+	}
+	got := toXUSBReport(gamepadReport{Buttons: 1 | 1<<4 | 1<<12 | 1<<16, LeftTrigger: 37, RightTrigger: 255, LeftX: -32768, LeftY: -32768, RightX: 32767, RightY: 32767})
+	want := xusbReport{Buttons: 0x1501, LeftTrigger: 37, RightTrigger: 255, LeftX: -32768, LeftY: 32767, RightX: 32767, RightY: -32767}
+	if got != want {
+		t.Fatalf("buttons/triggers/stick axes changed: got %+v, want %+v", got, want)
+	}
+}
+
+func TestGamepadWindowsCapacity(t *testing.T) {
+	backend := &vigemGamepadBackend{dll: &windows.DLL{}, devices: make(map[*vigemGamepad]struct{})}
+	for range 4 {
+		backend.devices[&vigemGamepad{}] = struct{}{}
+	}
+	if _, err := backend.Open(); err == nil {
+		t.Fatal("fifth Windows gamepad must be rejected before native allocation")
 	}
 }
 
@@ -53,15 +82,15 @@ func TestGamepadNativeLifecycle(t *testing.T) {
 	if err := xinput.Find(); err != nil {
 		t.Fatal(err)
 	}
-	read := func(index int) (gamepadReport, bool) {
+	read := func(index int) (xusbReport, bool) {
 		var state struct {
 			packet uint32
-			report gamepadReport
+			report xusbReport
 		}
 		result, _, _ := xinput.Call(uintptr(index), uintptr(unsafe.Pointer(&state)))
 		return state.report, result == 0
 	}
-	find := func(want gamepadReport) int {
+	find := func(want xusbReport) int {
 		for index := range 4 {
 			if report, ok := read(index); ok && report == want {
 				return index
@@ -85,8 +114,8 @@ func TestGamepadNativeLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	reportA := gamepadReport{Buttons: 0x1000, LeftTrigger: 61, RightTrigger: 17, LeftX: -17000, LeftY: 7100, RightX: -3900, RightY: 12400}
-	reportB := gamepadReport{Buttons: 0x2000, LeftTrigger: 23, RightTrigger: 183, LeftX: 8300, LeftY: 20000, RightX: -9100, RightY: -13100}
+	reportA := gamepadReport{Buttons: 1 << 0, LeftTrigger: 61, RightTrigger: 17, LeftX: -17000, LeftY: 7100, RightX: -3900, RightY: 12400}
+	reportB := gamepadReport{Buttons: 1 << 1, LeftTrigger: 23, RightTrigger: 183, LeftX: 8300, LeftY: 20000, RightX: -9100, RightY: -13100}
 	update(a, reportA)
 	update(b, reportB)
 	// PnP enumeration finishes asynchronously. Repeat current full-state reports
@@ -94,14 +123,14 @@ func TestGamepadNativeLifecycle(t *testing.T) {
 	wait(func() bool {
 		update(a, reportA)
 		update(b, reportB)
-		return find(reportA) >= 0 && find(reportB) >= 0
+		return find(toXUSBReport(reportA)) >= 0 && find(toXUSBReport(reportB)) >= 0
 	})
-	indexA, indexB := find(reportA), find(reportB)
+	indexA, indexB := find(toXUSBReport(reportA)), find(toXUSBReport(reportB))
 	update(a, gamepadReport{})
 	wait(func() bool {
 		a, okA := read(indexA)
 		b, okB := read(indexB)
-		return okA && a == (gamepadReport{}) && okB && b == reportB
+		return okA && a == (xusbReport{}) && okB && b == toXUSBReport(reportB)
 	})
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
@@ -109,7 +138,7 @@ func TestGamepadNativeLifecycle(t *testing.T) {
 	wait(func() bool {
 		_, okA := read(indexA)
 		b, okB := read(indexB)
-		return !okA && okB && b == reportB
+		return !okA && okB && b == toXUSBReport(reportB)
 	})
 	if err := a.Update(reportA); err == nil {
 		t.Fatal("closed device accepted an update")
@@ -120,16 +149,16 @@ func TestGamepadNativeLifecycle(t *testing.T) {
 	a = newDevice(first)
 	wait(func() bool {
 		update(a, reportA)
-		return find(reportA) >= 0
+		return find(toXUSBReport(reportA)) >= 0
 	})
-	indexA = find(reportA)
+	indexA = find(toXUSBReport(reportA))
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
 	wait(func() bool {
 		_, okA := read(indexA)
 		b, okB := read(indexB)
-		return !okA && okB && b == reportB
+		return !okA && okB && b == toXUSBReport(reportB)
 	})
 	if _, err := first.Open(); err == nil {
 		t.Fatal("closed backend created a device")
@@ -143,7 +172,7 @@ func TestGamepadNativeLifecycle(t *testing.T) {
 	update(b, gamepadReport{})
 	wait(func() bool {
 		report, ok := read(indexB)
-		return ok && report == (gamepadReport{})
+		return ok && report == (xusbReport{})
 	})
 	if err := b.Close(); err != nil {
 		t.Fatal(err)

@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-10-22
+Last updated: 2026-10-23
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -113,8 +113,8 @@ owns the new behavior.
 
 Optional attended input follows the committed media route back to the native
 Host. Control defaults to one keyboard/mouse grantee; source-scoped co-play can
-admit multiple keyboard contributors and optional independent virtual gamepads,
-with one explicit mouse owner. Source change, stop and revocation retire the
+admit multiple keyboard/mouse contributors and optional independent virtual
+gamepads. Source change, stop and revocation retire the
 affected grants. It adds no separate connection planner or listener.
 Viewer playback preferences and the combined interaction window remain local
 presentation owners under the existing 2.x compatibility boundary.

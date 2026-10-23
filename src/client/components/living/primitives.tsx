@@ -265,6 +265,7 @@ export function SwitchItem({
   label,
   note,
   hint,
+  icon,
 }: {
   checked: boolean;
   disabled?: boolean;
@@ -276,6 +277,8 @@ export function SwitchItem({
   note?: string;
   /** Shared hint comic; native title stays off. */
   hint?: HintKind;
+  /** Preserve the control's meaning when its text label is hidden. */
+  icon?: GlyphName;
 }) {
   const { vis, t } = useCopy();
   const wrapped = Boolean(hint);
@@ -285,6 +288,7 @@ export function SwitchItem({
     : `${t(checked ? "common.disable" : "common.enable", { name: label })}${note ? ` · ${note}` : ""}`;
   const item = (
     <span className="lr-switch-item">
+      {vis && icon ? <Glyph name={icon} size={18} /> : null}
       <button
         type="button"
         className="lr-switch"

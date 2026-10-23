@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { appPackageTarget, appPackageDirectory, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
 import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
+import { downloadGamepadClient, GAMEPAD_CLIENT_SHA256 } from "./gamepad-client.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -68,7 +69,7 @@ function serverDescriptor(directory) {
 async function download(url, path) {
   const response = await fetch(url);
   if (!response.ok || !response.body) {
-    fail(`Public-link runtime download failed with HTTP ${response.status}`);
+    fail(`Build dependency download failed with HTTP ${response.status}`);
   }
   await pipeline(Readable.fromWeb(response.body), createWriteStream(path));
 }
@@ -241,6 +242,10 @@ async function verifyPackage(root, target, revision, temporaryRoot) {
   const runtimeRoot = join(root, appPackageDirectory(target));
   const packagedRevision = readFileSync(join(runtimeRoot, "REVISION"), "ascii").trim();
   if (packagedRevision !== revision) fail("App package revision mismatch");
+  if (target.id === "windows-amd64" &&
+      sha256(join(runtimeRoot, "ViGEmClient.dll")) !== GAMEPAD_CLIENT_SHA256) {
+    fail("Packaged gamepad client does not match the pinned Windows x64 SDK");
+  }
   for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt",
     "runtime/tunnel/THIRD-PARTY-NOTICES.txt"]) {
     if (!existsSync(join(runtimeRoot, file)) || readFileSync(join(runtimeRoot, file)).length === 0) {
@@ -333,6 +338,9 @@ const { version } = JSON.parse(readFileSync(descriptorPath, "utf8"));
 const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", target.id, "candidate");
 let outputOwned = false;
 try {
+  const windowsGamepadClient = target.id === "windows-amd64"
+    ? gamepadClient ?? await downloadGamepadClient(temporaryRoot, download)
+    : null;
   const tunnelDownload = join(temporaryRoot, target.tunnelAsset);
   await download(
     `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/${target.tunnelAsset}`,
@@ -371,7 +379,7 @@ try {
     tunnel,
   ];
   if (capture) assembleArguments.push("--capture", capture);
-  if (gamepadClient) assembleArguments.push("--gamepad-client", gamepadClient);
+  if (windowsGamepadClient) assembleArguments.push("--gamepad-client", windowsGamepadClient);
   run(process.execPath, assembleArguments, repositoryRoot);
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });

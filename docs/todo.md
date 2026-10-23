@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-22
+Last reviewed: 2026-10-23
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -8,11 +8,15 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Now
 
 - [ ] **Remote co-play candidate acceptance.** Review the normal App/Web flow on
-  `feat/shared-input-co-play`: concurrent keyboard players, explicit mouse
-  handoff, optional Windows x64 gamepads and per-player retirement. Verify the
-  candidate package's fixed SDK input and tutorial, then prepare owner review
-  before integration. The [input contract](./standards/rooms-access.md#remote-control)
-  owns behavior. No kernel driver is bundled or installed by Piik.
+  `feat/shared-input-co-play`: shared keyboard/mouse, optional Windows x64
+  ViGEm gamepads and per-player retirement. Verify the candidate package's SDK
+  input and tutorial before owner acceptance. Linux uinput passed its isolated
+  kernel gate and still needs desktop-permission and real-game checks;
+  macOS virtual HID needs an entitled App and
+  macOS SDK/runtime checks. The
+  [input contract](./standards/rooms-access.md#remote-control) owns behavior and
+  [co-play assessment](./research/room-interactions.md#remote-co-play) owns platform
+  evidence. No kernel driver is bundled or installed by Piik.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the

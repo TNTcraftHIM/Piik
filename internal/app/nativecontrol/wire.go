@@ -82,12 +82,6 @@ type remoteCoPlayRequest struct {
 	Enabled *bool  `json:"enabled"`
 }
 
-type remotePointerRequest struct {
-	requestEnvelope
-	ShareID   string `json:"shareId"`
-	RequestID string `json:"requestId"`
-}
-
 type remoteControlPolicyRequest struct {
 	requestEnvelope
 	ShareID  string `json:"shareId"`

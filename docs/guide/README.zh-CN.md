@@ -16,7 +16,7 @@
 
 - [分享与播放](./sharing.zh-CN.md)：画质、摄像头、来源声音与观看控制。
 - [聊天、语音与远程控制](./room-tools.zh-CN.md)：表情互动、聊天，或让朋友接手操作。
-- [远程控制与多人同乐](./remote-control.zh-CN.md)：授权、共用键盘、交接鼠标与手柄设置。
+- [远程控制与多人同乐](./remote-control.zh-CN.md)：授权、共用键鼠与手柄设置。
 - [App 使用参考](../../cmd/piik-app/README.zh-CN.md)：模式记忆、站点授权、命令行参数与诊断。
 
 ## 遇到问题

@@ -703,8 +703,9 @@ key bindings for the Host and remote player without an input driver. Independent
 gamepads instead need per-player virtual controller slots. The co-play candidate
 keeps single-controller remote control as the default and adds an explicit Host
 opt-in for concurrent players. Held-key ownership is per grant, so one player's
-key-up does not release another's key. The mouse remains one shared pointer,
-which the Host can assign or take back.
+key-up does not release another's key. Mouse buttons have the same per-grant
+ownership. Approved keyboard/mouse players all contribute to one shared pointer;
+there is no handoff, join-order arbitration or automatic local-Host priority.
 
 Game player count is separate from input-device support. Team17 documents
 [four local players but two sharing one keyboard in Overcooked! 2](https://www.team17.com/news/overcooked-2-faq).
@@ -723,7 +724,10 @@ still requires a HID source driver. Device identity also needs support in the
 game. Windows also exposes [gamepad injection](https://learn.microsoft.com/en-us/uwp/api/windows.ui.input.preview.injection.inputinjector.injectgamepadinput),
 but it requires the restricted `inputInjectionBrokered` package capability;
 that API alone does not establish a portable-App backend or independent slots
-accepted by desktop games. Linux can create devices through its existing
+accepted by desktop games. A local Windows native-API probe returned successful
+HRESULTs for activation, initialization, input and cleanup, but exposed zero
+virtual controllers. It did not establish a usable alternative to ViGEm.
+Linux can create devices through its existing
 [uinput module](https://docs.kernel.org/input/uinput.html), subject to device
 permissions. Dependencies therefore follow the platform and supported games.
 Per-player virtual keyboards and mice do not make an arbitrary game recognize
@@ -740,7 +744,7 @@ patterns for bounded queues and grant retirement. Their GameStream transport
 is not a Browser WebRTC input component; both implementations remain study-only
 under the project's license policy.
 
-The 2026-10-22 candidate uses an optional Windows x64 ViGEmClient backend.
+The current candidate retains an optional Windows x64 ViGEmClient backend.
 Piik packages the MIT user-mode client; the Host installs the optional kernel
 driver. [Parsec also uses a virtual USB driver](https://support.parsec.app/hc/en-us/articles/32381705301908-Setup-Gamepad).
 [ViGEmBus is end-of-life](https://docs.nefarius.at/projects/ViGEm/End-of-Life/);
@@ -760,6 +764,22 @@ device connected. The initial report can arrive before device enumeration;
 the Browser therefore repeats complete current state while the grant is active.
 Logical slots and SDK handles identify ownership;
 an early SDK user-index value does not establish the game's player number.
+
+The Linux prototype uses the stock uinput userspace API, one device per grant,
+without another driver or dependency. Linux amd64/arm64 test binaries
+cross-compile and Linux vet passes. On 2026-10-23, the explicit uinput kernel
+gate passed in an isolated QEMU TCG VM running Alpine 3.24.3 and Linux
+6.18.58-0-virt x86_64: five independent devices exposed correct evdev state,
+neutralized and retired without changing a surviving sibling. Backend shutdown
+removed the remaining devices. The VM and helper were cleaned up without a
+Host installation. Desktop-user device permissions and real-game recognition
+remain acceptance work. The macOS prototype uses native `IOHIDUserDevice` and
+a generic HID gamepad report, with
+device ownership and cleanup in its platform adapter. It requires Apple's
+[`com.apple.developer.hid.virtual.device` entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.hid.virtual.device), separate from
+Accessibility permission. No macOS SDK is available in the current environment,
+so compilation, entitlement admission and desktop-game recognition remain
+unverified. Neither prototype is evidence of a supported shipped platform.
 
 The candidate path is Browser Gamepad API ->
 existing encrypted input route -> Host-approved player slot -> platform gamepad
