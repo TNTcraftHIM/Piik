@@ -45,7 +45,7 @@ function PawnAdornment({ voice, collaboration, host }: PawnState) {
           r="1.2" fill="currentColor" stroke="none" />
       </g>
     </> : null}
-    {collaboration ? <g transform="translate(14 30) rotate(-45 10 10)"><Glyph name="mouse" size={20} /></g> : null}
+    {collaboration ? <g transform="translate(16.5 32.5) rotate(-45 7.5 7.5)"><Glyph name="mouse" size={15} /></g> : null}
   </g>;
 }
 
