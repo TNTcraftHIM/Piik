@@ -17,6 +17,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   [input contract](./standards/rooms-access.md#remote-control) owns behavior and
   [co-play assessment](./research/room-interactions.md#remote-co-play) owns platform
   evidence. Optional input SDKs and drivers are not bundled or installed by Piik.
+- [ ] **Co-play participant presentation.** Make current collaborators visible
+  to the Host and Viewers through the existing room UI, using active input
+  grants as the source of truth. This is a required participation indicator,
+  not per-keystroke activity tracking. Multi-cursor, pointer-ownership and shared
+  cursor visualization are deferred; ordinary shared system-mouse input remains.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -30,11 +35,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
-- [ ] **Co-play activity presentation.** Scheduled after the input-driver and
-  setup cleanup. Design how Host and Viewers distinguish permission to control
-  from actual keyboard/mouse activity, identify the current contributor, and
-  understand the shared pointer during collaborative work. Review the UI and
-  necessary activity data together before adding another synchronization path.
 - [ ] **Separate accompaniment sharing.** Deferred on 2026-10-20 and excluded
   from this candidate. Preserve the unfinished prototype on
   `spike/audio-accompaniment` (`5e385add`); it is not a working feature.
