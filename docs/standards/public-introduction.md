@@ -121,8 +121,9 @@ Gameplay reactions follow a visible result: establish the action, show its
 success, then celebrate. Keep enough of the play visible to make the reaction
 understandable; a genre label or a score burst does not replace the action.
 
-Use mint walls, clear control edges, a warm orange/yellow sofa and the curious TV
-mascot. The site is a welcoming room, not a monitoring dashboard. Keep one
+Use the shared theme's wall colours, clear control edges, a warm orange/yellow
+sofa and the curious TV mascot. The site is a welcoming room, not a monitoring
+dashboard. Keep one
 primary action, native navigation and short instructions. Language and theme
 follow the system unless explicitly changed; unsupported languages use English.
 Respect reduced motion and retain useful content without JavaScript.

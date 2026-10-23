@@ -7,6 +7,12 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Windows window-sharing black screen (#495).** Investigate
+  [#495](https://github.com/TNTcraftHIM/Piik/issues/495): Windows 10, Chrome 155,
+  Piik v2.3.0; App window sharing is black while full-screen sharing works.
+  Identify the target window and capture/encoder failure from a same-attempt
+  App/Web report. This feedback has no diagnosis yet; the macOS #492 crop fix
+  does not address it.
 - [ ] **Remote co-play candidate acceptance.** Review the unified remote-control
   permission and normal App/Web flow on
   `feat/shared-input-co-play`: shared keyboard/mouse, optional Windows x64
