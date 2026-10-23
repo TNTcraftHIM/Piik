@@ -187,6 +187,7 @@ export const zh = {
   "common.refresh": "刷新页面",
   "common.edit": "编辑",
   "common.close": "收起",
+  "notice.dismiss": "关闭提示",
   "common.enable": "开启{name}",
   "common.disable": "关闭{name}",
   "host.join.hide": "收起加入房间",

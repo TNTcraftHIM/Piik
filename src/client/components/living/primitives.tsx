@@ -247,18 +247,18 @@ export function Pill({
   const body = (
     <button
       type="button"
-      className={`lr-pill is-${resolvedTone === "live" ? "good" : resolvedTone}`}
+      className="lr-pill"
     >
       <Glyph name={icon} size={16} />
       {vis ? <span className="visually-hidden">{label}</span> : <span>{label}</span>}
     </button>
   );
   return (
-    <span className={`lr-notice${onDismiss ? " is-dismissible" : ""}`} role={alert ? "alert" : "status"}>
+    <span className={`lr-notice is-${resolvedTone === "live" ? "good" : resolvedTone}${onDismiss ? " is-dismissible" : ""}`} role={alert ? "alert" : "status"}>
       <Tooltip toggleOnClick kind={comic} tone={resolvedTone} motion={motion}
         text={vis ? undefined : label}>{body}</Tooltip>
       {onDismiss && <span className="lr-notice-dismiss"><Btn icon="x" size="dense" quiet
-        title="common.close" hint="hint-close" onClick={onDismiss} /></span>}
+        title="notice.dismiss" hint="hint-close" onClick={onDismiss} /></span>}
     </span>
   );
 }

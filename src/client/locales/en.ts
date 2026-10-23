@@ -187,6 +187,7 @@ export const en: Record<CopyKey, string> = {
   "common.refresh": "Refresh page",
   "common.edit": "Edit",
   "common.close": "Close",
+  "notice.dismiss": "Dismiss notice",
   "common.enable": "Enable {name}",
   "common.disable": "Disable {name}",
   "host.join.hide": "Hide room entry",

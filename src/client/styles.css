@@ -1143,31 +1143,42 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-name-tag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* notices */
-.lr-notice { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
-.lr-notice.is-dismissible { position: relative; }
-.lr-notice.is-dismissible .lr-pill { padding-inline-end: 42px; }
-.lr-notice-dismiss {
-  position: absolute; inset-inline-end: 3px; display: flex;
-}
-.lr-pill {
+.lr-notice {
   --pill-tone: var(--warn);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
+  min-width: 0;
+  max-width: 100%;
   border-radius: 999px;
   background: color-mix(in srgb, var(--paper) 94%, var(--pill-tone));
   border: 2px solid var(--pill-tone);
   color: var(--ink);
-  font-size: 13px;
-  font-weight: 600;
   animation: lr-slide-in 240ms var(--spring);
 }
+.lr-notice > .lr-comic-tip-wrap { min-width: 0; flex: 1; border-radius: inherit; }
+.lr-notice-dismiss { display: flex; flex: none; margin-block: 4px; margin-inline: 0 4px; }
+.lr-notice-dismiss .lr-btn { border-radius: 50%; }
+.lr-notice.is-dismissible .lr-pill { padding-inline-end: 6px; }
+.lr-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: start;
+}
 .lr-pill > .lr-glyph { flex-shrink: 0; }
-.lr-pill.is-bad { --pill-tone: var(--danger); }
-.lr-pill.is-good { --pill-tone: var(--live); }
-.lr-pill.is-off { --pill-tone: var(--ink); background: var(--paper); }
-.lr-pill.is-busy { --pill-tone: var(--busy); }
+.lr-notice.is-bad { --pill-tone: var(--danger); }
+.lr-notice.is-good { --pill-tone: var(--live); }
+.lr-notice.is-off { --pill-tone: var(--ink); background: var(--paper); }
+.lr-notice.is-busy { --pill-tone: var(--busy); }
 @keyframes lr-slide-in { from { opacity: 0; transform: translateY(-6px); } }
 
 /* metric cells */
