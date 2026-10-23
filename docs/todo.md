@@ -7,6 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Integrated participant state artwork.** Choose and apply a design from
+  `/__tooltip-preview#pawn-appearance-preview`. The body/clothing studies reuse
+  the pawn's silhouette, passive motion and current voice/control facts. Keep
+  the accepted markers until selection; do not add a product appearance setting.
 - [ ] **Remote co-play candidate acceptance.** Review the unified remote-control
   permission and normal App/Web flow on
   `feat/shared-input-co-play`: shared keyboard/mouse, optional Windows x64
@@ -25,10 +29,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   microphone alongside independent room voice, including both enabled, new-share
   default-off and share retirement. The existing source mixer now serves current
   UI; this is acceptance work, not removal of a retired microphone path.
-- [ ] **Current-phase PR attribution.** Review and incorporate the focused
-  [#496](https://github.com/TNTcraftHIM/Piik/pull/496) fix with its original author.
-  The owner permits co-author attribution on this phase's squash as a one-off
-  exception; verify the final merge metadata. Future contributions follow the
+- [ ] **Current-phase PR attribution.** Preserve the original author of the
+  incorporated [#496](https://github.com/TNTcraftHIM/Piik/pull/496) fix in the
+  final merge. The owner permits co-author attribution on this phase's squash
+  as a one-off exception; verify the final merge metadata. Future contributions follow the
   focused-PR rule in [CONTRIBUTING](../CONTRIBUTING.md).
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
@@ -43,10 +47,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
-- [ ] **Integrated participant state artwork.** Keep the accepted small markers
-  for this candidate. Later explore cues attached to the pawn's appearance and
-  existing idle motion, preserving its face and silhouette without bulky
-  headsets or held device props. Control keeps one mouse symbol for all inputs.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
   shared system mouse; do not add multi-cursor or pointer-ownership visualization.
 - [ ] **Separate accompaniment sharing.** Deferred on 2026-10-20 and excluded

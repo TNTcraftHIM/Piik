@@ -1,10 +1,11 @@
-import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { HostMark } from "./HostMark";
 import { bindParticipantMotion, participantMotion } from "./participant-motion";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { Glyph } from "../../ui/icons";
 
 export interface PawnVoice { microphone: boolean; deafened?: boolean }
+export interface PawnState { voice?: PawnVoice; collaboration?: boolean; host?: boolean }
 
 /** The accepted A silhouette, shared with the explanatory cast. */
 export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
@@ -24,10 +25,8 @@ export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
   </>;
 }
 
-export function PawnSvg({ color, host, identity, voice, collaboration }: {
-  color: string; host?: boolean; identity?: string;
-  voice?: PawnVoice;
-  collaboration?: boolean;
+export function PawnSvg({ color, host, identity, voice, collaboration, adornment }: PawnState & {
+  color: string; identity?: string; adornment?: ReactNode;
 }) {
   const root = useRef<SVGSVGElement>(null);
   const surfaceDocument = useSurfaceDocument();
@@ -44,11 +43,11 @@ export function PawnSvg({ color, host, identity, voice, collaboration }: {
     } as CSSProperties : undefined}>
     <g className="lr-reaction-body"><g className="lr-person-body" fill={color}>
       <PersonShape host={host} />
-      <g className="lr-person-status" color="var(--person-ink, #263b43)">
+      {adornment ?? <g className="lr-person-status" color="var(--person-ink, #263b43)">
         {voice && <g transform="translate(0 5)"><Glyph name={voice.deafened ? "headphonesOff" : "headphones"} size={14} /></g>}
         {voice && !voice.microphone && <g transform="translate(0 28)"><Glyph name="microphoneOff" size={14} /></g>}
         {collaboration && <g transform="translate(34 28)"><Glyph name="mouse" size={14} /></g>}
-      </g>
+      </g>}
     </g></g>
   </svg>;
 }

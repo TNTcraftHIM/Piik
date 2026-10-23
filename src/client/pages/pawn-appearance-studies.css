@@ -1,0 +1,21 @@
+.cp-pawn-studies { margin: 24px 0 32px; scroll-margin-top: 24px; }
+.cp-pawn-studies h3 { margin: 0 auto 0 0; font-size: 17px; }
+.cp-pawn-studies > p, .cp-pawn-study > p { margin: 12px 0 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.cp-pawn-study-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.cp-pawn-study { padding: 20px; border: 1px solid var(--control-edge); border-radius: 22px; background: var(--paper); min-width: 0; }
+.cp-pawn-study[data-selected] { border-color: var(--ink); }
+.cp-pawn-study-samples { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px 8px; }
+.cp-pawn-study-samples figure { display: grid; justify-items: center; align-content: start; gap: 6px; margin: 0; min-width: 0; }
+.cp-pawn-study-figure { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 12px; background: var(--couch); }
+.cp-pawn-study-figure .lr-person { width: 48px; height: 56px; }
+.cp-pawn-study-samples figcaption { color: var(--muted); font-size: 11px; line-height: 1.5; text-align: center; text-wrap: balance; }
+.cp-pawn-studies[data-guides] .cp-pawn-study-figure,
+.cp-people-room[data-guides] .lr-pawn > .lr-person { background-image: linear-gradient(90deg, transparent calc(50% - .5px), var(--ink) calc(50% - .5px), var(--ink) calc(50% + .5px), transparent calc(50% + .5px)); }
+.cp-pawn-studies[data-guides] .lr-person-body, .cp-people-room[data-guides] .lr-person-body { animation: none; }
+.cp-pawn-couch-link { display: inline-block; margin-top: 18px; color: var(--ink); font-size: 13px; text-underline-offset: 4px; }
+#pawn-study-couch { scroll-margin-top: 24px; }
+@media (max-width: 720px) { .cp-pawn-study-grid { grid-template-columns: 1fr; } }
+@media (max-width: 400px) {
+  .cp-pawn-study { padding: 16px 10px; }
+  .cp-pawn-study-figure { width: 56px; }
+}

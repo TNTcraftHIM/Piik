@@ -11,6 +11,7 @@ import { participantColor } from "../components/living/participant-color";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import { deriveParticipantStatus } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
+import { PawnAppearanceStudies, pawnStudyAdornment, type PawnStudy } from "./PawnAppearanceStudies";
 
 const HOST_ID = "d27a938b-61f5-4ab2-b8e4-3fc090c3ae18";
 const VIEWER_IDS = [
@@ -40,6 +41,8 @@ export function PeoplePreview() {
   const [selected, setSelected] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const [pawnStudy, setPawnStudy] = useState<PawnStudy>("current");
+  const [guides, setGuides] = useState(false);
   const hostName = en ? "Amu" : "阿沐";
   const peerCount = Math.max(1, Math.floor(count * .6));
   const { viewers } = labelParticipantSnapshot(VIEWER_IDS.slice(0, count).map((peerId, index) => ({
@@ -78,7 +81,8 @@ export function PeoplePreview() {
       <p>{en ? "Try the full room, long names and relay depth. Click a person to inspect the same identity in each view."
         : "试试满员、长名字和多层转发。点击小人，沙发、连接图和详情会选中同一个人。"}</p>
     </div></header>
-    <div className="cp-tools">
+    <PawnAppearanceStudies selected={pawnStudy} onSelect={setPawnStudy} guides={guides} onGuides={setGuides} />
+    <div id="pawn-study-couch" className="cp-tools">
       <div role="group" aria-label={en ? "Viewer count" : "观众人数"}>{[0, 3, 8, 20].map(value => <Chip key={value}
         title={`${value} ${t("common.viewers")}`} selected={count === value} onClick={() => setCount(value)}>{value}</Chip>)}</div>
       <div role="group" aria-label={en ? "Perspective" : "观察视角"}>{(["host", "viewer"] as const).map(value => <Chip key={value}
@@ -89,7 +93,7 @@ export function PeoplePreview() {
       <SwitchItem checked={picture} onChange={setPicture} label={en ? "Picture" : "画面分享"} />
       <SwitchItem checked={voice} onChange={setVoice} label={en ? "Voice" : "房间语音"} />
     </div>
-    <div className="cp-people-room">
+    <div className="cp-people-room" data-guides={guides || undefined}>
       <div className="cp-sync" role="group" aria-label={en ? "The same Host in two places" : "同一位房主，两个位置"}>
         <span><PawnSvg color={participantColor(HOST_ID)} identity={HOST_ID} host /><small>{en ? "Host view" : "房主这边"}</small></span>
         <span className="cp-sync-caption">{en ? "One person, the same gesture" : "同一个人，同一个小动作"}</span>
@@ -97,6 +101,7 @@ export function PeoplePreview() {
       </div>
       <Couch view={view} host={{ key: HOST_ID, name: hostName, you: view === "host" }}
         voiceState={roomVoice}
+        renderPawnAdornment={state => pawnStudyAdornment(pawnStudy, state)}
         entries={entries} selectedKey={selectedViewer?.peerId} onSelect={select} />
     </div>
     <div className="cp-tools" role="group" aria-label={en ? "Connection example" : "连接示例"}>
