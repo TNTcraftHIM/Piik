@@ -18,11 +18,14 @@ own behavior; research and Git/PRs own evidence and completed history.
   [input contract](./standards/rooms-access.md#remote-control) owns behavior and
   [co-play assessment](./research/room-interactions.md#remote-co-play) owns platform
   evidence. Optional input SDKs and drivers are not bundled or installed by Piik.
-- [ ] **Current-phase PR attribution.** Preserve the original author of the
-  incorporated [#496](https://github.com/TNTcraftHIM/Piik/pull/496) fix in the
-  final merge. The owner permits co-author attribution on this phase's squash
-  as a one-off exception; verify the final merge metadata. Future contributions follow the
-  focused-PR rule in [CONTRIBUTING](../CONTRIBUTING.md).
+- [ ] **Current-phase contribution attribution.** Credit Yuqing Huang
+  (`NorahGreen`, [#496](https://github.com/TNTcraftHIM/Piik/pull/496)) and
+  `luol75569-collab` ([#492](https://github.com/TNTcraftHIM/Piik/issues/492))
+  in the final squash, using the identities retained in `77461c6d` and
+  `7d7367df`. The owner permits this last phase-wide exception for these two
+  contributions; #492 needs no additional PR. Verify the final merge metadata.
+  Subsequent contributions follow the focused-PR rule in
+  [CONTRIBUTING](../CONTRIBUTING.md).
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the

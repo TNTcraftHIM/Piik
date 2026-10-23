@@ -102,7 +102,7 @@ invocation; follow their relevant guidance without importing unrelated workflows
 - `main` remains low-frequency: one complete, user-accepted phase per squash PR,
   with no intermediate release-record or cleanup commits. Keep implementation
   on worktrees; [CONTRIBUTING.md](./CONTRIBUTING.md#full-integration-and-release-workflow)
-  owns the full workflow and explicit emergency exception.
+  owns the full workflow, focused external contributions and emergency exceptions.
 - Preserve user work. Branch, truth-checkpoint, PR, release, recovery, and
   cleanup rules are owned by [CONTRIBUTING.md](./CONTRIBUTING.md); do not mirror
   that workflow here.

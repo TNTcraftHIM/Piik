@@ -208,6 +208,11 @@ An older draft retried after a newer release cannot take over `latest`.
 `PIIK_RELEASES_ENABLED` is a GitHub repository activation variable, not a product
 setting. Until the first release is explicitly enabled,
 main runs validation and manual `app_checks` dispatches create candidates only.
+Accepted external contributions may merge ahead of a release with this existing
+publication gate held off. Keep it off until the next authorized release;
+that release includes the eligible contributions since the previous tag.
+The [GitHub operations procedure](../operations/github.md#enable-automatic-publication-once)
+owns pausing and resuming publication.
 Ordinary branches do not run cloud CI. PRs run only a read-only release-note
 check, including after edits to their body; product scope uses the same path
 owner as publication and the PR's net diff. Packaging and publication remain

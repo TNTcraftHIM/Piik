@@ -65,6 +65,14 @@ this does not alter existing releases or a currently running workflow. Inspect
 the active run separately. No pipeline step changes visibility or installs an
 update into a running Piik deployment.
 
+For accepted contribution PRs that should merge without a release, set
+`PIIK_RELEASES_ENABLED=false` before merging and confirm no active publishing
+run will release the changes. Keep it false through subsequent merges until
+the next release is authorized. Then restore `true` before that release's
+integration merge. The existing release planner and notes collector include
+all eligible changes since the last stable tag; no separate contribution
+release or version-record commit is needed.
+
 ## Container Registry
 
 The Server image uses `ghcr.io/tntcrafthim/piik`. The publishing job authenticates

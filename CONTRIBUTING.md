@@ -27,17 +27,21 @@ valuable. Duplicate work already independently resolved, personal preferences or
 low-value changes may be declined; merging is not an attribution mechanism.
 Retain authorship for accepted contributions and credit substantive discoveries
 accurately, without attributing independently written code to a PR author.
-Keep contributor patches limited to their necessary changes. Prefer a focused
-contribution PR with the contributor as its primary author, independently of a
-larger maintainer phase. A co-author trailer credits a whole commit, not selected
-lines; do not use a phase-wide squash to attribute unrelated maintainer work.
+Keep contributor patches limited to their necessary changes. Integrate accepted
+external contributions through their own focused PRs, preserving their authors
+separately from a larger maintainer phase. A focused PR may land on `main`
+without releasing a product version; use the
+[publication hold](./docs/operations/github.md#enable-automatic-publication-once)
+before a non-publishing merge. A co-author trailer credits a whole commit, not
+selected lines; do not use a phase-wide squash to attribute unrelated maintainer work.
 Check authorship on the final default-branch commit, not only on patch commits
 that a later squash may discard. Use Git authorship for accepted contributions;
 do not maintain a separate thanks list or manufacture empty credit commits.
 评审看实际价值、证据和产品定位，不看代码行数。发现并解决真实问题的小修复同样值得接纳；
 已经独立解决的重复工作、个人偏好或收益很低的改动可以不合并，不为增加贡献者名单而合并。
 保留已接纳贡献的作者信息，如实说明有价值的问题发现；独立编写的代码不应冒记为他人共同编写。
-贡献者的必要改动优先独立成小范围 PR，保留其主作者身份。共同署名作用于整个提交，不能按行分配；
+接纳的外部贡献单独以小范围 PR 合入，保留作者身份，不混入维护者的大批改动。
+合入 main 不要求立即发版；暂不发布时，合并前先暂停自动发布。共同署名作用于整个提交，不能按行分配；
 验收署名以最终进入默认分支的提交为准，不另设鸣谢名单或空提交补贡献计数。
 
 ## Lean Workflow
@@ -59,9 +63,9 @@ Use this path only when the owner explicitly requests it or when closing a major
 intermediate implementation, experiments, evidence collection, release notes,
 and cleanup stay in branches/worktrees. One complete, user-accepted phase lands
 through one squash PR after its related checks and acceptance are finished;
-leave `main` alone until the next material phase. Only a user-authorized P0/P1
-emergency may use a separate PR, and that PR must still contain one coherent
-fix.
+leave `main` alone until the next material phase. Accepted external contributions
+and user-authorized P0/P1 emergencies use separate focused PRs. Each must contain
+one complete, reviewed change; a contribution merge does not authorize publication.
 
 1. Create one short-lived branch/worktree from exact canonical `main`, following the [branch naming convention](#commit-pr-and-branch-names).
 2. Update only the single durable owner for changed semantics and any materially changed current snapshot. If semantics remain disputed, record a hold and stop dependent work.
