@@ -41,7 +41,7 @@ export function PeoplePreview() {
   const [selected, setSelected] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
-  const [pawnStudy, setPawnStudy] = useState<PawnStudy>("current");
+  const [pawnStudy, setPawnStudy] = useState<PawnStudy>("mute-mark");
   const [guides, setGuides] = useState(false);
   const hostName = en ? "Amu" : "阿沐";
   const peerCount = Math.max(1, Math.floor(count * .6));
