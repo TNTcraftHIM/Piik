@@ -16,7 +16,8 @@ const runFile = promisify(execFile);
 const redact = (value: string) => value.replace(/#v=[A-Za-z0-9_-]+/g, "#v=[redacted]");
 type Page = PageHandle & { targetId: string; session: string };
 type Sample = { voice: RoomVoiceState | null; peerId: string | null; inviteUrl: string | null; authentications: number;
-  energy: number; samples: number; bytes: number; playing: number; mutedPlayback: number; enabled: boolean; liveMicrophones: number; videoFrames: number; text: string; controls: string[] };
+  energy: number; samples: number; bytes: number; pictureAudioEnergy: number; pictureAudioSamples: number;
+  playing: number; mutedPlayback: number; enabled: boolean; liveMicrophones: number; videoFrames: number; text: string; controls: string[] };
 
 // Observe the normal browser boundary; no alternate session or control protocol.
 const probe = (name: string) => `(() => {
@@ -58,12 +59,14 @@ const probe = (name: string) => `(() => {
   gate.sample=async()=>{
     const audio=[...document.querySelectorAll('audio')].filter(node=>node.srcObject);
     const ids=new Set(audio.flatMap(node=>node.srcObject.getAudioTracks().map(track=>track.id)));
-    let energy=0, samples=0, bytes=0;
+    const pictureIds=new Set([...document.querySelectorAll('video')].flatMap(node=>node.srcObject?.getAudioTracks().map(track=>track.id)??[]));
+    let energy=0, samples=0, bytes=0, pictureAudioEnergy=0, pictureAudioSamples=0;
     for(const peer of peers)if(peer.connectionState==='connected')for(const row of (await peer.getStats()).values())
-      if(row.type==='inbound-rtp'&&row.kind==='audio'&&ids.has(row.trackIdentifier)){
-        energy+=row.totalAudioEnergy||0;samples+=row.totalSamplesReceived||0;bytes+=row.bytesReceived||0;
+      if(row.type==='inbound-rtp'&&row.kind==='audio'){
+        if(ids.has(row.trackIdentifier)){energy+=row.totalAudioEnergy||0;samples+=row.totalSamplesReceived||0;bytes+=row.bytesReceived||0;}
+        if(pictureIds.has(row.trackIdentifier)){pictureAudioEnergy+=row.totalAudioEnergy||0;pictureAudioSamples+=row.totalSamplesReceived||0;}
       }
-    return {voice:gate.voice,peerId:gate.peerId,inviteUrl:gate.inviteUrl,authentications:gate.authentications,energy,samples,bytes,wire:gate.wire,
+    return {voice:gate.voice,peerId:gate.peerId,inviteUrl:gate.inviteUrl,authentications:gate.authentications,energy,samples,bytes,pictureAudioEnergy,pictureAudioSamples,wire:gate.wire,
       playing:audio.length,mutedPlayback:audio.filter(node=>node.muted).length,enabled:audio.every(node=>node.srcObject.getAudioTracks().every(t=>t.enabled)),
       tracks:audio.flatMap(node=>node.srcObject.getAudioTracks().map(t=>({readyState:t.readyState,muted:t.muted,currentTime:node.currentTime}))),
       connections:peers.map(p=>({state:p.connectionState,signaling:p.signalingState,senders:p.getSenders().map(s=>s.track&&({kind:s.track.kind,readyState:s.track.readyState,enabled:s.track.enabled,muted:s.track.muted}))})),
@@ -401,8 +404,25 @@ async function main(): Promise<void> {
       Date.now() + 3000) || (await sample(host)).liveMicrophones !== 1) {
       throw new Error("Source commentary started without an explicit action or replaced the room microphone");
     }
+    const roomMicrophonePublication = (await sample(host)).voice!.publications.find(publication => publication.peerId === created.peerId)!.id;
+    const beforeCommentary = await sample(viewer);
+    const commentaryToggle = 'button[role="switch"][aria-label^="Include my microphone"]';
+    await ui(host, "click", commentaryToggle);
+    await until(host, state => state.liveMicrophones === 2 && state.voice?.publications.length === 2 &&
+      state.voice.publications.some(publication => publication.id === roomMicrophonePublication), "source commentary and room microphone run independently");
+    const commentaryReceived = await until(viewer, state => state.pictureAudioEnergy > beforeCommentary.pictureAudioEnergy &&
+      state.pictureAudioSamples > beforeCommentary.pictureAudioSamples && state.samples > beforeCommentary.samples,
+      "commentary arrives on shared-picture audio while room voice continues");
+    await until(viewer, state => state.pictureAudioSamples > commentaryReceived.pictureAudioSamples,
+      "shared commentary keeps producing decoded samples");
+    await ui(host, "screenshot", join(OUTPUT, `${arm}-source-commentary.png`), "--full");
+    await ui(host, "click", commentaryToggle);
+    await until(host, state => state.liveMicrophones === 1 && state.voice?.publications.length === 2 &&
+      state.voice.publications.some(publication => publication.id === roomMicrophonePublication), "turning commentary off retains the room microphone");
+    await ui(host, "click", commentaryToggle);
+    await until(host, state => state.liveMicrophones === 2, "commentary is active before stopping the share");
     await button(host, "Hide sharing settings");
-    check("source commentary stays off by default while the independent room microphone remains active");
+    check("source commentary defaults off, sends shared audio alongside room voice, and can stop independently");
     await cdp.call("Page.bringToFront", {}, host.sessionId, Date.now() + 3000);
     await ui(host, "hover", ".lr-tv video");
     await waitForSample(() => evaluate<boolean>(cdp!, host, "!!document.querySelector('.lr-tv video')&&!document.querySelector('.lr-tv video').paused", Date.now() + 3000), Boolean, 5000);
@@ -419,6 +439,8 @@ async function main(): Promise<void> {
       && state.voice.bitrate === undefined && state.authentications === 1,
       "published Viewer receives picture and voice state without the new bitrate field");
     await button(host, "Stop sharing");
+    await until(host, state => state.liveMicrophones === 1 && state.voice?.publications.length === 2 &&
+      state.voice.publications.some(publication => publication.id === roomMicrophonePublication), "stopping sharing retires only commentary capture");
     const stopped = await sample(viewer);
     await until(viewer, state => state.samples > stopped.samples && state.voice?.publications.length === 2, "voice survives video stop");
     for (const [index, participant] of [host, viewer].entries()) {
@@ -434,6 +456,12 @@ async function main(): Promise<void> {
     await ui(host, "click", 'button[aria-label^="Share camera:"]');
     await until(host, state => state.text.includes("Stop sharing"), "camera sharing restarts");
     await until(viewer, state => state.videoFrames > 0, "Viewer decodes picture alongside room voice");
+    await button(host, "Sharing settings");
+    await ui(host, "find", "role", "tab", "click", "--name", "Sound", "--exact");
+    if (!await evaluate<boolean>(cdp, host, `document.querySelector(${JSON.stringify(commentaryToggle)})?.getAttribute('aria-checked')==='false'`,
+      Date.now() + 3000) || (await sample(host)).liveMicrophones !== 1) throw new Error("A new share restored commentary without an explicit action");
+    await button(host, "Hide sharing settings");
+    check("stopping sharing releases commentary only; the next share starts with commentary off");
     await button(host, "Interact");
     check("camera share start/stop/restart preserves room microphones and voice");
     for (const width of [320, 390, 1280]) {
