@@ -135,7 +135,7 @@ domain and GitHub's `/Piik/` project path work. For a nested deployment, set
 `PIIK_DOCS_BASE=/Piik/docs/` when building; ordinary custom-domain builds use `/docs/`.
 
 The [public-film source](../../site/film/README.md) owns the selected artwork and
-its runtime. The ordinary build includes only A?s required runtime, fonts, audio
+its runtime. The ordinary build includes only A's required runtime, fonts, audio
 and notices. Other candidates and the former 1.0 remain in Git history.
 
 The homepage, film and demonstration frames use content-hashed script/style
