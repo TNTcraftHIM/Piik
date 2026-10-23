@@ -2281,7 +2281,7 @@ export function ViewerPage({
       key: viewer.peerId,
       name: viewer.label,
       status: deriveParticipantStatus(viewer, presentationState.host === "online" || presentationState.host === "paused", undefined, roomVoice),
-      collaboration: coPlayParticipants.find(participant => participant.peerId === viewer.peerId)?.device,
+      collaboration: coPlayParticipants.some(participant => participant.peerId === viewer.peerId),
       you: isSelf,
       selectable: isChild ? undefined : false,
     };

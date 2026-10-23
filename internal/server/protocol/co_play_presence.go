@@ -9,12 +9,10 @@ import (
 // participant ID. The server resolves the room identity for presentation.
 type CoPlayGrant struct {
 	EndpointID string `json:"endpointId"`
-	Device     string `json:"device"`
 }
 
 type CoPlayParticipant struct {
 	PeerID string `json:"peerId"`
-	Device string `json:"device"`
 }
 
 func (v *CoPlayGrant) UnmarshalJSON(data []byte) error {
@@ -24,7 +22,7 @@ func (v *CoPlayGrant) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if err = fields.require("endpointId", "device"); err != nil {
+	if err = fields.require("endpointId"); err != nil {
 		return err
 	}
 	*v = CoPlayGrant(value)
@@ -38,7 +36,7 @@ func (v *CoPlayParticipant) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if err = fields.require("peerId", "device"); err != nil {
+	if err = fields.require("peerId"); err != nil {
 		return err
 	}
 	*v = CoPlayParticipant(value)
@@ -66,8 +64,6 @@ type CoPlayPresenceMessage struct {
 
 func (CoPlayPresenceMessage) isServerMessage() {}
 
-func validCoPlayDevice(device string) bool { return device == "keyboardMouse" || device == "gamepad" }
-
 func decodeSetCoPlayPresence(data []byte) (ClientMessage, error) {
 	var value SetCoPlayPresenceMessage
 	fields, err := decodeObject(data, &value)
@@ -84,7 +80,7 @@ func decodeSetCoPlayPresence(data []byte) (ClientMessage, error) {
 	for _, grant := range value.Grants {
 		id, err := hex.DecodeString(grant.EndpointID)
 		if err != nil || len(id) != 16 || hex.EncodeToString(id) != grant.EndpointID ||
-			!validCoPlayDevice(grant.Device) || seen[grant.EndpointID] {
+			seen[grant.EndpointID] {
 			return nil, errors.New("invalid co-play endpoint")
 		}
 		seen[grant.EndpointID] = true
@@ -106,7 +102,7 @@ func decodeCoPlayPresence(data []byte) (ServerMessage, error) {
 	}
 	seen := make(map[string]bool, len(value.Participants))
 	for _, participant := range value.Participants {
-		if !ValidOpaqueID(participant.PeerID) || !validCoPlayDevice(participant.Device) || seen[participant.PeerID] {
+		if !ValidOpaqueID(participant.PeerID) || seen[participant.PeerID] {
 			return nil, errors.New("invalid co-play participant")
 		}
 		seen[participant.PeerID] = true

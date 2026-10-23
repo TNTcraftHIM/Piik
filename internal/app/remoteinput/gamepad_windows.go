@@ -29,10 +29,14 @@ var vigemBusInterface = windows.GUID{Data1: 0x96e42b22, Data2: 0xf5e9, Data3: 0x
 type vigemGamepadBackend struct {
 	mu      sync.Mutex
 	handle  windows.Handle
+	path    string
+	opening int
 	devices map[*vigemGamepad]struct{}
 }
 
 type vigemGamepad struct {
+	mu      sync.Mutex
+	handle  windows.Handle
 	backend *vigemGamepadBackend
 	serial  uint32
 	closed  bool
@@ -105,7 +109,7 @@ func openGamepadBackend() (gamepadBackend, error) {
 			failure = errors.Join(failure, fmt.Errorf("ViGEmBus protocol version 1: %w", err), windows.CloseHandle(handle))
 			continue
 		}
-		return &vigemGamepadBackend{handle: handle, devices: make(map[*vigemGamepad]struct{})}, nil
+		return &vigemGamepadBackend{handle: handle, path: path, devices: make(map[*vigemGamepad]struct{})}, nil
 	}
 	return nil, errors.Join(errGamepadUnavailable, errors.New("install the official ViGEmBus driver"), failure)
 }
@@ -117,58 +121,78 @@ func vigemControl(handle windows.Handle, code uint32, input unsafe.Pointer, size
 
 func (b *vigemGamepadBackend) Open() (gamepadDevice, error) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if b.handle == windows.InvalidHandle {
+		b.mu.Unlock()
 		return nil, errors.New("virtual gamepad backend is closed")
 	}
-	if len(b.devices) >= 4 {
+	if len(b.devices)+b.opening >= 4 {
+		b.mu.Unlock()
 		return nil, errors.New("all four Windows remote gamepad slots are occupied")
 	}
-	// Serial numbers are driver handles, never XInput indices. A collision fails
-	// plugin without granting ownership; do not reset or unplug the existing pad.
+	b.opening++
+	path := b.path
+	b.mu.Unlock()
+	defer func() { b.mu.Lock(); b.opening--; b.mu.Unlock() }()
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, err
+	}
+	// Each target owns a file session. Enumerating a new target cannot serialize
+	// reports or retirement for another target behind the bus readiness request.
+	handle, err := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		return nil, err
+	}
+	d := &vigemGamepad{backend: b, handle: handle}
 	for serial := uint32(1); serial <= 65535; serial++ {
 		request := vigemPlugin{size: 16, serial: serial, targetType: 0, vendor: 0x045e, product: 0x028e}
-		err := vigemControl(b.handle, vigemPlugIn, unsafe.Pointer(&request), uint32(unsafe.Sizeof(request)))
+		err = vigemControl(handle, vigemPlugIn, unsafe.Pointer(&request), uint32(unsafe.Sizeof(request)))
 		if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("create virtual Xbox 360: %w", err)
+			return nil, errors.Join(fmt.Errorf("create virtual Xbox 360: %w", err), d.closeLocked())
 		}
-		d := &vigemGamepad{backend: b, serial: serial}
-		b.devices[d] = struct{}{}
+		d.serial = serial
 		ready := vigemRequest{size: 8, value: serial}
-		// Current ViGEmBus bounds this request to one second while its child boots.
-		// Require readiness; do not retain the SDK's pre-1.17 compatibility fallback.
-		if err := vigemControl(b.handle, vigemWaitReady, unsafe.Pointer(&ready), uint32(unsafe.Sizeof(ready))); err != nil {
+		if err = vigemControl(handle, vigemWaitReady, unsafe.Pointer(&ready), uint32(unsafe.Sizeof(ready))); err != nil {
 			return nil, errors.Join(fmt.Errorf("initialize virtual Xbox 360: %w", err), d.closeLocked())
 		}
-		if err := b.updateLocked(serial, gamepadReport{}); err != nil {
+		if err = d.updateLocked(gamepadReport{}); err != nil {
 			return nil, errors.Join(err, d.closeLocked())
+		}
+		b.mu.Lock()
+		closed := b.handle == windows.InvalidHandle
+		if !closed {
+			b.devices[d] = struct{}{}
+		}
+		b.mu.Unlock()
+		if closed {
+			return nil, errors.Join(errors.New("virtual gamepad backend is closed"), d.closeLocked())
 		}
 		return d, nil
 	}
-	return nil, errors.New("ViGEmBus has no free controller serial")
+	return nil, errors.Join(errors.New("ViGEmBus has no free controller serial"), d.closeLocked())
 }
 
-func (b *vigemGamepadBackend) updateLocked(serial uint32, report gamepadReport) error {
-	request := vigemXUSBSubmission{size: 20, serial: serial, report: toXUSBReport(report)}
-	if err := vigemControl(b.handle, vigemSubmitXUSB, unsafe.Pointer(&request), uint32(unsafe.Sizeof(request))); err != nil {
+func (d *vigemGamepad) updateLocked(report gamepadReport) error {
+	request := vigemXUSBSubmission{size: 20, serial: d.serial, report: toXUSBReport(report)}
+	if err := vigemControl(d.handle, vigemSubmitXUSB, unsafe.Pointer(&request), uint32(unsafe.Sizeof(request))); err != nil {
 		return fmt.Errorf("write virtual Xbox 360 report: %w", err)
 	}
 	return nil
 }
 
 func (d *vigemGamepad) Update(report gamepadReport) error {
-	b := d.backend
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if d.closed || b.handle == windows.InvalidHandle {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed || d.handle == windows.InvalidHandle {
 		return errors.New("virtual gamepad device is closed")
 	}
 	deadline := time.Now().Add(time.Second / 60)
 	for {
-		err := b.updateLocked(d.serial, report)
+		err := d.updateLocked(report)
 		if !errors.Is(err, windows.ERROR_NO_MORE_ITEMS) {
 			return err
 		}
@@ -178,7 +202,7 @@ func (d *vigemGamepad) Update(report gamepadReport) error {
 			return nil
 		}
 		// A one-off focus reset has no following report. Give its neutral state
-		// one frame to be consumed, then fail the grant so its device is removed.
+		// one frame to be consumed, then retire this pad if it cannot be reset.
 		if !time.Now().Before(deadline) {
 			return err
 		}
@@ -187,48 +211,52 @@ func (d *vigemGamepad) Update(report gamepadReport) error {
 }
 
 func (d *vigemGamepad) closeLocked() error {
-	if d.serial == 0 {
+	if d.closed {
 		return nil
 	}
 	d.closed = true
-	result := d.backend.updateLocked(d.serial, gamepadReport{})
-	if errors.Is(result, windows.ERROR_NO_MORE_ITEMS) {
-		result = nil // Unplug below retires the device even without a USB reader.
+	var result error
+	if d.serial != 0 {
+		result = d.updateLocked(gamepadReport{})
+		if errors.Is(result, windows.ERROR_NO_MORE_ITEMS) {
+			result = nil
+		}
+		request := vigemRequest{size: 8, value: d.serial}
+		if err := vigemControl(d.handle, vigemUnplug, unsafe.Pointer(&request), uint32(unsafe.Sizeof(request))); err != nil {
+			result = errors.Join(result, fmt.Errorf("remove virtual Xbox 360: %w", err))
+		}
 	}
-	request := vigemRequest{size: 8, value: d.serial}
-	if err := vigemControl(d.backend.handle, vigemUnplug, unsafe.Pointer(&request), uint32(unsafe.Sizeof(request))); err != nil {
-		// Keep the owned serial for another close or eventual session-handle close.
-		return errors.Join(result, fmt.Errorf("remove virtual Xbox 360: %w", err))
-	}
+	// File close is also the driver's final cleanup for this target alone.
+	result = errors.Join(result, windows.CloseHandle(d.handle))
+	d.handle = windows.InvalidHandle
 	d.serial = 0
-	delete(d.backend.devices, d)
 	return result
 }
 
 func (d *vigemGamepad) Close() error {
-	b := d.backend
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return d.closeLocked()
+	d.mu.Lock()
+	err := d.closeLocked()
+	d.mu.Unlock()
+	d.backend.mu.Lock()
+	delete(d.backend.devices, d)
+	d.backend.mu.Unlock()
+	return err
 }
 
 func (b *vigemGamepadBackend) Close() error {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.handle == windows.InvalidHandle {
+	handle := b.handle
+	if handle == windows.InvalidHandle {
+		b.mu.Unlock()
 		return nil
 	}
-	var result error
-	for d := range b.devices {
-		result = errors.Join(result, d.closeLocked())
-	}
-	// Driver Bus_FileClose removes only children with this file's SessionId.
-	result = errors.Join(result, windows.CloseHandle(b.handle))
 	b.handle = windows.InvalidHandle
-	for d := range b.devices {
-		d.closed = true
-		d.serial = 0
+	devices := b.devices
+	b.devices = make(map[*vigemGamepad]struct{})
+	b.mu.Unlock()
+	var result error
+	for d := range devices {
+		result = errors.Join(result, d.Close())
 	}
-	clear(b.devices)
-	return result
+	return errors.Join(result, windows.CloseHandle(handle))
 }

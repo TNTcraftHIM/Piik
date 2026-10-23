@@ -40,24 +40,48 @@ it("updates text availability without replacing an active keyboard grant", () =>
   session.dispose();
 });
 
+it("keeps keyboard control when optional gamepad support fails for the grant", () => {
+  const channel = new Channel(), changed = vi.fn();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, changed);
+  channel.receive({ platform: "windows", mode: "room", state: "ready", coPlay: true, capabilities: ["coPlay", "gamepad"] });
+  session.request();
+  const intent = channel.sent.at(-1)?.intent, grant = "e".repeat(64);
+  const active = { platform: "windows", mode: "room", state: "active", coPlay: true, intent, grant };
+  const gamepad = { buttons: 0, leftTrigger: 0, rightTrigger: 0, leftX: 0, leftY: 0, rightX: 0, rightY: 0 };
+  channel.receive({ ...active, capabilities: ["coPlay", "gamepad", "text"] });
+  session.input({ type: "gamepad", gamepad });
+  expect(channel.sent.at(-1)).toEqual({ type: "gamepad", gamepad, grant });
+  channel.receive({ ...active, capabilities: ["coPlay", "text"], reason: "gamepad" });
+  const before = channel.sent.length;
+  session.input({ type: "gamepad", gamepad }); session.input({ type: "gamepad-reset" });
+  expect(channel.sent).toHaveLength(before);
+  session.input({ type: "key", code: "KeyW", down: false });
+  session.input({ type: "text", text: "hello" });
+  session.input({ type: "reset" });
+  expect(channel.sent.slice(before)).toEqual([
+    { type: "key", code: "KeyW", down: false, grant }, { type: "text", text: "hello", grant }, { type: "reset", grant },
+  ]);
+  expect(session.state?.state).toBe("active"); expect(session.state?.grant).toBe(grant);
+  session.dispose();
+});
+
 it("maps standard gamepads into one negotiated grant and resets on focus loss, unplug and retirement", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
   channel.receive({ platform: "windows", mode: "ask", state: "ready" });
   expect(channel.sent.at(-1)).toEqual({ type: "capabilities" });
-  const beforeNegotiation = channel.sent.length;
-  session.request(undefined, "gamepad");
-  expect(channel.sent).toHaveLength(beforeNegotiation);
   channel.receive({ platform: "windows", mode: "ask", state: "ready", coPlay: true, capabilities: ["coPlay", "gamepad"] });
-  session.request(undefined, "gamepad");
+  session.request();
   const intent = channel.sent.at(-1)?.intent;
-  expect(channel.sent.at(-1)).toMatchObject({ type: "request", device: "gamepad" });
+  expect(channel.sent.at(-1)).toEqual({ type: "request", intent });
   const grant = "d".repeat(64);
-  channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant, device: "gamepad", coPlay: true });
+  channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant, coPlay: true, capabilities: ["coPlay", "gamepad"] });
   const beforeInput = channel.sent.length;
   session.input({ type: "key", code: "KeyW", down: true });
   session.input({ type: "button", button: 0, down: true });
-  expect(channel.sent).toHaveLength(beforeInput);
+  expect(channel.sent.slice(beforeInput)).toEqual([
+    { type: "key", code: "KeyW", down: true, grant }, { type: "button", button: 0, down: true, grant },
+  ]);
 
   const pad = { index: 1, connected: true, mapping: "standard", axes: [-1, -1, 1, 1],
     buttons: Array.from({ length: 17 }, (_, index) => ({ pressed: [0, 1, 4, 8, 9, 10, 12].includes(index), value: index === 6 ? .5 : index === 7 ? 1 : 0 })),
@@ -82,15 +106,15 @@ it("maps standard gamepads into one negotiated grant and resets on focus loss, u
       leftTrigger: 128, rightTrigger: 255, leftX: -32768, leftY: -32768, rightX: 32767, rightY: 32767 } };
     expect(channel.sent.slice(-2)).toEqual([report, report]);
     focused = false; owner.dispatchEvent(new Event("blur"));
-    expect(channel.sent.at(-1)).toEqual({ type: "reset", grant });
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-reset", grant });
     expect(frames.size).toBe(0);
     focused = true; owner.dispatchEvent(new Event("focus")); tick(34);
     expect(channel.sent.at(-1)).toEqual(report);
     pads = [];
     owner.dispatchEvent(Object.assign(new Event("gamepaddisconnected"), { gamepad: pad }));
-    expect(channel.sent.at(-1)).toEqual({ type: "reset", grant });
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-reset", grant });
     tick(51);
-    expect(channel.sent.at(-1)).toEqual({ type: "reset", grant });
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-reset", grant });
     page.hidden = true; page.dispatchEvent(new Event("visibilitychange"));
     expect(frames.size).toBe(0);
   } finally { controller.dispose(); session.dispose(); }

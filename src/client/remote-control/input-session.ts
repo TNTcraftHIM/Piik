@@ -1,5 +1,5 @@
 import type { InputTransport } from "./input-route";
-import { remoteInputStateSchema, remoteTextAvailable, type RemoteInputState, type RemoteGamepadReport } from "./protocol";
+import { remoteInputStateSchema, remoteTextAvailable, remoteGamepadAvailable, type RemoteInputState, type RemoteGamepadReport } from "./protocol";
 export type { RemoteInputState } from "./protocol";
 export type RemoteInputEvent =
   | { type: "move"; x: number; y: number }
@@ -9,6 +9,7 @@ export type RemoteInputEvent =
   | { type: "button"; button: number; down: boolean }
   | { type: "wheel"; delta: number }
   | { type: "gamepad"; gamepad: RemoteGamepadReport }
+  | { type: "gamepad-reset" }
   | { type: "reset" };
 
 type PointerInput = Extract<RemoteInputEvent, { type: "move" | "relative" }>;
@@ -91,14 +92,13 @@ export class RemoteInputSession {
     }
   }
 
-  request(password?: string, device?: "gamepad"): void {
-    if (device === "gamepad" && (!this.state?.coPlay || !this.state.capabilities?.includes("gamepad"))) return;
+  request(password?: string): void {
     if (this.intent !== null) this.release();
     const state = this.state;
     if (!state) return;
     this.intent = crypto.randomUUID().replaceAll("-", "");
-    if (this.send({ type: "request", intent: this.intent, ...(password !== undefined ? { password } : {}), ...(device ? { device } : {}) }))
-      this.set({ ...state, state: "pending", grant: undefined, reason: undefined, device, intent: this.intent });
+    if (this.send({ type: "request", intent: this.intent, ...(password !== undefined ? { password } : {}) }))
+      this.set({ ...state, state: "pending", grant: undefined, reason: undefined, intent: this.intent });
   }
 
   release(): void {
@@ -109,11 +109,11 @@ export class RemoteInputSession {
     const intent = this.intent;
     const state = this.state;
     this.intent = null;
-    if (this.send({ type: "release", intent })) this.set({ ...state, state: "ready", grant: undefined, intent: undefined, device: undefined });
+    if (this.send({ type: "release", intent })) this.set({ ...state, state: "ready", grant: undefined, intent: undefined });
   }
 
   input(event: RemoteInputEvent): void {
-    if (event.type !== "reset" && ((this.state?.device === "gamepad") !== (event.type === "gamepad"))) return;
+    if ((event.type === "gamepad" || event.type === "gamepad-reset") && (!this.state || !remoteGamepadAvailable(this.state))) return;
     if (this.state && event.type === "text" && !remoteTextAvailable(this.state)) return;
     if (event.type === "move" || event.type === "relative") {
       if (this.state?.state !== "active") return;
@@ -146,7 +146,7 @@ export class RemoteInputSession {
   private sendInput(event: RemoteInputEvent): void {
     const state = this.state;
     if (!this.intent || !state?.grant || state.intent !== this.intent ||
-        (state.state !== "active" && !(event.type === "reset" && state.state === "suspended"))) return;
+        (state.state !== "active" && !((event.type === "reset" || event.type === "gamepad-reset") && state.state === "suspended"))) return;
     this.send({ ...event, grant: state.grant });
   }
 

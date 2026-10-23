@@ -1366,7 +1366,7 @@
     {
       "name": "co-play-grants",
       "schema": "client",
-      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"endpointId\":\"11111111111111111111111111111111\",\"device\":\"keyboardMouse\"}]}",
+      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"endpointId\":\"11111111111111111111111111111111\"}]}",
       "valid": true
     },
     {
@@ -1378,19 +1378,19 @@
     {
       "name": "co-play-duplicate-grant",
       "schema": "client",
-      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"endpointId\":\"11111111111111111111111111111111\",\"device\":\"keyboardMouse\"},{\"endpointId\":\"11111111111111111111111111111111\",\"device\":\"keyboardMouse\"}]}",
+      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"endpointId\":\"11111111111111111111111111111111\"},{\"endpointId\":\"11111111111111111111111111111111\"}]}",
       "valid": false
     },
     {
       "name": "co-play-grant-field-case",
       "schema": "client",
-      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"EndpointId\":\"11111111111111111111111111111111\",\"device\":\"keyboardMouse\"}]}",
+      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"EndpointId\":\"11111111111111111111111111111111\"}]}",
       "valid": false
     },
     {
-      "name": "co-play-unknown-device",
+      "name": "co-play-unexpected-grant-field",
       "schema": "client",
-      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"endpointId\":\"11111111111111111111111111111111\",\"device\":\"pointer-owner\"}]}",
+      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"endpointId\":\"11111111111111111111111111111111\",\"extra\":true}]}",
       "valid": false
     }
   ],
@@ -1553,7 +1553,7 @@
     },
     {
       "name": "co-play-participants",
-      "json": "{\"type\":\"co-play-presence\",\"participants\":[{\"peerId\":\"viewer_coplay_peer\",\"device\":\"keyboardMouse\"},{\"peerId\":\"other_coplay_peer\",\"device\":\"gamepad\"}]}"
+      "json": "{\"type\":\"co-play-presence\",\"participants\":[{\"peerId\":\"viewer_coplay_peer\"},{\"peerId\":\"other_coplay_peer\"}]}"
     },
     {
       "name": "co-play-participants-cleared",

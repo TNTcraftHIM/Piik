@@ -46,7 +46,7 @@ export class RemoteGamepad {
   private readonly pause = (): void => {
     if (this.frame !== null) this.owner.cancelAnimationFrame(this.frame);
     this.frame = null; this.nextReport = 0; this.index = null;
-    this.input({ type: "reset" }); this.setConnected(false);
+    this.input({ type: "gamepad-reset" }); this.setConnected(false);
   };
   private readonly resume = (): void => {
     if (!this.disposed && !this.page.hidden && this.page.hasFocus() && this.frame === null)
@@ -62,7 +62,7 @@ export class RemoteGamepad {
     let pad: Gamepad | undefined;
     try { pad = Array.from(this.owner.navigator.getGamepads()).find(value => value?.connected && value.mapping === "standard") ?? undefined; }
     catch { /* Browser permissions can deny controller access. Keep the grant neutral. */ }
-    if (this.index !== null && this.index !== pad?.index) this.input({ type: "reset" });
+    if (this.index !== null && this.index !== pad?.index) this.input({ type: "gamepad-reset" });
     this.index = pad?.index ?? null; this.setConnected(Boolean(pad));
     if (pad && time >= this.nextReport) {
       const interval = 1000 / 60;

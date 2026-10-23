@@ -183,14 +183,11 @@ func TestGamepadNativeLifecycle(t *testing.T) {
 	indexA = find(toXUSBReport(reportA))
 	// Closing the file directly exercises driver-owned crash cleanup, without
 	// the normal per-device neutral/unplug path. A separate backend stays live.
-	if err := windows.CloseHandle(busA.handle); err != nil {
+	crashed := a.(*vigemGamepad)
+	if err := windows.CloseHandle(crashed.handle); err != nil {
 		t.Fatal(err)
 	}
-	busA.handle = windows.InvalidHandle
-	for d := range busA.devices {
-		d.closed, d.serial = true, 0
-	}
-	clear(busA.devices)
+	crashed.handle, crashed.closed, crashed.serial = windows.InvalidHandle, true, 0
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}

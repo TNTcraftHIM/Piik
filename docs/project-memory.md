@@ -113,9 +113,9 @@ indexes delivery and [room media](./standards/routing-transport.md#room-media)
 owns the new behavior.
 
 Optional attended input follows the committed media route back to the native
-Host. Control starts with one grantee. The Host may allow simultaneous approved
-keyboard/mouse contributors and independent virtual gamepads for that source;
-older published clients retain exclusive keyboard/mouse control. Source change, stop
+Host. One grant covers keyboard/mouse and an optional gamepad. Control starts
+with one grantee; the Host may allow simultaneous approved Viewers for that source.
+Older published clients retain exclusive keyboard/mouse control. Source change, stop
 and revocation retire the affected grants. It adds no separate connection planner
 or listener.
 Viewer playback preferences and the combined interaction window remain local

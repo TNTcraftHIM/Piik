@@ -7,7 +7,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Remote co-play candidate acceptance.** Review the normal App/Web flow on
+- [ ] **Remote co-play candidate acceptance.** Review the unified remote-control
+  permission and normal App/Web flow on
   `feat/shared-input-co-play`: shared keyboard/mouse, optional Windows x64
   ViGEmBus gamepads and per-player retirement. Verify the external-driver setup
   and tutorial before owner acceptance. Linux uinput passed its isolated

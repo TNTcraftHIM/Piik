@@ -66,11 +66,10 @@ const opaqueIdSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
 
-const coPlayDeviceSchema = z.enum(["keyboardMouse", "gamepad"]);
 const coPlayGrantSchema = z.object({
-  endpointId: z.string().regex(/^[0-9a-f]{32}$/), device: coPlayDeviceSchema,
+  endpointId: z.string().regex(/^[0-9a-f]{32}$/),
 }).strict();
-const coPlayParticipantSchema = z.object({ peerId: opaqueIdSchema, device: coPlayDeviceSchema }).strict();
+const coPlayParticipantSchema = z.object({ peerId: opaqueIdSchema }).strict();
 export type CoPlayGrant = z.infer<typeof coPlayGrantSchema>;
 export type CoPlayParticipant = z.infer<typeof coPlayParticipantSchema>;
 

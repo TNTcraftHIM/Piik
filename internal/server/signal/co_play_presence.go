@@ -58,7 +58,7 @@ func (s *Server) coPlayParticipants(roomID string) []protocol.CoPlayParticipant 
 	endpoints := s.coPlayEndpoints(roomID)
 	for _, grant := range s.shares[roomID].coPlayGrants {
 		if peerID, exists := endpoints[grant.EndpointID]; exists {
-			participants = append(participants, protocol.CoPlayParticipant{PeerID: peerID, Device: grant.Device})
+			participants = append(participants, protocol.CoPlayParticipant{PeerID: peerID})
 		}
 	}
 	return participants

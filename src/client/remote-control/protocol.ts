@@ -24,12 +24,15 @@ export const remoteInputStateSchema = z.object({
   reason: z.enum(["password", "retry", "busy", "gamepad"]).optional(),
   capabilities: z.array(z.string().min(1).max(32)).max(16).optional(),
   coPlay: z.boolean().optional(),
-  device: z.literal("gamepad").optional(),
 }).strict();
 export type RemoteInputState = z.infer<typeof remoteInputStateSchema>;
 
 export function remoteTextAvailable(state: RemoteInputState): boolean {
   return !state.coPlay || state.capabilities?.includes("text") === true;
+}
+
+export function remoteGamepadAvailable(state: RemoteInputState): boolean {
+  return state.coPlay === true && state.capabilities?.includes("gamepad") === true;
 }
 
 // Button bits follow W3C standard indices; sticks are signed 16-bit, Y down,

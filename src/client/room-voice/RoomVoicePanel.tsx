@@ -133,8 +133,8 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
               <button type="button" className="lr-voice-avatar"
               aria-label={t("interaction.withPerson", { name: member.label })}
               onClick={event => onSelectParticipant(member.peerId, event.currentTarget)}>
-              <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} voice={status.appearance} />
-            </button></Tooltip> : <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} voice={status.appearance} />}
+              <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />
+            </button></Tooltip> : <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />}
             <div><Tooltip overflow={{ text: member.label, selector: ".lr-voice-name" }}><b><span className="lr-voice-name">{member.label}</span>{member.peerId === state.peerId && <span className={vis ? "visually-hidden" : "lr-voice-self"}>{t("voice.self")}</span>}</b></Tooltip>
               <small><span className="lr-voice-state"><Glyph name={status.icon} size={14} />
                 <span className="lr-voice-activity" data-speaking={speaking || undefined} aria-hidden="true" />

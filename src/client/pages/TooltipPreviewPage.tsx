@@ -80,6 +80,7 @@ export function TooltipPreviewPage() {
           <a href="#launcher-preview">{en ? "App launcher" : "模式选择"}</a>
           <a href="#interaction-preview">{en ? "Chat & reactions" : "聊天与互动"}</a>
           <a href="#remote-control-preview">{en ? "Remote control & keyboard" : "远程控制与键盘"}</a>
+          <a href="#remote-permission-preview">{en ? "Input access requests" : "权限申请"}</a>
 
           <a href="#admission-preview">{en ? "Room entry" : "房间准入"}</a>
           <a href="#metrics-preview">{en ? "Metrics" : "连接数据"}</a>

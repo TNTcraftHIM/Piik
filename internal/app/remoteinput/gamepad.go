@@ -26,33 +26,60 @@ type gamepadBackend interface {
 	Close() error
 }
 
-// Caller holds manager.mu. A device belongs to one current grant, never to a
-// Viewer-supplied slot or an OS player index.
-func (m *Manager) assignGamepad(c *connection) error {
-	if !c.extended || !c.owner.coPlay || m.gamepads == nil {
-		return errGamepadUnavailable
+// One creation may enumerate an OS device at a time. It must never hold the
+// input lock or replay a report from before enumeration completed.
+func (m *Manager) assignGamepad(c *connection) {
+	if m.gamepadOpening {
+		return
 	}
-	pad, err := m.gamepads.Open()
-	if err != nil {
-		return err
+	if m.gamepads == nil {
+		m.failGamepad(c)
+		return
 	}
-	c.pad = pad
-	return nil
+	backend, grant := m.gamepads, c.grant
+	m.gamepadOpening = true
+	go func() {
+		pad, err := backend.Open()
+		m.mu.Lock()
+		valid := !m.closed && !c.owner.closed && c.owner.available() && c.owner.coPlay &&
+			c.grant == grant && c.grant != "" && m.connections[endpointKey{c.owner, c.id}] == c
+		if valid {
+			if err != nil {
+				m.failGamepad(c)
+			} else {
+				c.pad = pad
+				c.owner.notify()
+			}
+		}
+		m.mu.Unlock()
+		if !valid && pad != nil {
+			_ = pad.Close()
+		}
+		m.mu.Lock()
+		m.gamepadOpening = false
+		m.mu.Unlock()
+	}()
 }
 
 func (m *Manager) failGamepad(c *connection) {
-	m.releaseConnection(c)
-	m.reply(c, "failed", "gamepad")
+	if c.pad != nil {
+		_ = c.pad.Close()
+		c.pad = nil
+	}
+	c.padFailed = true
+	m.reply(c, m.state(c), "gamepad")
 	c.owner.notify()
 }
 
 func (m *Manager) receiveGamepad(c *connection, event inputEvent) {
-	if c.pad == nil {
+	if !c.extended || !c.owner.coPlay || c.padFailed {
 		return
 	}
-	if event.Type == "reset" {
-		if err := c.pad.Update(gamepadReport{}); err != nil {
-			m.failGamepad(c)
+	if event.Type == "gamepad-reset" {
+		if c.pad != nil {
+			if err := c.pad.Update(gamepadReport{}); err != nil {
+				m.failGamepad(c)
+			}
 		}
 		return
 	}
@@ -60,6 +87,10 @@ func (m *Manager) receiveGamepad(c *connection, event inputEvent) {
 		return
 	}
 	if _, focused := m.refreshActive(); !focused {
+		return
+	}
+	if c.pad == nil {
+		m.assignGamepad(c)
 		return
 	}
 	if err := c.pad.Update(*event.Gamepad); err != nil {

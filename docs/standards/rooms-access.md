@@ -202,12 +202,14 @@ retires current requests and grants without changing the authorization mode or
 password; replacing the source resets it off. Older published clients retain the
 exclusive keyboard/mouse baseline. Gamepad support and participant presentation
 remain available with simultaneous control off.
+One grant authorizes one Viewer to use keyboard/mouse and an optional supported
+gamepad. Switching or combining input devices requires no additional approval.
+The simultaneous-control limit counts approved Viewers, not device types.
 Held keys and mouse buttons belong to each grant; releasing one
 participant cannot release another's still-held inputs. All approved keyboard/mouse
 grants contribute to the same pointer, with no per-player mouse assignment or
-join-order priority. Committed text insertion is available with one keyboard/mouse
-grant and pauses while two or more such grants coexist; physical key input
-remains available. Independent gamepad grants do not affect this text boundary.
+join-order priority. Committed text insertion is available with one approved
+Viewer and pauses while two or more grants coexist; physical key input remains available.
 Input still belongs to one process-wide source owner, not multiple simultaneous shares.
 
 Collaboration markers describe granted participation, not live key or pointer
@@ -217,11 +219,11 @@ read-only, share-scoped snapshot to opted-in Viewers. Pending requests are not
 participants, and stopped sources or replaced endpoints cannot retain a marker.
 This presentation neither grants control nor creates another routing path.
 
-Optional Windows x64 gamepad grants create independent Xbox 360 devices through
+Optional Windows x64 gamepad use creates independent Xbox 360 devices through
 the public device interface of an already-installed ViGEmBus. Optional input
 drivers and third-party input SDK binaries stay external on every platform:
-Piik does not download, install or bundle them. Each approved gamepad owns its
-device and cannot inject keyboard or mouse input. Windows is subject to the four
+Piik does not download, install or bundle them. Each approved Viewer owns their
+virtual device under the same remote-control grant. Windows is subject to the four
 XInput slots shared with the Host's existing devices; slot limits belong to the
 platform backend. Driver connection and target creation determine availability;
 keyboard/mouse input continues when the optional backend is unavailable.
@@ -230,8 +232,8 @@ platform permissions and evidence limits recorded in the
 [co-play assessment](../research/room-interactions.md#remote-co-play).
 
 Losing shared-window focus releases held input and neutralizes gamepads while
-keeping grants suspended. Ending a gamepad grant neutralizes and removes only
-its device; a device failure retires only the affected grant. The Host's stop
+keeping grants suspended. Stopping gamepad use neutralizes and removes only
+its device; ending remote control releases every input owned by that Viewer. The Host's stop
 shortcut ends all remote input. The [reader guide](../guide/remote-control.md)
 owns usage and driver setup; [interaction research](../research/room-interactions.md#remote-co-play)
 owns backend rationale and measurements.

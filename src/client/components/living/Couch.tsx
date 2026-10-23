@@ -8,7 +8,7 @@ import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { Tooltip } from "./Tooltip";
-import type { CoPlayParticipant, RoomVoiceState } from "../../../shared/protocol";
+import type { RoomVoiceState } from "../../../shared/protocol";
 import { describeVoiceParticipant } from "../../room-voice/participant-presentation";
 
 type VoicePresentation = ReturnType<typeof describeVoiceParticipant>;
@@ -19,7 +19,7 @@ export interface CouchEntry {
   status: StatusDescriptor;
   you?: boolean;
   selectable?: boolean;
-  collaboration?: CoPlayParticipant["device"];
+  collaboration?: boolean;
 }
 
 export interface CouchHostEntry {
@@ -79,12 +79,11 @@ export function Couch({
     ? [host.name, host.name === t("common.host") ? null : t("common.host"),
         host.you ? t("common.you") : null, hostVoice ? voiceLabel(hostVoice) : null].filter(Boolean).join(comma)
     : undefined;
-  const collaborationLabel = (device: NonNullable<CouchEntry["collaboration"]>) =>
-    t(device === "gamepad" ? "remote.participant.gamepad" : "remote.participant.keyboardMouse");
+  const collaborationLabel = () => t("remote.participant.control");
   const personHint = (name: string, voice?: VoicePresentation, collaboration?: CouchEntry["collaboration"]) => {
     const kind = participantAction ? "hint-reaction-picker" as const : collaboration ? "hint-remote-control" as const
       : voice?.appearance?.deafened ? "hint-voice-deafen" as const : voice?.appearance?.microphone ? "hint-microphone-on" as const : voice ? "hint-microphone-off" as const : undefined;
-    const status = [voice && voiceLabel(voice), collaboration && collaborationLabel(collaboration)].filter(Boolean).join(comma);
+    const status = [voice && voiceLabel(voice), collaboration && collaborationLabel()].filter(Boolean).join(comma);
     const overflow = { text: name, selector: ".lr-pawn-name" };
     return kind ? { kind, text: vis ? undefined : [status, participantAction && t("interaction.express")].filter(Boolean).join("\n"), overflow }
       : { overflow };
@@ -141,7 +140,7 @@ export function Couch({
             const stateLabel = t(entry.status.labelKey);
             const voice = voiceFor(entry.key);
             const label = [entry.name, entry.you && t("common.you"), stateLabel,
-              voice && voiceLabel(voice), entry.collaboration && collaborationLabel(entry.collaboration)].filter(Boolean).join(comma);
+              voice && voiceLabel(voice), entry.collaboration && collaborationLabel()].filter(Boolean).join(comma);
             const inner = (
               <>
                 <PawnSvg color={participantColor(entry.key)} identity={entry.key} voice={voice?.appearance} collaboration={entry.collaboration} />

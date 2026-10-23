@@ -1315,7 +1315,7 @@ export function HostPage({
           setRemoteControlState(event);
           signalRef.current?.setCoPlayGrants(event.coPlay ? event.requests.flatMap(request =>
             request.state !== "pending" && request.endpointId
-              ? [{ endpointId: request.endpointId, device: request.device ?? "keyboardMouse" }] : []) : []);
+              ? [{ endpointId: request.endpointId }] : []) : []);
         }
         if (event.type === "audio-state") {
           setCommentary(event.microphone);
@@ -3577,7 +3577,7 @@ export function HostPage({
     return {
       key: viewer.peerId,
       name: viewer.label,
-      collaboration: grant ? grant.device ?? "keyboardMouse" : undefined,
+      collaboration: Boolean(grant),
       status: deriveParticipantStatus(viewer, phase === "live", viewerQualityEvidence.get(viewer.peerId), roomVoice),
     };
   });

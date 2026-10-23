@@ -82,7 +82,7 @@ describe("room authentication and site admission", () => {
       (sample: { name: string }) => sample.name === `authenticated-${role}-minimal`).json);
     const host = fixture("host");
     const authenticated = auth("host");
-    const grants = [{ endpointId: "1".repeat(32), device: "gamepad" as const }];
+    const grants = [{ endpointId: "1".repeat(32) }];
     host.sockets[0]!.receive(authenticated);
     host.signal.setCoPlayGrants(grants);
     expect(host.sockets[0]!.send.mock.calls.some(([raw]) => JSON.parse(raw).type === "set-co-play-presence")).toBe(false);

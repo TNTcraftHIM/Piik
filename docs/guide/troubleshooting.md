@@ -444,7 +444,7 @@ invite** or an HTTPS site with a trusted certificate.
    The Host installs external drivers from the official source; Piik includes no
    input SDK or driver. Turn Remote control off and on after installation.
 3. The Viewer connects a controller and presses a button so the browser detects it,
-   then selects **Use gamepad** and obtains control. Join the corresponding player
+   then obtains remote control and selects **Use gamepad** without another approval. Join the corresponding player
    in the game; free a controller slot if all are occupied.
 
 Viewers only need their browser. Driver checks and installation belong on the Host.

@@ -36,16 +36,17 @@ Play together and virtual gamepads are candidate features awaiting acceptance.
 The Host and approved friends share the computer's existing keyboard and mouse.
 Each friend's held keys and mouse buttons are tracked separately, so leaving
 releases only their input. Keyboard and mouse co-play needs no extra driver.
-Text insertion is available with one keyboard/mouse controller. With two or
-more approved keyboard/mouse collaborators, text insertion pauses; physical
-keyboard keys remain usable. Gamepad-only players do not affect text insertion.
+One approval gives a Viewer remote control through keyboard, mouse and an
+optional supported gamepad. **Allow simultaneous control** counts approved
+Viewers, not their input devices. Text insertion is available with one approved
+Viewer and pauses with two or more; physical keyboard keys remain usable.
 Older published clients retain one-controller behavior. To try the candidate,
 use matching candidate App and room-site builds, then refresh each viewing page.
 
 Everyone controls the same mouse pointer; movements and clicks from approved
 players apply together. Use the Host's stop action or shortcut to end control.
 
-Participants have a keyboard/mouse or gamepad marker beside their couch avatar.
+Approved participants have a mouse marker beside their couch avatar.
 Both Host and Viewers can see who has joined; ending control removes the marker.
 
 ## Gamepads
@@ -73,7 +74,8 @@ the Host's optional ViGEmBus driver creates the virtual device.
    copying or SDK configuration is needed.
 3. On each friend's computer, connect a standard-layout gamepad, open the
    viewing page and press a controller button so the browser recognizes it.
-   Select **Use gamepad** and obtain the Host's approval.
+   Obtain remote-control approval, then select **Use gamepad**. Switching input
+   does not require another permission request.
 4. Keep the viewing page focused. In the game, join as a controller player.
    Each page uses its first connected controller with the browser's standard
    mapping.
@@ -81,8 +83,10 @@ the Host's optional ViGEmBus driver creates the virtual device.
 XInput has four controller slots in total, including controllers already
 connected to the Host. Free a slot if another player cannot join. Piik does not
 choose the game's player number; use the game's join and assignment controls.
-A gamepad grant controls only that virtual controller. Ending it removes the
-device; losing page or shared-window focus returns its controls to neutral.
+Each approved Viewer uses their own virtual controller. Stopping gamepad use
+removes that device while remote-control permission remains; ending remote
+control releases all of that Viewer's input. Losing page or shared-window focus
+returns the controller to neutral.
 
 If **Use gamepad** is missing, check the Host's driver and App support, then
 turn **Remote control** off and on. Keyboard/mouse co-play and ordinary remote control

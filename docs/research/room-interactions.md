@@ -798,7 +798,9 @@ The candidate path is Browser Gamepad API ->
 existing encrypted input route -> Host-approved player slot -> platform gamepad
 backend. The Host assigns device identity; a guest cannot select another player's
 slot. Reuse input-grant retirement to neutralize buttons/axes and dispose owned
-devices. Keyboard/mouse and gamepad grants remain distinct. The current Browser
+devices. One Viewer grant covers keyboard/mouse and optional gamepad input;
+switching or combining devices adds no permission step. Simultaneous-control
+admission counts Viewers rather than device types. The current Browser
 collector uses one standard-mapped controller per page and reports at up to 60 Hz.
 No new media route, port or multiple screen publisher is required. Slot capacity
 follows the backend and game, including physical controllers already in use;

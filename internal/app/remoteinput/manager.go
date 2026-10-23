@@ -40,7 +40,6 @@ type inputEvent struct {
 	Delta    int            `json:"delta,omitempty"`
 	DX       int32          `json:"dx,omitempty"`
 	DY       int32          `json:"dy,omitempty"`
-	Device   string         `json:"device,omitempty"`
 	Gamepad  *gamepadReport `json:"gamepad,omitempty"`
 }
 
@@ -55,23 +54,23 @@ type View struct {
 	ID         string `json:"id"`
 	PeerID     string `json:"peerId"`
 	State      string `json:"state"`
-	Device     string `json:"device,omitempty"`
 	EndpointID string `json:"endpointId,omitempty"`
 }
 
 // One manager covers both native sessions: they operate the same physical desktop.
 type Manager struct {
-	mu           sync.Mutex
-	sink         inputSink
-	gamepads     gamepadBackend
-	connections  map[endpointKey]*connection
-	sessions     map[*Session]struct{}
-	owner        *Session // The one source allowed to inject into the desktop.
-	closed       bool
-	stop         context.CancelFunc
-	stopKey      int
-	registerStop func(int) (func(), error)
-	stopShortcut func()
+	mu             sync.Mutex
+	sink           inputSink
+	gamepads       gamepadBackend
+	gamepadOpening bool
+	connections    map[endpointKey]*connection
+	sessions       map[*Session]struct{}
+	owner          *Session // The one source allowed to inject into the desktop.
+	closed         bool
+	stop           context.CancelFunc
+	stopKey        int
+	registerStop   func(int) (func(), error)
+	stopShortcut   func()
 }
 
 type Session struct {
@@ -106,8 +105,8 @@ type connection struct {
 	extended  bool
 	keys      map[string]bool
 	buttons   map[int]bool
-	device    string
 	pad       gamepadDevice
+	padFailed bool
 }
 
 type endpointKey struct {
@@ -337,18 +336,16 @@ func (m *Manager) reply(c *connection, state, reason string) {
 		Reason       string   `json:"reason,omitempty"`
 		Capabilities []string `json:"capabilities,omitempty"`
 		CoPlay       *bool    `json:"coPlay,omitempty"`
-		Device       string   `json:"device,omitempty"`
 	}{Platform: runtime.GOOS, State: state, Grant: c.grant, Intent: c.intent, Mode: c.owner.mode, Reason: reason}
 	if c.extended {
 		coPlay := c.owner.coPlay
 		value.Capabilities, value.CoPlay = []string{"coPlay"}, &coPlay
-		if coPlay && m.singleKeyboardController(c.owner) == c {
+		if coPlay && m.singleController(c.owner) == c {
 			value.Capabilities = append(value.Capabilities, "text")
 		}
-		if m.gamepads != nil {
+		if coPlay && m.gamepads != nil && !c.padFailed {
 			value.Capabilities = append(value.Capabilities, "gamepad")
 		}
-		value.Device = c.device
 	}
 	data, _ := json.Marshal(value)
 	c.owner.route.Reply(inputroute.Packet{ID: c.id, Epoch: c.epoch, Data: c.cipher.seal(data, c.epoch)})
@@ -481,10 +478,10 @@ func (m *Manager) buttonHeld(button int) bool {
 	return false
 }
 
-func (m *Manager) singleKeyboardController(s *Session) *connection {
+func (m *Manager) singleController(s *Session) *connection {
 	var single *connection
 	for _, c := range m.connections {
-		if c.owner == s && c.grant != "" && c.device != "gamepad" {
+		if c.owner == s && c.grant != "" {
 			if single != nil {
 				return nil
 			}
@@ -498,23 +495,20 @@ func (m *Manager) releaseConnection(c *connection) {
 	if c.grant == "" {
 		return
 	}
-	if c.device == "gamepad" {
-		if c.pad != nil {
-			_ = c.pad.Close()
-			c.pad = nil
-		}
-	} else if !c.owner.coPlay {
+	if !c.owner.coPlay {
 		m.release()
 		return
 	} else if m.clearHeld(c) != nil {
 		m.release()
 		return
 	}
+	if c.pad != nil {
+		_ = c.pad.Close()
+		c.pad = nil
+	}
 	c.grant, c.suspended = "", false
-	if c.device != "gamepad" {
-		if remaining := m.singleKeyboardController(c.owner); remaining != nil && remaining.extended {
-			m.send(remaining, m.state(remaining))
-		}
+	if remaining := m.singleController(c.owner); remaining != nil && remaining.extended {
+		m.send(remaining, m.state(remaining))
 	}
 	for _, other := range m.connections {
 		if other.owner == c.owner && other.grant != "" {
@@ -604,20 +598,9 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 		if intent, err := hex.DecodeString(event.Intent); err != nil || len(intent) != 16 {
 			return
 		}
-		if event.Device != "" && event.Device != "gamepad" {
-			return
-		}
 		id := make([]byte, 16)
 		_, _ = rand.Read(id)
 		c.requestID, c.intent = hex.EncodeToString(id), event.Intent
-		c.device = ""
-		if event.Device == "gamepad" {
-			c.device = "gamepad"
-			if !c.extended || !c.owner.coPlay || m.gamepads == nil {
-				m.reply(c, "ready", "gamepad")
-				return
-			}
-		}
 		if c.owner.mode != "ask" {
 			if reason := c.owner.authorize(event.Password); reason != "" {
 				m.reply(c, "ready", reason)
@@ -647,14 +630,15 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 		if c.grant == "" || event.Grant != c.grant || !c.owner.available() {
 			return
 		}
-		if c.device == "gamepad" {
+		if event.Type == "gamepad" || event.Type == "gamepad-reset" {
 			m.receiveGamepad(c, event)
 			return
 		}
-		if event.Type == "gamepad" || event.Gamepad != nil {
+		if event.Gamepad != nil {
 			return
 		}
 		if event.Type == "reset" {
+			m.receiveGamepad(c, inputEvent{Type: "gamepad-reset"})
 			if c.owner.coPlay {
 				if m.clearHeld(c) != nil {
 					m.release()
@@ -664,7 +648,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 			}
 			return
 		}
-		if event.Type == "text" && c.owner.coPlay && m.singleKeyboardController(c.owner) != c {
+		if event.Type == "text" && c.owner.coPlay && m.singleController(c.owner) != c {
 			// Committed text resets the sink and would release other players.
 			return
 		}
@@ -834,7 +818,6 @@ func (s *Session) State() State {
 	for _, c := range m.connections {
 		if c.owner == s && (c.requested || c.grant != "") {
 			view := View{ID: c.requestID, PeerID: c.peerID, State: m.state(c)}
-			view.Device = c.device
 			if s.coPlay {
 				view.EndpointID = c.id
 			}
@@ -908,20 +891,13 @@ func (m *Manager) grant(c *connection) error {
 	} else {
 		m.release()
 	}
-	if c.device == "gamepad" {
-		if err := m.assignGamepad(c); err != nil {
-			c.requested = false
-			m.reply(c, "failed", "gamepad")
-			c.owner.notify()
-			return err
-		}
-	}
 	token := make([]byte, 32)
 	_, _ = rand.Read(token)
-	previous := m.singleKeyboardController(c.owner)
+	previous := m.singleController(c.owner)
 	c.grant, c.requested = hex.EncodeToString(token), false
+	c.padFailed = false
 	m.owner = c.owner
-	if c.device != "gamepad" && previous != nil && previous.extended {
+	if previous != nil && previous.extended {
 		m.send(previous, m.state(previous))
 	}
 	m.refreshActive()

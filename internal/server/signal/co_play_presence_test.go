@@ -22,7 +22,7 @@ func TestCoPlayPresenceUsesCurrentInputAuthority(t *testing.T) {
 	expectMatch(t, viewer.next("co-play-presence").raw, `{"participants":[]}`)
 	set := func(client *testClient, share, id string) {
 		client.sendJSON(map[string]any{"type": "set-co-play-presence", "shareGeneration": share,
-			"grants": []protocol.CoPlayGrant{{EndpointID: id, Device: "keyboardMouse"}}})
+			"grants": []protocol.CoPlayGrant{{EndpointID: id}}})
 	}
 	set(host, generation, endpoint)
 	event, err := protocol.DecodeServerMessage(viewer.next("co-play-presence").raw)
@@ -30,7 +30,7 @@ func TestCoPlayPresenceUsesCurrentInputAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	participants := event.(protocol.CoPlayPresenceMessage).Participants
-	if len(participants) != 1 || participants[0].PeerID != actor.PeerID || participants[0].Device != "keyboardMouse" {
+	if len(participants) != 1 || participants[0].PeerID != actor.PeerID {
 		t.Fatal("presence did not resolve the authenticated endpoint's room identity")
 	}
 	if _, ok := legacy.tryNext("co-play-presence", 30*time.Millisecond); ok {

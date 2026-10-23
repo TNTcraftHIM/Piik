@@ -68,8 +68,7 @@ export function PeoplePreview() {
   const entries = viewers.map((viewer, index) => ({
     key: viewer.peerId, name: viewer.label, you: view === "viewer" && viewer.peerId === self,
     status: deriveParticipantStatus(viewer, picture, undefined, roomVoice), selectable: selectable.includes(viewer.peerId),
-    collaboration: picture && collaboration && mode !== "pending" && index < 2
-      ? index === 0 ? "keyboardMouse" as const : "gamepad" as const : undefined,
+    collaboration: picture && collaboration && mode !== "pending" && index < 2,
   }));
   const selectedViewer = viewers.find((viewer) => viewer.peerId === selected && selectable.includes(viewer.peerId));
   const select = (key: string) => setSelected((current) => current === key ? null : key);

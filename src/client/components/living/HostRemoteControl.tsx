@@ -6,7 +6,8 @@ import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-prefere
 import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Btn, NameTag, SwitchItem } from "./primitives";
+import { Btn, SwitchItem } from "./primitives";
+import { RemoteControlRequestCard } from "./RemoteControlRequestCard";
 import { FloatingPanel } from "./FloatingPanel";
 import { Tooltip } from "./Tooltip";
 import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
@@ -132,24 +133,14 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
             onClick={() => void applyPolicy("off")} />
         </div>}
         {requests.length > 0 && <div className="lr-remote-requests">
-          {[...requests].sort((a, b) => Number(a.state === "pending") - Number(b.state === "pending")).map(request => <div className={`lr-remote-request${request.state === "pending" ? " is-pending" : ""}`} key={request.id} role="group" aria-label={request.name}>
-            <div><NameTag name={request.name} identity={request.peerId} />
-              <p className="lr-remote-request-details">
-                <span className="lr-remote-request-device"><Glyph name={request.device === "gamepad" ? "gamepad" : "mouse"} size={14} />
-                  <span className={vis ? "visually-hidden" : undefined}>{t(request.device === "gamepad" ? "remote.device.gamepad" : "remote.device.keyboardMouse")}</span>
-                </span>
-                <span className={vis ? "visually-hidden" : undefined}>{t(request.state === "suspended" ? "remote.hostFocus" : request.state === "active" ? "remote.controlling" : "remote.waiting")}</span>
-              </p>
-              {failedId === request.id && <p role="alert"><Glyph name="alert" size={14} />
-                <span className={vis ? "visually-hidden" : undefined}>{t("remote.decisionFailed")}</span></p>}</div>
-            <div className="lr-remote-request-actions">
-              <Btn icon="x" title={request.state !== "pending" ? "remote.stop" : "remote.decline"} cap={request.state === "pending" ? "remote.decline" : undefined}
-                hint="hint-remote-stop" disabled={pendingActions.has(`stop:${request.id}`)} onClick={() => void perform(`stop:${request.id}`, () => onDecide(request.id, false))} />
-              {request.state === "pending" && <Btn icon="check" tone="primary" title="remote.allow" cap="remote.allow" hint="hint-remote-control"
-                disabled={busy || disabled} onClick={() => void perform(request.id, () => onDecide(request.id, true))} />}
-            </div>
-          </div>)}
-          {!vis && requests.some(request => request.state === "pending" && request.device !== "gamepad") && <p className="lr-remote-note">{t("remote.consent")}</p>}
+          {[...requests].sort((a, b) => Number(a.state === "pending") - Number(b.state === "pending")).map(request =>
+            <RemoteControlRequestCard key={request.id} name={request.name} peerId={request.peerId}
+              state={request.state} failed={failedId === request.id}
+              decisionDisabled={busy || disabled} stopDisabled={pendingActions.has(`stop:${request.id}`)}
+              onAllow={() => void perform(request.id, () => onDecide(request.id, true))}
+              onDecline={() => void perform(`stop:${request.id}`, () => onDecide(request.id, false))}
+              onStop={() => void perform(`stop:${request.id}`, () => onDecide(request.id, false))} />)}
+          {!vis && requests.some(request => request.state === "pending") && <p className="lr-remote-note">{t("remote.consent")}</p>}
         </div>}
         {(mode !== "off" || preparing) && <form className="lr-remote-settings" onSubmit={event => {
             event.preventDefault();
