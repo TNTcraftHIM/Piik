@@ -10,11 +10,11 @@ public broadcast service. Hosted and App run one shared Go core
 ([ADR-0012](./adr/0012-shared-go-backend-core.md)); Node and Vite build the
 Browser UI and are not a runtime. Source includes a cross-platform App that
 runs that same core in a self-contained Local deployment or supplies native
-capability to one approved Site through the system Browser. Its single Go
+capability to explicitly approved Sites through the system Browser. Its single Go
 process starts the loopback capability service before room selection. The
 persistent launcher offers Local and temporary public-link choices and manages
-the Site's explicit local approval. Site use can remain on standby without a
-Local room service; native media still belongs to the participant's Web UI.
+per-Site local approval and one starred startup Site. Site use can remain on
+standby without a Local room service; native media still belongs to the participant's Web UI.
 Room source and media implementation are independent: a topology may mix
 Browser and Native peers without changing participant, signaling, capacity, or
 route identity. Local is LAN-first; explicit one-link mode exposes that same

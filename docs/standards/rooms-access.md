@@ -172,6 +172,9 @@ session replacement retire that publication. Local mute changes
 only the listener's playback, including when that listener relays for others.
 Pausing listening mutes all local room-voice playback without changing the
 microphone, membership or forwarding. Microphone and listening are independent.
+The Host owns one room-wide voice bitrate ceiling. Changing it does not open
+voice, activate microphones or replace routes. It is live room state, not App
+configuration; [media quality](./media-quality.md#capture-and-controls) owns its bounds.
 
 Joining also authorizes a participant to forward decodable voice. A video relay
 outside voice cannot carry it; the existing route controller selects a joined
