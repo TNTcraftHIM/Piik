@@ -41,7 +41,9 @@ eval "$(extract_function validate_artifact_names)"
 )
 
 test_root="$(mktemp -d)"
-trap 'rm -rf --one-file-system -- "$test_root"' EXIT
+trap 'command rm -rf -- "$test_root"' EXIT
+# macOS temporary paths may contain symlinks; compare physical paths below.
+test_root="$(cd -- "$test_root" && pwd -P)"
 release_root="$test_root/releases"
 current="$test_root/current"
 release_id='abcdef0'
@@ -68,7 +70,19 @@ rm() {
   if [ "$rm_release_fails" -eq 1 ] && [ "$path" = "$release" ]; then
     return 1
   fi
-  command rm "$@"
+  # The fixture owns only temporary files, with no nested mounts. Keep the
+  # production GNU safety flag in release-server.sh, not in the host's rm.
+  local arg
+  local args=()
+  for arg in "$@"; do
+    if [ "$arg" != '--one-file-system' ]; then args+=("$arg"); fi
+  done
+  command rm "${args[@]}"
+}
+
+realpath() {
+  # Recovery resolves existing directories here; BSD realpath has no -m.
+  (cd -- "${!#}" && pwd -P)
 }
 
 readlink() {
@@ -101,8 +115,8 @@ set_current() {
 }
 
 reset_release() {
-  rm -rf --one-file-system -- "$release"
-  rm -rf --one-file-system -- "$current"
+  rm -rf -- "$release"
+  rm -rf -- "$current"
   mkdir -p "$release"
   set_current "$old_release"
   stage=''
