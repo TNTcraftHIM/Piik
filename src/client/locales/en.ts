@@ -2,8 +2,10 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
-  "remote.coPlay": "Play together",
-  "remote.coPlayHelp": "Share the keyboard and mouse. Changing this option ends current control.",
+  "state.peer.present": "In the room",
+  "state.peer.voiceConnected": "Voice connected",
+  "host.topology.idle": "In the room · no active media routes",
+  "remote.textShared": "Text sending is available when only one person controls the keyboard.",
   "remote.device.keyboardMouse": "Keyboard and mouse",
   "remote.device.gamepad": "Gamepad",
   "remote.participant.keyboardMouse": "Collaborating · Keyboard and mouse",

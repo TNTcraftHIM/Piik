@@ -685,13 +685,16 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-pawn:is(:hover, :focus-visible):not(.is-static) { transform: translateY(-3px); }
 .lr-pawn > .lr-person { width: 48px; height: 56px; display: block; }
-.lr-pawn-collaboration {
-  position: absolute; top: 28px; left: calc(50% + 6px);
+.lr-pawn-badge {
+  position: absolute; top: 28px;
   display: grid; place-items: center; width: 20px; height: 20px;
   border: 1.5px solid var(--paper); border-radius: 7px;
   background: var(--primary); color: var(--primary-ink);
   box-shadow: 0 1px 2px rgb(0 0 0 / .16); pointer-events: none;
 }
+.lr-pawn-badge.is-collaboration { left: calc(50% + 6px); }
+.lr-pawn-badge.is-voice { right: calc(50% + 6px); }
+.lr-pawn-badge.is-muted { background: var(--paper); color: var(--muted); }
 .lr-pawn-led {
   position: absolute;
   top: 2px;
@@ -1234,6 +1237,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   box-sizing: border-box;
 }
 .lr-route > svg { display: block; width: 100%; max-width: 880px; height: auto; margin: 0 auto; }
+.lr-route-idle { margin: 2px 0 8px; color: var(--muted); font-size: 12px; text-align: center; }
 .lr-route:focus-visible { border-radius: 10px; outline-color: var(--ink); }
 .lr-route-edge {
   fill: none;

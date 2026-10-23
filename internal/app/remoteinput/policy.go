@@ -24,9 +24,10 @@ type PolicyChange struct {
 	cancel   context.CancelFunc
 	mode     string
 	password [32]byte
+	coPlay   bool
 }
 
-func (s *Session) BeginPolicy(ctx context.Context, mode, password string) (*PolicyChange, error) {
+func (s *Session) BeginPolicy(ctx context.Context, mode, password string, coPlay bool) (*PolicyChange, error) {
 	if s == nil {
 		return nil, errors.New("remote input is unavailable")
 	}
@@ -41,7 +42,7 @@ func (s *Session) BeginPolicy(ctx context.Context, mode, password string) (*Poli
 	}
 	s.cancelPolicy()
 	ctx, cancel := context.WithCancel(ctx)
-	change := &PolicyChange{session: s, ctx: ctx, cancel: cancel, mode: mode}
+	change := &PolicyChange{session: s, ctx: ctx, cancel: cancel, mode: mode, coPlay: coPlay && mode != "off"}
 	if mode == "password" {
 		change.password = sha256.Sum256([]byte(password))
 	}
@@ -84,7 +85,11 @@ func (change *PolicyChange) Apply() error {
 			return err
 		}
 	}
-	s.setPolicy(change.mode, change.password)
+	if change.coPlay && m.gamepads == nil {
+		m.gamepads, _ = openGamepadBackend()
+	}
+	s.cancelPolicy()
+	s.applyPolicy(change.mode, change.password, change.coPlay)
 	return nil
 }
 
@@ -101,14 +106,15 @@ func (s *Session) cancelPolicy() {
 // grants, so an old approval cannot acquire the newly configured permission.
 func (s *Session) setPolicy(mode string, password [32]byte) {
 	s.cancelPolicy()
-	s.applyPolicy(mode, password)
+	s.applyPolicy(mode, password, s.coPlay)
 }
 
-func (s *Session) applyPolicy(mode string, password [32]byte) {
+func (s *Session) applyPolicy(mode string, password [32]byte, coPlay bool) {
 	s.mode, s.password = mode, password
 	if s.manager.owner == s {
 		s.manager.release()
 	}
+	s.coPlay = coPlay
 	s.manager.releaseIdleShortcut()
 	for _, c := range s.manager.connections {
 		if c.owner == s {

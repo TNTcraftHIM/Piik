@@ -195,13 +195,16 @@ membership; grants and encrypted input stay bound to the current route and sourc
 Changing the source, stopping sharing, authorization loss or route retirement
 releases the corresponding grants and held input. Reconnection requires a new grant.
 
-The default is one keyboard/mouse controller. The Host may opt into **Play
-together**, allowing concurrent approved Viewers to share the existing keyboard
-and mouse. Held keys and mouse buttons belong to each grant; releasing one
+Enabling Remote control allows concurrent approved, capability-negotiated
+Viewers to share the existing keyboard and mouse through the same authorization
+choice. Older published clients retain the exclusive keyboard/mouse baseline.
+Held keys and mouse buttons belong to each grant; releasing one
 participant cannot release another's still-held inputs. All approved keyboard/mouse
 grants contribute to the same pointer, with no per-player mouse assignment or
-join-order priority. Changing co-play mode ends current grants. Input
-still belongs to one process-wide source owner, not multiple simultaneous shares.
+join-order priority. Committed text insertion is available with one keyboard/mouse
+grant and pauses while two or more such grants coexist; physical key input
+remains available. Independent gamepad grants do not affect this text boundary.
+Input still belongs to one process-wide source owner, not multiple simultaneous shares.
 
 Collaboration markers describe granted participation, not live key or pointer
 activity. The Host publishes the native grant owner's current input endpoints;

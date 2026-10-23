@@ -56,9 +56,8 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       : mac ? [["Ctrl+Space", "InputLanguage", ["ControlLeft", "Space"]], ["Cmd+`", "SwitchWindow", ["MetaLeft", "Backquote"]]] as const : []),
     [`${mac ? "Cmd" : "Alt"}+Tab`, mac ? "SwitchApp" : "SwitchWindow", [mac ? "MetaLeft" : "AltLeft", "Tab"]],
   ] as const;
-  const [storedPage, setPage] = useState<Page>(() => readRoomPreferences().keyboardPage);
-  const pages: readonly Page[] = allowText ? PAGES : PAGES.filter(page => page !== "text");
-  const page = !allowText && storedPage === "text" ? "letters" : storedPage;
+  const [page, setPage] = useState<Page>(() => readRoomPreferences().keyboardPage);
+  const pages = PAGES;
   const [text, setText] = useState("");
   const [modifiers, setModifiers] = useState<string[]>([]);
   const [combineKeys, setCombineKeys] = useState(() => readRoomPreferences().combineKeys);
@@ -188,7 +187,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     </> : <>
       <form className="lr-remote-text-entry" onSubmit={event => {
         event.preventDefault();
-        if (!text || textTooLong || composing.current) return;
+        if (!allowText || !text || textTooLong || composing.current) return;
         input({ type: "text", text }); setText(""); editor.current?.focus();
       }}>
         <div className="lr-input lr-remote-text-field">
@@ -201,10 +200,10 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
             onCompositionEnd={() => { composing.current = false; }}
           />
           <div className="lr-remote-text-actions">
-            <Btn icon="send" cap="remote.typeText" title="remote.sendText" size="compact" hint="hint-remote-keyboard" tone="primary" type="submit" disabled={!text || textTooLong} />
+            <Btn icon="send" cap="remote.typeText" title="remote.sendText" size="compact" hint="hint-remote-keyboard" hintText={allowText ? undefined : "remote.textShared"} tone="primary" type="submit" disabled={!allowText || !text || textTooLong} />
           </div>
         </div>
-        {textTooLong ? <p id={`${id}-text-help`} role="alert">{t("remote.textTooLong")}</p> : !vis && <p id={`${id}-text-help`}>{t("remote.textHelp")}</p>}
+        {textTooLong ? <p id={`${id}-text-help`} role="alert">{t("remote.textTooLong")}</p> : !vis && <p id={`${id}-text-help`}>{t(allowText ? "remote.textHelp" : "remote.textShared")}</p>}
       </form>
       {navigation}
       <div className="lr-remote-keys lr-remote-shortcuts">

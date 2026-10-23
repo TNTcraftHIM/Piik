@@ -31,6 +31,7 @@ import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
+import { useRoomVoiceState } from "../room-voice/use-room-voice-state";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { HostAudio } from "../media/host-audio";
 import {
@@ -384,6 +385,7 @@ export function HostPage({
   const audioAvailableRef = useRef(false);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
+  const roomVoice = useRoomVoiceState(roomVoiceSession);
   const [cameraDevice, setCameraDevice] = useState("");
   const [nativeActive, setNativeActive] = useState(false);
   const [remoteControlState, setRemoteControlState] = useState<RemoteControlState | null>(null);
@@ -3519,7 +3521,7 @@ export function HostPage({
       key: viewer.peerId,
       name: viewer.label,
       collaboration: grant ? grant.device ?? "keyboardMouse" : undefined,
-      status: deriveParticipantStatus(viewer, phase === "live", viewerQualityEvidence.get(viewer.peerId)),
+      status: deriveParticipantStatus(viewer, phase === "live", viewerQualityEvidence.get(viewer.peerId), roomVoice),
     };
   });
 
@@ -3800,14 +3802,7 @@ export function HostPage({
             remote={nativeActive && remoteControlState && <HostRemoteControl
               mode={remoteControlState.mode}
               platform={remoteControlState.platform}
-              coPlay={remoteControlState.coPlay}
               gamepad={remoteControlState.gamepad}
-              onCoPlay={nativeClientRef.current?.health.nativeMedia.remoteCoPlay ? async enabled => {
-                const client = nativeClientRef.current;
-                const shareId = nativeShareGenerationRef.current;
-                if (!client || !shareId) throw new Error("Native share is unavailable");
-                await client.setRemoteCoPlay(shareId, enabled);
-              } : undefined}
               onShortcut={nativeClientRef.current?.health.nativeMedia.remoteStopShortcut ? remoteStopShortcut : undefined}
               disabled={sharingPaused || switchingSource}
               requests={remoteControlState.requests.map(request => {
@@ -3976,6 +3971,7 @@ export function HostPage({
             }
           />
           <RoomInteractions session={room ? interactionSession : null}
+            voiceState={roomVoice}
             voice={room && roomVoiceSession ? {
               content: onSelect => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect}
                 names={new Map(participantPresence.map(person => [person.peerId, person.displayName]))} />,
@@ -4429,7 +4425,8 @@ export function HostPage({
             <Row sub>
               <RouteTree
                 hostPeerId={hostPeerId}
-                voice={roomVoiceSession}
+                pictureActive={phase === "live"}
+                voice={roomVoice}
                 hostIdentity={hostIdentity}
                 hostLabel={labeledHostPresence?.label ?? displayName}
                 viewers={viewers}

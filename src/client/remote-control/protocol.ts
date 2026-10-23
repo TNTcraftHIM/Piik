@@ -28,6 +28,10 @@ export const remoteInputStateSchema = z.object({
 }).strict();
 export type RemoteInputState = z.infer<typeof remoteInputStateSchema>;
 
+export function remoteTextAvailable(state: RemoteInputState): boolean {
+  return !state.coPlay || state.capabilities?.includes("text") === true;
+}
+
 // Button bits follow W3C standard indices; sticks are signed 16-bit, Y down,
 // and triggers are unsigned 8-bit. Native SDK layouts stay in Host adapters.
 export interface RemoteGamepadReport {

@@ -13,9 +13,8 @@ together. The Host shares an App window or screen; friends join in their browser
 3. Your friend selects **Request control** in their playback bar. On the Host
    page, choose **Allow control** when the request arrives.
 
-By default, one Viewer controls the keyboard and mouse at a time. When sharing
-a window, switch back to it after allowing control. Input pauses while another
-window is active and resumes when you return.
+When sharing a window, switch back to it after allowing control. Input pauses
+while another window is active and resumes when you return.
 
 Use an up-to-date App and room site, and refresh the viewing page after updating.
 Viewers need HTTPS or a localhost page for the encrypted input connection.
@@ -26,8 +25,7 @@ camera capture cannot receive remote input.
 
 Play together and virtual gamepads are candidate features awaiting acceptance.
 
-1. In the Host's **Remote control** panel, enable **Play together**. Changing
-   this option ends current control; players then request it again.
+1. Enable **Remote control** as above; no separate multiplayer switch is needed.
 2. Each friend selects **Request control**. Approve them using the same
    authorization choice as ordinary remote control.
 3. In the game, assign different keyboard bindings to each player, such as
@@ -36,8 +34,11 @@ Play together and virtual gamepads are candidate features awaiting acceptance.
 The Host and approved friends share the computer's existing keyboard and mouse.
 Each friend's held keys and mouse buttons are tracked separately, so leaving
 releases only their input. Keyboard and mouse co-play needs no extra driver.
-Text insertion is available in ordinary remote control; during co-play, use the
-keyboard keys.
+Text insertion is available with one keyboard/mouse controller. With two or
+more approved keyboard/mouse collaborators, text insertion pauses; physical
+keyboard keys remain usable. Gamepad-only players do not affect text insertion.
+Older published clients retain one-controller behavior. To try the candidate,
+use matching candidate App and room-site builds, then refresh each viewing page.
 
 Everyone controls the same mouse pointer; movements and clicks from approved
 players apply together. Use the Host's stop action or shortcut to end control.
@@ -66,7 +67,7 @@ the Host's optional ViGEmBus driver creates the virtual device.
    and follow its restart prompt. ViGEm is end-of-life; 1.22.0 is its final
    installer and removes the old updater. If it is already installed, reuse it.
 2. Extract and open the Windows x64 co-play App package, then enable
-   **Remote control → Play together**. App detects the installed driver; no DLL
+   **Remote control**. App detects the installed driver; no DLL
    copying or SDK configuration is needed.
 3. On each friend's computer, connect a standard-layout gamepad, open the
    viewing page and press a controller button so the browser recognizes it.
@@ -82,7 +83,7 @@ A gamepad grant controls only that virtual controller. Ending it removes the
 device; losing page or shared-window focus returns its controls to neutral.
 
 If **Use gamepad** is missing, check the Host's driver and App support, then
-turn **Play together** off and on. Keyboard/mouse co-play and ordinary remote control
+turn **Remote control** off and on. Keyboard/mouse co-play and ordinary remote control
 remain available without the gamepad driver. Piik does not install or bundle it.
 
 ## End control

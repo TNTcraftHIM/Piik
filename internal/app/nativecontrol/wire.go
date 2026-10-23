@@ -76,17 +76,12 @@ type remoteInputPeersRequest struct {
 	Peers   []protocol.RemoteInputPeer `json:"peers"`
 }
 
-type remoteCoPlayRequest struct {
-	requestEnvelope
-	ShareID string `json:"shareId"`
-	Enabled *bool  `json:"enabled"`
-}
-
 type remoteControlPolicyRequest struct {
 	requestEnvelope
 	ShareID  string `json:"shareId"`
 	Mode     string `json:"mode"`
 	Password string `json:"password,omitempty"`
+	CoPlay   bool   `json:"coPlay,omitempty"`
 }
 
 type remoteControlStateEvent struct {

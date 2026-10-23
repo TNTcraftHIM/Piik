@@ -145,7 +145,7 @@ describe("RouteTree", () => {
     ]);
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -196,7 +196,7 @@ describe("RouteTree", () => {
     ]);
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -243,7 +243,7 @@ describe("RouteTree", () => {
     setCopy({ lang: "en", vis: true });
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -282,7 +282,7 @@ describe("RouteTree", () => {
     ]);
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -300,7 +300,7 @@ describe("RouteTree", () => {
   it("uses the Host identity color in the topology", () => {
     const hostPeerId = "host-color-identity";
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId,
         hostLabel: "Host",
         viewers: [],
@@ -330,7 +330,7 @@ describe("RouteTree", () => {
     ]);
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -378,7 +378,7 @@ describe("RouteTree", () => {
     ]);
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -423,7 +423,7 @@ describe("RouteTree", () => {
       },
     ]);
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -440,7 +440,7 @@ describe("RouteTree", () => {
 
   it("keeps truncated Host, unselectable and pending names in visible tooltip targets", () => {
     const name = "这是一个需要完整查看而不是只能读省略号的参与者名字";
-    const html = renderToStaticMarkup(createElement(RouteTree, {
+    const html = renderToStaticMarkup(createElement(RouteTree, { pictureActive: true,
       hostPeerId: "host", hostLabel: `${name}房主`,
       viewers: labelParticipantSnapshot([
         { role: "viewer", peerId: "ready", displayName: `${name}观众`, upstream: { kind: "peer", peerId: "host" }, mediaReady: true },
@@ -487,7 +487,7 @@ describe("RouteTree", () => {
     ];
     const { host, viewers } = labelParticipantSnapshot(participants);
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,

@@ -7,7 +7,7 @@ import { RemoteInputSession, type RemoteInputState, type RemoteInputEvent } from
 import { RemoteTouchpad } from "../../remote-control/touchpad";
 import { RemoteViewport } from "../../remote-control/viewport";
 import { RemoteGamepad } from "../../remote-control/gamepad";
-import { matchesRemoteShortcut } from "../../remote-control/protocol";
+import { matchesRemoteShortcut, remoteTextAvailable } from "../../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { RemoteKeyboard } from "./RemoteKeyboard";
 import { Btn } from "./primitives";
@@ -344,7 +344,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           onClick={() => { reset(); viewport.current?.reset(); surface.current?.focus({ preventScroll: true }); }}>1×</button>
       </div>}
       {active && !gamepadControl && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
-        allowText={!state.coPlay}
+        allowText={remoteTextAvailable(state)}
         releaseKey={releaseKey} onReleaseKeyChange={key => { setReleaseKey(key); saveRoomPreferences({ remoteReleaseKey: key }); }}
         onSurfaceChange={keyboardSurfaceChanged}
         mouseControl={!touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad" size="compact"

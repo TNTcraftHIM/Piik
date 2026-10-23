@@ -20,7 +20,6 @@ export function RemoteControlsPreview() {
   const en = lang === "en";
   const [platform, setPlatform] = useState<RemoteInputPlatform>("windows");
   const [mode, setMode] = useState<RemoteControlMode>("off");
-  const [coPlay, setCoPlay] = useState(false);
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [lastInput, setLastInput] = useState("");
@@ -49,8 +48,7 @@ export function RemoteControlsPreview() {
         </select>
       </label>
       <HostRemoteControl mode={mode} platform={platform} requests={requests}
-        coPlay={coPlay} gamepad={platform === "windows"}
-        onCoPlay={async enabled => { setCoPlay(enabled); setRequests([]); }}
+        gamepad={platform !== "darwin"}
         onShortcut={platform === "linux" ? undefined : shortcut}
         onPolicy={async value => { setMode(value); setRequests([]); }}
         onDecide={async (id, allow) => setRequests(current => allow
@@ -61,7 +59,7 @@ export function RemoteControlsPreview() {
         setRequests([{ id: "preview-request", ...participants[0]!, state: "pending" }]);
       }}>{en ? "Receive a sample request" : "模拟收到控制请求"}</button>
       <button type="button" className="lr-btn" onClick={() => {
-        setMode("ask"); setCoPlay(true);
+        setMode("ask");
         setRequests([
           { id: "preview-player-one", peerId: "preview-player-one", state: "active", name: "Player 1" },
           { id: "preview-player-two", peerId: "preview-player-two", state: "active", name: "Player 2" },
@@ -75,11 +73,11 @@ export function RemoteControlsPreview() {
       entries={participants.map(person => {
         const grant = requests.find(request => request.peerId === person.peerId && request.state !== "pending");
         return { key: person.peerId, name: person.name, status: STATUS_CATALOG.connected, selectable: false,
-          collaboration: coPlay && grant ? grant.device ?? "keyboardMouse" : undefined };
+          collaboration: grant ? grant.device ?? "keyboardMouse" : undefined };
       })} />
     <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
       {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch={false} input={input} close={closeKeyboard}
-        allowText={!coPlay}
+        allowText={requests.filter(request => request.state !== "pending" && request.device !== "gamepad").length < 2}
         releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
     </div>
     <p className="cp-input-output"><span>{en ? "Latest input" : "最近一次输入"}</span>

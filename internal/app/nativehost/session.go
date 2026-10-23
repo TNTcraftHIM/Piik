@@ -537,8 +537,8 @@ func (session *Session) RemoteInputState() remoteinput.State {
 }
 
 // Reserve the intent synchronously, before dispatch starts asynchronous OS work.
-func (session *Session) PrepareRemoteInputPolicy(mode, password string) (func() error, error) {
-	change, err := session.remoteInput.BeginPolicy(session.ctx, mode, password)
+func (session *Session) PrepareRemoteInputPolicy(mode, password string, coPlay bool) (func() error, error) {
+	change, err := session.remoteInput.BeginPolicy(session.ctx, mode, password, coPlay)
 	if err != nil {
 		return nil, err
 	}
@@ -581,10 +581,6 @@ func (session *Session) SetRemoteInputPeers(peers []protocol.RemoteInputPeer) er
 
 func (session *Session) DecideRemoteInput(id string, allow bool) error {
 	return session.remoteInput.Decide(id, allow)
-}
-
-func (session *Session) SetRemoteCoPlay(enabled bool) error {
-	return session.remoteInput.SetCoPlay(enabled)
 }
 
 func (session *Session) syncRemoteInputSource(change *remoteinput.PolicyChange) {

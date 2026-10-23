@@ -439,10 +439,10 @@ invite** or an HTTPS site with a trusted certificate.
 
 ### Use gamepad is missing, or the game does not respond
 
-1. The Host shares an App window or screen and enables **Remote control → Play together**.
+1. The Host shares an App window or screen and enables **Remote control**.
 2. Check the Host against [supported platforms and gamepad setup](./remote-control.md#gamepads).
    The Host installs external drivers from the official source; Piik includes no
-   input SDK or driver. Turn Play together off and on after installation.
+   input SDK or driver. Turn Remote control off and on after installation.
 3. The Viewer connects a controller and presses a button so the browser detects it,
    then selects **Use gamepad** and obtains control. Join the corresponding player
    in the game; free a controller slot if all are occupied.

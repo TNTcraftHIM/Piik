@@ -3,7 +3,8 @@
 import type { ComicKind, HintKind } from "./visual-kinds";
 import type { ViewerPresentation, ViewerStage } from "../media/viewer-presentation";
 import type { SignalConnectionState } from "../types";
-import type { MediaRouteUpstream } from "../../shared/protocol";
+import type { MediaRouteUpstream, RoomVoiceState } from "../../shared/protocol";
+import { participantConnection } from "../lib/participant-connection";
 import { qualityEvidenceUpstreamMatches, type ViewerQualityEvidencePresentation } from "../media/viewer-quality-evidence";
 import type { CopyKey, TitleFrameKey } from "./copy";
 import type { GlyphName } from "./icons";
@@ -19,6 +20,8 @@ export type StatusDescriptor = {
 );
 
 export const STATUS_CATALOG = {
+  present: { tone: "off", labelKey: "state.peer.present", icon: "users", comic: "signal-connected" },
+  voiceConnected: { tone: "live", labelKey: "state.peer.voiceConnected", icon: "headphones", comic: "transport-connected" },
   idle: { tone: "off", labelKey: "state.peer.waiting", icon: "moon", comic: "waiting-for-host" },
   connected: { tone: "live", labelKey: "state.peer.connected", icon: "check", comic: "media-ready" },
   joining: { tone: "busy", labelKey: "state.peer.connecting", icon: "loader", comic: "connecting-p2p", pulse: true },
@@ -28,19 +31,22 @@ export const STATUS_CATALOG = {
 } as const satisfies Record<string, StatusDescriptor>;
 
 export function deriveParticipantStatus(
-  participant: { mediaReady?: boolean; upstream: MediaRouteUpstream },
+  participant: { peerId?: string; mediaReady?: boolean; upstream: MediaRouteUpstream },
   sourceActive: boolean,
   presentation?: ViewerQualityEvidencePresentation,
+  voice?: RoomVoiceState | null,
 ): StatusDescriptor {
+  const connection = participantConnection(participant, sourceActive, voice);
   // Room authority owns readiness. Receive evidence can annotate it, not
   // convert a pending path into connected or a missing sample into failure.
-  if (!participant.mediaReady) {
-    if (!sourceActive) return STATUS_CATALOG.idle;
+  if (!connection.ready) {
+    if (connection.medium === null) return STATUS_CATALOG.present;
     return { ...STATUS_CATALOG.joining,
-      comic: participant.upstream.kind === "sfu" ? "connecting-sfu"
-        : participant.upstream.kind === "none" ? "signal-connecting" : "connecting-p2p",
-      labelKey: participant.upstream.kind === "none" ? "state.peer.routing" : "state.peer.connecting" };
+      comic: connection.upstream.kind === "sfu" ? "connecting-sfu"
+        : connection.upstream.kind === "none" ? "signal-connecting" : "connecting-p2p",
+      labelKey: connection.upstream.kind === "none" ? "state.peer.routing" : "state.peer.connecting" };
   }
+  if (connection.medium === "voice") return STATUS_CATALOG.voiceConnected;
   if (sourceActive && presentation?.fresh &&
       qualityEvidenceUpstreamMatches(presentation.evidence, participant.upstream)) {
     const { freezeCountDelta, freezeDurationMsDelta } = presentation.evidence.metrics;

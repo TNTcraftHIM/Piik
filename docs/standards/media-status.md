@@ -53,14 +53,21 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   the known failure boundary: unknown/session/settings failures must not default
   to capture advice, and retiring a share must retain a known App control or
   media-connection failure instead of replacing it with a generic stop notice.
-- Host couch: each Viewer has one round lamp. Grey means waiting for the share,
-  blue means waiting for the media path, green means committed `mediaReady`, and
-  amber means a recent receive freeze. The Host's own pawn has no duplicate
-  lamp. `deriveParticipantStatus` supplies both the couch and Host overview;
-  neither stores another copy of the status.
+- Host couch: each Viewer has one round lamp. Grey means present without a media
+  connection, blue means connecting, green means a committed picture or voice
+  route, and amber means a recent picture receive freeze. `participantConnection`
+  projects the server's confirmed picture/voice facts for both the lamp and
+  topology; microphone capture and sharing controls do not own connectivity.
+  The Host's own pawn has no duplicate lamp. `deriveParticipantStatus` supplies
+  both the couch and Host overview; neither stores another copy of the status.
 - Viewer couch: pawns have no round lamps. While awaiting media readiness a
   pawn's body breathes gently; it becomes still when ready. This expresses the
   same roster fact without claiming to know other Viewers' quality.
+- Pawn badges describe participation separately: microphone or crossed microphone
+  for a current voice member, and mouse or gamepad for an approved collaborator.
+  They use the existing voice membership/publication and native grant owners;
+  leaving either activity removes only its badge. These are not connection lamps
+  or new speaking/activity signals.
 - Header: the page's connection to the room server. Its control-link comics
   show a Browser and server, not a failed video path. A media-route failure can
   coexist with a healthy server connection, and vice versa.

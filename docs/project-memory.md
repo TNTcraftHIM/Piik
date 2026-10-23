@@ -112,10 +112,11 @@ indexes delivery and [room media](./standards/routing-transport.md#room-media)
 owns the new behavior.
 
 Optional attended input follows the committed media route back to the native
-Host. Control defaults to one keyboard/mouse grantee; source-scoped co-play can
-admit multiple keyboard/mouse contributors and optional independent virtual
-gamepads. Source change, stop and revocation retire the
-affected grants. It adds no separate connection planner or listener.
+Host. Enabling control admits multiple approved, capability-negotiated
+keyboard/mouse contributors and optional independent virtual gamepads; older
+published clients retain exclusive keyboard/mouse control. Source change, stop
+and revocation retire the affected grants. It adds no separate connection planner
+or listener.
 Viewer playback preferences and the combined interaction window remain local
 presentation owners under the existing 2.x compatibility boundary.
 

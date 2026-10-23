@@ -6,6 +6,8 @@ import {
   type ViewerPresentationAction,
 } from "../src/client/media/viewer-presentation";
 import { deriveHostStatus, deriveParticipantStatus, deriveViewerStatus } from "../src/client/ui/media-status";
+import { participantConnection } from "../src/client/lib/participant-connection";
+import type { RoomVoiceState } from "../src/shared/protocol";
 
 const playingActions: ViewerPresentationAction[] = [
   { type: "access", access: "ready" },
@@ -20,6 +22,29 @@ const presentation = (...extra: ViewerPresentationAction[]) => deriveViewerPrese
 );
 
 describe("media status projection", () => {
+  it("uses committed room connections independently of picture demand and microphone state", () => {
+    const participant = { peerId: "viewer", upstream: { kind: "none" as const } };
+    const member: RoomVoiceState["members"][number] = { peerId: "viewer", connected: true, joined: true, upstream: { kind: "peer", peerId: "host" } };
+    const voice: RoomVoiceState = { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: "host",
+      members: [member], publications: [], connections: [], unavailable: [] };
+    for (const picture of [false, true]) {
+      for (const publicationId of [undefined, "microphone"]) {
+        member.publicationId = publicationId;
+        expect(deriveParticipantStatus(participant, picture, undefined, voice)).toMatchObject({ tone: "live", labelKey: "state.peer.voiceConnected" });
+        expect(participantConnection(participant, picture, voice)).toMatchObject({ ready: true, upstream: member.upstream });
+      }
+    }
+    member.upstream = { kind: "none" };
+    expect(deriveParticipantStatus(participant, false, undefined, voice).tone).toBe("busy");
+    const picture = { ...participant, mediaReady: true, upstream: { kind: "sfu" as const } };
+    expect(deriveParticipantStatus(picture, true, undefined, voice).tone).toBe("live");
+    member.joined = false;
+    expect(deriveParticipantStatus(participant, false, undefined, voice).tone).toBe("off");
+    expect(deriveParticipantStatus(participant, false, undefined, voice).pulse).toBeUndefined();
+    voice.enabled = false;
+    expect(deriveParticipantStatus(participant, false, undefined, voice).tone).toBe("off");
+  });
+
   it.each(["p2p", "sfu"] as const)("keeps %s setup distinct from proved playback", route => {
     const receiving = deriveViewerPresentation(playingActions.slice(0, -1)
       .reduce(reduceViewerPresentation, INITIAL_VIEWER_PRESENTATION_STATE));

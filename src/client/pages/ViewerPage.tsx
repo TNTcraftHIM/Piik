@@ -32,6 +32,7 @@ import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
+import { useRoomVoiceState } from "../room-voice/use-room-voice-state";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { getRuntimeCapabilities } from "../lib/api";
 import { participantColor } from "../components/living/participant-color";
@@ -279,6 +280,7 @@ export function ViewerPage({
   const signalRef = useRef<SignalingClient | null>(null);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
+  const roomVoice = useRoomVoiceState(roomVoiceSession);
   const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
@@ -2278,7 +2280,7 @@ export function ViewerPage({
     return {
       key: viewer.peerId,
       name: viewer.label,
-      status: deriveParticipantStatus(viewer, presentationState.host === "online" || presentationState.host === "paused"),
+      status: deriveParticipantStatus(viewer, presentationState.host === "online" || presentationState.host === "paused", undefined, roomVoice),
       collaboration: coPlayParticipants.find(participant => participant.peerId === viewer.peerId)?.device,
       you: isSelf,
       selectable: isChild ? undefined : false,
@@ -2436,6 +2438,7 @@ export function ViewerPage({
             )}
           </div>
           <RoomInteractions session={interactionSession}
+            voiceState={roomVoice}
             voice={roomVoiceSession ? {
               content: onSelect => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect}
                 names={new Map((participantPresence ?? []).map(person => [person.peerId, person.displayName]))} />,
@@ -2659,7 +2662,8 @@ export function ViewerPage({
             <Row sub>
               <RouteTree
                 hostPeerId={labeledHostPresence.peerId}
-                voice={roomVoiceSession}
+                pictureActive={presentationState.host === "online" || presentationState.host === "paused"}
+                voice={roomVoice}
                 hostLabel={labeledHostPresence.label}
                 viewers={viewers}
                 selfPeerId={selfPeerId}

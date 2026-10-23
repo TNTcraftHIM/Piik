@@ -23,6 +23,23 @@ class Channel extends EventTarget {
   receive(value: object) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) })); }
 }
 
+it("updates text availability without replacing an active keyboard grant", () => {
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  channel.receive({ platform: "windows", mode: "room", state: "ready", coPlay: true, capabilities: ["coPlay"] });
+  session.request();
+  const intent = channel.sent.at(-1)?.intent, grant = "d".repeat(64);
+  const active = { platform: "windows", mode: "room", state: "active", coPlay: true, intent, grant };
+  for (const enabled of [true, false, true]) {
+    channel.receive({ ...active, capabilities: enabled ? ["coPlay", "text"] : ["coPlay"] });
+    const before = channel.sent.length;
+    session.input({ type: "text", text: "hello" });
+    expect(channel.sent.length - before).toBe(enabled ? 1 : 0);
+    expect(session.state?.grant).toBe(grant);
+  }
+  session.dispose();
+});
+
 it("maps standard gamepads into one negotiated grant and resets on focus loss, unplug and retirement", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});

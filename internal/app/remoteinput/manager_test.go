@@ -28,7 +28,7 @@ type recordedInput struct {
 }
 
 func setTestPolicy(s *Session, mode, password string) error {
-	change, err := s.BeginPolicy(context.Background(), mode, password)
+	change, err := s.BeginPolicy(context.Background(), mode, password, s.coPlay)
 	if err != nil {
 		return err
 	}
@@ -258,7 +258,7 @@ func TestPreparedPolicyFollowsTheCommittedSourceAndHostIntent(t *testing.T) {
 			s := m.NewSession()
 			t.Cleanup(s.Close)
 			s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
-			change, err := s.BeginPolicy(t.Context(), "room", "")
+			change, err := s.BeginPolicy(t.Context(), "room", "", false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -357,10 +357,12 @@ func coPlaySession(t *testing.T, m *Manager, extended ...bool) (*Session, []*con
 	s := m.NewSession()
 	t.Cleanup(s.Close)
 	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
-	if err := setTestPolicy(s, "room", ""); err != nil {
+	change, err := s.BeginPolicy(t.Context(), "room", "", true)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetCoPlay(true); err != nil {
+	defer change.Close()
+	if err := change.Apply(); err != nil {
 		t.Fatal(err)
 	}
 	var peers []protocol.RemoteInputPeer
@@ -678,6 +680,36 @@ func TestCoPlaySharedKeyboardAndMouse(t *testing.T) {
 	m.Revoke()
 	if b.grant != "" || m.owner != nil || len(sink.resets) != 1 || s.mode != "ask" {
 		t.Fatal("Host stop left a player active")
+	}
+}
+
+func TestCoPlayTextFollowsKeyboardGrants(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 32), resets: make(chan struct{}, 16), focused: true}
+	m := &Manager{sink: sink, gamepads: &recordedGamepads{}, connections: map[endpointKey]*connection{}}
+	s, players := coPlaySession(t, m, true, true, true)
+	a, b, pad := players[0], players[1], players[2]
+	sendTestInput(m, a, inputEvent{Type: "request"})
+	sendTestInput(m, pad, inputEvent{Type: "request", Device: "gamepad"})
+	sendTestInput(m, a, inputEvent{Type: "key", Code: "ControlLeft", Down: true})
+	<-sink.events
+	sendTestInput(m, a, inputEvent{Type: "text", Text: "hello"})
+	if (<-sink.events).Text != "hello" || len(a.keys) != 0 || len(sink.resets) != 1 || pad.grant == "" {
+		t.Fatal("single keyboard text did not reset its own held input independently of a gamepad")
+	}
+	sendTestInput(m, b, inputEvent{Type: "request"})
+	sendTestInput(m, b, inputEvent{Type: "key", Code: "KeyW", Down: true})
+	<-sink.events
+	sendTestInput(m, a, inputEvent{Type: "text", Text: "blocked"})
+	if len(sink.events) != 0 || len(sink.resets) != 1 || !b.keys["KeyW"] {
+		t.Fatal("text interrupted another keyboard player")
+	}
+	if err := s.Decide(b.requestID, false); err != nil {
+		t.Fatal(err)
+	}
+	<-sink.events
+	sendTestInput(m, a, inputEvent{Type: "text", Text: "restored"})
+	if (<-sink.events).Text != "restored" || a.grant == "" || pad.grant == "" {
+		t.Fatal("text did not resume after the other keyboard grant ended")
 	}
 }
 

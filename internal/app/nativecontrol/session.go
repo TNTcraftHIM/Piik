@@ -220,16 +220,6 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			return nil, err
 		}
 		return response(envelope, "remote-control-set"), nil
-	case "set-remote-input-co-play":
-		var request remoteCoPlayRequest
-		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) || request.Enabled == nil {
-			return nil, protocolViolation("native co-play policy is invalid")
-		}
-		host := session.current(request.ShareID)
-		if host == nil {
-			return nil, errors.New("native share does not exist")
-		}
-		return response(envelope, "remote-control-set"), host.SetRemoteCoPlay(*request.Enabled)
 	case "set-remote-control-policy":
 		var request remoteControlPolicyRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) {
@@ -241,7 +231,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		}
 		// Revocation is independent of capture preparation and its operation slot.
 		if request.Mode == "off" {
-			apply, err := host.PrepareRemoteInputPolicy(request.Mode, request.Password)
+			apply, err := host.PrepareRemoteInputPolicy(request.Mode, request.Password, request.CoPlay)
 			if err != nil {
 				return nil, err
 			}
@@ -250,7 +240,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		var apply func() error
 		result = session.runHostOperation(host, envelope, func() error {
 			var err error
-			apply, err = host.PrepareRemoteInputPolicy(request.Mode, request.Password)
+			apply, err = host.PrepareRemoteInputPolicy(request.Mode, request.Password, request.CoPlay)
 			return err
 		}, func() (any, error) {
 			err := apply()

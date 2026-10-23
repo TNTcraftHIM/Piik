@@ -225,8 +225,7 @@ func (s *Session) setTarget(target nativecapture.CaptureTarget, capture *nativec
 	if m.owner == s {
 		m.release()
 	}
-	s.coPlay = false
-	s.applyPolicy("off", [32]byte{})
+	s.applyPolicy("off", [32]byte{}, false)
 }
 
 // The Linux Portal owns input and screen selection in the same OS session.
@@ -341,6 +340,9 @@ func (m *Manager) reply(c *connection, state, reason string) {
 	if c.extended {
 		coPlay := c.owner.coPlay
 		value.Capabilities, value.CoPlay = []string{"coPlay"}, &coPlay
+		if coPlay && m.singleKeyboardController(c.owner) == c {
+			value.Capabilities = append(value.Capabilities, "text")
+		}
 		if m.gamepads != nil {
 			value.Capabilities = append(value.Capabilities, "gamepad")
 		}
@@ -477,6 +479,19 @@ func (m *Manager) buttonHeld(button int) bool {
 	return false
 }
 
+func (m *Manager) singleKeyboardController(s *Session) *connection {
+	var single *connection
+	for _, c := range m.connections {
+		if c.owner == s && c.grant != "" && c.device != "gamepad" {
+			if single != nil {
+				return nil
+			}
+			single = c
+		}
+	}
+	return single
+}
+
 func (m *Manager) releaseConnection(c *connection) {
 	if c.grant == "" {
 		return
@@ -494,6 +509,11 @@ func (m *Manager) releaseConnection(c *connection) {
 		return
 	}
 	c.grant, c.suspended = "", false
+	if c.device != "gamepad" {
+		if remaining := m.singleKeyboardController(c.owner); remaining != nil && remaining.extended {
+			m.send(remaining, m.state(remaining))
+		}
+	}
 	for _, other := range m.connections {
 		if other.owner == c.owner && other.grant != "" {
 			return
@@ -642,7 +662,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 			}
 			return
 		}
-		if event.Type == "text" && c.owner.coPlay {
+		if event.Type == "text" && c.owner.coPlay && m.singleKeyboardController(c.owner) != c {
 			// Committed text resets the sink and would release other players.
 			return
 		}
@@ -651,10 +671,11 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 			return
 		}
 		var err error
-		if c.owner.coPlay {
-			err = m.applyCoPlay(c, b, event)
-		} else if event.Type == "text" {
+		if event.Type == "text" {
 			err = applyText(m.sink, b, event.Text)
+			c.keys, c.buttons = nil, nil
+		} else if c.owner.coPlay {
+			err = m.applyCoPlay(c, b, event)
 		} else {
 			err = m.sink.Apply(b, event)
 		}
@@ -819,39 +840,6 @@ func (s *Session) State() State {
 	return state
 }
 
-// SetCoPlay changes the current source's input model. Fresh requests are needed
-// after either transition; replacing the source restores single-controller mode.
-func (s *Session) SetCoPlay(enabled bool) error {
-	if s == nil {
-		return errors.New("remote input is unavailable")
-	}
-	m := s.manager
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.closed || s.closed || !s.available() {
-		return errors.New("remote input is unavailable")
-	}
-	if s.coPlay == enabled {
-		return nil
-	}
-	if enabled && m.gamepads == nil {
-		m.gamepads, _ = openGamepadBackend()
-	}
-	s.cancelPolicy()
-	// Release under the old mode, before it changes the meaning of a grant.
-	if m.owner == s {
-		m.release()
-	}
-	s.coPlay = enabled
-	for _, c := range m.connections {
-		if c.owner == s {
-			m.revoke(c)
-		}
-	}
-	s.notify()
-	return nil
-}
-
 func (s *Session) Decide(id string, allow bool) error {
 	if s == nil {
 		return errors.New("remote input is unavailable")
@@ -920,8 +908,12 @@ func (m *Manager) grant(c *connection) error {
 	}
 	token := make([]byte, 32)
 	_, _ = rand.Read(token)
+	previous := m.singleKeyboardController(c.owner)
 	c.grant, c.requested = hex.EncodeToString(token), false
 	m.owner = c.owner
+	if c.device != "gamepad" && previous != nil && previous.extended {
+		m.send(previous, m.state(previous))
+	}
 	m.refreshActive()
 	if c.grant != "" {
 		m.send(c, m.state(c))

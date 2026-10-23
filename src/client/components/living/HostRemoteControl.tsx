@@ -13,7 +13,7 @@ import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
 import "./remote-control.css";
 
 // Form drafts stay here; the App snapshot owns applied authorization.
-export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy, onDecide, onShortcut, coPlay = false, gamepad, onCoPlay }: {
+export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy, onDecide, onShortcut, gamepad }: {
   mode: RemoteControlMode;
   platform: RemoteInputPlatform;
   requests: (RemoteControlRequest & { name: string })[];
@@ -21,16 +21,14 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
   onPolicy: (mode: RemoteControlMode, password?: string) => Promise<void>;
   onDecide: (id: string, allow: boolean) => Promise<void>;
   onShortcut?: (key?: number) => Promise<RemoteStopShortcut>;
-  coPlay?: boolean;
   gamepad?: boolean;
-  onCoPlay?: (enabled: boolean) => Promise<void>;
 }) {
   const { t, vis, lang } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
   const gamepadAnchor = lang === "zh" ? "手柄" : "gamepads";
   const gamepadGuide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}remote-control.html#${gamepadAnchor}`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/remote-control${lang === "zh" ? ".zh-CN" : ""}.md#${gamepadAnchor}`, open && coPlay);
+    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/remote-control${lang === "zh" ? ".zh-CN" : ""}.md#${gamepadAnchor}`, open && mode !== "off" && gamepad !== undefined);
   const [surfaceDocument, setSurfaceDocument] = useState<Document | null>(null);
   const detached = Boolean(surfaceDocument && surfaceDocument !== document);
   const [draft, setDraft] = useState(() => mode === "off" ? readRoomPreferences().remoteControlMode : mode);
@@ -110,21 +108,15 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
             if (enabled && (draft === "room" || draft === "password" && !password)) setPreparing(true);
             else void applyPolicy(enabled ? draft : "off", enabled && draft === "password" ? password : undefined);
           }} />
-        {mode !== "off" && onCoPlay && <>
-          <SwitchItem checked={coPlay} label={t("remote.coPlay")} icon="users" hint="hint-remote-control"
-            disabled={busy || disabled} onChange={enabled => void perform("coplay", () => onCoPlay(enabled))} />
-          {!vis && <p className="lr-remote-note">{t("remote.coPlayHelp")}</p>}
-          {coPlay && gamepad !== undefined && <p className="lr-remote-note">
+        {mode !== "off" && gamepad !== undefined && <p className="lr-remote-note">
             <Glyph name="gamepad" size={14} />{" "}
-            <span className={vis ? "visually-hidden" : undefined}>{t(gamepad ? "remote.gamepadHostHelp" : "remote.gamepadMissing")} </span>
+            {gamepad && <span className={vis ? "visually-hidden" : undefined}>{t("remote.gamepadHostHelp")} </span>}
             <Tooltip kind="hint-remote-control" text={vis ? undefined : t("remote.gamepadSetup")}>
               <a href={gamepadGuide} target="_blank" rel="noopener noreferrer" aria-label={t("remote.gamepadSetup")}>
                 {vis ? <Glyph name="help" size={16} /> : t("remote.gamepadSetup")}
               </a>
             </Tooltip>
-          </p>}
-          {failedId === "coplay" && <p role="alert">{t("remote.decisionFailed")}</p>}
-        </>}
+        </p>}
         {pendingActions.has("enable") && mode === "off" && <div className="lr-remote-enable-pending" role="status">
           <Glyph name="loader" size={18} className="lr-spin" />
           <Btn icon="x" cap="remote.cancel" title="remote.cancel" hint="hint-remote-stop"

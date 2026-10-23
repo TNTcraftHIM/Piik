@@ -513,9 +513,10 @@ This uses [WebRTC data channels](https://www.rfc-editor.org/rfc/rfc8831.html)
 and the platform [AES-GCM API](https://developer.mozilla.org/en-US/docs/Web/API/AesGcmParams).
 
 `internal/app/remoteinput` owns one process-wide source because the App's native
-sessions share the same physical keyboard and pointer. Ordinary remote control
-has one grant; the opt-in co-play candidate adds per-player grants under that
-same owner, as defined by the [input contract](../standards/rooms-access.md#remote-control).
+sessions share the same physical keyboard and pointer. The co-play candidate
+adds concurrent capability-negotiated grants under that same owner and existing
+Host authorization, retaining exclusivity for older published clients,
+as defined by the [input contract](../standards/rooms-access.md#remote-control).
 Remote control starts
 off. The Browser remembers the last successfully applied authorization mode;
 the Host must still enable it manually for each new shared source. Ask each time
@@ -701,9 +702,10 @@ lets remote participants act as local players in the Host's game. For Piik, this
 retains one shared picture. Games that support a shared keyboard can use separate
 key bindings for the Host and remote player without an input driver. Independent
 gamepads instead need per-player virtual controller slots. The co-play candidate
-keeps single-controller remote control as the default and adds an explicit Host
-opt-in for concurrent players. Held-key ownership is per grant, so one player's
-key-up does not release another's key. Mouse buttons have the same per-grant
+admits concurrent approved players when the Host enables Remote control,
+without a separate multiplayer switch. Older published clients retain exclusive
+keyboard/mouse control through capability negotiation. Held-key ownership is per
+grant, so one player's key-up does not release another's key. Mouse buttons have the same per-grant
 ownership. Approved keyboard/mouse players all contribute to one shared pointer;
 there is no handoff, join-order arbitration or automatic local-Host priority.
 
@@ -720,7 +722,7 @@ describes assigning a physical controller separately from keyboard/mouse; its
 local-player count does not establish split-keyboard support. A Host using a
 physical controller and one remote keyboard player can therefore be another
 driver-free use case when the game supports that combination. The Host enables
-**Play together** inside Remote control; authorization and encrypted input reuse
+**Remote control**; authorization and encrypted input reuse
 the same route and source owner.
 
 Simulating keys is different from creating independent devices. Windows

@@ -2,8 +2,10 @@ import type { GlyphName } from "../ui/icons";
 
 // Canonical catalog: add keys here first; every other locale must match it.
 export const zh = {
-  "remote.coPlay": "多人同乐",
-  "remote.coPlayHelp": "共用键盘和鼠标。切换此项会结束当前控制。",
+  "state.peer.present": "已在房间",
+  "state.peer.voiceConnected": "语音已连接",
+  "host.topology.idle": "已在房间 · 暂无媒体线路",
+  "remote.textShared": "仅一人控制键盘时可发送文字。",
   "remote.device.keyboardMouse": "键鼠",
   "remote.device.gamepad": "手柄",
   "remote.participant.keyboardMouse": "已加入协作 · 键鼠",

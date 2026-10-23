@@ -709,11 +709,8 @@ export class NativeClient {
   }
 
   async setRemoteControlPolicy(shareId: string, mode: RemoteControlMode, password?: string): Promise<void> {
-    await this.request("set-remote-control-policy", { shareId, mode, ...(password !== undefined ? { password } : {}) }, nativeAckResponseSchema, null);
-  }
-
-  async setRemoteCoPlay(shareId: string, enabled: boolean): Promise<void> {
-    await this.request("set-remote-input-co-play", { shareId, enabled }, nativeAckResponseSchema);
+    await this.request("set-remote-control-policy", { shareId, mode, ...(password !== undefined ? { password } : {}),
+      ...(this.health.nativeMedia.remoteCoPlay ? { coPlay: true } : {}) }, nativeAckResponseSchema, null);
   }
 
   async remoteStopShortcut(shareId: string, key?: number): Promise<RemoteStopShortcut> {
