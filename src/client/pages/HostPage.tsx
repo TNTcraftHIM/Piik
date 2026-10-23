@@ -1299,7 +1299,12 @@ export function HostPage({
       nativeSourceSelectionRef.current = selection;
       nativeEventCleanup = client.onEvent((event) => {
         if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeClientRef.current !== client) return;
-        if (event.type === "remote-control-state") setRemoteControlState(event);
+        if (event.type === "remote-control-state") {
+          setRemoteControlState(event);
+          signalRef.current?.setCoPlayGrants(event.coPlay ? event.requests.flatMap(request =>
+            request.state !== "pending" && request.endpointId
+              ? [{ endpointId: request.endpointId, device: request.device ?? "keyboardMouse" }] : []) : []);
+        }
         if (event.type === "audio-state") {
           nativeSourceAudioRef.current = event.sourceAudio;
           audioAvailableRef.current = event.sourceAudio || event.microphone;
@@ -1643,6 +1648,7 @@ export function HostPage({
     nativeSourceSelectionRef.current = null;
     setNativeActive(false);
     setRemoteControlState(null);
+    signalRef.current?.setCoPlayGrants([]);
     if (!client || !shareGeneration) {
       releaseUnusedNativeClient();
       return;
@@ -2737,6 +2743,7 @@ export function HostPage({
       if (signalRef.current === signal && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
       if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice());
       if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
+      if (signalRef.current === signal && capabilities.coPlayPresence) signal.enableCoPlayPresence();
       if (signalRef.current === signal && capabilities.audioPresence) signal.enableAudioPresence();
     }).catch(() => { /* Optional input does not block sharing. */ });
     setInteractionSession(signal.interactions);
@@ -3506,9 +3513,12 @@ export function HostPage({
   const hostIdentity = hostPeerId ?? hostClientIdRef.current ?? "host-pending";
 
   const couchEntries: CouchEntry[] = viewers.map((viewer) => {
+    const grant = nativeActive && remoteControlState?.coPlay
+      ? remoteControlState.requests.find(request => request.peerId === viewer.peerId && request.state !== "pending") : undefined;
     return {
       key: viewer.peerId,
       name: viewer.label,
+      collaboration: grant ? grant.device ?? "keyboardMouse" : undefined,
       status: deriveParticipantStatus(viewer, phase === "live", viewerQualityEvidence.get(viewer.peerId)),
     };
   });

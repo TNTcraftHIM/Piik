@@ -66,6 +66,14 @@ const opaqueIdSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
 
+const coPlayDeviceSchema = z.enum(["keyboardMouse", "gamepad"]);
+const coPlayGrantSchema = z.object({
+  endpointId: z.string().regex(/^[0-9a-f]{32}$/), device: coPlayDeviceSchema,
+}).strict();
+const coPlayParticipantSchema = z.object({ peerId: opaqueIdSchema, device: coPlayDeviceSchema }).strict();
+export type CoPlayGrant = z.infer<typeof coPlayGrantSchema>;
+export type CoPlayParticipant = z.infer<typeof coPlayParticipantSchema>;
+
 const chatPayloadSchema = z.object({ kind: z.literal("chat"),
   text: z.string().min(1).max(MAX_CHAT_CODE_POINTS * 2)
     .refine(value => normalizeChatText(value) === value) }).strict();
@@ -242,6 +250,7 @@ export const runtimeCapabilitiesSchema = z.object({
   remoteInput: z.boolean().default(false),
   viewerRouteSelection: z.boolean().default(false),
   audioPresence: z.boolean().default(false),
+  coPlayPresence: z.boolean().default(false),
 });
 export type RuntimeCapabilities = z.infer<typeof runtimeCapabilitiesSchema>;
 
@@ -936,6 +945,10 @@ export const clientMessageSchema = z.union([
     state: z.enum(["connected", "failed"]) }).strict(),
   z.object({ type: z.literal("set-viewer-route-preference"), preference: viewerRoutePreferenceSchema }).strict(),
   z.object({ type: z.literal("subscribe-audio-presence") }).strict(),
+  z.object({ type: z.literal("subscribe-co-play-presence") }).strict(),
+  z.object({ type: z.literal("set-co-play-presence"), shareGeneration: opaqueIdSchema,
+    grants: z.array(coPlayGrantSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT)
+      .refine(grants => new Set(grants.map(grant => grant.endpointId)).size === grants.length) }).strict(),
   z.object({ type: z.literal("set-audio-presence"), shareGeneration: opaqueIdSchema, available: z.boolean() }).strict(),
   z.object({ type: z.literal("subscribe-remote-input"), endpointId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
     secret: z.string().regex(/^[0-9a-f]{64}$/).optional() }).strict(),
@@ -1124,6 +1137,8 @@ export const serverMessageSchema = z.union([
     code: z.enum(["not-allowed", "not-enabled", "connection-unavailable"]) }).strict(),
   z.object({ type: z.literal("viewer-route-preference"), preference: viewerRoutePreferenceSchema, accepted: z.boolean() }).strict(),
   z.object({ type: z.literal("audio-presence"), available: z.boolean().nullable() }).strict(),
+  z.object({ type: z.literal("co-play-presence"), participants: z.array(coPlayParticipantSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT)
+    .refine(participants => new Set(participants.map(person => person.peerId)).size === participants.length) }).strict(),
   z.object({ type: z.literal("remote-input-peers"), peers: z.array(z.object({ peerId: opaqueIdSchema,
     endpointId: z.string().regex(/^[0-9a-f]{32}$/), secret: z.string().regex(/^[0-9a-f]{64}$/) }).strict()).max(20) }).strict(),
   z.object({ type: z.literal("room-interactions-ready"), serverTime: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).strict(),

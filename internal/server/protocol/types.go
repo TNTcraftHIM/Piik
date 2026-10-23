@@ -195,6 +195,7 @@ type RuntimeCapabilities struct {
 	RemoteInput          bool     `json:"remoteInput,omitempty"`
 	ViewerRouteSelection bool     `json:"viewerRouteSelection,omitempty"`
 	AudioPresence        bool     `json:"audioPresence,omitempty"`
+	CoPlayPresence       bool     `json:"coPlayPresence,omitempty"`
 	RoomReactionIDs      []string `json:"roomReactionIds,omitempty"`
 }
 
@@ -208,7 +209,7 @@ func (v *RuntimeCapabilities) UnmarshalJSON(data []byte) error {
 	if present == nil {
 		return errors.New("runtime capabilities must be an object")
 	}
-	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "roomVoice", "relayVolunteer", "hostRoomSession", "natPrediction", "remoteInput", "viewerRouteSelection", "audioPresence", "roomReactionIds"); err != nil {
+	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "roomVoice", "relayVolunteer", "hostRoomSession", "natPrediction", "remoteInput", "viewerRouteSelection", "audioPresence", "coPlayPresence", "roomReactionIds"); err != nil {
 
 		return err
 	}
@@ -220,6 +221,7 @@ func (v *RuntimeCapabilities) UnmarshalJSON(data []byte) error {
 		"remoteInput":          &v.RemoteInput,
 		"viewerRouteSelection": &v.ViewerRouteSelection,
 		"audioPresence":        &v.AudioPresence,
+		"coPlayPresence":       &v.CoPlayPresence,
 	} {
 		if value, ok := present[key]; ok {
 			if err := json.Unmarshal(value, target); err != nil {

@@ -32,6 +32,7 @@ export function PeoplePreview() {
   const [mode, setMode] = useState("mixed");
   const [view, setView] = useState<"host" | "viewer">("host");
   const [longNames, setLongNames] = useState(false);
+  const [collaboration, setCollaboration] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
@@ -51,9 +52,11 @@ export function PeoplePreview() {
   const self = VIEWER_IDS[0]!;
   const selectable = viewers.filter((viewer) => view === "host" || (viewer.upstream.kind === "peer" && viewer.upstream.peerId === self))
     .map((viewer) => viewer.peerId);
-  const entries = viewers.map((viewer) => ({
+  const entries = viewers.map((viewer, index) => ({
     key: viewer.peerId, name: viewer.label, you: view === "viewer" && viewer.peerId === self,
     status: deriveParticipantStatus(viewer, true), selectable: selectable.includes(viewer.peerId),
+    collaboration: collaboration && mode !== "pending" && index < 2
+      ? index === 0 ? "keyboardMouse" as const : "gamepad" as const : undefined,
   }));
   const selectedViewer = viewers.find((viewer) => viewer.peerId === selected && selectable.includes(viewer.peerId));
   const select = (key: string) => setSelected((current) => current === key ? null : key);
@@ -70,6 +73,7 @@ export function PeoplePreview() {
         title={t(value === "host" ? "common.host" : "common.you")} selected={view === value} onClick={() => setView(value)}>
         {en ? value === "host" ? "Host view" : "Viewer view" : value === "host" ? "房主视角" : "观众视角"}</Chip>)}</div>
       <SwitchItem checked={longNames} onChange={setLongNames} label={en ? "Long names" : "换成长名字"} />
+      <SwitchItem checked={collaboration} onChange={setCollaboration} label={en ? "Collaborators" : "协作标记"} />
     </div>
     <div className="cp-people-room">
       <div className="cp-sync" role="group" aria-label={en ? "The same Host in two places" : "同一位房主，两个位置"}>

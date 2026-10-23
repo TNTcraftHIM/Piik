@@ -42,6 +42,9 @@ keyboard keys.
 Everyone controls the same mouse pointer; movements and clicks from approved
 players apply together. Use the Host's stop action or shortcut to end control.
 
+Participants have a keyboard/mouse or gamepad marker beside their couch avatar.
+Both Host and Viewers can see who has joined; ending control removes the marker.
+
 ## Gamepads
 
 The Host installs any required external input components from their official

@@ -203,6 +203,13 @@ grants contribute to the same pointer, with no per-player mouse assignment or
 join-order priority. Changing co-play mode ends current grants. Input
 still belongs to one process-wide source owner, not multiple simultaneous shares.
 
+Collaboration markers describe granted participation, not live key or pointer
+activity. The Host publishes the native grant owner's current input endpoints;
+room signaling resolves their authenticated room identities and distributes a
+read-only, share-scoped snapshot to opted-in Viewers. Pending requests are not
+participants, and stopped sources or replaced endpoints cannot retain a marker.
+This presentation neither grants control nor creates another routing path.
+
 Optional Windows x64 gamepad grants create independent Xbox 360 devices through
 the public device interface of an already-installed ViGEmBus. Optional input
 drivers and third-party input SDK binaries stay external on every platform:

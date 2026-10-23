@@ -76,6 +76,32 @@ describe("room authentication and site admission", () => {
     expect(signal.relayVolunteerRequest).toBeNull();
   });
 
+  it("publishes collaboration only after capability discovery and clears it across shares", () => {
+    const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
+    const auth = (role: string) => JSON.parse(wire.serverMessages.find(
+      (sample: { name: string }) => sample.name === `authenticated-${role}-minimal`).json);
+    const host = fixture("host");
+    const authenticated = auth("host");
+    const grants = [{ endpointId: "1".repeat(32), device: "gamepad" as const }];
+    host.sockets[0]!.receive(authenticated);
+    host.signal.setCoPlayGrants(grants);
+    expect(host.sockets[0]!.send.mock.calls.some(([raw]) => JSON.parse(raw).type === "set-co-play-presence")).toBe(false);
+    host.signal.enableCoPlayPresence();
+    expect(host.sockets[0]!.send).toHaveBeenCalledWith(JSON.stringify({ type: "set-co-play-presence", shareGeneration: authenticated.shareGeneration, grants }));
+    host.signal.stopSharing(authenticated.shareGeneration);
+    host.signal.startSharing("next_coplay_generation", authenticated.qualitySettings, DEFAULT_ROUTE_POLICY);
+    host.sockets[0]!.receive({ type: "sharing-started", shareGeneration: "next_coplay_generation",
+      routePolicy: DEFAULT_ROUTE_POLICY, routeRevision: authenticated.routeRevision,
+      routeAssignment: authenticated.routeAssignment, qualitySettings: authenticated.qualitySettings, paused: false });
+    expect(host.sockets[0]!.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "set-co-play-presence", shareGeneration: "next_coplay_generation", grants: [] }));
+    host.signal.stop();
+    const viewer = fixture("viewer");
+    viewer.sockets[0]!.receive(auth("viewer"));
+    viewer.signal.enableCoPlayPresence();
+    expect(viewer.sockets[0]!.send).toHaveBeenCalledWith(JSON.stringify({ type: "subscribe-co-play-presence" }));
+    viewer.signal.stop();
+  });
+
   it("opts into audio presence after discovery and replays subscriptions and Host intent on reconnect", async () => {
     const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
     const auth = (role: string) => JSON.parse(wire.serverMessages.find(

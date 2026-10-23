@@ -20,6 +20,7 @@ import {
   type ServerMessage,
   type RoutePolicy,
   type ViewerRoutePreference,
+  type CoPlayParticipant,
 } from "../../shared/protocol";
 import {
   viewerReconnectRoute,
@@ -242,6 +243,7 @@ export function ViewerPage({
   // own peer id (mirrors the authenticated message for couch/route-tree).
   const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
   const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
+  const [coPlayParticipants, setCoPlayParticipants] = useState<CoPlayParticipant[]>([]);
   const [routeMetricsExpanded, setRouteMetricsExpanded] = useState(false);
   const [relayMetricsExpanded, setRelayMetricsExpanded] = useState(false);
   const [downstreamMetricsExpanded, setDownstreamMetricsExpanded] =
@@ -615,6 +617,7 @@ export function ViewerPage({
       {
         onStatus: (status) => {
           if (active) {
+            if (status !== "connected") setCoPlayParticipants([]);
             dispatchPresentation({ type: "signal", signal: status });
           }
         },
@@ -662,6 +665,7 @@ export function ViewerPage({
     setAudioAvailable(null);
     void getRuntimeCapabilities().then(capabilities => {
       if (active && capabilities.audioPresence) signal.enableAudioPresence();
+      if (active && capabilities.coPlayPresence) signal.enableCoPlayPresence();
       if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
       if (active && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice());
       if (active) {
@@ -1837,7 +1841,12 @@ export function ViewerPage({
         setAudioAvailable(message.available);
         return;
       }
+      if (message.type === "co-play-presence") {
+        setCoPlayParticipants(message.participants);
+        return;
+      }
       if (message.type === "host-status") {
+        if (!message.online) setCoPlayParticipants([]);
         currentHostOnline = message.online;
         if (currentHostPaused !== message.paused && message.paused) {
           invalidatePresentedMedia();
@@ -2270,6 +2279,7 @@ export function ViewerPage({
       key: viewer.peerId,
       name: viewer.label,
       status: deriveParticipantStatus(viewer, presentationState.host === "online" || presentationState.host === "paused"),
+      collaboration: coPlayParticipants.find(participant => participant.peerId === viewer.peerId)?.device,
       you: isSelf,
       selectable: isChild ? undefined : false,
     };

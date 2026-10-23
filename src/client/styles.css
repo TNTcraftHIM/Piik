@@ -684,7 +684,14 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   transition: transform 150ms var(--spring);
 }
 .lr-pawn:is(:hover, :focus-visible):not(.is-static) { transform: translateY(-3px); }
-.lr-pawn svg { width: 48px; height: 56px; display: block; }
+.lr-pawn > .lr-person { width: 48px; height: 56px; display: block; }
+.lr-pawn-collaboration {
+  position: absolute; top: 28px; left: calc(50% + 6px);
+  display: grid; place-items: center; width: 20px; height: 20px;
+  border: 1.5px solid var(--paper); border-radius: 7px;
+  background: var(--primary); color: var(--primary-ink);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .16); pointer-events: none;
+}
 .lr-pawn-led {
   position: absolute;
   top: 2px;

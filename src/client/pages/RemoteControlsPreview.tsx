@@ -1,11 +1,19 @@
 import { useCallback, useState } from "react";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
 import { RemoteKeyboard } from "../components/living/RemoteKeyboard";
+import { Couch } from "../components/living/Couch";
+import { STATUS_CATALOG } from "../ui/media-status";
 import { Btn } from "../components/living/primitives";
 import type { RemoteControlRequest } from "../native/wire";
 import type { RemoteInputEvent } from "../remote-control/input-session";
 import type { RemoteControlMode, RemoteInputPlatform } from "../remote-control/protocol";
 import { useCopy } from "../ui/copy";
+
+const participants = [
+  { peerId: "preview-player-one", name: "Player 1" },
+  { peerId: "preview-player-two", name: "Player 2" },
+  { peerId: "preview-gamepad", name: "Player 3" },
+];
 
 export function RemoteControlsPreview() {
   const { lang, t } = useCopy();
@@ -50,7 +58,7 @@ export function RemoteControlsPreview() {
           : current.filter(request => request.id !== id))} />
       <button type="button" className="lr-btn" onClick={() => {
         setMode("ask");
-        setRequests([{ id: "preview-request", peerId: "preview-friend", state: "pending", name: "Piik friend" }]);
+        setRequests([{ id: "preview-request", ...participants[0]!, state: "pending" }]);
       }}>{en ? "Receive a sample request" : "模拟收到控制请求"}</button>
       <button type="button" className="lr-btn" onClick={() => {
         setMode("ask"); setCoPlay(true);
@@ -63,6 +71,12 @@ export function RemoteControlsPreview() {
       <Btn id="preview-remote-keyboard-toggle" icon="keyboard" title="remote.keyboard" cap="remote.keyboard" hint="hint-remote-keyboard"
         expanded={keyboardOpen} controls="preview-remote-keyboard" onClick={() => setKeyboardOpen(value => !value)} />
     </div>
+    <Couch view="host" host={{ key: "preview-host", name: "Piik", you: true }}
+      entries={participants.map(person => {
+        const grant = requests.find(request => request.peerId === person.peerId && request.state !== "pending");
+        return { key: person.peerId, name: person.name, status: STATUS_CATALOG.connected, selectable: false,
+          collaboration: coPlay && grant ? grant.device ?? "keyboardMouse" : undefined };
+      })} />
     <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
       {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch={false} input={input} close={closeKeyboard}
         allowText={!coPlay}

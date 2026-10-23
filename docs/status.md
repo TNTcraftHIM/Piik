@@ -77,7 +77,9 @@ P2P and SFU, independent listening, picture continuity and voice-facet recovery.
 Controlled-network voice cases and platform package checks have passed; the
 release artifacts and operator records establish publication and deployment.
 Shared keyboard/mouse and optional Windows ViGEmBus virtual-gamepad prototypes
-use the normal App/Web input and authorization surfaces. The Windows adapter
+use the normal App/Web input and authorization surfaces. Host and Viewers see
+granted collaborators on the couch through a share-scoped presence projection.
+The Windows adapter
 calls the installed driver directly; App packages contain no optional input SDK
 or driver. Linux uinput passed
 an isolated real-kernel gate; desktop permissions and game recognition remain

@@ -87,6 +87,7 @@ func (s *Server) route(
 			RemoteInput:          true,
 			ViewerRouteSelection: true,
 			AudioPresence:        true,
+			CoPlayPresence:       true,
 			HostRoomSession:      true,
 		})
 		return

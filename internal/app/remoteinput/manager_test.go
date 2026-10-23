@@ -468,6 +468,9 @@ func TestCoPlayGamepadGrantIsolationAndRetirement(t *testing.T) {
 		if (view.Device == "gamepad") != (view.PeerID != keyboard.peerID) {
 			t.Fatal("Host state confused keyboard and gamepad grants")
 		}
+		if view.EndpointID != map[string]string{a.peerID: a.id, b.peerID: b.id, keyboard.peerID: keyboard.id}[view.PeerID] {
+			t.Fatal("co-play presentation lost its authenticated input endpoint")
+		}
 	}
 	reportA := gamepadReport{Buttons: 0x1000, LeftX: 12000}
 	reportB := gamepadReport{Buttons: 0x2000, RightTrigger: 190}

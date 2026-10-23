@@ -707,6 +707,12 @@ key-up does not release another's key. Mouse buttons have the same per-grant
 ownership. Approved keyboard/mouse players all contribute to one shared pointer;
 there is no handoff, join-order arbitration or automatic local-Host priority.
 
+Room-wide collaboration presence uses the existing signaling subscription model.
+Sending the whole roster separately through every encrypted input endpoint would
+multiply the snapshot across the intentionally small input queues. The Host App
+remains the grant owner; signaling only presents its endpoint-bound snapshot,
+with source-generation checks and an opt-in for older-reader compatibility.
+
 Game player count is separate from input-device support. Team17 documents
 [four local players but two sharing one keyboard in Overcooked! 2](https://www.team17.com/news/overcooked-2-faq).
 [Pummel Party's developer](https://steamcommunity.com/app/880940/discussions/0/1742226629869609303/)

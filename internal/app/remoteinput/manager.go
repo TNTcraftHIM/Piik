@@ -52,10 +52,11 @@ type inputSink interface {
 }
 
 type View struct {
-	ID     string `json:"id"`
-	PeerID string `json:"peerId"`
-	State  string `json:"state"`
-	Device string `json:"device,omitempty"`
+	ID         string `json:"id"`
+	PeerID     string `json:"peerId"`
+	State      string `json:"state"`
+	Device     string `json:"device,omitempty"`
+	EndpointID string `json:"endpointId,omitempty"`
 }
 
 // One manager covers both native sessions: they operate the same physical desktop.
@@ -808,6 +809,9 @@ func (s *Session) State() State {
 		if c.owner == s && (c.requested || c.grant != "") {
 			view := View{ID: c.requestID, PeerID: c.peerID, State: m.state(c)}
 			view.Device = c.device
+			if s.coPlay {
+				view.EndpointID = c.id
+			}
 			state.Requests = append(state.Requests, view)
 		}
 	}

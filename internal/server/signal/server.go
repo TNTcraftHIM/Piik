@@ -131,6 +131,7 @@ type roomShare struct {
 	// pausedGeneration is the share generation the Host paused, "" if none.
 	pausedGeneration string
 	audioAvailable   *bool
+	coPlayGrants     []protocol.CoPlayGrant
 }
 
 type senderQualityRateWindow struct {
@@ -1029,7 +1030,7 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 			replaced.close(websocket.StatusCode(protocol.SignalCloseSessionReplaced), "Session replaced")
 		}
 		if participant.Role == protocol.RoleViewer {
-			s.sendRemoteInputPeers(roomID)
+			s.refreshRemoteInputMembers(roomID)
 		}
 	}
 
@@ -1131,7 +1132,10 @@ func (s *Server) settleHostShare(roomID, sessionID string, request authRequest) 
 	}
 	s.shares[roomID] = share
 	if currentGeneration != shareGeneration {
+		share.coPlayGrants = nil
+		s.shares[roomID] = share
 		s.broadcastAudioPresence(roomID)
+		s.broadcastCoPlayPresence(roomID)
 	}
 	return shareGeneration
 }
@@ -1354,6 +1358,13 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 		}
 	case protocol.SetAudioPresenceMessage:
 		s.setAudioPresence(sess, authenticated, m)
+	case protocol.SubscribeCoPlayPresenceMessage:
+		if authenticated.role == protocol.RoleViewer {
+			sess.coPlayPresence = true
+			s.sendCoPlayPresence(sess, authenticated.roomID)
+		}
+	case protocol.SetCoPlayPresenceMessage:
+		s.setCoPlayPresence(sess, authenticated, m)
 	case protocol.SetSharingPausedMessage:
 		if authenticated.role != protocol.RoleHost {
 			s.sendError(sess, "FORBIDDEN", "只有当前房主可以暂停分享")
@@ -1445,6 +1456,7 @@ func (s *Server) startSharing(sess *session, authenticated *authenticatedSession
 	share.generation = ""
 	share.pausedGeneration = ""
 	share.audioAvailable = nil
+	share.coPlayGrants = nil
 	s.shares[authenticated.roomID] = share
 	request := authRequest{
 		role:            protocol.RoleHost,

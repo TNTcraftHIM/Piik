@@ -67,13 +67,13 @@ const qualitySettings = {
 
 describe("runtime capabilities", () => {
   it("defaults missing capabilities off and ignores unknown descriptors", () => {
-    expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false, roomVoice: false, relayVolunteer: false });
+    expect(runtimeCapabilitiesSchema.parse({})).toEqual({ sfu: false, natPrediction: false, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false, coPlayPresence: false, roomVoice: false, relayVolunteer: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, extra: { enabled: true } }))
-      .toEqual({ sfu: true, natPrediction: false, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false, roomVoice: false, relayVolunteer: false });
+      .toEqual({ sfu: true, natPrediction: false, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false, coPlayPresence: false, roomVoice: false, relayVolunteer: false });
     expect(runtimeCapabilitiesSchema.parse({ natPrediction: true, SFU: true }))
-      .toEqual({ sfu: false, natPrediction: true, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false, roomVoice: false, relayVolunteer: false });
+      .toEqual({ sfu: false, natPrediction: true, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false, coPlayPresence: false, roomVoice: false, relayVolunteer: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, natPrediction: true }))
-      .toEqual({ sfu: true, natPrediction: true, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false, roomVoice: false, relayVolunteer: false });
+      .toEqual({ sfu: true, natPrediction: true, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false, coPlayPresence: false, roomVoice: false, relayVolunteer: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, sfuOnly: true }).sfuOnly).toBe(true);
     expect(runtimeCapabilitiesSchema.parse({ roomReactionIds: ["heart", "future-effect"] }).roomReactionIds)
       .toEqual(["heart", "future-effect"]);

@@ -232,6 +232,10 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		return decodeSetViewerRoutePreference(data)
 	case "subscribe-audio-presence":
 		return decodeEmptyClientMessage(data, SubscribeAudioPresenceMessage{Type: messageType})
+	case "subscribe-co-play-presence":
+		return decodeEmptyClientMessage(data, SubscribeCoPlayPresenceMessage{Type: messageType})
+	case "set-co-play-presence":
+		return decodeSetCoPlayPresence(data)
 	case "set-audio-presence":
 		return decodeSetAudioPresence(data)
 	case "subscribe-remote-input":

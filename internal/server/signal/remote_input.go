@@ -23,7 +23,13 @@ func (s *Server) subscribeRemoteInput(sess *session, actor *authenticatedSession
 		return
 	}
 	sess.remoteInput = true
-	s.sendRemoteInputPeers(actor.roomID)
+	s.refreshRemoteInputMembers(actor.roomID)
+}
+
+func (s *Server) refreshRemoteInputMembers(roomID string) {
+	s.pruneCoPlayPresence(roomID)
+	s.sendRemoteInputPeers(roomID)
+	s.broadcastCoPlayPresence(roomID)
 }
 
 // Caller holds Server.mu. Only an opted-in Host receives the keys; observers,

@@ -8,6 +8,7 @@ import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { Tooltip } from "./Tooltip";
+import type { CoPlayParticipant } from "../../../shared/protocol";
 
 export interface CouchEntry {
   key: string;
@@ -15,6 +16,7 @@ export interface CouchEntry {
   status: StatusDescriptor;
   you?: boolean;
   selectable?: boolean;
+  collaboration?: CoPlayParticipant["device"];
 }
 
 export interface CouchHostEntry {
@@ -65,10 +67,15 @@ export function Couch({
     ? [host.name, host.name === t("common.host") ? null : t("common.host"),
         host.you ? t("common.you") : null].filter(Boolean).join(" · ")
     : undefined;
-  const personHint = (name: string) => participantAction
-    ? { kind: "hint-reaction-picker" as const, text: vis ? undefined : t("interaction.express"),
-        overflow: { text: name, selector: ".lr-pawn-name" } }
-    : { overflow: { text: name, selector: ".lr-pawn-name" } };
+  const collaborationLabel = (device: NonNullable<CouchEntry["collaboration"]>) =>
+    t(device === "gamepad" ? "remote.participant.gamepad" : "remote.participant.keyboardMouse");
+  const personHint = (name: string, collaboration?: CouchEntry["collaboration"]) => {
+    const kind = participantAction ? "hint-reaction-picker" as const : collaboration ? "hint-remote-control" as const : undefined;
+    const status = collaboration ? collaborationLabel(collaboration) : undefined;
+    const overflow = { text: [name, status].filter(Boolean).join(" · "), selector: ".lr-pawn-name" };
+    return kind ? { kind, text: vis ? undefined : [status, participantAction && t("interaction.express")].filter(Boolean).join(" · "), overflow }
+      : { overflow };
+  };
 
   return (
     <div ref={couchRef} className="lr-couch">
@@ -119,10 +126,13 @@ export function Couch({
           ) : null}
           {entries.map((entry, index) => {
             const stateLabel = t(entry.status.labelKey);
-            const label = `${entry.name}${entry.you ? ` · ${t("common.you")}` : ""} · ${stateLabel}`;
+            const label = `${entry.name}${entry.you ? ` · ${t("common.you")}` : ""} · ${stateLabel}${entry.collaboration ? ` · ${collaborationLabel(entry.collaboration)}` : ""}`;
             const inner = (
               <>
                 <PawnSvg color={participantColor(entry.key)} identity={entry.key} />
+                {entry.collaboration && <span className="lr-pawn-collaboration" aria-hidden="true">
+                  <Glyph name={entry.collaboration === "gamepad" ? "gamepad" : "mouse"} size={14} />
+                </span>}
                 {view === "host" ? <i className="lr-pawn-led" data-tone={entry.status.tone}
                   data-pulse={entry.status.pulse || undefined} aria-hidden="true" /> : null}
                 <span className="lr-pawn-name">
@@ -155,7 +165,7 @@ export function Couch({
               </button>
             );
             return (
-              <span key={entry.key} className="lr-seat" data-room-peer={entry.key} style={seatStyle(index + (host ? 1 : 0))}><Tooltip {...personHint(entry.name)}>
+              <span key={entry.key} className="lr-seat" data-room-peer={entry.key} style={seatStyle(index + (host ? 1 : 0))}><Tooltip {...personHint(entry.name, entry.collaboration)}>
                 {pawn}
               </Tooltip></span>
             );

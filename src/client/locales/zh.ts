@@ -6,6 +6,8 @@ export const zh = {
   "remote.coPlayHelp": "共用键盘和鼠标。切换此项会结束当前控制。",
   "remote.device.keyboardMouse": "键鼠",
   "remote.device.gamepad": "手柄",
+  "remote.participant.keyboardMouse": "已加入协作 · 键鼠",
+  "remote.participant.gamepad": "已加入协作 · 手柄",
   "remote.gamepad": "使用手柄",
   "remote.gamepadActive": "停止手柄",
   "remote.gamepadWaiting": "连接标准布局手柄并按任意按钮",

@@ -6,6 +6,8 @@ export const en: Record<CopyKey, string> = {
   "remote.coPlayHelp": "Share the keyboard and mouse. Changing this option ends current control.",
   "remote.device.keyboardMouse": "Keyboard and mouse",
   "remote.device.gamepad": "Gamepad",
+  "remote.participant.keyboardMouse": "Collaborating · Keyboard and mouse",
+  "remote.participant.gamepad": "Collaborating · Gamepad",
   "remote.gamepad": "Use gamepad",
   "remote.gamepadActive": "Stop gamepad",
   "remote.gamepadWaiting": "Connect a standard controller and press any button",

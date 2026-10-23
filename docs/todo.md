@@ -17,11 +17,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   [input contract](./standards/rooms-access.md#remote-control) owns behavior and
   [co-play assessment](./research/room-interactions.md#remote-co-play) owns platform
   evidence. Optional input SDKs and drivers are not bundled or installed by Piik.
-- [ ] **Co-play participant presentation.** Make current collaborators visible
-  to the Host and Viewers through the existing room UI, using active input
-  grants as the source of truth. This is a required participation indicator,
-  not per-keystroke activity tracking. Multi-cursor, pointer-ownership and shared
-  cursor visualization are deferred; ordinary shared system-mouse input remains.
+- [ ] **Current-phase PR attribution.** Review and incorporate the focused
+  [#496](https://github.com/TNTcraftHIM/Piik/pull/496) fix with its original author.
+  The owner permits co-author attribution on this phase's squash as a one-off
+  exception; verify the final merge metadata. Future contributions follow the
+  focused-PR rule in [CONTRIBUTING](../CONTRIBUTING.md).
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -35,6 +35,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
+- [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
+  shared system mouse; do not add multi-cursor or pointer-ownership visualization.
 - [ ] **Separate accompaniment sharing.** Deferred on 2026-10-20 and excluded
   from this candidate. Preserve the unfinished prototype on
   `spike/audio-accompaniment` (`5e385add`); it is not a working feature.
