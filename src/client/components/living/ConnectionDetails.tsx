@@ -36,10 +36,24 @@ export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
   </Tooltip>;
 }
 
+function ConnectionDetailHeading({ media, label, icon, direction, note, routes = [] }: Pick<ConnectionDetail,
+  "media" | "label" | "icon" | "direction" | "note"> & { routes?: readonly ("p2p" | "sfu")[] }) {
+  const { vis } = useCopy();
+  return <div className="lr-media-detail-head">
+    <span className="lr-meter-tag">
+      <Glyph name={icon ?? (media === "audio" ? "headphones" : "tv")} size={17} />
+      {direction && <span className="lr-media-direction"><Glyph name={direction === "send" ? "arrowUp" : "arrowDown"} size={12} /></span>}
+      <span className={vis ? "visually-hidden" : "lr-cap"}>{label}</span>
+    </span>
+    {routes.map(route => <RouteGlyph key={route} route={route} />)}
+    {note}
+  </div>;
+}
+
 // Four presentation categories; physical connections and their observations
 // remain independent and retain their full detail beneath the summaries.
 export function ConnectionDetails({ rows, id }: { rows: readonly ConnectionDetail[]; id?: string }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const [expanded, setExpanded] = useState(false);
   const bodyId = useId();
   const groups = (["video", "audio"] as const).flatMap(media => (["receive", "send"] as const).flatMap(direction => {
@@ -50,40 +64,27 @@ export function ConnectionDetails({ rows, id }: { rows: readonly ConnectionDetai
   const notices = rows.filter(row => !row.detailOnly && !row.metrics && !row.cells);
   const expandable = extraDetails.length > 0 || groups.some(group => group.media === "audio" || group.members.length > 1 ||
     group.members.some(row => row.metrics && hasDetailedMetrics(row.metrics, group.direction, group.media)));
-  const heading = (row: ConnectionDetail) => <div className="lr-media-detail-head">
-    <span className="lr-meter-tag">
-      <Glyph name={row.icon ?? (row.media === "audio" ? "headphones" : "tv")} size={17} />
-      {row.direction && <span className="lr-media-direction"><Glyph name={row.direction === "send" ? "arrowUp" : "arrowDown"} size={12} /></span>}
-      <span className={vis ? "visually-hidden" : "lr-cap"}>{row.label}</span>
-    </span>
-    {row.route && <RouteGlyph route={row.route} />}
-    {row.note}
-  </div>;
   const rawDetail = (row: ConnectionDetail, primary = true) => <section className="lr-media-detail" key={row.key} role="group" aria-label={row.label}>
-    {heading(row)}
+    <ConnectionDetailHeading {...row} routes={row.route ? [row.route] : []} />
     {row.cells ?? (row.metrics && <MetricCells metrics={row.metrics} direction={row.direction ?? "receive"} media={row.media} primary={primary} expanded />)}
   </section>;
   if (!rows.length) return null;
   return <div className="lr-connection-details" id={id} role="group" aria-label={t("host.details")}>
     <div className="lr-connection-details-body" id={bodyId}>
-      {notices.map(row => <div className="lr-connection-notice" key={row.key}>{heading(row)}</div>)}
+      {notices.map(row => <div className="lr-connection-notice" key={row.key}>
+        <ConnectionDetailHeading {...row} routes={row.route ? [row.route] : []} />
+      </div>)}
       {groups.map(group => {
-        const label = group.media === "video" && group.members.length === 1 ? group.members[0]!.label
+        const single = group.members.length === 1 ? group.members[0]! : null;
+        const label = single?.cells ? single.label
           : t(group.media === "video" ? group.direction === "send" ? "stats.pictureSend" : "stats.pictureReceive"
             : group.direction === "send" ? "stats.voiceSend" : "stats.voiceReceive");
         const routes = [...new Set(group.members.flatMap(row => row.route ? [row.route] : []))];
         const samples = group.members.flatMap(row => row.metrics ? [{ connectionId: row.connectionId ?? row.key, metrics: row.metrics }] : []);
         return <section className="lr-media-detail lr-connection-summary" key={group.key} role="group" aria-label={label}
           data-media={group.media} data-direction={group.direction}>
-          <div className="lr-media-detail-head">
-            <span className="lr-meter-tag">
-              <Glyph name={group.media === "audio" ? "headphones" : "tv"} size={17} />
-              <span className="lr-media-direction"><Glyph name={group.direction === "send" ? "arrowUp" : "arrowDown"} size={12} /></span>
-              <span className={vis ? "visually-hidden" : "lr-cap"}>{label}</span>
-            </span>
-            {routes.map(route => <RouteGlyph key={route} route={route} />)}
-            {group.members.length === 1 && group.members[0]!.note}
-          </div>
+          <ConnectionDetailHeading media={group.media} direction={group.direction} label={label}
+            icon={single?.cells ? single.icon : undefined} routes={routes} note={single?.note} />
           {samples.length ? <ConnectionSummaryCells samples={samples} media={group.media} direction={group.direction} /> : group.members[0]!.cells}
           {expanded && (group.members.length > 1 || group.media === "audio"
             ? <div className="lr-connection-paths">{group.members.map(row => rawDetail(row, group.members.length > 1))}</div>

@@ -75,7 +75,7 @@ function secondaryMetrics(
   };
   if (media === "audio") {
     group("stats.group.encoding");
-    if (metrics.audioCodec) values.push({ label: "voice.details.codec", value: metrics.audioCodec.split("/").at(-1)! });
+    if (metrics.audioCodec) values.push({ label: "voice.details.codec", value: metrics.audioCodec.split("/").at(-1)!.toUpperCase() });
     if (direction === "receive") {
       group("stats.group.playback");
       addNumber("stats.audioBuffer", metrics.audioJitterBufferDelayMs, "ms", 1);
@@ -186,32 +186,27 @@ export function hasDetailedMetrics(metrics: ConnectionMetrics, direction: "send"
 export function CaptureMetricCells({ resolution, frameRate, codec, hasSourceAudio }: {
   resolution: string | null; frameRate: number | null; codec: string | null; hasSourceAudio: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   return <div className="lr-meter" role="group" aria-label={t("host.captureAria")}>
     <MetricCell label="stats.resolution" value={resolution ?? t("stats.unknown")} />
-    <MetricCell label="stats.fps" value={frameRate ? `${frameRate.toFixed(0)} fps` : vis ? "—" : t("host.capture.fpsUnknown")} />
-    <MetricCell label="stats.codec" value={codec?.toUpperCase() ?? (vis ? "—" : t("host.capture.codecPending"))} />
-    <Tooltip toggleOnClick kind={hasSourceAudio ? "hint-source-audio" : "no-audio"}
-      text={vis ? undefined : t(hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")} tone="off">
-      <button type="button" className="lr-meter-cell"
-        style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
-        aria-label={t(hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}>
-        <Glyph name={hasSourceAudio ? "speaker" : "speakerOff"} size={16} />
-        {!vis && <b>{t(hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}</b>}
-      </button>
-    </Tooltip>
+    <MetricCell label="stats.fps" value={frameRate ? `${frameRate.toFixed(0)} fps` : t("stats.unknown")} />
+    <MetricCell label="stats.codec" value={codec?.toUpperCase() ?? t("stats.unknown")} />
+    <MetricCell label="stats.group.sourceAudio" value={t(hasSourceAudio ? "stats.audioPresent" : "stats.audioAbsent")}
+      icon={hasSourceAudio ? "speaker" : "speakerOff"} hint={hasSourceAudio ? "hint-source-audio" : "no-audio"} glyphOnly />
   </div>;
 }
 
 export function MetricCell({ icon, label, value, glyphOnly, hint, tone = "off" }: MetricValue) {
   const { t, vis } = useCopy();
+  const presentation = METRIC_PRESENTATION[label];
   const display = vis && value === t("stats.unknown") ? "—" : value;
   return (
-    <Tooltip toggleOnClick kind={hint ?? METRIC_PRESENTATION[label].hint} tone={tone} motion={tone === "warn" ? "still" : "demo"}
+    <Tooltip toggleOnClick kind={hint ?? presentation.hint} tone={tone} motion={tone === "warn" ? "still" : "demo"}
       text={vis ? undefined : metricHintText(label, t, display)}>
-    <button type="button" className="lr-meter-cell" data-metric={label} aria-label={`${t(label)} · ${display}`}
+    <button type="button" className="lr-meter-cell" data-metric={label}
+      data-wrap-value={"wrap" in presentation && presentation.wrap ? "" : undefined} aria-label={`${t(label)} · ${display}`}
       style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}>
-      <Glyph name={icon ?? METRIC_PRESENTATION[label].icon} size={16} />
+      <Glyph name={icon ?? presentation.icon} size={16} />
       {vis ? (
         <>
           {glyphOnly ? null : <b>{display}</b>}

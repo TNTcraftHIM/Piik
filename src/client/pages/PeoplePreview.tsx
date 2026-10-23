@@ -163,7 +163,7 @@ export function PeoplePreview() {
     <details className="cp-disclosure" open={overviewOpen} onToggle={event => setOverviewOpen(event.currentTarget.open)}>
       <summary>{t("host.details")}</summary>
       {overviewOpen && (sourceActive || voice) && <Row sub><ConnectionDetails rows={[
-        ...(sourceActive ? [{ key: "picture", media: "video" as const, label: t(view === "host" ? "stats.capture" : "stats.sharedMedia"),
+        ...(sourceActive ? [{ key: "picture", media: "video" as const, label: t(view === "host" ? "stats.localCapture" : "stats.sharedMedia"),
           icon: view === "host" ? "share" as const : "arrowDown" as const,
           cells: view === "host" ? <CaptureMetricCells resolution="2560x1440" frameRate={60} codec="h264" hasSourceAudio /> : undefined,
           route: view === "viewer" ? "p2p" as const : null, metrics: view === "viewer" ? pictureMetrics : null,

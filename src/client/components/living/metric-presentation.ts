@@ -18,17 +18,18 @@ export const METRIC_PRESENTATION = {
   "stats.codec": { icon: "puzzle", hint: "hint-codec" },
   "voice.details.codec": { icon: "puzzle", hint: "hint-codec" },
   "stats.outgoing": { icon: "gauge", hint: "hint-metric-outgoing" },
-  "stats.qualityState": { icon: "sliders", hint: "hint-metric-quality" },
-  "stats.capture": { icon: "share", hint: "hint-metric-capture" },
-  "stats.inputFps": { icon: "frames", hint: "hint-metric-input-fps" },
-  "stats.encoder": { icon: "cpu", hint: "hint-metric-encoder" },
+  "stats.qualityState": { icon: "sliders", hint: "hint-metric-quality", wrap: true },
+  "stats.capture": { icon: "share", hint: "hint-metric-capture", wrap: true },
+  "stats.inputFps": { icon: "frames", hint: "hint-metric-input-fps", description: "stats.inputFpsHint" },
+  "stats.encoder": { icon: "cpu", hint: "hint-metric-encoder", wrap: true },
   "stats.encodeMs": { icon: "clock", hint: "hint-metric-encode-time" },
   "stats.jitter": { icon: "jitter", hint: "hint-metric-jitter" },
-  "stats.dropped": { icon: "frameDrop", hint: "hint-metric-dropped" },
+  "stats.dropped": { icon: "frameDrop", hint: "hint-metric-dropped", description: "stats.droppedHint" },
   "stats.decodeMs": { icon: "clock", hint: "hint-metric-decode-time" },
   "stats.freezeCount": { icon: "pause", hint: "hint-metric-freezes" },
   "stats.freezeDuration": { icon: "clock", hint: "hint-metric-freeze-time" },
   "stats.audio": { icon: "speaker", hint: "hint-metric-audio-bitrate" },
+  "stats.group.sourceAudio": { icon: "speaker", hint: "hint-source-audio" },
   "stats.audioLoss": { icon: "packetLoss", hint: "hint-metric-audio-loss" },
   "stats.audioJitter": { icon: "jitter", hint: "hint-metric-audio-jitter" },
   "stats.playoutDelta": { icon: "clock", hint: "hint-metric-playout" },
@@ -36,7 +37,7 @@ export const METRIC_PRESENTATION = {
   "stats.audioBuffer": { icon: "clock", hint: "hint-metric-audio-buffer" },
   "stats.audioConcealedRate": { icon: "audioRepair", hint: "hint-metric-concealment-rate" },
   "stats.audioConcealed": { icon: "audioRepair", hint: "hint-metric-concealments" },
-} satisfies Partial<Record<CopyKey, { icon: GlyphName; hint: HintKind; description?: CopyKey }>>;
+} satisfies Partial<Record<CopyKey, { icon: GlyphName; hint: HintKind; description?: CopyKey; wrap?: boolean }>>;
 
 export type MetricLabel = keyof typeof METRIC_PRESENTATION;
 
