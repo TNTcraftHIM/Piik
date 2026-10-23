@@ -61,6 +61,7 @@ export function usePlaybackControlsVisibility(
       lastMove = { x: event.screenX, y: event.screenY };
       show();
     }, options);
+    screen.addEventListener("pointerleave", () => { lastMove = undefined; }, options);
     screen.addEventListener("pointerdown", (event) => {
       pointerType.current = event.pointerType;
       if (event.pointerType === "touch") hoveringControls = false;

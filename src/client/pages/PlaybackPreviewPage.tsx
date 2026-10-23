@@ -7,7 +7,7 @@ import { StatusIndicator } from "../components/living/StatusIndicator";
 import { STATUS_CATALOG } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
 
-function testMedia(withAudio: boolean, portrait: boolean) {
+export function testMedia(withAudio: boolean, portrait: boolean) {
   const canvas = document.createElement("canvas");
   canvas.width = portrait ? 480 : 640;
   // A 4:3 picture makes contain, crop and stretch visible in the 16:9 player.

@@ -49,10 +49,9 @@
   .cp-connection-panel { padding: 4px; }
 }
 .cp-reaction-select select { min-width: 0; border: 0; color: var(--ink); background: var(--paper); font-size: 16px; }
-.cp-permission-flow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; max-width: 760px; }
-.cp-permission-flow .cp-card { padding: 22px; }
+.cp-permission-flow { display: grid; grid-template-columns: minmax(0, 1fr) 180px; align-items: start; gap: 24px; max-width: 1000px; }
+.cp-permission-viewer .lr-tv { width: 100%; margin-top: 0; }
 .cp-permission-flow h3 { margin: 0 0 14px; font-size: 15px; }
-.cp-permission-host .lr-remote-request { padding-block: 4px; }
-.cp-permission-flow .cp-tools { margin-bottom: 0; }
+.cp-permission-host > p { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .cp-permission-caption { color: var(--muted); font-size: 12px; }
 @media (max-width: 620px) { .cp-permission-flow { grid-template-columns: 1fr; } }

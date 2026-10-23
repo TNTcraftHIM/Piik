@@ -1,6 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
-import { RemoteControlRequestCard } from "../components/living/RemoteControlRequestCard";
+import { RemoteControl } from "../components/living/RemoteControl";
+import { PlaybackControls } from "../components/living/PlaybackControls";
+import { StageTv } from "../components/living/Stage";
+import { StatusIndicator } from "../components/living/StatusIndicator";
+import { useTheaterMode } from "../components/living/use-theater-mode";
 import { RemoteKeyboard } from "../components/living/RemoteKeyboard";
 import { Couch } from "../components/living/Couch";
 import { STATUS_CATALOG } from "../ui/media-status";
@@ -9,6 +13,8 @@ import type { RemoteControlRequest } from "../native/wire";
 import type { RemoteInputEvent } from "../remote-control/input-session";
 import type { RemoteControlMode, RemoteInputPlatform } from "../remote-control/protocol";
 import { useCopy } from "../ui/copy";
+import { testMedia } from "./PlaybackPreviewPage";
+import { PreviewInput } from "./preview-input";
 
 const participants = [
   { peerId: "preview-player-one", name: "Player 1" },
@@ -92,39 +98,52 @@ export function RemoteControlsPreview() {
 }
 
 function PermissionRequestPreview() {
-  const { lang } = useCopy();
+  const { lang, t } = useCopy();
   const en = lang === "en";
-  const [state, setState] = useState<"ready" | "pending" | "active">("pending");
-  const title = state === "active" ? "remote.stop" : state === "pending" ? "remote.cancel" : "remote.request";
+  const [channel] = useState(() => new PreviewInput());
+  const state = useSyncExternalStore(channel.subscribe, channel.getSnapshot);
+  const video = useRef<HTMLVideoElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [theater, setTheater] = useTheaterMode();
+  useEffect(() => {
+    const sample = testMedia(false, false);
+    const element = video.current!;
+    element.srcObject = sample.stream;
+    setStream(sample.stream);
+    void element.play().catch(() => {});
+    return () => { element.srcObject = null; sample.stop(); };
+  }, []);
+  const hasRequest = state.state === "pending" || state.state === "active" || state.state === "suspended";
   return <section id="remote-permission-preview" className="cp-section">
     <header className="cp-section-head"><div>
       <h2>{en ? "Request remote control" : "权限申请"}</h2>
-      <p>{en ? "One request for remote control. These production controls use sample state here and do not operate your computer."
-        : "一次申请远程控制权限。这里用正式控件演示，不会操作你的电脑。"}</p>
+      <p>{en ? "Use the mouse button in the playback bar, then handle the request in the Host's remote-control window. The local sample picture does not control your computer."
+        : "点击播控上的鼠标按钮，再到房主的远控浮窗处理请求。这里是本地示例画面，不会操作电脑。"}</p>
     </div></header>
     <div className="cp-permission-flow">
-      <section className="cp-card cp-permission-viewer" aria-label={en ? "Viewer" : "观众端"}>
-        <header><h3>{en ? "Viewer" : "观众端"}</h3></header>
-        <p>{en ? "Request control, then use your keyboard, mouse and supported gamepad once approved."
-          : "点击申请，获准后即可使用键鼠和可用的手柄。"}</p>
-        <div className="cp-tools lr-media-controls">
-          <Btn icon="mouse" cap={title} title={title}
-            hint={state === "ready" ? "hint-remote-control" : "hint-remote-stop"}
-            pressed={state === "active"} busy={state === "pending"}
-            onClick={() => setState(state === "ready" ? "pending" : "ready")} />
+      <div className={theater ? "lr-room is-theater" : "cp-permission-viewer"}>
+        <div className="lr-scene">
+          <StageTv live={Boolean(stream)} label={en ? "Viewer picture" : "观众画面"}
+            indicator={<StatusIndicator status={stream ? STATUS_CATALOG.connected : STATUS_CATALOG.joining} />}>
+            <video ref={video} muted playsInline aria-label={en ? "Local sample picture" : "本地示例画面"} />
+            <PlaybackControls videoRef={video} stream={stream} canPlay={Boolean(stream)} theaterMode={theater}
+              onPlay={() => { void video.current?.play().catch(() => {}); }} onToggleTheater={() => setTheater(value => !value)}
+              onReconnect={() => channel.reset()} reconnectAvailable={false}
+              remoteActions={<RemoteControl channel={channel} videoRef={video} available />} />
+          </StageTv>
         </div>
-      </section>
-      <section className="cp-card lr-remote-panel cp-permission-host" aria-label={en ? "Host" : "房主端"}>
-        <header><h3>{en ? "Host" : "房主端"}</h3></header>
-        {state !== "ready" ? <RemoteControlRequestCard name="Player 1" peerId="preview-player-one" state={state}
-          onAllow={() => setState("active")}
-          onDecline={() => setState("ready")} onStop={() => setState("ready")} />
-          : <p>{en ? "Waiting for a request." : "等待权限申请。"}</p>}
-      </section>
+      </div>
+      <aside className="cp-permission-host" aria-label={en ? "Host" : "房主侧"}>
+        <h3>{en ? "Host" : "房主侧"}</h3>
+        <HostRemoteControl mode={state.mode} platform="windows"
+          requests={hasRequest ? [{ id: "preview-request", name: "Player 1", peerId: "preview-player-one", state: state.state as "pending" | "active" | "suspended" }] : []}
+          onPolicy={async (mode, password) => channel.policy(mode, password)} onDecide={async (_id, allow) => channel.decide(allow)} />
+        <p>{hasRequest ? t(state.state === "pending" ? "remote.waiting" : "remote.controlling") : en ? "Waiting for a request." : "等待权限申请。"}</p>
+      </aside>
     </div>
-    <div className="cp-tools"><button type="button" className="lr-btn is-compact" onClick={() => setState("pending")}>
+    <div className="cp-tools"><button type="button" className="lr-btn is-compact" onClick={() => channel.policy("ask")}>
       {en ? "Reset example" : "重置示例"}</button>
-      <span className="cp-permission-caption">{en ? "Try allowing, declining or ending control." : "可以试试允许、拒绝和结束控制。"}</span>
+      <span className="cp-permission-caption">{en ? "Hover the picture to reveal its normal playback controls." : "鼠标移入画面，即可呼出正式播控。"}</span>
     </div>
   </section>;
 }
