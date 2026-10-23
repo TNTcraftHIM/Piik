@@ -7,8 +7,9 @@ The [pinned source index](./upstream.json) records exact upstream commits and
 SHA-256 values for Cloudflared, the WebRTC SDK, and npm packages that omit license
 files.
 The retained text normalizes line endings and incidental whitespace only.
-The Cloudflared text includes its source distribution's root and all vendored
-LICENSE, COPYING, and NOTICE files, including platform variants. The protobuf
+The Cloudflared text includes its root and dependency LICENSE, COPYING, and
+NOTICE files, including platform variants. Generate its dependency inventory
+with `go mod vendor` at the pinned upstream revision. The protobuf
 text also preserves Google's BSD-licensed varint attribution.
 The Windows capture adapter statically links the pinned WebRTC SDK, including
 its libvpx encoder. The App's native notices retain the SDK's collected

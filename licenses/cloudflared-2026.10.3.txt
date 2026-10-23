@@ -1,7 +1,7 @@
-Cloudflared 2026.8.3
-Source: https://github.com/cloudflare/cloudflared/tree/fe70e951a3c52d92abf9f6c4248e32937b2f42fc
+Cloudflared 2026.10.3
+Source: https://github.com/cloudflare/cloudflared/tree/de6376c5af4a67cbc65258682e5a01781827643d
 
-Root and vendored license/notice texts from the pinned source distribution,
+Root and dependency license/notice texts from the pinned source and Go modules,
 including platform variants. All 89 upstream files are represented below;
 identical texts share one section without dropping any source attribution.
 

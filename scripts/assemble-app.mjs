@@ -11,6 +11,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readSync,
   readFileSync,
   realpathSync,
@@ -278,11 +279,13 @@ try {
   mkdirSync(dirname(outputRoot), { recursive: true });
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
   outputOwned = true;
-  cpSync(packageRoot, outputRoot, {
-    recursive: true,
-    errorOnExist: true,
-    force: false,
-  });
+  for (const entry of readdirSync(packageRoot)) {
+    cpSync(join(packageRoot, entry), join(outputRoot, entry), {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+    });
+  }
   process.stdout.write(`${JSON.stringify({
     root: outputRoot,
     version,
