@@ -33,6 +33,7 @@ export class HostAudio {
     try {
       const context = this.context = new AudioContext();
       this.destination = context.createMediaStreamDestination();
+      this.destination.stream.getAudioTracks()[0]!.contentHint = "music";
       this.connectSource();
       await context.resume();
     } catch {

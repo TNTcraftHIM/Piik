@@ -76,6 +76,7 @@ test("commentary and source replacement retain one published output and retire t
   const audio = new HostAudio(media(video, sound), "browser", changed, microphoneChanged);
   const output = await audio.start(), outputTrack = output.getAudioTracks()[0];
   expect(audio.commentaryAvailable).toBe(true);
+  expect(outputTrack!.contentHint).toBe("music");
   getUserMedia.mockResolvedValueOnce(media(microphone));
   await audio.setMicrophone(true, { deviceId: "headset", volume: 1, voiceProcessing: true });
   expect(getUserMedia).toHaveBeenCalledWith({ audio: expect.objectContaining({ deviceId: { exact: "headset" }, echoCancellation: true }), video: false });
