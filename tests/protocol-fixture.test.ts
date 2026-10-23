@@ -132,6 +132,7 @@ describe("shared wire fixture", () => {
         "client:route-transport-connected",
         "client:send-room-interaction",
         "client:sender-quality-evidence",
+        "client:set-co-play-presence",
         "client:set-display-name",
         "client:set-quality-settings",
         "client:set-sharing-paused",
@@ -141,7 +142,10 @@ describe("shared wire fixture", () => {
         "client:signal",
         "client:signaling-challenge",
         "client:stop-sharing",
+        "client:subscribe-co-play-presence",
         "client:subscribe-room-interactions",
+        "client:subscribe-room-voice",
+        "client:room-voice-command",
         "client:viewer-quality-evidence",
         "createRoomRequest",
         "replaceRoomRequest",
@@ -170,6 +174,7 @@ describe("shared wire fixture", () => {
     );
     expect([...covered].sort()).toEqual([
       "authenticated",
+      "co-play-presence",
       "error",
       "host-status",
       "pause-sharing-source",

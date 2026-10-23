@@ -45,11 +45,13 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       maxRelayChildren: z.number().int().min(1).max(20).optional(),
       remoteInput: z.boolean().optional(),
       remoteStopShortcut: z.boolean().optional(),
+      remoteCoPlay: z.boolean().optional(),
       video: z.boolean().default(false),
       processAudio: z.boolean().default(false),
       systemAudio: z.boolean().default(false),
       processAudioExclusion: z.boolean().default(false),
       microphone: z.boolean().default(false),
+      shareVolume: z.boolean().optional(),
       // API availability, not Windows approval or observed border visibility.
       captureBorderControl: z.boolean().default(false),
       hardwareH264: z.boolean().default(false),
@@ -270,6 +272,7 @@ export const nativeAckResponseSchema = z
       "share-stopped",
       "share-paused",
       "microphone-set",
+      "share-volume-set",
       "remote-control-set",
       "publication-answer-accepted",
       "publication-candidate-accepted",
@@ -288,10 +291,11 @@ const remoteControlRequestSchema = z.object({
   id: opaqueIdentifierSchema,
   peerId: opaqueIdentifierSchema,
   state: z.enum(["pending", "active", "suspended"]),
+  endpointId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
 }).strict();
 export type RemoteControlRequest = z.infer<typeof remoteControlRequestSchema>;
 
-export const remoteControlStateSchema = z.object({ mode: remoteControlModeSchema, platform: remoteInputPlatformSchema, requests: z.array(remoteControlRequestSchema) });
+export const remoteControlStateSchema = z.object({ mode: remoteControlModeSchema, platform: remoteInputPlatformSchema, requests: z.array(remoteControlRequestSchema), coPlay: z.boolean().optional(), gamepad: z.boolean().optional(), simultaneous: z.boolean().optional() });
 export type RemoteControlState = z.infer<typeof remoteControlStateSchema>;
 
 export const nativeEventSchema = z.discriminatedUnion("type", [

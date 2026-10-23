@@ -9,6 +9,7 @@ import {
   type ViewerRoutePreference,
   type ServerMessage,
   type IceConfig,
+  type CoPlayGrant,
 } from "../../shared/protocol";
 import type { SignalConnectionState } from "../types";
 import { qualitySettingsEqual } from "../media/quality";
@@ -83,6 +84,8 @@ export class SignalingClient {
   private remoteInputEnabled = false;
   private audioPresenceEnabled = false;
   private hostAudioAvailable: boolean | null = null;
+  private coPlayPresenceEnabled = false;
+  private coPlayGrants: CoPlayGrant[] = [];
   interactions: RoomInteractionSession | null = null;
   roomVoice: RoomVoiceSession | null = null;
   private voiceIceConfig: IceConfig = { iceServers: [] };
@@ -134,13 +137,33 @@ export class SignalingClient {
     if (this.authenticatedPeerId) this.send({ type: "subscribe-remote-input" });
   }
 
-  enableRoomVoice(): RoomVoiceSession | null {
+  enableCoPlayPresence(): void {
+    if (this.stopped || this.coPlayPresenceEnabled) return;
+    this.coPlayPresenceEnabled = true;
+    this.flushCoPlayPresence();
+  }
+
+  setCoPlayGrants(grants: CoPlayGrant[]): void {
+    if (this.identity.role !== "host") return;
+    this.coPlayGrants = grants;
+    this.flushCoPlayPresence();
+  }
+
+  private flushCoPlayPresence(): void {
+    if (!this.coPlayPresenceEnabled || !this.authenticatedPeerId) return;
+    if (this.identity.role === "viewer") this.send({ type: "subscribe-co-play-presence" });
+    else if (this.identity.shareGeneration && this.pendingShareGeneration === null) {
+      this.send({ type: "set-co-play-presence", shareGeneration: this.identity.shareGeneration, grants: this.coPlayGrants });
+    }
+  }
+
+  enableRoomVoice({ listeningPresence = false, bitrate = false }: { listeningPresence?: boolean; bitrate?: boolean } = {}): RoomVoiceSession | null {
     if (this.stopped) return null;
     if (!this.roomVoice) {
-      this.roomVoice = new RoomVoiceSession(message => this.send(message), this.voiceIceConfig);
+      this.roomVoice = new RoomVoiceSession(message => this.send(message), this.voiceIceConfig, listeningPresence, bitrate);
       if (this.authenticatedPeerId) {
         this.roomVoice.authenticated(this.authenticatedPeerId, this.identity.role);
-        this.send({ type: "subscribe-room-voice" });
+        this.roomVoice.subscribeRoom();
       }
     }
     return this.roomVoice;
@@ -286,6 +309,7 @@ export class SignalingClient {
       return false;
     }
     this.identity.roomOnly = undefined;
+    if (this.identity.shareGeneration !== shareGeneration) this.coPlayGrants = [];
     this.identity.shareGeneration = shareGeneration;
     this.identity.sharingPaused = sharingPaused;
     this.identity.qualitySettings = { ...qualitySettings };
@@ -308,6 +332,7 @@ export class SignalingClient {
     this.pendingShareGeneration = null;
     this.hostQualityIntent = null;
     this.hostAudioAvailable = null;
+    this.coPlayGrants = [];
     return sent;
   }
 
@@ -466,7 +491,7 @@ export class SignalingClient {
         if (this.roomVoice) {
           this.roomVoice.updateIceConfig(message.iceConfig);
           this.roomVoice.authenticated(message.peerId, this.identity.role);
-          this.send({ type: "subscribe-room-voice" });
+          this.roomVoice.subscribeRoom();
         }
         if (this.remoteInputEnabled) this.send({ type: "subscribe-remote-input" });
         // Discovery can complete after the authentication request was sent.
@@ -475,6 +500,7 @@ export class SignalingClient {
         }
         this.reconcileHostShareState(message);
         this.flushAudioPresence();
+        this.flushCoPlayPresence();
       }
       if (message.type === "viewer-route-preference" && this.identity.role === "viewer") {
         this.identity.routePreference = message.preference;
@@ -482,7 +508,10 @@ export class SignalingClient {
       if ((message.type === "sharing-started" || message.type === "sharing-start-failed") &&
         this.pendingShareGeneration === message.shareGeneration) {
         this.pendingShareGeneration = null;
-        if (message.type === "sharing-started") this.flushAudioPresence();
+        if (message.type === "sharing-started") {
+          this.flushAudioPresence();
+          this.flushCoPlayPresence();
+        }
       }
       if (message.type === "sharing-start-failed" && this.identity.role === "host" &&
         this.identity.shareGeneration === message.shareGeneration) {

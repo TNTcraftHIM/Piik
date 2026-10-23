@@ -3,7 +3,7 @@ import type { ViewerRoutePreference } from "../../../shared/protocol";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Btn, Cap, Chip, Pill, RowGroup, SwitchItem } from "./primitives";
+import { Cap, Chip, Pill, RowGroup, SwitchItem } from "./primitives";
 
 export interface ViewerPlaybackSettingsProps {
   pictureFit: VideoFit;
@@ -28,30 +28,21 @@ export interface ViewerPlaybackSettingsProps {
 }
 
 // Local display and connection intent; media and routing keep their owners.
-export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route, relayVolunteer, displayActions, reconnect }: ViewerPlaybackSettingsProps & {
-  displayActions: ReactNode; reconnect: ReactNode;
+export function ViewerPlaybackSettings({ route, relayVolunteer, overlaySettings, reconnect }: Pick<ViewerPlaybackSettingsProps, "route" | "relayVolunteer"> & {
+  overlaySettings?: ReactNode; reconnect: ReactNode;
 }) {
   const { t, vis } = useCopy();
   const routeHint = route?.rejected ? "playback.routeRejected" : route?.sfuOnly ? "playback.routeSfuOnly"
     : route?.peerOnly ? "playback.routePeerOnly" : !route?.sfuAvailable ? "playback.routeNoSfu"
     : `playback.routeHint.${route.preference}` as const;
   return <div className="lr-viewer-settings">
-    <section aria-label={t("playback.pictureFit")}>
+    {overlaySettings && <section aria-label={t("playback.overlay")}>
       <div className="lr-viewer-settings-heading">
-        <h3><Glyph name="tv" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.pictureFit")}</span></h3>
-        <Btn icon="rotatePicture" title="playback.rotation" cap="playback.rotation" size="dense"
-          hint="hint-picture-rotation" hintText="playback.rotationHint" pressed={pictureRotation !== 0}
-          onClick={() => setPictureRotation(pictureRotation === 0 ? 90 : 0)} />
+        <h3><Glyph name="danmaku" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.overlay")}</span></h3>
       </div>
-      <RowGroup>{(["contain", "cover", "fill"] as const).map(fit => <Chip key={fit}
-        selected={pictureFit === fit} title={t(`playback.fit.${fit}`)} hint={`hint-fit-${fit}`} onClick={() => setPictureFit(fit)}>
-        {vis && <Glyph name={fit === "contain" ? "fitContain" : fit === "cover" ? "fitCover" : "fitStretch"} size={20} />}
-        <Cap k={`playback.fit.${fit}`} />
-      </Chip>)}</RowGroup>
-      {!vis && <p>{t(pictureFit === "cover" ? "playback.fitCrop" : pictureFit === "fill" ? "playback.fitStretch" : "playback.fitFull")}</p>}
-      {displayActions}
-    </section>
-    <section aria-label={t("playback.connection")}>
+      {overlaySettings}
+    </section>}
+    {(route || relayVolunteer || reconnect) && <section aria-label={t("playback.connection")}>
       <div className="lr-viewer-settings-heading">
         <h3><Glyph name="branch" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.connection")}</span></h3>
         {reconnect}
@@ -83,6 +74,6 @@ export function ViewerPlaybackSettings({ pictureFit, setPictureFit, pictureRotat
         </RowGroup>
         {!vis && <p>{t("playback.relayVolunteerHint")}</p>}
       </div>}
-    </section>
+    </section>}
   </div>;
 }

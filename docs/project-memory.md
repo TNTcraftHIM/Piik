@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-10-21
+Last updated: 2026-10-23
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
@@ -10,11 +10,11 @@ public broadcast service. Hosted and App run one shared Go core
 ([ADR-0012](./adr/0012-shared-go-backend-core.md)); Node and Vite build the
 Browser UI and are not a runtime. Source includes a cross-platform App that
 runs that same core in a self-contained Local deployment or supplies native
-capability to one approved Site through the system Browser. Its single Go
+capability to explicitly approved Sites through the system Browser. Its single Go
 process starts the loopback capability service before room selection. The
 persistent launcher offers Local and temporary public-link choices and manages
-the Site's explicit local approval. Site use can remain on standby without a
-Local room service; native media still belongs to the participant's Web UI.
+per-Site local approval and one starred startup Site. Site use can remain on
+standby without a Local room service; native media still belongs to the participant's Web UI.
 Room source and media implementation are independent: a topology may mix
 Browser and Native peers without changing participant, signaling, capacity, or
 route identity. Local is LAN-first; explicit one-link mode exposes that same
@@ -77,7 +77,7 @@ implementation and routine UI detail.
   require SFU-only media through the same controller. On P2P-first sites, a
   pre-share peer-only policy can exclude that SFU suffix for one share generation.
 - Ordinary endpoints share one steady outbound-copy cap, default `2` and limited to
-  `1..3`; the candidate's explicit relay volunteer uses the
+  `1..3`; the explicit relay volunteer uses the
   [capacity owner](./standards/routing-transport.md#endpoint-and-server-capacity).
   One room controller owns one committed graph, one reconcile loop, and
   one serial child operation. First decoded frame commits picture availability work;
@@ -107,13 +107,17 @@ implementation and routine UI detail.
 Room voice integrates normal App/Server/Web rather than a
 standalone demo. It keeps room authority and one route controller while picture
 generations and explicitly joined voice publications have separate
-lifetimes. [Status](./status.md#current-work)
+lifetimes. Optional source commentary belongs to the share and can run
+independently of room voice. [Status](./status.md#current-work)
 indexes delivery and [room media](./standards/routing-transport.md#room-media)
 owns the new behavior.
 
-Optional attended keyboard/mouse control follows the committed media route back
-to the native Host. One source-scoped grant admits one controller; source change,
-stop and revocation retire it. It adds no separate connection planner or listener.
+Optional attended input follows the committed media route back to the native
+Host. One grant covers keyboard/mouse and an optional gamepad. Control starts
+with one grantee; the Host may allow simultaneous approved Viewers for that source.
+Older published clients retain exclusive keyboard/mouse control. Source change, stop
+and revocation retire the affected grants. It adds no separate connection planner
+or listener.
 Viewer playback preferences and the combined interaction window remain local
 presentation owners under the existing 2.x compatibility boundary.
 

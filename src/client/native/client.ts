@@ -219,7 +219,7 @@ export class NativeClient {
   private readonly listeners = new Set<(event: NativeClientEvent) => void>();
   private readonly closeListeners = new Set<() => void>();
   private closed = false;
-  private microphoneVolumeUpdate: { shareId: string; volume: number; done: Promise<void> } | null = null;
+  private audioVolumeUpdates = new Map<"set-microphone" | "set-share-volume", { shareId: string; volume: number; done: Promise<void> }>();
 
   private constructor(
     readonly health: NativeHealth,
@@ -690,17 +690,26 @@ export class NativeClient {
   // queue dozens of slider events ahead of Stop or reopen a lost microphone.
   setMicrophoneVolume(shareId: string, volume: number): Promise<void> {
     if (!this.health.nativeMedia.microphone) return Promise.reject(new Error("Piik App microphone is unavailable"));
-    const active = this.microphoneVolumeUpdate;
+    return this.setAudioVolume("set-microphone", shareId, volume);
+  }
+
+  setShareVolume(shareId: string, volume: number): Promise<void> {
+    if (!this.health.nativeMedia.shareVolume) return Promise.reject(new Error("Piik App share volume is unavailable"));
+    return this.setAudioVolume("set-share-volume", shareId, volume);
+  }
+
+  private setAudioVolume(type: "set-microphone" | "set-share-volume", shareId: string, volume: number): Promise<void> {
+    const active = this.audioVolumeUpdates.get(type);
     if (active?.shareId === shareId) { active.volume = volume; return active.done; }
     const update = { shareId, volume, done: Promise.resolve() };
-    this.microphoneVolumeUpdate = update;
+    this.audioVolumeUpdates.set(type, update);
     update.done = (async () => {
       do {
         const sent = update.volume;
-        await this.request("set-microphone", { shareId, volume: sent }, nativeAckResponseSchema);
+        await this.request(type, { shareId, volume: sent }, nativeAckResponseSchema);
         if (sent === update.volume) break;
-      } while (this.microphoneVolumeUpdate === update && !this.closed);
-    })().finally(() => { if (this.microphoneVolumeUpdate === update) this.microphoneVolumeUpdate = null; });
+      } while (this.audioVolumeUpdates.get(type) === update && !this.closed);
+    })().finally(() => { if (this.audioVolumeUpdates.get(type) === update) this.audioVolumeUpdates.delete(type); });
     return update.done;
   }
 
@@ -709,7 +718,8 @@ export class NativeClient {
   }
 
   async setRemoteControlPolicy(shareId: string, mode: RemoteControlMode, password?: string): Promise<void> {
-    await this.request("set-remote-control-policy", { shareId, mode, ...(password !== undefined ? { password } : {}) }, nativeAckResponseSchema, null);
+    await this.request("set-remote-control-policy", { shareId, mode, ...(password !== undefined ? { password } : {}),
+      ...(this.health.nativeMedia.remoteCoPlay ? { coPlay: true } : {}) }, nativeAckResponseSchema, null);
   }
 
   async remoteStopShortcut(shareId: string, key?: number): Promise<RemoteStopShortcut> {
@@ -722,8 +732,12 @@ export class NativeClient {
     await this.request("set-remote-input-peers", { shareId, peers }, nativeAckResponseSchema);
   }
 
+  async setRemoteControlSimultaneous(shareId: string, enabled: boolean): Promise<void> {
+    await this.request("set-remote-control-simultaneous", { shareId, enabled }, nativeAckResponseSchema);
+  }
+
   async stopShare(shareId: string): Promise<void> {
-    if (this.microphoneVolumeUpdate?.shareId === shareId) this.microphoneVolumeUpdate = null;
+    for (const [type, update] of this.audioVolumeUpdates) if (update.shareId === shareId) this.audioVolumeUpdates.delete(type);
     await this.request("stop-share", { shareId }, nativeAckResponseSchema);
   }
 
@@ -738,7 +752,7 @@ export class NativeClient {
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    this.microphoneVolumeUpdate = null;
+    this.audioVolumeUpdates.clear();
     this.rejectPending();
     this.listeners.clear();
     this.closeListeners.clear();

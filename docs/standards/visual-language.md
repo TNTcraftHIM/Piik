@@ -34,6 +34,13 @@ ownership; do not reduce distinct situations to one layout with a swapped symbol
 
 ## Layout And Input
 
+Use spacing, alignment and type hierarchy to group UI facts. Write explanations
+as normal localized sentences; keep names, device labels, status and actions in
+their existing visual groups rather than joining them into dotted strings.
+A middle dot is reserved for short, genuinely peer metadata such as compact
+measurements or version details. It is not the default separator for headings,
+instructions, accessible descriptions or a label followed by an explanation.
+
 Present a small shared living room: the television is the media stage, the
 couch and pawns make presence spatial, and the four-digit room code stays
 prominent. Decoration must clarify product facts without creating another state
@@ -304,27 +311,19 @@ joining. Use the shared media-control styling for both states. Missing browser
 microphone capability disables capture with a contextual explanation, without
 disabling listening.
 
-The Viewer bar groups local play/volume/overlay, remote mouse/keyboard, then
-settings/display modes, with fullscreen at the outer edge. Quiet dividers mark
-these responsibilities at every width. Show the remote group only when the Host
-offers control; keep both entries in place and enable the keyboard on control grant.
-The capsule floats inside the picture's lower edge with a small inset. Watching
-and remote input share that geometry; granting or ending control never moves it.
-Remote input keeps its own clicks. When controls hide during remote input,
-retain a local pull on the TV bezel, away from the status lamp. Theater and
-fullscreen place it at the screen edge. Ordinary viewing reveals controls on
-mouse movement or a touch tap on the picture, without another button or setting.
-Keep the chat-overlay toggle in the bar. Its text size and opacity have one
-entry in interaction settings for both Host and Viewers; playback settings own
-local picture display and connection preferences. Microphone settings belong
-to the voice page. All entries retain their existing local setting owner.
-Shorten the volume slider before moving display modes into settings; keep the
-bar on one line at supported mobile widths.
-Viewer settings use a brief anchored popover, preferring space below the picture
-without resizing it. Picture fit owns the narrow-screen overflow for display
-modes; incoming-route settings own reconnect. Use equal-width choices and stack
-these groups on narrow screens. Fit, proportional crop and stretch change local
-display only, separate from the Host's picture settings.
+Playback follows the [shared playback owner](./presentation-lifecycle.md#playback-ownership).
+Keep related controls together at the picture's lower edge: local playback and
+sound, remote input, viewing options, then window modes with fullscreen last.
+Common actions remain directly available; detailed preferences use an anchored
+popover. A narrow player may use two adjacent rows in the same capsule to preserve
+usable controls, not send window actions to a distant corner. One visibility
+owner hides the complete surface. Grants, pause and source changes do not move
+the bar or resize the picture. Remote input retains its local bezel pull.
+Playback settings own on-screen chat appearance and connection preferences;
+chat settings own records, and voice settings own microphone processing.
+Viewer settings prefer space below the picture without resizing it. Use equal-width
+choices and stack groups on narrow screens. Fit, proportional crop and stretch
+change local display only, separate from the Host's picture settings.
 Persistent interaction and remote-permission tools may use the shared floating
 window; the remote keyboard docks outside the picture and can detach on capable
 browsers. One-step actions and brief adjustments do not need movable windows.
@@ -355,7 +354,14 @@ dark backgrounds rather than judging only an enlarged master. This follows
 [Microsoft's small-size silhouette guidance](https://learn.microsoft.com/en-us/windows/apps/design/iconography/app-icon-design)
 and [GNOME's detail guidance](https://developer.gnome.org/hig/guidelines/app-icons.html#detail).
 Inline brand
-marks keep the same wink identity with their existing outline and motion.
+marks keep the same wink identity and outline. Their standard gesture keeps the
+body and feet still: the face appears with both eyes open, followed by a short
+antenna sway, wink, then two gold sparks. The
+[shared brand animation](../../src/client/components/living/brand-mark.css)
+owns timing, sparkle origins and trajectories for the product, website and
+film closing card; looping presentations leave a quiet interval between gestures.
+Reduced motion shows the static wink. A held film ending continues the complete
+shared gesture, while the wordmark and address remain still.
 Their stroke inherits the local surface's text colour:
 dark ink on light surfaces, light ink on dark surfaces, including deliberately
 light panels within a dark page. Gold sparkles remain a brand accent in both
@@ -374,7 +380,7 @@ changing the badge does not restyle the UI, wordmark or illustrations.
 | A captured window or display | Window title bar or display stand, with the shared media metaphor kept distinct |
 | A camera source | `camera` identifies the alternative picture source. Source/playback sound retains the speaker metaphor. |
 | Room text and reactions | `chat` opens the conversation, `danmaku` controls its optional picture overlay, `smile` identifies reactions and `send` submits the chosen content. These do not represent media transport or voice. |
-| Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Input, playback and forwarding remain independent. Toggle names stay fixed. The microphone's green fill shows measured input after gain, not the configured gain percentage. Participant microphone state stays visible; measured speech changes only the green dot and accessible speaking description, without replacing the visible status text. An enabled input alone is not speaking evidence. Opening the channel and opening a microphone stay separate actions. The Host has labelled open/close-room actions, with `stop` and danger styling for closing everyone's voice; a Viewer's `door` leaves only their own voice participation. Joined membership does not use a network-strength symbol. |
+| Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Input, playback and forwarding remain independent. Toggle names stay fixed. The microphone's green fill shows measured input after gain, not the configured gain percentage. Participant rows keep avatar, name and microphone aligned; the status symbol has an accessible name and shared tooltip instead of a repeated on/off sentence. Measured speech fills that symbol and colours its outline green, without adding a connection-like dot. An enabled input alone is not speaking evidence. Opening the channel and opening a microphone stay separate actions. The Host has labelled open/close-room actions, with `stop` and danger styling for closing everyone's voice; a Viewer's `door` leaves only their own voice participation. Joined membership does not use a network-strength symbol. |
 | Experimental attended desktop control | `mouse` identifies keyboard/mouse control, distinct from sharing or playback. Permission copy stays literal; an active control marker describes the grant, not media connectivity. |
 | Floating utility placement | `grip` marks a draggable title bar; corner handles resize the window. Closing a panel hides its presentation, not its room session. |
 | Server forwarding media | A server on the media path; opening a Site alone does not imply SFU |
@@ -407,6 +413,14 @@ not a warning or achievement. The share control retains its
 cast icon. The cast represents friends sharing games, drawings
 and other screen content. Exploratory figures are not alternate
 participant identities. Keep the brand mascot distinct.
+
+Participant state belongs to the shared pawn: light headphones indicate joined
+room voice, resting around the neck when listening is paused. The microphone
+boom extends toward the mouth when open and folds up when muted, independently
+of listening. The toolbar's shared `mouse` glyph sits
+centred on the body for an approved remote-control participant, regardless of
+input device. These marks follow the existing membership and control grant;
+they do not assert speech, input activity or media-route readiness.
 
 The couch has a back, seat, arms and feet. A full room reflows into rows of seats
 without hiding people or requiring horizontal scrolling. Topology preserves
@@ -453,7 +467,7 @@ type checking rather than silently render a warning triangle.
 | Restriction / 受限 | `lock` | Restricted entry, concealed password or a setting fixed by availability; show the affected object. A lock never promises anonymity or secure media. |
 | Site and public entry / 站点与公开入口 | `globe` | Browser/Site entry or code-based public entry. It does not claim internet reachability. |
 | Preferred destination / 默认去处 | `star` | A user-selected default, such as the App's startup Site. It is a preference, not authorization or connection health. |
-| Connections / 连接 | `network`, `branch`, `signal`, `wifiOff`, `server` | Topology, branching, signaling, disconnected signaling and the named server. The header's rising bars show only signaling state: three steady green for connected, two animated yellow for connecting/recovering, all grey for offline. Active bars have equal brightness; this is neither a signal-strength measurement nor a media-quality claim. The television lamp owns sharing/viewing state. A server on a media path means forwarding; a Site backend or control-link server alone does not imply SFU. An invitation chain does not represent signaling. |
+| Connections / 连接 | `network`, `branch`, `signal`, `wifiOff`, `server` | Topology, branching, signaling, disconnected signaling and the named server. The header's three equal circles show only signaling state: three steady green for connected, two animated yellow for connecting/recovering, one red for a failed connection, all grey for offline. Active dots have equal brightness; this is neither a signal-strength measurement nor a media-quality claim. The television lamp owns sharing/viewing state. A server on a media path means forwarding; a Site backend or control-link server alone does not imply SFU. An invitation chain does not represent signaling. |
 | Playback / 播放 | `play`, `pause`, `stop` | Play/resume, pause, end. The control label states whether it affects local viewing or the Host's share. Stop is distinct from a paused or idle room. |
 | Audio / 声音 | `speaker`, `speakerOff` | Audio and mute/no audio, qualified by the source or local playback label. A source track's presence does not establish delivered sound. |
 | Size and viewing mode / 尺寸与观看模式 | `expand`, `contract`, `pip`, `pipExit`, `theater`, `theaterExit`, `fitContain`, `fitCover`, `fitStretch`, `rotatePicture` | Expand/restore, enter/leave picture in picture or theatre mode; contain, proportional crop and stretch change only local picture fit. Picture rotation switches the local landscape/portrait view. The same size symbol can accompany a resolution measurement. |
@@ -665,6 +679,12 @@ A missing optional feature is not a failed media path. A rejected PiP request is
 failure; lack of PiP support is a limitation.
 
 ## Motion Grammar
+
+The brand mascot keeps its body still: antenna twitch, wink, then two sparkles.
+Web/App and website identity marks share `site/assets/brand-motion.css`.
+An entrance draws the shell once and starts the gesture only after the last
+stroke completes; loading repeats the gesture without redrawing the shell.
+Page readiness never waits for this decoration.
 
 | Presentation | Rule |
 | --- | --- |

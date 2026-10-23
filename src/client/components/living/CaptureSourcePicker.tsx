@@ -303,7 +303,7 @@ export function CaptureSourcePicker({
                     kind={!anyNativeAudio ? "no-audio" : audioLocked
                       ? (shareAudio ? "hint-share-audio-fixed" : "hint-silent-share-fixed")
                       : shareAudio ? "hint-stop-audio" : "hint-share-audio"}
-                    text={vis ? undefined : `${audioAction} · ${t("host.sourcePicker.audioHint")}`}
+                    text={vis ? undefined : `${audioAction}\n${t("host.sourcePicker.audioHint")}`}
                     place="below"
                   >
                     {audioSwitch}
@@ -316,7 +316,7 @@ export function CaptureSourcePicker({
                 }}>
                   <summary aria-label={vis ? t("host.sourcePicker.excludeAudio") : undefined}>
                     <Glyph name="speakerOff" size={18} />
-                    {!vis && <span>{t("host.sourcePicker.excludeAudio")}{excludeAudio ? ` · ${excludeAudio.title}` : ""}</span>}
+                    {!vis && <span>{t("host.sourcePicker.excludeAudio")}{excludeAudio ? `: ${excludeAudio.title}` : ""}</span>}
                     <Glyph name="chevron" size={14} />
                   </summary>
                   <AudioExclusionSelect sources={applications} value={excludeAudio}

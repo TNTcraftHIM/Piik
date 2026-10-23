@@ -217,12 +217,15 @@ describe("website language", () => {
 
   it("uses the system default when storage is unavailable", () => {
     vi.stubGlobal("navigator", { language: "zh-CN" });
-    vi.stubGlobal("location", { search: "" });
+    vi.stubGlobal("location", new URL("https://example.test/?preview=1#download"));
+    const replaceState = vi.fn();
+    vi.stubGlobal("history", { state: null, replaceState });
     vi.stubGlobal("localStorage", {
       getItem: () => { throw new Error("blocked"); },
       setItem: () => { throw new Error("blocked"); },
     });
     expect(initialLanguage()).toBe("zh-CN");
     expect(() => rememberLanguage("en")).not.toThrow();
+    expect(String(replaceState.mock.calls[0]?.[2])).toBe("https://example.test/?preview=1&lang=en#download");
   });
 });

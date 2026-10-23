@@ -123,6 +123,7 @@ describe("shouldPauseLocalPreview", () => {
     expect(shouldPauseLocalPreview("hidden", true)).toBe(true);
     expect(shouldPauseLocalPreview("visible", false)).toBe(true);
     expect(shouldPauseLocalPreview("visible", true)).toBe(false);
+    expect(shouldPauseLocalPreview("hidden", false, true)).toBe(false);
   });
 });
 

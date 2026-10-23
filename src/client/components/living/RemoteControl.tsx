@@ -6,7 +6,8 @@ import type { InputTransport } from "../../remote-control/input-route";
 import { RemoteInputSession, type RemoteInputState, type RemoteInputEvent } from "../../remote-control/input-session";
 import { RemoteTouchpad } from "../../remote-control/touchpad";
 import { RemoteViewport } from "../../remote-control/viewport";
-import { matchesRemoteShortcut } from "../../remote-control/protocol";
+import { RemoteGamepad } from "../../remote-control/gamepad";
+import { matchesRemoteShortcut, remoteTextAvailable, remoteGamepadAvailable } from "../../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { RemoteKeyboard } from "./RemoteKeyboard";
 import { Btn } from "./primitives";
@@ -29,11 +30,11 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const [presentation, setPresentation] = useState<"playing" | "paused" | "external">("paused");
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [password, setPassword] = useState("");
+  const [gamepadConnected, setGamepadConnected] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [keyboardDocument, setKeyboardDocument] = useState<Document | null>(null);
   const keyboardDetached = Boolean(keyboardDocument && keyboardDocument !== document);
   const [touch, setTouch] = useState(false);
-  const [zoomed, setZoomed] = useState(false);
   const [releaseKey, setReleaseKey] = useState(() => readRoomPreferences().remoteReleaseKey);
   const session = useRef<RemoteInputSession | null>(null);
   const surface = useRef<HTMLDivElement | null>(null);
@@ -43,6 +44,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const canControl = available && presentation === "playing";
   const active = state?.state === "active" && canControl && channel?.readyState === "open";
   const controlled = (state?.state === "active" || state?.state === "suspended") && canControl && channel?.readyState === "open";
+  const gamepadAvailable = state !== null && remoteGamepadAvailable(state) && typeof navigator.getGamepads === "function";
   const input = useCallback((event: RemoteInputEvent) => session.current?.input(event), []);
   const reset = useCallback(() => { touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
   const closeKeyboard = () => {
@@ -79,6 +81,12 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     if (!active) { touchpad.current?.reset(); setKeyboardOpen(false); setKeyboardDocument(null); }
   }, [active]);
   useEffect(() => {
+    setGamepadConnected(false);
+    if (!controlled || !gamepadAvailable) return;
+    const current = new RemoteGamepad(input, setGamepadConnected);
+    return () => current.dispose();
+  }, [controlled, gamepadAvailable, state?.grant, channel, input]);
+  useEffect(() => {
     const video = videoRef.current;
     const element = surface.current;
     if (!controlled || !video || !element) { setTouch(false); return; }
@@ -90,8 +98,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       cursor.current.style.left = `${picture.left - rect.left + position.x * picture.width}px`;
       cursor.current.style.top = `${picture.top - rect.top + position.y * picture.height}px`;
     };
-    const view = new RemoteViewport(video, element, zoomed => {
-      setZoomed(zoomed);
+    const view = new RemoteViewport(video, element, () => {
       current.position = view.visiblePosition(current.position);
       updateCursor();
     });
@@ -194,33 +201,39 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     const video = videoRef.current;
     return video ? picturePoint(video, clientX, clientY) : null;
   };
-  const buttonTitle = controlled ? "remote.stop" : state.state === "pending" ? "remote.cancel" : "remote.request";
+  const requesting = state.state === "pending";
+  const holding = controlled || requesting;
+  const buttonTitle = holding ? controlled ? "remote.stop" : "remote.cancel" : "remote.request";
+  const requestControl = () => {
+    if (holding) { release(); return; }
+    if (state.mode === "password") {
+      release(); setPasswordOpen(true);
+    } else session.current?.request();
+  };
   const touchControls = touch || matchMedia("(pointer: coarse)").matches;
-  const statusIcon = state.reason === "busy" ? "users" : state.reason === "password" || state.state === "failed" ? "alert"
-    : state.state === "suspended" ? "pause" : "clock";
+  const statusIcon = state.reason === "busy" ? "users" : state.reason === "password" || state.reason === "gamepad" || state.state === "failed" ? "alert"
+    : state.state === "suspended" ? "pause" : gamepadConnected && controlled ? "gamepad" : "clock";
   const feedback: CopyKey | undefined = state.reason ? `remote.reason.${state.reason}`
     : state.state === "suspended" ? "remote.suspended" : state.state === "failed" ? "remote.failed"
-    : state.state === "pending" ? state.mode === "ask" ? "remote.pending" : "remote.connecting" : undefined;
+    : state.state === "pending" ? state.mode === "ask" ? "remote.pending" : "remote.connecting"
+    : gamepadConnected && controlled ? "remote.gamepadHelp"
+    : undefined;
   const parent = videoRef.current?.parentElement;
   return <>
     <span className="lr-remote-controls" role="group" aria-label={t("remote.title")}>
       <span className="lr-remote-viewer-control">
         <Btn icon="mouse" title={presentation === "external" ? "remote.inlineRequired" : presentation === "paused" ? "remote.playbackRequired" : state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
-          hint={controlled || state.state === "pending" ? "hint-remote-stop" : "hint-remote-control"}
+          hint={holding ? "hint-remote-stop" : "hint-remote-control"}
           hintText={feedback} hintTone={state.state === "failed" ? "warn" : undefined}
-          busy={state.state === "pending"} pressed={controlled} disabled={!canControl || state.state === "unavailable"}
-          onClick={() => {
-            if (controlled || state.state === "pending") release();
-            else if (state.mode === "password") setPasswordOpen(open => !open);
-            else session.current?.request();
-          }} />
+          busy={requesting} pressed={controlled} disabled={!canControl || state.state === "unavailable"}
+          onClick={() => requestControl()} />
         {feedback && !passwordOpen && <span className="lr-remote-feedback" role="status">
           <Glyph name={statusIcon} size={15} />
           <span className={vis ? "visually-hidden" : undefined}>{t(feedback)}</span>
         </span>}
       </span>
       <Btn icon="keyboard" title={keyboardDetached ? "floating.focus" : "remote.keyboard"} hint={keyboardDetached ? "hint-window-detach" : "hint-remote-keyboard"}
-        hintText={!active ? feedback ?? "remote.keyboardRequiresControl" : touchControls ? "remote.touchHelp" : undefined} expanded={keyboardOpen} disabled={!active}
+        hintText={!active ? "remote.keyboardRequiresControl" : touchControls ? "remote.touchHelp" : undefined} expanded={keyboardOpen} disabled={!active}
         onClick={() => {
           if (keyboardDetached) keyboardDocument?.defaultView?.focus();
           else if (keyboardOpen) closeKeyboard();
@@ -316,11 +329,8 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />
         </svg>
       </div>}
-      {controlled && zoomed && <div className="lr-remote-zoom">
-        <button type="button" className="lr-chip" aria-label={t("remote.resetZoom")}
-          onClick={() => { reset(); viewport.current?.reset(); surface.current?.focus({ preventScroll: true }); }}>1×</button>
-      </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
+        allowText={remoteTextAvailable(state)}
         releaseKey={releaseKey} onReleaseKeyChange={key => { setReleaseKey(key); saveRoomPreferences({ remoteReleaseKey: key }); }}
         onSurfaceChange={keyboardSurfaceChanged}
         mouseControl={!touchControls && "requestPointerLock" in HTMLElement.prototype && <span className="lr-remote-game-mouse"><Btn icon="gamepad" size="compact"

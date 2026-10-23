@@ -1,6 +1,6 @@
 // Living-room control primitives. Every glyph control keeps its copy in
 // tooltip/aria; text modes add a visible caption from the same catalog.
-import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import { useId, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Tooltip } from "./Tooltip";
 import { participantColor } from "./participant-color";
 import type { ComicKind } from "./Comic";
@@ -57,6 +57,7 @@ export function Btn({
   type = "button",
   hint,
   hintText,
+  hintVars,
   hintTone,
   hintMotion,
   draw,
@@ -81,6 +82,7 @@ export function Btn({
   hint?: ComicKind | HintKind;
   /** Optional explanation beyond the control's accessible name. */
   hintText?: CopyKey;
+  hintVars?: Record<string, string>;
   hintTone?: ComicTone;
   hintMotion?: ComicMotion;
   /** Draw-in spot id for state-beat toggle icons (see Glyph). */
@@ -130,7 +132,7 @@ export function Btn({
     </button>
   );
   return hint ? (
-    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText) : label}>{button}</Tooltip>
+    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
   ) : (
     button
   );
@@ -171,7 +173,7 @@ export function Chip({
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}
       style={softDisabled ? SOFT_DISABLED_STYLE : undefined}
-      aria-label={disabled && hintText ? `${title} · ${hintText}` : title}
+      aria-label={disabled && hintText ? `${title}\n${hintText}` : title}
       onClick={
         softDisabled
           ? blockSoftDisabledClick
@@ -230,6 +232,7 @@ export function Pill({
   alert,
   comic,
   motion = "still",
+  onDismiss,
 }: {
   icon: GlyphName;
   tone?: ComicTone;
@@ -237,22 +240,25 @@ export function Pill({
   alert?: boolean;
   comic: ComicKind | HintKind;
   motion?: ComicMotion;
+  onDismiss?: () => void;
 }) {
   const { vis } = useCopy();
   const resolvedTone = tone ?? "warn";
   const body = (
     <button
       type="button"
-      className={`lr-pill is-${resolvedTone === "live" ? "good" : resolvedTone}`}
+      className="lr-pill"
     >
       <Glyph name={icon} size={16} />
       {vis ? <span className="visually-hidden">{label}</span> : <span>{label}</span>}
     </button>
   );
   return (
-    <span role={alert ? "alert" : "status"}>
+    <span className={`lr-notice is-${resolvedTone === "live" ? "good" : resolvedTone}${onDismiss ? " is-dismissible" : ""}`} role={alert ? "alert" : "status"}>
       <Tooltip toggleOnClick kind={comic} tone={resolvedTone} motion={motion}
         text={vis ? undefined : label}>{body}</Tooltip>
+      {onDismiss && <span className="lr-notice-dismiss"><Btn icon="x" size="dense" quiet
+        title="notice.dismiss" hint="hint-close" onClick={onDismiss} /></span>}
     </span>
   );
 }
@@ -265,6 +271,7 @@ export function SwitchItem({
   label,
   note,
   hint,
+  icon,
 }: {
   checked: boolean;
   disabled?: boolean;
@@ -276,16 +283,18 @@ export function SwitchItem({
   note?: string;
   /** Shared hint comic; native title stays off. */
   hint?: HintKind;
+  /** Preserve the control's meaning when its text label is hidden. */
+  icon?: GlyphName;
 }) {
   const { vis, t } = useCopy();
+  const id = useId();
   const wrapped = Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
-  const description = note ? `${label} · ${note}` : label;
+  const description = note ? `${label}\n${note}` : label;
   const tooltipText = disabled || locked ? description
-    : `${t(checked ? "common.disable" : "common.enable", { name: label })}${note ? ` · ${note}` : ""}`;
-  const item = (
-    <span className="lr-switch-item">
-      <button
+    : `${t(checked ? "common.disable" : "common.enable", { name: label })}${note ? `\n${note}` : ""}`;
+  const control = (
+      <button id={id}
         type="button"
         className="lr-switch"
         role="switch"
@@ -303,15 +312,13 @@ export function SwitchItem({
               }
         }
       />
-      {locked ? <Glyph name="lock" size={12} /> : null}
-      {vis ? null : <span className="lr-cap">{label}</span>}
-    </span>
   );
-  return hint ? (
-    <Tooltip kind={hint} text={vis ? undefined : tooltipText}>{item}</Tooltip>
-  ) : (
-    item
-  );
+  return <span className="lr-switch-item">
+    {vis && icon ? <Glyph name={icon} size={18} /> : null}
+    {hint ? <Tooltip kind={hint} text={vis ? undefined : tooltipText}>{control}</Tooltip> : control}
+    {locked ? <Glyph name="lock" size={12} /> : null}
+    {vis ? null : <label className="lr-cap" htmlFor={id}>{label}</label>}
+  </span>;
 }
 
 export function NameTag({ name, identity }: { name: string; identity: string }) {

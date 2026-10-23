@@ -1,0 +1,147 @@
+// Film A — every user-facing string, zh / en. Scene code reads film.S (set in film.js build()).
+// Ransom-note lines are token arrays: one tile per token (zh: one per character; en: one per word/letter group).
+// Pop timings in the scenes follow token order, so keep token counts when you edit (or adjust the times next to them).
+import { NAMES } from '../../engine/cast.js';
+
+const EN = NAMES.en;
+const zhChars = s => [...s];
+
+export const STRINGS = {
+  zh: {
+    names: NAMES.zh,
+    tags: { tuan: 'AFK MANAGER', yuan: 'KEYS', dian: 'SNACKS', cong: 'BIG BRAIN' },
+    // cold open
+    l_cpu: { main: '……又是跟电脑打。', sub: '…CPU AGAIN.' },
+    game: { title: '枕头大乱斗', sub: 'PILLOW BRAWL', cpu: '电脑', wait: '等待中…', p1: 'P1 阿团', p2: 'P2 小圆' },
+    alone: '一个人',
+    viewers: '观众 VIEWERS', viewersShort: '观众',
+    places: { yuan: ['被窝里', 'IN BED'], dian: ['地铁上', 'ON THE METRO'], cong: ['加班中', 'WORKING LATE'] },
+    metro: '4号线',
+    band: ['都在线，', '就是不在身边。', 'EVERYONE’S ONLINE — JUST NOT HERE'],
+    idea1: zhChars('那就——'), idea2: zhChars('全都叫过来！'),
+    wordmarkSub: 'PRIVATE SCREEN SHARING · 私人屏幕共享',
+    // step 1
+    step1: ['选个画面，开播。', 'STEP 01 · PICK WHAT TO SHARE'],
+    sources: [['浏览器', 'BROWSER'], ['摄像头', 'CAMERA'], ['窗口', 'APP WINDOW'], ['屏幕', 'FULL SCREEN']],
+    sharingChip: '<b>正在分享</b>&nbsp;&nbsp;窗口 · 枕头大乱斗',
+    live: zhChars('开播！'),
+    // step 2
+    step2: ['复制邀请，丢给朋友。', 'STEP 02 · SEND THE INVITE'],
+    copy: '复制邀请', copied: '已复制',
+    card: { top: '邀请状 No.9527', l1: zhChars('今晚，'), l2: zhChars('来挨打。'), sign: '—— 阿团' },
+    sent: ['已发送', 'SENT TO 3 FRIENDS'],
+    // step 3
+    step3: ['点开就看。', 'STEP 03 · TAP THE LINK, WATCH IN A BROWSER'],
+    inviteLink: '邀请链接 · 9527',
+    joined: n => `${n} 已加入`,
+    noInstall: ['浏览器打开就能看', 'NO INSTALL · 朋友不用装 APP'],
+    tracker: ['选画面', '发邀请', '点开看'],
+    // full house
+    pins: ['被窝', '地铁', '工位'],
+    fullHouse: zhChars('全员到齐！'),
+    together: ['人在各地，坐在一起。', 'MILES APART · SAME SOFA'],
+    // warm-up
+    viewers3: '观众 3 / 20',
+    danmaku: ['阿团今天必输', '我押小圆', '番茄已备好 {tomato}', '这游戏好可爱', '电脑都打不过吧哈哈', '前方高能', '23:00 准时开打', '小圆上啊！', '666', '打起来！', '打起来！打起来！', '打起来！！！', '打起来！'],
+    chatTitle: '<b>互动</b>&nbsp;&nbsp;<span style="font:600 20px Barlow Condensed;letter-spacing:.2em;opacity:.6">CHAT</span>',
+    chat: ['枕头带了。', '这是什么游戏 好萌', '番茄已就位', '来，看点好康的。'],
+    b_yuan: { main: '要不……我来跟你打？', sub: 'WANT ME TO PLAY YOU?' },
+    b_tuan: { main: '来啊！谁怕谁！', sub: 'BRING IT!' },
+    callouts: [['弹幕', 'DANMAKU'], ['聊天', 'CHAT'], ['表情', 'REACTIONS'], ['语音', 'VOICE']],
+    // handover
+    reqTag: 'REMOTE CONTROL · REQUEST',
+    reqTitle: n => `${n} <span style="font-weight:500">请求控制</span>`,
+    consent: '允许后，对方可以操作这台电脑的鼠标和键盘。',
+    decline: '拒绝', allow: '允许控制',
+    rcHead: 'REMOTE CONTROL · 远程控制',
+    onePC: '一台电脑，两个玩家。',
+    p1Sub: '阿团 · 本机', p2Sub: '小圆 · 远程',
+    l_kb: { main: '键盘给你，输了别哭。', sub: 'KEYBOARD’S YOURS. DON’T CRY.' },
+    // vs / fight
+    vsNameL: zhChars('阿团'), vsNameR: zhChars('小圆'),
+    vsSubL: 'HOST · P1 · 本机', vsSubR: 'VIEWER · P2 · 远程',
+    hudChip: 'PIIK · 观众 3/20',
+    special: '必杀！',
+    ooh: zhChars('哦——！'),
+    l_nope: { main: '……刚才不算！', sub: '…THAT DIDN’T COUNT!' },
+    // more
+    notJust: ['不止游戏。', 'NOT JUST GAMES'],
+    montage: [[zhChars('画画'), 'DRAWING'], [zhChars('追剧'), 'WATCH PARTY'], [zhChars('晒照片'), 'PHOTOS'], [zhChars('教爸妈'), 'HOW-TO'], [zhChars('撸猫'), 'CAMERA'], [zhChars('写作业'), 'STUDY TOGETHER']],
+    settings: { title: '设置', rows: ['显示', '声音', '网络', '账户'], tip: '妈，点这个' },
+    anything: ['好康的，都能分享。', 'ANYTHING ON YOUR SCREEN'],
+    // facts
+    facts: [['免费 · 开源', 'FREE & OPEN SOURCE'], ['点链接，浏览器直接看', 'VIEWERS JUST OPEN A LINK'], ['最多 20 位观众', 'UP TO 20 VIEWERS'], ['低延迟 · 高可用', 'LOW LATENCY · HIGH AVAILABILITY'], ['资源占用低', 'LIGHT ON RESOURCES']],
+    // end
+    endCard: { l1: zhChars('来，看点'), l2: zhChars('好康的。'), sign: '—— Piik' },
+    tagline: ['来，看点好康的。', 'SHARE THE GOOD STUFF.'],
+    closingFeatures: ['一起看', '随时聊', '换你玩'],
+    footer: '免费开源 · 点击即用 · 支持自部署',
+  },
+
+  en: {
+    names: EN,
+    tags: { tuan: '', yuan: 'KEYS', dian: '', cong: '' },
+    l_cpu: { main: '...The CPU. Again.', sub: '' },
+    game: { title: 'PILLOW BRAWL', sub: '2-PLAYER PARTY BRAWLER', cpu: 'CPU', wait: 'WAITING...', p1: `P1 ${EN.tuan.toUpperCase()}`, p2: `P2 ${EN.yuan.toUpperCase()}` },
+    alone: 'ALONE',
+    viewers: 'VIEWERS', viewersShort: 'VIEWERS',
+    places: { yuan: ['IN BED', ''], dian: ['ON THE METRO', ''], cong: ['WORKING LATE', ''] },
+    metro: 'LINE 4',
+    band: ['EVERYONE\'S ONLINE.', 'NOBODY\'S HERE.', ''],
+    idea1: ['OKAY', 'THEN', '—'], idea2: ['GET', 'EVERY', 'ONE', 'OVER', 'HERE', '!'],
+    wordmarkSub: 'PRIVATE SCREEN SHARING',
+    step1: ['PICK A SCREEN. GO LIVE.', 'STEP 01'],
+    sources: [['BROWSER', ''], ['CAMERA', ''], ['WINDOW', ''], ['SCREEN', '']],
+    sharingChip: '<b>SHARING</b>&nbsp;&nbsp;Window · Pillow Brawl',
+    live: ['WE\'RE', 'LIVE', '!'],
+    step2: ['SEND THE INVITE.', 'STEP 02'],
+    copy: 'Copy invite link', copied: 'Copied!',
+    card: { top: 'INVITE No.9527', l1: ['TONIGHT', '.'], l2: ['YOU', 'LOSE', '.'], sign: `— ${EN.tuan}` },
+    sent: ['SENT', 'TO 3 FRIENDS'],
+    step3: ['TAP. WATCH. THAT\'S IT.', 'STEP 03 · RIGHT IN THE BROWSER'],
+    inviteLink: 'Invite link · 9527',
+    joined: n => `${n} joined`,
+    noInstall: ['JUST A BROWSER', 'NO APP NEEDED FOR FRIENDS'],
+    tracker: ['SHARE', 'INVITE', 'WATCH'],
+    pins: ['BED', 'METRO', 'DESK'],
+    fullHouse: ['FULL', 'HOUSE', '!'],
+    together: ['MILES APART. SAME SOFA.', ''],
+    viewers3: 'VIEWERS 3 / 20',
+    danmaku: [`${EN.tuan}'s going down`, `my money's on ${EN.yuan}`, 'tomatoes ready {tomato}', 'this game is SO cute', 'can\'t even beat the CPU lol', 'here we go', '11 PM sharp', `GO ${EN.yuan.toUpperCase()}!`, 'LMAO', 'FIGHT!', 'FIGHT! FIGHT!', 'FIGHT!!!', 'FIGHT!'],
+    chatTitle: '<b>Interactions</b>',
+    chat: ['Pillow packed.', 'what game is this, so cute', 'tomatoes: loaded', 'Here — the good stuff.'],
+    b_yuan: { main: 'Want a real opponent?', sub: '' },
+    b_tuan: { main: 'Bring it on!', sub: '' },
+    callouts: [['On-screen chat', ''], ['Chat', ''], ['Reactions', ''], ['Voice', '']],
+    reqTag: 'REMOTE CONTROL · REQUEST',
+    reqTitle: n => `${n} <span style="font-weight:500">requests control</span>`,
+    consent: 'Allowing control gives this Viewer access to this computer\'s mouse and keyboard.',
+    decline: 'Decline', allow: 'Allow control',
+    rcHead: 'REMOTE CONTROL',
+    onePC: 'ONE PC. TWO PLAYERS.',
+    p1Sub: `${EN.tuan.toUpperCase()} · HERE`, p2Sub: `${EN.yuan.toUpperCase()} · REMOTE`,
+    l_kb: { main: 'Keyboard\'s yours. Don\'t cry.', sub: '' },
+    vsNameL: EN.tuan.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase().split(' '),
+    vsNameR: [...EN.yuan.toUpperCase()],
+    vsSubL: 'HOST · P1 · LOCAL', vsSubR: 'VIEWER · P2 · REMOTE',
+    hudChip: 'PIIK · VIEWERS 3/20',
+    special: 'SPECIAL!',
+    ooh: ['O', 'H', 'H', '!'],
+    l_nope: { main: '...That didn\'t count!', sub: '' },
+    notJust: ['NOT JUST GAMES.', ''],
+    montage: [[['DRAW'], ''], [['WATCH'], ''], [['PHOTOS'], ''], [['HELP', 'MOM'], ''], [['CAT', 'CAM'], ''], [['HOME', 'WORK'], '']],
+    settings: { title: 'Settings', rows: ['Display', 'Sound', 'Network', 'Account'], tip: 'Mom, click here' },
+    anything: ['IF IT\'S ON YOUR SCREEN, SHARE IT.', ''],
+    facts: [['FREE & OPEN SOURCE', ''], ['FRIENDS JUST OPEN A LINK', ''], ['UP TO 20 VIEWERS', ''], ['LOW LATENCY · HIGH AVAILABILITY', ''], ['LIGHT ON RESOURCES', '']],
+    endCard: { l1: ['SHARE', 'THE'], l2: ['GOOD', 'STUFF', '.'], sign: '— Piik' },
+    tagline: ['Share the good stuff.', ''],
+    closingFeatures: ['WATCH TOGETHER', 'TALK IT OUT', 'TAKE A TURN'],
+    footer: 'Free &amp; open source · Ready to use · Self-host if you like',
+  },
+};
+
+/** Display font per language: zh headlines in Noto Sans SC Black, en headlines in Anton. */
+export const FACE = {
+  zh: { display: (px, w = 900) => `${w} ${px}px/1 "Noto Sans SC"`, bold: (px, w = 900) => `${w} ${px}px/1.1 "Noto Sans SC"` },
+  en: { display: (px) => `400 ${Math.round(px * 1.08)}px/1 Anton`, bold: (px, w = 900) => `${w} ${px}px/1.1 "Noto Sans SC"` },
+};

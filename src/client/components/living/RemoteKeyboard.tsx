@@ -33,12 +33,13 @@ const PAGES = REMOTE_KEYBOARD_PAGES;
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
-export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange }: {
+export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true }: {
   input: (event: RemoteInputEvent) => void; close: () => void;
   mouseControl?: ReactNode; touch: boolean;
   platform: RemoteInputPlatform;
   onSurfaceChange?: (owner: Document) => void;
   releaseKey: number; onReleaseKeyChange: (key: number) => void;
+  allowText?: boolean;
 }) {
   const { t, vis } = useCopy();
   const id = useId();
@@ -56,6 +57,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     [`${mac ? "Cmd" : "Alt"}+Tab`, mac ? "SwitchApp" : "SwitchWindow", [mac ? "MetaLeft" : "AltLeft", "Tab"]],
   ] as const;
   const [page, setPage] = useState<Page>(() => readRoomPreferences().keyboardPage);
+  const pages = PAGES;
   const [text, setText] = useState("");
   const [modifiers, setModifiers] = useState<string[]>([]);
   const [combineKeys, setCombineKeys] = useState(() => readRoomPreferences().combineKeys);
@@ -149,9 +151,9 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     </div>
     {panelWindow.failed && <p className="lr-floating-error" role="status">{t("floating.detachFailed")}</p>}
     <div className="lr-toggle lr-remote-key-pages" role="tablist" aria-label={t("remote.keyPages")}
-      style={{ "--lr-segments": PAGES.length, "--lr-selected-index": PAGES.indexOf(page) } as CSSProperties}
+      style={{ "--lr-segments": pages.length, "--lr-selected-index": pages.indexOf(page) } as CSSProperties}
       onKeyDown={navigateTabs}>
-      {PAGES.map(value => <button key={value} type="button" role="tab" id={`${id}-${value}`}
+      {pages.map(value => <button key={value} type="button" role="tab" id={`${id}-${value}`}
         className={page === value ? "is-selected" : undefined} aria-selected={page === value}
         aria-controls={`${id}-panel`} tabIndex={page === value ? 0 : -1}
         aria-label={t(`remote.keys.${value}`)} onClick={() => {
@@ -185,7 +187,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     </> : <>
       <form className="lr-remote-text-entry" onSubmit={event => {
         event.preventDefault();
-        if (!text || textTooLong || composing.current) return;
+        if (!allowText || !text || textTooLong || composing.current) return;
         input({ type: "text", text }); setText(""); editor.current?.focus();
       }}>
         <div className="lr-input lr-remote-text-field">
@@ -198,10 +200,10 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
             onCompositionEnd={() => { composing.current = false; }}
           />
           <div className="lr-remote-text-actions">
-            <Btn icon="send" cap="remote.typeText" title="remote.sendText" size="compact" hint="hint-remote-keyboard" tone="primary" type="submit" disabled={!text || textTooLong} />
+            <Btn icon="send" cap="remote.typeText" title="remote.sendText" size="compact" hint="hint-remote-keyboard" hintText={allowText ? undefined : "remote.textShared"} tone="primary" type="submit" disabled={!allowText || !text || textTooLong} />
           </div>
         </div>
-        {textTooLong ? <p id={`${id}-text-help`} role="alert">{t("remote.textTooLong")}</p> : !vis && <p id={`${id}-text-help`}>{t("remote.textHelp")}</p>}
+        {textTooLong ? <p id={`${id}-text-help`} role="alert">{t("remote.textTooLong")}</p> : !vis && <p id={`${id}-text-help`}>{t(allowText ? "remote.textHelp" : "remote.textShared")}</p>}
       </form>
       {navigation}
       <div className="lr-remote-keys lr-remote-shortcuts">

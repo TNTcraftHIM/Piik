@@ -2,8 +2,8 @@
 .lr-voice-settings { display: grid; align-content: start; gap: 16px; }
 .lr-voice-panel-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
 .lr-voice-mic-level { position: absolute; left: 50%; top: 50%; width: var(--control-icon-size); height: var(--control-icon-size); transform: translate(-50%, -50%); pointer-events: none; fill: var(--live); }
-.lr-voice-activity { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--control-edge); transition: background-color 140ms ease, box-shadow 140ms ease; }
-.lr-voice-activity[data-speaking] { background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 15%, transparent); }
+.lr-voice-member-mic { --control-icon-size: 20px; position: relative; display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; color: var(--muted); transition: color 140ms ease; }
+.lr-voice-member-mic[data-speaking] { color: var(--live); }
 .lr-voice-hint { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .lr-voice-hint > svg, .lr-voice-control-error > svg { flex: none; margin-top: 2px; }
 .lr-voice-member { display: flex; align-items: center; gap: 10px; padding-block: 12px; border-bottom: 1px solid var(--control-edge); }
@@ -14,12 +14,11 @@
 .lr-voice-avatar:is(:hover, :focus-visible) { background: var(--control-hover); }
 .lr-voice-avatar:focus-visible { outline-offset: -3px; }
 .lr-voice-avatar > svg { width: 28px; height: 34px; }
-.lr-voice-identity > div { min-width: 0; }
-.lr-voice-identity b { display: flex; font-size: 13px; white-space: nowrap; }
+.lr-voice-identity > .lr-comic-tip-wrap { flex: none; }
+.lr-voice-identity > .lr-voice-name-tip { flex: 0 1 auto; min-width: 0; }
+.lr-voice-identity b { display: flex; min-width: 0; font-size: 13px; line-height: 24px; white-space: nowrap; }
 .lr-voice-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .lr-voice-name + span { flex: none; }
-.lr-voice-identity small { display: flex; align-items: center; gap: 5px; margin-top: 3px; color: var(--muted); font-size: 12px; }
-.lr-voice-identity small > svg { flex: none; }
 .lr-voice-member-controls { display: flex; flex: none; gap: 6px; align-items: center; }
 .lr-voice-person-volume { min-width: 4ch; text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .lr-voice-control-error { display: flex; flex-basis: 100%; gap: 6px; align-items: flex-start; margin: 0; color: var(--danger); font-size: 12px; line-height: 1.7; }

@@ -4,7 +4,7 @@ import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import {
   QUALITY_PROFILES, qualitySettingsEqual, qualitySettingsLabel, qualityResolutionEqual,
-  screenAudioBitrate, videoQualitySettingsEqual, supportsCaptureProfile, videoCaptureLimits, MAX_SCREEN_AUDIO_BITRATE,
+  screenAudioBitrate, videoQualitySettingsEqual, supportsCaptureProfile, videoCaptureLimits, MAX_AUDIO_SEND_BITRATE,
   type QualitySettings,
 } from "../src/client/media/quality";
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
@@ -106,11 +106,12 @@ function fixture(launchedByClient = true) {
     nativeSourceSelectionRef: ref<Record<string, unknown> | null>(null), nativeCaptureTargetKey,
     nativeModeRef: ref(false), nativeClientRef: ref<typeof client | null>(client), nativeShareGenerationRef: ref<string | null>("share"),
     hostAudioRef: ref<{ sourceStream: MediaStream } | null>(null),
+    shareVolumeChangeRef: ref<object | null>(null), setShareVolume: vi.fn(),
     nativeMediaIngressRef: ref<ReturnType<typeof ingress> | null>(null), nativeMediaBridgeRef: ref(null),
     nativeInputRoute: new InputRoute(() => {}),
     nativeEventCleanupRef: ref(null), nativeShareCleanupRef: ref(Promise.resolve()),
     peersRef: ref(new Map([["viewer", peer]])), hostProvisionalChildRef: ref(null), hostSfuRouteRef: ref(route),
-    signalRef: ref({ setHostQualitySettings: vi.fn(), setAudioAvailable: vi.fn(), send: vi.fn() }),
+    signalRef: ref({ setHostQualitySettings: vi.fn(), setAudioAvailable: vi.fn(), setCoPlayGrants: vi.fn(), send: vi.fn() }),
     setQualitySettings: vi.fn(), setAdvancedQuality: vi.fn(), setChangingQuality: vi.fn(), savePreferredQuality: vi.fn(),
     setNoticeValue: vi.fn(), setNoticeError: vi.fn(),
     setDetails: vi.fn(), setNativeActive: vi.fn(), setRemoteControlState: vi.fn(),
@@ -118,7 +119,7 @@ function fixture(launchedByClient = true) {
     applyCaptureProfile: vi.fn(async (_stream: unknown, profile: QualitySettings) => { physical = profile; }),
     captureDetails: () => ({}),
     qualitySettingsEqual, qualityResolutionEqual, videoQualitySettingsEqual, screenAudioBitrate, qualitySettingsLabel,
-    supportsCaptureProfile, videoLimits: videoCaptureLimits(), audioBitrateCeiling: MAX_SCREEN_AUDIO_BITRATE,
+    supportsCaptureProfile, videoLimits: videoCaptureLimits(), audioBitrateCeiling: MAX_AUDIO_SEND_BITRATE,
     say: (key: string) => key, syncHostSfuQualityWarning: () => null,
     NativeSenderPeer, discardPreparedHostChild: vi.fn(), removePeer: vi.fn(), startPeer: vi.fn(async () => undefined),
     nativePreviewTailRef: ref(Promise.resolve()), setSwitchingSource: vi.fn(),
@@ -175,6 +176,7 @@ function useRealResourceDisposal(current: ReturnType<typeof fixture>): void {
     setResolvedVideoCodec: vi.fn(), setHostSfuQualityWarning: vi.fn(),
     setInteractionSession: vi.fn(), browserVideoPoolRef: ref(null),
     setMicrophonePending: vi.fn(), retiringStreamRef: ref(null), iceConfigRef: ref(null),
+    commentaryOperationRef: ref(null), setCommentary: vi.fn(), setCommentaryBusy: vi.fn(), setCommentaryInput: vi.fn(),
     setStream: vi.fn(), setPeerSnapshots: vi.fn(), setParticipantPresence: vi.fn(),
     viewerQualityEvidenceStore: { clear: vi.fn(), getSnapshot: () => new Map() },
     cancelViewerQualityEvidenceRender: vi.fn(), setViewerQualityEvidence: vi.fn(),
@@ -241,6 +243,7 @@ describe("Host room ownership", () => {
       stop = vi.fn();
       stopSharing = vi.fn();
       setAudioAvailable = vi.fn();
+      setCoPlayGrants = vi.fn();
       enableRoomInteractions = vi.fn(() => this.interactions);
       constructor(public identity: { roomId: string; token: string; roomOnly?: true; shareGeneration?: string },
         public events: {
@@ -1248,7 +1251,12 @@ describe("Host quality ownership", () => {
     const setResolvedVideoCodec = vi.fn();
     Object.assign(current.context, {
       phase: "idle", captureBrowserSource: async () => captured,
-      HostAudio: class { audioAvailable = false; }, setStream: vi.fn(), watchCaptureEnd: vi.fn(),
+      HostAudio: class {
+        audioAvailable = false;
+        sourceStream = captured;
+        start = async () => captured;
+        dispose = vi.fn();
+      }, setStream: vi.fn(), watchCaptureEnd: vi.fn(),
       resolveStreamVideoCodec, startBrowserNativeIngress, setResolvedVideoCodec,
     });
     current.disposeResources.mockImplementation(() => {

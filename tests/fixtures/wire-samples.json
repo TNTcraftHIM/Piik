@@ -44,6 +44,30 @@
   },
   "clientMessages": [
     {
+      "name": "voice listening subscription opt in",
+      "schema": "client",
+      "json": "{\"type\":\"subscribe-room-voice\",\"deafened\":false}",
+      "valid": true
+    },
+    {
+      "name": "voice listening subscription rejects null",
+      "schema": "client",
+      "json": "{\"type\":\"subscribe-room-voice\",\"deafened\":null}",
+      "valid": false
+    },
+    {
+      "name": "voice deafen command",
+      "schema": "client",
+      "json": "{\"type\":\"room-voice-command\",\"command\":{\"action\":\"deafen\",\"deafened\":true}}",
+      "valid": true
+    },
+    {
+      "name": "voice deafen requires boolean",
+      "schema": "client",
+      "json": "{\"type\":\"room-voice-command\",\"command\":{\"action\":\"deafen\",\"deafened\":null}}",
+      "valid": false
+    },
+    {
       "name": "viewer-route-selection",
       "schema": "client",
       "json": "{\"type\":\"set-viewer-route-preference\",\"preference\":\"sfu\"}",
@@ -1332,6 +1356,42 @@
       "schema": "client",
       "json": "{\"type\":\"sfu-signal\",\"revision\":9,\"publicationGeneration\":\"publication_12345678\",\"connectionId\":\"connection_12345678\",\"kind\":\"description\",\"description\":{\"type\":\"offer\",\"sdp\":\"v=0\\\\r\\\\n\"},\"media\":{\"codec\":\"vp8\",\"layers\":[{\"rid\":\"\",\"width\":4294967296,\"height\":32768,\"bitrate\":200000000}],\"audio\":false,\"audioBitrate\":128000}}",
       "valid": false
+    },
+    {
+      "name": "co-play-subscription",
+      "schema": "client",
+      "json": "{\"type\":\"subscribe-co-play-presence\"}",
+      "valid": true
+    },
+    {
+      "name": "co-play-grants",
+      "schema": "client",
+      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"endpointId\":\"11111111111111111111111111111111\"}]}",
+      "valid": true
+    },
+    {
+      "name": "co-play-cleared",
+      "schema": "client",
+      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[]}",
+      "valid": true
+    },
+    {
+      "name": "co-play-duplicate-grant",
+      "schema": "client",
+      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"endpointId\":\"11111111111111111111111111111111\"},{\"endpointId\":\"11111111111111111111111111111111\"}]}",
+      "valid": false
+    },
+    {
+      "name": "co-play-grant-field-case",
+      "schema": "client",
+      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"EndpointId\":\"11111111111111111111111111111111\"}]}",
+      "valid": false
+    },
+    {
+      "name": "co-play-unexpected-grant-field",
+      "schema": "client",
+      "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"endpointId\":\"11111111111111111111111111111111\",\"extra\":true}]}",
+      "valid": false
     }
   ],
   "serverMessages": [
@@ -1490,6 +1550,14 @@
     {
       "name": "room-interaction",
       "json": "{\"type\":\"room-interaction\",\"id\":\"event_12345678\",\"requestId\":\"request_12345678\",\"occurredAt\":1700000000010,\"sender\":{\"peerId\":\"peer_12345678\",\"role\":\"host\",\"displayName\":\"Piik friend\"},\"payload\":{\"kind\":\"chat\",\"text\":\"来，看点好康的。 <b>Hello</b> 👋\"}}"
+    },
+    {
+      "name": "co-play-participants",
+      "json": "{\"type\":\"co-play-presence\",\"participants\":[{\"peerId\":\"viewer_coplay_peer\"},{\"peerId\":\"other_coplay_peer\"}]}"
+    },
+    {
+      "name": "co-play-participants-cleared",
+      "json": "{\"type\":\"co-play-presence\",\"participants\":[]}"
     }
   ]
 }

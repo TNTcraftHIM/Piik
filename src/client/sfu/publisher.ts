@@ -5,11 +5,11 @@ import { debugRtcFailure, debugRtcStats, debugTrack } from "../lib/debug-webrtc"
 import {
   audioSenderParameterWarning,
   applyVideoCaptureProfile,
-  configureScreenAudioSender,
+  configureAudioSender,
   configureVideoSender,
   needsStartupVideoProfile,
   screenAudioBitrate,
-  screenAudioSenderCeiling,
+  audioSenderCeiling,
   senderParameterWarning,
   STARTUP_VIDEO_ENCODED_FRAMES,
   startupVideoProfile,
@@ -109,7 +109,7 @@ export class SfuPublisher {
             throw new Error("SFU publisher expected an answer");
           await peer.waitForOperation(() => peer.pc.setRemoteDescription(description));
           const audio = this.audioSender;
-          if (this.profile && audio?.track && screenAudioSenderCeiling(audio.getParameters(),
+          if (this.profile && audio?.track && audioSenderCeiling(audio.getParameters(),
             screenAudioBitrate(this.profile.maxAudioBitrate)) !== audio.getParameters().encodings[0]?.maxBitrate) {
             void this.enqueue(async () => {
               if (this.peer !== peer || !this.profile) return false;
@@ -519,7 +519,7 @@ export class SfuPublisher {
       return true;
     }
     try {
-      const audio = await peer.waitForOperation(() => configureScreenAudioSender(
+      const audio = await peer.waitForOperation(() => configureAudioSender(
         audioSender,
         screenAudioBitrate(profile.maxAudioBitrate),
       ));

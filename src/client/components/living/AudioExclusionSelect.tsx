@@ -27,7 +27,7 @@ export function AudioExclusionSelect({ sources, value, onChange, disabled, busy,
         aria-label={t("host.sourcePicker.excludeAudio")} aria-describedby={`${id}-hint`}
         onChange={event => onChange(applications.find(target => audioApplicationKey(target) === event.target.value))}>
         <option value="">{t("host.sourcePicker.excludeNone")}</option>
-        {missing && <option value={key} disabled>{value.title} · {t("host.sourcePicker.excludeMissing")}</option>}
+        {missing && <option value={key} disabled>{value.title} ({t("host.sourcePicker.excludeMissing")})</option>}
         {applications.map(target => <option key={audioApplicationKey(target)} value={audioApplicationKey(target)}>{target.title}</option>)}
       </select>
       {onRefresh && <button type="button" className="lr-btn lr-device-refresh" disabled={disabled || busy}

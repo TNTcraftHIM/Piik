@@ -14,6 +14,9 @@ export function initialLanguage() {
 }
 
 export function rememberLanguage(language) {
+  const url = new URL(location.href);
+  url.searchParams.set('lang', language);
+  history.replaceState(history.state, '', url);
   try {
     localStorage.setItem(storageKey, language);
   } catch {

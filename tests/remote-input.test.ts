@@ -3,6 +3,7 @@ import { RemoteInputSession } from "../src/client/remote-control/input-session";
 import { picturePoint, rotatePicturePoint, rotatePictureDelta, type VideoRotation } from "../src/client/media/video-geometry";
 import { InputRoute, type InputIdentity } from "../src/client/remote-control/input-route";
 import { matchesRemoteShortcut, remoteInputStateSchema } from "../src/client/remote-control/protocol";
+import { RemoteGamepad } from "../src/client/remote-control/gamepad";
 
 it("recognizes only the selected local release chord outside IME composition", () => {
   const chord = { code: "F9", ctrlKey: true, altKey: true, metaKey: false, shiftKey: false, isComposing: false };
@@ -21,6 +22,124 @@ class Channel extends EventTarget {
   close() { this.readyState = "closed"; this.dispatchEvent(new Event("close")); }
   receive(value: object) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) })); }
 }
+
+it("updates text availability without replacing an active keyboard grant", () => {
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  channel.receive({ platform: "windows", mode: "room", state: "ready", coPlay: true, capabilities: ["coPlay"] });
+  session.request();
+  const intent = channel.sent.at(-1)?.intent, grant = "d".repeat(64);
+  const active = { platform: "windows", mode: "room", state: "active", coPlay: true, intent, grant };
+  for (const enabled of [true, false, true]) {
+    channel.receive({ ...active, capabilities: enabled ? ["coPlay", "text"] : ["coPlay"] });
+    const before = channel.sent.length;
+    session.input({ type: "text", text: "hello" });
+    expect(channel.sent.length - before).toBe(enabled ? 1 : 0);
+    expect(session.state?.grant).toBe(grant);
+  }
+  session.dispose();
+});
+
+it("keeps keyboard control when optional gamepad support fails for the grant", () => {
+  const channel = new Channel(), changed = vi.fn();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, changed);
+  channel.receive({ platform: "windows", mode: "room", state: "ready", coPlay: true, capabilities: ["coPlay", "gamepad"] });
+  session.request();
+  const intent = channel.sent.at(-1)?.intent, grant = "e".repeat(64);
+  const active = { platform: "windows", mode: "room", state: "active", coPlay: true, intent, grant };
+  const gamepad = { buttons: 0, leftTrigger: 0, rightTrigger: 0, leftX: 0, leftY: 0, rightX: 0, rightY: 0 };
+  channel.receive({ ...active, capabilities: ["coPlay", "gamepad", "text"] });
+  session.input({ type: "gamepad", gamepad });
+  expect(channel.sent.at(-1)).toEqual({ type: "gamepad", gamepad, grant });
+  channel.receive({ ...active, capabilities: ["coPlay", "text"], reason: "gamepad" });
+  const before = channel.sent.length;
+  session.input({ type: "gamepad", gamepad }); session.input({ type: "gamepad-reset" }); session.input({ type: "gamepad-stop" });
+  expect(channel.sent).toHaveLength(before);
+  session.input({ type: "key", code: "KeyW", down: false });
+  session.input({ type: "text", text: "hello" });
+  session.input({ type: "reset" });
+  expect(channel.sent.slice(before)).toEqual([
+    { type: "key", code: "KeyW", down: false, grant }, { type: "text", text: "hello", grant }, { type: "reset", grant },
+  ]);
+  expect(session.state?.state).toBe("active"); expect(session.state?.grant).toBe(grant);
+  session.dispose();
+});
+
+it("maps standard gamepads into one negotiated grant and resets on focus loss, unplug and retirement", () => {
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  channel.receive({ platform: "windows", mode: "ask", state: "ready" });
+  expect(channel.sent.at(-1)).toEqual({ type: "capabilities" });
+  channel.receive({ platform: "windows", mode: "ask", state: "ready", coPlay: true, capabilities: ["coPlay", "gamepad"] });
+  session.request();
+  const intent = channel.sent.at(-1)?.intent;
+  expect(channel.sent.at(-1)).toEqual({ type: "request", intent });
+  const grant = "d".repeat(64);
+  channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant, coPlay: true, capabilities: ["coPlay", "gamepad"] });
+  const beforeInput = channel.sent.length;
+  session.input({ type: "key", code: "KeyW", down: true });
+  session.input({ type: "button", button: 0, down: true });
+  expect(channel.sent.slice(beforeInput)).toEqual([
+    { type: "key", code: "KeyW", down: true, grant }, { type: "button", button: 0, down: true, grant },
+  ]);
+
+  const pad = { index: 1, connected: true, mapping: "standard", axes: [-1, -1, 1, 1],
+    buttons: Array.from({ length: 17 }, (_, index) => ({ pressed: [0, 1, 4, 8, 9, 10, 12].includes(index), value: index === 6 ? .5 : index === 7 ? 1 : 0 })),
+  } as unknown as Gamepad;
+  let pads: (Gamepad | null)[] = [{ ...pad, index: 0, mapping: "" } as Gamepad, pad];
+  let focused = true;
+  const page = Object.assign(new EventTarget(), { hidden: false, hasFocus: () => focused });
+  const frames = new Map<number, FrameRequestCallback>();
+  let sequence = 0;
+  const owner = Object.assign(new EventTarget(), { navigator: { getGamepads: () => pads },
+    requestAnimationFrame: (frame: FrameRequestCallback) => { frames.set(++sequence, frame); return sequence; },
+    cancelAnimationFrame: (id: number) => frames.delete(id),
+  });
+  const tick = (time: number) => {
+    const entry = frames.entries().next().value!;
+    frames.delete(entry[0]); entry[1](time);
+  };
+  const controller = new RemoteGamepad(event => session.input(event), () => {}, owner as unknown as Window, page as unknown as Document);
+  try {
+    tick(0); tick(17);
+    const report = { type: "gamepad", grant, gamepad: { buttons: 0x1713,
+      leftTrigger: 128, rightTrigger: 255, leftX: -32768, leftY: -32768, rightX: 32767, rightY: 32767 } };
+    expect(channel.sent.slice(-2)).toEqual([report, report]);
+    const beforeSuspend = channel.sent.length;
+    channel.receive({ platform: "windows", mode: "ask", state: "suspended", intent, grant, coPlay: true, capabilities: ["coPlay", "gamepad"] });
+    tick(34);
+    expect(channel.sent).toHaveLength(beforeSuspend);
+    channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant, coPlay: true, capabilities: ["coPlay", "gamepad"] });
+    tick(51);
+    expect(channel.sent.at(-1)).toEqual(report);
+    focused = false; owner.dispatchEvent(new Event("blur"));
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-reset", grant });
+    expect(frames.size).toBe(0);
+    focused = true; owner.dispatchEvent(new Event("focus")); tick(68);
+    expect(channel.sent.at(-1)).toEqual(report);
+    pads = [];
+    owner.dispatchEvent(Object.assign(new Event("gamepaddisconnected"), { gamepad: pad }));
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    tick(85);
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    pads = [pad]; tick(102);
+    expect(channel.sent.at(-1)).toEqual(report);
+    // Polling also notices a device removed without a Browser event.
+    pads = []; tick(119);
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    page.hidden = true; page.dispatchEvent(new Event("visibilitychange"));
+    expect(frames.size).toBe(0);
+    channel.receive({ platform: "windows", mode: "ask", state: "suspended", intent, grant, coPlay: true, capabilities: ["coPlay", "gamepad"] });
+  } finally {
+    controller.dispose();
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    session.dispose();
+  }
+  expect(frames.size).toBe(0);
+  expect(channel.sent.at(-1)).toEqual({ type: "release", intent });
+  owner.dispatchEvent(new Event("focus"));
+  expect(frames.size).toBe(0);
+});
 
 it.each(["windows", "darwin", "linux"] as const)("keeps the Host platform in local request state (%s)", platform => {
   const channel = new Channel();

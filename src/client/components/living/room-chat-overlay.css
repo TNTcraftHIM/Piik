@@ -9,6 +9,8 @@
   text-shadow: 0 1px 2px rgb(0 0 0 / .4);
   animation: lr-chat-flight linear both;
 }
+/* Preserve the participant hue while keeping text readable over the picture. */
+.lr-chat-flight.is-colored { color: color-mix(in oklch, var(--chat-person-color) 75%, white); }
 @keyframes lr-chat-flight { to { transform: translateX(calc(-100cqw - 100%)); } }
 /* Fixed rows fit the largest supported font without changing shared lanes.
    Fit complete 32px lines above playback controls. Visibility preserves the
@@ -17,7 +19,8 @@
 @container (height < 78px) { .lr-chat-flight[data-lane="1"] { visibility: hidden; } }
 @container (height < 44px) { .lr-chat-flight { visibility: hidden; } }
 .lr-chat-overlay-toggle { display: inline-flex; }
-.lr-chat-overlay-settings { display: grid; gap: 18px; }
+.lr-chat-overlay-settings { display: grid; gap: 12px; }
+.lr-chat-color-setting { display: flex; align-items: center; gap: 8px; }
 .lr-chat-setting { min-width: 0; }
 .lr-chat-setting > label { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 28px; font-size: 13px; }
 .lr-chat-setting output { color: var(--muted); font: 12px var(--mono); }

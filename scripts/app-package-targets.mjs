@@ -1,4 +1,4 @@
-export const CLOUDFLARED_VERSION = "2026.8.3";
+export const CLOUDFLARED_VERSION = "2026.10.3";
 
 export const APP_PACKAGE_TARGETS = [
   {
@@ -12,7 +12,7 @@ export const APP_PACKAGE_TARGETS = [
     tunnelName: "cloudflared.exe",
     captureName: "piik-capture.exe",
     tunnelAsset: "cloudflared-windows-amd64.exe",
-    tunnelSha256: "83e726ed18ea78c5ad5213c4c3a3a27051393950d2bc8ed4de69bec12d14eaae",
+    tunnelSha256: "76b2805253d0d6ffacb092a7acfbee99e7af6917835c0c5410e23f3ef5052da2",
     tunnelArchive: false,
   },
   {
@@ -26,7 +26,7 @@ export const APP_PACKAGE_TARGETS = [
     tunnelName: "cloudflared",
     captureName: "piik-capture",
     tunnelAsset: "cloudflared-linux-amd64",
-    tunnelSha256: "f29324fe934d1e100617484c78deef803c4dc2cd351d645bbde42e96b4fccc5e",
+    tunnelSha256: "053b80b0a23031a038fdbf3c073f59f82b8f1f152aa67971d7383ffafc0dbab0",
     tunnelArchive: false,
   },
   {
@@ -40,7 +40,7 @@ export const APP_PACKAGE_TARGETS = [
     tunnelName: "cloudflared",
     captureName: "piik-capture",
     tunnelAsset: "cloudflared-linux-arm64",
-    tunnelSha256: "4bcfd35521a7cbc545ebfd5d57334a71ee180e2a64874981f374c81472118391",
+    tunnelSha256: "89297ebfb9e8c99c0dc013a1140601453cf3798d8306c5591651f4a3f5210be8",
     tunnelArchive: false,
   },
   {
@@ -54,7 +54,7 @@ export const APP_PACKAGE_TARGETS = [
     tunnelName: "cloudflared",
     captureName: "piik-capture",
     tunnelAsset: "cloudflared-darwin-arm64.tgz",
-    tunnelSha256: "40c9144d86df8937c5b43293a1f7d2d2107029aa74725023dd46b1b27154352f",
+    tunnelSha256: "1165d14b6f6360a3b8c283d7d1100024d6ec7cd9bc9e32519e96150645f3ec55",
     tunnelArchive: true,
   },
   {
@@ -68,7 +68,7 @@ export const APP_PACKAGE_TARGETS = [
     tunnelName: "cloudflared",
     captureName: "piik-capture",
     tunnelAsset: "cloudflared-darwin-amd64.tgz",
-    tunnelSha256: "61e1316266a00fd70ce40da011d612badc805367fb65293dd1925f938f704c99",
+    tunnelSha256: "81b7b85f2376815c4f59b1aa323887b62e16ce8b67555c2e1577dc23f2a82000",
     tunnelArchive: true,
   },
 ];

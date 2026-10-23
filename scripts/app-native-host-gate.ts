@@ -894,7 +894,11 @@ async function main(): Promise<void> {
       }
     } else {
       const viewerURL = new URL(hostState.invite);
-      if (mode === "local") viewerURL.hostname = "localhost";
+      if (mode === "local") {
+        // Local invitations use LAN HTTPS; this gate joins through App's HTTP loopback entry.
+        viewerURL.protocol = "http:";
+        viewerURL.hostname = "localhost";
+      }
       else {
         if (viewerURL.protocol !== "https:" || viewerURL.origin !== appInfo.publicOrigin) {
           throw new Error("One-link invitation does not use the actual public origin");

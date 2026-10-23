@@ -149,7 +149,7 @@ func (s *Server) handleDisconnect(sess *session) {
 	}
 	s.router.disconnectParticipant(disconnected.RoomID, disconnected.PeerID, sess.sessionID)
 	s.disconnectRoomVoice(disconnected.RoomID, disconnected.PeerID, sess.sessionID)
-	s.sendRemoteInputPeers(disconnected.RoomID)
+	s.refreshRemoteInputMembers(disconnected.RoomID)
 	if disconnected.Role == protocol.RoleHost {
 		s.broadcastHostStatus(disconnected.RoomID, false, false)
 		s.sendViewerPresence(disconnected.RoomID)
@@ -195,6 +195,7 @@ func (s *Server) stopSharing(roomID string) {
 		s.shares[roomID] = roomShare{generation: current.generation}
 	}
 	s.broadcastAudioPresence(roomID)
+	s.broadcastCoPlayPresence(roomID)
 	s.clearRoomViewerEvidence(roomID)
 	s.router.stopRoom(roomID)
 	for _, viewer := range s.store.GetConnectedViewers(roomID) {
@@ -246,7 +247,7 @@ func (s *Server) revokeGrantViewers(roomID string, update room.ViewerGrantUpdate
 	}
 	// The store has already removed their admission. Retire input identity as
 	// well; a shared relay's media connection may survive this Viewer leaving.
-	s.sendRemoteInputPeers(roomID)
+	s.refreshRemoteInputMembers(roomID)
 	s.deferredViewerPresenceRooms[roomID] = struct{}{}
 	func() {
 		defer delete(s.deferredViewerPresenceRooms, roomID)

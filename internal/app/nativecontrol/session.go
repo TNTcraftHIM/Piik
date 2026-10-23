@@ -231,7 +231,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		}
 		// Revocation is independent of capture preparation and its operation slot.
 		if request.Mode == "off" {
-			apply, err := host.PrepareRemoteInputPolicy(request.Mode, request.Password)
+			apply, err := host.PrepareRemoteInputPolicy(request.Mode, request.Password, request.CoPlay)
 			if err != nil {
 				return nil, err
 			}
@@ -240,7 +240,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		var apply func() error
 		result = session.runHostOperation(host, envelope, func() error {
 			var err error
-			apply, err = host.PrepareRemoteInputPolicy(request.Mode, request.Password)
+			apply, err = host.PrepareRemoteInputPolicy(request.Mode, request.Password, request.CoPlay)
 			return err
 		}, func() (any, error) {
 			err := apply()
@@ -262,6 +262,19 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			return nil, err
 		}
 		return response(envelope, "remote-control-set"), nil
+	case "set-remote-control-simultaneous":
+		var request remoteControlSimultaneousRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) || request.Enabled == nil {
+			return nil, protocolViolation("native simultaneous control policy is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		if err := host.SetRemoteInputSimultaneous(*request.Enabled); err != nil {
+			return nil, err
+		}
+		return response(envelope, "remote-control-set"), nil
 	case "get-remote-stop-shortcut", "set-remote-stop-shortcut":
 		var request remoteStopShortcutRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||
@@ -280,6 +293,16 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			state, err = session.remoteInput.SetStopShortcut(request.Key)
 		}
 		return remoteStopShortcutResponse{responseEnvelope{envelope.Version, envelope.ID, "remote-stop-shortcut"}, state}, err
+	case "set-share-volume":
+		var request shareVolumeRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) || request.Volume == nil {
+			return nil, protocolViolation("native share volume request is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		return response(envelope, "share-volume-set"), host.SetVolume(*request.Volume)
 	case "set-microphone":
 		var request microphoneRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||

@@ -512,8 +512,12 @@ a newly approved channel. The Browser requires Web Crypto in a secure context
 This uses [WebRTC data channels](https://www.rfc-editor.org/rfc/rfc8831.html)
 and the platform [AES-GCM API](https://developer.mozilla.org/en-US/docs/Web/API/AesGcmParams).
 
-`internal/app/remoteinput` owns one process-wide grant because the App's native
-sessions share the same physical keyboard and pointer. Remote control starts
+`internal/app/remoteinput` owns one process-wide source because the App's native
+sessions share the same physical keyboard and pointer. The co-play candidate
+adds concurrent capability-negotiated grants under that same owner and existing
+Host authorization, retaining exclusivity for older published clients,
+as defined by the [input contract](../standards/rooms-access.md#remote-control).
+Remote control starts
 off. The Browser remembers the last successfully applied authorization mode;
 the Host must still enable it manually for each new shared source. Ask each time
 is the default. Remembered Room Viewers mode opens the existing permission form
@@ -697,10 +701,19 @@ Do not recommend antivirus exclusions as its deployment model.
 lets remote participants act as local players in the Host's game. For Piik, this
 retains one shared picture. Games that support a shared keyboard can use separate
 key bindings for the Host and remote player without an input driver. Independent
-gamepads instead need per-player virtual controller slots. The first phase has
-one approved remote keyboard/mouse controller; multiple concurrent controllers
-would need per-controller held-key ownership so one player's key-up does not
-release another's key. The mouse remains one shared pointer.
+gamepads instead need per-player virtual controller slots. The co-play candidate
+admits concurrent approved players when the Host enables **Allow simultaneous
+control** inside Remote control. It starts off for each new source. Older published clients retain exclusive
+keyboard/mouse control through capability negotiation. Held-key ownership is per
+grant, so one player's key-up does not release another's key. Mouse buttons have the same per-grant
+ownership. Approved keyboard/mouse players all contribute to one shared pointer;
+there is no handoff, join-order arbitration or automatic local-Host priority.
+
+Room-wide collaboration presence uses the existing signaling subscription model.
+Sending the whole roster separately through every encrypted input endpoint would
+multiply the snapshot across the intentionally small input queues. The Host App
+remains the grant owner; signaling only presents its endpoint-bound snapshot,
+with source-generation checks and an opt-in for older-reader compatibility.
 
 Game player count is separate from input-device support. Team17 documents
 [four local players but two sharing one keyboard in Overcooked! 2](https://www.team17.com/news/overcooked-2-faq).
@@ -708,9 +721,9 @@ Game player count is separate from input-device support. Team17 documents
 describes assigning a physical controller separately from keyboard/mouse; its
 local-player count does not establish split-keyboard support. A Host using a
 physical controller and one remote keyboard player can therefore be another
-driver-free use case when the game supports that combination. Piik's first
-phase limits remote input to one approved Viewer, not the game's local players.
-Keep the UI named remote control; co-play is a use case of the same input grant.
+driver-free use case when the game supports that combination. The Host enables
+**Remote control**; authorization and encrypted input reuse
+the same route and source owner.
 
 Simulating keys is different from creating independent devices. Windows
 `SendInput` writes to the existing input stream; it does not create a second
@@ -719,7 +732,10 @@ still requires a HID source driver. Device identity also needs support in the
 game. Windows also exposes [gamepad injection](https://learn.microsoft.com/en-us/uwp/api/windows.ui.input.preview.injection.inputinjector.injectgamepadinput),
 but it requires the restricted `inputInjectionBrokered` package capability;
 that API alone does not establish a portable-App backend or independent slots
-accepted by desktop games. Linux can create devices through its existing
+accepted by desktop games. A local Windows native-API probe returned successful
+HRESULTs for activation, initialization, input and cleanup, but exposed zero
+virtual controllers. It did not establish a usable alternative to ViGEm.
+Linux can create devices through its existing
 [uinput module](https://docs.kernel.org/input/uinput.html), subject to device
 permissions. Dependencies therefore follow the platform and supported games.
 Per-player virtual keyboards and mice do not make an arbitrary game recognize
@@ -736,34 +752,60 @@ patterns for bounded queues and grant retirement. Their GameStream transport
 is not a Browser WebRTC input component; both implementations remain study-only
 under the project's license policy.
 
-The owner authorized an optional virtual-gamepad backend prototype on
-2026-10-19, with dependencies supplied by the Host. Installing or bundling a
-kernel driver is not part of that authorization; product integration remains
-undecided. [Parsec documents a virtual USB driver](https://support.parsec.app/hc/en-us/articles/32381705301908-Setup-Gamepad),
-not a driver-free Host. [ViGEmBus is end-of-life](https://docs.nefarius.at/projects/ViGEm/End-of-Life/).
+The current candidate uses a Windows x64 adapter for the public ViGEmBus device
+interface. The Host installs the optional driver; Piik packages no input SDK or
+driver binary. [Parsec also uses a virtual USB driver](https://support.parsec.app/hc/en-us/articles/32381705301908-Setup-Gamepad).
+[ViGEmBus is end-of-life](https://docs.nefarius.at/projects/ViGEm/End-of-Life/);
+the [final 1.22.0 installer](https://github.com/nefarius/ViGEmBus/releases/tag/v1.22.0)
+removes its updater.
 The current [libvirtualhid platform matrix](https://github.com/LizardByte/libvirtualhid/blob/dfff3ea8c34022c915799740806c17c0ed5c2492/docs/platform-support.md)
 offers a common API, but Windows/macOS require installed licensed components;
 Linux uses kernel input facilities and device permissions. Its library is MIT,
 while drivers/brokers have a [separate source-available license](https://github.com/LizardByte/libvirtualhid/blob/dfff3ea8c34022c915799740806c17c0ed5c2492/LICENSE.md).
-It is a candidate to evaluate, not an accepted free portable dependency.
-The local experiment can use an explicitly supplied ViGEmClient user-mode SDK
-with an already-installed ViGEmBus. This is a legacy compatibility backend,
-not a recommendation to install an end-of-life driver. Browser reports through
-the existing encrypted input route reach two temporary devices with independent
-XInput state; each can be neutralized and removed without changing the other.
-Logical slots and SDK handles identify ownership;
-an early SDK user-index value does not establish the game's player number.
+These separate terms do not grant free driver distribution with Piik.
+The adapter uses the [published bus requests](https://github.com/nefarius/ViGEmClient/blob/b66d02d57e32cc8595369c53418b843e958649b4/include/ViGEm/km/BusShared.h)
+through Windows device APIs, without loading the client DLL. A bus file handle
+owns a driver session; allocated serials identify this session's controllers,
+not the game's player numbers. Native checks from a directory containing only
+the test executable observed independent XInput reports, neutralization and
+removal. A foreign session could not unplug another session's device; closing
+one bus handle removed only its own devices. The driver's unsupported protocol
+response was also checked.
 
-The proposed path is Browser Gamepad API (or a later keyboard/touch mapping) ->
+The driver can temporarily have no queued USB input request. Ordinary reports
+then yield to the next complete Browser state; they never sleep or queue stale
+input. A one-off neutral reset retries for at most one input frame before
+retiring the grant, so a dropped reset cannot leave a held controller. Device
+closure removes the controller even if a final neutral report cannot be sent.
+
+The Linux prototype uses the stock uinput userspace API, one device per grant,
+without another driver or dependency. Linux amd64/arm64 test binaries
+cross-compile and Linux vet passes. On 2026-10-23, the explicit uinput kernel
+gate passed in an isolated QEMU TCG VM running Alpine 3.24.3 and Linux
+6.18.58-0-virt x86_64: five independent devices exposed correct evdev state,
+neutralized and retired without changing a surviving sibling. Backend shutdown
+removed the remaining devices. The VM and helper were cleaned up without a
+Host installation. Desktop-user device permissions and real-game recognition
+remain acceptance work. The macOS prototype uses native `IOHIDUserDevice` and
+a generic HID gamepad report, with
+device ownership and cleanup in its platform adapter. It requires Apple's
+[`com.apple.developer.hid.virtual.device` entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.hid.virtual.device), separate from
+Accessibility permission. No macOS SDK is available in the current environment,
+so compilation, entitlement admission and desktop-game recognition remain
+unverified. Neither prototype is evidence of a supported shipped platform.
+
+The candidate path is Browser Gamepad API ->
 existing encrypted input route -> Host-approved player slot -> platform gamepad
 backend. The Host assigns device identity; a guest cannot select another player's
 slot. Reuse input-grant retirement to neutralize buttons/axes and dispose owned
-devices. Keep current keyboard/mouse input unchanged. Batch analog samples without
-discarding button transitions, as the cited Moonlight input implementation does.
+devices. One Viewer grant covers keyboard/mouse and optional gamepad input;
+switching or combining devices adds no permission step. Simultaneous-control
+admission counts Viewers rather than device types. The current Browser
+collector uses one standard-mapped controller per page and reports at up to 60 Hz.
 No new media route, port or multiple screen publisher is required. Slot capacity
 follows the backend and game, including physical controllers already in use;
-it is not the room capacity. A prototype still needs real-game recognition,
-concurrent-player and disconnect acceptance before claiming four-player support.
+it is not the room capacity. Real-game recognition and concurrent-player
+acceptance remain in [TODO](../todo.md#now).
 
 ### Window Capture And Game Input
 

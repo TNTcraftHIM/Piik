@@ -16,7 +16,7 @@
 .cp-card > header, .cp-section-head { display: flex; align-items: baseline; gap: 12px; }
 .cp-card > header h2, .cp-section-head h2 { margin: 0; font-size: 19px; }
 .cp-number { font: 600 11px var(--mono); color: var(--ink); }
-.cp-card p, .cp-section-head p { margin: 12px 0 20px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.cp-card > p, .cp-section-head p { margin: 12px 0 20px; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .cp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
 .cp-tools > [role="group"]:not(.lr-lcd, .lr-toggle) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cp-tools .lr-input { max-width: 100%; }
@@ -49,3 +49,9 @@
   .cp-connection-panel { padding: 4px; }
 }
 .cp-reaction-select select { min-width: 0; border: 0; color: var(--ink); background: var(--paper); font-size: 16px; }
+.cp-permission-flow { display: grid; grid-template-columns: minmax(0, 1fr) 180px; align-items: start; gap: 24px; max-width: 1000px; }
+.cp-permission-viewer .lr-tv { width: 100%; margin-top: 0; }
+.cp-permission-flow h3 { margin: 0 0 14px; font-size: 15px; }
+.cp-permission-host > p { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.cp-permission-caption { color: var(--muted); font-size: 12px; }
+@media (max-width: 620px) { .cp-permission-flow { grid-template-columns: 1fr; } }

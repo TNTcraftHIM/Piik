@@ -63,6 +63,12 @@ type microphoneRequest struct {
 	DeviceID *string  `json:"deviceId,omitempty"`
 }
 
+type shareVolumeRequest struct {
+	requestEnvelope
+	ShareID string   `json:"shareId"`
+	Volume  *float64 `json:"volume"`
+}
+
 type remoteControlRequest struct {
 	requestEnvelope
 	ShareID   string `json:"shareId"`
@@ -81,11 +87,18 @@ type remoteControlPolicyRequest struct {
 	ShareID  string `json:"shareId"`
 	Mode     string `json:"mode"`
 	Password string `json:"password,omitempty"`
+	CoPlay   bool   `json:"coPlay,omitempty"`
 }
 
 type remoteControlStateEvent struct {
 	eventEnvelope
 	remoteinput.State
+}
+
+type remoteControlSimultaneousRequest struct {
+	requestEnvelope
+	ShareID string `json:"shareId"`
+	Enabled *bool  `json:"enabled"`
 }
 
 type remoteStopShortcutRequest struct {

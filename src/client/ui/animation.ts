@@ -16,6 +16,7 @@ export function replaySvgAnimations(root: Element): void {
 /** Replay a marked graphic whenever its owning interactive surface is entered. */
 export function bindSvgReplayOnPointerEnter(
   graphic: SVGSVGElement,
+  beforeReplay?: () => void,
 ): () => void {
   const owner =
     graphic.closest<HTMLElement>(
@@ -27,11 +28,15 @@ export function bindSvgReplayOnPointerEnter(
     if (pointer.relatedTarget instanceof Node && owner.contains(pointer.relatedTarget)) {
       return;
     }
+    beforeReplay?.();
     replaySvgAnimations(graphic);
   };
   owner.addEventListener("pointerover", handlePointerOver);
   const handleFocus = () => {
-    if (owner.matches(":focus-visible")) replaySvgAnimations(graphic);
+    if (owner.matches(":focus-visible")) {
+      beforeReplay?.();
+      replaySvgAnimations(graphic);
+    }
   };
   owner.addEventListener("focusin", handleFocus);
   return () => {

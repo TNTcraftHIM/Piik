@@ -8,7 +8,7 @@ import {
   captureFramerateCeiling,
   videoCaptureLimits,
   supportsCaptureProfile,
-  configureScreenAudioSender,
+  configureAudioSender,
   configureVideoSender,
   matchingQualityProfileId,
   needsStartupVideoProfile,
@@ -18,7 +18,7 @@ import {
   qualityResolutionLabel,
   videoQualitySettingsEqual,
   screenAudioBitrate,
-  screenAudioSenderCeiling,
+  audioSenderCeiling,
   senderParameterWarning,
   setMediaPaused,
   startupVideoProfile,
@@ -401,7 +401,7 @@ describe("realtime quality controls", () => {
       }),
     } as unknown as RTCRtpSender;
 
-    await expect(configureScreenAudioSender(sender, screenAudioBitrate(quality))).resolves.toEqual({
+    await expect(configureAudioSender(sender, screenAudioBitrate(quality))).resolves.toEqual({
       requestedMaxBitrate: bitrate,
       appliedMaxBitrate: bitrate,
       mismatch: false,
@@ -418,7 +418,7 @@ describe("realtime quality controls", () => {
       }),
     } as unknown as RTCRtpSender;
 
-    await expect(configureScreenAudioSender(sender, bitrate)).resolves.toEqual({
+    await expect(configureAudioSender(sender, bitrate)).resolves.toEqual({
       requestedMaxBitrate: bitrate,
       appliedMaxBitrate: bitrate,
       mismatch: false,
@@ -436,7 +436,7 @@ describe("realtime quality controls", () => {
     } as RTCRtpSender;
     for (const bitrate of [128_000, 320_000, 96_000, 510_000]) {
       const ceiling = Math.min(bitrate, limit, 320_000);
-      await expect(configureScreenAudioSender(sender, bitrate)).resolves.toEqual({
+      await expect(configureAudioSender(sender, bitrate)).resolves.toEqual({
         requestedMaxBitrate: bitrate, appliedMaxBitrate: ceiling, mismatch: ceiling !== bitrate,
       });
       expect(applied.encodings[0]?.maxBitrate).toBe(ceiling);
@@ -453,8 +453,8 @@ describe("realtime quality controls", () => {
     ["maxaveragebitrate=510000;maxaveragebitrate=96000", 96_000],
   ] as const)("keeps omitted/invalid Opus limits bounded: %s", (sdpFmtpLine, expected) => {
     const parameters = { codecs: [{ mimeType: "audio/opus", sdpFmtpLine }] } as RTCRtpSendParameters;
-    expect(screenAudioSenderCeiling(parameters, 320_000)).toBe(expected);
-    expect(screenAudioSenderCeiling(parameters, 6_000)).toBe(6_000);
+    expect(audioSenderCeiling(parameters, 320_000)).toBe(expected);
+    expect(audioSenderCeiling(parameters, 6_000)).toBe(6_000);
   });
 
   it("reports an audio ceiling the browser rewrites", async () => {
@@ -468,7 +468,7 @@ describe("realtime quality controls", () => {
       setParameters: vi.fn(async () => undefined),
     } as unknown as RTCRtpSender;
 
-    const readback = await configureScreenAudioSender(sender, 128_000);
+    const readback = await configureAudioSender(sender, 128_000);
 
     expect(readback).toEqual({
       requestedMaxBitrate: 128_000,
@@ -493,7 +493,7 @@ describe("realtime quality controls", () => {
     } as unknown as RTCRtpSender;
 
     await expect(
-      configureScreenAudioSender(sender, 192_000),
+      configureAudioSender(sender, 192_000),
     ).rejects.toThrow("rejected");
     expect(applied.encodings[0]?.maxBitrate).toBe(128_000);
   });

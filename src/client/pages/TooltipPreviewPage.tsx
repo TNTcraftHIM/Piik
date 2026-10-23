@@ -10,7 +10,7 @@ import { COMIC_KINDS, getComicPresentation, type ComicTone, type ComicMotion } f
 import { useCopy, type CopyKey } from "../ui/copy";
 import { replaySvgAnimations } from "../ui/animation";
 import { MetricCells } from "../components/living/Metrics";
-import { EMPTY_METRICS } from "../types";
+import { PREVIEW_METRICS } from "./preview-metrics";
 import { usePreviewAnchor } from "./use-preview-anchor";
 
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
@@ -76,10 +76,13 @@ export function TooltipPreviewPage() {
           <a href="#sharing-preview">{t("host.advanced")}</a>
           <a href="#input-preview">{en ? "Inputs" : "输入与房间号"}</a><a href="#feedback-preview">{en ? "Feedback" : "反馈"}</a>
           <a href="#people-preview">{en ? "People & connections" : "人物、沙发与连接图"}</a><a href="#source-preview">{en ? "Source picker" : "画面选择"}</a>
+          <a href="#pawn-appearance-preview">{en ? "Participant states" : "人物状态"}</a>
           <a href="#playback-preview">{en ? "Playback" : "播放栏"}</a><a href="#comic-preview">{en ? "Tooltips & comics" : "提示与漫画"}</a>
           <a href="#launcher-preview">{en ? "App launcher" : "模式选择"}</a>
           <a href="#interaction-preview">{en ? "Chat & reactions" : "聊天与互动"}</a>
           <a href="#remote-control-preview">{en ? "Remote control & keyboard" : "远程控制与键盘"}</a>
+          <a href="#remote-permission-preview">{en ? "Input access requests" : "权限申请"}</a>
+          <a href="#brand-preview">{en ? "Brand motion" : "Mascot 动画"}</a>
 
           <a href="#admission-preview">{en ? "Room entry" : "房间准入"}</a>
           <a href="#metrics-preview">{en ? "Metrics" : "连接数据"}</a>
@@ -133,21 +136,7 @@ function MetricPreview() {
   const [reason, setReason] = useState("other");
   const [sendExpanded, setSendExpanded] = useState(true);
   const [receiveExpanded, setReceiveExpanded] = useState(true);
-  const metrics = {
-    ...EMPTY_METRICS,
-    resolution: "1920x1080", framesPerSecond: 59.8, bitrateKbps: 7200,
-    packetLossPercent: .2, rttMs: 24, codec: "video/H264",
-    availableOutgoingKbps: 12000, qualityLimitationReason: reason,
-    captureWidth: 2560, captureHeight: 1440, captureFramesPerSecond: 60,
-    mediaSourceFramesPerSecond: 60, encoderImplementation: "Sample encoder",
-    powerEfficientEncoder: true, intervalEncodeMs: 2.4,
-    jitterMs: 1.2, intervalFramesDropped: 2, intervalDecodeMs: 1.4,
-    intervalFreezeCount: 1, intervalFreezeDurationMs: 120,
-    audioBitrateKbps: 96, audioPacketLossPercent: .1, audioJitterMs: .8,
-    audioVideoPlayoutDeltaMs: 3, videoJitterBufferDelayMs: 12,
-    audioJitterBufferDelayMs: 15, audioConcealedSamplesPercent: .2,
-    intervalAudioConcealmentEvents: 1,
-  };
+  const metrics = { ...PREVIEW_METRICS, qualityLimitationReason: reason };
   return <section id="metrics-preview" className="cp-section">
     <h2>{en ? "Connection metrics" : "连接数据"}</h2>
     <p>{en ? "Sample observations in the actual detail cells. Sender limits do not describe the receiver's playback."

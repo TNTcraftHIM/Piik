@@ -138,6 +138,9 @@ const AUDIO_QUALITY_CAPTIONS: Record<ScreenAudioPreset, CopyKey> = {
   music: "host.advanced.audio.music",
   "very-high": "host.advanced.audio.veryHigh",
 };
+const VOICE_QUALITY_CAPTIONS: Record<ScreenAudioPreset, CopyKey> = {
+  saver: "voice.quality.saver", music: "voice.quality.standard", "very-high": "voice.quality.clear",
+};
 
 function QualityNumberControl({ value, min, max, step, unit, name, label, disabled, onChange, className, children }: {
   value: number;
@@ -239,7 +242,7 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
               value: String(commonValue), unit: control.unit,
             })}>
               <button type="button" className="lr-btn is-dense" disabled={disabled}
-                aria-label={`${t(control.label)} · ${t("host.video.returnCommonHint", { value: String(commonValue), unit: control.unit })}`}
+                aria-label={`${t(control.label)}\n${t("host.video.returnCommonHint", { value: String(commonValue), unit: control.unit })}`}
                 onClick={event => {
                   const group = event.currentTarget.closest(".lr-quality-rate");
                   select(commonValue);
@@ -253,7 +256,7 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
             <input type="range" min={control.sliderMin} max={sliderMax} step={control.sliderStep}
               value={control.value} disabled={disabled}
               style={{ "--range-fill": `${100 * (control.value - control.sliderMin) / (sliderMax - control.sliderMin || 1)}%` } as CSSProperties}
-              aria-label={`${t(control.label)} · ${t("host.video.commonRange")}`}
+              aria-label={`${t(control.label)}\n${t("host.video.commonRange")}`}
               onChange={event => select(event.currentTarget.valueAsNumber)}
               onClick={event => select(event.currentTarget.valueAsNumber)} />
             <div className="lr-quality-range-labels" aria-hidden="true">
@@ -267,30 +270,34 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
   </div>;
 }
 
-export function AudioBitrateControl({ value, max, disabled, onChange }: {
+export function AudioBitrateControl({ value, max, disabled, onChange, purpose = "screen" }: {
   value: number;
   max: number;
   disabled: boolean;
   onChange: (bitrate: number) => void;
+  purpose?: "screen" | "voice";
 }) {
   const { t, vis } = useCopy();
+  const title = purpose === "voice" ? "voice.bitrate" : "host.advanced.audio";
+  const presets = purpose === "voice" ? { saver: 32_000, music: 64_000, "very-high": 96_000 } : SCREEN_AUDIO_BITRATES;
+  const captions = purpose === "voice" ? VOICE_QUALITY_CAPTIONS : AUDIO_QUALITY_CAPTIONS;
   return <QualityNumberControl value={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
-    name="audioBitrate" unit="kbps" label={t("host.advanced.audioBitrate")} className="lr-door-group lr-audio-quality"
+    name="audioBitrate" unit="kbps" label={t(purpose === "voice" ? "voice.bitrate" : "host.advanced.audioBitrate")} className="lr-door-group lr-audio-quality"
     disabled={disabled} onChange={kbps => onChange(kbps * 1_000)}>
     {(input, select) => <>
       <div className="lr-quality-heading">
-        <span className="lr-door-glyph"><Glyph name="speaker" size={19} /><Cap k="host.advanced.audio" /></span>
-        <Tooltip kind="hint-audio-quality" text={vis ? undefined : t("host.audio.bitrateHint", {
+        <span className="lr-door-glyph"><Glyph name={purpose === "voice" ? "microphone" : "speaker"} size={19} /><Cap k={title} /></span>
+        <Tooltip kind="hint-audio-quality" text={vis ? undefined : t(purpose === "voice" ? "voice.bitrateHint" : "host.audio.bitrateHint", {
           min: String(MIN_AUDIO_BITRATE / 1_000), max: String(max / 1_000),
         })}>{input}</Tooltip>
       </div>
-      <div className="lr-row-group" role="group" aria-label={t("host.advanced.audio")}>
+      <div className="lr-row-group" role="group" aria-label={t(title)}>
         {(Object.keys(SCREEN_AUDIO_BITRATES) as ScreenAudioPreset[]).map(preset => {
-          const bitrate = SCREEN_AUDIO_BITRATES[preset];
+          const bitrate = presets[preset];
           return <Chip key={preset} selected={value === bitrate} disabled={disabled || bitrate > max}
-            title={t("host.audio.title", { label: t(AUDIO_QUALITY_CAPTIONS[preset]), kbps: String(bitrate / 1_000) })}
+            title={t("host.audio.title", { label: t(captions[preset]), kbps: String(bitrate / 1_000) })}
             hint="hint-audio-quality" onClick={() => select(bitrate / 1_000)}>
-            <Cap k={AUDIO_QUALITY_CAPTIONS[preset]} /><small className="lr-audio-rate">{bitrate / 1_000}</small>
+            <Cap k={captions[preset]} /><small className="lr-audio-rate">{bitrate / 1_000}</small>
           </Chip>;
         })}
       </div>
@@ -312,7 +319,7 @@ export function PicturePreferenceControl({ value, disabled, onChange }: {
     <div className="lr-row-group" role="group" aria-label={t("host.advanced.preference")}>
       {choices.map(choice => <Chip key={choice.value} name="degradationPreference" value={choice.value}
         selected={value === choice.value} disabled={disabled} onClick={() => onChange(choice.value)}
-        title={`${t(DEGRADATION_PREFERENCE_KEYS[choice.value])} · ${t(choice.hint)}`} hint={choice.comic}>
+        title={`${t(DEGRADATION_PREFERENCE_KEYS[choice.value])}\n${t(choice.hint)}`} hint={choice.comic}>
         <Glyph name={choice.icon} size={18} /><Cap k={DEGRADATION_PREFERENCE_KEYS[choice.value]} />
       </Chip>)}
     </div>

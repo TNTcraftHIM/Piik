@@ -1,6 +1,7 @@
 /* Shared theme for the App, website and documentation. Status and selection
    have separate roles; illustrations keep their own colours. */
 :root {
+  --person-ink: #263b43;
   --wall: #f3f5f8;
   --wall-2: #e5eaf2;
   --paper: #fffefb;

@@ -1,4 +1,4 @@
-// Package remoteinput owns the source-scoped desktop input grant.
+// Package remoteinput owns source-scoped desktop input grants.
 // Only the owning Host control session can choose its authorization policy. Media routing remains
 // outside this package; closing its exact source or connection releases input.
 package remoteinput
@@ -27,19 +27,20 @@ const ChannelLabel = inputroute.Label
 type bounds struct{ left, top, width, height int32 }
 
 type inputEvent struct {
-	Type     string  `json:"type"`
-	Grant    string  `json:"grant,omitempty"`
-	Intent   string  `json:"intent,omitempty"`
-	Password string  `json:"password,omitempty"`
-	X        float64 `json:"x,omitempty"`
-	Y        float64 `json:"y,omitempty"`
-	Button   int     `json:"button,omitempty"`
-	Down     bool    `json:"down,omitempty"`
-	Code     string  `json:"code,omitempty"`
-	Text     string  `json:"text,omitempty"`
-	Delta    int     `json:"delta,omitempty"`
-	DX       int32   `json:"dx,omitempty"`
-	DY       int32   `json:"dy,omitempty"`
+	Type     string         `json:"type"`
+	Grant    string         `json:"grant,omitempty"`
+	Intent   string         `json:"intent,omitempty"`
+	Password string         `json:"password,omitempty"`
+	X        float64        `json:"x,omitempty"`
+	Y        float64        `json:"y,omitempty"`
+	Button   int            `json:"button,omitempty"`
+	Down     bool           `json:"down,omitempty"`
+	Code     string         `json:"code,omitempty"`
+	Text     string         `json:"text,omitempty"`
+	Delta    int            `json:"delta,omitempty"`
+	DX       int32          `json:"dx,omitempty"`
+	DY       int32          `json:"dy,omitempty"`
+	Gamepad  *gamepadReport `json:"gamepad,omitempty"`
 }
 
 type inputSink interface {
@@ -50,23 +51,26 @@ type inputSink interface {
 }
 
 type View struct {
-	ID     string `json:"id"`
-	PeerID string `json:"peerId"`
-	State  string `json:"state"`
+	ID         string `json:"id"`
+	PeerID     string `json:"peerId"`
+	State      string `json:"state"`
+	EndpointID string `json:"endpointId,omitempty"`
 }
 
 // One manager covers both native sessions: they operate the same physical desktop.
 type Manager struct {
-	mu           sync.Mutex
-	sink         inputSink
-	connections  map[endpointKey]*connection
-	sessions     map[*Session]struct{}
-	active       *connection
-	closed       bool
-	stop         context.CancelFunc
-	stopKey      int
-	registerStop func(int) (func(), error)
-	stopShortcut func()
+	mu             sync.Mutex
+	sink           inputSink
+	gamepads       gamepadBackend
+	gamepadOpening bool
+	connections    map[endpointKey]*connection
+	sessions       map[*Session]struct{}
+	owner          *Session // The one source allowed to inject into the desktop.
+	closed         bool
+	stop           context.CancelFunc
+	stopKey        int
+	registerStop   func(int) (func(), error)
+	stopShortcut   func()
 }
 
 type Session struct {
@@ -78,6 +82,8 @@ type Session struct {
 	changed       chan struct{}
 	route         *inputroute.Relay
 	mode          string
+	coPlay        bool
+	simultaneous  bool
 	policyChange  *PolicyChange
 	password      [32]byte
 	passwordRetry time.Time
@@ -96,6 +102,12 @@ type connection struct {
 	peerID    string
 	secret    string
 	cipher    *inputCipher
+	extended  bool
+	keys      map[string]bool
+	buttons   map[int]bool
+	pad       gamepadDevice
+	padFailed bool
+	padIntent uint64
 }
 
 type endpointKey struct {
@@ -208,10 +220,14 @@ func (s *Session) setTarget(target nativecapture.CaptureTarget, capture *nativec
 	}
 	s.target = target
 	s.capture = capture
+	s.simultaneous = false
 	if change == nil || s.policyChange != change {
 		s.cancelPolicy()
 	}
-	s.applyPolicy("off", [32]byte{})
+	if m.owner == s {
+		m.release()
+	}
+	s.applyPolicy("off", [32]byte{}, false)
 }
 
 // The Linux Portal owns input and screen selection in the same OS session.
@@ -245,8 +261,8 @@ func (s *Session) SetPeers(peers []protocol.RemoteInputPeer) error {
 		if previous != nil && previous.secret == peer.Secret && previous.peerID == peer.PeerID {
 			continue
 		}
-		if previous == m.active && previous != nil {
-			m.release()
+		if previous != nil {
+			m.revoke(previous)
 		}
 		cipher, _ := newInputCipher(peer.Secret)
 		c := &connection{owner: s, id: peer.EndpointID, peerID: peer.PeerID, secret: peer.Secret, cipher: cipher}
@@ -258,9 +274,7 @@ func (s *Session) SetPeers(peers []protocol.RemoteInputPeer) error {
 	}
 	for id, c := range m.connections {
 		if c.owner == s && !retained[id.id] {
-			if m.active == c {
-				m.release()
-			}
+			m.revoke(c)
 			delete(m.connections, id)
 		}
 	}
@@ -292,6 +306,9 @@ func (s *Session) receivePacket(edgeID string, packet inputroute.Packet) {
 	if c.edgeID != "" && (c.edgeID != edgeID || c.epoch != packet.Epoch) {
 		m.revoke(c)
 	}
+	if c.epoch != packet.Epoch {
+		c.extended = false
+	}
 	c.edgeID, c.epoch = edgeID, packet.Epoch
 	m.mu.Unlock()
 	m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: plain}, packet.Epoch)
@@ -308,14 +325,30 @@ func (m *Manager) reply(c *connection, state, reason string) {
 	if state == "ready" && (!c.owner.available() || c.owner.mode == "off") {
 		state = "unavailable"
 	}
-	data, _ := json.Marshal(struct {
-		Platform string `json:"platform"`
-		State    string `json:"state"`
-		Grant    string `json:"grant,omitempty"`
-		Intent   string `json:"intent,omitempty"`
-		Mode     string `json:"mode"`
-		Reason   string `json:"reason,omitempty"`
-	}{runtime.GOOS, state, c.grant, c.intent, c.owner.mode, reason})
+	if reason == "gamepad" && !c.extended {
+		reason = ""
+	}
+	value := struct {
+		Platform     string   `json:"platform"`
+		State        string   `json:"state"`
+		Grant        string   `json:"grant,omitempty"`
+		Intent       string   `json:"intent,omitempty"`
+		Mode         string   `json:"mode"`
+		Reason       string   `json:"reason,omitempty"`
+		Capabilities []string `json:"capabilities,omitempty"`
+		CoPlay       *bool    `json:"coPlay,omitempty"`
+	}{Platform: runtime.GOOS, State: state, Grant: c.grant, Intent: c.intent, Mode: c.owner.mode, Reason: reason}
+	if c.extended {
+		coPlay := c.owner.coPlay
+		value.Capabilities, value.CoPlay = []string{"coPlay"}, &coPlay
+		if coPlay && m.singleController(c.owner) == c {
+			value.Capabilities = append(value.Capabilities, "text")
+		}
+		if coPlay && m.gamepads != nil && !c.padFailed {
+			value.Capabilities = append(value.Capabilities, "gamepad")
+		}
+	}
+	data, _ := json.Marshal(value)
 	c.owner.route.Reply(inputroute.Packet{ID: c.id, Epoch: c.epoch, Data: c.cipher.seal(data, c.epoch)})
 }
 
@@ -324,7 +357,7 @@ func (s *Session) available() bool {
 }
 
 func (m *Manager) state(c *connection) string {
-	if m.active == c {
+	if c.grant != "" {
 		if c.suspended {
 			return "suspended"
 		}
@@ -339,37 +372,205 @@ func (m *Manager) state(c *connection) string {
 // Caller holds mu. Source identity, geometry and focus are checked at the
 // input owner, never inferred from a Browser's last displayed video frame.
 func (m *Manager) refreshActive() (bounds, bool) {
-	c := m.active
-	if c == nil {
+	s := m.owner
+	if s == nil {
 		return bounds{}, false
 	}
-	b, focused, err := m.sink.Target(c.owner.target, c.owner.capture)
+	b, focused, err := m.sink.Target(s.target, s.capture)
 	if err != nil {
+		var failed []*connection
+		for _, c := range m.connections {
+			if c.owner == s && c.grant != "" {
+				failed = append(failed, c)
+			}
+		}
 		m.release()
-		m.send(c, "failed")
+		for _, c := range failed {
+			m.send(c, "failed")
+		}
 		return bounds{}, false
 	}
 	suspended := !focused
-	if c.suspended != suspended {
-		c.suspended = suspended
+	changed := false
+	for _, c := range m.connections {
+		if c.owner == s && c.grant != "" && c.suspended != suspended {
+			c.suspended = suspended
+			changed = true
+			m.send(c, m.state(c))
+		}
+	}
+	if changed {
 		if !focused {
 			_ = m.sink.Reset()
+			for _, c := range m.connections {
+				if c.owner == s {
+					c.keys, c.buttons = nil, nil
+					if c.pad != nil {
+						if err := c.pad.Update(gamepadReport{}); err != nil {
+							m.failGamepad(c)
+						}
+					}
+				}
+			}
 		}
-		m.send(c, m.state(c))
-		c.owner.notify()
+		s.notify()
 	}
 	return b, focused
 }
 
+// release retires every input grant belonging to the desktop's source owner.
 func (m *Manager) release() {
-	if c := m.active; c != nil {
-		m.active = nil
-		c.grant = ""
-		c.suspended = false
-		_ = m.sink.Reset()
-		m.send(c, "ready")
-		c.owner.notify()
+	if m.owner == nil {
+		return
 	}
+	s := m.owner
+	m.owner = nil
+	_ = m.sink.Reset()
+	for _, c := range m.connections {
+		if c.owner == s && c.grant != "" {
+			if c.pad != nil {
+				_ = c.pad.Close()
+				c.pad = nil
+			}
+			c.grant, c.suspended = "", false
+			c.keys, c.buttons = nil, nil
+			m.send(c, "ready")
+		}
+	}
+	s.notify()
+}
+
+// clearHeld releases only this player's contribution. The other keyboard
+// holders keep a shared key down until its final holder releases it.
+func (m *Manager) clearHeld(c *connection) error {
+	keys := c.keys
+	c.keys = nil
+	var err error
+	for code := range keys {
+		if !m.keyHeld(code) {
+			err = errors.Join(err, m.sink.Apply(bounds{}, inputEvent{Type: "key", Code: code}))
+		}
+	}
+	buttons := c.buttons
+	c.buttons = nil
+	for button := range buttons {
+		if !m.buttonHeld(button) {
+			err = errors.Join(err, m.sink.Apply(bounds{}, inputEvent{Type: "button", Button: button}))
+		}
+	}
+	return err
+}
+
+func (m *Manager) keyHeld(code string) bool {
+	for _, c := range m.connections {
+		if c.keys[code] {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Manager) buttonHeld(button int) bool {
+	for _, c := range m.connections {
+		if c.buttons[button] {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Manager) singleController(s *Session) *connection {
+	var single *connection
+	for _, c := range m.connections {
+		if c.owner == s && c.grant != "" {
+			if single != nil {
+				return nil
+			}
+			single = c
+		}
+	}
+	return single
+}
+
+func (m *Manager) releaseConnection(c *connection) {
+	if c.grant == "" {
+		return
+	}
+	if !c.owner.coPlay {
+		m.release()
+		return
+	} else if m.clearHeld(c) != nil {
+		m.release()
+		return
+	}
+	if c.pad != nil {
+		_ = c.pad.Close()
+		c.pad = nil
+	}
+	c.grant, c.suspended = "", false
+	if remaining := m.singleController(c.owner); remaining != nil && remaining.extended {
+		m.send(remaining, m.state(remaining))
+	}
+	for _, other := range m.connections {
+		if other.owner == c.owner && other.grant != "" {
+			return
+		}
+	}
+	m.owner = nil
+}
+
+func (m *Manager) applyCoPlay(c *connection, b bounds, event inputEvent) error {
+	switch event.Type {
+	case "key":
+		// A Browser has fewer than 256 physical keys. Bound even unknown codes
+		// before recording them; the platform owns its supported key mapping.
+		if event.Code == "" || len(event.Code) > 32 || event.Down && len(c.keys) >= 256 && !c.keys[event.Code] {
+			return nil
+		}
+		if event.Down {
+			if c.keys[event.Code] {
+				// Repeat from an existing holder is intentional keyboard input.
+				// Only another player's initial press is deduplicated below.
+				return m.sink.Apply(b, event)
+			}
+			held := m.keyHeld(event.Code)
+			if c.keys == nil {
+				c.keys = make(map[string]bool)
+			}
+			c.keys[event.Code] = true
+			if held {
+				return nil
+			}
+		} else {
+			if !c.keys[event.Code] {
+				return nil
+			}
+			delete(c.keys, event.Code)
+			if m.keyHeld(event.Code) {
+				return nil
+			}
+		}
+	case "button":
+		if event.Button < 0 || event.Button > 4 || c.buttons[event.Button] == event.Down {
+			return nil
+		}
+		held := m.buttonHeld(event.Button)
+		if c.buttons == nil {
+			c.buttons = make(map[int]bool)
+		}
+		if event.Down {
+			c.buttons[event.Button] = true
+			if held {
+				return nil
+			}
+		} else {
+			delete(c.buttons, event.Button)
+			if m.buttonHeld(event.Button) {
+				return nil
+			}
+		}
+	}
+	return m.sink.Apply(b, event)
 }
 
 func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoch string) {
@@ -390,8 +591,11 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 	switch event.Type {
 	case "sync":
 		m.send(c, m.state(c))
+	case "capabilities":
+		c.extended = true
+		m.send(c, m.state(c))
 	case "request":
-		if !c.owner.available() || c.owner.mode == "off" || c.requested || c == m.active {
+		if !c.owner.available() || c.owner.mode == "off" || c.requested || c.grant != "" {
 			return
 		}
 		if intent, err := hex.DecodeString(event.Intent); err != nil || len(intent) != 16 {
@@ -407,33 +611,48 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 			}
 			// Automatic permission never displaces another controller, including
 			// a controller of the App's other native session.
-			if m.active != nil {
+			if !m.canJoin(c) {
 				m.reply(c, "ready", "busy")
 				return
 			}
-			m.grant(c)
+			_ = m.grant(c)
 			return
 		}
 		c.requested = true
 		m.send(c, "pending")
 		c.owner.notify()
 	case "release":
-		if event.Intent != c.intent || (!c.requested && m.active != c) {
+		if event.Intent != c.intent || (!c.requested && c.grant == "") {
 			return
 		}
 		c.requested = false
-		if m.active == c {
-			m.release()
-		} else {
-			m.send(c, "ready")
-		}
+		m.releaseConnection(c)
+		m.send(c, "ready")
 		c.owner.notify()
 	default:
-		if m.active != c || c.grant == "" || event.Grant != c.grant || !c.owner.available() {
+		if c.grant == "" || event.Grant != c.grant || !c.owner.available() {
+			return
+		}
+		if event.Type == "gamepad" || event.Type == "gamepad-reset" || event.Type == "gamepad-stop" {
+			m.receiveGamepad(c, event)
+			return
+		}
+		if event.Gamepad != nil {
 			return
 		}
 		if event.Type == "reset" {
-			_ = m.sink.Reset()
+			m.receiveGamepad(c, inputEvent{Type: "gamepad-reset"})
+			if c.owner.coPlay {
+				if m.clearHeld(c) != nil {
+					m.release()
+				}
+			} else {
+				_ = m.sink.Reset()
+			}
+			return
+		}
+		if event.Type == "text" && c.owner.coPlay && m.singleController(c.owner) != c {
+			// Committed text resets the sink and would release other players.
 			return
 		}
 		b, focused := m.refreshActive()
@@ -443,6 +662,9 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 		var err error
 		if event.Type == "text" {
 			err = applyText(m.sink, b, event.Text)
+			c.keys, c.buttons = nil, nil
+		} else if c.owner.coPlay {
+			err = m.applyCoPlay(c, b, event)
 		} else {
 			err = m.sink.Apply(b, event)
 		}
@@ -455,11 +677,8 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 
 func (m *Manager) revoke(c *connection) {
 	c.requested = false
-	if m.active == c {
-		m.release()
-	} else {
-		m.send(c, "ready")
-	}
+	m.releaseConnection(c)
+	m.send(c, "ready")
 	c.owner.notify()
 }
 
@@ -474,7 +693,7 @@ func (s *Session) Pause(paused bool) {
 	if paused {
 		s.cancelPolicy()
 	}
-	if paused && m.active != nil && m.active.owner == s {
+	if paused && m.owner == s {
 		m.release()
 	}
 	for _, c := range m.connections {
@@ -512,7 +731,7 @@ func (s *Session) Close() {
 	m.mu.Lock()
 	s.closed = true
 	s.cancelPolicy()
-	if m.active != nil && m.active.owner == s {
+	if m.owner == s {
 		m.release()
 	}
 	for id, c := range m.connections {
@@ -533,8 +752,15 @@ func (m *Manager) Revoke() {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.active != nil {
-		m.active.owner.setPolicy("ask", [32]byte{})
+	if m.closed {
+		return
+	}
+	for s := range m.sessions {
+		if s.mode != "off" {
+			s.setPolicy("ask", [32]byte{})
+		} else {
+			s.cancelPolicy()
+		}
 	}
 }
 
@@ -549,6 +775,10 @@ func (m *Manager) Close() {
 	}
 	m.closed = true
 	m.release()
+	if m.gamepads != nil {
+		_ = m.gamepads.Close()
+		m.gamepads = nil
+	}
 	stopShortcut := m.stopShortcut
 	m.stopShortcut = nil
 	if closer, ok := m.sink.(io.Closer); ok {
@@ -564,9 +794,12 @@ func (m *Manager) Close() {
 }
 
 type State struct {
-	Platform string `json:"platform"`
-	Mode     string `json:"mode"`
-	Requests []View `json:"requests"`
+	Platform     string `json:"platform"`
+	Mode         string `json:"mode"`
+	Requests     []View `json:"requests"`
+	CoPlay       bool   `json:"coPlay,omitempty"`
+	Gamepad      *bool  `json:"gamepad,omitempty"`
+	Simultaneous *bool  `json:"simultaneous,omitempty"`
 }
 
 func (s *Session) State() State {
@@ -578,9 +811,20 @@ func (s *Session) State() State {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	state.Mode = s.mode
+	state.CoPlay = s.coPlay
+	if s.coPlay {
+		simultaneous := s.simultaneous
+		state.Simultaneous = &simultaneous
+		gamepad := m.gamepads != nil
+		state.Gamepad = &gamepad
+	}
 	for _, c := range m.connections {
-		if c.owner == s && (c.requested || m.active == c) {
-			state.Requests = append(state.Requests, View{c.requestID, c.peerID, m.state(c)})
+		if c.owner == s && (c.requested || c.grant != "") {
+			view := View{ID: c.requestID, PeerID: c.peerID, State: m.state(c)}
+			if s.coPlay {
+				view.EndpointID = c.id
+			}
+			state.Requests = append(state.Requests, view)
 		}
 	}
 	sort.Slice(state.Requests, func(i, j int) bool { return state.Requests[i].ID < state.Requests[j].ID })
@@ -601,36 +845,68 @@ func (s *Session) Decide(id string, allow bool) error {
 			break
 		}
 	}
-	if m.closed || c == nil || !s.available() || c.edgeID == "" || (!c.requested && m.active != c) {
+	if m.closed || c == nil || !s.available() || c.edgeID == "" || (!c.requested && c.grant == "") {
 		return errors.New("request is no longer available")
 	}
 	defer s.notify()
 	if !allow {
-		if s.mode != "ask" {
+		if s.mode != "ask" && !s.coPlay {
 			s.setPolicy("ask", [32]byte{})
 			return nil
 		}
-		c.requested = false
-		if m.active == c {
-			m.release()
-		} else {
-			m.send(c, "ready")
-		}
+		m.revoke(c)
 		return nil
 	}
-	m.grant(c)
-	return nil
+	// Explicit approval hands over this source's exclusive control. Automatic
+	// admission still uses canJoin and never displaces an existing controller.
+	if c.requested && s.coPlay && !s.simultaneous && m.owner == s {
+		m.release()
+	}
+	return m.grant(c)
 }
 
-func (m *Manager) grant(c *connection) {
-	m.release()
+// Automatic permission never takes another source or changes a legacy Guest's
+// full-control contract. An extended Guest can share only with extended peers.
+func (m *Manager) canJoin(c *connection) bool {
+	if m.owner == nil {
+		return true
+	}
+	if m.owner != c.owner || !c.owner.coPlay || !c.owner.simultaneous || !c.extended {
+		return false
+	}
+	for _, other := range m.connections {
+		if other.grant != "" && !other.extended {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *Manager) grant(c *connection) error {
+	if c.grant != "" {
+		return nil
+	}
+	if c.owner.coPlay {
+		if !m.canJoin(c) {
+			m.reply(c, m.state(c), "busy")
+			return errors.New("remote input is busy")
+		}
+	} else {
+		m.release()
+	}
 	token := make([]byte, 32)
 	_, _ = rand.Read(token)
+	previous := m.singleController(c.owner)
 	c.grant, c.requested = hex.EncodeToString(token), false
-	m.active = c
+	c.padFailed = false
+	m.owner = c.owner
+	if previous != nil && previous.extended {
+		m.send(previous, m.state(previous))
+	}
 	m.refreshActive()
-	if m.active == c {
+	if c.grant != "" {
 		m.send(c, m.state(c))
 	}
 	c.owner.notify()
+	return nil
 }

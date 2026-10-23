@@ -16,58 +16,61 @@ macOS 打开 `Piik App.app`，也可以将整个 `.app` 移到「应用程序」
 网页没有自动打开时，可手动打开终端中显示的地址，或在终端按 **O** 重试。
 使用网页期间，请保持 App 运行。
 
-目前主要测试 Windows 版 Piik App 和浏览器分享。macOS 与 Linux 版 Piik App 仍需更多实机测试，
-欢迎试用并[反馈结果](https://github.com/TNTcraftHIM/Piik/issues)。macOS 原生采集需要
-Apple 芯片或 Intel Mac，以及 macOS 13 或更新版本。
+macOS 原生采集需要 macOS 13 或更新版本。目前主要测试 Windows App 与浏览器分享，
+欢迎 macOS/Linux 用户[反馈使用结果](https://github.com/TNTcraftHIM/Piik/issues)。
 
 ## 运行模式
 
-- 不传模式参数时，App 打开启动页，等待已授权站点使用。选择 **本地房间** 或
-  **公网邀请**，可在这台设备上启动房间服务，进入通常的房主页面。
-  在启动页点亮已授权站点旁的星标，下次就会直接打开该站点；取消星标后恢复启动页。
-  替换站点或取消授权也会清除星标。
-- 启动页会记住上次点击 **进入 Piik** 确认的模式。
-  没有已保存的本地/公网选择时，默认选中公网邀请；确认后才启动。
-- 默认启动页打开后会检查官方发布，优先使用 GitHub，GitHub 不可用时使用 Gitee。
-  点击更新按钮下载对应平台的 ZIP，没有匹配包时打开发布页。
-  **版本说明** 可单独查看；发现新的大版本时会显示升级提示。App 不会自行安装或替换程序。
+选择 **本地房间** 或 **公网邀请**，点击 **进入 Piik** 启动房间服务。
+搭配已有站点使用采集时，保持启动页打开，[授权该站点](#已授权站点)即可。
+
+App 会记住上次确认的房间模式。首次使用默认选中 **公网邀请**，确认后才启动；
+有收藏站点时，启动后直接打开该站点。
+
+启动页通过 GitHub 检查更新，Gitee 作为备用来源。更新按钮下载对应平台的 ZIP；
+没有匹配包时打开发布页。**版本说明** 可查看改动，大版本升级会另行提示。
+替换 App 的操作见[升级步骤](#升级)。
 
 ### 本地房间
 
 选择 **本地房间**，在设备间可互相访问的局域网中使用。房间仅在本次 App 运行期间有效。
 
-本地邀请会自动选择唯一的活动地址或唯一的私有 IPv4 地址。仍有多个可能地址时，
-请在启动页选择网卡和 IP。公网邀请和搭配站点使用时无需选择局域网地址。
-App 会在启动时再次检查所选地址；它用于本地 HTTPS 入口和邀请链接，媒体路径仍由 ICE 独立选择。
-房主继续使用 HTTP 本机页面；朋友首次打开 HTTPS 邀请时，需与 App 终端核对
-[本地证书](../../docs/guide/troubleshooting.zh-CN.md#本地-https-证书提示)。证书只保存在内存中，重启后更换。
+App 自动选择唯一的活动地址或私有 IPv4；有多个地址时，在启动页的 **局域网邀请地址** 中选择。
+使用[虚拟局域网](../../docs/guide/network.zh-CN.md#可选虚拟局域网)时，选择对应的虚拟 IPv4。
+
+朋友使用该地址下的 HTTPS 邀请，房主使用本机页面。朋友首次访问时，需与 App 终端核对
+[证书指纹](../../docs/guide/troubleshooting.zh-CN.md#本地-https-证书提示)；App 重启后重新确认。
 
 ### 公网邀请
 
-临时公网分享时，打开 App 启动页，选择 **公网邀请**，在随后打开的浏览器中创建房间，
-发送通常的邀请链接即可。随机的 `trycloudflare.com` 来源仅在本次 App 运行期间有效，
-下次启动会创建新链接。Cloudflare Quick Tunnels 不保证持续可用；
-需要持久的控制服务或 SFU 兜底时，请使用配置好的站点。
+选择 **公网邀请**，在打开的浏览器中创建房间，再发送邀请链接。
+程序包中的 Cloudflare Tunnel 提供临时 `trycloudflare.com` HTTPS 地址，App 关闭后失效，
+下次启动会生成新地址。需要固定地址时，请使用配置好的 Piik 站点。
 
-公网邀请通过程序包中的 Cloudflare Tunnel 辅助程序，为同一个房间服务提供临时 HTTPS 地址。
-画面和声音在参与者之间传输（P2P），不经过隧道。本地房间和公网邀请都需要可用的 UDP 媒体路径，
-没有媒体服务器转发（SFU）或 TURN 中继兜底。连接机制见
-[路由参考](../../docs/standards/routing-transport.md)。
+本地房间和公网邀请的画面、声音通过 P2P 传输，不经过网页隧道；需要可用的 UDP 媒体路径，
+没有服务器媒体转发（SFU）或 TURN 中继。隧道或媒体连接失败时，查看
+[网络排查](../../docs/guide/network.zh-CN.md)与[公网邀请排查](../../docs/guide/troubleshooting.zh-CN.md#公网邀请创建失败或出现-1033)。
 
 公网邀请使用 Cloudflare、小米和 Bilibili 的 STUN 服务发现可连接地址。
 被联系的服务商能看到你的公网 IP、端口和请求时间；这些请求不包含分享画面、声音、
-聊天或房间密码。NAT 增强会自动使用同一组地址。公网邀请可在启动 App 前通过
+聊天或房间密码。公网邀请可在启动 App 前通过
 `PIIK_STUN_URLS` 替换 STUN 服务，示例见 [App 配置](../../docs/standards/configuration.md#piik-app-configuration)。
 搭配已授权站点时使用站点的 `STUN_URLS`；App 本地房间不配置公共 STUN。
 
 ### 已授权站点
 
-使用 Piik 站点时，保持 App 运行，点击站点顶部的 **App**，在本机确认页核对网址并允许使用。
-App 记住一个已授权站点，可在启动页打开或取消授权。允许另一个站点会替换旧站点，
-结束旧站点的 App 连接；本地房间不受影响。点击站点上已连接的 **App** 按钮可重开启动页；
-站点打不开时，可使用 App 终端中的 **App 启动页** 地址。同一浏览器记住启用选择，
-之后访问站点即可继续使用 App，同时使用该站点的房间和已启用的 SFU 兜底。
-没有 App 时仍可使用浏览器采集，详见[连接步骤](../../docs/guide/getting-started.zh-CN.md#通过已有站点使用-app)。
+保持 App 运行，点击 Piik 站点顶部的 **App**，在本机确认页核对网址并允许使用。
+详细操作见[连接步骤](../../docs/guide/getting-started.zh-CN.md#通过已有站点使用-app)。
+
+启动页会列出已授权站点：
+
+- 点击站点打开，**×** 取消该站点的 App 连接，其他站点与本地房间继续运行。
+- **☆** 选择一个下次启动时打开的站点；取消星标可恢复启动页，撤销对应授权也会清除星标。
+  授权新站点会保留已有授权。
+- 点击站点上已连接的 **App** 按钮可重开启动页，也可使用终端中的 **App 启动页** 地址。
+
+浏览器会记住启用选择；换浏览器、使用无痕窗口或清除站点数据后需重新连接。
+新的公网邀请网址需要单独授权。房间与已启用的 SFU 转发仍由站点提供。
 
 ## 采集
 
@@ -76,9 +79,7 @@ Windows 原生采集提供 VP8/Auto/H264，Auto 会为本次分享选定一种�
 macOS 和 Linux 原生采集需要硬件 H264。可选来源与音频支持取决于平台，设置要求见
 [Windows](../../native/capture/windows/README.md)、[macOS](../../native/capture/darwin/README.md)
 和 [Linux](../../native/capture/linux/README.md) 采集指南。
-原生采集使用房主当前的画质设置；编码选择、分享中修改设置与编码复用由
-[媒体质量参考](../../docs/standards/media-quality.md)说明，实测边界见
-[验证状态](../../docs/verification-status.md)。
+原生采集的画质可在[分享设置](../../docs/guide/sharing.zh-CN.md#画面与声音设置)中调整。
 
 Windows App 检测到采集能力支持时，选源器的 **程序 / 窗口** 和 **屏幕** 页会出现
 **显示采集边框** 开关，默认关闭。
@@ -101,6 +102,20 @@ App 配置保存可选的本地站点口令。留空表示本地站点开放进�
 | `--link` | 临时公网邀请 |
 | `--site <origin>` | 保存并打开 Piik 站点 |
 
+## 升级
+
+App 与站点需要使用同一大版本，**2.x 与 1.x 不能混用**。
+不同 2.x 版本保留已有的分享和观看功能，新功能需要相关 App 与站点支持。
+
+1. 查看 [GitHub](https://github.com/TNTcraftHIM/Piik/releases/latest) 或
+   [Gitee](https://gitee.com/TNTcraftHIM/Piik/releases) 上的版本说明。
+2. 使用本地房间或公网邀请时，停止分享并关闭 App，完整解压新版程序包，重新启动后发送新邀请。
+3. 使用已有站点时，由管理员先[更新 Server](../../docs/operations/service-management.zh-CN.md)，
+   再更新连接的 App，并刷新所有分享与观看页面。
+
+启动页的更新按钮可下载程序包，**Gitee 备用下载** 提供备用来源。
+重启 App 或 Server 会中断当前分享。
+
 ## 终端与关闭
 
 终端显示当前模式、入口链接与启动状态，语言跟随启动页和已启用 App 的页面。
@@ -113,10 +128,8 @@ App 在独立 Windows 控制台中启动时，启动或运行错误会保留在�
 
 ### Chromium WebRTC 连接
 
-**为什么网页能打开、屏幕也能采集，却无法分享或观看？**
-
 浏览器设置、扩展或管理策略可能阻止 WebRTC UDP，包括本机网页与 App 之间的媒体连接。
-按文档中心的 [浏览器 WebRTC 排查](../../docs/guide/troubleshooting.zh-CN.md#浏览器限制了-webrtc)操作。
+按文档中心的 [浏览器 WebRTC 排查](../../docs/guide/network.zh-CN.md#浏览器限制了-webrtc)操作。
 特定编码失败时，另见 [Windows H264 排查](../../docs/guide/troubleshooting.zh-CN.md#windows-上-h264-分享失败)。
 
 ### 诊断

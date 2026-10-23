@@ -100,7 +100,7 @@ export function Tooltip({
   // long-press from a mouse right-click without reading vendor event fields.
   const touchGesture = useRef(false);
   const enabled = !disabled && (kind !== undefined || overflowing);
-  const caption = [overflowing ? overflow?.text : undefined, text].filter(Boolean).join(" · ") || undefined;
+  const caption = [overflowing ? overflow?.text : undefined, text].filter(Boolean).join("\n") || undefined;
   const interactionOpen = enabled && (hoverOpen || focusOpen || pressOpen);
   const trigger = isValidElement<{
       disabled?: boolean;
@@ -187,14 +187,16 @@ export function Tooltip({
     const right = x + vw, bottom = y + vh;
     tipRef.current?.style.setProperty("--tooltip-max-width", `${Math.max(0, vw - EDGE_MARGIN * 2)}px`);
     tipRef.current?.style.setProperty("--tooltip-max-height", `${Math.max(0, vh - EDGE_MARGIN * 2)}px`);
-    const rect = wrap.getBoundingClientRect();
+    // Grid/flex layouts may stretch the interaction wrapper beyond its control.
+    // Aim at the visible trigger rather than the wrapper's unused space.
+    const rect = (wrap.firstElementChild ?? wrap).getBoundingClientRect();
     // Popovers and fullscreen present a separate subtree. Their DOM ancestors
     // outside that surface retain page geometry and cannot place its hints.
     const surface = wrap.closest<HTMLElement>("[popover], :fullscreen");
     const insideSurface = (element: HTMLElement | null) => element && (!surface || surface.contains(element)) ? element : null;
     // A wrapped control row remains one working area, including on narrow screens.
     const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-playback, .lr-source-picker-options, .lr-host-share-controls"));
-    const playback = controlBar?.classList.contains("lr-playback");
+    const playback = Boolean(controlBar?.closest(".lr-playback"));
     const avoid = controlBar?.getBoundingClientRect() ?? rect;
     const screen = insideSurface(wrap.closest<HTMLElement>(".lr-tv-screen"));
     const player = screen?.getBoundingClientRect();
@@ -223,7 +225,7 @@ export function Tooltip({
     const sideTop = Math.max(y + EDGE_MARGIN, Math.min(centerY - panelHeight / 2, bottom - panelHeight - EDGE_MARGIN));
     const fitsSideVertically = sideTop >= y + EDGE_MARGIN && sideTop + panelHeight <= (bottom || Infinity) - EDGE_MARGIN;
     // Use empty side space only when the whole panel fits close to its control.
-    // Otherwise clear the entire playback bar, including its narrow second row.
+    // Otherwise clear the entire strip that owns this control.
     if (playback) {
       // The screen edge is the side boundary when available, so a side panel
       // never hangs over the picture while clearing the bar.
@@ -318,7 +320,7 @@ export function Tooltip({
     // their inset without scrolling the page. Follow that owner's final layout.
     const surface = wrapRef.current?.closest<HTMLElement>("[popover]");
     const observer = new ResizeObserver(schedulePick);
-    for (const element of [wrapRef.current, tipRef.current, surface]) if (element) observer.observe(element);
+    for (const element of [wrapRef.current, wrapRef.current?.firstElementChild, tipRef.current, surface]) if (element) observer.observe(element);
     const movement = new MutationObserver(schedulePick);
     if (surface) movement.observe(surface, { attributes: true, attributeFilter: ["style"] });
     schedulePick();

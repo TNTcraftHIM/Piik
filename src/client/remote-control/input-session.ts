@@ -1,5 +1,5 @@
 import type { InputTransport } from "./input-route";
-import { remoteInputStateSchema, type RemoteInputState } from "./protocol";
+import { remoteInputStateSchema, remoteTextAvailable, remoteGamepadAvailable, type RemoteInputState, type RemoteGamepadReport } from "./protocol";
 export type { RemoteInputState } from "./protocol";
 export type RemoteInputEvent =
   | { type: "move"; x: number; y: number }
@@ -8,6 +8,9 @@ export type RemoteInputEvent =
   | { type: "text"; text: string }
   | { type: "button"; button: number; down: boolean }
   | { type: "wheel"; delta: number }
+  | { type: "gamepad"; gamepad: RemoteGamepadReport }
+  | { type: "gamepad-reset" }
+  | { type: "gamepad-stop" }
   | { type: "reset" };
 
 type PointerInput = Extract<RemoteInputEvent, { type: "move" | "relative" }>;
@@ -18,6 +21,7 @@ export class RemoteInputSession {
   state: RemoteInputState | null = null;
   private intent: string | null = null;
   private disposed = false;
+  private capabilitiesRequested = false;
   private pointer: PointerInput | null = null;
   private pointerTimer: ReturnType<typeof setTimeout> | null = null;
   private wheelFraction = 0;
@@ -54,6 +58,12 @@ export class RemoteInputSession {
     const parsed = remoteInputStateSchema.safeParse(decoded);
     if (!parsed.success) return;
     const state = parsed.data;
+    // Wait for a real Host response: the first sync may precede installation
+    // of our route key. Legacy Apps ignore this optional negotiation command.
+    if (!this.capabilitiesRequested) {
+      this.capabilitiesRequested = true;
+      if (!state.capabilities && !this.send({ type: "capabilities" })) return;
+    }
     // Source availability is authoritative for every request. Pause/off may
     // reach us before the Host receives our new intent; it still ends it.
     if (state.state === "unavailable") this.intent = null;
@@ -84,11 +94,12 @@ export class RemoteInputSession {
   }
 
   request(password?: string): void {
+    if (this.intent !== null) this.release();
     const state = this.state;
     if (!state) return;
     this.intent = crypto.randomUUID().replaceAll("-", "");
     if (this.send({ type: "request", intent: this.intent, ...(password !== undefined ? { password } : {}) }))
-      this.set({ state: "pending", mode: state.mode, platform: state.platform, intent: this.intent });
+      this.set({ ...state, state: "pending", grant: undefined, reason: undefined, intent: this.intent });
   }
 
   release(): void {
@@ -99,10 +110,12 @@ export class RemoteInputSession {
     const intent = this.intent;
     const state = this.state;
     this.intent = null;
-    if (this.send({ type: "release", intent })) this.set({ state: "ready", mode: state.mode, platform: state.platform });
+    if (this.send({ type: "release", intent })) this.set({ ...state, state: "ready", grant: undefined, intent: undefined });
   }
 
   input(event: RemoteInputEvent): void {
+    if ((event.type === "gamepad" || event.type === "gamepad-reset" || event.type === "gamepad-stop") && (!this.state || !remoteGamepadAvailable(this.state))) return;
+    if (this.state && event.type === "text" && !remoteTextAvailable(this.state)) return;
     if (event.type === "move" || event.type === "relative") {
       if (this.state?.state !== "active") return;
       // Absolute samples replace one another; relative samples accumulate.
@@ -134,7 +147,7 @@ export class RemoteInputSession {
   private sendInput(event: RemoteInputEvent): void {
     const state = this.state;
     if (!this.intent || !state?.grant || state.intent !== this.intent ||
-        (state.state !== "active" && !(event.type === "reset" && state.state === "suspended"))) return;
+        (state.state !== "active" && !((event.type === "reset" || event.type === "gamepad-reset" || event.type === "gamepad-stop") && state.state === "suspended"))) return;
     this.send({ ...event, grant: state.grant });
   }
 

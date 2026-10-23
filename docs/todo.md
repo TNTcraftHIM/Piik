@@ -1,25 +1,30 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-21
+Last reviewed: 2026-10-23
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Windows window-sharing black screen (#495).** Investigate
+  [#495](https://github.com/TNTcraftHIM/Piik/issues/495): Windows 10, Chrome 155,
+  Piik v2.3.0; App window sharing is black while full-screen sharing works.
+  The attachment shows the Host selecting its own Chrome window, then a black
+  preview after sharing starts. This path works in local Windows 11 / Chrome 155
+  checks. A same-attempt App/Web report from the affected device is needed to
+  distinguish capture output from decoding. Keep this investigation separate
+  from the release; it is not covered by the macOS #492 crop fix.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
   temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
-- [ ] **New promotional film.** Refine the online Chinese/English draft as a
-  standalone introduction: sharing, invitations, Host consent and playing together.
-  Improve the party-game example, motion, reading time and soundtrack. Functional
-  work takes priority; export only after the owner accepts the online preview.
-  Depict published functionality rather than multi-controller prototypes.
 
 ## Held By Owner
 
+- [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
+  shared system mouse; do not add multi-cursor or pointer-ownership visualization.
 - [ ] **Separate accompaniment sharing.** Deferred on 2026-10-20 and excluded
   from this candidate. Preserve the unfinished prototype on
   `spike/audio-accompaniment` (`5e385add`); it is not a working feature.
@@ -40,20 +45,13 @@ own behavior; research and Git/PRs own evidence and completed history.
   Keep Cloudflare Quick Tunnel. The [provider assessment](./research/cross-platform-client-runtime.md#alternative-invitation-providers)
   owns alternatives and tradeoffs.
 
-## Local Interaction Prototypes
-
-- [ ] **Shared-keyboard remote co-play.** Review the isolated Host-plus-two-Viewer
-  prototype before product integration. Reuse the encrypted input route and
-  consent owner, with per-participant held keys and one explicit pointer owner.
-  The recording-sink trial does not implement desktop injection or game support.
-- [ ] **Optional virtual gamepads.** Continue the isolated input-backend
-  experiment authorized on 2026-10-19. The Host supplies any optional dependency;
-  do not install or bundle a kernel driver. Review maintained backends, licensing,
-  privileges and device retirement before integration. The
-  [input assessment](./research/room-interactions.md#remote-co-play) owns the design.
-
 ## Parked Product Work
 
+- **Virtual gamepads beyond Windows.** Linux uinput passed its isolated kernel
+  gate; desktop permissions and game recognition need physical checks. macOS
+  virtual HID needs an entitled App and macOS SDK/runtime checks. The
+  [co-play assessment](./research/room-interactions.md#remote-co-play) owns
+  platform evidence; Piik does not bundle or install optional input drivers.
 - **Platform output.** A registered receiver may act as an ordinary Viewer after
   the [platform-output gate](./research/platform-output.md) passes.
 - **Additional languages.** Review community catalogs and rendered UI through
@@ -76,7 +74,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 - **Phone as a Host microphone.** Revisit only for a concrete use case that
   justifies the [pairing and input boundary](./research/camera-and-microphone.md#phone-microphone-assessment).
 - **Mobile controlled endpoints.** Separate scope from desktop keyboard/mouse
-  control and the co-play prototypes above.
+  control and the co-play candidate above.
 - **Android App assessment.** Evaluate native phone screen sharing and source
   audio beyond the existing mobile Browser features. Start with Android's
   [MediaProjection](https://developer.android.com/media/grow/media-projection)

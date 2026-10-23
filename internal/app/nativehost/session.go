@@ -537,8 +537,8 @@ func (session *Session) RemoteInputState() remoteinput.State {
 }
 
 // Reserve the intent synchronously, before dispatch starts asynchronous OS work.
-func (session *Session) PrepareRemoteInputPolicy(mode, password string) (func() error, error) {
-	change, err := session.remoteInput.BeginPolicy(session.ctx, mode, password)
+func (session *Session) PrepareRemoteInputPolicy(mode, password string, coPlay bool) (func() error, error) {
+	change, err := session.remoteInput.BeginPolicy(session.ctx, mode, password, coPlay)
 	if err != nil {
 		return nil, err
 	}
@@ -581,6 +581,10 @@ func (session *Session) SetRemoteInputPeers(peers []protocol.RemoteInputPeer) er
 
 func (session *Session) DecideRemoteInput(id string, allow bool) error {
 	return session.remoteInput.Decide(id, allow)
+}
+
+func (session *Session) SetRemoteInputSimultaneous(enabled bool) error {
+	return session.remoteInput.SetSimultaneous(enabled)
 }
 
 func (session *Session) syncRemoteInputSource(change *remoteinput.PolicyChange) {
@@ -1386,4 +1390,11 @@ func (session *Session) SetMicrophone(enabled *bool, gain *float64, deviceID *st
 		return errors.New("native microphone is unavailable")
 	}
 	return session.mixer.setMicrophone(session.captureProcess, enabled, gain, deviceID)
+}
+
+func (session *Session) SetVolume(volume float64) error {
+	if session.ctx.Err() != nil {
+		return session.ctx.Err()
+	}
+	return session.audioSource.SetVolume(volume)
 }

@@ -13,7 +13,7 @@ export function StatusIndicator({ status, label, onActivate }: {
   const { vis, t } = useCopy();
   const hint = (status.tooltip ?? status.comic)!;
   const text = label ?? t(status.labelKey);
-  const description = onActivate ? `${text} · ${t("shareHelp.open")}` : text;
+  const description = onActivate ? `${text}\n${t("shareHelp.open")}` : text;
   const indicator = (
     <button
       type="button"

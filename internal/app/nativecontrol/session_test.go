@@ -302,6 +302,14 @@ func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing
 			if started.Audio != optIn || bytes.Contains(encoded, []byte(`"sourceAudio"`)) != optIn {
 				t.Fatalf("mixed output leaked across opt-in: %s", encoded)
 			}
+			result, err = session.Handle(t.Context(), []byte(`{"version":10,"id":"request_volume","type":"set-share-volume","shareId":"share_123456","volume":2}`))
+			if optIn {
+				if ack, ok := result.(responseEnvelope); err != nil || !ok || ack.Type != "share-volume-set" {
+					t.Fatalf("source volume failed: %v %#v", err, result)
+				}
+			} else if _, failed := result.(requestFailedResponse); err != nil || !failed {
+				t.Fatalf("volume accepted without an audio source: %v %#v", err, result)
+			}
 			result, err = session.Handle(t.Context(), []byte(`{"version":10,"id":"request_mic","type":"set-microphone","shareId":"share_123456","enabled":true,"volume":1}`))
 			if !optIn {
 				if _, failed := result.(requestFailedResponse); err != nil || !failed {

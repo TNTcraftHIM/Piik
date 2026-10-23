@@ -23,6 +23,25 @@
 .vp-doc a { text-underline-offset: 3px; }
 .vp-doc :is(p, a) { overflow-wrap: anywhere; }
 .vp-doc td { overflow-wrap: break-word; }
+.vp-doc .guide-task-index > ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 0; }
+.vp-doc .guide-task-index > ul > li { margin: 0; padding: 14px 18px; list-style: none; border: 1px solid var(--line); border-radius: 12px; }
+@media (max-width: 640px) {
+  .vp-doc .guide-task-index > ul { grid-template-columns: 1fr; }
+}
+.vp-doc .guide-control-reference :is(th, td):first-child { min-width: 8em; }
+/* The same Markdown theme hints also work when the guides are read on GitHub. */
+html:not(.dark) .vp-doc img[src$="#gh-dark-mode-only"],
+html.dark .vp-doc img[src$="#gh-light-mode-only"] { display: none; }
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+.vp-doc img {
+  max-width: 100%; height: auto; margin-inline: auto; border-radius: 12px;
+}
+.vp-doc img[src*="sharing-settings."] { max-width: min(100%, 620px); }
+.vp-doc img[src*="room-voice."] { max-width: min(100%, 480px); }
+.vp-doc img[src*="share-failure."] { max-width: min(100%, 480px); }
+.vp-doc details { margin-block: 20px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; }
+.vp-doc details > :last-child { margin-bottom: 0; }
 .docs-license { margin-top: 24px; color: var(--vp-c-text-2); font-size: 12px; }
 .docs-license a { text-decoration: underline; text-underline-offset: 3px; }
 html[data-reduced-motion] .identity * { animation: none !important; }

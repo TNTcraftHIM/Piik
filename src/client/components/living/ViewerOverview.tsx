@@ -6,7 +6,10 @@ import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { Tooltip } from "./Tooltip";
-import { METRIC_PRESENTATION, type MetricLabel } from "./metric-presentation";
+import { METRIC_PRESENTATION, metricHintText, type MetricLabel } from "./metric-presentation";
+import type { RoomVoiceSnapshot } from "../../room-voice/session";
+import { describeVoiceConnection, voiceMetricsForPeer } from "../../room-voice/VoiceConnectionDetails";
+import type { VoiceConnectionMetric } from "../../room-voice/browser-endpoint";
 
 export interface ViewerOverviewEntry {
   key: string;
@@ -24,12 +27,19 @@ export function ViewerOverview({
   entries,
   selectedKey,
   onSelect,
+  pictureActive,
+  voice,
+  voiceMetrics = [],
 }: {
   entries: readonly ViewerOverviewEntry[];
   selectedKey: string | null;
   onSelect: (key: string) => void;
+  pictureActive: boolean;
+  voice?: RoomVoiceSnapshot | null;
+  voiceMetrics?: readonly VoiceConnectionMetric[];
 }) {
   const { t, vis } = useCopy();
+  const voiceActive = voice?.room?.enabled === true;
   const unknown = vis ? "—" : t("stats.unknown");
   const numberValue = (
     value: number | null | undefined,
@@ -38,7 +48,7 @@ export function ViewerOverview({
   ): string =>
     finite(value ?? null) ? `${value!.toFixed(digits)}${unit}` : unknown;
   const heading = (key: MetricLabel) => (
-    <Tooltip toggleOnClick kind={METRIC_PRESENTATION[key].hint} text={vis ? undefined : t(key)}>
+    <Tooltip toggleOnClick kind={METRIC_PRESENTATION[key].hint} text={vis ? undefined : metricHintText(key, t)}>
       <button type="button" aria-label={t(key)} style={{ border: 0, padding: 0, background: "none", color: "inherit", font: "inherit" }}>
         {vis ? <Glyph name={METRIC_PRESENTATION[key].icon} size={14} /> : t(key)}
       </button>
@@ -47,19 +57,25 @@ export function ViewerOverview({
 
   return (
     <section
-      className="lr-viewer-overview"
+      className={`lr-viewer-overview${pictureActive ? " has-picture" : ""}${voiceActive ? " has-voice" : ""}`}
       id="host-viewer-overview"
       aria-label={t("host.viewerOverview")}
     >
       <div className="lr-viewer-overview-scroll">
         <div className="lr-viewer-overview-head">
           <span>{vis ? <Glyph name="users" size={14} /> : t("common.viewers")}</span>
-          <span>{vis ? <Glyph name="network" size={14} /> : t("host.topology")}</span>
+          {pictureActive && <>
+          <span>{vis ? <Glyph name="tv" size={14} /> : t("host.settings.picture")}</span>
           {heading("stats.resolution")}
           {heading("stats.fps")}
           {heading("stats.bitrate")}
           {heading("stats.loss")}
           {heading("stats.rtt")}
+          </>}
+          {voiceActive && <span>{vis ? <Glyph name="headphones" size={14} /> : t(pictureActive ? "voice.details.title" : "voice.details.receive")}</span>}
+          {voiceActive && !pictureActive && <>
+            {heading("stats.audio")}{heading("stats.rtt")}{heading("stats.audioLoss")}{heading("stats.audioJitter")}
+          </>}
         </div>
         <div className="lr-viewer-overview-body">
           {entries.map((entry) => {
@@ -73,6 +89,11 @@ export function ViewerOverview({
               ? formatPacketLossPercent(metrics.packetLossPercent, unknown)
               : unknown;
             const rtt = numberValue(metrics?.rttMs, 0, " ms");
+            const voiceDetail = describeVoiceConnection(voice, entry.key);
+            const voiceObservation = voiceMetricsForPeer(voiceMetrics, entry.key).find(item => item.direction === "receive");
+            const voiceSample = voiceObservation?.metrics;
+            const voiceLabel = t(voiceDetail?.status.labelKey ?? "voice.outside");
+            const voiceRoute = voiceObservation?.route.toUpperCase() ?? (voiceDetail?.upstream.kind === "peer" ? "P2P" : voiceDetail?.upstream.kind === "sfu" ? "SFU" : null);
             const route =
               entry.route === "sfu"
                 ? "SFU"
@@ -84,7 +105,8 @@ export function ViewerOverview({
                 type="button"
                 className={`lr-viewer-overview-row${selectedKey === entry.key ? " is-selected" : ""}`}
                 aria-pressed={selectedKey === entry.key}
-                aria-label={`${entry.name} · ${statusLabel} · ${route}`}
+                aria-label={[entry.name, statusLabel, pictureActive ? route : null,
+                  voiceActive ? `${t("voice.details.title")} · ${voiceRoute ?? voiceLabel}` : null].filter(Boolean).join(" · ")}
                 onClick={() => onSelect(entry.key)}
               >
                 <span className="lr-viewer-overview-person">
@@ -98,7 +120,7 @@ export function ViewerOverview({
                     {vis ? null : <small>{statusLabel}</small>}
                   </span>
                 </span>
-                <span className={`lr-viewer-overview-route is-${entry.route ?? "pending"}`}>
+                {pictureActive && <><span className={`lr-viewer-overview-route is-${entry.route ?? "pending"}`}>
                   <Glyph
                     name={
                       entry.route === "sfu"
@@ -128,6 +150,19 @@ export function ViewerOverview({
                 <span>{bitrate}</span>
                 <span>{loss}</span>
                 <span>{rtt}</span>
+                </>}
+                {voiceActive && <span className="lr-viewer-overview-voice" data-tone={voiceDetail?.status.tone ?? "off"}>
+                  <Glyph name={voiceDetail?.status.icon ?? "headphonesOff"} size={14} />
+                  <span><b className={!voiceRoute && vis ? "visually-hidden" : undefined}>{voiceRoute ?? voiceLabel}</b>
+                    {voiceRoute && <small className={vis ? "visually-hidden" : undefined}>{voiceLabel}</small>}
+                  </span>
+                </span>}
+                {voiceActive && !pictureActive && <>
+                  <span>{numberValue(voiceSample?.bitrateKbps, 0, " kbps")}</span>
+                  <span>{numberValue(voiceSample?.rttMs, 0, " ms")}</span>
+                  <span>{formatPacketLossPercent(voiceSample?.packetLossPercent ?? null, unknown)}</span>
+                  <span>{numberValue(voiceSample?.jitterMs, 1, " ms")}</span>
+                </>}
               </button>
             );
             return (

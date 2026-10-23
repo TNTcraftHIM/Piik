@@ -10,12 +10,14 @@ type voiceMember struct {
 	sessionID     string
 	joined        bool
 	publicationID string
+	deafened      *bool
 }
 
 // Room authority owns voice activation and publication identity. Connections below
 // are physical facets of router.controller's graph, never another topology.
 type roomVoice struct {
 	hostPeerID  string
+	bitrate     protocol.Int
 	revision    int64
 	members     map[string]*voiceMember
 	connections map[string]*voiceEdge
@@ -48,7 +50,7 @@ func (s *Server) voiceRoom(roomID string) *roomVoice {
 	}
 	v := s.voices[roomID]
 	if v == nil {
-		v = &roomVoice{members: make(map[string]*voiceMember), connections: make(map[string]*voiceEdge)}
+		v = &roomVoice{bitrate: 64_000, members: make(map[string]*voiceMember), connections: make(map[string]*voiceEdge)}
 		s.voices[roomID] = v
 	}
 	if host, ok := s.store.GetConnectedHost(roomID); ok {
@@ -61,7 +63,7 @@ func (s *Server) voiceRoom(roomID string) *roomVoice {
 	return v
 }
 
-func (s *Server) subscribeRoomVoice(sess *session, auth *authenticatedSession) {
+func (s *Server) subscribeRoomVoice(sess *session, auth *authenticatedSession, deafened *bool) {
 	sess.roomVoice = true
 	v := s.voiceRoom(auth.roomID)
 	m := v.members[auth.peerID]
@@ -73,6 +75,8 @@ func (s *Server) subscribeRoomVoice(sess *session, auth *authenticatedSession) {
 		m.sessionID = sess.sessionID
 		m.publicationID = ""
 	}
+	m.deafened = deafened
+	sess.roomVoiceListeningPresence = deafened != nil
 	s.syncVoiceDemand(auth.roomID)
 	s.syncRoomVoice(auth.roomID)
 }
@@ -110,6 +114,22 @@ func (s *Server) handleRoomVoiceCommand(sess *session, auth *authenticatedSessio
 		return
 	}
 	switch command.Action {
+	case "bitrate":
+		if auth.role != protocol.RoleHost || !sess.roomVoiceBitrate {
+			s.voiceError(sess, "not-allowed")
+			return
+		}
+		v.bitrate = command.Bitrate
+		s.syncRoomVoice(auth.roomID)
+		return
+	case "deafen":
+		if !sess.roomVoiceListeningPresence || command.Deafened == nil {
+			s.voiceError(sess, "not-allowed")
+			return
+		}
+		m.deafened = command.Deafened
+		s.syncRoomVoice(auth.roomID)
+		return
 	case "join":
 		if auth.role != protocol.RoleHost && !v.enabled() {
 			s.voiceError(sess, "not-enabled")

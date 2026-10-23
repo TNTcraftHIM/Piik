@@ -221,7 +221,21 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 	case "set-relay-volunteer":
 		return decodeSetRelayVolunteer(data)
 	case "subscribe-room-voice":
-		return decodeEmptyClientMessage(data, SubscribeRoomVoiceMessage{Type: messageType})
+		var v SubscribeRoomVoiceMessage
+		f, err := decodeObject(data, &v)
+		if err != nil {
+			return nil, err
+		}
+		if err = f.require("type"); err != nil {
+			return nil, err
+		}
+		if err = f.optional("deafened", "bitrate"); err != nil {
+			return nil, err
+		}
+		if f.has("bitrate") && !v.Bitrate {
+			return nil, errors.New("invalid voice subscription")
+		}
+		return v, nil
 	case "room-voice-command":
 		return decodeRoomVoiceCommand(data)
 	case "room-voice-signal":
@@ -232,6 +246,10 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		return decodeSetViewerRoutePreference(data)
 	case "subscribe-audio-presence":
 		return decodeEmptyClientMessage(data, SubscribeAudioPresenceMessage{Type: messageType})
+	case "subscribe-co-play-presence":
+		return decodeEmptyClientMessage(data, SubscribeCoPlayPresenceMessage{Type: messageType})
+	case "set-co-play-presence":
+		return decodeSetCoPlayPresence(data)
 	case "set-audio-presence":
 		return decodeSetAudioPresence(data)
 	case "subscribe-remote-input":

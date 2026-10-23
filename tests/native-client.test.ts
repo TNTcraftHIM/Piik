@@ -666,7 +666,7 @@ describe("native App private wire", () => {
       send(payload: string) {
         const request = JSON.parse(payload) as Record<string, unknown>;
         requests.push(request);
-        if (request.type === "set-microphone") return;
+        if (request.type === "set-microphone" || request.type === "set-share-volume") return;
         if (request.type === "list-microphones") {
           queueMicrotask(() => this.ack(request, "microphone-list", { devices: [{ id: "headset", label: "USB Headset" }] }));
           return;
@@ -679,7 +679,7 @@ describe("native App private wire", () => {
     vi.stubGlobal("WebSocket", Socket);
     vi.stubGlobal("window", { setTimeout, clearTimeout });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-      ...health, nativeMedia: { ...health.nativeMedia, ...(supported ? { microphone: true } : {}) },
+      ...health, nativeMedia: { ...health.nativeMedia, ...(supported ? { microphone: true, shareVolume: true } : {}) },
     }))));
     const client = (await NativeClient.connect())!;
     try {
@@ -690,11 +690,27 @@ describe("native App private wire", () => {
       expect(started.audio).toBe(supported);
       if (!supported) {
         await expect(client.setMicrophone("share_123456", true, 1)).rejects.toThrow();
+        await expect(client.setShareVolume("share_123456", 2)).rejects.toThrow();
         await expect(client.microphones()).rejects.toThrow();
         expect(requests.some(request => request.type === "set-microphone")).toBe(false);
+        expect(requests.some(request => request.type === "set-share-volume")).toBe(false);
         return;
       }
       expect(await client.microphones()).toEqual([{ id: "headset", label: "USB Headset" }]);
+      const volume = client.setShareVolume("share_123456", .5);
+      expect(client.setShareVolume("share_123456", 2)).toBe(volume);
+      const shareVolumeRequest = requests.at(-1)!;
+      const microphoneVolume = client.setMicrophoneVolume("share_123456", .4);
+      expect(client.setMicrophoneVolume("share_123456", .9)).toBe(microphoneVolume);
+      const microphoneVolumeRequest = requests.at(-1)!;
+      socket.ack(shareVolumeRequest, "share-volume-set");
+      await vi.waitFor(() => expect(requests.at(-1)).toMatchObject({ type: "set-share-volume", volume: 2 }));
+      socket.ack(requests.at(-1)!, "share-volume-set");
+      await volume;
+      socket.ack(microphoneVolumeRequest, "microphone-set");
+      await vi.waitFor(() => expect(requests.at(-1)).toMatchObject({ type: "set-microphone", volume: .9 }));
+      socket.ack(requests.at(-1)!, "microphone-set");
+      await microphoneVolume;
       const choosing = client.setMicrophone("share_123456", true, 1, "headset");
       expect(requests.at(-1)).toMatchObject({ type: "set-microphone", deviceId: "headset", enabled: true });
       socket.ack(requests.at(-1)!, "microphone-set");

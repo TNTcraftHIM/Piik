@@ -86,9 +86,11 @@ type NativeMediaCapabilities struct {
 	MaxRelayChildren             int                        `json:"maxRelayChildren,omitempty"`
 	RemoteInput                  bool                       `json:"remoteInput,omitempty"`
 	RemoteStopShortcut           bool                       `json:"remoteStopShortcut,omitempty"`
+	RemoteCoPlay                 bool                       `json:"remoteCoPlay,omitempty"`
 	Video                        bool                       `json:"video"`
 	CaptureBorderControl         bool                       `json:"captureBorderControl,omitempty"`
 	Microphone                   bool                       `json:"microphone,omitempty"`
+	ShareVolume                  bool                       `json:"shareVolume,omitempty"`
 	ProcessAudio                 bool                       `json:"processAudio"`
 	ProcessAudioExclusion        bool                       `json:"processAudioExclusion,omitempty"`
 	SystemAudio                  bool                       `json:"systemAudio"`

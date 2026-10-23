@@ -61,63 +61,70 @@ func (session *retiringControl) Close() error {
 	return nil
 }
 
-func TestSiteChangeWaitsForMediaRetirementWithoutStoppingLocalSession(t *testing.T) {
-	finish := make(chan struct{})
-	defer close(finish)
-	created := make(chan *testControlSession, 2)
-	server := startTestServerWithOptions(t, Options{AllowedOrigins: []string{testOrigin}, NewControl: func() ControlSession {
-		session := &testControlSession{events: make(chan any), closed: make(chan struct{})}
-		created <- session
-		return &retiringControl{session, finish}
-	}})
-	endpoint := server.Endpoint()
-	old := dialControl(t, endpoint, endpoint.InstanceToken, testOrigin)
-	defer old.CloseNow()
-	writeControl(t, old, requestJSON("old_hello", "hello"))
-	var ready controlMessage
-	readControl(t, old, &ready)
-	oldSession := <-created
-	local := dialControl(t, endpoint, endpoint.InstanceToken, endpoint.URL)
-	defer local.CloseNow()
-	writeControl(t, local, requestJSON("local_hello", "hello"))
-	readControl(t, local, &ready)
-	localSession := <-created
+func TestSiteRevocationPreservesUnrelatedSessions(t *testing.T) {
+	for _, otherOrigin := range []string{"", "https://keep.example"} {
+		t.Run(otherOrigin, func(t *testing.T) {
+			finish := make(chan struct{})
+			defer close(finish)
+			created := make(chan *testControlSession, 2)
+			server := startTestServerWithOptions(t, Options{AllowedOrigins: []string{testOrigin, "https://keep.example"}, NewControl: func() ControlSession {
+				session := &testControlSession{events: make(chan any), closed: make(chan struct{})}
+				created <- session
+				return &retiringControl{session, finish}
+			}})
+			endpoint := server.Endpoint()
+			old := dialControl(t, endpoint, endpoint.InstanceToken, testOrigin)
+			defer old.CloseNow()
+			writeControl(t, old, requestJSON("old_hello", "hello"))
+			var ready controlMessage
+			readControl(t, old, &ready)
+			oldSession := <-created
+			if otherOrigin == "" {
+				otherOrigin = endpoint.URL
+			}
+			local := dialControl(t, endpoint, endpoint.InstanceToken, otherOrigin)
+			defer local.CloseNow()
+			writeControl(t, local, requestJSON("local_hello", "hello"))
+			readControl(t, local, &ready)
+			localSession := <-created
 
-	done := make(chan error, 1)
-	go func() { done <- server.SetAllowedOrigins([]string{"https://next.example"}) }()
-	select {
-	case <-oldSession.closed:
-	case <-time.After(time.Second):
-		t.Fatal("revoked session did not start retirement")
-	}
-	select {
-	case err := <-done:
-		t.Fatalf("permission reported ready before cleanup: %v", err)
-	default:
-	}
-	select {
-	case <-localSession.closed:
-		t.Fatal("unrelated Local session was closed")
-	default:
-	}
-	writeControl(t, local, requestJSON("local_ping", "ping"))
-	readControl(t, local, &ready)
-	if ready.Type != "pong" {
-		t.Fatal("Local session was interrupted")
-	}
-	// A stuck media owner must not hang consent forever or restore old permission.
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("stuck cleanup was reported as successful")
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("permission retirement was unbounded")
-	}
-	response := doHealthRequest(t, endpoint, endpoint.Host, testOrigin)
-	response.Body.Close()
-	if response.StatusCode != 403 {
-		t.Fatal("timeout restored the revoked origin")
+			done := make(chan error, 1)
+			go func() { done <- server.SetAllowedOrigins([]string{"https://next.example", "https://keep.example"}) }()
+			select {
+			case <-oldSession.closed:
+			case <-time.After(time.Second):
+				t.Fatal("revoked session did not start retirement")
+			}
+			select {
+			case err := <-done:
+				t.Fatalf("permission reported ready before cleanup: %v", err)
+			default:
+			}
+			select {
+			case <-localSession.closed:
+				t.Fatal("unrelated session was closed")
+			default:
+			}
+			writeControl(t, local, requestJSON("local_ping", "ping"))
+			readControl(t, local, &ready)
+			if ready.Type != "pong" {
+				t.Fatal("retained session was interrupted")
+			}
+			// A stuck media owner must not hang consent forever or restore old permission.
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("stuck cleanup was reported as successful")
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("permission retirement was unbounded")
+			}
+			response := doHealthRequest(t, endpoint, endpoint.Host, testOrigin)
+			response.Body.Close()
+			if response.StatusCode != 403 {
+				t.Fatal("timeout restored the revoked origin")
+			}
+		})
 	}
 }
 

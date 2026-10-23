@@ -28,11 +28,20 @@ import { SharingSettings } from "../components/living/SharingSettings";
 import { HostShareControls } from "../components/living/HostShareControls";
 import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import { RoomInteractions } from "../components/living/RoomInteractions";
-import { RoomChatOverlay } from "../components/living/RoomChatOverlay";
+import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
+import { PlaybackControls } from "../components/living/PlaybackControls";
+import { useTheaterMode } from "../components/living/use-theater-mode";
+import { isPictureInPicture } from "../components/living/use-picture-in-picture";
+import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
+import type { VideoFit } from "../media/video-geometry";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
+import { useRoomVoiceMetrics, useRoomVoiceSnapshot } from "../room-voice/use-room-voice-state";
+import { describeVoiceConnection, voiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { HostAudio } from "../media/host-audio";
+import { browserCaptureDevices } from "../media/capture-devices";
+import { ShareMicrophoneSettings } from "../components/living/ShareMicrophoneSettings";
 import {
   CaptureSourcePicker,
   type NativeSourceList,
@@ -55,7 +64,8 @@ import type { ComicTone } from "../components/living/comic-presentation";
 import { Tooltip } from "../components/living/Tooltip";
 import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
 import { RoomCodeInput, RoomCodeError } from "../components/living/RoomCodeInput";
-import { MetricCell } from "../components/living/Metrics";
+import { CaptureMetricCells } from "../components/living/Metrics";
+import { ConnectionDetails } from "../components/living/ConnectionDetails";
 import {
   StageOverlay,
   StageTv,
@@ -136,7 +146,7 @@ import {
   qualitySettingsEqual,
   qualitySettingsLabel,
   screenAudioBitrate,
-  MAX_SCREEN_AUDIO_BITRATE,
+  MAX_AUDIO_SEND_BITRATE,
   setMediaPaused,
   videoQualitySettingsEqual,
   type QualitySettings,
@@ -381,9 +391,18 @@ export function HostPage({
     useState<SignalConnectionState>("offline");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const hostAudioRef = useRef<HostAudio | null>(null);
+  const [shareVolume, setShareVolume] = useState({ level: 1, muted: false });
+  const shareVolumeChangeRef = useRef<object | null>(null);
   const audioAvailableRef = useRef(false);
+  const [commentary, setCommentary] = useState(false);
+  const [commentaryBusy, setCommentaryBusy] = useState(false);
+  const [commentaryInput, setCommentaryInput] = useState({ deviceId: "", volume: 1, voiceProcessing: true });
+  const commentaryOperationRef = useRef<object | null>(null);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
+  const roomVoiceSnapshot = useRoomVoiceSnapshot(roomVoiceSession);
+  const roomVoice = roomVoiceSnapshot?.connected ? roomVoiceSnapshot.room : null;
+  const ownVoiceConnection = describeVoiceConnection(roomVoiceSnapshot);
   const [cameraDevice, setCameraDevice] = useState("");
   const [nativeActive, setNativeActive] = useState(false);
   const [remoteControlState, setRemoteControlState] = useState<RemoteControlState | null>(null);
@@ -546,15 +565,19 @@ export function HostPage({
   const [changingQuality, setChangingQuality] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
   const [localPreviewPaused, setLocalPreviewPaused] = useState(false);
+  const previewPausedByUser = useRef(false);
+  const [theaterMode, setTheaterMode] = useTheaterMode();
+  const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
+  const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
   const [joiningRoom, setJoiningRoom] = useState(false);
   const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
+  const voiceMetrics = useRoomVoiceMetrics(roomVoiceSession, showConnectionDetails || selectedPawn !== null, roomVoice);
   const [joinRoomCode, setJoinRoomCode] = useState("");
   const [joinRejectedAttempt, setJoinRejectedAttempt] = useState(0);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [metricsExpanded, setMetricsExpanded] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -670,6 +693,10 @@ export function HostPage({
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
     }
+    if (!stream) {
+      previewPausedByUser.current = false;
+      setTheaterMode(false);
+    }
   }, [stream]);
 
   useEffect(() => {
@@ -692,6 +719,7 @@ export function HostPage({
       const shouldPause = shouldPauseLocalPreview(
         document.visibilityState,
         document.hasFocus(),
+        isPictureInPicture(video),
       );
       if (document.visibilityState !== "visible") {
         resetSenderQualityAuthority();
@@ -703,7 +731,7 @@ export function HostPage({
         video.pause();
         return;
       }
-      if (streamRef.current) {
+      if (streamRef.current && !previewPausedByUser.current) {
         void video.play().catch(() => undefined);
       }
     };
@@ -712,12 +740,19 @@ export function HostPage({
     window.addEventListener("blur", syncPreviewPlayback);
     window.addEventListener("focus", syncPreviewPlayback);
     window.addEventListener("pagehide", resetSenderQualityAuthority);
+    const video = videoRef.current;
+    video?.addEventListener("enterpictureinpicture", syncPreviewPlayback);
+    video?.addEventListener("leavepictureinpicture", syncPreviewPlayback);
+    video?.addEventListener("webkitpresentationmodechanged", syncPreviewPlayback);
     syncPreviewPlayback();
     return () => {
       document.removeEventListener("visibilitychange", syncPreviewPlayback);
       window.removeEventListener("blur", syncPreviewPlayback);
       window.removeEventListener("focus", syncPreviewPlayback);
       window.removeEventListener("pagehide", resetSenderQualityAuthority);
+      video?.removeEventListener("enterpictureinpicture", syncPreviewPlayback);
+      video?.removeEventListener("leavepictureinpicture", syncPreviewPlayback);
+      video?.removeEventListener("webkitpresentationmodechanged", syncPreviewPlayback);
     };
   }, [stream]);
 
@@ -939,6 +974,11 @@ export function HostPage({
     hostAudioRef.current?.dispose();
     hostAudioRef.current = null;
     audioAvailableRef.current = false;
+    commentaryOperationRef.current = null;
+    setCommentary(false); setCommentaryBusy(false);
+    setCommentaryInput({ deviceId: "", volume: 1, voiceProcessing: true });
+    shareVolumeChangeRef.current = null;
+    setShareVolume({ level: 1, muted: false });
     streamRef.current?.getTracks().forEach((track) => track.stop());
     retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -1299,13 +1339,19 @@ export function HostPage({
       nativeSourceSelectionRef.current = selection;
       nativeEventCleanup = client.onEvent((event) => {
         if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeClientRef.current !== client) return;
-        if (event.type === "remote-control-state") setRemoteControlState(event);
+        if (event.type === "remote-control-state") {
+          setRemoteControlState(event);
+          signalRef.current?.setCoPlayGrants(event.coPlay ? event.requests.flatMap(request =>
+            request.state !== "pending" && request.endpointId
+              ? [{ endpointId: request.endpointId }] : []) : []);
+        }
         if (event.type === "audio-state") {
+          setCommentary(event.microphone);
           nativeSourceAudioRef.current = event.sourceAudio;
           audioAvailableRef.current = event.sourceAudio || event.microphone;
           signalRef.current?.setAudioAvailable(audioAvailableRef.current);
           setDetails(previous => previous ? { ...previous, hasSourceAudio: event.sourceAudio } : previous);
-          if (event.failed) setNoticeValue({ kind: "key", key: "host.sourceAudio.unavailable", target: "operation", comic: "warning", tone: "warn" });
+          if (event.failed) setNoticeValue({ kind: "key", key: "host.audioInput.stopped", target: "operation", comic: "warning", tone: "warn" });
         }
         if (event.type === "share-ended") {
           endSharing(
@@ -1643,6 +1689,7 @@ export function HostPage({
     nativeSourceSelectionRef.current = null;
     setNativeActive(false);
     setRemoteControlState(null);
+    signalRef.current?.setCoPlayGrants([]);
     if (!client || !shareGeneration) {
       releaseUnusedNativeClient();
       return;
@@ -1922,6 +1969,23 @@ export function HostPage({
         }
       }
     }
+  }
+
+  function changeShareVolume(level: number, muted: boolean): void {
+    const generation = activeGenerationRef.current;
+    const shareId = nativeShareGenerationRef.current;
+    if (generation === null) return;
+    const token = {};
+    shareVolumeChangeRef.current = token;
+    const volume = muted ? 0 : level;
+    const update = nativeModeRef.current && shareId
+      ? nativeClientRef.current!.setShareVolume(shareId, volume)
+      : Promise.resolve(hostAudioRef.current?.setVolume(volume));
+    void update.then(() => {
+      if (isCurrentGeneration(generation) && shareVolumeChangeRef.current === token) setShareVolume({ level, muted });
+    }).catch(error => {
+      if (isCurrentGeneration(generation) && shareVolumeChangeRef.current === token) setNoticeError(error, "sourceAudio");
+    });
   }
 
   function toggleSharingPause(): void {
@@ -2592,6 +2656,9 @@ export function HostPage({
         onStatus: (status) => {
           if (signalRef.current === signal && isCurrentRoomAuthority(activeRoom)) {
             setSignalStatus(status);
+            if (status === "connected") {
+              setNoticeValue(current => current?.kind === "key" && current.key === "host.pause.signalRecovering" ? null : current);
+            }
           }
         },
         onTerminated: (reason) => {
@@ -2735,8 +2802,9 @@ export function HostPage({
     remoteInputPeersRef.current = [];
     void getRuntimeCapabilities().then(capabilities => {
       if (signalRef.current === signal && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
-      if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice());
+      if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice({ listeningPresence: capabilities.roomVoiceListeningPresence, bitrate: capabilities.roomVoiceBitrate }));
       if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
+      if (signalRef.current === signal && capabilities.coPlayPresence) signal.enableCoPlayPresence();
       if (signalRef.current === signal && capabilities.audioPresence) signal.enableAudioPresence();
     }).catch(() => { /* Optional input does not block sharing. */ });
     setInteractionSession(signal.interactions);
@@ -2839,8 +2907,22 @@ export function HostPage({
           audioAvailableRef.current = available;
           signalRef.current?.setAudioAvailable(available);
           const source = hostAudioRef.current?.sourceStream;
-          if (source) setDetails(captureDetails(source));
-        });
+          if (source) setDetails(captureDetails(source, false, hostAudioRef.current?.sourceAudioAvailable));
+        }, enabled => { if (isCurrentShare(generation, shareGeneration)) setCommentary(enabled); });
+        const audio = hostAudioRef.current;
+        try {
+          captured = await audio.start();
+          if (!isCurrentShare(generation, shareGeneration)) {
+            audio.sourceStream.getTracks().forEach(track => track.stop()); audio.dispose(); return;
+          }
+        } catch (error) {
+          audio.sourceStream.getTracks().forEach(track => track.stop()); audio.dispose();
+          if (isCurrentShare(generation, shareGeneration)) {
+            activeGenerationRef.current = null;
+            disposeResources(false); setNoticeError(error, "sourceAudio"); setPhase("error");
+          }
+          return;
+        }
         audioAvailableRef.current = hostAudioRef.current.audioAvailable;
         if (selection.source === "camera") setCameraDevice(selection.deviceId ?? "");
       }
@@ -2852,7 +2934,7 @@ export function HostPage({
           captureDetails(captured, true, nativeSourceAudioRef.current),
         );
       } else {
-        setDetails(captureDetails(captured));
+        setDetails(captureDetails(hostAudioRef.current?.sourceStream ?? captured));
         const codec = await resolveStreamVideoCodec(captured);
         if (isCurrentShare(generation, shareGeneration)) {
           videoCodecRef.current = codec;
@@ -3022,6 +3104,38 @@ export function HostPage({
     }
   }
 
+  async function changeCommentary(enabled: boolean, input = commentaryInput): Promise<void> {
+    const generation = activeGenerationRef.current;
+    if (generation === null || commentaryOperationRef.current) return;
+    const operation = {}; commentaryOperationRef.current = operation; setCommentaryBusy(true);
+    try {
+      const client = nativeClientRef.current, shareId = nativeShareGenerationRef.current;
+      if (nativeActive && client && shareId) await client.setMicrophone(shareId, enabled, input.volume, input.deviceId);
+      else if (hostAudioRef.current) await hostAudioRef.current.setMicrophone(enabled, input);
+      else throw new Error("Shared audio is unavailable");
+      if (isCurrentGeneration(generation) && commentaryOperationRef.current === operation) {
+        setCommentaryInput(input);
+      }
+    } catch (error) {
+      if (isCurrentGeneration(generation) && commentaryOperationRef.current === operation) {
+        debugError("capture", "commentary-failed", error);
+        setNoticeValue({ kind: "key", key: "host.commentary.failed", target: "operation", comic: "warning", tone: "warn" });
+      }
+    } finally {
+      if (commentaryOperationRef.current === operation) { commentaryOperationRef.current = null; setCommentaryBusy(false); }
+    }
+  }
+
+  function changeCommentaryVolume(volume: number): void {
+    setCommentaryInput(previous => ({ ...previous, volume }));
+    const generation = activeGenerationRef.current;
+    const client = nativeClientRef.current, shareId = nativeShareGenerationRef.current;
+    if (nativeActive && client && shareId) void client.setMicrophoneVolume(shareId, volume).catch(error => {
+      if (generation !== null && isCurrentGeneration(generation)) setNoticeError(error, "sourceAudio");
+    });
+    else hostAudioRef.current?.microphoneVolume(volume);
+  }
+
   function changeNativeSourceAudio(audio: boolean, excludeAudio?: NativeCaptureTarget): void {
     const selection = nativeSourceSelectionRef.current;
     if (!selection || selection.target.kind !== "display") return;
@@ -3086,6 +3200,7 @@ export function HostPage({
       captured = hostAudioRef.current?.attach(captured, source) ?? captured;
       await replaceBrowserStream(captured, generation, token);
     } catch (error) {
+      if (captured !== streamRef.current) captured.getVideoTracks().forEach(track => track.stop());
       if (isCurrentGeneration(generation)) setNoticeError(error, "source");
     } finally {
       finishSourceSwitch(token);
@@ -3506,10 +3621,13 @@ export function HostPage({
   const hostIdentity = hostPeerId ?? hostClientIdRef.current ?? "host-pending";
 
   const couchEntries: CouchEntry[] = viewers.map((viewer) => {
+    const grant = nativeActive && remoteControlState?.coPlay
+      ? remoteControlState.requests.find(request => request.peerId === viewer.peerId && request.state !== "pending") : undefined;
     return {
       key: viewer.peerId,
       name: viewer.label,
-      status: deriveParticipantStatus(viewer, phase === "live", viewerQualityEvidence.get(viewer.peerId)),
+      collaboration: Boolean(grant),
+      status: deriveParticipantStatus(viewer, phase === "live", viewerQualityEvidence.get(viewer.peerId), roomVoice),
     };
   });
 
@@ -3521,6 +3639,7 @@ export function HostPage({
     error: MediaFailure | null;
   };
   const detailForViewer = (viewer: (typeof viewers)[number]): ViewerDetail => {
+    if (phase !== "live") return { route: null, metrics: null, direction: "receive", error: null };
     const snapshot =
       viewer.upstream.kind === "peer" && viewer.upstream.peerId === hostPeerId
         ? peerSnapshots.get(viewer.peerId)
@@ -3584,7 +3703,7 @@ export function HostPage({
     },
   );
   const hostDiagnosticsAvailable = Boolean(
-    (details && (stream || nativeActive)) || viewerOverviewEntries.length > 0,
+    showConnectionDetails || (details && (stream || nativeActive)) || ownVoiceConnection || viewerOverviewEntries.length > 0,
   );
 
   const noticeText = noticeValue
@@ -3607,9 +3726,9 @@ export function HostPage({
   const titleContent = titleFrames(hostStatus.titleFrameKey);
   useDocumentTitle([room?.roomId, titleContent.label, hostStatus.titleMarker], titleContent.variations,
     `${lang}:${vis}:${hostStatus.titleFrameKey}:${room?.roomId ?? ""}`);
-  const audioBitrateCeiling = Math.min(MAX_SCREEN_AUDIO_BITRATE, nativeActive
-    ? nativeClientRef.current?.health.nativeMedia.maxAudioBitrate ?? MAX_SCREEN_AUDIO_BITRATE
-    : MAX_SCREEN_AUDIO_BITRATE);
+  const audioBitrateCeiling = Math.min(MAX_AUDIO_SEND_BITRATE, nativeActive
+    ? nativeClientRef.current?.health.nativeMedia.maxAudioBitrate ?? MAX_AUDIO_SEND_BITRATE
+    : MAX_AUDIO_SEND_BITRATE);
   const videoLimits = videoCaptureLimits(nativeActive ? nativeClientRef.current?.health.nativeMedia : undefined);
 
   return (
@@ -3626,7 +3745,7 @@ export function HostPage({
         }
       />
 
-      <main className="lr-room">
+      <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
         <h1 className="visually-hidden">
           {t("host.title", { name: hostPresence?.displayName ?? displayName })}
         </h1>
@@ -3650,8 +3769,24 @@ export function HostPage({
             </>}
           >
             {stream ? (
-              <video ref={videoRef} autoPlay muted playsInline />
+              <video ref={videoRef} muted playsInline tabIndex={0}
+                style={{ objectFit: pictureFit }} aria-label={t("host.stageAria")} />
             ) : null}
+            {stream && <PlaybackControls videoRef={videoRef} stream={stream}
+              sharingAudio={{ ...shareVolume, available: nativeActive
+                ? !!nativeClientRef.current?.health.nativeMedia.shareVolume : hostAudioRef.current?.commentaryAvailable === true,
+                onChange: changeShareVolume }}
+              audioAvailable={audioAvailableRef.current}
+              canPlay={phase === "live" && !nativeSources && !sharingPaused && !localPreviewPaused}
+              theaterMode={theaterMode} onToggleTheater={() => setTheaterMode(value => !value)}
+              onPlay={() => { previewPausedByUser.current = false; void videoRef.current?.play().catch(() => undefined); }}
+              onPause={() => { previewPausedByUser.current = true; }}
+              overlayAction={<RoomChatToggle session={interactionSession} />}
+              overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
+              settings={{ pictureFit, pictureRotation,
+                setPictureFit: fit => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
+                setPictureRotation: rotation => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
+              }} />}
             <RoomChatOverlay session={room ? interactionSession : null}
               visible={phase === "live" && !nativeSources && !sharingPaused && !(switchingSource && !sourceSwitchRef.current?.audioOnly) && !localPreviewPaused} />
             {nativeSources ? (
@@ -3790,6 +3925,14 @@ export function HostPage({
             remote={nativeActive && remoteControlState && <HostRemoteControl
               mode={remoteControlState.mode}
               platform={remoteControlState.platform}
+              gamepad={remoteControlState.gamepad}
+              simultaneous={remoteControlState.simultaneous}
+              onSimultaneous={remoteControlState.simultaneous !== undefined ? async enabled => {
+                const client = nativeClientRef.current;
+                const shareId = nativeShareGenerationRef.current;
+                if (!client || !shareId) throw new Error("Native share is unavailable");
+                await client.setRemoteControlSimultaneous(shareId, enabled);
+              } : undefined}
               onShortcut={nativeClientRef.current?.health.nativeMedia.remoteStopShortcut ? remoteStopShortcut : undefined}
               disabled={sharingPaused || switchingSource}
               requests={remoteControlState.requests.map(request => {
@@ -3860,6 +4003,7 @@ export function HostPage({
             {noticeValue?.target === "operation" && noticeText ? (
               <Pill icon={noticeValue.tone === "live" ? "check" : noticeValue.tone === "off" ? "stop" : "alert"}
                 tone={noticeValue.tone} label={noticeText} comic={noticeValue.comic}
+                onDismiss={() => setNoticeValue(null)}
                 motion={noticeValue.comic === "signal-recovering" || noticeValue.comic === "recovering" || noticeValue.comic === "connecting-sfu" ? "progress" : "still"} />
             ) : null}
           </div>
@@ -3891,9 +4035,9 @@ export function HostPage({
                       disabled={phase === "starting" || phase === "live"}
                       title={mode === "auto"
                         ? resolvedVideoCodec
-                          ? `${t("host.advanced.codec.auto")} · ${resolvedVideoCodec.toUpperCase()}`
-                          : `${t("host.advanced.codec.auto")} · ${t("host.advanced.codec.autoHint")}`
-                        : `${mode.toUpperCase()} · ${t(mode === "vp8" ? "host.advanced.codec.vp8Hint" : "host.advanced.codec.h264Hint")}`}
+                          ? `${t("host.advanced.codec.auto")} (${resolvedVideoCodec.toUpperCase()})`
+                          : `${t("host.advanced.codec.auto")}\n${t("host.advanced.codec.autoHint")}`
+                        : `${mode.toUpperCase()}\n${t(mode === "vp8" ? "host.advanced.codec.vp8Hint" : "host.advanced.codec.h264Hint")}`}
                       hint="hint-codec" onClick={() => changeVideoCodecMode(mode)}>
                       {mode === "auto" && !vis ? t("host.advanced.codec.auto") : mode.toUpperCase()}
                     </Chip>
@@ -3902,6 +4046,20 @@ export function HostPage({
               </div>
             </>}
             audio={<>
+              {phase === "live" && (!nativeActive || nativeClientRef.current?.health.nativeMedia.microphone) ?
+                  <ShareMicrophoneSettings enabled={commentary}
+                    browser={!nativeActive}
+                    available={nativeActive || hostAudioRef.current?.commentaryAvailable === true}
+                    roomMicrophone={roomVoiceSnapshot?.microphone}
+                    onEnabled={enabled => { void changeCommentary(enabled); }}
+                    disabled={commentaryBusy || switchingSource}
+                    volume={commentaryInput.volume} onVolume={changeCommentaryVolume}
+                    deviceId={commentaryInput.deviceId}
+                    onDevice={deviceId => { void changeCommentary(true, { ...commentaryInput, deviceId }); }}
+                    loadDevices={() => nativeActive && nativeClientRef.current
+                      ? nativeClientRef.current.microphones() : browserCaptureDevices("audioinput")}
+                    voiceProcessing={nativeActive ? undefined : commentaryInput.voiceProcessing}
+                    onVoiceProcessing={voiceProcessing => { void changeCommentary(true, { ...commentaryInput, voiceProcessing }); }} /> : null}
               {phase === "live" && nativeActive && nativeSourceSelectionRef.current?.target.kind === "display" &&
                 nativeClientRef.current?.health.nativeMedia.microphone && nativeClientRef.current.health.nativeMedia.processAudioExclusion ? (
                 <div className="lr-door-group lr-source-audio-settings">
@@ -3958,6 +4116,7 @@ export function HostPage({
             }
           />
           <RoomInteractions session={room ? interactionSession : null}
+            voiceState={roomVoice}
             voice={room && roomVoiceSession ? {
               content: onSelect => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect}
                 names={new Map(participantPresence.map(person => [person.peerId, person.displayName]))} />,
@@ -4196,7 +4355,7 @@ export function HostPage({
                   aria-label={t("host.policy")}
                 >
                   <Tooltip kind="hint-admission-code"
-                    text={vis ? undefined : `${t("host.policy.open")} · ${t("host.policy.openHint")}`}>
+                    text={vis ? undefined : `${t("host.policy.open")}\n${t("host.policy.openHint")}`}>
                     <button
                       type="button"
                       className={
@@ -4212,7 +4371,7 @@ export function HostPage({
                     </button>
                   </Tooltip>
                   <Tooltip kind="hint-policy-private"
-                    text={vis ? undefined : `${t("host.policy.private")} · ${t(viewerPasswordEnabled ? "host.policy.privatePasswordHint" : "host.policy.privateHint")}`}>
+                    text={vis ? undefined : `${t("host.policy.private")}\n${t(viewerPasswordEnabled ? "host.policy.privatePasswordHint" : "host.policy.privateHint")}`}>
                     <button
                       type="button"
                       className={
@@ -4232,7 +4391,7 @@ export function HostPage({
                 </span>
                 {activeCodeEntryPolicy === "private" ? (
                   <Tooltip kind={passwordOpen ? "hint-collapse" : "hint-password"} align="end"
-                    text={vis ? undefined : `${t(passwordOpen ? "host.password.settingsHide" : "host.password.setAction")} · ${t(viewerPasswordEnabled ? "host.password.set" : "host.password.unset")}`}>
+                    text={vis ? undefined : `${t(passwordOpen ? "host.password.settingsHide" : "host.password.setAction")}\n${t(viewerPasswordEnabled ? "host.password.set" : "host.password.unset")}`}>
                     <button
                       type="button"
                       className="lr-btn"
@@ -4349,42 +4508,25 @@ export function HostPage({
             </Row>
           ) : null}
 
-          {showConnectionDetails && details && (stream || nativeActive) ? (
+          {showConnectionDetails && (details && (stream || nativeActive) || ownVoiceConnection) ? (
             <Row sub>
-              <div id="host-details-panel" style={{ display: "contents" }}>
-                <span
-                  className="lr-meter-tag"
-                >
-                  <Glyph name="share" size={17} />
-                  {vis ? null : (
-                    <span className="lr-cap">{t("stats.capture")}</span>
-                  )}
-                </span>
-                <div
-                  className="lr-meter"
-                  role="group"
-                  aria-label={t("host.captureAria")}
-                >
-                  <MetricCell label="stats.resolution" value={details.resolution ?? t("stats.unknown")} />
-                  <MetricCell label="stats.fps" value={details.frameRate ? `${details.frameRate.toFixed(0)} fps` : vis ? "—" : t("host.capture.fpsUnknown")} />
-                  <MetricCell label="stats.codec" value={resolvedVideoCodec?.toUpperCase() ?? (vis ? "—" : t("host.capture.codecPending"))} />
-                  <Tooltip toggleOnClick kind={details.hasSourceAudio ? "hint-source-audio" : "no-audio"}
-                    text={vis ? undefined : t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
-                    tone="off">
-                    <button type="button" className="lr-meter-cell"
-                      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
-                      aria-label={t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}>
-                      <Glyph name={details.hasSourceAudio ? "speaker" : "speakerOff"} size={16} />
-                      {!vis && <b>{t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}</b>}
-                    </button>
-                  </Tooltip>
-                </div>
-              </div>
+              <ConnectionDetails id="host-details-panel" rows={[
+                ...(details && (stream || nativeActive) ? [{ key: "capture", media: "video" as const,
+                  label: t("stats.localCapture"), icon: "share" as const, direction: "send" as const,
+                  cells: <CaptureMetricCells resolution={details.resolution} frameRate={details.frameRate}
+                    codec={resolvedVideoCodec} hasSourceAudio={details.hasSourceAudio} />,
+                }] : []),
+                ...voiceConnectionDetails({ voice: roomVoiceSnapshot, metrics: voiceMetrics, t,
+                  peerName: id => viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault") }),
+              ]} />
             </Row>
           ) : null}
           {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
             <ViewerOverview
               entries={viewerOverviewEntries}
+              pictureActive={phase === "live"}
+              voice={roomVoiceSnapshot}
+              voiceMetrics={voiceMetrics}
               selectedKey={selectedPawn}
               onSelect={(peerId) =>
                 setSelectedPawn((current) =>
@@ -4402,16 +4544,17 @@ export function HostPage({
               direction={selectedDetail.direction}
               tag={selectedDetail.tag}
               error={selectedDetail.error}
-              expanded={metricsExpanded}
-              onToggleMetrics={setMetricsExpanded}
               onClose={() => setSelectedPawn(null)}
+              voiceDetails={voiceConnectionDetails({ voice: roomVoiceSnapshot, peerId: selectedViewer.peerId, metrics: voiceMetrics, t,
+                peerName: id => id === hostPeerId ? displayName : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault") })}
             />
           ) : null}
           {showTopology ? (
             <Row sub>
               <RouteTree
                 hostPeerId={hostPeerId}
-                voice={roomVoiceSession}
+                pictureActive={phase === "live"}
+                voice={roomVoice}
                 hostIdentity={hostIdentity}
                 hostLabel={labeledHostPresence?.label ?? displayName}
                 viewers={viewers}

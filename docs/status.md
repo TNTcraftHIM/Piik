@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-21
+Last updated: 2026-10-23
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -28,8 +28,10 @@ and Git/PRs own completed history.
   secondary to literal status. Website reduced-motion preference and player
   tooltip placement follow the same presentation owners.
 - Camera sharing and room voice are accepted product features. Source audio
-  follows the picture; room voice owns Host and Viewer microphones under the
-  same route controller. Device selection and sharing settings keep their owners. The
+  follows the picture; room voice owns conversation microphones under the
+  same route controller. Optional Host commentary belongs to the share's audio
+  and has separate activation.
+  Device selection and sharing settings keep their owners. The
   [capture assessment](./research/camera-and-microphone.md) owns platform behavior
   and platform limits.
 
@@ -76,8 +78,19 @@ room microphone for Host and Viewers. Local normal-page acceptance covers both
 P2P and SFU, independent listening, picture continuity and voice-facet recovery.
 Controlled-network voice cases and platform package checks have passed; the
 release artifacts and operator records establish publication and deployment.
-Separate shared-keyboard/virtual-gamepad experiments remain prototypes.
-The promotional film stays an online-review draft; export follows owner acceptance.
+Shared keyboard/mouse and optional Windows ViGEmBus virtual gamepads
+use the normal App/Web input and authorization surfaces. Host and Viewers see
+granted collaborators on the couch through a share-scoped presence projection.
+The Windows adapter
+calls the installed driver directly; App packages contain no optional input SDK
+or driver. Linux uinput passed
+an isolated real-kernel gate; desktop permissions and game recognition remain
+unverified. The macOS virtual-HID
+implementation needs its Apple entitlement and a macOS build/runtime check.
+Co-play and the maintenance changes form one accepted integration phase;
+release artifacts establish publication and the platform limits above remain.
+The website uses the selected bilingual film A with on-demand loading and
+shared product playback controls; the final card stays visible after playback.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;
 release artifacts and operator records own exact delivery results.
 

@@ -8,51 +8,8 @@ import { Tooltip } from "./Tooltip";
 import { useCopy } from "../../ui/copy";
 import { resolveMediaFailure, type MediaFailure } from "../../ui/media-failure";
 import type { ConnectionMetrics } from "../../types";
-import { MetricCells } from "./Metrics";
 import { Pill } from "./primitives";
-
-export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
-  const { t, vis } = useCopy();
-  const cell = (
-    <button
-      type="button"
-      className="lr-meter-cell"
-      aria-label={t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
-      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
-    >
-      {route === "sfu" ? (
-        <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <circle cx="4" cy="8" r="3" fill="currentColor" stroke="none" />
-          <rect x="14" y="3" width="8" height="10" rx="2" />
-          <circle cx="32" cy="8" r="3" fill="currentColor" stroke="none" />
-          <path d="M7 8h7M22 8h7" />
-        </svg>
-      ) : (
-        <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <circle cx="4" cy="8" r="3" fill="currentColor" stroke="none" />
-          <circle cx="32" cy="8" r="3" fill="currentColor" stroke="none" />
-          <path d="M7 8h22" />
-        </svg>
-      )}
-      {vis ? (
-        <span className="visually-hidden">
-          {t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
-        </span>
-      ) : (
-        <b>{route === "sfu" ? "SFU" : "P2P"}</b>
-      )}
-    </button>
-  );
-  return (
-    <Tooltip
-      toggleOnClick
-      kind={route === "sfu" ? "hint-route-sfu" : "hint-route-p2p"}
-      text={vis ? undefined : t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
-    >
-      {cell}
-    </Tooltip>
-  );
-}
+import { ConnectionDetails, type ConnectionDetail } from "./ConnectionDetails";
 
 export function PawnDetail({
   pawnKey,
@@ -62,20 +19,18 @@ export function PawnDetail({
   direction,
   tag,
   error,
-  expanded,
-  onToggleMetrics,
   onClose,
+  voiceDetails = [],
 }: {
   pawnKey: string;
   name: string;
   route: "p2p" | "sfu" | null;
   metrics?: ConnectionMetrics | null;
   direction: "send" | "receive";
-  tag?: { icon: "arrowUp" | "loader"; label: string };
+  tag?: { icon: "arrowUp" | "loader" | "headphones"; label: string };
   error?: MediaFailure | null;
-  expanded: boolean;
-  onToggleMetrics: (expanded: boolean) => void;
   onClose: () => void;
+  voiceDetails?: readonly ConnectionDetail[];
 }) {
   const copy = useCopy();
   const { t, vis } = copy;
@@ -86,24 +41,6 @@ export function PawnDetail({
         <PawnSvg color={participantColor(pawnKey)} identity={pawnKey} />
       </span>
       <span className="lr-pawn-detail-name">{name}</span>
-      {tag ? (
-        <span className="lr-meter-cell">
-          <Glyph name={tag.icon} size={16} />
-          {vis ? <span className="visually-hidden">{tag.label}</span> : <b>{tag.label}</b>}
-        </span>
-      ) : null}
-      {errorText ? (
-        <Pill icon="alert" tone="bad" label={errorText} comic="route-failed" alert />
-      ) : null}
-      {route ? <RouteGlyph route={route} /> : null}
-      {metrics ? (
-        <MetricCells
-          metrics={metrics}
-          direction={direction}
-          expanded={expanded}
-          onToggle={onToggleMetrics}
-        />
-      ) : null}
       <Tooltip kind="hint-close" text={vis ? undefined : t("common.close")}>
         <button
           type="button"
@@ -118,6 +55,21 @@ export function PawnDetail({
           <Glyph name="x" size={16} />
         </button>
       </Tooltip>
+      <ConnectionDetails rows={[
+        ...(route || metrics || tag || error ? [{
+          key: "picture", media: "video" as const, label: t("stats.sharedMedia"), route, metrics, direction,
+          note: <>{tag ? (
+            <span className="lr-meter-cell">
+              <Glyph name={tag.icon} size={16} />
+              {vis ? <span className="visually-hidden">{tag.label}</span> : <b>{tag.label}</b>}
+            </span>
+          ) : null}
+          {errorText ? (
+            <Pill icon="alert" tone="bad" label={errorText} comic="route-failed" alert />
+          ) : null}</>,
+        }] : []),
+        ...voiceDetails,
+      ]} />
     </div>
   );
 }

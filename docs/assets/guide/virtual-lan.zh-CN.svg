@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="380" viewBox="0 0 600 380" role="img" aria-labelledby="title desc"><title id="title">通过虚拟局域网使用 Piik</title><desc id="desc">加入同一虚拟网络: 房主和朋友都保持组网工具运行. 选择虚拟地址: 本地房间 → 局域网邀请地址. 发送完整邀请链接: 朋友核对本地证书，进入房间</desc><style>/* Shared theme for the App, website and documentation. Status and selection
+   have separate roles; illustrations keep their own colours. */
+:root {
+  --person-ink: #263b43;
+  --wall: #f3f5f8;
+  --wall-2: #e5eaf2;
+  --paper: #fffefb;
+  --ink: #29374a;
+  --muted: color-mix(in srgb, var(--ink) 75%, var(--paper));
+  --line: color-mix(in srgb, var(--ink) 20%, var(--paper));
+  /* Primary actions keep their identity; selection/focus follows the theme. */
+  --primary: #2765ce;
+  --primary-ink: #fff;
+  --action: #3478e5;
+  --action-deep: var(--primary);
+  --action-ink: var(--primary-ink);
+  --action-text: #2055b2;
+  --idle: #8ea3b8;
+  --busy: #3478e5;
+  --live: #2fa66a;
+  --warn: #d98e04;
+  --danger: #d64541;
+  --control-hover: #eef3ff;
+  --control-selected: #e5efff;
+  --control-selected-ink: #214c9b;
+  --control-edge: color-mix(in srgb, var(--ink) 57%, var(--paper));
+  --surface-rim: rgb(255 255 255 / .95);
+  --surface-shade: rgb(36 53 78 / .18);
+  --surface-glaze: linear-gradient(165deg, rgb(255 255 255 / .6), transparent 65%, rgb(51 89 147 / .025));
+  --control-shadow: 0 3px 0 var(--surface-shade), 0 5px 10px color-mix(in srgb, var(--surface-shade) 45%, transparent);
+  --panel-shadow: inset 0 1px 0 var(--surface-rim), 0 3px 0 var(--surface-shade), 0 16px 36px color-mix(in srgb, var(--surface-shade) 55%, transparent);
+  --piik-dark-wall: #242a34;
+  --piik-dark-wall-2: #2c3543;
+  --piik-dark-paper: #354153;
+  --piik-dark-ink: #f6f3eb;
+  --piik-dark-action: #f6f3eb;
+  --piik-dark-action-ink: #29374a;
+  --piik-dark-action-text: var(--piik-dark-action);
+  --piik-dark-hover: #414f67;
+  --piik-dark-selected: var(--piik-dark-action);
+  --piik-dark-selected-ink: var(--piik-dark-action-ink);
+}
+@media (prefers-color-scheme: dark) { :root {
+  --wall: var(--piik-dark-wall);
+  --wall-2: var(--piik-dark-wall-2);
+  --paper: var(--piik-dark-paper);
+  --ink: var(--piik-dark-ink);
+  --busy: #82b1ff;
+  --live: #3fb97a;
+  --warn: #e8a33d;
+  --danger: #e25a52;
+  --action: var(--piik-dark-action);
+  --action-deep: var(--piik-dark-action);
+  --action-ink: var(--piik-dark-action-ink);
+  --action-text: var(--piik-dark-action-text);
+  --control-hover: var(--piik-dark-hover);
+  --control-selected: var(--piik-dark-selected);
+  --control-selected-ink: var(--piik-dark-selected-ink);
+  --control-edge: color-mix(in srgb, var(--ink) 48%, var(--paper));
+  --surface-rim: rgb(222 234 255 / .12);
+  --surface-shade: rgb(6 12 22 / .38);
+  --surface-glaze: linear-gradient(165deg, rgb(224 237 255 / .06), transparent 65%, rgb(0 0 0 / .035));
+} }
+
+  text { fill: var(--ink); font: 600 26px system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif; text-anchor: middle; }
+  .node { fill: var(--paper); stroke: var(--control-edge); stroke-width: 2; }
+  .input { fill: var(--control-selected); }
+  .glyph { color: var(--ink); }
+  .source .glyph { color: var(--control-selected-ink); }
+  .source text { fill: var(--control-selected-ink); }
+  .path { fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style><g transform="translate(0 0)"><rect class="node" x="8" y="4" width="584" height="116" rx="20"></rect><text x="35" y="70" style="font-size:20px;fill:var(--muted)">01</text><g class="glyph" transform="translate(68 34)"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="lr-glyph"><rect pathLength="1" x="9" y="2" width="6" height="6" rx="1.5"></rect><rect pathLength="1" x="2" y="16" width="6" height="6" rx="1.5"></rect><rect pathLength="1" x="16" y="16" width="6" height="6" rx="1.5"></rect><path pathLength="1" d="M12 8v3.5M12 11.5 5.5 16M12 11.5l6.5 4.5"></path></svg></g><text x="144" y="51" style="font-size:28px;text-anchor:start">加入同一虚拟网络</text><text x="144" y="88" style="font-size:23px;text-anchor:start;fill:var(--muted)">房主和朋友都保持组网工具运行</text></g><g transform="translate(0 128)"><rect class="node" x="8" y="4" width="584" height="116" rx="20"></rect><text x="35" y="70" style="font-size:20px;fill:var(--muted)">02</text><g class="glyph" transform="translate(68 34)"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="lr-glyph"><rect pathLength="1" x="2" y="4" width="20" height="16" rx="2"></rect><path pathLength="1" d="M2 9h20M6 6.5h.01M9 6.5h.01"></path></svg></g><text x="144" y="51" style="font-size:28px;text-anchor:start">选择虚拟地址</text><text x="144" y="88" style="font-size:23px;text-anchor:start;fill:var(--muted)">本地房间 → 局域网邀请地址</text></g><g transform="translate(0 256)"><rect class="node" x="8" y="4" width="584" height="116" rx="20"></rect><text x="35" y="70" style="font-size:20px;fill:var(--muted)">03</text><g class="glyph" transform="translate(68 34)"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" class="lr-glyph"><path pathLength="1" d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path pathLength="1" d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></g><text x="144" y="51" style="font-size:28px;text-anchor:start">发送完整邀请链接</text><text x="144" y="88" style="font-size:23px;text-anchor:start;fill:var(--muted)">朋友核对本地证书，进入房间</text></g></svg>

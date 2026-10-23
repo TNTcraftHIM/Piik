@@ -244,7 +244,10 @@ async function main(): Promise<void> {
     stage = "share-ingress";
     await waitForSample(() => read(host), (s) => s.sharing && s.receiveRequests === 1 && s.outbound === 1, 30000);
     let invite = await evaluate<string>(cdp, host, "document.querySelector('.lr-invite-url').value", Date.now()+5000);
-    const url = new URL(invite); url.host = `localhost:${appPort}`; invite = url.toString();
+    const url = new URL(invite);
+    url.protocol = "http:";
+    url.host = `localhost:${appPort}`;
+    invite = url.toString();
     const relayOrigin = `http://127.0.0.1:${appPort}`;
     relayApp = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT,"piik-app.exe"), [
       "--site", relayOrigin, "--config", join(profile,"relay-client.json"),

@@ -37,15 +37,15 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 	}
 	defer response.Body.Close()
 	var state struct {
-		Site                string `json:"site"`
-		LocalAccessPassword string `json:"localAccessPassword"`
-		DefaultMode         Mode   `json:"defaultMode"`
-		Version             string `json:"version"`
-		Revision            string `json:"revision"`
-		Debug               *bool  `json:"debug"`
+		Sites               []string `json:"sites"`
+		LocalAccessPassword string   `json:"localAccessPassword"`
+		DefaultMode         Mode     `json:"defaultMode"`
+		Version             string   `json:"version"`
+		Revision            string   `json:"revision"`
+		Debug               *bool    `json:"debug"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
-		state.Site != "https://share.example" || state.DefaultMode != ModeLink ||
+		strings.Join(state.Sites, ",") != "https://share.example" || state.DefaultMode != ModeLink ||
 		state.Version != "development" || state.Revision != "" || state.LocalAccessPassword != "" || state.Debug == nil || *state.Debug {
 		t.Fatalf("launcher state = %d, %+v", response.StatusCode, state)
 	}
@@ -93,7 +93,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 
 func TestRoomFailureInvalidatesReadyTargetButKeepsSiteApprovalAvailable(t *testing.T) {
 	server := startFixture(t, "https://share.example")
-	server.changeSite = func(site string) (string, error) { return site, nil }
+	server.changeSite = func(site string, allowed bool) ([]string, error) { return []string{}, nil }
 	origin := strings.TrimSuffix(server.URL(), "/client")
 	server.Begin()
 	server.SetResult("http://localhost:8787/#piik-client=1", nil)
@@ -104,15 +104,16 @@ func TestRoomFailureInvalidatesReadyTargetButKeepsSiteApprovalAvailable(t *testi
 	}
 	defer response.Body.Close()
 	var state struct {
-		Target, Detail, Site string
-		Starting             bool
+		Target, Detail string
+		Sites          []string
+		Starting       bool
 	}
 	if json.NewDecoder(response.Body).Decode(&state) != nil || state.Target != "" || state.Starting ||
-		state.Detail != "public invitation link stopped" || state.Site != "https://share.example" {
+		state.Detail != "public invitation link stopped" || strings.Join(state.Sites, ",") != "https://share.example" {
 		t.Fatalf("failed room state = %+v", state)
 	}
 	response, err = localPost(origin+"/api/client-launcher/site", "application/json",
-		strings.NewReader(`{"site":"","expectedSite":"https://share.example"}`))
+		strings.NewReader(`{"site":"https://share.example","allowed":false}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +194,7 @@ func TestLauncherLANChoicesUseCurrentAddressesAndTheExplicitPreference(t *testin
 				}
 				return test.addresses, nil
 			}
-			server, err := Start(t.Context(), appAssets(), Options{Site: "https://share.example", LANAddress: test.preferred})
+			server, err := Start(t.Context(), appAssets(), Options{Sites: siteList("https://share.example"), LANAddress: test.preferred})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -299,7 +300,7 @@ func TestLauncherPreservesAnOptionalLocalPassword(t *testing.T) {
 }
 
 func TestLauncherRejectsAnInvalidSavedSite(t *testing.T) {
-	if _, err := Start(t.Context(), appAssets(), Options{Site: "https://example.test/path", Version: "development"}); err == nil {
+	if _, err := Start(t.Context(), appAssets(), Options{Sites: siteList("https://example.test/path"), Version: "development"}); err == nil {
 		t.Fatal("launcher accepted a Site path")
 	}
 }
@@ -461,7 +462,7 @@ func startFixtureWithBuildAndPassword(
 	site, version, revision, password string,
 ) *Server {
 	t.Helper()
-	server, err := Start(t.Context(), appAssets(), Options{Site: site, Version: version, Revision: revision, LocalAccessPassword: password})
+	server, err := Start(t.Context(), appAssets(), Options{Sites: siteList(site), Version: version, Revision: revision, LocalAccessPassword: password})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,4 +479,11 @@ func localPost(target, contentType string, body io.Reader) (*http.Response, erro
 	req.Header.Set("Origin", address.Scheme+"://"+address.Host)
 	req.Header.Set("Content-Type", contentType)
 	return (&http.Client{Timeout: 3 * time.Second}).Do(req)
+}
+
+func siteList(site string) []string {
+	if site == "" {
+		return []string{}
+	}
+	return []string{site}
 }

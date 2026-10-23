@@ -110,8 +110,12 @@ schema field. The user settings are:
 
 | Setting | Contract |
 | --- | --- |
-| `site` | One approved Piik Site origin. Local confirmation or explicit `--site` updates it; the launcher can revoke it. |
+| `site` / `sites` | The first approved Piik Site origin and optional additional origins. Local confirmation or explicit `--site` adds approval without replacing other sites; the launcher revokes each independently. Existing single-site configuration remains valid. |
 | `localAccessPassword` | Empty by default. Optional password for the App's Local room authority, with the same exact-match behavior as `SITE_ACCESS_PASSWORD`. It is separate from a hosted site's password. |
+
+Before rolling back to an App that supports only one approved Site, revoke all
+but one Site in the current launcher. This removes the additional `sites` field
+that older Apps cannot read, while preserving the remaining approval and password.
 
 For public invitations, the optional `PIIK_STUN_URLS` environment variable
 replaces all built-in STUN destinations. It accepts a comma-separated list of
@@ -150,14 +154,14 @@ optional preference lives beside the configuration as `client.json.mode` (or
 changing saved settings. Without a valid Local/Public preference, the public
 invitation link is selected. Choosing a mode does not start it until confirmed.
 Local mode remains available for the same network.
-The star beside the approved Site selects it as the next ordinary startup page.
+The star beside an approved Site selects it as the next ordinary startup page.
 This preference lives in `<config-path>.startup-site`, separately from access
-permission. Only the currently approved origin can open automatically; replacing
-or revoking approval clears the star. Unstarring restores launcher entry, and
-explicit CLI mode flags retain precedence.
+permission. Only one approved origin opens automatically; revoking that origin
+clears the star, while approving or revoking other sites leaves it intact.
+Unstarring restores launcher entry, and explicit CLI mode flags retain precedence.
 Selecting Local or Public Link, including through the CLI, preserves the saved
-Site and its allowed App origin; only local approval/revocation or `--site`
-changes it. The Site can use native capabilities while the App waits in its
+Sites and their allowed App origins; only local approval/revocation or `--site`
+changes them. A Site can use native capabilities while the App waits in its
 launcher; it does not need a Local room service.
 For Local mode, the launcher selects a sole active address or sole private IPv4
 address automatically. With several choices it shows interface names and IPs;

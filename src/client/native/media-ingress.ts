@@ -5,7 +5,7 @@ import type { PeerSnapshot } from "../types";
 import { HostPeer } from "../webrtc/host-peer";
 import { MAX_ENDPOINT_MEDIA_CHILDREN } from "../webrtc/media-assignment";
 import { manualVideoCodecPreference } from "../webrtc/video-codec";
-import { preferScreenAudioStereo } from "../webrtc/screen-audio-sdp";
+import { preferScreenAudioStereo } from "../webrtc/opus-receive-sdp";
 import type { NativeSenderSource } from "./native-sender-peer";
 import type { NativeClientEvent, NativeIceCandidate } from "./wire";
 

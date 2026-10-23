@@ -53,14 +53,26 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   the known failure boundary: unknown/session/settings failures must not default
   to capture advice, and retiring a share must retain a known App control or
   media-connection failure instead of replacing it with a generic stop notice.
-- Host couch: each Viewer has one round lamp. Grey means waiting for the share,
-  blue means waiting for the media path, green means committed `mediaReady`, and
-  amber means a recent receive freeze. The Host's own pawn has no duplicate
-  lamp. `deriveParticipantStatus` supplies both the couch and Host overview;
-  neither stores another copy of the status.
+- Host couch: each Viewer has one round lamp. Grey means present without a media
+  connection, blue means connecting, green means a committed picture or voice
+  route, and amber means a recent picture receive freeze. `participantConnection`
+  projects the server's confirmed picture/voice facts for both the lamp and
+  topology; microphone capture and sharing controls do not own connectivity.
+  The Host's own pawn has no duplicate lamp. `deriveParticipantStatus` supplies
+  both the couch and Host overview; neither stores another copy of the status.
 - Viewer couch: pawns have no round lamps. While awaiting media readiness a
   pawn's body breathes gently; it becomes still when ready. This expresses the
   same roster fact without claiming to know other Viewers' quality.
+- Integrated pawn accessories describe participation: headphones mean voice
+  membership, worn on the head while listening and around the neck when listening
+  is paused. The microphone boom extends when input is on and folds up when muted.
+  A mouse on the body identifies an approved remote controller regardless of device.
+  Shared glyphs use the cast's ink and
+  existing pawn motion. Their facts come from voice membership/publication,
+  local listening and native grants; leaving an activity removes its marker.
+  Pausing listening does not mute the
+  microphone or change forwarding or routes. The route lamp remains separate;
+  these accessories do not assert connection health or speaking activity.
 - Header: the page's connection to the room server. Its control-link comics
   show a Browser and server, not a failed video path. A media-route failure can
   coexist with a healthy server connection, and vice versa.
@@ -69,7 +81,12 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   presentation stage owns the primary media status; a coexisting notice never
   selects that status or asserts another connection's health.
 - Notices: necessary coexisting issues and operation feedback use the existing
-  pills near the stage; they are not another primary media status. Raw
+  pills below the stage; they are not another primary media status. Ordinary
+  notices stay outside the picture and are hidden with surrounding controls in
+  theatre mode. Operation results have a dismiss button; condition-based notices
+  disappear when their owning condition clears. Signal recovery must not leave
+  a stale operation warning after reconnection. Remote-input and voice feedback
+  stays in its own controls or tool panel. Raw
   PeerConnection errors remain diagnostic observations, not persistent red
   warnings after media recovers. The control menu does not repeat the television
   status or aggregate the first weak outbound edge into a global quality warning.

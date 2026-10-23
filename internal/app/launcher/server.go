@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -48,14 +49,14 @@ type Selection struct {
 
 type Options struct {
 	DefaultMode         Mode
-	Site                string
+	Sites               []string
 	StartupSite         string
 	Version             string
 	Revision            string
 	LocalAccessPassword string
 	Debug               bool
 	LANAddress          string
-	ChangeSite          func(string) (string, error)
+	ChangeSite          func(string, bool) ([]string, error)
 	SaveStartupSite     func(string) error
 	EnableDebug         func() error
 }
@@ -69,7 +70,7 @@ type Server struct {
 	httpServer          *http.Server
 	assets              fs.FS
 	static              http.Handler
-	site                string
+	sites               []string
 	startupSite         string
 	defaultMode         Mode
 	localAccessPassword string
@@ -77,7 +78,7 @@ type Server struct {
 	revision            string
 	debug               bool
 	lanAddress          string
-	changeSite          func(string) (string, error)
+	changeSite          func(string, bool) ([]string, error)
 	saveStartupSite     func(string) error
 	enableDebug         func() error
 	selection           chan Selection
@@ -101,7 +102,7 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 	if parent == nil {
 		parent = context.Background()
 	}
-	normalizedSite, err := appconfig.NormalizeSite(options.Site)
+	normalizedSites, err := appconfig.NormalizeSites(options.Sites)
 	if err != nil {
 		return nil, fmt.Errorf("App launcher Site is invalid: %w", err)
 	}
@@ -122,7 +123,7 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 		listener:            listener,
 		assets:              assets,
 		static:              http.FileServer(http.FS(assets)),
-		site:                normalizedSite,
+		sites:               normalizedSites,
 		startupSite:         options.StartupSite,
 		defaultMode:         options.DefaultMode,
 		localAccessPassword: options.LocalAccessPassword,
@@ -257,7 +258,7 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 	selected, _ := lan.Select(values, server.lanAddress)
 	server.mu.Lock()
 	state := map[string]any{
-		"site":                server.site,
+		"sites":               slices.Clone(server.sites),
 		"startupSite":         server.startupSite,
 		"localAccessPassword": server.localAccessPassword,
 		"version":             server.version,
@@ -288,30 +289,31 @@ func (server *Server) handleSite(response http.ResponseWriter, request *http.Req
 	}
 	request.Body = http.MaxBytesReader(response, request.Body, maxRequestBytes)
 	var change struct {
-		Site         string `json:"site"`
-		ExpectedSite string `json:"expectedSite"`
+		Site    string `json:"site"`
+		Allowed *bool  `json:"allowed,omitempty"`
 	}
 	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&change) != nil || decoder.Decode(&struct{}{}) != io.EOF {
+	if decoder.Decode(&change) != nil || decoder.Decode(&struct{}{}) != io.EOF ||
+		(startupOnly && change.Allowed != nil) || (!startupOnly && change.Allowed == nil) {
 		http.Error(response, "invalid site request", http.StatusBadRequest)
 		return
 	}
 	site, err := appconfig.NormalizeSite(change.Site)
-	if err != nil {
+	if err != nil || (!startupOnly && site == "") {
 		http.Error(response, "invalid site origin", http.StatusBadRequest)
 		return
 	}
 	server.mu.Lock()
 	defer server.mu.Unlock()
-	result := func() map[string]string {
-		return map[string]string{"site": server.site, "startupSite": server.startupSite}
-	}
-	if server.site != change.ExpectedSite || (startupOnly && site != "" && site != server.site) {
-		writeJSON(response, http.StatusConflict, result())
-		return
+	result := func() map[string]any {
+		return map[string]any{"sites": slices.Clone(server.sites), "startupSite": server.startupSite}
 	}
 	if startupOnly {
+		if site != "" && !slices.Contains(server.sites, site) {
+			writeJSON(response, http.StatusConflict, result())
+			return
+		}
 		if server.saveStartupSite == nil {
 			http.Error(response, "startup preference is unavailable", http.StatusServiceUnavailable)
 			return
@@ -328,11 +330,10 @@ func (server *Server) handleSite(response http.ResponseWriter, request *http.Req
 		http.Error(response, "site approval is unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	current, err := server.changeSite(site)
-	// Revocation can succeed while media cleanup times out. Reflect the actual
-	// saved permission even on error; a stale confirmation must not restore it.
-	server.site = current
-	if server.startupSite != "" && server.startupSite != current {
+	current, err := server.changeSite(site, *change.Allowed)
+	// Permission can be revoked even if its media cleanup times out.
+	server.sites = current
+	if server.startupSite != "" && !slices.Contains(current, server.startupSite) {
 		server.startupSite = ""
 		err = errors.Join(err, server.saveStartupSite(""))
 	}

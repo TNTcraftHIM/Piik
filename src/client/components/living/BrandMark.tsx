@@ -11,34 +11,34 @@ export function BrandMark({
   motion?: BrandMotion;
 }) {
   const animated = motion !== "static";
-  const [loopPhase, setLoopPhase] = useState<"intro" | "active">("intro");
+  const [phase, setPhase] = useState<"drawing" | "intro" | "active">("drawing");
   const motionClass =
     motion === "loop"
-      ? ` is-animated is-loop-${loopPhase}`
+      ? ` is-animated is-loop-${phase === "active" ? "active" : "intro"}`
       : motion === "once"
         ? " is-once"
         : "";
   const markRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
-    if (motion === "loop") setLoopPhase("intro");
+    setPhase("drawing");
   }, [motion]);
 
   useEffect(() => {
     if (motion !== "once" || !markRef.current) return;
-    return bindSvgReplayOnPointerEnter(markRef.current);
+    return bindSvgReplayOnPointerEnter(markRef.current, () => setPhase("drawing"));
   }, [motion]);
 
   const finishLoopIntro = (event: AnimationEvent<SVGPathElement>): void => {
     if (motion === "loop" && event.animationName === "lr-brand-sparkle-alt") {
-      setLoopPhase("active");
+      setPhase("active");
     }
   };
 
   return (
     <svg
       ref={markRef}
-      className={`lr-brand-mark${motionClass}`}
+      className={`lr-brand-mark${motionClass}${animated && phase === "drawing" ? " is-drawing" : ""}`}
       width={size}
       height={size}
       viewBox="0 0 32 32"
@@ -52,8 +52,9 @@ export function BrandMark({
     >
       <g className="lr-brand-shell">
         <rect className="lr-brand-frame" pathLength={1} x="4" y="8" width="24" height="18" rx="4" />
-        <path className="lr-brand-antenna" pathLength={1} d="m11 4 5 4 5-4" />
-        <path className="lr-brand-feet" pathLength={1} d="M10 29l2-3m10 3-2-3" />
+        <g className="lr-brand-antenna-motion"><path className="lr-brand-antenna" pathLength={1} d="m11 4 5 4 5-4" /></g>
+        <path className="lr-brand-feet" pathLength={1} d="M10 29l2-3m10 3-2-3"
+          onAnimationEnd={event => { if (event.animationName === "lr-brand-draw") setPhase("intro"); }} />
       </g>
       <g className="lr-brand-face">
         <circle

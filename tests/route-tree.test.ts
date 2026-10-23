@@ -23,17 +23,17 @@ it("keeps participant identity and actual Viewer readiness in their descriptions
     }],
   }));
   const hostView = render("host");
-  expect(hostView).toContain('aria-label="Host name · Host · you"');
+  expect(hostView).toContain('aria-label="Host name, Host, you"');
   expect(hostView).toContain('class="lr-pawn-led" data-tone="busy"');
   const viewerView = render("viewer");
-  expect(viewerView).toContain('aria-label="Host name · Host"');
-  expect(viewerView).toContain('aria-label="Viewer name · you · Routing"');
+  expect(viewerView).toContain('aria-label="Host name, Host"');
+  expect(viewerView).toContain('aria-label="Viewer name, you, Routing"');
   expect(viewerView).not.toContain('class="lr-pawn-led"');
   expect(viewerView).toContain('is-waiting');
   setCopy({ vis: false });
   const textMode = render("viewer");
-  expect(textMode).toContain('aria-label="Host name · Host"');
-  expect(textMode).toContain('aria-label="Viewer name · you · Routing"');
+  expect(textMode).toContain('aria-label="Host name, Host"');
+  expect(textMode).toContain('aria-label="Viewer name, you, Routing"');
 });
 
 it.each([
@@ -44,8 +44,9 @@ it.each([
   const html = renderToStaticMarkup(createElement(Couch, {
     view: "host", host: { key: "host", name, you: true }, entries: [],
   }));
-  expect(html).toContain(`aria-label="${name} · ${self}"`);
-  expect(html).not.toContain(`${name} · ${name}`);
+  const comma = lang === "zh" ? "，" : ", ";
+  expect(html).toContain(`aria-label="${name}${comma}${self}"`);
+  expect(html).not.toContain(`${name}${comma}${name}`);
   expect(html).not.toMatch(/Offline|离线|has-comic|tabindex="0"/);
 });
 
@@ -145,7 +146,7 @@ describe("RouteTree", () => {
     ]);
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -196,7 +197,7 @@ describe("RouteTree", () => {
     ]);
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -243,7 +244,7 @@ describe("RouteTree", () => {
     setCopy({ lang: "en", vis: true });
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -282,7 +283,7 @@ describe("RouteTree", () => {
     ]);
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -300,7 +301,7 @@ describe("RouteTree", () => {
   it("uses the Host identity color in the topology", () => {
     const hostPeerId = "host-color-identity";
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId,
         hostLabel: "Host",
         viewers: [],
@@ -330,7 +331,7 @@ describe("RouteTree", () => {
     ]);
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -378,7 +379,7 @@ describe("RouteTree", () => {
     ]);
 
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -423,7 +424,7 @@ describe("RouteTree", () => {
       },
     ]);
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,
@@ -440,7 +441,7 @@ describe("RouteTree", () => {
 
   it("keeps truncated Host, unselectable and pending names in visible tooltip targets", () => {
     const name = "这是一个需要完整查看而不是只能读省略号的参与者名字";
-    const html = renderToStaticMarkup(createElement(RouteTree, {
+    const html = renderToStaticMarkup(createElement(RouteTree, { pictureActive: true,
       hostPeerId: "host", hostLabel: `${name}房主`,
       viewers: labelParticipantSnapshot([
         { role: "viewer", peerId: "ready", displayName: `${name}观众`, upstream: { kind: "peer", peerId: "host" }, mediaReady: true },
@@ -487,7 +488,7 @@ describe("RouteTree", () => {
     ];
     const { host, viewers } = labelParticipantSnapshot(participants);
     const html = renderToStaticMarkup(
-      createElement(RouteTree, {
+      createElement(RouteTree, { pictureActive: true,
         hostPeerId: host?.peerId ?? null,
         hostLabel: host?.label ?? "Host",
         viewers,

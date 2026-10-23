@@ -15,7 +15,7 @@ import {
 import { CaptureSourcePicker } from "../../../src/client/components/living/CaptureSourcePicker";
 import { RoomInteractions } from "../../../src/client/components/living/RoomInteractions";
 import { RoomInteractionSession } from "../../../src/client/lib/room-interactions";
-import { RoomChatToggle } from "../../../src/client/components/living/RoomChatOverlay";
+import { RoomChatOverlaySettings, RoomChatToggle } from "../../../src/client/components/living/RoomChatOverlay";
 import { HostShareControls } from "../../../src/client/components/living/HostShareControls";
 import { PlaybackControlsView } from "../../../src/client/components/living/PlaybackControls";
 import { StatusIndicator } from "../../../src/client/components/living/StatusIndicator";
@@ -42,7 +42,7 @@ import {
 } from "../../../src/client/media/viewer-presentation";
 import { gameMarkup, createGame } from "../../assets/game.js";
 import { sketchMarkup } from "../../assets/sketch.js";
-import { BEAT, INVITE_CUES } from "../score.js";
+import { BEAT, INVITE_CUES } from "./score.js";
 import { point } from "./cursor";
 import "../../../src/client/styles.css";
 import "./ui.css";
@@ -208,10 +208,10 @@ function Screen({ shot }: { shot: Shot }) {
       {launcher ? (
         <main className="lr-client-launch">
           <LauncherForm
-            openSiteOnStart={false} onToggleStartupSite={() => {}}
+            startupSite="" onToggleStartupSite={() => {}}
             mode={shot}
             onModeChange={noop}
-            site=""
+            sites={[]}
             onRemoveSite={noop}
             localAccessPassword=""
             onLocalAccessPasswordChange={noop}
@@ -235,7 +235,11 @@ function Screen({ shot }: { shot: Shot }) {
                 picture={{ supported: true, active: false, failed: false, toggle: async () => {} }}
                 togglePlayback={noop} toggleFullscreen={noop} toggleMute={noop} setLevel={noop}
                 onToggleTheater={noop} onReconnect={noop} reconnectAvailable
-                overlayAction={<RoomChatToggle session={session} />} />}
+                settings={{ pictureFit: "contain", setPictureFit: noop, pictureRotation: 0, setPictureRotation: noop,
+                  route: { preference: "auto", onChange: noop, sfuAvailable: true, sfuOnly: false, peerOnly: false,
+                    disabled: false, rejected: false } }}
+                overlayAction={<RoomChatToggle session={session} />}
+                overlaySettings={<RoomChatOverlaySettings session={session} />} />}
               {shot === "picker" && (
                 <CaptureSourcePicker
                   nativeSources={{

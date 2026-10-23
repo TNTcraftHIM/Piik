@@ -105,6 +105,15 @@ For a native Host smoke run, launch the App and select a window in the Host
 page, then open its invitation on another device. Choose the mode for that
 network as described in the [App guide](./README.md#modes).
 
+### Optional Gamepad Drivers
+
+App packaging does not download or include optional input SDKs or drivers.
+The Windows adapter calls an externally installed ViGEmBus through its public
+bus interface; Linux uses system uinput and macOS uses native virtual HID APIs.
+Driver availability and permission are checked by the platform adapter.
+See the [gamepad setup guide](../../docs/guide/remote-control.md#gamepads)
+for Host requirements and platform support.
+
 ### Desktop Icons
 
 The Windows App embeds the shared Piik mark through the

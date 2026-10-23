@@ -8,7 +8,7 @@ function initialState(viewer: boolean): RoomVoiceSnapshot {
   return { peerId: viewer ? "preview-friend" : "preview-host", role: viewer ? "viewer" : "host", connected: true,
     microphone: false, capturePending: false, deafened: false, listeningVolume: 1, peerVolumes: new Map(), autoplayBlocked: false, error: null, muted: new Set(),
     input: { deviceId: "", volume: 1, voiceProcessing: true },
-    room: { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: "preview-host", publications: [], connections: [], unavailable: [],
+    room: { type: "room-voice-state", bitrate: 64_000, revision: 1, enabled: true, hostPeerId: "preview-host", publications: [], connections: [], unavailable: [],
       members: [
         { peerId: "preview-host", connected: true, joined: true,
           publicationId: viewer ? "preview-host-publication" : undefined, upstream: { kind: "none" } },
@@ -25,9 +25,10 @@ export function useRoomVoicePreview(viewer: boolean) {
   const session = useMemo<RoomVoiceView>(() => {
     const snapshot: RoomVoiceSnapshot = { ...state, room: state.room && { ...state.room,
       members: state.room.members.map(member => member.peerId === state.peerId
-        ? { ...member, publicationId: state.microphone ? "preview-publication" : undefined } : member),
+        ? { ...member, publicationId: state.microphone ? "preview-publication" : undefined, deafened: state.deafened } : member),
     } };
     const command = (command: RoomVoiceCommand) => {
+      if (command.action === "bitrate") setState(current => ({ ...current, room: current.room && { ...current.room, bitrate: command.bitrate } }));
       if (command.action === "join" || command.action === "leave") {
         const joined = command.action === "join";
         setState(current => ({ ...current, microphone: joined && current.microphone,
@@ -61,7 +62,7 @@ export function useRoomVoicePreview(viewer: boolean) {
       }),
     };
   }, [state]);
-  return { controls: <RoomVoiceControls session={session} />,
+  return { room: session.getSnapshot().room, controls: <RoomVoiceControls session={session} />,
     settings: <RoomVoiceSettings session={session} />,
     content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void) =>
       <RoomVoicePanel session={session} names={names} onSelectParticipant={onSelect} /> };

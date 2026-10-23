@@ -1,6 +1,8 @@
 package signal
 
 import (
+	"bytes"
+	"reflect"
 	"testing"
 	"time"
 
@@ -8,6 +10,72 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu/sfutest"
 )
+
+func TestVoiceListeningPresenceIsOptedInAndDoesNotChangeMedia(t *testing.T) {
+	h, host, viewer, hostID, viewerID := joinedVoiceOwnerRoom(t)
+	host.sendJSON(map[string]any{"type": "subscribe-room-voice", "deafened": false})
+	nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool {
+		for _, member := range state.Members {
+			if member.PeerID == hostID.PeerID {
+				return member.Deafened != nil && !*member.Deafened
+			}
+		}
+		return false
+	})
+	voiceCommand(host, map[string]any{"action": "publish"})
+	before := nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool { return len(state.Publications) == 1 })
+	voiceCommand(host, map[string]any{"action": "deafen", "deafened": true})
+	after := nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool {
+		for _, member := range state.Members {
+			if member.PeerID == hostID.PeerID {
+				return member.Deafened != nil && *member.Deafened
+			}
+		}
+		return false
+	})
+	if !reflect.DeepEqual(before.Publications, after.Publications) || !reflect.DeepEqual(before.Connections, after.Connections) {
+		t.Fatal("deafen changed media publication or connections")
+	}
+	for _, member := range after.Members {
+		if member.PeerID == viewerID.PeerID && member.Deafened != nil {
+			t.Fatal("inferred listening state from legacy reporter")
+		}
+	}
+	// Drain earlier states too: every message to the baseline subscriber must
+	// retain the old strict member shape, even when another peer reports deafen.
+	for {
+		message := viewer.next("room-voice-state")
+		if bytes.Contains(message.raw, []byte(`"deafened"`)) {
+			t.Fatal("new member field reached a legacy reader")
+		}
+		decoded, err := protocol.DecodeServerMessage(message.raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if decoded.(protocol.RoomVoiceStateMessage).Revision >= after.Revision {
+			break
+		}
+	}
+	voiceCommand(viewer, map[string]any{"action": "deafen", "deafened": true})
+	viewer.next("room-voice-error")
+	h.locked(func() {
+		if h.server.voices[h.room.RoomID].members[viewerID.PeerID].deafened != nil {
+			t.Fatal("unnegotiated command changed presence")
+		}
+	})
+	h.closeClient(host)
+	host = openClient(t, h)
+	authenticate(t, host, h.room, protocol.RoleHost, "owner_host_123456", -1, "", presenceOptions{roomSession: true, roomOnly: true})
+	host.sendJSON(map[string]any{"type": "subscribe-room-voice", "deafened": false})
+	nextVoiceState(t, host, func(state protocol.RoomVoiceStateMessage) bool {
+		for _, member := range state.Members {
+			if member.PeerID == hostID.PeerID {
+				return member.Deafened != nil && !*member.Deafened && member.PublicationID == ""
+			}
+		}
+		return false
+	})
+}
 
 func nextVoiceState(t *testing.T, client *testClient, matches func(protocol.RoomVoiceStateMessage) bool) protocol.RoomVoiceStateMessage {
 	t.Helper()
@@ -44,6 +112,37 @@ func TestVoiceOnlySfuPreparesWithoutVideoPublication(t *testing.T) {
 
 func voiceCommand(client *testClient, command map[string]any) {
 	client.sendJSON(map[string]any{"type": "room-voice-command", "command": command})
+}
+
+func TestRoomVoiceBitrateIsHostOwnedAndOptedIn(t *testing.T) {
+	h := startHarness(t, harnessOptions{})
+	host, viewer, old := openClient(t, h), openClient(t, h), openClient(t, h)
+	authenticate(t, host, h.room, protocol.RoleHost, "bitrate_host_123456", -1, "", presenceOptions{roomSession: true, roomOnly: true})
+	authenticate(t, viewer, h.room, protocol.RoleViewer, "bitrate_viewer_123456", 1, "", presenceOptions{})
+	authenticate(t, old, h.room, protocol.RoleViewer, "bitrate_older_123456", 1, "", presenceOptions{})
+	for _, client := range []*testClient{host, viewer} {
+		client.sendJSON(map[string]any{"type": "subscribe-room-voice", "bitrate": true, "deafened": false})
+		nextVoiceState(t, client, func(state protocol.RoomVoiceStateMessage) bool { return state.Bitrate == 64_000 })
+	}
+	old.sendJSON(map[string]any{"type": "subscribe-room-voice"})
+	if initial := nextVoiceState(t, old, nil); initial.Bitrate != 0 {
+		t.Fatal("new field sent to an older subscription")
+	}
+	voiceCommand(host, map[string]any{"action": "bitrate", "bitrate": 96_000})
+	state := nextVoiceState(t, viewer, func(state protocol.RoomVoiceStateMessage) bool { return state.Bitrate == 96_000 })
+	if state.Enabled || len(state.Publications) != 0 || len(state.Connections) != 0 {
+		t.Fatal("quality setting activated voice")
+	}
+	if next := nextVoiceState(t, old, func(next protocol.RoomVoiceStateMessage) bool { return next.Revision >= state.Revision }); next.Bitrate != 0 {
+		t.Fatal("new field sent to an older subscription")
+	}
+	voiceCommand(viewer, map[string]any{"action": "bitrate", "bitrate": 64_000})
+	viewer.next("room-voice-error")
+	h.locked(func() {
+		if h.server.voices[h.room.RoomID].bitrate != 96_000 {
+			t.Fatal("Viewer changed room bitrate")
+		}
+	})
 }
 
 func TestVoiceOnlyRouteFailureDoesNotChangeVideoStatus(t *testing.T) {

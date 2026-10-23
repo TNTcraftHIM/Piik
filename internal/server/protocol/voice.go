@@ -4,7 +4,9 @@ import "errors"
 
 // Voice is an opted-in room capability; it does not change the video messages.
 type SubscribeRoomVoiceMessage struct {
-	Type string `json:"type"`
+	Type     string `json:"type"`
+	Deafened *bool  `json:"deafened,omitempty"`
+	Bitrate  bool   `json:"bitrate,omitempty"`
 }
 
 func (SubscribeRoomVoiceMessage) isClientMessage() {}
@@ -12,12 +14,20 @@ func (SubscribeRoomVoiceMessage) isClientMessage() {}
 type RoomVoiceCommand struct {
 	Action        string `json:"action"`
 	PublicationID string `json:"publicationId,omitempty"`
+	Deafened      *bool  `json:"deafened,omitempty"`
+	Bitrate       Int    `json:"bitrate,omitempty"`
 }
 
 func (v RoomVoiceCommand) MarshalJSON() ([]byte, error) {
 	value := map[string]any{"action": v.Action}
 	if v.Action == "unpublish" {
 		value["publicationId"] = v.PublicationID
+	}
+	if v.Action == "deafen" {
+		value["deafened"] = v.Deafened
+	}
+	if v.Action == "bitrate" {
+		value["bitrate"] = v.Bitrate
 	}
 	return marshalJSON(value)
 }
@@ -32,6 +42,17 @@ func (v *RoomVoiceCommand) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch v.Action {
+	case "bitrate":
+		if len(f) != 2 || !f.has("bitrate") || v.Bitrate < MinAudioBitrate || v.Bitrate > MaxAudioBitrate {
+			return errors.New("invalid voice bitrate")
+		}
+	case "deafen":
+		if err = f.require("deafened"); err != nil {
+			return err
+		}
+		if len(f) != 2 || v.Deafened == nil {
+			return errors.New("invalid voice listening state")
+		}
 	case "join", "leave", "publish":
 		if len(f) != 1 {
 			return errors.New("unexpected voice command fields")
@@ -122,6 +143,7 @@ type VoiceMember struct {
 	Joined        bool               `json:"joined"`
 	Upstream      MediaRouteUpstream `json:"upstream"`
 	PublicationID string             `json:"publicationId,omitempty"`
+	Deafened      *bool              `json:"deafened,omitempty"`
 }
 type VoicePublication struct {
 	ID     string `json:"id"`
@@ -139,6 +161,7 @@ type VoiceConnection struct {
 }
 type RoomVoiceStateMessage struct {
 	Type         string             `json:"type"`
+	Bitrate      Int                `json:"bitrate,omitempty"`
 	Revision     Int                `json:"revision"`
 	Enabled      bool               `json:"enabled"`
 	HostPeerID   *string            `json:"hostPeerId"`
@@ -220,6 +243,9 @@ func decodeRoomVoiceState(data []byte) (ServerMessage, error) {
 	}
 	if err = f.requireNullable("hostPeerId"); err != nil {
 		return nil, err
+	}
+	if f.has("bitrate") && (v.Bitrate < MinAudioBitrate || v.Bitrate > MaxAudioBitrate) {
+		return nil, errors.New("invalid voice bitrate")
 	}
 	if !validRevision(v.Revision) || v.HostPeerID != nil && !ValidOpaqueID(*v.HostPeerID) || len(v.Members) > MaxParticipantsPerRoomLimit ||
 		len(v.Publications) > MaxParticipantsPerRoomLimit || len(v.Connections) > MaxParticipantsPerRoomLimit+1 || len(v.Unavailable) > MaxParticipantsPerRoomLimit {

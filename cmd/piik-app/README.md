@@ -18,73 +18,70 @@ in the [Linux capture guide](../../native/capture/linux/README.md).
 If the page does not open automatically, open the address shown in the terminal
 or press **O** there to retry. Keep the App running while using that page.
 
-Windows App and browser sharing are the primary tested paths. Physical-device
-coverage for the macOS and Linux apps is still limited; test results and
-[feedback](https://github.com/TNTcraftHIM/Piik/issues) are welcome. macOS native
-capture requires macOS 13 or newer on Apple silicon or Intel.
+macOS native capture requires macOS 13 or newer. Windows App and browser sharing
+are the primary tested paths; [macOS/Linux feedback is welcome](https://github.com/TNTcraftHIM/Piik/issues).
 
 ## Modes
 
-- With no mode argument, the App opens its launcher and waits for use by an
-  approved Site. Choose **Local room** or **Public invite** to start a room
-  service on this device and enter the normal Host page.
-  Star an approved Site in the launcher to open it on startup instead;
-  turn the star off to restore the launcher. Replacing or revoking the Site clears this choice.
-- The launcher remembers the last mode confirmed with **Open Piik**. Without a
-  saved Local/Public choice, it selects Public invite and waits for confirmation.
-- The default launcher checks official releases after it opens, using GitHub
-  first and Gitee if GitHub is unavailable. Click the update button to download
-  the matching platform ZIP, or open the release page when no package matches.
-  **Release notes** opens separately; a new major version includes an upgrade
-  warning. The App does not install or replace itself.
+Choose **Local room** or **Public invite**, then **Open Piik**, to start a room
+service. To supply capture to an existing site, leave the launcher open and
+[approve that site](#approved-site).
+
+App remembers the last confirmed room mode. On first use, **Public invite** is
+selected and waits for confirmation. A starred site opens on startup instead.
+
+The launcher checks releases through GitHub, with Gitee as an alternative.
+Its update button downloads your platform's ZIP, or opens Releases if no package
+matches. **Release notes** opens the changes; major upgrades show a warning.
+Follow the [upgrade steps](#upgrading) to replace App.
 
 ### Local Room
 
 Choose **Local room** for a reachable LAN. Rooms last for this App run.
 
-For Local invitations, the App automatically selects a sole active address or
-sole private IPv4. If several addresses remain possible, choose an interface
-and IP in the launcher. Public invite and use through a Site need no LAN selection.
-The selected address is checked again at startup;
-it selects the Local HTTPS entry and invitation address, while ICE selects media paths independently.
-Local invitations use HTTPS on that address; the Host keeps its HTTP loopback
-page. First access requires [confirming the local certificate](../../docs/guide/troubleshooting.md#local-https-certificate-warning)
-against the App terminal. The certificate stays in memory and changes on restart.
+App selects a sole active address or sole private IPv4 automatically. When
+several are available, choose **Local invitation address** in the launcher.
+For a [virtual LAN](../../docs/guide/network.md#optional-a-virtual-lan), choose its virtual IPv4.
+
+Friends use the HTTPS invitation on that address; the Host uses the local
+loopback page. On first access, friends must [confirm the certificate](../../docs/guide/troubleshooting.md#local-https-certificate-warning)
+against the App terminal. Repeat confirmation after App restarts.
 
 ### Public Invite
 
-For one-link Internet sharing, open the App launcher, choose **Public invite**,
-create a room in the opened Browser, and send its normal invitation link. The
-random `trycloudflare.com` origin lasts only for that App run; a later launch
-creates a new temporary link. Cloudflare Quick Tunnels provide no uptime guarantee;
-use a configured Site when persistent control availability or SFU fallback matters.
+Choose **Public invite**, create a room in the opened browser, and send its invitation.
+The packaged Cloudflare Tunnel helper supplies a temporary `trycloudflare.com`
+HTTPS address. It expires when App closes; a later run gets a new address.
+For a permanent address, use a configured Piik site.
 
-Public invite uses the packaged Cloudflare Tunnel helper to expose the same
-room service at a temporary HTTPS address. Picture and sound travel between
-participants (P2P), outside the tunnel. Local and Public invite both need a usable
-UDP media path and provide no media-server forwarding (SFU) or TURN relay fallback.
-The [routing reference](../../docs/standards/routing-transport.md) explains connection setup.
+Local and Public invite use P2P picture and sound, outside the web tunnel.
+They need a usable UDP media path and provide no server media forwarding (SFU)
+or TURN relay. If the tunnel or media fails, use the [network checks](../../docs/guide/network.md)
+and [public-invitation checks](../../docs/guide/troubleshooting.md#public-invitation-fails-or-shows-1033).
 
 Public invite uses Cloudflare, MiWiFi (Xiaomi) and Bilibili STUN services to
 discover reachable addresses. Each contacted operator can see your public IP,
-port and request timing; these requests contain no shared media, chat or room
-password. NAT enhancement uses the same destinations automatically.
+port and request timing; these requests contain no media, chat or room password.
 To choose your own STUN services for public invitations, set `PIIK_STUN_URLS`
 before starting App; see [App configuration](../../docs/standards/configuration.md#piik-app-configuration).
 An approved Site supplies its own `STUN_URLS`; App Local rooms configure no public STUN.
 
 ### Approved Site
 
-To use a Piik Site, keep the App running and click **App** at the top of the Site.
-Confirm its address on the local approval page. The App remembers one approved
-Site, which the launcher can open or revoke. Approving another replaces it and
-ends the previous Site's App connections; Local rooms remain independent.
-Click the connected **App** button on a Site to reopen the launcher. If the Site
-will not open, use the **App launcher** address in the App terminal instead.
-The browser remembers activation, so later visits reuse the running App with
-that Site's rooms and any enabled SFU fallback. Browser capture remains available
-without the App; see the
-[connection steps](../../docs/guide/getting-started.md#use-app-with-an-existing-site).
+Keep App running, click **App** at the top of the Piik site, and confirm its
+address on the local approval page. See the [connection steps](../../docs/guide/getting-started.md#use-app-with-an-existing-site).
+
+The launcher lists approved sites:
+
+- Click a site to open it. **×** revokes its App connections while other sites and Local rooms continue.
+- **☆** selects one site to open on startup. Clear the star to restore the launcher;
+  revoking the starred site also clears it. Approving another site keeps existing approvals.
+- Click a connected site's **App** button to reopen the launcher, or use the
+  **App launcher** address in the terminal.
+
+The browser remembers activation. Reconnect after changing browsers, using a
+private window or clearing site data. A new public-invite address needs its own
+approval. The site continues to own its rooms and enabled SFU forwarding.
 
 ## Capture
 
@@ -95,10 +92,7 @@ hardware H264. Source and audio support vary by platform; their setup is covered
 in the [Windows](../../native/capture/windows/README.md),
 [macOS](../../native/capture/darwin/README.md) and
 [Linux](../../native/capture/linux/README.md) capture guides.
-Native capture uses the Host's current quality settings. The
-[media-quality reference](../../docs/standards/media-quality.md) owns codec selection,
-live changes and encoding reuse; [verification status](../../docs/verification-status.md)
-keeps the measured limits.
+Adjust native capture through [Sharing settings](../../docs/guide/sharing.md#picture-and-sound-settings).
 
 When the Windows App's capture runtime supports it, the **Apps / Windows** and
 **Screens** tabs offer **Show capture border**, off by default. Change it when selecting or switching a
@@ -124,6 +118,22 @@ To bypass the launcher in development or automation, select a mode explicitly:
 | `--link` | Temporary Public invite |
 | `--site <origin>` | Save and open a Piik Site |
 
+## Upgrading
+
+App and site must use the same major version; **2.x and 1.x cannot be used together**.
+Different 2.x versions preserve established sharing and viewing. New features
+require support from the relevant App and site.
+
+1. Read the release notes on [GitHub](https://github.com/TNTcraftHIM/Piik/releases/latest)
+   or [Gitee](https://gitee.com/TNTcraftHIM/Piik/releases).
+2. For Local room or Public invite, stop sharing, close App and extract the
+   complete new package. Start it and send a fresh invitation.
+3. For a group's site, the administrator [updates Server](../../docs/operations/service-management.md)
+   first. Then update connected Apps and refresh all sharing/viewing pages.
+
+The launcher update button downloads the package; **Gitee mirror** is an
+alternative source. Restarting App or Server interrupts active shares.
+
 ## Terminal And Shutdown
 
 The terminal shows the current mode, entry links and startup state; its language
@@ -140,11 +150,9 @@ redirected or automated runs exit directly.
 
 ### Chromium WebRTC Connections
 
-**Why can the page open, or screen capture succeed, while sharing or viewing fails?**
-
 Browser settings, extensions or managed policies can block WebRTC UDP, including
 the local Browser-to-App media connection. Follow the documentation center's
-[browser WebRTC checks](../../docs/guide/troubleshooting.md#browser-webrtc-restrictions).
+[browser WebRTC checks](../../docs/guide/network.md#browser-webrtc-restrictions).
 For codec-specific failures, see [Windows H264 troubleshooting](../../docs/guide/troubleshooting.md#h264-sharing-fails-on-windows).
 
 ### Diagnostics

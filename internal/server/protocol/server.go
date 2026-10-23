@@ -261,6 +261,8 @@ func DecodeServerMessage(data []byte) (ServerMessage, error) {
 		return decodeViewerRoutePreference(data)
 	case "audio-presence":
 		return decodeAudioPresence(data)
+	case "co-play-presence":
+		return decodeCoPlayPresence(data)
 	case "remote-input-peers":
 		return decodeRemoteInputPeers(data)
 	case "room-interactions-ready":

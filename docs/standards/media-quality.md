@@ -11,8 +11,8 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
 
 ## Capture And Controls
 
-Room voice handles both Host and Viewer microphones, separate
-from source sound. One Browser capture owner supplies device selection, input
+Room voice handles Host and Viewer conversation microphones, separate
+from source sound and optional Host source commentary. Its Browser capture owner supplies device selection, input
 gain and optional speech processing, including on App-backed pages. Settings
 remain local to the Browser origin; joining and microphone activation are never
 remembered. Stopping picture capture does not stop room voice. Source audio stays
@@ -24,6 +24,22 @@ multiply. Per-person levels belong to the current participant identity and retir
 with it. Listening gain, deafen and per-person mute affect only local playback,
 never forwarding or the picture's source audio.
 
+Room voice defaults to 64 kbps mono, with Saver/Standard/Clear shortcuts at
+32/64/96 kbps and a custom 6..320 kbps sender ceiling in the Host's voice settings.
+Microphone and Peer-relay voice senders use the same room ceiling; WebRTC may send
+less as speech or network conditions change. Receive SDP accepts Opus's full 6..510 kbps
+range independently of that sender setting. Published older pages can join
+without the optional bitrate extension; their senders and negotiated receive
+limits may retain the earlier 32 kbps bound.
+
+The Host may enable **Sharing settings → Sound → Include my microphone** to mix
+commentary into the picture's audio. It starts off for each new share and retires
+with that share. Browser capture reuses the stable HostAudio source/microphone
+output; Native capture reuses its mixer and microphone API. Room voice has its
+own room lifetime. Both microphones may be enabled intentionally; the UI warns
+that listeners may hear the same speech twice through the separate deliveries.
+Piik does not automatically mute either microphone or switch between them.
+
 - The Web Host may share a display, application window, Browser tab or camera and may
   stop, synchronously pause/resume audio and video, or switch source.
 - An App-launched Host explicitly chooses either that Browser capture path or
@@ -33,11 +49,10 @@ never forwarding or the picture's source audio.
 - Camera is a peer source choice in the same picker, including on phones. Only
   the chosen source requests permission. Camera input and thumbnails request
   an uncropped device format; sender constraints own later scaling.
-  Camera capture does not implicitly open a microphone. Room voice owns speech
-  independently. A microphone device/processing change keeps the previous input
+  Camera capture does not implicitly open a microphone. Source commentary and
+  room voice require their own explicit activation. A microphone device/processing change keeps the previous input
   on failure and does not replace picture media. Browser processing preferences
-  do not bypass device/system effects. Published Native control commands retain
-  mixed source/commentary support for older Sites; the current UI uses room voice.
+  do not bypass device/system effects.
 - Source-audio availability belongs to the Host capture owner. A live source
   input makes source audio available; a retained Native output track alone does
   not. This describes input presence, not measured
@@ -430,6 +445,12 @@ detector, periodic quality controller, manual SFU layer selector, or
 application-defined whole-room lowest-common-denominator target.
 
 ## Screen Audio
+
+The Host's playback volume adjusts the share's mixed source sound and optional
+commentary from 0% to 200%, starting at 100% for each share. Browser gain precedes
+outgoing fanout; native gain precedes the shared Opus encoder. Source replacement
+preserves the level, and room voice remains independent. Viewer volume adds only
+local listening gain.
 
 Piik supports mono and stereo Opus content through the existing audio
 track. Mono inputs remain valid; Browser and Native mixing use a stereo output.
