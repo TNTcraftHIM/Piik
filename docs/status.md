@@ -89,7 +89,8 @@ unverified. The macOS virtual-HID
 implementation needs its Apple entitlement and a macOS build/runtime check.
 Co-play and the maintenance changes form one integrated candidate awaiting owner
 acceptance; the platform evidence limits above remain explicit.
-The promotional film stays an online-review draft; export follows owner acceptance.
+The website uses the selected bilingual film A with on-demand loading and
+shared product playback controls; the final card stays visible after playback.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;
 release artifacts and operator records own exact delivery results.
 

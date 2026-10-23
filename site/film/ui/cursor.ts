@@ -1,4 +1,4 @@
-import { BEAT } from "../score.js";
+import { BEAT } from "./score.js";
 
 type Point = {x: number; y: number};
 const clamp = (n: number) => Math.min(1, Math.max(0, n));

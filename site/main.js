@@ -82,7 +82,7 @@ function syncFilmPreferences() {
   const preference = currentThemePreference() ?? 'system';
   target.searchParams.set('theme', preference);
   filmLink.href = target.href;
-  filmFrame.contentWindow?.postMessage({type:'piik-film-preferences',lang:root.lang,theme:preference}, location.origin);
+  if (film.open) filmFrame.contentWindow?.postMessage({type:'piik-film-preferences',lang:root.lang,theme:preference}, location.origin);
 }
 const copy = {
   en: {
@@ -137,6 +137,9 @@ function syncThemeControl() {
 theme.addEventListener('click', (event) => {
   if (event.detail !== 0) theme.blur();
   applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  const url = new URL(location.href);
+  url.searchParams.set('theme', currentTheme());
+  history.replaceState(history.state, '', url);
 });
 subscribeTheme(() => {
   syncThemeControl();

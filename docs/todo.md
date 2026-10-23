@@ -35,11 +35,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   supplies the allocator input Piik needs, verify recovery and remove the
   temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
-- [ ] **New promotional film.** Refine the online Chinese/English draft as a
-  standalone introduction: sharing, invitations, Host consent and playing together.
-  Improve the party-game example, motion, reading time and soundtrack. Functional
-  work takes priority; export only after the owner accepts the online preview.
-  Depict published functionality rather than multi-controller prototypes.
 
 ## Held By Owner
 
