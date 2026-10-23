@@ -5,12 +5,12 @@ import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import "./pawn-appearance-studies.css";
 
-export type PawnStudy = "mouse-pin" | "cursor-pin" | "desk" | "held-mouse";
+export type PawnStudy = "vest" | "scarf" | "team-pin" | "cursor-pin";
 const STUDIES = [
-  { id: "mouse-pin", label: ["R1：鼠标胸针", "R1: mouse pin"], detail: ["沿用熟悉的鼠标符号，简化成衣服上的小图案。", "The familiar mouse symbol, worn as a small shirt pin."] },
-  { id: "cursor-pin", label: ["R2：光标图案", "R2: cursor emblem"], detail: ["把光标印在衣服上，小尺寸下轮廓也清楚。", "A simple cursor on the shirt, clear at small sizes."] },
-  { id: "desk", label: ["R3：小操作台", "R3: little desk"], detail: ["身前摆上小键盘和鼠标，像坐在一起操作电脑。", "A little keyboard and mouse, as if using a computer together."] },
-  { id: "held-mouse", label: ["D3：原方案对照", "D3: previous design"], detail: ["保留嘴边静音记号，对照原先的手持鼠标。", "Keep the accepted mute mark and compare the original held mouse."] },
+  { id: "vest", label: ["R4：小马甲", "R4: teammate vest"], detail: ["参与操控就穿上小马甲，把身份融进人物衣着。", "A little vest identifies a participant in remote control."] },
+  { id: "scarf", label: ["R5：搭档领巾", "R5: teammate scarf"], detail: ["一条领巾作为搭档标记，轮廓简洁，带一点俏皮。", "A simple scarf marks a teammate, with a playful silhouette."] },
+  { id: "team-pin", label: ["R6：双人胸章", "R6: team badge"], detail: ["用双人图案表示协作，继续复用已有的符号。", "The existing people symbol becomes a small collaboration badge."] },
+  { id: "cursor-pin", label: ["R2：原方案对照", "R2: previous design"], detail: ["上一轮的光标图案，保留作对照。", "The previous cursor emblem, kept for comparison."] },
 ] as const;
 const SAMPLES: { label: [string, string]; state: PawnState }[] = [
   { label: ["未参与控制", "Not controlling"], state: {} },
@@ -51,22 +51,17 @@ function Wearable({ voice, collaboration, host, study }: PawnState & { study: Pa
 }
 
 function ControlAdornment({ study }: { study: PawnStudy }) {
-  if (study === "mouse-pin") return <g transform="translate(14 30)"><Glyph name="mouse" size={20} /></g>;
-  if (study === "cursor-pin") return <path transform="translate(18 31) scale(.6)"
-    d="M2 2v21l6-6 5 9 4-2-5-9h9Z" fill="currentColor" stroke="none" />;
-  if (study === "desk") return <>
-    <path d="M15 35q0 5 4 7m14-7q0 5-1 7" strokeOpacity=".5" />
-    <g fill="var(--couch)" strokeWidth="1.2">
-      <rect x="12" y="39" width="17" height="9" rx="2" />
-      <rect x="31" y="39" width="5" height="9" rx="2.5" />
-    </g>
-    <path d="M15 42h.01m3 0h.01m3 0h.01m3 0h.01M16 45h9m8.5-5.5v2.5M11 49h26" strokeWidth="1.2" />
+  if (study === "vest") return <>
+    <path d="M17 29l7 7 7-7 3 17q-10 4-20 0Z" fill="currentColor" fillOpacity=".15" strokeWidth="1.2" />
+    <path d="M24 36v13m-6-7h3m6 0h3" strokeWidth="1.2" />
   </>;
-  return <g transform="translate(0 4)">
-    <path d="M15.5 38q1.5 4.5 5 4.5m7 0q3.5 0 5-4.5" strokeOpacity=".55" />
-    <rect x="20" y="36" width="8" height="11" rx="4" fill="var(--couch)" strokeWidth="1.4" />
-    <path d="M24 36.5v4" strokeWidth="1.2" />
+  if (study === "scarf") return <g fill="currentColor" stroke="none">
+    <path d="M15 29q9 5 18 0l-7 8-2-2-2 2Z" />
+    <path d="M22 35v8l2-2 2 2v-8Z" />
   </g>;
+  if (study === "team-pin") return <g transform="translate(15 30)"><Glyph name="users" size={18} /></g>;
+  return <path transform="translate(18 31) scale(.6)"
+    d="M2 2v21l6-6 5 9 4-2-5-9h9Z" fill="currentColor" stroke="none" />;
 }
 
 export function PawnAppearanceStudies({ selected, onSelect, guides, onGuides }: {
@@ -81,13 +76,13 @@ export function PawnAppearanceStudies({ selected, onSelect, guides, onGuides }: 
       <h3>{en ? "A little sign of co-play" : "参与远控，怎么表达"}</h3>
       <SwitchItem checked={guides} onChange={onGuides} label={en ? "Centre guides" : "中心线对照"} />
     </div>
-    <p>{en ? "Keep D3's headphones and mute mark. Choose a control cue to see it on the couch below. Every design represents the same control permission."
-      : "保留 D3 的耳机与嘴边静音记号。点选远控标记，下方沙发同步展示；三种都表示参与远控。"}</p>
+    <p>{en ? "Keep D3's headphones and mute mark. These accessories identify approved collaborators, regardless of their input device. Choose one to see it on the couch."
+      : "保留 D3 的耳机与嘴边静音记号。配饰表示已获准参与操控，不区分输入设备。点选后可在沙发中对照。"}</p>
     <div className="cp-pawn-study-grid">
       {STUDIES.map(study => <section key={study.id} className="cp-pawn-study" data-study={study.id} data-selected={selected === study.id || undefined}>
         <header><Chip title={study.label[language]} selected={selected === study.id} onClick={() => onSelect(study.id)}>{study.label[language]}</Chip></header>
         <p>{study.detail[language]}</p>
-        {study.id !== "held-mouse" ? <div className="cp-pawn-study-detail" aria-label={en ? "Enlarged detail" : "放大细节"}>
+        {study.id !== "cursor-pin" ? <div className="cp-pawn-study-detail" aria-label={en ? "Enlarged detail" : "放大细节"}>
           {[false, true].map(collaboration => {
             const state: PawnState = { voice: { microphone: false }, collaboration };
             return <figure key={String(collaboration)}><PawnSvg color={participantColor(SAMPLE_ID)} identity={SAMPLE_ID}
