@@ -3,7 +3,8 @@ import { viewerRoutePreferenceSchema } from "../../shared/protocol";
 import { remoteControlModeSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
 
 const STORAGE_KEY = "piik:room-preferences:v1";
-export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1] } as const;
+export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1], speed: [.5, 1.5] } as const;
+export const CHAT_OVERLAY_DEFAULTS = { scale: 1, opacity: 1, speed: 1, colorBySender: false };
 export const REMOTE_KEYBOARD_PAGES = ["letters", "symbols", "functions", "text"] as const;
 
 const roomPreferencesSchema = z.object({
@@ -14,8 +15,9 @@ const roomPreferencesSchema = z.object({
   overlayAppearance: z.object({
     scale: z.number().min(CHAT_OVERLAY_LIMITS.scale[0]).max(CHAT_OVERLAY_LIMITS.scale[1]),
     opacity: z.number().min(CHAT_OVERLAY_LIMITS.opacity[0]).max(CHAT_OVERLAY_LIMITS.opacity[1]),
-  }).default({ scale: 1, opacity: 1 }),
-  interactionEffects: z.boolean().default(true),
+    speed: z.number().min(CHAT_OVERLAY_LIMITS.speed[0]).max(CHAT_OVERLAY_LIMITS.speed[1]).default(CHAT_OVERLAY_DEFAULTS.speed),
+    colorBySender: z.boolean().default(CHAT_OVERLAY_DEFAULTS.colorBySender),
+  }).default(CHAT_OVERLAY_DEFAULTS),
   voiceInput: z.object({ deviceId: z.string(), volume: z.number().min(0).max(2), voiceProcessing: z.boolean() })
     .default({ deviceId: "", volume: 1, voiceProcessing: true }),
   voiceListeningVolume: z.number().min(0).max(2).default(1),

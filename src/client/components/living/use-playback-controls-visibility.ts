@@ -70,14 +70,16 @@ export function usePlaybackControlsVisibility(
         show();
       }
     }, options);
-    controls.addEventListener("pointerenter", (event) => {
-      if (event.pointerType !== "touch") {
+    // Popovers remain descendants in the top layer; moving between the bar and
+    // its controls must not briefly start an idle timeout.
+    controls.addEventListener("pointerover", (event) => {
+      if (event.pointerType !== "touch" && !(event.relatedTarget instanceof Node && controls.contains(event.relatedTarget))) {
         hoveringControls = true;
         show();
       }
     }, options);
-    controls.addEventListener("pointerleave", (event) => {
-      if (event.pointerType !== "touch") {
+    controls.addEventListener("pointerout", (event) => {
+      if (event.pointerType !== "touch" && !(event.relatedTarget instanceof Node && controls.contains(event.relatedTarget))) {
         hoveringControls = false;
         scheduleHide();
       }

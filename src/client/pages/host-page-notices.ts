@@ -141,6 +141,7 @@ export function sourceSwitchNotice({
 export function shouldPauseLocalPreview(
   visibilityState: DocumentVisibilityState,
   hasFocus: boolean,
+  pictureInPicture = false,
 ): boolean {
-  return visibilityState !== "visible" || !hasFocus;
+  return !pictureInPicture && (visibilityState !== "visible" || !hasFocus);
 }

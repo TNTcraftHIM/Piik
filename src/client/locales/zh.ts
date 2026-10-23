@@ -152,7 +152,7 @@ export const zh = {
   "voice.quality.clear": "清晰",
   "host.shareVolume.mute": "关闭所有观众的分享声音",
   "host.shareVolume.unmute": "恢复所有观众的分享声音",
-  "host.shareVolume.updateApp": "更新 Piik App 后可调节分享音量",
+  "host.shareVolume.unavailable": "更新 Piik App 后可调节分享音量",
   "playback.volumeBasic": "调节音量，支持 0%–100%",
   "playback.fullscreen": "全屏观看",
   "playback.fullscreenWaiting": "画面准备好后可全屏",

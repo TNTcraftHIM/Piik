@@ -81,7 +81,12 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   presentation stage owns the primary media status; a coexisting notice never
   selects that status or asserts another connection's health.
 - Notices: necessary coexisting issues and operation feedback use the existing
-  pills near the stage; they are not another primary media status. Raw
+  pills below the stage; they are not another primary media status. Ordinary
+  notices stay outside the picture and are hidden with surrounding controls in
+  theatre mode. Operation results have a dismiss button; condition-based notices
+  disappear when their owning condition clears. Signal recovery must not leave
+  a stale operation warning after reconnection. Remote-input and voice feedback
+  stays in its own controls or tool panel. Raw
   PeerConnection errors remain diagnostic observations, not persistent red
   warnings after media recovers. The control menu does not repeat the television
   status or aggregate the first weak outbound edge into a global quality warning.

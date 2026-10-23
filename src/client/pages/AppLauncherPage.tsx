@@ -19,7 +19,7 @@ import {
 } from "../lib/release-update";
 
 const launcherStateSchema = z.object({
-  site: z.string(),
+  sites: z.array(z.string()),
   startupSite: z.string(),
   localAccessPassword: z.string(),
   defaultMode: z.enum(["local", "link"]),
@@ -44,7 +44,7 @@ export function AppLauncherPage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<AppMode>("link");
-  const [site, setSite] = useState("");
+  const [sites, setSites] = useState<string[]>([]);
   const [startupSite, setStartupSite] = useState("");
   const [openOnApproval, setOpenOnApproval] = useState(false);
   const [localAccessPassword, setLocalAccessPassword] = useState("");
@@ -69,8 +69,8 @@ export function AppLauncherPage() {
       return ["http:", "https:"].includes(url.protocol) && url.origin === requestedSite;
     } catch { return false; }
   })();
-  const approvalCurrent = validSite && site === requestedSite;
-  const openSiteOnStart = site !== "" && startupSite === site;
+  const approvalCurrent = validSite && sites.includes(requestedSite);
+  const openSiteOnStart = Boolean(approvalCurrent && startupSite === requestedSite);
 
   useEffect(() => {
     // The App's saved exact origin owns permission, including repeat connections.
@@ -112,7 +112,7 @@ export function AppLauncherPage() {
         setVersion(state.version);
         setTarget(state.target);
         setStarting(state.starting === true);
-        setSite(state.site);
+        setSites(state.sites);
         setStartupSite(state.startupSite);
         setAppDebug(state.debug);
         setDebug(state.debug === true);
@@ -223,19 +223,19 @@ export function AppLauncherPage() {
     } finally { finish(); }
   }
 
-  async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site", starAfterApproval = false): Promise<void> {
+  async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site", starAfterApproval = false, allowed = true): Promise<void> {
     if (siteBusy) return;
     const finish = beginStateChange();
     setSiteBusy(true);
     setSiteError(undefined);
-    async function save(setting: "site" | "startup-site", expectedSite: string): Promise<boolean> {
+    async function save(setting: "site" | "startup-site"): Promise<boolean> {
       const response = await fetch(`/api/client-launcher/${setting}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ site: nextSite, expectedSite }),
+        body: JSON.stringify({ site: nextSite, ...(setting === "site" ? { allowed } : {}) }),
       });
-      const result = launcherStateSchema.pick({ site: true, startupSite: true }).safeParse(await response.json().catch(() => null));
+      const result = launcherStateSchema.pick({ sites: true, startupSite: true }).safeParse(await response.json().catch(() => null));
       if (result.success) {
-        setSite(result.data.site);
+        setSites(result.data.sites);
         setStartupSite(result.data.startupSite);
       }
       if (response.status === 409 && result.success) {
@@ -246,7 +246,7 @@ export function AppLauncherPage() {
       return true;
     }
     try {
-      if (await save(setting, site) && starAfterApproval) await save("startup-site", nextSite);
+      if (await save(setting) && starAfterApproval) await save("startup-site");
     } catch {
       setSiteError(t("client.connect.saveFailed"));
     } finally { finish(); setSiteBusy(false); }
@@ -295,7 +295,6 @@ export function AppLauncherPage() {
                 {approvalCurrent && <Glyph name="check" size={20} className="lr-client-approval-check" />}
               </div>
               <p className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.return" : "client.connect.approveHint")}</p>
-              {!approvalCurrent && site && site !== requestedSite && <p className="lr-client-approval-replace">{t("client.connect.replace", { site })}</p>}
             </div>
             {!validSite && <Pill icon="alert" tone="bad" label={t("client.connect.invalid")} comic="signal-failed" />}
             {siteError && <p role="alert">{siteError}</p>}
@@ -303,7 +302,7 @@ export function AppLauncherPage() {
               <input type="checkbox" disabled={siteBusy}
                 checked={approvalCurrent ? openSiteOnStart : openOnApproval}
                 onChange={event => approvalCurrent
-                  ? void changeSite(event.target.checked ? site : "", "startup-site")
+                  ? void changeSite(event.target.checked ? requestedSite : "", "startup-site")
                   : setOpenOnApproval(event.target.checked)} />
               <Glyph name="star" size={18} />
               <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOnStart")}</span>
@@ -327,12 +326,12 @@ export function AppLauncherPage() {
               </details>}
             </> : undefined}
             mode={mode}
-            site={site}
-            openSiteOnStart={openSiteOnStart}
-            onToggleStartupSite={() => void changeSite(startupSite ? "" : site, "startup-site")}
+            sites={sites}
+            startupSite={startupSite}
+            onToggleStartupSite={site => void changeSite(startupSite === site ? "" : site, "startup-site")}
             localAccessPassword={localAccessPassword}
             onModeChange={setMode}
-            onRemoveSite={() => void changeSite("")}
+            onRemoveSite={site => void changeSite(site, "site", false, false)}
             siteBusy={siteBusy}
             siteError={siteError}
             target={target}

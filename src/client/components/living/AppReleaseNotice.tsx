@@ -28,7 +28,7 @@ export function AppReleaseNotice({ update }: { update: ReleaseUpdateNotice }) {
     <a className="lr-client-release-mirror" href="https://gitee.com/TNTcraftHIM/Piik/releases"
       target="_blank" rel="noopener noreferrer" aria-label={t("client.update.downloads")}>
       {vis ? <>Gitee <Glyph name="arrowDown" size={14} /></> : t("client.update.downloads")}
-      <span aria-hidden="true">↗</span>
+      <span aria-hidden="true"> ↗</span>
     </a>
     {major && <a id={warningId} className="lr-client-release-warning" href={update.releaseURL}
       target="_blank" rel="noopener noreferrer" aria-label={t("client.update.majorHint")}>

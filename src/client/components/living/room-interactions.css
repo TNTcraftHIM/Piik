@@ -23,7 +23,6 @@
 .lr-interaction-chat-toggle { display: flex; position: relative; }
 .lr-interaction-unread { align-self: flex-start; margin: -4px 0 0 -8px; z-index: 1; min-width: 22px; padding: 2px 6px; border-radius: 20px; color: var(--action-ink); background: var(--action-deep); font: 700 11px var(--mono); text-align: center; }
 .lr-chat-compose { flex-shrink: 0; }
-.lr-interaction-effects { display: flex; align-items: center; gap: 8px; min-height: 40px; width: fit-content; margin-top: 8px; font-size: 12px; font-weight: 400; color: var(--muted); }
 .lr-chat-history { position: relative; flex: 1; min-height: 0; }
 .lr-chat-log { height: 100%; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; padding: 16px 2px; }
 .lr-chat-latest { position: absolute; z-index: 6; bottom: 8px; left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 6px; min-height: 36px; max-width: calc(100% - 16px); padding: 6px 12px; border: 1px solid var(--control-edge); border-radius: 18px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; white-space: nowrap; }
@@ -56,9 +55,7 @@
 .lr-chat-tools .lr-chat-count { padding: 0 4px; }
 .lr-chat-compose[hidden] { display: none; }
 .lr-interaction-settings { flex: 1; padding-block: 4px 0; }
-.lr-chat-settings > p { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.lr-chat-settings > .lr-chat-overlay-settings { margin-bottom: 16px; }
-.lr-chat-export { display: grid; justify-items: start; gap: 8px; padding-top: 12px; border-top: 1px solid var(--wall-2); }
+.lr-chat-export { display: grid; justify-items: start; gap: 8px; }
 .lr-chat-export > p { margin: 0 0 6px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .lr-chat-count { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .lr-interaction-status { display: flex; flex: none; align-items: center; gap: 6px; min-height: 24px; margin-top: 6px; font-size: 11px; line-height: 1.5; color: var(--muted); }
@@ -92,7 +89,6 @@
 .lr-person-menu-details-hint { width: 100%; }
 .lr-person-menu-details { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 40px; padding: 8px; margin-top: 8px; border: 0; border-radius: 12px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
 .lr-person-menu-details:is(:hover, :focus-visible) { background: var(--control-hover); color: var(--ink); }
-.lr-person-menu .lr-interaction-effects { font-size: 11px; }
 /* Theater keeps the same top-layer chat; the picture never changes size. */
 .lr-room.is-theater .lr-room-interactions { position: absolute; top: 12px; right: 12px; z-index: 5; width: auto; }
 .lr-room.is-theater .lr-room-interactions .lr-couch { display: block; width: auto; margin: 0; }

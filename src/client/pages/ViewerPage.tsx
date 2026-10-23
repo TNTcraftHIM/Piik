@@ -1,4 +1,3 @@
-import { PawnSvg } from "../components/living/Pawn";
 import type { VideoFit } from "../media/video-geometry";
 import {
   useEffect,
@@ -29,15 +28,16 @@ import {
 import { AppHeader, LedStrip } from "../components/living/Header";
 import type { CouchEntry } from "../components/living/Couch";
 import { RoomInteractions } from "../components/living/RoomInteractions";
-import { RoomChatOverlay, RoomChatToggle } from "../components/living/RoomChatOverlay";
+import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
-import { useRoomVoiceState } from "../room-voice/use-room-voice-state";
+import { useRoomVoiceMetrics, useRoomVoiceSnapshot } from "../room-voice/use-room-voice-state";
+import { participantConnection } from "../lib/participant-connection";
+import { describeVoiceConnection, voiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { getRuntimeCapabilities } from "../lib/api";
-import { participantColor } from "../components/living/participant-color";
-import { MetricCells } from "../components/living/Metrics";
-import { PawnDetail, RouteGlyph } from "../components/living/PawnDetail";
+import { ConnectionDetails } from "../components/living/ConnectionDetails";
+import { PawnDetail } from "../components/living/PawnDetail";
 import { Lcd } from "../components/living/RoomChip";
 import { RouteTree } from "../components/living/RouteTree";
 import { Comic, type ComicKind } from "../components/living/Comic";
@@ -59,7 +59,7 @@ import {
   Pill,
   Row,
 } from "../components/living/primitives";
-import { Glyph, type GlyphName } from "../ui/icons";
+import { Glyph } from "../ui/icons";
 import { useCopy, type CopyKey } from "../ui/copy";
 import {
   defaultViewerDisplayName,
@@ -165,16 +165,6 @@ interface PendingPeerRoute {
   qualityResult: CandidateQualityProbeResult;
 }
 
-function MeterTag({ icon, label }: { icon: GlyphName; label: string }) {
-  const { vis } = useCopy();
-  return (
-    <span className="lr-meter-tag" role="img" aria-label={label}>
-      <Glyph name={icon} size={17} />
-      {vis ? null : <span className="lr-cap">{label}</span>}
-    </span>
-  );
-}
-
 export function ViewerPage({
   roomId,
   viewerGrant,
@@ -245,11 +235,6 @@ export function ViewerPage({
   const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
   const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
   const [coPlayParticipants, setCoPlayParticipants] = useState<CoPlayParticipant[]>([]);
-  const [routeMetricsExpanded, setRouteMetricsExpanded] = useState(false);
-  const [relayMetricsExpanded, setRelayMetricsExpanded] = useState(false);
-  const [downstreamMetricsExpanded, setDownstreamMetricsExpanded] =
-    useState(false);
-  const [pawnMetricsExpanded, setPawnMetricsExpanded] = useState(false);
 
   const mediaProofGeneration = presentationState.media?.generation ?? null;
   const mediaProofEpoch = presentationState.media?.proofEpoch ?? null;
@@ -280,7 +265,10 @@ export function ViewerPage({
   const signalRef = useRef<SignalingClient | null>(null);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
-  const roomVoice = useRoomVoiceState(roomVoiceSession);
+  const roomVoiceSnapshot = useRoomVoiceSnapshot(roomVoiceSession);
+  const roomVoice = roomVoiceSnapshot?.connected ? roomVoiceSnapshot.room : null;
+  const ownVoiceConnection = describeVoiceConnection(roomVoiceSnapshot);
+  const voiceMetrics = useRoomVoiceMetrics(roomVoiceSession, showConnectionDetails || selectedPawn !== null, roomVoice);
   const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
@@ -669,7 +657,7 @@ export function ViewerPage({
       if (active && capabilities.audioPresence) signal.enableAudioPresence();
       if (active && capabilities.coPlayPresence) signal.enableCoPlayPresence();
       if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
-      if (active && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice({ listeningPresence: capabilities.roomVoiceListeningPresence }));
+      if (active && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice({ listeningPresence: capabilities.roomVoiceListeningPresence, bitrate: capabilities.roomVoiceBitrate }));
       if (active) {
         relayVolunteerAvailable = capabilities.relayVolunteer && !capabilities.sfuOnly;
         setRelayVolunteerSupported(relayVolunteerAvailable);
@@ -2270,17 +2258,19 @@ export function ViewerPage({
       (entry): entry is { viewer: typeof entry.viewer; evidence: ViewerQualityEvidence } =>
         entry.evidence !== null,
     );
+  const pictureActive = presentationState.host === "online" || presentationState.host === "paused";
   const couchEntries: CouchEntry[] = viewers.map((viewer) => {
     const isSelf = selfPeerId !== null && viewer.peerId === selfPeerId;
+    const upstream = participantConnection(viewer, pictureActive, roomVoice).upstream;
     const isChild =
       !isSelf &&
       selfPeerId !== null &&
-      viewer.upstream.kind === "peer" &&
-      viewer.upstream.peerId === selfPeerId;
+      upstream.kind === "peer" &&
+      upstream.peerId === selfPeerId;
     return {
       key: viewer.peerId,
       name: viewer.label,
-      status: deriveParticipantStatus(viewer, presentationState.host === "online" || presentationState.host === "paused", undefined, roomVoice),
+      status: deriveParticipantStatus(viewer, pictureActive, undefined, roomVoice),
       collaboration: coPlayParticipants.some(participant => participant.peerId === viewer.peerId),
       you: isSelf,
       selectable: isChild ? undefined : false,
@@ -2288,12 +2278,13 @@ export function ViewerPage({
   });
   const selectableRelayChildren = viewers
     .filter(
-      (viewer) =>
-        selfPeerId !== null &&
-        viewer.upstream.kind === "peer" &&
-        viewer.upstream.peerId === selfPeerId,
+      (viewer) => {
+        const upstream = participantConnection(viewer, pictureActive, roomVoice).upstream;
+        return selfPeerId !== null && upstream.kind === "peer" && upstream.peerId === selfPeerId;
+      },
     )
     .map((viewer) => viewer.peerId);
+  const selectedRelayChild = viewers.find(viewer => viewer.peerId === selectedPawn && selectableRelayChildren.includes(viewer.peerId));
 
   return (
     <div className="lr-app">
@@ -2343,6 +2334,7 @@ export function ViewerPage({
             />
             <PlaybackControls
               overlayAction={<RoomChatToggle session={interactionSession} />}
+              overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
               remoteActions={<RemoteControl channel={inputRoute.current} videoRef={videoRef}
                   pictureFit={pictureFit} pictureRotation={pictureRotation}
                   available={presentation.overlay === "none" && presentation.hasCurrentFrame} />}
@@ -2567,7 +2559,9 @@ export function ViewerPage({
                     expanded={showConnectionDetails}
                     controls="viewer-details-panel"
                     disabled={
+                      !showConnectionDetails &&
                       !routePresentation.route &&
+                      !ownVoiceConnection &&
                       !relaySnapshot &&
                       freshRelayChildEvidence.length === 0
                     }
@@ -2598,71 +2592,42 @@ export function ViewerPage({
               </div>
             </div>
           </div>
-          {showConnectionDetails && routePresentation.route ? (
+          {showConnectionDetails && (routePresentation.route || ownVoiceConnection || relaySnapshot || freshRelayChildEvidence.length > 0) ? (
             <Row sub>
-              <div id="viewer-details-panel" style={{ display: "contents" }}>
-                <MeterTag icon="arrowDown" label={t("stats.title")} />
-                <RouteGlyph route={routePresentation.route} />
-                {routeMetrics ? (
-                  <MetricCells
-                    metrics={routeMetrics}
-                    direction="receive"
-                    expanded={routeMetricsExpanded}
-                    onToggle={setRouteMetricsExpanded}
-                  />
-                ) : null}
-              </div>
+              <ConnectionDetails id="viewer-details-panel" rows={[
+                ...(routePresentation.route ? [{ key: "picture", media: "video" as const, label: t("stats.sharedMedia"),
+                  icon: "arrowDown" as const, route: routePresentation.route, metrics: routeMetrics, direction: "receive" as const,
+                }] : []),
+                ...(relaySnapshot ? [{ key: "relay", media: "video" as const, label: t("stats.relay"),
+                  icon: "arrowUp" as const, metrics: relaySnapshot.metrics, direction: "send" as const,
+                }] : []),
+                ...freshRelayChildEvidence.map(({ viewer, evidence }) => ({ key: `downstream/${viewer.peerId}`, media: "video" as const,
+                  label: `${t("stats.downstream")} · ${viewer.label}`, icon: "arrowUp" as const,
+                  metrics: metricsFromQualityEvidence(evidence), direction: "receive" as const, detailOnly: true,
+                })),
+                ...voiceConnectionDetails({ voice: roomVoiceSnapshot, metrics: voiceMetrics, t,
+                  peerName: id => id === labeledHostPresence?.peerId ? labeledHostPresence.label : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault") }),
+              ]} />
             </Row>
           ) : null}
-          {showConnectionDetails && relaySnapshot ? (
-            <Row sub>
-              <MeterTag icon="arrowUp" label={t("stats.relay")} />
-              <MetricCells
-                metrics={relaySnapshot.metrics}
-                direction="send"
-                expanded={relayMetricsExpanded}
-                onToggle={setRelayMetricsExpanded}
-              />
-            </Row>
-          ) : null}
-          {showConnectionDetails
-            ? freshRelayChildEvidence.map(({ viewer, evidence }) => (
-                <Row sub key={viewer.peerId} label={viewer.label}>
-                  <MeterTag icon="arrowUp" label={t("stats.downstream")} />
-                  <span className="lr-pawn-mini">
-                    <PawnSvg color={participantColor(viewer.peerId)} identity={viewer.peerId} />
-                  </span>
-                  <span className="lr-pawn-detail-name">{viewer.label}</span>
-                  <MetricCells
-                    metrics={metricsFromQualityEvidence(evidence)}
-                    direction="receive"
-                    expanded={downstreamMetricsExpanded}
-                    onToggle={setDownstreamMetricsExpanded}
-                  />
-                </Row>
-              ))
-            : null}
-          {selectedPawn !== null && selectedChildEvidence ? (
+          {selectedRelayChild ? (
             <PawnDetail
-              pawnKey={selectedPawn}
-              name={
-                viewers.find((viewer) => viewer.peerId === selectedPawn)
-                  ?.label ?? selectedPawn
-              }
+              pawnKey={selectedRelayChild.peerId}
+              name={selectedRelayChild.label}
               route={null}
-              metrics={metricsFromQualityEvidence(selectedChildEvidence)}
+              metrics={selectedChildEvidence ? metricsFromQualityEvidence(selectedChildEvidence) : null}
               direction="receive"
-              tag={{ icon: "arrowUp", label: t("stats.downstream") }}
-              expanded={pawnMetricsExpanded}
-              onToggleMetrics={setPawnMetricsExpanded}
+              tag={selectedChildEvidence ? { icon: "arrowUp", label: t("stats.downstream") } : undefined}
               onClose={() => setSelectedPawn(null)}
+              voiceDetails={voiceConnectionDetails({ voice: roomVoiceSnapshot, peerId: selectedRelayChild.peerId, metrics: voiceMetrics, t,
+                peerName: id => id === labeledHostPresence?.peerId ? labeledHostPresence.label : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault") })}
             />
           ) : null}
           {showTopology && labeledHostPresence ? (
             <Row sub>
               <RouteTree
                 hostPeerId={labeledHostPresence.peerId}
-                pictureActive={presentationState.host === "online" || presentationState.host === "paused"}
+                pictureActive={pictureActive}
                 voice={roomVoice}
                 hostLabel={labeledHostPresence.label}
                 viewers={viewers}

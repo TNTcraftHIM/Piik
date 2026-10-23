@@ -2,10 +2,9 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalSto
 import { normalizeChatText, MAX_CHAT_CODE_POINTS, isThrow, type ReactionId } from "../../../shared/room-interactions";
 import { RoomInteractionSession } from "../../lib/room-interactions";
 import { labelParticipantNames } from "../../lib/viewer-presence";
-import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { BackButton, Btn, SwitchItem } from "./primitives";
+import { BackButton, Btn } from "./primitives";
 import { participantColor } from "./participant-color";
 import { FloatingPanel } from "./FloatingPanel";
 import { PawnSvg } from "./Pawn";
@@ -50,7 +49,6 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
   const detached = Boolean(chatDocument && chatDocument !== document);
   const [settingsOpen, setSettingsOpen] = useState<"chat" | "voice" | null>(null);
   const [page, setPage] = useState<"chat" | "voice">("chat");
-  const [effects, setEffects] = useState(() => readRoomPreferences().interactionEffects);
   const [target, setTarget] = useState<string | null>(null);
   const [panelTarget, setPanelTarget] = useState<{ peerId: string; trigger: HTMLElement } | null>(null);
   const [draft, setDraft] = useState("");
@@ -217,7 +215,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
         setFollowing(true); log.current?.focus({ preventScroll: true });
       }}><Glyph name="arrowDown" size={15} /><span className={vis ? "visually-hidden" : undefined}>
         {unread ? t("interaction.unread", { count: String(unread) }) : t("interaction.latest")}</span></button>}
-      {chatOpen && showChat && effects && latestReaction &&
+      {chatOpen && showChat && latestReaction &&
         <RoomReactionActivity key={latestReaction.id} reaction={latestReaction} participants={participants}
           hostPeerId={couch.host?.key} now={session.now} />}
       </div>
@@ -251,7 +249,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
           aria-labelledby={`${id}-voice-tab`} hidden={!showVoice || settingsOpen !== null}>
           <div className="lr-interaction-conversation">
             <div className="lr-floating-scroll lr-voice-history">{chatOpen && showVoice && !settingsOpen && voice.content(openPanelReactions)}</div>
-            {chatOpen && showVoice && effects && latestReaction &&
+            {chatOpen && showVoice && latestReaction &&
               <RoomReactionActivity key={latestReaction.id} reaction={latestReaction} participants={participants}
                 hostPeerId={couch.host?.key} now={session.now} />}
           </div>
@@ -273,7 +271,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
             onClick={detached ? () => chatDocument?.defaultView?.focus() : undefined} />
           {unread > 0 && <span className="lr-interaction-unread" aria-label={t("interaction.unread", { count: String(unread) })}>{unread}</span>}
         </span>} />
-      {effects && <ReactionEffects state={state} participants={participants} area={area} now={session.now} />}
+      <ReactionEffects state={state} participants={participants} area={area} now={session.now} />
     </div>
     <FloatingPanel id={menuId} trigger={anchor} compact anchorOnOpen icon="smile" className="lr-person-menu"
       title={t("interaction.express")} onOpenChange={open => { if (!open) setTarget(null); }}>
@@ -289,12 +287,6 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
         <Glyph name="gauge" size={16} />{!vis && t("host.details")}
         <span className="visually-hidden">{vis && t("host.details")}</span>
       </button></Tooltip>}
-      {target === state.peerId && <div className="lr-interaction-effects">
-        <SwitchItem checked={effects} onChange={enabled => {
-          setEffects(enabled); saveRoomPreferences({ interactionEffects: enabled });
-        }} label={t("interaction.effects")} />
-        {vis && <Glyph name="smile" size={17} />}
-      </div>}
       </div>
     </FloatingPanel>
   </div>;

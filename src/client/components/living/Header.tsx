@@ -34,7 +34,7 @@ export function LedStrip({
       data-state={state}
       aria-label={label}
     >
-      <span className="lr-connection-bars" aria-hidden="true"><i /><i /><i /></span>
+      <span className="lr-connection-dots" aria-hidden="true"><i /><i /><i /></span>
       {vis ? null : <span className="lr-leds-label">{label}</span>}
     </button>
   );

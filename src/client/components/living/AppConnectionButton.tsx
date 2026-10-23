@@ -152,7 +152,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     state === "unavailable" ? "client.connect.unavailable" : "client.connect.action");
   const failed = state === "unavailable" || state === "incompatible";
   return <><Tooltip kind={state === "ready" ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
-    text={vis ? undefined : label} disabled={helpOpen}
+    text={vis ? undefined : state === "idle" && !sourcePicker ? t("client.connect.hint") : label} disabled={helpOpen}
     place={sourcePicker ? "above" : "below"} align="end">
     <button ref={trigger} type="button" className={`${sourcePicker ? "lr-btn is-dense lr-source-picker-refresh lr-source-app-connect" : "lr-btn is-compact lr-app-connect"}${state === "ready" ? " is-ready" : ""}`}
       aria-label={sourcePicker ? t("client.connect.action") : label} aria-busy={busy || undefined}

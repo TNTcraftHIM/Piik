@@ -50,19 +50,39 @@ test("appearance is local, preserves a running flight, survives re-admission and
   expect(session.getSnapshot().overlayMessages).toEqual([]);
   session.disconnected();
   session.authenticated("replacement_peer");
-  expect(session.getSnapshot().overlayAppearance).toEqual({ scale: 1.3, opacity: .4 });
+  expect(session.getSnapshot().overlayAppearance).toMatchObject({ scale: 1.3, opacity: .4 });
   session.close();
-  expect(session.getSnapshot().overlayAppearance).toEqual({ scale: 1, opacity: 1 });
+  expect(session.getSnapshot().overlayAppearance).toMatchObject({ scale: 1, opacity: 1 });
   session.setOverlayAppearance({ scale: 1.2, opacity: .5 });
-  expect(session.getSnapshot().overlayAppearance).toEqual({ scale: 1, opacity: 1 });
+  expect(session.getSnapshot().overlayAppearance).toMatchObject({ scale: 1, opacity: 1 });
 });
 
 test("appearance bounds preserve readable text and reject non-finite input", () => {
   const { session } = setup();
   session.setOverlayAppearance({ scale: 100, opacity: -1 });
-  expect(session.getSnapshot().overlayAppearance).toEqual({ scale: 1.3, opacity: .4 });
+  expect(session.getSnapshot().overlayAppearance).toMatchObject({ scale: 1.3, opacity: .4 });
   session.setOverlayAppearance({ scale: NaN, opacity: 1 });
-  expect(session.getSnapshot().overlayAppearance).toEqual({ scale: 1.3, opacity: .4 });
+  expect(session.getSnapshot().overlayAppearance).toMatchObject({ scale: 1.3, opacity: .4 });
+  session.close();
+});
+
+test("new overlay speed owns animation expiry without restarting an active flight", () => {
+  const { session } = setup();
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  session.setOverlayEnabled(true);
+  session.setOverlayVisible(true);
+  session.receive(message("original_speed"));
+  const flights = session.getSnapshot().overlayMessages;
+  session.setOverlayAppearance({ speed: .5, colorBySender: true });
+  expect(session.getSnapshot().overlayMessages).toBe(flights);
+  vi.advanceTimersByTime(CHAT_OVERLAY_DURATION_MS);
+  expect(session.getSnapshot().overlayMessages).toEqual([]);
+  session.receive(message("slower_speed"));
+  expect(session.getSnapshot().overlayMessages[0].durationMs).toBe(12000);
+  vi.advanceTimersByTime(6000);
+  expect(session.getSnapshot().overlayMessages).toHaveLength(1);
+  vi.advanceTimersByTime(6000);
+  expect(session.getSnapshot().overlayMessages).toEqual([]);
   session.close();
 });
 

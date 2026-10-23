@@ -2,7 +2,7 @@ import { interactionPayloadSchema, type ClientMessage, type ServerMessage, type 
 import { BASELINE_REACTION_IDS, INTERACTION_INTERVAL_MS, REACTION_DURATION_MS, REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { createOpaqueId } from "./opaque-id";
 import { identityHash } from "./identity-hash";
-import { CHAT_OVERLAY_LIMITS, readRoomPreferences, saveRoomPreferences } from "./room-preferences";
+import { CHAT_OVERLAY_DEFAULTS, CHAT_OVERLAY_LIMITS, readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "./room-preferences";
 
 export type RoomInteraction = Omit<Extract<ServerMessage, { type: "room-interaction" }>, "payload"> & {
   payload: InteractionPayload;
@@ -11,7 +11,7 @@ type Rejection = Extract<ServerMessage, { type: "room-interaction-rejected" }>["
 export type InteractionError = Rejection | "offline" | "unconfirmed";
 export const CHAT_OVERLAY_DURATION_MS = 6000;
 export const CHAT_HISTORY_LIMIT = 1000;
-type OverlayAppearance = { scale: number; opacity: number };
+type OverlayAppearance = RoomPreferences["overlayAppearance"];
 const CHAT_OVERLAY_LANES = 3;
 interface InteractionState {
   reactionIds: readonly ReactionId[];
@@ -21,14 +21,14 @@ interface InteractionState {
   reactions: (RoomInteraction & { expiresAt: number })[];
   overlayEnabled: boolean;
   overlayAppearance: OverlayAppearance;
-  overlayMessages: (RoomInteraction & { expiresAt: number; lane: number })[];
+  overlayMessages: (RoomInteraction & { expiresAt: number; durationMs: number; lane: number })[];
   pending: { requestId: string; payload: InteractionPayload } | null;
   confirmed: RoomInteraction | null;
   coolingDown: boolean;
   error: InteractionError | null;
 }
 const initialState = (): InteractionState => ({ reactionIds: BASELINE_REACTION_IDS, ready: false, peerId: null, messages: [], reactions: [],
-  overlayEnabled: false, overlayAppearance: { scale: 1, opacity: 1 }, overlayMessages: [],
+  overlayEnabled: false, overlayAppearance: CHAT_OVERLAY_DEFAULTS, overlayMessages: [],
   pending: null, confirmed: null, coolingDown: false, error: null });
 
 // One owner per signaling client. Authentication admits room data; media
@@ -110,11 +110,12 @@ export class RoomInteractionSession {
       if (this.state.messages.some(item => item.id === message.id)) return true;
       let overlayMessages = this.state.overlayMessages.filter(item => item.expiresAt > now);
       const lane = identityHash(`${message.sender.peerId}:${message.id}`) % CHAT_OVERLAY_LANES;
-      const expiresAt = beganAt + CHAT_OVERLAY_DURATION_MS;
+      const durationMs = CHAT_OVERLAY_DURATION_MS / this.state.overlayAppearance.speed;
+      const expiresAt = beganAt + durationMs;
       if (this.state.overlayEnabled && this.overlayVisible && expiresAt > now) {
         // Newest on this fixed lane wins; missing messages cannot shift a later
         // event to another lane, and bursts cannot accumulate a playback queue.
-        overlayMessages = [...overlayMessages.filter(item => item.lane !== lane), { ...message, lane, expiresAt }];
+        overlayMessages = [...overlayMessages.filter(item => item.lane !== lane), { ...message, lane, expiresAt, durationMs }];
       }
       this.update({ messages: [...this.state.messages.slice(1 - CHAT_HISTORY_LIMIT), { ...message, isSelf: own }],
         overlayMessages, pending, confirmed, error: confirmsPending ? null : this.state.error });
@@ -163,11 +164,14 @@ export class RoomInteractionSession {
     this.expireEffects();
   }
 
-  setOverlayAppearance(appearance: OverlayAppearance) {
-    if (this.closed || !Number.isFinite(appearance.scale) || !Number.isFinite(appearance.opacity)) return;
+  setOverlayAppearance(patch: Partial<OverlayAppearance>) {
+    const appearance = { ...this.state.overlayAppearance, ...patch };
+    if (this.closed || !Number.isFinite(appearance.scale) || !Number.isFinite(appearance.opacity) || !Number.isFinite(appearance.speed)) return;
     this.update({ overlayAppearance: {
       scale: Math.min(CHAT_OVERLAY_LIMITS.scale[1], Math.max(CHAT_OVERLAY_LIMITS.scale[0], appearance.scale)),
       opacity: Math.min(CHAT_OVERLAY_LIMITS.opacity[1], Math.max(CHAT_OVERLAY_LIMITS.opacity[0], appearance.opacity)),
+      speed: Math.min(CHAT_OVERLAY_LIMITS.speed[1], Math.max(CHAT_OVERLAY_LIMITS.speed[0], appearance.speed)),
+      colorBySender: appearance.colorBySender,
     } });
     saveRoomPreferences({ overlayAppearance: this.state.overlayAppearance });
   }

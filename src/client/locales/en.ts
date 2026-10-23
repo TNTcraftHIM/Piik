@@ -152,7 +152,7 @@ export const en: Record<CopyKey, string> = {
   "voice.quality.clear": "Clear",
   "host.shareVolume.mute": "Mute shared sound for all viewers",
   "host.shareVolume.unmute": "Restore shared sound for all viewers",
-  "host.shareVolume.updateApp": "Update Piik App to adjust shared sound",
+  "host.shareVolume.unavailable": "Volume adjustment is unavailable for this share",
   "playback.volumeBasic": "Adjust volume, from 0% to 100%",
   "playback.fullscreen": "Fullscreen",
   "playback.fullscreenWaiting": "Fullscreen is available when the video is ready.",

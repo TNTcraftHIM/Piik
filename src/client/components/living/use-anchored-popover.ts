@@ -12,13 +12,16 @@ export function useAnchoredPopover(
 ) {
   const ownerDocument = useSurfaceDocument();
   useLayoutEffect(() => {
-    const anchor = trigger.current, menu = panel.current;
-    if (!enabled || !anchor || !menu) return;
+    const menu = panel.current;
+    if (!enabled || !menu) return;
     const view = menu.ownerDocument.defaultView;
     if (!view) return;
     const viewport = view.visualViewport;
     const place = () => {
-      if (!menu.matches(":popover-open")) return;
+      // The anchor may belong to a parent whose ref is attached after this
+      // child's layout effect. Read it when opening, not when subscribing.
+      const anchor = trigger.current;
+      if (!anchor || !menu.matches(":popover-open")) return;
       const rect = anchor.getBoundingClientRect();
       const left = (viewport?.offsetLeft ?? 0) + 8, top = (viewport?.offsetTop ?? 0) + 8;
       const right = left + (viewport?.width ?? view.innerWidth) - 16;
@@ -52,10 +55,14 @@ export function useAnchoredPopover(
       observer.disconnect();
       view.cancelAnimationFrame(frame);
       if (!menu.matches(":popover-open")) return;
-      place(); observer.observe(menu); observer.observe(anchor);
-      const parentPopover = anchor.closest("[popover]");
+      place(); observer.observe(menu);
+      const anchor = trigger.current;
+      if (anchor) observer.observe(anchor);
+      const parentPopover = anchor?.closest("[popover]");
       if (parentPopover) observer.observe(parentPopover);
     };
+    // `toggle` is queued by the browser; position before the first painted frame.
+    menu.addEventListener("beforetoggle", schedule);
     menu.addEventListener("toggle", toggled);
     view.addEventListener("resize", schedule);
     view.addEventListener("scroll", schedule, true);
@@ -65,6 +72,7 @@ export function useAnchoredPopover(
     return () => {
       observer.disconnect();
       view.cancelAnimationFrame(frame);
+      menu.removeEventListener("beforetoggle", schedule);
       menu.removeEventListener("toggle", toggled);
       view.removeEventListener("resize", schedule);
       view.removeEventListener("scroll", schedule, true);

@@ -11,7 +11,7 @@ export class RemoteViewport {
   constructor(
     private readonly video: HTMLVideoElement,
     private readonly surface: HTMLElement,
-    private readonly changed: (zoomed: boolean) => void,
+    private readonly changed: () => void,
   ) {}
 
   transform(from: Point, to: Point, ratio: number): void {
@@ -48,7 +48,7 @@ export class RemoteViewport {
       (1 - Math.max(...corners.map(point => point.y))) * box.height,
       Math.min(...corners.map(point => point.x)) * box.width];
     style.clipPath = `inset(${insets.map(value => `${value}px`).join(" ")})`;
-    this.changed(this.scale > 1);
+    this.changed();
   }
 
   visiblePosition(position: Point): Point {
@@ -70,6 +70,6 @@ export class RemoteViewport {
     this.offset = { x: 0, y: 0 };
     this.video.style.transform = "";
     this.video.style.clipPath = "";
-    this.changed(false);
+    this.changed();
   }
 }

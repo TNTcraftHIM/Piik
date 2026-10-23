@@ -1,0 +1,14 @@
+/* Shared toolbar surface and button treatment; consumers own layout and media. */
+.lr-media-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
+  width: fit-content; max-width: 100%; margin: 0 auto; padding: 6px; color: var(--ink);
+  background: var(--surface-glaze) var(--paper); border: 1px solid var(--control-edge);
+  border-radius: 20px; box-shadow: 0 3px 0 color-mix(in srgb, var(--ink) 8%, transparent);
+}
+:where(.lr-media-controls) .lr-btn {
+  --button-size: var(--control-compact-size);
+  padding: 0 12px;
+  border: 0; border-radius: 12px; box-shadow: none;
+  background: transparent; color: inherit;
+}
+.lr-media-controls .lr-btn.is-danger { color: var(--danger); }

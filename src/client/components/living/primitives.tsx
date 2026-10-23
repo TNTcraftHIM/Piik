@@ -57,6 +57,7 @@ export function Btn({
   type = "button",
   hint,
   hintText,
+  hintVars,
   hintTone,
   hintMotion,
   draw,
@@ -81,6 +82,7 @@ export function Btn({
   hint?: ComicKind | HintKind;
   /** Optional explanation beyond the control's accessible name. */
   hintText?: CopyKey;
+  hintVars?: Record<string, string>;
   hintTone?: ComicTone;
   hintMotion?: ComicMotion;
   /** Draw-in spot id for state-beat toggle icons (see Glyph). */
@@ -130,7 +132,7 @@ export function Btn({
     </button>
   );
   return hint ? (
-    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText) : label}>{button}</Tooltip>
+    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
   ) : (
     button
   );
@@ -230,6 +232,7 @@ export function Pill({
   alert,
   comic,
   motion = "still",
+  onDismiss,
 }: {
   icon: GlyphName;
   tone?: ComicTone;
@@ -237,6 +240,7 @@ export function Pill({
   alert?: boolean;
   comic: ComicKind | HintKind;
   motion?: ComicMotion;
+  onDismiss?: () => void;
 }) {
   const { vis } = useCopy();
   const resolvedTone = tone ?? "warn";
@@ -250,9 +254,11 @@ export function Pill({
     </button>
   );
   return (
-    <span role={alert ? "alert" : "status"}>
+    <span className={`lr-notice${onDismiss ? " is-dismissible" : ""}`} role={alert ? "alert" : "status"}>
       <Tooltip toggleOnClick kind={comic} tone={resolvedTone} motion={motion}
         text={vis ? undefined : label}>{body}</Tooltip>
+      {onDismiss && <span className="lr-notice-dismiss"><Btn icon="x" size="dense" quiet
+        title="common.close" hint="hint-close" onClick={onDismiss} /></span>}
     </span>
   );
 }

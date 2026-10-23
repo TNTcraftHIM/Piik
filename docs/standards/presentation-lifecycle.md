@@ -48,6 +48,8 @@ stop capture. Microphone, admission and connection states stay literal; an
 enabled microphone is not proof that someone is speaking. The
 [room voice contract](./rooms-access.md#room-voice) owns channel activation and
 membership, independently of the window and picture publication.
+The visible voice roster follows connected room members immediately; the
+server's reconnect grace does not keep a departed person on screen.
 
 On capable desktop browsers, the interaction window can move to a Document
 Picture-in-Picture window. It retains the admitted room session's messages,
@@ -58,13 +60,13 @@ promise game-overlay transparency, click-through or exclusive-fullscreen coverag
 
 Piik App opens this same application in the system Browser. Its startup surface
 offers Local and temporary public invitation; the running App is already
-available to its approved Site before either mode starts. The desktop App entry
+available to its approved Sites before either mode starts. The desktop App entry
 is omitted on known mobile platforms; Browser and camera actions retain their
 own capability checks. A Site's explicit App action discovers the local approval
-page, where the user confirms its exact origin. The launcher shows and revokes
-that approval. Starring the approved Site makes an ordinary App launch open it;
+page, where the user confirms its exact origin. The launcher lists approvals and
+revokes each independently. Starring one approved Site makes an ordinary App launch open it;
 without a star, the launcher opens. This preference grants no access and starts
-no room. Replacing or revoking approval clears it; explicit CLI entry keeps
+no room. Revoking that Site clears its star; other approvals leave it intact. Explicit CLI entry keeps
 precedence. The ready App button and terminal launcher address return to its
 management page in every mode. Local/public room startup is one selection per
 App run; reopening the launcher does not stop or replace that room. Changing
@@ -193,9 +195,17 @@ audio consumer; it preserves current-frame proof and Viewer-local playback.
 A pending `play()` canceled by pause or rebinding is not a media failure;
 cancellation alone must not invalidate frame proof or disable local playback.
 
-The bar floats at the picture's lower edge. Narrow screens shorten the volume
-slider and move secondary display actions into settings, preserving one row and
-44px control height; the percentage readout hides on narrow screens.
+The bar floats at the picture's lower edge. Separate playback and sound, remote
+input, viewing options, and window actions; on-screen chat belongs with viewing
+options. Keep PiP, theater and fullscreen together at the trailing edge.
+Frequent viewing actions stay directly
+reachable; on-screen chat appearance and connection preferences stay in playback
+settings, while chat settings own records. Picture fit has one direct cycling control.
+Narrow players keep volume, PiP, theater and fullscreen directly available.
+Keep one capsule at the lower edge. Shorten the volume slider and hide its
+percentage before wrapping: narrow players put playback/sound and remote input
+on the first row, with viewing and window actions on the second. Both rows retain
+one visibility owner and 44px control height; none becomes a distant toolbar.
 Playing video hides the bar
 after two idle seconds, following [Media Chrome's default](https://github.com/muxinc/media-chrome/blob/main/docs/src/pages/docs/en/components/media-controller.md#autohide).
 Pause or unavailable playback keeps it visible. Control hover, keyboard focus,
@@ -220,7 +230,7 @@ the Viewer's volume and mute preferences remain intact for audio returning.
 Older Hosts without this fact retain received-track feedback. These controls do
 not infer input presence from silence or change capture, transport or relay audio.
 
-Volume starts on native audio output. An explicit setting away from 100% activates
+Viewer volume starts on native audio output. An explicit setting away from 100% activates
 a local Web Audio stream source and gain, from silence to 200% amplitude. This also
 avoids iPhone's system-owned `video.volume`. This output
 exclusively owns sound while running, follows video pause and user mute, and
@@ -232,6 +242,13 @@ native controls at at most 100%, rather than running two outputs.
 This uses the standard [Web Audio stream-source and gain nodes](https://www.w3.org/TR/webaudio/).
 The gain is amplitude scaling, so loud source peaks can clip above 100%.
 
+The Host reuses this bar, but its sound controls own outgoing source volume,
+0–200%, initially 100%. Preview sound remains muted. Browser capture applies
+gain before its outgoing track; Native capture applies it before the shared
+Opus encoder. Source replacement retains volume, a new share resets it, and
+room voice is independent. Older Apps without source-volume capability retain
+sharing but disable this control with an update hint.
+
 Picture-in-picture uses the browser's native video window, including Safari's
 presentation-mode API. Native enter/leave events own its displayed state; closing
 the window or replacing the received stream does not create another playback
@@ -241,9 +258,15 @@ an explanation. The native window contains video and system controls, not page
 overlays or the custom bar. See the [PiP specification](https://w3c.github.io/picture-in-picture/)
 and [Safari integration](https://developer.apple.com/documentation/webkitjs/adding_picture_in_picture_to_your_safari_media_controls).
 
-Local playback actions never change Host capture or another Viewer. Reconnect
-retains the existing route-operation owner. The Host preview remains muted and
-has no media controls; explicit Host actions own authoritative pause and stop.
+Viewer-local playback actions never change Host capture or another Viewer.
+Reconnect retains the existing route-operation owner. The Host preview reuses
+the picture controls and starts muted. Local pause, fit, rotation,
+theater and fullscreen affect only that preview; the separately labelled sharing
+controls own authoritative pause and stop. Its speaker control adjusts the shared
+output for Viewers, as defined by [source audio](./media-quality.md#screen-audio);
+it does not enable local monitoring. A hidden or unfocused Host page still
+suspends local preview, except while its video is in Picture-in-Picture. Returning
+to the page preserves an explicit local pause.
 
 Autoplay rejection exposes the play action. A connection, track object,
 or `playing` event alone is not proof that the current route is visible. The
@@ -282,8 +305,9 @@ black screen, ICE-connected state, or unproved `playing` event.
   cannot turn an unproved frame into playback or ordinary quality into failure.
 - The Host's couch and Viewer overview share the
   [participant projection](./media-status.md#projection-rules). The
-  Host's own pawn has no additional lamp. Committed `mediaReady` owns readiness;
+  Host's own pawn has no additional lamp. Committed `mediaReady` owns picture readiness;
   transport diagnostics and quality samples cannot override it in either direction.
+  Room presence and a committed voice route remain valid without a picture.
 - Viewers do not infer another Viewer's quality or diagnose missing readiness
   as terminal failure; roster readiness and quality evidence remain distinct.
 - An overlay explains the absence of a usable picture, authoritative Host pause,
@@ -360,7 +384,7 @@ ordinary connection details do not collect or expose that report.
 
 Current scope includes Web Host, Web Viewer, Browser relay, and optional Native
 Host/Viewer media beneath those same pages. Desktop and mobile Browsers are
-Viewer targets; mobile Web capture, reliable background relay, App-owned SFU,
+Viewer targets; mobile screen capture, reliable background relay, App-owned SFU,
 and physical non-Windows native acceptance remain later platform work.
 
 ## Primary References

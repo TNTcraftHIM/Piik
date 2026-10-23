@@ -48,8 +48,6 @@
 .lr-remote-shortcut { margin-block: 12px; text-align: start; }
 .lr-remote-touch-cursor { position: absolute; width: 22px; height: 26px; left: 50%; top: 50%; pointer-events: none; filter: drop-shadow(0 1px 2px #0008); }
 .lr-remote-touch-cursor path { fill: #fff; stroke: #22313e; stroke-width: 1.5; stroke-linejoin: round; }
-.lr-remote-zoom { grid-area: 1 / 1 / 2 / 2; z-index: 4; align-self: start; justify-self: end; padding: 8px; }
-.lr-remote-zoom .lr-chip { display: grid; place-items: center; width: 44px; height: 40px; padding: 0; border-width: 1px; background: var(--paper); font: 600 13px var(--mono); letter-spacing: 0; }
 .lr-remote-game-mouse { display: flex; justify-content: center; margin-top: 8px; }
 :is(.lr-remote-keyboard, .lr-remote-password) { grid-area: 3 / 1; z-index: 4; padding: 10px 12px 12px; background: var(--paper); color: var(--ink); border-top: 1px solid var(--control-edge); }
 :is(.lr-remote-keyboard, .lr-remote-password) .lr-input { padding: 0 10px; }
