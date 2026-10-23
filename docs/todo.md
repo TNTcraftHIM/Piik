@@ -43,6 +43,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
+- [ ] **Integrated participant state artwork.** Keep the accepted small markers
+  for this candidate. Later explore cues attached to the pawn's appearance and
+  existing idle motion, preserving its face and silhouette without bulky
+  headsets or held device props. Control keeps one mouse symbol for all inputs.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
   shared system mouse; do not add multi-cursor or pointer-ownership visualization.
 - [ ] **Separate accompaniment sharing.** Deferred on 2026-10-20 and excluded
