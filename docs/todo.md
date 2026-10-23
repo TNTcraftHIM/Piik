@@ -18,13 +18,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   [input contract](./standards/rooms-access.md#remote-control) owns behavior and
   [co-play assessment](./research/room-interactions.md#remote-co-play) owns platform
   evidence. Optional input SDKs and drivers are not bundled or installed by Piik.
-  Final integration includes the accumulated maintenance changes, published
-  App/Site compatibility, input retirement, shared UI/status ownership and
-  responsive presentation before the owner reviews a release candidate.
-- [ ] **Source commentary acceptance.** Verify the restored optional share
-  microphone alongside independent room voice, including both enabled, new-share
-  default-off and share retirement. The existing source mixer now serves current
-  UI; this is acceptance work, not removal of a retired microphone path.
 - [ ] **Current-phase PR attribution.** Preserve the original author of the
   incorporated [#496](https://github.com/TNTcraftHIM/Piik/pull/496) fix in the
   final merge. The owner permits co-author attribution on this phase's squash

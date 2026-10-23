@@ -30,7 +30,7 @@ and Git/PRs own completed history.
 - Camera sharing and room voice are accepted product features. Source audio
   follows the picture; room voice owns conversation microphones under the
   same route controller. Optional Host commentary belongs to the share's audio
-  and has separate activation; its restored UI still needs scoped acceptance.
+  and has separate activation.
   Device selection and sharing settings keep their owners. The
   [capture assessment](./research/camera-and-microphone.md) owns platform behavior
   and platform limits.
