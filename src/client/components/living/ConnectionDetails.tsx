@@ -65,14 +65,14 @@ export function ConnectionDetails({ rows, id }: { rows: readonly ConnectionDetai
   const expandable = extraDetails.length > 0 || groups.some(group => group.media === "audio" || group.members.length > 1 ||
     group.members.some(row => row.metrics && hasDetailedMetrics(row.metrics, group.direction, group.media)));
   const rawDetail = (row: ConnectionDetail, primary = true) => <section className="lr-media-detail" key={row.key} role="group" aria-label={row.label}>
-    <ConnectionDetailHeading {...row} routes={row.route ? [row.route] : []} />
+    <ConnectionDetailHeading media={row.media} label={row.label} icon={row.icon} direction={row.direction} note={row.note} routes={row.route ? [row.route] : []} />
     {row.cells ?? (row.metrics && <MetricCells metrics={row.metrics} direction={row.direction ?? "receive"} media={row.media} primary={primary} expanded />)}
   </section>;
   if (!rows.length) return null;
   return <div className="lr-connection-details" id={id} role="group" aria-label={t("host.details")}>
     <div className="lr-connection-details-body" id={bodyId}>
       {notices.map(row => <div className="lr-connection-notice" key={row.key}>
-        <ConnectionDetailHeading {...row} routes={row.route ? [row.route] : []} />
+        <ConnectionDetailHeading media={row.media} label={row.label} icon={row.icon} direction={row.direction} note={row.note} routes={row.route ? [row.route] : []} />
       </div>)}
       {groups.map(group => {
         const single = group.members.length === 1 ? group.members[0]! : null;

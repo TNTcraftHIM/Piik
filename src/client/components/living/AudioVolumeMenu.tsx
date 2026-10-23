@@ -68,9 +68,6 @@ export function AudioVolumeMenu({ volume, onVolume, label, icon, heading, disabl
       clear(); touch.current = null;
       if (held.current) {
         event.preventDefault();
-        // Native auto-popover dismissal runs after touch release outside the
-        // slider. Reopen after that event without sending the icon's click.
-        enter.current = view?.setTimeout(open, 0) ?? null;
         return;
       }
       const inside = [anchor.current, panel.current].some(element => {
@@ -80,7 +77,12 @@ export function AudioVolumeMenu({ volume, onVolume, label, icon, heading, disabl
       if (!inside) close();
     }}
     onClickCapture={event => {
-      if (held.current) { held.current = false; event.preventDefault(); event.stopPropagation(); }
+      if (held.current) {
+        held.current = false; event.preventDefault(); event.stopPropagation();
+        // Native auto-popover dismissal finishes at pointer-up. The held
+        // gesture's click restores the slider without activating mute.
+        open();
+      }
     }}
     onKeyDownCapture={() => { held.current = false; }}
     onContextMenu={event => {
