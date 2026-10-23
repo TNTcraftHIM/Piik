@@ -2,6 +2,11 @@ import { Children, isValidElement, type ComponentProps, type MouseEvent, type Re
 import { describe, expect, it, vi } from "vitest";
 import { Btn, Chip, SwitchItem } from "../src/client/components/living/primitives";
 
+vi.mock("react", async importOriginal => ({
+  ...await importOriginal<typeof import("react")>(),
+  useId: () => "control",
+}));
+
 vi.mock("../src/client/ui/copy", () => ({
   useCopy: () => ({ vis: false, t: (key: string) => key }),
 }));

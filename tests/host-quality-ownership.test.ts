@@ -110,7 +110,7 @@ function fixture(launchedByClient = true) {
     nativeInputRoute: new InputRoute(() => {}),
     nativeEventCleanupRef: ref(null), nativeShareCleanupRef: ref(Promise.resolve()),
     peersRef: ref(new Map([["viewer", peer]])), hostProvisionalChildRef: ref(null), hostSfuRouteRef: ref(route),
-    signalRef: ref({ setHostQualitySettings: vi.fn(), setAudioAvailable: vi.fn(), send: vi.fn() }),
+    signalRef: ref({ setHostQualitySettings: vi.fn(), setAudioAvailable: vi.fn(), setCoPlayGrants: vi.fn(), send: vi.fn() }),
     setQualitySettings: vi.fn(), setAdvancedQuality: vi.fn(), setChangingQuality: vi.fn(), savePreferredQuality: vi.fn(),
     setNoticeValue: vi.fn(), setNoticeError: vi.fn(),
     setDetails: vi.fn(), setNativeActive: vi.fn(), setRemoteControlState: vi.fn(),
@@ -175,6 +175,7 @@ function useRealResourceDisposal(current: ReturnType<typeof fixture>): void {
     setResolvedVideoCodec: vi.fn(), setHostSfuQualityWarning: vi.fn(),
     setInteractionSession: vi.fn(), browserVideoPoolRef: ref(null),
     setMicrophonePending: vi.fn(), retiringStreamRef: ref(null), iceConfigRef: ref(null),
+    commentaryOperationRef: ref(null), setCommentary: vi.fn(), setCommentaryBusy: vi.fn(), setCommentaryInput: vi.fn(),
     setStream: vi.fn(), setPeerSnapshots: vi.fn(), setParticipantPresence: vi.fn(),
     viewerQualityEvidenceStore: { clear: vi.fn(), getSnapshot: () => new Map() },
     cancelViewerQualityEvidenceRender: vi.fn(), setViewerQualityEvidence: vi.fn(),
@@ -241,6 +242,7 @@ describe("Host room ownership", () => {
       stop = vi.fn();
       stopSharing = vi.fn();
       setAudioAvailable = vi.fn();
+      setCoPlayGrants = vi.fn();
       enableRoomInteractions = vi.fn(() => this.interactions);
       constructor(public identity: { roomId: string; token: string; roomOnly?: true; shareGeneration?: string },
         public events: {
@@ -1248,7 +1250,12 @@ describe("Host quality ownership", () => {
     const setResolvedVideoCodec = vi.fn();
     Object.assign(current.context, {
       phase: "idle", captureBrowserSource: async () => captured,
-      HostAudio: class { audioAvailable = false; }, setStream: vi.fn(), watchCaptureEnd: vi.fn(),
+      HostAudio: class {
+        audioAvailable = false;
+        sourceStream = captured;
+        start = async () => captured;
+        dispose = vi.fn();
+      }, setStream: vi.fn(), watchCaptureEnd: vi.fn(),
       resolveStreamVideoCodec, startBrowserNativeIngress, setResolvedVideoCodec,
     });
     current.disposeResources.mockImplementation(() => {
