@@ -87,7 +87,8 @@ or driver. Linux uinput passed
 an isolated real-kernel gate; desktop permissions and game recognition remain
 unverified. The macOS virtual-HID
 implementation needs its Apple entitlement and a macOS build/runtime check.
-These remain separate from the maintenance candidate pending owner acceptance.
+Co-play and the maintenance changes form one integrated candidate awaiting owner
+acceptance; the platform evidence limits above remain explicit.
 The promotional film stays an online-review draft; export follows owner acceptance.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;
 release artifacts and operator records own exact delivery results.

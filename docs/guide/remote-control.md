@@ -11,7 +11,7 @@ together. The Host shares an App window or screen; friends join in their browser
 2. Open **Remote control** below the picture and turn it on. It starts with
    **Ask each time**.
 3. Your friend selects **Request control** in their playback bar. On the Host
-   page, choose **Allow control** when the request arrives.
+   page, choose **Allow** when the request arrives.
 
 When sharing a window, switch back to it after allowing control. Input pauses
 while another window is active and resumes when you return.
@@ -46,7 +46,7 @@ use matching candidate App and room-site builds, then refresh each viewing page.
 Everyone controls the same mouse pointer; movements and clicks from approved
 players apply together. Use the Host's stop action or shortcut to end control.
 
-Approved participants have a mouse marker beside their couch avatar.
+Approved participants have a mouse emblem on their couch avatar.
 Both Host and Viewers can see who has joined; ending control removes the marker.
 
 ## Gamepads

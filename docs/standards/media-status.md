@@ -63,10 +63,11 @@ over a reused comic's default; text and pure-visual tooltips retain that context
 - Viewer couch: pawns have no round lamps. While awaiting media readiness a
   pawn's body breathes gently; it becomes still when ready. This expresses the
   same roster fact without claiming to know other Viewers' quality.
-- Small unframed pawn markers describe participation without changing the figure:
-  headphones mean voice membership, crossed headphones mean paused listening,
-  and a crossed microphone means muted input. A mouse identifies an approved
-  remote controller regardless of device. Shared glyphs use the cast's ink and
+- Integrated pawn accessories describe participation: headphones mean voice
+  membership, worn on the head while listening and around the neck when listening
+  is paused. The microphone boom extends when input is on and folds up when muted.
+  A mouse on the body identifies an approved remote controller regardless of device.
+  Shared glyphs use the cast's ink and
   existing pawn motion. Their facts come from voice membership/publication,
   local listening and native grants; leaving an activity removes its marker.
   Pausing listening does not mute the
