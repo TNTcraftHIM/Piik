@@ -415,6 +415,13 @@ cast icon. The cast represents friends sharing games, drawings
 and other screen content. Exploratory figures are not alternate
 participant identities. Keep the brand mascot distinct.
 
+Participant state belongs to the shared pawn: light headphones indicate joined
+room voice, resting around the neck when listening is paused; a small crossed
+mouth indicates a muted microphone. The toolbar's shared `mouse` glyph sits
+centred on the body for an approved remote-control participant, regardless of
+input device. These marks follow the existing membership and control grant;
+they do not assert speech, input activity or media-route readiness.
+
 The couch has a back, seat, arms and feet. A full room reflows into rows of seats
 without hiding people or requiring horizontal scrolling. Topology preserves
 each participant and actual parent edge at a readable scale; reduce spare

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import { HostMark } from "./HostMark";
 import { bindParticipantMotion, participantMotion } from "./participant-motion";
 import { useSurfaceDocument } from "../../ui/panel-window";
@@ -25,8 +25,26 @@ export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
   </>;
 }
 
-export function PawnSvg({ color, host, identity, voice, collaboration, adornment }: PawnState & {
-  color: string; identity?: string; adornment?: ReactNode;
+function PawnAdornment({ voice, collaboration, host }: PawnState) {
+  return <g className="lr-person-status" color="var(--person-ink, #263b43)" fill="none"
+    stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+    {voice ? <>
+      {voice.deafened ? <g>
+        <path d="M15 23q0 6 9 6t9-6" strokeWidth="1.6" />
+        <path d="M15 21v5m18-5v5" strokeWidth="3.4" />
+      </g> : <g>
+        <path d={host ? "M14.8 15v-2a9.2 9.2 0 0 1 3.5-7.2m11.4 0a9.2 9.2 0 0 1 3.5 7.2v2"
+          : "M14.8 15v-2a9.2 9.2 0 0 1 18.4 0v2"} strokeWidth="1.6" />
+        <path d="M14.8 13v5m18.4-5v5" strokeWidth="3.4" />
+      </g>}
+      {!voice.microphone ? <path d="M21.5 17.5l5 3m0-3l-5 3" strokeWidth="1.4" /> : null}
+    </> : null}
+    {collaboration ? <g transform="translate(14 30)"><Glyph name="mouse" size={20} /></g> : null}
+  </g>;
+}
+
+export function PawnSvg({ color, host, identity, voice, collaboration }: PawnState & {
+  color: string; identity?: string;
 }) {
   const root = useRef<SVGSVGElement>(null);
   const surfaceDocument = useSurfaceDocument();
@@ -43,11 +61,7 @@ export function PawnSvg({ color, host, identity, voice, collaboration, adornment
     } as CSSProperties : undefined}>
     <g className="lr-reaction-body"><g className="lr-person-body" fill={color}>
       <PersonShape host={host} />
-      {adornment ?? <g className="lr-person-status" color="var(--person-ink, #263b43)">
-        {voice && <g transform="translate(0 5)"><Glyph name={voice.deafened ? "headphonesOff" : "headphones"} size={14} /></g>}
-        {voice && !voice.microphone && <g transform="translate(0 28)"><Glyph name="microphoneOff" size={14} /></g>}
-        {collaboration && <g transform="translate(34 28)"><Glyph name="mouse" size={14} /></g>}
-      </g>}
+      <PawnAdornment host={host} voice={voice} collaboration={collaboration} />
     </g></g>
   </svg>;
 }

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { useElementWidth } from "../../lib/use-element-width";
-import { PawnSvg, type PawnState } from "./Pawn";
+import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { Tooltip } from "./Tooltip";
@@ -36,7 +36,6 @@ export interface CouchProps {
   host?: CouchHostEntry | null;
   entries: CouchEntry[];
   voiceState?: RoomVoiceState | null;
-  renderPawnAdornment?: (state: PawnState) => ReactNode;
   selectedKey?: string | null;
   onSelect?: (key: string) => void;
   footerAction?: ReactNode;
@@ -52,7 +51,6 @@ export function Couch({
   host,
   entries,
   voiceState,
-  renderPawnAdornment,
   selectedKey,
   onSelect,
   participantAction,
@@ -123,8 +121,7 @@ export function Couch({
                     aria-controls={participantAction?.controls ?? host.controls}
                     onClick={event => participantAction ? participantAction.open(host.key, event.currentTarget) : host.onSelect?.()}
                   >
-                    <PawnSvg color={participantColor(host.key)} identity={host.key} host voice={hostVoice?.appearance}
-                      adornment={renderPawnAdornment?.({ host: true, voice: hostVoice?.appearance })} />
+                    <PawnSvg color={participantColor(host.key)} identity={host.key} host voice={hostVoice?.appearance} />
                     <span className="lr-pawn-name">{host.name}</span>
                   </button>
                 ) : (
@@ -133,8 +130,7 @@ export function Couch({
                     role="img"
                     aria-label={hostLabel}
                   >
-                    <PawnSvg color={participantColor(host.key)} identity={host.key} host voice={hostVoice?.appearance}
-                      adornment={renderPawnAdornment?.({ host: true, voice: hostVoice?.appearance })} />
+                    <PawnSvg color={participantColor(host.key)} identity={host.key} host voice={hostVoice?.appearance} />
                     <span className="lr-pawn-name">{host.name}</span>
                   </span>
                 )}
@@ -147,8 +143,7 @@ export function Couch({
               voice && voiceLabel(voice), entry.collaboration && collaborationLabel()].filter(Boolean).join(comma);
             const inner = (
               <>
-                <PawnSvg color={participantColor(entry.key)} identity={entry.key} voice={voice?.appearance} collaboration={entry.collaboration}
-                  adornment={renderPawnAdornment?.({ voice: voice?.appearance, collaboration: entry.collaboration })} />
+                <PawnSvg color={participantColor(entry.key)} identity={entry.key} voice={voice?.appearance} collaboration={entry.collaboration} />
                 {view === "host" ? <i className="lr-pawn-led" data-tone={entry.status.tone}
                   data-pulse={entry.status.pulse || undefined} aria-hidden="true" /> : null}
                 <span className="lr-pawn-name">

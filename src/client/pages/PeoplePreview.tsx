@@ -11,7 +11,7 @@ import { participantColor } from "../components/living/participant-color";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import { deriveParticipantStatus } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
-import { PawnAppearanceStudies, pawnStudyAdornment, type PawnStudy } from "./PawnAppearanceStudies";
+import { PawnAppearancePreview } from "./PawnAppearancePreview";
 
 const HOST_ID = "d27a938b-61f5-4ab2-b8e4-3fc090c3ae18";
 const VIEWER_IDS = [
@@ -41,7 +41,6 @@ export function PeoplePreview() {
   const [selected, setSelected] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
-  const [pawnStudy, setPawnStudy] = useState<PawnStudy>("scarf");
   const [guides, setGuides] = useState(false);
   const hostName = en ? "Amu" : "阿沐";
   const peerCount = Math.max(1, Math.floor(count * .6));
@@ -81,7 +80,7 @@ export function PeoplePreview() {
       <p>{en ? "Try the full room, long names and relay depth. Click a person to inspect the same identity in each view."
         : "试试满员、长名字和多层转发。点击小人，沙发、连接图和详情会选中同一个人。"}</p>
     </div></header>
-    <PawnAppearanceStudies selected={pawnStudy} onSelect={setPawnStudy} guides={guides} onGuides={setGuides} />
+    <PawnAppearancePreview guides={guides} onGuides={setGuides} />
     <div id="pawn-study-couch" className="cp-tools">
       <div role="group" aria-label={en ? "Viewer count" : "观众人数"}>{[0, 3, 8, 20].map(value => <Chip key={value}
         title={`${value} ${t("common.viewers")}`} selected={count === value} onClick={() => setCount(value)}>{value}</Chip>)}</div>
@@ -101,7 +100,6 @@ export function PeoplePreview() {
       </div>
       <Couch view={view} host={{ key: HOST_ID, name: hostName, you: view === "host" }}
         voiceState={roomVoice}
-        renderPawnAdornment={state => pawnStudyAdornment(pawnStudy, state)}
         entries={entries} selectedKey={selectedViewer?.peerId} onSelect={select} />
     </div>
     <div className="cp-tools" role="group" aria-label={en ? "Connection example" : "连接示例"}>

@@ -76,7 +76,7 @@ export function TooltipPreviewPage() {
           <a href="#sharing-preview">{t("host.advanced")}</a>
           <a href="#input-preview">{en ? "Inputs" : "输入与房间号"}</a><a href="#feedback-preview">{en ? "Feedback" : "反馈"}</a>
           <a href="#people-preview">{en ? "People & connections" : "人物、沙发与连接图"}</a><a href="#source-preview">{en ? "Source picker" : "画面选择"}</a>
-          <a href="#pawn-appearance-preview">{en ? "Pawn appearance studies" : "人物配饰对照"}</a>
+          <a href="#pawn-appearance-preview">{en ? "Participant states" : "人物状态"}</a>
           <a href="#playback-preview">{en ? "Playback" : "播放栏"}</a><a href="#comic-preview">{en ? "Tooltips & comics" : "提示与漫画"}</a>
           <a href="#launcher-preview">{en ? "App launcher" : "模式选择"}</a>
           <a href="#interaction-preview">{en ? "Chat & reactions" : "聊天与互动"}</a>
