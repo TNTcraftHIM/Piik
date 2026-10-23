@@ -23,8 +23,6 @@ camera capture cannot receive remote input.
 
 ## Play together
 
-Play together and virtual gamepads are candidate features awaiting acceptance.
-
 1. Enable **Remote control** as above, then turn on **Allow simultaneous control**.
    This setting starts off for each source. Changing it ends current requests and
    control grants; the authorization mode and password stay in place.
@@ -40,8 +38,8 @@ One approval gives a Viewer remote control through keyboard, mouse and an
 optional supported gamepad. **Allow simultaneous control** counts approved
 Viewers, not their input devices. Text insertion is available with one approved
 Viewer and pauses with two or more; physical keyboard keys remain usable.
-Older published clients retain one-controller behavior. To try the candidate,
-use matching candidate App and room-site builds, then refresh each viewing page.
+Older clients retain one-controller behavior. Update the Host's App and room
+site to versions that support playing together, then refresh each viewing page.
 
 Everyone controls the same mouse pointer; movements and clicks from approved
 players apply together. Use the Host's stop action or shortcut to end control.
@@ -69,7 +67,7 @@ the Host's optional ViGEmBus driver creates the virtual device.
    [ViGEmBus 1.22.0 release](https://github.com/nefarius/ViGEmBus/releases/tag/v1.22.0)
    and follow its restart prompt. ViGEm is end-of-life; 1.22.0 is its final
    installer and removes the old updater. If it is already installed, reuse it.
-2. Extract and open the Windows x64 co-play App package, then enable
+2. Extract and open the updated Windows x64 Piik App package, then enable
    **Remote control**. App detects the installed driver; no DLL
    copying or SDK configuration is needed.
 3. On each friend's computer, connect a standard-layout gamepad, open the
@@ -89,7 +87,7 @@ returns the controller to neutral.
 
 If the gamepad does not respond, check the Host's driver and App support, then
 turn **Remote control** off and on. Keyboard/mouse co-play and ordinary remote control
-remain available without the gamepad driver. Piik does not install or bundle it.
+remain available without the gamepad driver.
 
 ## End control
 

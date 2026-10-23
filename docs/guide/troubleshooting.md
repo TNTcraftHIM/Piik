@@ -413,10 +413,14 @@ for current setup details.
 
 ### Cannot hear someone speaking
 
+For speech added through **Include my microphone**, check the picture's
+[source sound](#picture-but-no-source-sound) and the Host's **Sharing settings → Sound**.
+For room voice, follow these steps:
+
 1. Both people join **Interact → Voice**; the Host selects **Open room voice** first.
    Joining only starts listening. Each speaker must turn on their own microphone.
 2. The speaker checks browser microphone permission, input device and input volume
-   in **Microphone settings**. Microphone access needs HTTPS or `localhost`.
+   in **Voice settings**. Microphone access needs HTTPS or `localhost`.
 3. Check whether you paused listening or muted that person locally. These controls
    are separate from video mute; **Pause listening** leaves your microphone on.
 

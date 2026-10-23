@@ -36,7 +36,7 @@ on your own server.
 - **Direct connections first.** Media travels between participants where possible (P2P). A self-hosted server can provide automatic media forwarding (SFU) as a fallback.
 - **Rooms you control.** Invitations, room codes and optional room passwords, for one host and up to 20 viewers.
 - **Talk and chat together.** Join room voice, send messages and reactions, or enable on-screen chat.
-- **Hand control to a friend.** Share an App window or screen, then optionally let one viewer use your keyboard and mouse. Take control back at any time.
+- **Hand control to friends.** Share an App window or screen and approve remote control. Allow friends to play together with shared keyboard/mouse or supported gamepads; take control back at any time. [Setup guide](./docs/guide/remote-control.md).
 - **Flexible viewing.** Light and dark themes, playback controls, picture-in-picture and a connection topology view.
 - **One program to host a site.** Web UI, room management and optional media forwarding are packaged together.
 

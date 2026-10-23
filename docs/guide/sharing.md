@@ -60,7 +60,6 @@ On Windows, this control applies to system sound from **Screens**. **Apps / Wind
 captures only the selected application's process tree. **Camera** shares video;
 its microphone or virtual audio input requires explicitly enabled source commentary or room voice.
 
-
 1. Open **Screens** and enable **System sound**.
 2. Under **Exclude application audio**, select the voice app's window. Open its
    window and refresh the list if missing.
