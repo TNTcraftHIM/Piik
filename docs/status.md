@@ -78,7 +78,7 @@ room microphone for Host and Viewers. Local normal-page acceptance covers both
 P2P and SFU, independent listening, picture continuity and voice-facet recovery.
 Controlled-network voice cases and platform package checks have passed; the
 release artifacts and operator records establish publication and deployment.
-Shared keyboard/mouse and optional Windows ViGEmBus virtual-gamepad prototypes
+Shared keyboard/mouse and optional Windows ViGEmBus virtual gamepads
 use the normal App/Web input and authorization surfaces. Host and Viewers see
 granted collaborators on the couch through a share-scoped presence projection.
 The Windows adapter
@@ -87,8 +87,8 @@ or driver. Linux uinput passed
 an isolated real-kernel gate; desktop permissions and game recognition remain
 unverified. The macOS virtual-HID
 implementation needs its Apple entitlement and a macOS build/runtime check.
-Co-play and the maintenance changes form one integrated candidate awaiting owner
-acceptance; the platform evidence limits above remain explicit.
+Co-play and the maintenance changes form one accepted integration phase;
+release artifacts establish publication and the platform limits above remain.
 The website uses the selected bilingual film A with on-demand loading and
 shared product playback controls; the final card stays visible after playback.
 [TODO](./todo.md) owns unfinished work and explicit deferrals;

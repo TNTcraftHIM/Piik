@@ -77,7 +77,7 @@ implementation and routine UI detail.
   require SFU-only media through the same controller. On P2P-first sites, a
   pre-share peer-only policy can exclude that SFU suffix for one share generation.
 - Ordinary endpoints share one steady outbound-copy cap, default `2` and limited to
-  `1..3`; the candidate's explicit relay volunteer uses the
+  `1..3`; the explicit relay volunteer uses the
   [capacity owner](./standards/routing-transport.md#endpoint-and-server-capacity).
   One room controller owns one committed graph, one reconcile loop, and
   one serial child operation. First decoded frame commits picture availability work;

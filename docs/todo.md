@@ -10,28 +10,11 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Windows window-sharing black screen (#495).** Investigate
   [#495](https://github.com/TNTcraftHIM/Piik/issues/495): Windows 10, Chrome 155,
   Piik v2.3.0; App window sharing is black while full-screen sharing works.
-  Identify the target window and capture/encoder failure from a same-attempt
-  App/Web report. This feedback has no diagnosis yet; the macOS #492 crop fix
-  does not address it.
-- [ ] **Remote co-play candidate acceptance.** Review the unified remote-control
-  permission and normal App/Web flow on
-  `feat/shared-input-co-play`: shared keyboard/mouse, optional Windows x64
-  ViGEmBus gamepads and per-player retirement. Verify the external-driver setup
-  and tutorial before owner acceptance. Linux uinput passed its isolated
-  kernel gate and still needs desktop-permission and real-game checks;
-  macOS virtual HID needs an entitled App and
-  macOS SDK/runtime checks. The
-  [input contract](./standards/rooms-access.md#remote-control) owns behavior and
-  [co-play assessment](./research/room-interactions.md#remote-co-play) owns platform
-  evidence. Optional input SDKs and drivers are not bundled or installed by Piik.
-- [ ] **Current-phase contribution attribution.** Credit Yuqing Huang
-  (`NorahGreen`, [#496](https://github.com/TNTcraftHIM/Piik/pull/496)) and
-  `luol75569-collab` ([#492](https://github.com/TNTcraftHIM/Piik/issues/492))
-  in the final squash, using the identities retained in `77461c6d` and
-  `7d7367df`. The owner permits this last phase-wide exception for these two
-  contributions; #492 needs no additional PR. Verify the final merge metadata.
-  Subsequent contributions follow the focused-PR rule in
-  [CONTRIBUTING](../CONTRIBUTING.md).
+  The attachment shows the Host selecting its own Chrome window, then a black
+  preview after sharing starts. This path works in local Windows 11 / Chrome 155
+  checks. A same-attempt App/Web report from the affected device is needed to
+  distinguish capture output from decoding. Keep this investigation separate
+  from the release; it is not covered by the macOS #492 crop fix.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -64,6 +47,11 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Parked Product Work
 
+- **Virtual gamepads beyond Windows.** Linux uinput passed its isolated kernel
+  gate; desktop permissions and game recognition need physical checks. macOS
+  virtual HID needs an entitled App and macOS SDK/runtime checks. The
+  [co-play assessment](./research/room-interactions.md#remote-co-play) owns
+  platform evidence; Piik does not bundle or install optional input drivers.
 - **Platform output.** A registered receiver may act as an ordinary Viewer after
   the [platform-output gate](./research/platform-output.md) passes.
 - **Additional languages.** Review community catalogs and rendered UI through
