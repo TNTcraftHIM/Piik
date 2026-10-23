@@ -8,8 +8,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Now
 
 - [ ] **Integrated participant state artwork.** Choose and apply a design from
-  `/__tooltip-preview#pawn-appearance-preview`. The body/clothing studies reuse
-  the pawn's silhouette, passive motion and current voice/control facts. Keep
+  `/__tooltip-preview#pawn-appearance-preview`. The new headset, earpiece and
+  centred-symbol studies reuse the pawn's silhouette, passive motion and
+  current voice/control facts. Keep
   the accepted markers until selection; do not add a product appearance setting.
 - [ ] **Remote co-play candidate acceptance.** Review the unified remote-control
   permission and normal App/Web flow on
