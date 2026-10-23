@@ -362,7 +362,10 @@ dark backgrounds rather than judging only an enlarged master. This follows
 [Microsoft's small-size silhouette guidance](https://learn.microsoft.com/en-us/windows/apps/design/iconography/app-icon-design)
 and [GNOME's detail guidance](https://developer.gnome.org/hig/guidelines/app-icons.html#detail).
 Inline brand
-marks keep the same wink identity with their existing outline and motion.
+marks keep the same wink identity and outline. The shared gesture is antenna
+sway, wink, then two gold sparks, with the frame and feet staying in place.
+Looping loading marks show the complete figure from their first frame; only
+one-shot entry marks draw their outline in. Reduced motion shows the static wink.
 Their stroke inherits the local surface's text colour:
 dark ink on light surfaces, light ink on dark surfaces, including deliberately
 light panels within a dark page. Gold sparkles remain a brand accent in both
