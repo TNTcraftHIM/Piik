@@ -104,6 +104,8 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   A relay/SFU RTT describes the observed hop, not publisher-to-listener latency.
   Primary metrics give the current picture/audio quality; expanded measurements
   group network, encoding/capture, playback and source audio by their subject.
+  Each inspected participant has one combined detail panel and one expansion;
+  picture and voice directions are rows within it, with their actual routes.
   An inactive room-voice channel has no column or empty placeholder.
 - Title: keeps the primary activity, with a compact warning for an applicable
   problem. Losing focus alone never means waiting for media.

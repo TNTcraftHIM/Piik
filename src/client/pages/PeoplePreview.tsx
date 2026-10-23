@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import type { RoomVoiceSnapshot, RoomVoiceSession } from "../room-voice/session";
-import { VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
+import { voiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import type { VoiceConnectionMetric } from "../room-voice/browser-endpoint";
 import { EMPTY_METRICS } from "../types";
 import { PREVIEW_METRICS } from "./preview-metrics";
+import { CaptureMetricCells } from "../components/living/Metrics";
+import { ConnectionDetails } from "../components/living/ConnectionDetails";
 import { Couch } from "../components/living/Couch";
 import { PawnSvg } from "../components/living/Pawn";
 import { PawnDetail } from "../components/living/PawnDetail";
@@ -41,7 +43,6 @@ export function PeoplePreview() {
   const [view, setView] = useState<"host" | "viewer">("host");
   const [longNames, setLongNames] = useState(false);
   const [selected, setSelected] = useState<string | null>(["voice", "both", "stopped"].includes(initialMode) ? VIEWER_IDS[0]! : null);
-  const [expanded, setExpanded] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(initialMode !== "mixed");
   const hostName = en ? "Amu" : "阿沐";
   const peerCount = Math.max(1, Math.floor(count * .6));
@@ -149,17 +150,24 @@ export function PeoplePreview() {
       : voiceActive ? "没有分享画面时，语音线路仍会显示。点击小人查看对应连接。" : "大家都在房间里。开始分享或加入语音后，再建立媒体连接。"}</p>}
     <details className="cp-disclosure" open={overviewOpen} onToggle={event => setOverviewOpen(event.currentTarget.open)}>
       <summary>{t("host.details")}</summary>
-      {overviewOpen && voice && <Row sub><VoiceConnectionDetails voice={voice.getSnapshot()} metrics={voiceMetrics}
-        peerName={id => viewers.find(viewer => viewer.peerId === id)?.label ?? hostName} /></Row>}
+      {overviewOpen && (sourceActive || voice) && <Row sub><ConnectionDetails rows={[
+        ...(sourceActive ? [{ key: "picture", media: "video" as const, label: t(view === "host" ? "stats.capture" : "stats.sharedMedia"),
+          icon: view === "host" ? "share" as const : "arrowDown" as const,
+          cells: view === "host" ? <CaptureMetricCells resolution="2560x1440" frameRate={60} codec="h264" hasSourceAudio /> : undefined,
+          route: view === "viewer" ? "p2p" as const : null, metrics: view === "viewer" ? pictureMetrics : null, direction: "receive" as const,
+        }] : []),
+        ...voiceConnectionDetails({ voice: voice?.getSnapshot(), metrics: voiceMetrics, t,
+          peerName: id => viewers.find(viewer => viewer.peerId === id)?.label ?? hostName }),
+      ]} /></Row>}
       {overviewOpen && view === "host" && count > 0 ? <ViewerOverview entries={entries.map((entry, index) => ({ ...entry, metrics: pictureMetrics,
         route: sourceActive ? routeFor(viewers[index]!) : null,
       }))} pictureActive={sourceActive} voice={voice?.getSnapshot()} voiceMetrics={voiceMetrics} selectedKey={selectedViewer?.peerId ?? null} onSelect={select} /> : null}
       {overviewOpen && selectedViewer ? <PawnDetail pawnKey={selectedViewer.peerId} name={selectedViewer.label}
         route={sourceActive ? routeFor(selectedViewer) : null}
-        metrics={pictureMetrics} direction={view === "host" ? "send" : "receive"} expanded={expanded} onToggleMetrics={setExpanded} onClose={() => setSelected(null)}>
-        <VoiceConnectionDetails voice={voice?.getSnapshot()} peerId={selectedViewer.peerId} metrics={voiceMetrics}
-          peerName={id => viewers.find(viewer => viewer.peerId === id)?.label ?? hostName} />
-      </PawnDetail> : null}
+        metrics={pictureMetrics} direction={view === "host" ? "send" : "receive"} onClose={() => setSelected(null)}
+        voiceDetails={voiceConnectionDetails({ voice: voice?.getSnapshot(), peerId: selectedViewer.peerId, metrics: voiceMetrics, t,
+          peerName: id => viewers.find(viewer => viewer.peerId === id)?.label ?? hostName })}
+      /> : null}
     </details>
     <div className="cp-connection-panel">
       <RouteTree hostPeerId={HOST_ID} hostLabel={hostName} viewers={viewers} pictureActive={sourceActive} voice={voice}

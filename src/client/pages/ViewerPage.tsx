@@ -1,4 +1,3 @@
-import { PawnSvg } from "../components/living/Pawn";
 import type { VideoFit } from "../media/video-geometry";
 import {
   useEffect,
@@ -33,12 +32,11 @@ import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
 import { useRoomVoiceMetrics, useRoomVoiceSnapshot } from "../room-voice/use-room-voice-state";
 import { participantConnection } from "../lib/participant-connection";
-import { describeVoiceConnection, VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
+import { describeVoiceConnection, voiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { getRuntimeCapabilities } from "../lib/api";
-import { participantColor } from "../components/living/participant-color";
-import { MetricCells } from "../components/living/Metrics";
-import { PawnDetail, RouteGlyph } from "../components/living/PawnDetail";
+import { ConnectionDetails } from "../components/living/ConnectionDetails";
+import { PawnDetail } from "../components/living/PawnDetail";
 import { Lcd } from "../components/living/RoomChip";
 import { RouteTree } from "../components/living/RouteTree";
 import { Comic, type ComicKind } from "../components/living/Comic";
@@ -60,7 +58,7 @@ import {
   Pill,
   Row,
 } from "../components/living/primitives";
-import { Glyph, type GlyphName } from "../ui/icons";
+import { Glyph } from "../ui/icons";
 import { useCopy, type CopyKey } from "../ui/copy";
 import {
   defaultViewerDisplayName,
@@ -166,16 +164,6 @@ interface PendingPeerRoute {
   qualityResult: CandidateQualityProbeResult;
 }
 
-function MeterTag({ icon, label }: { icon: GlyphName; label: string }) {
-  const { vis } = useCopy();
-  return (
-    <span className="lr-meter-tag" role="img" aria-label={label}>
-      <Glyph name={icon} size={17} />
-      {vis ? null : <span className="lr-cap">{label}</span>}
-    </span>
-  );
-}
-
 export function ViewerPage({
   roomId,
   viewerGrant,
@@ -245,11 +233,6 @@ export function ViewerPage({
   // own peer id (mirrors the authenticated message for couch/route-tree).
   const [selectedPawn, setSelectedPawn] = useState<string | null>(null);
   const [selfPeerId, setSelfPeerId] = useState<string | null>(null);
-  const [routeMetricsExpanded, setRouteMetricsExpanded] = useState(false);
-  const [relayMetricsExpanded, setRelayMetricsExpanded] = useState(false);
-  const [downstreamMetricsExpanded, setDownstreamMetricsExpanded] =
-    useState(false);
-  const [pawnMetricsExpanded, setPawnMetricsExpanded] = useState(false);
 
   const mediaProofGeneration = presentationState.media?.generation ?? null;
   const mediaProofEpoch = presentationState.media?.proofEpoch ?? null;
@@ -2598,52 +2581,24 @@ export function ViewerPage({
               </div>
             </div>
           </div>
-          {showConnectionDetails ? (
-            <div id="viewer-details-panel">
-              {routePresentation.route ? <Row sub>
-                <MeterTag icon="arrowDown" label={t("stats.sharedMedia")} />
-                <RouteGlyph route={routePresentation.route} />
-                {routeMetrics ? (
-                  <MetricCells
-                    metrics={routeMetrics}
-                    direction="receive"
-                    expanded={routeMetricsExpanded}
-                    onToggle={setRouteMetricsExpanded}
-                  />
-                ) : null}
-              </Row> : null}
-              {ownVoiceConnection ? <Row sub><VoiceConnectionDetails voice={roomVoiceSnapshot} metrics={voiceMetrics}
-                peerName={id => id === labeledHostPresence?.peerId ? labeledHostPresence.label : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault")} /></Row> : null}
-            </div>
-          ) : null}
-          {showConnectionDetails && relaySnapshot ? (
+          {showConnectionDetails && (routePresentation.route || ownVoiceConnection || relaySnapshot || freshRelayChildEvidence.length > 0) ? (
             <Row sub>
-              <MeterTag icon="arrowUp" label={t("stats.relay")} />
-              <MetricCells
-                metrics={relaySnapshot.metrics}
-                direction="send"
-                expanded={relayMetricsExpanded}
-                onToggle={setRelayMetricsExpanded}
-              />
+              <ConnectionDetails id="viewer-details-panel" rows={[
+                ...(routePresentation.route ? [{ key: "picture", media: "video" as const, label: t("stats.sharedMedia"),
+                  icon: "arrowDown" as const, route: routePresentation.route, metrics: routeMetrics, direction: "receive" as const,
+                }] : []),
+                ...(relaySnapshot ? [{ key: "relay", media: "video" as const, label: t("stats.relay"),
+                  icon: "arrowUp" as const, metrics: relaySnapshot.metrics, direction: "send" as const,
+                }] : []),
+                ...freshRelayChildEvidence.map(({ viewer, evidence }) => ({ key: `downstream/${viewer.peerId}`, media: "video" as const,
+                  label: `${t("stats.downstream")} · ${viewer.label}`, icon: "arrowUp" as const,
+                  metrics: metricsFromQualityEvidence(evidence), direction: "receive" as const,
+                })),
+                ...voiceConnectionDetails({ voice: roomVoiceSnapshot, metrics: voiceMetrics, t,
+                  peerName: id => id === labeledHostPresence?.peerId ? labeledHostPresence.label : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault") }),
+              ]} />
             </Row>
           ) : null}
-          {showConnectionDetails
-            ? freshRelayChildEvidence.map(({ viewer, evidence }) => (
-                <Row sub key={viewer.peerId} label={viewer.label}>
-                  <MeterTag icon="arrowUp" label={t("stats.downstream")} />
-                  <span className="lr-pawn-mini">
-                    <PawnSvg color={participantColor(viewer.peerId)} identity={viewer.peerId} />
-                  </span>
-                  <span className="lr-pawn-detail-name">{viewer.label}</span>
-                  <MetricCells
-                    metrics={metricsFromQualityEvidence(evidence)}
-                    direction="receive"
-                    expanded={downstreamMetricsExpanded}
-                    onToggle={setDownstreamMetricsExpanded}
-                  />
-                </Row>
-              ))
-            : null}
           {selectedRelayChild ? (
             <PawnDetail
               pawnKey={selectedRelayChild.peerId}
@@ -2652,13 +2607,10 @@ export function ViewerPage({
               metrics={selectedChildEvidence ? metricsFromQualityEvidence(selectedChildEvidence) : null}
               direction="receive"
               tag={selectedChildEvidence ? { icon: "arrowUp", label: t("stats.downstream") } : undefined}
-              expanded={pawnMetricsExpanded}
-              onToggleMetrics={setPawnMetricsExpanded}
               onClose={() => setSelectedPawn(null)}
-            >
-              <VoiceConnectionDetails voice={roomVoiceSnapshot} peerId={selectedRelayChild.peerId} metrics={voiceMetrics}
-                peerName={id => id === labeledHostPresence?.peerId ? labeledHostPresence.label : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault")} />
-            </PawnDetail>
+              voiceDetails={voiceConnectionDetails({ voice: roomVoiceSnapshot, peerId: selectedRelayChild.peerId, metrics: voiceMetrics, t,
+                peerName: id => id === labeledHostPresence?.peerId ? labeledHostPresence.label : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault") })}
+            />
           ) : null}
           {showTopology && labeledHostPresence ? (
             <Row sub>

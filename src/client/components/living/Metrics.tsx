@@ -89,7 +89,7 @@ function secondaryMetrics(
   addNumber("stats.rtt", metrics.rttMs, "ms");
   if (direction === "send") addNumber("stats.outgoing", metrics.availableOutgoingKbps, "kbps");
   else addNumber("stats.jitter", metrics.jitterMs, "ms", 1);
-  group("stats.group.encoding");
+  group("stats.group.capture");
   if (metrics.codec) {
     values.push({
       label: "stats.codec",
@@ -179,6 +179,30 @@ function secondaryMetrics(
   return groups.filter(group => group.values.length);
 }
 
+export function hasDetailedMetrics(metrics: ConnectionMetrics, direction: "send" | "receive", media: "video" | "audio" = "video") {
+  return secondaryMetrics(metrics, direction, key => key, media).length > 0;
+}
+
+export function CaptureMetricCells({ resolution, frameRate, codec, hasSourceAudio }: {
+  resolution: string | null; frameRate: number | null; codec: string | null; hasSourceAudio: boolean;
+}) {
+  const { t, vis } = useCopy();
+  return <div className="lr-meter" role="group" aria-label={t("host.captureAria")}>
+    <MetricCell label="stats.resolution" value={resolution ?? t("stats.unknown")} />
+    <MetricCell label="stats.fps" value={frameRate ? `${frameRate.toFixed(0)} fps` : vis ? "—" : t("host.capture.fpsUnknown")} />
+    <MetricCell label="stats.codec" value={codec?.toUpperCase() ?? (vis ? "—" : t("host.capture.codecPending"))} />
+    <Tooltip toggleOnClick kind={hasSourceAudio ? "hint-source-audio" : "no-audio"}
+      text={vis ? undefined : t(hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")} tone="off">
+      <button type="button" className="lr-meter-cell"
+        style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
+        aria-label={t(hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}>
+        <Glyph name={hasSourceAudio ? "speaker" : "speakerOff"} size={16} />
+        {!vis && <b>{t(hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}</b>}
+      </button>
+    </Tooltip>
+  </div>;
+}
+
 export function MetricCell({ icon, label, value, glyphOnly, hint, tone = "off" }: MetricValue) {
   const { t, vis } = useCopy();
   const display = vis && value === t("stats.unknown") ? "—" : value;
@@ -206,6 +230,30 @@ export function MetricCell({ icon, label, value, glyphOnly, hint, tone = "off" }
   );
 }
 
+export function MetricDetailsToggle({ expanded, onToggle, controls }: {
+  expanded: boolean; onToggle: (expanded: boolean) => void; controls: string;
+}) {
+  const { t, vis } = useCopy();
+  const moreTitle = t(expanded ? "stats.less" : "stats.more");
+  return <Tooltip kind={expanded ? "hint-collapse" : "hint-more-metrics"} text={vis ? undefined : moreTitle} align="start">
+    <button
+      type="button"
+      className={`lr-btn lr-metrics-more${expanded ? " is-open" : ""}`}
+      aria-label={moreTitle}
+      aria-expanded={expanded}
+      aria-controls={controls}
+      onClick={(event) => {
+        // Pointer activation must not pin the hint open; keyboard keeps focus.
+        if (event.detail !== 0) event.currentTarget.blur();
+        onToggle(!expanded);
+      }}
+    >
+      <Glyph name="chevron" size={15} />
+      {vis ? null : <span className="lr-cap">{t("stats.more")}</span>}
+    </button>
+  </Tooltip>;
+}
+
 export function MetricCells({
   metrics,
   direction,
@@ -216,7 +264,7 @@ export function MetricCells({
   metrics: ConnectionMetrics;
   direction: "send" | "receive";
   expanded: boolean;
-  onToggle: (expanded: boolean) => void;
+  onToggle?: (expanded: boolean) => void;
   media?: "video" | "audio";
 }) {
   const { t, vis } = useCopy();
@@ -244,24 +292,6 @@ export function MetricCells({
   const secondary = secondaryMetrics(metrics, direction, t, media);
   const warnings = codecContractWarnings(metrics, t, media);
   const secondaryId = useId();
-  const moreTitle = t(expanded ? "stats.less" : "stats.more");
-  const moreButton = (
-    <button
-      type="button"
-      className={`lr-btn lr-metrics-more${expanded ? " is-open" : ""}`}
-      aria-label={moreTitle}
-      aria-expanded={expanded}
-      aria-controls={secondaryId}
-      onClick={(event) => {
-        // Pointer activation must not pin the hint open; keyboard keeps focus.
-        if (event.detail !== 0) event.currentTarget.blur();
-        onToggle(!expanded);
-      }}
-    >
-      <Glyph name="chevron" size={15} />
-      {vis ? null : <span className="lr-cap">{t("stats.more")}</span>}
-    </button>
-  );
 
   return (
     <>
@@ -270,9 +300,7 @@ export function MetricCells({
       </div>
       {secondary.length > 0 ? (
         <>
-          <Tooltip kind={expanded ? "hint-collapse" : "hint-more-metrics"} text={vis ? undefined : moreTitle} align="start">
-            {moreButton}
-          </Tooltip>
+          {onToggle && <MetricDetailsToggle expanded={expanded} onToggle={onToggle} controls={secondaryId} />}
           {expanded ? (
             <div id={secondaryId} className="lr-metric-groups" role="group" aria-label={t("stats.more")}>
               {secondary.map(group => <section className="lr-metric-group" key={group.label} aria-label={t(group.label)}>

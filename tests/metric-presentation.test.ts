@@ -7,7 +7,9 @@ import { EMPTY_METRICS } from "../src/client/types";
 import { setCopy, t } from "../src/client/ui/copy";
 import { STATUS_CATALOG } from "../src/client/ui/media-status";
 import type { RoomVoiceSnapshot } from "../src/client/room-voice/session";
-import { VoiceConnectionDetails } from "../src/client/room-voice/VoiceConnectionDetails";
+import { voiceConnectionDetails } from "../src/client/room-voice/VoiceConnectionDetails";
+import { ConnectionDetails } from "../src/client/components/living/ConnectionDetails";
+import type { VoiceConnectionMetric } from "../src/client/room-voice/browser-endpoint";
 
 beforeEach(() => setCopy({ lang: "en", vis: false }));
 
@@ -71,10 +73,21 @@ describe("observed metric presentation", () => {
       expect(html.includes(t("en", "stats.resolution"))).toBe(pictureActive);
       expect(html.includes(t("en", "voice.details.title"))).toBe(voiceActive);
     }
-    const details = renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice,
-      metrics: [{ connectionId: "voice", peerId: "friend", viaPeerId: "host", direction: "send", route: "p2p",
-        metrics: { ...EMPTY_METRICS, bitrateKbps: 82, packetLossPercent: .5, jitterMs: 2, rttMs: 48, audioCodec: "audio/opus" } }],
+    const metrics: VoiceConnectionMetric[] = [{ connectionId: "voice", peerId: "friend", viaPeerId: "host", direction: "send", route: "p2p",
+      metrics: { ...EMPTY_METRICS, bitrateKbps: 82, packetLossPercent: .5, jitterMs: 2, rttMs: 48, audioCodec: "audio/opus" } }];
+    const voiceRows = (snapshot: RoomVoiceSnapshot | null, samples: readonly VoiceConnectionMetric[] = []) =>
+      voiceConnectionDetails({ voice: snapshot, metrics: samples, t: (key, vars) => t("en", key, vars),
+        peerName: id => id === "host" ? "Host" : "Friend" });
+    const renderVoice = (snapshot: RoomVoiceSnapshot | null, samples: readonly VoiceConnectionMetric[] = []) =>
+      renderToStaticMarkup(createElement(ConnectionDetails, { rows: voiceRows(snapshot, samples) }));
+    const details = renderVoice(voice, metrics);
+    const combined = renderToStaticMarkup(createElement(ConnectionDetails, {
+      rows: [{ key: "picture", media: "video", label: "Picture", direction: "receive", route: "sfu",
+        metrics: { ...EMPTY_METRICS, resolution: "1920x1080", codec: "video/H264" } }, ...voiceRows(voice, metrics)],
     }));
+    expect(combined).toContain("1920x1080");
+    expect(combined).toContain("82 kbps");
+    expect(combined.match(/class="lr-btn lr-metrics-more/g)).toHaveLength(1);
     expect(details).toContain("82 kbps");
     expect(details).toContain("48 ms");
     expect(details).toContain("0.5%");
@@ -83,14 +96,14 @@ describe("observed metric presentation", () => {
     expect(details).not.toContain(t("en", "stats.fps"));
     const receiveOnly = [{ connectionId: "relay", peerId: "other-viewer", viaPeerId: "host", direction: "receive" as const, route: "p2p" as const,
       metrics: { ...EMPTY_METRICS, bitrateKbps: 64, rttMs: 28 } }];
-    const received = renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice, metrics: receiveOnly, peerName: id => id === "host" ? "Host" : "Friend" }));
+    const received = renderVoice(voice, receiveOnly);
     expect(received).toContain("64 kbps");
     expect(received).toContain(t("en", "voice.details.receiveFrom", { name: "Friend" }));
     expect(received).toContain(t("en", "voice.details.via", { name: "Host" }));
     voice.error = "transport";
-    expect(renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice }))).toContain(t("en", "voice.details.unavailable"));
-    expect(renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice: null }))).toBe("");
+    expect(renderVoice(voice)).toContain(t("en", "voice.details.unavailable"));
+    expect(renderVoice(null)).toBe("");
     voice.room!.members[0]!.joined = false;
-    expect(renderToStaticMarkup(createElement(VoiceConnectionDetails, { voice }))).toBe("");
+    expect(renderVoice(voice)).toBe("");
   });
 });

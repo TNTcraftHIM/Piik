@@ -1199,8 +1199,21 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   font-size: 14px;
   font-weight: 800;
 }
-.lr-pawn-detail .lr-meter { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(126px, 1fr)); }
-.lr-media-detail { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+.lr-connection-details { display: grid; flex: 1 1 100%; gap: 12px; min-width: 0; }
+.lr-connection-details-body { display: grid; min-width: 0; }
+.lr-connection-details > .lr-comic-tip-wrap { justify-self: end; }
+.lr-media-detail { display: grid; grid-template-columns: minmax(148px, .9fr) minmax(0, 3fr); align-items: start; gap: 10px 16px; min-width: 0; }
+.lr-media-detail + .lr-media-detail { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+.lr-media-detail-head { display: flex; flex-wrap: wrap; align-items: center; align-content: start; gap: 4px 8px; min-width: 0; }
+.lr-media-detail-head .lr-meter-tag { flex: 1 1 100%; min-width: 0; padding-block: 2px; }
+.lr-media-detail-head .lr-meter-tag svg { flex: none; }
+.lr-media-direction { display: inline-flex; flex: none; margin-inline-start: 4px; }
+.lr-media-detail-head .lr-cap { line-height: 1.4; overflow-wrap: anywhere; }
+.lr-media-detail-head .lr-meter-cell { padding: 4px 6px; background: none; }
+.lr-media-detail-head .lr-meter-cell b { font-size: 10px; }
+.lr-media-detail-via { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.lr-media-detail > :not(.lr-media-detail-head) { grid-column: 2; }
+.lr-connection-details .lr-meter { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; min-width: 0; }
 /* ---------- topology tree ---------- */
 
 .lr-route {
@@ -1711,7 +1724,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   .lr-tiles { display: flex; width: 100%; gap: 8px; }
   .lr-tiles .lr-tile { flex: 1 1 0; min-width: 0; padding: 10px 6px 8px; }
   .lr-meter { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
-  .lr-pawn-detail .lr-meter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lr-media-detail { grid-template-columns: minmax(0, 1fr); }
+  .lr-media-detail > :not(.lr-media-detail-head) { grid-column: 1; }
+  .lr-media-detail-head .lr-meter-tag { flex: 1 1 auto; }
+  .lr-connection-details .lr-meter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lr-metric-group .lr-meter > .lr-comic-tip-wrap:has([data-metric="stats.capture"], [data-metric="stats.encoder"]) { grid-column: 1 / -1; }
   .lr-meter-cell { justify-content: flex-start; }
   .lr-group-name .lr-name-tag { flex: 1; }

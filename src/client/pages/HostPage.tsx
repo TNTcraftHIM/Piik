@@ -37,7 +37,7 @@ import type { VideoFit } from "../media/video-geometry";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomVoiceSession } from "../room-voice/session";
 import { useRoomVoiceMetrics, useRoomVoiceSnapshot } from "../room-voice/use-room-voice-state";
-import { describeVoiceConnection, VoiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
+import { describeVoiceConnection, voiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
 import { RoomVoicePanel, RoomVoiceControls, RoomVoiceSettings } from "../room-voice/RoomVoicePanel";
 import { HostAudio } from "../media/host-audio";
 import {
@@ -62,7 +62,8 @@ import type { ComicTone } from "../components/living/comic-presentation";
 import { Tooltip } from "../components/living/Tooltip";
 import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
 import { RoomCodeInput, RoomCodeError } from "../components/living/RoomCodeInput";
-import { MetricCell } from "../components/living/Metrics";
+import { CaptureMetricCells } from "../components/living/Metrics";
+import { ConnectionDetails } from "../components/living/ConnectionDetails";
 import {
   StageOverlay,
   StageTv,
@@ -571,7 +572,6 @@ export function HostPage({
   const [joinRejectedAttempt, setJoinRejectedAttempt] = useState(0);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [metricsExpanded, setMetricsExpanded] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -4432,42 +4432,18 @@ export function HostPage({
             </Row>
           ) : null}
 
-          {showConnectionDetails && details && (stream || nativeActive) ? (
+          {showConnectionDetails && (details && (stream || nativeActive) || ownVoiceConnection) ? (
             <Row sub>
-              <div id="host-details-panel" style={{ display: "contents" }}>
-                <span
-                  className="lr-meter-tag"
-                >
-                  <Glyph name="share" size={17} />
-                  {vis ? null : (
-                    <span className="lr-cap">{t("stats.capture")}</span>
-                  )}
-                </span>
-                <div
-                  className="lr-meter"
-                  role="group"
-                  aria-label={t("host.captureAria")}
-                >
-                  <MetricCell label="stats.resolution" value={details.resolution ?? t("stats.unknown")} />
-                  <MetricCell label="stats.fps" value={details.frameRate ? `${details.frameRate.toFixed(0)} fps` : vis ? "—" : t("host.capture.fpsUnknown")} />
-                  <MetricCell label="stats.codec" value={resolvedVideoCodec?.toUpperCase() ?? (vis ? "—" : t("host.capture.codecPending"))} />
-                  <Tooltip toggleOnClick kind={details.hasSourceAudio ? "hint-source-audio" : "no-audio"}
-                    text={vis ? undefined : t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}
-                    tone="off">
-                    <button type="button" className="lr-meter-cell"
-                      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
-                      aria-label={t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}>
-                      <Glyph name={details.hasSourceAudio ? "speaker" : "speakerOff"} size={16} />
-                      {!vis && <b>{t(details.hasSourceAudio ? "host.capture.hasAudio" : "host.capture.noAudio")}</b>}
-                    </button>
-                  </Tooltip>
-                </div>
-              </div>
+              <ConnectionDetails id="host-details-panel" rows={[
+                ...(details && (stream || nativeActive) ? [{ key: "capture", media: "video" as const,
+                  label: t("stats.capture"), icon: "share" as const,
+                  cells: <CaptureMetricCells resolution={details.resolution} frameRate={details.frameRate}
+                    codec={resolvedVideoCodec} hasSourceAudio={details.hasSourceAudio} />,
+                }] : []),
+                ...voiceConnectionDetails({ voice: roomVoiceSnapshot, metrics: voiceMetrics, t,
+                  peerName: id => viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault") }),
+              ]} />
             </Row>
-          ) : null}
-          {showConnectionDetails && ownVoiceConnection ? (
-            <Row sub><VoiceConnectionDetails voice={roomVoiceSnapshot} metrics={voiceMetrics}
-              peerName={id => viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault")} /></Row>
           ) : null}
           {showConnectionDetails && viewerOverviewEntries.length > 0 ? (
             <ViewerOverview
@@ -4492,13 +4468,10 @@ export function HostPage({
               direction={selectedDetail.direction}
               tag={selectedDetail.tag}
               error={selectedDetail.error}
-              expanded={metricsExpanded}
-              onToggleMetrics={setMetricsExpanded}
               onClose={() => setSelectedPawn(null)}
-            >
-              <VoiceConnectionDetails voice={roomVoiceSnapshot} peerId={selectedViewer.peerId} metrics={voiceMetrics}
-                peerName={id => id === hostPeerId ? displayName : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault")} />
-            </PawnDetail>
+              voiceDetails={voiceConnectionDetails({ voice: roomVoiceSnapshot, peerId: selectedViewer.peerId, metrics: voiceMetrics, t,
+                peerName: id => id === hostPeerId ? displayName : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault") })}
+            />
           ) : null}
           {showTopology ? (
             <Row sub>

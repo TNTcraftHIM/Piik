@@ -1,7 +1,6 @@
 // Per-viewer drill-down: name, route glyph, primary metrics, expandable
 // detailed metrics. Host sees every Viewer; a Viewer uses this only for relay
 // children because its own route already has the canonical details panel.
-import type { ReactNode } from "react";
 import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import { Glyph } from "../../ui/icons";
@@ -9,51 +8,8 @@ import { Tooltip } from "./Tooltip";
 import { useCopy } from "../../ui/copy";
 import { resolveMediaFailure, type MediaFailure } from "../../ui/media-failure";
 import type { ConnectionMetrics } from "../../types";
-import { MetricCells } from "./Metrics";
 import { Pill } from "./primitives";
-
-export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
-  const { t, vis } = useCopy();
-  const cell = (
-    <button
-      type="button"
-      className="lr-meter-cell"
-      aria-label={t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
-      style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}
-    >
-      {route === "sfu" ? (
-        <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <circle cx="4" cy="8" r="3" fill="currentColor" stroke="none" />
-          <rect x="14" y="3" width="8" height="10" rx="2" />
-          <circle cx="32" cy="8" r="3" fill="currentColor" stroke="none" />
-          <path d="M7 8h7M22 8h7" />
-        </svg>
-      ) : (
-        <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <circle cx="4" cy="8" r="3" fill="currentColor" stroke="none" />
-          <circle cx="32" cy="8" r="3" fill="currentColor" stroke="none" />
-          <path d="M7 8h22" />
-        </svg>
-      )}
-      {vis ? (
-        <span className="visually-hidden">
-          {t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
-        </span>
-      ) : (
-        <b>{route === "sfu" ? "SFU" : "P2P"}</b>
-      )}
-    </button>
-  );
-  return (
-    <Tooltip
-      toggleOnClick
-      kind={route === "sfu" ? "hint-route-sfu" : "hint-route-p2p"}
-      text={vis ? undefined : t(route === "sfu" ? "state.route.sfu" : "state.route.p2p")}
-    >
-      {cell}
-    </Tooltip>
-  );
-}
+import { ConnectionDetails, type ConnectionDetail } from "./ConnectionDetails";
 
 export function PawnDetail({
   pawnKey,
@@ -63,10 +19,8 @@ export function PawnDetail({
   direction,
   tag,
   error,
-  expanded,
-  onToggleMetrics,
   onClose,
-  children,
+  voiceDetails = [],
 }: {
   pawnKey: string;
   name: string;
@@ -75,10 +29,8 @@ export function PawnDetail({
   direction: "send" | "receive";
   tag?: { icon: "arrowUp" | "loader" | "headphones"; label: string };
   error?: MediaFailure | null;
-  expanded: boolean;
-  onToggleMetrics: (expanded: boolean) => void;
   onClose: () => void;
-  children?: ReactNode;
+  voiceDetails?: readonly ConnectionDetail[];
 }) {
   const copy = useCopy();
   const { t, vis } = copy;
@@ -103,13 +55,10 @@ export function PawnDetail({
           <Glyph name="x" size={16} />
         </button>
       </Tooltip>
-      {route || metrics || tag || error ? (
-        <div className="lr-media-detail" role="group" aria-label={t("stats.sharedMedia")}>
-          <span className="lr-meter-tag">
-            <Glyph name="tv" size={17} />
-            <span className={vis ? "visually-hidden" : "lr-cap"}>{t("stats.sharedMedia")}</span>
-          </span>
-          {tag ? (
+      <ConnectionDetails rows={[
+        ...(route || metrics || tag || error ? [{
+          key: "picture", media: "video" as const, label: t("stats.sharedMedia"), route, metrics, direction,
+          note: <>{tag ? (
             <span className="lr-meter-cell">
               <Glyph name={tag.icon} size={16} />
               {vis ? <span className="visually-hidden">{tag.label}</span> : <b>{tag.label}</b>}
@@ -117,19 +66,10 @@ export function PawnDetail({
           ) : null}
           {errorText ? (
             <Pill icon="alert" tone="bad" label={errorText} comic="route-failed" alert />
-          ) : null}
-          {route ? <RouteGlyph route={route} /> : null}
-          {metrics ? (
-            <MetricCells
-              metrics={metrics}
-              direction={direction}
-              expanded={expanded}
-              onToggle={onToggleMetrics}
-            />
-          ) : null}
-        </div>
-      ) : null}
-      {children}
+          ) : null}</>,
+        }] : []),
+        ...voiceDetails,
+      ]} />
     </div>
   );
 }
