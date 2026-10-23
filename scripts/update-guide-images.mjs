@@ -75,6 +75,7 @@ try {
       await capture('#source-preview .lr-source-picker-panel', `share-source.${suffix}`);
 
       await openSection('sharing-preview', lang, theme);
+      await run('wait', '#sharing-preview button[aria-controls="preview-sharing-settings"]');
       await run('click', '#sharing-preview button[aria-controls="preview-sharing-settings"]');
       await capture('.lr-sharing-panel', `sharing-settings.${suffix}`);
 
