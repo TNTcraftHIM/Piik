@@ -37,9 +37,15 @@ function PawnAdornment({ voice, collaboration, host }: PawnState) {
           : "M14.8 15v-2a9.2 9.2 0 0 1 18.4 0v2"} strokeWidth="1.6" />
         <path d="M14.8 13v5m18.4-5v5" strokeWidth="3.4" />
       </g>}
-      {!voice.microphone ? <path d="M21.5 17.5l5 3m0-3l-5 3" strokeWidth="1.4" /> : null}
+      <g transform={`translate(33 ${voice.deafened ? 28 : 17})`}>
+        <path d={voice.microphone
+          ? voice.deafened ? "M0 0v-4q0-3-4-3h-2" : "M0 0v1.5q0 3-4 3h-2"
+          : "M0 0l2-8"} strokeWidth="1.4" />
+        <circle cx={voice.microphone ? -6 : 2} cy={voice.microphone ? voice.deafened ? -7 : 4.5 : -8}
+          r="1.2" fill="currentColor" stroke="none" />
+      </g>
     </> : null}
-    {collaboration ? <g transform="translate(14 30) rotate(45 10 10)"><Glyph name="mouse" size={20} /></g> : null}
+    {collaboration ? <g transform="translate(14 30) rotate(-45 10 10)"><Glyph name="mouse" size={20} /></g> : null}
   </g>;
 }
 

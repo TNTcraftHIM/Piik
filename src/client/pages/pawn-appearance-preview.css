@@ -7,7 +7,7 @@
 .cp-pawn-figure .lr-person { width: 48px; height: 56px; }
 .cp-pawn-preview figcaption { color: var(--muted); font-size: 12px; line-height: 1.5; text-align: center; text-wrap: balance; }
 .cp-pawn-preview figcaption > span { display: block; word-break: keep-all; }
-.cp-pawn-headphone-comparison { display: flex; justify-content: center; gap: 32px; }
+.cp-pawn-headphone-comparison { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; max-width: 680px; margin: 0 auto; }
 .cp-pawn-headphone-comparison .cp-pawn-figure { width: 120px; height: 128px; }
 .cp-pawn-headphone-comparison .lr-person { width: 96px; height: 112px; }
 .cp-pawn-preview[data-guides] .cp-pawn-figure,
@@ -16,4 +16,5 @@
 .cp-pawn-couch-link { display: inline-block; margin-top: 18px; color: var(--ink); font-size: 13px; text-underline-offset: 4px; }
 #pawn-study-couch { scroll-margin-top: 24px; }
 @media (max-width: 1000px) { .cp-pawn-samples { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .cp-pawn-headphone-comparison { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 360px) { .cp-pawn-samples { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

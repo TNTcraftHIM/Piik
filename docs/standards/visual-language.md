@@ -416,8 +416,9 @@ and other screen content. Exploratory figures are not alternate
 participant identities. Keep the brand mascot distinct.
 
 Participant state belongs to the shared pawn: light headphones indicate joined
-room voice, resting around the neck when listening is paused; a small crossed
-mouth indicates a muted microphone. The toolbar's shared `mouse` glyph sits
+room voice, resting around the neck when listening is paused. The microphone
+boom extends toward the mouth when open and folds up when muted, independently
+of listening. The toolbar's shared `mouse` glyph sits
 centred on the body for an approved remote-control participant, regardless of
 input device. These marks follow the existing membership and control grant;
 they do not assert speech, input activity or media-route readiness.

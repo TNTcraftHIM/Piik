@@ -26,23 +26,24 @@ export function PawnAppearancePreview({ guides, onGuides }: {
       <h3>{en ? "Participant states" : "人物状态"}</h3>
       <SwitchItem checked={guides} onChange={onGuides} label={en ? "Centre guides" : "中心线对照"} />
     </div>
-    <p>{en ? "D3 headphones and mute mark, with the same mouse symbol as the remote-control toolbar."
-      : "D3 耳机与嘴边静音记号，搭配播控同款鼠标标志。"}</p>
+    <p>{en ? "The microphone boom unfolds when unmuted and folds up when muted. The mouse uses the remote-control toolbar symbol."
+      : "开麦时伸出麦克风杆，闭麦时折起。鼠标复用播控同款图标。"}</p>
     <div className="cp-pawn-samples">
       {SAMPLES.map(({ label, state }, index) => <figure key={index}>
         <span className="cp-pawn-figure"><PawnSvg color={participantColor(SAMPLE_ID)} identity={SAMPLE_ID} {...state} /></span>
         <figcaption>{label[en ? 1 : 0].split(en ? ", " : "，").map(part => <span key={part}>{part}</span>)}</figcaption>
       </figure>)}
     </div>
-    <h3>{en ? "Listening and deafened" : "收听与闭耳机"}</h3>
+    <h3>{en ? "Headset states" : "耳麦状态对照"}</h3>
     <p>{en ? "Headphones move from the head to the neck when listening is paused. The microphone and control permission stay independent."
       : "正常收听时戴在头上，闭耳机时挂在脖子上。麦克风与远控权限仍独立显示。"}</p>
     <div className="cp-pawn-headphone-comparison">
-      {[false, true].map(deafened => <figure key={String(deafened)}>
+      {[false, true].flatMap(deafened => [true, false].map(microphone => <figure key={`${deafened}-${microphone}`}>
         <span className="cp-pawn-figure"><PawnSvg color={participantColor(SAMPLE_ID)} identity={SAMPLE_ID}
-          voice={{ microphone: false, deafened }} collaboration /></span>
-        <figcaption>{en ? deafened ? "Deafened" : "Listening" : deafened ? "闭耳机：挂在脖子上" : "收听中：戴在头上"}</figcaption>
-      </figure>)}
+          voice={{ microphone, deafened }} collaboration /></span>
+        <figcaption><span>{en ? deafened ? "Deafened" : "Listening" : deafened ? "闭耳机" : "收听中"}</span>
+          <span>{en ? microphone ? "Mic on" : "Muted" : microphone ? "开麦" : "闭麦"}</span></figcaption>
+      </figure>))}
     </div>
     <a className="cp-pawn-couch-link" href="#pawn-study-couch">{en ? "See the current design on the couch" : "查看下方沙发中的效果"}</a>
   </div>;
