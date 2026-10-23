@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -20,7 +21,7 @@ func TestLoadOrCreatePersistsOneValidConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first != second || first.Version != currentVersion ||
+	if !reflect.DeepEqual(first, second) || first.Version != currentVersion ||
 		first.LocalAccessPassword != "" {
 		t.Fatalf("persisted configuration = %+v, %+v", first, second)
 	}
@@ -39,13 +40,13 @@ func TestUserChosenLocalAccessPasswordIsPreserved(t *testing.T) {
 	}
 }
 
-func TestSavePersistsOneNormalizedSiteChoice(t *testing.T) {
+func TestSavePersistsApprovedSites(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "client.json")
 	config, err := LoadOrCreate(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	config.Site = "https://share.example"
+	config.SetApprovedSites([]string{"https://share.example", "https://friends.example", "https://share.example/"})
 	if err = Save(path, config); err != nil {
 		t.Fatal(err)
 	}
@@ -53,9 +54,17 @@ func TestSavePersistsOneNormalizedSiteChoice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Site != "https://share.example" ||
+	if !reflect.DeepEqual(loaded.ApprovedSites(), []string{"https://share.example", "https://friends.example"}) ||
 		loaded.LocalAccessPassword != config.LocalAccessPassword {
 		t.Fatalf("saved configuration = %+v", loaded)
+	}
+	loaded.SetApprovedSites(loaded.ApprovedSites()[1:])
+	if err := Save(path, loaded); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = LoadOrCreate(path)
+	if err != nil || !reflect.DeepEqual(loaded.ApprovedSites(), []string{"https://friends.example"}) {
+		t.Fatalf("revoked site returned: %+v, %v", loaded, err)
 	}
 }
 
@@ -96,7 +105,7 @@ func TestSavePublishesPrivateCompleteReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	loaded, err := LoadOrCreate(path)
-	if err != nil || loaded != updated {
+	if err != nil || !reflect.DeepEqual(loaded, updated) {
 		t.Fatalf("replacement = %+v, %v", loaded, err)
 	}
 	entries, err := os.ReadDir(directory)
@@ -136,7 +145,7 @@ func TestSaveDoesNotModifyPreviousFileInPlace(t *testing.T) {
 		t.Fatalf("the previous file was modified in place: %v", err)
 	}
 	loaded, err := LoadOrCreate(path)
-	if err != nil || (saveErr == nil && loaded != updated) || (saveErr != nil && loaded != initial) {
+	if err != nil || (saveErr == nil && !reflect.DeepEqual(loaded, updated)) || (saveErr != nil && !reflect.DeepEqual(loaded, initial)) {
 		t.Fatalf("published configuration = %+v, load=%v, save=%v", loaded, err, saveErr)
 	}
 }

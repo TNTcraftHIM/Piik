@@ -17,9 +17,45 @@ import (
 const currentVersion = 1
 
 type Config struct {
-	Version             int    `json:"version"`
-	LocalAccessPassword string `json:"localAccessPassword"`
-	Site                string `json:"site,omitempty"`
+	Version             int      `json:"version"`
+	LocalAccessPassword string   `json:"localAccessPassword"`
+	Site                string   `json:"site,omitempty"`
+	Sites               []string `json:"sites,omitempty"`
+}
+
+// Keep the published single-site field as the first entry. Additional grants
+// live in the same config; consumers use one complete origin list.
+func (config Config) ApprovedSites() []string {
+	sites := make([]string, 0, len(config.Sites)+1)
+	if config.Site != "" {
+		sites = append(sites, config.Site)
+	}
+	return append(sites, config.Sites...)
+}
+
+func (config *Config) SetApprovedSites(sites []string) {
+	config.Site = ""
+	config.Sites = nil
+	if len(sites) > 0 {
+		config.Site = sites[0]
+		config.Sites = append([]string(nil), sites[1:]...)
+	}
+}
+
+func NormalizeSites(sites []string) ([]string, error) {
+	normalized := []string{}
+	seen := make(map[string]bool)
+	for _, value := range sites {
+		site, err := NormalizeSite(value)
+		if err != nil || site == "" {
+			return nil, errors.New("App site list is invalid")
+		}
+		if !seen[site] {
+			normalized = append(normalized, site)
+			seen[site] = true
+		}
+	}
+	return normalized, nil
 }
 
 func DefaultPath() (string, error) {
@@ -139,6 +175,11 @@ func load(path string) (Config, error) {
 	if config.Site, err = NormalizeSite(config.Site); err != nil {
 		return Config{}, errors.New("App configuration is invalid")
 	}
+	sites, err := NormalizeSites(config.ApprovedSites())
+	if err != nil {
+		return Config{}, err
+	}
+	config.SetApprovedSites(sites)
 	return config, nil
 }
 
@@ -150,6 +191,11 @@ func encode(config Config) ([]byte, error) {
 	if err != nil || site != config.Site {
 		return nil, errors.New("App configuration is invalid")
 	}
+	sites, err := NormalizeSites(config.ApprovedSites())
+	if err != nil {
+		return nil, err
+	}
+	config.SetApprovedSites(sites)
 	payload, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("encode App configuration: %w", err)

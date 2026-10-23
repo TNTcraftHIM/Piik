@@ -2,7 +2,6 @@ package launcher
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -38,7 +37,7 @@ func TestSavedModeSurvivesRelaunchWithoutChangingLegacyConfig(t *testing.T) {
 		if err != nil || mode != test.chosen {
 			t.Fatalf("restored mode = %q, %v", mode, err)
 		}
-		server, err := Start(t.Context(), appAssets(), Options{Site: test.site, DefaultMode: mode})
+		server, err := Start(t.Context(), appAssets(), Options{Sites: siteList(test.site), DefaultMode: mode})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -47,13 +46,13 @@ func TestSavedModeSurvivesRelaunchWithoutChangingLegacyConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 		var state struct {
-			DefaultMode Mode   `json:"defaultMode"`
-			Site        string `json:"site"`
+			DefaultMode Mode     `json:"defaultMode"`
+			Sites       []string `json:"sites"`
 		}
 		err = json.NewDecoder(response.Body).Decode(&state)
 		response.Body.Close()
 		server.Close()
-		if err != nil || state.DefaultMode != test.want || state.Site != test.site {
+		if err != nil || state.DefaultMode != test.want || strings.Join(state.Sites, ",") != test.site {
 			t.Fatalf("launcher lost mode or saved Site: %+v, %v", state, err)
 		}
 	}
@@ -79,23 +78,19 @@ func TestUnavailableModePreferenceDoesNotSupplyAnInvalidChoice(t *testing.T) {
 	}
 }
 
-func TestStarredSitePersistsWithoutGrantingAccessAndClearsOnReplacement(t *testing.T) {
+func TestStarredSiteSurvivesOtherApprovalsAndClearsOnRevocation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "client.json")
 	config, err := appconfig.LoadOrCreate(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	config.Site = "https://share.example"
-	if err := appconfig.Save(path, config); err != nil {
-		t.Fatal(err)
-	}
-	original, _ := os.ReadFile(path)
-	if site, err := LoadStartupSite(path, config.Site); err != nil || site != "" {
-		t.Fatalf("unselected startup Site = %q, %v", site, err)
-	}
-	server, err := Start(t.Context(), appAssets(), Options{Site: config.Site,
+	sites := []string{"https://share.example"}
+	server, err := Start(t.Context(), appAssets(), Options{Sites: sites,
 		SaveStartupSite: func(site string) error { return SaveStartupSite(path, site) },
-		ChangeSite:      func(site string) (string, error) { return site, nil },
+		ChangeSite: func(site string, allowed bool) ([]string, error) {
+			sites = editSites(sites, site, allowed)
+			return sites, nil
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -103,42 +98,34 @@ func TestStarredSitePersistsWithoutGrantingAccessAndClearsOnReplacement(t *testi
 	t.Cleanup(func() { _ = server.Close() })
 	origin := strings.TrimSuffix(server.URL(), "/client")
 	for _, test := range []struct {
-		setting, site, approved, want string
-		status                        int
+		setting, body, want string
+		status              int
 	}{
-		{"startup-site", config.Site, config.Site, config.Site, 200},
-		{"startup-site", "https://unapproved.example", config.Site, config.Site, 409},
-		{"startup-site", "", config.Site, "", 200},
-		{"startup-site", config.Site, config.Site, config.Site, 200},
-		{"site", "https://other.example", "https://other.example", "", 200},
-		{"startup-site", "https://other.example", "https://other.example", "https://other.example", 200},
-		{"site", "", "", "", 200},
+		{"startup-site", `{"site":"https://share.example"}`, "https://share.example", 200},
+		{"startup-site", `{"site":"https://unapproved.example"}`, "https://share.example", 409},
+		{"site", `{"site":"https://other.example","allowed":true}`, "https://share.example", 200},
+		{"startup-site", `{"site":"https://other.example"}`, "https://other.example", 200},
+		{"site", `{"site":"https://share.example","allowed":false}`, "https://other.example", 200},
+		{"site", `{"site":"https://other.example","allowed":false}`, "", 200},
 	} {
-		body := fmt.Sprintf(`{"site":%q,"expectedSite":%q}`, test.site, server.site)
-		response, err := localPost(origin+"/api/client-launcher/"+test.setting, "application/json", strings.NewReader(body))
+		response, err := localPost(origin+"/api/client-launcher/"+test.setting, "application/json", strings.NewReader(test.body))
 		if err != nil {
 			t.Fatal(err)
 		}
-		var state struct{ Site, StartupSite string }
+		var state struct {
+			Sites       []string
+			StartupSite string
+		}
 		err = json.NewDecoder(response.Body).Decode(&state)
 		response.Body.Close()
-		if err != nil || response.StatusCode != test.status || state.Site != test.approved || state.StartupSite != test.want {
-			t.Fatalf("%+v: status=%d, state=%+v, error=%v", test, response.StatusCode, state, err)
+		if err != nil || response.StatusCode != test.status || state.StartupSite != test.want {
+			t.Fatalf("%+v: %+v %v", test, state, err)
 		}
-		if saved, err := LoadStartupSite(path, test.approved); err != nil || saved != test.want {
-			t.Fatalf("startup Site did not survive reload: %q, %v", saved, err)
-		}
-	}
-	if err := SaveStartupSite(path, config.Site); err != nil {
-		t.Fatal(err)
-	}
-	for _, approved := range []string{"https://other.example", config.Site} {
-		if saved, err := LoadStartupSite(path, approved); err != nil || saved != "" {
-			t.Fatalf("startup preference survived a CLI/config Site change: %q, %v", saved, err)
+		if saved, err := LoadStartupSite(path, state.Sites...); err != nil || saved != test.want {
+			t.Fatalf("saved startup: %q %v", saved, err)
 		}
 	}
-	current, _ := os.ReadFile(path)
-	if string(current) != string(original) || server.selected {
-		t.Fatal("startup preference changed legacy configuration or started a room")
+	if server.selected || config.Site != "" {
+		t.Fatal("startup preference created room or access")
 	}
 }

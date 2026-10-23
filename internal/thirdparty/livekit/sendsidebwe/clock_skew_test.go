@@ -3,6 +3,7 @@ package sendsidebwe
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"
@@ -44,6 +45,8 @@ func TestClockRateSkewDoesNotAccumulateCongestion(t *testing.T) {
 
 func TestClockTolerancePreservesCongestionAndRecovery(t *testing.T) {
 	c := newCongestionDetector(congestionDetectorParams{Config: defaultCongestionDetectorConfig, Logger: logger.GetDiscardLogger()})
+	// Packet time advances virtually; expire the separate wall-clock probe gate.
+	c.probeRegulator.ProbeSignal(ccutils.ProbeSignalNotCongesting, mono.Now().Add(-time.Minute))
 	c.estimatedAvailableChannelCapacity = 8_000_000
 	start := mono.UnixMicro()
 	c.RecordPacketSendAndGetSequenceNumber(start, 1200, false, ccutils.ProbeClusterIdInvalid, false)

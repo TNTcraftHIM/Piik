@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -461,17 +462,17 @@ func TestBrowserOpenFailureKeepsTheAppAvailable(t *testing.T) {
 				origin := strings.TrimSuffix(view.entry, "/client")
 
 				response, err := postLocalLauncher(client, origin+"/api/client-launcher/site", "application/json",
-					strings.NewReader(`{"site":"https://share.example","expectedSite":""}`))
+					strings.NewReader(`{"site":"https://share.example","allowed":true}`))
 				if err != nil {
 					t.Fatal(err)
 				}
 				defer response.Body.Close()
-				var result struct{ Site string }
-				if json.NewDecoder(response.Body).Decode(&result) != nil || response.StatusCode != http.StatusOK || result.Site != "https://share.example" {
-					t.Fatalf("manual approval failed: status=%d, site=%q", response.StatusCode, result.Site)
+				var result struct{ Sites []string }
+				if json.NewDecoder(response.Body).Decode(&result) != nil || response.StatusCode != http.StatusOK || strings.Join(result.Sites, ",") != "https://share.example" {
+					t.Fatalf("manual approval failed: status=%d, site=%q", response.StatusCode, result.Sites)
 				}
 				saved, err := appconfig.LoadOrCreate(configPath)
-				if err != nil || saved.Site != result.Site {
+				if err != nil || saved.Site != strings.Join(result.Sites, ",") {
 					t.Fatalf("approval was not saved: %v", err)
 				}
 
@@ -488,7 +489,7 @@ func TestSavedSiteAllowsBrowserOriginAtNativeControl(t *testing.T) {
 	} {
 		t.Run(site.input, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "client.json")
-			payload := fmt.Sprintf(`{"version":1,"localAccessPassword":"","site":%q}`, site.input)
+			payload := fmt.Sprintf(`{"version":1,"localAccessPassword":"","site":%q,"sites":["https://second.example"]}`, site.input)
 			if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -497,7 +498,7 @@ func TestSavedSiteAllowsBrowserOriginAtNativeControl(t *testing.T) {
 				t.Fatal(err)
 			}
 			control, err := loopback.Start(t.Context(), loopback.Options{
-				AllowedOrigins: allowedOrigins(configuration.Site, 8787),
+				AllowedOrigins: allowedOrigins(configuration.ApprovedSites(), 8787),
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -510,6 +511,7 @@ func TestSavedSiteAllowsBrowserOriginAtNativeControl(t *testing.T) {
 			}{
 				{http.MethodOptions, site.origin, http.StatusNoContent},
 				{http.MethodGet, site.origin, http.StatusOK},
+				{http.MethodGet, "https://second.example", http.StatusOK},
 				{http.MethodOptions, "https://other.example", http.StatusForbidden},
 			} {
 				request, err := http.NewRequest(probe.method, control.Endpoint().URL+"/health", nil)
@@ -747,7 +749,7 @@ func TestLinkModeKeepsOneLocalAuthority(t *testing.T) {
 	}
 	for _, options := range []Options{{Link: true}, {Local: true}} {
 		selected, err := applyMode(config, options)
-		if err != nil || selected != config {
+		if err != nil || !reflect.DeepEqual(selected, config) {
 			t.Fatalf("mode selection changed saved settings: %+v, %v", selected, err)
 		}
 	}

@@ -35,7 +35,7 @@ class Context {
   resume = vi.fn(async () => {});
   createMediaStreamDestination() { return Object.assign(new AudioNode(), { stream: media(new Track("audio")) }); }
   createMediaStreamSource = vi.fn(() => new AudioNode());
-  createGain() { return Object.assign(new AudioNode(), { gain: { value: 1, setTargetAtTime: vi.fn() } }); }
+  createGain = vi.fn(() => Object.assign(new AudioNode(), { gain: { value: 1, setTargetAtTime: vi.fn() } }));
   createAnalyser() { return Object.assign(new AudioNode(), { fftSize: 256, getFloatTimeDomainData: vi.fn() }); }
 }
 function mixerSetup() {
@@ -77,6 +77,8 @@ test("commentary and source replacement retain one published output and retire t
   const output = await audio.start(), outputTrack = output.getAudioTracks()[0];
   expect(audio.commentaryAvailable).toBe(true);
   expect(outputTrack!.contentHint).toBe("music");
+  audio.setVolume(.5);
+  expect(contexts[0]!.createGain.mock.results[0]!.value.gain.setTargetAtTime).toHaveBeenCalledWith(.5, 0, .01);
   getUserMedia.mockResolvedValueOnce(media(microphone));
   await audio.setMicrophone(true, { deviceId: "headset", volume: 1, voiceProcessing: true });
   expect(getUserMedia).toHaveBeenCalledWith({ audio: expect.objectContaining({ deviceId: { exact: "headset" }, echoCancellation: true }), video: false });

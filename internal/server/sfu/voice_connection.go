@@ -14,7 +14,7 @@ import (
 
 var voiceCodec = webrtc.RTPCodecCapability{
 	MimeType: webrtc.MimeTypeOpus, ClockRate: 48_000, Channels: 2,
-	SDPFmtpLine: "minptime=10;useinbandfec=1",
+	SDPFmtpLine: "minptime=10;useinbandfec=1;maxaveragebitrate=510000",
 }
 
 type voiceReceiveSlot struct {

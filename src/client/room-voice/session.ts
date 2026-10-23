@@ -41,7 +41,7 @@ export class RoomVoiceSession {
   private epoch = 0;
 
   constructor(private readonly send: (message: ClientMessage) => boolean, iceConfig: IceConfig,
-    private readonly listeningPresence = false) {
+    private readonly listeningPresence = false, private readonly bitrate = false) {
     this.endpoint = new BrowserVoiceEndpoint(iceConfig, message => this.state.connected && this.send(message), () => {
       this.refresh(); this.schedule();
     });
@@ -64,7 +64,8 @@ export class RoomVoiceSession {
   }
   updateIceConfig(config: IceConfig): void { this.endpoint.updateIceConfig(config); }
   subscribeRoom(): void {
-    this.send({ type: "subscribe-room-voice", ...(this.listeningPresence ? { deafened: this.state.deafened } : {}) });
+    this.send({ type: "subscribe-room-voice", ...(this.listeningPresence ? { deafened: this.state.deafened } : {}),
+      ...(this.bitrate ? { bitrate: true as const } : {}) });
   }
   authenticated(peerId: string, role: "host" | "viewer"): void {
     if (this.closed) return;

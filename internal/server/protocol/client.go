@@ -229,8 +229,11 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		if err = f.require("type"); err != nil {
 			return nil, err
 		}
-		if err = f.optional("deafened"); err != nil {
+		if err = f.optional("deafened", "bitrate"); err != nil {
 			return nil, err
+		}
+		if f.has("bitrate") && !v.Bitrate {
+			return nil, errors.New("invalid voice subscription")
 		}
 		return v, nil
 	case "room-voice-command":

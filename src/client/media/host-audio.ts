@@ -9,6 +9,8 @@ export interface CommentaryInput { deviceId: string; volume: number; voiceProces
 export class HostAudio {
   private context: AudioContext | null = null;
   private destination: MediaStreamAudioDestinationNode | null = null;
+  private gain: GainNode | null = null;
+  private volume = 1;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private microphone: MicrophoneInput | null = null;
   private microphoneNode: MediaStreamAudioSourceNode | null = null;
@@ -34,6 +36,9 @@ export class HostAudio {
       const context = this.context = new AudioContext();
       this.destination = context.createMediaStreamDestination();
       this.destination.stream.getAudioTracks()[0]!.contentHint = "music";
+      this.gain = context.createGain();
+      this.gain.gain.value = this.volume;
+      this.gain.connect(this.destination);
       this.connectSource();
       await context.resume();
     } catch {
@@ -46,6 +51,7 @@ export class HostAudio {
   }
   private closeGraph(): void {
     this.sourceNode?.disconnect(); this.sourceNode = null;
+    this.gain?.disconnect(); this.gain = null;
     this.destination?.stream.getTracks().forEach(track => track.stop()); this.destination = null;
     void this.context?.close().catch(() => {}); this.context = null;
   }
@@ -53,7 +59,7 @@ export class HostAudio {
     this.sourceNode?.disconnect(); this.sourceNode = null;
     if (this.context && this.destination && this.sourceAudioAvailable) {
       this.sourceNode = this.context.createMediaStreamSource(this.source);
-      this.sourceNode.connect(this.destination);
+      this.sourceNode.connect(this.gain!);
     }
   }
   async setMicrophone(enabled: boolean, settings: CommentaryInput): Promise<void> {
@@ -74,7 +80,7 @@ export class HostAudio {
         if (this.microphone === input) { ++this.microphoneRequest; this.clearMicrophone(); }
       });
       const node = this.context.createMediaStreamSource(input.stream);
-      node.connect(this.destination);
+      node.connect(this.gain!);
       const previousInput = this.microphone, previousNode = this.microphoneNode;
       this.microphone = input;
       this.microphoneNode = node;
@@ -87,6 +93,10 @@ export class HostAudio {
     }
   }
   microphoneVolume(value: number): void { this.microphone?.volume(value); }
+  setVolume(volume: number): void {
+    this.volume = volume;
+    this.gain?.gain.setTargetAtTime(volume, this.context!.currentTime, .01);
+  }
   private clearMicrophone(): void {
     this.microphoneNode?.disconnect(); this.microphoneNode = null;
     this.microphone?.close(); this.microphone = null;

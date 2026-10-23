@@ -293,6 +293,16 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			state, err = session.remoteInput.SetStopShortcut(request.Key)
 		}
 		return remoteStopShortcutResponse{responseEnvelope{envelope.Version, envelope.ID, "remote-stop-shortcut"}, state}, err
+	case "set-share-volume":
+		var request shareVolumeRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) || request.Volume == nil {
+			return nil, protocolViolation("native share volume request is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		return response(envelope, "share-volume-set"), host.SetVolume(*request.Volume)
 	case "set-microphone":
 		var request microphoneRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||

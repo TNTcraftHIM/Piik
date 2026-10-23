@@ -16,7 +16,7 @@ function room(revision: number, joined = true, publication = false, enabled = tr
       ...(publication ? { publicationId: "publication" } : {}) }],
     publications: publication ? [{ id: "publication", peerId: "self" }] : [], connections: [], unavailable: [] };
 }
-function setup(listeningPresence = false) {
+function setup(listeningPresence = false, bitrate = false) {
   const resume = vi.fn(async () => {});
   class Context {
     currentTime = 0;
@@ -30,7 +30,7 @@ function setup(listeningPresence = false) {
   vi.stubGlobal("AudioContext", Context);
   const messages: ClientMessage[] = [];
   const send = vi.fn((message: ClientMessage) => { messages.push(message); return true; });
-  const session = new RoomVoiceSession(send, { iceServers: [] }, listeningPresence);
+  const session = new RoomVoiceSession(send, { iceServers: [] }, listeningPresence, bitrate);
   session.authenticated("self", "viewer"); session.receive(room(1));
   return { session, messages, resume, send };
 }
@@ -38,7 +38,7 @@ function setup(listeningPresence = false) {
 it("reports listening only to supporting servers and restores it on subscription without muting the microphone", async () => {
   const mic = microphone();
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: vi.fn(async () => mic.stream) } });
-  const { session, messages, send } = setup(true);
+  const { session, messages, send } = setup(true, true);
   await session.startMicrophone(); session.receive(room(2, true, true));
   messages.length = 0;
   session.receive({ type: "room-voice-error", code: "not-allowed" });
@@ -58,7 +58,7 @@ it("reports listening only to supporting servers and restores it on subscription
   session.deafen(true);
   messages.length = 0;
   session.authenticated("self", "viewer"); session.subscribeRoom();
-  expect(messages).toEqual([{ type: "subscribe-room-voice", deafened: true }]);
+  expect(messages).toEqual([{ type: "subscribe-room-voice", deafened: true, bitrate: true }]);
   session.close();
   const legacy = setup();
   legacy.session.deafen(true); legacy.session.subscribeRoom();

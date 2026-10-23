@@ -1,7 +1,9 @@
 package mediaedge
 
 import (
+	"encoding/binary"
 	"errors"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,6 +43,8 @@ type AudioSource struct {
 	localReservation bool
 	closed           bool
 	bytes            atomic.Uint64
+	volume           float64
+	appliedVolume    float64
 }
 
 func (engine *Engine) NewAudioSource(capacity, bitrate int) (*AudioSource, error) {
@@ -66,7 +70,7 @@ func (engine *Engine) NewAudioSource(capacity, bitrate int) (*AudioSource, error
 	}
 	return &AudioSource{
 		engine: engine, track: track, samples: track, encoder: encoder,
-		capacity: capacity, edges: make(map[*Edge]bool),
+		capacity: capacity, edges: make(map[*Edge]bool), volume: 1, appliedVolume: 1,
 	}, nil
 }
 
@@ -98,7 +102,7 @@ func (source *AudioSource) WritePCM(pcm []byte, duration time.Duration) error {
 }
 
 func (source *AudioSource) WritePCMWithDropped(pcm []byte, duration time.Duration, dropped uint16) error {
-	if source == nil || source.encoder == nil || duration <= 0 {
+	if source == nil || source.encoder == nil || duration <= 0 || len(pcm) != nativeaudio.FrameBytes {
 		return errors.New("native PCM sample is invalid")
 	}
 	source.encodeMu.Lock()
@@ -109,6 +113,14 @@ func (source *AudioSource) WritePCMWithDropped(pcm []byte, duration time.Duratio
 	if closed {
 		return errors.New("native audio source is closed")
 	}
+	var adjusted [nativeaudio.FrameBytes]byte
+	if source.volume != 1 || source.appliedVolume != 1 {
+		// One source gain precedes the shared encoder, so Peer, SFU and local
+		// preview receive identical sound without touching relay packets.
+		scalePCM(adjusted[:], pcm, source.appliedVolume, source.volume)
+		pcm = adjusted[:]
+	}
+	source.appliedVolume = source.volume
 	packet, err := source.encoder.Encode(pcm)
 	if err != nil {
 		return err
@@ -118,6 +130,33 @@ func (source *AudioSource) WritePCMWithDropped(pcm []byte, duration time.Duratio
 	// Connection lifecycle owns those failures; they do not end the PCM source.
 	_ = source.samples.WriteSample(media.Sample{Data: packet, Duration: duration, PrevDroppedPackets: dropped})
 	return nil
+}
+
+func (source *AudioSource) SetVolume(volume float64) error {
+	if source == nil || source.encoder == nil || math.IsNaN(volume) || math.IsInf(volume, 0) || volume < 0 || volume > 2 {
+		return errors.New("native source volume is invalid")
+	}
+	source.encodeMu.Lock()
+	defer source.encodeMu.Unlock()
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	if source.closed {
+		return errors.New("native audio source is closed")
+	}
+	source.volume = volume
+	return nil
+}
+
+// Ramp over one stereo frame to avoid clicks; clip once before Opus encoding.
+func scalePCM(output, input []byte, from, to float64) {
+	for sample := range nativeaudio.FrameSamples {
+		gain := from + (to-from)*float64(sample+1)/nativeaudio.FrameSamples
+		for channel := range nativeaudio.Channels {
+			offset := (sample*nativeaudio.Channels + channel) * 2
+			value := gain * float64(int16(binary.LittleEndian.Uint16(input[offset:])))
+			binary.LittleEndian.PutUint16(output[offset:], uint16(int16(max(-32768, min(32767, value)))))
+		}
+	}
 }
 
 func (source *AudioSource) WriteRTP(packet *rtp.Packet) error {

@@ -9,11 +9,11 @@ import { debugError, debugEvent } from "../lib/debug";
 import { debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
 import {
   applyVideoCaptureProfile,
-  configureScreenAudioSender,
+  configureAudioSender,
   configureVideoSender,
   needsStartupVideoProfile,
   screenAudioBitrate,
-  screenAudioSenderCeiling,
+  audioSenderCeiling,
   audioQualitySettingsEqual,
   STARTUP_VIDEO_ENCODED_FRAMES,
   startupVideoProfile,
@@ -753,7 +753,7 @@ export class HostPeer {
         return;
       }
       const audio = this.audioSender;
-      if (audio?.track && screenAudioSenderCeiling(audio.getParameters(),
+      if (audio?.track && audioSenderCeiling(audio.getParameters(),
         screenAudioBitrate(this.desiredProfile.maxAudioBitrate)) !== audio.getParameters().encodings[0]?.maxBitrate) {
         // Never await sender work inside negotiation: source replacement can
         // already be waiting for this negotiation queue to finish.
@@ -943,7 +943,7 @@ export class HostPeer {
     if (mutation.audio && audioSender) {
       if (audioSender.track) {
         try {
-          audioSenderParameters = await this.waitForOperation(() => configureScreenAudioSender(
+          audioSenderParameters = await this.waitForOperation(() => configureAudioSender(
             audioSender,
             screenAudioBitrate(profile.maxAudioBitrate),
           ));

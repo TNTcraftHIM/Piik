@@ -59,6 +59,7 @@ export interface StatsAccumulator {
 }
 
 export interface StatsMediaSelector {
+  kind?: "audio" | "video";
   trackIdentifier: string | null;
   rid?: string | null;
   audioTrackIdentifier?: string | null;
@@ -668,7 +669,8 @@ export function collectConnectionMetricsFromReport(
   previous: StatsAccumulator,
   selector: StatsMediaSelector | null = null,
 ): ConnectionMetrics {
-  const media = mediaRecord(report, direction, selector);
+  const kind = selector?.kind ?? "video";
+  const media = mediaRecord(report, direction, selector, kind);
   const transport = transportRecord(report, media);
   let pair = selectedCandidatePair(report, transport);
   let localCandidate = getRecord(
@@ -709,7 +711,7 @@ export function collectConnectionMetricsFromReport(
     ? mediaTrackIdentifier(report, media, direction)
     : null;
   const remoteInbound =
-    direction === "send" ? linkedRemoteInbound(report, media) : null;
+    direction === "send" ? linkedRemoteInbound(report, media, kind) : null;
   const lossSource = direction === "send" ? remoteInbound : media;
   const lossSourceId = lossSource?.id ?? null;
   const lossReportTimestamp = numberValue(lossSource, "timestamp");
