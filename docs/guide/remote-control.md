@@ -74,21 +74,20 @@ the Host's optional ViGEmBus driver creates the virtual device.
    copying or SDK configuration is needed.
 3. On each friend's computer, connect a standard-layout gamepad, open the
    viewing page and press a controller button so the browser recognizes it.
-   Obtain remote-control approval, then select **Use gamepad**. Switching input
-   does not require another permission request.
+   Obtain remote-control approval; Piik automatically uses the first connected
+   controller with the browser's standard mapping. No additional approval is needed.
 4. Keep the viewing page focused. In the game, join as a controller player.
-   Each page uses its first connected controller with the browser's standard
-   mapping.
 
 XInput has four controller slots in total, including controllers already
-connected to the Host. Free a slot if another player cannot join. Piik does not
+connected to the Host. Disconnect an unused controller or end that Viewer's
+remote control to free a slot. Piik does not
 choose the game's player number; use the game's join and assignment controls.
-Each approved Viewer uses their own virtual controller. Stopping gamepad use
-removes that device while remote-control permission remains; ending remote
+Each approved Viewer uses their own virtual controller. Disconnecting the
+controller removes that device while remote-control permission remains; ending remote
 control releases all of that Viewer's input. Losing page or shared-window focus
 returns the controller to neutral.
 
-If **Use gamepad** is missing, check the Host's driver and App support, then
+If the gamepad does not respond, check the Host's driver and App support, then
 turn **Remote control** off and on. Keyboard/mouse co-play and ordinary remote control
 remain available without the gamepad driver. Piik does not install or bundle it.
 

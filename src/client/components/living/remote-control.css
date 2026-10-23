@@ -8,7 +8,7 @@
 .lr-remote-trigger { display: inline-flex; position: relative; }
 .lr-remote-count { position: absolute; top: -4px; right: -3px; min-width: 20px; padding: 0 5px; border: 2px solid var(--paper); border-radius: 12px; background: var(--action-deep); color: var(--action-ink); font: 600 11px/16px var(--font); text-align: center; pointer-events: none; }
 .lr-remote-panel-body { padding-block: 14px 6px; }
-.lr-remote-panel-body > .lr-comic-tip-wrap:has(> .lr-switch-item) { display: block; width: fit-content; margin-bottom: 12px; }
+.lr-remote-panel-body > .lr-switch-item { display: flex; width: fit-content; margin-bottom: 12px; }
 .lr-remote-enable-pending { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .lr-remote-enable-pending > svg { color: var(--muted); }
 .lr-remote-panel-header { display: flex; align-items: center; gap: 10px; margin: -4px -4px 10px 0; }

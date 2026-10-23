@@ -232,7 +232,7 @@ platform permissions and evidence limits recorded in the
 [co-play assessment](../research/room-interactions.md#remote-co-play).
 
 Losing shared-window focus releases held input and neutralizes gamepads while
-keeping grants suspended. Stopping gamepad use neutralizes and removes only
+keeping grants suspended. Disconnecting a gamepad neutralizes and removes only
 its device; ending remote control releases every input owned by that Viewer. The Host's stop
 shortcut ends all remote input. The [reader guide](../guide/remote-control.md)
 owns usage and driver setup; [interaction research](../research/room-interactions.md#remote-co-play)

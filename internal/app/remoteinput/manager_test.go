@@ -497,7 +497,7 @@ func TestCoPlayGamepadGrantIsolationAndRetirement(t *testing.T) {
 	<-sink.events
 	sink.focused = false
 	m.refreshActive()
-	if !a.suspended || !b.suspended || !keyboard.suspended || second.state != (gamepadReport{}) {
+	if !a.suspended || !b.suspended || !keyboard.suspended || second.state != (gamepadReport{}) || first.closed || second.closed {
 		t.Fatal("focus loss did not neutralize all input")
 	}
 	sendTestInput(m, b, inputEvent{Type: "gamepad", Gamepad: &reportB})
@@ -506,6 +506,9 @@ func TestCoPlayGamepadGrantIsolationAndRetirement(t *testing.T) {
 	}
 	sink.focused = true
 	sendTestInput(m, b, inputEvent{Type: "gamepad", Gamepad: &reportB})
+	if a.pad != first || b.pad != second || len(pads.devices) != 2 {
+		t.Fatal("focus recovery replaced a player's virtual device")
+	}
 	sendTestInput(m, keyboard, inputEvent{Type: "key", Code: "KeyB", Down: true})
 	<-sink.events
 	s.receivePacket(a.edgeID, inputroute.Packet{ID: a.id, Epoch: a.epoch, Closed: true})
@@ -542,6 +545,39 @@ func TestCoPlayGamepadGrantIsolationAndRetirement(t *testing.T) {
 	if !pads.closed {
 		t.Fatal("Manager did not close gamepad backend")
 	}
+}
+
+func TestGamepadStopReleasesOnlyItsDeviceAndSlot(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 8), resets: make(chan struct{}, 8), focused: true}
+	pads := &recordedGamepads{capacity: 1}
+	m := &Manager{sink: sink, gamepads: pads, connections: map[endpointKey]*connection{}}
+	_, players := coPlaySession(t, m, true, true)
+	a, b := players[0], players[1]
+	for _, c := range players {
+		sendTestInput(m, c, inputEvent{Type: "request"})
+	}
+	report := gamepadReport{Buttons: 1}
+	sendTestInput(m, a, inputEvent{Type: "key", Code: "KeyA", Down: true})
+	sendTestInput(m, a, inputEvent{Type: "gamepad", Gamepad: &report})
+	first := a.pad.(*recordedGamepad)
+	sendTestInput(m, a, inputEvent{Type: "gamepad-reset"})
+	if first.closed || first.state != (gamepadReport{}) {
+		t.Fatal("focus reset retired the game-assigned device")
+	}
+	sendTestInput(m, a, inputEvent{Type: "gamepad-stop"})
+	if !first.closed || a.pad != nil || a.grant == "" || !a.keys["KeyA"] || b.grant == "" {
+		t.Fatal("device stop retained the device or retired keyboard authorization")
+	}
+	sendTestInput(m, b, inputEvent{Type: "gamepad", Gamepad: &report})
+	if b.pad == nil || b.padFailed {
+		t.Fatal("device stop did not free the backend slot for another participant")
+	}
+	sendTestInput(m, b, inputEvent{Type: "gamepad-stop"})
+	sendTestInput(m, a, inputEvent{Type: "gamepad", Gamepad: &report})
+	if a.pad == nil || a.pad == first || a.padFailed {
+		t.Fatal("reconnected device did not reuse its existing grant")
+	}
+	m.Close()
 }
 
 func TestCoPlayGamepadAdmissionAndFailure(t *testing.T) {
@@ -698,6 +734,51 @@ func TestGamepadCreationDoesNotBlockCurrentInputOrRevocation(t *testing.T) {
 	}
 }
 
+func TestGamepadStopDiscardsPendingCreationWithoutRetiringGrant(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 8), resets: make(chan struct{}, 8), focused: true}
+	backend := &blockedGamepadCreation{started: make(chan struct{}, 1), finish: make(chan struct{}), pad: &recordedGamepad{}}
+	m := &Manager{sink: sink, gamepads: backend, connections: map[endpointKey]*connection{}}
+	_, players := coPlaySession(t, m, true)
+	c := players[0]
+	sendTestInput(m, c, inputEvent{Type: "request"})
+	grant := c.grant
+	report := gamepadReport{Buttons: 1}
+	m.mu.Lock()
+	m.receiveGamepad(c, inputEvent{Type: "gamepad", Gamepad: &report})
+	m.mu.Unlock()
+	select {
+	case <-backend.started:
+	case <-time.After(time.Second):
+		t.Fatal("device enumeration did not start")
+	}
+	sendTestInput(m, c, inputEvent{Type: "gamepad-stop"})
+	close(backend.finish)
+	deadline := time.Now().Add(time.Second)
+	for {
+		m.mu.Lock()
+		opening := m.gamepadOpening
+		m.mu.Unlock()
+		if !opening {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("stopped enumeration did not finish")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if !backend.pad.closed || c.pad != nil || c.grant != grant || c.padFailed {
+		t.Fatal("late enumeration revived the stopped device or changed its keyboard grant")
+	}
+	// A subsequent full report can create a fresh device under the same grant.
+	pads := &recordedGamepads{}
+	m.gamepads = pads
+	sendTestInput(m, c, inputEvent{Type: "gamepad", Gamepad: &report})
+	if c.pad == nil || c.pad.(*recordedGamepad).state != report || c.grant != grant {
+		t.Fatal("reconnection could not create a fresh device")
+	}
+	m.Close()
+}
+
 func sendTestInput(m *Manager, c *connection, event inputEvent) {
 	if event.Type == "request" && event.Intent == "" {
 		event.Intent = strings.Repeat("f", 32)
@@ -740,7 +821,6 @@ func TestCoPlaySharedKeyboardAndMouse(t *testing.T) {
 	}
 	for _, c := range players {
 		sendTestInput(m, c, inputEvent{Type: "key", Code: "KeyA", Down: true})
-		sendTestInput(m, c, inputEvent{Type: "key", Code: "KeyA", Down: true})
 		sendTestInput(m, c, inputEvent{Type: "button", Button: 0, Down: true})
 		sendTestInput(m, c, inputEvent{Type: "button", Button: 0, Down: true})
 	}
@@ -749,6 +829,15 @@ func TestCoPlaySharedKeyboardAndMouse(t *testing.T) {
 	}
 	for len(sink.events) > 0 {
 		<-sink.events
+	}
+	for _, c := range players {
+		sendTestInput(m, c, inputEvent{Type: "key", Code: "KeyA", Down: true})
+		if len(sink.events) != 1 {
+			t.Fatal("an existing holder's keyboard repeat was suppressed")
+		}
+		if event := <-sink.events; event.Type != "key" || event.Code != "KeyA" || !event.Down {
+			t.Fatal("an existing holder's keyboard repeat was suppressed")
+		}
 	}
 	sendTestInput(m, a, inputEvent{Type: "key", Code: "KeyA"})
 	sendTestInput(m, a, inputEvent{Type: "button", Button: 0})

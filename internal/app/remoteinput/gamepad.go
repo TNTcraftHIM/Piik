@@ -36,13 +36,13 @@ func (m *Manager) assignGamepad(c *connection) {
 		m.failGamepad(c)
 		return
 	}
-	backend, grant := m.gamepads, c.grant
+	backend, grant, intent := m.gamepads, c.grant, c.padIntent
 	m.gamepadOpening = true
 	go func() {
 		pad, err := backend.Open()
 		m.mu.Lock()
 		valid := !m.closed && !c.owner.closed && c.owner.available() && c.owner.coPlay &&
-			c.grant == grant && c.grant != "" && m.connections[endpointKey{c.owner, c.id}] == c
+			c.grant == grant && c.grant != "" && c.padIntent == intent && m.connections[endpointKey{c.owner, c.id}] == c
 		if valid {
 			if err != nil {
 				m.failGamepad(c)
@@ -73,6 +73,16 @@ func (m *Manager) failGamepad(c *connection) {
 
 func (m *Manager) receiveGamepad(c *connection, event inputEvent) {
 	if !c.extended || !c.owner.coPlay || c.padFailed {
+		return
+	}
+	if event.Type == "gamepad-stop" {
+		// Stopping a device also invalidates an enumeration still in progress.
+		// Focus resets preserve the device and its game-assigned player slot.
+		c.padIntent++
+		if c.pad != nil {
+			_ = c.pad.Close()
+			c.pad = nil
+		}
 		return
 	}
 	if event.Type == "gamepad-reset" {

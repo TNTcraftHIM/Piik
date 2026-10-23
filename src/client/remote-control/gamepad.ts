@@ -45,7 +45,7 @@ export class RemoteGamepad {
   }
   private readonly pause = (): void => {
     if (this.frame !== null) this.owner.cancelAnimationFrame(this.frame);
-    this.frame = null; this.nextReport = 0; this.index = null;
+    this.frame = null; this.nextReport = 0;
     this.input({ type: "gamepad-reset" }); this.setConnected(false);
   };
   private readonly resume = (): void => {
@@ -54,7 +54,9 @@ export class RemoteGamepad {
   };
   private readonly visibility = (): void => { if (this.page.hidden) this.pause(); else this.resume(); };
   private readonly disconnected = (event: GamepadEvent): void => {
-    if (event.gamepad.index === this.index) { this.pause(); this.resume(); }
+    if (event.gamepad.index === this.index) {
+      this.pause(); this.input({ type: "gamepad-stop" }); this.index = null; this.resume();
+    }
   };
   private readonly poll = (time: number): void => {
     this.frame = null;
@@ -62,7 +64,7 @@ export class RemoteGamepad {
     let pad: Gamepad | undefined;
     try { pad = Array.from(this.owner.navigator.getGamepads()).find(value => value?.connected && value.mapping === "standard") ?? undefined; }
     catch { /* Browser permissions can deny controller access. Keep the grant neutral. */ }
-    if (this.index !== null && this.index !== pad?.index) this.input({ type: "gamepad-reset" });
+    if (this.index !== null && this.index !== pad?.index) this.input({ type: "gamepad-stop" });
     this.index = pad?.index ?? null; this.setConnected(Boolean(pad));
     if (pad && time >= this.nextReport) {
       const interval = 1000 / 60;
@@ -76,6 +78,7 @@ export class RemoteGamepad {
 
   dispose(): void {
     this.disposed = true; this.pause();
+    this.input({ type: "gamepad-stop" }); this.index = null;
     this.owner.removeEventListener("blur", this.pause);
     this.owner.removeEventListener("focus", this.resume);
     this.owner.removeEventListener("gamepaddisconnected", this.disconnected);

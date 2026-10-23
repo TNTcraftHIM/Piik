@@ -437,15 +437,17 @@ invite** or an HTTPS site with a trusted certificate.
 
 ## Gamepads
 
-### Use gamepad is missing, or the game does not respond
+### The gamepad does not respond
 
 1. The Host shares an App window or screen and enables **Remote control**.
 2. Check the Host against [supported platforms and gamepad setup](./remote-control.md#gamepads).
    The Host installs external drivers from the official source; Piik includes no
    input SDK or driver. Turn Remote control off and on after installation.
-3. The Viewer connects a controller and presses a button so the browser detects it,
-   then obtains remote control and selects **Use gamepad** without another approval. Join the corresponding player
-   in the game; free a controller slot if all are occupied.
+3. The Viewer connects a standard-layout controller and presses a button so the
+   browser detects it, then obtains remote control. Piik automatically uses the
+   first connected controller with the browser's standard mapping. Keep the viewing
+   page focused and join the corresponding player in the game. If all controller
+   slots are occupied, disconnect an unused controller or end that Viewer's remote control.
 
 Viewers only need their browser. Driver checks and installation belong on the Host.
 

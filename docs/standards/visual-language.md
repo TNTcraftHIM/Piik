@@ -673,6 +673,12 @@ failure; lack of PiP support is a limitation.
 
 ## Motion Grammar
 
+The brand mascot keeps its body still: antenna twitch, wink, then two sparkles.
+Web/App and website identity marks share `site/assets/brand-motion.css`.
+An entrance draws the shell once and starts the gesture only after the last
+stroke completes; loading repeats the gesture without redrawing the shell.
+Page readiness never waits for this decoration.
+
 | Presentation | Rule |
 | --- | --- |
 | Action demonstration (`demo`) | Explain an action with a short gesture and a readable hold; repeat while displayed |

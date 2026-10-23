@@ -83,10 +83,10 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   }, [active]);
   useEffect(() => {
     setGamepadConnected(false);
-    if (!active || !gamepadAvailable) return;
+    if (!controlled || !gamepadAvailable) return;
     const current = new RemoteGamepad(input, setGamepadConnected);
     return () => current.dispose();
-  }, [active, gamepadAvailable, state?.grant, channel, input]);
+  }, [controlled, gamepadAvailable, state?.grant, channel, input]);
   useEffect(() => {
     const video = videoRef.current;
     const element = surface.current;

@@ -53,7 +53,7 @@ it("keeps keyboard control when optional gamepad support fails for the grant", (
   expect(channel.sent.at(-1)).toEqual({ type: "gamepad", gamepad, grant });
   channel.receive({ ...active, capabilities: ["coPlay", "text"], reason: "gamepad" });
   const before = channel.sent.length;
-  session.input({ type: "gamepad", gamepad }); session.input({ type: "gamepad-reset" });
+  session.input({ type: "gamepad", gamepad }); session.input({ type: "gamepad-reset" }); session.input({ type: "gamepad-stop" });
   expect(channel.sent).toHaveLength(before);
   session.input({ type: "key", code: "KeyW", down: false });
   session.input({ type: "text", text: "hello" });
@@ -105,19 +105,36 @@ it("maps standard gamepads into one negotiated grant and resets on focus loss, u
     const report = { type: "gamepad", grant, gamepad: { buttons: 0x1713,
       leftTrigger: 128, rightTrigger: 255, leftX: -32768, leftY: -32768, rightX: 32767, rightY: 32767 } };
     expect(channel.sent.slice(-2)).toEqual([report, report]);
+    const beforeSuspend = channel.sent.length;
+    channel.receive({ platform: "windows", mode: "ask", state: "suspended", intent, grant, coPlay: true, capabilities: ["coPlay", "gamepad"] });
+    tick(34);
+    expect(channel.sent).toHaveLength(beforeSuspend);
+    channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant, coPlay: true, capabilities: ["coPlay", "gamepad"] });
+    tick(51);
+    expect(channel.sent.at(-1)).toEqual(report);
     focused = false; owner.dispatchEvent(new Event("blur"));
     expect(channel.sent.at(-1)).toEqual({ type: "gamepad-reset", grant });
     expect(frames.size).toBe(0);
-    focused = true; owner.dispatchEvent(new Event("focus")); tick(34);
+    focused = true; owner.dispatchEvent(new Event("focus")); tick(68);
     expect(channel.sent.at(-1)).toEqual(report);
     pads = [];
     owner.dispatchEvent(Object.assign(new Event("gamepaddisconnected"), { gamepad: pad }));
-    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-reset", grant });
-    tick(51);
-    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-reset", grant });
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    tick(85);
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    pads = [pad]; tick(102);
+    expect(channel.sent.at(-1)).toEqual(report);
+    // Polling also notices a device removed without a Browser event.
+    pads = []; tick(119);
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
     page.hidden = true; page.dispatchEvent(new Event("visibilitychange"));
     expect(frames.size).toBe(0);
-  } finally { controller.dispose(); session.dispose(); }
+    channel.receive({ platform: "windows", mode: "ask", state: "suspended", intent, grant, coPlay: true, capabilities: ["coPlay", "gamepad"] });
+  } finally {
+    controller.dispose();
+    expect(channel.sent.at(-1)).toEqual({ type: "gamepad-stop", grant });
+    session.dispose();
+  }
   expect(frames.size).toBe(0);
   expect(channel.sent.at(-1)).toEqual({ type: "release", intent });
   owner.dispatchEvent(new Event("focus"));

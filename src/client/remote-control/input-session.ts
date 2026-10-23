@@ -10,6 +10,7 @@ export type RemoteInputEvent =
   | { type: "wheel"; delta: number }
   | { type: "gamepad"; gamepad: RemoteGamepadReport }
   | { type: "gamepad-reset" }
+  | { type: "gamepad-stop" }
   | { type: "reset" };
 
 type PointerInput = Extract<RemoteInputEvent, { type: "move" | "relative" }>;
@@ -113,7 +114,7 @@ export class RemoteInputSession {
   }
 
   input(event: RemoteInputEvent): void {
-    if ((event.type === "gamepad" || event.type === "gamepad-reset") && (!this.state || !remoteGamepadAvailable(this.state))) return;
+    if ((event.type === "gamepad" || event.type === "gamepad-reset" || event.type === "gamepad-stop") && (!this.state || !remoteGamepadAvailable(this.state))) return;
     if (this.state && event.type === "text" && !remoteTextAvailable(this.state)) return;
     if (event.type === "move" || event.type === "relative") {
       if (this.state?.state !== "active") return;
@@ -146,7 +147,7 @@ export class RemoteInputSession {
   private sendInput(event: RemoteInputEvent): void {
     const state = this.state;
     if (!this.intent || !state?.grant || state.intent !== this.intent ||
-        (state.state !== "active" && !((event.type === "reset" || event.type === "gamepad-reset") && state.state === "suspended"))) return;
+        (state.state !== "active" && !((event.type === "reset" || event.type === "gamepad-reset" || event.type === "gamepad-stop") && state.state === "suspended"))) return;
     this.send({ ...event, grant: state.grant });
   }
 

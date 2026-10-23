@@ -107,6 +107,7 @@ type connection struct {
 	buttons   map[int]bool
 	pad       gamepadDevice
 	padFailed bool
+	padIntent uint64
 }
 
 type endpointKey struct {
@@ -528,7 +529,9 @@ func (m *Manager) applyCoPlay(c *connection, b bounds, event inputEvent) error {
 		}
 		if event.Down {
 			if c.keys[event.Code] {
-				return nil
+				// Repeat from an existing holder is intentional keyboard input.
+				// Only another player's initial press is deduplicated below.
+				return m.sink.Apply(b, event)
 			}
 			held := m.keyHeld(event.Code)
 			if c.keys == nil {
@@ -630,7 +633,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 		if c.grant == "" || event.Grant != c.grant || !c.owner.available() {
 			return
 		}
-		if event.Type == "gamepad" || event.Type == "gamepad-reset" {
+		if event.Type == "gamepad" || event.Type == "gamepad-reset" || event.Type == "gamepad-stop" {
 			m.receiveGamepad(c, event)
 			return
 		}

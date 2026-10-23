@@ -20,7 +20,7 @@ export function RemoteControlRequestCard({ name, peerId, state,
     </div>}
     <div className="lr-remote-request-info">
       <p className="lr-remote-request-details">
-        <Glyph name={pending ? "clock" : "mouse"} size={14} />
+        <Glyph name={pending ? "clock" : state === "suspended" ? "pause" : "mouse"} size={14} />
         <span className={vis ? "visually-hidden" : undefined}>{t(pending ? "remote.waiting" : state === "suspended" ? "remote.hostFocus" : "remote.controlling")}</span>
       </p>
       {failed && <p role="alert"><Glyph name="alert" size={14} />
