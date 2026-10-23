@@ -80,9 +80,11 @@ export function Couch({
         host.you ? t("common.you") : null, hostVoice ? voiceLabel(hostVoice) : null].filter(Boolean).join(comma)
     : undefined;
   const collaborationLabel = () => t("remote.participant.control");
-  const personHint = (name: string, voice?: VoicePresentation, collaboration?: CouchEntry["collaboration"]) => {
+  const personHint = (name: string, voice?: VoicePresentation, collaboration?: CouchEntry["collaboration"], isHost = false) => {
     const kind = participantAction ? "hint-reaction-picker" as const : collaboration ? "hint-remote-control" as const
-      : voice?.appearance?.deafened ? "hint-voice-deafen" as const : voice?.appearance?.microphone ? "hint-microphone-on" as const : voice ? "hint-microphone-off" as const : undefined;
+      : voice?.appearance?.deafened ? "hint-voice-deafen" as const
+      : voice?.appearance?.microphone ? isHost ? "hint-microphone-on" as const : "hint-voice-microphone-on" as const
+      : voice ? isHost ? "hint-microphone-off" as const : "hint-voice-microphone-off" as const : undefined;
     const status = [voice && voiceLabel(voice), collaboration && collaborationLabel()].filter(Boolean).join(comma);
     const overflow = { text: name, selector: ".lr-pawn-name" };
     return kind ? { kind, text: vis ? undefined : [status, participantAction && t("interaction.express")].filter(Boolean).join("\n"), overflow }
@@ -110,7 +112,7 @@ export function Couch({
           aria-label={[t("common.host"), t("common.viewers")].join(comma)}
         >
           {host ? (
-            <span className="lr-seat" data-room-peer={host.key} style={seatStyle(0)}><Tooltip {...personHint(host.name, hostVoice)}>
+            <span className="lr-seat" data-room-peer={host.key} style={seatStyle(0)}><Tooltip {...personHint(host.name, hostVoice, undefined, true)}>
               {host.onSelect || participantAction ? (
                   <button
                     type="button"
