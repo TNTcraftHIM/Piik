@@ -20,12 +20,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   Final integration includes the accumulated maintenance changes, published
   App/Site compatibility, input retirement, shared UI/status ownership and
   responsive presentation before the owner reviews a release candidate.
-- [ ] **Retired streamer microphone cleanup.** Current room voice owns speech,
-  but the native control reader still supports published stream-microphone
-  commands. Remove unused current-Web wrappers and separate that legacy capture
-  responsibility from the stable source-audio output still needed for live audio
-  changes and share volume. Decide the public support boundary before removing
-  the App commands; do not replace them with a general compatibility framework.
+- [ ] **Source commentary acceptance.** Verify the restored optional share
+  microphone alongside independent room voice, including both enabled, new-share
+  default-off and share retirement. The existing source mixer now serves current
+  UI; this is acceptance work, not removal of a retired microphone path.
 - [ ] **Current-phase PR attribution.** Review and incorporate the focused
   [#496](https://github.com/TNTcraftHIM/Piik/pull/496) fix with its original author.
   The owner permits co-author attribution on this phase's squash as a one-off

@@ -262,6 +262,19 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			return nil, err
 		}
 		return response(envelope, "remote-control-set"), nil
+	case "set-remote-control-simultaneous":
+		var request remoteControlSimultaneousRequest
+		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) || request.Enabled == nil {
+			return nil, protocolViolation("native simultaneous control policy is invalid")
+		}
+		host := session.current(request.ShareID)
+		if host == nil {
+			return nil, errors.New("native share does not exist")
+		}
+		if err := host.SetRemoteInputSimultaneous(*request.Enabled); err != nil {
+			return nil, err
+		}
+		return response(envelope, "remote-control-set"), nil
 	case "get-remote-stop-shortcut", "set-remote-stop-shortcut":
 		var request remoteStopShortcutRequest
 		if err := decodeStrict(payload, &request); err != nil || !validIdentities(request.ShareID) ||

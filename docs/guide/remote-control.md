@@ -25,7 +25,9 @@ camera capture cannot receive remote input.
 
 Play together and virtual gamepads are candidate features awaiting acceptance.
 
-1. Enable **Remote control** as above; no separate multiplayer switch is needed.
+1. Enable **Remote control** as above, then turn on **Allow simultaneous control**.
+   This setting starts off for each source. Changing it ends current requests and
+   control grants; the authorization mode and password stay in place.
 2. Each friend selects **Request control**. Approve them using the same
    authorization choice as ordinary remote control.
 3. In the game, assign different keyboard bindings to each player, such as

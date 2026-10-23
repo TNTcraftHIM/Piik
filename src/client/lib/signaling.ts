@@ -157,13 +157,13 @@ export class SignalingClient {
     }
   }
 
-  enableRoomVoice(): RoomVoiceSession | null {
+  enableRoomVoice({ listeningPresence = false }: { listeningPresence?: boolean } = {}): RoomVoiceSession | null {
     if (this.stopped) return null;
     if (!this.roomVoice) {
-      this.roomVoice = new RoomVoiceSession(message => this.send(message), this.voiceIceConfig);
+      this.roomVoice = new RoomVoiceSession(message => this.send(message), this.voiceIceConfig, listeningPresence);
       if (this.authenticatedPeerId) {
         this.roomVoice.authenticated(this.authenticatedPeerId, this.identity.role);
-        this.send({ type: "subscribe-room-voice" });
+        this.roomVoice.subscribeRoom();
       }
     }
     return this.roomVoice;
@@ -491,7 +491,7 @@ export class SignalingClient {
         if (this.roomVoice) {
           this.roomVoice.updateIceConfig(message.iceConfig);
           this.roomVoice.authenticated(message.peerId, this.identity.role);
-          this.send({ type: "subscribe-room-voice" });
+          this.roomVoice.subscribeRoom();
         }
         if (this.remoteInputEnabled) this.send({ type: "subscribe-remote-input" });
         // Discovery can complete after the authentication request was sent.

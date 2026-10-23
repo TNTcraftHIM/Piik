@@ -294,7 +294,7 @@ const remoteControlRequestSchema = z.object({
 }).strict();
 export type RemoteControlRequest = z.infer<typeof remoteControlRequestSchema>;
 
-export const remoteControlStateSchema = z.object({ mode: remoteControlModeSchema, platform: remoteInputPlatformSchema, requests: z.array(remoteControlRequestSchema), coPlay: z.boolean().optional(), gamepad: z.boolean().optional() });
+export const remoteControlStateSchema = z.object({ mode: remoteControlModeSchema, platform: remoteInputPlatformSchema, requests: z.array(remoteControlRequestSchema), coPlay: z.boolean().optional(), gamepad: z.boolean().optional(), simultaneous: z.boolean().optional() });
 export type RemoteControlState = z.infer<typeof remoteControlStateSchema>;
 
 export const nativeEventSchema = z.discriminatedUnion("type", [

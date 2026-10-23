@@ -89,6 +89,12 @@ type remoteControlStateEvent struct {
 	remoteinput.State
 }
 
+type remoteControlSimultaneousRequest struct {
+	requestEnvelope
+	ShareID string `json:"shareId"`
+	Enabled *bool  `json:"enabled"`
+}
+
 type remoteStopShortcutRequest struct {
 	requestEnvelope
 	ShareID string `json:"shareId"`

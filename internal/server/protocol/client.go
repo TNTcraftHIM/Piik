@@ -221,7 +221,18 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 	case "set-relay-volunteer":
 		return decodeSetRelayVolunteer(data)
 	case "subscribe-room-voice":
-		return decodeEmptyClientMessage(data, SubscribeRoomVoiceMessage{Type: messageType})
+		var v SubscribeRoomVoiceMessage
+		f, err := decodeObject(data, &v)
+		if err != nil {
+			return nil, err
+		}
+		if err = f.require("type"); err != nil {
+			return nil, err
+		}
+		if err = f.optional("deafened"); err != nil {
+			return nil, err
+		}
+		return v, nil
 	case "room-voice-command":
 		return decodeRoomVoiceCommand(data)
 	case "room-voice-signal":

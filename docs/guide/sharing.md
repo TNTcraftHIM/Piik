@@ -20,6 +20,14 @@ and sound still adapt to the source, device and available bandwidth.
 Applied settings are remembered for the current site. Opening Piik through an
 updated App also keeps sharing-quality settings when a public-invite address changes.
 
+### Include your microphone
+
+Under **Sharing settings → Sound**, enable **Include my microphone** to add your
+voice to the shared picture. It starts off for each new share and stops with
+sharing. Viewers hear it through the picture's sound without joining room voice.
+Room voice remains independent. If you enable both microphones, listeners may
+hear you twice; Piik warns you and leaves the choice to you.
+
 ## Cameras and virtual audio inputs
 
 Camera sharing requests only video permission. In the **Camera** tab, allow
@@ -28,14 +36,14 @@ on browser permissions; while a camera is shared, other cameras are listed by na
 A camera with a built-in microphone still needs separate video and audio input
 selection. OBS Virtual Camera supplies video only. To include OBS audio, follow
 the [OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tutorial/),
-then choose that input in [room voice’s microphone settings](./room-tools.md#room-voice) and turn it on.
-This is the conversation channel, separate from the camera picture and source sound.
+then choose that input for source commentary under **Sharing settings → Sound**,
+or use [room voice’s microphone settings](./room-tools.md#room-voice) for the separate conversation channel.
 
 ## Exclude a voice app from screen audio
 
 On Windows, this control applies to system sound from **Screens**. **Apps / Windows**
 captures only the selected application's process tree. **Camera** shares video;
-its microphone or virtual audio input uses room voice separately.
+its microphone or virtual audio input requires explicitly enabled source commentary or room voice.
 
 On supported Windows Apps, open the **Screens** tab and enable **System sound**.
 Under **Exclude application audio**, select a window belonging to the voice app,

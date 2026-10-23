@@ -195,9 +195,13 @@ membership; grants and encrypted input stay bound to the current route and sourc
 Changing the source, stopping sharing, authorization loss or route retirement
 releases the corresponding grants and held input. Reconnection requires a new grant.
 
-Enabling Remote control allows concurrent approved, capability-negotiated
-Viewers to share the existing keyboard and mouse through the same authorization
-choice. Older published clients retain the exclusive keyboard/mouse baseline.
+Remote control defaults to one controller. The Host can enable **Allow
+simultaneous control** for the current source so approved, capability-negotiated
+Viewers share input through the same authorization choice. Changing this setting
+retires current requests and grants without changing the authorization mode or
+password; replacing the source resets it off. Older published clients retain the
+exclusive keyboard/mouse baseline. Gamepad support and participant presentation
+remain available with simultaneous control off.
 Held keys and mouse buttons belong to each grant; releasing one
 participant cannot release another's still-held inputs. All approved keyboard/mouse
 grants contribute to the same pointer, with no per-player mouse assignment or

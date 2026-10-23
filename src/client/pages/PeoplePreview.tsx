@@ -56,8 +56,9 @@ export function PeoplePreview() {
   const roomVoice: RoomVoiceState | null = voice ? {
     type: "room-voice-state", revision: 1, enabled: true, hostPeerId: HOST_ID,
     members: [{ peerId: HOST_ID, connected: true, joined: true, upstream: { kind: "none" }, publicationId: "preview-host-voice" },
-      ...viewers.map((viewer, index) => ({ peerId: viewer.peerId, connected: true, joined: index % 4 !== 3,
-        upstream: viewer.upstream, publicationId: index % 2 === 0 ? `preview-voice-${index}` : undefined }))],
+      ...viewers.map((viewer, index) => ({ peerId: viewer.peerId, connected: true, joined: index % 5 !== 4,
+        upstream: index % 5 === 4 ? { kind: "none" as const } : viewer.upstream, deafened: index % 4 >= 2,
+        publicationId: index % 5 !== 4 && (index % 4 === 0 || index % 4 === 3) ? `preview-voice-${index}` : undefined }))],
     publications: [], connections: [], unavailable: [],
   } : null;
   const connectionFor = (viewer: (typeof viewers)[number]) => participantConnection(viewer, picture, roomVoice);

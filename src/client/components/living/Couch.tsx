@@ -9,6 +9,9 @@ import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { Tooltip } from "./Tooltip";
 import type { CoPlayParticipant, RoomVoiceState } from "../../../shared/protocol";
+import { describeVoiceParticipant } from "../../room-voice/participant-presentation";
+
+type VoicePresentation = ReturnType<typeof describeVoiceParticipant>;
 
 export interface CouchEntry {
   key: string;
@@ -53,7 +56,8 @@ export function Couch({
   participantAction,
   footerAction,
 }: CouchProps) {
-  const { t, vis } = useCopy();
+  const { t, vis, lang } = useCopy();
+  const comma = lang === "zh" ? "，" : ", ";
   const [couchRef, containerWidth] = useElementWidth();
   const count = entries.length + (host ? 1 : 0);
   const capacity = Math.max(2, Math.min(8, Math.floor((containerWidth - 64) / 72)));
@@ -66,23 +70,23 @@ export function Couch({
     return { gridRow: row + 1, gridColumn: `${(index % columns) * 2 + 1 + columns - inRow} / span 2` };
   };
   const voiceFor = (key: string) => {
-    const member = voiceState?.enabled ? voiceState.members.find(member => member.peerId === key && member.connected && member.joined) : undefined;
-    return member ? member.publicationId ? "open" as const : "muted" as const : undefined;
+    const state = describeVoiceParticipant(voiceState?.enabled ? voiceState.members.find(member => member.peerId === key) : undefined);
+    return state.appearance ? state : undefined;
   };
-  const voiceLabel = (voice: "open" | "muted") => t(voice === "open" ? "voice.microphoneActive" : "voice.microphoneInactive");
+  const voiceLabel = (voice: VoicePresentation) => [t(voice.label), voice.appearance?.deafened && t("voice.listeningPaused")].filter(Boolean).join(comma);
   const hostVoice = host ? voiceFor(host.key) : undefined;
   const hostLabel = host
     ? [host.name, host.name === t("common.host") ? null : t("common.host"),
-        host.you ? t("common.you") : null, hostVoice ? voiceLabel(hostVoice) : null].filter(Boolean).join(" · ")
+        host.you ? t("common.you") : null, hostVoice ? voiceLabel(hostVoice) : null].filter(Boolean).join(comma)
     : undefined;
   const collaborationLabel = (device: NonNullable<CouchEntry["collaboration"]>) =>
     t(device === "gamepad" ? "remote.participant.gamepad" : "remote.participant.keyboardMouse");
-  const personHint = (name: string, voice?: "open" | "muted", collaboration?: CouchEntry["collaboration"]) => {
+  const personHint = (name: string, voice?: VoicePresentation, collaboration?: CouchEntry["collaboration"]) => {
     const kind = participantAction ? "hint-reaction-picker" as const : collaboration ? "hint-remote-control" as const
-      : voice === "open" ? "hint-microphone-on" as const : voice === "muted" ? "hint-microphone-off" as const : undefined;
-    const status = [voice && voiceLabel(voice), collaboration && collaborationLabel(collaboration)].filter(Boolean).join(" · ");
-    const overflow = { text: [name, status].filter(Boolean).join(" · "), selector: ".lr-pawn-name" };
-    return kind ? { kind, text: vis ? undefined : [status, participantAction && t("interaction.express")].filter(Boolean).join(" · "), overflow }
+      : voice?.appearance?.deafened ? "hint-voice-deafen" as const : voice?.appearance?.microphone ? "hint-microphone-on" as const : voice ? "hint-microphone-off" as const : undefined;
+    const status = [voice && voiceLabel(voice), collaboration && collaborationLabel(collaboration)].filter(Boolean).join(comma);
+    const overflow = { text: name, selector: ".lr-pawn-name" };
+    return kind ? { kind, text: vis ? undefined : [status, participantAction && t("interaction.express")].filter(Boolean).join("\n"), overflow }
       : { overflow };
   };
 
@@ -104,7 +108,7 @@ export function Couch({
           className="lr-pawns"
           style={{ gridTemplateColumns: `repeat(${columns * 2}, minmax(0, 1fr))` }}
           role="group"
-          aria-label={`${t("common.host")} · ${t("common.viewers")}`}
+          aria-label={[t("common.host"), t("common.viewers")].join(comma)}
         >
           {host ? (
             <span className="lr-seat" data-room-peer={host.key} style={seatStyle(0)}><Tooltip {...personHint(host.name, hostVoice)}>
@@ -118,8 +122,7 @@ export function Couch({
                     aria-controls={participantAction?.controls ?? host.controls}
                     onClick={event => participantAction ? participantAction.open(host.key, event.currentTarget) : host.onSelect?.()}
                   >
-                    <PawnSvg color={participantColor(host.key)} identity={host.key} host />
-                    <ParticipantBadges voice={hostVoice} />
+                    <PawnSvg color={participantColor(host.key)} identity={host.key} host voice={hostVoice?.appearance} />
                     <span className="lr-pawn-name">{host.name}</span>
                   </button>
                 ) : (
@@ -128,8 +131,7 @@ export function Couch({
                     role="img"
                     aria-label={hostLabel}
                   >
-                    <PawnSvg color={participantColor(host.key)} identity={host.key} host />
-                    <ParticipantBadges voice={hostVoice} />
+                    <PawnSvg color={participantColor(host.key)} identity={host.key} host voice={hostVoice?.appearance} />
                     <span className="lr-pawn-name">{host.name}</span>
                   </span>
                 )}
@@ -139,11 +141,10 @@ export function Couch({
             const stateLabel = t(entry.status.labelKey);
             const voice = voiceFor(entry.key);
             const label = [entry.name, entry.you && t("common.you"), stateLabel,
-              voice && voiceLabel(voice), entry.collaboration && collaborationLabel(entry.collaboration)].filter(Boolean).join(" · ");
+              voice && voiceLabel(voice), entry.collaboration && collaborationLabel(entry.collaboration)].filter(Boolean).join(comma);
             const inner = (
               <>
-                <PawnSvg color={participantColor(entry.key)} identity={entry.key} />
-                <ParticipantBadges voice={voice} collaboration={entry.collaboration} />
+                <PawnSvg color={participantColor(entry.key)} identity={entry.key} voice={voice?.appearance} collaboration={entry.collaboration} />
                 {view === "host" ? <i className="lr-pawn-led" data-tone={entry.status.tone}
                   data-pulse={entry.status.pulse || undefined} aria-hidden="true" /> : null}
                 <span className="lr-pawn-name">
@@ -200,15 +201,4 @@ export function Couch({
       ) : null}
     </div>
   );
-}
-
-function ParticipantBadges({ voice, collaboration }: { voice?: "open" | "muted"; collaboration?: CouchEntry["collaboration"] }) {
-  return <>
-    {voice && <span className={`lr-pawn-badge is-voice${voice === "muted" ? " is-muted" : ""}`} aria-hidden="true">
-      <Glyph name={voice === "open" ? "microphone" : "microphoneOff"} size={14} />
-    </span>}
-    {collaboration && <span className="lr-pawn-badge is-collaboration" aria-hidden="true">
-      <Glyph name={collaboration === "gamepad" ? "gamepad" : "mouse"} size={14} />
-    </span>}
-  </>;
 }

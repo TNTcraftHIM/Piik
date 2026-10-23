@@ -63,11 +63,14 @@ over a reused comic's default; text and pure-visual tooltips retain that context
 - Viewer couch: pawns have no round lamps. While awaiting media readiness a
   pawn's body breathes gently; it becomes still when ready. This expresses the
   same roster fact without claiming to know other Viewers' quality.
-- Pawn badges describe participation separately: microphone or crossed microphone
-  for a current voice member, and mouse or gamepad for an approved collaborator.
-  They use the existing voice membership/publication and native grant owners;
-  leaving either activity removes only its badge. These are not connection lamps
-  or new speaking/activity signals.
+- Pawn accessories describe participation separately: a joined voice member wears
+  a headset, with its boom folded when the microphone is off and a crossed earcup
+  when local listening is paused. Approved collaborators hold a keyboard or
+  gamepad. The shared SVG and motion owner renders these from existing voice
+  membership/publication, local listening and native grant facts; leaving either
+  activity removes only its accessory. Pausing listening does not mute the
+  microphone or change forwarding or routes. The route lamp remains separate;
+  these accessories do not assert connection health or speaking activity.
 - Header: the page's connection to the room server. Its control-link comics
   show a Browser and server, not a failed video path. A media-route failure can
   coexist with a healthy server connection, and vice versa.

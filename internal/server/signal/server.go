@@ -1233,7 +1233,7 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 	case protocol.SetRelayVolunteerMessage:
 		s.setRelayVolunteer(sess, authenticated, m)
 	case protocol.SubscribeRoomVoiceMessage:
-		s.subscribeRoomVoice(sess, authenticated)
+		s.subscribeRoomVoice(sess, authenticated, m.Deafened)
 	case protocol.RoomVoiceCommandMessage:
 		s.handleRoomVoiceCommand(sess, authenticated, m.Command)
 	case protocol.RoomVoiceSignalMessage:

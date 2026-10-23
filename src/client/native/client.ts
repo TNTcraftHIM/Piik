@@ -723,6 +723,10 @@ export class NativeClient {
     await this.request("set-remote-input-peers", { shareId, peers }, nativeAckResponseSchema);
   }
 
+  async setRemoteControlSimultaneous(shareId: string, enabled: boolean): Promise<void> {
+    await this.request("set-remote-control-simultaneous", { shareId, enabled }, nativeAckResponseSchema);
+  }
+
   async stopShare(shareId: string): Promise<void> {
     if (this.microphoneVolumeUpdate?.shareId === shareId) this.microphoneVolumeUpdate = null;
     await this.request("stop-share", { shareId }, nativeAckResponseSchema);

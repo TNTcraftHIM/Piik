@@ -215,7 +215,7 @@ controls and overlays keep their own immediate behavior.
 Host source-audio feedback describes the selected source independently of room
 voice. Viewer picture-sound controls require a received audio track and,
 when the Host supplies input availability, an available source or microphone
-input (including published commentary from older Hosts). With no input, sound controls are disabled with the no-audio explanation;
+input, including explicitly enabled source commentary. With no input, sound controls are disabled with the no-audio explanation;
 the Viewer's volume and mute preferences remain intact for audio returning.
 Older Hosts without this fact retain received-track feedback. These controls do
 not infer input presence from silence or change capture, transport or relay audio.

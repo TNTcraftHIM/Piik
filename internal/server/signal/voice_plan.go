@@ -72,6 +72,16 @@ func (s *Server) syncRoomVoice(roomID string) {
 		if sess == nil {
 			continue
 		}
+		recipientMembers := members
+		if sess.roomVoiceListeningPresence {
+			recipientMembers = append([]protocol.VoiceMember(nil), members...)
+			for i := range recipientMembers {
+				member := &recipientMembers[i]
+				if member.Connected {
+					member.Deafened = v.members[member.PeerID].deafened
+				}
+			}
+		}
 		connections := []protocol.VoiceConnection{}
 		for _, edge := range edges {
 			if peerID != edge.parent && peerID != edge.child {
@@ -88,7 +98,7 @@ func (s *Server) syncRoomVoice(roomID string) {
 		}
 		sort.Slice(connections, func(i, j int) bool { return connections[i].ConnectionID < connections[j].ConnectionID })
 		s.send(sess, protocol.RoomVoiceStateMessage{Type: "room-voice-state", Revision: protocol.Int(v.revision), Enabled: v.enabled(),
-			HostPeerID: hostID, Members: members, Publications: pubs, Connections: connections,
+			HostPeerID: hostID, Members: recipientMembers, Publications: pubs, Connections: connections,
 			Unavailable: append([]string{}, unavailable[peerID]...)})
 	}
 }

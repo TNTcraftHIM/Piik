@@ -77,18 +77,19 @@ func (s *Server) route(
 			return
 		}
 		sendJSON(writer, http.StatusOK, protocol.RuntimeCapabilities{
-			Sfu:                  s.config.SFU != nil,
-			SfuOnly:              s.config.SFU != nil && s.config.SFU.Only,
-			NatPrediction:        s.config.NATPredictionEnabled && !(s.config.SFU != nil && s.config.SFU.Only),
-			RoomInteractions:     true,
-			RoomVoice:            true,
-			RelayVolunteer:       true,
-			RoomReactionIDs:      protocol.RoomReactionIDs,
-			RemoteInput:          true,
-			ViewerRouteSelection: true,
-			AudioPresence:        true,
-			CoPlayPresence:       true,
-			HostRoomSession:      true,
+			Sfu:                        s.config.SFU != nil,
+			SfuOnly:                    s.config.SFU != nil && s.config.SFU.Only,
+			NatPrediction:              s.config.NATPredictionEnabled && !(s.config.SFU != nil && s.config.SFU.Only),
+			RoomInteractions:           true,
+			RoomVoice:                  true,
+			RoomVoiceListeningPresence: true,
+			RelayVolunteer:             true,
+			RoomReactionIDs:            protocol.RoomReactionIDs,
+			RemoteInput:                true,
+			ViewerRouteSelection:       true,
+			AudioPresence:              true,
+			CoPlayPresence:             true,
+			HostRoomSession:            true,
 		})
 		return
 	}

@@ -583,6 +583,10 @@ func (session *Session) DecideRemoteInput(id string, allow bool) error {
 	return session.remoteInput.Decide(id, allow)
 }
 
+func (session *Session) SetRemoteInputSimultaneous(enabled bool) error {
+	return session.remoteInput.SetSimultaneous(enabled)
+}
+
 func (session *Session) syncRemoteInputSource(change *remoteinput.PolicyChange) {
 	session.mu.Lock()
 	target := session.videoOptions.Target

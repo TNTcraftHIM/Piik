@@ -23,17 +23,17 @@ it("keeps participant identity and actual Viewer readiness in their descriptions
     }],
   }));
   const hostView = render("host");
-  expect(hostView).toContain('aria-label="Host name · Host · you"');
+  expect(hostView).toContain('aria-label="Host name, Host, you"');
   expect(hostView).toContain('class="lr-pawn-led" data-tone="busy"');
   const viewerView = render("viewer");
-  expect(viewerView).toContain('aria-label="Host name · Host"');
-  expect(viewerView).toContain('aria-label="Viewer name · you · Routing"');
+  expect(viewerView).toContain('aria-label="Host name, Host"');
+  expect(viewerView).toContain('aria-label="Viewer name, you, Routing"');
   expect(viewerView).not.toContain('class="lr-pawn-led"');
   expect(viewerView).toContain('is-waiting');
   setCopy({ vis: false });
   const textMode = render("viewer");
-  expect(textMode).toContain('aria-label="Host name · Host"');
-  expect(textMode).toContain('aria-label="Viewer name · you · Routing"');
+  expect(textMode).toContain('aria-label="Host name, Host"');
+  expect(textMode).toContain('aria-label="Viewer name, you, Routing"');
 });
 
 it.each([
@@ -44,8 +44,9 @@ it.each([
   const html = renderToStaticMarkup(createElement(Couch, {
     view: "host", host: { key: "host", name, you: true }, entries: [],
   }));
-  expect(html).toContain(`aria-label="${name} · ${self}"`);
-  expect(html).not.toContain(`${name} · ${name}`);
+  const comma = lang === "zh" ? "，" : ", ";
+  expect(html).toContain(`aria-label="${name}${comma}${self}"`);
+  expect(html).not.toContain(`${name}${comma}${name}`);
   expect(html).not.toMatch(/Offline|离线|has-comic|tabindex="0"/);
 });
 

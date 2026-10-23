@@ -4,7 +4,8 @@ import "errors"
 
 // Voice is an opted-in room capability; it does not change the video messages.
 type SubscribeRoomVoiceMessage struct {
-	Type string `json:"type"`
+	Type     string `json:"type"`
+	Deafened *bool  `json:"deafened,omitempty"`
 }
 
 func (SubscribeRoomVoiceMessage) isClientMessage() {}
@@ -12,12 +13,16 @@ func (SubscribeRoomVoiceMessage) isClientMessage() {}
 type RoomVoiceCommand struct {
 	Action        string `json:"action"`
 	PublicationID string `json:"publicationId,omitempty"`
+	Deafened      *bool  `json:"deafened,omitempty"`
 }
 
 func (v RoomVoiceCommand) MarshalJSON() ([]byte, error) {
 	value := map[string]any{"action": v.Action}
 	if v.Action == "unpublish" {
 		value["publicationId"] = v.PublicationID
+	}
+	if v.Action == "deafen" {
+		value["deafened"] = v.Deafened
 	}
 	return marshalJSON(value)
 }
@@ -32,6 +37,13 @@ func (v *RoomVoiceCommand) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch v.Action {
+	case "deafen":
+		if err = f.require("deafened"); err != nil {
+			return err
+		}
+		if len(f) != 2 || v.Deafened == nil {
+			return errors.New("invalid voice listening state")
+		}
 	case "join", "leave", "publish":
 		if len(f) != 1 {
 			return errors.New("unexpected voice command fields")
@@ -122,6 +134,7 @@ type VoiceMember struct {
 	Joined        bool               `json:"joined"`
 	Upstream      MediaRouteUpstream `json:"upstream"`
 	PublicationID string             `json:"publicationId,omitempty"`
+	Deafened      *bool              `json:"deafened,omitempty"`
 }
 type VoicePublication struct {
 	ID     string `json:"id"`

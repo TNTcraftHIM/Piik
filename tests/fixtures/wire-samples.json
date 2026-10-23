@@ -44,6 +44,30 @@
   },
   "clientMessages": [
     {
+      "name": "voice listening subscription opt in",
+      "schema": "client",
+      "json": "{\"type\":\"subscribe-room-voice\",\"deafened\":false}",
+      "valid": true
+    },
+    {
+      "name": "voice listening subscription rejects null",
+      "schema": "client",
+      "json": "{\"type\":\"subscribe-room-voice\",\"deafened\":null}",
+      "valid": false
+    },
+    {
+      "name": "voice deafen command",
+      "schema": "client",
+      "json": "{\"type\":\"room-voice-command\",\"command\":{\"action\":\"deafen\",\"deafened\":true}}",
+      "valid": true
+    },
+    {
+      "name": "voice deafen requires boolean",
+      "schema": "client",
+      "json": "{\"type\":\"room-voice-command\",\"command\":{\"action\":\"deafen\",\"deafened\":null}}",
+      "valid": false
+    },
+    {
       "name": "viewer-route-selection",
       "schema": "client",
       "json": "{\"type\":\"set-viewer-route-preference\",\"preference\":\"sfu\"}",

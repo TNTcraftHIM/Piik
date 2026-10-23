@@ -702,8 +702,8 @@ lets remote participants act as local players in the Host's game. For Piik, this
 retains one shared picture. Games that support a shared keyboard can use separate
 key bindings for the Host and remote player without an input driver. Independent
 gamepads instead need per-player virtual controller slots. The co-play candidate
-admits concurrent approved players when the Host enables Remote control,
-without a separate multiplayer switch. Older published clients retain exclusive
+admits concurrent approved players when the Host enables **Allow simultaneous
+control** inside Remote control. It starts off for each new source. Older published clients retain exclusive
 keyboard/mouse control through capability negotiation. Held-key ownership is per
 grant, so one player's key-up does not release another's key. Mouse buttons have the same per-grant
 ownership. Approved keyboard/mouse players all contribute to one shared pointer;

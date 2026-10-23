@@ -24,6 +24,105 @@ function setup() {
 }
 afterEach(() => vi.unstubAllGlobals());
 
+class AudioNode {
+  connect = vi.fn();
+  disconnect = vi.fn();
+}
+class Context {
+  currentTime = 0;
+  state = "running";
+  close = vi.fn(async () => { this.state = "closed"; });
+  resume = vi.fn(async () => {});
+  createMediaStreamDestination() { return Object.assign(new AudioNode(), { stream: media(new Track("audio")) }); }
+  createMediaStreamSource = vi.fn(() => new AudioNode());
+  createGain() { return Object.assign(new AudioNode(), { gain: { value: 1, setTargetAtTime: vi.fn() } }); }
+  createAnalyser() { return Object.assign(new AudioNode(), { fftSize: 256, getFloatTimeDomainData: vi.fn() }); }
+}
+function mixerSetup() {
+  const { getUserMedia } = setup();
+  const contexts: Context[] = [];
+  vi.stubGlobal("AudioContext", class extends Context { constructor() { super(); contexts.push(this); } });
+  vi.stubGlobal("MediaStream", Stream);
+  return { getUserMedia, contexts };
+}
+
+test("failed optional mixing preserves source sharing and retires its partial graph", async () => {
+  const { getUserMedia } = mixerSetup();
+  const context = new Context();
+  context.resume.mockRejectedValueOnce(new Error("Audio unavailable"));
+  vi.stubGlobal("AudioContext", class { constructor() { return context; } });
+  const destination = vi.spyOn(context, "createMediaStreamDestination");
+  const video = new Track("video"), sound = new Track("audio"), source = media(video, sound);
+  const audio = new HostAudio(source);
+  expect(await audio.start()).toBe(source);
+  expect(audio.commentaryAvailable).toBe(false);
+  expect(audio.audioAvailable).toBe(true);
+  expect(video.stop).not.toHaveBeenCalled(); expect(sound.stop).not.toHaveBeenCalled();
+  expect(destination.mock.results[0]!.value.stream.getAudioTracks()[0].readyState).toBe("ended");
+  expect(context.close).toHaveBeenCalledOnce();
+  await expect(audio.setMicrophone(true, { deviceId: "", volume: 1, voiceProcessing: true })).rejects.toThrow("Shared audio is unavailable");
+  expect(getUserMedia).not.toHaveBeenCalled();
+  const nextSound = new Track("audio"), replacement = media(video, nextSound);
+  expect(audio.attach(replacement)).toBe(replacement);
+  expect(sound.stop).toHaveBeenCalledOnce();
+  audio.dispose();
+  expect(nextSound.stop).toHaveBeenCalledOnce(); expect(video.stop).not.toHaveBeenCalled();
+});
+
+test("commentary and source replacement retain one published output and retire their own inputs", async () => {
+  const { getUserMedia, contexts } = mixerSetup();
+  const microphone = new Track("audio"), nextMic = new Track("audio"), video = new Track("video"), sound = new Track("audio");
+  const changed = vi.fn(), microphoneChanged = vi.fn();
+  const audio = new HostAudio(media(video, sound), "browser", changed, microphoneChanged);
+  const output = await audio.start(), outputTrack = output.getAudioTracks()[0];
+  expect(audio.commentaryAvailable).toBe(true);
+  getUserMedia.mockResolvedValueOnce(media(microphone));
+  await audio.setMicrophone(true, { deviceId: "headset", volume: 1, voiceProcessing: true });
+  expect(getUserMedia).toHaveBeenCalledWith({ audio: expect.objectContaining({ deviceId: { exact: "headset" }, echoCancellation: true }), video: false });
+  const nextVideo = new Track("video");
+  const replacement = audio.attach(media(nextVideo), "camera");
+  expect(replacement.getAudioTracks()[0]).toBe(outputTrack);
+  expect(replacement.getVideoTracks()[0]).toBe(nextVideo);
+  expect(audio.sourceAudioAvailable).toBe(false);
+  expect(audio.audioAvailable).toBe(true);
+  expect(sound.stop).toHaveBeenCalledOnce();
+  getUserMedia.mockRejectedValueOnce(new Error("Device unavailable"));
+  await expect(audio.setMicrophone(true, { deviceId: "missing", volume: 1, voiceProcessing: true })).rejects.toThrow("Device unavailable");
+  expect(audio.audioAvailable).toBe(true);
+  expect(microphone.stop).not.toHaveBeenCalled();
+  getUserMedia.mockResolvedValueOnce(media(nextMic));
+  changed.mockClear();
+  microphoneChanged.mockClear();
+  await audio.setMicrophone(true, { deviceId: "other", volume: .5, voiceProcessing: false });
+  expect(changed).toHaveBeenCalledExactlyOnceWith(true);
+  expect(microphoneChanged).toHaveBeenCalledExactlyOnceWith(true);
+  expect(microphone.stop).toHaveBeenCalledOnce();
+  expect(outputTrack.readyState).toBe("live");
+  await audio.setMicrophone(false, { deviceId: "", volume: 1, voiceProcessing: true });
+  expect(nextMic.stop).toHaveBeenCalledOnce();
+  expect(changed).toHaveBeenLastCalledWith(false);
+  expect(contexts[0]!.close).not.toHaveBeenCalled();
+  audio.dispose();
+  expect(outputTrack.readyState).toBe("ended");
+  expect(contexts.every(context => context.state === "closed")).toBe(true);
+  expect(nextVideo.stop).not.toHaveBeenCalled();
+});
+
+test("ending a share retires microphone permission completed after disposal", async () => {
+  const { getUserMedia, contexts } = mixerSetup();
+  let complete!: (stream: MediaStream) => void;
+  getUserMedia.mockReturnValue(new Promise<MediaStream>(resolve => { complete = resolve; }));
+  const microphone = new Track("audio"), enabled = vi.fn();
+  const audio = new HostAudio(media(new Track("video")), "browser", () => {}, enabled);
+  await audio.start();
+  const pending = audio.setMicrophone(true, { deviceId: "", volume: 1, voiceProcessing: true });
+  await Promise.resolve();
+  audio.dispose(); complete(media(microphone)); await pending;
+  expect(microphone.stop).toHaveBeenCalledOnce();
+  expect(enabled).not.toHaveBeenCalledWith(true);
+  expect(contexts.every(context => context.state === "closed")).toBe(true);
+});
+
 test("source-audio availability follows live input and replacement without owning video or room voice", () => {
   const video = new Track("video"), sound = new Track("audio"), next = new Track("audio");
   const changed = vi.fn(), audio = new HostAudio(media(video, sound), "browser", changed);

@@ -15,6 +15,7 @@ import type { InteractionPayload } from "../../shared/protocol";
 import { REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { SharingSettings } from "../components/living/SharingSettings";
+import { ShareMicrophoneSettings } from "../components/living/ShareMicrophoneSettings";
 import { HostShareControls } from "../components/living/HostShareControls";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
 import type { RemoteControlMode } from "../remote-control/protocol";
@@ -55,6 +56,8 @@ export function ControlsPreview() {
   const en = lang === "en";
   const displayPreview = new URLSearchParams(window.location.search).get("source") === "display";
   const [sound, setSound] = useState(true);
+  const [commentary, setCommentary] = useState(false);
+  const [commentaryInput, setCommentaryInput] = useState({ deviceId: "", volume: 1, voiceProcessing: true });
   const [excludedAudio, setExcludedAudio] = useState<NativeCaptureTarget | undefined>(SOURCES.sources[2]);
   const [sharingSettings, setSharingSettings] = useState(false);
   const [remoteMode, setRemoteMode] = useState<RemoteControlMode>("off");
@@ -166,6 +169,11 @@ export function ControlsPreview() {
               hint={sound ? "hint-stop-audio" : "hint-share-audio"} />
             <LiveAudioExclusion load={previewApplications} value={excludedAudio} onChange={setExcludedAudio} disabled={!sound || paused} />
           </div>
+          <ShareMicrophoneSettings available enabled={commentary} onEnabled={setCommentary}
+            {...commentaryInput} loadDevices={async () => [{ id: "headset", label: "USB Headset" }, { id: "desk", label: "Desk Microphone" }]}
+            onVolume={volume => setCommentaryInput(current => ({ ...current, volume }))}
+            onDevice={deviceId => setCommentaryInput(current => ({ ...current, deviceId }))}
+            onVoiceProcessing={voiceProcessing => setCommentaryInput(current => ({ ...current, voiceProcessing }))} />
           <AudioBitrateControl value={quality.maxAudioBitrate ?? QUALITY_PROFILES["1080p30"].maxAudioBitrate} max={MAX_SCREEN_AUDIO_BITRATE}
             disabled={false} onChange={maxAudioBitrate => setQuality(current => ({ ...current, maxAudioBitrate }))} />
           </>}
@@ -386,7 +394,7 @@ function InteractionControlsPreview() {
     <PlaybackControls videoRef={video} stream={null} canPlay={false} onPlay={() => {}}
       theaterMode={theater} onToggleTheater={() => setTheater(value => !value)} onReconnect={() => {}} reconnectAvailable={false}
       overlayAction={<RoomChatToggle session={session} />} />
-  </StageTv><RoomInteractions session={session} voice={voice}
+  </StageTv><RoomInteractions session={session} voice={voice} voiceState={voice.room}
     view={viewer ? "viewer" : "host"} host={{ key: "preview-host", name: "Piik", you: !viewer }} entries={
       Array.from({ length: crowded ? 20 : 1 }, (_, index) => ({
         key: index ? `preview-friend-${index}` : "preview-friend", name: index ? `Friend ${index + 1}` : "Piik friend",

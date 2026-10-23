@@ -141,3 +141,24 @@ func (s *Session) authorize(password string) string {
 	}
 	return ""
 }
+
+// Concurrent control changes the current source's grant policy, independently
+// of its authorization mode and password. Previous consent is retired.
+func (s *Session) SetSimultaneous(enabled bool) error {
+	if s == nil {
+		return errors.New("remote input is unavailable")
+	}
+	m := s.manager
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed || s.closed || !s.coPlay || s.mode == "off" || !s.available() {
+		return errors.New("remote input is unavailable")
+	}
+	if s.simultaneous == enabled {
+		return nil
+	}
+	s.cancelPolicy()
+	s.simultaneous = enabled
+	s.applyPolicy(s.mode, s.password, s.coPlay)
+	return nil
+}

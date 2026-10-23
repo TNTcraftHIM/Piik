@@ -144,6 +144,8 @@ describe("shared wire fixture", () => {
         "client:stop-sharing",
         "client:subscribe-co-play-presence",
         "client:subscribe-room-interactions",
+        "client:subscribe-room-voice",
+        "client:room-voice-command",
         "client:viewer-quality-evidence",
         "createRoomRequest",
         "replaceRoomRequest",

@@ -100,7 +100,7 @@ export function Tooltip({
   // long-press from a mouse right-click without reading vendor event fields.
   const touchGesture = useRef(false);
   const enabled = !disabled && (kind !== undefined || overflowing);
-  const caption = [overflowing ? overflow?.text : undefined, text].filter(Boolean).join(" · ") || undefined;
+  const caption = [overflowing ? overflow?.text : undefined, text].filter(Boolean).join("\n") || undefined;
   const interactionOpen = enabled && (hoverOpen || focusOpen || pressOpen);
   const trigger = isValidElement<{
       disabled?: boolean;

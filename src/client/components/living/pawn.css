@@ -1,5 +1,9 @@
 .lr-person { overflow: visible; }
 .lr-person-body { transform-origin: 24px 48px; }
+.lr-person-boom { transform-origin: 34px 18px; transition: transform 180ms ease; }
+.lr-person-boom.is-folded { transform: rotate(180deg); }
+.lr-person-held-device .lr-glyph > :first-child { fill: var(--paper); }
+@media (prefers-reduced-motion: reduce) { .lr-person-boom { transition: none; } }
 .lr-person-eyes { transform-origin: 24px 14.1px; }
 @media (prefers-reduced-motion: no-preference) {
   .lr-person[data-motion] .lr-person-body { animation: lr-person-lean var(--person-duration) ease-in-out infinite; }

@@ -685,16 +685,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-pawn:is(:hover, :focus-visible):not(.is-static) { transform: translateY(-3px); }
 .lr-pawn > .lr-person { width: 48px; height: 56px; display: block; }
-.lr-pawn-badge {
-  position: absolute; top: 28px;
-  display: grid; place-items: center; width: 20px; height: 20px;
-  border: 1.5px solid var(--paper); border-radius: 7px;
-  background: var(--primary); color: var(--primary-ink);
-  box-shadow: 0 1px 2px rgb(0 0 0 / .16); pointer-events: none;
-}
-.lr-pawn-badge.is-collaboration { left: calc(50% + 6px); }
-.lr-pawn-badge.is-voice { right: calc(50% + 6px); }
-.lr-pawn-badge.is-muted { background: var(--paper); color: var(--muted); }
 .lr-pawn-led {
   position: absolute;
   top: 2px;
@@ -1411,6 +1401,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-door-glyph { display: flex; align-items: center; gap: 10px; color: var(--muted); }
 .lr-door-glyph .lr-cap { font-size: 13px; }
 .lr-switch-item { display: inline-flex; align-items: center; gap: 9px; }
+.lr-switch-item > label { cursor: pointer; }
+.lr-switch-item:has([aria-disabled="true"], :disabled) > label { cursor: default; }
 
 /* ---------- join / access ---------- */
 
@@ -2104,6 +2096,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 
 .lr-comic-tip-caption {
   display: block;
+  white-space: pre-line;
 }
 .lr-comic-tip-content > svg + .lr-comic-tip-caption { margin-top: 8px; }
 

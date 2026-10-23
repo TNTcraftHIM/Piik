@@ -15,11 +15,13 @@
 .lr-voice-avatar:focus-visible { outline-offset: -3px; }
 .lr-voice-avatar > svg { width: 28px; height: 34px; }
 .lr-voice-identity > div { min-width: 0; }
-.lr-voice-identity b { display: flex; font-size: 13px; white-space: nowrap; }
+.lr-voice-identity b { display: flex; align-items: baseline; gap: 6px; font-size: 13px; white-space: nowrap; }
+.lr-voice-self { color: var(--muted); font-size: 11px; font-weight: 400; }
 .lr-voice-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .lr-voice-name + span { flex: none; }
-.lr-voice-identity small { display: flex; align-items: center; gap: 5px; margin-top: 3px; color: var(--muted); font-size: 12px; }
-.lr-voice-identity small > svg { flex: none; }
+.lr-voice-identity small { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 3px; color: var(--muted); font-size: 12px; }
+.lr-voice-state { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.lr-voice-state > svg { flex: none; }
 .lr-voice-member-controls { display: flex; flex: none; gap: 6px; align-items: center; }
 .lr-voice-person-volume { min-width: 4ch; text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .lr-voice-control-error { display: flex; flex-basis: 100%; gap: 6px; align-items: flex-start; margin: 0; color: var(--danger); font-size: 12px; line-height: 1.7; }

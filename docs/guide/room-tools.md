@@ -61,7 +61,10 @@ Voice stays connected when picture sharing stops. It also stays active when you
 close or detach the interaction window. Viewers choose **Leave voice** to leave;
 the Host's **Close room voice** ends voice for everyone. Reopening does not
 rejoin Viewers or turn on their microphones.
-Host speech uses this same room microphone; viewers join voice to hear it.
+Host speech in room voice uses this same room microphone; viewers join voice to hear it.
+The optional [share microphone](./sharing.md#include-your-microphone) instead travels
+with the picture and stops with sharing. Enabling both may deliver your speech twice;
+neither microphone switches or mutes the other automatically.
 Source sound stays with the picture. Room voice favors timely conversation and
 can arrive ahead of a delayed picture. Use headphones; whole-system sound sharing can include
 received voices, so [audio exclusion](./sharing.md#exclude-a-voice-app-from-screen-audio)

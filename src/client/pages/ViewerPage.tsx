@@ -669,7 +669,7 @@ export function ViewerPage({
       if (active && capabilities.audioPresence) signal.enableAudioPresence();
       if (active && capabilities.coPlayPresence) signal.enableCoPlayPresence();
       if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
-      if (active && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice());
+      if (active && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice({ listeningPresence: capabilities.roomVoiceListeningPresence }));
       if (active) {
         relayVolunteerAvailable = capabilities.relayVolunteer && !capabilities.sfuOnly;
         setRelayVolunteerSupported(relayVolunteerAvailable);

@@ -107,14 +107,15 @@ implementation and routine UI detail.
 Room voice integrates normal App/Server/Web rather than a
 standalone demo. It keeps room authority and one route controller while picture
 generations and explicitly joined voice publications have separate
-lifetimes. [Status](./status.md#current-work)
+lifetimes. Optional source commentary belongs to the share and can run
+independently of room voice. [Status](./status.md#current-work)
 indexes delivery and [room media](./standards/routing-transport.md#room-media)
 owns the new behavior.
 
 Optional attended input follows the committed media route back to the native
-Host. Enabling control admits multiple approved, capability-negotiated
-keyboard/mouse contributors and optional independent virtual gamepads; older
-published clients retain exclusive keyboard/mouse control. Source change, stop
+Host. Control starts with one grantee. The Host may allow simultaneous approved
+keyboard/mouse contributors and independent virtual gamepads for that source;
+older published clients retain exclusive keyboard/mouse control. Source change, stop
 and revocation retire the affected grants. It adds no separate connection planner
 or listener.
 Viewer playback preferences and the combined interaction window remain local

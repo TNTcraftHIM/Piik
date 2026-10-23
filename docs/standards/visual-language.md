@@ -34,6 +34,13 @@ ownership; do not reduce distinct situations to one layout with a swapped symbol
 
 ## Layout And Input
 
+Use spacing, alignment and type hierarchy to group UI facts. Write explanations
+as normal localized sentences; keep names, device labels, status and actions in
+their existing visual groups rather than joining them into dotted strings.
+A middle dot is reserved for short, genuinely peer metadata such as compact
+measurements or version details. It is not the default separator for headings,
+instructions, accessible descriptions or a label followed by an explanation.
+
 Present a small shared living room: the television is the media stage, the
 couch and pawns make presence spatial, and the four-digit room code stays
 prominent. Decoration must clarify product facts without creating another state

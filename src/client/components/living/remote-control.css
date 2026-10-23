@@ -31,6 +31,9 @@
 .lr-remote-panel p[role="alert"] { color: var(--danger); }
 .lr-remote-request p, .lr-remote-panel p[role="alert"] { display: flex; align-items: center; gap: 6px; }
 .lr-remote-request p > svg, .lr-remote-panel p[role="alert"] > svg { flex: none; }
+.lr-remote-request .lr-remote-request-details { flex-wrap: wrap; gap: 4px 12px; }
+.lr-remote-request-device { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.lr-remote-request-device > svg { flex: none; }
 .lr-remote-panel-body > .lr-remote-note + .lr-remote-note { margin-top: 8px; }
 .lr-remote-panel .lr-remote-note > svg { vertical-align: middle; }
 .lr-remote-note, .lr-remote-request p { color: var(--muted); }

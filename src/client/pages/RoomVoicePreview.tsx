@@ -25,7 +25,7 @@ export function useRoomVoicePreview(viewer: boolean) {
   const session = useMemo<RoomVoiceView>(() => {
     const snapshot: RoomVoiceSnapshot = { ...state, room: state.room && { ...state.room,
       members: state.room.members.map(member => member.peerId === state.peerId
-        ? { ...member, publicationId: state.microphone ? "preview-publication" : undefined } : member),
+        ? { ...member, publicationId: state.microphone ? "preview-publication" : undefined, deafened: state.deafened } : member),
     } };
     const command = (command: RoomVoiceCommand) => {
       if (command.action === "join" || command.action === "leave") {
@@ -61,7 +61,7 @@ export function useRoomVoicePreview(viewer: boolean) {
       }),
     };
   }, [state]);
-  return { controls: <RoomVoiceControls session={session} />,
+  return { room: session.getSnapshot().room, controls: <RoomVoiceControls session={session} />,
     settings: <RoomVoiceSettings session={session} />,
     content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void) =>
       <RoomVoicePanel session={session} names={names} onSelectParticipant={onSelect} /> };

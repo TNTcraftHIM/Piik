@@ -365,6 +365,12 @@ func coPlaySession(t *testing.T, m *Manager, extended ...bool) (*Session, []*con
 	if err := change.Apply(); err != nil {
 		t.Fatal(err)
 	}
+	if state := s.State(); state.Simultaneous == nil || *state.Simultaneous {
+		t.Fatal("new source enabled concurrent control by default")
+	}
+	if err := s.SetSimultaneous(true); err != nil {
+		t.Fatal(err)
+	}
 	var peers []protocol.RemoteInputPeer
 	for i := range extended {
 		digit := hex.EncodeToString([]byte{byte(i + 1)})
@@ -680,6 +686,87 @@ func TestCoPlaySharedKeyboardAndMouse(t *testing.T) {
 	m.Revoke()
 	if b.grant != "" || m.owner != nil || len(sink.resets) != 1 || s.mode != "ask" {
 		t.Fatal("Host stop left a player active")
+	}
+}
+
+func TestSimultaneousControlPreservesAuthorizationAndResetsForNewSource(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 64), resets: make(chan struct{}, 16), focused: true}
+	m := &Manager{sink: sink, gamepads: &recordedGamepads{}, connections: map[endpointKey]*connection{}}
+	s, players := coPlaySession(t, m, true, true)
+	if err := setTestPolicy(s, "password", "source-password"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSimultaneous(false); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range players {
+		s.passwordRetry = time.Time{}
+		sendTestInput(m, c, inputEvent{Type: "request", Password: "source-password"})
+	}
+	if players[0].grant == "" || players[1].grant != "" {
+		t.Fatal("single control admitted multiple participants")
+	}
+	if state := s.State(); !state.CoPlay || state.Gamepad == nil || !*state.Gamepad || state.Requests[0].EndpointID == "" {
+		t.Fatal("single control hid extended capabilities or participation")
+	}
+	if err := s.SetSimultaneous(true); err != nil {
+		t.Fatal(err)
+	}
+	if players[0].grant != "" || len(s.State().Requests) != 0 || s.mode != "password" {
+		t.Fatal("setting change retained grants or changed authorization")
+	}
+	for _, c := range players {
+		s.passwordRetry = time.Time{}
+		sendTestInput(m, c, inputEvent{Type: "request", Password: "source-password"})
+	}
+	if players[0].grant == "" || players[1].grant == "" {
+		t.Fatal("setting change lost password or failed to admit both participants")
+	}
+	if err := setTestPolicy(s, "ask", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !*s.State().Simultaneous {
+		t.Fatal("ordinary authorization update reset source concurrency")
+	}
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "next"}, nil)
+	change, err := s.BeginPolicy(t.Context(), "room", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer change.Close()
+	if err := change.Apply(); err != nil {
+		t.Fatal(err)
+	}
+	if *s.State().Simultaneous || !s.State().CoPlay {
+		t.Fatal("new source inherited concurrency or lost negotiated support")
+	}
+	if err := setTestPolicy(s, "ask", ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range players {
+		sendTestInput(m, c, inputEvent{Type: "request"})
+	}
+	if err := s.Decide(players[0].requestID, true); err != nil {
+		t.Fatal(err)
+	}
+	sendTestInput(m, players[0], inputEvent{Type: "key", Code: "KeyA", Down: true})
+	<-sink.events
+	if err := s.Decide(players[1].requestID, true); err != nil {
+		t.Fatal(err)
+	}
+	if players[0].grant != "" || players[1].grant == "" || m.owner != s || len(players[0].keys) != 0 {
+		t.Fatal("explicit Host approval did not hand over exclusive input")
+	}
+	other, otherPlayers := coPlaySession(t, m, true)
+	if err := setTestPolicy(other, "ask", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.SetSimultaneous(false); err != nil {
+		t.Fatal(err)
+	}
+	sendTestInput(m, otherPlayers[0], inputEvent{Type: "request"})
+	if err := other.Decide(otherPlayers[0].requestID, true); err == nil || players[1].grant == "" || m.owner != s {
+		t.Fatal("explicit approval displaced another source")
 	}
 }
 

@@ -7,9 +7,10 @@ import { PawnSvg } from "../components/living/Pawn";
 import { Tooltip } from "../components/living/Tooltip";
 import { participantColor } from "../components/living/participant-color";
 import { labelParticipantNames } from "../lib/viewer-presence";
-import { useCopy, type CopyKey } from "../ui/copy";
-import { Glyph, type GlyphName } from "../ui/icons";
-import type { RoomVoiceSession, RoomVoiceSnapshot } from "./session";
+import { useCopy } from "../ui/copy";
+import { Glyph } from "../ui/icons";
+import type { RoomVoiceSession } from "./session";
+import { describeVoiceParticipant } from "./participant-presentation";
 import "./room-voice.css";
 
 export type RoomVoiceView = Pick<RoomVoiceSession, "subscribe" | "getSnapshot" | "resumeAudio" | "command" |
@@ -84,12 +85,6 @@ export function RoomVoiceControls({ session }: Props) {
   </>;
 }
 
-function memberStatus(member: NonNullable<RoomVoiceSnapshot["room"]>["members"][number]): { label: CopyKey; icon: GlyphName } {
-  if (!member.connected) return { label: "voice.offline", icon: "wifiOff" };
-  if (member.publicationId) return { label: "voice.microphoneActive", icon: "microphone" };
-  return member.joined ? { label: "voice.microphoneInactive", icon: "microphoneOff" } : { label: "voice.outside", icon: "door" };
-}
-
 // Capture and transport belong to the session above this movable window.
 export function RoomVoiceSettings({ session }: Props) {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
@@ -129,7 +124,7 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
       <span className={vis ? "visually-hidden" : undefined}>{t("voice.reconnecting")}</span></p>}
     <div className="lr-voice-members">
       {members.map(member => {
-        const status = memberStatus(member);
+        const status = describeVoiceParticipant(member);
         const speaking = !!member.publicationId && (levels.get(member.peerId) ?? 0) > .01;
         return <article className="lr-voice-member" key={member.peerId} data-room-peer={member.peerId}>
           <div className="lr-voice-identity">
@@ -138,13 +133,16 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
               <button type="button" className="lr-voice-avatar"
               aria-label={t("interaction.withPerson", { name: member.label })}
               onClick={event => onSelectParticipant(member.peerId, event.currentTarget)}>
-              <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />
-            </button></Tooltip> : <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} />}
-            <div><Tooltip overflow={{ text: member.label, selector: ".lr-voice-name" }}><b><span className="lr-voice-name">{member.label}</span>{member.peerId === state.peerId && <span className={vis ? "visually-hidden" : undefined}>{` · ${t("voice.self")}`}</span>}</b></Tooltip>
-              <small><Glyph name={status.icon} size={14} />
+              <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} voice={status.appearance} />
+            </button></Tooltip> : <PawnSvg color={participantColor(member.peerId)} identity={member.peerId} host={member.peerId === state.room?.hostPeerId} voice={status.appearance} />}
+            <div><Tooltip overflow={{ text: member.label, selector: ".lr-voice-name" }}><b><span className="lr-voice-name">{member.label}</span>{member.peerId === state.peerId && <span className={vis ? "visually-hidden" : "lr-voice-self"}>{t("voice.self")}</span>}</b></Tooltip>
+              <small><span className="lr-voice-state"><Glyph name={status.icon} size={14} />
                 <span className="lr-voice-activity" data-speaking={speaking || undefined} aria-hidden="true" />
                 <span className={vis ? "visually-hidden" : undefined}>{t(status.label)}</span>
-                {speaking && <span className="visually-hidden">{t("voice.speaking")}</span>}</small></div>
+                {speaking && <span className="visually-hidden">{t("voice.speaking")}</span>}</span>
+                {status.appearance?.deafened && <span className="lr-voice-state"><Glyph name="headphonesOff" size={14} />
+                  <span className={vis ? "visually-hidden" : undefined}>{t("voice.listeningPaused")}</span></span>}
+              </small></div>
           </div>
           {member.peerId !== state.peerId && me?.joined && member.joined && <div className="lr-voice-member-controls">
             <span className="lr-voice-person-volume" aria-hidden="true">{Math.round((state.peerVolumes.get(member.peerId) ?? 1) * 100)}%</span>

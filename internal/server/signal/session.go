@@ -55,6 +55,7 @@ type session struct {
 	authenticated              *authenticatedSession
 	roomInteractions           bool
 	roomVoice                  bool
+	roomVoiceListeningPresence bool
 	audioPresence              bool
 	coPlayPresence             bool
 	remoteInput                bool

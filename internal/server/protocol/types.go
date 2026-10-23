@@ -185,18 +185,19 @@ func (v *RoutePolicy) UnmarshalJSON(data []byte) error {
 
 // RuntimeCapabilities mirrors runtimeCapabilitiesSchema.
 type RuntimeCapabilities struct {
-	Sfu                  bool     `json:"sfu"`
-	SfuOnly              bool     `json:"sfuOnly,omitempty"`
-	NatPrediction        bool     `json:"natPrediction"`
-	RoomInteractions     bool     `json:"roomInteractions,omitempty"`
-	RoomVoice            bool     `json:"roomVoice,omitempty"`
-	RelayVolunteer       bool     `json:"relayVolunteer,omitempty"`
-	HostRoomSession      bool     `json:"hostRoomSession,omitempty"`
-	RemoteInput          bool     `json:"remoteInput,omitempty"`
-	ViewerRouteSelection bool     `json:"viewerRouteSelection,omitempty"`
-	AudioPresence        bool     `json:"audioPresence,omitempty"`
-	CoPlayPresence       bool     `json:"coPlayPresence,omitempty"`
-	RoomReactionIDs      []string `json:"roomReactionIds,omitempty"`
+	Sfu                        bool     `json:"sfu"`
+	SfuOnly                    bool     `json:"sfuOnly,omitempty"`
+	NatPrediction              bool     `json:"natPrediction"`
+	RoomInteractions           bool     `json:"roomInteractions,omitempty"`
+	RoomVoice                  bool     `json:"roomVoice,omitempty"`
+	RoomVoiceListeningPresence bool     `json:"roomVoiceListeningPresence,omitempty"`
+	RelayVolunteer             bool     `json:"relayVolunteer,omitempty"`
+	HostRoomSession            bool     `json:"hostRoomSession,omitempty"`
+	RemoteInput                bool     `json:"remoteInput,omitempty"`
+	ViewerRouteSelection       bool     `json:"viewerRouteSelection,omitempty"`
+	AudioPresence              bool     `json:"audioPresence,omitempty"`
+	CoPlayPresence             bool     `json:"coPlayPresence,omitempty"`
+	RoomReactionIDs            []string `json:"roomReactionIds,omitempty"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -209,19 +210,20 @@ func (v *RuntimeCapabilities) UnmarshalJSON(data []byte) error {
 	if present == nil {
 		return errors.New("runtime capabilities must be an object")
 	}
-	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "roomVoice", "relayVolunteer", "hostRoomSession", "natPrediction", "remoteInput", "viewerRouteSelection", "audioPresence", "coPlayPresence", "roomReactionIds"); err != nil {
+	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "roomVoice", "roomVoiceListeningPresence", "relayVolunteer", "hostRoomSession", "natPrediction", "remoteInput", "viewerRouteSelection", "audioPresence", "coPlayPresence", "roomReactionIds"); err != nil {
 
 		return err
 	}
 	for key, target := range map[string]*bool{
 		"sfu": &v.Sfu, "sfuOnly": &v.SfuOnly, "natPrediction": &v.NatPrediction,
 		"roomInteractions": &v.RoomInteractions, "hostRoomSession": &v.HostRoomSession,
-		"roomVoice":            &v.RoomVoice,
-		"relayVolunteer":       &v.RelayVolunteer,
-		"remoteInput":          &v.RemoteInput,
-		"viewerRouteSelection": &v.ViewerRouteSelection,
-		"audioPresence":        &v.AudioPresence,
-		"coPlayPresence":       &v.CoPlayPresence,
+		"roomVoice":                  &v.RoomVoice,
+		"roomVoiceListeningPresence": &v.RoomVoiceListeningPresence,
+		"relayVolunteer":             &v.RelayVolunteer,
+		"remoteInput":                &v.RemoteInput,
+		"viewerRouteSelection":       &v.ViewerRouteSelection,
+		"audioPresence":              &v.AudioPresence,
+		"coPlayPresence":             &v.CoPlayPresence,
 	} {
 		if value, ok := present[key]; ok {
 			if err := json.Unmarshal(value, target); err != nil {

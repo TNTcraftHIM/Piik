@@ -244,6 +244,7 @@ export const runtimeCapabilitiesSchema = z.object({
   natPrediction: z.boolean().default(false),
   roomInteractions: z.boolean().default(false),
   roomVoice: z.boolean().default(false),
+  roomVoiceListeningPresence: z.boolean().default(false),
   relayVolunteer: z.boolean().default(false),
   roomReactionIds: z.array(z.string().max(32).regex(/^[a-z][a-z0-9-]*$/)).max(64).optional(),
   hostRoomSession: z.boolean().default(false),
@@ -360,6 +361,7 @@ export const roomVoiceCommandSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("leave") }).strict(),
   z.object({ action: z.literal("publish") }).strict(),
   z.object({ action: z.literal("unpublish"), publicationId: opaqueIdSchema }).strict(),
+  z.object({ action: z.literal("deafen"), deafened: z.boolean() }).strict(),
 ]);
 export type RoomVoiceCommand = z.infer<typeof roomVoiceCommandSchema>;
 export const roomVoiceStateSchema = z.object({
@@ -368,7 +370,7 @@ export const roomVoiceStateSchema = z.object({
   enabled: z.boolean(),
   hostPeerId: opaqueIdSchema.nullable(),
   members: z.array(z.object({ peerId: opaqueIdSchema, connected: z.boolean(), joined: z.boolean(),
-    upstream: mediaRouteUpstreamSchema, publicationId: opaqueIdSchema.optional() }).strict())
+    upstream: mediaRouteUpstreamSchema, publicationId: opaqueIdSchema.optional(), deafened: z.boolean().optional() }).strict())
     .max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
   publications: z.array(z.object({ id: opaqueIdSchema, peerId: opaqueIdSchema }).strict())
     .max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
@@ -937,7 +939,7 @@ const signalingChallengeSequenceSchema = z
 
 export const clientMessageSchema = z.union([
   z.object({ type: z.literal("set-relay-volunteer"), enabled: z.boolean(), capacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT) }).strict(),
-  z.object({ type: z.literal("subscribe-room-voice") }).strict(),
+  z.object({ type: z.literal("subscribe-room-voice"), deafened: z.boolean().optional() }).strict(),
   z.object({ type: z.literal("room-voice-command"), command: roomVoiceCommandSchema }).strict(),
   z.object({ type: z.literal("room-voice-signal"), ...voiceSignalShape }).strict()
     .refine(value => Number(!!value.description) + Number(!!value.candidate) + Number(!!value.renegotiate) === 1),

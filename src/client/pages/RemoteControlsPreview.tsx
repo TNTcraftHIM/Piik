@@ -20,6 +20,7 @@ export function RemoteControlsPreview() {
   const en = lang === "en";
   const [platform, setPlatform] = useState<RemoteInputPlatform>("windows");
   const [mode, setMode] = useState<RemoteControlMode>("off");
+  const [simultaneous, setSimultaneous] = useState(false);
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [lastInput, setLastInput] = useState("");
@@ -49,6 +50,8 @@ export function RemoteControlsPreview() {
       </label>
       <HostRemoteControl mode={mode} platform={platform} requests={requests}
         gamepad={platform !== "darwin"}
+        simultaneous={simultaneous}
+        onSimultaneous={async enabled => { setSimultaneous(enabled); setRequests([]); }}
         onShortcut={platform === "linux" ? undefined : shortcut}
         onPolicy={async value => { setMode(value); setRequests([]); }}
         onDecide={async (id, allow) => setRequests(current => allow
@@ -60,6 +63,7 @@ export function RemoteControlsPreview() {
       }}>{en ? "Receive a sample request" : "模拟收到控制请求"}</button>
       <button type="button" className="lr-btn" onClick={() => {
         setMode("ask");
+        setSimultaneous(true);
         setRequests([
           { id: "preview-player-one", peerId: "preview-player-one", state: "active", name: "Player 1" },
           { id: "preview-player-two", peerId: "preview-player-two", state: "active", name: "Player 2" },

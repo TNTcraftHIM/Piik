@@ -84,6 +84,7 @@ type Session struct {
 	route         *inputroute.Relay
 	mode          string
 	coPlay        bool
+	simultaneous  bool
 	policyChange  *PolicyChange
 	password      [32]byte
 	passwordRetry time.Time
@@ -219,6 +220,7 @@ func (s *Session) setTarget(target nativecapture.CaptureTarget, capture *nativec
 	}
 	s.target = target
 	s.capture = capture
+	s.simultaneous = false
 	if change == nil || s.policyChange != change {
 		s.cancelPolicy()
 	}
@@ -805,11 +807,12 @@ func (m *Manager) Close() {
 }
 
 type State struct {
-	Platform string `json:"platform"`
-	Mode     string `json:"mode"`
-	Requests []View `json:"requests"`
-	CoPlay   bool   `json:"coPlay,omitempty"`
-	Gamepad  *bool  `json:"gamepad,omitempty"`
+	Platform     string `json:"platform"`
+	Mode         string `json:"mode"`
+	Requests     []View `json:"requests"`
+	CoPlay       bool   `json:"coPlay,omitempty"`
+	Gamepad      *bool  `json:"gamepad,omitempty"`
+	Simultaneous *bool  `json:"simultaneous,omitempty"`
 }
 
 func (s *Session) State() State {
@@ -823,6 +826,8 @@ func (s *Session) State() State {
 	state.Mode = s.mode
 	state.CoPlay = s.coPlay
 	if s.coPlay {
+		simultaneous := s.simultaneous
+		state.Simultaneous = &simultaneous
 		gamepad := m.gamepads != nil
 		state.Gamepad = &gamepad
 	}
@@ -866,6 +871,11 @@ func (s *Session) Decide(id string, allow bool) error {
 		m.revoke(c)
 		return nil
 	}
+	// Explicit approval hands over this source's exclusive control. Automatic
+	// admission still uses canJoin and never displaces an existing controller.
+	if c.requested && s.coPlay && !s.simultaneous && m.owner == s {
+		m.release()
+	}
 	return m.grant(c)
 }
 
@@ -875,7 +885,7 @@ func (m *Manager) canJoin(c *connection) bool {
 	if m.owner == nil {
 		return true
 	}
-	if m.owner != c.owner || !c.owner.coPlay || !c.extended {
+	if m.owner != c.owner || !c.owner.coPlay || !c.owner.simultaneous || !c.extended {
 		return false
 	}
 	for _, other := range m.connections {
