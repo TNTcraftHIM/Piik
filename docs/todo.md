@@ -7,12 +7,11 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Integrated participant state artwork.** Refine the microphone cue on
-  the selected light-headphones direction at
-  `/__tooltip-preview#pawn-appearance-preview`. Compare a mute-only chest mark,
-  a persistent lapel microphone and a mouth mark, using the same voice facts.
-  Keep the accepted markers until selection; do not add a product appearance
-  setting.
+- [ ] **Integrated participant state artwork.** D3's light headphones and mouth
+  mute mark are selected. Finish the remote-control cue at
+  `/__tooltip-preview#pawn-appearance-preview`, then apply the complete artwork
+  through the shared pawn. The mouse pin, cursor and little-desk studies consume
+  the same existing grant. Do not add a product appearance setting.
 - [ ] **Remote co-play candidate acceptance.** Review the unified remote-control
   permission and normal App/Web flow on
   `feat/shared-input-co-play`: shared keyboard/mouse, optional Windows x64
