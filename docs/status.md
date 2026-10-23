@@ -76,8 +76,10 @@ room microphone for Host and Viewers. Local normal-page acceptance covers both
 P2P and SFU, independent listening, picture continuity and voice-facet recovery.
 Controlled-network voice cases and platform package checks have passed; the
 release artifacts and operator records establish publication and deployment.
-Shared keyboard/mouse and optional Windows ViGEm virtual-gamepad prototypes
-use the normal App/Web input and authorization surfaces. Linux uinput passed
+Shared keyboard/mouse and optional Windows ViGEmBus virtual-gamepad prototypes
+use the normal App/Web input and authorization surfaces. The Windows adapter
+calls the installed driver directly; App packages contain no optional input SDK
+or driver. Linux uinput passed
 an isolated real-kernel gate; desktop permissions and game recognition remain
 unverified. The macOS virtual-HID
 implementation needs its Apple entitlement and a macOS build/runtime check.

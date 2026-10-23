@@ -744,9 +744,9 @@ patterns for bounded queues and grant retirement. Their GameStream transport
 is not a Browser WebRTC input component; both implementations remain study-only
 under the project's license policy.
 
-The current candidate retains an optional Windows x64 ViGEmClient backend.
-Piik packages the MIT user-mode client; the Host installs the optional kernel
-driver. [Parsec also uses a virtual USB driver](https://support.parsec.app/hc/en-us/articles/32381705301908-Setup-Gamepad).
+The current candidate uses a Windows x64 adapter for the public ViGEmBus device
+interface. The Host installs the optional driver; Piik packages no input SDK or
+driver binary. [Parsec also uses a virtual USB driver](https://support.parsec.app/hc/en-us/articles/32381705301908-Setup-Gamepad).
 [ViGEmBus is end-of-life](https://docs.nefarius.at/projects/ViGEm/End-of-Life/);
 the [final 1.22.0 installer](https://github.com/nefarius/ViGEmBus/releases/tag/v1.22.0)
 removes its updater.
@@ -755,15 +755,20 @@ offers a common API, but Windows/macOS require installed licensed components;
 Linux uses kernel input facilities and device permissions. Its library is MIT,
 while drivers/brokers have a [separate source-available license](https://github.com/LizardByte/libvirtualhid/blob/dfff3ea8c34022c915799740806c17c0ed5c2492/LICENSE.md).
 These separate terms do not grant free driver distribution with Piik.
-The ViGEm candidate uses a checksum-pinned client from the official
-[Nefarius.ViGEm.Client 1.21.256 package](https://www.nuget.org/packages/Nefarius.ViGEm.Client/1.21.256)
-with an installed ViGEmBus. Local driver checks observe two temporary devices
-with independent XInput buttons, axes and triggers; each can be neutralized and
-removed without changing the other. Closing one backend leaves the other's
-device connected. The initial report can arrive before device enumeration;
-the Browser therefore repeats complete current state while the grant is active.
-Logical slots and SDK handles identify ownership;
-an early SDK user-index value does not establish the game's player number.
+The adapter uses the [published bus requests](https://github.com/nefarius/ViGEmClient/blob/b66d02d57e32cc8595369c53418b843e958649b4/include/ViGEm/km/BusShared.h)
+through Windows device APIs, without loading the client DLL. A bus file handle
+owns a driver session; allocated serials identify this session's controllers,
+not the game's player numbers. Native checks from a directory containing only
+the test executable observed independent XInput reports, neutralization and
+removal. A foreign session could not unplug another session's device; closing
+one bus handle removed only its own devices. The driver's unsupported protocol
+response was also checked.
+
+The driver can temporarily have no queued USB input request. Ordinary reports
+then yield to the next complete Browser state; they never sleep or queue stale
+input. A one-off neutral reset retries for at most one input frame before
+retiring the grant, so a dropped reset cannot leave a held controller. Device
+closure removes the controller even if a final neutral report cannot be sent.
 
 The Linux prototype uses the stock uinput userspace API, one device per grant,
 without another driver or dependency. Linux amd64/arm64 test binaries

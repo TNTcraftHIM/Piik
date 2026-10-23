@@ -44,6 +44,16 @@ players apply together. Use the Host's stop action or shortcut to end control.
 
 ## Gamepads
 
+The Host installs any required external input components from their official
+source. Piik does not bundle, download or install third-party gamepad SDKs or
+drivers on any platform.
+
+| Host system | Current gamepad support |
+| --- | --- |
+| Windows x64 | Install [ViGEmBus 1.22.0](https://github.com/nefarius/ViGEmBus/releases/tag/v1.22.0); no extra client DLL is needed. |
+| Linux | The prototype uses system uinput; the App's user needs write access to the device. |
+| macOS | Independent gamepads are not available in the current App; the native backend needs Apple authorization. |
+
 Each remote player can use one browser-recognized controller as a separate
 Xbox 360 controller on a **Windows x64 Host**. Piik transports and maps its input;
 the Host's optional ViGEmBus driver creates the virtual device.
@@ -53,8 +63,8 @@ the Host's optional ViGEmBus driver creates the virtual device.
    and follow its restart prompt. ViGEm is end-of-life; 1.22.0 is its final
    installer and removes the old updater. If it is already installed, reuse it.
 2. Extract and open the Windows x64 co-play App package, then enable
-   **Remote control → Play together**. The package includes the required client
-   component; no extra files need to be copied.
+   **Remote control → Play together**. App detects the installed driver; no DLL
+   copying or SDK configuration is needed.
 3. On each friend's computer, connect a standard-layout gamepad, open the
    viewing page and press a controller button so the browser recognizes it.
    Select **Use gamepad** and obtain the Host's approval.
@@ -68,7 +78,7 @@ choose the game's player number; use the game's join and assignment controls.
 A gamepad grant controls only that virtual controller. Ending it removes the
 device; losing page or shared-window focus returns its controls to neutral.
 
-If **Use gamepad** is missing, check the Host's driver and App package, then
+If **Use gamepad** is missing, check the Host's driver and App support, then
 turn **Play together** off and on. Keyboard/mouse co-play and ordinary remote control
 remain available without the gamepad driver. Piik does not install or bundle it.
 

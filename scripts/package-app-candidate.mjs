@@ -23,7 +23,6 @@ import { fileURLToPath } from "node:url";
 import { appPackageTarget, appPackageDirectory, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
 import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
-import { downloadGamepadClient, GAMEPAD_CLIENT_SHA256 } from "./gamepad-client.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -69,7 +68,7 @@ function serverDescriptor(directory) {
 async function download(url, path) {
   const response = await fetch(url);
   if (!response.ok || !response.body) {
-    fail(`Build dependency download failed with HTTP ${response.status}`);
+    fail(`Public-link runtime download failed with HTTP ${response.status}`);
   }
   await pipeline(Readable.fromWeb(response.body), createWriteStream(path));
 }
@@ -242,10 +241,6 @@ async function verifyPackage(root, target, revision, temporaryRoot) {
   const runtimeRoot = join(root, appPackageDirectory(target));
   const packagedRevision = readFileSync(join(runtimeRoot, "REVISION"), "ascii").trim();
   if (packagedRevision !== revision) fail("App package revision mismatch");
-  if (target.id === "windows-amd64" &&
-      sha256(join(runtimeRoot, "ViGEmClient.dll")) !== GAMEPAD_CLIENT_SHA256) {
-    fail("Packaged gamepad client does not match the pinned Windows x64 SDK");
-  }
   for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt",
     "runtime/tunnel/THIRD-PARTY-NOTICES.txt"]) {
     if (!existsSync(join(runtimeRoot, file)) || readFileSync(join(runtimeRoot, file)).length === 0) {
@@ -314,9 +309,9 @@ function verifyPlatformAssets(root, target) {
   }
 }
 
-if (process.argv.length !== 5 && !(process.argv.length === 7 && process.argv[5] === "--gamepad-client")) {
+if (process.argv.length !== 5) {
   fail(
-    "Usage: node scripts/package-app-candidate.mjs <server-release-directory> <target> <new-output-directory> [--gamepad-client <ViGEmClient.dll>]",
+    "Usage: node scripts/package-app-candidate.mjs <server-release-directory> <target> <new-output-directory>",
   );
 }
 
@@ -325,8 +320,6 @@ const serverRoot = realpathSync(resolve(process.argv[2]));
 const target = appPackageTarget(process.argv[3]);
 const outputRoot = resolve(process.cwd(), process.argv[4]);
 if (!target) fail("App package target is invalid");
-const gamepadClient = process.argv[6] ? realpathSync(resolve(process.argv[6])) : null;
-if (gamepadClient && target.id !== "windows-amd64") fail("Gamepad client requires the Windows x64 App target");
 if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch) {
   fail(`App candidate ${target.id} requires its native runner`);
 }
@@ -338,9 +331,6 @@ const { version } = JSON.parse(readFileSync(descriptorPath, "utf8"));
 const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", target.id, "candidate");
 let outputOwned = false;
 try {
-  const windowsGamepadClient = target.id === "windows-amd64"
-    ? gamepadClient ?? await downloadGamepadClient(temporaryRoot, download)
-    : null;
   const tunnelDownload = join(temporaryRoot, target.tunnelAsset);
   await download(
     `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/${target.tunnelAsset}`,
@@ -379,7 +369,6 @@ try {
     tunnel,
   ];
   if (capture) assembleArguments.push("--capture", capture);
-  if (windowsGamepadClient) assembleArguments.push("--gamepad-client", windowsGamepadClient);
   run(process.execPath, assembleArguments, repositoryRoot);
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });

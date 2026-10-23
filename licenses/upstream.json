@@ -1,9 +1,4 @@
 {
-  "ViGEmClient@1.21.233.0": {
-    "file": "vigemclient-1.21.233.0.txt",
-    "source": "https://github.com/nefarius/ViGEmClient/blob/b66d02d57e32cc8595369c53418b843e958649b4/LICENSE",
-    "sha256": "445b3bccd103d39cab7e9b276dd966d60269cf5c44b4b8a118e48bc4c7c4f0db"
-  },
   "webrtc@m152.7977.0.2": {
     "file": "webrtc-m152.7977.0.2.txt",
     "source": "https://github.com/shiguredo-webrtc-build/webrtc-build/releases/tag/m152.7977.0.2",

@@ -204,13 +204,14 @@ join-order priority. Changing co-play mode ends current grants. Input
 still belongs to one process-wide source owner, not multiple simultaneous shares.
 
 Optional Windows x64 gamepad grants create independent Xbox 360 devices through
-ViGEmClient and an already-installed ViGEmBus. Piik may ship the MIT user-mode
-client; the Host installs the optional driver. Each approved gamepad owns its
+the public device interface of an already-installed ViGEmBus. Optional input
+drivers and third-party input SDK binaries stay external on every platform:
+Piik does not download, install or bundle them. Each approved gamepad owns its
 device and cannot inject keyboard or mouse input. Windows is subject to the four
 XInput slots shared with the Host's existing devices; slot limits belong to the
 platform backend. Driver connection and target creation determine availability;
 keyboard/mouse input continues when the optional backend is unavailable.
-Linux uinput and macOS virtual-HID backends remain unverified prototypes, with
+Linux uinput has kernel-level validation; macOS virtual HID remains a prototype, with
 platform permissions and evidence limits recorded in the
 [co-play assessment](../research/room-interactions.md#remote-co-play).
 

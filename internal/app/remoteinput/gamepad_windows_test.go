@@ -3,6 +3,7 @@
 package remoteinput
 
 import (
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -17,6 +18,20 @@ func TestGamepadReportABI(t *testing.T) {
 		unsafe.Offsetof(report.RightTrigger) != 3 || unsafe.Offsetof(report.LeftX) != 4 ||
 		unsafe.Offsetof(report.LeftY) != 6 || unsafe.Offsetof(report.RightX) != 8 || unsafe.Offsetof(report.RightY) != 10 {
 		t.Fatal("gamepad report no longer matches the ViGEm XUSB_REPORT layout")
+	}
+}
+
+func TestGamepadBusRequestABI(t *testing.T) {
+	if unsafe.Sizeof(vigemRequest{}) != 8 || unsafe.Sizeof(vigemPlugin{}) != 16 ||
+		unsafe.Offsetof(vigemPlugin{}.vendor) != 12 || unsafe.Sizeof(vigemXUSBSubmission{}) != 20 ||
+		unsafe.Offsetof(vigemXUSBSubmission{}.report) != 8 {
+		t.Fatal("Go bus request layout differs from ViGEm BusShared.h")
+	}
+	// CTL_CODE(FILE_DEVICE_BUS_EXTENDER, function, METHOD_BUFFERED, FILE_WRITE_DATA).
+	for function, got := range map[uint32]uint32{0x801: vigemPlugIn, 0x802: vigemUnplug, 0x803: vigemCheckVersion, 0x804: vigemWaitReady, 0xa02: vigemSubmitXUSB} {
+		if want := uint32(0x2a<<16 | 2<<14 | function<<2); got != want {
+			t.Fatalf("ViGEm IOCTL function 0x%x: got 0x%x, want 0x%x", function, got, want)
+		}
 	}
 }
 
@@ -40,7 +55,7 @@ func TestGamepadXUSBMapping(t *testing.T) {
 }
 
 func TestGamepadWindowsCapacity(t *testing.T) {
-	backend := &vigemGamepadBackend{dll: &windows.DLL{}, devices: make(map[*vigemGamepad]struct{})}
+	backend := &vigemGamepadBackend{handle: windows.InvalidHandle - 1, devices: make(map[*vigemGamepad]struct{})}
 	for range 4 {
 		backend.devices[&vigemGamepad{}] = struct{}{}
 	}
@@ -50,10 +65,10 @@ func TestGamepadWindowsCapacity(t *testing.T) {
 }
 
 // This opt-in check creates only its own temporary targets. XInput is read-only
-// observation here; production allocation and ownership use SDK handles alone.
+// observation here; production allocation and ownership use bus sessions alone.
 func TestGamepadNativeLifecycle(t *testing.T) {
 	if os.Getenv("PIIK_GAMEPAD_GATE") != "1" {
-		t.Skip("set PIIK_GAMEPAD_GATE=1 with ViGEmClient.dll beside this test executable and ViGEmBus installed")
+		t.Skip("set PIIK_GAMEPAD_GATE=1 with the official ViGEmBus driver installed; no client DLL is required")
 	}
 	newBackend := func() gamepadBackend {
 		t.Helper()
@@ -126,6 +141,20 @@ func TestGamepadNativeLifecycle(t *testing.T) {
 		return find(toXUSBReport(reportA)) >= 0 && find(toXUSBReport(reportB)) >= 0
 	})
 	indexA, indexB := find(toXUSBReport(reportA)), find(toXUSBReport(reportB))
+	busA, busB := first.(*vigemGamepadBackend), second.(*vigemGamepadBackend)
+	wrongVersion := vigemRequest{size: 8, value: 2}
+	if err := vigemControl(busA.handle, vigemCheckVersion, unsafe.Pointer(&wrongVersion), 8); !errors.Is(err, windows.ERROR_NOT_SUPPORTED) {
+		t.Fatalf("driver did not reject an unsupported bus protocol: %v", err)
+	}
+	// The driver may acknowledge this request, but it must not remove the other
+	// file session's target. Both pads in this check were created by this test.
+	foreign := vigemRequest{size: 8, value: a.(*vigemGamepad).serial}
+	_ = vigemControl(busB.handle, vigemUnplug, unsafe.Pointer(&foreign), 8)
+	wait(func() bool {
+		a, okA := read(indexA)
+		b, okB := read(indexB)
+		return okA && a == toXUSBReport(reportA) && okB && b == toXUSBReport(reportB)
+	})
 	update(a, gamepadReport{})
 	wait(func() bool {
 		a, okA := read(indexA)
@@ -152,6 +181,16 @@ func TestGamepadNativeLifecycle(t *testing.T) {
 		return find(toXUSBReport(reportA)) >= 0
 	})
 	indexA = find(toXUSBReport(reportA))
+	// Closing the file directly exercises driver-owned crash cleanup, without
+	// the normal per-device neutral/unplug path. A separate backend stays live.
+	if err := windows.CloseHandle(busA.handle); err != nil {
+		t.Fatal(err)
+	}
+	busA.handle = windows.InvalidHandle
+	for d := range busA.devices {
+		d.closed, d.serial = true, 0
+	}
+	clear(busA.devices)
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -178,5 +217,5 @@ func TestGamepadNativeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait(func() bool { _, ok := read(indexB); return !ok })
-	t.Log("independent reports, device close and backend retirement passed against the installed driver")
+	t.Log("driver-only ABI/version, independent reports, session ownership and file-close retirement passed")
 }

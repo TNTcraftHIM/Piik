@@ -127,11 +127,6 @@ export function writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, t
     WEB_NOTICE_LINE +
     (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +
     notices.toolchain;
-  if (target.goos === "windows" && target.goarch === "amd64" &&
-      existsSync(join(packageRoot, "ViGEmClient.dll"))) {
-    text += section("ViGEmClient 1.21.233.0 (MIT; Nefarius.ViGEm.Client 1.21.256)",
-      pinnedNotice("ViGEmClient@1.21.233.0"));
-  }
   const linuxCapture = target.goos === "linux" && target.captureName &&
     existsSync(join(packageRoot, "runtime", "native", target.captureName));
   if (linuxCapture) {
