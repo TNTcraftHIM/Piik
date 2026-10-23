@@ -966,10 +966,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   border: var(--control-border-width) solid var(--control-edge);
   border-radius: 999px;
   background: var(--paper);
-  font-family: var(--mono);
+  font-family: var(--font);
   font-size: 13px;
-  font-weight: 700;
-  letter-spacing: .1em;
+  font-weight: 600;
   box-shadow: var(--control-shadow);
 }
 /* Selection keeps the same press/release transition. A separate transform
