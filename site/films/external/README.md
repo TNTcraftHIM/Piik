@@ -1,7 +1,7 @@
 # Selected public film A
 
-The owner supplied **The Calling Card / ???** in
-`Piik-basic-assets-20261021 (2).zip` on 2026-10-21. Its 1920 ? 1080 artwork,
+The owner supplied **The Calling Card / 预告状** in
+`Piik-basic-assets-20261021 (2).zip` on 2026-10-21. Its 1920 × 1080 artwork,
 64-second timing, bilingual strings and compressed soundtrack come from
 `Piik-PV/web/piik-promo/`, with local playback and resource-lifecycle repairs.
 The supplied project describes its picture, music, effects and wordless voices
