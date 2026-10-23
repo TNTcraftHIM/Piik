@@ -35,8 +35,8 @@ on your own server.
 - **Share from Piik App or an existing Piik site.** Choose a screen, window, browser tab or camera; available sources and audio depend on the platform.
 - **Direct connections first.** Media travels between participants where possible (P2P). A self-hosted server can provide automatic media forwarding (SFU) as a fallback.
 - **Rooms you control.** Invitations, room codes and optional room passwords, for one host and up to 20 viewers.
-- **Chat while watching.** Send messages and reactions to friends, with optional on-screen chat.
-- **Hand control to a friend.** When sharing through Piik App, optionally let one viewer use your keyboard and mouse, and take control back at any time.
+- **Talk and chat together.** Join room voice, send messages and reactions, or enable on-screen chat.
+- **Hand control to a friend.** Share an App window or screen, then optionally let one viewer use your keyboard and mouse. Take control back at any time.
 - **Flexible viewing.** Light and dark themes, playback controls, picture-in-picture and a connection topology view.
 - **One program to host a site.** Web UI, room management and optional media forwarding are packaged together.
 
@@ -74,28 +74,19 @@ Use **中 / EN / ✦** in the header to switch language or try the visual mode.
 The App can create a local room or temporary public invitation, and stays
 available to supply capture for an approved site. Keep it running while sharing.
 
-Download a ZIP beginning with **`piik-app`**. The filename also identifies the platform:
+[**Illustrated getting started →**](./docs/guide/getting-started.md) · [**Troubleshooting →**](./docs/guide/troubleshooting.md)
 
-| Filename contains | Platform |
-| --- | --- |
-| `windows-amd64` | Windows x64 |
-| `darwin-arm64` | Apple silicon; native capture requires macOS 13+ |
-| `darwin-amd64` | Intel Mac; native capture requires macOS 13+ |
-| `linux-amd64` | Linux x64 |
-| `linux-arm64` | Linux ARM64 |
+Choose a download beginning with **`piik-app`**. The guide covers installation,
+source selection and invitations.
 
-[**Getting started →**](./docs/guide/getting-started.md) · [**Troubleshooting →**](./docs/guide/troubleshooting.md)
-
-Browser capture requires HTTPS or `localhost`. Windows App and desktop browser
-sharing are the primary tested paths. Physical-device coverage for the macOS and
-Linux apps is still limited; [test results and feedback are welcome](https://github.com/TNTcraftHIM/Piik/issues).
-P2P-only modes, including the App's temporary public
-link and the online version, may not connect on restrictive networks.
+Browser capture requires HTTPS or `localhost`.
+The App's temporary public link and the online version use P2P and need a usable
+UDP connection between participants. For campus
+networks, failed media connections or virtual LANs, see [network checks and connection options](./docs/guide/network.md).
 
 ## Self-hosting
 
-To run a site for your group, deploy Piik Server. App users can start with
-public invitations without a server of their own.
+Deploy Piik Server to run a site for your group.
 
 <p><a href="./docs/operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik with Docker Compose"></a></p>
 

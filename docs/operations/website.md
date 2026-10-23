@@ -1,8 +1,7 @@
 # Public website
 
-The website source is `site/`. It explains Piik; it does not run rooms, signaling
-or media. The [public introduction guide](../standards/public-introduction.md) owns
-its content and design boundary.
+The static website source is `site/`. Its content and design follow the
+[public introduction guide](../standards/public-introduction.md).
 
 ## Public Destinations
 
@@ -19,10 +18,9 @@ Cloudflare; both the GitHub origin and Cloudflare edge use HTTPS. Website and
 Demo HTTP traffic use proxied DNS with origin cache headers respected.
 The separate `stun.piik.tv` hostname stays DNS-only for direct UDP connectivity.
 
-GitHub Pages can serve the complete website: it hosts
+GitHub Pages hosts the website's
 [static HTML, CSS and JavaScript](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages).
-The demo also needs the Go service for room authority, WebSocket signaling and
-UDP STUN, so it runs on the separate US server rather than Pages.
+The Demo runs the Go room service, WebSocket signaling and UDP STUN on the separate US server.
 
 ### Managed Hosting Assessment
 
@@ -31,13 +29,12 @@ container can reduce host administration, but must preserve public UDP, stable
 room authority and SQLite storage. [Fly.io supports public UDP](https://docs.fly.io/networking/udp-and-tcp)
 with a dedicated IPv4 address and a specific UDP bind address; external and
 internal UDP ports must match. Its [dedicated IPv4 charge](https://docs.fly.io/about/pricing)
-is $2/month before compute, storage and transfer. This is a possible deployment
-target, not an established cost saving over the current server.
+is $2/month before compute, storage and transfer. The assessment found no cost
+saving over the current server.
 
 [Cloudflare Containers disks are ephemeral by default](https://developers.cloudflare.com/containers/faq/#is-disk-persistent-what-happens-to-my-disk-when-my-container-sleeps).
-Snapshots or object-backed storage are not a drop-in replacement for the current
-live SQLite contract. No provider migration is accepted; compare the complete
-cost and verify storage, UDP and restart behavior before changing the Demo.
+Keep live SQLite on persistent storage. A provider migration needs owner approval,
+a complete cost comparison, and storage, UDP and restart verification.
 
 ## Public Demo Configuration
 
@@ -77,8 +74,7 @@ a missing bundle cannot acquire the long cache lifetime. Keep HTML, room APIs,
 health responses and signaling outside static caching. New bundles have new
 filenames; do not publish different bytes under an existing hashed URL.
 Cloudflare caches those static bundles; HTML and API responses remain uncached,
-and WebSocket signaling passes through to the same room authority. Changing the
-HTTP delivery path does not enable SFU or proxy peer media.
+and WebSocket signaling passes through to the room service. Media remains P2P.
 
 For updates, follow the [application release boundary](../deployment.md#release-boundary)
 and its artifact verification, health checks and recovery rules. Routine application
@@ -104,14 +100,13 @@ node --env-file=.env.maintenance.local scripts/release-maintenance.mjs website-p
 node --env-file=.env.maintenance.local scripts/release-maintenance.mjs server-check
 ```
 
-The website check reads the two rule phases, checks fresh HTML and compares the
-root/index asset references. Purge removes only those website entry points from
-Cloudflare; it cannot clear visitors' Browser caches. The Server check uses SSH
-to inspect the managed Linux `piik` service, its running package and public health.
-It changes no service, firewall or configuration. Keep separate ignored env files
-for different Server targets, or use existing SSH aliases; do not copy private
-connection details into the scripts. [Server deployment](../deployment.md) owns
-package upload, atomic cutover and recovery; these checks do not replace it.
+`website-check` reads the two rule phases, checks fresh HTML and compares
+root/index asset references. `website-purge` clears those entry points from
+Cloudflare; visitors' Browser caches remain separate. `server-check` is a read-only
+SSH check of the Linux `piik` service, running package and public health.
+Keep separate ignored env files or SSH aliases for different Server targets;
+keep private connection details out of scripts. For package upload, cutover
+and recovery, follow [Server deployment](../deployment.md).
 
 Rule changes remain explicit infrastructure work: save the current rule phases
 and define their scoped rollback before modifying them. The maintenance commands
@@ -130,15 +125,22 @@ npm run build:website
 npm run preview:website
 ```
 
-Open `http://127.0.0.1:18890`. Rebuild after editing source. The build bundles the
-film's real product components into an isolated demonstration frame; publishing
-`build/site/` needs no Node runtime or backend. Vite preview supplies HTTP byte
-ranges for seeking the soundtrack. Keep asset links relative so both a custom
+Open `http://127.0.0.1:18890`. Rebuild after editing source. The homepage loads
+film A when opened and unloads it when closed. Update its authored artwork when
+product changes affect the scenes. The separate real-component fixture at
+`/film/ui/index.html` supplies README screenshots.
+Publish the static `build/site/` output. Vite preview supports HTTP byte ranges
+for seeking the soundtrack. Keep asset links relative so both a custom
 domain and GitHub's `/Piik/` project path work. For a nested deployment, set
 `PIIK_DOCS_BASE=/Piik/docs/` when building; ordinary custom-domain builds use `/docs/`.
 
+The [public-film source](../../site/film/README.md) owns the selected artwork and
+its runtime. The ordinary build includes only A?s required runtime, fonts, audio
+and notices. Other candidates and the former 1.0 remain in Git history.
+
 The homepage, film and demonstration frames use content-hashed script/style
-bundles. Their HTML references come from the same build, including imported
+bundles; A's relative runtime tree also has one content-hashed directory.
+Their HTML references come from the same build, including imported
 dependencies; fixed filenames must not mix a new page with cached old controls
 or styles. Publish the complete output together.
 
@@ -148,9 +150,8 @@ and documentation, keeping their URLs stable.
 
 [Google's favicon guidance](https://developers.google.com/search/docs/appearance/favicon-in-search)
 requires a crawlable homepage and icon, and supports one favicon per hostname.
-The PNG/ICO links make the brand available to search crawlers; indexing and
-display are not guaranteed. A repository under `github.com` cannot set its own
-search favicon independently of GitHub.
+Use the PNG/ICO links for search crawlers. Search engines control indexing and
+display; repository pages on `github.com` use GitHub's favicon.
 
 ## Documentation Build
 
@@ -182,6 +183,53 @@ product code and App/Server build inputs still follow the release boundary.
 Check links, language switching, search, keyboard/mobile use and the static
 HTML fallback when changing the public documentation.
 
+### Guide screenshots
+
+With `agent-browser` installed, start `npm run dev -- --host 127.0.0.1`.
+After changing pictured controls or copy, run in another terminal:
+
+```sh
+node scripts/update-guide-images.mjs http://127.0.0.1:8787
+npm run build:website
+```
+
+The script regenerates the audio and network diagrams from shared icons and
+palette, then captures `/__tooltip-preview` production components using sample data,
+both languages, light/dark themes and reduced motion. It closes its own session.
+Captures cover the mode selector, source picker, sharing settings, voice panel
+and sample sharing-failure dialog. Place each beside the task it explains. Markdown uses GitHub's
+`#gh-light-mode-only` / `#gh-dark-mode-only` image hints, which the documentation
+theme also follows when its appearance control changes. Do not invert or tint
+screenshots: capture the actual theme. SVG explanations inherit the page's
+colour scheme and remain sharp at smaller sizes. `scripts/update-guide-diagrams.tsx`
+generates the audio-path, network-path and virtual-LAN SVGs and embeds the shared palette in the three-step
+illustration; `build:website` checks these generated parts for source freshness.
+Adjust capture viewport/panel size to show complete choices and avoid unused space;
+do not edit controls or labels inside the saved image.
+`AGENT_BROWSER_PATH` overrides the CLI path. Inspect `docs/assets/guide/` before
+committing with UI/copy changes. Keep example captions; use no live-room data,
+hand-edited text or duplicate mockups.
+
+The build stages `docs/assets/` and rewrites Markdown image paths to hashed URLs.
+GitHub and the docs center share the sources; README links to the full tutorial.
+
+To refresh the README's four room PNGs in the same run, pass an already-built
+website preview as the second URL:
+
+```sh
+node scripts/update-guide-images.mjs http://127.0.0.1:8787 http://127.0.0.1:18890
+```
+
+Build that preview from the current UI first. The README captures use the
+[film's real-component fixture](../../site/film/README.md), with sample people
+and generated game artwork. The room illustration and quickstart SVG are
+authored explanations, not screenshots.
+
+After changing pictured UI, refresh the affected PNGs with the capture command,
+inspect them, then rebuild. `build:website` bundles components and guides and
+checks generated hero artwork; `check-docs.mjs` validates image targets and
+document links. Screenshot refresh and visual review are manual steps.
+
 ## Downloads
 
 The Windows, macOS and Linux App cards use fixed filenames and each provider's
@@ -210,8 +258,8 @@ Verify the latest redirects and package checksums after releases.
 
 ## Publish
 
-1. Verify the public copy and destinations above, publish the release artifacts
-   and open the source repository as part of the approved public launch.
+1. Verify the public copy and destinations above. Publish approved release
+   artifacts before adding their download options to the website.
 2. In repository **Settings > Pages**, choose **GitHub Actions** as the source.
    Use the dedicated Pages workflow, not publication of the repository root or
    all of `docs/`, which includes developer research and operational reference.

@@ -33,8 +33,8 @@ Piik 是一个免费开源的私密屏幕共享工具，适合游戏直播、一
 - **用 Piik App 或已有 Piik 站点分享。** 支持屏幕、窗口、浏览器标签页和摄像头；可选来源与音频能力取决于平台。
 - **优先直接连接。** 画面优先在设备之间传输（P2P），自建站点可启用媒体转发（SFU）自动兜底。
 - **房间由你管理。** 支持邀请链接、房间号和可选的房间密码，一位房主、最多 20 位观众。
-- **边看边聊。** 发送文字、和朋友互送表情，也可开启弹幕。
-- **让朋友接手操作。** 通过 Piik App 分享时，可选择让一位观众操作键鼠，随时结束控制。
+- **边看边聊。** 加入房间语音，发送文字和表情，也可开启弹幕。
+- **让朋友接手操作。** 通过 Piik App 分享窗口或屏幕时，可选择让一位观众操作键鼠，随时结束控制。
 - **灵活的观看方式。** 支持深浅主题、播放控制、画中画和连接拓扑查看。
 - **一个程序就能建站。** 网页、房间管理和可选的媒体转发打包在同一服务端程序中。
 
@@ -69,26 +69,16 @@ Piik 默认跟随系统语言，中文系统显示简体中文，其他语言显
 顶部的 **中 / EN / ✦** 可切换中英文或体验纯视觉模式。
 Piik App 可创建本地房间或临时公网邀请，也能在后台为已授权站点提供采集能力。分享期间需保持 App 运行。
 
-下载以 **`piik-app`** 开头的 ZIP 压缩包，再按文件名中的平台标识选择：
+[**图文上手教程 →**](./docs/guide/getting-started.zh-CN.md) · [**问题排查 →**](./docs/guide/troubleshooting.zh-CN.md)
 
-| 文件名包含 | 适用平台 |
-| --- | --- |
-| `windows-amd64` | Windows x64 |
-| `darwin-arm64` | Apple 芯片；原生采集需 macOS 13 及以上 |
-| `darwin-amd64` | Intel Mac；原生采集需 macOS 13 及以上 |
-| `linux-amd64` | Linux x64 |
-| `linux-arm64` | Linux ARM64 |
+选择以 **`piik-app`** 开头的程序包；教程介绍安装、选择画面和邀请朋友的完整步骤。
 
-[**快速上手 →**](./docs/guide/getting-started.zh-CN.md) · [**问题排查 →**](./docs/guide/troubleshooting.zh-CN.md)
-
-浏览器采集需要 HTTPS 或 `localhost`。目前主要测试 Windows 版 Piik App 和桌面浏览器分享。
-macOS 和 Linux 版 Piik App 仍需更多实机测试，欢迎有设备的朋友试用并[反馈问题](https://github.com/TNTcraftHIM/Piik/issues)。
-Piik App 的公网邀请和在线版使用纯 P2P 连接，
-在受限网络下可能无法连通。
+浏览器采集需要 HTTPS 或 `localhost`。Piik App 的公网邀请和在线版使用 P2P，
+参与者之间需要可用的 UDP 通路。校园网、画面连接失败或虚拟局域网的用法，见[网络排查与连接方案](./docs/guide/network.zh-CN.md)。
 
 ## 自行部署
 
-想为朋友搭建站点时，再部署 Piik Server。使用 App 的公网邀请，无须自行部署服务器。
+部署 Piik Server，为朋友搭建自己的站点。
 
 <p><a href="./docs/operations/self-hosting.zh-CN.md#使用-docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 Piik"></a></p>
 

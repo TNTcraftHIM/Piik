@@ -2,16 +2,16 @@
 
 English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../README.md)
 
-Piik shares one person's screen with up to 20 invited viewers. This guide covers
-watching, using Piik online, using Piik App and sharing through an existing site.
+Piik lets one Host share with up to 20 invited Viewers. Choose your starting point:
 
-[Join a room](#join-a-friends-room) · [Use online](#use-piik-online) ·
-[Piik App](#share-with-piik-app) · [Existing site](#share-from-an-existing-site) ·
-[Room tools](./room-tools.md) · [Troubleshooting](./troubleshooting.md)
+| You want to… | Start here |
+| --- | --- |
+| Watch a friend | [Open their invitation](#join-a-friends-room). No installation. |
+| Share with friends elsewhere | [Piik App → Public invite](#share-with-piik-app). Keep App running. |
+| Share without installing | [Piik online](#use-piik-online), in your browser. |
+| Use your group's site | [Open that site](#share-from-an-existing-site); App capture is optional. |
 
-Viewers need a browser and an invitation. To start sharing, download Piik App
-and choose **Public invite**. To share without installing, open
-[Piik online](https://demo.piik.tv) and create a room in your browser.
+![Three steps: pick a window, copy its room invitation, and join friends on the sofa.](../assets/quickstart.svg)
 
 ## Join a friend's room
 
@@ -20,23 +20,11 @@ and choose **Public invite**. To share without installing, open
 3. Move the pointer over the picture or tap it to show the playback bar.
 
 The playback bar controls only your own picture and sound.
-Use the playback button to pause or resume; on a computer, double-click the picture to enter or
-leave fullscreen where supported. On a phone, tap the picture to show the bar
-and use its buttons. Safari may show system controls in video fullscreen.
+See [playback controls](./sharing.md#playback-controls) for fullscreen, display and sound options.
 
-See [playback controls](./sharing.md#playback-controls) for display and sound options.
-
-With just a four-digit room code, open the same Piik site and choose
-**Join a room**. You may need the site's passphrase and the room's password.
-The host decides whether code entry is available; ask for an invitation link if
-you cannot join by code.
-
-Hosts can turn off **Skip passwords** beside the link to copy the ordinary room
-address. Visitors follow the site's and room's access checks; invite-only rooms
-require the invitation credential. This switch does not revoke existing invites.
-
-If an old link no longer works, ask the host for the current invitation.
-App Local rooms and temporary public invitations end when that App run stops.
+Only have a four-digit code? Open the same Piik site and select **Join a room**.
+Enter the site passphrase or room password if asked. If code entry is unavailable
+or an old link fails, ask the Host for their current invitation.
 
 ## Use Piik online
 
@@ -65,12 +53,13 @@ restrictive networks may load the page but block video.
    **Screens** as available. Pick the actual source and sound option.
 5. Copy and send the room invitation. Keep both the App and sharing tab open.
 
+![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.png#gh-light-mode-only)
+![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.dark.png#gh-dark-mode-only)
+
 If macOS blocks the first launch, follow the [Mac opening steps](./troubleshooting.md#macos-blocks-first-launch).
 
-Click the launcher's update button to download the new App. **Gitee mirror**
-provides an alternative if the download is slow or unavailable. A new major
-version includes a compatibility warning that links to the upgrade instructions;
-read them before replacing your App.
+<details>
+<summary>Which download should I choose?</summary>
 
 | Filename contains | Platform |
 | --- | --- |
@@ -80,29 +69,38 @@ read them before replacing your App.
 | `linux-amd64` | Linux x64 |
 | `linux-arm64` | Linux ARM64 |
 
-Windows App and browser sharing are the primary tested paths. Physical-device
-coverage for the macOS and Linux apps is still limited;
-[test results and feedback are welcome](https://github.com/TNTcraftHIM/Piik/issues).
 Linux native capture also needs [system components](../../native/capture/linux/README.md).
 See the [App guide](../../cmd/piik-app/README.md) for package and runtime details.
 
+</details>
+
 ### Choose an App mode
 
-| Mode | When to choose it | What to keep in mind |
-| --- | --- | --- |
-| **Local room** | Friends are on the same local network. | With multiple interfaces, expand **Local invitation address** and select the interface and IP on your friends' network. Your computer must be reachable from theirs. A local site passphrase is optional. |
-| **Public invite** | Friends are elsewhere and you want a temporary invitation. | Needs Internet access. The public address lasts for this App run. |
+![The App mode selector: Public invite is selected; Local room is the alternative.](../assets/guide/app-modes.en.png#gh-light-mode-only)
+![The App mode selector: Public invite is selected; Local room is the alternative.](../assets/guide/app-modes.en.dark.png#gh-dark-mode-only)
+
+- **Public invite:** send a temporary web link to friends elsewhere. It needs
+  Internet access and lasts until you close the App.
+- **Local room:** friends are on the same LAN or virtual LAN. Your computer
+  must be reachable from theirs. If needed, expand **Local invitation address**
+  and select the network interface your friends use.
 
 For Local room and Public invite, expand **Site passphrase** to set an optional
 access passphrase.
 Local invitations use HTTPS. On first access, confirm the local certificate
 against the Host's App terminal before continuing; see the
 [certificate guide](./troubleshooting.md#local-https-certificate-warning).
+
+<details>
+<summary>Return to the launcher or change mode</summary>
+
 Once the room service starts, click the connected **App** button at the top right
 to return to the launcher, manage site access or reopen the room. The App terminal
 also keeps an **App launcher** address. To change between Local room and Public
 invite, close and reopen the App, then choose again. This ends the previous room
 and generates a new public-invitation address.
+
+</details>
 
 ### Use App with an existing site
 
@@ -110,6 +108,7 @@ and generates a new public-invitation address.
    passphrase if asked; [Piik online](https://demo.piik.tv) needs no site passphrase.
    No room mode needs to be selected in the App launcher.
 2. Click **App** at the top. Allow local-network access if the browser asks.
+   When App is found, choose **Open App page**.
 3. Check the site address on the local confirmation page, then choose **Allow access**.
 4. Return to the site, choose **Start sharing**, then **Apps / Windows** or **Screens**.
    Select a source and send the new room invitation to your friends.
@@ -119,43 +118,18 @@ selector; its list updates as soon as the connection completes.
 If connection fails, the App button offers **Retry** and **Download App**.
 You can still share and watch in your browser.
 
-The browser remembers the connection to an approved site. Reconnect after
-changing browsers, using a private window or clearing site data. In the App
-launcher, **×** revokes a site and **☆** makes it open next time; approving a
-different site replaces the previous one. See the [App reference](../../cmd/piik-app/README.md#modes)
-for these options and returning to the launcher. A new public-invite address needs
-its own approval.
-
-**A page that opens does not guarantee a video connection.** Public invite gives
-your room a temporary web address; picture and sound still travel between
-participants. This mode has no media-server fallback, and the temporary address
-has no uptime guarantee. All modes need a working UDP media path.
-The [App guide](../../cmd/piik-app/README.md#modes) explains the connection setup.
+Manage [approved sites and the startup favorite](../../cmd/piik-app/README.md#approved-site)
+in the App launcher. If video cannot connect, use the [network guide](./network.md).
 
 ### Upgrading
 
-**Piik 2.x and 1.x cannot be used together.** The App and the site it connects to
-need the same major version. Different 2.x versions preserve established sharing
-and viewing; new features require support from the relevant App and site.
-Read the release notes on
-[GitHub](https://github.com/TNTcraftHIM/Piik/releases/latest) or
-[Gitee](https://gitee.com/TNTcraftHIM/Piik/releases) before upgrading.
-
-- **Local room or Public invite:** stop sharing, close the old App and extract
-  the complete new package. Start the new App and send a fresh invitation.
-- **An existing site:** the administrator updates the Server first, following
-  the [update guide](../operations/service-management.md). Then update the Apps
-  connecting to that site and refresh all sharing and viewing pages.
-
-Restarting an App or Server interrupts active shares.
+App and site must use the same major version; **2.x and 1.x cannot be used together**.
+To replace App or update a group's site, follow the [upgrade steps](../../cmd/piik-app/README.md#upgrading).
 
 ## Share from an existing site
 
-You need an existing HTTPS site running Piik Server, provided by a friend or
-administrator. You can also use [Piik online](#use-piik-online)
-or [Piik App](#share-with-piik-app). Hosting a site yourself is an advanced option:
-follow the [self-hosting guide](../operations/self-hosting.md) for server, HTTPS
-and network setup.
+Use an HTTPS Piik site provided by your group or administrator.
+To run your own site, follow [self-hosting](../operations/self-hosting.md).
 
 1. Open your group's Piik site. Enter its site passphrase if asked.
 2. Choose **Start sharing**, then **Browser** to select a screen, window or tab,

@@ -31,9 +31,9 @@ platforms, audience size, sound and sharing across networks. Order them along
 the visitor's decisions: device and installation requirements, joining friends,
 shared media, then advanced hosting. Keep related questions together and place
 material limitations beside their answers. Specific errors and recovery procedures
-belong in the troubleshooting guide, linked directly from the header, the end
-of the FAQ and the footer in the selected language. Keep these steps in one
-reader guide; App references link to it rather than maintaining a second copy.
+belong in the troubleshooting and network guides, linked from the header,
+FAQ and footer in the selected language. App references link to the relevant
+guide rather than maintaining a second copy.
 Do not duplicate troubleshooting steps on the homepage.
 
 Search titles, descriptions and repository topics describe the actual product:
@@ -41,6 +41,28 @@ private screen sharing, watching together and optional self-hosting. Use natural
 Chinese and English phrases in the relevant introduction; preserve the brand
 line in the visible headline. Follow [Google's title guidance](https://developers.google.com/search/docs/appearance/title-link):
 avoid keyword lists, unrelated product names and unsupported performance claims.
+
+## Reader guidance
+
+Separate first-use tutorials, task instructions, explanations and reference,
+following [Diátaxis](https://diataxis.fr/how-to-guides/). The site and README help
+readers choose an entry; guides supply the steps. Check the rendered result:
+
+- Start with the reader's task or visible symptom. Put prerequisites and the
+  next useful action before optional mechanisms; keep essential safety and
+  success checks beside the action, outside optional disclosures.
+- Give long pages linked section indexes and descriptive headings. Split
+  substantial tasks when the outline becomes hard to scan.
+- Put diagrams or real UI captures beside the step or relationship they explain.
+  Keep necessary text available without the image; remove decorative repetition.
+- Use direct instructions and consistent UI labels. Check entry selection,
+  task completion and the next check on mobile.
+
+Reference guidance:
+[Microsoft's scannable-content and navigation guidance](https://learn.microsoft.com/en-us/style-guide/scannable-content/),
+[Google's large-document course](https://developers.google.com/tech-writing/two/large-docs),
+[W3C's headings and link guidance](https://www.w3.org/WAI/tips/writing/), and
+[Mayer and Fiorella's coherence, signaling and spatial-contiguity principles](https://doi.org/10.1017/9781108894333.019).
 
 ## Presentation
 
@@ -119,9 +141,8 @@ The short comics illustrate choosing, inviting and joining, following the
 shared motion grammar and whole-control replay rule. The optional film starts
 only after an explicit action and has native buttons and a seek slider. Open it
 within the homepage, loading its single player on demand; closing it unloads
-playback. Keep one homepage playback entry; the player document also supports
-local recording. Fullscreen watching keeps touch controls available; hiding
-them is an explicit recording action.
+playback. Keep one homepage playback entry. Fullscreen watching keeps touch
+controls available.
 Both READMEs share the friendly opening and room illustration. Their feature,
 limitation and setup sections use the factual register in the copy guide.
 
@@ -153,13 +174,14 @@ Use static HTML, CSS, SVG and small scripts for the homepage and film; no router
 CMS, translation dependency or new application backend. The documentation section
 uses VitePress's standard navigation and search with Piik's colours and mascot.
 It compiles existing Markdown; [website operations](../operations/website.md#documentation-build)
-owns its publication list and build boundary. The film's isolated
-demonstration frame bundles the existing React product components and styles,
-using staged inputs. It cannot access storage, run capture or contact the room
-service. The film clock owns its actions and decorative CSS animation positions.
-Rebuilding the site picks up component/style/copy changes; changes to the actual
-workflow still require reviewing the sequence and camera framing. Do not replace
-shared controls with a second hand-drawn UI or retain obsolete screenshot plates.
+owns its publication list and build boundary. The selected public film A uses
+authored artwork; its pictured interfaces require deliberate updates when the
+product changes. The separate `/film/ui/` README fixture bundles existing React
+product components and styles with staged inputs. It cannot run capture or
+contact the room service. Rebuilding that fixture picks up component/style/copy
+changes; workflow changes still require reviewing its sequence and framing.
+Use real components for current product screenshots; distinguish authored film
+artwork and frozen review snapshots from automatically rebuilt product UI.
 The existing App/Web
 continues to own sharing. The homepage explains it rather than simulating a
 second room authority. Public copies of advanced product/research documents

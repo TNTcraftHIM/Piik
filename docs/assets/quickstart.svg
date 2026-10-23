@@ -1,10 +1,75 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="192" viewBox="0 0 900 192" role="img" aria-labelledby="title desc">
   <title id="title">Pick a screen, send an invitation, watch together</title>
   <desc id="desc">Three illustrated steps: choose a window, send its room invitation, and join friends on the sofa. Each loop pauses to let the scene settle.</desc>
+  <style data-guide-palette="true">
+/* Shared theme for the App, website and documentation. Status and selection
+   have separate roles; illustrations keep their own colours. */
+:root {
+  --person-ink: #263b43;
+  --wall: #f3f5f8;
+  --wall-2: #e5eaf2;
+  --paper: #fffefb;
+  --ink: #29374a;
+  --muted: color-mix(in srgb, var(--ink) 75%, var(--paper));
+  --line: color-mix(in srgb, var(--ink) 20%, var(--paper));
+  /* Primary actions keep their identity; selection/focus follows the theme. */
+  --primary: #2765ce;
+  --primary-ink: #fff;
+  --action: #3478e5;
+  --action-deep: var(--primary);
+  --action-ink: var(--primary-ink);
+  --action-text: #2055b2;
+  --idle: #8ea3b8;
+  --busy: #3478e5;
+  --live: #2fa66a;
+  --warn: #d98e04;
+  --danger: #d64541;
+  --control-hover: #eef3ff;
+  --control-selected: #e5efff;
+  --control-selected-ink: #214c9b;
+  --control-edge: color-mix(in srgb, var(--ink) 57%, var(--paper));
+  --surface-rim: rgb(255 255 255 / .95);
+  --surface-shade: rgb(36 53 78 / .18);
+  --surface-glaze: linear-gradient(165deg, rgb(255 255 255 / .6), transparent 65%, rgb(51 89 147 / .025));
+  --control-shadow: 0 3px 0 var(--surface-shade), 0 5px 10px color-mix(in srgb, var(--surface-shade) 45%, transparent);
+  --panel-shadow: inset 0 1px 0 var(--surface-rim), 0 3px 0 var(--surface-shade), 0 16px 36px color-mix(in srgb, var(--surface-shade) 55%, transparent);
+  --piik-dark-wall: #242a34;
+  --piik-dark-wall-2: #2c3543;
+  --piik-dark-paper: #354153;
+  --piik-dark-ink: #f6f3eb;
+  --piik-dark-action: #f6f3eb;
+  --piik-dark-action-ink: #29374a;
+  --piik-dark-action-text: var(--piik-dark-action);
+  --piik-dark-hover: #414f67;
+  --piik-dark-selected: var(--piik-dark-action);
+  --piik-dark-selected-ink: var(--piik-dark-action-ink);
+}
+@media (prefers-color-scheme: dark) { :root {
+  --wall: var(--piik-dark-wall);
+  --wall-2: var(--piik-dark-wall-2);
+  --paper: var(--piik-dark-paper);
+  --ink: var(--piik-dark-ink);
+  --busy: #82b1ff;
+  --live: #3fb97a;
+  --warn: #e8a33d;
+  --danger: #e25a52;
+  --action: var(--piik-dark-action);
+  --action-deep: var(--piik-dark-action);
+  --action-ink: var(--piik-dark-action-ink);
+  --action-text: var(--piik-dark-action-text);
+  --control-hover: var(--piik-dark-hover);
+  --control-selected: var(--piik-dark-selected);
+  --control-selected-ink: var(--piik-dark-selected-ink);
+  --control-edge: color-mix(in srgb, var(--ink) 48%, var(--paper));
+  --surface-rim: rgb(222 234 255 / .12);
+  --surface-shade: rgb(6 12 22 / .38);
+  --surface-glaze: linear-gradient(165deg, rgb(224 237 255 / .06), transparent 65%, rgb(0 0 0 / .035));
+} }
+
+</style>
   <style>
-    :root { --drawing:#22303e; --panel:#fafaf3; --line:#c6d6cc; --label:#256b47; --art-mint:#c4e3ce; --art-paper:#fffdf4; --art-blue:#a2c8e8; --art-yellow:#f5d37a; --art-orange:#ee8955; --art-pink:#e9b1bb; --couch:#e9ad63; --couch-dark:#cd8845; }
-    @media (prefers-color-scheme:dark) { :root { --panel:#1b2d34; --line:#3b5155; --label:#9bdbb2; } }
-    text { fill:var(--label); font:600 13px system-ui,sans-serif; letter-spacing:2px; }
+    :root { --drawing:#22303e; --art-mint:#c4e3ce; --art-paper:#fffdf4; --art-blue:#a2c8e8; --art-yellow:#f5d37a; --art-orange:#ee8955; --art-pink:#e9b1bb; --couch:#e9ad63; --couch-dark:#cd8845; }
+    text { fill:var(--muted); font:600 13px system-ui,sans-serif; letter-spacing:2px; }
     @media (prefers-reduced-motion:no-preference) {
       g[class] { transform-box:fill-box; transform-origin:center; }
       .screen-cursor { animation:choose-screen 6.4s ease-in-out infinite both; }
@@ -30,7 +95,7 @@
 @keyframes take-a-seat { 0% { transform: translateY(-8px); } 22% { transform: translateY(2px); } 32%, 100% { transform: none; } }
   </style>
   <g transform="translate(0 2)">
-    <rect x="1" y="1" width="278" height="186" rx="18" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+    <rect x="1" y="1" width="278" height="186" rx="18" fill="var(--paper)" stroke="var(--line)" stroke-width="1.5"/>
     <text x="20" y="28">01</text>
     <g transform="translate(15 40)"><g fill="none" stroke="var(--drawing)" stroke-width="3" stroke-linejoin="round">
                 <rect x="47" y="17" width="141" height="90" rx="12" fill="var(--art-mint)"/><path d="M105 108v14m-20 0h65"/>
@@ -40,7 +105,7 @@
               </g><path d="m33 35-8-4m12-8-4-8m169 22 9-5" stroke="var(--drawing)" stroke-width="3" stroke-linecap="round"/></g>
   </g>
   <g transform="translate(310 2)">
-    <rect x="1" y="1" width="278" height="186" rx="18" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+    <rect x="1" y="1" width="278" height="186" rx="18" fill="var(--paper)" stroke="var(--line)" stroke-width="1.5"/>
     <text x="20" y="28">02</text>
     <g transform="translate(15 40)"><g stroke="var(--drawing)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                 <g class="invite-note"><rect x="44" y="31" width="143" height="73" rx="16" fill="var(--art-paper)" transform="rotate(-5 115 67)"/><path d="m80 77-6-6a13 13 0 0 1 0-18l10-10a13 13 0 0 1 18 0l6 6m-10 8 6 6a13 13 0 0 1 0 18L94 91a13 13 0 0 1-18 0l-6-6m11-10 16-16" fill="none"/><path d="M125 58h38m-38 15h24"/></g>
@@ -49,7 +114,7 @@
               </g></g>
   </g>
   <g transform="translate(620 2)">
-    <rect x="1" y="1" width="278" height="186" rx="18" fill="var(--panel)" stroke="var(--line)" stroke-width="1.5"/>
+    <rect x="1" y="1" width="278" height="186" rx="18" fill="var(--paper)" stroke="var(--line)" stroke-width="1.5"/>
     <text x="20" y="28">03</text>
     <g transform="translate(15 40)"><g stroke="var(--drawing)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M55 112v9m139-9v9"/><rect x="46" y="63" width="157" height="50" rx="17" fill="var(--couch)" stroke="none"/>
@@ -59,5 +124,5 @@
                 <g class="sofa-spark"><path d="m185 20 3 8 8 3-8 3-3 8-3-8-8-3 8-3Z" fill="var(--art-yellow)"/></g>
               </g></g>
   </g>
-  <path d="M288 102h15m-5-5 5 5-5 5m300-5h15m-5-5 5 5-5 5" fill="none" stroke="var(--label)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M288 102h15m-5-5 5 5-5 5m300-5h15m-5-5 5 5-5 5" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

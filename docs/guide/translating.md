@@ -2,15 +2,13 @@
 
 [中文](./translating.zh-CN.md) · [Contributing](../../CONTRIBUTING.md)
 
-Piik currently includes Simplified Chinese and English. You can improve a label,
-proofread a guide, or contribute another language. Translations are reviewed
-through GitHub issues and pull requests.
+Piik includes Simplified Chinese and English. Suggest wording, correct a
+translation or add a language through GitHub issues and pull requests.
 
 For a wording suggestion, [open an issue](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
-with the language, page or control, current text, proposed text and a brief reason.
-A screenshot or the steps to reach the text help establish context. Remove
-private invitations, passwords and personal content from screenshots. A wording
-suggestion does not require a development environment.
+with the language, page/control, current text, proposed text and reason. Include
+a screenshot or steps to reach it; remove private invitations, passwords and
+personal content. You can send a suggestion without setting up development tools.
 
 ## Make your first correction
 
@@ -31,10 +29,8 @@ suggestion does not require a development environment.
 4. Preview the affected screen and run the [relevant checks](#preview-and-check).
    For a typo in one language, edit that language. If the underlying meaning
    changes, update the corresponding messages in every registered language.
-5. Open a PR to `main`. Explain the wording problem, the language and surfaces
-   changed, and what you checked. Mention anything you could not preview;
-   maintainers can help with technical validation. PR format and publication
-   follow [Contributing](../../CONTRIBUTING.md#pull-request-scope).
+5. Open a PR to `main` with the wording problem, languages/surfaces changed and
+   preview results. For PR format, follow [Contributing](../../CONTRIBUTING.md#pull-request-scope).
 
 ## Find the right text
 
@@ -47,22 +43,16 @@ suggestion does not require a development environment.
 | App console window | `consoleCopy` in [console.go](../../internal/app/console.go); entries are ordered English, Chinese, visual; retain the third slot even when empty |
 | README and entry guides | [README pair](../../README.md), [documentation home](./README.md), [getting started](./getting-started.md), [troubleshooting](./troubleshooting.md) and [self-hosting](../operations/self-hosting.md), each with a `.zh-CN.md` counterpart |
 
-The App and Server serve the same web UI. Edit source files; build output and
-release packages are generated. Translating an App message does not also
-translate a website caption. Update related instructions when an action name
-changes. Technical references keep one shared version; see
-[documentation ownership](../standards/documentation.md).
+Edit the source, then rebuild the surface that serves it:
 
-Language catalogs are bundled with the web assets; a new language also needs
-the registry import described below. Rebuild and publish the App or Server that
-serves the affected UI after an edit. Installed packages do not load external
-language files. When the App connects to a remote site, that site serves its UI,
-so updating the site's web translations does not require reinstalling the App.
-The website has its own build and deployment workflow.
-The documentation website renders those same Markdown sources; editing a guide
-updates its web page on the next website publication. Its navigation and search
-labels live in `site/docs/`. Use the [website preview](../operations/website.md#preview)
-to check the generated page as well as GitHub's Markdown view.
+- **App/Server UI:** catalogs are bundled with the web assets. Publish the updated
+  App or Server; a remote site's UI comes from that Server.
+- **Website/film:** use the [website workflow](../operations/website.md).
+- **Guides:** the documentation website renders repository Markdown at its next
+  publication. Navigation and search labels live in `site/docs/`.
+
+Update related guides when a control's name changes. Technical references keep
+one shared version under [documentation ownership](../standards/documentation.md).
 
 ## Preserve meaning and syntax
 
@@ -73,9 +63,8 @@ claims. A cultural reference should still make sense to someone unfamiliar with 
 Machine-assisted drafts need proofreading by someone who understands the language
 and the screen; raise unclear source text in the PR instead of guessing.
 
-App startup failures share reason codes between the launcher and console. Translate
-their user-facing explanations in both catalogs; keep error codes and raw technical
-details unchanged so reports remain useful for diagnosis.
+For App startup failures, translate the launcher and console explanations
+together. Keep their shared reason codes and raw technical details unchanged.
 
 Locale files are TypeScript objects. These are existing examples:
 
@@ -86,13 +75,11 @@ Locale files are TypeScript objects. These are existing examples:
 "host.title": "{name} 的屏幕",
 ```
 
-`host.title` is the lookup key; `{name}` is supplied by the application. Move the
-placeholder to fit the sentence, preserving its spelling, braces and number of
-occurrences. The current formatter substitutes each supplied variable once;
-repeating `{name}` would leave the second occurrence visible. It accepts plain
-strings, not HTML or ICU plural expressions. If a language needs plural forms
-or different sentence composition, describe the actual case so the caller and
-formatter can be changed together.
+Keep the lookup key `host.title`. Move `{name}` to fit the sentence, preserving
+its spelling, braces and occurrence count. The formatter replaces each variable
+once and accepts plain strings. For plural forms, HTML or different sentence
+composition, describe the needed change in the PR so the caller and formatter
+can be updated together.
 
 Keep quotes, escapes and commas valid. Preserve commands, config keys, URLs,
 download filenames and format markers such as `%s` in Go console text. Translate
@@ -120,30 +107,22 @@ layout questions, so contributors can coordinate work and review.
      titleFrames: frTitleFrames, playful: frPlayful },
    ```
 
-   Use an ASCII locale filename/key, the language's own name in `name`, a compact
-   button label in `short`, and a matching language tag in `tag`. Keep the short
-   label recognizable in one to three characters, such as `中`, `EN` or `FR`;
-   distinguish regional/script variants when they coexist. The registry supplies
-   the language controls, document language, saved selection and App launch handoff.
-   Chinese, English and visual mode retain their direct buttons; additional
-   languages share one dropdown slot after visual mode. The selected extra
-   language's short label appears on that slot, with its full name in the menu.
-   Initial selection matches a registered tag or key, then its base language;
-   unregistered languages use English. A saved choice takes precedence.
-   The shared [system-language policy](../standards/presentation-lifecycle.md#visual-language)
-   also covers Chinese script and region variants across App, Server UI and website.
+   Use an ASCII filename/key, the language's native name in `name`, a recognizable
+   one-to-three-character button label in `short`, and a matching language tag
+   in `tag`. Distinguish coexisting regional/script variants.
+   Extra languages appear in a shared dropdown after visual mode. Check language
+   selection, saved preferences and App handoff against the
+   [system-language policy](../standards/presentation-lifecycle.md#visual-language).
 3. Check complete screens and the launch flow. New UI languages use English in
    the App console until its own translation is added. Console additions also
    require updating the launcher and loopback accepted-language checks together;
    use the [App module map](../standards/engineering.md#module-map).
 4. State coverage in the PR. Website, film and documentation translations can be
-   contributed separately; their existing language controls must be updated when
-   adding a language there. For right-to-left scripts, include text direction and
-   layout verification; a translated catalog alone does not establish RTL support.
+   contributed separately; update their language controls when adding a language.
+   For right-to-left scripts, implement and check text direction and layout.
 
-Pure-visual mode is an optional presentation, not another language to translate.
-The small visual scenes are shared with text modes; translate their labels and
-explanations in the normal catalog. Keep the visual option available.
+Translate visual-mode labels and explanations in the normal catalog; keep that
+presentation option available.
 
 ## Playful copy
 
@@ -166,9 +145,8 @@ Waiting entries are plain strings such as `"Pull up a comfy chair."`. Keep them
 brief and natural in context. Avoid temporary trends, literal borrowed dialogue
 and statements that invent progress, success or remaining time.
 
-All these surfaces show a line immediately and share the
-[playful-copy lifecycle](../standards/visual-language.md#playful-copy-lifecycle).
-Keep timing in that owner. Preview welcome text and its cipher at
+Timing follows the [playful-copy lifecycle](../standards/visual-language.md#playful-copy-lifecycle).
+Preview welcome text and its cipher at
 `/__tooltip-preview`; use `/__status-preview` for waiting captions and titles.
 Check both narrow windows and language changes. The website's build picks up
 welcome edits automatically; its other copy remains separate.
@@ -184,9 +162,8 @@ npm run typecheck
 npm test -- tests/copy.test.ts
 ```
 
-Type checking catches missing keys. The copy tests check registered catalogs for
-empty text and mismatched placeholders, plus language selection and handoff.
-Tests do not judge translation quality.
+These checks cover missing keys, empty text, placeholders, language selection
+and handoff. Proofread the translation in the running UI too.
 
 Run the local UI and server as described in the source guide. Choose the language
 from the top-right controls, open the affected screen and inspect long names or counts
@@ -204,11 +181,8 @@ for code changes follow [Contributing](../../CONTRIBUTING.md#verification-entryp
 
 ## Further reading
 
-Reviewed 2026-09-13. These resources inform context-based proofreading and syntax
-preservation; Piik's contribution steps above use its own repository workflow.
-
 - [OBS translation guide](https://github.com/obsproject/obs-studio/wiki/How-To-Contribute-Translations-For-OBS): proofread in the running application and understand technical terms.
 - [Godot translation guide](https://contributing.godotengine.org/en/latest/other/translations.html): locate source context and coordinate terminology.
 - [Weblate translation guidance](https://docs.weblate.org/en/latest/user/translating.html#translating-special-text-safely): handle placeholders and markup carefully.
 - [W3C language-tag guidance](https://www.w3.org/International/questions/qa-choosing-language-tags): use BCP 47 tags to identify languages and their variants.
-- [Unicode CLDR language names](https://cldr.unicode.org/translation/displaynames/languagelocale-names): reference names for menus. Browser `Intl.DisplayNames` can help look up native names. Piik's one-to-three-character button labels are editorial choices, not standardized CLDR language names; keep them in the registry with each reviewed translation.
+- [Unicode CLDR language names](https://cldr.unicode.org/translation/displaynames/languagelocale-names): menu-name reference. Browser `Intl.DisplayNames` can help find native names; choose Piik's short button label in the registry.

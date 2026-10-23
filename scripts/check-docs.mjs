@@ -91,6 +91,9 @@ for (const file of markdownFiles) {
     ...inlineLinkTargets(scannable),
     ...matches(scannable, /^\s*\[[^\]]+\]:\s+(\S+)/gmu),
     ...matches(scannable, /<a\s+[^>]*href=["']([^"']+)["'][^>]*>/giu),
+    ...matches(scannable, /<img\b[^>]*\ssrc=["']([^"']+)["']/giu),
+    ...matches(scannable, /<(?:img|source)\b[^>]*\ssrcset=["']([^"']+)["']/giu)
+      .flatMap((value) => value.split(",").map((candidate) => candidate.trim().split(/\s+/u, 1)[0])),
   ];
   for (const raw of targets) checkLink(file, absolute, raw);
 }

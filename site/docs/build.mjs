@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vitepress';
@@ -14,6 +14,7 @@ export async function buildDocumentation() {
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, await readFile(resolve(root, page.source), 'utf8'));
   }
+  await cp(resolve(root, 'docs/assets'), resolve(source, 'assets'), { recursive: true });
   await build(resolve(root, 'site/docs'));
   const notices = resolve(root, 'build/site/docs/third-party-licenses.txt');
   // The default theme with local search ships these runtimes; the Vite build tool stays local.
