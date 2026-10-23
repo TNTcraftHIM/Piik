@@ -11,7 +11,7 @@ interface Participant {
 export function participantConnection(participant: Participant, pictureActive: boolean, voice?: RoomVoiceState | null) {
   if (participant.mediaReady) return { upstream: participant.upstream, ready: true, medium: "picture" as const };
   const member = voice?.enabled ? voice.members.find(member => member.peerId === participant.peerId && member.connected) : undefined;
-  if (member && member.upstream.kind !== "none") {
+  if (member?.joined && member.upstream.kind !== "none") {
     return { upstream: member.upstream, ready: true, medium: "voice" as const };
   }
   // An unready assignment is not media demand after its picture has stopped.

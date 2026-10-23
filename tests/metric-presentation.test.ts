@@ -39,7 +39,7 @@ describe("observed metric presentation", () => {
           metrics: { ...EMPTY_METRICS, framesPerSecond: 59.8, bitrateKbps: 7200, rttMs: 24 } },
         { key: "unknown", name: "Joining", status: STATUS_CATALOG.joining, route: null, metrics: null },
       ],
-      selectedKey: null, onSelect() {},
+      selectedKey: null, onSelect() {}, pictureActive: true,
     }));
     expect(html).toContain("59.8 fps");
     expect(html).toContain("7200 kbps");

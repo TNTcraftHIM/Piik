@@ -1,12 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { RoomVoiceSnapshot, RoomVoiceSession } from "../room-voice/session";
+import { voiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
+import type { VoiceConnectionMetric } from "../room-voice/browser-endpoint";
+import { EMPTY_METRICS } from "../types";
+import { PREVIEW_METRICS } from "./preview-metrics";
+import { CaptureMetricCells } from "../components/living/Metrics";
+import { ConnectionDetails } from "../components/living/ConnectionDetails";
 import { Couch } from "../components/living/Couch";
-import type { RoomVoiceState } from "../../shared/protocol";
 import { participantConnection } from "../lib/participant-connection";
 import { PawnSvg } from "../components/living/Pawn";
 import { PawnDetail } from "../components/living/PawnDetail";
 import { RouteTree } from "../components/living/RouteTree";
 import { ViewerOverview } from "../components/living/ViewerOverview";
-import { Chip, SwitchItem } from "../components/living/primitives";
+import { Chip, Row, SwitchItem } from "../components/living/primitives";
 import { participantColor } from "../components/living/participant-color";
 import { labelParticipantSnapshot } from "../lib/viewer-presence";
 import { deriveParticipantStatus } from "../ui/media-status";
@@ -31,49 +37,97 @@ const NAMES = ["小桃", "阿白", "栗子", "小满", "橘子", "小岛", "可�
 export function PeoplePreview() {
   const { t, lang } = useCopy();
   const en = lang === "en";
-  const [count, setCount] = useState(20);
-  const [mode, setMode] = useState("mixed");
-  const [view, setView] = useState<"host" | "viewer">("host");
+  const sample = new URLSearchParams(location.search).get("people");
+  const initialMode = sample && ["room", "voice", "stopped", "both", "voice-failed", "relay-voice"].includes(sample) ? sample : "mixed";
+  const [count, setCount] = useState(initialMode === "mixed" ? 20 : 3);
+  const [mode, setMode] = useState(initialMode);
+  const [view, setView] = useState<"host" | "viewer">(initialMode === "relay-voice" ? "viewer" : "host");
   const [longNames, setLongNames] = useState(false);
   const [collaboration, setCollaboration] = useState(true);
-  const [picture, setPicture] = useState(true);
-  const [voice, setVoice] = useState(true);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [picture, setPicture] = useState(!["room", "voice", "stopped"].includes(initialMode));
+  const [voiceEnabled, setVoice] = useState(true);
+  const [selected, setSelected] = useState<string | null>(["voice", "both", "stopped"].includes(initialMode) ? VIEWER_IDS[0]! : null);
+  const [overviewOpen, setOverviewOpen] = useState(initialMode !== "mixed");
   const [guides, setGuides] = useState(false);
   const hostName = en ? "Amu" : "阿沐";
   const peerCount = Math.max(1, Math.floor(count * .6));
-  const { viewers } = labelParticipantSnapshot(VIEWER_IDS.slice(0, count).map((peerId, index) => ({
+  const sourceActive = picture;
+  const voiceActive = voiceEnabled && !["room", "pending"].includes(mode);
+  const deepChain = mode === "relay" || mode === "relay-voice";
+  const { viewers: routedViewers } = labelParticipantSnapshot(VIEWER_IDS.slice(0, count).map((peerId, index) => ({
     role: "viewer" as const, peerId,
     displayName: longNames ? (en ? `Friend with a long name ${index + 1}` : `这是名字稍微长一点的朋友 ${index + 1}`) : en ? `Friend ${index + 1}` : NAMES[index]!,
     upstream: mode === "pending" || (mode === "mixed" && index > 2 && index >= count - 2)
       ? { kind: "none" as const }
-      : mode === "relay" ? { kind: "peer" as const, peerId: index === 0 ? HOST_ID : VIEWER_IDS[index - 1]! }
+      : deepChain ? { kind: "peer" as const, peerId: index === 0 ? HOST_ID : VIEWER_IDS[index - 1]! }
       : index < peerCount ? { kind: "peer" as const, peerId: index === 0 ? HOST_ID : VIEWER_IDS[Math.floor((index - 1) / 2)]! }
       : index < peerCount + 2 ? { kind: "sfu" as const }
       : { kind: "peer" as const, peerId: VIEWER_IDS[peerCount + (index % 2)]! },
     mediaReady: picture && mode !== "pending" && index % 7 !== 6 && !(mode === "mixed" && index > 2 && index >= count - 2) ? true as const : undefined,
   })));
-  const roomVoice: RoomVoiceState | null = voice ? {
-    type: "room-voice-state", revision: 1, enabled: true, hostPeerId: HOST_ID,
-    members: [{ peerId: HOST_ID, connected: true, joined: true, upstream: { kind: "none" }, publicationId: "preview-host-voice" },
-      ...viewers.map((viewer, index) => ({ peerId: viewer.peerId, connected: true, joined: index % 5 !== 4,
-        upstream: index % 5 === 4 ? { kind: "none" as const } : viewer.upstream, deafened: index % 4 >= 2,
-        publicationId: index % 5 !== 4 && (index % 4 === 0 || index % 4 === 3) ? `preview-voice-${index}` : undefined }))],
-    publications: [], connections: [], unavailable: [],
-  } : null;
-  const connectionFor = (viewer: (typeof viewers)[number]) => participantConnection(viewer, picture, roomVoice);
   const self = VIEWER_IDS[0]!;
-  const selectable = viewers.filter((viewer) => view === "host" || (viewer.upstream.kind === "peer" && viewer.upstream.peerId === self))
+  const viewers = sourceActive ? routedViewers : routedViewers.map(viewer => ({ ...viewer, upstream: { kind: "none" as const }, mediaReady: undefined }));
+  const voice = useMemo<Pick<RoomVoiceSession, "getSnapshot" | "subscribe"> | undefined>(() => {
+    if (!voiceActive) return undefined;
+    const state: RoomVoiceSnapshot = {
+      peerId: view === "host" ? HOST_ID : self, role: view, connected: true,
+      room: { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: HOST_ID, bitrate: 96_000,
+        members: [{ peerId: HOST_ID, connected: true, joined: true, upstream: { kind: "none" } },
+          ...routedViewers.map((viewer, index) => ({ peerId: viewer.peerId, connected: true, joined: index % 5 !== 4, upstream: viewer.upstream, deafened: index % 4 >= 2, publicationId: index % 4 === 0 || index % 4 === 3 ? `preview-voice-${index}` : undefined }))],
+        publications: [], connections: [], unavailable: [] },
+      capturePending: false, microphone: false, deafened: false, autoplayBlocked: false, muted: new Set(), error: mode === "voice-failed" ? "transport" : null,
+      input: { deviceId: "", volume: 1, voiceProcessing: true }, listeningVolume: 1, peerVolumes: new Map(),
+    };
+    return { getSnapshot: () => state, subscribe: () => () => {} };
+  }, [voiceActive, count, view, self, mode]);
+  const roomVoice = voice?.getSnapshot().room;
+  const localPeerId = view === "host" ? HOST_ID : self;
+  const remotePeers = (view === "host" ? routedViewers.map(viewer => viewer.peerId) : [HOST_ID, ...routedViewers.map(viewer => viewer.peerId)])
+    .filter(id => id !== localPeerId);
+  const receivedVoice = voiceActive && mode !== "voice-failed" ? remotePeers.map((peerId, index): VoiceConnectionMetric => {
+    const viaPeerId = deepChain ? view === "host" ? VIEWER_IDS[0]! : peerId === HOST_ID ? HOST_ID : VIEWER_IDS[1]!
+      : view === "viewer" ? HOST_ID : index < peerCount ? peerId : null;
+    return { connectionId: `voice-example-${viaPeerId ?? "sfu"}`, peerId, viaPeerId,
+      direction: "receive", route: viaPeerId ? "p2p" : "sfu",
+      metrics: { ...EMPTY_METRICS, bitrateKbps: 82 - index * 2, packetLossPercent: index * .2,
+        sampleWindowMs: 1000, intervalPacketsReceived: 1000 - index * 2, intervalPacketsLost: index * 2,
+        jitterMs: 2.1 + index * .4, rttMs: viaPeerId ? viaPeerId === HOST_ID || viaPeerId === VIEWER_IDS[0] ? 32 : 40 : 48,
+        audioCodec: "audio/opus", audioJitterBufferDelayMs: 24 },
+    };
+  }) : [];
+  const voiceConnections = [...new Map(receivedVoice.map(item => [item.connectionId, item])).values()];
+  const voiceMetrics: readonly VoiceConnectionMetric[] = [...receivedVoice,
+    ...voiceConnections.map((item, index): VoiceConnectionMetric => ({ ...item, peerId: localPeerId, direction: "send",
+      metrics: { ...item.metrics, bitrateKbps: 88 - index * 2, packetLossPercent: .1 + index * .2, jitterMs: 1.8,
+        intervalPacketsReceived: null, intervalPacketsLost: null },
+    })),
+    ...(voiceConnections.length > 1 ? [{ ...receivedVoice.find(item => item.connectionId !== voiceConnections[0]!.connectionId)!,
+      connectionId: voiceConnections[0]!.connectionId, viaPeerId: voiceConnections[0]!.viaPeerId, route: voiceConnections[0]!.route,
+      direction: "send" as const, metrics: { ...voiceConnections[0]!.metrics, bitrateKbps: 80, packetLossPercent: .2,
+        intervalPacketsReceived: null, intervalPacketsLost: null },
+    }] : []),
+  ];
+  const pictureMetrics = sourceActive ? PREVIEW_METRICS : null;
+  const connectionFor = (viewer: (typeof viewers)[number]) => participantConnection(viewer, sourceActive, roomVoice);
+  const routeFor = (viewer: (typeof viewers)[number]) => {
+    const upstream = viewer.upstream;
+    return upstream.kind === "none" ? null : upstream.kind === "sfu" ? "sfu" as const : "p2p" as const;
+  };
+  const selectable = viewers.filter((viewer) => {
+    const upstream = connectionFor(viewer).upstream;
+    return view === "host" || upstream.kind === "peer" && upstream.peerId === self;
+  })
     .map((viewer) => viewer.peerId);
   const entries = viewers.map((viewer, index) => ({
     key: viewer.peerId, name: viewer.label, you: view === "viewer" && viewer.peerId === self,
-    status: deriveParticipantStatus(viewer, picture, undefined, roomVoice), selectable: selectable.includes(viewer.peerId),
+    status: deriveParticipantStatus(viewer, sourceActive, undefined, roomVoice), selectable: selectable.includes(viewer.peerId),
     collaboration: picture && collaboration && mode !== "pending" && index < 2,
   }));
   const selectedViewer = viewers.find((viewer) => viewer.peerId === selected && selectable.includes(viewer.peerId));
-  const select = (key: string) => setSelected((current) => current === key ? null : key);
+  const select = (key: string) => {
+    setSelected((current) => current === key ? null : key);
+    setOverviewOpen(true);
+  };
   return <section id="people-preview" className="cp-section">
     <header className="cp-section-head"><span className="cp-number">05</span><div>
       <h2>{en ? "A seat for everyone" : "人多，也坐得下。"}</h2>
@@ -90,7 +144,7 @@ export function PeoplePreview() {
       <SwitchItem checked={longNames} onChange={setLongNames} label={en ? "Long names" : "换成长名字"} />
       <SwitchItem checked={collaboration} onChange={setCollaboration} label={en ? "Collaborators" : "协作标记"} />
       <SwitchItem checked={picture} onChange={setPicture} label={en ? "Picture" : "画面分享"} />
-      <SwitchItem checked={voice} onChange={setVoice} label={en ? "Voice" : "房间语音"} />
+      <SwitchItem checked={voiceEnabled} onChange={setVoice} label={en ? "Voice" : "房间语音"} />
     </div>
     <div className="cp-people-room" data-guides={guides || undefined}>
       <div className="cp-sync" role="group" aria-label={en ? "The same Host in two places" : "同一位房主，两个位置"}>
@@ -103,23 +157,50 @@ export function PeoplePreview() {
         entries={entries} selectedKey={selectedViewer?.peerId} onSelect={select} />
     </div>
     <div className="cp-tools" role="group" aria-label={en ? "Connection example" : "连接示例"}>
-      {[{ id: "mixed", label: en ? "Peers + SFU" : "P2P + SFU" }, { id: "relay", label: en ? "Deep relay chain" : "多层接力" }, { id: "pending", label: en ? "Waiting for a route" : "等待连接" }].map(item =>
-        <Chip key={item.id} title={item.label} selected={mode === item.id} onClick={() => setMode(item.id)}>{item.label}</Chip>)}
+      {[{ id: "room", label: en ? "Room only" : "仅在房间" },
+        { id: "voice", label: en ? "Voice before sharing" : "未开播 · 语音已连" },
+        { id: "stopped", label: en ? "Picture stopped, voice stays" : "停播 · 语音继续" },
+        { id: "both", label: en ? "Picture + voice" : "画面与语音" },
+        { id: "relay-voice", label: en ? "Relay + voice" : "接力与语音" },
+        { id: "voice-failed", label: en ? "Picture ready, voice failed" : "画面正常 · 语音失败" },
+        { id: "mixed", label: en ? "Peers + SFU" : "P2P + SFU" },
+        { id: "relay", label: en ? "Deep relay chain" : "多层接力" },
+        { id: "pending", label: en ? "Waiting for a route" : "等待连接" }].map(item =>
+        <Chip key={item.id} title={item.label} selected={mode === item.id} onClick={() => {
+          setMode(item.id); setPicture(!["room", "voice", "stopped"].includes(item.id));
+        }}>{item.label}</Chip>)}
     </div>
+    {!sourceActive && <p className="cp-note">{en
+      ? voiceActive ? "Voice routes stay visible without a picture. Select a person to inspect their route." : "Everyone is in the room. Media connections begin when sharing or voice starts."
+      : voiceActive ? "没有分享画面时，语音线路仍会显示。点击小人查看对应连接。" : "大家都在房间里。开始分享或加入语音后，再建立媒体连接。"}</p>}
+    <details className="cp-disclosure" open={overviewOpen} onToggle={event => setOverviewOpen(event.currentTarget.open)}>
+      <summary>{t("host.details")}</summary>
+      {overviewOpen && (sourceActive || voice) && <Row sub><ConnectionDetails rows={[
+        ...(sourceActive ? [{ key: "picture", media: "video" as const, label: t(view === "host" ? "stats.localCapture" : "stats.sharedMedia"),
+          icon: view === "host" ? "share" as const : "arrowDown" as const,
+          cells: view === "host" ? <CaptureMetricCells resolution="2560x1440" frameRate={60} codec="h264" hasSourceAudio /> : undefined,
+          route: view === "viewer" ? "p2p" as const : null, metrics: view === "viewer" ? pictureMetrics : null,
+          direction: view === "viewer" ? "receive" as const : "send" as const,
+        }] : []),
+        ...(sourceActive && view === "viewer" && viewers.some(viewer => viewer.upstream.kind === "peer" && viewer.upstream.peerId === self)
+          ? [{ key: "relay", media: "video" as const, label: t("stats.relay"), direction: "send" as const, route: "p2p" as const, metrics: pictureMetrics }] : []),
+        ...voiceConnectionDetails({ voice: voice?.getSnapshot(), metrics: voiceMetrics, t,
+          peerName: id => viewers.find(viewer => viewer.peerId === id)?.label ?? hostName }),
+      ]} /></Row>}
+      {overviewOpen && view === "host" && count > 0 ? <ViewerOverview entries={entries.map((entry, index) => ({ ...entry, metrics: pictureMetrics,
+        route: sourceActive ? routeFor(viewers[index]!) : null,
+      }))} pictureActive={sourceActive} voice={voice?.getSnapshot()} voiceMetrics={voiceMetrics} selectedKey={selectedViewer?.peerId ?? null} onSelect={select} /> : null}
+      {overviewOpen && selectedViewer ? <PawnDetail pawnKey={selectedViewer.peerId} name={selectedViewer.label}
+        route={sourceActive ? routeFor(selectedViewer) : null}
+        metrics={pictureMetrics} direction={view === "host" ? "send" : "receive"} onClose={() => setSelected(null)}
+        voiceDetails={voiceConnectionDetails({ voice: voice?.getSnapshot(), peerId: selectedViewer.peerId, metrics: voiceMetrics, t,
+          peerName: id => viewers.find(viewer => viewer.peerId === id)?.label ?? hostName })}
+      /> : null}
+    </details>
     <div className="cp-connection-panel">
-      <RouteTree hostPeerId={HOST_ID} hostLabel={hostName} viewers={viewers}
-        pictureActive={picture} voice={roomVoice}
+      <RouteTree hostPeerId={HOST_ID} hostLabel={hostName} viewers={viewers} pictureActive={sourceActive} voice={roomVoice}
         selfPeerId={view === "viewer" ? self : HOST_ID} selectedPeerId={selectedViewer?.peerId}
         selectablePeerIds={selectable} onSelectPeer={select} />
     </div>
-    {selectedViewer ? <PawnDetail pawnKey={selectedViewer.peerId} name={selectedViewer.label}
-      route={connectionFor(selectedViewer).upstream.kind === "none" ? null : connectionFor(selectedViewer).upstream.kind === "sfu" ? "sfu" : "p2p"}
-      direction="send" expanded={expanded} onToggleMetrics={setExpanded} onClose={() => setSelected(null)} /> : null}
-    {view === "host" && count > 0 ? <details className="cp-disclosure" onToggle={event => setOverviewOpen(event.currentTarget.open)}>
-      <summary>{t("host.viewerOverview")}</summary>
-      {overviewOpen ? <ViewerOverview entries={entries.map((entry, index) => ({ ...entry, metrics: null,
-        route: connectionFor(viewers[index]!).upstream.kind === "none" ? null : connectionFor(viewers[index]!).upstream.kind === "sfu" ? "sfu" : "p2p",
-      }))} selectedKey={selectedViewer?.peerId ?? null} onSelect={select} /> : null}
-    </details> : null}
   </section>;
 }
