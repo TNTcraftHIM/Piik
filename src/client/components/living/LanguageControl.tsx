@@ -73,7 +73,7 @@ export function LanguageControl() {
       {extraLanguages.length > 0 && (
         <button
           ref={triggerRef} type="button" popoverTarget={menuId} aria-haspopup="menu"
-          aria-label={selectedExtra ? `${t("mode.more")} · ${selectedExtra.name}` : t("mode.more")}
+          aria-label={selectedExtra ? `${t("mode.more")}: ${selectedExtra.name}` : t("mode.more")}
           className={`lr-lang-more${selectedExtra ? " is-selected" : ""}`}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown") {

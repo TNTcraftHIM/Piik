@@ -3968,9 +3968,9 @@ export function HostPage({
                       disabled={phase === "starting" || phase === "live"}
                       title={mode === "auto"
                         ? resolvedVideoCodec
-                          ? `${t("host.advanced.codec.auto")} · ${resolvedVideoCodec.toUpperCase()}`
-                          : `${t("host.advanced.codec.auto")} · ${t("host.advanced.codec.autoHint")}`
-                        : `${mode.toUpperCase()} · ${t(mode === "vp8" ? "host.advanced.codec.vp8Hint" : "host.advanced.codec.h264Hint")}`}
+                          ? `${t("host.advanced.codec.auto")} (${resolvedVideoCodec.toUpperCase()})`
+                          : `${t("host.advanced.codec.auto")}\n${t("host.advanced.codec.autoHint")}`
+                        : `${mode.toUpperCase()}\n${t(mode === "vp8" ? "host.advanced.codec.vp8Hint" : "host.advanced.codec.h264Hint")}`}
                       hint="hint-codec" onClick={() => changeVideoCodecMode(mode)}>
                       {mode === "auto" && !vis ? t("host.advanced.codec.auto") : mode.toUpperCase()}
                     </Chip>
@@ -4288,7 +4288,7 @@ export function HostPage({
                   aria-label={t("host.policy")}
                 >
                   <Tooltip kind="hint-admission-code"
-                    text={vis ? undefined : `${t("host.policy.open")} · ${t("host.policy.openHint")}`}>
+                    text={vis ? undefined : `${t("host.policy.open")}\n${t("host.policy.openHint")}`}>
                     <button
                       type="button"
                       className={
@@ -4304,7 +4304,7 @@ export function HostPage({
                     </button>
                   </Tooltip>
                   <Tooltip kind="hint-policy-private"
-                    text={vis ? undefined : `${t("host.policy.private")} · ${t(viewerPasswordEnabled ? "host.policy.privatePasswordHint" : "host.policy.privateHint")}`}>
+                    text={vis ? undefined : `${t("host.policy.private")}\n${t(viewerPasswordEnabled ? "host.policy.privatePasswordHint" : "host.policy.privateHint")}`}>
                     <button
                       type="button"
                       className={
@@ -4324,7 +4324,7 @@ export function HostPage({
                 </span>
                 {activeCodeEntryPolicy === "private" ? (
                   <Tooltip kind={passwordOpen ? "hint-collapse" : "hint-password"} align="end"
-                    text={vis ? undefined : `${t(passwordOpen ? "host.password.settingsHide" : "host.password.setAction")} · ${t(viewerPasswordEnabled ? "host.password.set" : "host.password.unset")}`}>
+                    text={vis ? undefined : `${t(passwordOpen ? "host.password.settingsHide" : "host.password.setAction")}\n${t(viewerPasswordEnabled ? "host.password.set" : "host.password.unset")}`}>
                     <button
                       type="button"
                       className="lr-btn"

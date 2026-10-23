@@ -2158,7 +2158,7 @@ export function ViewerPage({
             <div className="lr-join-panel">
               <Comic kind={deniedComic} theme="paper" tone={viewerStatus.activity.tone} />
               <span className="visually-hidden" role="alert">
-                {t(deniedMessageKey)} · {t(deniedHintKey, { site: window.location.host })}
+                {t(deniedMessageKey)}{"\n"}{t(deniedHintKey, { site: window.location.host })}
               </span>
               {vis ? null : (
                 <div className="lr-access-text">

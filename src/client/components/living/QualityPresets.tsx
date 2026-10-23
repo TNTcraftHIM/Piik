@@ -239,7 +239,7 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
               value: String(commonValue), unit: control.unit,
             })}>
               <button type="button" className="lr-btn is-dense" disabled={disabled}
-                aria-label={`${t(control.label)} · ${t("host.video.returnCommonHint", { value: String(commonValue), unit: control.unit })}`}
+                aria-label={`${t(control.label)}\n${t("host.video.returnCommonHint", { value: String(commonValue), unit: control.unit })}`}
                 onClick={event => {
                   const group = event.currentTarget.closest(".lr-quality-rate");
                   select(commonValue);
@@ -253,7 +253,7 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
             <input type="range" min={control.sliderMin} max={sliderMax} step={control.sliderStep}
               value={control.value} disabled={disabled}
               style={{ "--range-fill": `${100 * (control.value - control.sliderMin) / (sliderMax - control.sliderMin || 1)}%` } as CSSProperties}
-              aria-label={`${t(control.label)} · ${t("host.video.commonRange")}`}
+              aria-label={`${t(control.label)}\n${t("host.video.commonRange")}`}
               onChange={event => select(event.currentTarget.valueAsNumber)}
               onClick={event => select(event.currentTarget.valueAsNumber)} />
             <div className="lr-quality-range-labels" aria-hidden="true">
@@ -312,7 +312,7 @@ export function PicturePreferenceControl({ value, disabled, onChange }: {
     <div className="lr-row-group" role="group" aria-label={t("host.advanced.preference")}>
       {choices.map(choice => <Chip key={choice.value} name="degradationPreference" value={choice.value}
         selected={value === choice.value} disabled={disabled} onClick={() => onChange(choice.value)}
-        title={`${t(DEGRADATION_PREFERENCE_KEYS[choice.value])} · ${t(choice.hint)}`} hint={choice.comic}>
+        title={`${t(DEGRADATION_PREFERENCE_KEYS[choice.value])}\n${t(choice.hint)}`} hint={choice.comic}>
         <Glyph name={choice.icon} size={18} /><Cap k={DEGRADATION_PREFERENCE_KEYS[choice.value]} />
       </Chip>)}
     </div>

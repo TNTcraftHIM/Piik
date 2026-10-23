@@ -242,7 +242,7 @@ function StaticRoute({
             </div>
           )}
           <span className="visually-hidden" role="alert">
-            {hintKey ? [t(titleKey), t(hintKey)].join(" · ") : t(titleKey)}
+            {hintKey ? [t(titleKey), t(hintKey)].join("\n") : t(titleKey)}
           </span>
           {action === "join" ? (
             <Btn

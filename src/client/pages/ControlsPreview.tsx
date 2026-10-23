@@ -199,7 +199,7 @@ export function ControlsPreview() {
         <div className="cp-tools" id="admission-preview">
           <span className="lr-toggle" role="group" aria-label={t("host.policy")}>
             {(["open", "private"] as const).map(value => <Tooltip key={value} kind={value === "open" ? "hint-admission-code" : "hint-policy-private"}
-              text={vis ? undefined : `${t(`host.policy.${value}`)} · ${t(value === "private" && roomPassword ? "host.policy.privatePasswordHint" : `host.policy.${value}Hint`)}`}>
+              text={vis ? undefined : `${t(`host.policy.${value}`)}\n${t(value === "private" && roomPassword ? "host.policy.privatePasswordHint" : `host.policy.${value}Hint`)}`}>
               <button type="button" className={policy === value ? "is-selected" : undefined} aria-pressed={policy === value}
                 aria-label={t(`host.policy.${value}`)} onClick={() => setPolicy(value)}>
                 <Glyph name={value === "open" ? "globe" : "lock"} size={19} />{vis ? null : <span className="lr-cap">{t(`host.policy.${value}`)}</span>}

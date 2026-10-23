@@ -171,7 +171,7 @@ export function Chip({
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}
       style={softDisabled ? SOFT_DISABLED_STYLE : undefined}
-      aria-label={disabled && hintText ? `${title} · ${hintText}` : title}
+      aria-label={disabled && hintText ? `${title}\n${hintText}` : title}
       onClick={
         softDisabled
           ? blockSoftDisabledClick
