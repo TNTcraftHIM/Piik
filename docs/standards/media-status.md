@@ -105,7 +105,10 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   Primary metrics give the current picture/audio quality; expanded measurements
   group network, encoding/capture, playback and source audio by their subject.
   Each inspected participant has one combined detail panel and one expansion;
-  picture and voice directions are rows within it, with their actual routes.
+  its overview has at most four picture/voice send/receive categories. Bitrates
+  sum, receive loss uses packet counts, send loss averages current remote reports,
+  and RTT averages distinct connections. Per-path observations remain in the
+  expansion; remote receive reports do not duplicate locally measured traffic.
   An inactive room-voice channel has no column or empty placeholder.
 - Title: keeps the primary activity, with a compact warning for an applicable
   problem. Losing focus alone never means waiting for media.

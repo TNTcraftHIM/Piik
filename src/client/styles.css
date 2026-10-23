@@ -1201,6 +1201,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-connection-details { display: grid; flex: 1 1 100%; gap: 12px; min-width: 0; }
 .lr-connection-details-body { display: grid; min-width: 0; }
+.lr-connection-notice { padding-block: 4px; }
+.lr-connection-notice .lr-media-detail-head { flex-wrap: nowrap; }
+.lr-connection-notice .lr-meter-tag { flex: none; }
 .lr-connection-details > .lr-comic-tip-wrap { justify-self: end; }
 .lr-media-detail { display: grid; grid-template-columns: minmax(148px, .9fr) minmax(0, 3fr); align-items: start; gap: 10px 16px; min-width: 0; }
 .lr-media-detail + .lr-media-detail { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
@@ -1213,7 +1216,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-media-detail-head .lr-meter-cell b { font-size: 10px; }
 .lr-media-detail-via { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
 .lr-media-detail > :not(.lr-media-detail-head) { grid-column: 2; }
+.lr-media-detail > .lr-connection-paths { display: grid; grid-column: 1 / -1; min-width: 0; margin-top: 6px; padding-inline-start: 12px; border-inline-start: 2px solid var(--line); }
 .lr-connection-details .lr-meter { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.lr-connection-details .lr-meter > .lr-comic-tip-wrap:has([data-metric="stats.resolutionRange"], [data-metric="stats.fpsRange"]) { grid-column: span 2; }
 /* ---------- topology tree ---------- */
 
 .lr-route {

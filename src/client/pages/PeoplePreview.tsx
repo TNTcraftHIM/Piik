@@ -37,23 +37,24 @@ export function PeoplePreview() {
   const { t, lang } = useCopy();
   const en = lang === "en";
   const sample = new URLSearchParams(location.search).get("people");
-  const initialMode = sample && ["room", "voice", "stopped", "both", "voice-failed"].includes(sample) ? sample : "mixed";
+  const initialMode = sample && ["room", "voice", "stopped", "both", "voice-failed", "relay-voice"].includes(sample) ? sample : "mixed";
   const [count, setCount] = useState(initialMode === "mixed" ? 20 : 3);
   const [mode, setMode] = useState(initialMode);
-  const [view, setView] = useState<"host" | "viewer">("host");
+  const [view, setView] = useState<"host" | "viewer">(initialMode === "relay-voice" ? "viewer" : "host");
   const [longNames, setLongNames] = useState(false);
   const [selected, setSelected] = useState<string | null>(["voice", "both", "stopped"].includes(initialMode) ? VIEWER_IDS[0]! : null);
   const [overviewOpen, setOverviewOpen] = useState(initialMode !== "mixed");
   const hostName = en ? "Amu" : "阿沐";
   const peerCount = Math.max(1, Math.floor(count * .6));
   const sourceActive = !["room", "voice", "stopped"].includes(mode);
-  const voiceActive = ["voice", "stopped", "both", "voice-failed"].includes(mode);
+  const voiceActive = ["voice", "stopped", "both", "voice-failed", "relay-voice"].includes(mode);
+  const deepChain = mode === "relay" || mode === "relay-voice";
   const { viewers: routedViewers } = labelParticipantSnapshot(VIEWER_IDS.slice(0, count).map((peerId, index) => ({
     role: "viewer" as const, peerId,
     displayName: longNames ? (en ? `Friend with a long name ${index + 1}` : `这是名字稍微长一点的朋友 ${index + 1}`) : en ? `Friend ${index + 1}` : NAMES[index]!,
     upstream: mode === "pending" || (mode === "mixed" && index > 2 && index >= count - 2)
       ? { kind: "none" as const }
-      : mode === "relay" ? { kind: "peer" as const, peerId: index === 0 ? HOST_ID : VIEWER_IDS[index - 1]! }
+      : deepChain ? { kind: "peer" as const, peerId: index === 0 ? HOST_ID : VIEWER_IDS[index - 1]! }
       : index < peerCount ? { kind: "peer" as const, peerId: index === 0 ? HOST_ID : VIEWER_IDS[Math.floor((index - 1) / 2)]! }
       : index < peerCount + 2 ? { kind: "sfu" as const }
       : { kind: "peer" as const, peerId: VIEWER_IDS[peerCount + (index % 2)]! },
@@ -78,19 +79,29 @@ export function PeoplePreview() {
   const localPeerId = view === "host" ? HOST_ID : self;
   const remotePeers = (view === "host" ? routedViewers.map(viewer => viewer.peerId) : [HOST_ID, ...routedViewers.map(viewer => viewer.peerId)])
     .filter(id => id !== localPeerId);
-  const voiceMetrics: readonly VoiceConnectionMetric[] = voiceActive && mode !== "voice-failed" ? [
-    ...remotePeers.map((peerId, index): VoiceConnectionMetric => ({
-      connectionId: `voice-example-${index}`, peerId,
-      viaPeerId: view === "viewer" ? HOST_ID : index < peerCount ? peerId : null,
-      direction: "receive", route: view === "viewer" || index < peerCount ? "p2p" : "sfu",
+  const receivedVoice = voiceActive && mode !== "voice-failed" ? remotePeers.map((peerId, index): VoiceConnectionMetric => {
+    const viaPeerId = deepChain ? view === "host" ? VIEWER_IDS[0]! : peerId === HOST_ID ? HOST_ID : VIEWER_IDS[1]!
+      : view === "viewer" ? HOST_ID : index < peerCount ? peerId : null;
+    return { connectionId: `voice-example-${viaPeerId ?? "sfu"}`, peerId, viaPeerId,
+      direction: "receive", route: viaPeerId ? "p2p" : "sfu",
       metrics: { ...EMPTY_METRICS, bitrateKbps: 82 - index * 2, packetLossPercent: index * .2,
-        jitterMs: 2.1 + index * .4, rttMs: 32 + index * 8, audioCodec: "audio/opus", audioJitterBufferDelayMs: 24 },
+        sampleWindowMs: 1000, intervalPacketsReceived: 1000 - index * 2, intervalPacketsLost: index * 2,
+        jitterMs: 2.1 + index * .4, rttMs: viaPeerId ? viaPeerId === HOST_ID || viaPeerId === VIEWER_IDS[0] ? 32 : 40 : 48,
+        audioCodec: "audio/opus", audioJitterBufferDelayMs: 24 },
+    };
+  }) : [];
+  const voiceConnections = [...new Map(receivedVoice.map(item => [item.connectionId, item])).values()];
+  const voiceMetrics: readonly VoiceConnectionMetric[] = [...receivedVoice,
+    ...voiceConnections.map((item, index): VoiceConnectionMetric => ({ ...item, peerId: localPeerId, direction: "send",
+      metrics: { ...item.metrics, bitrateKbps: 88 - index * 2, packetLossPercent: .1 + index * .2, jitterMs: 1.8,
+        intervalPacketsReceived: null, intervalPacketsLost: null },
     })),
-    ...(remotePeers.length ? [{ connectionId: "voice-outbound", peerId: localPeerId, viaPeerId: remotePeers[0]!,
-      direction: "send" as const, route: "p2p" as const,
-      metrics: { ...EMPTY_METRICS, bitrateKbps: 88, packetLossPercent: .1, jitterMs: 1.8, rttMs: 32, audioCodec: "audio/opus" },
+    ...(voiceConnections.length > 1 ? [{ ...receivedVoice.find(item => item.connectionId !== voiceConnections[0]!.connectionId)!,
+      connectionId: voiceConnections[0]!.connectionId, viaPeerId: voiceConnections[0]!.viaPeerId, route: voiceConnections[0]!.route,
+      direction: "send" as const, metrics: { ...voiceConnections[0]!.metrics, bitrateKbps: 80, packetLossPercent: .2,
+        intervalPacketsReceived: null, intervalPacketsLost: null },
     }] : []),
-  ] : [];
+  ];
   const pictureMetrics = sourceActive ? PREVIEW_METRICS : null;
   const connectionFor = (viewer: (typeof viewers)[number]) => participantConnection(viewer, sourceActive, roomVoice);
   const routeFor = (viewer: (typeof viewers)[number]) => {
@@ -139,6 +150,7 @@ export function PeoplePreview() {
         { id: "voice", label: en ? "Voice before sharing" : "未开播 · 语音已连" },
         { id: "stopped", label: en ? "Picture stopped, voice stays" : "停播 · 语音继续" },
         { id: "both", label: en ? "Picture + voice" : "画面与语音" },
+        { id: "relay-voice", label: en ? "Relay + voice" : "接力与语音" },
         { id: "voice-failed", label: en ? "Picture ready, voice failed" : "画面正常 · 语音失败" },
         { id: "mixed", label: en ? "Peers + SFU" : "P2P + SFU" },
         { id: "relay", label: en ? "Deep relay chain" : "多层接力" },
@@ -154,8 +166,11 @@ export function PeoplePreview() {
         ...(sourceActive ? [{ key: "picture", media: "video" as const, label: t(view === "host" ? "stats.capture" : "stats.sharedMedia"),
           icon: view === "host" ? "share" as const : "arrowDown" as const,
           cells: view === "host" ? <CaptureMetricCells resolution="2560x1440" frameRate={60} codec="h264" hasSourceAudio /> : undefined,
-          route: view === "viewer" ? "p2p" as const : null, metrics: view === "viewer" ? pictureMetrics : null, direction: "receive" as const,
+          route: view === "viewer" ? "p2p" as const : null, metrics: view === "viewer" ? pictureMetrics : null,
+          direction: view === "viewer" ? "receive" as const : "send" as const,
         }] : []),
+        ...(sourceActive && view === "viewer" && viewers.some(viewer => viewer.upstream.kind === "peer" && viewer.upstream.peerId === self)
+          ? [{ key: "relay", media: "video" as const, label: t("stats.relay"), direction: "send" as const, route: "p2p" as const, metrics: pictureMetrics }] : []),
         ...voiceConnectionDetails({ voice: voice?.getSnapshot(), metrics: voiceMetrics, t,
           peerName: id => viewers.find(viewer => viewer.peerId === id)?.label ?? hostName }),
       ]} /></Row>}

@@ -90,7 +90,7 @@ export function ViewerOverview({
               : unknown;
             const rtt = numberValue(metrics?.rttMs, 0, " ms");
             const voiceDetail = describeVoiceConnection(voice, entry.key);
-            const voiceObservation = voiceMetricsForPeer(voiceMetrics, voice, entry.key).find(item => item.direction === "receive");
+            const voiceObservation = voiceMetricsForPeer(voiceMetrics, entry.key).find(item => item.direction === "receive");
             const voiceSample = voiceObservation?.metrics;
             const voiceLabel = t(voiceDetail?.status.labelKey ?? "voice.outside");
             const voiceRoute = voiceObservation?.route.toUpperCase() ?? (voiceDetail?.upstream.kind === "peer" ? "P2P" : voiceDetail?.upstream.kind === "sfu" ? "SFU" : null);

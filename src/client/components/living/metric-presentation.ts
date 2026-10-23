@@ -5,10 +5,16 @@ import type { HintKind } from "../../ui/visual-kinds";
 // The same metric keeps its icon and explanation in detail cells and headings.
 export const METRIC_PRESENTATION = {
   "stats.resolution": { icon: "expand", hint: "hint-metric-resolution" },
+  "stats.resolutionRange": { icon: "expand", hint: "hint-metric-resolution" },
   "stats.fps": { icon: "frames", hint: "hint-metric-fps" },
+  "stats.fpsRange": { icon: "frames", hint: "hint-metric-fps" },
   "stats.bitrate": { icon: "gauge", hint: "hint-metric-bitrate" },
+  "stats.totalBitrate": { icon: "gauge", hint: "hint-metric-bitrate", description: "stats.totalBitrateHint" },
   "stats.loss": { icon: "packetLoss", hint: "hint-metric-loss" },
+  "stats.avgLoss": { icon: "packetLoss", hint: "hint-metric-loss", description: "stats.avgLossHint" },
   "stats.rtt": { icon: "clock", hint: "hint-metric-rtt", description: "stats.rttHint" },
+  "stats.avgRtt": { icon: "clock", hint: "hint-metric-rtt", description: "stats.avgRttHint" },
+  "stats.avgJitter": { icon: "jitter", hint: "hint-metric-jitter" },
   "stats.codec": { icon: "puzzle", hint: "hint-codec" },
   "voice.details.codec": { icon: "puzzle", hint: "hint-codec" },
   "stats.outgoing": { icon: "gauge", hint: "hint-metric-outgoing" },

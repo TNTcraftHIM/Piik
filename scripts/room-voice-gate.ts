@@ -168,8 +168,8 @@ async function main(): Promise<void> {
     await waitForSample(() => evaluate<boolean>(cdp!, participant, `(() => {
       const details=[...document.querySelectorAll('.lr-media-detail')].filter(node=>node.getAttribute('aria-label')?.startsWith('Voice'));
       return details.length>0&&details.every(node=>!node.textContent.includes(' fps'))&&
-        details.some(node=>[...node.querySelectorAll('button[aria-label]')].some(cell=>/^Audio bitrate .*\\d+ kbps$/.test(cell.getAttribute('aria-label'))))&&
-        details.some(node=>[...node.querySelectorAll('button[aria-label]')].some(cell=>/^RTT .*\\d+ ms$/.test(cell.getAttribute('aria-label'))));
+        details.some(node=>/\\d+ kbps$/.test(node.querySelector('[data-metric="stats.totalBitrate"] b')?.textContent??''))&&
+        details.some(node=>/\\d+ ms$/.test(node.querySelector('[data-metric="stats.avgRtt"] b')?.textContent??''));
     })()`, Date.now() + 3000), Boolean, 5000);
     await ui(participant, "screenshot", join(OUTPUT, `${arm}-${name}.png`), "--full");
     await button(participant, "Hide connection details");

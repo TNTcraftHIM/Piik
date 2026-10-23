@@ -2592,7 +2592,7 @@ export function ViewerPage({
                 }] : []),
                 ...freshRelayChildEvidence.map(({ viewer, evidence }) => ({ key: `downstream/${viewer.peerId}`, media: "video" as const,
                   label: `${t("stats.downstream")} · ${viewer.label}`, icon: "arrowUp" as const,
-                  metrics: metricsFromQualityEvidence(evidence), direction: "receive" as const,
+                  metrics: metricsFromQualityEvidence(evidence), direction: "receive" as const, detailOnly: true,
                 })),
                 ...voiceConnectionDetails({ voice: roomVoiceSnapshot, metrics: voiceMetrics, t,
                   peerName: id => id === labeledHostPresence?.peerId ? labeledHostPresence.label : viewers.find(viewer => viewer.peerId === id)?.label ?? t("common.name.viewerDefault") }),

@@ -5,6 +5,7 @@ export const PREVIEW_METRICS: ConnectionMetrics = {
   ...EMPTY_METRICS,
   resolution: "1920x1080", framesPerSecond: 59.8, bitrateKbps: 7200,
   packetLossPercent: .2, rttMs: 24, codec: "video/H264",
+  sampleWindowMs: 1000, intervalPacketsReceived: 998, intervalPacketsLost: 2, intervalPacketsSent: 1000,
   availableOutgoingKbps: 12000, qualityLimitationReason: "none",
   captureWidth: 2560, captureHeight: 1440, captureFramesPerSecond: 60,
   mediaSourceFramesPerSecond: 60, encoderImplementation: "Sample encoder",

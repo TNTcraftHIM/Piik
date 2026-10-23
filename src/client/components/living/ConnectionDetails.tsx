@@ -2,11 +2,12 @@ import { useId, useState, type ReactNode } from "react";
 import type { ConnectionMetrics } from "../../types";
 import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
-import { MetricCells, MetricDetailsToggle, hasDetailedMetrics } from "./Metrics";
+import { ConnectionSummaryCells, MetricCells, MetricDetailsToggle, hasDetailedMetrics } from "./Metrics";
 import { Tooltip } from "./Tooltip";
 
 export interface ConnectionDetail {
   key: string;
+  connectionId?: string;
   media: "video" | "audio";
   label: string;
   icon?: GlyphName;
@@ -15,6 +16,8 @@ export interface ConnectionDetail {
   metrics?: ConnectionMetrics | null;
   cells?: ReactNode;
   note?: ReactNode;
+  /** Remote receive reports remain available without counting the same local traffic twice. */
+  detailOnly?: boolean;
 }
 
 export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
@@ -33,31 +36,61 @@ export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
   </Tooltip>;
 }
 
-// A participant has one detail surface and one expansion, independent of how
-// many picture/voice directions are observed. Samples keep their own routes.
+// Four presentation categories; physical connections and their observations
+// remain independent and retain their full detail beneath the summaries.
 export function ConnectionDetails({ rows, id }: { rows: readonly ConnectionDetail[]; id?: string }) {
   const { t, vis } = useCopy();
   const [expanded, setExpanded] = useState(false);
   const bodyId = useId();
-  const expandable = rows.some(row => row.metrics && hasDetailedMetrics(row.metrics, row.direction ?? "receive", row.media));
+  const groups = (["video", "audio"] as const).flatMap(media => (["receive", "send"] as const).flatMap(direction => {
+    const members = rows.filter(row => !row.detailOnly && (row.metrics || row.cells) && row.media === media && (row.direction ?? "receive") === direction);
+    return members.length ? [{ key: `${media}/${direction}`, media, direction, members }] : [];
+  }));
+  const extraDetails = rows.filter(row => row.detailOnly);
+  const notices = rows.filter(row => !row.detailOnly && !row.metrics && !row.cells);
+  const expandable = extraDetails.length > 0 || groups.some(group => group.media === "audio" || group.members.length > 1 ||
+    group.members.some(row => row.metrics && hasDetailedMetrics(row.metrics, group.direction, group.media)));
+  const heading = (row: ConnectionDetail) => <div className="lr-media-detail-head">
+    <span className="lr-meter-tag">
+      <Glyph name={row.icon ?? (row.media === "audio" ? "headphones" : "tv")} size={17} />
+      {row.direction && <span className="lr-media-direction"><Glyph name={row.direction === "send" ? "arrowUp" : "arrowDown"} size={12} /></span>}
+      <span className={vis ? "visually-hidden" : "lr-cap"}>{row.label}</span>
+    </span>
+    {row.route && <RouteGlyph route={row.route} />}
+    {row.note}
+  </div>;
+  const rawDetail = (row: ConnectionDetail, primary = true) => <section className="lr-media-detail" key={row.key} role="group" aria-label={row.label}>
+    {heading(row)}
+    {row.cells ?? (row.metrics && <MetricCells metrics={row.metrics} direction={row.direction ?? "receive"} media={row.media} primary={primary} expanded />)}
+  </section>;
   if (!rows.length) return null;
   return <div className="lr-connection-details" id={id} role="group" aria-label={t("host.details")}>
     <div className="lr-connection-details-body" id={bodyId}>
-      {rows.map(row => <section className="lr-media-detail" key={row.key} role="group" aria-label={row.label}>
-        <div className="lr-media-detail-head">
-          <span className="lr-meter-tag">
-            <Glyph name={row.icon ?? (row.media === "audio" ? "headphones" : "tv")} size={17} />
-            {row.media === "audio" && row.direction && <span className="lr-media-direction">
-              <Glyph name={row.direction === "send" ? "arrowUp" : "arrowDown"} size={12} />
-            </span>}
-            <span className={vis ? "visually-hidden" : "lr-cap"}>{row.label}</span>
-          </span>
-          {row.route && <RouteGlyph route={row.route} />}
-          {row.note}
-        </div>
-        {row.cells ?? (row.metrics && <MetricCells metrics={row.metrics} direction={row.direction ?? "receive"}
-          media={row.media} expanded={expanded} />)}
-      </section>)}
+      {notices.map(row => <div className="lr-connection-notice" key={row.key}>{heading(row)}</div>)}
+      {groups.map(group => {
+        const label = group.media === "video" && group.members.length === 1 ? group.members[0]!.label
+          : t(group.media === "video" ? group.direction === "send" ? "stats.pictureSend" : "stats.pictureReceive"
+            : group.direction === "send" ? "stats.voiceSend" : "stats.voiceReceive");
+        const routes = [...new Set(group.members.flatMap(row => row.route ? [row.route] : []))];
+        const samples = group.members.flatMap(row => row.metrics ? [{ connectionId: row.connectionId ?? row.key, metrics: row.metrics }] : []);
+        return <section className="lr-media-detail lr-connection-summary" key={group.key} role="group" aria-label={label}
+          data-media={group.media} data-direction={group.direction}>
+          <div className="lr-media-detail-head">
+            <span className="lr-meter-tag">
+              <Glyph name={group.media === "audio" ? "headphones" : "tv"} size={17} />
+              <span className="lr-media-direction"><Glyph name={group.direction === "send" ? "arrowUp" : "arrowDown"} size={12} /></span>
+              <span className={vis ? "visually-hidden" : "lr-cap"}>{label}</span>
+            </span>
+            {routes.map(route => <RouteGlyph key={route} route={route} />)}
+            {group.members.length === 1 && group.members[0]!.note}
+          </div>
+          {samples.length ? <ConnectionSummaryCells samples={samples} media={group.media} direction={group.direction} /> : group.members[0]!.cells}
+          {expanded && (group.members.length > 1 || group.media === "audio"
+            ? <div className="lr-connection-paths">{group.members.map(row => rawDetail(row, group.members.length > 1))}</div>
+            : group.members[0]!.metrics && <MetricCells metrics={group.members[0]!.metrics} media={group.media} direction={group.direction} primary={false} expanded />)}
+        </section>;
+      })}
+      {expanded && extraDetails.map(row => rawDetail(row))}
     </div>
     {expandable && <MetricDetailsToggle expanded={expanded} onToggle={setExpanded} controls={bodyId} />}
   </div>;

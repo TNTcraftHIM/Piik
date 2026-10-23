@@ -10,10 +10,46 @@ import type { RoomVoiceSnapshot } from "../src/client/room-voice/session";
 import { voiceConnectionDetails } from "../src/client/room-voice/VoiceConnectionDetails";
 import { ConnectionDetails } from "../src/client/components/living/ConnectionDetails";
 import type { VoiceConnectionMetric } from "../src/client/room-voice/browser-endpoint";
+import { summarizeConnectionMetrics } from "../src/client/components/connection-details";
 
 beforeEach(() => setCopy({ lang: "en", vis: false }));
 
 describe("observed metric presentation", () => {
+  it("totals traffic, weights received loss and counts each RTT connection once", () => {
+    const samples = [
+      { connectionId: "peer", metrics: { ...EMPTY_METRICS, bitrateKbps: 64, rttMs: 20, jitterMs: 2,
+        intervalPacketsReceived: 90, intervalPacketsLost: 10, packetLossPercent: 10, resolution: "1920x1080", framesPerSecond: 60 } },
+      { connectionId: "peer", metrics: { ...EMPTY_METRICS, bitrateKbps: 32, rttMs: 20, jitterMs: 4,
+        intervalPacketsReceived: 10, intervalPacketsLost: 0, packetLossPercent: 0, resolution: "1280x720", framesPerSecond: 30 } },
+      { connectionId: "sfu", metrics: { ...EMPTY_METRICS, bitrateKbps: 16, rttMs: 80, jitterMs: 6,
+        intervalPacketsReceived: 900, intervalPacketsLost: 0, packetLossPercent: 0, resolution: "1920x1080", framesPerSecond: 60 } },
+    ];
+    const received = summarizeConnectionMetrics(samples, "receive");
+    expect(received).toMatchObject({ bitrateKbps: 112, rttMs: 50, jitterMs: 4,
+      resolution: ["1280x720", "1920x1080"], framesPerSecond: [30, 60] });
+    expect(received.packetLossPercent).toBeCloseTo(100 * 10 / 1010);
+    expect(summarizeConnectionMetrics(samples, "send").packetLossPercent).toBeCloseTo(10 / 3);
+    expect(summarizeConnectionMetrics(samples.slice(2), "receive")).toMatchObject({ bitrateKbps: 16, rttMs: 80, packetLossPercent: 0 });
+    expect(summarizeConnectionMetrics([], "receive")).toMatchObject({ bitrateKbps: null, rttMs: null, packetLossPercent: null });
+  });
+
+  it("keeps many physical streams within four overview categories and one detail expansion", () => {
+    const rows = (["video", "audio"] as const).flatMap(media => (["receive", "send"] as const).flatMap(direction =>
+      [0, 1, 2].map(index => ({ key: `${media}/${direction}/${index}`, connectionId: `peer-${index}`, media, direction,
+        label: `Raw stream ${index}`, route: "p2p" as const,
+        metrics: { ...EMPTY_METRICS, bitrateKbps: 64, intervalPacketsReceived: 100, intervalPacketsLost: 0 },
+      }))));
+    const html = renderToStaticMarkup(createElement(ConnectionDetails, { rows: [...rows,
+      { key: "remote-report", media: "video", direction: "receive", label: "Remote report", detailOnly: true,
+        metrics: { ...EMPTY_METRICS, bitrateKbps: 999999 } },
+    ] }));
+    expect(html.match(/class="lr-media-detail lr-connection-summary"/g)).toHaveLength(4);
+    expect(html.match(/class="lr-btn lr-metrics-more/g)).toHaveLength(1);
+    expect(html).toContain("192 kbps");
+    expect(html).not.toContain("Raw stream");
+    expect(html).not.toContain("999999");
+  });
+
   it("reports dropped frames from the current sampling interval, not the connection lifetime", () => {
     const render = (intervalFramesDropped: number | null) => renderToStaticMarkup(createElement(MetricCells, {
       metrics: { ...EMPTY_METRICS, framesDropped: 300, intervalFramesDropped },
@@ -98,7 +134,8 @@ describe("observed metric presentation", () => {
       metrics: { ...EMPTY_METRICS, bitrateKbps: 64, rttMs: 28 } }];
     const received = renderVoice(voice, receiveOnly);
     expect(received).toContain("64 kbps");
-    expect(received).toContain(t("en", "voice.details.receiveFrom", { name: "Friend" }));
+    expect(received).toContain(t("en", "stats.voiceReceive"));
+    expect(voiceRows(voice, receiveOnly)[0]!.label).toBe(t("en", "voice.details.receiveFrom", { name: "Friend" }));
     expect(received).toContain(t("en", "voice.details.via", { name: "Host" }));
     voice.error = "transport";
     expect(renderVoice(voice)).toContain(t("en", "voice.details.unavailable"));

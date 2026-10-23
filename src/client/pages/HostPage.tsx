@@ -4436,7 +4436,7 @@ export function HostPage({
             <Row sub>
               <ConnectionDetails id="host-details-panel" rows={[
                 ...(details && (stream || nativeActive) ? [{ key: "capture", media: "video" as const,
-                  label: t("stats.capture"), icon: "share" as const,
+                  label: t("stats.capture"), icon: "share" as const, direction: "send" as const,
                   cells: <CaptureMetricCells resolution={details.resolution} frameRate={details.frameRate}
                     codec={resolvedVideoCodec} hasSourceAudio={details.hasSourceAudio} />,
                 }] : []),

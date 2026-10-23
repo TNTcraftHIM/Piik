@@ -6,7 +6,7 @@ import { useCopy, type CopyKey } from "../../ui/copy";
 import { Tooltip } from "./Tooltip";
 import { Pill } from "./primitives";
 import type { ConnectionMetrics } from "../../types";
-import { formatPacketLossPercent } from "../connection-details";
+import { formatPacketLossPercent, summarizeConnectionMetrics, type ConnectionMetricSample } from "../connection-details";
 import { METRIC_PRESENTATION, metricHintText, type MetricLabel } from "./metric-presentation";
 import type { ComicKind, HintKind } from "../../ui/visual-kinds";
 import type { ComicTone } from "./comic-presentation";
@@ -260,15 +260,17 @@ export function MetricCells({
   expanded,
   onToggle,
   media = "video",
+  primary = true,
 }: {
   metrics: ConnectionMetrics;
   direction: "send" | "receive";
   expanded: boolean;
   onToggle?: (expanded: boolean) => void;
   media?: "video" | "audio";
+  primary?: boolean;
 }) {
   const { t, vis } = useCopy();
-  const primary: MetricValue[] = media === "audio" ? [
+  const primaryValues: MetricValue[] = media === "audio" ? [
     { label: "stats.audio", value: metrics.bitrateKbps === null ? t("stats.unknown") : `${metrics.bitrateKbps.toFixed(0)} kbps` },
     { label: "stats.rtt", value: metrics.rttMs === null ? t("stats.unknown") : `${metrics.rttMs.toFixed(0)} ms` },
     { label: "stats.audioLoss", value: formatPacketLossPercent(metrics.packetLossPercent, t("stats.unknown")) },
@@ -295,9 +297,9 @@ export function MetricCells({
 
   return (
     <>
-      <div className="lr-meter" role="group" aria-label={t("stats.title")}>
-        {primary.map((value) => <MetricCell key={value.label} {...value} />)}
-      </div>
+      {primary && <div className="lr-meter" role="group" aria-label={t("stats.title")}>
+        {primaryValues.map((value) => <MetricCell key={value.label} {...value} />)}
+      </div>}
       {secondary.length > 0 ? (
         <>
           {onToggle && <MetricDetailsToggle expanded={expanded} onToggle={onToggle} controls={secondaryId} />}
@@ -311,9 +313,32 @@ export function MetricCells({
           ) : null}
         </>
       ) : null}
-      {warnings.map((warning) => (
+      {primary && warnings.map((warning) => (
         <Pill icon="alert" label={warning} comic="warning" key={warning} />
       ))}
     </>
   );
+}
+
+export function ConnectionSummaryCells({ samples, direction, media }: {
+  samples: readonly ConnectionMetricSample[]; direction: "send" | "receive"; media: "video" | "audio";
+}) {
+  const { t } = useCopy();
+  const summary = summarizeConnectionMetrics(samples, direction);
+  const warnings = [...new Set(samples.flatMap(sample => codecContractWarnings(sample.metrics, t, media)))];
+  const number = (value: number | null, unit: string, digits = 0) => value === null ? t("stats.unknown") : `${value.toFixed(digits)} ${unit}`;
+  const resolutionRange = summary.resolution && summary.resolution[0] !== summary.resolution[1];
+  const fpsRange = summary.framesPerSecond && summary.framesPerSecond[0] !== summary.framesPerSecond[1];
+  const values: MetricValue[] = media === "video" ? [
+    { label: resolutionRange ? "stats.resolutionRange" : "stats.resolution", value: summary.resolution
+      ? resolutionRange ? summary.resolution.join(" – ") : summary.resolution[0] : t("stats.unknown") },
+    { label: fpsRange ? "stats.fpsRange" : "stats.fps", value: summary.framesPerSecond
+      ? `${fpsRange ? summary.framesPerSecond.map(value => value.toFixed(1)).join("–") : summary.framesPerSecond[0].toFixed(1)} fps` : t("stats.unknown") },
+  ] : [{ label: "stats.avgRtt", value: number(summary.rttMs, "ms") }];
+  values.splice(media === "video" ? 2 : 0, 0, { label: "stats.totalBitrate", value: number(summary.bitrateKbps, "kbps") });
+  values.push({ label: direction === "send" ? "stats.avgLoss" : "stats.loss", value: formatPacketLossPercent(summary.packetLossPercent, t("stats.unknown")) });
+  if (media === "audio") values.push({ label: "stats.avgJitter", value: number(summary.jitterMs, "ms", 1) });
+  return <><div className="lr-meter" role="group" aria-label={t("stats.title")}>
+    {values.map(value => <MetricCell key={value.label} {...value} />)}
+  </div>{warnings.map(warning => <Pill icon="alert" label={warning} comic="warning" key={warning} />)}</>;
 }
