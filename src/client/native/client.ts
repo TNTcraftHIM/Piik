@@ -56,10 +56,14 @@ interface NativeDiscoveryOptions {
   signal?: AbortSignal;
 }
 
+function isLoopbackPage(): boolean {
+  return ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+}
+
 async function ungrantedLocalPermission(): Promise<PermissionState | null> {
   // App Local already runs on loopback. Its permission can say "prompt" even
   // though loopback-to-loopback requests do not need consent.
-  if (["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)) return null;
+  if (isLoopbackPage()) return null;
   for (const name of ["loopback-network", "local-network-access"]) {
     try {
       const { state } = await navigator.permissions.query({ name: name as PermissionName });
@@ -165,7 +169,7 @@ async function discoverNative<T>(
       const response = await fetch(`http://127.0.0.1:${port}/${path}`, {
         cache: "no-store",
         signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
-        targetAddressSpace: "loopback",
+        ...(isLoopbackPage() ? {} : { targetAddressSpace: "loopback" }),
       } as RequestInit);
       if (!response.ok) throw new Error("Piik App discovery was not accepted");
       const body: unknown = await response.json();
@@ -210,7 +214,7 @@ export async function notifyNativePresentation(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ language }),
     signal,
-    targetAddressSpace: "loopback",
+    ...(isLoopbackPage() ? {} : { targetAddressSpace: "loopback" }),
   } as RequestInit);
 }
 

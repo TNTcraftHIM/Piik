@@ -33,6 +33,39 @@ describe("native App private wire", () => {
     nativeMedia: { video: true, hardwareH264: true },
   };
 
+  it.each(["localhost", "127.0.0.1", "[::1]"])("discovers and updates presentation from %s without an address-space hint", async hostname => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL(`http://${hostname}:8787/`) });
+    const query = vi.fn().mockResolvedValue({ state: "prompt" });
+    vi.stubGlobal("navigator", { permissions: { query } });
+    const fetcher = vi.fn((url: string, init: RequestInit) => {
+      if ("targetAddressSpace" in init) throw new TypeError("loopback is not a valid IPAddressSpace enum value");
+      return Promise.resolve(new Response(JSON.stringify(url.endsWith("connect-discovery")
+        ? { ...health, connectURL: "http://127.0.0.1:54321/client" } : health)));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toMatchObject({ port: health.port });
+    await expect(discoverNativeConnect()).resolves.toContain("http://127.0.0.1:54321/client?");
+    await notifyNativePresentation("en", new AbortController().signal);
+    expect(query).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenLastCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ method: "POST" }));
+    expect(fetcher.mock.calls.every(([, init]) => !("targetAddressSpace" in init))).toBe(true);
+  });
+
+  it("retains the address-space hint for hosted discovery and presentation without a no-hint fallback", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("navigator", { permissions: { query: vi.fn().mockResolvedValue({ state: "granted" }) } });
+    const fetcher = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify(health)));
+    vi.stubGlobal("fetch", fetcher);
+    await notifyNativePresentation("en", new AbortController().signal);
+    expect(fetcher.mock.calls.every(call => (call[1] as RequestInit & { targetAddressSpace: string }).targetAddressSpace === "loopback")).toBe(true);
+    expect(fetcher).toHaveBeenLastCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ targetAddressSpace: "loopback" }));
+    fetcher.mockImplementation(() => { throw new TypeError("Unsupported IPAddressSpace"); });
+    fetcher.mockClear();
+    await expect(discoverNativeHealth()).resolves.toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
+    expect(fetcher.mock.calls.every(call => (call[1] as RequestInit & { targetAddressSpace: string }).targetAddressSpace === "loopback")).toBe(true);
+  });
+
   it("requires the controlled App platform in remote-control state", () => {
     const event = { version: NATIVE_CLIENT_PROTOCOL, type: "remote-control-state", shareId: "share_123456", mode: "off", requests: [] };
     expect(nativeEventSchema.safeParse(event).success).toBe(false);
@@ -113,7 +146,7 @@ describe("native App private wire", () => {
 
   it.each(["opening", "hello", "close"])("retires App acquisition during %s without waiting for its timeout", async stage => {
     vi.useFakeTimers();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
     const sockets: Socket[] = [];
     class Socket extends EventTarget {
@@ -175,7 +208,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
     const controller = new AbortController();
     const client = (await NativeClient.connect({ signal: controller.signal }))!;
@@ -274,7 +307,7 @@ describe("native App private wire", () => {
   );
 
   it("prefers a compatible App on a later port after observing an incompatible App", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     const fetcher = vi.fn(async (url: string) => {
       const port = Number(new URL(url).port);
       return new Response(JSON.stringify({ ...health, port,
@@ -290,7 +323,7 @@ describe("native App private wire", () => {
 
   it("keeps discovery alive while local access takes longer than 400 ms", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
       if (new URL(url).port !== String(health.port)) throw new TypeError("No listener");
       await new Promise<void>((resolve, reject) => {
@@ -309,7 +342,7 @@ describe("native App private wire", () => {
   });
 
   it("finds a later App without waiting for a silent port and aborts the unused probe", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     let silentSignal: AbortSignal | undefined;
     vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
       const port = Number(new URL(url).port);
@@ -328,7 +361,7 @@ describe("native App private wire", () => {
 
   it("bounds all silent discovery ports with one deadline", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     const signals: AbortSignal[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url: string, options: RequestInit) => {
       signals.push(options.signal!);
@@ -345,7 +378,7 @@ describe("native App private wire", () => {
   });
 
   it("identifies an incompatible App even when that protocol uses different token or media metadata", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       ...health, protocol: NATIVE_CLIENT_PROTOCOL + 1,
       instanceToken: { format: "different-protocol" }, nativeMedia: "different-protocol",
@@ -356,7 +389,7 @@ describe("native App private wire", () => {
   });
 
   it("treats denied, absent and malformed endpoints as ordinary Browser-only operation", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     const malformed = [
       { ...health, service: "another-service" },
       { ...health, protocol: "8" },
@@ -446,6 +479,7 @@ describe("native App private wire", () => {
     vi.stubGlobal("window", {
       setTimeout: globalThis.setTimeout,
       clearTimeout: globalThis.clearTimeout,
+      location: new URL("https://piik.example/"),
     });
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({
@@ -576,7 +610,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", CaptureSocket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       ...health, nativeMedia: { ...health.nativeMedia, captureBorderControl: supported, remoteInput: supported },
     }))));
@@ -627,7 +661,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...health,
       nativeMedia: { ...health.nativeMedia, microphone: true, ...(supported ? { processAudioExclusion: true } : {}) },
     }))));
@@ -680,7 +714,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       ...health, nativeMedia: { ...health.nativeMedia, ...(supported ? { microphone: true, shareVolume: true } : {}) },
     }))));
@@ -754,7 +788,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       ...health, nativeMedia: { ...health.nativeMedia, ...(supported ? { receiverReuse: true } : {}) },
     }))));
@@ -959,7 +993,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => Response.json(health)));
     const client = (await NativeClient.connect())!;
     const received = vi.fn();
