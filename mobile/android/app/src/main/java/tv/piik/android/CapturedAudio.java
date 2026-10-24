@@ -54,6 +54,8 @@ final class CapturedAudio {
   static void close(CapturedAudio value) {
     if (value == null || value.stopped) return;
     value.stopped = true;
+    // A full Go frame queue can block the JNI producer independently of AudioRecord.
+    value.runtime.captureEnded(value.id);
     if (value.recorder != null) {
       try {
         value.recorder.stop();

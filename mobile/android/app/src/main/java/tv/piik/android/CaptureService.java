@@ -562,7 +562,6 @@ public final class CaptureService extends Service {
         previousAudio = null;
       }
       CapturedAudio.close(next);
-      fail(runtime, id);
     }
   }
 
@@ -651,7 +650,6 @@ public final class CaptureService extends Service {
       previousMicrophone = null;
     }
     CapturedAudio.close(next);
-    fail(next.runtime, next.id);
     refreshMicrophoneForeground();
   }
 
@@ -804,11 +802,6 @@ public final class CaptureService extends Service {
     }
     if (old != null) old.runtime.captureEnded(old.id);
     if (pendingOld != null) pendingOld.runtime.captureEnded(pendingOld.id);
-    if (oldAudio != null) oldAudio.runtime.captureEnded(oldAudio.id);
-    if (pendingOldAudio != null) pendingOldAudio.runtime.captureEnded(pendingOldAudio.id);
-    if (oldMicrophone != null) oldMicrophone.runtime.captureEnded(oldMicrophone.id);
-    if (oldPreviousMicrophone != null)
-      oldPreviousMicrophone.runtime.captureEnded(oldPreviousMicrophone.id);
     stopForeground(STOP_FOREGROUND_REMOVE);
     stopSelf();
   }
