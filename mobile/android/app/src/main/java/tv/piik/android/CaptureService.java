@@ -245,6 +245,7 @@ public final class CaptureService extends Service {
           MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
       format.setInteger(MediaFormat.KEY_BIT_RATE, options.getInt("bitrate"));
       format.setInteger(MediaFormat.KEY_FRAME_RATE, next.fps);
+      format.setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, next.fps);
       format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
       if (h264)
         format.setInteger(
