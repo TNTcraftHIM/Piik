@@ -99,7 +99,8 @@ if (!tunnelOnly) {
   mkdirSync(join(android, 'app', 'libs'), { recursive: true });
   run(process.env.PIIK_GOMOBILE || 'gomobile', ['bind', '-trimpath', '-target=android/arm64,android/amd64', '-androidapi', '29',
     '-ldflags=-s -w -checklinkname=0', '-javapkg', 'tv.piik', '-o', join(android, 'app', 'libs', 'piik.aar'), './mobile/androidbridge']);
-  run('java', ['-classpath', join(gradleHome, 'lib', launcher), 'org.gradle.launcher.GradleMain', '-p', android, ':app:assembleDebug', '--console=plain']);
+  run('java', ['-classpath', join(gradleHome, 'lib', launcher), 'org.gradle.launcher.GradleMain',
+    '-Dorg.gradle.jvmargs=-Xmx2g', '-p', android, ':app:assembleDebug', '--console=plain']);
   const apk = join(android, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
   if (!existsSync(apk)) throw new Error('The Android build did not produce its APK.');
   console.log(`Android development APK: ${apk}`);
