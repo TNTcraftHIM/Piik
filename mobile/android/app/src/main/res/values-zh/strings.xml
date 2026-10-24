@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
  <string name="app_name">Piik Android 预览版</string>
  <string name="preparing">正在准备本地屏幕分享…</string>
  <string name="no_webview">此设备需要安装 Android System WebView 才能运行 Piik。</string>
@@ -11,4 +11,6 @@
  <string name="notification_body">点击返回并停止分享。</string>
  <string name="leave_prompt">离开 Piik 并停止分享？</string>
  <string name="choose_site">Piik 站点</string>
+ <string name="open_site">打开站点</string>
+ <string name="invalid_site">请输入 HTTPS Piik 站点或邀请地址。</string>
 </resources>

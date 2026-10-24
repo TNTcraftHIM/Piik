@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
  <string name="app_name">Piik Android Preview</string>
  <string name="preparing">Preparing local screen sharing…</string>
  <string name="no_webview">This device needs Android System WebView to run Piik.</string>
@@ -11,4 +11,6 @@
  <string name="notification_body">Tap to return and stop sharing.</string>
  <string name="leave_prompt">Leave Piik and stop sharing?</string>
  <string name="choose_site">Piik sites</string>
+ <string name="open_site">Open site</string>
+ <string name="invalid_site">Enter an HTTPS Piik site or invitation address.</string>
 </resources>

@@ -26,6 +26,7 @@ public final class MainActivity extends Activity {
   static String encoderName;
   static final int CAPTURE = 10;
   WebPermissions permissions;
+  Dialog sitePopup;
 
   @Override
   public void onCreate(Bundle state) {
@@ -194,21 +195,34 @@ public final class MainActivity extends Activity {
     public boolean onCreateWindow(WebView view, boolean dialog, boolean gesture, Message result) {
       if (!gesture || current == null) return false;
       WebView child = new WebView(current.getApplicationContext());
-      child.setWebViewClient(
-          new WebViewClient() {
+      child.getSettings().setJavaScriptEnabled(true);
+      child.getSettings().setDomStorageEnabled(true);
+      child.getSettings().setAllowFileAccess(false);
+      child.getSettings().setAllowContentAccess(false);
+      child.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+      child.setWebViewClient(new AppWebClient());
+      MainActivity owner = current;
+      if (owner.sitePopup != null) owner.sitePopup.dismiss();
+      Dialog popup = new Dialog(owner);
+      owner.sitePopup = popup;
+      popup.setContentView(child);
+      child.setWebChromeClient(
+          new WebChromeClient() {
             @Override
-            public boolean shouldOverrideUrlLoading(WebView temporary, WebResourceRequest request) {
-              String target = request.getUrl().toString();
-              if (runtime != null && runtime.trustedURL(target)) web.loadUrl(target);
-              else
-                try {
-                  current.startActivity(new Intent(Intent.ACTION_VIEW, request.getUrl()));
-                } catch (Exception ignored) {
-                }
-              temporary.post(temporary::destroy);
-              return true;
+            public void onCloseWindow(WebView window) {
+              popup.dismiss();
             }
           });
+      popup.setOnDismissListener(
+          ignored -> {
+            child.destroy();
+            if (owner.sitePopup == popup) owner.sitePopup = null;
+          });
+      popup.show();
+      popup
+          .getWindow()
+          .setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+      // Preserve the actual opener so approval can notify it and close this child.
       ((WebView.WebViewTransport) result.obj).setWebView(child);
       result.sendToTarget();
       return true;
@@ -253,6 +267,7 @@ public final class MainActivity extends Activity {
   @Override
   public boolean onCreateOptionsMenu(Menu menu) {
     menu.add(0, 1, 0, R.string.choose_site);
+    menu.add(0, 2, 1, R.string.open_site);
     return true;
   }
 
@@ -262,11 +277,45 @@ public final class MainActivity extends Activity {
       chooseSite();
       return true;
     }
+    if (item.getItemId() == 2) {
+      openSite();
+      return true;
+    }
     return super.onOptionsItemSelected(item);
   }
 
   void chooseSite() {
     if (runtime != null && web != null) web.loadUrl(runtime.url());
+  }
+
+  void openSite() {
+    EditText address = new EditText(this);
+    address.setInputType(
+        android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+    address.setSingleLine(true);
+    address.setHint("https://piik.example");
+    AlertDialog dialog =
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.open_site)
+            .setView(address)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.open_site, null)
+            .create();
+    dialog.setOnShowListener(
+        ignored ->
+            dialog
+                .getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(
+                    button -> {
+                      if (runtime == null || web == null) return;
+                      try {
+                        web.loadUrl(runtime.siteURL(address.getText().toString()));
+                        dialog.dismiss();
+                      } catch (Exception error) {
+                        address.setError(getString(R.string.invalid_site));
+                      }
+                    }));
+    dialog.show();
   }
 
   static void requestVideo(long id, String configuration) {
@@ -382,6 +431,7 @@ public final class MainActivity extends Activity {
 
   @Override
   protected void onDestroy() {
+    if (sitePopup != null) sitePopup.dismiss();
     permissions.close();
     if (current == this) current = null;
     super.onDestroy();

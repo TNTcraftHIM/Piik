@@ -39,7 +39,14 @@ dependency [anet on Go 1.23+](https://github.com/wlynxg/anet); it is confined to
 this platform build. Android uses the repository's single Go dependency graph;
 pins and temporary upstream replacements remain owned by the root `go.mod`.
 
-Install with `adb install -r <apk>`. The existing App management page offers a
+Install with `adb install -r <apk>`. Use the Android menu's **Open site** to enter
+an HTTPS Piik site or full invitation; the invitation path and grant are retained.
+Opening a site does not approve it. On that site, use the existing App connection
+button and approve its exact origin in the popup. The popup keeps the real opener,
+so approval rechecks the App connection, closes the popup and returns to the
+original page without unloading its Host. **Piik sites** opens management.
+
+The existing App management page offers a
 Local room or an approved HTTPS site. Local starts only when selected; Hosted
 sites use their own room service and the existing native App connection. Site
 approval and the starred startup site use the same persisted App configuration.

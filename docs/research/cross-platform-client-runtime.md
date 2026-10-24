@@ -333,6 +333,9 @@ actual App/Site compatibility checks.
 The [Android prototype](../../mobile/README.md) builds an APK for arm64 and
 x86-64 from the repository's single Go dependency graph. A Java Activity embeds
 the normal Web UI at its loopback origin or an explicitly approved HTTPS site.
+The native Open site action accepts HTTPS sites and full invitations without
+granting App permission. Its WebView popup preserves the opener, so the existing
+approval notification and close return to the original live Host.
 The existing App management page owns approval, revocation and the starred
 startup site. Local mode starts the Go room and LAN HTTPS invitation only when
 selected; Hosted mode uses that site's room service. Room signaling stays with

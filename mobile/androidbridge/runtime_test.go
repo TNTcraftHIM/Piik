@@ -20,6 +20,19 @@ func TestSiteApprovalPersistsExactOriginAndRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &Runtime{control: control, url: "http://127.0.0.1:49152/#piik-client=1", configPath: path, config: cfg}
+	navigation, err := r.SiteURL("PIIK.example:443")
+	if err != nil || navigation != "https://piik.example/#piik-client=1" || r.TrustedURL(navigation) {
+		t.Fatalf("navigation must not authorize a site: %q %v", navigation, err)
+	}
+	invitation, err := r.SiteURL("https://PIIK.example:443/r/1234?lang=en#v=fixture-invite&piik-client=0")
+	if err != nil || invitation != "https://piik.example/r/1234?lang=en#piik-client=1&v=fixture-invite" || r.TrustedURL(invitation) {
+		t.Fatalf("invitation navigation lost state or authorized a site: %q %v", invitation, err)
+	}
+	for _, invalid := range []string{"", "http://piik.example", "https://user@piik.example"} {
+		if _, err := r.SiteURL(invalid); err == nil {
+			t.Fatalf("invalid hosted navigation accepted: %q", invalid)
+		}
+	}
 	site, err := r.approveSite("PIIK.example:443")
 	if err != nil || site != "https://piik.example" {
 		t.Fatalf("approval: %q %v", site, err)
