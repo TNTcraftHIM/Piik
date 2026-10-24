@@ -187,7 +187,8 @@ public final class AppRuntimeService extends Service {
     MainActivity activity = MainActivity.current;
     if (activity == null
         || !activity.visible
-        || (BuildConfig.EXTERNAL_BROWSER && !activity.mediaEntry())) return;
+        || activity.notificationRequest
+        || !activity.canConfirmMedia()) return;
     MediaRequest next = requests.poll();
     if (next == null) {
       activity.mediaFinished();

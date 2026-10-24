@@ -16,7 +16,8 @@ public final class MainActivity extends Activity {
   WebPermissions permissions;
   Dialog sitePopup;
   FullscreenView fullscreen;
-  boolean visible, handledMedia;
+  boolean visible, handledMedia, notificationRequest;
+  static final int NOTIFICATIONS = 13;
   AppRuntimeService permissionOwner;
   AppRuntimeService.MediaRequest permissionRequest;
 
@@ -24,6 +25,10 @@ public final class MainActivity extends Activity {
     return BuildConfig.EXTERNAL_BROWSER
         && getIntent().getData() != null
         && "media".equals(getIntent().getData().getHost());
+  }
+
+  boolean canConfirmMedia() {
+    return !BuildConfig.EXTERNAL_BROWSER || getIntent().getData() == null || mediaEntry();
   }
 
   @Override
@@ -34,6 +39,7 @@ public final class MainActivity extends Activity {
     fullscreen = new FullscreenView(this);
     if (state != null) {
       handledMedia = state.getBoolean("handledMedia");
+      notificationRequest = state.getBoolean("notificationRequest");
       AppRuntimeService service = AppRuntimeService.instance;
       if (service != null && service.active != null && service.active.awaitingResult) {
         permissionOwner = service;
@@ -60,12 +66,22 @@ public final class MainActivity extends Activity {
       waiting.setText(mediaEntry() ? R.string.media_waiting : R.string.preparing);
       setContentView(WindowContent.wrap(getWindow(), waiting));
     }
+    if (Build.VERSION.SDK_INT >= 33
+        && state == null
+        && requested == null
+        && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+      notificationRequest = true;
+      requestPermissions(
+          new String[] {android.Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATIONS);
+    }
     startForegroundService(new Intent(this, AppRuntimeService.class));
   }
 
   @Override
   protected void onSaveInstanceState(Bundle state) {
     state.putBoolean("handledMedia", handledMedia);
+    state.putBoolean("notificationRequest", notificationRequest);
     super.onSaveInstanceState(state);
   }
 
@@ -84,7 +100,7 @@ public final class MainActivity extends Activity {
   }
 
   void runtimeAvailable(AppRuntimeService service) {
-    if (current != this || !visible || isFinishing()) return;
+    if (current != this || !visible || isFinishing() || notificationRequest) return;
     if (service.failure != null) {
       showRuntimeFailure();
       return;
@@ -92,7 +108,9 @@ public final class MainActivity extends Activity {
     var owner = AppRuntimeService.runtime();
     if (owner == null) return;
     if (BuildConfig.EXTERNAL_BROWSER) {
-      if (mediaEntry()) {
+      if (mediaEntry()
+          || (getIntent().getData() == null
+              && (service.active != null || !service.requests.isEmpty()))) {
         service.processRequests();
         return;
       }
@@ -128,11 +146,12 @@ public final class MainActivity extends Activity {
   }
 
   void mediaFinished() {
-    if (!BuildConfig.EXTERNAL_BROWSER || !mediaEntry()) return;
+    if (!BuildConfig.EXTERNAL_BROWSER) return;
     if (handledMedia) {
       finish();
       return;
     }
+    if (!mediaEntry()) return;
     LinearLayout empty = new LinearLayout(this);
     empty.setOrientation(LinearLayout.VERTICAL);
     empty.setPadding(24, 48, 24, 24);
@@ -379,7 +398,10 @@ public final class MainActivity extends Activity {
   @Override
   public void onRequestPermissionsResult(int request, String[] names, int[] results) {
     super.onRequestPermissionsResult(request, names, results);
-    if (request == WebPermissions.REQUEST) permissions.finish();
+    if (request == NOTIFICATIONS) {
+      notificationRequest = false;
+      if (AppRuntimeService.instance != null) runtimeAvailable(AppRuntimeService.instance);
+    } else if (request == WebPermissions.REQUEST) permissions.finish();
     else if (request == AppRuntimeService.AUDIO_PERMISSION && permissionOwner != null) {
       AppRuntimeService owner = permissionOwner;
       AppRuntimeService.MediaRequest pending = permissionRequest;
@@ -405,7 +427,7 @@ public final class MainActivity extends Activity {
   public void onBackPressed() {
     if (fullscreen.hide()) return;
     if (BuildConfig.EXTERNAL_BROWSER) {
-      if (mediaEntry() && AppRuntimeService.instance != null)
+      if ((mediaEntry() || handledMedia) && AppRuntimeService.instance != null)
         AppRuntimeService.instance.cancelPending();
       finish();
       return;

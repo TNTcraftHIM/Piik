@@ -627,7 +627,8 @@ public final class CaptureService extends Service {
               48000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
       next.recorder =
           new AudioRecord.Builder()
-              .setAudioSource(MediaRecorder.AudioSource.MIC)
+              // Commentary is speech; let the platform apply its available echo processing.
+              .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
               .setAudioFormat(format)
               .setBufferSizeInBytes(Math.max(minimum, 1920 * 4))
               .build();
