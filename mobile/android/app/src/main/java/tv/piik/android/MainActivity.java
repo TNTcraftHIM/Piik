@@ -128,7 +128,22 @@ public final class MainActivity extends Activity {
   }
 
   void mediaFinished() {
-    if (BuildConfig.EXTERNAL_BROWSER && mediaEntry() && handledMedia) finish();
+    if (!BuildConfig.EXTERNAL_BROWSER || !mediaEntry()) return;
+    if (handledMedia) {
+      finish();
+      return;
+    }
+    LinearLayout empty = new LinearLayout(this);
+    empty.setOrientation(LinearLayout.VERTICAL);
+    empty.setPadding(24, 48, 24, 24);
+    TextView message = new TextView(this);
+    message.setText(R.string.no_pending_confirmation);
+    empty.addView(message);
+    Button back = new Button(this);
+    back.setText(R.string.return_browser);
+    back.setOnClickListener(ignored -> finish());
+    empty.addView(back);
+    setContentView(WindowContent.wrap(getWindow(), empty));
   }
 
   static void refreshBrowserMedia() {

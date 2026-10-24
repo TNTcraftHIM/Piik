@@ -6,6 +6,8 @@
  <string name="runtime_open">Open</string>
  <string name="runtime_stop">Stop Piik</string>
  <string name="media_waiting">Complete the screen or audio request from your browser. Press Back to return.</string>
+ <string name="no_pending_confirmation">No screen or audio confirmation is pending.</string>
+ <string name="return_browser">Return to browser</string>
  <string name="no_browser">Install or enable a browser to open Piik.</string>
  <string name="preparing">Preparing local screen sharing…</string>
  <string name="no_webview">This device needs Android System WebView to run Piik.</string>

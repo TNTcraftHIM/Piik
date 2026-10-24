@@ -327,15 +327,17 @@ public final class AppRuntimeService extends Service {
 
   @Override
   public void onDestroy() {
-    if (instance == this) instance = null;
+    if (instance == this) {
+      instance = null;
+      MainActivity.retireDocument();
+      CaptureService.shutdown();
+    }
     CompletableFuture<Runtime> pending = startup;
     startup = null;
     Runtime retired = runtime;
     runtime = null;
     requests.clear();
     active = null;
-    MainActivity.retireDocument();
-    CaptureService.shutdown();
     work.execute(
         () -> {
           Runtime closing = retired;

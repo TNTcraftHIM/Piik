@@ -6,6 +6,8 @@
  <string name="runtime_open">打开</string>
  <string name="runtime_stop">停止 Piik</string>
  <string name="media_waiting">请在浏览器发起屏幕或声音请求。按返回键回到浏览器。</string>
+ <string name="no_pending_confirmation">当前没有待确认的屏幕或声音请求。</string>
+ <string name="return_browser">返回浏览器</string>
  <string name="no_browser">请安装或启用浏览器以打开 Piik。</string>
  <string name="preparing">正在准备本地屏幕分享…</string>
  <string name="no_webview">此设备需要安装 Android System WebView 才能运行 Piik。</string>
