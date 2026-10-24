@@ -145,6 +145,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		_ = engine.Close()
 		return nil, err
 	}
+	defer capturePreparationDone(stream)
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{
 		shareID:      options.ShareID,
@@ -167,7 +168,13 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	// Drain video while the optional audio process initializes. Otherwise a full
 	// video pipe can stall the platform capture service that audio also needs.
 	videoDone := make(chan error, 1)
-	go func() { videoDone <- session.runVideo() }()
+	// Source audio may still be awaiting platform permission when video ends.
+	// Its context lives with video, including after a successful start.
+	audioCtx, cancelAudio := context.WithCancel(ctx)
+	go func() {
+		videoDone <- session.runVideo()
+		cancelAudio()
+	}()
 	var timeout <-chan time.Time
 	if options.Video.Target.Kind != "picker" {
 		timer := time.NewTimer(startTimeout)
@@ -193,11 +200,22 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	var audioStream CaptureStream
 	if options.AudioEnabled {
 		var audioErr error
-		audioStream, audioErr = capture.Audio(ctx, options.Video.Target, options.ExcludeAudio)
+		audioStream, audioErr = capture.Audio(audioCtx, options.Video.Target, options.ExcludeAudio)
 		if audioErr != nil {
 			slog.DebugContext(ctx, "piik-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
 		}
 		session.audioStream = audioStream
+	}
+	select {
+	case videoErr := <-videoDone:
+		cancel()
+		_ = stream.Close()
+		if audioStream != nil {
+			_ = audioStream.Close()
+		}
+		session.retire()
+		return nil, videoErr
+	default:
 	}
 	if audioStream != nil || options.MicrophoneMixing {
 		audioSource, audioErr := engine.NewAudioSource(
@@ -432,6 +450,7 @@ func (session *Session) UpdateProfile(profile QualityProfile) error {
 	if err != nil {
 		return err
 	}
+	defer capturePreparationDone(replacement)
 	if session.audioSource != nil && profile.AudioBitrate != previousProfile.AudioBitrate {
 		if err = session.audioSource.SetBitrate(profile.AudioBitrate); err != nil {
 			_ = replacement.Close()
@@ -508,6 +527,7 @@ func (session *Session) ReplaceSource(
 		if err != nil {
 			return err
 		}
+		defer capturePreparationDone(replacement)
 	}
 	var replacementAudio CaptureStream
 	if audioEnabled {
@@ -568,6 +588,7 @@ func (session *Session) PrepareRemoteInputPolicy(mode, password string, coPlay b
 				if err != nil {
 					return err
 				}
+				defer capturePreparationDone(replacement)
 				if err := change.Context().Err(); err != nil {
 					_ = replacement.Close()
 					return err
@@ -618,6 +639,14 @@ func startAudioCapture(
 		return nativecapture.StartSystemAudio(ctx, captureProcess)
 	}
 	return nativecapture.StartAudio(ctx, captureProcess, target, false)
+}
+
+// Interactive platforms retain their preparation UI until the whole operation,
+// including source audio and capture commit, has finished.
+func capturePreparationDone(stream CaptureStream) {
+	if preparation, ok := stream.(interface{ PreparationDone() }); ok {
+		preparation.PreparationDone()
+	}
 }
 
 func (session *Session) prepareVideo(

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,11 +16,12 @@ import (
 )
 
 type testPlatform struct {
-	mu           sync.Mutex
-	stopped      []int64
-	started      chan int64
-	siteChanged  func()
-	videoStarted func(int64, string)
+	mu              sync.Mutex
+	stopped         []int64
+	started         chan int64
+	siteChanged     func()
+	videoStarted    func(int64, string)
+	preparationDone func(int64)
 }
 
 func (p *testPlatform) StartVideo(id int64, configuration string) {
@@ -27,9 +29,119 @@ func (p *testPlatform) StartVideo(id int64, configuration string) {
 		p.videoStarted(id, configuration)
 	}
 }
-func (*testPlatform) RuntimeStopped(string)                {}
+func (*testPlatform) RuntimeStopped(string) {}
+func (p *testPlatform) PreparationDone(id int64) {
+	if p.preparationDone != nil {
+		p.preparationDone(id)
+	}
+}
 func (p *testPlatform) StartMicrophone(id int64, _ string) { p.StartAudio(id) }
 func (*testPlatform) Microphones() (string, error)         { return "[]", nil }
+
+func TestVideoPreparationSpansSourceAudioAndCaptureCommit(t *testing.T) {
+	for _, outcome := range []string{"ready", "denied", "cancelled", "video-ended", "video-only", "replace"} {
+		t.Run(outcome, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			completed := make(chan int64, 4)
+			p := &testPlatform{started: make(chan int64, 4), preparationDone: func(id int64) { completed <- id }}
+			c := &capture{platform: p, encoders: []encoderCapability{{Codec: "vp8"}}, streams: make(map[int64]*captureStream)}
+			r := &Runtime{capture: c}
+			p.videoStarted = func(id int64, configuration string) {
+				var output nativecapture.OutputProfile
+				if err := json.Unmarshal([]byte(configuration), &output); err != nil {
+					t.Error(err)
+					return
+				}
+				r.VideoReady(id, "vp8", int64(output.Width), int64(output.Height), "")
+			}
+			video := nativecapture.VideoOptions{Codec: "vp8", Target: nativecapture.CaptureTarget{Kind: "picker"},
+				Profile: nativecapture.VideoProfile{Width: 640, Height: 360, Framerate: 30, Bitrate: 1_000_000, Preference: "balanced"}}
+			var session *nativehost.Session
+			result := make(chan error, 1)
+			go func() {
+				var err error
+				session, err = nativehost.Start(ctx, nativehost.Options{ShareID: "preparation-fixture", Capture: c, Video: video,
+					Profile: nativehost.QualityProfile{Video: video.Profile, AudioBitrate: 64_000}, AudioEnabled: outcome != "video-only" && outcome != "replace",
+					MicrophoneMixing: outcome == "replace",
+					EdgeCapacity:     1, BindAddress: "127.0.0.1:0"})
+				result <- err
+			}()
+			awaitResult := func() error {
+				t.Helper()
+				select {
+				case err := <-result:
+					return err
+				case <-time.After(3 * time.Second):
+					t.Fatal("capture operation did not finish")
+					return nil
+				}
+			}
+			if outcome == "replace" {
+				if err := awaitResult(); err != nil {
+					t.Fatal(err)
+				}
+				if id := <-completed; id != 1 {
+					t.Fatal("initial preparation identity", id)
+				}
+				go func() { result <- session.ReplaceSource(video, true, nil) }()
+			}
+			var audioID int64
+			if outcome != "video-only" {
+				select {
+				case audioID = <-p.started:
+				case <-time.After(3 * time.Second):
+					t.Fatal("audio admission was not requested")
+				}
+				select {
+				case <-completed:
+					t.Fatal("video released preparation before source audio admission")
+				default:
+				}
+				switch outcome {
+				case "cancelled":
+					cancel()
+				case "denied":
+					r.CaptureEnded(audioID)
+				case "video-ended":
+					r.CaptureEnded(1)
+				default:
+					r.AudioReady(audioID)
+				}
+			}
+			err := awaitResult()
+			if (err != nil) != (outcome == "cancelled" || outcome == "video-ended") {
+				t.Fatalf("operation result: %v", err)
+			}
+			if outcome == "video-ended" && (session != nil || !strings.Contains(err.Error(), "capture stopped unexpectedly")) {
+				t.Fatalf("ended video was not a failed startup: session=%v err=%v", session != nil, err)
+			}
+			if outcome == "ready" || outcome == "replace" {
+				if audio := c.get(audioID); audio == nil || audio.ctx.Err() != nil || !session.HasAudio() {
+					t.Fatal("successful startup retired live source audio")
+				}
+			}
+			if outcome == "replace" && (r.CaptureCurrent(1) || !r.CaptureCurrent(2)) {
+				t.Fatal("old source retirement affected the committed replacement")
+			}
+			select {
+			case id := <-completed:
+				want := int64(1)
+				if outcome == "replace" {
+					want = 2
+				}
+				if id != want {
+					t.Fatalf("preparation identity %d, want %d", id, want)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("aggregate preparation was not released")
+			}
+			if session != nil {
+				_ = session.Close()
+			}
+		})
+	}
+}
 
 func TestCommentaryWaitsForPlatformAdmissionAndRetiresIndependently(t *testing.T) {
 	for _, admitted := range []bool{false, true} {

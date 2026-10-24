@@ -20,6 +20,7 @@ import (
 // Byte buffers are copied before returning from a JNI callback.
 type Platform interface {
 	StartVideo(id int64, configuration string)
+	PreparationDone(id int64)
 	StartAudio(id int64)
 	StartMicrophone(id int64, deviceID string)
 	Microphones() (string, error)
@@ -142,6 +143,10 @@ func (s *captureStream) Read() (nativecapture.Frame, error) {
 func (s *captureStream) Outputs() []nativecapture.OutputProfile {
 	return append([]nativecapture.OutputProfile(nil), s.outputs...)
 }
+func (s *captureStream) PreparationDone() {
+	s.owner.platform.PreparationDone(s.id)
+}
+
 func (s *captureStream) Close() error {
 	s.once.Do(func() {
 		s.cancel()
