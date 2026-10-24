@@ -154,7 +154,8 @@ export function LauncherForm({
         </div>)}</div>}
       </section>
 
-      {roomError ?? (target ? <a className="lr-btn is-primary" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>
+      {roomError}
+      {target ? <a className="lr-btn is-primary" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>
         <Glyph name="arrowRight" size={19} />{vis ? null : <span className="lr-cap">{t("client.launch.go")}</span>}
       </a> : <>
       <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
@@ -250,15 +251,15 @@ export function LauncherForm({
         {t("client.launch.localHTTPS")}
       </p>}
       <Btn
-        icon="arrowRight"
-        title="client.launch.go"
-        cap="client.launch.go"
+        icon={roomError ? "refresh" : "arrowRight"}
+        title={roomError ? "common.retry" : "client.launch.go"}
+        cap={roomError ? "common.retry" : "client.launch.go"}
         tone="primary"
         type="submit"
         hint={MODES.find((choice) => choice.mode === mode)?.comic}
         disabled={mode === "local" && lan !== undefined && !lan.selected}
       />
-      </>)}
+      </>}
     </form>
   );
 }

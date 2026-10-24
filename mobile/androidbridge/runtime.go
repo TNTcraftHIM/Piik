@@ -138,14 +138,25 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	r.launchDone = make(chan struct{})
 	go func() {
 		defer close(r.launchDone)
+		r.runLauncher(lanAddress)
+	}()
+	return r, nil
+}
+
+// Failed startup has already retired its resources before a new selection starts.
+func (r *Runtime) runLauncher(lanAddress string) {
+	for {
 		select {
 		case selected := <-r.launcher.Selection():
 			target, err := r.startLocal(selected, lanAddress)
 			r.launcher.SetResult(target, err)
-		case <-ctx.Done():
+			if err == nil {
+				return
+			}
+		case <-r.ctx.Done():
+			return
 		}
-	}()
-	return r, nil
+	}
 }
 
 func (r *Runtime) URL() string      { return r.launcher.URL() }

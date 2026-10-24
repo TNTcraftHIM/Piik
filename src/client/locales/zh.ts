@@ -246,7 +246,7 @@ export const zh = {
   "client.launch.go": "进入 Piik",
   "client.launch.starting": "正在准备 Piik",
   "client.launch.error": "房间暂不可用",
-  "client.launch.reopen": "重新打开 Piik 后重试；需要记录日志时，可开启「诊断启动」。",
+  "client.launch.retryHint": "可直接重试，也可调整下方设置。",
   "client.launch.errorDetails": "技术详情",
   "client.launch.failure.tunnel-exited": "公网邀请服务未能建立连接。可检查网络，或通过已有 Piik 站点使用 App。",
   "client.launch.failure.tunnel-timeout": "连接公网邀请服务超时。可检查网络，或通过已有 Piik 站点使用 App。",

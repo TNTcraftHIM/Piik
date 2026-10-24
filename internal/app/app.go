@@ -341,104 +341,98 @@ func runLauncher(
 		}
 		openSite(site, options)
 	}
-	// An interactive room is a child of the resident App. Its failure must not
-	// retire an unrelated Site's native sessions or its approval page. Explicit
-	// CLI launches still return their outcome to the caller. Call only after the
-	// room has retired, so neither approval nor process exit depends on its work.
-	finishRoom := func(roomErr error) error {
+	// The resident App outlives a failed interactive room. Retry only after the
+	// previous runtime has joined, leaving unrelated Site/native sessions intact.
+	runRoom := func(selection launcher.Selection) error {
+		options := initialOptions
+		if selection.Language != "" {
+			options.console.setLanguage(selection.Language)
+		}
+		if err := launcher.SaveMode(configPath, selection.Mode); err != nil {
+			slog.Debug("Could not save the launcher mode", diagnostics.Error(err))
+		}
+		options.Local = selection.Mode == launcher.ModeLocal
+		options.Link = selection.Mode == launcher.ModeLink
+		options.Debug = options.Debug || selection.Debug
+		if selection.LANAddress != nil {
+			options.LANAddress = *selection.LANAddress
+		}
+		selectedConfig, err := updateConfig(func(next *appconfig.Config) {
+			next.LocalAccessPassword = selection.LocalAccessPassword
+		})
+		if err != nil {
+			err = errors.Join(failure.Configuration, fmt.Errorf("Piik App configuration could not be saved: %w", err))
+			return err
+		}
+		if err = configureDiagnostics(&options, selectedConfig); err != nil {
+			return err
+		}
+		if !directRoom {
+			options.DisableBrowser = true
+		}
+		ready := make(chan string, 1)
+		onReady := options.Ready
+		options.Ready = func(target string) {
+			if onReady != nil {
+				onReady(target)
+			}
+			ready <- target
+		}
+		runtimeContext, cancelRuntime := context.WithCancel(ctx)
+		runtimeDone := make(chan struct{})
+		var runtimeErr error
+		go func() {
+			runtimeErr = runLocal(runtimeContext, options, selectedConfig, control)
+			close(runtimeDone)
+		}()
+		var exitErr error
+		select {
+		case target := <-ready:
+			launch.SetResult(target, nil)
+			select {
+			case <-runtimeDone:
+			case exitErr = <-launch.Done():
+			case <-ctx.Done():
+			}
+		case <-runtimeDone:
+		case <-ctx.Done():
+			launch.SetResult("", ctx.Err())
+		}
+		cancelRuntime()
+		<-runtimeDone
+		return errors.Join(exitErr, runtimeErr)
+	}
+	var roomErr error
+	for {
+		var selection launcher.Selection
+		if directRoom {
+			selection = launcher.Selection{Mode: launcher.ModeLocal, LocalAccessPassword: initialConfig.LocalAccessPassword}
+			if initialOptions.Link {
+				selection.Mode = launcher.ModeLink
+			}
+			launch.Begin()
+		} else {
+			select {
+			case selection = <-launch.Selection():
+			case <-ctx.Done():
+				return roomErr
+			case err := <-control.Done():
+				return errors.Join(roomErr, err)
+			case err := <-launch.Done():
+				if err != nil {
+					return errors.Join(roomErr, failure.Launcher, fmt.Errorf("Piik App launcher stopped unexpectedly: %w", err))
+				}
+				return roomErr
+			}
+		}
+		roomErr = runRoom(selection)
 		if directRoom || roomErr == nil || ctx.Err() != nil {
 			return roomErr
 		}
 		launch.SetResult("", roomErr)
-		options.console.show(consoleView{state: "setup", entry: launch.URL(), problem: roomErr})
+		initialOptions.console.show(consoleView{state: "setup", entry: launch.URL(), problem: roomErr})
 		slog.Debug("piik-client", "event", "local-room-stopped", diagnostics.Error(roomErr))
-		select {
-		case <-ctx.Done():
-		case err := <-control.Done():
-			roomErr = errors.Join(roomErr, err)
-		case err := <-launch.Done():
-			roomErr = errors.Join(roomErr, err)
-		}
-		return roomErr
 	}
-
-	var selection launcher.Selection
-	if directRoom {
-		selection = launcher.Selection{Mode: launcher.ModeLocal, LocalAccessPassword: initialConfig.LocalAccessPassword}
-		if options.Link {
-			selection.Mode = launcher.ModeLink
-		}
-		launch.Begin()
-	} else {
-		select {
-		case selection = <-launch.Selection():
-		case <-ctx.Done():
-			return nil
-		case err = <-control.Done():
-			return err
-		case err = <-launch.Done():
-			if err != nil {
-				return errors.Join(failure.Launcher, fmt.Errorf("Piik App launcher stopped unexpectedly: %w", err))
-			}
-			return nil
-		}
-	}
-	if selection.Language != "" {
-		options.console.setLanguage(selection.Language)
-	}
-	if err := launcher.SaveMode(configPath, selection.Mode); err != nil {
-		slog.Debug("Could not save the launcher mode", diagnostics.Error(err))
-	}
-	options.Local = selection.Mode == launcher.ModeLocal
-	options.Link = selection.Mode == launcher.ModeLink
-	options.Debug = options.Debug || selection.Debug
-	if selection.LANAddress != nil {
-		options.LANAddress = *selection.LANAddress
-	}
-	selectedConfig, err := updateConfig(func(next *appconfig.Config) {
-		next.LocalAccessPassword = selection.LocalAccessPassword
-	})
-	if err != nil {
-		err = errors.Join(failure.Configuration, fmt.Errorf("Piik App configuration could not be saved: %w", err))
-		return finishRoom(err)
-	}
-	if err = configureDiagnostics(&options, selectedConfig); err != nil {
-		return finishRoom(err)
-	}
-	if !directRoom {
-		options.DisableBrowser = true
-	}
-	ready := make(chan string, 1)
-	onReady := options.Ready
-	options.Ready = func(target string) {
-		if onReady != nil {
-			onReady(target)
-		}
-		ready <- target
-	}
-	runtimeContext, cancelRuntime := context.WithCancel(ctx)
-	runtimeDone := make(chan struct{})
-	var runtimeErr error
-	go func() {
-		runtimeErr = runLocal(runtimeContext, options, selectedConfig, control)
-		close(runtimeDone)
-	}()
-	var exitErr error
-	select {
-	case target := <-ready:
-		launch.SetResult(target, nil)
-		select {
-		case <-runtimeDone:
-		case exitErr = <-launch.Done():
-		case <-ctx.Done():
-		}
-	case <-runtimeDone:
-	case <-ctx.Done():
-		launch.SetResult("", ctx.Err())
-	}
-	cancelRuntime()
-	<-runtimeDone
-	return finishRoom(errors.Join(exitErr, runtimeErr))
 }
 
 func applyMode(config appconfig.Config, options Options) (appconfig.Config, error) {
@@ -666,7 +660,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		if ctx.Err() != nil {
 			return nil
 		}
-		return errors.Join(failure.TunnelStopped, errors.New("public invitation link stopped; reopen Piik to create a new link"))
+		return errors.Join(failure.TunnelStopped, errors.New("public invitation link stopped"))
 	}
 }
 

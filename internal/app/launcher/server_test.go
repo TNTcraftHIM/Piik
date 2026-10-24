@@ -127,9 +127,8 @@ func TestLauncherRetainsAcceptedSelectionAfterRequestCancellation(t *testing.T) 
 	// Cancellation may race the handoff, but cannot discard an accepted launch.
 	for range 32 {
 		server := &Server{
-			ctx:         t.Context(),
-			selection:   make(chan Selection, 1),
-			resultReady: make(chan struct{}),
+			ctx:       t.Context(),
+			selection: make(chan Selection, 1),
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		request := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/client-launcher/launch",
@@ -147,6 +146,77 @@ func TestLauncherRetainsAcceptedSelectionAfterRequestCancellation(t *testing.T) 
 		if server.Begin() {
 			t.Fatal("cancelled Browser request allowed a second launch")
 		}
+	}
+}
+
+type pausedLaunchContext struct {
+	context.Context
+	waiting chan struct{}
+	resume  chan struct{}
+}
+
+func (ctx pausedLaunchContext) Done() <-chan struct{} {
+	close(ctx.waiting)
+	<-ctx.resume
+	return ctx.Context.Done()
+}
+
+func TestFailedAttemptCanRetryWithoutReplacingAnOlderRequestResult(t *testing.T) {
+	server := &Server{ctx: t.Context(), selection: make(chan Selection, 1)}
+	// Resume the old HTTP waiter only after the retry has already succeeded.
+	firstContext := pausedLaunchContext{t.Context(), make(chan struct{}), make(chan struct{})}
+	firstResponse := httptest.NewRecorder()
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		server.handleLaunch(firstResponse, httptest.NewRequestWithContext(firstContext, "POST", "/api/client-launcher/launch",
+			strings.NewReader(`{"mode":"link","language":"en"}`)))
+	}()
+	select {
+	case <-firstContext.waiting:
+	case <-time.After(time.Second):
+		t.Fatal("first request did not start waiting")
+	}
+	if selection := <-server.Selection(); selection.Mode != ModeLink {
+		t.Fatalf("first selection = %+v", selection)
+	}
+	if server.Begin() {
+		t.Fatal("pending room allowed another start")
+	}
+	server.SetResult("", errors.New("first attempt failed"))
+
+	secondResponse := httptest.NewRecorder()
+	secondDone := make(chan struct{})
+	go func() {
+		defer close(secondDone)
+		server.handleLaunch(secondResponse, httptest.NewRequest("POST", "/api/client-launcher/launch",
+			strings.NewReader(`{"mode":"local","language":"en"}`)))
+	}()
+	select {
+	case selection := <-server.Selection():
+		if selection.Mode != ModeLocal {
+			t.Fatalf("retry selection = %+v", selection)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("failure did not permit retry")
+	}
+	server.SetResult("http://localhost:8787/#piik-client=1", nil)
+	if server.Begin() {
+		t.Fatal("successful room allowed replacement")
+	}
+	close(firstContext.resume)
+	for _, done := range []chan struct{}{firstDone, secondDone} {
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("launch request did not complete")
+		}
+	}
+	if firstResponse.Code != http.StatusServiceUnavailable || !strings.Contains(firstResponse.Body.String(), "first attempt failed") {
+		t.Fatalf("old request observed retry result: %d %s", firstResponse.Code, firstResponse.Body.String())
+	}
+	if secondResponse.Code != http.StatusOK || !strings.Contains(secondResponse.Body.String(), "http://localhost:8787/") {
+		t.Fatalf("retry did not return its own success: %d %s", secondResponse.Code, secondResponse.Body.String())
 	}
 }
 
@@ -227,7 +297,11 @@ func TestLauncherLANChoicesUseCurrentAddressesAndTheExplicitPreference(t *testin
 
 func TestLauncherPassesTheChosenLANAddressToTheApp(t *testing.T) {
 	server := startFixture(t, "")
-	server.SetResult("http://localhost:8787/#piik-client=1", nil)
+	selected := make(chan Selection, 1)
+	go func() {
+		selected <- <-server.Selection()
+		server.SetResult("http://localhost:8787/#piik-client=1", nil)
+	}()
 	response, err := localPost(strings.TrimSuffix(server.URL(), "/client")+"/api/client-launcher/launch",
 		"application/json", strings.NewReader(`{"mode":"local","language":"en","lanAddress":"192.168.1.4"}`))
 	if err != nil {
@@ -237,7 +311,7 @@ func TestLauncherPassesTheChosenLANAddressToTheApp(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("selection status = %d", response.StatusCode)
 	}
-	selection := <-server.Selection()
+	selection := <-selected
 	if selection.LANAddress == nil || *selection.LANAddress != "192.168.1.4" {
 		t.Fatalf("selected invitation address was lost: %+v", selection)
 	}
@@ -376,7 +450,10 @@ func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
 	}
 	_ = response.Body.Close()
 	cause := errors.New("public tunnel failed: token=private-secret " + strings.Repeat("network unavailable ", 200))
-	server.SetResult("", errors.Join(appfailure.TunnelExited, cause))
+	go func() {
+		<-server.Selection()
+		server.SetResult("", errors.Join(appfailure.TunnelExited, cause))
+	}()
 	response, err = localPost(origin+"/api/client-launcher/launch", "application/json",
 		strings.NewReader(`{"mode":"link","language":"en"}`))
 	if err != nil {
@@ -400,7 +477,7 @@ func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&restored); err != nil || restored.Reason != failure.Reason || restored.Detail != failure.Detail {
 		t.Fatalf("restored failure = %+v, %v", restored, err)
 	}
-	if !errors.Is(server.resultErr, cause) {
+	if !errors.Is(server.attempt.err, cause) {
 		t.Fatal("launcher lost original cause")
 	}
 }
@@ -462,7 +539,8 @@ func startFixtureWithBuildAndPassword(
 	site, version, revision, password string,
 ) *Server {
 	t.Helper()
-	server, err := Start(t.Context(), appAssets(), Options{Sites: siteList(site), Version: version, Revision: revision, LocalAccessPassword: password})
+	server, err := Start(t.Context(), appAssets(), Options{Sites: siteList(site), Version: version, Revision: revision, LocalAccessPassword: password,
+		EnableDebug: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}

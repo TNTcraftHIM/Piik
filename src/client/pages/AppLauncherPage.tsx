@@ -261,7 +261,7 @@ export function AppLauncherPage() {
       <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
         <Btn icon="cpu" title="client.launch.debugHint" size="compact"
           pressed={debug} tone={debug ? "on" : undefined} hint="debug-start"
-          disabled={appDebug || debugBusy || loading || starting || !!target || error !== null}
+          disabled={appDebug || debugBusy || loading || starting || !!target || error?.kind === "load"}
           onClick={() => void enableDebug()} />
       )} />
       <main className="lr-client-launch">
@@ -322,7 +322,7 @@ export function AppLauncherPage() {
             roomError={error?.kind === "launch" ? <>
               <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
               {isCopyKey(errorKey) && <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t(errorKey)}</p>}
-              <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.reopen")}</p>
+              <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.retryHint")}</p>
               {error.detail && <details className="lr-client-launch-technical">
                 <summary>{t("client.launch.errorDetails")}</summary>
                 <p className="lr-client-launch-detail">{error.detail}</p>

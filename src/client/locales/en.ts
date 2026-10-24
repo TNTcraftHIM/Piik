@@ -246,7 +246,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.go": "Open Piik",
   "client.launch.starting": "Preparing Piik",
   "client.launch.error": "Room unavailable",
-  "client.launch.reopen": "Reopen Piik to try again. Enable Debug launch if you need to record logs.",
+  "client.launch.retryHint": "Try again or adjust the settings below.",
   "client.launch.errorDetails": "Technical details",
   "client.launch.failure.tunnel-exited": "The public invitation service could not connect. Check your network or use App with an existing Piik Site.",
   "client.launch.failure.tunnel-timeout": "The public invitation connection timed out. Check your network or use App with an existing Piik Site.",

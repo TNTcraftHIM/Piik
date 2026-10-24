@@ -84,17 +84,19 @@ type Server struct {
 	saveStartupSite     func(string) error
 	enableDebug         func() error
 	selection           chan Selection
-	resultReady         chan struct{}
 	done                chan error
 	ready               chan struct{}
 
-	mu         sync.Mutex
-	selected   bool
-	resultSet  bool
-	target     string
-	resultErr  error
-	closeOnce  sync.Once
-	resultOnce sync.Once
+	mu        sync.Mutex
+	attempt   *launchAttempt
+	closeOnce sync.Once
+}
+
+type launchAttempt struct {
+	ready     chan struct{}
+	completed bool
+	target    string
+	err       error
 }
 
 // Start serves the launcher page and its API on a loopback port. assets is the
@@ -138,7 +140,6 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 		saveStartupSite:     options.SaveStartupSite,
 		enableDebug:         options.EnableDebug,
 		selection:           make(chan Selection, 1),
-		resultReady:         make(chan struct{}),
 		done:                make(chan error, 1),
 		ready:               make(chan struct{}),
 	}
@@ -169,26 +170,33 @@ func (server *Server) Done() <-chan error {
 }
 
 func (server *Server) Begin() bool {
-	server.mu.Lock()
-	defer server.mu.Unlock()
-	if server.selected {
-		return false
-	}
-	server.selected = true
-	return true
+	return server.begin() != nil
 }
 
+func (server *Server) begin() *launchAttempt {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	if server.attempt != nil && server.attempt.err == nil {
+		return nil
+	}
+	server.attempt = &launchAttempt{ready: make(chan struct{})}
+	return server.attempt
+}
+
+// SetResult is called by the serial room owner after readiness or full retirement.
 func (server *Server) SetResult(target string, resultErr error) {
 	if resultErr == nil && !validTarget(target) {
 		resultErr = errors.New("App target is invalid")
 	}
 	server.mu.Lock()
-	server.resultSet = true
-	server.target = target
-	server.resultErr = resultErr
-	server.mu.Unlock()
-	// Readiness completes once; a later room failure invalidates the old target.
-	server.resultOnce.Do(func() { close(server.resultReady) })
+	defer server.mu.Unlock()
+	attempt := server.attempt
+	attempt.target = target
+	attempt.err = resultErr
+	if !attempt.completed {
+		attempt.completed = true
+		close(attempt.ready)
+	}
 }
 
 func (server *Server) Close() error {
@@ -260,6 +268,13 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 	}
 	selected, _ := lan.Select(values, server.lanAddress)
 	server.mu.Lock()
+	var target string
+	var resultErr error
+	starting := false
+	if attempt := server.attempt; attempt != nil {
+		target, resultErr = attempt.target, attempt.err
+		starting = !attempt.completed
+	}
 	state := map[string]any{
 		"sites":               slices.Clone(server.sites),
 		"startupSite":         server.startupSite,
@@ -267,11 +282,10 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 		"version":             server.version,
 		"revision":            server.revision,
 		"packageTarget":       runtime.GOOS + "-" + runtime.GOARCH,
-		"debug":               server.debug,
-		"target":              server.target,
-		"starting":            server.selected && !server.resultSet,
-		"detail":              errorDetail(server.resultErr),
-		"reason":              failure.Of(server.resultErr),
+		"target":              target,
+		"starting":            starting,
+		"detail":              errorDetail(resultErr),
+		"reason":              failure.Of(resultErr),
 		"lan":                 map[string]any{"addresses": addresses, "selected": selected},
 		"modes": func() []Mode {
 			if len(server.modes) > 0 {
@@ -285,6 +299,9 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 			}
 			return ModeLink
 		}(),
+	}
+	if server.enableDebug != nil || server.debug {
+		state["debug"] = server.debug
 	}
 	server.mu.Unlock()
 	writeJSON(response, http.StatusOK, state)
@@ -363,7 +380,7 @@ func (server *Server) handleDebug(response http.ResponseWriter, request *http.Re
 	}
 	server.mu.Lock()
 	if !server.debug {
-		if server.selected || server.enableDebug == nil {
+		if (server.attempt != nil && server.attempt.err == nil) || server.enableDebug == nil {
 			server.mu.Unlock()
 			http.Error(response, "enable diagnostics before starting a local room", http.StatusConflict)
 			return
@@ -397,27 +414,28 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 		http.Error(response, "unsupported launch mode", http.StatusBadRequest)
 		return
 	}
-	if !server.Begin() {
+	attempt := server.begin()
+	if attempt == nil {
 		writeJSON(response, http.StatusConflict, map[string]string{
-			"error": "launch already requested", "detail": "Close and reopen Piik before starting again.",
+			"error": "launch already requested", "detail": "A room is already starting or running.",
 		})
 		return
 	}
 
-	// Begin commits this one selection to the App, independently of the page.
+	// Each accepted attempt outlives its page request and owns its own result.
 	// The single-slot queue cannot block: only the accepted request writes it.
 	server.selection <- selection
 	select {
-	case <-server.resultReady:
+	case <-attempt.ready:
 	case <-request.Context().Done():
 		return
 	case <-server.ctx.Done():
 		return
 	}
 	server.mu.Lock()
-	target, resultErr, resultSet := server.target, server.resultErr, server.resultSet
+	target, resultErr := attempt.target, attempt.err
 	server.mu.Unlock()
-	if !resultSet || resultErr != nil {
+	if resultErr != nil {
 		writeJSON(response, http.StatusServiceUnavailable, map[string]string{
 			"error": "Piik App could not start", "detail": errorDetail(resultErr), "reason": string(failure.Of(resultErr)),
 		})

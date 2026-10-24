@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { LauncherForm } from "../src/client/components/living/LauncherForm";
 
 // Run the page's actual state-read effect, including cleanup, without a DOM.
 const source = ts.createSourceFile("AppLauncherPage.tsx", readFileSync(
@@ -73,6 +76,19 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
 }
 
 describe("App launcher state recovery", () => {
+  it("keeps mode choices and the submit action available after a failed room start", () => {
+    const html = renderToStaticMarkup(createElement(LauncherForm, {
+      mode: "link", sites: saved.sites, startupSite: "", localAccessPassword: "saved password",
+      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
+      roomError: createElement("p", { role: "alert" }, "Connection timed out"),
+    }));
+    expect(html).toContain("Connection timed out");
+    expect(html).toContain('role="radiogroup"');
+    expect(html).toContain('value="saved password"');
+    expect(html).toMatch(/type="submit"[^>]*aria-label="(?:Retry|重试)"/);
+    expect(html).toContain(saved.sites[0]);
+  });
+
   it("uses the App's available modes and keeps existing desktop defaults", async () => {
     for (const modes of [undefined, ["local"]]) {
       const page = mount(vi.fn(async () => response({ ...saved, ...(modes ? { modes } : {}) })));

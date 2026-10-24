@@ -125,7 +125,7 @@ func TestStarredSiteSurvivesOtherApprovalsAndClearsOnRevocation(t *testing.T) {
 			t.Fatalf("saved startup: %q %v", saved, err)
 		}
 	}
-	if server.selected || config.Site != "" {
+	if server.attempt != nil || config.Site != "" {
 		t.Fatal("startup preference created room or access")
 	}
 }

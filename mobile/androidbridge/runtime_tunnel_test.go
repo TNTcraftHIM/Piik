@@ -10,7 +10,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
@@ -76,6 +78,60 @@ func tunnelRuntime(t *testing.T) (*Runtime, *runtimePlatform) {
 		tunnelExecutable: executable, temporaryDirectory: directory}
 	t.Cleanup(func() { _ = r.Close() })
 	return r, platform
+}
+
+func TestLauncherRetriesFailedStartupAndKeepsSuccessfulRoom(t *testing.T) {
+	t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "ready")
+	r, _ := tunnelRuntime(t)
+	if _, err := r.approveSite("https://site.example"); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	r.launcher, err = launcher.Start(r.ctx, fstest.MapFS{"index.html": {Data: []byte("launcher")}}, launcher.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.launchDone = make(chan struct{})
+	go func() { defer close(r.launchDone); r.runLauncher("") }()
+	endpoint := strings.TrimSuffix(r.launcher.URL(), "/client") + "/api/client-launcher/launch"
+	client := &http.Client{Timeout: 5 * time.Second}
+	post := func(body string) *http.Response {
+		t.Helper()
+		request, _ := http.NewRequest("POST", endpoint, strings.NewReader(body))
+		request.Header.Set("Origin", strings.TrimSuffix(r.launcher.URL(), "/client"))
+		request.Header.Set("Content-Type", "application/json")
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { response.Body.Close() })
+		return response
+	}
+	// No invitation interface was selected, so Local fails after opening its
+	// loopback listener. Public mode can then start without a LAN selection.
+	if response := post(`{"mode":"local","language":"en"}`); response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("Local startup without an address = %d", response.StatusCode)
+	}
+	if r.server != nil || r.tunnel != nil || !r.TrustedURL("https://site.example") {
+		t.Fatal("failed attempt retained a room or retired Site access")
+	}
+	if response := post(`{"mode":"link","language":"en"}`); response.StatusCode != http.StatusOK {
+		t.Fatalf("public retry = %d", response.StatusCode)
+	}
+	r.configMu.Lock()
+	server, tunnel, target := r.server, r.tunnel, r.url
+	r.configMu.Unlock()
+	if server == nil || tunnel == nil || !r.TrustedURL("https://site.example") || !r.TrustedURL(target) {
+		t.Fatal("retry did not retain room and Site authority")
+	}
+	if response := post(`{"mode":"local","language":"en"}`); response.StatusCode != http.StatusConflict {
+		t.Fatalf("active room permitted another selection = %d", response.StatusCode)
+	}
+	r.configMu.Lock()
+	defer r.configMu.Unlock()
+	if r.server != server || r.tunnel != tunnel {
+		t.Fatal("launcher reopening replaced a successful room")
+	}
 }
 
 func TestPublicLinkSharesServerAndRetiresOnDependencyExit(t *testing.T) {
