@@ -332,8 +332,11 @@ actual App/Site compatibility checks.
 
 The [Android prototype](../../mobile/README.md) builds an APK for arm64 and
 x86-64 from the repository's single Go dependency graph. A Java Activity embeds
-the normal Web UI at its trusted loopback origin; the existing Go core serves
-the Local room and LAN HTTPS invitation. Room signaling stays with that UI.
+the normal Web UI at its loopback origin or an explicitly approved HTTPS site.
+The existing App management page owns approval, revocation and the starred
+startup site. Local mode starts the Go room and LAN HTTPS invitation only when
+selected; Hosted mode uses that site's room service. Room signaling stays with
+the same Web UI; Android has no temporary public-link sidecar.
 
 A `mediaProjection` foreground service owns consent, Projection, VirtualDisplay,
 MediaCodec and AudioRecord. A narrow
@@ -355,12 +358,28 @@ uses [playback capture](https://developer.android.com/media/platform/av-capture)
 from Android 10, subject to `RECORD_AUDIO` permission, the same user profile and the
 source application's capture policy.
 
-On 2026-10-24, the API 35 emulator delivered a live 480-by-800 VP8 picture to an
-independent Windows Browser Viewer. Sharing continued after switching to another
+The earlier prototype API 35 emulator run delivered a live 480-by-800 VP8 picture
+to an independent Windows Browser Viewer. Sharing continued after switching to another
 App. A separate allowed-capture AudioTrack source reached that Viewer as Opus
 with measurable tone energy. The lab Browser used explicit local candidates
 because mDNS does not cross the emulator's isolated network. Physical-device
 acceptance and distribution remain in [TODO](../todo.md#next).
+
+The current integration requests camera and room-voice permissions only for
+actual WebView requests from the current approved top-level origin. Native
+playback audio requests recording permission separately; pure-video Projection
+does not. No JavaScript interface is exposed. The Activity and service retain
+capture ownership across rotation; runtime detachment precedes asynchronous
+shutdown so an old close cannot retire a newly opened runtime.
+
+On 2026-10-24, the current integration verified Local creation, pure-video
+consent without microphone/camera prompts, and live 480-by-800 Host preview
+frames. Native discovery now preserves the user's selected source tab while
+pending, rather than briefly opening camera preview. Background new-Viewer
+admission/reconnect, voice sample continuity with and without Projection,
+camera, rotation and immediate exit/reopen have not yet been exercised in this
+integration: the next owned-emulator UI batch was blocked by automatic approval.
+The historical prototype run is not acceptance of those new lifecycle paths.
 
 ## Current Follow-up
 
