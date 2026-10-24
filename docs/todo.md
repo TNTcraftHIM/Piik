@@ -15,14 +15,14 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Windows window-sharing black screen (#495).** Investigate
   [#495](https://github.com/TNTcraftHIM/Piik/issues/495): Windows 10, Chrome 155,
   Piik v2.3.0; native Chrome/Edge window sharing fails while QQ and Browser
-  capture work. The latest report uses VP8: transport connects, but capture
-  remains `starting` with no video frames. Obtain the App failure stage or compare
+  capture work. The latest report selects VP8 and connects the preview transport.
+  Obtain the App capture status and encode counters, or compare
   the existing Intel/NVIDIA adapter choices with VP8 fixed on that device.
 - [ ] **Intel native H.264 startup (#452).** Follow the
   [new v2.4.0 report](https://github.com/TNTcraftHIM/Piik/issues/452): explicit H.264
   fails while VP8 works on Intel Arc B580 / Intel Graphics. The Browser report
-  records App startup rejection; an App diagnostic is needed to identify its
-  native failure stage.
+  records App startup rejection. Compare v2.4.1, which removes the mandatory
+  low-latency encoder property, and obtain the App diagnostic if rejection persists.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -37,9 +37,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on the feature branch for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
-- [ ] **Android App release scope.** Keep the Local-sharing APK prototype on
-  the feature branch. Complete phone, tablet and TV acceptance, hosted-site
-  integration and release packaging before including Android in a public release.
+- [ ] **Android App release scope.** Complete integrated phone, tablet and TV
+  acceptance of Local rooms, public invitations and approved hosted Sites, then
+  prepare release packaging. Keep the candidate on the feature branch until accepted.
 
 ## Held By Owner
 
