@@ -328,11 +328,14 @@ export function ControlsPreview() {
         </button>
         <SwitchItem checked={launchSites.length > 1} label={en ? "Many approved sites" : "多个已授权站点"}
           onChange={many => { setLaunchSites(many ? ["https://demo.piik.tv", "https://friends.example.org", "https://screen-sharing-with-friends.preview.example.org:8443", "https://movie-night.example.net", "https://192.0.2.10:8787", "https://weekend-games.example.org"] : ["https://demo.piik.tv"]); setStartupSite(""); }} />
+        <SwitchItem checked={launchSites.length === 0} label={en ? "No approved sites" : "尚未授权站点"}
+          onChange={empty => { setLaunchSites(empty ? [] : ["https://demo.piik.tv"]); setStartupSite(""); }} />
       </div>
       <div className="lr-client-launch">
         <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
           startupSite={startupSite} onToggleStartupSite={site => setStartupSite(value => value === site ? "" : site)}
-          sites={launchSites} onRemoveSite={site => { setLaunchSites(sites => sites.filter(value => value !== site)); if (startupSite === site) setStartupSite(""); }}
+          sites={launchSites} onSelectSite={notify} onOpen={event => { event.preventDefault(); notify(); }}
+          onRemoveSite={site => { setLaunchSites(sites => sites.filter(value => value !== site)); if (startupSite === site) setStartupSite(""); }}
           lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
             { address: "192.0.2.10", name: "Wi-Fi" },
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },

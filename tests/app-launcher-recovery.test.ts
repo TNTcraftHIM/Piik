@@ -6,6 +6,7 @@ import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { LauncherForm } from "../src/client/components/living/LauncherForm";
+import { siteEntryOrigin } from "../src/client/components/living/SiteAddressEntry";
 
 // Run the page's actual state-read effect, including cleanup, without a DOM.
 const source = ts.createSourceFile("AppLauncherPage.tsx", readFileSync(
@@ -17,7 +18,7 @@ function collect(node: ts.Node): void {
   if (ts.isVariableDeclaration(node) && /^launcher.*Schema$/.test(node.name.getText(source))) {
     declarations.push(`const ${node.getText(source)};`);
   }
-  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeSite", "enableDebug", "launch"].includes(node.name?.text ?? "")) {
+  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeSite", "approveSite", "enableDebug", "launch"].includes(node.name?.text ?? "")) {
     declarations.push(node.getText(source));
   }
   if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect"
@@ -28,7 +29,7 @@ function collect(node: ts.Node): void {
 }
 collect(source);
 if (!effect) throw new Error("Missing App launcher state-read owner");
-const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: (${effect})(), changeSite, enableDebug, launch});`, {
+const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: (${effect})(), changeSite, approveSite, enableDebug, launch});`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -39,7 +40,7 @@ const saved = {
 };
 const response = (state: typeof saved & { detail?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
 
-function mount(fetch: ReturnType<typeof vi.fn>) {
+function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
     "Mode", "Modes", "LocalAccessPassword", "Lan", "Version", "Target", "Starting", "Sites", "StartupSite",
@@ -55,7 +56,7 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
   const actions = runInNewContext(executable, {
     ...setters, z, fetch, window, checkReleaseUpdate,
     stateChanges: { current: { revision: 0, pending: 0 } },
-    siteBusy: false, debugBusy: false, starting: false, sites: saved.sites,
+    siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
     mode: "link", lang: "en", vis: false, debug: false, appDebug: false, localAccessPassword: "",
     consoleLanguage: () => "en", launchURL: (target: string) => target, t: (key: string) => key,
     setTimeout: (callback: () => void, delay: number) => {
@@ -64,8 +65,8 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
       return nextTimer;
     },
     clearTimeout: (id: number) => timers.delete(id),
-  }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
-  return { state, setters, ...actions, checkReleaseUpdate, focus: () => window.dispatchEvent(new Event("focus")),
+  }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
+  return { state, setters, ...actions, checkReleaseUpdate, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
       expect(timers.size).toBe(1);
       const [id, callback] = [...timers][0]!;
@@ -79,7 +80,7 @@ describe("App launcher state recovery", () => {
   it("keeps mode choices and the submit action available after a failed room start", () => {
     const html = renderToStaticMarkup(createElement(LauncherForm, {
       mode: "link", sites: saved.sites, startupSite: "", localAccessPassword: "saved password",
-      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
+      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSelectSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
       roomError: createElement("p", { role: "alert" }, "Connection timed out"),
     }));
     expect(html).toContain("Connection timed out");
@@ -87,6 +88,33 @@ describe("App launcher state recovery", () => {
     expect(html).toContain('value="saved password"');
     expect(html).toMatch(/type="submit"[^>]*aria-label="(?:Retry|重试)"/);
     expect(html).toContain(saved.sites[0]);
+  });
+
+  it("selects only an HTTP(S) origin for explicit approval, including pasted full URLs", () => {
+    expect(siteEntryOrigin(" PIIK.example:443 ")).toBe("https://piik.example");
+    expect(siteEntryOrigin("https://piik.example/r/1234?lang=en#v=private-invitation")).toBe("https://piik.example");
+    expect(siteEntryOrigin("http://127.0.0.1:8787/")).toBe("http://127.0.0.1:8787");
+    for (const invalid of ["", "https://user:password@piik.example", "javascript:alert(1)", "file:///local", "https://", "not a site"]) {
+      expect(siteEntryOrigin(invalid)).toBeNull();
+    }
+  });
+
+  it.each([true, false])("opens a manually entered Site only after explicit approval succeeds (manual: %s)", async manual => {
+    const fetch = vi.fn(async () => response());
+    const page = mount(fetch, manual);
+    await settle();
+    fetch.mockResolvedValueOnce({ ...response(), ok: false, status: 503 });
+    await page.approveSite("https://next.example");
+    expect(page.navigate).not.toHaveBeenCalled();
+    expect(page.state.SiteError).toBe("client.connect.saveFailed");
+    fetch.mockResolvedValueOnce(response({ ...saved, sites: [...saved.sites, "https://next.example"] }));
+    await page.approveSite("https://next.example");
+    if (manual) expect(page.navigate).toHaveBeenCalledWith("https://next.example/#piik-client=1");
+    else expect(page.navigate).not.toHaveBeenCalled();
+    expect(fetch.mock.calls[1]).toEqual(["/api/client-launcher/site", expect.objectContaining({
+      body: JSON.stringify({ site: "https://next.example", allowed: true }),
+    })]);
+    page.cleanup();
   });
 
   it("uses the App's available modes and keeps existing desktop defaults", async () => {

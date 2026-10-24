@@ -62,9 +62,12 @@ export function AppLauncherPage() {
   const [target, setTarget] = useState<string>();
   const [siteBusy, setSiteBusy] = useState(false);
   const [siteError, setSiteError] = useState<string>();
+  const [siteEntry, setSiteEntry] = useState({ origin: "", confirming: false });
   // Background reads cannot replace a newer command's result or optimistic state.
   const stateChanges = useRef({ revision: 0, pending: 0 });
-  const requestedSite = new URLSearchParams(window.location.search).get("site");
+  const externalSite = new URLSearchParams(window.location.search).get("site");
+  const manualSite = externalSite === null && siteEntry.confirming;
+  const requestedSite = externalSite ?? (manualSite ? siteEntry.origin : null);
   const validSite = requestedSite && (() => {
     try {
       const url = new URL(requestedSite);
@@ -79,8 +82,8 @@ export function AppLauncherPage() {
     // The requesting page still verifies authorized health before using App.
     // The opener closes this page. Finish an explicitly selected startup
     // preference first, and leave a failed save visible for correction.
-    if (approvalCurrent && !siteBusy && !siteError) window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
-  }, [approvalCurrent, requestedSite, siteBusy, siteError]);
+    if (!manualSite && approvalCurrent && !siteBusy && !siteError) window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
+  }, [manualSite, approvalCurrent, requestedSite, siteBusy, siteError]);
 
   useEffect(() => {
     let current = true;
@@ -226,8 +229,8 @@ export function AppLauncherPage() {
     } finally { finish(); }
   }
 
-  async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site", starAfterApproval = false, allowed = true): Promise<void> {
-    if (siteBusy) return;
+  async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site", starAfterApproval = false, allowed = true): Promise<boolean> {
+    if (siteBusy) return false;
     const finish = beginStateChange();
     setSiteBusy(true);
     setSiteError(undefined);
@@ -249,10 +252,17 @@ export function AppLauncherPage() {
       return true;
     }
     try {
-      if (await save(setting) && starAfterApproval) await save("startup-site");
+      return await save(setting) && (!starAfterApproval || await save("startup-site"));
     } catch {
       setSiteError(t("client.connect.saveFailed"));
+      return false;
     } finally { finish(); setSiteBusy(false); }
+  }
+
+  async function approveSite(site: string): Promise<void> {
+    if (await changeSite(site, "site", openOnApproval) && manualSite) {
+      window.location.replace(launchURL(`${site}/#piik-client=1`));
+    }
   }
 
   const errorKey = `client.launch.failure.${error?.reason}`;
@@ -311,10 +321,21 @@ export function AppLauncherPage() {
               <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOnStart")}</span>
             </label>}
             <div className="lr-client-approval-actions">
-              <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"} hint="hint-close"
-                onClick={() => window.close()} />
-              {!approvalCurrent && <Btn icon="check" title="client.connect.approve" cap="client.connect.approve" tone="primary"
-                hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void changeSite(requestedSite, "site", openOnApproval)} />}
+              <Btn icon="x" title={!manualSite && approvalCurrent ? "client.connect.close" : "common.cancel"} cap={!manualSite && approvalCurrent ? "client.connect.close" : "common.cancel"} hint="hint-close"
+                disabled={manualSite && siteBusy} onClick={() => {
+                  if (manualSite) {
+                    setSiteEntry(entry => ({ ...entry, confirming: false }));
+                    setSiteError(undefined);
+                    setOpenOnApproval(false);
+                  } else window.close();
+                }} />
+              {(!approvalCurrent || (manualSite && siteBusy)) && <Btn icon="check" title={manualSite ? "client.connect.approveAndOpen" : "client.connect.approve"}
+                cap={manualSite ? "client.connect.approveAndOpen" : "client.connect.approve"} tone="primary"
+                hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void approveSite(requestedSite)} />}
+              {manualSite && approvalCurrent && !siteBusy && <a className="lr-btn is-primary" href={launchURL(`${requestedSite}/#piik-client=1`)}>
+                <Glyph name="arrowRight" size={19} />
+                <span className={vis ? "visually-hidden" : "lr-cap"}>{t("client.connect.openSite")}</span>
+              </a>}
             </div>
           </section>
         ) : (
@@ -331,6 +352,11 @@ export function AppLauncherPage() {
             mode={mode}
             modes={modes}
             sites={sites}
+            siteAddress={siteEntry.origin}
+            onSelectSite={origin => {
+              setSiteEntry({ origin, confirming: true });
+              setSiteError(undefined);
+            }}
             startupSite={startupSite}
             onToggleStartupSite={site => void changeSite(startupSite === site ? "" : site, "startup-site")}
             localAccessPassword={localAccessPassword}

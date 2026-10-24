@@ -2,6 +2,7 @@ import { useId, useLayoutEffect, useRef, type FormEvent, type MouseEvent, type R
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
+import { SiteAddressEntry } from "./SiteAddressEntry";
 import { Btn, Pill } from "./primitives";
 import { HintComic, type HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
@@ -40,6 +41,8 @@ export function LauncherForm({
   startupSite,
   onToggleStartupSite,
   onRemoveSite,
+  onSelectSite,
+  siteAddress,
   siteBusy,
   siteError,
   target,
@@ -58,6 +61,8 @@ export function LauncherForm({
   startupSite: string;
   onToggleStartupSite: (site: string) => void;
   onRemoveSite: (site: string) => void;
+  onSelectSite?: (site: string) => void;
+  siteAddress?: string;
   siteBusy?: boolean;
   siteError?: string;
   target?: string;
@@ -122,23 +127,26 @@ export function LauncherForm({
       {children}
 
       <section ref={standbyRef} className="lr-client-standby" aria-label={t("client.connect.standby")}>
-        <details className="lr-client-connect-guide">
-          <summary>
-            <span className="lr-client-standby-state">
-              <Glyph name="check" size={18} />
-              <strong className={vis ? "visually-hidden" : undefined}>{t("client.connect.standby")}</strong>
-            </span>
-            <span className="lr-client-connect-toggle">
-              {vis && <Glyph name="window" size={17} />}
-              <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.guide")}</span>
-              <Glyph name="chevron" size={14} />
-            </span>
-          </summary>
-          <div className="lr-client-connect-steps">
-            {vis && <HintComic kind="hint-client-site" />}
-            <p className={vis ? "visually-hidden" : undefined}>{t("client.connect.standbyHint")}</p>
-          </div>
-        </details>
+        <div className="lr-client-standby-heading">
+          <details className="lr-client-connect-guide">
+            <summary>
+              <span className="lr-client-standby-state">
+                <Glyph name="check" size={18} />
+                <strong className={vis ? "visually-hidden" : undefined}>{t("client.connect.standby")}</strong>
+              </span>
+              <span className="lr-client-connect-toggle">
+                {vis && <Glyph name="window" size={17} />}
+                <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.guide")}</span>
+                <Glyph name="chevron" size={14} />
+              </span>
+            </summary>
+            <div className="lr-client-connect-steps">
+              {vis && <HintComic kind="hint-client-site" />}
+              <p className={vis ? "visually-hidden" : undefined}>{t("client.connect.standbyHint")}</p>
+            </div>
+          </details>
+        {onSelectSite && <SiteAddressEntry initialAddress={siteAddress} onSelect={onSelectSite} />}
+        </div>
         {siteError && <p role="alert">{siteError}</p>}
         {sites.length > 0 && <div className="lr-client-approved-sites" role="list">{sites.map((site, index) => <div key={site} className="lr-client-approved-site" role="listitem">
           <a href={`${site}/#piik-client=1`} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true">&nbsp;↗</span></a>
