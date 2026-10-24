@@ -24,10 +24,48 @@ public final class MainActivity extends Activity {
   static long pendingVideo;
   static String pendingConfig;
   static String encoderName;
+  static BrowserMedia browserMedia;
   static final int CAPTURE = 10;
   WebPermissions permissions;
   Dialog sitePopup;
   FullscreenView fullscreen;
+  boolean visible;
+
+  @Override
+  protected void onStart() {
+    super.onStart();
+    visible = true;
+  }
+
+  @Override
+  protected void onStop() {
+    visible = false;
+    super.onStop();
+  }
+
+  static void refreshBrowserMedia() {
+    if (browserMedia != null && !browserMedia.current()) {
+      BrowserMedia previous = browserMedia;
+      boolean revoked =
+          previous.runtime == runtime
+              && previous.web == web
+              && web.getUrl() != null
+              && sameOrigin(previous.origin, Uri.parse(web.getUrl()))
+              && !runtime.trustedURL(web.getUrl());
+      previous.close();
+      if (revoked) {
+        if (current != null && current.sitePopup != null) current.sitePopup.dismiss();
+        web.loadUrl(runtime.url());
+        return;
+      }
+    }
+    if (browserMedia == null
+        && runtime != null
+        && web != null
+        && web.getUrl() != null
+        && runtime.trustedURL(web.getUrl()))
+      browserMedia = new BrowserMedia(runtime, web, web.getUrl());
+  }
 
   @Override
   public void onCreate(Bundle state) {
@@ -169,6 +207,22 @@ public final class MainActivity extends Activity {
   }
 
   static class AppWebClient extends WebViewClient {
+    @Override
+    public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
+      if (view == web && browserMedia != null) browserMedia.close();
+    }
+
+    @Override
+    public void onPageFinished(WebView view, String url) {
+      if (view == web && java.util.Objects.equals(view.getUrl(), url)) refreshBrowserMedia();
+    }
+
+    @Override
+    public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+      if (view == web && browserMedia != null) browserMedia.close();
+      return false;
+    }
+
     @Override
     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
       Uri uri = request.getUrl();
@@ -455,6 +509,7 @@ public final class MainActivity extends Activity {
             android.R.string.ok,
             (d, w) -> {
               CaptureService.shutdown();
+              if (browserMedia != null) browserMedia.close();
               var old = runtime;
               runtime = null;
               startup = null;

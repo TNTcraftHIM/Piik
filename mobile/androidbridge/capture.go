@@ -23,6 +23,7 @@ type Platform interface {
 	StartAudio(id int64)
 	Control(id int64, command string, layer int64, value int64)
 	Stop(id int64)
+	SiteAccessChanged()
 }
 
 type capture struct {

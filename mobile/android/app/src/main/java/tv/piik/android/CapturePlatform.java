@@ -32,4 +32,12 @@ final class CapturePlatform implements Platform {
     Runtime runtime = owner.get();
     MainActivity.main.post(() -> CaptureService.stopCapture(runtime, id));
   }
+
+  public void siteAccessChanged() {
+    Runtime runtime = owner.get();
+    MainActivity.main.post(
+        () -> {
+          if (runtime == MainActivity.runtime) MainActivity.refreshBrowserMedia();
+        });
+  }
 }

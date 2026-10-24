@@ -5,6 +5,7 @@ import (
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -19,7 +20,10 @@ func TestSiteApprovalPersistsExactOriginAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &Runtime{control: control, url: "http://127.0.0.1:49152/#piik-client=1", configPath: path, config: cfg}
+	platform := &testPlatform{}
+	r := &Runtime{capture: &capture{platform: platform}, control: control, url: "http://127.0.0.1:49152/#piik-client=1", configPath: path, config: cfg}
+	var notified []bool
+	platform.siteChanged = func() { notified = append(notified, r.TrustedURL("https://piik.example")) }
 	navigation, err := r.SiteURL("PIIK.example:443")
 	if err != nil || navigation != "https://piik.example/#piik-client=1" || r.TrustedURL(navigation) {
 		t.Fatalf("navigation must not authorize a site: %q %v", navigation, err)
@@ -55,6 +59,9 @@ func TestSiteApprovalPersistsExactOriginAndRevocation(t *testing.T) {
 	}
 	if r.TrustedURL(site) || !r.TrustedURL(r.url) {
 		t.Fatal("revocation changed wrong authority")
+	}
+	if !slices.Equal(notified, []bool{true, false}) {
+		t.Fatalf("platform observed stale site authority: %v", notified)
 	}
 	persisted, err = appconfig.LoadOrCreate(path)
 	if err != nil || len(persisted.ApprovedSites()) != 0 {

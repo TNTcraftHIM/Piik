@@ -12,5 +12,8 @@
  <string name="leave_prompt">Leave Piik and stop sharing?</string>
  <string name="choose_site">Piik sites</string>
  <string name="open_site">Open site</string>
+ <string name="browser_media_channel">Camera and room voice</string>
+ <string name="browser_media_title">Piik — camera or room voice</string>
+ <string name="browser_media_body">Tap to return to the camera and voice controls.</string>
  <string name="invalid_site">Enter an HTTPS Piik site or invitation address.</string>
 </resources>

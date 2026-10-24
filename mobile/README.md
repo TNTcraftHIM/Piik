@@ -57,6 +57,12 @@ Approve the Android projection prompt. Pure video does not request microphone
 or camera access. Selecting camera or opening the room-voice microphone requests
 only the corresponding Android permission, for the current approved top-level
 site. Native playback audio separately requires Android's recording permission.
+Background camera and room voice require a site that supplies Browser track
+lifetime notifications; older sites retain ordinary foreground capture.
+A document-bound MessagePort supplies demand to a short-lived camera/microphone
+foreground service. It records no media and releases its types when the last
+track or page ends. Revoking the currently approved site returns to management,
+ending that page's media; other sites are unaffected.
 The Activity exposes no JavaScript interface. WebView fullscreen uses Android's
 custom-view window; Back exits fullscreen before ordinary page navigation.
 

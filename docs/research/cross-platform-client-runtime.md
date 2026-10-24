@@ -371,7 +371,15 @@ acceptance and distribution remain in [TODO](../todo.md#next).
 The current integration requests camera and room-voice permissions only for
 actual WebView requests from the current approved top-level origin. Native
 playback audio requests recording permission separately; pure-video Projection
-does not. No JavaScript interface is exposed. The Activity and service retain
+does not. A main-document MessagePort reports pending and live Browser tracks
+to a separate short-lived camera/microphone foreground service. The service
+provides Android eligibility, not another capture or signaling implementation.
+A real permission request waits for service admission; a port synchronization
+barrier hands preparation demand to the current track snapshot. Navigation and
+current-site revocation end the page and its service ownership; Activity
+backgrounding or recreation alone does not. Sites without track notifications
+retain standard foreground capture. No JavaScript interface is exposed.
+The Activity and service retain
 capture ownership across rotation; runtime detachment precedes asynchronous
 shutdown so an old close cannot retire a newly opened runtime.
 

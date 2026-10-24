@@ -288,6 +288,7 @@ func (r *Runtime) approveSite(value string) (string, error) {
 	}
 	r.config = next
 	r.configMu.Unlock()
+	r.capture.platform.SiteAccessChanged()
 	return site, r.control.SetAllowedOrigins(append(r.localOrigins(), next.ApprovedSites()...))
 }
 func (r *Runtime) revokeSite(value string) error {
@@ -306,6 +307,7 @@ func (r *Runtime) revokeSite(value string) error {
 	}
 	r.config = next
 	r.configMu.Unlock()
+	r.capture.platform.SiteAccessChanged()
 	return r.control.SetAllowedOrigins(append(r.localOrigins(), sites...))
 }
 func (r *Runtime) localOrigins() []string {

@@ -44,8 +44,14 @@ final class WebPermissions {
     grant.permissions = permissions.toArray(new String[0]);
     grant.complete =
         () -> {
-          if (activity.trustedPermission(request)) request.grant(request.getResources());
-          else request.deny();
+          if (!activity.trustedPermission(request)) {
+            request.deny();
+            return;
+          }
+          if (MainActivity.browserMedia != null)
+            MainActivity.browserMedia.prepare(
+                request, () -> request.grant(request.getResources()), request::deny);
+          else request.grant(request.getResources());
         };
     grant.denied = request::deny;
     pending.add(grant);
@@ -62,6 +68,7 @@ final class WebPermissions {
   }
 
   void cancel(PermissionRequest request) {
+    if (MainActivity.browserMedia != null) MainActivity.browserMedia.cancel(request);
     pending.removeIf(grant -> grant.web == request);
     if (active != null && active.web == request) {
       active.complete = () -> {};

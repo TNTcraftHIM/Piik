@@ -11,12 +11,18 @@ import (
 )
 
 type testPlatform struct {
-	mu      sync.Mutex
-	stopped []int64
-	started chan int64
+	mu          sync.Mutex
+	stopped     []int64
+	started     chan int64
+	siteChanged func()
 }
 
 func (*testPlatform) StartVideo(int64, string) {}
+func (p *testPlatform) SiteAccessChanged() {
+	if p.siteChanged != nil {
+		p.siteChanged()
+	}
+}
 func (p *testPlatform) StartAudio(id int64) {
 	if p.started != nil {
 		p.started <- id
