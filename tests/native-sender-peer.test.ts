@@ -14,7 +14,11 @@ import type { NativeClientEvent } from "../src/client/native/wire";
 import type { PeerSnapshot } from "../src/client/types";
 
 describe("native Host peer quality", () => {
-  it.each(["h264", "vp8"] as const)("maps %s Pion quality windows into the existing sender evidence", async (codec) => {
+  it.each([
+    { codec: "h264", mode: "capture" },
+    { codec: "vp8", mode: "capture" },
+    { codec: "h264", mode: "relay" },
+  ] as const)("maps $codec $mode output into sender evidence without inventing capture statistics", async ({ codec, mode }) => {
     invalidateSenderQualityEvidence();
     let listener: (event: NativeClientEvent) => void = () => undefined;
     const control: NativeEdgeControl = {
@@ -36,6 +40,10 @@ describe("native Host peer quality", () => {
       }),
     };
     const snapshots: PeerSnapshot[] = [];
+    const source = mode === "relay" ? {
+      connectionId: "upstream_123456", getProfile: () => DEFAULT_QUALITY_SETTINGS,
+      format: () => ({ width: 1920, height: 1080 }),
+    } : undefined;
     const peer = new NativeSenderPeer(
       "viewer_123456",
       "edge_12345678",
@@ -48,9 +56,11 @@ describe("native Host peer quality", () => {
         onUpdate: (snapshot) => snapshots.push(snapshot),
       },
       codec,
+      source,
     );
     expect(await peer.start()).toBe(true);
-    expect(control.updateShare).not.toHaveBeenCalled();
+    if (source) expect(control.updateShare).toHaveBeenCalledOnce();
+    else expect(control.updateShare).not.toHaveBeenCalled();
     expect(shouldUseBrowserQualityCandidate(peer, {
       childPeerId: "viewer_123456",
       connectionId: "candidate_123456",
@@ -104,7 +114,16 @@ describe("native Host peer quality", () => {
       codec: `video/${codec.toUpperCase()}`,
       codecProfile: null,
       codecParameters: null,
-      powerEfficientEncoder: codec === "h264",
+      powerEfficientEncoder: source ? null : codec === "h264",
+      captureWidth: source ? 1920 : null,
+      captureHeight: source ? 1080 : null,
+      captureFramesPerSecond: null,
+      mediaSourceFramesPerSecond: null,
+      intervalFramesEncoded: null,
+      intervalFramesSent: 60,
+      framesPerSecond: 30,
+      frameWidth: 1280,
+      frameHeight: 720,
     });
     expect(senderQualityEvidenceFromSnapshot(snapshots.at(-1)!, 7)).toMatchObject({
       state: "degraded",
@@ -112,8 +131,14 @@ describe("native Host peer quality", () => {
         reason: "bandwidth",
         bitrateKbps: 3_000,
         availableOutgoingKbps: 1_000,
+        captureFramesPerSecond: null,
+        mediaSourceFramesPerSecond: null,
       },
     });
+    listener({ ...quality, sampleTimestampMs: 14_000, intervalFramesEncoded: 0,
+      framesPerSecond: 0, width: 0, height: 0, state: "unknown", reason: null });
+    expect(snapshots.at(-1)?.metrics).toMatchObject({ frameWidth: null, frameHeight: null,
+      captureWidth: source ? 1920 : null, captureHeight: source ? 1080 : null });
     peer.dispose();
     expect(senderQualityEvidenceFromSnapshot(snapshots.at(-1)!, 7)).toMatchObject({
       state: "unknown",

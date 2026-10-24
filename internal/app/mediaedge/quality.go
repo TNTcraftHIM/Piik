@@ -18,7 +18,7 @@ type QualitySample struct {
 	TrackIdentifier       string
 	State                 string
 	Reason                *string
-	IntervalFramesEncoded uint64
+	IntervalFramesSent    uint64
 	FramesPerSecond       float64
 	BitrateKbps           float64
 	AvailableOutgoingKbps float64
@@ -57,16 +57,16 @@ func (edge *Edge) QualitySample(now time.Time) (QualitySample, bool) {
 	seconds := window.Seconds()
 	bitrate := float64(bytes*8) / seconds
 	sample := QualitySample{
-		SampleTimestampMs:     now.UnixMilli(),
-		SampleWindowMs:        window.Milliseconds(),
-		RTPStatsID:            edge.connection.ID(),
-		TrackIdentifier:       edge.transport.Output.ID(),
-		State:                 "unknown",
-		IntervalFramesEncoded: frames,
-		FramesPerSecond:       float64(frames) / seconds,
-		BitrateKbps:           bitrate / 1000,
-		Width:                 uint32(format >> 32),
-		Height:                uint32(format),
+		SampleTimestampMs:  now.UnixMilli(),
+		SampleWindowMs:     window.Milliseconds(),
+		RTPStatsID:         edge.connection.ID(),
+		TrackIdentifier:    edge.transport.Output.ID(),
+		State:              "unknown",
+		IntervalFramesSent: frames,
+		FramesPerSecond:    float64(frames) / seconds,
+		BitrateKbps:        bitrate / 1000,
+		Width:              uint32(format >> 32),
+		Height:             uint32(format),
 	}
 	if slog.Default().Enabled(edge.engine.ctx, slog.LevelDebug) {
 		defer func() {

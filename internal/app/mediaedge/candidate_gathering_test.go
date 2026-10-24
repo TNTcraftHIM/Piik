@@ -33,6 +33,44 @@ func localSurveyServer(t *testing.T) string {
 	return "stun:" + listener.LocalAddr().String()
 }
 
+func firstPionCandidate(t *testing.T) (*webrtc.ICECandidate, string) {
+	t.Helper()
+	settings := webrtc.SettingEngine{}
+	settings.SetIncludeLoopbackCandidate(true)
+	settings.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
+	connection, err := webrtc.NewAPI(webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	if _, err = connection.CreateDataChannel("gathering", nil); err != nil {
+		t.Fatal(err)
+	}
+	candidates := make(chan *webrtc.ICECandidate, 1)
+	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate != nil {
+			select {
+			case candidates <- candidate:
+			default:
+			}
+		}
+	})
+	offer, err := connection.CreateOffer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = connection.SetLocalDescription(offer); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case candidate := <-candidates:
+		return candidate, descriptionUfrag(t, offer)
+	case <-time.After(time.Second):
+		t.Fatal("Pion did not gather its loopback candidate")
+		return nil, ""
+	}
+}
+
 func TestCandidatesTrickleBeforeGatewayMappingCompletes(t *testing.T) {
 	for _, closeFirst := range []bool{false, true} {
 		name := "mapping-finishes"
@@ -46,29 +84,30 @@ func TestCandidatesTrickleBeforeGatewayMappingCompletes(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = engine.Close() })
 			socket := testICESocket(t, engine)
+			pionCandidate, fragment := firstPionCandidate(t)
 			mapping := make(chan int, 1)
 			t.Cleanup(func() { close(mapping) })
 			started := make(chan struct{})
 			candidates := make(chan *webrtc.ICECandidateInit, 8)
 			gathering := newLocalCandidateGathering(socket,
 				[]webrtc.ICEServer{{URLs: []string{localSurveyServer(t)}}},
-				func() int { close(started); return <-mapping },
+				func() int { close(started); return <-mapping }, fragment,
 				func(candidate *webrtc.ICECandidateInit) { candidates <- candidate },
 			)
 			t.Cleanup(gathering.close)
 			gathering.start()
 			waitSignal(t, started, "mapping start")
-			gathering.addPion(&webrtc.ICECandidate{
-				Foundation: "host", Component: 1, Protocol: webrtc.ICEProtocolUDP,
-				Address: "127.0.0.1", Port: uint16(socket.localPort), Typ: webrtc.ICECandidateTypeHost,
-			})
+			gathering.addPion(pionCandidate)
 			gathering.addPion(nil)
 			for received := 0; received < 2; received++ {
 				select {
 				case candidate := <-candidates:
-					if candidate == nil || (!strings.Contains(candidate.Candidate, "candidate:host ") &&
+					if candidate == nil || (!strings.Contains(candidate.Candidate, " typ host") &&
 						!strings.Contains(candidate.Candidate, "candidate:ns1 ")) {
 						t.Fatalf("expected ordinary candidate before mapping: %+v", candidate)
+					}
+					if candidate.UsernameFragment == nil || *candidate.UsernameFragment != fragment {
+						t.Fatal("ordinary candidate lost its gathering generation")
 					}
 				case <-time.After(time.Second):
 					t.Fatal("ordinary ICE waited for the gateway mapping")
@@ -97,6 +136,9 @@ func TestCandidatesTrickleBeforeGatewayMappingCompletes(t *testing.T) {
 					if want == "end" && candidate != nil || want != "end" &&
 						(candidate == nil || !strings.Contains(candidate.Candidate, want)) {
 						t.Fatalf("expected %s after mapping: %+v", want, candidate)
+					}
+					if candidate != nil && (candidate.UsernameFragment == nil || *candidate.UsernameFragment != fragment) {
+						t.Fatal("gateway candidate lost its gathering generation")
 					}
 				case <-time.After(time.Second):
 					t.Fatalf("missing %s after mapping", want)
@@ -173,7 +215,7 @@ func TestSurveyCandidateIdentitySurvivesResponseOrder(t *testing.T) {
 	candidates := make(chan *webrtc.ICECandidateInit, 4)
 	gathering := newLocalCandidateGathering(socket, []webrtc.ICEServer{{URLs: []string{
 		"turn:unused.invalid:3478", "stun:" + slow.String(), "stun:" + fast.String(),
-	}}}, nil, func(candidate *webrtc.ICECandidateInit) { candidates <- candidate })
+	}}}, nil, "gathering", func(candidate *webrtc.ICECandidateInit) { candidates <- candidate })
 	t.Cleanup(gathering.close)
 	gathering.start()
 	for _, want := range []struct{ foundation, port string }{{"candidate:ns2", "40003"}, {"candidate:ns1", "40000"}} {
@@ -220,10 +262,12 @@ func TestSurveyPreservesDestinationsWithDuplicateMapping(t *testing.T) {
 				want["candidate:ns"+strconv.Itoa(index+1)] = strconv.Itoa(port)
 			}
 			candidates := make(chan *webrtc.ICECandidateInit, 5)
-			gathering := newLocalCandidateGathering(socket, []webrtc.ICEServer{{URLs: urls}}, nil,
+			pionCandidate, fragment := firstPionCandidate(t)
+			gathering := newLocalCandidateGathering(socket, []webrtc.ICEServer{{URLs: urls}}, nil, fragment,
 				func(candidate *webrtc.ICECandidateInit) { candidates <- candidate })
 			t.Cleanup(gathering.close)
 			gathering.start()
+			gathering.addPion(pionCandidate)
 			gathering.addPion(nil)
 			for {
 				select {
@@ -233,6 +277,9 @@ func TestSurveyPreservesDestinationsWithDuplicateMapping(t *testing.T) {
 							t.Fatalf("mapping deduplication lost destination observations: %v", want)
 						}
 						return
+					}
+					if !strings.HasPrefix(candidate.Candidate, "candidate:ns") {
+						continue
 					}
 					fields := strings.Fields(candidate.Candidate)
 					if want[fields[0]] != fields[5] || (!releaseSurvey.Load() && fields[0] != "candidate:ns2") {

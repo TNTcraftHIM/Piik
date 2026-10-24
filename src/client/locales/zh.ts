@@ -65,7 +65,7 @@ export const zh = {
   "remote.mode.room": "房间观众",
   "remote.mode.password": "控制密码",
   "remote.help.ask": "收到请求后，由你决定是否允许控制。",
-  "remote.help.room": "无人控制时，房间观众可直接操作电脑。",
+  "remote.help.room": "房间观众无需逐次批准，即可操作电脑。",
   "remote.help.password": "观众输入控制密码后，可操作这台电脑。",
   "remote.policyLifetime": "仅当前分享来源有效；换源或停播后关闭远控。",
   "remote.password": "控制密码",

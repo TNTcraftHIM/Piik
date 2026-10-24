@@ -29,7 +29,6 @@ type iceSocket struct {
 	mux         *ice.UDPMuxDefault
 	localPort   int
 	portMapping *portmapping.Mapping
-	stunQueries singleflight.Group
 	ctx         context.Context
 	cancel      context.CancelFunc
 	closeOnce   sync.Once
@@ -95,7 +94,7 @@ func (socket *iceSocket) addPunchedPeer(connection *webrtc.PeerConnection) error
 		return nil
 	}
 	mid := "0"
-	return connection.AddICECandidate(webrtc.ICECandidateInit{SDPMid: &mid,
+	return forwarding.AddICECandidate(connection, webrtc.ICECandidateInit{SDPMid: &mid,
 		Candidate: fmt.Sprintf("candidate:sp0 1 udp 1694498815 %s %d typ srflx", socket.punchedPeer.IP, socket.punchedPeer.Port),
 	})
 }
@@ -134,6 +133,8 @@ func (socket *iceSocket) surveySTUN(
 	defer cancel()
 	// One survey retains its resolver even while canceled workers are settling.
 	resolver := net.DefaultResolver
+	// Duplicate destinations may share an observation only in this gathering.
+	var queries singleflight.Group
 	results := make(chan mappedAddress)
 	var pending sync.WaitGroup
 	index := 0
@@ -158,7 +159,7 @@ func (socket *iceSocket) surveySTUN(
 				}
 				address := net.UDPAddrFromAddrPort(netip.AddrPortFrom(addresses[0], uint16(uri.Port)))
 				started := time.Now()
-				mapped, err := socket.stunMapping(surveyContext, address)
+				mapped, err := socket.stunMapping(surveyContext, &queries, address)
 				if err != nil || mapped == nil || mapped.IP.To4() == nil ||
 					mapped.Port < 1 || mapped.Port > 65_535 {
 					slog.DebugContext(surveyContext, "nat-survey", "event", "binding-failed", "serverPort", address.Port,

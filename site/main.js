@@ -68,11 +68,13 @@ const film = document.getElementById('film-preview');
 const filmFrame = document.getElementById('website-film');
 const filmLink = document.querySelector('[data-film-link]');
 const welcomeLines = document.getElementById('welcome-lines')?.content.children;
+const selectedWelcome = new Map();
 function syncWelcome() {
   if (!welcomeLines) return;
   const element = document.getElementById('welcome-line');
   const pool = Array.from(welcomeLines).filter(line => line.lang === root.lang);
-  const line = createTextCycle(pool)();
+  if (!selectedWelcome.has(root.lang)) selectedWelcome.set(root.lang, createTextCycle(pool)());
+  const line = selectedWelcome.get(root.lang);
   element.hidden = pool.length === 0;
   element.replaceChildren(...(line ? [line.cloneNode(true)] : []));
 }

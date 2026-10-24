@@ -48,9 +48,10 @@ acceptance. Mature simulcast implementations provide the starting model.
    forwarding every downstream request. Do not require server transcoding or
    recursive subtree demand to ship a forwarding SFU.
 8. Embed library-level STUN, preserving Binding and the three NAT-survey
-   destinations without enabling TURN allocations. Evaluate an embedded SFU
-   library through a narrow adapter. `inlivedev/sfu` is a candidate, not an
-   irrevocable selection or authorization for a deep fork.
+   destinations without enabling TURN allocations. Embed Pion transport and
+   LiveKit media-core components through the shared forwarding adapter. The
+   [library evaluation](../research/embedded-media.md) retains the candidate
+   comparison and selection rationale.
 9. Pure Browser peers retain normal WebRTC capture/senders and can consume the
    same H264/VP8 output. No Browser encoded-passthrough promise, new codec family
    or application transport is introduced by this architecture.

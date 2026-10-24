@@ -451,7 +451,7 @@ describe("NAT prediction ICE adapter", () => {
     expect(
       sent.some((value) => value?.candidate.startsWith("candidate:sp")),
     ).toBe(false);
-    expect(sent.filter((value) => value !== null)).toHaveLength(3);
+    expect(sent.filter((value) => value?.candidate)).toHaveLength(3);
   });
 
   it("retires an unfinished generation without ending the restarted ICE session", () => {
@@ -491,7 +491,23 @@ describe("NAT prediction ICE adapter", () => {
 
     emitter.gatheringComplete();
     emitter.add(null);
-    expect(sent.filter((value) => value === null)).toHaveLength(1);
-    expect(sent.at(-1)).toBeNull();
+    expect(sent.filter((value) => value?.candidate === "")).toHaveLength(1);
+    expect(sent.at(-1)).toMatchObject({ candidate: "", usernameFragment: "restarted" });
+    expect(sent).not.toContain(null);
+  });
+
+  it("keeps a delayed scoped end from completing another generation", () => {
+    const sent: SignalCandidate[] = [];
+    const emitter = new NatPredictionCandidateEmitter(true, value => sent.push(value));
+    const emit = (port: number) => emitter.addSignal({ ...candidate(port)!, usernameFragment: "current" }, true);
+    emit(40_000);
+    emitter.addSignal({ candidate: "", usernameFragment: "previous" }, false);
+    emit(40_003);
+    emit(40_006);
+    emitter.gatheringComplete();
+    emitter.add(null);
+    expect(sent.filter(value => value?.candidate.startsWith("candidate:sp") ||
+      value?.candidate.startsWith("candidate:sm"))).toHaveLength(MAX_NAT_PREDICTION_CANDIDATES);
+    expect(sent.filter(value => value?.candidate === "").map(value => value?.usernameFragment)).toEqual(["previous", "current"]);
   });
 });

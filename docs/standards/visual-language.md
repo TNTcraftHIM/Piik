@@ -253,7 +253,8 @@ on press, and spring back over 260 ms on release. Selected and unselected states
 use the same motion; selection changes only their colour and outline.
 Inputs and option tiles share softer corners. Press feedback uses the shared
 motion values in `button.css` and releases the lower shadow. Captions inside
-sliding tracks retain a smaller 1 px lift without moving the track. Keep icon,
+sliding tracks stay centred on their selection surface during hover and focus;
+presses retain the shared feedback. Keep icon,
 text and control dimensions intact: scaling the whole button shifts off-centre contents
 sideways and changes their stroke weight. Do not add a separate icon displacement.
 Keep filled buttons' border and face in the same colour state; a bright inset
@@ -381,7 +382,7 @@ changing the badge does not restyle the UI, wordmark or illustrations.
 | A camera source | `camera` identifies the alternative picture source. Source/playback sound retains the speaker metaphor. |
 | Room text and reactions | `chat` opens the conversation, `danmaku` controls its optional picture overlay, `smile` identifies reactions and `send` submits the chosen content. These do not represent media transport or voice. |
 | Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Input, playback and forwarding remain independent. Toggle names stay fixed. The microphone's green fill shows measured input after gain, not the configured gain percentage. Participant rows keep avatar, name and microphone aligned; the status symbol has an accessible name and shared tooltip instead of a repeated on/off sentence. Measured speech fills that symbol and colours its outline green, without adding a connection-like dot. An enabled input alone is not speaking evidence. Opening the channel and opening a microphone stay separate actions. The Host has labelled open/close-room actions, with `stop` and danger styling for closing everyone's voice; a Viewer's `door` leaves only their own voice participation. Joined membership does not use a network-strength symbol. |
-| Experimental attended desktop control | `mouse` identifies keyboard/mouse control, distinct from sharing or playback. Permission copy stays literal; an active control marker describes the grant, not media connectivity. |
+| Attended desktop control | `mouse` identifies keyboard/mouse control, distinct from sharing or playback. Permission copy stays literal; an active control marker describes the grant, not media connectivity. |
 | Floating utility placement | `grip` marks a draggable title bar; corner handles resize the window. Closing a panel hides its presentation, not its room session. |
 | Server forwarding media | A server on the media path; opening a Site alone does not imply SFU |
 

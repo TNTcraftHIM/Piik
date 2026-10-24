@@ -557,6 +557,13 @@ static gboolean configure_encoder(VideoOutput *output) {
   return TRUE;
 }
 
+static gboolean prepare_encoder(VideoOutput *output) {
+  if (configure_encoder(output)) return TRUE;
+  output->failed = TRUE;
+  output->enabled = FALSE;
+  return output->layer != output->run->original_output;
+}
+
 static gboolean supported_h264_profile(guint8 profile, guint8 constraints, guint8 level) {
   // RFC 6184 Table 5: equivalent Constrained Baseline tools, as in the Go reader.
   if (!((profile == 0x42 && (constraints & 0x4f) == 0x40) ||
@@ -1037,7 +1044,7 @@ static GstFlowReturn video_sample(GstAppSink *sink, gpointer data) {
         "{\"state\":\"active\",\"codec\":\"h264\",\"hardwareOnly\":true,"
         "\"profileLevelId\":\"%s\",\"width\":%u,\"height\":%u,"
         "\"fps\":%u,\"restoreToken\":%s,\"outputs\":%s,\"remoteInput\":%s}",
-        nal.profile_level_id, run->profile.width, run->profile.height,
+        nal.profile_level_id, width, height,
         run->profile.frame_rate, token, profiles,
         run->portal != NULL && run->portal->remote_input ? "true" : "false");
     g_free(token);
@@ -1100,6 +1107,14 @@ static int run_pipeline(CaptureRun *run, const char *starting_status) {
   if (starting_status != NULL && !write_status(starting_status)) {
     fail_run(run, "native media output closed");
     goto stopped;
+  }
+  for (guint index = 0; index < run->output_count; ++index) {
+    if (run->outputs[index].failed && !write_frame(6, 0, (guint8)index, 0, 0, 0, 0,
+        (const guint8 *)"hardware encoder configuration failed",
+        strlen("hardware encoder configuration failed"))) {
+      fail_run(run, "native media output closed");
+      goto stopped;
+    }
   }
   GstStateChangeReturn state =
       gst_element_set_state(run->pipeline, GST_STATE_PLAYING);
@@ -1268,19 +1283,18 @@ static int capture_video(int count, char **values) {
     char *name = g_strdup_printf("encoder%u", index);
     output->encoder = gst_bin_get_by_name(GST_BIN(pipeline), name);
     g_free(name);
-    if (output->encoder == NULL || !configure_encoder(output)) {
-      fprintf(stderr, "Piik capture unavailable: hardware encoder is incompatible\n");
-      write_frame(6, 0, (guint8)index, 0, 0, 0, 0,
-          (const guint8 *)"hardware encoder configuration failed",
-          strlen("hardware encoder configuration failed"));
-      goto cleanup;
-    }
+    if (output->encoder == NULL) goto cleanup;
     output->branch = GST_ELEMENT(gst_object_get_parent(GST_OBJECT(output->encoder)));
     name = g_strdup_printf("gate%u", index);
     output->gate = gst_bin_get_by_name(GST_BIN(pipeline), name);
     g_free(name);
     if (output->branch == NULL || output->branch == pipeline || output->gate == NULL) goto cleanup;
     if (!isolate_output(output)) goto cleanup;
+    if (!prepare_encoder(output)) {
+      fprintf(stderr, "Piik capture unavailable: hardware encoder is incompatible\n");
+      goto cleanup;
+    }
+    if (output->failed) continue;
     name = g_strdup_printf("output%u", index);
     GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), name);
     g_free(name);

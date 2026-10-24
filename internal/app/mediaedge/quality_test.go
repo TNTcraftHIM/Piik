@@ -97,7 +97,7 @@ func TestQualitySampleUsesAllocationNotPacketRate(t *testing.T) {
 
 	sample, ok := edge.QualitySample(started.Add(2 * time.Second))
 	if !ok || sample.State != "healthy" || sample.Reason == nil ||
-		*sample.Reason != "none" || sample.IntervalFramesEncoded != 60 ||
+		*sample.Reason != "none" || sample.IntervalFramesSent != 60 ||
 		sample.FramesPerSecond != 30 || sample.BitrateKbps != 4_000 ||
 		sample.AvailableOutgoingKbps != 100 {
 		t.Fatalf("quality sample = %+v, %v", sample, ok)

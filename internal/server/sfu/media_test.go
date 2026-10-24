@@ -2,6 +2,7 @@ package sfu
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
 	livekitsfu "github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/interceptor"
 	"github.com/pion/rtp"
@@ -63,6 +65,9 @@ func TestPublicationAdmitsSupportedBitrateCeilings(t *testing.T) {
 		t.Fatal(err)
 	}
 	pc := publication.pc
+	if err := service.AddPublisherICE(fence, "publisher_12345678", webrtc.ICECandidateInit{}); !errors.Is(err, webrtc.ErrNoRemoteDescription) {
+		t.Fatalf("candidate before remote SDP lost its lifecycle error: %v", err)
+	}
 	for _, bitrate := range []uint32{5_000_000, 100_000_001, 240_000_000} {
 		metadata.Formats[0].Bitrate = bitrate
 		if err := service.UpdatePublication(fence, "publisher_12345678", metadata); err != nil {
@@ -166,7 +171,13 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 		}
 		return *pc.LocalDescription()
 	}
-	service := NewMedia(MediaOptions{Settings: settings})
+	stateEvents := make(chan MediaEvent, 128)
+	service := NewMedia(MediaOptions{Settings: settings, Events: func(event MediaEvent) {
+		select {
+		case stateEvents <- event:
+		default:
+		}
+	}})
 	defer service.Close()
 	fence := ResourceFence{RoomID: "1234", ShareGeneration: "share_123456", PublicationGeneration: "publication_123456"}
 	admission := NewAdmission(AdmissionOptions{IngressCapacity: 1, EgressCapacity: 2})
@@ -221,6 +232,10 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 		t.Fatal("retired subscription kept waiting for input")
 	}
 	publisher := newPeer()
+	requests := make(chan string, 32)
+	inputChannel, err := publisher.CreateDataChannel(inputroute.Label, nil)
+	check(err)
+	inputChannel.OnMessage(func(message webrtc.DataChannelMessage) { requests <- string(message.Data) })
 	capability := webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8, ClockRate: 90_000}
 	videoData := livekitsfu.VP8KeyFrame8x8
 	if codec == "h264" {
@@ -321,6 +336,7 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 		{ResourceFence: fence, ViewerPeerID: "viewer_abcdef"},
 	}
 	var transports [2]*forwarding.Transport
+	inputStates := make(chan string, 32)
 	for index, subscription := range fences {
 		if !admission.ReserveSubscription(subscription) {
 			t.Fatal("subscription admission failed")
@@ -337,6 +353,11 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 		}
 		offer = *physical.transport.PC.LocalDescription()
 		receiver := newPeer()
+		if index == 0 {
+			receiver.OnDataChannel(func(channel *webrtc.DataChannel) {
+				channel.OnMessage(func(message webrtc.DataChannelMessage) { inputStates <- string(message.Data) })
+			})
+		}
 		receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 			for {
 				packet, _, readErr := track.ReadRTP()
@@ -406,6 +427,40 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 	if len(publisher.GetSenders()) != 2 || len(publication.source.GetDownTracks()) != 2 {
 		t.Fatal("one video/audio publication did not share its source")
 	}
+	if codec == "vp8" && layerCount == 1 {
+		waitInput := func(messages <-chan string, wanted string) {
+			t.Helper()
+			for {
+				select {
+				case message := <-messages:
+					if message == wanted {
+						return
+					}
+				case <-ctx.Done():
+					t.Fatalf("missing input message %s", wanted)
+				}
+			}
+		}
+		check(inputChannel.SendText(`{"ready":true}`))
+		waitInput(inputStates, `{"ready":true}`)
+		// Pion dispatches state callbacks asynchronously. A Connecting callback
+		// may resume after this same physical PC has already recovered.
+		for len(requests) > 0 {
+			<-requests
+		}
+		publication.connectionStateChanged(webrtc.PeerConnectionStateConnecting)
+		waitInput(inputStates, `{"ready":false}`)
+		select {
+		case message := <-requests:
+			if message != `{"ready":true}` {
+				t.Fatalf("fresh input handshake = %s", message)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("late loss left recovered SFU input unavailable")
+		}
+		check(inputChannel.SendText(`{"ready":true}`))
+		waitInput(inputStates, `{"ready":true}`)
+	}
 	publication.mu.Lock()
 	bound := 0
 	for _, active := range publication.layers {
@@ -444,6 +499,57 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 	}
 	if service.AddSubscriberICE(fences[0], "subscriber_123456", webrtc.ICECandidateInit{}) == nil {
 		t.Fatal("retired media accepted signaling")
+	}
+	if codec == "vp8" && layerCount == 1 {
+		// Hold the existing owner lock across a real Connected -> Closed change.
+		// Both Pion callbacks queue behind it; old Connected must not attach a
+		// physically closed transport when it eventually acquires the owner.
+		offer, err := service.PrepareSubscriber(ctx, fences[0], "delayed_state")
+		check(err)
+		delayed, err := service.subscriber(fences[0], "delayed_state")
+		check(err)
+		<-webrtc.GatheringCompletePromise(delayed.transport.PC)
+		offer = *delayed.transport.PC.LocalDescription()
+		receiver := newPeer()
+		check(receiver.SetRemoteDescription(offer))
+		answer, err := receiver.CreateAnswer(nil)
+		check(err)
+		answer = waitGathering(receiver, answer)
+		publication.mu.Lock()
+		err = delayed.transport.PC.SetRemoteDescription(answer)
+		for err == nil && delayed.transport.PC.ConnectionState() != webrtc.PeerConnectionStateConnected {
+			select {
+			case <-time.After(time.Millisecond):
+			case <-ctx.Done():
+				err = ctx.Err()
+			}
+		}
+		if err == nil {
+			err = delayed.transport.PC.Close()
+		}
+		publication.mu.Unlock()
+		check(err)
+		closedEvents := 0
+		for closedEvents < 3 { // Connecting, Connected and Closed were all held.
+			select {
+			case event := <-stateEvents:
+				if event.ConnectionID != "delayed_state" || event.State == webrtc.PeerConnectionStateUnknown {
+					continue
+				}
+				if event.State == webrtc.PeerConnectionStateConnected {
+					t.Fatal("late Connected reactivated a closed SFU subscriber")
+				}
+				if event.State == webrtc.PeerConnectionStateClosed {
+					closedEvents++
+				}
+			case <-ctx.Done():
+				t.Fatal("delayed subscriber callbacks did not settle")
+			}
+		}
+		if len(publication.source.GetDownTracks()) != 1 {
+			t.Fatal("closed SFU subscriber acquired source membership")
+		}
+		check(service.CloseSubscription(fences[0], "delayed_state"))
 	}
 	check(service.ClosePublication(fence))
 	check(service.ClosePublication(fence))

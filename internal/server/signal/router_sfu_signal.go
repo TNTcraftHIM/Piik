@@ -3,6 +3,7 @@ package signal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
@@ -11,6 +12,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/route"
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 	"github.com/pion/webrtc/v4"
+	"github.com/pion/webrtc/v4/pkg/rtcerr"
 )
 
 func (r *router) sfuSignalAuthorized(participant authenticatedRouteParticipant, message protocol.SfuSignalMessage) (sfu.SubscriptionFence, bool) {
@@ -41,6 +43,9 @@ func (r *router) sfuSignalAuthorized(participant authenticatedRouteParticipant, 
 		latestRevision = max(latestRevision, snapshot.Operation.Current.Revision)
 	}
 	if int64(message.Revision) > latestRevision {
+		return fence, false
+	}
+	if r.sfuVideoRetiring(fence.ResourceFence) {
 		return fence, false
 	}
 	if participant.role == protocol.RoleHost {
@@ -97,12 +102,25 @@ func (r *router) handleSfuSignal(participant authenticatedRouteParticipant, mess
 		return
 	}
 	media := r.sfu.media
-	// Each session's input loop serializes SDP/ICE. Preparation itself is bounded
+	// Each session's input loop serializes SDP/ICE. SDP negotiation is bounded
 	// by the route operation and runs outside the authority mutex.
 	var description webrtc.SessionDescription
 	var err error
 	newPublication := false
+	// Register the physical owner before releasing authority. Retirement must
+	// see this handle even when the SDP effect has not started yet.
+	if message.Kind == "description" && participant.role == protocol.RoleHost &&
+		message.Description.Type == "offer" && !media.HasPublication(fence.ResourceFence, message.ConnectionID) {
+		if message.Media == nil {
+			return
+		}
+		err = media.PreparePublication(fence.ResourceFence, message.ConnectionID, sfuPublicationMedia(message.Media))
+		newPublication = err == nil
+	}
 	r.io(func() {
+		if err != nil {
+			return
+		}
 		switch message.Kind {
 		case "media":
 			if participant.role == protocol.RoleHost {
@@ -114,17 +132,7 @@ func (r *router) handleSfuSignal(participant authenticatedRouteParticipant, mess
 				if incoming.Type != webrtc.SDPTypeOffer {
 					return
 				}
-				if !media.HasPublication(fence.ResourceFence, message.ConnectionID) {
-					if message.Media == nil {
-						return
-					}
-					metadata := sfuPublicationMedia(message.Media)
-					err = media.PreparePublication(fence.ResourceFence, message.ConnectionID, metadata)
-					newPublication = err == nil
-				}
-				if err == nil {
-					description, err = media.AcceptPublisherOffer(fence.ResourceFence, message.ConnectionID, incoming)
-				}
+				description, err = media.AcceptPublisherOffer(fence.ResourceFence, message.ConnectionID, incoming)
 			} else if incoming.Type == webrtc.SDPTypeAnswer {
 				err = media.ApplySubscriberAnswer(fence, message.ConnectionID, incoming)
 			}
@@ -155,6 +163,10 @@ func (r *router) handleSfuSignal(participant authenticatedRouteParticipant, mess
 		r.debug(participant.roomID, "sfu-signal-failed",
 			"participant", r.debugPeer(participant.roomID, participant.peerID),
 			"role", participant.role, "kind", message.Kind, diagnostics.Error(err))
+		var candidateError *rtcerr.OperationError
+		if message.Kind == "candidate" && errors.As(err, &candidateError) {
+			return
+		}
 		r.failSfuConnection(participant, message)
 		return
 	}

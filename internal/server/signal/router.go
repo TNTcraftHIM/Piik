@@ -188,7 +188,7 @@ type router struct {
 	resourceWaiters ordered.Map[string, struct{}]
 	sfuDrainTasks   ordered.Map[sfu.SubscriptionFence, *sfuDrainTask]
 	// inflight counts the goroutines that will re-acquire mu: the pump
-	// drivers, fresh SFU config issues and drains.
+	// drivers, fresh SFU config issues, voice negotiations and drains.
 	inflight int
 	closing  bool
 }

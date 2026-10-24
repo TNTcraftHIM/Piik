@@ -29,8 +29,9 @@ and the license files of the modules actually compiled into that binary; the
 App package also carries the pinned Cloudflared notices. Missing license
 texts or changed pinned contents stop packaging.
 
-LiveKit media-core packages are referenced as an unmodified, version-pinned Go
-module under Apache-2.0. Original Piik adapters remain MIT; adapted upstream
+LiveKit media-core packages are version-pinned under Apache-2.0. The
+[scoped dependency repairs](../internal/thirdparty/README.md) record the retained
+estimator corrections and temporary allocator input. Original Piik adapters remain MIT; adapted upstream
 probe orchestration retains its Apache-2.0 attribution in the source. Redistribution retains
 the module's license and applicable notices through the same Go notice collector.
 Any later copied or modified upstream file must retain its attribution and mark

@@ -121,11 +121,11 @@ var consoleCopy = map[string][3]string{
 	"error":                      {"Details", "详情", "!"},
 	"exit":                       {"quit", "退出", "↪"},
 	"openFailed":                 {"Could not open the browser; use the address above.", "无法打开浏览器，请使用上方地址。", "! ↗"},
-	"log":                        {"Log", "日志", ""},
-	"export":                     {"Export diagnostics", "导出诊断", ""},
-	"exporting":                  {"Saving diagnostics", "正在保存诊断", ""},
-	"exported":                   {"Saved", "已保存", ""},
-	"exportFailed":               {"Could not save diagnostics", "无法保存诊断", ""},
+	"log":                        {"Log", "日志", "LOG"},
+	"export":                     {"Export diagnostics", "导出诊断", "ZIP"},
+	"exporting":                  {"Saving diagnostics", "正在保存诊断", "ZIP ..."},
+	"exported":                   {"Saved", "已保存", "ZIP +"},
+	"exportFailed":               {"Could not save diagnostics", "无法保存诊断", "ZIP !"},
 }
 
 func newConsole(cancel context.CancelFunc, machine bool) *console {
@@ -517,52 +517,10 @@ func (model consoleModel) content(styled bool) string {
 }
 
 func consoleVisualToken(key string) string {
-	switch key {
-	case "local":
-		return "□"
-	case "link":
-		return "↗"
-	case "site":
-		return "@"
-	case "setup":
-		return "?"
-	case "starting":
-		return "…"
-	case "ready":
-		return "✓"
-	case "stopping":
-		return "→"
-	case "stopped":
-		return "○"
-	case "failed", "error":
-		return "!"
-	case "openFailed":
-		return "! ↗"
-	case "open":
-		return "○"
-	case "password":
-		return "*"
-	case "entry":
-		return "□"
-	case "launcher":
-		return "☆"
-	case "invite":
-		return "↗"
-	case "exit":
-		return "↪"
-	case "log":
-		return "LOG"
-	case "export":
-		return "ZIP"
-	case "exporting":
-		return "ZIP ..."
-	case "exported":
-		return "ZIP +"
-	case "exportFailed":
-		return "ZIP !"
-	default:
-		return "?"
+	if entry, known := consoleCopy[key]; known {
+		return entry[2]
 	}
+	return "?"
 }
 
 func consoleTV(frame int, animated, compact bool) string {

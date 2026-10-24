@@ -145,7 +145,7 @@ describe("room authentication and site admission", () => {
     host.signal.stop();
   });
 
-  it("restores Viewer route preference after discovery and reconnects with the acknowledged choice", async () => {
+  it("restores Viewer route preference after discovery without replacing personal intent with a rejected effective choice", async () => {
     const { signal, sockets, events } = fixture("viewer");
     const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
     const authenticated = JSON.parse(wire.serverMessages.find(
@@ -163,8 +163,32 @@ describe("room authentication and site admission", () => {
     sockets[0]!.dispatchEvent(Object.assign(new Event("close"), { code: 1006 }));
     await vi.advanceTimersByTimeAsync(800);
     sockets[1]!.dispatchEvent(new Event("open"));
-    expect(JSON.parse(sockets[1]!.send.mock.calls[0]![0])).toMatchObject({ type: "authenticate", routePreference: "p2p" });
+    expect(JSON.parse(sockets[1]!.send.mock.calls[0]![0])).toMatchObject({ type: "authenticate", routePreference: "sfu" });
     expect(events.onTerminated).not.toHaveBeenCalled();
+    signal.stop();
+  });
+
+  it.each([true, false])("retains the latest submitted Viewer route choice across socket loss and a late %s acknowledgement", async accepted => {
+    const { signal, sockets } = fixture("viewer");
+    const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
+    const authenticated = JSON.parse(wire.serverMessages.find(
+      (sample: { name: string }) => sample.name === "authenticated-viewer-minimal").json);
+    signal.enableViewerRouteSelection("auto");
+    sockets[0]!.receive(authenticated);
+    sockets[0]!.receive({ type: "viewer-route-preference", preference: "auto", accepted: true });
+    expect(signal.setViewerRoutePreference("sfu")).toBe(true);
+    sockets[0]!.dispatchEvent(Object.assign(new Event("close"), { code: 1006 }));
+    await vi.advanceTimersByTimeAsync(800);
+    sockets[1]!.dispatchEvent(new Event("open"));
+    expect(JSON.parse(sockets[1]!.send.mock.calls[0]![0])).toMatchObject({ routePreference: "sfu" });
+    sockets[1]!.receive(authenticated);
+    // Authentication makes controls available before its preference response.
+    expect(signal.setViewerRoutePreference("p2p")).toBe(true);
+    sockets[1]!.receive({ type: "viewer-route-preference", preference: accepted ? "sfu" : "auto", accepted });
+    sockets[1]!.dispatchEvent(Object.assign(new Event("close"), { code: 1006 }));
+    await vi.advanceTimersByTimeAsync(800);
+    sockets[2]!.dispatchEvent(new Event("open"));
+    expect(JSON.parse(sockets[2]!.send.mock.calls[0]![0])).toMatchObject({ routePreference: "p2p" });
     signal.stop();
   });
 

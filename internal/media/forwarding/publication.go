@@ -23,7 +23,6 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-	"github.com/pion/transport/v5/packetio"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -107,20 +106,7 @@ func NewPublication(options TransportOptions) (_ *Publication, err error) {
 	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
 		settings.LoggerFactory = diagnostics.PionLoggerFactory("connectionId", diagnostics.ID(options.ConnectionID))
 	}
-	settings.BufferFactory = func(kind packetio.BufferPacketType, ssrc uint32) io.ReadWriteCloser {
-		if kind == packetio.RTCPBufferPacket {
-			if reader := factory.GetRTCPReader(ssrc); reader != nil {
-				return reader
-			}
-		}
-		input := &packetBuffer{Buffer: packetio.NewBuffer()}
-		limit := 1_000_000
-		if kind == packetio.RTCPBufferPacket {
-			limit = 100_000
-		}
-		input.SetLimitSize(limit)
-		return input
-	}
+	settings.BufferFactory = packetBufferFactory(factory)
 	registry := &interceptor.Registry{}
 	if err = configureRTCPReports(registry, func(ssrc uint32) *sfu.DownTrack {
 		for _, track := range publication.tracks {

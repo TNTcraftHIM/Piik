@@ -218,3 +218,72 @@ func TestConcurrentSurveyCancellationAndEngineRetirement(t *testing.T) {
 	_ = engine.Close()
 	waitSignal(t, stopped, "Engine shutdown during discovery")
 }
+
+func TestRestartedGatheringDoesNotReuseRetiredSTUNTransaction(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	socket := testICESocket(t, engine)
+	firstRequest := make(chan struct{})
+	freshRequest := make(chan struct{}, 1)
+	releaseOld := make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-releaseOld:
+		default:
+			close(releaseOld)
+		}
+	})
+	var previous [12]byte
+	started := false
+	server := bindingServer(t, func(request *stun.Message, sender *net.UDPAddr, listener *net.UDPConn) {
+		if !started {
+			started, previous = true, request.TransactionID
+			close(firstRequest)
+			go func() {
+				<-releaseOld
+				answerBinding(request, sender, listener, 40000)
+			}()
+			return
+		}
+		if request.TransactionID == previous {
+			return // Retransmissions still belong to the retired observation.
+		}
+		if sender.Port != socket.localPort {
+			t.Error("ICE restart replaced the physical media socket")
+		}
+		select {
+		case freshRequest <- struct{}{}:
+		default:
+		}
+		answerBinding(request, sender, listener, 40001)
+	})
+	servers := []webrtc.ICEServer{{URLs: []string{"stun:" + server.String()}}}
+	previousGathering := newLocalCandidateGathering(socket, servers, nil, "previous",
+		func(*webrtc.ICECandidateInit) { t.Error("retired gathering delivered a candidate") })
+	t.Cleanup(previousGathering.close)
+	previousGathering.start()
+	waitSignal(t, firstRequest, "previous gathering's Binding request")
+	previousGathering.close()
+	candidates := make(chan *webrtc.ICECandidateInit, 4)
+	nextGathering := newLocalCandidateGathering(socket, servers, nil, "current",
+		func(candidate *webrtc.ICECandidateInit) { candidates <- candidate })
+	t.Cleanup(nextGathering.close)
+	nextGathering.start()
+	select {
+	case <-freshRequest:
+	case <-time.After(250 * time.Millisecond):
+	}
+	close(releaseOld)
+	select {
+	case candidate := <-candidates:
+		if candidate == nil || strings.Fields(candidate.Candidate)[5] != "40001" ||
+			candidate.UsernameFragment == nil || *candidate.UsernameFragment != "current" {
+			t.Fatalf("new gathering inherited the retired transaction's old mapping: %+v", candidate)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("new gathering waited for the retired transaction")
+	}
+}

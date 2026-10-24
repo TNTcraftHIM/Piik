@@ -24,6 +24,7 @@ export class RemoteInputSession {
   private capabilitiesRequested = false;
   private pointer: PointerInput | null = null;
   private pointerTimer: ReturnType<typeof setTimeout> | null = null;
+  private nextPointerAt = 0;
   private wheelFraction = 0;
 
   constructor(private readonly channel: InputTransport, private readonly changed: (state: RemoteInputState | null) => void) {
@@ -33,8 +34,13 @@ export class RemoteInputSession {
   }
 
   private set(state: RemoteInputState | null): void {
-    this.clearPointer();
-    this.wheelFraction = 0;
+    // Capability updates do not retire input belonging to the same active grant.
+    if (state?.state !== "active" || this.state?.state !== "active" ||
+        state.grant !== this.state.grant || state.intent !== this.state.intent) {
+      this.clearPointer();
+      this.nextPointerAt = 0;
+      this.wheelFraction = 0;
+    }
     this.state = state;
     this.changed(state);
   }
@@ -48,7 +54,10 @@ export class RemoteInputSession {
   private readonly flushPointer = (): void => {
     const pointer = this.pointer;
     this.clearPointer();
-    if (pointer) this.sendInput(pointer);
+    if (pointer) {
+      this.nextPointerAt = performance.now() + 4;
+      this.sendInput(pointer);
+    }
   };
 
   private readonly message = (event: MessageEvent): void => {
@@ -124,9 +133,13 @@ export class RemoteInputSession {
       this.pointer = event.type === "relative" && this.pointer?.type === "relative"
         ? { type: "relative", dx: this.pointer.dx + event.dx, dy: this.pointer.dy + event.dy }
         : event;
-      // Bound motion batching independently of rendering: a slow picture must
-      // not slow input too. The timer exists only while motion is pending.
-      if (this.pointerTimer === null) this.pointerTimer = setTimeout(this.flushPointer, 4);
+      // Send idle motion immediately; batch only inside the last send's interval.
+      // This remains independent of rendering and owns no idle timer.
+      if (this.pointerTimer === null) {
+        const delay = this.nextPointerAt - performance.now();
+        if (delay <= 0) this.flushPointer();
+        else this.pointerTimer = setTimeout(this.flushPointer, delay);
+      }
       return;
     }
     if (event.type === "reset") { this.clearPointer(); this.wheelFraction = 0; }

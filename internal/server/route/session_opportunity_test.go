@@ -27,7 +27,7 @@ func TestRetainedEdgeFailurePreservesNewSessionOpportunity(t *testing.T) {
 				edge := edgeOf(t, routes, A)
 				eq(t, edge.Usable, true)
 				eq(t, edge.ConnectionID, "retained_connection")
-				if upstream == UpstreamSfu && changed != "none" {
+				if upstream == UpstreamSfu {
 					eq(t, must(t, routes.Reconcile(0).Operation).Reason, DemandDirectConvergence)
 				} else {
 					noOperation(t, routes.Reconcile(0).Operation)
@@ -118,4 +118,54 @@ func TestRebuiltDirectConnectionConsumesCurrentSessionOpportunity(t *testing.T) 
 		ConnectionID: "rebuilt_connection",
 	}, ms(4)), true)
 	eq(t, hasTuple(must(t, routes.Reconcile(4).Operation), isPeer), false)
+}
+
+func TestFreshRelayOpportunityBehindHealthySfu(t *testing.T) {
+	for _, voiceOnly := range []bool{false, true} {
+		for _, nat := range []bool{false, true} {
+			t.Run(fmt.Sprintf("voice=%v/nat=%v", voiceOnly, nat), func(t *testing.T) {
+				routes := newController(1, Options{SfuEnabled: true, NatPredictionEnabled: nat})
+				addViewer(routes, A, 0, nil)
+				addViewer(routes, B, 0, nil)
+				routes.hydrateHostPublication("publication", res("publication"), "publisher")
+				routes.hydrateEdge(A, sfuEdge("publication", "retained_sfu", "subscription_a"))
+				routes.hydrateEdge(B, sfuEdge("publication", "parent_sfu", "subscription_b"))
+				if voiceOnly {
+					routes.SetVideoPublication("", false, 0)
+					routes.SetVoiceListeners([]string{HOST, A, B}, 0)
+				}
+				noOperation(t, routes.Reconcile(0).Operation)
+				attempts := 1
+				if nat {
+					attempts = 4
+				}
+				for attempt := 1; attempt <= attempts; attempt++ {
+					now := int64(attempt * 3)
+					routes.SetEffectiveCapacity(B, sessionOf(B), 1, ms(now))
+					op := must(t, routes.Reconcile(now).Operation)
+					eq(t, op.Reason, DemandDirectConvergence)
+					eq(t, op.ChildPeerID, A)
+					eq(t, op.Candidates[0].Tuple, peerTuple(B))
+					prepared := beginOperation(t, routes, BeginInput{NowMs: now, ConnectionID: fmt.Sprintf("fresh_%d", attempt), Reservation: direct()})
+					routes.CandidateFailed(guardFor(A, prepared.Current.Revision, prepared.Current.ConnectionID), now+1)
+					eq(t, edgeOf(t, routes, A).ConnectionID, "retained_sfu")
+					eq(t, edgeOf(t, routes, A).Usable, true)
+				}
+				routes.SetEffectiveCapacity(B, sessionOf(B), 2, ms(20))
+				noOperation(t, routes.Reconcile(20).Operation)
+				routes.UpsertParticipant(viewerInput(B, "fresh_parent_session", 2), ms(21))
+				op := must(t, routes.Reconcile(22).Operation)
+				eq(t, op.ChildPeerID, A)
+				eq(t, op.Candidates[0].Tuple, peerTuple(B))
+				if voiceOnly {
+					commitRoomPeer(t, routes, 23, "new_peer")
+				} else {
+					commitCurrent(t, routes, 23, "new_peer")
+				}
+				routes.SetEffectiveCapacity(B, "fresh_parent_session", 3, ms(26))
+				routes.Reconcile(26)
+				eq(t, edgeOf(t, routes, A).ConnectionID, "new_peer")
+			})
+		}
+	}
 }

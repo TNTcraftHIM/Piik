@@ -7,20 +7,17 @@ import (
 
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/pion/stun/v4"
+	"golang.org/x/sync/singleflight"
 )
 
-// Only in-flight discovery is shared. Completed observations must not survive
-// into a later ICE gathering: the socket can outlive its public NAT mapping.
-func (socket *iceSocket) stunMapping(ctx context.Context, server *net.UDPAddr) (*stun.XORMappedAddress, error) {
+// A gathering owns its in-flight observations; retaining the media socket does
+// not let a successor reuse an earlier transaction's delayed mapping response.
+func (socket *iceSocket) stunMapping(ctx context.Context, queries *singleflight.Group, server *net.UDPAddr) (*stun.XORMappedAddress, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	result := socket.stunQueries.DoChan(server.String(), func() (any, error) {
-		// A retiring gathering must not cancel its successor's discovery. The
-		// connection owns the transaction; callers keep their own wait deadline.
-		queryContext, cancel := context.WithTimeout(socket.ctx, stunSurveyTimeout)
-		defer cancel()
-		return socket.querySTUN(queryContext, server)
+	result := queries.DoChan(server.String(), func() (any, error) {
+		return socket.querySTUN(ctx, server)
 	})
 	select {
 	case <-ctx.Done():

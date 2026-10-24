@@ -68,6 +68,9 @@ sharing. The server-validated route policy remains fixed for that share generati
 
 These are route-policy gates, not new routing algorithms. Changing any
 policy requires stopping the current share and starting another generation.
+Voice can establish the room graph before a picture share, using the site's
+default route policy. Starting a share applies its Host-selected policy to that
+same room controller; voice has no separate policy or route planner.
 
 ## Viewer Route Choice
 
@@ -131,9 +134,13 @@ A candidate carrying picture and voice commits only after both decoded-picture
 proof and the required voice transports connect. A silent voice-only candidate
 uses actual transport connection, without requiring samples or a video frame.
 Video-only attachment to an already committed room edge uses its own fresh
-physical identity and decoded-frame proof. Retired facet callbacks cannot
-invalidate a replacement. Stop, pause and failure statuses describe the affected
-consumer; a voice failure does not become a video error.
+physical identity and decoded-frame proof. Failed attachment evidence ends when
+an involved endpoint session changes; proven picture and room transports remain.
+Retired facet callbacks cannot
+invalidate a replacement. Reusing a room reservation waits for its previous
+picture facet's physical close and reader join; full retirement joins those
+facets before releasing admission. Stop, pause and failure statuses describe the
+affected consumer; a voice failure does not become a video error.
 When current decoded-picture proof still establishes a healthy committed path,
 a failed companion voice transport is recreated on that same path without
 invalidating picture readiness or consuming a topology candidate. Without that
@@ -161,10 +168,21 @@ without discarding its subtree; departure and capacity changes move only affecte
 children. ADR-0005 owns filtering, ordering, cursor, revision, reservation, and
 rollback mechanics.
 
-Reauthentication rebinds retained media and restores eligible direct opportunities
-behind healthy SFU edges through that same continuation owner. The existing
-session-scoped ledger bounds these attempts; a repeated update of the same
-session does not reopen them.
+Reauthentication rebinds retained media. Newly eligible parents and session
+opportunities restore direct convergence behind healthy SFU edges through that
+same continuation owner. The existing session-scoped ledger bounds these
+attempts; repeated capacity or session updates do not reopen spent opportunities.
+
+Trickled candidates and their completion retain the gathering's ICE identity
+across SDP exchanges. A delayed completion cannot close a newer gathering;
+ordinary renegotiation does not create a new ICE generation. Address observations
+belong to that gathering, even when ICE restart retains the physical socket.
+The merged collector owns completion across ordinary and supplemental candidates.
+
+Transport readiness uses the current PeerConnection state when consumed,
+including after Native or SFU event queues. Historical transport loss
+still retires input permission; a recovered connection requests a fresh input
+handshake rather than restoring the previous grant.
 
 Five seconds is a scheduling window only while another bounded candidate or SFU
 fallback remains. It advances a silent Peer candidate instead of delaying the
@@ -202,9 +220,9 @@ resets it; replacing an unconnected backend cannot renew recovery indefinitely.
 Capable Native receivers also renegotiate that connection while retaining the
 encoded source, local playback and downstream edges when its codec/audio shape
 is unchanged. Pion owns ICE restart; each actual gathering owns fresh supplemental
-candidates. Native STUN observations share only an in-flight transaction, never
-a completed address across gatherings. Discovery uses the existing media socket;
-retiring one gathering does not cancel another or close healthy media.
+candidates. Native STUN observations share an in-flight transaction only within
+one gathering. Discovery uses the existing media socket; retiring one gathering
+does not cancel another or close healthy media.
 Each actual gathering also refreshes a previously successful gateway mapping;
 the requested lease does not prove that the gateway retained its state. Ordinary
 SDP renegotiation does not refresh mappings, and this adds no background poller.

@@ -294,17 +294,19 @@ func (session *Session) prepareEdge(
 					ConnectionID: connectionID, Candidate: candidate,
 				})
 			},
-			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair) {
+			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool) {
 				if state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
 					session.remoteInput.RevokeEdge(connectionID)
 				}
 				session.emit(Event{
-					Type: "edge-state", ShareID: session.shareID,
+					Current: func() bool { return isCurrentState(state) },
+					Type:    "edge-state", ShareID: session.shareID,
 					ConnectionID: connectionID, State: state.String(),
 				})
 				if pair != nil {
 					session.emit(Event{
-						Type: "edge-path", ShareID: session.shareID,
+						Current: func() bool { return isCurrentState(state) },
+						Type:    "edge-path", ShareID: session.shareID,
 						ConnectionID:     connectionID,
 						LocalType:        pair.Local.String(),
 						RemoteType:       pair.Remote.String(),

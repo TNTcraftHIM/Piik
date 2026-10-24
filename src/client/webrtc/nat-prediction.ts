@@ -329,12 +329,12 @@ export class NatPredictionCandidateBatch {
     this.send(candidate);
   }
 
-  complete(): void {
+  complete(end: SignalCandidate = null): void {
     if (this.completed) {
       return;
     }
     this.trySendPredictions();
-    this.send(null);
+    this.send(end);
     this.completed = true;
   }
 
@@ -367,10 +367,10 @@ function signalCandidate(candidate: RTCIceCandidate): ConcreteSignalCandidate {
   };
 }
 
-/** Own one local ICE candidate generation for any Browser P2P role. */
+/** Own local ICE generations across Browser and Native trickle delivery. */
 export class NatPredictionCandidateEmitter {
   private batch: NatPredictionCandidateBatch | null = null;
-  private usernameFragment: string | null = null;
+  private generation: ConcreteSignalCandidate | null = null;
   private endSent = false;
   private surveyUrls = new Set<string>();
 
@@ -392,67 +392,70 @@ export class NatPredictionCandidateEmitter {
   }
 
   add(candidate: RTCIceCandidate | null): void {
-    if (!this.enabled) {
-      this.send(candidate ? signalCandidate(candidate) : null);
-      return;
-    }
-    if (!candidate) {
-      this.completeBatch();
-      if (!this.endSent) {
-        this.send(null);
-        this.endSent = true;
-      }
+    const serverUrl = (
+      candidate as (RTCIceCandidate & { readonly url?: string | null }) | null
+    )?.url;
+    const candidateUrl = serverUrl ? normalizedStunUrl(serverUrl) : null;
+    this.addSignal(candidate ? signalCandidate(candidate) : null,
+      candidateUrl !== null && this.surveyUrls.has(candidateUrl));
+  }
+
+  /** Native trickle shares the same ICE-generation owner as Browser trickle. */
+  addSignal(next: SignalCandidate, predictionEligible: boolean): void {
+    if (!next || next.candidate === "") {
+      // A scoped end can arrive after a newer generation started. Forward it
+      // without completing that generation's prediction observations.
+      if (next?.usernameFragment && this.generation?.usernameFragment &&
+        next.usernameFragment !== this.generation.usernameFragment) {
+        this.send(next);
+      } else this.completeBatch(next);
       return;
     }
 
-    const next = signalCandidate(candidate);
     if (
       this.batch &&
-      this.usernameFragment &&
+      this.generation?.usernameFragment &&
       next.usernameFragment &&
-      next.usernameFragment !== this.usernameFragment
+      next.usernameFragment !== this.generation.usernameFragment
     ) {
       // An ICE restart retires old observations; an unscoped end marker here
       // would end the new remote generation before its candidates arrive.
       this.discard();
     }
     if (!this.batch) {
-      this.usernameFragment = next.usernameFragment ?? null;
+      this.generation = next;
       this.endSent = false;
       this.batch = new NatPredictionCandidateBatch(this.send);
     }
-    const serverUrl = (
-      candidate as RTCIceCandidate & { readonly url?: string | null }
-    ).url;
-    const candidateUrl = serverUrl
-      ? normalizedStunUrl(serverUrl)
-      : null;
-    this.batch.add(
-      next,
-      candidateUrl !== null && this.surveyUrls.has(candidateUrl),
-    );
+    this.batch.add(next, this.enabled && predictionEligible);
   }
 
   gatheringComplete(): void {
-    if (this.enabled) {
-      this.completeBatch();
-    }
+    this.completeBatch();
   }
 
   discard(): void {
     this.batch?.discard();
     this.batch = null;
-    this.usernameFragment = null;
+    this.generation = null;
     this.endSent = false;
   }
 
-  private completeBatch(): void {
+  private completeBatch(end: SignalCandidate = null): void {
     if (!this.batch) {
+      if (!this.endSent && end?.usernameFragment) {
+        this.send(end);
+        this.generation = end;
+        this.endSent = true;
+      }
       return;
     }
-    this.batch.complete();
+    // An unscoped null applies to the latest remote ICE generation. Keep a
+    // delayed end attached to the candidates that actually finished gathering.
+    const marker = end?.usernameFragment ? end : this.generation?.usernameFragment
+      ? { ...this.generation, candidate: "" } : null;
+    this.batch.complete(marker);
     this.batch = null;
-    this.usernameFragment = null;
     this.endSent = true;
   }
 }

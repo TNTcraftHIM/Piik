@@ -24,7 +24,6 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
-	"github.com/pion/transport/v5/packetio"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -96,21 +95,7 @@ func NewTransport(options TransportOptions) (_ *Transport, err error) {
 	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
 		settings.LoggerFactory = diagnostics.PionLoggerFactory("connectionId", diagnostics.ID(options.ConnectionID))
 	}
-	settings.BufferFactory = func(kind packetio.BufferPacketType, ssrc uint32) io.ReadWriteCloser {
-		if kind == packetio.RTCPBufferPacket {
-			if reader := factory.GetRTCPReader(ssrc); reader != nil {
-				return reader
-			}
-		}
-		// Preserve stock Pion SRTP/SRTCP bounds for unclaimed streams, including audio.
-		input := &packetBuffer{Buffer: packetio.NewBuffer()}
-		limit := 1_000_000
-		if kind == packetio.RTCPBufferPacket {
-			limit = 100_000
-		}
-		input.SetLimitSize(limit)
-		return input
-	}
+	settings.BufferFactory = packetBufferFactory(factory)
 	registry := &interceptor.Registry{}
 	// LiveKit records actual paced sends and owns this extension's sequence space.
 	if err = media.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{

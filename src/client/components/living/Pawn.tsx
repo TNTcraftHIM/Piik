@@ -26,26 +26,28 @@ export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
 }
 
 function PawnAdornment({ voice, collaboration, host }: PawnState) {
-  return <g className="lr-person-status" color="var(--person-ink, #263b43)" fill="none"
+  return <g className="lr-person-status" data-voice={voice ? "" : undefined}
+    data-deafened={voice?.deafened || undefined} data-microphone={voice?.microphone || undefined}
+    data-collaboration={collaboration || undefined} color="var(--person-ink, #263b43)" fill="none"
     stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
-    {voice ? <>
-      {voice.deafened ? <g>
+    <g className="lr-person-headset">
+      <g className="lr-person-neckband">
         <path d="M15 28q0-5 9-5t9 5" strokeWidth="1.6" />
-        <path d="M15 27v5m18-5v5" strokeWidth="3.4" />
-      </g> : <g>
+      </g>
+      <g className="lr-person-headband">
         <path d={host ? "M14.8 15v-2a9.2 9.2 0 0 1 3.5-7.2m11.4 0a9.2 9.2 0 0 1 3.5 7.2v2"
           : "M14.8 15v-2a9.2 9.2 0 0 1 18.4 0v2"} strokeWidth="1.6" />
-        <path d="M14.8 13v5m18.4-5v5" strokeWidth="3.4" />
-      </g>}
-      <g transform={`translate(33 ${voice.deafened ? 28 : 17})`}>
-        <path d={voice.microphone
-          ? voice.deafened ? "M0 0v-4q0-3-4-3h-2" : "M0 0v1.5q0 3-4 3h-2"
-          : "M0 0l2-8"} strokeWidth="1.4" />
-        <circle cx={voice.microphone ? -6 : 2} cy={voice.microphone ? voice.deafened ? -7 : 4.5 : -8}
-          r="1.2" fill="currentColor" stroke="none" />
       </g>
-    </> : null}
-    {collaboration ? <g transform="translate(16.5 32.5) rotate(-45 7.5 7.5)"><Glyph name="mouse" size={15} /></g> : null}
+      <path className="lr-person-earcup-left" d="M14.8 13v5" strokeWidth="3.4" />
+      <path className="lr-person-earcup-right" d="M33.2 13v5" strokeWidth="3.4" />
+      <g className="lr-person-mic-position">
+        <path className="lr-person-mic-open lr-person-mic-head" d="M0 0v1.5q0 3-4 3h-2" strokeWidth="1.4" />
+        <path className="lr-person-mic-open lr-person-mic-neck" d="M0 0v-4q0-3-4-3h-2" strokeWidth="1.4" />
+        <path className="lr-person-mic-folded" d="M0 0l2-8" strokeWidth="1.4" />
+        <circle className="lr-person-mic-tip" r="1.2" fill="currentColor" stroke="none" />
+      </g>
+    </g>
+    <g className="lr-person-collaboration"><g transform="translate(16.5 32.5) rotate(-45 7.5 7.5)"><Glyph name="mouse" size={15} /></g></g>
   </g>;
 }
 

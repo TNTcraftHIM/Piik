@@ -4,7 +4,7 @@
 - Date: 2026-08-20
 - Last updated: 2026-08-30
 
-The current candidate replaces this ADR's external LiveKit room/token lifecycle
+ADR-0013 replaces this ADR's external LiveKit room/token lifecycle
 with admitted in-process SFU resources under [ADR-0013](./0013-embedded-node-local-media.md).
 Exact physical subscription closure now releases its reservation. The graph,
 capacity and serial-operation decisions below remain; external-service details
@@ -58,7 +58,7 @@ One transition-overlap reservation may temporarily raise a producer to
 authorized. SFU ingress and subscription egress are independent server resources
 and are not inferred from endpoint child counts.
 
-The room-voice candidate adds an explicit, session-scoped relay volunteer
+Room voice adds an explicit, session-scoped relay volunteer
 override under the [endpoint capacity contract](../standards/routing-transport.md#endpoint-and-server-capacity).
 It retains ordinary caps and one serial overlap reservation, but a capable
 volunteer's admitted fanout may reach 20, with one extra transition slot.
@@ -84,9 +84,9 @@ relay or a relay with reduced capacity accepts no new children; only its
 deterministic overflow children are reassigned. A relay whose ingress fails is
 itself reparented while its descendants remain attached.
 
-### Room Media Lifetime (Candidate)
+### Room Media Lifetime
 
-The room-voice candidate keeps this graph at room lifetime, with independent
+Room voice keeps this graph at room lifetime, with independent
 picture generations and voice publications. Its existing serial operation also
 owns video attachment and composite picture/voice readiness; physical facets
 have distinct identities so retiring one cannot remove the others. The

@@ -30,8 +30,8 @@ connection acquisition reuses the route controller's existing opportunity ledger
 2. An enabled Site derives ports 3479 and 3480 from its first ordinary STUN
    authority on UDP 3478. Public-link App mode supplies three ordinary public
    STUN destinations, reusing the same set for its prediction survey; disabling
-   prediction retains ordinary discovery redundancy. Pure LAN mode supplies
-   none. The same accepted share policy and ICE configuration cover every
+   prediction retains ordinary discovery redundancy. LAN mode uses its local
+   STUN endpoint without a prediction survey. The same accepted share policy and ICE configuration cover every
    Browser or Native P2P edge. SFU PeerConnections remain unchanged.
 3. For one ICE gathering generation, the adapter observes only UDP `srflx`
    candidates belonging to the exact three-destination survey set. Browser

@@ -35,12 +35,12 @@ func (session *Session) PreparePublication(generation, connectionID string, serv
 					Current:               current,
 					PublicationGeneration: generation, ConnectionID: connectionID, Candidate: candidate})
 			},
-			ConnectionState: func(state webrtc.PeerConnectionState, _ *mediaedge.SelectedPair) {
+			ConnectionState: func(state webrtc.PeerConnectionState, _ *mediaedge.SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool) {
 				if state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
 					session.remoteInput.RevokeEdge(connectionID)
 				}
 				session.emit(Event{Type: "publication-state", ShareID: session.shareID,
-					Current:               current,
+					Current:               func() bool { return current() && isCurrentState(state) },
 					PublicationGeneration: generation, ConnectionID: connectionID, State: state.String()})
 			},
 		},

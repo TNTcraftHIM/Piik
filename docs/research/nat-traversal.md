@@ -148,7 +148,8 @@ supports an opt-in mechanism, not a default or a participant-wide classifier.
 Ordinary STUN remains the discovery service. A Site may enable same-host
 STUN-only listeners on 3479 and 3480. Public-link App mode supplies three ordinary
 public destinations and reuses them for prediction, so disabling prediction
-does not remove discovery redundancy; pure LAN mode supplies none.
+does not remove discovery redundancy. LAN mode uses its local STUN endpoint
+without a prediction survey.
 Current pages automatically request that capability on P2P-first sites. The
 server's accepted share policy keeps Host, Viewer and relay behavior aligned;
 the published 2.x field still accepts older pages' per-share preferences.
@@ -275,9 +276,9 @@ On 2026-09-01, Chrome 151 on the flagship Windows network gathered one `srflx`
 candidate independently from the self-hosted endpoint, Xiaomi, Bilibili, and
 Cloudflare within a five-second bound. `stun.qq.com:3478` produced none in the
 same ordered run. Candidate events and local candidate stats preserved the exact
-STUN `url`, but the destinations supplied no selected-path benefit. They remain
-research evidence only; the product has no independent or third-party STUN
-configuration.
+STUN `url`, but that run established no selected-path benefit. The current
+[STUN configuration](../standards/configuration.md#piik-app-configuration)
+is independent of this dated reachability probe.
 
 A second real-Chrome loopback rewrote only one remote candidate foundation to
 `sp1`, established the data channel, and read `sp1` from the selected remote
@@ -511,16 +512,15 @@ Mature implementations provide a concrete comparison:
   and random-port paths. Its implementation is evidence that these are real
   mechanisms, not evidence that replacing Piik's media stack improves coverage.
 
-An isolated Go prototype now compares ordinary ICE, the current eight-candidate
+An isolated Go prototype compared ordinary ICE, the current eight-candidate
 prediction policy, an ordered first tuple, a coordinated eight-socket pool and
 ordinary ICE over eight preallocated sockets. The pool authenticates generation-
 specific STUN transactions, closes its losing sockets and passes its actual
 winning socket to stock Pion WebRTC. Success requires bidirectional SRTP payload
 delivery and reverse RTCP feedback. All strategies share a four-second overall
 deadline; no relay, OS socket or external network is used in these controls.
-The retained implementation is commit `807c7390` on
-`spike/magicsock-assessment`, under `scripts/magicsock-probe/native_punch.go`
-and its tests; it is not part of the product module.
+The prototype is retired; the current transport and retry owners are described
+in [routing and transport](../standards/routing-transport.md).
 
 In Pion's sequential endpoint-dependent NAT fixture, coordinated first sends
 connect the otherwise timing-sensitive bilateral tuple. Three unrelated mappings
@@ -725,31 +725,15 @@ recovery loop or a Browser fork to enable this option.
 
 ### Integration Cost And Recovery Controls
 
-**Current candidate excludes Magicsock; optional-helper adoption needs a matched gain.**
-This composition requires Native App transport at both ends of the enhanced
-edge. Those participants can still use the existing Browser UI and local media
-bridge; Native transport does not require a separate desktop interface. A
-Browser-only endpoint continues to use ordinary WebRTC.
+**Magicsock integration is not planned.** The tested composition required
+Native App transport at both ends and established no additional reachable NAT
+class worth its integration cost. Piik retains WebRTC with its existing
+NAT preparation and virtual-LAN support.
 
-The background-App proposal is an optional transport helper for the same Web
-workflow. The existing standby and saved Site approval can reduce repeated
-setup, but do not remove first-use authorization, Browser local-network
-permissions, or the integration costs below. Reassess adoption against that
-optional-helper scope, preserving ordinary ICE when the helper is absent or
-unavailable. The controls established no additional reachable NAT class;
-background availability alone is not reachability evidence or acceptance of
-DERP media fallback. Add it to the release candidate only after a matched benefit
-and the integration boundaries below are established.
+The experiment has been removed. The dated controls below record the decision's
+technical basis, not a maintained module or a future integration checklist.
 
-The isolated experiment remains at `cc6f9d0d` on
-`spike/magicsock-assessment`, outside Piik's production dependency graph.
-The `scripts/magicsock-probe/README.md` and `scripts/tailcat-probe/README.md`
-files at that commit own rerun commands, fixture boundaries and opt-in
-dependency patches. The complete earlier experimental
-observations remain in `git show 82e3f253:docs/research/nat-traversal.md`.
-Its internal package is retired, not a current 2.0 test deliverable.
-
-#### Current Stable Direct-Transport Control
+#### October 12 Direct-Transport Control
 
 On October 12, 2026, the isolated raw-Bind module was refreshed to
 [Tailscale v1.104.1](https://github.com/tailscale/tailscale/releases/tag/v1.104.1)
@@ -774,9 +758,8 @@ Raw Bind also consumed bare inner STUN, requiring a test-only packet prefix.
 After peer removal it could still deliver UDP without peer identity; raw
 reception is not authentication. A product adapter would need supported
 framing and existing room/cryptographic authorization, not just another socket.
-The refreshed full probe suite and longer-window matrix passed, including
-controls that expect connection failure. They do not establish a new reason
-to include Magicsock in this candidate.
+The refreshed probe suite and longer-window matrix passed, including controls
+that expect connection failure. These results did not establish a product benefit.
 
 #### Reachability And Cost
 
@@ -803,8 +786,7 @@ Native mapping, prediction and dual-stack controls are retained
 
 #### Integration Boundaries
 
-The experimental composition exposed costs that a future adoption must address
-without another retry owner, timeout extension or silent relay policy change:
+The experimental composition exposed these integration costs:
 
 - **Relay policy:** the reviewed upstream API has no direct-only media policy
   retaining discovery. An isolated overlay filtered encrypted data in both
@@ -840,7 +822,7 @@ without another retry owner, timeout extension or silent relay policy change:
   and delayed end-of-candidates. Its multi-mux also needed a correction for
   newly enumerated child addresses. These remain experimental dependency changes.
 
-#### Scope Of The Retained Evidence
+#### Scope Of The Historical Evidence
 
 The isolated overlays exercised real Pion/LiveKit forwarding, H264/VP8 and Opus,
 Browser decoding, Native control and room authorization. Bounded rendered checks
@@ -853,8 +835,8 @@ candidates withheld, while ordinary Web edges retained ICE.
 Those checks established local composition and ownership behavior. They did
 not establish physical capture, difficult-network benefit, broad mobile support
 or sustained field reliability. The experiment's detailed intermediate controls,
-failed counterfactuals and package evidence remain in Git rather than this
-candidate's work ledger. Independent ordinary-media findings are retained here
+failed counterfactuals and package evidence belong to historical research.
+Independent ordinary-media findings are retained here
 and in their existing owners.
 
 ## Ordinary ICE And Media Recovery
@@ -906,7 +888,49 @@ while keeping the Browser connection, instead reported connected without fresh
 pictures in a counterfactual. The tests therefore support standard ICE restart,
 not unilateral reconstruction or a claim of physical roaming coverage.
 
+### Candidate Generations Across App Control
+
+A controlled Browser-Host/Native-Viewer restart on 2026-10-24 reproduced lost
+trickle candidates. The room WebSocket delivered a restart offer before the App
+WebSocket delivered an already-written completion from the previous gathering.
+The Viewer had replaced its candidate batch on the SDP exchange, so the old
+completion closed the new batch and all three new survey candidates were lost.
+The Go writer's existing current-owner check correctly protected unwritten
+events; it could not recall an event already delivered to the socket.
+
+Native Viewer now reuses the Browser candidate emitter across SDP exchanges.
+Each Native collector captures Pion's actual ICE username fragment and includes
+it on ordinary, survey and gateway candidates. Completion is conveyed for that
+generation rather than as an unscoped null, following
+[RFC 8838](https://www.rfc-editor.org/rfc/rfc8838.html#section-13) and the
+[WebRTC candidate algorithm](https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-addicecandidate).
+The delayed-event control retains new candidates with prediction enabled or
+disabled. The real H264/VP8 receiver control checks initial and restarted
+candidates against the corresponding SDP while preserving its encoded source
+and downstream connection. No new generation field, retry owner or timeout is
+introduced.
+
+The same restart control exposed a second queue inside pinned Pion ICE: replacing
+its handler does not discard candidates and unscoped completion already queued
+by the previous gathering. Holding the old callback across restart delivered both
+generations to the new handler. Native collectors now read the candidate's own
+ICE fragment before accepting it and associate completion with that ordered
+source generation. A real Pion control retains every new-generation candidate
+and excludes the old ones. Trickled answers also omit Pion's embedded
+`end-of-candidates`: only the merged collector can complete the additional STUN
+and gateway observations. H264 and VP8 retained-source renegotiation exercise
+that SDP path.
+
 ### Recovery Ownership And Forwarding
+
+A same-connection Native ICE restart also reproduced an input stall: Pion's
+asynchronous `connecting` callback arrived after transport and SCTP readiness had
+recovered, leaving the input bridge unavailable. State projections now check the
+current PeerConnection at consumption. Historical loss still clears permission;
+the recovered bridge requests fresh readiness. The control delays that real
+callback until after one input packet round trip, then verifies another fresh
+handshake and packet delivery after release. Host grant controls retain their
+existing revocation behavior.
 
 A real Viewer-owner fixture retained sockets and external conditions through
 interruption and replacement. It exposed recovery counts being renewed with a
@@ -976,11 +1000,18 @@ attempts also do not represent four full 20-second product operation timeouts.
 
 The correction keeps Pion's ordinary UDP mux and uses the existing Pion STUN
 client for each observation. Only concurrent in-flight queries to the same
-destination are shared; completed addresses are not cached. Pion owns request
-transaction matching and retransmission within the existing five-second survey
-bound. A caller can stop waiting independently; connection retirement ends discovery.
+destination within one gathering are shared; completed addresses are not cached.
+Pion owns request transaction matching and retransmission within the existing
+five-second survey bound. Gathering retirement cancels its observations;
+retaining the socket does not retain those transactions for a successor.
 ICE restart retains its socket. The separate overlap correction below isolates
 replacement connections without adding a retry loop, periodic probe or new transport.
+
+A retained-socket delayed-response control found that connection-wide in-flight
+sharing could still supply a retired query's mapping to a new gathering. The
+old response was valid for its transaction but described the previous public
+port. Query coalescing now belongs to each survey, so restart sends a fresh
+Binding request while preserving ordinary duplicate-destination sharing.
 
 The same review reproduced acceptance of an unmatched STUN response in the old
 universal cache path. Stock STUN transactions reject it and recover a dropped

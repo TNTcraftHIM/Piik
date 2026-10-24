@@ -49,8 +49,8 @@ type ControlSession interface {
 	Close() error
 }
 
-// ControlEvent retains a physical owner's validity through asynchronous queues.
-// Current must only inspect ownership; it runs under the WebSocket write lock.
+// ControlEvent revalidates its owner or current transport fact after queues.
+// Current must be read-only; it runs under the WebSocket write lock.
 type ControlEvent struct {
 	Value   any
 	Current func() bool

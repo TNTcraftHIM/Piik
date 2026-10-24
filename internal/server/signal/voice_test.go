@@ -9,6 +9,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu/sfutest"
+	"github.com/pion/webrtc/v4"
 )
 
 func TestVoiceListeningPresenceIsOptedInAndDoesNotChangeMedia(t *testing.T) {
@@ -108,6 +109,45 @@ func TestVoiceOnlySfuPreparesWithoutVideoPublication(t *testing.T) {
 	if len(state.Connections) != 1 || state.Connections[0].Transport != "sfu" || !state.Connections[0].Pending {
 		t.Fatalf("invalid SFU preparation: %+v", state.Connections)
 	}
+	for _, client := range []*testClient{host, viewer} {
+		own := nextVoiceState(t, client, func(state protocol.RoomVoiceStateMessage) bool { return len(state.Connections) > 0 })
+		client.sendJSON(map[string]any{"type": "room-voice-transport", "connectionId": own.Connections[0].ConnectionID, "state": "connected"})
+	}
+	var events []sfu.VoiceMediaEvent
+	if !waitFor(t, defaultWait, func() bool {
+		ready := true
+		h.locked(func() {
+			events = nil
+			for _, edge := range h.server.voices[h.room.RoomID].connections {
+				ready = ready && edge.connected[edge.child]
+				events = append(events, sfu.VoiceMediaEvent{RoomID: h.room.RoomID, PeerID: edge.child,
+					SessionID: edge.childSession, ConnectionID: edge.id, State: webrtc.PeerConnectionStateConnected})
+			}
+		})
+		return ready && len(events) == 2
+	}) {
+		t.Fatal("clients did not report both voice transports")
+	}
+	// The transport may leave Connected while its callback waits for Server.mu.
+	// One stale facet must not combine with the other facet to commit the route.
+	events[0].IsCurrentState = func() bool { return false }
+	h.server.onVoiceMediaEvent(events[0])
+	events[1].IsCurrentState = func() bool { return true }
+	h.server.onVoiceMediaEvent(events[1])
+	h.locked(func() {
+		rm, _ := h.server.router.rooms.Get(h.room.RoomID)
+		if rm.controller.Operation() == nil {
+			t.Fatal("stale Connected callback committed a voice route")
+		}
+	})
+	events[0].IsCurrentState = func() bool { return true }
+	h.server.onVoiceMediaEvent(events[0])
+	h.locked(func() {
+		rm, _ := h.server.router.rooms.Get(h.room.RoomID)
+		if rm.controller.Operation() != nil {
+			t.Fatal("current Connected callback did not commit voice route")
+		}
+	})
 }
 
 func voiceCommand(client *testClient, command map[string]any) {

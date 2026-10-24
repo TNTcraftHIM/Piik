@@ -42,6 +42,7 @@ export class RoomInteractionSession {
   private cooldownTimer: ReturnType<typeof setTimeout> | undefined;
   private effectsTimer: ReturnType<typeof setTimeout> | undefined;
   private overlayVisible = false;
+  private requestId: string | null = null;
   private closed = false;
   private subscriptionStartedAt: number | null = null;
   private serverOffset = 0;
@@ -85,7 +86,8 @@ export class RoomInteractionSession {
       return true;
     }
     if (event.type === "room-interaction-rejected") {
-      if (event.requestId === this.state.pending?.requestId) {
+      if (event.requestId === this.requestId) {
+        this.requestId = null;
         clearTimeout(this.pendingTimer);
         this.update({ pending: null, error: event.reason });
       }
@@ -102,7 +104,8 @@ export class RoomInteractionSession {
     // lifetime beyond one full effect, and never replay an expired effect.
     const beganAt = Math.min(now, message.occurredAt - this.serverOffset);
     const own = message.sender.peerId === this.state.peerId;
-    const confirmsPending = own && message.requestId === this.state.pending?.requestId;
+    const confirmsPending = own && message.requestId === this.requestId;
+    if (confirmsPending) this.requestId = null;
     const confirmed = confirmsPending ? message : this.state.confirmed;
     const pending = confirmsPending ? null : this.state.pending;
     if (!pending) clearTimeout(this.pendingTimer);
@@ -144,6 +147,9 @@ export class RoomInteractionSession {
       this.update({ error: "offline" });
       return false;
     }
+    // The timeout releases the send control, not this request's identity.
+    // A late result may settle it until another submission or connection replaces it.
+    this.requestId = requestId;
     this.update({ pending: { requestId, payload }, coolingDown: true, error: null });
     this.pendingTimer = setTimeout(() => this.update({ pending: null, error: "unconfirmed" }), 5000);
     this.cooldownTimer = setTimeout(() => this.update({ coolingDown: false }), INTERACTION_INTERVAL_MS);
@@ -188,6 +194,7 @@ export class RoomInteractionSession {
   }
 
   disconnected() {
+    this.requestId = null;
     this.subscriptionStartedAt = null;
     this.serverOffset = 0;
     clearTimeout(this.pendingTimer);

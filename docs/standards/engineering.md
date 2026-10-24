@@ -53,6 +53,8 @@ and checks together; a smaller root alone does not justify another abstraction.
 | `src/client/pages`, `lib`, `media`, `native` | Browser orchestration and endpoint adapters; bind current media and retire owned resources |
 | `src/client/media/viewer-presentation.ts`, `ui/media-status.ts` | Playback facts and their derived status projection; UI indicators do not create recovery or quality policy |
 | `src/client/components`, `locales`, `ui` | Shared interaction, visual primitives and localized copy; same product interface for Server and App |
+| `src/client/room-voice` | Room voice session and Browser endpoint; membership and audio resources outlive the interaction window independently of picture sharing |
+| `src/client/remote-control` | Attended input sessions and forwarding over the committed media route; native input authority stays in `internal/app/remoteinput` |
 | `internal/server/webassets` | One built Browser bundle embedded by both binaries; Node/Vite are development tooling |
 
 Names follow [naming](./naming.md). Architecture decisions explain why these
@@ -74,6 +76,7 @@ Keep this check outside room startup, authorization and media lifecycles.
 | Room HTTP and Browser/Server signaling | `src/shared/protocol.ts` and `internal/server/protocol`; HTTP dispatch in `internal/server/app`, WS dispatch in `signal` |
 | Site access HTTP | `src/client/lib/api.ts` and `internal/server/app/json.go`; cookies and access behavior belong to [rooms/access](./rooms-access.md) |
 | Browser/App discovery and control | `src/client/native/wire.ts`, `internal/app/loopback/protocol.go`, `internal/app/nativecontrol/wire.go` |
+| Remote input data channel | [Browser input protocol](../../src/client/remote-control/protocol.ts), [native input validation](../../internal/app/remoteinput/manager.go) and [channel routing](../../internal/media/inputroute); admission remains with the existing room and native control owners |
 | App/capture sidecar | `internal/app/nativecapture` and each platform capture adapter; probe/commands and encoded-frame envelope are distinct formats |
 | Configuration and persistence | `internal/server/config`, `internal/app/config`, `internal/server/room/database.go`; operator semantics in [configuration](./configuration.md) |
 | Release and update metadata | Existing packaging scripts, `src/client/lib/release-update.ts`, `cmd/piik-server/release.go`; identity/compatibility in [versioning](./versioning.md), operations in [deployment](../deployment.md) |
@@ -131,35 +134,52 @@ instead of mirroring it.
 | Browser Viewer route | `pages/ViewerPage.tsx` binds one parent peer (Browser or Native) and its relay children | parent, connection and message identity, then playback facts | a new viewer generation retires the old binding; relay children follow `activateChildren` revisions |
 | Browser relay fanout | `webrtc/viewer-relay.ts` prepares a child before it is needed | `activateChildren(revision, childPeerIds)` commits the prepared set | replaced or emptied sets disconnect the child peers they own |
 | Browser local encoding pool | `webrtc/host-peer.ts` attaches a pool carrier when capture and APIs support it ([ADR-0014](../adr/0014-browser-node-local-encoding-pool.md)) | the carrier binding owns its pooled producer while attached | source change or disposal releases the carrier; unsupported APIs keep ordinary senders |
+| Browser/App control connection | `native/client-connection.ts` discovers lazily when the page requests App capability | one acquisition and exact `NativeClient` instance; the page owns eligibility and failure policy | explicit release, page/session retirement or App disconnect; late discovery closes only its own result |
+| Room voice | `room-voice/session.ts` binds the admitted room session and its Browser endpoint | authoritative membership and the current publication/connection identity under [room media](./routing-transport.md#room-media) | leave, room retirement or session close releases owned audio; closing the interaction window does not leave voice |
+| Floating room tool | `FloatingPanel.tsx` presents the tool; `ui/panel-window.ts` opens a supported detached window | the current window request and document own presentation, not the room session | close returns the tool to the page; opener/session retirement closes even a late open under [presentation lifecycle](./presentation-lifecycle.md) |
 | App native session | the loopback service admits native control sessions and the Web UI selects the native path | session identity plus the explicit media-path choice | session end, share end or process exit retires that edge and its capture sidecar |
+| Native ICE gathering | one gathering observes addresses on its connection's retained socket | candidates retain their source ICE generation; one collector joins Pion, STUN and gateway completion | ICE restart retires previous observations and excludes stale queued output; connection close retires the socket |
 | Server room authority | `signal` authenticates one Host or Viewer command | `room` writes durably before the in-memory commit; the signaling lock serializes mutations | explicit replacement or deletion, grant rotation or revocation, or process exit for memory-mode rooms |
 | Server route and SFU | `signal` feeds `route` one serial child operation; `sfu/admission.go` accepts one bounded publication | one committed graph per controller and the forwarding publication | superseded assignments retire inside the same operation; deactivate retires the publication |
 
 ## Source Index
 
 Start a change at the owning entry point, then follow the interfaces listed
-above rather than searching the tree.
+above rather than searching the tree. NAT policy stays in [routing](./routing-transport.md),
+visual rules in [visual language](./visual-language.md), and website behavior and publication
+in [introduction design](./public-introduction.md) and the [website runbook](../operations/website.md).
 
 | Change | Start at |
 | --- | --- |
-| Host workflow, share lifecycle, notices | `src/client/pages/HostPage.tsx`, `src/client/pages/host-page-notices.ts` |
-| Viewer workflow, playback, status projection | `src/client/pages/ViewerPage.tsx`, `src/client/media/viewer-presentation.ts`, `src/client/ui/media-status.ts` |
-| Received viewer metrics and expiry | `src/client/media/viewer-quality-evidence.ts` owns evidence rules; `viewer-quality-evidence-store.ts` owns received entries and timers for Host and relay views |
-| Browser peer and route mechanics | `src/client/webrtc/host-peer.ts`, `viewer-peer.ts`, `viewer-relay.ts`, `src/client/media/host-sfu-route.ts`, `viewer-sfu-route.ts`, `route-transition.ts` |
-| Capture, profiles and sender parameters | `src/client/media/quality.ts`, `src/client/media/browser-encoding-pool.ts`, `browser-encoding-output.ts` |
-| SFU endpoints | `src/client/sfu/publisher.ts`, `subscriber.ts`, `peer.ts`, `internal/server/sfu` |
-| Localized copy and failure facts | `src/client/locales`, `src/client/ui/copy.ts`, `src/client/ui/media-failure.ts` |
-| Native bridge, capture and media edges | `src/client/native`, `internal/app/loopback`, `internal/app/nativecontrol`, `nativehost`, `nativeviewer`, `nativecapture` |
-| Room authority, persistence and graph | `internal/server/signal`, `internal/server/room`, `internal/server/route` |
-| Shared wire contract | `src/shared/protocol.ts`, `internal/server/protocol`, `tests/fixtures/wire-samples.json` |
-| Diagnostics and logging | `src/client/lib/debug.ts`, `internal/diagnostics`, [configuration](./configuration.md#diagnostics) |
-| Configuration and deployment | `internal/server/config`, `internal/app/config`, [configuration](./configuration.md), [deployment](../deployment.md) |
+| Host workflow, share lifecycle, notices | [src/client/pages/HostPage.tsx](../../src/client/pages/HostPage.tsx), [src/client/pages/host-page-notices.ts](../../src/client/pages/host-page-notices.ts) |
+| Viewer workflow, playback, status projection | [src/client/pages/ViewerPage.tsx](../../src/client/pages/ViewerPage.tsx), [src/client/media/viewer-presentation.ts](../../src/client/media/viewer-presentation.ts), [src/client/ui/media-status.ts](../../src/client/ui/media-status.ts) |
+| Received viewer metrics and expiry | [src/client/media/viewer-quality-evidence.ts](../../src/client/media/viewer-quality-evidence.ts) owns evidence rules; [src/client/media/viewer-quality-evidence-store.ts](../../src/client/media/viewer-quality-evidence-store.ts) owns received entries and timers for Host and relay views |
+| Browser peer and route mechanics | [src/client/webrtc/host-peer.ts](../../src/client/webrtc/host-peer.ts), [src/client/webrtc/viewer-peer.ts](../../src/client/webrtc/viewer-peer.ts), [src/client/webrtc/viewer-relay.ts](../../src/client/webrtc/viewer-relay.ts), [src/client/media/host-sfu-route.ts](../../src/client/media/host-sfu-route.ts), [src/client/media/viewer-sfu-route.ts](../../src/client/media/viewer-sfu-route.ts), [src/client/media/route-transition.ts](../../src/client/media/route-transition.ts) |
+| Capture, profiles and sender parameters | [src/client/media/quality.ts](../../src/client/media/quality.ts), [src/client/media/browser-encoding-pool.ts](../../src/client/media/browser-encoding-pool.ts), [src/client/media/browser-encoding-output.ts](../../src/client/media/browser-encoding-output.ts) |
+| SFU endpoints | [src/client/sfu/publisher.ts](../../src/client/sfu/publisher.ts), [src/client/sfu/subscriber.ts](../../src/client/sfu/subscriber.ts), [src/client/sfu/peer.ts](../../src/client/sfu/peer.ts), [internal/server/sfu](../../internal/server/sfu) |
+| Localized copy and failure facts | [src/client/locales](../../src/client/locales), [src/client/ui/copy.ts](../../src/client/ui/copy.ts), [src/client/ui/media-failure.ts](../../src/client/ui/media-failure.ts) |
+| Native control connection and media adapters | [src/client/native/client-connection.ts](../../src/client/native/client-connection.ts), [src/client/native](../../src/client/native), [internal/app/loopback](../../internal/app/loopback), [internal/app/nativecontrol](../../internal/app/nativecontrol), [internal/app/nativehost](../../internal/app/nativehost), [internal/app/nativeviewer](../../internal/app/nativeviewer), [internal/app/nativecapture](../../internal/app/nativecapture) |
+| Room authority, persistence and graph | [internal/server/signal](../../internal/server/signal), [internal/server/room](../../internal/server/room), [internal/server/route](../../internal/server/route) |
+| Room signaling intent and interaction delivery | [src/client/lib/signaling.ts](../../src/client/lib/signaling.ts), [src/client/lib/room-interactions.ts](../../src/client/lib/room-interactions.ts); admission and transient delivery follow [rooms and access](./rooms-access.md) |
+| Shared wire contract | [src/shared/protocol.ts](../../src/shared/protocol.ts), [internal/server/protocol](../../internal/server/protocol), [tests/fixtures/wire-samples.json](../../tests/fixtures/wire-samples.json) |
+| Diagnostics and logging | [src/client/lib/debug.ts](../../src/client/lib/debug.ts), [internal/diagnostics](../../internal/diagnostics), [configuration](./configuration.md#diagnostics) |
+| Configuration and deployment | [internal/server/config](../../internal/server/config), [internal/app/config](../../internal/app/config), [configuration](./configuration.md), [deployment](../deployment.md) |
+| ICE sockets, gateway mapping and candidate gathering | [internal/app/mediaedge/ice_socket.go](../../internal/app/mediaedge/ice_socket.go), [internal/app/mediaedge/candidate_gathering.go](../../internal/app/mediaedge/candidate_gathering.go), [internal/app/mediaedge/stun.go](../../internal/app/mediaedge/stun.go), [internal/app/portmapping](../../internal/app/portmapping) |
+| NAT evidence and App punch preparation | [src/client/webrtc/nat-prediction.ts](../../src/client/webrtc/nat-prediction.ts), [src/shared/nat-candidate.ts](../../src/shared/nat-candidate.ts), [src/client/native/native-punch.ts](../../src/client/native/native-punch.ts), [internal/app/mediaedge/punch.go](../../internal/app/mediaedge/punch.go), [internal/server/stun/server.go](../../internal/server/stun/server.go); controls and execution belong to the [network laboratory](../research/network-lab.md) |
+| Route scheduling, retry opportunities and deadlines | [internal/server/route/operation.go](../../internal/server/route/operation.go), [internal/server/route/opportunities.go](../../internal/server/route/opportunities.go), [internal/server/route/candidates.go](../../internal/server/route/candidates.go); routing decisions stay under [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) |
+| Picture attachment and retained room edges | [internal/server/route/publication.go](../../internal/server/route/publication.go), [internal/server/route/graph.go](../../internal/server/route/graph.go); separate picture and voice lifetimes follow [room media](./routing-transport.md#room-media) |
+| Room voice session, endpoint and roster | [src/client/room-voice/session.ts](../../src/client/room-voice/session.ts), [src/client/room-voice/browser-endpoint.ts](../../src/client/room-voice/browser-endpoint.ts), [src/client/room-voice/participant-presentation.ts](../../src/client/room-voice/participant-presentation.ts), [src/client/room-voice/RoomVoicePanel.tsx](../../src/client/room-voice/RoomVoicePanel.tsx) |
+| Remote input and committed-route forwarding | [src/client/remote-control/input-session.ts](../../src/client/remote-control/input-session.ts), [src/client/remote-control/input-route.ts](../../src/client/remote-control/input-route.ts), [src/client/remote-control/protocol.ts](../../src/client/remote-control/protocol.ts), [internal/app/remoteinput](../../internal/app/remoteinput) |
+| Interaction window and detached presentation | [src/client/components/living/RoomInteractions.tsx](../../src/client/components/living/RoomInteractions.tsx), [src/client/components/living/FloatingPanel.tsx](../../src/client/components/living/FloatingPanel.tsx), [src/client/ui/panel-window.ts](../../src/client/ui/panel-window.ts), [src/client/components/living/use-anchored-popover.ts](../../src/client/components/living/use-anchored-popover.ts) |
+| Visual primitives, guidance and preview | [src/client/ui/palette.css](../../src/client/ui/palette.css), [src/client/ui/theme.ts](../../src/client/ui/theme.ts), [src/client/ui/icons.tsx](../../src/client/ui/icons.tsx), [src/client/components/living/primitives.tsx](../../src/client/components/living/primitives.tsx), [src/client/components/living/Tooltip.tsx](../../src/client/components/living/Tooltip.tsx), [src/client/pages/ControlsPreview.tsx](../../src/client/pages/ControlsPreview.tsx) |
+| Public website and film presentation | [site/index.html](../../site/index.html), [site/main.js](../../site/main.js), [site/styles.css](../../site/styles.css), [site/films](../../site/films), [scripts/build-website.mjs](../../scripts/build-website.mjs) |
 
 ## Implementation Rules
 
 - Reuse a current owner, standard API or mature dependency before adding a
-  mechanism. Extract around a responsibility shared by real callers; file size
-  alone does not justify wrappers, a generic manager or a framework.
+  mechanism. Extract a complete responsibility for its real consumers, keeping
+  resource acquisition, replacement and retirement together. File size alone
+  does not justify wrappers, a generic manager or a framework.
   Remove superseded paths in the same change; retain no unused legacy copy.
   Keep test-only state seeding and setup in test harnesses.
   Do not export mutable resources solely for tests; preserve the production
@@ -182,8 +202,10 @@ above rather than searching the tree.
   operation/resource identity before changing current state. Cancellation,
   failure, missing observation and success must retain distinct meanings.
   Queued events retain physical-owner validity until the final serialized write;
-  reused logical IDs do not identify a replacement instance. New subscriptions
-  follow the old owner's retirement, including repeated cleanup callers.
+  readiness commits also require the resource's current state. Reused logical
+  IDs do not identify a replacement instance. A child's attachment failure does
+  not retire its shared producer. New subscriptions follow the old owner's
+  retirement, including repeated cleanup callers.
   Closing a Browser connection may leave its API promises pending. Its owner
   cancels the corresponding waits so a serialized successor never depends on
   completion from a retired connection; late results still need identity checks.
@@ -204,8 +226,9 @@ above rather than searching the tree.
 - Keep decisions separate from effects. Respect documented lock ordering and
   revalidate after unlocked work. Local native capability never grants room
   authority; the shared Go service remains authoritative.
-  Injected callbacks still execute in their caller's context; include their
-  blocking I/O in the caller's lock and latency analysis.
+  Injected callbacks still execute in their caller's context. Synchronous
+  authority hooks must not hide blocking I/O or release the caller's lock;
+  schedule slow work at an explicit, owned effect boundary.
 - Validate input at the boundary, keep domain error meanings stable, and map
   them into shared localized UI. [Versioning](./versioning.md) determines which
   extensions are compatible; an optional field is not automatically compatible.

@@ -208,4 +208,15 @@ describe("shared wire fixture", () => {
       );
     },
   );
+
+  it("rejects diagnostic fanout beyond the room resource bound", () => {
+    const sample = fixture.serverMessages.find(
+      sample => sample.name === "room-relay-video-attachment-diagnostic",
+    )!;
+    for (const field of ["effectiveCapacity", "childCount"]) {
+      const message = JSON.parse(sample.json);
+      message.snapshot.children[0][field] = MAX_VIEWERS_PER_ROOM_LIMIT + 1;
+      expect(serverMessageSchema.safeParse(message).success).toBe(false);
+    }
+  });
 });

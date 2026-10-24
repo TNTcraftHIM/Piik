@@ -38,7 +38,7 @@ func (s *Server) syncRoomVoice(roomID string) {
 	unavailable := s.projectVoiceFlows(roomID, v, pubs)
 	for _, edge := range edges {
 		if edge.transport == "sfu" {
-			s.configureVoiceJunction(roomID, edge, pubs)
+			s.configureVoiceJunction(roomID, v, edge, pubs)
 		}
 	}
 	members := make([]protocol.VoiceMember, 0, len(v.members))
@@ -223,7 +223,7 @@ func (s *Server) voiceRuntime() sfu.VoiceRuntime {
 	return runtime
 }
 
-func (s *Server) configureVoiceJunction(roomID string, edge *voiceEdge, pubs []protocol.VoicePublication) {
+func (s *Server) configureVoiceJunction(roomID string, v *roomVoice, edge *voiceEdge, pubs []protocol.VoicePublication) {
 	runtime := s.voiceRuntime()
 	if runtime == nil {
 		return
@@ -247,18 +247,78 @@ func (s *Server) configureVoiceJunction(roomID string, edge *voiceEdge, pubs []p
 		return
 	}
 	edge.sfuPlan = &plan
-	if err := runtime.ConfigureVoice(plan, s.onVoiceMediaEvent); err != nil {
-		edge.sfuPlan = nil
-		if sess, _ := s.voiceSession(roomID, edge.child); sess != nil {
-			s.voiceError(sess, "connection-unavailable")
+	work, err := runtime.ConfigureVoice(plan, s.onVoiceMediaEvent)
+	if err != nil {
+		s.failVoicePlan(roomID, edge)
+		return
+	}
+	if edge.sfuWork != nil {
+		edge.sfuWork.run = work
+		return
+	}
+	if work != nil {
+		operation := &voiceNegotiation{run: work, done: make(chan struct{})}
+		edge.sfuWork = operation
+		s.router.inflight++
+		go s.negotiateVoice(roomID, v, edge, operation)
+	}
+}
+
+// The synchronous graph hook only commits intent. One worker per physical edge
+// coalesces changes into the latest plan without yielding its caller's lock.
+func (s *Server) negotiateVoice(roomID string, v *roomVoice, edge *voiceEdge, operation *voiceNegotiation) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	defer func() {
+		edge.sfuWork = nil
+		s.router.inflight--
+		close(operation.done)
+	}()
+	for !s.closing && s.voices[roomID] == v && v.connections[edge.logicalID] == edge && edge.sfuPlan != nil && operation.run != nil {
+		plan, run := edge.sfuPlan, operation.run
+		var err error
+		s.router.io(func() { err = run() })
+		if s.voices[roomID] != v || v.connections[edge.logicalID] != edge {
+			return
 		}
+		if edge.sfuPlan != plan {
+			continue
+		}
+		if err != nil {
+			s.failVoicePlan(roomID, edge)
+		}
+		return
+	}
+}
+
+func (s *Server) failVoicePlan(roomID string, edge *voiceEdge) {
+	edge.sfuPlan = nil
+	if sess, _ := s.voiceSession(roomID, edge.child); sess != nil && sess.sessionID == edge.childSession {
+		s.voiceError(sess, "connection-unavailable")
 	}
 }
 
 func (s *Server) closeVoiceEdge(roomID string, edge *voiceEdge) {
 	if edge.transport == "sfu" {
 		if runtime := s.voiceRuntime(); runtime != nil {
-			_ = runtime.CloseVoice(roomID, edge.child, edge.childSession, edge.id)
+			closePhysical := runtime.CloseVoice(roomID, edge.child, edge.childSession, edge.id)
+			if operation := edge.sfuWork; operation != nil {
+				closeTransport := closePhysical
+				closePhysical = func() error {
+					var err error
+					if closeTransport != nil {
+						err = closeTransport()
+					}
+					<-operation.done
+					return err
+				}
+			}
+			if closePhysical != nil {
+				key := sfu.SubscriptionFence{ResourceFence: sfu.ResourceFence{RoomID: roomID, PublicationGeneration: edge.id}, ConnectionID: edge.id}
+				task := &sfuDrainTask{kind: drainVoice, fence: key, closePhysical: closePhysical}
+				s.router.sfuDrainTasks.Set(key, task)
+				s.router.runSfuDrain(key, task)
+			}
 		}
 	}
 }

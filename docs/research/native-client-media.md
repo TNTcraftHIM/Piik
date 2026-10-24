@@ -16,6 +16,15 @@ and exclusion retained the second with under 0.04 of the excluded tone. Target
 exit retired capture in about 42 ms; attempting the stale identity failed.
 No raw audio was saved. The extended capability probe completed in 300 ms.
 
+On 2026-10-24, a held optional audio query reproduced the helper exceeding Go's
+three-second discovery deadline and losing otherwise available video capability.
+Windows now runs optional audio queries independently alongside video
+and adapter discovery, with a shared one-second wait budget starting at probe
+entry. Each worker owns its COM apartment and results inside the one-shot
+probe process; live audio startup keeps its existing budget. Held-query controls
+retain video output, and a real helper through Go discovery completed in 163 ms
+with video and all three audio capabilities available.
+
 A parent/child follow-up used a silent selected parent with a 1900 Hz child,
 plus an independent 2900 Hz process. Process-scoped reference amplitudes were
 about 1799; exclusion retained the independent tone at 1800 and reduced the
@@ -608,14 +617,13 @@ a corrected SDP interpretation, not evidence that all Firefox sharing lost audio
 
 ## Media Capability Extension Assessment
 
-Planning direction reviewed 2026-10-09 for 2.0; the design below is a proposal,
-not a replacement for the current contract or profile decision above. The owner
-reopened numeric media requests and capability negotiation as one coherent
-extension. The published resolution enums are enforced
-by both signaling readers and Native control, while capture admission separately
-bounds dimensions. Native capture, forwarding and SFU declarations also admit
-specific encoded formats. Removing one validator would leave these consumers
-inconsistent.
+The October 9 review developed the numeric media extension later published in
+2.0. The rationale and dated implementation checks below retain that transition;
+[media quality](../standards/media-quality.md) and [versioning](../standards/versioning.md)
+own the current contract. The preceding 1.x resolution enums were enforced by
+both signaling readers and Native control, while capture admission separately
+bounded dimensions. Coordinating those consumers preserved resource admission
+when the public request became numeric.
 
 Source review also distinguishes output geometry from a quality limit. The
 published Windows path fits content into the selected landscape raster with a
@@ -691,11 +699,11 @@ App discovery advertises size, pixel-count, macroblock-rate, frame-rate and bitr
 size/rate combinations as operation failures without retiring the control
 session. Removing an enum is not permission to allocate arbitrary media resources.
 
-The Windows H.264 UI gate switches from 1080p60 to the 4K ceiling, then applies
-a non-preset 960x600 ceiling during the live share. Its earlier 30 fps run
-observed fitted output without replacing the Viewer media object. The gate now
-expects the 60 fps control and needs rerunning. The captured window is smaller
-than 4K, so this verifies settings/lifecycle, not physical 4K capture.
+The initial Windows H.264 UI gate switched from 1080p60 to the 4K ceiling, then
+applied a non-preset 960x600 ceiling during the live share. Its 30 fps run
+observed fitted output without replacing the Viewer media object. The later
+60 fps acceptance is recorded below. The captured window was smaller than 4K,
+so this verified settings/lifecycle, not physical 4K capture.
 Preset changes, paused updates, source recovery/replacement and subsequent
 sharing still pass. Value-based comparison prevents an identical deserialized
 size from turning an audio-only edit into a video update. Numeric preference
@@ -1002,20 +1010,20 @@ inherently require a major; breaking an existing public contract does. Evaluate
 the Browser/App/Server and mixed-peer flows before freezing a replacement
 contract; avoid a general compatibility framework.
 
-### Audio And UI Proposal
+### Numeric Audio And UI Rationale
 
 [#462](https://github.com/TNTcraftHIM/Piik/pull/462) requests 256/320 kbps Opus.
 The values are permitted by [RFC 7587](https://www.rfc-editor.org/rfc/rfc7587.html#section-6.1),
 whose receive-rate parameter spans 6,000..510,000 bit/s. This is a codec boundary,
-not a recommended default or proof of audible benefit. The current preset names
-also travel in authentication and Native commands: adding its two enum values
-causes the actual v1.9.2 readers to terminate those sessions. The PR's compatible
-release claim is therefore incorrect even though its audio use case is valid.
+not a recommended default or proof of audible benefit. The v1.9.2 preset names
+also traveled in authentication and Native commands: adding its two enum values
+caused those readers to terminate their sessions. That extension therefore
+required the later contract change despite its valid audio use case.
 
-The 2.0 candidate uses one numeric audio-bitrate ceiling through capture, sender,
-receiver and SFU; derive existing preset labels locally. Align receive admission
-with codec support instead of the largest UI shortcut. Keep the existing default
-while comparing actual Opus output and listening results for higher ceilings.
+The published 2.0 extension uses one numeric audio-bitrate ceiling through
+capture, sender, receiver and SFU, with preset labels derived locally. Receive
+admission follows codec support separately from UI shortcuts. The default was
+retained; actual Opus output and listening quality remain distinct evidence.
 The [numeric audio controls](./browser-screen-audio-quality.md#numeric-bitrate-assessment)
 establish local 256/320 kbps encoding and Browser reception, with separate
 receive-limit enforcement and a 320 kbps implementation ceiling. Full-range
@@ -1037,14 +1045,12 @@ supports a simple/default entry with further controls; Piik need not reproduce
 OBS's full output configuration. Existing visual/tooltip owners still apply,
 including narrow screens, both themes and visual mode.
 
-Start with numeric audio through the existing pipeline, then portrait/ultrawide
-geometry and 4K as a second concrete use case. A 4K path must review all platform
-capture/decoder bounds, encoded-frame limits and SFU admission. Admission and output must be tested
-at the actual profile, not inferred from a codec list. Check live changes,
-late/limited Viewers and relays, failure cleanup and resource rejection before
-freezing the 2.0 contract. Prefer a clear 1.x mismatch over a general legacy
-adapter. Future presets inside supported numeric semantics need no new enum;
-new formats still require actual implementation and an advertised capability.
+The implementation proceeded through numeric audio, aspect-preserving geometry
+and larger picture ceilings. The controls above record live changes, mixed
+receivers, cleanup and bounded rejection at their measured profiles. The 2.0
+contract retained an explicit 1.x mismatch. Future presets within its numeric
+semantics need no new enum; new formats still require an implementation and
+advertised capability under the current versioning owner.
 
 ## Implementation Boundary
 

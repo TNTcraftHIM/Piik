@@ -155,11 +155,11 @@ func (c *Controller) beginPublicationAttach(input BeginInput, op *operation, che
 	return BeginResult{Accepted: true, Operation: c.operationSnapshot(), Released: checked.released}
 }
 
-// One attempt per exact edge/publication is sufficient for optional attachment.
+// Optional attachment gets one attempt per edge, publication and endpoint sessions.
 // Failure records an unavailable publication, without consuming or resetting
 // the healthy room transport's NAT opportunity. A new edge or publication gets
-// its own attempt; unrelated reconciles never retry this failed attachment.
-func (c *Controller) finishPublicationAttach(op *operation, ready bool) {
+// its own attempt, as do new endpoint sessions; unrelated reconciles never retry it.
+func (c *Controller) finishPublicationAttach(op *operation, ready bool) []string {
 	edge, _ := c.upstreamByViewer.Get(op.childPeerID)
 	edge.VideoGeneration, edge.VideoConnectionID, edge.VideoReady = op.videoGeneration, "", ready
 	if ready {
@@ -172,6 +172,24 @@ func (c *Controller) finishPublicationAttach(op *operation, ready bool) {
 	}
 	c.operation = nil
 	c.touchFacts()
+	if ready {
+		return nil
+	}
+	// Dependents cannot attach this picture until their upstream recovers.
+	// Report that terminal result without retiring voice or spending their own
+	// untried attachment. A proven picture ends the affected branch.
+	failed := []string{op.childPeerID}
+	for index := 0; index < len(failed); index++ {
+		for _, peerID := range c.childrenOf(failed[index]) {
+			child, _ := c.participants.Get(peerID)
+			edge, _ := c.upstreamByViewer.Get(peerID)
+			if child != nil && child.sessionIs(edge.ChildSessionID) && !child.departureConfirmed &&
+				edge.Usable && edge.PhysicalActive && !c.sourceVideoReady(peerID) {
+				failed = append(failed, peerID)
+			}
+		}
+	}
+	return failed
 }
 
 func (c *Controller) validatePublicationAttach(op *operation, nowMs int64, failed *CandidateGuard) validation {
@@ -184,8 +202,7 @@ func (c *Controller) validatePublicationAttach(op *operation, nowMs int64, faile
 	result.consumedGuard = failed != nil && op.current != nil && c.guardMatches(*failed, op, op.current)
 	result.expired = nowMs >= op.deadlineAtMs
 	if result.expired || result.consumedGuard {
-		c.finishPublicationAttach(op, false)
-		result.exhaustedChildPeerID = op.childPeerID
+		result.exhaustedPeerIDs = c.finishPublicationAttach(op, false)
 	}
 	return result
 }

@@ -49,13 +49,16 @@ type VoiceMediaEvent struct {
 	Description                             *VoiceDescription
 	Candidate                               *webrtc.ICECandidateInit
 	State                                   webrtc.PeerConnectionState
+	// Recheck transport evidence after the receiver acquires its authority lock.
+	IsCurrentState func() bool
 }
 
-// VoiceRuntime leaves the existing video runtime and its implementations unchanged.
+// VoiceRuntime commits plans and retirement synchronously. The returned work
+// performs SDP or physical close outside the caller's authority mutex.
 type VoiceRuntime interface {
-	ConfigureVoice(VoiceConnectionPlan, func(VoiceMediaEvent)) error
+	ConfigureVoice(VoiceConnectionPlan, func(VoiceMediaEvent)) (func() error, error)
 	SignalVoice(room, peer, session, connection string, signal VoiceSignal) error
-	CloseVoice(room, peer, session, connection string) error
+	CloseVoice(room, peer, session, connection string) func() error
 }
 
 type voiceKey struct{ room, peer, session, connection string }
@@ -100,21 +103,27 @@ func normalizeVoicePlan(plan VoiceConnectionPlan) (VoiceConnectionPlan, error) {
 	return plan, nil
 }
 
-func (media *Media) ConfigureVoice(plan VoiceConnectionPlan, emit func(VoiceMediaEvent)) error {
+// ConfigureVoice commits publication authority before returning SDP work. The
+// caller runs that work outside its authority lock; it uses the current plan.
+func (media *Media) ConfigureVoice(plan VoiceConnectionPlan, emit func(VoiceMediaEvent)) (func() error, error) {
 	plan, err := normalizeVoicePlan(plan)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if emit == nil {
-		return errors.New("voice callback is required")
+		return nil, errors.New("voice callback is required")
 	}
 	v := media.voice
 	v.mu.Lock()
 	if v.closed {
 		v.mu.Unlock()
-		return errors.New("voice media is closed")
+		return nil, errors.New("voice media is closed")
 	}
 	c := v.connections[plan.key()]
+	if c != nil && c.closed {
+		v.mu.Unlock()
+		return nil, errors.New("voice connection is retiring")
+	}
 	if c == nil {
 		// One committed connection per member. The room's one transition may
 		// replace both the Host junction and its first child connection.
@@ -126,12 +135,12 @@ func (media *Media) ConfigureVoice(plan VoiceConnectionPlan, emit func(VoiceMedi
 		}
 		if roomCount >= maxVoicePublications+2 {
 			v.mu.Unlock()
-			return errors.New("voice connection capacity is exhausted")
+			return nil, errors.New("voice connection capacity is exhausted")
 		}
 		c, err = newVoiceConnection(v, plan, emit)
 		if err != nil {
 			v.mu.Unlock()
-			return err
+			return nil, err
 		}
 		v.connections[plan.key()] = c
 	}
@@ -150,7 +159,7 @@ func (media *Media) ConfigureVoice(plan VoiceConnectionPlan, emit func(VoiceMedi
 		}
 	}
 	v.mu.Unlock()
-	return c.negotiate(false)
+	return func() error { return c.negotiate(false) }, nil
 }
 
 func (media *Media) SignalVoice(room, peer, session, connection string, signal VoiceSignal) error {
@@ -164,25 +173,29 @@ func (media *Media) SignalVoice(room, peer, session, connection string, signal V
 	return c.signal(signal)
 }
 
-// A delayed retirement cannot close another connection or a replacement session.
-func (media *Media) CloseVoice(room, peer, session, connection string) error {
+// CloseVoice synchronously revokes delivery, retaining the capacity charge until
+// the caller runs the returned physical close and reader join outside authority.
+func (media *Media) CloseVoice(room, peer, session, connection string) func() error {
 	v := media.voice
 	v.mu.Lock()
 	c := v.connections[voiceKey{room, peer, session, connection}]
 	if c != nil {
-		delete(v.connections, c.key)
+		c.retireLocked()
 	}
 	v.mu.Unlock()
 	if c == nil {
 		return nil
 	}
-	return c.close()
+	return c.close
 }
 
 func (v *voiceMedia) close() error {
 	v.mu.Lock()
 	v.closed = true
 	connections := v.connections
+	for _, c := range connections {
+		c.retireLocked()
+	}
 	v.connections = make(map[voiceKey]*voiceConnection)
 	v.mu.Unlock()
 	var err error

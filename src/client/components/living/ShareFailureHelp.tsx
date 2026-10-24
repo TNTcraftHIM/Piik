@@ -18,16 +18,21 @@ export function ShareFailureHelp({ status, label, code, checks }: {
   const titleId = useId();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+  const copyRequest = useRef<object | null>(null);
   const hint = (status.tooltip ?? status.comic)!;
   const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
     `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, open);
   return <>
     <StatusIndicator status={status} label={label} onActivate={() => {
+      copyRequest.current = null;
       setCopied("idle");
       setOpen(true);
       dialog.current?.showModal();
     }} />
-    <dialog ref={dialog} className="lr-share-help" aria-labelledby={titleId} onClose={() => setOpen(false)}>
+    <dialog ref={dialog} className="lr-share-help" aria-labelledby={titleId} onClose={() => {
+      copyRequest.current = null;
+      setOpen(false);
+    }}>
       {open && <>
         <header><h2 id={titleId}>{vis && <Glyph name="alert" size={20} />}<span className={vis ? "visually-hidden" : undefined}>{t("shareHelp.title")}</span></h2>
           <button type="button" className="lr-btn is-dense is-quiet" aria-label={t("common.close")} autoFocus onClick={() => dialog.current?.close()}>
@@ -50,8 +55,10 @@ export function ShareFailureHelp({ status, label, code, checks }: {
           <button type="button" className="lr-btn" aria-label={t(copied === "done" ? "shareHelp.copied" : "shareHelp.copy")} onClick={() => {
             // Deliberately excludes URLs, invitation credentials and raw exceptions.
             const version = import.meta.env.VITE_PIIK_VERSION ?? "development";
+            const request = copyRequest.current = {};
             void Promise.resolve().then(() => navigator.clipboard.writeText(`Piik Web ${version}\n${label}\n${code}`)).then(
-              () => setCopied("done"), () => setCopied("failed"));
+              () => { if (copyRequest.current === request) setCopied("done"); },
+              () => { if (copyRequest.current === request) setCopied("failed"); });
           }}><Glyph name={copied === "done" ? "check" : "copy"} size={16} />{!vis && t(copied === "done" ? "shareHelp.copied" : "shareHelp.copy")}</button>
         </nav>
         <span role="status">{copied === "failed" ? t("shareHelp.copyFailed") : ""}</span>

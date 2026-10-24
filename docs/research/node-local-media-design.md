@@ -356,8 +356,9 @@ or three on 3478/3479/3480 when prediction is enabled. `STUN_LISTEN_HOST`
 defaults to `0.0.0.0` and is separate from HTTP binding. Existing `STUN_URLS`
 remain advertised discovery addresses: their DNS may intentionally differ
 from the Web origin, so they must not be resolved as local bind addresses.
-The Local App constructor supplies no listeners; using public discovery
-does not turn an App into a public STUN service.
+Local LAN mode binds its Binding-only STUN listener on the selected LAN address
+and App UDP port, including routed virtual LANs. Public-link mode uses external
+discovery destinations instead; it does not expose a public App STUN service.
 
 The application binds HTTP and every required UDP listener before opening the
 room database or accepting signaling. Failed startup returns all sockets;

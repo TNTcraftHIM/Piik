@@ -376,6 +376,14 @@ func TestNeverTreatsOneDegradedHostEdgeAsSfuFanoutPressure(t *testing.T) {
 	routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"))
 	routes.hydrateHostPublication("publication_generation_12345678", res("publication_resource"), "")
 	routes.hydrateEdge(B, sfuEdge("publication_generation_12345678", "b_from_sfu", "b_subscription"))
+	// Isolate quality convergence: this established SFU relay has already tried
+	// its own Peer opportunities, while remaining eligible to supply A.
+	for _, plan := range routes.buildCandidates(B, false) {
+		if plan.Tuple.Kind == UpstreamPeer {
+			routes.consumeCandidateOpportunity(B, plan)
+		}
+	}
+
 	observePersistentDegraded(t, routes, A, "a_from_host", 99)
 	observePersistentSfuHealthy(t, routes, "publication_generation_12345678", routes.Snapshot().Revision, 103)
 	operation := must(t, routes.Reconcile(104).Operation)
@@ -1136,6 +1144,14 @@ func TestAcceptsSfuFedPeerParentFromDecodedProgressWithoutFreezeStats(t *testing
 	routes.hydrateEdge(A, peerEdge(HOST, "a_from_host"))
 	routes.hydrateHostPublication("publication_generation_12345678", res("publication_resource"), "")
 	routes.hydrateEdge(B, sfuEdge("publication_generation_12345678", "b_from_sfu", "b_subscription"))
+	// Isolate quality convergence: this established SFU relay has already tried
+	// its own Peer opportunities, while remaining eligible to supply A.
+	for _, plan := range routes.buildCandidates(B, false) {
+		if plan.Tuple.Kind == UpstreamPeer {
+			routes.consumeCandidateOpportunity(B, plan)
+		}
+	}
+
 	revision := routes.Snapshot().Revision
 	observePersistentSfuHealthy(t, routes, "publication_generation_12345678", revision, 100)
 	metrics := qualityMetrics()
@@ -1772,6 +1788,15 @@ func TestAdvancesExactDirectConvergenceFailuresWithoutFailingSfu(t *testing.T) {
 		addViewer(routes, peerID, 1, nil)
 		routes.hydrateEdge(peerID, sfuEdge("publication_1", peerID+"_sfu", peerID+"_subscription"))
 	}
+	// These fixture SFU relays already exhausted their own upstream opportunities.
+	for _, peerID := range []string{B, C} {
+		for _, plan := range routes.buildCandidates(peerID, false) {
+			if plan.Tuple.Kind == UpstreamPeer {
+				routes.consumeCandidateOpportunity(peerID, plan)
+			}
+		}
+	}
+
 	addViewer(routes, A, 0, ms(0))
 	acquisition := must(t, routes.Reconcile(0).Operation)
 	headStartTuple := acquisition.Candidates[0].Tuple
@@ -1806,6 +1831,15 @@ func TestRoundRobinsBackgroundDirectConvergenceBetweenSfuViewers(t *testing.T) {
 	for _, peerID := range []string{B, C} {
 		addViewer(routes, peerID, 2, nil)
 		routes.hydrateEdge(peerID, sfuEdge("publication", peerID+"_sfu", peerID+"_subscription"))
+	}
+
+	// These fixture SFU relays already exhausted their own upstream opportunities.
+	for _, peerID := range []string{B, C} {
+		for _, plan := range routes.buildCandidates(peerID, false) {
+			if plan.Tuple.Kind == UpstreamPeer {
+				routes.consumeCandidateOpportunity(peerID, plan)
+			}
+		}
 	}
 
 	nowMs := int64(0)

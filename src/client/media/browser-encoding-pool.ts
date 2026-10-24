@@ -274,8 +274,8 @@ export class BrowserEncodingPool {
               member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
               member.carrier = true;
               member.replacement = member.configureCarrier().then((applied) => {
-                if (!member.disposed && !applied) this.failSource(member.source);
-              }).catch(() => this.failSource(member.source)).finally(() => { member.replacement = undefined; });
+                if (!applied) this.fallback(member);
+              }).catch(() => this.fallback(member)).finally(() => { member.replacement = undefined; });
               this.prune();
             }, (metadata) => {
               if (member.disposed || member.pending !== pending) return false;

@@ -7,6 +7,7 @@ import { AppQualityPreference } from "../src/client/native/quality-preference";
 import {
   nativeEventSchema,
   nativeHealthSchema,
+  nativeRelayCapacity,
   NATIVE_CLIENT_PROTOCOL,
   NATIVE_CLIENT_PORT_START,
   NATIVE_CLIENT_PORT_END,
@@ -97,13 +98,15 @@ describe("native App private wire", () => {
     expect(nativeHealthSchema.parse({ ...health, nativeMedia }).nativeMedia).toMatchObject(nativeMedia);
     const stronger = { ...nativeMedia, maxVideoResolution: { width: 32768, height: 32768 },
       maxVideoPixels: 32768 ** 2, maxVideoFramerate: 120, maxVideoBitrate: 100_000_000,
-      maxAudioBitrate: 960_000 };
-    expect(nativeHealthSchema.parse({ ...health, nativeMedia: stronger }).nativeMedia).toMatchObject(stronger);
+      maxAudioBitrate: 960_000, maxRelayChildren: 32 };
+    const strongerHealth = nativeHealthSchema.parse({ ...health, nativeMedia: stronger });
+    expect(strongerHealth.nativeMedia).toMatchObject(stronger);
+    expect(nativeRelayCapacity(20, strongerHealth)).toBe(20);
     expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoPixels: 0 } }).success).toBe(false);
     expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoMacroblocksPerSecond: -1 } }).success).toBe(false);
     expect(nativeHealthSchema.parse({ ...health, nativeMedia: { ...nativeMedia, maxRelayChildren: 20 } })
       .nativeMedia.maxRelayChildren).toBe(20);
-    for (const maxRelayChildren of [0, 21, 1.5]) {
+    for (const maxRelayChildren of [0, 0x1_0000_0000, 1.5]) {
       expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxRelayChildren } }).success).toBe(false);
     }
   });

@@ -1,3 +1,5 @@
+import { bindSvgReplayOnPointerEnter } from '../../src/client/ui/animation.ts';
+
 // Shared geometry for the website, film and original demonstration scenes.
 export function mascotMarkup(id, fill = 'none', animated = false) {
   const part = animated ? 'lr-brand' : 'mascot';
@@ -27,13 +29,10 @@ export function mountBrands() {
     graphic.querySelector('.lr-brand-feet').addEventListener('animationend', event => {
       if (event.animationName === 'lr-brand-draw') graphic.classList.remove('is-drawing');
     });
-    const replay = () => {
+    bindSvgReplayOnPointerEnter(graphic, () => {
       graphic.classList.add('is-drawing');
       // Commit the hidden gesture before restarting the drawing timeline.
       void graphic.getBoundingClientRect();
-      graphic.getAnimations({ subtree: true }).forEach(animation => { animation.currentTime = 0; });
-    };
-    link.addEventListener('pointerenter', replay);
-    link.addEventListener('focus', replay);
+    });
   });
 }

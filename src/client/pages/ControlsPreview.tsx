@@ -82,7 +82,7 @@ export function ControlsPreview() {
   const [invalid, setInvalid] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(displayPreview);
   const [sourceRevision, setSourceRevision] = useState(0);
-  const [sourceState, setSourceState] = useState<NativeSourceList["kind"] | "empty">("ready");
+  const [sourceState, setSourceState] = useState<NativeSourceList["kind"] | "refreshing" | "empty">("ready");
   const [captureBorderAvailable, setCaptureBorderAvailable] = useState(true);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
   const [roomCode, setRoomCode] = useState("6020");
@@ -279,9 +279,9 @@ export function ControlsPreview() {
     <section id="source-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">06</span><div><h2>{en ? "Choose a picture" : "挑一块画面。"}</h2>
         <p>{en ? "The actual source selector, with sample windows and cameras. Selection only updates this preview." : "正式的画面选择器，放入了示例窗口和摄像头；选择只影响这张预览。"}</p></div></header>
-      <div className="cp-tools">{(["ready", "loading", "unavailable", "incompatible", "unsupported", "failed", "empty"] as const).map((value, index) => <Chip key={value}
+      <div className="cp-tools">{(["ready", "loading", "refreshing", "unavailable", "incompatible", "unsupported", "failed", "empty"] as const).map((value, index) => <Chip key={value}
         title={value} selected={sourceState === value} onClick={() => { setSourceState(value); setSourceOpen(true); }}>
-        {en ? ["Available", "Loading", "App unavailable", "Update needed", "Capture unavailable", "Read failed", "Empty list"][index] : ["正常", "读取中", "App 未连接", "需要更新", "无法采集", "读取失败", "空列表"][index]}</Chip>)}
+        {en ? ["Available", "Loading", "Refreshing", "App unavailable", "Update needed", "Capture unavailable", "Read failed", "Empty list"][index] : ["正常", "读取中", "刷新中", "App 未连接", "需要更新", "无法采集", "读取失败", "空列表"][index]}</Chip>)}
         <SwitchItem checked={captureBorderAvailable} onChange={setCaptureBorderAvailable}
           label={en ? "Windows border control" : "Windows 边框控制"} />
         <a className="lr-btn" href="/__tooltip-preview?source=display#source-preview" onClick={() => {
@@ -294,7 +294,8 @@ export function ControlsPreview() {
       <div className="cp-stage"><StageTv hasEntry label={t("host.sourcePicker.title")}>
         <img className="cp-poster" src={POSTER} alt="" />
         {sourceOpen ? <CaptureSourcePicker key={sourceRevision} nativeSources={sourceState === "empty" ? { ...SOURCES, sources: [], captureBorderControl: captureBorderAvailable }
-          : sourceState === "ready" ? { ...SOURCES, captureBorderControl: captureBorderAvailable } : { kind: sourceState }}
+          : sourceState === "ready" ? { ...SOURCES, captureBorderControl: captureBorderAvailable }
+          : sourceState === "refreshing" ? { kind: "loading", appDetected: true } : { kind: sourceState }}
           initialShowCaptureBorder={showCaptureBorder}
           initialTab={displayPreview ? "display" : "window"}
           onBrowser={() => { setSourceOpen(false); notify(); }}
@@ -302,7 +303,7 @@ export function ControlsPreview() {
           loadCameras={previewCameras}
           onAppConnected={() => setSourceState("ready")}
           onNative={(_target, _audio, showBorder) => { setShowCaptureBorder(showBorder); setSourceOpen(false); notify(); }}
-          onPreview={previewSource} onRefresh={() => setSourceState("ready")} onCancel={() => setSourceOpen(false)} />
+          onPreview={previewSource} onRefresh={() => setSourceState("refreshing")} onCancel={() => setSourceOpen(false)} />
           : <div className="cp-stage-action"><Btn icon="cast" tone="primary" title="host.start" cap="host.start" hint="hint-share-start" onClick={() => setSourceOpen(true)} /></div>}
       </StageTv></div>
     </section>

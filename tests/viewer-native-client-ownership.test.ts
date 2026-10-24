@@ -3,12 +3,13 @@ import { createContext, runInContext } from "node:vm";
 import ts from "typescript";
 import { expect, it, vi } from "vitest";
 import { NativeCompatibilityError } from "../src/client/native/client";
+import { NativeClientConnection } from "../src/client/native/client-connection";
 
 // Exercise the page's connection owner without mounting media or room signaling.
 const source = ts.createSourceFile("ViewerPage.tsx", readFileSync(
   new URL("../src/client/pages/ViewerPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const owners = new Set(["nativeClientConnection", "nativeViewerAvailable", "acquireNativeClient", "releaseNativeClient"]);
+const owners = new Set(["nativeConnection", "nativeViewerAvailable", "acquireNativeClient", "releaseNativeClient"]);
 const declarations: string[] = [];
 let denyAccess = "";
 function collect(node: ts.Node): void {
@@ -44,7 +45,7 @@ function control() {
 function fixture(launchedByClient = true) {
   const connect = vi.fn(async (_options: { signal: AbortSignal; waitForPermission: boolean }): Promise<ReturnType<typeof control> | null> => null);
   const context = createContext({
-    clientActivationRef: { current: launchedByClient }, NativeClient: { connect }, AbortController,
+    clientActivationRef: { current: launchedByClient }, NativeClient: { connect }, NativeClientConnection, AbortController,
     messageAuthority: { invalidate: vi.fn() }, setAssignedRoute: vi.fn(),
     clearViewerSfuRoute: vi.fn(), clearPeerState: vi.fn(), clearParticipantPresence: vi.fn(),
     dispatchPresentation: vi.fn(),

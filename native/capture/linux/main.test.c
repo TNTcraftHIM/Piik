@@ -59,6 +59,16 @@ static void check_encoder_admission_and_control(void) {
   g_object_get(encoder, "bitrate", &applied, NULL);
   g_assert_cmpuint(applied, ==, 1000000);
   g_assert_null(run.failure);
+  // The same rejected codec setting retires an optional slot independently,
+  // but cannot admit a run whose required original encoder failed.
+  run.original_output = 1;
+  run.outputs[0].profile.bit_rate = 50000001;
+  run.outputs[0].enabled = TRUE;
+  g_assert_true(prepare_encoder(&run.outputs[0]));
+  g_assert_true(run.outputs[0].failed);
+  g_assert_false(run.outputs[0].enabled);
+  run.original_output = 0;
+  g_assert_false(prepare_encoder(&run.outputs[0]));
   g_mutex_clear(&run.lock);
   gst_object_unref(encoder);
 }
@@ -226,8 +236,8 @@ static void check_encoder_timestamp_segment(GstClockTime offset) {
   g_assert_no_error(error);
   GstElement *source = gst_bin_get_by_name(GST_BIN(pipeline), "source");
   GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), "output");
-  CaptureRun run = {.active = TRUE, .last_input_timestamp = GST_CLOCK_TIME_NONE,
-                    .profile = {.frame_rate = 30}};
+  CaptureRun run = {.last_input_timestamp = GST_CLOCK_TIME_NONE,
+                    .profile = {.width = 1280, .height = 720, .frame_rate = 30}};
   g_mutex_init(&run.lock);
   VideoOutput output = {.run = &run, .enabled = TRUE,
       .activation_timestamp = GST_CLOCK_TIME_NONE, .key_timestamp = GST_CLOCK_TIME_NONE,
@@ -269,7 +279,7 @@ static void check_encoder_timestamp_segment(GstClockTime offset) {
   char *bytes = NULL;
   gsize size = 0;
   g_assert_true(g_file_get_contents(frame_path, &bytes, &size, NULL));
-  g_assert_cmpuint(size, ==, 64 + sizeof(h264));
+  g_assert_cmpuint(size, >, 96 + sizeof(h264));
   g_assert_cmpint(bytes[5], ==, 5);
   g_assert_cmpuint(read_be((guint8 *)bytes + 8, 8), ==, 3 * GST_SECOND / 100);
   g_assert_cmpint(bytes[37], ==, 2);
@@ -278,6 +288,8 @@ static void check_encoder_timestamp_segment(GstClockTime offset) {
   g_assert_cmpuint(read_be((guint8 *)bytes + 56, 2), ==, 640);
   g_assert_cmpuint(read_be((guint8 *)bytes + 58, 2), ==, 480);
   g_assert_cmpmem(bytes + 64, sizeof(h264), h264, sizeof(h264));
+  g_assert_cmpint(bytes[64 + sizeof(h264) + 5], ==, 3);
+  g_assert_nonnull(strstr(bytes + 96 + sizeof(h264), "\"width\":640,\"height\":480"));
   g_assert_cmpuint(output.activation_timestamp, ==, 3 * GST_SECOND);
   g_assert_nonnull(request);
   GstClockTime pts, running_time;

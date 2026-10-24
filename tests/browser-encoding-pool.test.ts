@@ -19,7 +19,7 @@ function stats(row: Record<string, unknown>, negotiated: RTCRtpCodec = codec): R
   ]) as unknown as RTCStatsReport;
 }
 
-function member(budget = 2_000_000) {
+function member(budget = 2_000_000, configureCarrier = async () => true) {
   const demand = { budget, codec: { ...codec } as RTCRtpCodec };
   let producerId: string | null = null;
   const select = vi.fn((id: string, _requestKey: () => Promise<void>, selected: () => void,
@@ -37,7 +37,7 @@ function member(budget = 2_000_000) {
   const connection = { connectionState: "connected", getStats: async () => stats({ targetBitrate: demand.budget }, demand.codec) };
   const fatal = vi.fn();
   const handle = pool.create(source, {} as RTCRtpSender, connection as RTCPeerConnection, profile,
-    encoded, async () => true, async () => undefined, fatal)!;
+    encoded, configureCarrier, async () => undefined, fatal)!;
   return { demand, select, cancelSelection, fatal, handle, encoded, producerId: () => producerId };
 }
 
@@ -86,6 +86,31 @@ afterEach(() => {
 });
 
 describe("Browser encoding pool ownership", () => {
+  it.each(["false", "rejected"])("isolates a connection's %s carrier attachment from its shared source", async (outcome) => {
+    const healthy = member();
+    let finish!: (applied: boolean) => void, reject!: (error: Error) => void;
+    const configure = vi.fn().mockImplementationOnce(() => new Promise<boolean>((yes, no) => { finish = yes; reject = no; }))
+      .mockResolvedValue(true);
+    const failed = member(2_000_000, configure);
+    await sample(4);
+    const producer = [...producers.keys()][0]!;
+    expect(failed.producerId()).toBe(producer.id);
+
+    if (outcome === "false") finish(false);
+    else reject(new Error("connection sender retired"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(failed.encoded.passthrough).toHaveBeenCalledOnce();
+    expect(configure).toHaveBeenCalledTimes(2);
+    expect(failed.fatal).not.toHaveBeenCalled();
+    expect(healthy.encoded.passthrough).not.toHaveBeenCalled();
+    expect(healthy.producerId()).toBe(producer.id);
+    expect(producer.dispose).not.toHaveBeenCalled();
+    const later = member();
+    expect(later.handle).not.toBeNull();
+    await sample(3);
+    expect(later.producerId()).toBe(producer.id);
+  });
+
   it.each(["joining", "active", "changed"])("isolates codec fallback for a %s member from healthy siblings", async (state) => {
     const healthy = member();
     let limited = state === "joining" ? null : member();

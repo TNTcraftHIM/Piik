@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PawnSvg, type PawnState } from "../components/living/Pawn";
 import { participantColor } from "../components/living/participant-color";
 import { SwitchItem } from "../components/living/primitives";
@@ -21,6 +22,11 @@ export function PawnAppearancePreview({ guides, onGuides }: {
 }) {
   const { lang } = useCopy();
   const en = lang === "en";
+  const [voice, setVoice] = useState(true);
+  const [microphone, setMicrophone] = useState(true);
+  const [deafened, setDeafened] = useState(false);
+  const [collaboration, setCollaboration] = useState(true);
+  const [host, setHost] = useState(false);
   return <div id="pawn-appearance-preview" className="cp-pawn-preview" data-guides={guides || undefined}>
     <div className="cp-tools">
       <h3>{en ? "Participant states" : "人物状态"}</h3>
@@ -28,6 +34,22 @@ export function PawnAppearancePreview({ guides, onGuides }: {
     </div>
     <p>{en ? "The microphone boom unfolds when unmuted and folds up when muted. The mouse uses the remote-control toolbar symbol."
       : "开麦时伸出麦克风杆，闭麦时折起。鼠标复用播控同款图标。"}</p>
+    <div className="cp-pawn-motion">
+      <div className="cp-tools">
+        <SwitchItem checked={voice} onChange={setVoice} label={en ? "Voice" : "语音"} />
+        <SwitchItem checked={microphone} onChange={setMicrophone} label={en ? "Microphone" : "麦克风"} />
+        <SwitchItem checked={deafened} onChange={setDeafened} label={en ? "Deafened" : "闭耳机"} />
+        <SwitchItem checked={collaboration} onChange={setCollaboration} label={en ? "Collaborating" : "协作中"} />
+        <SwitchItem checked={host} onChange={setHost} label={en ? "Host" : "房主"} />
+      </div>
+      <div className="cp-pawn-motion-figures">
+        {[false, true].map(large => <figure key={String(large)} className={large ? "is-large" : undefined}>
+          <span className="cp-pawn-figure"><PawnSvg color={participantColor(SAMPLE_ID)} identity={SAMPLE_ID}
+            host={host} voice={voice ? { microphone, deafened } : undefined} collaboration={collaboration} /></span>
+          <figcaption>{large ? "2×" : "48px"}</figcaption>
+        </figure>)}
+      </div>
+    </div>
     <div className="cp-pawn-samples">
       {SAMPLES.map(({ label, state }, index) => <figure key={index}>
         <span className="cp-pawn-figure"><PawnSvg color={participantColor(SAMPLE_ID)} identity={SAMPLE_ID} {...state} /></span>

@@ -15,14 +15,15 @@ const (
 	drainPublication      drainKind = "publication"
 	drainSubscription     drainKind = "subscription"
 	drainVideoPublication drainKind = "video-publication"
+	drainVoice            drainKind = "voice"
 )
 
 // sfuDrainTask owns one asynchronous exact physical close.
 type sfuDrainTask struct {
-	kind       drainKind
-	fence      sfu.SubscriptionFence
-	operation  *drainOperation
-	closeVideo func() error
+	kind          drainKind
+	fence         sfu.SubscriptionFence
+	operation     *drainOperation
+	closePhysical func() error
 }
 
 // drainOperation is the promise runSfuDrain tracked: done is closed after err
@@ -134,6 +135,9 @@ func (r *router) sendFreshSfuConfig(participant authenticatedRouteParticipant) {
 	if publication == nil || !publication.PhysicalActive {
 		return
 	}
+	if publication.Resource != nil && r.sfuVideoRetiring(resourceFence(publication.Resource)) {
+		return
+	}
 	connectionID := publication.ConnectionID
 	revision := snapshot.Revision
 	if participant.role == protocol.RoleViewer {
@@ -200,6 +204,10 @@ func (r *router) prepareSfuVideoAttachment(roomID string, operation *route.Opera
 		!hasChild || child.SessionID != operation.ChildSessionID {
 		return
 	}
+	if r.sfuVideoRetiring(resourceFence(publication.Resource)) {
+		r.resourceWaiters.Set(roomID, struct{}{})
+		return
+	}
 	config := protocol.SfuConfigMessage{Type: "sfu-config", Revision: protocol.Int(operation.Current.Revision),
 		PublicationGeneration: publication.Generation}
 	config.ConnectionID = publication.ConnectionID
@@ -250,9 +258,20 @@ func (r *router) retireSfuVideoPublication(fence sfu.ResourceFence, connectionID
 		return
 	}
 	key := sfu.SubscriptionFence{ResourceFence: fence, ConnectionID: connectionID}
-	task := &sfuDrainTask{kind: drainVideoPublication, fence: key, closeVideo: closeVideo}
+	task := &sfuDrainTask{kind: drainVideoPublication, fence: key, closePhysical: closeVideo}
 	r.sfuDrainTasks.Set(key, task)
 	r.runSfuDrain(key, task)
+}
+
+// The logical room reservation also owns its retiring picture facet. Do not
+// issue a replacement until its exact physical close and reader join settle.
+func (r *router) sfuVideoRetiring(fence sfu.ResourceFence) bool {
+	for _, task := range r.sfuDrainTasks.All() {
+		if task.kind == drainVideoPublication && task.fence.ResourceFence == fence {
+			return true
+		}
+	}
+	return false
 }
 
 // scheduleSfuPublicationDrain deletes sibling subscription tasks during
@@ -302,15 +321,27 @@ func (r *router) runSfuDrain(key sfu.SubscriptionFence, task *sfuDrainTask) *dra
 		return operation
 	}
 	task.operation = operation
+	var videoDrains []*drainOperation
+	if task.kind == drainPublication {
+		for siblingKey, sibling := range r.sfuDrainTasks.All() {
+			if sibling.kind == drainVideoPublication && sibling.fence.ResourceFence == task.fence.ResourceFence {
+				videoDrains = append(videoDrains, r.runSfuDrain(siblingKey, sibling))
+			}
+		}
+	}
 	r.inflight++
 	go func() {
 		var err error
-		if task.kind == drainVideoPublication {
-			err = task.closeVideo()
+		if task.kind == drainVideoPublication || task.kind == drainVoice {
+			err = task.closePhysical()
 		} else if task.kind == drainPublication {
 			err = fallback.media.ClosePublication(task.fence.ResourceFence)
 		} else {
 			err = fallback.media.CloseSubscription(task.fence, task.fence.ConnectionID)
+		}
+		for _, retired := range videoDrains {
+			<-retired.done
+			err = errors.Join(err, retired.err)
 		}
 		r.mu.Lock()
 		defer r.mu.Unlock()
@@ -338,7 +369,16 @@ func (r *router) settleSfuDrain(key sfu.SubscriptionFence, task *sfuDrainTask, e
 				fallback.admission.CompleteSubscriptionDrain(task.fence)
 			}
 			r.sfuDrainTasks.Delete(key)
-			r.wakeResourceWaiters()
+			if task.kind != drainVoice {
+				r.wakeResourceWaiters()
+				if task.kind == drainVideoPublication && !r.closing {
+					if rm, _ := r.rooms.Get(task.fence.RoomID); rm != nil && rm.controller != nil {
+						r.prepareSfuVideoAttachment(task.fence.RoomID, rm.controller.Operation())
+					}
+				}
+			} else if !r.closing {
+				r.hooks.routesChanged(task.fence.RoomID)
+			}
 			return nil
 		}
 	}

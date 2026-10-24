@@ -1,19 +1,18 @@
 # WebRTC Adaptation And Encoder Reuse
 
-Reviewed: 2026-09-08. Source-backed review and synthetic VP8/H264 feasibility probes,
-not an accepted engine replacement. [ADR-0013](../adr/0013-embedded-node-local-media.md)
-owns the direct-child/shared-output model. [Status](../status.md) owns current
-adoption; this investigation asks whether retaining mature encoder
-control while sharing compatible encoding work is smaller and more complete
-than extending the current Native fixed-output candidate.
+Initial review: 2026-09-08. The early review and probes below compare the fixed-output
+candidate with mature encoder adaptation. The later [Windows product attachment](#windows-product-attachment)
+and [compatible output groups](#compatible-output-groups) record the published integration.
+[ADR-0013](../adr/0013-embedded-node-local-media.md) owns the direct-child/shared-output
+model; [media quality](../standards/media-quality.md) owns current behavior.
 
 ## Pinned Baseline
 
-The installed Chrome is 152.0.7977.82. Its [DEPS][chromium-deps] pins libwebrtc
+The initial review used Chrome 152.0.7977.82. Its [DEPS][chromium-deps] pins libwebrtc
 to `6f37672d358475cd17544121a12494da454d85fb`; WebRTC references below use that
 revision, not a floating upstream branch. Source shows available mechanisms,
 not which field trials or hardware encoder a particular runtime selected.
-The Piik comparison uses the `3c192ddd` candidate, not production.
+The initial Piik comparison used the `3c192ddd` candidate, not production.
 
 ## Actual Control Ownership
 
@@ -66,7 +65,7 @@ independent version of that resizing path. The [simulcast encoder adapter][simul
 coordinates per-output codecs, rates, scaling and keyframes; it is not a pool
 across independent PeerConnections. Adding a third preset cannot establish parity.
 
-## The Current Native Gap
+## Fixed-Output Native Gap (2026-09-08)
 
 `nativecapture.ScreenShareOutputs` constructs original plus half-size outputs
 at the same FPS. `mediaedge.Source.BeginFrame` chooses activation and lowers the
@@ -77,7 +76,7 @@ overload but do not automatically reduce the requested encoding work.
 
 Pion supplies transport; LiveKit media components supply BWE, forwarding,
 allocation, recovery and pacing. They do not supply the omitted libwebrtc raw
-source/encoder resource-adaptation chain. The current source-RTP cost adjustment
+source/encoder resource-adaptation chain. That candidate's source-RTP cost adjustment
 also is not the full `RtpVideoSender` overhead/protection calculation. These are
 concrete missing integrations, not evidence that either library is defective.
 The existing constrained-codec recovery evidence remains valid within its scope,
@@ -225,7 +224,7 @@ contain no frame payloads or private identifiers.
 - **The shared-encoder abstraction passes a narrow executable feasibility
   check when physical correction state shares that owner.** It reuses real
   encoding, retains stock spatial adaptation and can split/rejoin safely in
-  this VP8 case. No engine replacement has been selected or integrated.
+  this VP8 case. At that point, no engine replacement had been selected or integrated.
 - The group invokes correction on actual frames, with rate-write deduplication;
   stock VSE does so on rate/configuration/FPS updates. The algorithm is reused,
   but this cadence change must not be described as an otherwise identical move.
@@ -295,7 +294,7 @@ neither this one-output replay nor a no-extra-hop result silently changes the
 accepted envelope policy. The pool probe also has occasional split/rejoin work,
 so its healthy case is close to one encode per frame, not an unconditional bound.
 
-### Minimal Integration Direction
+### Initial Integration Direction
 
 Keep the existing Pion/LiveKit transport, estimator, pacer and projection per
 edge. Codec-only `VideoStreamEncoder::OnBitrateUpdated` accepts an external
@@ -660,9 +659,9 @@ or Chrome comparison. The 0.24 fps result belongs only to this helper. Keep
 overload acceptance open without changing stock thresholds or adding a custom
 CPU controller.
 
-## Replacement And Preservation Map
+## Initial Replacement And Preservation Map
 
-| Current owner | Treatment if a pool-backed engine is proved |
+| Owner at the initial review | Planned treatment |
 | --- | --- |
 | Go room/controller, embedded STUN, SFU service lifecycle | Preserve. A codec experiment does not alter authority, NAT policy or single-operation routing. |
 | LiveKit forwarding/BWE/projection and Pion transport | Keep for existing encoded forwarding. Replace a Native endpoint owner only if the new library actually assumes that responsibility; never run two controllers on one edge. |
@@ -675,28 +674,19 @@ Native room sessions, native ICE improvements and mixed Browser/App relay.
 Changing transport libraries does not automatically preserve these APIs. No
 unrelated page rewrite or platform-adapter deletion is justified by this review.
 
-## Integration Gates
+## Initial Integration Gate Record
 
-1. Reuse the now-executed native VSE/VP8 boundary; do not repeat a mock-only
-   factory probe or fetch a second full engine to show buffer reuse. Validate
-   hardware H264 and physical-resource feedback with the existing capture adapter.
-2. Measure source replacement, overload, real scheduling, perceptual quality,
-   transport overhead and actual CPU/GPU cost. Preserve correction/drop/resource
-   feedback with explicit owners before accepting the product integration.
-   The delayed-codec counterexample above means the per-sender factory cache
-   cannot be selected as-is; evaluate shared complete encoding pipelines before
-   adding another resource/membership coordination layer.
-3. Connect the separately verified encoded bypass and shared lower derivation
-   through that same representation owner. If preserving stock
-   control requires substantial VSE/source patches or a custom rate/quality
-   policy, report that cost instead of calling it a small factory adapter.
-4. The narrow pass permits an isolated implementation candidate, not release
-   approval. Select the integration through an ADR refinement after resolving
-   the remaining owners. Preserve the current candidate; never merge it solely
-   to manufacture a new branch base. Follow
-   the stable executable paths and serialized physical workload rules in
-   CONTRIBUTING. The quiet-source update defect has real WGC acceptance and the
-   owner closed the Win10 display report; distinct game failures require fresh evidence.
+The September 8 review required a complete shared encoding pipeline after the
+per-sender cache failed the delayed-codec control. It also required received
+encoded bypass, missing-output derivation, budget conversion, safe switching
+and source retirement to retain their existing owners. The Windows product
+attachment and compatible-output sections above record the resulting integration.
+
+That initial feasibility pass was not release approval. Current device,
+overload, perceptual-quality and public-network limits remain owned by
+[verification status](../verification-status.md); [TODO](../todo.md) owns pending
+work. The retained experiments and negative controls explain the selected
+boundary without prescribing another completed migration.
 
 [chromium-deps]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/DEPS
 [chromium-hint]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc

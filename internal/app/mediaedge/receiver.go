@@ -2,7 +2,6 @@ package mediaedge
 
 import (
 	"errors"
-	"io"
 	"log/slog"
 	"slices"
 	"strconv"
@@ -20,7 +19,7 @@ import (
 type ReceiverEvents struct {
 	// The final consumer must check current again after any event queues.
 	LocalCandidate  func(candidate *webrtc.ICECandidateInit, current func() bool)
-	ConnectionState func(state webrtc.PeerConnectionState, pair *SelectedPair, current func() bool)
+	ConnectionState func(state webrtc.PeerConnectionState, pair *SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool)
 	DataChannel     func(*webrtc.DataChannel)
 }
 
@@ -142,6 +141,9 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 		}
 	})
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		isCurrentState := func(expected webrtc.PeerConnectionState) bool {
+			return receiver.active() && connection.ConnectionState() == expected
+		}
 		if !receiver.active() {
 			return
 		}
@@ -150,7 +152,7 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 			slog.Debug("piik-client", "event", "media-connection-state", "direction", "inbound", "state", state.String())
 		}
 		var selected *SelectedPair
-		if state == webrtc.PeerConnectionStateConnected && (receiver.events.ConnectionState != nil || debug) {
+		if state == webrtc.PeerConnectionStateConnected && isCurrentState(state) && (receiver.events.ConnectionState != nil || debug) {
 			if pair, pairErr := receiver.SelectedPair(); pairErr == nil {
 				selected = &pair
 				if debug {
@@ -160,7 +162,7 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 			}
 		}
 		if receiver.events.ConnectionState != nil {
-			receiver.events.ConnectionState(state, selected, receiver.active)
+			receiver.events.ConnectionState(state, selected, isCurrentState)
 		}
 	})
 	connection.OnTrack(func(track *webrtc.TrackRemote, rtpReceiver *webrtc.RTPReceiver) {
@@ -220,6 +222,10 @@ func (receiver *Receiver) Renegotiate(offer webrtc.SessionDescription, servers [
 }
 
 func (receiver *Receiver) beginGathering() {
+	parameters, err := receiver.connection.SCTP().Transport().ICETransport().GetLocalParameters()
+	if err != nil {
+		return
+	}
 	// Serialize candidate delivery with collector replacement, without holding
 	// the receiver state lock across the caller's event delivery.
 	receiver.candidateMu.Lock()
@@ -236,7 +242,7 @@ func (receiver *Receiver) beginGathering() {
 		defer receiver.mu.Unlock()
 		return !receiver.closed && receiver.localCandidates == gathering
 	}
-	gathering = newLocalCandidateGathering(receiver.socket, receiver.iceServers, receiver.prepareMapping,
+	gathering = newLocalCandidateGathering(receiver.socket, receiver.iceServers, receiver.prepareMapping, parameters.UsernameFragment,
 		func(candidate *webrtc.ICECandidateInit) {
 			receiver.candidateMu.Lock()
 			defer receiver.candidateMu.Unlock()
@@ -286,10 +292,14 @@ func (receiver *Receiver) createAnswer() (webrtc.SessionDescription, error) {
 	if err = receiver.connection.SetLocalDescription(answer); err != nil {
 		return webrtc.SessionDescription{}, err
 	}
-	if receiver.connection.LocalDescription() == nil {
+	local := receiver.connection.LocalDescription()
+	if local == nil {
 		return webrtc.SessionDescription{}, errors.New("native media receiver produced no SDP answer")
 	}
-	return *receiver.connection.LocalDescription(), nil
+	// This is a trickled answer: Pion can finish before the extra STUN/mapping
+	// observations. Only the merged collector may announce their completion.
+	return webrtc.SessionDescription{Type: local.Type,
+		SDP: strings.ReplaceAll(local.SDP, "a=end-of-candidates\r\n", "")}, nil
 }
 
 func (receiver *Receiver) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
@@ -306,7 +316,7 @@ func (receiver *Receiver) AddRemoteCandidate(candidate *webrtc.ICECandidateInit)
 		return nil
 	}
 	receiver.mu.Unlock()
-	_ = receiver.connection.AddICECandidate(value)
+	_ = forwarding.AddICECandidate(receiver.connection, value)
 	return nil
 }
 
@@ -378,9 +388,6 @@ func (receiver *Receiver) consumeTrack(track *webrtc.TrackRemote, _ *webrtc.RTPR
 		for {
 			packet, _, err := forwarding.ReadRTP(track)
 			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					return
-				}
 				return
 			}
 			// Pion completes all bindings; each edge owns its write failure.

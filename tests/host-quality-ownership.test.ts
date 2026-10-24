@@ -8,8 +8,10 @@ import {
   type QualitySettings,
 } from "../src/client/media/quality";
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
-import { NativeCompatibilityError, NativeRequestError } from "../src/client/native/client";
+import { NativeCompatibilityError, NativeRequestError, type NativeClient } from "../src/client/native/client";
+import { NativeClientConnection } from "../src/client/native/client-connection";
 import { nativeCaptureTargetKey } from "../src/client/native/capture-selection";
+import { nativeAppDetected, type NativeSourceList } from "../src/client/components/living/CaptureSourcePicker";
 import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
 import { InputRoute } from "../src/client/remote-control/input-route";
 import { reconcileBoundedMediaChildren } from "../src/client/webrtc/media-assignment";
@@ -25,7 +27,7 @@ const source = ts.createSourceFile("HostPage.tsx", readFileSync(
 const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "loadAppQualityPreference", "handleSignalMessage",
   "switchSource", "watchCaptureEnd", "switchNativeSource", "finishSourceSwitch", "replaceBrowserStream", "recoverBrowserFanout", "disposeNativeShare",
   "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
-  "ownNativeClient", "discardNativeClient", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
+  "connectNativeClient", "handleNativeClientClosed", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
   "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleSharingPause",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setStatusNotice", "setNoticeError", "setNoticeErrorKey", "endSharing", "disposeResources", "hostTerminationKey", "copyRoomLink", "isCurrentRoomAuthority",
@@ -62,7 +64,7 @@ function ingress() {
   return { updateProfile: vi.fn(async (_profile: QualitySettings) => true), dispose: vi.fn() };
 }
 
-function fixture(launchedByClient = true) {
+function fixture(launchedByClient = true, nativeConnected = true) {
   let physical: QualitySettings = original;
   const track = { stop: vi.fn() };
   const stream = { getTracks: () => [track] };
@@ -77,15 +79,14 @@ function fixture(launchedByClient = true) {
     captureOptions: vi.fn(async () => []), sources: vi.fn(async () => []),
     stopReceive: vi.fn(async () => undefined), stopShare: vi.fn(async () => undefined) };
   const route = { updateProfile: vi.fn(async () => true), resyncAuthoritative: vi.fn(async (): Promise<void> => undefined) };
+  let context: ReturnType<typeof createContext>;
   const state = {
     debugError, debugEvent, debugOperation, NativeCompatibilityError, NativeRequestError, NativeMediaBridgeError, isCapturePermissionFailure, hostFailureCode, hostActionErrorKey, hostServerErrorKey, DOMException, AbortController,
     launchedByClient, isClientActivated: vi.fn(() => launchedByClient), hostRoomSessionAvailable: false,
     NativeClient: { connect: vi.fn(async (_options?: { signal: AbortSignal }): Promise<typeof client | null> => null) },
-    nativeClientConnectRef: ref<{ promise: Promise<typeof client | null>; controller: AbortController } | null>(null),
-    ownNativeClient: vi.fn(), setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
+    setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
     videoCodecRef: ref({ primary: "h264" }),
     videoCodecModeRef: ref("h264"), MAX_ENDPOINT_MEDIA_CHILDREN: 2,
-    nativeClientCloseCleanupRef: ref<(() => void) | null>(null),
     sourcePickerReturnRef: ref<{ id: string; restore: boolean } | null>(null),
     nativeSourceRequestRef: ref<object | null>(null), nativeSourcePathRef: ref<unknown>(null),
     setNativeSources: vi.fn(), setShowCaptureBorder: vi.fn(), defaultNativeCapturePath: () => ({ adapterIndex: 0, encoderIndex: 0 }),
@@ -103,10 +104,12 @@ function fixture(launchedByClient = true) {
     qualityPreferenceEditedRef: ref(false), pendingAppQualityPreferenceRef: ref<QualitySettings | null>(null),
     activeGenerationRef: ref<number | null>(1), streamRef: ref<typeof stream | null>(stream), sourceSwitchRef: ref<object | null>(null),
     nativeSourceAudioRef: ref<boolean | undefined>(undefined), audioAvailableRef: ref(false), setMicrophoneEnabled: vi.fn(),
-    nativeSourceSelectionRef: ref<Record<string, unknown> | null>(null), nativeCaptureTargetKey,
-    nativeModeRef: ref(false), nativeClientRef: ref<typeof client | null>(client), nativeShareGenerationRef: ref<string | null>("share"),
+    nativeSourceSelectionRef: ref<Record<string, unknown> | null>(null), nativeCaptureTargetKey, nativeAppDetected,
+    nativeModeRef: ref(false), nativeConnection: new NativeClientConnection(signal => context.connectNativeClient(signal),
+      () => context.handleNativeClientClosed()), nativeShareGenerationRef: ref<string | null>("share"),
     hostAudioRef: ref<{ sourceStream: MediaStream } | null>(null),
     shareVolumeChangeRef: ref<object | null>(null), setShareVolume: vi.fn(),
+    sharingPauseOperationRef: ref<object | null>(null),
     nativeMediaIngressRef: ref<ReturnType<typeof ingress> | null>(null), nativeMediaBridgeRef: ref(null),
     nativeInputRoute: new InputRoute(() => {}),
     nativeEventCleanupRef: ref(null), nativeShareCleanupRef: ref(Promise.resolve()),
@@ -131,12 +134,13 @@ function fixture(launchedByClient = true) {
     ensureHostSfuRoute: () => route,
     reconcileBoundedMediaChildren, activeHostChildPeerIdsRef: ref<string[]>([]),
   };
-  const context = createContext({ ...state,
+  context = createContext({ ...state,
     isCurrentGeneration: (generation: number) => state.activeGenerationRef.current === generation,
     isCurrentShare: (generation: number, share: string) =>
       state.activeGenerationRef.current === generation && state.shareGenerationRef.current === share,
   });
   runInContext(executable, context);
+  if (nativeConnected) state.nativeConnection.adopt(client as unknown as NativeClient);
   const start = context.startSharing;
   const startChild = context.startPeer;
   const openPicker = context.openCaptureSourcePicker;
@@ -185,7 +189,102 @@ function useRealResourceDisposal(current: ReturnType<typeof fixture>): void {
   current.disposeResources.mockImplementation(current.dispose);
 }
 
+describe("Native sharing pause ownership", () => {
+  function pauseFixture(paused = true) {
+    const current = fixture();
+    useRealResourceDisposal(current);
+    current.nativeModeRef.current = true;
+    const setPaused = vi.fn(async (_share: string, _paused: boolean) => {});
+    Object.assign(current.client, { setPaused });
+    const signal = { setSharingPaused: vi.fn(() => true), confirmSharingPaused: vi.fn(), setCoPlayGrants: vi.fn(), stop: vi.fn() };
+    Object.assign(current.context, {
+      sharingPausedRef: ref(paused), setSharingPaused: vi.fn(), setMediaPaused: vi.fn(() => true),
+      signalRef: ref(signal),
+    });
+    return { ...current, setPaused, signal };
+  }
+
+  it.each([false, true])("commits the current Native pause change from paused=%s", async paused => {
+    const current = pauseFixture(paused);
+    current.context.toggleSharingPause();
+    await vi.waitFor(() => expect(current.context.setSharingPaused).toHaveBeenCalledWith(!paused));
+    expect(current.setPaused).toHaveBeenCalledExactlyOnceWith("share", !paused);
+    expect(current.signal.setSharingPaused).toHaveBeenCalledExactlyOnceWith(!paused);
+    expect(current.context.sharingPausedRef.current).toBe(!paused);
+  });
+
+  it.each(["success", "failure", "retired"])("ignores a superseded Native resume %s", async outcome => {
+    const current = pauseFixture();
+    const pending = deferred<void>();
+    current.setPaused.mockReturnValueOnce(pending.promise);
+    current.context.toggleSharingPause();
+    if (outcome === "retired") {
+      current.activeGenerationRef.current = null;
+      current.dispose(false);
+    } else {
+      current.context.handleSignalMessage({ type: "pause-sharing-source", shareGeneration: "share" }, 1, false, null);
+      expect(current.setPaused).toHaveBeenLastCalledWith("share", true);
+    }
+    current.context.setSharingPaused.mockClear();
+    current.setNoticeValue.mockClear();
+    if (outcome === "failure") pending.reject(new Error("old resume failed"));
+    else pending.resolve();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(current.signal.setSharingPaused).not.toHaveBeenCalled();
+    expect(current.context.setSharingPaused).not.toHaveBeenCalled();
+    expect(current.setNoticeValue).not.toHaveBeenCalled();
+    expect(current.sharingPauseOperationRef.current).toBeNull();
+  });
+
+  it("does not publish an old resume rollback after authoritative pause takes over", async () => {
+    const current = pauseFixture();
+    const rollback = deferred<void>();
+    current.signal.setSharingPaused.mockReturnValue(false);
+    current.setPaused.mockResolvedValueOnce().mockReturnValueOnce(rollback.promise);
+    current.context.toggleSharingPause();
+    await vi.waitFor(() => expect(current.setPaused).toHaveBeenCalledTimes(2));
+    current.context.handleSignalMessage({ type: "pause-sharing-source", shareGeneration: "share" }, 1, false, null);
+    current.signal.confirmSharingPaused.mockClear();
+    current.setNoticeValue.mockClear();
+    rollback.resolve();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(current.signal.confirmSharingPaused).not.toHaveBeenCalled();
+    expect(current.setNoticeValue).not.toHaveBeenCalled();
+  });
+});
+
 describe("Camera replacement ownership", () => {
+  it.each([true, false])("does not apply a retired ingress replacement to a new share: %s", async result => {
+    const current = fixture();
+    const pending = deferred<boolean>();
+    const oldTrack = { stop: vi.fn() }, capturedTrack = { stop: vi.fn() };
+    const previous = { getTracks: () => [oldTrack], getVideoTracks: () => [oldTrack] };
+    const captured = { getTracks: () => [capturedTrack], getVideoTracks: () => [capturedTrack], getAudioTracks: () => [] };
+    const optional = { hasAudio: false, replaceStream: vi.fn(() => pending.promise) };
+    const token = {};
+    Object.assign(current.context, {
+      streamRef: ref(previous), nativeMediaIngressRef: ref(optional), sourceSwitchRef: ref(token),
+      retiringStreamRef: ref(null), sharingPausedRef: ref(false),
+      setMediaPaused: vi.fn(), setStream: vi.fn(), watchCaptureEnd: vi.fn(),
+    });
+    const replacing = current.context.replaceBrowserStream(captured, 1, token);
+    expect(optional.replaceStream).toHaveBeenCalledWith(captured);
+    const replacementPeer = { replaceStream: vi.fn(async () => true) };
+    const replacementRoute = { replaceStream: vi.fn(async () => true) };
+    current.activeGenerationRef.current = 2;
+    current.context.sourceSwitchRef.current = {};
+    current.context.nativeMediaIngressRef.current = null;
+    current.peersRef.current.clear();
+    current.peersRef.current.set("replacement", replacementPeer as never);
+    current.context.hostSfuRouteRef.current = replacementRoute;
+    pending.resolve(result);
+    await replacing;
+    expect(replacementPeer.replaceStream).not.toHaveBeenCalled();
+    expect(replacementRoute.replaceStream).not.toHaveBeenCalled();
+    expect(capturedTrack.stop).toHaveBeenCalledOnce();
+    expect(oldTrack.stop).toHaveBeenCalledOnce();
+  });
+
   it("keeps a screen Stop authoritative while a camera picker is pending", async () => {
     const current = fixture();
     let ended!: () => void;
@@ -234,8 +333,8 @@ describe("Camera replacement ownership", () => {
 });
 
 describe("Host room ownership", () => {
-  function roomFixture() {
-    const current = fixture();
+  function roomFixture(nativeConnected = true) {
+    const current = fixture(true, nativeConnected);
     const room = { roomId: "1234", hostToken: "host-token", canonicalUrl: "https://example.test/r/1234", codeEntryPolicy: "open", inviteUrl: null };
     const signals: Signal[] = [];
     class Signal {
@@ -306,7 +405,7 @@ describe("Host room ownership", () => {
   it.each(["INVALID_TOKEN", "HOST_ALREADY_CONNECTED", "room-closed", "terminated", "access-required"])(
     "retires idle native selection and its late results on %s", async event => {
       for (const stage of ["ready", "discovery", "enumeration"]) {
-        const current = roomFixture();
+        const current = roomFixture(stage !== "discovery");
         useRealResourceDisposal(current);
         current.context.phase = "idle";
         current.activeGenerationRef.current = null;
@@ -315,7 +414,6 @@ describe("Host room ownership", () => {
         const discovery = deferred<typeof current.client>();
         const enumeration = deferred<never[]>();
         if (stage === "discovery") {
-          current.nativeClientRef.current = null;
           current.NativeClient.connect.mockReturnValueOnce(discovery.promise);
         } else if (stage === "enumeration") current.client.sources.mockReturnValueOnce(enumeration.promise);
         const signal = current.connect();
@@ -330,11 +428,10 @@ describe("Host room ownership", () => {
         else signal.events.onMessage(event === "room-closed" ? { type: event } : { type: "error", code: event });
         expect(current.nativeSourceRequestRef.current).toBeNull();
         expect(current.nativeSourcePathRef.current).toBeNull();
-        expect(current.nativeClientConnectRef.current).toBeNull();
         discovery.resolve(current.client);
         enumeration.resolve([]);
         await selecting;
-        expect(current.nativeClientRef.current).toBeNull();
+        expect(current.nativeConnection.current).toBeNull();
         expect(current.client.close).toHaveBeenCalledOnce();
         expect(current.setNativeSources).toHaveBeenLastCalledWith(null);
         expect(current.createRoom).not.toHaveBeenCalled();
@@ -1005,8 +1102,6 @@ describe("Host quality ownership", () => {
   ])("retains the known %s failure when retiring native sharing", async (kind, key, failureCode, comic) => {
     const current = fixture();
     current.generationRef.current = 1;
-    current.nativeClientRef.current = null;
-    current.context.ownNativeClient(current.client);
     await current.startNative();
     if (kind === "control") current.client.onClose.mock.calls[0]![0]();
     else if (kind === "media") current.NativeMediaBridge.mock.calls[0]![2]();
@@ -1020,7 +1115,7 @@ describe("Host quality ownership", () => {
 
   it("retains connecting children during reconciliation and rebuilds them after reauthentication", async () => {
     const current = fixture(false);
-    current.nativeClientRef.current = null;
+    current.nativeConnection.release();
     current.peer.isConnected.mockReturnValue(false);
     const healthy = { ...current.peer, isConnected: vi.fn(() => true) };
     const replacement = { ...current.peer, start: vi.fn(async () => true) };
@@ -1049,7 +1144,7 @@ describe("Host quality ownership", () => {
 
   it("opens the same source picker for Browser and App without probing localhost on the Browser path", async () => {
     const browser = fixture(false);
-    browser.nativeClientRef.current = null;
+    browser.nativeConnection.release();
     browser.requestShare();
     expect(browser.startSharing).not.toHaveBeenCalled();
     expect(browser.openCaptureSourcePicker).toHaveBeenCalledOnce();
@@ -1058,7 +1153,7 @@ describe("Host quality ownership", () => {
     expect(browser.NativeClient.connect).not.toHaveBeenCalled();
 
     const current = fixture();
-    current.nativeClientRef.current = null;
+    current.nativeConnection.release();
     current.routePolicyRef.current.topologyOptimization = true;
     const discovery = deferred<typeof current.client | null>();
     current.NativeClient.connect.mockReturnValue(discovery.promise);
@@ -1073,7 +1168,7 @@ describe("Host quality ownership", () => {
     current.NativeClient.connect.mockResolvedValue(current.client);
     await expect(current.discover()).resolves.toBe(current.client);
     expect(current.NativeClient.connect).toHaveBeenCalledTimes(2);
-    current.nativeClientRef.current = current.client;
+    current.nativeConnection.adopt(current.client as unknown as NativeClient);
     current.requestShare();
     expect(current.openCaptureSourcePicker).toHaveBeenCalledTimes(2);
   });
@@ -1090,22 +1185,34 @@ describe("Host quality ownership", () => {
     expect(current.setNativeSources).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "ready" }));
     expect(current.client.sources).toHaveBeenCalledOnce();
 
+    let sources: NativeSourceList | null = current.setNativeSources.mock.lastCall![0];
+    current.setNativeSources.mockImplementation((next: NativeSourceList | null | ((previous: NativeSourceList | null) => NativeSourceList)) => {
+      sources = typeof next === "function" ? next(sources) : next;
+    });
+    const enumeration = deferred<never[]>();
+    current.client.sources.mockReturnValueOnce(enumeration.promise);
+    const refresh = current.openPicker();
+    await vi.waitFor(() => expect(current.client.sources).toHaveBeenCalledTimes(2));
+    expect(sources).toEqual({ kind: "loading", appDetected: true });
+    enumeration.resolve([]);
+    await refresh;
+    expect(sources).toMatchObject({ kind: "ready", sources: [] });
+
     current.context.phase = "live";
     await current.openPicker();
     expect(current.setNativeSources).toHaveBeenLastCalledWith({ kind: "browser" });
-    expect(current.client.sources).toHaveBeenCalledOnce();
+    expect(current.client.sources).toHaveBeenCalledTimes(2);
   });
 
   it("shows App incompatibility in the picker and clears it on a successful refresh", async () => {
     const current = fixture();
     current.context.phase = "idle";
-    current.nativeClientRef.current = null;
+    current.nativeConnection.release();
     current.nativeShareGenerationRef.current = null;
     current.NativeClient.connect.mockRejectedValueOnce(new NativeCompatibilityError(8));
     await current.openPicker();
     expect(current.setNativeSources).toHaveBeenLastCalledWith({ kind: "incompatible" });
-    expect(current.nativeClientConnectRef.current).toBeNull();
-    expect(current.nativeClientRef.current).toBeNull();
+    expect(current.nativeConnection.current).toBeNull();
     expect(current.client.sources).not.toHaveBeenCalled();
     current.NativeClient.connect.mockResolvedValue(current.client);
     await current.openPicker();
@@ -1117,7 +1224,7 @@ describe("Host quality ownership", () => {
   it("distinguishes absent App, missing capture capability, incompatible codec and an empty source list", async () => {
     const absent = fixture();
     absent.context.phase = "idle";
-    absent.nativeClientRef.current = null;
+    absent.nativeConnection.release();
     await absent.openPicker();
     expect(absent.setNativeSources).toHaveBeenLastCalledWith({ kind: "unavailable" });
 
@@ -1164,13 +1271,12 @@ describe("Host quality ownership", () => {
     expect(current.setNativeSources).toHaveBeenLastCalledWith({ kind: "failed" });
     expect(current.client.close).not.toHaveBeenCalled();
     expect(current.client.stopShare).not.toHaveBeenCalled();
-    expect(current.nativeClientRef.current).toBe(current.client);
+    expect(current.nativeConnection.current).toBe(current.client);
   });
 
   it("ignores a cancelled discovery mismatch after another picker owns a compatible App", async () => {
-    const current = fixture();
+    const current = fixture(true, false);
     current.context.phase = "idle";
-    current.nativeClientRef.current = null;
     current.nativeShareGenerationRef.current = null;
     const discovery = deferred<void>();
     current.NativeClient.connect.mockReturnValueOnce(discovery.promise.then(() => {
@@ -1186,7 +1292,7 @@ describe("Host quality ownership", () => {
     await obsolete;
     expect(current.setNativeSources).not.toHaveBeenCalled();
     expect(current.client.close).not.toHaveBeenCalled();
-    expect(current.nativeClientRef.current).toBe(current.client);
+    expect(current.nativeConnection.current).toBe(current.client);
     current.closePicker();
   });
 
@@ -1201,7 +1307,7 @@ describe("Host quality ownership", () => {
     const starting = current.start();
     await Promise.resolve();
     expect(current.client.startShare).not.toHaveBeenCalled();
-    current.nativeClientRef.current = null;
+    current.nativeConnection.release();
     cleanup.resolve();
     await starting;
     expect(current.client.startShare).not.toHaveBeenCalled();
@@ -1213,9 +1319,8 @@ describe("Host quality ownership", () => {
   });
 
   it("retires discovery after picker cancellation and allows a later attempt", async () => {
-    const current = fixture();
+    const current = fixture(true, false);
     current.context.phase = "idle";
-    current.nativeClientRef.current = null;
     current.nativeShareGenerationRef.current = null;
     const discovery = deferred<typeof current.client>();
     current.NativeClient.connect.mockReturnValueOnce(discovery.promise);
@@ -1229,7 +1334,7 @@ describe("Host quality ownership", () => {
     await opening;
     expect(current.client.close).toHaveBeenCalledOnce();
     expect(current.client.sources).not.toHaveBeenCalled();
-    expect(current.nativeClientRef.current).toBeNull();
+    expect(current.nativeConnection.current).toBeNull();
 
     const replacement = { ...current.client, close: vi.fn() };
     current.NativeClient.connect.mockResolvedValue(replacement);
@@ -1315,7 +1420,7 @@ describe("Host quality ownership", () => {
     listing.resolve(undefined as never);
     await old;
     expect(current.client.close).not.toHaveBeenCalled();
-    expect(current.nativeClientRef.current).toBe(current.client);
+    expect(current.nativeConnection.current).toBe(current.client);
     expect(current.setNativeSources).not.toHaveBeenCalled();
     current.closePicker();
   });

@@ -602,9 +602,6 @@ function parseBenchmarkConfig(
       "BENCHMARK_QUALITY_SMOKE requires a selected viewer count of at least 3",
     );
   }
-  if (environment.BENCHMARK_CANARY && environment.BENCHMARK_CANARY !== "none") {
-    throw new Error("BENCHMARK_CANARY is obsolete; this gate covers topology and relay-loss recovery");
-  }
   const recoveryText = environment.BENCHMARK_RECOVERY_VIEWERS?.trim();
   const recoveryViewerCount = recoveryText ? Number(recoveryText) : null;
   if (

@@ -188,18 +188,25 @@ func (session *Session) AcceptOffer(
 					ConnectionID: connectionID, Candidate: candidate,
 				})
 			},
-			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair, current func() bool) {
+			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool) {
 				if input != nil {
-					input.SetUpAvailable(state == webrtc.PeerConnectionStateConnected)
+					// Historical loss still releases grants; a recovered transport
+					// then requests fresh readiness rather than restoring permission.
+					if state != webrtc.PeerConnectionStateConnected {
+						input.SetUpAvailable(false)
+					}
+					if isCurrentState(webrtc.PeerConnectionStateConnected) {
+						input.SetUpAvailable(true)
+					}
 				}
 				session.emit(Event{
-					Current: current,
+					Current: func() bool { return isCurrentState(state) },
 					Type:    "edge-state", ShareID: session.shareID,
 					ConnectionID: connectionID, State: state.String(),
 				})
 				if pair != nil {
 					session.emit(Event{
-						Current: current,
+						Current: func() bool { return isCurrentState(state) },
 						Type:    "edge-path", ShareID: session.shareID,
 						ConnectionID:     connectionID,
 						LocalType:        pair.Local.String(),
@@ -308,17 +315,19 @@ func (session *Session) prepareEdge(
 					ConnectionID: connectionID, Candidate: candidate,
 				})
 			},
-			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair) {
+			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool) {
 				if receiver.input != nil && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
 					receiver.input.LoseDown(connectionID, nil)
 				}
 				session.emit(Event{
-					Type: "edge-state", ShareID: session.shareID,
+					Current: func() bool { return isCurrentState(state) },
+					Type:    "edge-state", ShareID: session.shareID,
 					ConnectionID: connectionID, State: state.String(),
 				})
 				if pair != nil {
 					session.emit(Event{
-						Type: "edge-path", ShareID: session.shareID,
+						Current: func() bool { return isCurrentState(state) },
+						Type:    "edge-path", ShareID: session.shareID,
 						ConnectionID:     connectionID,
 						LocalType:        pair.Local.String(),
 						RemoteType:       pair.Remote.String(),

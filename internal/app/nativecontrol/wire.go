@@ -375,7 +375,7 @@ type edgeQualityEvent struct {
 	TrackIdentifier       string  `json:"trackIdentifier"`
 	State                 string  `json:"state"`
 	Reason                *string `json:"reason"`
-	IntervalFramesEncoded uint64  `json:"intervalFramesEncoded"`
+	IntervalFramesSent    uint64  `json:"intervalFramesEncoded"` // Published v10 name for output frames.
 	FramesPerSecond       float64 `json:"framesPerSecond"`
 	BitrateKbps           float64 `json:"bitrateKbps"`
 	AvailableOutgoingKbps float64 `json:"availableOutgoingKbps"`

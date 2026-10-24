@@ -101,8 +101,8 @@ export class NativeSenderPeer implements HostMediaPeer {
         onQuality: (quality) => {
           const known = quality.state !== "unknown";
           const format = this.source?.format?.();
-          const width = quality.width || format?.width || null;
-          const height = quality.height || format?.height || null;
+          const width = quality.width || null;
+          const height = quality.height || null;
           this.snapshot = {
             ...this.snapshot,
             metrics: {
@@ -113,10 +113,8 @@ export class NativeSenderPeer implements HostMediaPeer {
               trackIdentifier: quality.trackIdentifier,
               videoEncodingCount: 1,
               activeVideoEncodingCount: this.isConnected() ? 1 : 0,
-              captureWidth: width,
-              captureHeight: height,
-              captureFramesPerSecond: quality.framesPerSecond,
-              mediaSourceFramesPerSecond: quality.framesPerSecond,
+              captureWidth: format?.width || null,
+              captureHeight: format?.height || null,
               bitrateKbps: quality.bitrateKbps,
               availableOutgoingKbps: known
                 ? quality.availableOutgoingKbps
@@ -132,7 +130,8 @@ export class NativeSenderPeer implements HostMediaPeer {
               codecProfile: null,
               codecParameters: null,
               powerEfficientEncoder: this.source ? null : codec === "h264",
-              intervalFramesEncoded: quality.intervalFramesEncoded,
+              // The published wire name counts this output's forwarded RTP frames.
+              intervalFramesSent: quality.intervalFramesEncoded,
               qualityLimitationReason: quality.reason,
               nativeEdgeQualityState: quality.state,
             },

@@ -14,16 +14,18 @@ const (
 )
 
 type localCandidateGathering struct {
-	socket         *iceSocket
-	servers        []webrtc.ICEServer
-	mappedPort     int
-	prepareMapping func() int
-	emit           func(*webrtc.ICECandidateInit)
-	ctx            context.Context
-	cancel         context.CancelFunc
-	once           sync.Once
+	socket           *iceSocket
+	servers          []webrtc.ICEServer
+	mappedPort       int
+	prepareMapping   func() int
+	usernameFragment string
+	emit             func(*webrtc.ICECandidateInit)
+	ctx              context.Context
+	cancel           context.CancelFunc
+	once             sync.Once
 
 	mu               sync.Mutex
+	pionGeneration   string
 	pionDone         bool
 	supplementalDone bool
 	endSent          bool
@@ -35,24 +37,43 @@ func newLocalCandidateGathering(
 	socket *iceSocket,
 	servers []webrtc.ICEServer,
 	prepareMapping func() int,
+	usernameFragment string,
 	emit func(*webrtc.ICECandidateInit),
 ) *localCandidateGathering {
 	ctx, cancel := context.WithCancel(socket.ctx)
 	surveyServers := stunServers(servers)
 	return &localCandidateGathering{
 		socket: socket, servers: surveyServers, prepareMapping: prepareMapping, emit: emit,
-		ctx: ctx, cancel: cancel, supplementalDone: len(surveyServers) == 0,
+		usernameFragment: usernameFragment,
+		ctx:              ctx, cancel: cancel, supplementalDone: len(surveyServers) == 0,
 		mappedCandidates: make(map[string]struct{}),
 	}
 }
 
 func (gathering *localCandidateGathering) addPion(candidate *webrtc.ICECandidate) {
 	if candidate != nil {
-		value := candidate.ToJSON()
-		gathering.emitCandidate(&value)
+		value, err := candidate.ToICE()
+		if err != nil {
+			return
+		}
+		fragment, _ := value.GetExtension("ufrag")
+		gathering.mu.Lock()
+		gathering.pionGeneration = fragment.Value
+		gathering.mu.Unlock()
+		if fragment.Value != gathering.usernameFragment {
+			return
+		}
+		message := candidate.ToJSON()
+		gathering.emitCandidate(&message)
 		return
 	}
 	gathering.mu.Lock()
+	// Pion delivers its queued candidates in order, but a new handler can
+	// receive the previous generation's unscoped completion after restart.
+	if gathering.pionGeneration != gathering.usernameFragment {
+		gathering.mu.Unlock()
+		return
+	}
 	gathering.pionDone = true
 	sendEnd := gathering.finishLocked()
 	gathering.mu.Unlock()
@@ -178,6 +199,7 @@ func (gathering *localCandidateGathering) emitCandidate(candidate *webrtc.ICECan
 	closed := gathering.closed
 	gathering.mu.Unlock()
 	if !closed && gathering.emit != nil {
+		candidate.UsernameFragment = &gathering.usernameFragment
 		gathering.emit(candidate)
 	}
 }

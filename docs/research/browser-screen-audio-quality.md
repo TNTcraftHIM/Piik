@@ -107,7 +107,7 @@ Two controls constrain the replacement design:
   live bitrate changes. This does not diagnose any field interruption or change
   the average bitrate controls, stereo format or route model.
 
-The [media extension proposal](./native-client-media.md#audio-and-ui-proposal)
+The [numeric audio rationale](./native-client-media.md#numeric-audio-and-ui-rationale)
 owns the UI and contract rationale. The candidate enforces a Browser sender's
 negotiated Opus limit, and admits unchanged Native/SFU forwarding only when the
 receiver's declared limit accommodates the full shared format. A codec-valid

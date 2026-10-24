@@ -20,7 +20,7 @@ service secret store or an untracked access-restricted environment file.
 
 | Variable | Contract |
 | --- | --- |
-| `PIIK_ENV` | `development` or `production`, default `development`; required for every server deployment: `production` enables production-only validation and the `Secure` site-access cookie. |
+| `PIIK_ENV` | `development` or `production`, default `development`; set `production` for server deployments to enable production validation and Secure site-access cookies for configured HTTPS destinations. |
 | `LISTEN_HOST` | Defaults to `0.0.0.0`; bare-metal production normally uses `127.0.0.1`. |
 | `PORT` | Positive TCP port, default `8787`; the tracked release wrapper supports only that default. |
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |

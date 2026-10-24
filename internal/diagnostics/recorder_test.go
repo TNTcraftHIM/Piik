@@ -301,6 +301,50 @@ func TestRecorderCloseAndFailures(t *testing.T) {
 	}
 }
 
+func TestPionDependencyLogsRespectDiagnosticOptIn(t *testing.T) {
+	recorder, err := Open(t.TempDir(), "client", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recorder.Close()
+	stderr, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousLogger, previousStderr := slog.Default(), os.Stderr
+	os.Stderr = stderr
+	defer func() {
+		os.Stderr = previousStderr
+		slog.SetDefault(previousLogger)
+		_ = stderr.Close()
+	}()
+	const secret = "must-not-appear-in-report"
+	var normal bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&normal, nil)))
+	PionLoggerFactory().NewLogger("pc").Errorf("dropping candidate with ufrag %s because it doesn't match", secret)
+	slog.Error("capture process failed", Error(errors.New("capture process stopped unexpectedly")))
+	slog.SetDefault(recorder.Logger())
+	PionLoggerFactory().NewLogger("pc").Errorf("dropping candidate with ufrag %s because it doesn't match", secret)
+	output, err := os.ReadFile(stderr.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(output) != 0 {
+		t.Fatal("dependency details bypassed the opt-in diagnostic writer through stderr")
+	}
+	if strings.Contains(normal.String(), "dropping candidate") || strings.Contains(normal.String(), secret) ||
+		!strings.Contains(normal.String(), "capture process stopped unexpectedly") {
+		t.Fatal("normal logging lost the owning failure or exposed ICE details")
+	}
+	data, err := os.ReadFile(recorder.LogPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte(secret)) || !bytes.Contains(data, []byte("dropping candidate with ufrag [redacted]")) {
+		t.Fatal("Debug logging lost the dependency cause or retained its ICE credential")
+	}
+}
+
 func TestDependencyDiagnosticsPreserveCausesWithoutSecrets(t *testing.T) {
 	recorder, err := Open(t.TempDir(), "client", "test")
 	if err != nil {

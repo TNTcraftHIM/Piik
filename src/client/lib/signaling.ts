@@ -196,8 +196,12 @@ export class SignalingClient {
   }
 
   setViewerRoutePreference(preference: ViewerRoutePreference): boolean {
-    return this.identity.role === "viewer" && this.identity.routePreference !== undefined &&
-      this.send({ type: "set-viewer-route-preference", preference });
+    if (this.identity.role !== "viewer" || this.identity.routePreference === undefined ||
+      !this.send({ type: "set-viewer-route-preference", preference })) return false;
+    // Replies describe applied policy; reconnect retains the personal request,
+    // including when its acknowledgement is lost or an older reply arrives late.
+    this.identity.routePreference = preference;
+    return true;
   }
 
   get relayVolunteerRequest(): Readonly<{ enabled: boolean; capacity: number }> | null {
@@ -501,9 +505,6 @@ export class SignalingClient {
         this.reconcileHostShareState(message);
         this.flushAudioPresence();
         this.flushCoPlayPresence();
-      }
-      if (message.type === "viewer-route-preference" && this.identity.role === "viewer") {
-        this.identity.routePreference = message.preference;
       }
       if ((message.type === "sharing-started" || message.type === "sharing-start-failed") &&
         this.pendingShareGeneration === message.shareGeneration) {

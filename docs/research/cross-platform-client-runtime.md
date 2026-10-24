@@ -108,13 +108,12 @@ compare actual capture, audio, H.264/VP8 sender implementation, 1080p cadence,
 relay, background behavior, and resource use on every target platform. The
 result selects one UI runtime; it does not create parallel products.
 
-## Current Evidence
+## Historical Package Evidence
 
-The runs below are pre-port evidence: they exercised the package that bundled a
-Node runtime and an extracted application tree. Their capture, discovery, media,
-and network results still apply; every package composition, startup, and
-shutdown claim must be re-verified on the single-binary App before that build
-is accepted.
+The runs below exercised the earlier package that bundled Node and an extracted
+application tree. They retain their measured revision's results. The current
+single-binary composition is described above; [verification status](../verification-status.md)
+owns current acceptance and platform coverage.
 
 On Windows with Chrome for Testing 151.0.7922.138:
 
@@ -327,21 +326,13 @@ The evidence supports direct manual downloads with an optional release-note
 link and inline major-upgrade guidance. The accepted behavior belongs to
 [versioning](../standards/versioning.md#major-upgrade-guidance). Historical
 clients still follow their released behavior; a notice cannot substitute for
-actual App/Site compatibility checks. The scope of a future 2.0 break remains
-undecided.
+actual App/Site compatibility checks.
 
-## Remaining Gates
+## Current Follow-up
 
-- Run the exact clean-revision package on macOS; Linux amd64 is proved.
-- Prove a physical second-device LAN Viewer on desktop, Android, and iOS.
-- Prove first-run Browser local-network permission outside CDP automation.
-- Record no-STUN mDNS behavior on ordinary and AP-isolated LANs.
-- Exercise the native Host on a configured Site and representative Browsers;
-  the local SFU bridge is proved in isolation, while full Site recovery,
-  representative audio, and non-Windows capture remain undefined.
-- Exercise one-link Browser media on a physical second device; the current gate
-  proves the complete public control path and independent Pion media, not
-  decoded Browser frames.
+[TODO](../todo.md) owns remaining work; [verification status](../verification-status.md)
+owns current device and network coverage. The historical runs above do not form
+a second acceptance ledger.
 
 ## Sources
 

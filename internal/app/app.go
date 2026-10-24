@@ -199,7 +199,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			return err
 		}
 	}
-	return runLauncher(ctx, options, configPath, config, control, input, func(selected *Options, config appconfig.Config) error {
+	return runLauncher(ctx, options, configPath, config, control, func(selected *Options, config appconfig.Config) error {
 		diagnosticsMu.Lock()
 		defer diagnosticsMu.Unlock()
 		if ctx.Err() != nil {
@@ -247,7 +247,6 @@ func runLauncher(
 	configPath string,
 	config appconfig.Config,
 	control *loopback.Server,
-	input *remoteinput.Manager,
 	configureDiagnostics func(*Options, appconfig.Config) error,
 ) (returnedErr error) {
 	automatic := explicitMode(options)
@@ -339,7 +338,11 @@ func runLauncher(
 	} else if initialConfig.Site != "" && !options.Local && !options.Link {
 		// A starred Site changes only the opening page. --site also remains an
 		// explicit approval shortcut; the launcher can start a Local room later.
-		openSite(initialConfig.Site, options)
+		site := initialConfig.Site
+		if !automatic {
+			site = startupSite
+		}
+		openSite(site, options)
 	}
 	// An interactive room is a child of the resident App. Its failure must not
 	// retire an unrelated Site's native sessions or its approval page. Explicit

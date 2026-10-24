@@ -1087,6 +1087,14 @@ func (s *Server) settleHostShare(roomID, sessionID string, request authRequest) 
 	if shareGeneration == "" {
 		shareGeneration = currentGeneration
 	}
+	// Persistent room sessions may reconnect after a stop overtook their
+	// authentication request. The retained generation fences that publication;
+	// only a fresh generation may start another one. Legacy sessions keep their
+	// established authenticate-to-publish lifecycle.
+	if request.roomSession && currentGeneration != "" &&
+		shareGeneration == currentGeneration && current.routePolicy == nil {
+		return ""
+	}
 	if shareGeneration == "" {
 		shareGeneration = sessionID
 	}
@@ -1665,7 +1673,9 @@ func (s *Server) handleSfuPublisherQualityEvidence(sess *session, source *authen
 }
 
 func (s *Server) consumeSenderQualityBudget(sessionID string, nowMs int64) bool {
-	maximumReports := min(s.endpointMediaCopyCapacity+1, 3) * 2
+	// Volunteers may send to the whole room. Preserve one serial preparation
+	// and the existing double allowance without mirroring route ownership here.
+	maximumReports := (protocol.MaxViewersPerRoomLimit + 1) * 2
 	current := s.senderQualityRateBySession[sessionID]
 	if current == nil || nowMs-current.startedAtMs >= protocol.ViewerQualityEvidenceIntervalMs {
 		s.senderQualityRateBySession[sessionID] = &senderQualityRateWindow{startedAtMs: nowMs, count: 1}

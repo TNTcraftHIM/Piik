@@ -45,6 +45,31 @@ const (
 	defaultWait      = 2 * time.Second
 )
 
+func TestSenderQualityBudgetAdmitsRoomProducerCadence(t *testing.T) {
+	s := &Server{endpointMediaCopyCapacity: 2, senderQualityRateBySession: map[string]*senderQualityRateWindow{}}
+	// Browser and Native producers report each physical sender every two
+	// seconds. A room may retain all Viewer senders plus one serial preparation.
+	const senders = protocol.MaxViewersPerRoomLimit + 1
+	for window := range 4 {
+		now := int64(window * protocol.ViewerQualityEvidenceIntervalMs)
+		for range senders {
+			if !s.consumeSenderQualityBudget("producer-session", now) {
+				t.Fatal("legal per-connection producer burst was rate limited")
+			}
+		}
+		// Keep the existing double allowance for boundary timing, then reject
+		// further traffic until the next observation window.
+		for range senders {
+			if !s.consumeSenderQualityBudget("producer-session", now) {
+				t.Fatal("producer boundary allowance was lost")
+			}
+		}
+		if s.consumeSenderQualityBudget("producer-session", now) {
+			t.Fatal("sender evidence above the room budget was accepted")
+		}
+	}
+}
+
 func TestCreateRoomReleasesLockWhenDerivationOrCommitPanics(t *testing.T) {
 	for _, password := range []string{"", "room-password"} {
 		t.Run(password, func(t *testing.T) {
@@ -304,6 +329,67 @@ func TestPersistentRoomSessionReconnectStaysMediaIdle(t *testing.T) {
 	}
 	h.closeClient(lateViewer)
 	h.closeClient(resumed)
+}
+
+func TestStoppedPublicationReauthenticationPreservesRoomSessionFence(t *testing.T) {
+	for _, persistent := range []bool{true, false} {
+		t.Run(map[bool]string{true: "room-session", false: "legacy"}[persistent], func(t *testing.T) {
+			h := startHarness(t, harnessOptions{})
+			host := openClient(t, h)
+			const clientID, stoppedGeneration = "stopped-reconnect-host", "stopped_reconnect_generation"
+			authenticate(t, host, h.room, protocol.RoleHost, clientID, 1, stoppedGeneration,
+				presenceOptions{roomSession: persistent})
+			viewer := openClient(t, h)
+			authenticate(t, viewer, h.room, protocol.RoleViewer, "stopped-reconnect-viewer", 1, "", presenceOptions{})
+			host.ignore("route-update")
+			viewer.ignore("route-update")
+			host.sendJSON(map[string]any{"type": "stop-sharing", "shareGeneration": stoppedGeneration})
+			viewer.next("sharing-stopped")
+			viewer.next("host-status")
+			h.locked(func() {
+				if h.server.activeHostShareGeneration(h.room.RoomID) != "" {
+					t.Fatal("stopped publication remained active")
+				}
+			})
+			// A delayed authenticate still carries the generation that was valid
+			// when sent. It must not need a compensating client stop to stay idle.
+			resumed := openClient(t, h)
+			auth := authenticate(t, resumed, h.room, protocol.RoleHost, clientID, 1, stoppedGeneration,
+				presenceOptions{roomSession: persistent})
+			if !persistent {
+				if auth.ShareGeneration == nil || *auth.ShareGeneration != stoppedGeneration {
+					t.Fatal("legacy authenticate-to-publish behavior changed")
+				}
+				return
+			}
+			if auth.ShareGeneration != nil || auth.RouteAssignment.Upstream.Kind != "none" {
+				t.Fatal("delayed authentication restored a stopped publication")
+			}
+			h.locked(func() {
+				if h.server.activeHostShareGeneration(h.room.RoomID) != "" {
+					t.Fatal("delayed authentication reacquired media authority")
+				}
+				if rm, _ := h.server.router.rooms.Get(h.room.RoomID); rm != nil && rm.controller != nil {
+					t.Fatal("delayed authentication rebuilt source-less routes")
+				}
+			})
+			const freshGeneration = "fresh_reconnect_generation"
+			resumed.sendJSON(map[string]any{"type": "start-sharing", "shareGeneration": freshGeneration,
+				"routePolicy": protocol.DefaultRoutePolicy})
+			resumed.next("sharing-started")
+			h.locked(func() {
+				if h.server.activeHostShareGeneration(h.room.RoomID) != freshGeneration {
+					t.Fatal("fresh publication could not start after idle reauthentication")
+				}
+			})
+			active := openClient(t, h)
+			activeAuth := authenticate(t, active, h.room, protocol.RoleHost, clientID, 1, freshGeneration,
+				presenceOptions{roomSession: true})
+			if activeAuth.ShareGeneration == nil || *activeAuth.ShareGeneration != freshGeneration {
+				t.Fatal("active publication did not survive reauthentication")
+			}
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------

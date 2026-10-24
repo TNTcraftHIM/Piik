@@ -12,6 +12,7 @@ import { replaySvgAnimations } from "../ui/animation";
 import { MetricCells } from "../components/living/Metrics";
 import { PREVIEW_METRICS } from "./preview-metrics";
 import { usePreviewAnchor } from "./use-preview-anchor";
+import { usePreviewReducedMotion } from "./use-preview-reduced-motion";
 
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
   { label: "说明 / Neutral", kind: "hint-volume", tone: "off", motion: "demo", text: "playback.volume" },
@@ -61,6 +62,7 @@ export function TooltipPreviewPage() {
   const { t, lang } = useCopy();
   const en = lang === "en";
   const [reducedMotion, setReducedMotion] = useState(false);
+  usePreviewReducedMotion(reducedMotion);
   return (
     <div className="lr-app" data-comic-reduced-motion={reducedMotion || undefined}>
       <AppHeader led={<LedStrip state="live" label={t("state.signal.connected")} comic="signal-connected" />} />

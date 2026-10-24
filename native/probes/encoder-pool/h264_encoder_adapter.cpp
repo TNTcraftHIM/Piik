@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -58,9 +59,6 @@ class HardwareEncoder final : public webrtc::VideoEncoder {
     profile_.height = config->height;
     profile_.frame_rate = config->maxFramerate;
     profile_.bit_rate = config->startBitrate * 1000;
-    if (profile_.h264_level() > static_cast<UINT32>(maximum_level_)) {
-      return WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
-    }
     try {
       runtime_ = std::make_unique<native::Runtime>();
       auto adapters = native::EnumerateAdapters();
@@ -181,6 +179,16 @@ class HardwareEncoder final : public webrtc::VideoEncoder {
       const auto access_unit = encoder_->Encode(
           texture.Get(), static_cast<UINT64>(frame.timestamp_us()) * 10,
           key_frame_pending_);
+      // LiveEncoder lets MF select the level and validates the emitted profile.
+      // Constrain the actual SPS to this WebRTC encoder's negotiated level.
+      const auto summary = native::InspectAnnexB(access_unit.bytes);
+      if (summary.profile_level_id) {
+        const auto profile = webrtc::ParseH264ProfileLevelId(
+            summary.profile_level_id->c_str());
+        if (!profile || profile->level > maximum_level_) {
+          throw std::runtime_error("hardware H264 exceeds the negotiated level");
+        }
+      }
       key_frame_pending_ = false;
       webrtc::EncodedImage image;
       image.SetEncodedData(webrtc::EncodedImageBuffer::Create(
@@ -276,15 +284,8 @@ class HardwareFactory final : public webrtc::VideoEncoderFactory {
       std::optional<webrtc::Resolution> resolution) const override {
     if (resolution && !ValidDimensions(resolution->width, resolution->height)) return {};
     const auto profile = webrtc::ParseSdpForH264ProfileLevelId(format.parameters);
-    native::VideoProfile minimum;
-    minimum.frame_rate = 1;
-    if (resolution) {
-      minimum.width = resolution->width;
-      minimum.height = resolution->height;
-    }
     const bool supported = format.IsSameCodec(HardwareFormat()) &&
-        (!scalability_mode || *scalability_mode == "L1T1") && profile &&
-        minimum.h264_level() <= static_cast<UINT32>(profile->level);
+        (!scalability_mode || *scalability_mode == "L1T1") && profile.has_value();
     return {supported, supported};
   }
 

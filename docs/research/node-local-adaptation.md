@@ -1,10 +1,10 @@
 # Node-Local Adaptive Encoded Reuse
 
-Reviewed: 2026-09-07. [ADR-0013](../adr/0013-embedded-node-local-media.md) now owns
+Initial review: 2026-09-07. [ADR-0013](../adr/0013-embedded-node-local-media.md) owns
 the accepted model and highest-demand envelope. Codec backends and timing
-values still need implementation evidence. ADR-0007 remains the runtime contract.
-The [design proposal](./node-local-media-design.md) narrows implementation from
-the measurements below; it does not reopen the agreed topology/reuse model.
+values below describe that initial candidate. [Node-local media design](./node-local-media-design.md)
+records the subsequent published implementation and recovery evidence;
+[media quality](../standards/media-quality.md) owns current behavior.
 
 ## Agreed Model
 
@@ -27,7 +27,7 @@ server-side derivation needs real decoding/encoding capacity. Pure Browser
 peers can consume normal WebRTC outputs and benefit from capable upstreams,
 but have no generic cross-PeerConnection encoded-forwarding API.
 
-## Existing Building Blocks And Gaps
+## Initial Building Blocks And Gaps
 
 - `mediaedge.Source` already forwards encoded RTP to multiple Pion edges.
 - Native GCC observations currently drive route evidence, not the shared
@@ -145,8 +145,8 @@ retire their resources immediately; warm retention cannot revive a retired sourc
 | Pion mediadevices | Go codec-controller and raw-frame broadcast interface reference | Cgo/native codecs still exist; not a reason to replace the working capture adapters |
 | GStreamer `tee`/queues and codec elements | Shared decode/frame flow and isolated output branches | `webrtcsink` currently encodes per consumer, so it does not directly solve shared derived output |
 
-No candidate has yet demonstrated the complete local derivation, reuse and
-recovery contract. The current inLive probe proves forwarding only. A small SFU
+At the initial review, no candidate had demonstrated the complete local derivation,
+reuse and recovery contract. The inLive probe proved forwarding only. A small SFU
 library does not by itself replace a transcoder. Do not add FFmpeg/GStreamer or
 change the current Native codec stack on documentation claims alone.
 

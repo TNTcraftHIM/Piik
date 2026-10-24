@@ -3,7 +3,7 @@
 export const pageProbe = String.raw`(() => {
   localStorage.setItem('piik:ui-lang','en'); localStorage.setItem('piik:ui-mode','text');
   const peers=[], sockets=[], events=[], errors=[], controls=[];
-  let route=null,natPrediction=null,voice=null,freezeCapture=()=>{},resumeCapture=()=>{},peerSignalDelay=0,peerSignalReleaseAt=0;
+  let route=null,upstream=null,natPrediction=null,voice=null,freezeCapture=()=>{},resumeCapture=()=>{},peerSignalDelay=0,peerSignalReleaseAt=0;
   let observedVideo=null,frameCallback=0,renderedFrames=0,lastFrameAt=0,maxFrameGapMs=0;
   const observeVideo=video=>{
     if(video===observedVideo)return;
@@ -31,10 +31,16 @@ export const pageProbe = String.raw`(() => {
       this.addEventListener('message', event=>{
         let message; try{message=JSON.parse(event.data);}catch{return;}
         if(typeof message.routePolicy?.natPrediction==='boolean')natPrediction=message.routePolicy.natPrediction;
-        if(message.type==='route-update'&&message.phase==='active')route=message.assignment.upstream.kind;
+        if(message.type==='route-update'&&message.phase==='active'){
+          upstream=message.assignment.upstream;route=upstream.kind;
+        }
         if(message.type==='room-voice-state')voice=message;
         const value={at:performance.now(),type:message.type,state:message.state,reason:message.reason,scope,
           phase:message.phase,route:message.assignment?.upstream?.kind,connectionId:message.connectionId};
+        if(message.type==='signal'&&message.payload?.kind==='description'){
+          value.fromPeerId=message.fromPeerId;value.connectionId=message.payload.connectionId;
+          value.descriptionType=message.payload.description.type;
+        }
         if(message.type==='punch-prepared')value.predictionStep=message.prediction?.step;
         if(message.type==='punch-complete')value.connected=message.connected;
         for(const key of ['localType','remoteType','natTraversalPath','sampleWindowMs','intervalFramesEncoded',
@@ -89,6 +95,13 @@ export const pageProbe = String.raw`(() => {
       }
     return {energy,samples,playing:audio.length,publications:voice?.publications.length||0};
   },freezeCapture:()=>freezeCapture(),resumeCapture:()=>resumeCapture(),delayPeerSignals:ms=>{peerSignalDelay=ms;peerSignalReleaseAt=0;},
+    restartUpstream:()=>{
+      const socket=sockets.findLast(s=>!s.url.includes('/control')&&s.readyState===WS.OPEN);
+      const offer=events.findLast(event=>event.type==='signal'&&event.fromPeerId===upstream?.peerId&&event.descriptionType==='offer');
+      if(!socket||upstream?.kind!=='peer'||!offer)return false;
+      socket.send(JSON.stringify({type:'restart-request',targetPeerId:upstream.peerId,
+        connectionId:offer.connectionId,rebuild:false}));return true;
+    },
     resetPlaybackProgress:()=>{renderedFrames=0;lastFrameAt=performance.now();maxFrameGapMs=0;},async signalProbe(){
     const socket=sockets.findLast(s=>!s.url.includes('/control')&&s.readyState===WS.OPEN);
     if(!socket)return false;

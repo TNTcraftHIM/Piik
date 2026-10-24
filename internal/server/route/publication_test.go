@@ -220,3 +220,82 @@ func TestAttachedVideoQualityUsesPhysicalVideoIdentityAndNativeProof(t *testing.
 		childPeerID: A, connectionID: "replacement", state: SenderQualityHealthy, acceptedAtMs: 19,
 	}).Accepted, false)
 }
+
+func TestFailedOptionalPictureReopensOnlyForNewEndpointSession(t *testing.T) {
+	for _, endpoint := range []string{"child", "parent", "host"} {
+		t.Run(endpoint, func(t *testing.T) {
+			routes := voiceTree(t)
+			routes.SetVideoPublication("share", false, 10)
+			failedChild := B
+			if endpoint == "host" {
+				failedChild = A
+			} else {
+				a := beginVideoAttach(t, routes, 11, A, "video-a")
+				eq(t, routes.CandidateReady(a, 12, nil, CandidateProof{VideoGeneration: "share"}).Committed, true)
+			}
+			failed := beginVideoAttach(t, routes, 13, failedChild, "failed-video")
+			routes.CandidateFailed(failed, 14)
+			before := routes.Snapshot()
+			changedPeer := A
+			if endpoint == "child" {
+				changedPeer = B
+			} else if endpoint == "host" {
+				changedPeer = HOST
+			}
+			participant, _ := routes.participants.Get(changedPeer)
+			input := viewerInput(changedPeer, participant.sessionID, 1)
+			if endpoint == "host" {
+				input = hostInput(participant.sessionID, 1)
+			}
+			routes.UpsertParticipant(input, ms(15))
+			noOperation(t, routes.Reconcile(16).Operation)
+			eq(t, edgeOf(t, routes, failedChild).VideoGeneration, "share")
+			input.SessionID = "new_endpoint_session"
+			routes.UpsertParticipant(input, ms(17))
+			retry := beginVideoAttach(t, routes, 18, failedChild, "recovered-video")
+			retry.ChildSessionID = edgeOf(t, routes, failedChild).ChildSessionID
+			eq(t, routes.CandidateReady(retry, 19, nil, CandidateProof{VideoGeneration: "share"}).Committed, true)
+			if endpoint == "host" {
+				b := beginVideoAttach(t, routes, 20, B, "video-b")
+				eq(t, routes.CandidateReady(b, 21, nil, CandidateProof{VideoGeneration: "share"}).Committed, true)
+			} else {
+				eq(t, edgeOf(t, routes, A).VideoConnectionID, "video-a")
+			}
+			for _, peerID := range []string{A, B} {
+				previous, _ := before.UpstreamByViewer.Get(peerID)
+				eq(t, edgeOf(t, routes, peerID).ConnectionID, previous.ConnectionID)
+				eq(t, edgeOf(t, routes, peerID).Usable, true)
+			}
+			// Further endpoint sessions retain proven physical video without another attach.
+			input.SessionID = "healthy_endpoint_session"
+			routes.UpsertParticipant(input, ms(22))
+			noOperation(t, routes.Reconcile(23).Operation)
+			eq(t, edgeOf(t, routes, failedChild).VideoConnectionID, "recovered-video")
+		})
+	}
+}
+
+func TestHostSessionReopensFailedSfuPictureWithoutReplacingHealthyPicture(t *testing.T) {
+	routes := newController(1, Options{SfuEnabled: true, SfuOnly: true})
+	routes.SetVideoPublication("", false, 0)
+	addViewer(routes, A, 0, nil)
+	addViewer(routes, B, 0, nil)
+	routes.hydrateHostPublication("publication", res("publication"), "publisher")
+	routes.hydrateEdge(A, sfuEdge("publication", "voice-a", "subscription-a"))
+	routes.hydrateEdge(B, sfuEdge("publication", "voice-b", "subscription-b"))
+	routes.SetVideoPublication("share", false, 1)
+	a := beginVideoAttach(t, routes, 2, A, "failed-a")
+	routes.CandidateFailed(a, 3)
+	b := beginVideoAttach(t, routes, 4, B, "healthy-b")
+	eq(t, routes.CandidateReady(b, 5, nil, CandidateProof{VideoGeneration: "share"}).Committed, true)
+	host, _ := routes.participants.Get(HOST)
+	routes.UpsertParticipant(hostInput(host.sessionID, 1), ms(6))
+	noOperation(t, routes.Reconcile(7).Operation)
+	routes.UpsertParticipant(hostInput("replacement-host", 1), ms(8))
+	a = beginVideoAttach(t, routes, 9, A, "recovered-a")
+	eq(t, routes.CandidateReady(a, 10, nil, CandidateProof{VideoGeneration: "share"}).Committed, true)
+	noOperation(t, routes.Reconcile(11).Operation)
+	eq(t, edgeOf(t, routes, A).ConnectionID, "voice-a")
+	eq(t, edgeOf(t, routes, B).VideoConnectionID, "healthy-b")
+	eq(t, routes.Publication().HostSessionID, "replacement-host")
+}

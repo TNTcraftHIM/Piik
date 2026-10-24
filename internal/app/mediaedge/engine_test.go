@@ -139,7 +139,7 @@ func TestICESocketSTUNUsesOnePortForBothFamilies(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = server.Close() })
-			mapped, err := socket.stunMapping(t.Context(), listener.LocalAddr().(*net.UDPAddr))
+			mapped, err := socket.querySTUN(t.Context(), listener.LocalAddr().(*net.UDPAddr))
 			if err != nil {
 				t.Fatal(err)
 			}

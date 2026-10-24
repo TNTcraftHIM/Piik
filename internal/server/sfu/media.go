@@ -195,19 +195,7 @@ func (media *Media) PreparePublication(fence ResourceFence, connectionID string,
 		}
 		publication.emit(MediaEvent{Candidate: value})
 	})
-	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		publication.mu.Lock()
-		input := publication.input
-		publication.mu.Unlock()
-		if input != nil {
-			input.SetUpAvailable(state == webrtc.PeerConnectionStateConnected)
-		}
-		if state == webrtc.PeerConnectionStateFailed {
-			publication.fail(errors.New("SFU publisher transport failed"))
-			return
-		}
-		publication.emit(MediaEvent{State: state})
-	})
+	pc.OnConnectionStateChange(publication.connectionStateChanged)
 	pc.OnTrack(publication.consumeTrack)
 	pc.OnDataChannel(func(channel *webrtc.DataChannel) {
 		publication.mu.Lock()
@@ -222,6 +210,27 @@ func (media *Media) PreparePublication(fence ResourceFence, connectionID string,
 	media.publications[fence] = publication
 	go publication.runDemand()
 	return nil
+}
+
+func (publication *mediaPublication) connectionStateChanged(state webrtc.PeerConnectionState) {
+	publication.mu.Lock()
+	input := publication.input
+	publication.mu.Unlock()
+	if input != nil {
+		// Historical loss retires grants even if this PC has recovered. Recovery
+		// requests a fresh handshake; it must never restore the previous grant.
+		if state != webrtc.PeerConnectionStateConnected {
+			input.SetUpAvailable(false)
+		}
+		if state != webrtc.PeerConnectionStateFailed && publication.pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
+			input.SetUpAvailable(true)
+		}
+	}
+	if state == webrtc.PeerConnectionStateFailed {
+		publication.fail(errors.New("SFU publisher transport failed"))
+		return
+	}
+	publication.emit(MediaEvent{State: publication.pc.ConnectionState()})
 }
 
 func (publication *mediaPublication) wakeDemand() {
@@ -401,7 +410,7 @@ func (media *Media) AddPublisherICE(fence ResourceFence, connectionID string, ca
 	if err != nil {
 		return err
 	}
-	return publication.pc.AddICECandidate(candidate)
+	return forwarding.AddICECandidate(publication.pc, candidate)
 }
 
 func (media *Media) UpdatePublication(fence ResourceFence, connectionID string, metadata PublicationMedia) error {
@@ -629,16 +638,7 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 		publication.emitSubscriber(subscriber, MediaEvent{Candidate: value})
 	})
 	transport.PC.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		if input != nil && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
-			input.LoseDown(fence.ViewerPeerID+":"+connectionID, nil)
-		}
-		if state == webrtc.PeerConnectionStateConnected {
-			if err := transport.SetConnected(); err != nil {
-				state = webrtc.PeerConnectionStateFailed
-			}
-		}
-		publication.emitSubscriber(subscriber, MediaEvent{State: state})
-		publication.wakeDemand()
+		publication.subscriberStateChanged(subscriber, state)
 	})
 	offer, err := transport.PC.CreateOffer(nil)
 	if err == nil {
@@ -648,6 +648,31 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 		return webrtc.SessionDescription{}, err
 	}
 	return offer, nil
+}
+
+func (publication *mediaPublication) subscriberStateChanged(subscriber *mediaSubscription, state webrtc.PeerConnectionState) {
+	publication.mu.Lock()
+	current := !publication.closed && publication.failure == nil && publication.subscribers[subscriber.key] == subscriber && subscriber.ctx.Err() == nil
+	input := publication.input
+	publication.mu.Unlock()
+	if !current {
+		return
+	}
+	if input != nil && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
+		input.LoseDown(subscriber.key.peerID+":"+subscriber.key.connectionID, nil)
+	}
+	// Failed still belongs to the route's terminal failure owner. Other queued
+	// states describe current readiness, never permission to attach an old PC.
+	if state != webrtc.PeerConnectionStateFailed {
+		state = subscriber.transport.PC.ConnectionState()
+	}
+	if state == webrtc.PeerConnectionStateConnected {
+		if err := subscriber.transport.SetConnected(); err != nil {
+			state = webrtc.PeerConnectionStateFailed
+		}
+	}
+	publication.emitSubscriber(subscriber, MediaEvent{State: state})
+	publication.wakeDemand()
 }
 
 func (media *Media) subscriber(fence SubscriptionFence, connectionID string) (*mediaSubscription, error) {
@@ -702,7 +727,7 @@ func (media *Media) AddSubscriberICE(fence SubscriptionFence, connectionID strin
 	if err != nil {
 		return err
 	}
-	return subscriber.transport.PC.AddICECandidate(candidate)
+	return forwarding.AddICECandidate(subscriber.transport.PC, candidate)
 }
 
 func (media *Media) CloseSubscription(fence SubscriptionFence, connectionID string) error {

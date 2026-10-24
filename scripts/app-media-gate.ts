@@ -356,7 +356,7 @@ async function browserMediaGate(input: {
           rejectRequest(new Error("Native request timed out: " + type));
         }, 8_000);
         pending.set(id, { resolve: resolveRequest, reject: rejectRequest, timer });
-        socket!.send(JSON.stringify({ version: 10, id, type, ...fields }));
+        socket!.send(JSON.stringify({ version: input.protocol, id, type, ...fields }));
       });
     };
     socket.onmessage = (event) => {

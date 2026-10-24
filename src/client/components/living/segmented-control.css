@@ -65,8 +65,9 @@
 .lr-toggle input:focus-visible + span { outline: 3px solid var(--action); outline-offset: 3px; }
 :is(.lr-toggle, .lr-lang) button.is-selected,
 .lr-toggle input:checked + span { color: var(--control-selected-ink); }
+/* Labels stay centred on the track's selection surface, including sticky touch hover. */
 :is(.lr-toggle, .lr-lang) button:is(:hover, :focus-visible):not(:disabled),
-.lr-toggle input:enabled:is(:hover, :focus-visible) + span { transform: translateY(-1px); }
+.lr-toggle input:enabled:is(:hover, :focus-visible) + span { transform: none; }
 :is(.lr-toggle, .lr-lang) button:is(:hover, :focus-visible):not(:disabled):not(.is-selected),
 .lr-toggle input:enabled:not(:checked):is(:hover, :focus-visible) + span { background: var(--control-hover); color: var(--ink); }
 :is(.lr-toggle, .lr-lang) button:active:not(:disabled),

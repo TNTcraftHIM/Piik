@@ -88,10 +88,16 @@ func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publ
 	publication.transport = transport
 	publication.signaling.connection = transport.PC
 	publication.signaling.audioSource = options.Audio
-	publication.signaling.localCandidates = newLocalCandidateGathering(socket, options.ICEServers, nil, options.Events.LocalCandidate)
+	parameters, err := transport.PC.SCTP().Transport().ICETransport().GetLocalParameters()
+	if err != nil {
+		_ = publication.Close()
+		return nil, err
+	}
+	publication.signaling.localCandidates = newLocalCandidateGathering(socket, options.ICEServers, nil, parameters.UsernameFragment, options.Events.LocalCandidate)
 	transport.PC.OnICECandidate(publication.signaling.localCandidates.addPion)
 	transport.PC.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		if state == webrtc.PeerConnectionStateConnected {
+		isCurrentState := func(expected webrtc.PeerConnectionState) bool { return transport.PC.ConnectionState() == expected }
+		if state == webrtc.PeerConnectionStateConnected && isCurrentState(state) {
 			if connectErr := transport.SetConnected(); connectErr != nil {
 				_ = transport.PC.Close()
 				return
@@ -99,7 +105,7 @@ func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publ
 			source.RequestRecoveryFrame()
 		}
 		if options.Events.ConnectionState != nil {
-			options.Events.ConnectionState(state, nil)
+			options.Events.ConnectionState(state, nil, isCurrentState)
 		}
 	})
 	engine.mu.Lock()

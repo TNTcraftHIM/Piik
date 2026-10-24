@@ -1046,22 +1046,7 @@ func viewerEventMessage(event nativeviewer.Event) any {
 			NatTraversalPath: event.NatTraversalPath,
 		}
 	case "edge-quality":
-		quality := event.Quality
-		return edgeQualityEvent{
-			eventEnvelope:         base,
-			SampleTimestampMs:     quality.SampleTimestampMs,
-			SampleWindowMs:        quality.SampleWindowMs,
-			RTPStatsID:            quality.RTPStatsID,
-			TrackIdentifier:       quality.TrackIdentifier,
-			State:                 quality.State,
-			Reason:                quality.Reason,
-			IntervalFramesEncoded: quality.IntervalFramesEncoded,
-			FramesPerSecond:       quality.FramesPerSecond,
-			BitrateKbps:           quality.BitrateKbps,
-			AvailableOutgoingKbps: quality.AvailableOutgoingKbps,
-			Width:                 quality.Width,
-			Height:                quality.Height,
-		}
+		return qualityEvent(base, event.Quality)
 	default:
 		return edgeStateEvent{eventEnvelope: base, State: event.State}
 	}
@@ -1099,24 +1084,27 @@ func eventMessage(event nativehost.Event) any {
 			NatTraversalPath: event.NatTraversalPath,
 		}
 	case "edge-quality":
-		quality := event.Quality
-		return edgeQualityEvent{
-			eventEnvelope:         base,
-			SampleTimestampMs:     quality.SampleTimestampMs,
-			SampleWindowMs:        quality.SampleWindowMs,
-			RTPStatsID:            quality.RTPStatsID,
-			TrackIdentifier:       quality.TrackIdentifier,
-			State:                 quality.State,
-			Reason:                quality.Reason,
-			IntervalFramesEncoded: quality.IntervalFramesEncoded,
-			FramesPerSecond:       quality.FramesPerSecond,
-			BitrateKbps:           quality.BitrateKbps,
-			AvailableOutgoingKbps: quality.AvailableOutgoingKbps,
-			Width:                 quality.Width,
-			Height:                quality.Height,
-		}
+		return qualityEvent(base, event.Quality)
 	default:
 		return captureStateEvent{eventEnvelope: base, State: event.State}
+	}
+}
+
+func qualityEvent(base eventEnvelope, quality *mediaedge.QualitySample) edgeQualityEvent {
+	return edgeQualityEvent{
+		eventEnvelope:         base,
+		SampleTimestampMs:     quality.SampleTimestampMs,
+		SampleWindowMs:        quality.SampleWindowMs,
+		RTPStatsID:            quality.RTPStatsID,
+		TrackIdentifier:       quality.TrackIdentifier,
+		State:                 quality.State,
+		Reason:                quality.Reason,
+		IntervalFramesSent:    quality.IntervalFramesSent,
+		FramesPerSecond:       quality.FramesPerSecond,
+		BitrateKbps:           quality.BitrateKbps,
+		AvailableOutgoingKbps: quality.AvailableOutgoingKbps,
+		Width:                 quality.Width,
+		Height:                quality.Height,
 	}
 }
 

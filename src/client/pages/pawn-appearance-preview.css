@@ -5,6 +5,11 @@
 .cp-pawn-preview figure { display: grid; justify-items: center; align-content: start; gap: 6px; margin: 0; min-width: 0; }
 .cp-pawn-figure { display: grid; place-items: center; width: 56px; height: 64px; border-radius: 12px; background: var(--couch); }
 .cp-pawn-figure .lr-person { width: 48px; height: 56px; }
+.cp-pawn-motion { margin-bottom: 24px; }
+.cp-pawn-motion > .cp-tools { flex-wrap: wrap; }
+.cp-pawn-motion-figures { display: flex; justify-content: center; align-items: end; gap: 32px; margin-top: 16px; }
+.cp-pawn-motion-figures .is-large .cp-pawn-figure { width: 120px; height: 128px; }
+.cp-pawn-motion-figures .is-large .lr-person { width: 96px; height: 112px; }
 .cp-pawn-preview figcaption { color: var(--muted); font-size: 12px; line-height: 1.5; text-align: center; text-wrap: balance; }
 .cp-pawn-preview figcaption > span { display: block; word-break: keep-all; }
 .cp-pawn-headphone-comparison { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; max-width: 680px; margin: 0 auto; }

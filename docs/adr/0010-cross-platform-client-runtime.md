@@ -44,7 +44,7 @@ topologies and makes a saved Site unavailable while another room source runs.
 3. Discovery returns a per-process `instanceToken`. The WebSocket subprotocol
    echoes it so the Browser connects to the process it discovered. This value is
    public process identity, not authentication. The listener accepts the current
-   Local Host origin and the one user-saved Site origin. Origin and Host
+   Local Host origin and individually approved Site origins. Origin and Host
    validation plus the Browser's local-network permission own this boundary.
 4. Native control starts with a strict `hello` handshake. Up to two participant
    control sessions may coexist; each retains its own share and media lifetime.
@@ -139,8 +139,8 @@ topologies and makes a saved Site unavailable while another room source runs.
    added. Only a consumed App-launch marker travels in the URL fragment.
    Exact target identity travels over loopback.
 9. The App uses the system Browser as its only UI. It remains available to the
-   saved Site before a room mode is chosen. Its persistent launcher offers Local
-   and public link, shows the approved Site and allows revocation. Starting a
+   approved Sites before a room mode is chosen. Its persistent launcher offers Local
+   and public link, lists approved Sites and allows independent revocation. Starting a
    Local/public room does not disable that Site's native access or approval UI;
    neither visiting the launcher nor approving a Site creates a room. Command-line
    entry selectors remain automation inputs rather than the normal interface. An
@@ -154,18 +154,17 @@ topologies and makes a saved Site unavailable while another room source runs.
     A participant on an approved Site consumes that Site's
     configured STUN survey. Both feed the same connection-local prediction
     adapter; Native additionally owns its UDP socket and best-effort port mapping.
-11. One App configuration owns the optional Site origin and an optional,
+11. One App configuration owns approved Site origins and an optional,
     user-chosen Local access password. A blank value leaves the Local site open;
     a value gates that site through the existing SiteAccess authority. The
     App bootstraps a selected page through a fragment consumed before
     authentication; the page retains only the non-secret App opt-in at its
     origin. Friends use the existing room invitation grant. No App-specific
-    room authorization system is added. Site replacement/revocation uses this
-    same configuration owner, immediately denies new control requests from the
-    old origin and cancels its existing sessions. Retirement is bounded and does
-    not wait for unrelated Local sessions. Cleanup failure never restores the
-    revoked permission; concurrent approval pages must review a changed Site
-    before replacing it.
+    room authorization system is added. Adding a Site preserves other approvals.
+    Revoking an origin through that same configuration owner immediately denies
+    its new control requests and cancels only its existing sessions. Retirement
+    is bounded and does not wait for unrelated Local or Site sessions. Cleanup
+    failure never restores revoked permission.
 12. Local authority shutdown first ends every in-memory room through the current
     `room-closed` path, then closes signaling and HTTP. The App cancels the
     server context, calls that end-then-close sequence under one bounded
@@ -179,8 +178,7 @@ topologies and makes a saved Site unavailable while another room source runs.
     Git revision and an explicit supported target. The Go binary embeds that
     release's built Browser assets and the package `REVISION` records the same
     revision; a revision mismatch fails rather than loading a stale private
-    contract. App-scoped pull requests build every
-    target and must start the assembled Local authority, pass `/healthz`, and
+    contract. App package acceptance must start the assembled Local authority, pass `/healthz`, and
     stop it cleanly before the candidate is accepted.
 14. The root package manifest is the single dependency contract for the Browser
     bundle and repository tooling. No host installs packages to run Piik, so

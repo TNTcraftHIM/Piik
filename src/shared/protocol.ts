@@ -116,29 +116,6 @@ const activeMediaRouteUpstreamSchema = z.discriminatedUnion("kind", [
   sfuMediaRouteUpstreamSchema,
 ]);
 
-export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
-  z
-    .object({
-      role: z.literal("host"),
-      peerId: opaqueIdSchema,
-      displayName: displayNameSchema,
-      upstream: z.object({ kind: z.literal("none") }).strict(),
-    })
-    .strict(),
-  z
-    .object({
-      role: z.literal("viewer"),
-      peerId: opaqueIdSchema,
-      displayName: displayNameSchema,
-      upstream: mediaRouteUpstreamSchema,
-      mediaReady: z.literal(true).optional(),
-    })
-    .strict(),
-]);
-export type ParticipantPresenceEntry = z.infer<
-  typeof participantPresenceEntrySchema
->;
-
 export const viewerPresenceEntrySchema = z
   .object({
     role: z.literal("viewer"),
@@ -149,6 +126,21 @@ export const viewerPresenceEntrySchema = z
   })
   .strict();
 export type ViewerPresenceEntry = z.infer<typeof viewerPresenceEntrySchema>;
+
+export const participantPresenceEntrySchema = z.discriminatedUnion("role", [
+  z
+    .object({
+      role: z.literal("host"),
+      peerId: opaqueIdSchema,
+      displayName: displayNameSchema,
+      upstream: z.object({ kind: z.literal("none") }).strict(),
+    })
+    .strict(),
+  viewerPresenceEntrySchema,
+]);
+export type ParticipantPresenceEntry = z.infer<
+  typeof participantPresenceEntrySchema
+>;
 
 const tokenSchema = z
   .string()
@@ -333,7 +325,7 @@ const sessionDescriptionSchema = z
   })
   .strict();
 
-const iceCandidateSchema = z
+export const iceCandidateSchema = z
   .object({
     candidate: z.string().max(4096),
     sdpMid: z.string().max(128).nullable().optional(),
@@ -493,6 +485,7 @@ export const routeDemandReasonSchema = z.enum([
   "direct-convergence",
   "quality-convergence",
   "root-convergence",
+  "publication-attach",
 ]);
 export type RouteDemandReason = z.infer<typeof routeDemandReasonSchema>;
 
@@ -566,12 +559,12 @@ const routeDiagnosticChildSchema = z
       .number()
       .int()
       .min(0)
-      .max(MAX_ENDPOINT_MEDIA_COPY_CAPACITY),
+      .max(MAX_VIEWERS_PER_ROOM_LIMIT),
     childCount: z
       .number()
       .int()
       .min(0)
-      .max(MAX_ENDPOINT_MEDIA_COPY_CAPACITY),
+      .max(MAX_VIEWERS_PER_ROOM_LIMIT),
     demandAgeMs: routeDiagnosticDurationSchema,
     queueWaitMs: routeDiagnosticDurationSchema,
     candidateStartMs: routeDiagnosticDurationSchema,
