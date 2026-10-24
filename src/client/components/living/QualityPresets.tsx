@@ -18,6 +18,11 @@ const PRESET_LABELS: Record<QualityProfileId, CopyKey> = {
   "1080p60": "host.quality.highFps",
 };
 
+const RESOLUTION_HINTS: Partial<Record<keyof typeof QUALITY_RESOLUTIONS, CopyKey>> = {
+  "1440p": "host.video.resolution1440p",
+  "2160p": "host.video.resolution2160p",
+};
+
 export function QualityPresets({ selected, limits = VIDEO_CAPTURE_LIMITS, disabled = false, busy = false, onSelect }: {
   selected: QualityProfileId | null;
   limits?: VideoCaptureLimits;
@@ -124,7 +129,10 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
       {Object.entries(QUALITY_RESOLUTIONS).map(([label, resolution]) => <Chip key={label}
         selected={qualityResolutionEqual(value, resolution)}
         disabled={disabled || captureFramerateCeiling(resolution, limits) < MIN_VIDEO_FRAMERATE}
-        title={label} hint="hint-quality" onClick={() => {
+        title={label} hint="hint-quality"
+        hintText={t(RESOLUTION_HINTS[label as keyof typeof QUALITY_RESOLUTIONS] ?? "host.video.resolutionPreset", {
+          width: String(resolution.width), height: String(resolution.height),
+        })} onClick={() => {
           // Selecting even the current preset replaces an unsubmitted draft.
           reset(controls.current!);
           onChange(resolution);

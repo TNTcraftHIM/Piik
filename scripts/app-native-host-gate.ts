@@ -1043,7 +1043,7 @@ async function main(): Promise<void> {
       const framesBefore4K = await evaluate<number>(cdp, viewer,
         `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`, Date.now() + 5_000);
       await evaluate<void>(cdp, host,
-        `document.querySelector('button.lr-chip[aria-label="4K"]')?.click()`, Date.now() + 5_000);
+        `document.querySelector('button.lr-chip[aria-label="2160p"]')?.click()`, Date.now() + 5_000);
       await waitForValue(deadline => evaluate<boolean>(cdp!, host, `(() => {
         const fps = document.querySelector('input[name="maxFramerate"]');
         const width = document.querySelector('.lr-video-size input[name="width"]');

@@ -54,7 +54,7 @@ afterEach(() => {
 
 describe("realtime quality controls", () => {
   it("bounds custom size, orientation and frame rate together before capture", () => {
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"])).toBe(64);
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["2160p"])).toBe(64);
     expect(captureFramerateCeiling({ width: 2160, height: 3840 })).toBe(64);
     expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["1440p"])).toBe(144);
     expect(captureFramerateCeiling({ width: 1440, height: 2560 })).toBe(144);
@@ -62,7 +62,7 @@ describe("realtime quality controls", () => {
     expect(captureFramerateCeiling({ width: 5120, height: 1440 })).toBe(72);
     expect(captureFramerateCeiling({ width: 1920, height: 1080 })).toBe(240);
     const level51 = videoCaptureLimits({ maxVideoMacroblocksPerSecond: 983_040 });
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"], level51)).toBe(30);
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["2160p"], level51)).toBe(30);
     expect(captureFramerateCeiling({ width: 2160, height: 3840 }, level51)).toBe(30);
     for (const size of [{ width: 3840, height: 3840 }, { width: 1921, height: 1080 },
       { width: 8194, height: 100 }, { width: 6562, height: 1438 },
@@ -71,7 +71,7 @@ describe("realtime quality controls", () => {
     }
     const limited = videoCaptureLimits({ maxVideoResolution: { width: 1920, height: 1080 },
       maxVideoPixels: 1920 * 1080, maxVideoMacroblocksPerSecond: 245_760 });
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["4K"], limited)).toBe(0);
+    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["2160p"], limited)).toBe(0);
     expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["1080p"], limited)).toBe(30);
     expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["720p"], limited)).toBe(68);
     expect(videoCaptureLimits({ maxVideoResolution: { width: 8192, height: 8192 },
@@ -115,7 +115,7 @@ describe("realtime quality controls", () => {
     const { stream, videoTrack } = createVideoStream();
     const getDisplayMedia = vi.fn(async () => stream);
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
-    for (const resolution of [QUALITY_RESOLUTIONS["4K"], { width: 2160, height: 3840 }]) {
+    for (const resolution of [QUALITY_RESOLUTIONS["2160p"], { width: 2160, height: 3840 }]) {
       const profile = { ...QUALITY_PROFILES["1080p60"], resolution, maxBitrate: 50_000_000 };
       expect(supportsCaptureProfile(profile)).toBe(true);
       await captureDisplay(profile);
