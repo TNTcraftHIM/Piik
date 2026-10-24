@@ -11,8 +11,6 @@ describe("desktop App connection entry", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it.each([
-    ["Android phone", "Mozilla/5.0 (Linux; Android 16) Mobile", "Linux armv8l", 5],
-    ["Android tablet", "Mozilla/5.0 (Linux; Android 16)", "Linux armv8l", 5],
     ["iPhone", "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)", "iPhone", 5],
     ["iPad", "Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X)", "iPad", 5],
     ["desktop-mode iPad", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)", "MacIntel", 5],
@@ -30,6 +28,8 @@ describe("desktop App connection entry", () => {
   });
 
   it.each([
+    ["Android phone", "Mozilla/5.0 (Linux; Android 16) Mobile", "Linux armv8l", 5],
+    ["Android tablet", "Mozilla/5.0 (Linux; Android 16)", "Linux armv8l", 5],
     ["touch Windows", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 10],
     ["Mac", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)", "MacIntel", 0],
     ["Linux", "Mozilla/5.0 (X11; Linux x86_64)", "Linux x86_64", 0],
@@ -74,9 +74,10 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
-function mount(activated = false, state: "idle" | "ready" = "idle") {
+function mount(activated = false, state: "idle" | "ready" = "idle", android = false) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
-  const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site } });
+  const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
+  const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
   const native = {
     discoverNativeConnect: vi.fn(async (_signal: AbortSignal): Promise<string | null> => approval),
     discoverNativeHealth: vi.fn(async (_options: { signal: AbortSignal }): Promise<object | null> => ({})),
@@ -90,7 +91,8 @@ function mount(activated = false, state: "idle" | "ready" = "idle") {
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    window, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
+    window, document, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
+    wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     sourcePicker: false, state, isClientActivated: () => activated,
     watchClientActivation: (changed: () => void) => {
       window.addEventListener("activation", changed);
@@ -100,7 +102,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle") {
       if (path !== "../../native/client") throw new Error(`Unexpected dependency: ${path}`);
       return native;
     },
-  }) as { connect: () => Promise<void>; cleanup: () => void };
+  }) as { connect: (wake?: boolean) => Promise<void>; cleanup: () => void };
   function message(overrides: Record<string, unknown> = {}) {
     window.dispatchEvent(Object.assign(new Event("message"), {
       source: popup, origin: new URL(approval).origin, data: { type: "piik-app-approved", site }, ...overrides,
@@ -108,10 +110,46 @@ function mount(activated = false, state: "idle" | "ready" = "idle") {
   }
   const activateElsewhere = () => { activated = true; window.dispatchEvent(new Event("activation")); };
   const openApproval = async () => { await operation.connect(); await operation.connect(); };
-  return { ...operation, openApproval, popup, window, native, pending, help, showHelp, setState, activateClient, activateElsewhere, onConnected, message };
+  return { ...operation, openApproval, popup, window, document, native, pending, help, showHelp, setState, activateClient, activateElsewhere, onConnected, message };
 }
 
 describe("App connection approval", () => {
+  it("wakes Android in the original tab, then resumes discovery and explicit approval on return", async () => {
+    const page = mount(false, "idle", true);
+    await page.connect(true);
+    expect(page.window.location.assign).toHaveBeenCalledWith("intent://app#Intent;scheme=piik;package=tv.piik.android;end");
+    expect(page.window.open).not.toHaveBeenCalled();
+    expect(page.native.discoverNativeConnect).not.toHaveBeenCalled();
+    expect(page.activateClient).not.toHaveBeenCalled();
+    page.window.dispatchEvent(new Event("focus"));
+    page.document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();
+    expect(page.setState).toHaveBeenLastCalledWith("approval");
+    expect(page.window.open).not.toHaveBeenCalled();
+    await page.connect();
+    expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
+    page.message();
+    await settle();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
+    expect(page.activateClient).toHaveBeenCalledOnce();
+    page.cleanup();
+  });
+
+  it("cancels a cold wake without reviving discovery after a late App return", async () => {
+    const page = mount(false, "idle", true);
+    await page.connect(true);
+    page.pending.current!.cancel!();
+    page.window.dispatchEvent(new Event("focus"));
+    page.document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    expect(page.native.discoverNativeConnect).not.toHaveBeenCalled();
+    expect(page.window.open).not.toHaveBeenCalled();
+    expect(page.activateClient).not.toHaveBeenCalled();
+    expect(page.pending.current).toBeNull();
+    page.cleanup();
+  });
+
   it("keeps permission discovery in the original tab and opens only on a later click", async () => {
     const page = mount();
     let complete!: (url: string) => void;

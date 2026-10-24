@@ -11,6 +11,7 @@ import {
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
 import { NativeCompatibilityError, NativeRequestError, type NativeClient } from "../src/client/native/client";
 import { NativeClientConnection } from "../src/client/native/client-connection";
+import { androidAppIntent } from "../src/client/native/activation";
 import { nativeCaptureTargetKey } from "../src/client/native/capture-selection";
 import { nativeAppDetected, type NativeSourceList } from "../src/client/components/living/CaptureSourcePicker";
 import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
@@ -32,10 +33,11 @@ const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "lo
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
   "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleSharingPause",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setStatusNotice", "setNoticeError", "setNoticeErrorKey", "endSharing", "disposeResources", "hostTerminationKey", "copyRoomLink", "isCurrentRoomAuthority",
-  "handleRoomAccessFailure", "replaceCurrentRoom", "forgetRoom", "endRoomSession", "readableError"]);
+  "handleRoomAccessFailure", "replaceCurrentRoom", "forgetRoom", "endRoomSession", "readableError", "confirmNativePermission"]);
 
 const functions: string[] = [];
 let noticeRendering = "";
+const nativePermissionRendering: string[] = [];
 function collect(node: ts.Node): void {
   if (ts.isFunctionDeclaration(node) && node.name && owners.has(node.name.text)) {
     functions.push(node.getText(source));
@@ -43,6 +45,9 @@ function collect(node: ts.Node): void {
   }
   if (ts.isVariableDeclaration(node) && node.name.getText(source) === "noticeText") {
     noticeRendering = node.initializer!.getText(source);
+  }
+  if (ts.isVariableDeclaration(node) && ["nativePermissionIntent", "confirmNativeCapture"].includes(node.name.getText(source))) {
+    nativePermissionRendering.push(`const ${node.getText(source)};`);
   }
   ts.forEachChild(node, collect);
 }
@@ -100,6 +105,9 @@ function fixture(launchedByClient = true, nativeConnected = true) {
     readPreferredRoomId: () => null, disposeResources: vi.fn(), ApiError,
     NativeMediaBridge: vi.fn(function (_shareId: string, _client: unknown, _onFailed: () => void) { return bridge; }), manualVideoCodecPreference: vi.fn(),
     phase: "live", qualitySettingsRef: ref<QualitySettings>(original), advancedQualityRef: ref<QualitySettings>(original),
+    nativeActive: false, switchingSource: false,
+    androidAppIntent: (action: unknown) => androidAppIntent(action, "Android"),
+    window: { location: { assign: vi.fn() } },
     qualityChangeRef: ref<object | null>(null), pendingQualityChangeRef: ref<QualitySettings | null>(null),
     appQualityPreferenceRef: ref<{ save: (quality: QualitySettings) => void } | null>(null),
     qualityPreferenceEditedRef: ref(false), pendingAppQualityPreferenceRef: ref<QualitySettings | null>(null),
@@ -141,6 +149,7 @@ function fixture(launchedByClient = true, nativeConnected = true) {
       state.activeGenerationRef.current === generation && state.shareGenerationRef.current === share,
   });
   runInContext(executable, context);
+  state.setNativeActive.mockImplementation((value: boolean) => { context.nativeActive = value; });
   if (nativeConnected) state.nativeConnection.adopt(client as unknown as NativeClient);
   const start = context.startSharing;
   const startChild = context.startPeer;
@@ -162,6 +171,7 @@ function fixture(launchedByClient = true, nativeConnected = true) {
     startBrowser: () => start({ kind: "browser" }) as Promise<void>,
     writeNoticeError,
     renderNotice: (noticeValue: unknown) => runInContext(noticeRendering, createContext({ noticeValue, t: say })),
+    renderNativePermission: () => runInContext(`(() => { ${nativePermissionRendering.join("\n")} return confirmNativeCapture; })()`, context),
     discover: context.acquireNativeClient as () => Promise<typeof client | null>,
     requestShare: context.requestSharing as () => void,
     startNative: () => context.startNativeShare(1, "share", { client, target: {}, audio: false, path: {} }) as Promise<unknown>,
@@ -1029,6 +1039,30 @@ describe("Host quality ownership", () => {
       expect(current.nativeMediaBridgeRef.current).toBeNull();
       expect(current.client.stopShare).not.toHaveBeenCalled();
     }
+  });
+
+  it("offers Android confirmation for pending native capture, then keeps frame waiting passive", async () => {
+    const current = fixture();
+    Object.assign(current.client.health, { activationURL: "piik://media" });
+    current.context.phase = "starting";
+    current.nativeShareGenerationRef.current = null;
+    const started = deferred<{ audio: boolean; codec: "h264" }>();
+    const frames = deferred<Awaited<ReturnType<typeof current.bridge.start>>>();
+    current.client.startShare.mockReturnValue(started.promise);
+    current.bridge.start.mockReturnValue(frames.promise);
+    const starting = current.startNative();
+    await vi.waitFor(() => expect(current.client.startShare).toHaveBeenCalledOnce());
+    expect(current.renderNativePermission()).toBe(true);
+    current.context.confirmNativePermission();
+    expect(current.window.location.assign).toHaveBeenCalledWith("intent://media#Intent;scheme=piik;package=tv.piik.android;end");
+    started.resolve({ audio: false, codec: "h264" });
+    await vi.waitFor(() => expect(current.bridge.start).toHaveBeenCalledOnce());
+    expect(current.renderNativePermission()).toBe(false);
+    frames.resolve(current.streamRef.current!);
+    await starting;
+    current.activeGenerationRef.current = null;
+    current.context.confirmNativePermission();
+    expect(current.window.location.assign).toHaveBeenCalledOnce();
   });
 
   it.each(["camera", "browser"])("retains the %s capture cause when presenting its notice", (source) => {

@@ -181,6 +181,7 @@ import type {
 import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import { NativeClient, NativeCompatibilityError, NativeRequestError } from "../native/client";
 import { NativeClientConnection } from "../native/client-connection";
+import { androidAppIntent } from "../native/activation";
 import {
   NativeSenderPeer,
   shouldUseBrowserQualityCandidate,
@@ -1286,6 +1287,7 @@ export function HostPage({
     selection: Extract<ShareSourceSelection, { kind: "native" }>,
   ): Promise<MediaStream | null> {
     const { client, target, audio, excludeAudio, showCaptureBorder, path } = selection;
+    nativeSourceSelectionRef.current = selection;
     let bridge: NativeMediaBridge | null = null;
     let shareStarted = false;
     let nativeEventCleanup: (() => void) | null = null;
@@ -1317,7 +1319,6 @@ export function HostPage({
       nativeMediaBridgeRef.current = bridge;
       nativeSourceAudioRef.current = undefined;
       audioAvailableRef.current = false;
-      nativeSourceSelectionRef.current = selection;
       nativeEventCleanup = client.onEvent((event) => {
         if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeConnection.current !== client) return;
         if (event.type === "remote-control-state") {
@@ -3682,6 +3683,15 @@ export function HostPage({
     ? nativeConnection.current?.health.nativeMedia.maxAudioBitrate ?? MAX_AUDIO_SEND_BITRATE
     : MAX_AUDIO_SEND_BITRATE);
   const videoLimits = videoCaptureLimits(nativeActive ? nativeConnection.current?.health.nativeMedia : undefined);
+  const nativePermissionIntent = androidAppIntent(nativeConnection.current?.health.activationURL);
+  const confirmNativeCapture = Boolean(nativePermissionIntent && (
+    (phase === "starting" && !nativeActive && nativeSourceSelectionRef.current) ||
+    (switchingSource && nativeActive)
+  ));
+  function confirmNativePermission(): void {
+    const intent = androidAppIntent(nativeConnection.current?.health.activationURL);
+    if (intent && activeGenerationRef.current !== null) window.location.assign(intent);
+  }
 
   return (
     <div className="lr-app">
@@ -3841,19 +3851,22 @@ export function HostPage({
                 painted after it would cover and swallow its controls. */}
             {nativeSources ? null : switchingSource && !sourceSwitchRef.current?.audioOnly ? (
               <StageOverlay
-                icon="refresh"
+                icon={confirmNativeCapture ? "window" : "refresh"}
                 comic="source-switching"
                 tone="busy"
                 waiting
                 dim
-                message={t("host.switchingSource")}
+                message={t(confirmNativeCapture ? "native.confirmInApp" : "host.switchingSource")}
+                onActivate={confirmNativeCapture ? confirmNativePermission : undefined}
               />
             ) : sharingPaused ? (
               <StageOverlay icon="pause" dim comic="host-paused" tone={hostStatus.activity.tone} message={t("host.pauseNotice")} />
             ) : phase === "starting" ? (
               <>
                 <StaticNoise />
-                <StageOverlay icon="cast" comic="source-starting" tone="busy" waiting message={t("host.starting")} />
+                <StageOverlay icon={confirmNativeCapture ? "window" : "cast"} comic="source-starting" tone="busy" waiting
+                  message={t(confirmNativeCapture ? "native.confirmInApp" : "host.starting")}
+                  onActivate={confirmNativeCapture ? confirmNativePermission : undefined} />
               </>
             ) : stream && previewPlayback.suspended ? (
               <StageOverlay
@@ -4001,6 +4014,9 @@ export function HostPage({
               </div>
             </>}
             audio={<>
+              {nativePermissionIntent && nativeActive && ((commentaryBusy && !commentary) || (switchingSource && sourceSwitchRef.current?.audioOnly)) &&
+                <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" tone="primary"
+                  hint="hint-client-site" onClick={confirmNativePermission} />}
               {phase === "live" && (!nativeActive || nativeConnection.current?.health.nativeMedia.microphone) ?
                   <ShareMicrophoneSettings enabled={commentary}
                     browser={!nativeActive}

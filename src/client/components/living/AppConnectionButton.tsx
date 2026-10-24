@@ -8,6 +8,7 @@ import { Comic } from "./Comic";
 import { HintComic } from "./hints";
 import { LoadingStatus } from "./WaitingStatus";
 import { useAnchoredPopover } from "./use-anchored-popover";
+import { androidAppIntent } from "../../native/activation";
 
 interface AppConnectionProps {
   sourcePicker?: boolean;
@@ -23,11 +24,10 @@ interface ConnectionAttempt {
 
 export function AppConnectionButton(props: AppConnectionProps) {
   const activated = useSyncExternalStore(watchClientActivation, isClientActivated, isClientActivated);
-  // A running mobile App retains its management and reconnect entry.
-  // Ordinary mobile browsers do not offer the desktop-package workflow.
+  // Android can explicitly wake App from its browser. iOS keeps Browser media.
   // iPad's desktop UA still identifies a touch-capable Mac platform.
   if (!activated && typeof navigator !== "undefined" && (
-    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
   )) return null;
   const button = <AppConnectionControl {...props} />;
@@ -36,7 +36,8 @@ export function AppConnectionButton(props: AppConnectionProps) {
 
 function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnectionProps) {
   const { t, vis } = useCopy();
-  const [state, setState] = useState<"idle" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
+  const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
+  const wakeURL = androidAppIntent("piik://app");
   const [helpOpen, setHelpOpen] = useState(false);
   const downloadURL = useProjectLink("/#download", "https://github.com/TNTcraftHIM/Piik/releases/latest", helpOpen);
   const helpId = useId();
@@ -76,7 +77,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     if (trigger.current) help.current?.showPopover({ source: trigger.current });
   }
 
-  async function connect(): Promise<void> {
+  async function connect(wake = false): Promise<void> {
     if (pending.current) { pending.current.open?.(); return; }
     const manage = state === "ready";
     healthCheck.current?.abort();
@@ -84,11 +85,11 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     // A fresh click opens the real approval page without reserving a blank tab.
     const attempt: ConnectionAttempt = { controller: new AbortController(), popup: null };
     pending.current = attempt;
-    setState("busy");
     showHelp();
     const signal = attempt.controller.signal;
     let native: typeof import("../../native/client") | undefined;
     let approving = false;
+    let waking = false;
     const onMessage = async (event: MessageEvent) => {
       if (approving || !attempt.popup || event.source !== attempt.popup || !approvalOrigin || event.origin !== approvalOrigin ||
           event.data?.type !== "piik-app-approved" || event.data.site !== window.location.origin) return;
@@ -106,6 +107,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     const finish = (result: typeof state, keepPage = false) => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
       attempt.controller.abort();
       if (!keepPage) attempt.popup?.close();
       if (pending.current === attempt) {
@@ -117,40 +119,58 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     };
     attempt.cancel = () => finish(manage ? "ready" : "idle");
     const onFocus = () => {
+      if (waking) { attempt.open?.(); return; }
       if (attempt.popup?.closed && !approving) finish("idle");
     };
+    const onVisible = () => { if (document.visibilityState === "visible") onFocus(); };
     window.addEventListener("message", onMessage);
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
     signal.addEventListener("abort", () => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
     }, { once: true });
-    try {
-      native = await import("../../native/client");
-      if (signal.aborted) return;
-      const url = await native.discoverNativeConnect(signal);
-      if (signal.aborted) return;
-      if (!url) { finish("unavailable"); return; }
-      approvalOrigin = new URL(url).origin;
+    const discover = async () => {
+      setState("busy");
+      try {
+        native = await import("../../native/client");
+        if (signal.aborted) return;
+        const url = await native.discoverNativeConnect(signal);
+        if (signal.aborted) return;
+        if (!url) { finish("unavailable"); return; }
+        approvalOrigin = new URL(url).origin;
+        attempt.open = () => {
+          if (signal.aborted || attempt.popup) return;
+          const destination = new URL(url);
+          if (manage) destination.searchParams.delete("site");
+          attempt.popup = window.open(destination.href, "_blank");
+          if (!attempt.popup) { finish("unavailable"); return; }
+          attempt.open = undefined;
+          if (manage) finish("ready", true);
+          else { setState("approving"); help.current?.hidePopover(); }
+        };
+        setState("approval");
+      } catch (error) {
+        if (!signal.aborted) finish(native && error instanceof native.NativeCompatibilityError ? "incompatible" : "unavailable");
+      }
+    };
+    if (wake && wakeURL) {
+      waking = true;
       attempt.open = () => {
-        if (signal.aborted || attempt.popup) return;
-        const destination = new URL(url);
-        if (manage) destination.searchParams.delete("site");
-        attempt.popup = window.open(destination.href, "_blank");
-        if (!attempt.popup) { finish("unavailable"); return; }
+        if (!waking || signal.aborted) return;
+        waking = false;
         attempt.open = undefined;
-        if (manage) finish("ready", true);
-        else { setState("approving"); help.current?.hidePopover(); }
+        void discover();
       };
-      setState("approval");
-    } catch (error) {
-      if (!signal.aborted) finish(native && error instanceof native.NativeCompatibilityError ? "incompatible" : "unavailable");
-    }
+      setState("waking");
+      window.location.assign(wakeURL);
+    } else await discover();
   }
 
-  const busy = state === "busy" || state === "approving";
+  const busy = state === "busy" || state === "waking" || state === "approving";
   const label = t(state === "busy" ? "client.connect.discovering" : state === "approving" ? "client.connect.approving" : state === "approval" ? "client.connect.found" :
-    state === "ready" ? "client.connect.manage" : state === "incompatible" ? "native.incompatible" :
+    state === "waking" ? "client.connect.returnToBrowser" : state === "ready" ? "client.connect.manage" : state === "incompatible" ? "native.incompatible" :
     state === "unavailable" ? "client.connect.unavailable" : "client.connect.action");
   const failed = state === "unavailable" || state === "incompatible";
   return <><Tooltip kind={state === "ready" ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
@@ -179,7 +199,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
       }}>
       <div className="lr-app-connect-head">
         {state === "busy" ? <LoadingStatus label="client.connect.discovering" /> :
-          <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && (state === "approval" ? <HintComic kind="hint-client-site" /> :
+          <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && (state === "approval" || state === "waking" ? <HintComic kind="hint-client-site" /> :
             <Comic kind={state === "incompatible" ? "warning" : "signal-failed"} theme="paper" />)}</div>}
         <button type="button" className="lr-btn is-dense is-quiet lr-app-connect-close" aria-label={t("common.close")}
           popoverTarget={helpId} popoverTargetAction="hide">
@@ -188,9 +208,12 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
       </div>
       <p id={`${helpId}-message`} className={vis ? "visually-hidden" : undefined}>{state === "busy" ? t("client.connect.permissionHint") : label}</p>
       <div className="lr-app-connect-actions">
-        {state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" ? "client.connect.open" : "common.retry")} onClick={() => void connect()}>
-          <Glyph name={state === "approval" ? "arrowRight" : "refresh"} size={16} /><span className={vis ? "visually-hidden" : undefined}>{t(state === "approval" ? "client.connect.open" : "common.retry")}</span>
+        {state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
+          <Glyph name={state === "approval" ? "arrowRight" : "refresh"} size={16} /><span className={vis ? "visually-hidden" : undefined}>{t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>
         </button>}
+        {failed && wakeURL && <a className="lr-btn" href={wakeURL} onClick={event => { event.preventDefault(); void connect(true); }}>
+          <Glyph name="window" size={16} /><span className={vis ? "visually-hidden" : undefined}>{t("client.connect.wakeApp")}</span>
+        </a>}
         {failed && <a className="lr-btn" href={downloadURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.connect.download")}>
           <Glyph name="arrowDown" size={16} /><span className={vis ? "visually-hidden" : undefined}>{t("client.connect.download")}</span>
         </a>}

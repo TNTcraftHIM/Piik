@@ -82,6 +82,8 @@ export function ControlsPreview() {
   const [invalid, setInvalid] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(displayPreview);
   const [sourceRevision, setSourceRevision] = useState(0);
+  const [systemSourcePicker, setSystemSourcePicker] = useState(false);
+  const [nativePermissionPreview, setNativePermissionPreview] = useState(false);
   const [sourceState, setSourceState] = useState<NativeSourceList["kind"] | "refreshing" | "empty">("ready");
   const [captureBorderAvailable, setCaptureBorderAvailable] = useState(true);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
@@ -284,6 +286,8 @@ export function ControlsPreview() {
         {en ? ["Available", "Loading", "Refreshing", "App unavailable", "Update needed", "Capture unavailable", "Read failed", "Empty list"][index] : ["正常", "读取中", "刷新中", "App 未连接", "需要更新", "无法采集", "读取失败", "空列表"][index]}</Chip>)}
         <SwitchItem checked={captureBorderAvailable} onChange={setCaptureBorderAvailable}
           label={en ? "Windows border control" : "Windows 边框控制"} />
+        <SwitchItem checked={systemSourcePicker} onChange={value => { setSystemSourcePicker(value); setSourceOpen(true); setSourceRevision(value => value + 1); }}
+          label={t("host.sourcePicker.tab.picker")} />
         <a className="lr-btn" href="/__tooltip-preview?source=display#source-preview" onClick={() => {
           // The same URL does not remount the picker or reset its selected tab.
           setSourceState("ready"); setSourceOpen(true); setSourceRevision(value => value + 1);
@@ -294,7 +298,9 @@ export function ControlsPreview() {
       <div className="cp-stage"><StageTv hasEntry label={t("host.sourcePicker.title")}>
         <img className="cp-poster" src={POSTER} alt="" />
         {sourceOpen ? <CaptureSourcePicker key={sourceRevision} nativeSources={sourceState === "empty" ? { ...SOURCES, sources: [], captureBorderControl: captureBorderAvailable }
-          : sourceState === "ready" ? { ...SOURCES, captureBorderControl: captureBorderAvailable }
+          : sourceState === "ready" ? systemSourcePicker
+            ? { ...SOURCES, sources: [{ kind: "picker", sourceId: "1", title: "System chooser" }], processAudio: false, processAudioExclusion: false, captureBorderControl: false }
+            : { ...SOURCES, captureBorderControl: captureBorderAvailable }
           : sourceState === "refreshing" ? { kind: "loading", appDetected: true } : { kind: sourceState }}
           initialShowCaptureBorder={showCaptureBorder}
           initialTab={displayPreview ? "display" : "window"}
@@ -319,6 +325,12 @@ export function ControlsPreview() {
           onToggleTheater={() => setTheater(!theater)} onReconnect={notify} reconnectAvailable />
       </StageTv></div></div>
       <p><a href="/__playback-preview">{en ? "Open the full playback preview" : "进入完整播放预览"} →</a></p>
+      <SwitchItem checked={nativePermissionPreview} onChange={setNativePermissionPreview}
+        label={t("native.confirmInApp")} />
+      {nativePermissionPreview && <div className="cp-stage"><StageTv label={t("native.confirmInApp")}>
+        <StageOverlay icon="window" comic="source-starting" tone="busy" message={t("native.confirmInApp")}
+          onActivate={() => { setNativePermissionPreview(false); notify(); }} />
+      </StageTv></div>}
     </section>
     <section id="launcher-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">08</span><h2>{t("client.launch.title")}</h2></header>

@@ -14,13 +14,14 @@ import { AudioExclusionSelect } from "./AudioExclusionSelect";
 import { AppConnectionButton } from "./AppConnectionButton";
 import type { loadCameraPreviews } from "../../media/camera-previews";
 
-const SOURCE_TABS = ["browser", "camera", "window", "display"] as const;
+const SOURCE_TABS = ["browser", "camera", "window", "display", "picker"] as const;
 type SourceTab = (typeof SOURCE_TABS)[number];
 const SOURCE_ICONS = {
   browser: "globe",
   window: "window",
   display: "display",
   camera: "camera",
+  picker: "share",
 } satisfies Record<SourceTab, GlyphName>;
 
 export type NativeSourceList =
@@ -96,13 +97,17 @@ export function CaptureSourcePicker({
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
   const [excludeAudio, setExcludeAudio] = useState(initialExcludeAudio);
   const appDetected = nativeAppDetected(nativeSources);
-  const tabs = SOURCE_TABS.filter((value) => appDetected || nativeSources.kind === "loading" || value === "browser" || value === "camera");
-  const preferredTab = tab ?? initialTab;
+  const pickerOnly = nativeSources.kind === "ready" && nativeSources.sources.length > 0 &&
+    nativeSources.sources.every(target => target.kind === "picker");
+  const tabs = SOURCE_TABS.filter(value => value === "picker" ? pickerOnly
+    : value === "window" || value === "display" ? !pickerOnly && (appDetected || nativeSources.kind === "loading") : true);
+  const requestedTab = tab ?? initialTab;
+  const preferredTab = pickerOnly && (requestedTab === "window" || requestedTab === "display") ? "picker" : requestedTab;
   const tabAvailable = (value: SourceTab) => value === "camera" ? cameraAvailable
     : value === "browser" || nativeSources.kind === "browser" ? browserAvailable : true;
   const activeTab = tabs.includes(preferredTab) && tabAvailable(preferredTab)
     ? preferredTab : tabs.find(tabAvailable) ?? "browser";
-  const nativeTab = activeTab === "window" || activeTab === "display";
+  const nativeTab = activeTab === "window" || activeTab === "display" || activeTab === "picker";
   const browserCapture = activeTab === "browser";
   const cameraSources = useCameraSources(activeTab === "camera", activeCameraVideo, loadCameras);
   const supportsCaptureBorder = nativeTab && nativeSources.kind === "ready" && nativeSources.captureBorderControl === true;
@@ -259,7 +264,7 @@ export function CaptureSourcePicker({
             return (
               <Tooltip
                 key={value}
-                kind={`hint-capture-${value}`}
+                kind={value === "picker" ? "hint-source-picker" : `hint-capture-${value}`}
                 text={vis ? undefined : t(value === "browser" ? "host.sourcePicker.browserHint" : `host.sourcePicker.tab.${value}`)}
                 place="below"
               >

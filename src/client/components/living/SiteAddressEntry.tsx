@@ -52,6 +52,17 @@ export function SiteAddressEntry({ initialAddress = "", onSelect }: {
           autoCapitalize="none" spellCheck={false} placeholder="https://…"
           aria-label={t("client.connect.siteAddress")} aria-invalid={invalid}
           aria-describedby={invalid ? `${id}-error` : undefined} onInput={() => setInvalid(false)}
+          onBlur={event => {
+            const origin = siteEntryOrigin(event.currentTarget.value);
+            if (origin) event.currentTarget.value = origin;
+          }}
+          onPaste={event => {
+            const address = event.clipboardData.getData("text").trim();
+            if (!/^https?:\/\//i.test(address)) return;
+            event.preventDefault();
+            event.currentTarget.value = address;
+            setInvalid(false);
+          }}
           onKeyDown={event => {
             if (event.key === "Enter" && !event.nativeEvent.isComposing) {
               event.preventDefault();

@@ -399,6 +399,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 
 /* App capture source picker */
 .lr-source-picker {
+  z-index: 5;
   place-content: stretch;
   justify-items: stretch;
   overflow: hidden;
@@ -406,6 +407,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   color: var(--ink);
   text-align: left;
 }
+.lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay.lr-source-picker { grid-area: 1 / 1 / -1 / 2; }
 .lr-source-picker-panel {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);

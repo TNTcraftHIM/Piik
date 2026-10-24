@@ -33,6 +33,20 @@ describe("native capture source selection", () => {
   const game = target("My Game", "1");
   afterEach(() => setCopy({ lang: "en", vis: true }));
 
+  it("shows one system chooser for picker-only Apps instead of duplicate desktop tabs", () => {
+    setCopy({ lang: "en", vis: false });
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "ready", sources: [{ kind: "picker", sourceId: "1", title: "Choose on device" }], processAudio: false, systemAudio: true },
+      onBrowser() {}, onNative() {}, onCamera() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
+    }));
+    expect(html).toMatch(/data-source-tab="picker"[^>]*aria-selected="true"/);
+    expect(html).not.toContain('data-source-tab="window"');
+    expect(html).not.toContain('data-source-tab="display"');
+    expect(html).toContain('data-source-tab="browser"');
+    expect(html).toContain('data-source-tab="camera"');
+    expect(html).toContain(t("en", "host.sourcePicker.systemAction"));
+  });
+
   it("keeps enumerated cameras selectable while optional thumbnails load", () => {
     const props = {
       sources: [{ id: "front", label: "Front camera", preview: null }],
