@@ -11,11 +11,20 @@ import org.json.JSONObject;
 final class EncoderCatalog {
   static final class Entry {
     final String name, codec;
-    final MediaCodecInfo.VideoCapabilities video;
-    Entry(String name, String codec, MediaCodecInfo.VideoCapabilities video) {
+    final JSONObject metadata;
+    Entry(String name, String codec, MediaCodecInfo.VideoCapabilities video) throws org.json.JSONException {
       this.name = name;
       this.codec = codec;
-      this.video = video;
+      int width = Math.min(1920, video.getSupportedWidths().getUpper());
+      width -= width % video.getWidthAlignment();
+      int height = Math.min(1920, video.getSupportedHeightsFor(width).getUpper());
+      height -= height % video.getHeightAlignment();
+      double rate = Math.min(60, video.getSupportedFrameRatesFor(width, height).getUpper());
+      metadata = new JSONObject().put("name", name).put("codec", codec)
+          .put("width", width).put("height", height).put("pixels", (long) width * height)
+          .put("macroblocks", Math.min(2073600L, (long) ((width + 15) / 16) * ((height + 15) / 16) * (long) rate))
+          .put("fps", Math.min(60, video.getSupportedFrameRates().getUpper()))
+          .put("bitrate", Math.min(100000000, video.getBitrateRange().getUpper()));
     }
   }
 
@@ -37,7 +46,7 @@ final class EncoderCatalog {
                   break;
                 }
               }
-            } catch (IllegalArgumentException unavailable) { /* Continue with the next platform encoder. */ }
+            } catch (IllegalArgumentException | org.json.JSONException unavailable) { /* Continue with the next platform encoder. */ }
           }
         }
       }
@@ -54,17 +63,7 @@ final class EncoderCatalog {
   static String capabilities() throws Exception {
     JSONArray encoders = new JSONArray();
     for (Entry entry : candidates("auto")) {
-      var video = entry.video;
-      int width = Math.min(1920, video.getSupportedWidths().getUpper());
-      width -= width % video.getWidthAlignment();
-      int height = Math.min(1920, video.getSupportedHeightsFor(width).getUpper());
-      height -= height % video.getHeightAlignment();
-      double rate = Math.min(60, video.getSupportedFrameRatesFor(width, height).getUpper());
-      encoders.put(new JSONObject().put("name", entry.name).put("codec", entry.codec)
-          .put("width", width).put("height", height).put("pixels", (long) width * height)
-          .put("macroblocks", Math.min(2073600L, (long) ((width + 15) / 16) * ((height + 15) / 16) * (long) rate))
-          .put("fps", Math.min(60, video.getSupportedFrameRates().getUpper()))
-          .put("bitrate", Math.min(100000000, video.getBitrateRange().getUpper())));
+      encoders.put(entry.metadata);
     }
     return new JSONObject().put("encoders", encoders).toString();
   }

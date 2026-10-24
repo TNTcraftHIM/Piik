@@ -287,7 +287,10 @@ public final class CaptureService extends Service {
                 if (firstFrame) {
                   if (SystemClock.uptimeMillis() >= next.deadline) { retryVideo(next); return; }
                   if (!key) return;
-                  runtime.videoReady(id, next.actualCodec, next.width, next.height, next.profile);
+                  if (!runtime.videoReady(id, next.actualCodec, next.width, next.height, next.profile)) {
+                    retryVideo(next);
+                    return;
+                  }
                   next.proven = true;
                   handler.removeCallbacks(next.timeout);
                   if (next.replaced != null && next.replaced.id == id) releaseVideo(next.replaced);

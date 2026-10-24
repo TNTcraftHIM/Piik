@@ -218,3 +218,64 @@ func TestCommittedCodecStaysLockedWhileRotationCanUpdateDimensions(t *testing.T)
 		t.Fatal("committed auto stream silently changed codec")
 	}
 }
+
+func TestIncompatibleAVCPreparationCanFallBackBeforeCommit(t *testing.T) {
+	c := &capture{platform: &testPlatform{}, encoders: []encoderCapability{{Codec: "h264"}, {Codec: "vp8"}}, streams: make(map[int64]*captureStream)}
+	raw, err := c.Video(context.Background(), nativecapture.VideoOptions{Codec: "auto", Profile: nativecapture.VideoProfile{Width: 640, Height: 360, Framerate: 30, Bitrate: 1000000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	s := raw.(*captureStream)
+	r := &Runtime{capture: c}
+	if r.VideoReady(s.id, "h264", 640, 360, "640028") {
+		t.Fatal("unsupported actual AVC profile was accepted")
+	}
+	if !r.CaptureCurrent(s.id) || s.codec.Load() != 0 || s.format.Load() != 0 || len(s.frames) != 0 {
+		t.Fatal("rejected preparation changed or retired the uncommitted stream")
+	}
+	if !r.VideoReady(s.id, "vp8", 640, 360, "") {
+		t.Fatal("auto fallback could not prepare VP8")
+	}
+	frame, err := s.Read()
+	if err != nil || frame.Kind != nativecapture.FrameStatus {
+		t.Fatal("fallback status missing")
+	}
+	r.Video(s.id, []byte{1, 2, 3}, 0, 33333, true)
+	_, _ = s.Read()
+	frame, err = s.Read()
+	if err != nil || frame.Kind != nativecapture.FrameVP8 {
+		t.Fatal("fallback bytes used rejected AVC format")
+	}
+}
+
+func TestRejectedRotationProfileLeavesCommittedSourceUntouched(t *testing.T) {
+	c := &capture{platform: &testPlatform{}, encoders: []encoderCapability{{Codec: "h264"}}, streams: make(map[int64]*captureStream)}
+	raw, err := c.Video(context.Background(), nativecapture.VideoOptions{Codec: "h264", Profile: nativecapture.VideoProfile{Width: 640, Height: 640, Framerate: 30, Bitrate: 1000000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	s := raw.(*captureStream)
+	r := &Runtime{capture: c}
+	if !r.VideoReady(s.id, "h264", 640, 360, "42e01f") {
+		t.Fatal("initial AVC not ready")
+	}
+	_, _ = s.Read()
+	oldFormat := s.format.Load()
+	if r.VideoReady(s.id, "h264", 360, 640, "640028") {
+		t.Fatal("unsupported rotated profile accepted")
+	}
+	if !r.CaptureCurrent(s.id) || s.format.Load() != oldFormat || len(s.frames) != 0 {
+		t.Fatal("failed rotation destroyed or modified healthy source")
+	}
+	r.Video(s.id, []byte{1, 2, 3}, 0, 33333, true)
+	_, _ = s.Read()
+	frame, err := s.Read()
+	if err != nil || frame.Kind != nativecapture.FrameH264 || frame.Width != 640 || frame.Height != 360 {
+		t.Fatal("restored old source cannot continue")
+	}
+	if !r.VideoReady(s.id, "h264", 360, 640, "42e01f") {
+		t.Fatal("legal same-codec rotation rejected")
+	}
+}

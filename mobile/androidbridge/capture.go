@@ -164,14 +164,14 @@ func (s *captureStream) push(frame nativecapture.Frame) bool {
 }
 
 // VideoReady publishes actual encoder dimensions and profile, not requested capability.
-func (r *Runtime) VideoReady(id int64, codec string, width, height int64, profile string) {
+func (r *Runtime) VideoReady(id int64, codec string, width, height int64, profile string) bool {
 	s := r.capture.get(id)
 	if s == nil || len(s.outputs) != 1 {
-		return
+		return false
 	}
-	if (codec != "h264" && codec != "vp8") || (s.requested != "auto" && s.requested != codec) || width < 2 || height < 2 || width > int64(s.outputs[0].Width) || height > int64(s.outputs[0].Height) || !nativecapture.ValidVideoSize(uint32(width), uint32(height)) || (codec == "h264" && !nativecapture.SupportedH264ProfileLevelID(profile)) || (codec == "vp8" && profile != "") {
+	if (codec != "h264" && codec != "vp8") || (s.requested != "auto" && s.requested != codec) {
 		s.Close()
-		return
+		return false
 	}
 	kind := uint32(1)
 	if codec == "vp8" {
@@ -179,13 +179,18 @@ func (r *Runtime) VideoReady(id int64, codec string, width, height int64, profil
 	}
 	if previous := s.codec.Load(); previous != 0 && previous != kind {
 		s.Close()
-		return
+		return false
+	}
+	// An incompatible prepared encoder has not committed any state. The platform
+	// can try another candidate or restore the existing source on this stream.
+	if width < 2 || height < 2 || width > int64(s.outputs[0].Width) || height > int64(s.outputs[0].Height) || !nativecapture.ValidVideoSize(uint32(width), uint32(height)) || (codec == "h264" && !nativecapture.SupportedH264ProfileLevelID(profile)) || (codec == "vp8" && profile != "") {
+		return false
 	}
 	s.codec.Store(kind)
 	s.format.Store(uint64(width)<<32 | uint64(height))
 	state := nativehost.CaptureState{State: "active", HardwareOnly: codec == "h264", Codec: codec, Width: uint32(width), Height: uint32(height), FPS: s.outputs[0].Framerate, ProfileLevelID: profile, Outputs: s.outputs}
 	data, _ := json.Marshal(state)
-	s.push(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: data})
+	return s.push(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: data})
 }
 
 // Video accepts a complete codec access unit; AVC recovery includes SPS/PPS.
