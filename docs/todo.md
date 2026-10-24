@@ -62,6 +62,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Parked Product Work
 
+- **Piik 3.0 scope.** Explore independent room, chat, voice and screen-share
+  lifecycles, with optional image/file exchange, retaining the current topology
+  and route controller. Compare continued Go with scoped Rust components before
+  choosing implementation scope.
 - **Virtual gamepads beyond Windows.** Linux uinput passed its isolated kernel
   gate; desktop permissions and game recognition need physical checks. macOS
   virtual HID needs an entitled App and macOS SDK/runtime checks. The
