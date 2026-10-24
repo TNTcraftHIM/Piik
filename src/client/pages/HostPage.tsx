@@ -3768,8 +3768,10 @@ export function HostPage({
                 onAppConnected={phase !== "live" ? () => {
                   if (nativeSourceRequestRef.current) void openCaptureSourcePicker();
                 } : undefined}
-                browserAvailable={!nativeActive && !!navigator.mediaDevices?.getDisplayMedia}
-                cameraAvailable={!nativeActive && !!navigator.mediaDevices?.getUserMedia}
+                browserSupported={!!navigator.mediaDevices?.getDisplayMedia}
+                cameraSupported={!!navigator.mediaDevices?.getUserMedia}
+                browserAvailable={!nativeActive}
+                cameraAvailable={!nativeActive}
                 selectionDisabled={roomMutating || switchingSource || changingQuality}
                 initialAudio={
                   nativeActive

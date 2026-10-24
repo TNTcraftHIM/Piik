@@ -47,6 +47,29 @@ describe("native capture source selection", () => {
     expect(html).toContain(t("en", "host.sourcePicker.systemAction"));
   });
 
+  it("omits unsupported Browser capture while keeping the system chooser and Camera", () => {
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "ready", sources: [{ kind: "picker", sourceId: "1", title: "Choose on device" }], processAudio: false, systemAudio: true },
+      browserSupported: false,
+      onBrowser() {}, onNative() {}, onCamera() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
+    }));
+    expect([...html.matchAll(/data-source-tab="([^"]+)"/g)].map(match => match[1]))
+      .toEqual(["camera", "picker"]);
+    expect(html).toMatch(/data-source-tab="picker"[^>]*aria-selected="true"/);
+    expect(html).not.toContain("is-browser");
+  });
+
+  it("shows the existing no-source result when neither Browser API nor App capture is available", () => {
+    setCopy({ lang: "en", vis: false });
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "browser" }, browserSupported: false, cameraSupported: false,
+      onBrowser() {}, onNative() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
+    }));
+    expect(html).not.toContain('role="tab"');
+    expect(html).not.toContain("is-browser");
+    expect(html).toContain(t("en", "host.capture.noSource"));
+  });
+
   it("keeps enumerated cameras selectable while optional thumbnails load", () => {
     const props = {
       sources: [{ id: "front", label: "Front camera", preview: null }],

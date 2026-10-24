@@ -83,6 +83,7 @@ export function ControlsPreview() {
   const [sourceOpen, setSourceOpen] = useState(displayPreview);
   const [sourceRevision, setSourceRevision] = useState(0);
   const [systemSourcePicker, setSystemSourcePicker] = useState(false);
+  const [browserCaptureSupported, setBrowserCaptureSupported] = useState(true);
   const [nativePermissionPreview, setNativePermissionPreview] = useState(false);
   const [sourceState, setSourceState] = useState<NativeSourceList["kind"] | "refreshing" | "empty">("ready");
   const [captureBorderAvailable, setCaptureBorderAvailable] = useState(true);
@@ -288,6 +289,8 @@ export function ControlsPreview() {
           label={en ? "Windows border control" : "Windows 边框控制"} />
         <SwitchItem checked={systemSourcePicker} onChange={value => { setSystemSourcePicker(value); setSourceOpen(true); setSourceRevision(value => value + 1); }}
           label={t("host.sourcePicker.tab.picker")} />
+        <SwitchItem checked={browserCaptureSupported} onChange={setBrowserCaptureSupported}
+          label={en ? "Browser screen capture" : "浏览器录屏"} />
         <a className="lr-btn" href="/__tooltip-preview?source=display#source-preview" onClick={() => {
           // The same URL does not remount the picker or reset its selected tab.
           setSourceState("ready"); setSourceOpen(true); setSourceRevision(value => value + 1);
@@ -303,6 +306,7 @@ export function ControlsPreview() {
             : { ...SOURCES, captureBorderControl: captureBorderAvailable }
           : sourceState === "refreshing" ? { kind: "loading", appDetected: true } : { kind: sourceState }}
           initialShowCaptureBorder={showCaptureBorder}
+          browserSupported={browserCaptureSupported}
           initialTab={displayPreview ? "display" : "window"}
           onBrowser={() => { setSourceOpen(false); notify(); }}
           onCamera={() => { setSourceOpen(false); notify(); }}

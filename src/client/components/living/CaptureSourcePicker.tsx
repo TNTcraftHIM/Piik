@@ -54,6 +54,8 @@ export function CaptureSourcePicker({
   onRefresh,
   onCancel,
   onAppConnected,
+  browserSupported = true,
+  cameraSupported = true,
   browserAvailable = true,
   cameraAvailable = !!onCamera,
   initialTab = "window",
@@ -80,6 +82,8 @@ export function CaptureSourcePicker({
   onRefresh: () => void;
   onCancel: () => void;
   onAppConnected?: () => void;
+  browserSupported?: boolean;
+  cameraSupported?: boolean;
   browserAvailable?: boolean;
   cameraAvailable?: boolean;
   initialTab?: SourceTab;
@@ -99,14 +103,16 @@ export function CaptureSourcePicker({
   const appDetected = nativeAppDetected(nativeSources);
   const pickerOnly = nativeSources.kind === "ready" && nativeSources.sources.length > 0 &&
     nativeSources.sources.every(target => target.kind === "picker");
-  const tabs = SOURCE_TABS.filter(value => value === "picker" ? pickerOnly
-    : value === "window" || value === "display" ? !pickerOnly && (appDetected || nativeSources.kind === "loading") : true);
+  const tabs = SOURCE_TABS.filter(value => value === "browser" ? browserSupported
+    : value === "camera" ? cameraSupported
+    : value === "picker" ? pickerOnly
+    : !pickerOnly && (appDetected || nativeSources.kind === "loading"));
   const requestedTab = tab ?? initialTab;
   const preferredTab = pickerOnly && (requestedTab === "window" || requestedTab === "display") ? "picker" : requestedTab;
   const tabAvailable = (value: SourceTab) => value === "camera" ? cameraAvailable
-    : value === "browser" || nativeSources.kind === "browser" ? browserAvailable : true;
+    : value === "browser" ? browserAvailable : true;
   const activeTab = tabs.includes(preferredTab) && tabAvailable(preferredTab)
-    ? preferredTab : tabs.find(tabAvailable) ?? "browser";
+    ? preferredTab : tabs.find(tabAvailable) ?? tabs[0];
   const nativeTab = activeTab === "window" || activeTab === "display" || activeTab === "picker";
   const browserCapture = activeTab === "browser";
   const cameraSources = useCameraSources(activeTab === "camera", activeCameraVideo, loadCameras);
@@ -229,7 +235,7 @@ export function CaptureSourcePicker({
           </Tooltip>
         </header>
 
-        <div
+        {tabs.length > 0 && <div
           className="lr-toggle lr-source-picker-tabs"
           style={{ "--lr-segments": tabs.length, "--lr-selected-index": tabs.indexOf(activeTab) } as CSSProperties}
           role="tablist"
@@ -272,13 +278,13 @@ export function CaptureSourcePicker({
               </Tooltip>
             );
           })}
-        </div>
+        </div>}
 
         <div
           className="lr-source-picker-body"
-          role="tabpanel"
+          role={activeTab ? "tabpanel" : undefined}
           id={`${pickerId}-panel`}
-          aria-labelledby={`${pickerId}-${activeTab}`}
+          aria-labelledby={activeTab ? `${pickerId}-${activeTab}` : undefined}
         >
           {nativeTab &&
           nativeSources.kind === "ready" &&
@@ -350,11 +356,11 @@ export function CaptureSourcePicker({
                 onClick={onBrowser}
               >
                 <span className="lr-source-option-icon" aria-hidden="true">
-                  <Glyph name={SOURCE_ICONS[activeTab]} size={23} />
+                  <Glyph name={SOURCE_ICONS.browser} size={23} />
                 </span>
                 {vis ? (
                   <span className="visually-hidden">
-                    {t(`host.sourcePicker.tab.${activeTab}`)}
+                    {t("host.sourcePicker.tab.browser")}
                   </span>
                 ) : (
                   <span className="lr-source-option-copy">
@@ -398,10 +404,10 @@ export function CaptureSourcePicker({
             <span
               className="lr-source-picker-status"
               role="status"
-              aria-label={t("host.sourcePicker.empty")}
+              aria-label={t(activeTab ? "host.sourcePicker.empty" : "host.capture.noSource")}
             >
               <HintComic kind="hint-no-sources" size={240} />
-              {vis ? null : t("host.sourcePicker.empty")}
+              {vis ? null : t(activeTab ? "host.sourcePicker.empty" : "host.capture.noSource")}
             </span>
           ) : null}
         </div>

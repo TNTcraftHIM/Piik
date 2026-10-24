@@ -111,9 +111,12 @@ versions of the product UI.
 A remembered App activation permits discovery when choosing a source or
 receiving media; it does not make App a prerequisite for sharing. Idle Host
 pages hold no App control session. The shared source selector orders Browser,
-Camera, Window and Screen, defaulting to Window after App detection. Without an
-App it shows only Browser and Camera, defaulting to Browser. Discovery never
-blocks Browser selection or overrides an explicitly chosen tab. Refresh remains
+Camera, Window and Screen, defaulting to Window after App detection. An App that
+provides only a system picker gets one combined choice in place of Window and
+Screen. Browser and Camera choices require their respective Browser APIs;
+temporary restrictions keep a supported choice disabled. Without an App,
+the selector defaults to the first supported Browser or Camera choice. Discovery
+never blocks Browser selection or overrides an explicitly chosen tab. Refresh remains
 reachable after failed App discovery; pending attempts are shared, completed failures
 do not suppress later discovery. Cancelling the selector or ending a share
 releases its unused control session; an obsolete operation cannot install or
