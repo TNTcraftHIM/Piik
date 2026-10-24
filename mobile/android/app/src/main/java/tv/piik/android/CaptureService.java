@@ -16,6 +16,15 @@ import org.json.*;
 
 public final class CaptureService extends Service {
   static volatile CaptureService instance;
+
+  static final class ProjectionOwner extends Binder {
+    final tv.piik.androidbridge.Runtime runtime;
+
+    ProjectionOwner(tv.piik.androidbridge.Runtime runtime) {
+      this.runtime = runtime;
+    }
+  }
+
   static final String CHANNEL = "piik-sharing";
   HandlerThread thread;
   Handler handler;
@@ -25,6 +34,7 @@ public final class CaptureService extends Service {
   volatile Video previousVideo;
   Audio audio;
   Audio previousAudio;
+  int captureWidth, captureHeight;
   volatile boolean retiring;
   volatile boolean stopRequested;
 
@@ -39,7 +49,8 @@ public final class CaptureService extends Service {
 
     MediaCodec codec;
     Surface surface;
-    int width, height, fps;
+    int width, height, fps, sourceWidth, sourceHeight;
+    String configuration;
     byte[] config;
     long base = -1, last = -1;
     boolean ready;
@@ -70,7 +81,19 @@ public final class CaptureService extends Service {
 
   @Override
   public int onStartCommand(Intent intent, int flags, int startId) {
-    final var runtime = MainActivity.runtime;
+    IBinder token =
+        intent == null || intent.getExtras() == null ? null : intent.getExtras().getBinder("owner");
+    final var runtime = token instanceof ProjectionOwner ? ((ProjectionOwner) token).runtime : null;
+    android.util.Log.d(
+        "PiikCapture",
+        "projection service received; localOwner="
+            + (token instanceof ProjectionOwner)
+            + ", current="
+            + (runtime == MainActivity.runtime));
+    if (runtime == null || runtime != MainActivity.runtime) {
+      if (projection == null) stopSelfResult(startId);
+      return START_NOT_STICKY;
+    }
     if (intent != null && (retiring || stopRequested)) {
       fail(runtime, intent.getLongExtra("id", 0));
       stopSelf();
@@ -118,6 +141,13 @@ public final class CaptureService extends Service {
             projection.registerCallback(
                 new MediaProjection.Callback() {
                   @Override
+                  public void onCapturedContentResize(int width, int height) {
+                    captureWidth = width;
+                    captureHeight = height;
+                    resizeVideo();
+                  }
+
+                  @Override
                   public void onStop() {
                     finishProjection();
                   }
@@ -132,9 +162,13 @@ public final class CaptureService extends Service {
     return START_NOT_STICKY;
   }
 
-  static boolean replaceVideo(long id, String config) {
+  static boolean replaceVideo(tv.piik.androidbridge.Runtime owner, long id, String config) {
     CaptureService s = instance;
-    if (s == null || s.projection == null || s.stopRequested) return false;
+    if (s == null
+        || s.projection == null
+        || s.stopRequested
+        || s.video == null
+        || s.video.runtime != owner) return false;
     s.handler.post(() -> s.beginVideo(id, config));
     return true;
   }
@@ -151,18 +185,22 @@ public final class CaptureService extends Service {
       return;
     }
     Video next = new Video(id, runtime);
+    next.configuration = json;
     Video old = video;
     try {
       JSONObject options = new JSONObject(json);
       DisplayMetrics metrics = getResources().getDisplayMetrics();
+      if (captureWidth <= 0 || captureHeight <= 0) updateCaptureSize();
+      next.sourceWidth = captureWidth;
+      next.sourceHeight = captureHeight;
       double scale =
           Math.min(
               1.0,
               Math.min(
-                  options.getDouble("width") / metrics.widthPixels,
-                  options.getDouble("height") / metrics.heightPixels));
-      next.width = Math.max(2, ((int) (metrics.widthPixels * scale)) & ~1);
-      next.height = Math.max(2, ((int) (metrics.heightPixels * scale)) & ~1);
+                  options.getDouble("width") / captureWidth,
+                  options.getDouble("height") / captureHeight));
+      next.width = Math.max(2, ((int) (captureWidth * scale)) & ~1);
+      next.height = Math.max(2, ((int) (captureHeight * scale)) & ~1);
       next.fps = options.getInt("fps");
       boolean h264 = options.getString("codec").equals("h264");
       next.codec = MediaCodec.createByCodecName(MainActivity.encoderName);
@@ -291,8 +329,13 @@ public final class CaptureService extends Service {
       if (display == null) throw new IllegalStateException("Could not create captured display");
       if (!runtime.captureCurrent(id)) throw new IllegalStateException("capture retired");
       // The Go stream owner closes old on commit or next on rollback.
-      previousVideo = old;
       video = next;
+      if (old != null && old.id == id) {
+        // Display rotation changes the physical encoder, not the Go stream clock.
+        next.base = old.base;
+        next.last = old.last;
+        releaseVideo(old);
+      } else previousVideo = old;
     } catch (Exception error) {
       android.util.Log.w("PiikCapture", "video capture failed", error);
       boolean restored = false;
@@ -310,6 +353,29 @@ public final class CaptureService extends Service {
     }
   }
 
+  void updateCaptureSize() {
+    android.graphics.Point size = new android.graphics.Point();
+    getSystemService(WindowManager.class).getDefaultDisplay().getRealSize(size);
+    captureWidth = size.x;
+    captureHeight = size.y;
+  }
+
+  void resizeVideo() {
+    if (video == null || previousVideo != null || retiring || stopRequested) return;
+    if (video.sourceWidth != captureWidth || video.sourceHeight != captureHeight)
+      beginVideo(video.id, video.configuration);
+  }
+
+  @Override
+  public void onConfigurationChanged(android.content.res.Configuration configuration) {
+    super.onConfigurationChanged(configuration);
+    handler.post(
+        () -> {
+          updateCaptureSize();
+          resizeVideo();
+        });
+  }
+
   static byte[] copy(ByteBuffer source) {
     if (source == null) return new byte[0];
     ByteBuffer data = source.duplicate();
@@ -318,13 +384,13 @@ public final class CaptureService extends Service {
     return result;
   }
 
-  static void control(long id, String command, long value) {
+  static void control(tv.piik.androidbridge.Runtime owner, long id, String command, long value) {
     CaptureService s = instance;
     if (s != null)
       s.handler.post(
           () -> {
             Video current = s.video;
-            if (current == null || current.id != id) return;
+            if (current == null || current.id != id || current.runtime != owner) return;
             try {
               Bundle params = new Bundle();
               if (command.equals("keyframe"))
@@ -339,14 +405,16 @@ public final class CaptureService extends Service {
           });
   }
 
-  static void startAudio(long id) {
+  static void startAudio(tv.piik.androidbridge.Runtime owner, long id) {
     CaptureService s = instance;
     if (s == null) {
-      final var runtime = MainActivity.runtime;
-      if (runtime != null) runtime.captureEnded(id);
+      if (owner != null) owner.captureEnded(id);
       return;
     }
-    s.handler.post(() -> s.beginAudio(id));
+    s.handler.post(
+        () -> {
+          if (owner == MainActivity.runtime) s.beginAudio(id);
+        });
   }
 
   void beginAudio(long id) {
@@ -429,29 +497,37 @@ public final class CaptureService extends Service {
     }
   }
 
-  static void stopCapture(long id) {
+  static void stopCapture(tv.piik.androidbridge.Runtime owner, long id) {
     CaptureService s = instance;
     if (s != null) {
-      if (s.video != null && s.video.id == id && s.previousVideo == null) s.stopRequested = true;
+      if (s.video != null
+          && s.video.runtime == owner
+          && s.video.id == id
+          && s.previousVideo == null) s.stopRequested = true;
       s.handler.post(
           () -> {
-            if (s.previousAudio != null && s.previousAudio.id == id) {
+            if (s.previousAudio != null
+                && s.previousAudio.runtime == owner
+                && s.previousAudio.id == id) {
               Audio committed = s.previousAudio;
               s.previousAudio = null;
               s.releaseAudio(committed);
             }
-            if (s.audio != null && s.audio.id == id) {
+            if (s.audio != null && s.audio.runtime == owner && s.audio.id == id) {
               Audio old = s.audio;
               s.audio = s.previousAudio;
               s.previousAudio = null;
               s.releaseAudio(old);
             }
-            if (s.previousVideo != null && s.previousVideo.id == id) {
+            if (s.previousVideo != null
+                && s.previousVideo.runtime == owner
+                && s.previousVideo.id == id) {
               Video committed = s.previousVideo;
               s.previousVideo = null;
               s.releaseVideo(committed);
+              s.resizeVideo();
             }
-            if (s.video != null && s.video.id == id) {
+            if (s.video != null && s.video.runtime == owner && s.video.id == id) {
               if (s.previousVideo == null) {
                 s.finishProjection();
                 return;
@@ -468,8 +544,9 @@ public final class CaptureService extends Service {
                 s.previousVideo = null;
                 // Output queued while preparing next was discarded. Resume
                 // independently of those missing reference frames.
-                control(restored.id, "keyframe", 0);
+                control(restored.runtime, restored.id, "keyframe", 0);
                 s.releaseVideo(discarded);
+                s.resizeVideo();
               } catch (Exception error) {
                 s.finishProjection();
               }

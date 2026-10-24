@@ -6,9 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/url"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
@@ -21,15 +27,21 @@ import (
 
 // The App process owns the room runtime. Its foreground service owns capture.
 type Runtime struct {
-	capture *capture
-	server  *serverapp.Server
-	control *loopback.Server
-	cancel  context.CancelFunc
-	once    sync.Once
-	url     string
+	capture    *capture
+	server     *serverapp.Server
+	control    *loopback.Server
+	launcher   *launcher.Server
+	ctx        context.Context
+	cancel     context.CancelFunc
+	once       sync.Once
+	url        string
+	entry      string
+	configMu   sync.Mutex
+	configPath string
+	config     appconfig.Config
 }
 
-func Start(platform Platform, lanAddress string, codecCapabilities string) (*Runtime, error) {
+func Start(platform Platform, lanAddress string, codecCapabilities string, dataDirectory string) (*Runtime, error) {
 	if platform == nil {
 		return nil, errors.New("Android capture platform is unavailable")
 	}
@@ -50,26 +62,11 @@ func Start(platform Platform, lanAddress string, codecCapabilities string) (*Run
 	if err := json.Unmarshal([]byte(codecCapabilities), &device); err != nil {
 		return nil, errors.New("Android codec capabilities are invalid")
 	}
+	preferences, err := appconfig.LoadOrCreate(filepath.Join(dataDirectory, "client.json"))
+	if err != nil {
+		return nil, err
+	}
 	audio := device.Video
-	configuration, err := config.Local(config.LocalOptions{PublicAddress: lanAddress, Port: 8787})
-	if err != nil {
-		return nil, err
-	}
-	local, err := net.Listen("tcp4", "127.0.0.1:8787")
-	if err != nil {
-		return nil, err
-	}
-	secure, err := net.Listen("tcp4", net.JoinHostPort(lanAddress, "8787"))
-	if err != nil {
-		local.Close()
-		return nil, err
-	}
-	certificate, err := tlsconfig.SelfSigned(lanAddress)
-	if err != nil {
-		local.Close()
-		secure.Close()
-		return nil, err
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Runtime{
 		capture: &capture{
@@ -77,8 +74,8 @@ func Start(platform Platform, lanAddress string, codecCapabilities string) (*Run
 			codec:    device.Codec,
 			streams:  make(map[int64]*captureStream),
 		},
-		cancel: cancel,
-		url:    "http://127.0.0.1:8787/#piik-client=1",
+		ctx: ctx, cancel: cancel,
+		config: preferences, configPath: filepath.Join(dataDirectory, "client.json"),
 	}
 	capabilities := nativecapture.Capabilities{
 		Protocol:     7,
@@ -96,7 +93,7 @@ func Start(platform Platform, lanAddress string, codecCapabilities string) (*Run
 	capabilities.SoftwareVP8 = device.Video && device.Codec == "vp8"
 	r.control, err = loopback.Start(ctx, loopback.Options{
 		MaxControlSessions: 1,
-		AllowedOrigins:     []string{"http://127.0.0.1:8787"},
+		AllowedOrigins:     preferences.ApprovedSites(),
 		NativeMedia: loopback.NativeMediaCapabilities{
 			Video:            device.Video,
 			HardwareH264:     device.Video && device.Codec == "h264",
@@ -121,38 +118,218 @@ func Start(platform Platform, lanAddress string, codecCapabilities string) (*Run
 	})
 	if err != nil {
 		cancel()
-		local.Close()
-		secure.Close()
 		return nil, err
 	}
-	r.server, err = serverapp.New(serverapp.Options{
-		Config:    configuration,
-		Assets:    webassets.FS(),
-		Listeners: []net.Listener{local, tls.NewListener(secure, certificate)},
-	})
+	startup, err := launcher.LoadStartupSite(r.configPath, preferences.ApprovedSites()...)
 	if err != nil {
-		r.control.Close()
-		cancel()
-		local.Close()
-		secure.Close()
-		return nil, err
-	}
-	if _, err = r.server.Listen(ctx); err != nil {
 		r.Close()
 		return nil, err
 	}
+	r.launcher, err = launcher.Start(ctx, webassets.FS(), launcher.Options{
+		Modes: []launcher.Mode{launcher.ModeLocal}, LocalAccessPassword: preferences.LocalAccessPassword, DefaultMode: launcher.ModeLocal, Sites: preferences.ApprovedSites(), StartupSite: startup, LANAddress: lanAddress,
+		ChangeSite: func(site string, allowed bool) ([]string, error) {
+			var err error
+			if allowed {
+				_, err = r.approveSite(site)
+			} else {
+				err = r.revokeSite(site)
+			}
+			r.configMu.Lock()
+			sites := r.config.ApprovedSites()
+			r.configMu.Unlock()
+			return sites, err
+		},
+		SaveStartupSite: func(site string) error { return launcher.SaveStartupSite(r.configPath, site) },
+	})
+	if err != nil {
+		r.Close()
+		return nil, err
+	}
+	r.entry = r.launcher.URL()
+	if startup != "" {
+		r.entry = startup + "/#piik-client=1"
+	}
+	r.control.SetConnectURL(r.launcher.URL())
+	if err = r.control.SetAllowedOrigins(append(r.localOrigins(), preferences.ApprovedSites()...)); err != nil {
+		r.Close()
+		return nil, err
+	}
+	go func() {
+		select {
+		case selected := <-r.launcher.Selection():
+			if selected.Mode != launcher.ModeLocal {
+				r.launcher.SetResult("", errors.New("Use an HTTPS Piik site for sharing over the internet"))
+				return
+			}
+			target, err := r.startLocal(selected, lanAddress)
+			r.launcher.SetResult(target, err)
+		case <-ctx.Done():
+		}
+	}()
 	return r, nil
 }
 
-func (r *Runtime) URL() string { return r.url }
+func (r *Runtime) URL() string      { return r.launcher.URL() }
+func (r *Runtime) EntryURL() string { return r.entry }
+
+func (r *Runtime) startLocal(selection launcher.Selection, address string) (string, error) {
+	r.configMu.Lock()
+	next := r.config
+	next.LocalAccessPassword = selection.LocalAccessPassword
+	err := appconfig.Save(r.configPath, next)
+	if err == nil {
+		r.config = next
+	}
+	r.configMu.Unlock()
+	if err != nil {
+		return "", err
+	}
+	if selection.LANAddress != nil {
+		address = *selection.LANAddress
+	}
+	local, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return "", err
+	}
+	port := local.Addr().(*net.TCPAddr).Port
+	configuration, err := config.Local(config.LocalOptions{PublicAddress: address, Port: port, SiteAccessPassword: selection.LocalAccessPassword})
+	if err != nil {
+		local.Close()
+		return "", err
+	}
+	secure, err := net.Listen("tcp4", net.JoinHostPort(address, strconv.Itoa(port)))
+	if err != nil {
+		local.Close()
+		return "", err
+	}
+	certificate, err := tlsconfig.SelfSigned(address)
+	if err != nil {
+		local.Close()
+		secure.Close()
+		return "", err
+	}
+	server, err := serverapp.New(serverapp.Options{Config: configuration, Assets: webassets.FS(), Listeners: []net.Listener{local, tls.NewListener(secure, certificate)}})
+	if err != nil {
+		local.Close()
+		secure.Close()
+		return "", err
+	}
+	if _, err = server.Listen(r.ctx); err != nil {
+		return "", err
+	}
+	target := launcher.LocalEntryURL("http://127.0.0.1:"+strconv.Itoa(port)+"/", selection.LocalAccessPassword)
+	r.configMu.Lock()
+	if r.ctx.Err() != nil {
+		r.configMu.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		server.End(ctx)
+		return "", r.ctx.Err()
+	}
+	r.server = server
+	r.url = target
+	sites := r.config.ApprovedSites()
+	r.configMu.Unlock()
+	if err = r.control.SetAllowedOrigins(append(r.localOrigins(), sites...)); err != nil {
+		return "", err
+	}
+	return target, nil
+}
+
+// Sites retain the desktop configuration and exact-origin approval owner.
+func (r *Runtime) approveSite(value string) (string, error) {
+	site, err := appconfig.NormalizeSite(value)
+	if err != nil || !strings.HasPrefix(site, "https://") {
+		return "", errors.New("Enter an HTTPS Piik site origin")
+	}
+	r.configMu.Lock()
+	sites := r.config.ApprovedSites()
+	for _, current := range sites {
+		if current == site {
+			r.configMu.Unlock()
+			return site, nil
+		}
+	}
+	next := r.config
+	next.SetApprovedSites(append(sites, site))
+	if err = appconfig.Save(r.configPath, next); err != nil {
+		r.configMu.Unlock()
+		return "", err
+	}
+	r.config = next
+	r.configMu.Unlock()
+	return site, r.control.SetAllowedOrigins(append(r.localOrigins(), next.ApprovedSites()...))
+}
+func (r *Runtime) revokeSite(value string) error {
+	r.configMu.Lock()
+	var sites []string
+	for _, site := range r.config.ApprovedSites() {
+		if site != value {
+			sites = append(sites, site)
+		}
+	}
+	next := r.config
+	next.SetApprovedSites(sites)
+	if err := appconfig.Save(r.configPath, next); err != nil {
+		r.configMu.Unlock()
+		return err
+	}
+	r.config = next
+	r.configMu.Unlock()
+	return r.control.SetAllowedOrigins(append(r.localOrigins(), sites...))
+}
+func (r *Runtime) localOrigins() []string {
+	r.configMu.Lock()
+	defer r.configMu.Unlock()
+	origins := []string{}
+	if r.url != "" {
+		origins = append(origins, r.localOrigin())
+	}
+	if r.launcher != nil {
+		u, _ := url.Parse(r.launcher.URL())
+		origins = append(origins, u.Scheme+"://"+u.Host)
+	}
+	return origins
+}
+func (r *Runtime) localOrigin() string { u, _ := url.Parse(r.url); return u.Scheme + "://" + u.Host }
+func (r *Runtime) TrustedURL(value string) bool {
+	u, err := url.Parse(value)
+	if err != nil || u.User != nil {
+		return false
+	}
+	origin, err := appconfig.NormalizeSite(u.Scheme + "://" + u.Host)
+	if err != nil {
+		return false
+	}
+	for _, local := range r.localOrigins() {
+		if origin == local {
+			return true
+		}
+	}
+	r.configMu.Lock()
+	defer r.configMu.Unlock()
+	for _, site := range r.config.ApprovedSites() {
+		if site == origin {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Runtime) Close() {
 	r.once.Do(func() {
 		r.cancel()
 		r.control.Close()
+		if r.launcher != nil {
+			_ = r.launcher.Close()
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if r.server != nil {
-			r.server.End(ctx)
+		r.configMu.Lock()
+		server := r.server
+		r.configMu.Unlock()
+		if server != nil {
+			server.End(ctx)
 		}
 		r.capture.mu.Lock()
 		streams := make([]*captureStream, 0, len(r.capture.streams))

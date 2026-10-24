@@ -2,12 +2,15 @@
  <uses-permission android:name="android.permission.INTERNET"/>
  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+ <uses-permission android:name="android.permission.CAMERA"/>
+ <uses-feature android:name="android.hardware.camera" android:required="false"/>
+ <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
  <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
  <uses-feature android:name="android.hardware.microphone" android:required="false"/>
  <uses-feature android:name="android.software.leanback" android:required="false"/>
- <application android:label="@string/app_name" android:icon="@drawable/piik" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="true" android:allowBackup="false">
+ <application android:label="@string/app_name" android:icon="@drawable/piik" android:theme="@android:style/Theme.Material.Light" android:usesCleartextTraffic="true" android:allowBackup="false">
   <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" android:resizeableActivity="true">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/><category android:name="android.intent.category.LEANBACK_LAUNCHER"/></intent-filter>
   </activity>

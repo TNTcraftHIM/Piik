@@ -1,0 +1,50 @@
+package androidbridge
+
+import (
+	"context"
+	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
+	"path/filepath"
+	"testing"
+)
+
+func TestSiteApprovalPersistsExactOriginAndRevocation(t *testing.T) {
+	control, err := loopback.Start(context.Background(), loopback.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+	path := filepath.Join(t.TempDir(), "client.json")
+	cfg, err := appconfig.LoadOrCreate(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Runtime{control: control, url: "http://127.0.0.1:49152/#piik-client=1", configPath: path, config: cfg}
+	site, err := r.approveSite("PIIK.example:443")
+	if err != nil || site != "https://piik.example" {
+		t.Fatalf("approval: %q %v", site, err)
+	}
+	if !r.TrustedURL(site+"/room#local") || r.TrustedURL("https://other.example") || r.TrustedURL("http://piik.example") || !r.TrustedURL(r.url) {
+		t.Fatal("incorrect exact origin trust")
+	}
+	persisted, err := appconfig.LoadOrCreate(path)
+	if err != nil || len(persisted.ApprovedSites()) != 1 {
+		t.Fatalf("approval not persisted: %v", err)
+	}
+	if _, err = r.approveSite("https://piik.example/room"); err == nil {
+		t.Fatal("navigation URL granted as an origin")
+	}
+	if _, err = r.approveSite("http://piik.example"); err == nil {
+		t.Fatal("insecure hosted site approved")
+	}
+	if err = r.revokeSite(site); err != nil {
+		t.Fatal(err)
+	}
+	if r.TrustedURL(site) || !r.TrustedURL(r.url) {
+		t.Fatal("revocation changed wrong authority")
+	}
+	persisted, err = appconfig.LoadOrCreate(path)
+	if err != nil || len(persisted.ApprovedSites()) != 0 {
+		t.Fatal("revocation not persisted")
+	}
+}

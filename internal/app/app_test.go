@@ -714,7 +714,7 @@ func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
 func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 	for _, password := range []string{"x", "好", " ", "+", "%", "#&?=", " 中文 a+b&c?d=e% "} {
 		t.Run(password, func(t *testing.T) {
-			value := launchURLWithLocalAccess(
+			value := launcher.LocalEntryURL(
 				"http://localhost:8787/?retained=query#retained=a%2Bb%25&client-access=old&piik-lang=zh&piik-mode=text&piik-theme=dark",
 				password,
 			)
@@ -736,7 +736,7 @@ func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 		})
 	}
 
-	open := launchURLWithLocalAccess("http://localhost:8787/#client-access=old", "")
+	open := launcher.LocalEntryURL("http://localhost:8787/#client-access=old", "")
 	parsed, err := url.Parse(open)
 	if err != nil {
 		t.Fatal(err)

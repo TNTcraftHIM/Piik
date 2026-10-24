@@ -33,6 +33,7 @@ require (
 	github.com/pion/webrtc/v4 v4.2.24
 	github.com/stretchr/testify v1.12.1
 	github.com/thesyncim/gopus v0.2.2
+	github.com/wlynxg/anet v0.0.5
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/mobile v0.0.0-20261011034528-197770444867
@@ -111,7 +112,6 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/twitchtv/twirp v8.1.3+incompatible // indirect
-	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

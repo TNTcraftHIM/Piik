@@ -636,7 +636,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 			fmt.Printf("LAN certificate SHA-256: %s\n", view.certificate)
 		}
 	}
-	launchURL := launchURLWithLocalAccess(
+	launchURL := launcher.LocalEntryURL(
 		fmt.Sprintf("http://127.0.0.1:%d/", options.Port),
 		config.LocalAccessPassword,
 	)
@@ -680,24 +680,6 @@ func launchURL(raw string) string {
 	fragment, err := url.ParseQuery(parsed.EscapedFragment())
 	if err != nil {
 		return raw
-	}
-	fragment.Set("piik-client", "1")
-	parsed.Fragment, parsed.RawFragment = "", ""
-	return parsed.String() + "#" + fragment.Encode()
-}
-
-func launchURLWithLocalAccess(raw, password string) string {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-	fragment, err := url.ParseQuery(parsed.EscapedFragment())
-	if err != nil {
-		return launchURL(raw)
-	}
-	fragment.Del("client-access")
-	if password != "" {
-		fragment.Set("client-access", password)
 	}
 	fragment.Set("piik-client", "1")
 	parsed.Fragment, parsed.RawFragment = "", ""

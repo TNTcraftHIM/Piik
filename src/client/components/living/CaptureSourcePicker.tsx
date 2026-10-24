@@ -96,7 +96,7 @@ export function CaptureSourcePicker({
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
   const [excludeAudio, setExcludeAudio] = useState(initialExcludeAudio);
   const appDetected = nativeAppDetected(nativeSources);
-  const tabs = SOURCE_TABS.filter((value) => appDetected || value === "browser" || value === "camera");
+  const tabs = SOURCE_TABS.filter((value) => appDetected || nativeSources.kind === "loading" || value === "browser" || value === "camera");
   const preferredTab = tab ?? initialTab;
   const tabAvailable = (value: SourceTab) => value === "camera" ? cameraAvailable
     : value === "browser" || nativeSources.kind === "browser" ? browserAvailable : true;

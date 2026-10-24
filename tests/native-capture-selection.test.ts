@@ -64,6 +64,24 @@ describe("native capture source selection", () => {
     expect(nativeTab).toContain('role="status"');
   });
 
+  it("keeps pending native selection from implicitly opening a mobile camera", () => {
+    const props = { onBrowser: () => {}, onNative: () => {}, onCamera: () => {},
+      onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
+      browserAvailable: false, cameraAvailable: true };
+    const pending = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      ...props, nativeSources: { kind: "loading" }, initialTab: "window",
+    }));
+    expect(pending).toMatch(/aria-selected="true"[^>]*data-source-tab="window"|data-source-tab="window"[^>]*aria-selected="true"/);
+    const explicit = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      ...props, nativeSources: { kind: "loading" }, initialTab: "camera",
+    }));
+    expect(explicit).toMatch(/aria-selected="true"[^>]*data-source-tab="camera"|data-source-tab="camera"[^>]*aria-selected="true"/);
+    const browser = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      ...props, nativeSources: { kind: "browser" }, initialTab: "window",
+    }));
+    expect(browser).toMatch(/aria-selected="true"[^>]*data-source-tab="camera"|data-source-tab="camera"[^>]*aria-selected="true"/);
+  });
+
   it("uses the complete window identity as the UI key", () => {
     expect(nativeCaptureTargetKey(game)).toBe("window:1:10:123456");
     expect(
@@ -123,8 +141,8 @@ describe("native capture source selection", () => {
       onBrowser: () => {}, onNative: () => {}, onPreview: async () => null,
       onRefresh: () => {}, onCancel: () => {},
     }));
-    expect(html).toMatch(/data-source-tab="browser"[^>]*aria-selected="true"/);
-    expect(html).not.toContain('data-source-tab="window"');
+    expect(html).toMatch(new RegExp(`data-source-tab="${initialTab}"[^>]*aria-selected="true"`));
+    expect(html).not.toMatch(/data-source-tab="browser"[^>]*disabled=""/);
     expect(html).not.toContain("lr-brand-loader");
     expect(html).not.toMatch(/class="lr-source-picker-close"[^>]*disabled=""/);
   });

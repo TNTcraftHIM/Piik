@@ -10,4 +10,5 @@
  <string name="notification_title">Piik — sharing screen</string>
  <string name="notification_body">Tap to return and stop sharing.</string>
  <string name="leave_prompt">Leave Piik and stop sharing?</string>
+ <string name="choose_site">Piik sites</string>
 </resources>

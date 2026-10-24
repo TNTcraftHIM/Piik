@@ -10,4 +10,5 @@
  <string name="notification_title">Piik 正在分享屏幕</string>
  <string name="notification_body">点击返回并停止分享。</string>
  <string name="leave_prompt">离开 Piik 并停止分享？</string>
+ <string name="choose_site">Piik 站点</string>
 </resources>

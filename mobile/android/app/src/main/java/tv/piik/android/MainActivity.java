@@ -2,11 +2,11 @@ package tv.piik.android;
 
 import android.app.*;
 import android.content.*;
-import android.content.pm.PackageManager;
 import android.media.*;
 import android.media.projection.*;
 import android.net.*;
 import android.os.*;
+import android.view.*;
 import android.webkit.*;
 import android.widget.*;
 import java.net.Inet4Address;
@@ -20,15 +20,18 @@ public final class MainActivity extends Activity {
   static WebView web;
   static final Handler main = new Handler(Looper.getMainLooper());
   static final ExecutorService work = Executors.newSingleThreadExecutor();
+  static CompletableFuture<tv.piik.androidbridge.Runtime> startup;
   static long pendingVideo;
   static String pendingConfig;
   static String encoderName;
-  static final int CAPTURE = 10, AUDIO = 11;
+  static final int CAPTURE = 10;
+  WebPermissions permissions;
 
   @Override
   public void onCreate(Bundle state) {
     super.onCreate(state);
     current = this;
+    permissions = new WebPermissions(this);
     if (web != null) {
       if (web.getParent() instanceof android.view.ViewGroup)
         ((android.view.ViewGroup) web.getParent()).removeView(web);
@@ -43,55 +46,62 @@ public final class MainActivity extends Activity {
       waiting.setText(getString(R.string.no_webview));
       return;
     }
-    work.execute(
-        () -> {
-          try {
-            String capabilities = codecCapabilities();
-            ConnectivityManager cm = getSystemService(ConnectivityManager.class);
-            LinkProperties links = cm.getLinkProperties(cm.getActiveNetwork());
-            String address = null;
-            if (links != null)
-              for (LinkAddress link : links.getLinkAddresses())
-                if (link.getAddress() instanceof Inet4Address
-                    && !link.getAddress().isLoopbackAddress()) {
-                  address = link.getAddress().getHostAddress();
-                  break;
-                }
-            if (address == null) throw new Exception(getString(R.string.no_network));
-            final tv.piik.androidbridge.Runtime started =
-                Androidbridge.start(
-                    new Platform() {
-                      public void startVideo(long id, String config) {
-                        main.post(() -> requestVideo(id, config));
-                      }
-
-                      public void startAudio(long id) {
-                        CaptureService.startAudio(id);
-                      }
-
-                      public void control(long id, String command, long layer, long value) {
-                        CaptureService.control(id, command, value);
-                      }
-
-                      public void stop(long id) {
-                        main.post(
-                            () -> {
-                              CaptureService.stopCapture(id);
-                            });
-                      }
-                    },
-                    address,
-                    capabilities);
-            runtime = started;
+    if (runtime != null) {
+      showWeb(runtime.entryURL());
+      return;
+    }
+    if (startup != null) return;
+    CompletableFuture<tv.piik.androidbridge.Runtime> starting =
+        CompletableFuture.supplyAsync(
+            () -> {
+              try {
+                String capabilities = codecCapabilities();
+                ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+                LinkProperties links = cm.getLinkProperties(cm.getActiveNetwork());
+                String address = "";
+                if (links != null)
+                  for (LinkAddress link : links.getLinkAddresses())
+                    if (link.getAddress() instanceof Inet4Address
+                        && !link.getAddress().isLoopbackAddress()) {
+                      address = link.getAddress().getHostAddress();
+                      break;
+                    }
+                CapturePlatform platform = new CapturePlatform();
+                var started =
+                    Androidbridge.start(
+                        platform, address, capabilities, getFilesDir().getAbsolutePath());
+                platform.owner = new java.lang.ref.WeakReference<>(started);
+                return started;
+              } catch (Exception error) {
+                throw new CompletionException(error);
+              }
+            },
+            work);
+    startup = starting;
+    starting.whenComplete(
+        (started, error) ->
             main.post(
                 () -> {
-                  if (current == this && !isFinishing() && !isDestroyed() && runtime == started)
-                    showWeb(started.url());
-                });
-          } catch (Exception error) {
-            main.post(() -> waiting.setText("Piik\n" + error.getMessage()));
-          }
-        });
+                  if (startup != starting) {
+                    if (started != null) work.execute(started::close);
+                    return;
+                  }
+                  startup = null;
+                  MainActivity active = current;
+                  if (active == null || active.isFinishing() || active.isDestroyed()) {
+                    if (started != null) work.execute(started::close);
+                    return;
+                  }
+                  if (error != null) {
+                    TextView failure = new TextView(active);
+                    failure.setPadding(24, 48, 24, 24);
+                    failure.setText("Piik\n" + error.getCause().getMessage());
+                    active.setContentView(failure);
+                    return;
+                  }
+                  runtime = started;
+                  active.showWeb(started.entryURL());
+                }));
   }
 
   static String codecCapabilities() throws Exception {
@@ -141,33 +151,11 @@ public final class MainActivity extends Activity {
     settings.setAllowFileAccess(false);
     settings.setAllowContentAccess(false);
     settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-    web.setWebViewClient(
-        new WebViewClient() {
-          @Override
-          public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-            Uri uri = request.getUrl();
-            boolean trusted =
-                "http".equals(uri.getScheme())
-                    && "127.0.0.1".equals(uri.getHost())
-                    && uri.getPort() == 8787;
-            if (!trusted) {
-              try {
-                startActivity(new Intent(Intent.ACTION_VIEW, uri));
-              } catch (Exception ignored) {
-              }
-            }
-            return !trusted;
-          }
-        });
-    // No JavaScript interface is exposed. Only the trusted local Piik page can
+    settings.setSupportMultipleWindows(true);
+    web.setWebViewClient(new AppWebClient());
+    // No JavaScript interface is exposed. Only the current approved Piik origin can
     // reach the Go control endpoint, whose existing Origin checks remain active.
-    web.setWebChromeClient(
-        new WebChromeClient() {
-          @Override
-          public void onPermissionRequest(PermissionRequest request) {
-            main.post(() -> request.deny());
-          }
-        });
+    web.setWebChromeClient(new AppChromeClient());
     setContentView(web);
     web.loadUrl(url);
     if (encoderName == null)
@@ -175,6 +163,110 @@ public final class MainActivity extends Activity {
           .setMessage(R.string.no_capture)
           .setPositiveButton(android.R.string.ok, null)
           .show();
+  }
+
+  static final class AppWebClient extends WebViewClient {
+    @Override
+    public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+      Uri uri = request.getUrl();
+      boolean trusted = runtime != null && runtime.trustedURL(uri.toString());
+      if (!trusted) {
+        try {
+          current.startActivity(new Intent(Intent.ACTION_VIEW, uri));
+        } catch (Exception ignored) {
+        }
+      }
+      return !trusted;
+    }
+  }
+
+  static final class AppChromeClient extends WebChromeClient {
+    @Override
+    public void onPermissionRequest(PermissionRequest request) {
+      main.post(
+          () -> {
+            if (current != null) current.permissions.request(request);
+            else request.deny();
+          });
+    }
+
+    @Override
+    public boolean onCreateWindow(WebView view, boolean dialog, boolean gesture, Message result) {
+      if (!gesture || current == null) return false;
+      WebView child = new WebView(current.getApplicationContext());
+      child.setWebViewClient(
+          new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView temporary, WebResourceRequest request) {
+              String target = request.getUrl().toString();
+              if (runtime != null && runtime.trustedURL(target)) web.loadUrl(target);
+              else
+                try {
+                  current.startActivity(new Intent(Intent.ACTION_VIEW, request.getUrl()));
+                } catch (Exception ignored) {
+                }
+              temporary.post(temporary::destroy);
+              return true;
+            }
+          });
+      ((WebView.WebViewTransport) result.obj).setWebView(child);
+      result.sendToTarget();
+      return true;
+    }
+
+    @Override
+    public void onPermissionRequestCanceled(PermissionRequest request) {
+      main.post(
+          () -> {
+            if (current != null) current.permissions.cancel(request);
+          });
+    }
+  }
+
+  static void requestAudio(long id) {
+    var owner = runtime;
+    if (owner == null || !owner.captureCurrent(id)) return;
+    if (current == null) {
+      owner.captureEnded(id);
+      return;
+    }
+    current.permissions.audio(
+        () -> {
+          if (runtime == owner && owner.captureCurrent(id)) CaptureService.startAudio(owner, id);
+        },
+        () -> owner.captureEnded(id));
+  }
+
+  boolean trustedPermission(PermissionRequest request) {
+    if (runtime == null || web == null || web.getUrl() == null || !runtime.trustedURL(web.getUrl()))
+      return false;
+    Uri top = Uri.parse(web.getUrl()), origin = request.getOrigin();
+    return java.util.Objects.equals(top.getScheme(), origin.getScheme())
+        && java.util.Objects.equals(top.getHost(), origin.getHost())
+        && effectivePort(top) == effectivePort(origin);
+  }
+
+  static int effectivePort(Uri uri) {
+    return uri.getPort() >= 0 ? uri.getPort() : "https".equals(uri.getScheme()) ? 443 : 80;
+  }
+
+  @Override
+  public boolean onCreateOptionsMenu(Menu menu) {
+    menu.add(0, 1, 0, R.string.choose_site);
+    return true;
+  }
+
+  @Override
+  public boolean onOptionsItemSelected(MenuItem item) {
+    if (item.getItemId() == 1) {
+      chooseSite();
+      return true;
+    }
+    return super.onOptionsItemSelected(item);
+  }
+
+  void chooseSite() {
+    if (runtime != null && web != null) web.loadUrl(runtime.url());
   }
 
   static void requestVideo(long id, String configuration) {
@@ -187,7 +279,7 @@ public final class MainActivity extends Activity {
       if (current != null) Toast.makeText(current, R.string.consent_busy, Toast.LENGTH_LONG).show();
       return;
     }
-    if (CaptureService.replaceVideo(id, configuration)) return;
+    if (CaptureService.replaceVideo(runtime, id, configuration)) return;
     MainActivity activity = current;
     if (activity == null) {
       runtime.captureEnded(id);
@@ -195,10 +287,7 @@ public final class MainActivity extends Activity {
     }
     pendingVideo = id;
     pendingConfig = configuration;
-    if (activity.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
-        != PackageManager.PERMISSION_GRANTED) {
-      activity.requestPermissions(new String[] {android.Manifest.permission.RECORD_AUDIO}, AUDIO);
-    } else activity.projectionConsent();
+    activity.projectionConsent();
   }
 
   void projectionConsent() {
@@ -228,14 +317,22 @@ public final class MainActivity extends Activity {
   @Override
   public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
     super.onRequestPermissionsResult(request, permissions, results);
-    if (request == AUDIO) projectionConsent();
+    if (request == WebPermissions.REQUEST) this.permissions.finish();
   }
 
   @Override
   protected void onActivityResult(int request, int result, Intent data) {
     super.onActivityResult(request, result, data);
     final var runtime = MainActivity.runtime;
-    if (request != CAPTURE || pendingVideo == 0 || runtime == null) return;
+    android.util.Log.d(
+        "PiikCapture",
+        "projection result received; current="
+            + (current == this)
+            + ", pending="
+            + (pendingVideo != 0)
+            + ", accepted="
+            + (result == RESULT_OK));
+    if (current != this || request != CAPTURE || pendingVideo == 0 || runtime == null) return;
     long id = pendingVideo;
     pendingVideo = 0;
     if (result != RESULT_OK || data == null) {
@@ -249,6 +346,9 @@ public final class MainActivity extends Activity {
             .putExtra("data", data)
             .putExtra("id", id)
             .putExtra("config", pendingConfig);
+    Bundle ownership = new Bundle();
+    ownership.putBinder("owner", new CaptureService.ProjectionOwner(runtime));
+    service.putExtras(ownership);
     startForegroundService(service);
   }
 
@@ -265,13 +365,12 @@ public final class MainActivity extends Activity {
             android.R.string.ok,
             (d, w) -> {
               CaptureService.shutdown();
-              // Also retires startup that is still running on this same queue.
-              work.execute(
-                  () -> {
-                    var old = runtime;
-                    runtime = null;
-                    if (old != null) old.close();
-                  });
+              var old = runtime;
+              runtime = null;
+              startup = null;
+              pendingVideo = 0;
+              pendingConfig = null;
+              if (old != null) work.execute(old::close);
               if (web != null) {
                 web.destroy();
                 web = null;
@@ -283,6 +382,7 @@ public final class MainActivity extends Activity {
 
   @Override
   protected void onDestroy() {
+    permissions.close();
     if (current == this) current = null;
     super.onDestroy();
   }

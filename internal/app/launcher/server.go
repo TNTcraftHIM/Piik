@@ -48,6 +48,7 @@ type Selection struct {
 }
 
 type Options struct {
+	Modes               []Mode
 	DefaultMode         Mode
 	Sites               []string
 	StartupSite         string
@@ -72,6 +73,7 @@ type Server struct {
 	static              http.Handler
 	sites               []string
 	startupSite         string
+	modes               []Mode
 	defaultMode         Mode
 	localAccessPassword string
 	version             string
@@ -126,6 +128,7 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 		sites:               normalizedSites,
 		startupSite:         options.StartupSite,
 		defaultMode:         options.DefaultMode,
+		modes:               slices.Clone(options.Modes),
 		localAccessPassword: options.LocalAccessPassword,
 		version:             options.Version,
 		revision:            strings.TrimSpace(options.Revision),
@@ -270,6 +273,12 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 		"detail":              errorDetail(server.resultErr),
 		"reason":              failure.Of(server.resultErr),
 		"lan":                 map[string]any{"addresses": addresses, "selected": selected},
+		"modes": func() []Mode {
+			if len(server.modes) > 0 {
+				return slices.Clone(server.modes)
+			}
+			return []Mode{ModeLocal, ModeLink}
+		}(),
 		"defaultMode": func() Mode {
 			if server.defaultMode == ModeLocal || server.defaultMode == ModeLink {
 				return server.defaultMode
@@ -382,6 +391,10 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 		writeJSON(response, http.StatusBadRequest, map[string]string{
 			"error": "invalid launch request", "detail": errorDetail(err),
 		})
+		return
+	}
+	if len(server.modes) > 0 && !slices.Contains(server.modes, selection.Mode) {
+		http.Error(response, "unsupported launch mode", http.StatusBadRequest)
 		return
 	}
 	if !server.Begin() {
