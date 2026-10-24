@@ -23,7 +23,7 @@ final class FullscreenView {
     }
     Dialog next = new Dialog(activity, android.R.style.Theme_Material_NoActionBar_Fullscreen);
     window = next;
-    next.setContentView(content);
+    next.setContentView(WindowContent.wrap(next.getWindow(), content));
     next.setOnDismissListener(
         ignored -> {
           if (window == next) window = null;

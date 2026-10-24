@@ -75,13 +75,13 @@ public final class MainActivity extends Activity {
     if (web != null) {
       if (web.getParent() instanceof android.view.ViewGroup)
         ((android.view.ViewGroup) web.getParent()).removeView(web);
-      setContentView(web);
+      setContentView(WindowContent.wrap(getWindow(), web));
       return;
     }
     TextView waiting = new TextView(this);
     waiting.setPadding(24, 48, 24, 24);
     waiting.setText(getString(R.string.preparing));
-    setContentView(waiting);
+    setContentView(WindowContent.wrap(getWindow(), waiting));
     if (WebView.getCurrentWebViewPackage() == null) {
       waiting.setText(getString(R.string.no_webview));
       return;
@@ -145,7 +145,7 @@ public final class MainActivity extends Activity {
                     TextView failure = new TextView(active);
                     failure.setPadding(24, 48, 24, 24);
                     failure.setText("Piik\n" + error.getCause().getMessage());
-                    active.setContentView(failure);
+                    active.setContentView(WindowContent.wrap(active.getWindow(), failure));
                     return;
                   }
                   runtime = started;
@@ -171,7 +171,7 @@ public final class MainActivity extends Activity {
     // No JavaScript interface is exposed. Only the current approved Piik origin can
     // reach the Go control endpoint, whose existing Origin checks remain active.
     web.setWebChromeClient(new AppChromeClient());
-    setContentView(web);
+    setContentView(WindowContent.wrap(getWindow(), web));
     web.loadUrl(url);
     if (EncoderCatalog.candidates("auto").isEmpty())
       new AlertDialog.Builder(this)
@@ -281,7 +281,7 @@ public final class MainActivity extends Activity {
             return super.shouldOverrideUrlLoading(view, request);
           }
         });
-    popup.setContentView(child);
+    popup.setContentView(WindowContent.wrap(popup.getWindow(), child));
     child.setWebChromeClient(
         new WebChromeClient() {
           @Override
@@ -349,13 +349,18 @@ public final class MainActivity extends Activity {
 
   @Override
   public boolean onCreateOptionsMenu(Menu menu) {
-    menu.add(0, 1, 0, R.string.choose_site);
-    menu.add(0, 2, 1, R.string.open_site);
+    menu.add(0, 3, 0, R.string.start_page);
+    menu.add(0, 1, 1, R.string.choose_site);
+    menu.add(0, 2, 2, R.string.open_site);
     return true;
   }
 
   @Override
   public boolean onOptionsItemSelected(MenuItem item) {
+    if (item.getItemId() == 3) {
+      startPage();
+      return true;
+    }
     if (item.getItemId() == 1) {
       chooseSite();
       return true;
@@ -369,6 +374,20 @@ public final class MainActivity extends Activity {
 
   void chooseSite() {
     if (runtime != null && web != null) showSitePopup().loadUrl(runtime.url());
+  }
+
+  void startPage() {
+    final var owner = runtime;
+    if (owner == null || web == null || java.util.Objects.equals(web.getUrl(), owner.url())) return;
+    new AlertDialog.Builder(this)
+        .setMessage(R.string.start_page_prompt)
+        .setNegativeButton(android.R.string.cancel, null)
+        .setPositiveButton(
+            android.R.string.ok,
+            (dialog, which) -> {
+              if (runtime == owner && web != null) web.loadUrl(owner.url());
+            })
+        .show();
   }
 
   void openSite() {
@@ -565,6 +584,6 @@ public final class MainActivity extends Activity {
           recreate();
         });
     failure.addView(restart);
-    setContentView(failure);
+    setContentView(WindowContent.wrap(getWindow(), failure));
   }
 }
