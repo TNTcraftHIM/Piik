@@ -21,6 +21,28 @@ public final class MainActivity extends Activity {
   AppRuntimeService permissionOwner;
   AppRuntimeService.MediaRequest permissionRequest;
 
+  static final class PermissionBinding extends Binder {
+    final AppRuntimeService service;
+    final AppRuntimeService.MediaRequest request;
+
+    PermissionBinding(AppRuntimeService service, AppRuntimeService.MediaRequest request) {
+      this.service = service;
+      this.request = request;
+    }
+
+    static PermissionBinding restore(Bundle state) {
+      IBinder saved = state.getBinder("permissionOwner");
+      if (!(saved instanceof PermissionBinding)) return null;
+      PermissionBinding binding = (PermissionBinding) saved;
+      // A canceled Go capture still owns its outstanding physical OS result.
+      return binding.service == AppRuntimeService.instance
+              && binding.service.active == binding.request
+              && binding.request.awaitingResult
+          ? binding
+          : null;
+    }
+  }
+
   boolean mediaEntry() {
     return BuildConfig.EXTERNAL_BROWSER
         && getIntent().getData() != null
@@ -45,10 +67,10 @@ public final class MainActivity extends Activity {
     if (state != null) {
       handledMedia = state.getBoolean("handledMedia");
       notificationRequest = state.getBoolean("notificationRequest");
-      AppRuntimeService service = AppRuntimeService.instance;
-      if (service != null && service.active != null && service.active.awaitingResult) {
-        permissionOwner = service;
-        permissionRequest = service.active;
+      PermissionBinding binding = PermissionBinding.restore(state);
+      if (binding != null) {
+        permissionOwner = binding.service;
+        permissionRequest = binding.request;
       }
     }
     Uri requested = getIntent().getData();
@@ -81,6 +103,11 @@ public final class MainActivity extends Activity {
   protected void onSaveInstanceState(Bundle state) {
     state.putBoolean("handledMedia", handledMedia);
     state.putBoolean("notificationRequest", notificationRequest);
+    state.putBinder(
+        "permissionOwner",
+        permissionOwner != null && permissionRequest != null
+            ? new PermissionBinding(permissionOwner, permissionRequest)
+            : null);
     super.onSaveInstanceState(state);
   }
 
