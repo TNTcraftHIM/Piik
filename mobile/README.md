@@ -57,7 +57,8 @@ Approve the Android projection prompt. Pure video does not request microphone
 or camera access. Selecting camera or opening the room-voice microphone requests
 only the corresponding Android permission, for the current approved top-level
 site. Native playback audio separately requires Android's recording permission.
-The Activity exposes no JavaScript interface.
+The Activity exposes no JavaScript interface. WebView fullscreen uses Android's
+custom-view window; Back exits fullscreen before ordinary page navigation.
 
 Open the invitation in another device's Browser. Local HTTPS requires the usual
 certificate confirmation. Stop from Piik or Android's projection indicator;

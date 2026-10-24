@@ -27,12 +27,14 @@ public final class MainActivity extends Activity {
   static final int CAPTURE = 10;
   WebPermissions permissions;
   Dialog sitePopup;
+  FullscreenView fullscreen;
 
   @Override
   public void onCreate(Bundle state) {
     super.onCreate(state);
     current = this;
     permissions = new WebPermissions(this);
+    fullscreen = new FullscreenView(this);
     if (web != null) {
       if (web.getParent() instanceof android.view.ViewGroup)
         ((android.view.ViewGroup) web.getParent()).removeView(web);
@@ -182,6 +184,17 @@ public final class MainActivity extends Activity {
   }
 
   static final class AppChromeClient extends WebChromeClient {
+    @Override
+    public void onShowCustomView(View view, CustomViewCallback callback) {
+      if (current == null) callback.onCustomViewHidden();
+      else current.fullscreen.show(view, callback);
+    }
+
+    @Override
+    public void onHideCustomView() {
+      if (current != null) current.fullscreen.hide();
+    }
+
     @Override
     public void onPermissionRequest(PermissionRequest request) {
       main.post(
@@ -403,6 +416,7 @@ public final class MainActivity extends Activity {
 
   @Override
   public void onBackPressed() {
+    if (fullscreen.hide()) return;
     if (web != null && web.canGoBack()) {
       web.goBack();
       return;
@@ -431,6 +445,7 @@ public final class MainActivity extends Activity {
 
   @Override
   protected void onDestroy() {
+    fullscreen.hide();
     if (sitePopup != null) sitePopup.dismiss();
     permissions.close();
     if (current == this) current = null;
