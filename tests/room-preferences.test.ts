@@ -15,10 +15,11 @@ function storage() {
 
 it("keeps independent room-tool choices across reads without storing private runtime fields", () => {
   const values = storage();
-  saveRoomPreferences({ pictureFit: "cover", pictureRotation: 270, routePreference: "p2p", keyboardPage: "text", combineKeys: true });
+  expect(readRoomPreferences().previewAutoPause).toBe(true);
+  saveRoomPreferences({ pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, routePreference: "p2p", keyboardPage: "text", combineKeys: true });
   saveRoomPreferences({ remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8,
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
-  expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 270, routePreference: "p2p", keyboardPage: "text",
+  expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, routePreference: "p2p", keyboardPage: "text",
     combineKeys: true, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8,
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
 

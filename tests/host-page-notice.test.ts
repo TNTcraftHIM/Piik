@@ -8,9 +8,9 @@ import {
   hostFailureCode,
   hostFailureChecks,
   hostServerErrorKey,
-  shouldPauseLocalPreview,
   sourceSwitchNotice,
 } from "../src/client/pages/host-page-notices.ts";
+import { shouldPauseLocalPreview } from "../src/client/components/living/use-host-preview-playback";
 
 setCopy({ lang: "zh" });
 
@@ -124,6 +124,8 @@ describe("shouldPauseLocalPreview", () => {
     expect(shouldPauseLocalPreview("visible", false)).toBe(true);
     expect(shouldPauseLocalPreview("visible", true)).toBe(false);
     expect(shouldPauseLocalPreview("hidden", false, true)).toBe(false);
+    expect(shouldPauseLocalPreview("visible", false, false, false)).toBe(false);
+    expect(shouldPauseLocalPreview("hidden", false, false, false)).toBe(false);
   });
 });
 

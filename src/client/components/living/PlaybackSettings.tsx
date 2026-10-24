@@ -5,11 +5,15 @@ import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Cap, Chip, Pill, RowGroup, SwitchItem } from "./primitives";
 
-export interface ViewerPlaybackSettingsProps {
+export interface PlaybackSettingsProps {
   pictureFit: VideoFit;
   setPictureFit: (fit: VideoFit) => void;
   pictureRotation: VideoRotation;
   setPictureRotation: (rotation: VideoRotation) => void;
+  preview?: {
+    autoPause: boolean;
+    onChange: (enabled: boolean) => void;
+  };
   route?: {
     preference: ViewerRoutePreference;
     sfuAvailable: boolean;
@@ -28,7 +32,7 @@ export interface ViewerPlaybackSettingsProps {
 }
 
 // Local display and connection intent; media and routing keep their owners.
-export function ViewerPlaybackSettings({ route, relayVolunteer, overlaySettings, reconnect }: Pick<ViewerPlaybackSettingsProps, "route" | "relayVolunteer"> & {
+export function PlaybackSettings({ preview, route, relayVolunteer, overlaySettings, reconnect }: Pick<PlaybackSettingsProps, "preview" | "route" | "relayVolunteer"> & {
   overlaySettings?: ReactNode; reconnect: ReactNode;
 }) {
   const { t, vis } = useCopy();
@@ -36,6 +40,14 @@ export function ViewerPlaybackSettings({ route, relayVolunteer, overlaySettings,
     : route?.peerOnly ? "playback.routePeerOnly" : !route?.sfuAvailable ? "playback.routeNoSfu"
     : `playback.routeHint.${route.preference}` as const;
   return <div className="lr-viewer-settings">
+    {preview && <section aria-label={t("host.preview")}>
+      <div className="lr-viewer-settings-heading">
+        <h3><Glyph name="tv" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("host.preview")}</span></h3>
+      </div>
+      <RowGroup><SwitchItem checked={preview.autoPause} onChange={preview.onChange} icon="pause"
+        label={t("host.previewAutoPause")} note={t("host.previewAutoPauseHint")} hint="hint-local-pause" /></RowGroup>
+      {!vis && <p>{t("host.previewAutoPauseHint")}</p>}
+    </section>}
     {overlaySettings && <section aria-label={t("playback.overlay")}>
       <div className="lr-viewer-settings-heading">
         <h3><Glyph name="danmaku" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.overlay")}</span></h3>

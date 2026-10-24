@@ -264,9 +264,11 @@ the picture controls and starts muted. Local pause, fit, rotation,
 theater and fullscreen affect only that preview; the separately labelled sharing
 controls own authoritative pause and stop. Its speaker control adjusts the shared
 output for Viewers, as defined by [source audio](./media-quality.md#screen-audio);
-it does not enable local monitoring. A hidden or unfocused Host page still
-suspends local preview, except while its video is in Picture-in-Picture. Returning
-to the page preserves an explicit local pause.
+it does not enable local monitoring. By default, a hidden or unfocused Host page
+suspends local preview, except while its video is in Picture-in-Picture. The Host
+can disable this in playback settings to keep watching on another monitor;
+the choice is remembered at the same Browser origin. Returning to the page or
+changing this preference preserves an explicit local pause.
 
 Autoplay rejection exposes the play action. A connection, track object,
 or `playing` event alone is not proof that the current route is visible. The

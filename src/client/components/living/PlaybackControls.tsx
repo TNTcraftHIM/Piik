@@ -5,7 +5,7 @@ import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { debugError } from "../../lib/debug";
 import { Btn } from "./primitives";
-import { ViewerPlaybackSettings, type ViewerPlaybackSettingsProps } from "./ViewerPlaybackSettings";
+import { PlaybackSettings, type PlaybackSettingsProps } from "./PlaybackSettings";
 import { Tooltip } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { usePlaybackControlsVisibility } from "./use-playback-controls-visibility";
@@ -43,7 +43,7 @@ export function PlaybackControls({
   overlayAction?: ReactNode;
   overlaySettings?: ReactNode;
   remoteActions?: ReactNode;
-  settings?: ViewerPlaybackSettingsProps;
+  settings?: PlaybackSettingsProps;
   sharingAudio?: SharingAudioControl;
 }) {
   const audioRef = useRef<ViewerAudio | null>(null);
@@ -165,7 +165,7 @@ export function PlaybackControlsView({
   togglePlayback: () => void; toggleFullscreen: () => void; toggleMute: () => void;
   setLevel: (level: number) => void; onToggleTheater: () => void; onReconnect?: () => void;
   reconnectAvailable?: boolean; overlayAction?: ReactNode; overlaySettings?: ReactNode; remoteActions?: ReactNode;
-  settings?: ViewerPlaybackSettingsProps;
+  settings?: PlaybackSettingsProps;
   sharingAudio?: boolean; audioControlAvailable?: boolean;
 }) {
   const { t, vis } = useCopy();
@@ -268,14 +268,14 @@ export function PlaybackControlsView({
 
 // Only detailed preferences belong here; direct playback actions stay outside.
 function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnectAvailable }: {
-  anchor: RefObject<HTMLDivElement | null>; settings?: ViewerPlaybackSettingsProps; overlaySettings?: ReactNode;
+  anchor: RefObject<HTMLDivElement | null>; settings?: PlaybackSettingsProps; overlaySettings?: ReactNode;
   onReconnect?: () => void; reconnectAvailable?: boolean;
 }) {
   const { t } = useCopy();
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const available = Boolean(overlaySettings || settings?.route || settings?.relayVolunteer || onReconnect);
+  const available = Boolean(settings?.preview || overlaySettings || settings?.route || settings?.relayVolunteer || onReconnect);
   useAnchoredPopover(anchor, panel, { align: "center", minVisibleHeight: 160, enabled: available });
   const reconnect = onReconnect ? <Btn icon="refresh" title="viewer.reconnect" size="dense" hint="hint-reconnect" draw="playback-reconnect"
     cap="viewer.reconnect" disabled={!reconnectAvailable} onClick={() => {
@@ -287,7 +287,7 @@ function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnec
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
     <div id={id} ref={panel} className="lr-floating-surface lr-playback-menu lr-playback-settings" popover="auto" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
-      <ViewerPlaybackSettings {...settings} overlaySettings={overlaySettings} reconnect={reconnect} />
+      <PlaybackSettings {...settings} overlaySettings={overlaySettings} reconnect={reconnect} />
     </div>
   </span>;
 }

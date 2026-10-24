@@ -32,7 +32,7 @@ import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { PlaybackControls } from "../components/living/PlaybackControls";
 import { useTheaterMode } from "../components/living/use-theater-mode";
-import { isPictureInPicture } from "../components/living/use-picture-in-picture";
+import { useHostPreviewPlayback } from "../components/living/use-host-preview-playback";
 import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
 import type { VideoFit } from "../media/video-geometry";
 import type { RoomInteractionSession } from "../lib/room-interactions";
@@ -213,7 +213,6 @@ import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 import {
   hostActionErrorKey,
   hostServerErrorKey,
-  shouldPauseLocalPreview,
   sourceSwitchNotice,
   isCapturePermissionFailure,
   hostFailureCode,
@@ -568,8 +567,7 @@ export function HostPage({
   const [switchingSource, setSwitchingSource] = useState(false);
   const [changingQuality, setChangingQuality] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
-  const [localPreviewPaused, setLocalPreviewPaused] = useState(false);
-  const previewPausedByUser = useRef(false);
+  const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
   const [theaterMode, setTheaterMode] = useTheaterMode();
   const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
@@ -697,7 +695,6 @@ export function HostPage({
       videoRef.current.srcObject = stream;
     }
     if (!stream) {
-      previewPausedByUser.current = false;
       setTheaterMode(false);
     }
   }, [stream]);
@@ -711,7 +708,10 @@ export function HostPage({
     });
   }, [stream]);
 
+  const previewPlayback = useHostPreviewPlayback(videoRef, stream, previewAutoPause);
+
   useEffect(() => {
+    if (!stream) return;
     let senderQualitySuspended = false;
     const resetSenderQualityAuthority = () => {
       if (senderQualitySuspended) {
@@ -723,48 +723,20 @@ export function HostPage({
         signalRef.current?.send({ type: "reset-sender-quality" });
       }
     };
-    const syncPreviewPlayback = () => {
-      const video = videoRef.current;
-      if (!video) {
-        return;
-      }
-      const shouldPause = shouldPauseLocalPreview(
-        document.visibilityState,
-        document.hasFocus(),
-        isPictureInPicture(video),
-      );
+    const syncSenderQualityAuthority = () => {
       if (document.visibilityState !== "visible") {
         resetSenderQualityAuthority();
       } else {
         senderQualitySuspended = false;
       }
-      setLocalPreviewPaused(shouldPause);
-      if (shouldPause) {
-        video.pause();
-        return;
-      }
-      if (streamRef.current && !previewPausedByUser.current) {
-        void video.play().catch(() => undefined);
-      }
     };
 
-    document.addEventListener("visibilitychange", syncPreviewPlayback);
-    window.addEventListener("blur", syncPreviewPlayback);
-    window.addEventListener("focus", syncPreviewPlayback);
+    document.addEventListener("visibilitychange", syncSenderQualityAuthority);
     window.addEventListener("pagehide", resetSenderQualityAuthority);
-    const video = videoRef.current;
-    video?.addEventListener("enterpictureinpicture", syncPreviewPlayback);
-    video?.addEventListener("leavepictureinpicture", syncPreviewPlayback);
-    video?.addEventListener("webkitpresentationmodechanged", syncPreviewPlayback);
-    syncPreviewPlayback();
+    syncSenderQualityAuthority();
     return () => {
-      document.removeEventListener("visibilitychange", syncPreviewPlayback);
-      window.removeEventListener("blur", syncPreviewPlayback);
-      window.removeEventListener("focus", syncPreviewPlayback);
+      document.removeEventListener("visibilitychange", syncSenderQualityAuthority);
       window.removeEventListener("pagehide", resetSenderQualityAuthority);
-      video?.removeEventListener("enterpictureinpicture", syncPreviewPlayback);
-      video?.removeEventListener("leavepictureinpicture", syncPreviewPlayback);
-      video?.removeEventListener("webkitpresentationmodechanged", syncPreviewPlayback);
     };
   }, [stream]);
 
@@ -3757,18 +3729,21 @@ export function HostPage({
                 ? !!nativeConnection.current?.health.nativeMedia.shareVolume : hostAudioRef.current?.commentaryAvailable === true,
                 onChange: changeShareVolume }}
               audioAvailable={audioAvailableRef.current}
-              canPlay={phase === "live" && !nativeSources && !sharingPaused && !localPreviewPaused}
+              canPlay={phase === "live" && !nativeSources && !sharingPaused && !previewPlayback.suspended}
               theaterMode={theaterMode} onToggleTheater={() => setTheaterMode(value => !value)}
-              onPlay={() => { previewPausedByUser.current = false; void videoRef.current?.play().catch(() => undefined); }}
-              onPause={() => { previewPausedByUser.current = true; }}
+              onPlay={previewPlayback.onPlay}
+              onPause={previewPlayback.onPause}
               overlayAction={<RoomChatToggle session={interactionSession} />}
               overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
               settings={{ pictureFit, pictureRotation,
+                preview: { autoPause: previewAutoPause, onChange: autoPause => {
+                  setPreviewAutoPause(autoPause); saveRoomPreferences({ previewAutoPause: autoPause });
+                } },
                 setPictureFit: fit => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
                 setPictureRotation: rotation => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
               }} />}
             <RoomChatOverlay session={room ? interactionSession : null}
-              visible={phase === "live" && !nativeSources && !sharingPaused && !(switchingSource && !sourceSwitchRef.current?.audioOnly) && !localPreviewPaused} />
+              visible={phase === "live" && !nativeSources && !sharingPaused && !(switchingSource && !sourceSwitchRef.current?.audioOnly) && !previewPlayback.suspended} />
             {nativeSources ? (
               <CaptureSourcePicker
                 nativeSources={nativeSources}
@@ -3880,7 +3855,7 @@ export function HostPage({
                 <StaticNoise />
                 <StageOverlay icon="cast" comic="source-starting" tone="busy" waiting message={t("host.starting")} />
               </>
-            ) : stream && localPreviewPaused ? (
+            ) : stream && previewPlayback.suspended ? (
               <StageOverlay
                 icon="eyeOff"
                 comic="preview-paused"
