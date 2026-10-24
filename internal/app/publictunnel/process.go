@@ -254,24 +254,37 @@ func startAttempt(parent context.Context, executable, localOrigin, temporaryDire
 			cancel()
 			return nil, errors.Join(errStartupExited, process.Err())
 		case <-parent.Done():
-			if err := process.Close(); err != nil {
-				return nil, errors.Join(parent.Err(), err)
-			}
-			return nil, parent.Err()
+			return nil, process.stopStartup(parent.Err())
 		}
 	}
 	select {
 	case <-parent.Done():
-		if err := process.Close(); err != nil {
-			return nil, errors.Join(parent.Err(), err)
-		}
-		return nil, parent.Err()
+		return nil, process.stopStartup(parent.Err())
 	case <-process.done:
 		cancel()
 		return nil, errors.Join(errStartupExited, process.Err())
 	default:
 	}
 	return process, nil
+}
+
+func (process *Process) stopStartup(cause error) error {
+	closeErr := process.Close()
+	err := cause
+	if closeErr != nil {
+		err = errors.Join(cause, closeErr)
+	}
+	// Killing an unready child at our deadline is clean process shutdown, but
+	// its last dependency error still explains why startup did not complete.
+	if errors.Is(cause, context.DeadlineExceeded) && closeErr == nil {
+		process.mu.Lock()
+		detail := process.lastDetail
+		process.mu.Unlock()
+		if detail != "" {
+			err = fmt.Errorf("%w\nlast public invitation detail: %s", err, detail)
+		}
+	}
+	return err
 }
 
 func writeTemporaryConfig(directory string) (string, error) {

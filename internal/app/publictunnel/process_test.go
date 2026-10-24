@@ -21,6 +21,13 @@ import (
 
 func TestMain(tests *testing.M) {
 	if mode := os.Getenv("PIIK_TUNNEL_FIXTURE"); mode != "" {
+		if mode == "deadline-detail" {
+			fmt.Fprintln(os.Stderr, `{"level":"error","message":"edge discovery failed","error":"DNS lookup failed token=fixture-secret"}`)
+			fmt.Fprintln(os.Stderr, `{"level":"info","message":"retrying"}`)
+			for {
+				time.Sleep(time.Hour)
+			}
+		}
 		if mode == "plain-exit" {
 			fmt.Fprintln(os.Stderr, "failed to request quick Tunnel: connect timeout token=fixture-secret")
 			fmt.Fprintln(os.Stdout, "trailing ordinary output")
@@ -112,6 +119,29 @@ func TestStartupRetainsPlainDependencyFailure(t *testing.T) {
 	entries, readErr := os.ReadDir(directory)
 	if readErr != nil || len(entries) != 0 {
 		t.Fatalf("failed child retained caller config: %v, %v", entries, readErr)
+	}
+}
+
+func TestStartupDeadlineRetainsSanitizedDependencyCause(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PIIK_TUNNEL_FIXTURE", "deadline-detail")
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	directory := t.TempDir()
+	process, err := startAttempt(ctx, executable, "http://127.0.0.1:8787", directory)
+	if process != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("startup deadline was lost: %v, %v", process, err)
+	}
+	if !strings.Contains(err.Error(), "edge discovery failed\nDNS lookup failed token=[redacted]") ||
+		strings.Contains(err.Error(), "fixture-secret") || strings.Contains(err.Error(), "retrying") {
+		t.Fatalf("startup deadline lost or exposed dependency cause: %v", err)
+	}
+	entries, readErr := os.ReadDir(directory)
+	if readErr != nil || len(entries) != 0 {
+		t.Fatalf("timed-out child retained temporary config: %v, %v", entries, readErr)
 	}
 }
 
