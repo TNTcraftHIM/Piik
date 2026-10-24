@@ -49,12 +49,11 @@ type androidDNSConn struct {
 func (c *androidDNSConn) Read(p []byte) (int, error) {
 	n, err := c.Conn.Read(p)
 	if err != nil {
-		if c.ctx.Err() != nil {
-			return n, c.ctx.Err()
-		}
 		c.mu.Lock()
 		if c.err != nil {
 			err = c.err
+		} else if c.ctx.Err() != nil {
+			err = c.ctx.Err()
 		}
 		c.mu.Unlock()
 	}
