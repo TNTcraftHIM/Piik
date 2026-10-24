@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { goBuildEnvironment } from "./app-package-targets.mjs";
+import { CLOUDFLARED_VERSION, goBuildEnvironment } from "./app-package-targets.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pinned = JSON.parse(readFileSync(join(root, "licenses", "upstream.json"), "utf8"));
@@ -131,7 +131,8 @@ export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand
   mkdirSync(dirname(outputFile), { recursive: true });
   writeFileSync(outputFile, "Piik Android third-party software notices\n" +
     section("Piik (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +
-    WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
+    WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules) +
+    section(`cloudflared@${CLOUDFLARED_VERSION}`, pinnedNotice(`cloudflared@${CLOUDFLARED_VERSION}`)));
 }
 
 export function writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, target, tunnelVersion) {
