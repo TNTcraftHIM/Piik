@@ -351,7 +351,6 @@ public final class MainActivity extends Activity {
   public boolean onCreateOptionsMenu(Menu menu) {
     menu.add(0, 3, 0, R.string.start_page);
     menu.add(0, 1, 1, R.string.choose_site);
-    menu.add(0, 2, 2, R.string.open_site);
     return true;
   }
 
@@ -363,10 +362,6 @@ public final class MainActivity extends Activity {
     }
     if (item.getItemId() == 1) {
       chooseSite();
-      return true;
-    }
-    if (item.getItemId() == 2) {
-      openSite();
       return true;
     }
     return super.onOptionsItemSelected(item);
@@ -388,36 +383,6 @@ public final class MainActivity extends Activity {
               if (runtime == owner && web != null) web.loadUrl(owner.url());
             })
         .show();
-  }
-
-  void openSite() {
-    EditText address = new EditText(this);
-    address.setInputType(
-        android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-    address.setSingleLine(true);
-    address.setHint("https://piik.example");
-    AlertDialog dialog =
-        new AlertDialog.Builder(this)
-            .setTitle(R.string.open_site)
-            .setView(address)
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton(R.string.open_site, null)
-            .create();
-    dialog.setOnShowListener(
-        ignored ->
-            dialog
-                .getButton(AlertDialog.BUTTON_POSITIVE)
-                .setOnClickListener(
-                    button -> {
-                      if (runtime == null || web == null) return;
-                      try {
-                        web.loadUrl(runtime.siteURL(address.getText().toString()));
-                        dialog.dismiss();
-                      } catch (Exception error) {
-                        address.setError(getString(R.string.invalid_site));
-                      }
-                    }));
-    dialog.show();
   }
 
   static void requestVideo(long id, String configuration) {

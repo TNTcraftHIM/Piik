@@ -162,36 +162,6 @@ func (r *Runtime) runLauncher(lanAddress string) {
 func (r *Runtime) URL() string      { return r.launcher.URL() }
 func (r *Runtime) EntryURL() string { return r.entry }
 
-// SiteURL navigates only. App permission still belongs to the launcher approval flow.
-func (r *Runtime) SiteURL(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if !strings.Contains(value, "://") {
-		value = "https://" + value
-	}
-	target, err := url.Parse(value)
-	if err != nil || target.Scheme != "https" || target.Host == "" || target.User != nil {
-		return "", errors.New("Enter an HTTPS Piik address")
-	}
-	origin := *target
-	origin.Path, origin.RawPath, origin.RawQuery, origin.Fragment, origin.RawFragment = "", "", "", "", ""
-	site, err := appconfig.NormalizeSite(origin.String())
-	if err != nil || site == "" {
-		return "", errors.New("Enter an HTTPS Piik address")
-	}
-	normalized, _ := url.Parse(site)
-	target.Host = normalized.Host
-	if target.Path == "" {
-		target.Path = "/"
-	}
-	fragment, err := url.ParseQuery(target.Fragment)
-	if err != nil {
-		return "", errors.New("Piik address has an invalid fragment")
-	}
-	fragment.Set("piik-client", "1")
-	target.Fragment, target.RawFragment = fragment.Encode(), ""
-	return target.String(), nil
-}
-
 func (r *Runtime) startLocal(selection launcher.Selection, address string) (target string, returnedErr error) {
 	r.configMu.Lock()
 	next := r.config

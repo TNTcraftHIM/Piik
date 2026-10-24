@@ -13,11 +13,9 @@
  <string name="choose_site">管理站点</string>
  <string name="start_page">启动页</string>
  <string name="start_page_prompt">返回启动页？</string>
- <string name="open_site">打开站点</string>
  <string name="public_link_stopped">公网邀请已停止。请重新启动 Piik 创建新链接。</string>
  <string name="restart_piik">重新启动 Piik</string>
  <string name="browser_media_channel">相机与房间语音</string>
  <string name="browser_media_title">Piik — 相机或房间语音</string>
  <string name="browser_media_body">点击返回相机与语音控制。</string>
- <string name="invalid_site">请输入 HTTPS Piik 站点或邀请地址。</string>
 </resources>
