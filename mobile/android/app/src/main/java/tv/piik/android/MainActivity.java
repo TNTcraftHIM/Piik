@@ -24,11 +24,16 @@ public final class MainActivity extends Activity {
   boolean mediaEntry() {
     return BuildConfig.EXTERNAL_BROWSER
         && getIntent().getData() != null
-        && "media".equals(getIntent().getData().getHost());
+        && "piik://media".equals(getIntent().getData().toString());
+  }
+
+  boolean wakeEntry() {
+    return getIntent().getData() != null && "piik://app".equals(getIntent().getData().toString());
   }
 
   boolean canConfirmMedia() {
-    return !BuildConfig.EXTERNAL_BROWSER || getIntent().getData() == null || mediaEntry();
+    return !wakeEntry()
+        && (!BuildConfig.EXTERNAL_BROWSER || getIntent().getData() == null || mediaEntry());
   }
 
   @Override
@@ -47,17 +52,11 @@ public final class MainActivity extends Activity {
       }
     }
     Uri requested = getIntent().getData();
-    if (requested != null
-        && (!BuildConfig.EXTERNAL_BROWSER
-            || !"piik".equals(requested.getScheme())
-            || !("app".equals(requested.getHost()) || "media".equals(requested.getHost()))
-            || (requested.getPath() != null && !requested.getPath().isEmpty())
-            || requested.getQuery() != null
-            || requested.getFragment() != null)) {
+    if (requested != null && !wakeEntry() && !mediaEntry()) {
       finish();
       return;
     }
-    if (!BuildConfig.EXTERNAL_BROWSER && web != null) {
+    if (!BuildConfig.EXTERNAL_BROWSER && web != null && !wakeEntry()) {
       if (web.getParent() instanceof ViewGroup) ((ViewGroup) web.getParent()).removeView(web);
       setContentView(WindowContent.wrap(getWindow(), web));
     } else {
@@ -88,6 +87,7 @@ public final class MainActivity extends Activity {
   @Override
   protected void onStart() {
     super.onStart();
+    current = this;
     visible = true;
     if (AppRuntimeService.instance != null) runtimeAvailable(AppRuntimeService.instance);
   }
@@ -107,6 +107,10 @@ public final class MainActivity extends Activity {
     }
     var owner = AppRuntimeService.runtime();
     if (owner == null) return;
+    if (wakeEntry()) {
+      finish();
+      return;
+    }
     if (BuildConfig.EXTERNAL_BROWSER) {
       if (mediaEntry()
           || (getIntent().getData() == null
