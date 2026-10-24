@@ -168,7 +168,7 @@ public final class MainActivity extends Activity {
           .show();
   }
 
-  static final class AppWebClient extends WebViewClient {
+  static class AppWebClient extends WebViewClient {
     @Override
     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
       Uri uri = request.getUrl();
@@ -207,34 +207,7 @@ public final class MainActivity extends Activity {
     @Override
     public boolean onCreateWindow(WebView view, boolean dialog, boolean gesture, Message result) {
       if (!gesture || current == null) return false;
-      WebView child = new WebView(current.getApplicationContext());
-      child.getSettings().setJavaScriptEnabled(true);
-      child.getSettings().setDomStorageEnabled(true);
-      child.getSettings().setAllowFileAccess(false);
-      child.getSettings().setAllowContentAccess(false);
-      child.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-      child.setWebViewClient(new AppWebClient());
-      MainActivity owner = current;
-      if (owner.sitePopup != null) owner.sitePopup.dismiss();
-      Dialog popup = new Dialog(owner);
-      owner.sitePopup = popup;
-      popup.setContentView(child);
-      child.setWebChromeClient(
-          new WebChromeClient() {
-            @Override
-            public void onCloseWindow(WebView window) {
-              popup.dismiss();
-            }
-          });
-      popup.setOnDismissListener(
-          ignored -> {
-            child.destroy();
-            if (owner.sitePopup == popup) owner.sitePopup = null;
-          });
-      popup.show();
-      popup
-          .getWindow()
-          .setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+      WebView child = current.showSitePopup();
       // Preserve the actual opener so approval can notify it and close this child.
       ((WebView.WebViewTransport) result.obj).setWebView(child);
       result.sendToTarget();
@@ -248,6 +221,56 @@ public final class MainActivity extends Activity {
             if (current != null) current.permissions.cancel(request);
           });
     }
+  }
+
+  WebView showSitePopup() {
+    WebView child = new WebView(getApplicationContext());
+    child.getSettings().setJavaScriptEnabled(true);
+    child.getSettings().setDomStorageEnabled(true);
+    child.getSettings().setAllowFileAccess(false);
+    child.getSettings().setAllowContentAccess(false);
+    child.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+    MainActivity owner = this;
+    if (owner.sitePopup != null) owner.sitePopup.dismiss();
+    Dialog popup = new Dialog(owner);
+    owner.sitePopup = popup;
+    final var managerRuntime = runtime;
+    final Uri manager = Uri.parse(managerRuntime.url());
+    child.setWebViewClient(
+        new AppWebClient() {
+          @Override
+          public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            Uri target = request.getUrl();
+            if (request.isForMainFrame()
+                && managerRuntime == runtime
+                && !sameOrigin(manager, target)
+                && managerRuntime.trustedURL(target.toString())) {
+              // Opening a saved site is navigation; editing permission keeps the Host alive.
+              web.loadUrl(target.toString());
+              popup.dismiss();
+              return true;
+            }
+            return super.shouldOverrideUrlLoading(view, request);
+          }
+        });
+    popup.setContentView(child);
+    child.setWebChromeClient(
+        new WebChromeClient() {
+          @Override
+          public void onCloseWindow(WebView window) {
+            popup.dismiss();
+          }
+        });
+    popup.setOnDismissListener(
+        ignored -> {
+          child.destroy();
+          if (owner.sitePopup == popup) owner.sitePopup = null;
+        });
+    popup.show();
+    popup
+        .getWindow()
+        .setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+    return child;
   }
 
   static void requestAudio(long id) {
@@ -268,13 +291,17 @@ public final class MainActivity extends Activity {
     if (runtime == null || web == null || web.getUrl() == null || !runtime.trustedURL(web.getUrl()))
       return false;
     Uri top = Uri.parse(web.getUrl()), origin = request.getOrigin();
-    return java.util.Objects.equals(top.getScheme(), origin.getScheme())
-        && java.util.Objects.equals(top.getHost(), origin.getHost())
-        && effectivePort(top) == effectivePort(origin);
+    return sameOrigin(top, origin);
   }
 
   static int effectivePort(Uri uri) {
     return uri.getPort() >= 0 ? uri.getPort() : "https".equals(uri.getScheme()) ? 443 : 80;
+  }
+
+  static boolean sameOrigin(Uri left, Uri right) {
+    return java.util.Objects.equals(left.getScheme(), right.getScheme())
+        && java.util.Objects.equals(left.getHost(), right.getHost())
+        && effectivePort(left) == effectivePort(right);
   }
 
   @Override
@@ -298,7 +325,7 @@ public final class MainActivity extends Activity {
   }
 
   void chooseSite() {
-    if (runtime != null && web != null) web.loadUrl(runtime.url());
+    if (runtime != null && web != null) showSitePopup().loadUrl(runtime.url());
   }
 
   void openSite() {
