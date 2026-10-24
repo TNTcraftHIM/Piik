@@ -265,19 +265,6 @@ UINT32 ReadU32(ICodecAPI* codec, const GUID& key, const std::string& name) {
   return result;
 }
 
-bool ReadBool(ICodecAPI* codec, const GUID& key, const std::string& name) {
-  VARIANT value;
-  VariantInit(&value);
-  Check(codec->GetValue(&key, &value), name + "-readback");
-  if (value.vt != VT_BOOL) {
-    VariantClear(&value);
-    Fail(name + "-readback-type", "codec property did not return VT_BOOL");
-  }
-  bool result = value.boolVal != VARIANT_FALSE;
-  VariantClear(&value);
-  return result;
-}
-
 void SetU32(ICodecAPI* codec, const GUID& key, UINT32 expected,
             const std::string& name) {
   RequireProperty(codec, key, name);
@@ -298,26 +285,6 @@ void SetU32(ICodecAPI* codec, const GUID& key, UINT32 expected,
   }
 }
 
-void SetBool(ICodecAPI* codec, const GUID& key, bool expected,
-             const std::string& name) {
-  RequireProperty(codec, key, name);
-  VARIANT value;
-  VariantInit(&value);
-  value.vt = VT_BOOL;
-  value.boolVal = expected ? VARIANT_TRUE : VARIANT_FALSE;
-  HRESULT set_result = codec->SetValue(&key, &value);
-  VariantClear(&value);
-  if (set_result != S_OK) {
-    if (FAILED(set_result)) {
-      Check(set_result, name + "-set");
-    }
-    Fail(name + "-readonly", "codec property rejected the requested value");
-  }
-  if (ReadBool(codec, key, name) != expected) {
-    Fail(name + "-weakened", "codec property readback changed the requested value");
-  }
-}
-
 void SetOptionalU32(ICodecAPI* codec, const GUID& key, UINT32 value) {
   if (codec->IsSupported(&key) != S_OK) return;
   VARIANT requested;
@@ -328,12 +295,26 @@ void SetOptionalU32(ICodecAPI* codec, const GUID& key, UINT32 value) {
   VariantClear(&requested);
 }
 
+void SetOptionalBool(ICodecAPI* codec, const GUID& key, bool value) {
+  if (codec->IsModifiable(&key) != S_OK) return;
+  VARIANT requested;
+  VariantInit(&requested);
+  requested.vt = VT_BOOL;
+  requested.boolVal = value ? VARIANT_TRUE : VARIANT_FALSE;
+  (void)codec->SetValue(&key, &requested);
+  VariantClear(&requested);
+}
+
 void ConfigureCodec(
     ICodecAPI* codec,
     const VideoProfile& profile) {
   SetU32(codec, CODECAPI_AVEncCommonRateControlMode,
          eAVEncCommonRateControlMode_CBR, "codec-cbr");
-  SetBool(codec, CODECAPI_AVLowLatencyMode, true, "codec-low-latency");
+  // Temporal layers and low-latency mode are optional hardware properties.
+  // Explicitly request our one temporal layer where supported (some MFTs need
+  // even this default set), without making optional readback an encode gate.
+  SetOptionalU32(codec, CODECAPI_AVEncVideoTemporalLayerCount, 1);
+  SetOptionalBool(codec, CODECAPI_AVLowLatencyMode, true);
   SetU32(codec, CODECAPI_AVEncCommonMeanBitRate, profile.bit_rate,
          "codec-mean-bitrate");
   SetU32(codec, CODECAPI_AVEncMPVGOPSize, profile.gop_frames(), "codec-gop");
@@ -442,7 +423,6 @@ void ValidateCodecReadback(
     const VideoProfile& profile) {
   if (ReadU32(codec, CODECAPI_AVEncCommonRateControlMode, "codec-cbr") !=
           eAVEncCommonRateControlMode_CBR ||
-      !ReadBool(codec, CODECAPI_AVLowLatencyMode, "codec-low-latency") ||
       ReadU32(codec, CODECAPI_AVEncCommonMeanBitRate,
               "codec-mean-bitrate") != profile.bit_rate ||
       ReadU32(codec, CODECAPI_AVEncMPVGOPSize, "codec-gop") !=

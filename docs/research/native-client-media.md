@@ -498,6 +498,17 @@ intermittent platform cause and physical-device limits remain unproven.
 
 ## Native H.264 Motion Quality
 
+Windows hardware initialization requests a single temporal layer where supported
+and low-latency mode where writable. Microsoft's
+[hardware encoder requirements](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-encoder#certified-hardware-encoder)
+classify these properties as optional. Chromium's
+[Media Foundation encoder](https://chromium.googlesource.com/chromium/src/+/main/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc)
+explicitly sets even one temporal layer for Intel and conditionally sets low-latency
+mode. Piik uses the property capabilities without a vendor or version branch;
+an absent optional property or readback no longer rejects an otherwise usable
+encoder. Required CBR, bitrate and GOP checks, Constrained Baseline bitstream
+admission, actual H.264 output and Auto's measured frame cadence retain their owners.
+
 Issue [#432](https://github.com/TNTcraftHIM/Piik/issues/432) reports more visible
 blocking with native H.264 than VP8 on v1.6.7. Review of its attached Browser
 report confirms 720p30 in both comparison windows, roughly 11 Mbps received,

@@ -78,9 +78,10 @@ not a second product MFT implementation.
 Shared local outputs use stock WebRTC source/encoder adaptation. H264 keeps
 native NV12 surfaces, while WebRTC VP8 reads back into I420. The existing capture
 and output mailboxes retain source/generation ownership; adapted sizes and
-timestamps cross the same media envelope. Hardware low-latency mode stays on;
-the old fixed one-frame VBV override is removed so later bitrate increases are
-not trapped by the original buffer limit.
+timestamps cross the same media envelope. The encoder requests one temporal
+layer where supported and low-latency mode where writable; these optional
+properties do not replace the actual output and Auto cadence checks.
+VBV sizing stays with the encoder, allowing bitrate increases within the active profile.
 
 The build caches the pinned WebRTC SDK and matching official MSVC linker/runtime
 libraries under `build/encoder-pool`. A newer installed MSVC keeps its own linker
