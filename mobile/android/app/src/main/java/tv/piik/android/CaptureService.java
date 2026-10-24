@@ -153,7 +153,7 @@ public final class CaptureService extends Service {
                   }
                 },
                 handler);
-            beginVideo(id, config);
+            beginVideo(runtime, id, config);
           } catch (Exception error) {
             fail(runtime, id);
             finishProjection();
@@ -169,13 +169,12 @@ public final class CaptureService extends Service {
         || s.stopRequested
         || s.video == null
         || s.video.runtime != owner) return false;
-    s.handler.post(() -> s.beginVideo(id, config));
+    s.handler.post(() -> s.beginVideo(owner, id, config));
     return true;
   }
 
-  void beginVideo(long id, String json) {
-    final var runtime = MainActivity.runtime;
-    if (runtime == null || !runtime.captureCurrent(id)) return;
+  void beginVideo(tv.piik.androidbridge.Runtime runtime, long id, String json) {
+    if (runtime == null || runtime != MainActivity.runtime || !runtime.captureCurrent(id)) return;
     if (retiring || stopRequested || projection == null) {
       fail(runtime, id);
       return;
@@ -363,7 +362,7 @@ public final class CaptureService extends Service {
   void resizeVideo() {
     if (video == null || previousVideo != null || retiring || stopRequested) return;
     if (video.sourceWidth != captureWidth || video.sourceHeight != captureHeight)
-      beginVideo(video.id, video.configuration);
+      beginVideo(video.runtime, video.id, video.configuration);
   }
 
   @Override
@@ -411,15 +410,11 @@ public final class CaptureService extends Service {
       if (owner != null) owner.captureEnded(id);
       return;
     }
-    s.handler.post(
-        () -> {
-          if (owner == MainActivity.runtime) s.beginAudio(id);
-        });
+    s.handler.post(() -> s.beginAudio(owner, id));
   }
 
-  void beginAudio(long id) {
-    final var runtime = MainActivity.runtime;
-    if (runtime == null || !runtime.captureCurrent(id)) return;
+  void beginAudio(tv.piik.androidbridge.Runtime runtime, long id) {
+    if (runtime == null || runtime != MainActivity.runtime || !runtime.captureCurrent(id)) return;
     if (retiring || stopRequested) {
       fail(runtime, id);
       return;
