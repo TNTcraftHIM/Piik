@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeAndroidLicenseNotices } from './package-licenses.mjs';
@@ -37,6 +37,26 @@ if (createHash('sha256').update(readFileSync(archive)).digest('hex') !== CLOUDFL
 }
 run('tar', ['-xzf', archive, '-C', cache]);
 const source = join(cache, `cloudflared-${commit}`);
+const adapter = join(root, 'mobile', 'cloudflared');
+const patched = join(cache, 'overlay');
+mkdirSync(join(patched, 'supervisor'), { recursive: true });
+copyFileSync(join(source, 'supervisor', 'tunnel.go'), join(patched, 'supervisor', 'tunnel.go'));
+run('git', ['apply', '--unidiff-zero', `--directory=${join('build', 'android-cloudflared', 'overlay').replaceAll('\\', '/')}`,
+  join(adapter, 'edge-fallback.patch')]);
+const overlay = join(cache, 'overlay.json');
+writeFileSync(overlay, JSON.stringify({ Replace: {
+  [join(source, 'cmd', 'cloudflared', 'piik_android_dns.go')]: join(adapter, 'android_dns.go'),
+  [join(source, 'supervisor', 'tunnel.go')]: join(patched, 'supervisor', 'tunnel.go'),
+  [join(source, 'supervisor', 'piik_fallback_test.go')]: join(adapter, 'fallback_test.go'),
+} }, null, 2));
+const [hostOS, hostArch] = execFileSync('go', ['env', 'GOHOSTOS', 'GOHOSTARCH'], {
+  cwd: root, encoding: 'utf8', windowsHide: true,
+}).trim().split(/\r?\n/);
+const fallbackTest = join(cache, `fallback.test${hostOS === 'windows' ? '.exe' : ''}`);
+run('go', ['test', '-c', '-mod=readonly', `-overlay=${overlay}`, '-tags=piik_cloudflared',
+  '-o', fallbackTest, './supervisor'], { cwd: source,
+  env: { ...process.env, GOOS: hostOS, GOARCH: hostArch, CGO_ENABLED: '0', GOWORK: 'off' } });
+run(fallbackTest, ['-test.run=^TestPiikExhaustedQuicHandshakeFallsBack$', '-test.count=1']);
 const host = { win32: 'windows-x86_64', linux: 'linux-x86_64', darwin: 'darwin-x86_64' }[process.platform];
 if (!host) throw new Error('Unsupported NDK build host.');
 const tools = join(process.env.ANDROID_NDK_HOME, 'toolchains', 'llvm', 'prebuilt', host, 'bin');
@@ -50,7 +70,7 @@ for (const [abi, arch, target, machine] of [
   mkdirSync(dirname(output), { recursive: true });
   const env = { ...process.env, GOOS: 'android', GOARCH: arch, CGO_ENABLED: '1',
     CC: `"${clang}" --target=${target}`, GOWORK: 'off' };
-  run('go', ['build', '-mod=readonly', '-trimpath', '-buildvcs=false', '-buildmode=pie',
+  run('go', ['build', '-mod=readonly', `-overlay=${overlay}`, '-tags=piik_cloudflared', '-trimpath', '-buildvcs=false', '-buildmode=pie',
     `-ldflags=-s -w -X main.Version=${CLOUDFLARED_VERSION} -X main.BuildTime=source-pinned -linkmode=external -extldflags=-Wl,-z,max-page-size=16384`,
     '-o', output, './cmd/cloudflared'], { cwd: source, env });
   chmodSync(output, 0o755);
@@ -62,7 +82,7 @@ for (const [abi, arch, target, machine] of [
     throw new Error(`Cloudflared ${abi} must be Android PIE with 16KB LOAD alignment.`);
   }
   for (const [, library] of elf.matchAll(/Shared library: \[([^\]]+)\]/g)) {
-    if (!['libc.so', 'libdl.so', 'libm.so', 'liblog.so'].includes(library)) {
+    if (!['libc.so', 'libdl.so', 'libm.so', 'liblog.so', 'libandroid.so'].includes(library)) {
       throw new Error(`Unexpected cloudflared Android dependency: ${library}`);
     }
   }

@@ -68,9 +68,10 @@ revokes each independently. Starring one approved Site makes an ordinary App lau
 without a star, the launcher opens. This preference grants no access and starts
 no room. Revoking that Site clears its star; other approvals leave it intact. Explicit CLI entry keeps
 precedence. The ready App button and terminal launcher address return to its
-management page in every mode. Local/public room startup is one selection per
-App run; reopening the launcher does not stop or replace that room. Changing
-between those modes requires restarting App.
+management page in every mode. A pending or healthy Local/public room keeps its
+startup selection; reopening the launcher does not stop or replace that room.
+After a failed attempt has fully retired, the launcher can retry or select the
+other mode in the same App run. Changing a healthy room's mode requires restarting App.
 Activating a page supplies
 native capability without restarting its room or healthy media session.
 The source selector exposes that same connection action before sharing; a

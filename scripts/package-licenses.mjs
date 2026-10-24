@@ -132,7 +132,9 @@ export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand
   writeFileSync(outputFile, "Piik Android third-party software notices\n" +
     section("Piik (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules) +
-    section(`cloudflared@${CLOUDFLARED_VERSION}`, pinnedNotice(`cloudflared@${CLOUDFLARED_VERSION}`)));
+    section(`cloudflared@${CLOUDFLARED_VERSION}`, pinnedNotice(`cloudflared@${CLOUDFLARED_VERSION}`)) +
+    section("Piik Android cloudflared changes (MIT)",
+      "Android system DNS adapter and exhausted-QUIC-dial fallback. Source and provenance: mobile/cloudflared/."));
 }
 
 export function writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, target, tunnelVersion) {

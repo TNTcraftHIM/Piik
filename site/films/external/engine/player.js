@@ -180,7 +180,7 @@ export class PiikPromo extends HTMLElement {
     this.film?.stage.toggleAttribute('data-ending-idle', !!heldEnd && !this.playing && this.isConnected && this._inView && !document.hidden);
     this.$('.pk-track').disabled = !this.film;
     this.$('.pk-track').max = String(this.duration);
-    this.$('.pk-track').value = String(this._poster ? 0 : this.currentTime);
+    this.$('.pk-track').value = String(this.currentTime);
     this.$('.pk-track').setAttribute('aria-label', label('Film position', '播放进度'));
     this.$('.pk-lang').textContent = zh ? 'EN' : '中';
     this.$('.pk-lang').setAttribute('aria-label', zh ? 'Switch to English' : '切换到简体中文');
@@ -200,7 +200,8 @@ export class PiikPromo extends HTMLElement {
     if (this._loading && !replace) return this._loading;
     const resume = this.playing || !!this._selection?.resume;
     const id = this.getAttribute('film') || 'A';
-    const position = this.meta?.id === id ? this.currentTime : this._selection?.id === id ? this._selection.position : null;
+    const position = this.meta?.id === id ? (this._poster ? null : this.currentTime)
+      : this._selection?.id === id ? this._selection.position : null;
     this.pause();
     const request = this._request;
     this._selection = { id, position, resume };
@@ -241,8 +242,7 @@ export class PiikPromo extends HTMLElement {
         this.meta = mod.meta;
         this._sources = [this.audio.canPlayType('audio/webm; codecs="opus"') ? mod.meta.audio.webm : null, mod.meta.audio.m4a].filter(Boolean);
         this._sourceIndex = -1;
-        const poster = Number(this.getAttribute('poster') ?? mod.meta.poster ?? 0);
-        this.t = Math.max(0, Math.min(film.duration, position ?? (Number.isFinite(poster) ? poster : 0)));
+        this.t = Math.max(0, Math.min(film.duration, position ?? 0));
         this._poster = position === null;
         this.fit();
         this.draw();
@@ -351,10 +351,11 @@ export class PiikPromo extends HTMLElement {
   draw() {
     if (!this.film) return;
     const t = this.currentTime;
-    this.film.render(Math.min(this.duration - 1e-3, Math.max(0, t)));
-    const position = this._poster ? 0 : t;
-    this.$('.pk-track').value = String(position);
-    const value = fmt(position) + ' / ' + fmt(this.duration);
+    // The cover is a rendered frame, independent of the actual playback clock.
+    const frame = this._poster ? Number(this.getAttribute('poster') ?? this.meta.poster ?? 0) : t;
+    this.film.render(Math.min(this.duration - 1e-3, Math.max(0, Number.isFinite(frame) ? frame : 0)));
+    this.$('.pk-track').value = String(t);
+    const value = fmt(t) + ' / ' + fmt(this.duration);
     this.$('.pk-track').setAttribute('aria-valuetext', value);
     if (this.$('.pk-time').textContent !== value) {
       this.$('.pk-time').textContent = value;

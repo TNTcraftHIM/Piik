@@ -1,0 +1,10 @@
+diff --git a/supervisor/tunnel.go b/supervisor/tunnel.go
+--- a/supervisor/tunnel.go
++++ b/supervisor/tunnel.go
+@@ -373,0 +374,6 @@ func isQuicBroken(cause error) bool {
++	// Serve reaches protocol selection for a dial failure only after
++	// IpAddrFallback has exhausted the configured edge-address retries.
++	// HandshakeTimeoutError is distinct from IdleTimeoutError in quic-go.
++	if _, ok := errors.AsType[*connection.EdgeQuicDialError](cause); ok {
++		return true
++	}
