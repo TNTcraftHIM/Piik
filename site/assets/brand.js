@@ -1,4 +1,4 @@
-import { bindSvgReplayOnPointerEnter } from '../../src/client/ui/animation.ts';
+import { bindSvgReplayOnPointerEnter, replaySvgAnimations } from '../../src/client/ui/animation.ts';
 
 // Shared geometry for the website, film and original demonstration scenes.
 export function mascotMarkup(id, fill = 'none', animated = false) {
@@ -22,17 +22,30 @@ export function brandMarkup(id) {
   return `<svg class="mascot lr-brand-mark is-once is-drawing" viewBox="0 0 32 32" aria-hidden="true">${mascotMarkup(id, 'none', true)}</svg><span>Piik<span class="identity-dot">.</span></span>`;
 }
 
+export function bindBrandMotion(graphic) {
+  const feet = graphic.querySelector('.lr-brand-feet');
+  const finishDrawing = event => {
+    if (event.animationName === 'lr-brand-draw') graphic.classList.remove('is-drawing');
+  };
+  feet.addEventListener('animationend', finishDrawing);
+  const beginDrawing = () => {
+    graphic.classList.add('is-drawing');
+    // Commit the hidden gesture before restarting the drawing timeline.
+    void graphic.getBoundingClientRect();
+  };
+  const stopReplay = bindSvgReplayOnPointerEnter(graphic, beginDrawing);
+  // SSR may finish drawing before hydration attaches the completion listener.
+  beginDrawing();
+  replaySvgAnimations(graphic);
+  return () => {
+    feet.removeEventListener('animationend', finishDrawing);
+    stopReplay();
+  };
+}
+
 export function mountBrands() {
   document.querySelectorAll('[data-brand]').forEach((link, index) => {
     link.innerHTML = brandMarkup(`brand-${index}`);
-    const graphic = link.querySelector('.lr-brand-mark');
-    graphic.querySelector('.lr-brand-feet').addEventListener('animationend', event => {
-      if (event.animationName === 'lr-brand-draw') graphic.classList.remove('is-drawing');
-    });
-    bindSvgReplayOnPointerEnter(graphic, () => {
-      graphic.classList.add('is-drawing');
-      // Commit the hidden gesture before restarting the drawing timeline.
-      void graphic.getBoundingClientRect();
-    });
+    bindBrandMotion(link.querySelector('.lr-brand-mark'));
   });
 }
