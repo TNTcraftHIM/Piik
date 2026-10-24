@@ -33,8 +33,11 @@ The entry builds the same Web assets, generates the existing icon and license
 notices, binds the Go runtime for both supported ABIs and packages the APK.
 `PIIK_GOMOBILE` may name an installed `gomobile` executable outside `PATH`.
 
-The debug APK is `android/app/build/outputs/apk/debug/app-debug.apk` relative to
-`mobile/`. Generated libraries, APKs, Gradle state and signing material stay
+The default build produces `android/app/build/outputs/apk/embedded/debug/app-embedded-debug.apk`
+relative to `mobile/`. Add `--browser` for the system-browser prototype at
+`android/app/build/outputs/apk/browser/debug/app-browser-debug.apk`. Both use the
+same application ID: installing one replaces the other while retaining App settings.
+Generated libraries, APKs, Gradle state and signing material stay
 ignored. The `checklinkname` flag is required by the existing Android networking
 dependency [anet on Go 1.23+](https://github.com/wlynxg/anet); it is confined to
 this platform build. Android uses the repository's single Go dependency graph;

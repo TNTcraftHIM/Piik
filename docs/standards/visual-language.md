@@ -316,8 +316,10 @@ Playback follows the [shared playback owner](./presentation-lifecycle.md#playbac
 Keep related controls together at the picture's lower edge: local playback and
 sound, remote input, viewing options, then window modes with fullscreen last.
 Common actions remain directly available; detailed preferences use an anchored
-popover. A narrow player may use two adjacent rows in the same capsule to preserve
-usable controls, not send window actions to a distant corner. One visibility
+popover. A narrow player keeps one compact row, including sound, remote input
+and window actions. Picture fit and rotation move to the same attached settings
+at that width, reusing their controls rather than duplicating visible actions.
+The playback surface is lightly translucent over the picture. One visibility
 owner hides the complete surface. Grants, pause and source changes do not move
 the bar or resize the picture. Remote input retains its local bezel pull.
 Playback settings own on-screen chat appearance and connection preferences;

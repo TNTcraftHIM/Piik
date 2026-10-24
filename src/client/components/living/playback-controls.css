@@ -9,6 +9,7 @@
   transition: opacity 180ms ease, transform 220ms var(--spring);
 }
 .lr-playback.lr-media-controls { flex-wrap: nowrap; }
+.lr-playback.lr-media-toolbar { background: var(--surface-glaze) color-mix(in srgb, var(--paper) 84%, transparent); }
 .lr-playback-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .lr-playback.is-hidden { opacity: 0; transform: translateY(6px); pointer-events: none; }
 .lr-playback:has([popover]:is(:popover-open, .\:popover-open)) { opacity: 1; transform: none; pointer-events: auto; }
@@ -54,14 +55,17 @@
 .lr-playback-level.is-boosted { color: var(--action-text); }
 .lr-playback :is(.lr-remote-controls, .lr-playback-view), .lr-playback-window { display: inline-flex; align-items: center; flex: none; gap: 4px; }
 .lr-playback :is(.lr-remote-controls, .lr-playback-view)::before, .lr-playback-window::before { content: ""; flex: none; width: 1px; height: 20px; margin-right: 4px; background: var(--control-edge); }
-.lr-playback-fit { display: inline-flex; align-items: center; }
+.lr-playback-picture-actions { display: inline-flex; align-items: center; gap: 4px; }
 .lr-playback-more { display: inline-flex; }
+.lr-playback-more.is-compact-only, .lr-playback-compact-picture { display: none; }
+.lr-playback-picture-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.lr-playback-picture-options .lr-btn { width: 100%; padding: 0 8px; }
 .lr-playback-menu { position: fixed; inset: auto; margin: 0; padding: 8px; max-width: calc(100vw - 16px); overflow: auto; overscroll-behavior: contain; }
 .lr-playback-menu:is(:popover-open, .\:popover-open) { display: grid; gap: 6px; animation: lr-language-open 180ms var(--spring); }
 .lr-playback-settings { width: min(560px, calc(100vw - 16px)); padding: 16px; container: playback-settings / inline-size; }
-.lr-playback-settings:has(.lr-viewer-settings > section:only-of-type) { width: min(360px, calc(100vw - 16px)); }
+.lr-playback-settings:has(> .lr-viewer-settings.is-single) { width: min(360px, calc(100vw - 16px)); }
 .lr-viewer-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; width: 100%; }
-.lr-viewer-settings:has(> section:only-of-type) { grid-template-columns: minmax(0, 1fr); }
+.lr-viewer-settings.is-single { grid-template-columns: minmax(0, 1fr); }
 .lr-viewer-settings section { min-width: 0; }
 .lr-viewer-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: var(--control-dense-size); margin-bottom: 12px; }
 .lr-viewer-settings h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; font-weight: 650; }
@@ -81,29 +85,32 @@
   .lr-playback-level { display: none; }
 }
 @container media-stage (max-width: 640px) {
-  /* Keep one control surface and one hide/show owner. Sound/input precede
-     viewing/window actions when a single row would make touch targets tiny. */
-  .lr-tv-screen > .lr-playback.lr-media-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; width: min(440px, calc(100% - 16px)); padding: 4px 8px; border-radius: 20px; }
-  .lr-playback-main { display: contents; }
-  .lr-playback-watch { grid-area: 1 / 1 / 2 / 3; }
-  .lr-playback:has(.lr-remote-controls) .lr-playback-watch { grid-column: 1; }
-  .lr-playback .lr-remote-controls { grid-area: 1 / 2; }
-  .lr-playback-view { grid-area: 2 / 1; }
-  .lr-playback-window { grid-area: 2 / 2; }
-  .lr-playback .lr-btn { width: clamp(28px, 9cqw, var(--control-compact-size)); }
+  /* Keep playback, sound and window actions on one row. Picture adjustments
+     use the same controls in the attached settings while space is limited. */
+  .lr-tv-screen > .lr-playback.lr-media-controls { gap: 4px; width: min(560px, calc(100% - 16px)); padding: 4px; border-radius: 16px; }
+  .lr-playback-main { gap: 4px; }
+  .lr-playback .lr-btn { width: clamp(24px, 8.5cqw, var(--control-compact-size)); }
   .lr-playback-menu .lr-btn { width: auto; }
+  .lr-playback > .lr-playback-main > .lr-playback-view > .lr-playback-picture-actions { display: none; }
+  .lr-playback-compact-picture { display: block; }
+  .lr-playback-more.is-compact-only { display: inline-flex; }
   .lr-playback-watch { gap: 4px; }
-  .lr-playback-volume { flex: 1; }
+  .lr-playback-volume { flex: 1 1 80px; }
   .lr-playback .lr-playback-view::before, .lr-playback-window::before { display: none; }
 }
 @container media-stage (max-width: 440px) {
   .lr-tv-screen > .lr-tv-overlay.has-comic { gap: 4px; padding: 6px; }
   .lr-tv-overlay > .lr-waiting-caption { min-height: 1.4em; }
   .lr-tv-overlay > .lr-waiting-caption > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .lr-tv-screen > .lr-playback.lr-media-controls { gap: 0 4px; padding-inline: 4px; }
+  .lr-tv-screen > .lr-playback.lr-media-controls { gap: 2px; }
+  .lr-playback-main { gap: 2px; }
   .lr-playback-watch { gap: 2px; }
   .lr-playback :is(.lr-remote-controls, .lr-playback-view, .lr-playback-window) { gap: 2px; }
   .lr-playback :is(.lr-remote-controls, .lr-playback-view)::before { display: none; }
+}
+@container media-stage (max-width: 320px) {
+  .lr-tv-screen > .lr-playback.lr-media-controls { width: calc(100% - 8px); max-width: calc(100% - 8px); gap: 0; padding: 2px; }
+  .lr-playback-main, .lr-playback-watch, .lr-playback :is(.lr-remote-controls, .lr-playback-view, .lr-playback-window) { gap: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lr-playback, .lr-playback .lr-btn, .lr-playback-reveal, .lr-playback-reveal > svg { transition: none; }

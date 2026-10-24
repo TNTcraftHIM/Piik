@@ -31,15 +31,13 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
-- [ ] **Compact mobile playback controls.** Keep the mobile playback bar on one
-  row where possible and reduce picture obstruction. Review spacing and
-  low-frequency action placement while preserving usable touch targets.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on the feature branch for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
 - [ ] **Android App release scope.** Complete integrated phone, tablet and TV
-  acceptance of Local rooms, public invitations and approved hosted Sites, then
-  prepare release packaging. Keep the candidate on the feature branch until accepted.
+  acceptance of Local rooms, public invitations and approved hosted Sites,
+  including the embedded/system-browser comparison and sharing with room voice,
+  then prepare release packaging. Keep the candidate on the feature branch until accepted.
 
 ## Held By Owner
 

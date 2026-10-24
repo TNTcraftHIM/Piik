@@ -3,7 +3,7 @@ import type { ViewerRoutePreference } from "../../../shared/protocol";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Cap, Chip, Pill, RowGroup, SwitchItem } from "./primitives";
+import { Btn, Cap, Chip, Pill, RowGroup, SwitchItem } from "./primitives";
 
 export interface PlaybackSettingsProps {
   pictureFit: VideoFit;
@@ -31,15 +31,41 @@ export interface PlaybackSettingsProps {
   };
 }
 
+export function PlaybackPictureControls({ settings, captions = false }: {
+  settings: Pick<PlaybackSettingsProps, "pictureFit" | "setPictureFit" | "pictureRotation" | "setPictureRotation">;
+  captions?: boolean;
+}) {
+  const { t } = useCopy();
+  const nextFit = settings.pictureFit === "contain" ? "cover" : settings.pictureFit === "cover" ? "fill" : "contain";
+  return <>
+    <Btn icon={settings.pictureFit === "contain" ? "fitContain" : settings.pictureFit === "cover" ? "fitCover" : "fitStretch"}
+      title="playback.changeFit" cap={captions ? `playback.fit.${settings.pictureFit}` : undefined}
+      hint={`hint-fit-${settings.pictureFit}`} hintText="playback.fitCycle"
+      hintVars={{ current: t(`playback.fit.${settings.pictureFit}`), next: t(`playback.fit.${nextFit}`) }}
+      onClick={() => settings.setPictureFit(nextFit)} />
+    <Btn icon="rotatePicture" title="playback.rotation" cap={captions ? "playback.rotation" : undefined}
+      hint="hint-picture-rotation" hintText="playback.rotationHint" pressed={settings.pictureRotation !== 0}
+      onClick={() => settings.setPictureRotation(settings.pictureRotation === 0 ? 90 : 0)} />
+  </>;
+}
+
 // Local display and connection intent; media and routing keep their owners.
-export function PlaybackSettings({ preview, route, relayVolunteer, overlaySettings, reconnect }: Pick<PlaybackSettingsProps, "preview" | "route" | "relayVolunteer"> & {
+export function PlaybackSettings({ picture, preview, route, relayVolunteer, overlaySettings, reconnect }: Pick<PlaybackSettingsProps, "preview" | "route" | "relayVolunteer"> & {
+  picture?: PlaybackSettingsProps;
   overlaySettings?: ReactNode; reconnect: ReactNode;
 }) {
   const { t, vis } = useCopy();
   const routeHint = route?.rejected ? "playback.routeRejected" : route?.sfuOnly ? "playback.routeSfuOnly"
     : route?.peerOnly ? "playback.routePeerOnly" : !route?.sfuAvailable ? "playback.routeNoSfu"
     : `playback.routeHint.${route.preference}` as const;
-  return <div className="lr-viewer-settings">
+  const detailedSections = [preview, overlaySettings, route || relayVolunteer || reconnect].filter(Boolean).length;
+  return <div className={`lr-viewer-settings${detailedSections <= 1 ? " is-single" : ""}`}>
+    {picture && <section className="lr-playback-compact-picture" aria-label={t("playback.viewControls")}>
+      <div className="lr-viewer-settings-heading">
+        <h3><Glyph name="tv" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.viewControls")}</span></h3>
+      </div>
+      <div className="lr-playback-picture-options"><PlaybackPictureControls settings={picture} captions /></div>
+    </section>}
     {preview && <section aria-label={t("host.preview")}>
       <div className="lr-viewer-settings-heading">
         <h3><Glyph name="tv" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("host.preview")}</span></h3>
