@@ -24,11 +24,12 @@ type Platform interface {
 	Control(id int64, command string, layer int64, value int64)
 	Stop(id int64)
 	SiteAccessChanged()
+	RuntimeStopped(reason string)
 }
 
 type capture struct {
 	platform Platform
-	codec    string
+	encoders []encoderCapability
 	mu       sync.Mutex
 	next     int64
 	streams  map[int64]*captureStream
@@ -45,7 +46,8 @@ type captureStream struct {
 	format    atomic.Uint64
 	ready     chan struct{}
 	readyOnce sync.Once
-	codec     string
+	codec     atomic.Uint32
+	requested string
 }
 
 func (c *capture) stream(ctx context.Context, outputs []nativecapture.OutputProfile) *captureStream {
@@ -60,16 +62,23 @@ func (c *capture) stream(ctx context.Context, outputs []nativecapture.OutputProf
 }
 
 func (c *capture) Video(ctx context.Context, options nativecapture.VideoOptions) (nativehost.CaptureStream, error) {
-	if options.Codec != "auto" && options.Codec != c.codec {
+	available := false
+	for _, encoder := range c.encoders {
+		if options.Codec == "auto" || options.Codec == encoder.Codec {
+			available = true
+			break
+		}
+	}
+	if !available {
 		return nil, errors.New("requested Android encoder is unavailable")
 	}
 	output := nativecapture.OutputProfile{Width: options.Profile.Width, Height: options.Profile.Height, Framerate: options.Profile.Framerate, Bitrate: options.Profile.Bitrate}
 	s := c.stream(ctx, []nativecapture.OutputProfile{output})
-	s.codec = c.codec
+	s.requested = options.Codec
 	configuration, _ := json.Marshal(struct {
 		nativecapture.OutputProfile
 		Codec string `json:"codec"`
-	}{output, c.codec})
+	}{output, options.Codec})
 	c.platform.StartVideo(s.id, string(configuration))
 	return s, nil
 }
@@ -155,17 +164,26 @@ func (s *captureStream) push(frame nativecapture.Frame) bool {
 }
 
 // VideoReady publishes actual encoder dimensions and profile, not requested capability.
-func (r *Runtime) VideoReady(id int64, width, height int64, profile string) {
+func (r *Runtime) VideoReady(id int64, codec string, width, height int64, profile string) {
 	s := r.capture.get(id)
 	if s == nil || len(s.outputs) != 1 {
 		return
 	}
-	if width < 2 || height < 2 || width > int64(s.outputs[0].Width) || height > int64(s.outputs[0].Height) || !nativecapture.ValidVideoSize(uint32(width), uint32(height)) || (s.codec == "h264" && !nativecapture.SupportedH264ProfileLevelID(profile)) {
+	if (codec != "h264" && codec != "vp8") || (s.requested != "auto" && s.requested != codec) || width < 2 || height < 2 || width > int64(s.outputs[0].Width) || height > int64(s.outputs[0].Height) || !nativecapture.ValidVideoSize(uint32(width), uint32(height)) || (codec == "h264" && !nativecapture.SupportedH264ProfileLevelID(profile)) || (codec == "vp8" && profile != "") {
 		s.Close()
 		return
 	}
+	kind := uint32(1)
+	if codec == "vp8" {
+		kind = 2
+	}
+	if previous := s.codec.Load(); previous != 0 && previous != kind {
+		s.Close()
+		return
+	}
+	s.codec.Store(kind)
 	s.format.Store(uint64(width)<<32 | uint64(height))
-	state := nativehost.CaptureState{State: "active", HardwareOnly: s.codec == "h264", Codec: s.codec, Width: uint32(width), Height: uint32(height), FPS: s.outputs[0].Framerate, ProfileLevelID: profile, Outputs: s.outputs}
+	state := nativehost.CaptureState{State: "active", HardwareOnly: codec == "h264", Codec: codec, Width: uint32(width), Height: uint32(height), FPS: s.outputs[0].Framerate, ProfileLevelID: profile, Outputs: s.outputs}
 	data, _ := json.Marshal(state)
 	s.push(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: data})
 }
@@ -186,7 +204,7 @@ func (r *Runtime) Video(id int64, data []byte, ptsMicros, durationMicros int64, 
 		return
 	}
 	kind := nativecapture.FrameH264
-	if s.codec == "vp8" {
+	if s.codec.Load() == 2 {
 		kind = nativecapture.FrameVP8
 	}
 	s.push(nativecapture.Frame{Kind: kind, Layer: 0, Width: uint32(format >> 32), Height: uint32(format), Data: append([]byte(nil), data...), Timestamp: pts, Duration: time.Duration(durationMicros) * time.Microsecond, KeyFrame: key})

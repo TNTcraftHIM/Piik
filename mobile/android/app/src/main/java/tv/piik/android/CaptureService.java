@@ -53,7 +53,13 @@ public final class CaptureService extends Service {
     String configuration;
     byte[] config;
     long base = -1, last = -1;
-    boolean ready;
+    boolean ready, proven, released;
+    String actualCodec, profile = "";
+    List<EncoderCatalog.Entry> candidates;
+    int candidateIndex;
+    long deadline;
+    Runnable timeout;
+    Video replaced;
   }
 
   final class Audio {
@@ -183,9 +189,29 @@ public final class CaptureService extends Service {
       fail(runtime, id);
       return;
     }
+    beginVideo(runtime, id, json, EncoderCatalog.candidates(codecRequested(json)), 0, SystemClock.uptimeMillis() + 5000);
+  }
+
+  static String codecRequested(String json) {
+    try { return new JSONObject(json).getString("codec"); } catch (Exception error) { return ""; }
+  }
+
+  void beginVideo(tv.piik.androidbridge.Runtime runtime, long id, String json, List<EncoderCatalog.Entry> candidates, int index, long deadline) {
+    if (runtime != MainActivity.runtime || !runtime.captureCurrent(id) || retiring || stopRequested || projection == null) return;
+    if (index >= candidates.size() || SystemClock.uptimeMillis() >= deadline) {
+      // A rotation reuses the running stream identity; restored old capture stays valid.
+      if (video != null && video.id == id && video.runtime == runtime) return;
+      fail(runtime, id);
+      if (video == null) finishProjection();
+      return;
+    }
     Video next = new Video(id, runtime);
+    next.candidates = candidates;
+    next.candidateIndex = index;
+    next.deadline = deadline;
     next.configuration = json;
     Video old = video;
+    next.replaced = old;
     try {
       JSONObject options = new JSONObject(json);
       DisplayMetrics metrics = getResources().getDisplayMetrics();
@@ -201,8 +227,10 @@ public final class CaptureService extends Service {
       next.width = Math.max(2, ((int) (captureWidth * scale)) & ~1);
       next.height = Math.max(2, ((int) (captureHeight * scale)) & ~1);
       next.fps = options.getInt("fps");
-      boolean h264 = options.getString("codec").equals("h264");
-      next.codec = MediaCodec.createByCodecName(MainActivity.encoderName);
+      EncoderCatalog.Entry selected = candidates.get(index);
+      next.actualCodec = selected.codec;
+      boolean h264 = selected.codec.equals("h264");
+      next.codec = MediaCodec.createByCodecName(selected.name);
       MediaCodecInfo.VideoCapabilities supported =
           next.codec
               .getCodecInfo()
@@ -249,15 +277,28 @@ public final class CaptureService extends Service {
                 if (pts <= next.last) return;
                 next.last = pts;
                 boolean key = (info.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0;
-                if (key && next.config != null) {
+                if (h264 && key && next.config != null) {
                   byte[] combined = new byte[next.config.length + bytes.length];
                   System.arraycopy(next.config, 0, combined, 0, next.config.length);
                   System.arraycopy(bytes, 0, combined, next.config.length, bytes.length);
                   bytes = combined;
                 }
+                boolean firstFrame = !next.proven;
+                if (firstFrame) {
+                  if (SystemClock.uptimeMillis() >= next.deadline) { retryVideo(next); return; }
+                  if (!key) return;
+                  runtime.videoReady(id, next.actualCodec, next.width, next.height, next.profile);
+                  next.proven = true;
+                  handler.removeCallbacks(next.timeout);
+                  if (next.replaced != null && next.replaced.id == id) releaseVideo(next.replaced);
+                  JSONObject locked = new JSONObject(next.configuration);
+                  locked.put("codec", next.actualCodec);
+                  next.configuration = locked.toString();
+                }
                 runtime.video(id, bytes, pts, 1000000 / next.fps, key);
+                if (firstFrame) handler.post(CaptureService.this::resizeVideo);
               } catch (Exception error) {
-                fail(runtime, id);
+                retryVideo(next);
               } finally {
                 try {
                   codec.releaseOutputBuffer(index, false);
@@ -268,8 +309,9 @@ public final class CaptureService extends Service {
 
             @Override
             public void onError(MediaCodec codec, MediaCodec.CodecException error) {
+              if (next.released || (video != next && previousVideo != next)) return;
               android.util.Log.w("PiikCapture", "encoder failed", error);
-              fail(runtime, id);
+              retryVideo(next);
             }
 
             @Override
@@ -277,7 +319,7 @@ public final class CaptureService extends Service {
               if (video != next && previousVideo != next) return;
               try {
                 if (!h264) {
-                  runtime.videoReady(id, next.width, next.height, "");
+                  next.profile = "";
                   next.ready = true;
                   return;
                 }
@@ -299,10 +341,10 @@ public final class CaptureService extends Service {
                     break;
                   }
                 if (profile == null) throw new Exception("AVC configuration missing");
-                runtime.videoReady(id, next.width, next.height, profile);
+                next.profile = profile;
                 next.ready = true;
               } catch (Exception error) {
-                fail(runtime, id);
+                retryVideo(next);
               }
             }
           },
@@ -329,27 +371,41 @@ public final class CaptureService extends Service {
       if (!runtime.captureCurrent(id)) throw new IllegalStateException("capture retired");
       // The Go stream owner closes old on commit or next on rollback.
       video = next;
+      next.timeout = () -> { if (!next.proven && video == next) retryVideo(next); };
+      // Consent has completed. Share one finite first-frame budget across encoders;
+      // a silent candidate yields to another, never to an idle watchdog.
+      handler.postAtTime(next.timeout, EncoderCatalog.attemptDeadline(SystemClock.uptimeMillis(), deadline, index + 1 < candidates.size()));
       if (old != null && old.id == id) {
         // Display rotation changes the physical encoder, not the Go stream clock.
         next.base = old.base;
         next.last = old.last;
-        releaseVideo(old);
       } else previousVideo = old;
     } catch (Exception error) {
       android.util.Log.w("PiikCapture", "video capture failed", error);
-      boolean restored = false;
-      if (old != null && display != null) {
-        try {
-          display.resize(old.width, old.height, getResources().getDisplayMetrics().densityDpi);
-          display.setSurface(old.surface);
-          restored = true;
-        } catch (Exception ignored) {
-        }
-      }
-      releaseVideo(next);
-      fail(runtime, id);
-      if (!restored) finishProjection();
+      retryVideo(next);
     }
+  }
+
+  void retryVideo(Video failed) {
+    if (failed.released) return;
+    if (failed.timeout != null) handler.removeCallbacks(failed.timeout);
+    if (failed.proven) { fail(failed.runtime, failed.id); return; }
+    Video old = failed.replaced;
+    boolean restored = old == null;
+    if (old != null && display != null) {
+      try {
+        display.resize(old.width, old.height, getResources().getDisplayMetrics().densityDpi);
+        display.setSurface(old.surface);
+        restored = true;
+      } catch (Exception error) { /* Retire the projection when rollback is impossible. */ }
+    }
+    if (video == failed) video = old;
+    if (previousVideo == old) previousVideo = null;
+    releaseVideo(failed);
+    if (!restored) { fail(failed.runtime, failed.id); finishProjection(); return; }
+    if (old != null) control(old.runtime, old.id, "keyframe", 0);
+    if (!failed.runtime.captureCurrent(failed.id) || failed.runtime != MainActivity.runtime) return;
+    beginVideo(failed.runtime, failed.id, failed.configuration, failed.candidates, failed.candidateIndex + 1, failed.deadline);
   }
 
   void updateCaptureSize() {
@@ -360,7 +416,7 @@ public final class CaptureService extends Service {
   }
 
   void resizeVideo() {
-    if (video == null || previousVideo != null || retiring || stopRequested) return;
+    if (video == null || !video.proven || previousVideo != null || retiring || stopRequested) return;
     if (video.sourceWidth != captureWidth || video.sourceHeight != captureHeight)
       beginVideo(video.runtime, video.id, video.configuration);
   }
@@ -555,7 +611,9 @@ public final class CaptureService extends Service {
   }
 
   void releaseVideo(Video value) {
-    if (value == null) return;
+    if (value == null || value.released) return;
+    value.released = true;
+    if (value.timeout != null) handler.removeCallbacks(value.timeout);
     try {
       value.codec.stop();
     } catch (Exception ignored) {
