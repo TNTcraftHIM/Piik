@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-21
+Last updated: 2026-10-24
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -23,6 +23,9 @@ phases, including NAT and Auto codec behavior.
 
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
+- The Android development APK passed emulator capture, rotation, stop/reopen,
+  window-inset and real public-invitation checks. Phone/tablet/TV hardware and
+  physical audio remain in the [Android acceptance scope](./todo.md#next).
 - Windows HDR-to-SDR has synthetic GPU and decoded-video evidence; it does not
   establish Browser-capture HDR conversion or end-to-end HDR. The
   [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr) owns that boundary.

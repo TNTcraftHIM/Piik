@@ -58,7 +58,7 @@ Closing the window returns it to the page; room retirement or opener teardown
 closes it, including a late asynchronous open. Browser window support does not
 promise game-overlay transparency, click-through or exclusive-fullscreen coverage.
 
-Piik App opens this same application in the system Browser. Its startup surface
+Desktop Piik App opens this same application in the system Browser. Its startup surface
 offers Local and temporary public invitation; the running App is already
 available to its approved Sites before either mode starts. The desktop App entry
 is omitted on known mobile platforms; Browser and camera actions retain their
@@ -88,7 +88,10 @@ Viewer links opened at that activated origin may use the same running App
 without changing the Viewer UI. Starting a share offers the
 Browser picker and any exact App-owned native windows. It never chooses a
 window automatically. A reproduced Browser-window, capture, or background
-failure is required before introducing an embedded Web runtime.
+failure is required before introducing an embedded Web runtime on desktop.
+The Android candidate embeds the same Web UI, with platform-owned recording
+consent and foreground media services. Its startup page and site management
+reuse the shared launcher; navigating to a site never grants native permission.
 
 Opening the system Browser is an asynchronous convenience action. One pending
 OS handoff is allowed; a slow or failed handler cannot block readiness or App

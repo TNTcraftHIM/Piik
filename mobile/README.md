@@ -40,21 +40,22 @@ dependency [anet on Go 1.23+](https://github.com/wlynxg/anet); it is confined to
 this platform build. Android uses the repository's single Go dependency graph;
 pins and temporary upstream replacements remain owned by the root `go.mod`.
 
-Install with `adb install -r <apk>`. Use the Android menu's **Open site** to enter
-an HTTPS Piik site or full invitation; the invitation path and grant are retained.
-Opening a site does not approve it. On that site, use the existing App connection
-button and approve its exact origin in the popup. The popup keeps the real opener,
-so approval rechecks the App connection, closes the popup and returns to the
-original page without unloading its Host. **Piik sites** opens management.
+Install with `adb install -r <apk>`. The shared startup page offers Local and
+Public link. Use **+** beside the site section to enter a Piik site address;
+confirm its displayed origin before allowing and opening it. Approval, revocation
+and the starred startup site use the same management UI as desktop.
+Use the Android menu's **Manage sites** to open management without unloading a
+live Host. **Startup page** returns the main view after confirmation.
 
-The existing App management page offers Local, Public link (when its packaged
-helper is installed), or an approved HTTPS site. Local starts only when selected; Hosted
+Local starts only when selected; Hosted
 sites use their own room service and the existing native App connection. Site
 approval and the starred startup site use the same persisted App configuration.
 Public link uses the same shared room service and supervised official cloudflared
 helper as desktop. Android executes the helper from the installed APK native
 library directory and writes its temporary configuration into the app cache.
-An unexpected helper exit ends this runtime; Restart Piik creates a fresh attempt.
+Failed room startup can retry from the same page after the failed attempt has
+retired. An unexpected helper exit after startup ends this runtime; Restart Piik
+creates a fresh attempt.
 
 Create a room and select Android screen capture in the ordinary source picker.
 Approve the Android projection prompt. Pure video does not request microphone
@@ -80,12 +81,12 @@ Android can also end projection on screen lock. Capture and optional audio use
 the existing stream replacement transaction; the foreground service owns the
 projection token and its single VirtualDisplay.
 
-The API 35 emulator has verified Local room creation, pure-video consent and
-native Host preview frames. The installed APK's own public-link helper has also
-completed real DNS/TLS/public HTTP access and shutdown. A separate App WebView
-popup retained its opener and closed without unloading the original page.
-Background new-Viewer admission, room voice, camera, rotation and immediate
-exit/reopen remain integrated acceptance work. Physical microphone routing,
+The API 35 emulator has verified Local creation, pure-video consent, native Host
+preview frames, capture rotation, stop/cancel and normal exit/reopen. The installed
+APK's public-link helper completed real DNS/TLS/public HTTP access and shutdown.
+Management popups retain their opener; title-bar and keyboard insets leave the
+Web UI unobscured. Background new-Viewer admission/reconnect, live room voice
+and camera remain in the integrated acceptance scope. Physical microphone routing,
 background audio samples, hardware AVC and phone/tablet/TV source-audio policies
 remain device checks.
 

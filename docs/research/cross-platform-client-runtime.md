@@ -333,11 +333,11 @@ actual App/Site compatibility checks.
 The [Android prototype](../../mobile/README.md) builds an APK for arm64 and
 x86-64 from the repository's single Go dependency graph. A Java Activity embeds
 the normal Web UI at its loopback origin or an explicitly approved HTTPS site.
-The native Open site action accepts HTTPS sites and full invitations without
-granting App permission. Its WebView popup preserves the opener, so the existing
-approval notification and close return to the original live Host.
-The existing App management page owns approval, revocation and the starred
-startup site. Local mode starts the Go room and LAN HTTPS invitation only when
+The shared launcher's add-site action displays the exact origin for explicit
+approval before opening it. Its management popup preserves the opener, so the
+existing approval notification and close return to the original live Host.
+The App management page owns approval, revocation and the starred startup site.
+Local mode starts the Go room and LAN HTTPS invitation only when
 selected; Hosted mode uses that site's room service. Room signaling stays with
 the same Web UI. Public-link mode reuses the desktop supervised cloudflared
 process and the same room server. Its Android PIE executable is installed in
@@ -396,14 +396,34 @@ The Activity and service retain
 capture ownership across rotation; runtime detachment precedes asynchronous
 shutdown so an old close cannot retire a newly opened runtime.
 
-On 2026-10-24, the current integration verified Local creation, pure-video
-consent without microphone/camera prompts, and live 480-by-800 Host preview
-frames. Native discovery now preserves the user's selected source tab while
-pending, rather than briefly opening camera preview. Background new-Viewer
-admission/reconnect, voice sample continuity with and without Projection,
-camera, rotation and immediate exit/reopen have not yet been exercised in this
-integration: the next owned-emulator UI batch was blocked by automatic approval.
-The historical prototype run is not acceptance of those new lifecycle paths.
+The current integration verified Local creation, pure-video consent without
+microphone/camera prompts, live Host preview frames, portrait-to-landscape
+capture resizing, stop/cancel and normal exit/reopen. Native title-bar and
+keyboard insets leave the shared Web UI unobscured. The packaged public-link
+helper established its tunnel in about six seconds; local and public health
+requests succeeded without extra DNS configuration. Background new-Viewer
+admission/reconnect, live camera/voice and physical-device audio remain in the
+Android acceptance scope in [TODO](../todo.md#next).
+
+### Android Browser Handoff
+
+The candidate retains its embedded Web UI. A system-browser variant can reuse
+the same Go room, authorization and media code, but needs a complete Android
+handoff rather than an external navigation link. [Chrome Intents](https://developer.chrome.com/docs/android/intents)
+allow a user gesture to open App. The URI is a navigation request, never native
+permission: the exact site still needs approval and an authorized-health recheck.
+[Verified App Links](https://developer.android.com/training/app-links/verify-applinks)
+require domain association, so they cannot be the universal entry for arbitrary
+self-hosted sites.
+
+Each new recording also needs a user-visible return to App for system consent;
+[background activity restrictions](https://developer.android.com/guide/components/activities/secure-bal)
+prevent the Go callback from simply opening that UI behind the browser.
+Outside recording, Local/public rooms need a real Android service owner rather
+than relying on a background Activity's static runtime. Android can suspend or
+kill [cached processes](https://developer.android.com/guide/components/activities/process-lifecycle).
+An external browser would own its own camera, voice and local-network permission;
+the current WebView permission adapter cannot supply those permissions for it.
 
 ## Current Follow-up
 
