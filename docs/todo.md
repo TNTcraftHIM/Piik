@@ -7,18 +7,22 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Remote-control latency and responsiveness.** Compare input delivery,
-  Host execution, capture/encoding and playback on the same endpoints and
-  network. Measure the remaining latency after the input scheduling and
-  grant-lifecycle corrections before changing transport or buffering.
+- [ ] **Remote-control end-to-end latency.** Measure input-to-visible-response
+  on an attended target, covering OS execution, Native capture/encoding, remote
+  transport and display in the same trial. The
+  [input assessment](./research/room-interactions.md#window-capture-and-game-input)
+  owns completed local component measurements.
 - [ ] **Windows window-sharing black screen (#495).** Investigate
   [#495](https://github.com/TNTcraftHIM/Piik/issues/495): Windows 10, Chrome 155,
-  Piik v2.3.0; App window sharing is black while full-screen sharing works.
-  The attachment shows the Host selecting its own Chrome window, then a black
-  preview after sharing starts. This path works in local Windows 11 / Chrome 155
-  checks. A same-attempt App/Web report from the affected device is needed to
-  distinguish capture output from decoding. Keep this investigation separate
-  from the release; it is not covered by the macOS #492 crop fix.
+  Piik v2.3.0; native Chrome/Edge window sharing fails while QQ and Browser
+  capture work. The latest report uses VP8: transport connects, but capture
+  remains `starting` with no video frames. Obtain the App failure stage or compare
+  the existing Intel/NVIDIA adapter choices with VP8 fixed on that device.
+- [ ] **Intel native H.264 startup (#452).** Follow the
+  [new v2.4.0 report](https://github.com/TNTcraftHIM/Piik/issues/452): explicit H.264
+  fails while VP8 works on Intel Arc B580 / Intel Graphics. The Browser report
+  records App startup rejection; an App diagnostic is needed to identify its
+  native failure stage.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -27,27 +31,17 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
-- [ ] **Release headlines in App and Server update checks.** Read the existing
-  bilingual title and explanation from the published release notes and show them
-  in the App update notice and Server update output. Reuse the
-  [headline contract](./standards/versioning.md#release-notes); keep GitHub and
-  Gitee consistent, retain version/upgrade actions, and use the ordinary notice
-  when no headline exists. Display plain text without another announcement feed.
-- [ ] **QR invitations.** Generate a QR code locally from the current Viewer
-  invitation, including its fragment and selected password behavior. Reuse the
-  invitation controls and authority; rotation or revocation updates the displayed
-  code. Invitation secrets must not go to an external QR service.
-- [ ] **Android App.** Assess a first version focused on native phone screen
-  sharing and source audio, reusing the existing room/transport core and product
-  UI. Start with Android's
-  [MediaProjection](https://developer.android.com/media/grow/media-projection)
-  consent/foreground-service lifecycle and
-  [playback capture](https://developer.android.com/media/platform/av-capture),
-  then build a small prototype to establish the integration. Mobile controlled
-  endpoints retain their separate scope.
+- [ ] **Release headlines in App and Server update checks.** Keep the prepared
+  implementation on the feature branch for a later feature release. It consumes
+  the existing [headline contract](./standards/versioning.md#release-notes).
+- [ ] **Android App release scope.** Keep the Local-sharing APK prototype on
+  the feature branch. Complete phone, tablet and TV acceptance, hosted-site
+  integration and release packaging before including Android in a public release.
 
 ## Held By Owner
 
+- [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
+  Keep the local QR implementation on the feature branch for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
   shared system mouse; do not add multi-cursor or pointer-ownership visualization.
 - [ ] **Persistent-loss estimator replacement.** Deferred on 2026-10-18.

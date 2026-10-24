@@ -808,8 +808,8 @@ admission counts Viewers rather than device types. The current Browser
 collector uses one standard-mapped controller per page and reports at up to 60 Hz.
 No new media route, port or multiple screen publisher is required. Slot capacity
 follows the backend and game, including physical controllers already in use;
-it is not the room capacity. Real-game recognition and concurrent-player
-acceptance remain in [TODO](../todo.md#now).
+it is not the room capacity. Remaining Linux/macOS desktop and game-recognition
+checks are tracked in [TODO](../todo.md#parked-product-work).
 
 ### Window Capture And Game Input
 
@@ -861,6 +861,16 @@ key-up events from permanently holding a key, but does not promise immediate
 release during loss. Keep the first prototype on the existing ordered channel;
 desktop acceptance must not be presented as competitive-game readiness. These
 are input semantics and acceptance work, not reasons to replace the media pipeline.
+
+Local component timing on 2026-10-24 used Windows and headless Chrome 155.
+For 200 samples, Browser input dispatch and AES-GCM-to-send each had a 0.1 ms
+95th percentile; ordered Browser SCTP loopback round-trip was 0.8 ms. Across
+100 ten-point mouse bursts, the latest batched point reached send in 5.1 ms
+at the 95th percentile, matching the short timer rather than a rendering-frame
+wait. Encrypted Pion delivery through Host authorization to a recorded input
+sink was 0.13 ms at the 95th percentile. No slow point appeared in these local
+components. End-to-end timing still needs target execution, Native capture and
+encoding, remote transport and physical display response in the same trial.
 
 The reviewed implementation uses WGC capture and the documented Windows input
 API, without game-memory access, injected game code or an input driver.
