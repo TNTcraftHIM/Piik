@@ -107,11 +107,6 @@ final class BrowserMedia {
       denied.run();
       return;
     }
-    // Older hosted UIs retain ordinary foreground WebView capture permission.
-    if (requested < 0) {
-      granted.run();
-      return;
-    }
     int types = 0;
     for (String resource : request.getResources()) {
       if (resource.equals(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
@@ -147,13 +142,26 @@ final class BrowserMedia {
     BrowserMediaService.update(this, null, null);
   }
 
-  void close() {
-    if (MainActivity.browserMedia == this) MainActivity.browserMedia = null;
-    port.close();
+  void background() {
+    // Without track-lifetime messages, a granted request can only retain the
+    // service while its document is foreground. An in-flight initial snapshot
+    // is never evidence that preparation may be skipped.
+    if (requested >= 0) return;
+    retirePreparations();
+    BrowserMediaService.retire(this);
+  }
+
+  void retirePreparations() {
     java.util.ArrayList<Preparation> retired = new java.util.ArrayList<>(requests.values());
     requests.clear();
     synchronizing.clear();
-    BrowserMediaService.retire(this);
     for (Preparation pending : retired) if (pending.denied != null) pending.denied.run();
+  }
+
+  void close() {
+    if (MainActivity.browserMedia == this) MainActivity.browserMedia = null;
+    port.close();
+    retirePreparations();
+    BrowserMediaService.retire(this);
   }
 }

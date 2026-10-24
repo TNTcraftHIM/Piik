@@ -48,10 +48,15 @@ final class WebPermissions {
             request.deny();
             return;
           }
-          if (MainActivity.browserMedia != null)
-            MainActivity.browserMedia.prepare(
-                request, () -> request.grant(request.getResources()), request::deny);
-          else request.grant(request.getResources());
+          // A document can request capture before onPageFinished installs its
+          // platform port. The real request still requires service preparation.
+          MainActivity.refreshBrowserMedia();
+          BrowserMedia media = MainActivity.browserMedia;
+          if (media == null || !media.current()) {
+            request.deny();
+            return;
+          }
+          media.prepare(request, () -> request.grant(request.getResources()), request::deny);
         };
     grant.denied = request::deny;
     pending.add(grant);
@@ -84,6 +89,10 @@ final class WebPermissions {
       if (activity.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED)
         missing.add(permission);
     if (missing.isEmpty()) {
+      finish();
+      return;
+    }
+    if (!activity.visible) {
       finish();
       return;
     }
