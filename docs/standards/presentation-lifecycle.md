@@ -95,6 +95,8 @@ with platform-owned recording consent and foreground services. Their startup pag
 and site management reuse the shared launcher. Waking App or navigating to a site
 never grants native permission. A pending system permission stays with its
 current native request while the user enters App and returns to the browser.
+App returns after the requested capture preparation completes, including source
+audio; video readiness alone does not complete that operation.
 
 Opening the system Browser is an asynchronous convenience action. One pending
 OS handoff is allowed; a slow or failed handler cannot block readiness or App

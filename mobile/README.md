@@ -55,8 +55,9 @@ live Host. **Startup page** returns the main view after confirmation.
 
 The browser variant opens that same startup page in the default browser.
 Its ongoing notification opens Piik or stops the local backend. Screen sharing
-uses **Confirm in App** to enter the system permission dialog, then returns to
-the original browser tab. Opening App while a request is pending also handles
+uses **Confirm in App** for recording and any requested sound permission. App
+returns to the original browser tab after the complete capture startup settles.
+Opening App while a request is pending also handles
 that request, so sites without the new shortcut can still confirm in App.
 The website's App approval still requires its displayed exact origin; waking
 App does not authorize a site. Camera and room voice use the browser's own
