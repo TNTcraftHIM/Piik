@@ -10,7 +10,7 @@ public broadcast service. Hosted and App run one shared Go core
 ([ADR-0012](./adr/0012-shared-go-backend-core.md)); Node and Vite build the
 Browser UI and are not a runtime. Source includes a cross-platform App that
 runs that same core in a self-contained Local deployment or supplies native
-capability to explicitly approved Sites through the system Browser. Its single Go
+capability to explicitly approved Sites through the shared Web UI. Its single Go
 process starts the loopback capability service before room selection. The
 persistent launcher offers Local and temporary public-link choices and manages
 per-Site local approval and one starred startup Site. Site use can remain on
@@ -20,7 +20,7 @@ Browser and Native peers without changing participant, signaling, capacity, or
 route identity. Local is LAN-first; explicit one-link mode exposes that same
 authority through a temporary public control tunnel while media remains P2P.
 Host authority belongs to a tab, with one separate persistent origin resume
-hint. The App admits two independent native control sessions under its one
+hint. The desktop App admits two independent native control sessions under its one
 loopback service.
 
 The Hosted Go process embeds Binding-only STUN and optional SFU forwarding.

@@ -331,8 +331,12 @@ actual App/Site compatibility checks.
 ## Android Capture Bridge Assessment
 
 The [Android prototype](../../mobile/README.md) builds an APK for arm64 and
-x86-64 from the repository's single Go dependency graph. A Java Activity embeds
-the normal Web UI at its loopback origin or an explicitly approved HTTPS site.
+x86-64 from the repository's single Go dependency graph. The embedded and system-
+browser variants present the same Web UI at its loopback origin or an explicitly
+approved site. `AppRuntimeService` owns the one Go runtime and pending OS requests;
+the Activity owns visible permission dialogs. A user-started `specialUse`
+foreground service keeps local rooms and the native companion available while
+the system browser is in front, with ordinary open/stop notification actions.
 The shared launcher's add-site action displays the exact origin for explicit
 approval before opening it. Its management popup preserves the opener, so the
 existing approval notification and close return to the original live Host.
@@ -346,7 +350,7 @@ cache directory rather than a process-wide temporary-path override. Runtime
 shutdown joins startup work, ends the room server, then joins the sidecar.
 An unexpected sidecar exit ends the runtime and presents an explicit restart.
 
-A `mediaProjection` foreground service owns consent, Projection, VirtualDisplay,
+A `mediaProjection` foreground service owns the approved Projection, VirtualDisplay,
 MediaCodec and AudioRecord. A narrow
 [gomobile AAR](https://pkg.go.dev/golang.org/x/mobile/cmd/gomobile) bridge supplies
 frames and controls through `nativehost.CaptureProvider`; desktop capture keeps
@@ -366,13 +370,16 @@ uses [playback capture](https://developer.android.com/media/platform/av-capture)
 from Android 10, subject to `RECORD_AUDIO` permission, the same user profile and the
 source application's capture policy.
 
-Native commentary uses AudioRecord MIC with the same per-share stream/ready
+Native commentary uses AudioRecord VOICE_COMMUNICATION with the same per-share stream/ready
 handshake and existing Go audio mixer. Its input and replacement stay independent
 of playback capture; the Projection service holds microphone eligibility until
 the last commentary reader joins. Mono PCM is adapted to the existing PCM48
 stereo contract. Device preferences use AudioManager input identities and verify
 the actual recording route; the empty choice follows Android's default. This is
 separate from room voice's Browser microphone and does not add a mixer or route.
+Android's [audio-input sharing policy](https://developer.android.com/media/platform/sharing-audio-input)
+limits concurrent microphone input across separate apps. System echo processing
+does not make the two microphone paths share one capture or eliminate that limit.
 
 The earlier prototype API 35 emulator run delivered a live 480-by-800 VP8 picture
 to an independent Windows Browser Viewer. Sharing continued after switching to another
@@ -381,7 +388,7 @@ with measurable tone energy. The lab Browser used explicit local candidates
 because mDNS does not cross the emulator's isolated network. Physical-device
 acceptance and distribution remain in [TODO](../todo.md#next).
 
-The current integration requests camera and room-voice permissions only for
+The embedded integration requests camera and room-voice permissions only for
 actual WebView requests from the current approved top-level origin. Native
 playback audio requests recording permission separately; pure-video Projection
 does not. A main-document MessagePort reports pending and live Browser tracks
@@ -407,23 +414,26 @@ Android acceptance scope in [TODO](../todo.md#next).
 
 ### Android Browser Handoff
 
-The candidate retains its embedded Web UI. A system-browser variant can reuse
-the same Go room, authorization and media code, but needs a complete Android
-handoff rather than an external navigation link. [Chrome Intents](https://developer.chrome.com/docs/android/intents)
-allow a user gesture to open App. The URI is a navigation request, never native
-permission: the exact site still needs approval and an authorized-health recheck.
+The system-browser variant reuses the same Go room, authorization and media code.
+[Chrome Intents](https://developer.chrome.com/docs/android/intents) allow an
+explicit gesture to wake App, then return to the current browser tab. Waking is
+not authorization: the exact site still needs approval and an authorized-health
+recheck. The browser's existing approval popup retains its real opener.
 [Verified App Links](https://developer.android.com/training/app-links/verify-applinks)
 require domain association, so they cannot be the universal entry for arbitrary
 self-hosted sites.
 
-Each new recording also needs a user-visible return to App for system consent;
+Each new recording uses a user-visible return to App for system consent;
 [background activity restrictions](https://developer.android.com/guide/components/activities/secure-bal)
 prevent the Go callback from simply opening that UI behind the browser.
-Outside recording, Local/public rooms need a real Android service owner rather
+Outside recording, the runtime service keeps Local/public rooms alive rather
 than relying on a background Activity's static runtime. Android can suspend or
 kill [cached processes](https://developer.android.com/guide/components/activities/process-lifecycle).
-An external browser would own its own camera, voice and local-network permission;
-the current WebView permission adapter cannot supply those permissions for it.
+The external browser owns camera, voice and local-network permission; the
+WebView permission adapter belongs only to the embedded variant. The optional
+native activation description adds a foreground action without changing native
+commands or the published control version. A normal App open also processes a
+current pending request, independently of whether its site has the shortcut.
 
 ## Current Follow-up
 

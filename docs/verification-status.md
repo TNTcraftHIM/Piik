@@ -24,7 +24,9 @@ phases, including NAT and Auto codec behavior.
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
 - The Android development APK passed emulator capture, rotation, stop/reopen,
-  window-inset and real public-invitation checks. Phone/tablet/TV hardware and
+  window-inset and real public-invitation checks. The system-browser variant
+  passed capture consent, return to its current browser tab, stop and cancel.
+  Phone/tablet/TV hardware and
   physical audio remain in the [Android acceptance scope](./todo.md#next).
 - Windows HDR-to-SDR has synthetic GPU and decoded-video evidence; it does not
   establish Browser-capture HDR conversion or end-to-end HDR. The

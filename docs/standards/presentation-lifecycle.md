@@ -60,9 +60,10 @@ promise game-overlay transparency, click-through or exclusive-fullscreen coverag
 
 Desktop Piik App opens this same application in the system Browser. Its startup surface
 offers Local and temporary public invitation; the running App is already
-available to its approved Sites before either mode starts. The desktop App entry
-is omitted on known mobile platforms; Browser and camera actions retain their
-own capability checks. A Site's explicit App action discovers the local approval
+available to its approved Sites before either mode starts. Android offers the
+same App entry with an explicit wake action; unsupported mobile platforms omit
+that entry. Browser and camera actions retain their own capability checks.
+A Site's explicit App action discovers the local approval
 page, where the user confirms its exact origin. The launcher lists approvals and
 revokes each independently. Starring one approved Site makes an ordinary App launch open it;
 without a star, the launcher opens. This preference grants no access and starts
@@ -89,9 +90,11 @@ without changing the Viewer UI. Starting a share offers the
 Browser picker and any exact App-owned native windows. It never chooses a
 window automatically. A reproduced Browser-window, capture, or background
 failure is required before introducing an embedded Web runtime on desktop.
-The Android candidate embeds the same Web UI, with platform-owned recording
-consent and foreground media services. Its startup page and site management
-reuse the shared launcher; navigating to a site never grants native permission.
+The Android candidates use that same Web UI inside App or in the system browser,
+with platform-owned recording consent and foreground services. Their startup page
+and site management reuse the shared launcher. Waking App or navigating to a site
+never grants native permission. A pending system permission stays with its
+current native request while the user enters App and returns to the browser.
 
 Opening the system Browser is an asynchronous convenience action. One pending
 OS handoff is allowed; a slow or failed handler cannot block readiness or App

@@ -2,8 +2,10 @@
 
 This is an Android sharing prototype for local testing.
 It targets Android 10 or later on arm64 and x86-64 devices.
-The Activity uses Piik's existing Web UI. A `mediaProjection` foreground service
-owns Android consent, the display surface, platform encoding and eligible
+Both interface variants use Piik's existing Web UI. An Android service owns
+the shared Go runtime until the user stops App; the Activity handles visible
+system consent. A `mediaProjection` foreground service
+owns the approved projection token, display surface, platform encoding and eligible
 playback audio and optional commentary input; Go owns the existing room, native
 session, mixer and media routes.
 Screen sharing captures the whole display. Source audio is subject
@@ -12,9 +14,10 @@ to Android's capture policy and excludes this app's playback.
 Phones and tablets use the existing responsive UI. Automatic capture prefers
 hardware AVC, then a Surface-capable MediaCodec VP8 encoder using the existing
 software-VP8 native path. An explicit AVC request never silently switches codec.
-Devices without either encoder can still join rooms. Devices without
-Android System WebView display an unsupported-device message. TV capture depends
-on the system's Projection and encoder support. Physical TV checks are pending.
+Devices without either encoder can still join rooms. The embedded variant needs
+Android System WebView; the browser variant needs an installed system browser.
+TV capture depends on the system's Projection and encoder support. Physical TV
+checks are pending.
 
 ## Build
 
@@ -50,8 +53,17 @@ and the starred startup site use the same management UI as desktop.
 Use the Android menu's **Manage sites** to open management without unloading a
 live Host. **Startup page** returns the main view after confirmation.
 
-Local starts only when selected; Hosted
-sites use their own room service and the existing native App connection. Site
+The browser variant opens that same startup page in the default browser.
+Its ongoing notification opens Piik or stops the local backend. Screen sharing
+uses **Confirm in App** to enter the system permission dialog, then returns to
+the original browser tab. Opening App while a request is pending also handles
+that request, so sites without the new shortcut can still confirm in App.
+The website's App approval still requires its displayed exact origin; waking
+App does not authorize a site. Camera and room voice use the browser's own
+permissions. The embedded variant retains its in-App page and management menu.
+
+Local starts only when selected; Hosted sites use their own room service and
+the existing native App connection. Site
 approval and the starred startup site use the same persisted App configuration.
 Public link uses the same shared room service and supervised official cloudflared
 helper as desktop. Android executes the helper from the installed APK native
@@ -69,14 +81,21 @@ when enabled. Commentary uses the OS-default microphone or an input from the
 existing device selector; it joins the same Go mixer and stable shared audio
 track as source sound. The capture service adds microphone foreground eligibility
 only for that input lifetime. Room voice keeps its independent Browser input.
-Background camera and room voice require a site that supplies Browser track
-lifetime notifications; older sites retain ordinary foreground capture.
+In the embedded variant, background camera and room voice require a site that
+supplies Browser track lifetime notifications; older sites retain ordinary foreground capture.
 A document-bound MessagePort supplies demand to a short-lived camera/microphone
 foreground service. It records no media and releases its types when the last
 track or page ends. Revoking the currently approved site returns to management,
 ending that page's media; other sites are unaffected.
 The Activity exposes no JavaScript interface. WebView fullscreen uses Android's
 custom-view window; Back exits fullscreen before ordinary page navigation.
+
+Screen capture and device sound do not turn on the microphone. Native commentary
+is enabled separately and uses Android's voice-communication capture mode for
+available system echo processing. Android limits simultaneous microphone capture
+by separate apps: if browser room voice and App commentary compete, use one
+microphone path. Headphones also prevent speaker sound from feeding back into
+the microphone.
 
 Open the invitation in another device's Browser. Local HTTPS requires the usual
 certificate confirmation. Stop from Piik or Android's projection indicator;
