@@ -20,6 +20,7 @@ export class BrowserEncodingProducer {
   readonly id = createOpaqueId();
   private send: RTCPeerConnection | null = null;
   private receive: RTCPeerConnection | null = null;
+  private readonly releaseDebug: Array<() => void> = [];
   private input: MediaStreamTrack | null = null;
   private videoSender: RTCRtpSender | null = null;
   private video: HTMLVideoElement | null = null;
@@ -62,8 +63,8 @@ export class BrowserEncodingProducer {
       track.addEventListener("ended", this.fail);
       const send = this.send = new RTCPeerConnection({ iceServers: [], encodedInsertableStreams: true } as RTCConfiguration);
       const receive = this.receive = new RTCPeerConnection({ iceServers: [] });
-      observeDebugConnection(send, { producerId: this.id, role: "pool-producer" });
-      observeDebugConnection(receive, { producerId: this.id, role: "pool-local-receiver" });
+      this.releaseDebug.push(observeDebugConnection(send, { producerId: this.id, role: "pool-producer" }));
+      this.releaseDebug.push(observeDebugConnection(receive, { producerId: this.id, role: "pool-local-receiver" }));
       const transceiver = send.addTransceiver(track, { direction: "sendonly", streams: [new MediaStream([track])] });
       this.videoSender = transceiver.sender;
       const streams = encodedStreams(transceiver.sender), writer = streams.writable.getWriter();
@@ -180,6 +181,8 @@ export class BrowserEncodingProducer {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const release of this.releaseDebug) release();
+    this.releaseDebug.length = 0;
     this.clearStartupTimer();
     debugEvent("encoding-pool", "producer-retired", { producerId: this.id });
     this.source.removeEventListener("ended", this.fail);

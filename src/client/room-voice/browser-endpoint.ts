@@ -20,6 +20,7 @@ export interface VoiceConnectionMetric {
 
 type VoiceSignal = Extract<ClientMessage, { type: "room-voice-signal" }>;
 interface Connection {
+  releaseDebug: () => void;
   config: VoiceConnection;
   pc: RTCPeerConnection;
   lifetime: AbortController;
@@ -172,6 +173,7 @@ export class BrowserVoiceEndpoint {
     const prediction = config.transport === "peer" && !!this.iceConfig.natPredictionStunUrls?.length;
     const pc = new RTCPeerConnection({ iceServers: config.transport === "sfu" ? [] : iceServersWithNatPrediction(this.iceConfig.iceServers, prediction, this.iceConfig.natPredictionStunUrls) });
     const connection: Connection = { config, pc, lifetime: new AbortController(),
+      releaseDebug: observeDebugConnection(pc, { connectionId: config.connectionId, role: "room-voice" }),
       candidates: new NatPredictionCandidateEmitter(prediction, candidate => {
         if (!candidate || !this.current(connection) || /\sTCP\s/i.test(candidate.candidate)) return;
         if (connection.localCandidates.length >= 64) { this.report(connection, "failed"); return; }
@@ -180,7 +182,6 @@ export class BrowserVoiceEndpoint {
       queuedCandidates: [], localCandidates: [], senders: new Map(), remote: new Map(), dirty: this.isOfferer(config),
       requested: false, descriptionSent: false, offerRevision: 0, remoteRevision: 0, reported: null, metrics: new Map() };
     this.connections.set(config.connectionId, connection);
-    observeDebugConnection(pc, { connectionId: config.connectionId, role: "room-voice" });
     pc.onicecandidate = event => { if (this.current(connection)) connection.candidates.add(event.candidate); };
     pc.onicegatheringstatechange = () => { if (this.current(connection) && pc.iceGatheringState === "complete") connection.candidates.gatheringComplete(); };
     pc.onnegotiationneeded = () => { if (this.current(connection)) { connection.dirty = true; this.changed(); } };
@@ -408,6 +409,7 @@ export class BrowserVoiceEndpoint {
   }
 
   private retire(connection: Connection): void {
+    connection.releaseDebug();
     this.connections.delete(connection.config.connectionId);
     connection.metrics.clear();
     connection.lifetime.abort(); connection.candidates.discard(); connection.pc.close();

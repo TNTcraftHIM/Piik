@@ -105,6 +105,7 @@ import { readPreferredQuality, savePreferredQuality } from "../lib/quality-prefe
 import { AppQualityPreference } from "../native/quality-preference";
 import { createOpaqueId } from "../lib/opaque-id";
 import { debugError, debugEvent, debugOperation } from "../lib/debug";
+import { observeDebugPlayback } from "../lib/debug-webrtc";
 import {
   defaultHostDisplayName,
   readDisplayName,
@@ -698,6 +699,15 @@ export function HostPage({
       previewPausedByUser.current = false;
       setTheaterMode(false);
     }
+  }, [stream]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!stream || !video) return;
+    return observeDebugPlayback(video, {
+      role: "host-preview", generation: activeGenerationRef.current,
+      source: nativeModeRef.current ? "native" : "browser",
+    });
   }, [stream]);
 
   useEffect(() => {

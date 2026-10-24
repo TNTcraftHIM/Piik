@@ -91,6 +91,7 @@ export class ViewerPeer implements ViewerMediaPeer {
   getRemoteInput(): RTCDataChannel | null { return this.remoteInput.current; }
   private connection: RTCPeerConnection | null = null;
   private connectionLifetime: AbortController | null = null;
+  private releaseDebug: (() => void) | null = null;
   private connectionId: string | null = null;
   private parentPeerId: string | null = null;
   private remoteStream = new MediaStream();
@@ -285,7 +286,7 @@ export class ViewerPeer implements ViewerMediaPeer {
         this.currentIceConfig.natPredictionStunUrls,
       ),
     });
-    observeDebugConnection(connection, { connectionId, parentPeerId, role: "receive" });
+    this.releaseDebug = observeDebugConnection(connection, { connectionId, parentPeerId, role: "receive" });
     const localIceCandidates = new NatPredictionCandidateEmitter(
       this.natPredictionEnabled,
       (candidate) => {
@@ -734,6 +735,8 @@ export class ViewerPeer implements ViewerMediaPeer {
   }
 
   private disposeConnection(): void {
+    this.releaseDebug?.();
+    this.releaseDebug = null;
     this.remoteInput.dispose();
     this.clearDisconnectTimer();
     this.clearInitialConnectionTimer();

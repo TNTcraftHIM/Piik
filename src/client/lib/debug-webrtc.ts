@@ -1,4 +1,4 @@
-import { browserDebugEnabled, debugError, debugEvent } from "./debug";
+import { browserDebugEnabled, debugError, debugEvent, registerDebugCollector } from "./debug";
 import { isPredictedCandidateFoundation } from "../../shared/nat-candidate";
 
 const connections = new WeakMap<RTCPeerConnection, object>();
@@ -9,9 +9,15 @@ const statsTypes = new Set([
 
 // Observe existing connection owners and their existing statistics samples.
 // These listeners add no polling or transport actions.
-export function observeDebugConnection(connection: RTCPeerConnection, identity: object): void {
-  if (!browserDebugEnabled) return;
+export function observeDebugConnection(connection: RTCPeerConnection, identity: object): () => void {
+  if (!browserDebugEnabled) return () => {};
   connections.set(connection, identity);
+  const live = () => connection.connectionState !== "closed";
+  const release = registerDebugCollector("webrtc", async () => {
+    if (!live()) return;
+    const report = await connection.getStats();
+    if (live()) debugRtcStats(connection, report);
+  });
   const transports = new Set<RTCDtlsTransport>();
   const snapshot = (event: string) => {
     try {
@@ -36,6 +42,19 @@ export function observeDebugConnection(connection: RTCPeerConnection, identity: 
       errorCode: event.errorCode, errorText: event.errorText, address: event.address, port: event.port, url: event.url });
   });
   snapshot("created");
+  return release;
+}
+
+export function observeDebugPlayback(video: HTMLVideoElement, identity: object): () => void {
+  return registerDebugCollector("playback", () => {
+    const quality = video.getVideoPlaybackQuality?.();
+    debugEvent("playback", "snapshot", { ...identity,
+      width: video.videoWidth, height: video.videoHeight, readyState: video.readyState,
+      paused: video.paused, ended: video.ended, visibility: document.visibilityState,
+      totalVideoFrames: quality?.totalVideoFrames ?? null,
+      droppedVideoFrames: quality?.droppedVideoFrames ?? null,
+    });
+  });
 }
 
 export function debugRtcStats(connection: RTCPeerConnection, report: RTCStatsReport): void {

@@ -20,6 +20,56 @@ afterEach(() => {
 });
 
 describe("opt-in Browser diagnostics", () => {
+  it("collects current preview receive and playback evidence only at export, until owner retirement", async () => {
+    browser();
+    const debug = await import("../src/client/lib/debug");
+    const rtc = await import("../src/client/lib/debug-webrtc");
+    let decoded = 0;
+    const connection = Object.assign(new EventTarget(), {
+      connectionState: "connected", getSenders: () => [], getReceivers: () => [],
+      getStats: vi.fn(async () => new Map([["video", {
+        id: "video", type: "inbound-rtp", bytesReceived: 1234, framesDecoded: decoded,
+      }]])),
+    });
+    const releaseConnection = rtc.observeDebugConnection(connection as unknown as RTCPeerConnection,
+      { role: "native-preview", generation: 3 });
+    const releasePlayback = rtc.observeDebugPlayback({
+      videoWidth: 854, videoHeight: 480, readyState: 4, paused: false, ended: false,
+      getVideoPlaybackQuality: () => ({ totalVideoFrames: 7, droppedVideoFrames: 1 }),
+    } as unknown as HTMLVideoElement, { role: "host-preview", generation: 3 });
+    expect(connection.getStats).not.toHaveBeenCalled();
+    decoded = 8;
+    const report = JSON.parse(await debug.exportBrowserDebug());
+    expect(report.partial).toBe(false);
+    expect(report.events).toContainEqual(expect.objectContaining({ event: "stats", details: expect.objectContaining({
+      role: "native-preview", generation: 3,
+      stats: [expect.objectContaining({ framesDecoded: 8, bytesReceived: 1234 })],
+    }) }));
+    expect(report.events).toContainEqual(expect.objectContaining({ event: "snapshot", details: expect.objectContaining({
+      role: "host-preview", generation: 3, width: 854, height: 480, totalVideoFrames: 7, droppedVideoFrames: 1,
+    }) }));
+    connection.connectionState = "closed";
+    releaseConnection(); // Browser close() need not dispatch a state-change event.
+    releasePlayback();
+    const retired = JSON.parse(await debug.exportBrowserDebug());
+    expect(retired.events.filter((event: { event: string }) => event.event === "stats" || event.event === "snapshot")).toHaveLength(2);
+    expect(connection.getStats).toHaveBeenCalledOnce();
+  });
+
+  it("bounds a stalled export snapshot without changing its media owner", async () => {
+    browser();
+    vi.useFakeTimers();
+    const debug = await import("../src/client/lib/debug");
+    const release = debug.registerDebugCollector("preview", () => new Promise(() => {}));
+    const exporting = debug.exportBrowserDebug();
+    await vi.advanceTimersByTimeAsync(1_000);
+    const report = JSON.parse(await exporting);
+    expect(report.partial).toBe(true);
+    expect(report.collectorErrors).toContainEqual(expect.objectContaining({ collector: "preview" }));
+    release();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("keeps explicit diagnostics through room and App entry without copying source credentials", async () => {
     const page = browser("?debug=1&token=source-secret");
     const { withBrowserDebug } = await import("../src/client/lib/debug");

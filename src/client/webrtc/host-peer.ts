@@ -100,6 +100,7 @@ export class HostPeer {
     | AudioSenderParameterReadback
     | null = null;
   private readonly lifetime = new AbortController();
+  private readonly releaseDebug: () => void;
   private get disposed(): boolean { return this.lifetime.signal.aborted; }
   private profileRevision = 0;
   private negotiationEpoch = 0;
@@ -154,7 +155,7 @@ export class HostPeer {
       stopSenderVideoTrack(this.senderVideoTrack);
       throw error;
     }
-    observeDebugConnection(this.connection, { connectionId, peerId, role: "send" });
+    this.releaseDebug = observeDebugConnection(this.connection, { connectionId, peerId, role: "send" });
     this.localIceCandidates = new NatPredictionCandidateEmitter(
       this.natPredictionEnabled,
       (candidate) => this.sendIceCandidate(candidate),
@@ -519,6 +520,7 @@ export class HostPeer {
     if (this.disposed) {
       return;
     }
+    this.releaseDebug();
     this.lifetime.abort();
     retireSenderQualityEvidence(this.connectionId);
     this.nextNegotiationEpoch();

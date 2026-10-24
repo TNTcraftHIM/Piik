@@ -147,6 +147,16 @@ function snapshot(): BrowserDebugEvent[] {
   return structuredClone(events.map(({ record }) => record));
 }
 
+const exportCollectors = new Set<{ name: string; collect: () => void | Promise<void> }>();
+
+// Live resource owners supply a current snapshot only when a report is requested.
+export function registerDebugCollector(name: string, collect: () => void | Promise<void>): () => void {
+  if (!browserDebugEnabled) return () => {};
+  const entry = { name, collect };
+  exportCollectors.add(entry);
+  return () => { exportCollectors.delete(entry); };
+}
+
 export async function exportBrowserDebug(): Promise<string> {
   const buildEnvironment = (import.meta as ImportMeta & { env?: Record<string, string> }).env;
   const collectorErrors: object[] = [];
@@ -167,6 +177,16 @@ export async function exportBrowserDebug(): Promise<string> {
       } finally { clearTimeout(timer); }
     }
   } catch (error) { collectorErrors.push({ collector: "environment", error: errorDetails(error) }); }
+  await Promise.all([...exportCollectors].map(async ({ name, collect }) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.resolve().then(collect),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Diagnostic snapshot timed out")), 1_000); }),
+      ]);
+    } catch (error) { collectorErrors.push({ collector: name, error: errorDetails(error) }); }
+    finally { clearTimeout(timer); }
+  }));
   const history = snapshot();
   for (const record of history) {
     if (record.event === "collector-failed") collectorErrors.push({ at: record.at, ...record.details });
