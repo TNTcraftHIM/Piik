@@ -21,6 +21,8 @@ import (
 type Platform interface {
 	StartVideo(id int64, configuration string)
 	StartAudio(id int64)
+	StartMicrophone(id int64, deviceID string)
+	Microphones() (string, error)
 	Control(id int64, command string, layer int64, value int64)
 	Stop(id int64)
 	SiteAccessChanged()
@@ -96,8 +98,15 @@ func (c *capture) Audio(ctx context.Context, _ nativecapture.CaptureTarget, excl
 		return s, nil
 	}
 }
-func (c *capture) Microphone(context.Context, string) (nativehost.CaptureStream, error) {
-	return nil, errors.New("Android commentary microphone is unavailable")
+func (c *capture) Microphone(ctx context.Context, device string) (nativehost.CaptureStream, error) {
+	s := c.stream(ctx, nil)
+	c.platform.StartMicrophone(s.id, device)
+	select {
+	case <-s.ctx.Done():
+		return nil, errors.New("Android commentary microphone is unavailable")
+	case <-s.ready:
+		return s, nil
+	}
 }
 func (c *capture) ListSources(context.Context) ([]nativecapture.CaptureTarget, error) {
 	return []nativecapture.CaptureTarget{{Kind: "picker", SourceID: "1", Title: "Android screen"}}, nil
@@ -106,7 +115,20 @@ func (c *capture) PreviewSource(context.Context, nativecapture.CaptureTarget) ([
 	return nil, errors.New("Android screen preview is unavailable before system consent")
 }
 func (c *capture) ListMicrophones(context.Context) ([]nativecapture.Microphone, error) {
-	return []nativecapture.Microphone{}, nil
+	payload, err := c.platform.Microphones()
+	if err != nil {
+		return nil, err
+	}
+	var devices []nativecapture.Microphone
+	if json.Unmarshal([]byte(payload), &devices) != nil || devices == nil || len(devices) > 64 {
+		return nil, errors.New("Android microphone list is invalid")
+	}
+	for _, device := range devices {
+		if device.ID == "" || !nativecapture.ValidDeviceID(device.ID) || device.Label == "" || len(device.Label) > 512 {
+			return nil, errors.New("Android microphone identity is invalid")
+		}
+	}
+	return devices, nil
 }
 
 func (s *captureStream) Read() (nativecapture.Frame, error) {

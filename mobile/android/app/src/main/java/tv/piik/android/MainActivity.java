@@ -38,6 +38,7 @@ public final class MainActivity extends Activity {
   @Override
   protected void onStop() {
     visible = false;
+    if (browserMedia != null) browserMedia.background();
     super.onStop();
   }
 
@@ -108,7 +109,7 @@ public final class MainActivity extends Activity {
                       address = link.getAddress().getHostAddress();
                       break;
                     }
-                CapturePlatform platform = new CapturePlatform();
+                CapturePlatform platform = new CapturePlatform(getApplicationContext());
                 var started =
                     Androidbridge.start(
                         platform,
@@ -310,6 +311,21 @@ public final class MainActivity extends Activity {
     current.permissions.audio(
         () -> {
           if (runtime == owner && owner.captureCurrent(id)) CaptureService.startAudio(owner, id);
+        },
+        () -> owner.captureEnded(id));
+  }
+
+  static void requestMicrophone(long id, String device) {
+    var owner = runtime;
+    if (owner == null || !owner.captureCurrent(id)) return;
+    if (current == null) {
+      owner.captureEnded(id);
+      return;
+    }
+    current.permissions.audio(
+        () -> {
+          if (runtime == owner && owner.captureCurrent(id))
+            CaptureService.startMicrophone(owner, id, device);
         },
         () -> owner.captureEnded(id));
   }

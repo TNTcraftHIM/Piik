@@ -1,14 +1,17 @@
 package androidbridge
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
 )
 
 type testPlatform struct {
@@ -24,7 +27,62 @@ func (p *testPlatform) StartVideo(id int64, configuration string) {
 		p.videoStarted(id, configuration)
 	}
 }
-func (*testPlatform) RuntimeStopped(string) {}
+func (*testPlatform) RuntimeStopped(string)                {}
+func (p *testPlatform) StartMicrophone(id int64, _ string) { p.StartAudio(id) }
+func (*testPlatform) Microphones() (string, error)         { return "[]", nil }
+
+func TestCommentaryWaitsForPlatformAdmissionAndRetiresIndependently(t *testing.T) {
+	for _, admitted := range []bool{false, true} {
+		t.Run(fmt.Sprint(admitted), func(t *testing.T) {
+			platform := &testPlatform{started: make(chan int64, 1)}
+			capture := &capture{platform: platform, streams: make(map[int64]*captureStream)}
+			runtime := &Runtime{capture: capture}
+			source := capture.stream(t.Context(), nil)
+			defer source.Close()
+			type result struct {
+				stream nativehost.CaptureStream
+				err    error
+			}
+			done := make(chan result, 1)
+			go func() { stream, err := capture.Microphone(t.Context(), ""); done <- result{stream, err} }()
+			id := <-platform.started
+			select {
+			case <-done:
+				t.Fatal("microphone reported success before platform admission")
+			default:
+			}
+			if admitted {
+				runtime.AudioReady(id)
+			} else {
+				runtime.CaptureEnded(id)
+			}
+			var observed result
+			select {
+			case observed = <-done:
+			case <-time.After(time.Second):
+				t.Fatal("microphone admission remained blocked")
+			}
+			if admitted {
+				if observed.err != nil || observed.stream == nil {
+					t.Fatalf("admitted microphone failed: %v", observed.err)
+				}
+				pcm := make([]byte, nativeaudio.FrameBytes)
+				pcm[0], pcm[2] = 13, 13
+				runtime.Audio(id, pcm)
+				frame, err := observed.stream.Read()
+				if err != nil || frame.Kind != nativecapture.FramePCM || frame.Duration != 20*time.Millisecond || !bytes.Equal(frame.Data, pcm) {
+					t.Fatal("microphone did not use the existing stereo PCM contract")
+				}
+				observed.stream.Close()
+			} else if observed.err == nil || observed.stream != nil {
+				t.Fatal("rejected microphone was reported ready")
+			}
+			if !runtime.CaptureCurrent(source.id) || runtime.CaptureCurrent(id) {
+				t.Fatal("microphone retirement affected source audio or retained failed input")
+			}
+		})
+	}
+}
 func (p *testPlatform) SiteAccessChanged() {
 	if p.siteChanged != nil {
 		p.siteChanged()

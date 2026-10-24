@@ -32,8 +32,11 @@ public final class CaptureService extends Service {
   VirtualDisplay display;
   volatile Video video;
   volatile Video previousVideo;
-  Audio audio;
-  Audio previousAudio;
+  CapturedAudio audio;
+  CapturedAudio previousAudio;
+  volatile CapturedAudio microphone, previousMicrophone;
+  Notification notice;
+  int foregroundTypes;
   int captureWidth, captureHeight;
   volatile boolean retiring;
   volatile boolean stopRequested;
@@ -60,20 +63,6 @@ public final class CaptureService extends Service {
     long deadline;
     Runnable timeout;
     Video replaced;
-  }
-
-  final class Audio {
-    final long id;
-    final tv.piik.androidbridge.Runtime runtime;
-
-    Audio(long id, tv.piik.androidbridge.Runtime runtime) {
-      this.id = id;
-      this.runtime = runtime;
-    }
-
-    AudioRecord recorder;
-    volatile boolean stopped;
-    Thread reader;
   }
 
   @Override
@@ -121,7 +110,7 @@ public final class CaptureService extends Service {
             0,
             new Intent(this, MainActivity.class),
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-    Notification notice =
+    notice =
         new Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_share)
             .setContentTitle(getString(R.string.notification_title))
@@ -130,6 +119,7 @@ public final class CaptureService extends Service {
             .setOngoing(true)
             .build();
     startForeground(1, notice, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
+    foregroundTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
     Intent consent = intent.getParcelableExtra("data");
     int result = intent.getIntExtra("result", 0);
     long id = intent.getLongExtra("id", 0);
@@ -189,15 +179,35 @@ public final class CaptureService extends Service {
       fail(runtime, id);
       return;
     }
-    beginVideo(runtime, id, json, EncoderCatalog.candidates(codecRequested(json)), 0, SystemClock.uptimeMillis() + 5000);
+    beginVideo(
+        runtime,
+        id,
+        json,
+        EncoderCatalog.candidates(codecRequested(json)),
+        0,
+        SystemClock.uptimeMillis() + 5000);
   }
 
   static String codecRequested(String json) {
-    try { return new JSONObject(json).getString("codec"); } catch (Exception error) { return ""; }
+    try {
+      return new JSONObject(json).getString("codec");
+    } catch (Exception error) {
+      return "";
+    }
   }
 
-  void beginVideo(tv.piik.androidbridge.Runtime runtime, long id, String json, List<EncoderCatalog.Entry> candidates, int index, long deadline) {
-    if (runtime != MainActivity.runtime || !runtime.captureCurrent(id) || retiring || stopRequested || projection == null) return;
+  void beginVideo(
+      tv.piik.androidbridge.Runtime runtime,
+      long id,
+      String json,
+      List<EncoderCatalog.Entry> candidates,
+      int index,
+      long deadline) {
+    if (runtime != MainActivity.runtime
+        || !runtime.captureCurrent(id)
+        || retiring
+        || stopRequested
+        || projection == null) return;
     if (index >= candidates.size() || SystemClock.uptimeMillis() >= deadline) {
       // A rotation reuses the running stream identity; restored old capture stays valid.
       if (video != null && video.id == id && video.runtime == runtime) return;
@@ -286,9 +296,13 @@ public final class CaptureService extends Service {
                 }
                 boolean firstFrame = !next.proven;
                 if (firstFrame) {
-                  if (SystemClock.uptimeMillis() >= next.deadline) { retryVideo(next); return; }
+                  if (SystemClock.uptimeMillis() >= next.deadline) {
+                    retryVideo(next);
+                    return;
+                  }
                   if (!key) return;
-                  if (!runtime.videoReady(id, next.actualCodec, next.width, next.height, next.profile)) {
+                  if (!runtime.videoReady(
+                      id, next.actualCodec, next.width, next.height, next.profile)) {
                     retryVideo(next);
                     return;
                   }
@@ -375,10 +389,16 @@ public final class CaptureService extends Service {
       if (!runtime.captureCurrent(id)) throw new IllegalStateException("capture retired");
       // The Go stream owner closes old on commit or next on rollback.
       video = next;
-      next.timeout = () -> { if (!next.proven && video == next) retryVideo(next); };
+      next.timeout =
+          () -> {
+            if (!next.proven && video == next) retryVideo(next);
+          };
       // Consent has completed. Share one finite first-frame budget across encoders;
       // a silent candidate yields to another, never to an idle watchdog.
-      handler.postAtTime(next.timeout, EncoderCatalog.attemptDeadline(SystemClock.uptimeMillis(), deadline, index + 1 < candidates.size()));
+      handler.postAtTime(
+          next.timeout,
+          EncoderCatalog.attemptDeadline(
+              SystemClock.uptimeMillis(), deadline, index + 1 < candidates.size()));
       if (old != null && old.id == id) {
         // Display rotation changes the physical encoder, not the Go stream clock.
         next.base = old.base;
@@ -393,7 +413,10 @@ public final class CaptureService extends Service {
   void retryVideo(Video failed) {
     if (failed.released) return;
     if (failed.timeout != null) handler.removeCallbacks(failed.timeout);
-    if (failed.proven) { fail(failed.runtime, failed.id); return; }
+    if (failed.proven) {
+      fail(failed.runtime, failed.id);
+      return;
+    }
     Video old = failed.replaced;
     boolean restored = old == null;
     if (old != null && display != null) {
@@ -401,15 +424,27 @@ public final class CaptureService extends Service {
         display.resize(old.width, old.height, getResources().getDisplayMetrics().densityDpi);
         display.setSurface(old.surface);
         restored = true;
-      } catch (Exception error) { /* Retire the projection when rollback is impossible. */ }
+      } catch (Exception error) {
+        /* Retire the projection when rollback is impossible. */
+      }
     }
     if (video == failed) video = old;
     if (previousVideo == old) previousVideo = null;
     releaseVideo(failed);
-    if (!restored) { fail(failed.runtime, failed.id); finishProjection(); return; }
+    if (!restored) {
+      fail(failed.runtime, failed.id);
+      finishProjection();
+      return;
+    }
     if (old != null) control(old.runtime, old.id, "keyframe", 0);
     if (!failed.runtime.captureCurrent(failed.id) || failed.runtime != MainActivity.runtime) return;
-    beginVideo(failed.runtime, failed.id, failed.configuration, failed.candidates, failed.candidateIndex + 1, failed.deadline);
+    beginVideo(
+        failed.runtime,
+        failed.id,
+        failed.configuration,
+        failed.candidates,
+        failed.candidateIndex + 1,
+        failed.deadline);
   }
 
   void updateCaptureSize() {
@@ -420,7 +455,8 @@ public final class CaptureService extends Service {
   }
 
   void resizeVideo() {
-    if (video == null || !video.proven || previousVideo != null || retiring || stopRequested) return;
+    if (video == null || !video.proven || previousVideo != null || retiring || stopRequested)
+      return;
     if (video.sourceWidth != captureWidth || video.sourceHeight != captureHeight)
       beginVideo(video.runtime, video.id, video.configuration);
   }
@@ -483,8 +519,8 @@ public final class CaptureService extends Service {
       fail(runtime, id);
       return;
     }
-    Audio next = new Audio(id, runtime);
-    Audio old = audio;
+    CapturedAudio next = new CapturedAudio(id, runtime);
+    CapturedAudio old = audio;
     try {
       if (projection == null
           || checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
@@ -518,38 +554,130 @@ public final class CaptureService extends Service {
       if (!runtime.captureCurrent(id)) throw new IllegalStateException("capture retired");
       audio = next;
       previousAudio = old;
-      next.reader =
-          new Thread(
-              () -> {
-                byte[] bytes = new byte[3840];
-                try {
-                  while (!next.stopped) {
-                    int offset = 0;
-                    while (offset < bytes.length && !next.stopped) {
-                      int count =
-                          next.recorder.read(
-                              bytes, offset, bytes.length - offset, AudioRecord.READ_BLOCKING);
-                      if (count <= 0) throw new Exception("AudioRecord stopped");
-                      offset += count;
-                    }
-                    if (!next.stopped) runtime.audio(id, bytes);
-                  }
-                } catch (Exception error) {
-                  if (!next.stopped) fail(runtime, id);
-                }
-              },
-              "Piik source audio");
-      next.reader.start();
-      runtime.audioReady(id);
+      next.start(2);
     } catch (Exception error) {
       android.util.Log.w("PiikCapture", "playback audio capture failed", error);
       if (audio == next) {
         audio = old;
         previousAudio = null;
       }
-      releaseAudio(next);
+      CapturedAudio.close(next);
       fail(runtime, id);
     }
+  }
+
+  static void startMicrophone(tv.piik.androidbridge.Runtime owner, long id, String device) {
+    CaptureService service = instance;
+    if (service == null) {
+      owner.captureEnded(id);
+      return;
+    }
+    service.handler.post(
+        () -> {
+          if (owner != MainActivity.runtime || !owner.captureCurrent(id)) return;
+          if (service.retiring
+              || service.stopRequested
+              || service.projection == null
+              || service.previousMicrophone != null) {
+            service.fail(owner, id);
+            return;
+          }
+          CapturedAudio next = new CapturedAudio(id, owner);
+          service.previousMicrophone = service.microphone;
+          service.microphone = next;
+          MainActivity.main.post(
+              () -> {
+                if (owner != MainActivity.runtime
+                    || !owner.captureCurrent(id)
+                    || service.microphone != next) {
+                  service.handler.post(() -> service.discardMicrophone(next));
+                  return;
+                }
+                try {
+                  MainActivity activity = MainActivity.current;
+                  if (service.previousMicrophone == null && (activity == null || !activity.visible))
+                    throw new IllegalStateException("Open Piik before starting commentary");
+                  service.updateMicrophoneForeground();
+                  service.handler.post(() -> service.beginMicrophone(next, device));
+                } catch (RuntimeException error) {
+                  service.handler.post(() -> service.discardMicrophone(next));
+                }
+              });
+        });
+  }
+
+  void beginMicrophone(CapturedAudio next, String deviceID) {
+    if (microphone != next
+        || next.stopped
+        || next.runtime != MainActivity.runtime
+        || !next.runtime.captureCurrent(next.id)) return;
+    try {
+      AudioDeviceInfo selected = MicrophoneDevices.selected(this, deviceID);
+      AudioFormat format =
+          new AudioFormat.Builder()
+              .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+              .setSampleRate(48000)
+              .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+              .build();
+      int minimum =
+          AudioRecord.getMinBufferSize(
+              48000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+      next.recorder =
+          new AudioRecord.Builder()
+              .setAudioSource(MediaRecorder.AudioSource.MIC)
+              .setAudioFormat(format)
+              .setBufferSizeInBytes(Math.max(minimum, 1920 * 4))
+              .build();
+      if (selected != null && !next.recorder.setPreferredDevice(selected))
+        throw new IllegalStateException("The selected microphone cannot be used");
+      next.recorder.startRecording();
+      if (next.recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING)
+        throw new IllegalStateException("The microphone did not start");
+      AudioDeviceInfo routed = next.recorder.getRoutedDevice();
+      if (selected != null && (routed == null || selected.getId() != routed.getId()))
+        throw new IllegalStateException("The selected microphone is not routed");
+      if (!next.runtime.captureCurrent(next.id))
+        throw new IllegalStateException("Microphone retired");
+      next.start(1);
+    } catch (Exception error) {
+      android.util.Log.w("PiikCapture", "commentary capture failed", error);
+      discardMicrophone(next);
+    }
+  }
+
+  void discardMicrophone(CapturedAudio next) {
+    if (microphone == next) {
+      microphone = previousMicrophone;
+      previousMicrophone = null;
+    }
+    CapturedAudio.close(next);
+    fail(next.runtime, next.id);
+    refreshMicrophoneForeground();
+  }
+
+  void updateMicrophoneForeground() {
+    if (projection == null || retiring || stopRequested)
+      throw new IllegalStateException("Projection retired");
+    int desired = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
+    if (Build.VERSION.SDK_INT >= 30 && (microphone != null || previousMicrophone != null))
+      desired |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+    if (foregroundTypes != desired) {
+      startForeground(1, notice, desired);
+      foregroundTypes = desired;
+    }
+  }
+
+  void refreshMicrophoneForeground() {
+    MainActivity.main.post(
+        () -> {
+          if (instance != this || projection == null || retiring || stopRequested) return;
+          try {
+            updateMicrophoneForeground();
+          } catch (RuntimeException error) {
+            android.util.Log.w("PiikCapture", "capture foreground types failed", error);
+            handler.post(this::finishProjection);
+          }
+        });
   }
 
   static void stopCapture(tv.piik.androidbridge.Runtime owner, long id) {
@@ -561,18 +689,33 @@ public final class CaptureService extends Service {
           && s.previousVideo == null) s.stopRequested = true;
       s.handler.post(
           () -> {
+            if (s.previousMicrophone != null
+                && s.previousMicrophone.runtime == owner
+                && s.previousMicrophone.id == id) {
+              CapturedAudio committed = s.previousMicrophone;
+              s.previousMicrophone = null;
+              CapturedAudio.close(committed);
+              s.refreshMicrophoneForeground();
+            }
+            if (s.microphone != null && s.microphone.runtime == owner && s.microphone.id == id) {
+              CapturedAudio retired = s.microphone;
+              s.microphone = s.previousMicrophone;
+              s.previousMicrophone = null;
+              CapturedAudio.close(retired);
+              s.refreshMicrophoneForeground();
+            }
             if (s.previousAudio != null
                 && s.previousAudio.runtime == owner
                 && s.previousAudio.id == id) {
-              Audio committed = s.previousAudio;
+              CapturedAudio committed = s.previousAudio;
               s.previousAudio = null;
-              s.releaseAudio(committed);
+              CapturedAudio.close(committed);
             }
             if (s.audio != null && s.audio.runtime == owner && s.audio.id == id) {
-              Audio old = s.audio;
+              CapturedAudio old = s.audio;
               s.audio = s.previousAudio;
               s.previousAudio = null;
-              s.releaseAudio(old);
+              CapturedAudio.close(old);
             }
             if (s.previousVideo != null
                 && s.previousVideo.runtime == owner
@@ -629,26 +772,6 @@ public final class CaptureService extends Service {
     if (value.surface != null) value.surface.release();
   }
 
-  void releaseAudio(Audio value) {
-    if (value == null) return;
-    value.stopped = true;
-    try {
-      value.recorder.stop();
-    } catch (Exception ignored) {
-    }
-    if (value.reader != null) {
-      try {
-        value.reader.join(1000);
-      } catch (InterruptedException error) {
-        Thread.currentThread().interrupt();
-      }
-    }
-    try {
-      value.recorder.release();
-    } catch (Exception ignored) {
-    }
-  }
-
   void finishProjection() {
     if (retiring) return;
     retiring = true;
@@ -656,18 +779,24 @@ public final class CaptureService extends Service {
     video = null;
     Video pendingOld = previousVideo;
     previousVideo = null;
-    Audio oldAudio = audio;
+    CapturedAudio oldAudio = audio;
     audio = null;
-    Audio pendingOldAudio = previousAudio;
+    CapturedAudio pendingOldAudio = previousAudio;
     previousAudio = null;
+    CapturedAudio oldMicrophone = microphone;
+    microphone = null;
+    CapturedAudio oldPreviousMicrophone = previousMicrophone;
+    previousMicrophone = null;
     if (display != null) {
       display.release();
       display = null;
     }
     releaseVideo(old);
     releaseVideo(pendingOld);
-    releaseAudio(oldAudio);
-    releaseAudio(pendingOldAudio);
+    CapturedAudio.close(oldAudio);
+    CapturedAudio.close(pendingOldAudio);
+    CapturedAudio.close(oldMicrophone);
+    CapturedAudio.close(oldPreviousMicrophone);
     if (projection != null) {
       MediaProjection oldProjection = projection;
       projection = null;
@@ -677,6 +806,9 @@ public final class CaptureService extends Service {
     if (pendingOld != null) pendingOld.runtime.captureEnded(pendingOld.id);
     if (oldAudio != null) oldAudio.runtime.captureEnded(oldAudio.id);
     if (pendingOldAudio != null) pendingOldAudio.runtime.captureEnded(pendingOldAudio.id);
+    if (oldMicrophone != null) oldMicrophone.runtime.captureEnded(oldMicrophone.id);
+    if (oldPreviousMicrophone != null)
+      oldPreviousMicrophone.runtime.captureEnded(oldPreviousMicrophone.id);
     stopForeground(STOP_FOREGROUND_REMOVE);
     stopSelf();
   }

@@ -81,10 +81,17 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 		temporaryDirectory: temporaryDirectory, tunnelExecutable: tunnelExecutable,
 	}
 	capabilities := catalog.nativeCapabilities()
+	microphones, microphoneErr := r.capture.ListMicrophones(ctx)
+	capabilities.Microphone = microphoneErr == nil && len(microphones) > 0
+	if microphoneErr != nil {
+		slog.Debug("Android microphone enumeration failed", "error", microphoneErr)
+	}
+	mediaCapabilities := catalog.mediaCapabilities()
+	mediaCapabilities.Microphone = capabilities.Microphone
 	r.control, err = loopback.Start(ctx, loopback.Options{
 		MaxControlSessions: 1,
 		AllowedOrigins:     preferences.ApprovedSites(),
-		NativeMedia:        catalog.mediaCapabilities(),
+		NativeMedia:        mediaCapabilities,
 		NewControl: func() loopback.ControlSession {
 			return nativecontrol.NewWithCapture(capabilities, false, nil, r.capture)
 		},

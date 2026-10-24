@@ -4,7 +4,8 @@ This is an Android sharing prototype for local testing.
 It targets Android 10 or later on arm64 and x86-64 devices.
 The Activity uses Piik's existing Web UI. A `mediaProjection` foreground service
 owns Android consent, the display surface, platform encoding and eligible
-playback audio; Go owns the existing Local room, native session and media routes.
+playback audio and optional commentary input; Go owns the existing room, native
+session, mixer and media routes.
 Screen sharing captures the whole display. Source audio is subject
 to Android's capture policy and excludes this app's playback.
 
@@ -59,7 +60,11 @@ Create a room and select Android screen capture in the ordinary source picker.
 Approve the Android projection prompt. Pure video does not request microphone
 or camera access. Selecting camera or opening the room-voice microphone requests
 only the corresponding Android permission, for the current approved top-level
-site. Native playback audio separately requires Android's recording permission.
+site. Native playback audio and native commentary request recording permission only
+when enabled. Commentary uses the OS-default microphone or an input from the
+existing device selector; it joins the same Go mixer and stable shared audio
+track as source sound. The capture service adds microphone foreground eligibility
+only for that input lifetime. Room voice keeps its independent Browser input.
 Background camera and room voice require a site that supplies Browser track
 lifetime notifications; older sites retain ordinary foreground capture.
 A document-bound MessagePort supplies demand to a short-lived camera/microphone
@@ -75,19 +80,13 @@ Android can also end projection on screen lock. Capture and optional audio use
 the existing stream replacement transaction; the foreground service owns the
 projection token and its single VirtualDisplay.
 
-Local-only startup and the Public link child process now have focused Go
-lifecycle coverage: an unready child is joined on cancellation, and an unexpected
-ready-child exit ends the shared server before reporting the failure. Android
-helper execution and a real external invitation still require device/network
-acceptance.
-
-The current API 35 controlled-emulator check has verified Local room creation,
-permission-free pure-video startup and native frames in the Host preview. The
-source picker keeps its native selection while discovery is pending, avoiding
-an unsolicited camera prompt. Background new-Viewer admission, room voice,
-camera, rotation and immediate exit/reopen remain acceptance work; a running
-capture process alone does not establish that background signaling or audio is
-working. Physical phone/tablet/TV, hardware AVC and source-audio policies also
+The API 35 emulator has verified Local room creation, pure-video consent and
+native Host preview frames. The installed APK's own public-link helper has also
+completed real DNS/TLS/public HTTP access and shutdown. A separate App WebView
+popup retained its opener and closed without unloading the original page.
+Background new-Viewer admission, room voice, camera, rotation and immediate
+exit/reopen remain integrated acceptance work. Physical microphone routing,
+background audio samples, hardware AVC and phone/tablet/TV source-audio policies
 remain device checks.
 
 Platform references: [Projection lifecycle](https://developer.android.com/media/grow/media-projection),

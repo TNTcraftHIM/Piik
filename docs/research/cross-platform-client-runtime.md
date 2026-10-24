@@ -366,6 +366,14 @@ uses [playback capture](https://developer.android.com/media/platform/av-capture)
 from Android 10, subject to `RECORD_AUDIO` permission, the same user profile and the
 source application's capture policy.
 
+Native commentary uses AudioRecord MIC with the same per-share stream/ready
+handshake and existing Go audio mixer. Its input and replacement stay independent
+of playback capture; the Projection service holds microphone eligibility until
+the last commentary reader joins. Mono PCM is adapted to the existing PCM48
+stereo contract. Device preferences use AudioManager input identities and verify
+the actual recording route; the empty choice follows Android's default. This is
+separate from room voice's Browser microphone and does not add a mixer or route.
+
 The earlier prototype API 35 emulator run delivered a live 480-by-800 VP8 picture
 to an independent Windows Browser Viewer. Sharing continued after switching to another
 App. A separate allowed-capture AudioTrack source reached that Viewer as Opus
