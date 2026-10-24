@@ -2,37 +2,78 @@ package tv.piik.android;
 
 import android.app.*;
 import android.content.*;
-import android.media.*;
-import android.media.projection.*;
-import android.net.*;
+import android.net.Uri;
 import android.os.*;
 import android.view.*;
 import android.webkit.*;
 import android.widget.*;
-import java.net.Inet4Address;
-import java.util.concurrent.*;
-import tv.piik.androidbridge.*;
 
 public final class MainActivity extends Activity {
   static MainActivity current;
-  static volatile tv.piik.androidbridge.Runtime runtime;
   static WebView web;
-  static final Handler main = new Handler(Looper.getMainLooper());
-  static final ExecutorService work = Executors.newSingleThreadExecutor();
-  static CompletableFuture<tv.piik.androidbridge.Runtime> startup;
-  static long pendingVideo;
-  static String pendingConfig;
   static BrowserMedia browserMedia;
-  static final int CAPTURE = 10;
+  static final Handler main = AppRuntimeService.main;
   WebPermissions permissions;
   Dialog sitePopup;
   FullscreenView fullscreen;
-  boolean visible;
+  boolean visible, handledMedia;
+  AppRuntimeService permissionOwner;
+  AppRuntimeService.MediaRequest permissionRequest;
+
+  boolean mediaEntry() {
+    return BuildConfig.EXTERNAL_BROWSER
+        && getIntent().getData() != null
+        && "media".equals(getIntent().getData().getHost());
+  }
+
+  @Override
+  public void onCreate(Bundle state) {
+    super.onCreate(state);
+    current = this;
+    permissions = new WebPermissions(this);
+    fullscreen = new FullscreenView(this);
+    if (state != null) {
+      handledMedia = state.getBoolean("handledMedia");
+      AppRuntimeService service = AppRuntimeService.instance;
+      if (service != null && service.active != null && service.active.awaitingResult) {
+        permissionOwner = service;
+        permissionRequest = service.active;
+      }
+    }
+    Uri requested = getIntent().getData();
+    if (requested != null
+        && (!BuildConfig.EXTERNAL_BROWSER
+            || !"piik".equals(requested.getScheme())
+            || !("app".equals(requested.getHost()) || "media".equals(requested.getHost()))
+            || (requested.getPath() != null && !requested.getPath().isEmpty())
+            || requested.getQuery() != null
+            || requested.getFragment() != null)) {
+      finish();
+      return;
+    }
+    if (!BuildConfig.EXTERNAL_BROWSER && web != null) {
+      if (web.getParent() instanceof ViewGroup) ((ViewGroup) web.getParent()).removeView(web);
+      setContentView(WindowContent.wrap(getWindow(), web));
+    } else {
+      TextView waiting = new TextView(this);
+      waiting.setPadding(24, 48, 24, 24);
+      waiting.setText(mediaEntry() ? R.string.media_waiting : R.string.preparing);
+      setContentView(WindowContent.wrap(getWindow(), waiting));
+    }
+    startForegroundService(new Intent(this, AppRuntimeService.class));
+  }
+
+  @Override
+  protected void onSaveInstanceState(Bundle state) {
+    state.putBoolean("handledMedia", handledMedia);
+    super.onSaveInstanceState(state);
+  }
 
   @Override
   protected void onStart() {
     super.onStart();
     visible = true;
+    if (AppRuntimeService.instance != null) runtimeAvailable(AppRuntimeService.instance);
   }
 
   @Override
@@ -42,119 +83,78 @@ public final class MainActivity extends Activity {
     super.onStop();
   }
 
+  void runtimeAvailable(AppRuntimeService service) {
+    if (current != this || !visible || isFinishing()) return;
+    if (service.failure != null) {
+      showRuntimeFailure();
+      return;
+    }
+    var owner = AppRuntimeService.runtime();
+    if (owner == null) return;
+    if (BuildConfig.EXTERNAL_BROWSER) {
+      if (mediaEntry()) {
+        service.processRequests();
+        return;
+      }
+      if (getIntent().getData() == null) {
+        try {
+          startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(owner.entryURL())));
+        } catch (ActivityNotFoundException error) {
+          new AlertDialog.Builder(this)
+              .setMessage(R.string.no_browser)
+              .setPositiveButton(android.R.string.ok, (dialog, which) -> finish())
+              .show();
+          return;
+        }
+      }
+      // App wake returns to its caller. Only the launcher entry opens a URL.
+      finish();
+    } else {
+      if (web == null) {
+        if (WebView.getCurrentWebViewPackage() == null) {
+          TextView failure = new TextView(this);
+          failure.setText(R.string.no_webview);
+          setContentView(WindowContent.wrap(getWindow(), failure));
+          return;
+        }
+        showWeb(owner.entryURL());
+      }
+      service.processRequests();
+    }
+  }
+
+  void mediaStarted() {
+    handledMedia = true;
+  }
+
+  void mediaFinished() {
+    if (BuildConfig.EXTERNAL_BROWSER && mediaEntry() && handledMedia) finish();
+  }
+
   static void refreshBrowserMedia() {
+    if (BuildConfig.EXTERNAL_BROWSER) return;
+    var owner = AppRuntimeService.runtime();
     if (browserMedia != null && !browserMedia.current()) {
       BrowserMedia previous = browserMedia;
       boolean revoked =
-          previous.runtime == runtime
+          previous.runtime == owner
               && previous.web == web
               && web.getUrl() != null
               && sameOrigin(previous.origin, Uri.parse(web.getUrl()))
-              && !runtime.trustedURL(web.getUrl());
+              && !owner.trustedURL(web.getUrl());
       previous.close();
       if (revoked) {
         if (current != null && current.sitePopup != null) current.sitePopup.dismiss();
-        web.loadUrl(runtime.url());
+        web.loadUrl(owner.url());
         return;
       }
     }
     if (browserMedia == null
-        && runtime != null
+        && owner != null
         && web != null
         && web.getUrl() != null
-        && runtime.trustedURL(web.getUrl()))
-      browserMedia = new BrowserMedia(runtime, web, web.getUrl());
-  }
-
-  @Override
-  public void onCreate(Bundle state) {
-    super.onCreate(state);
-    current = this;
-    permissions = new WebPermissions(this);
-    fullscreen = new FullscreenView(this);
-    if (web != null) {
-      if (web.getParent() instanceof android.view.ViewGroup)
-        ((android.view.ViewGroup) web.getParent()).removeView(web);
-      setContentView(WindowContent.wrap(getWindow(), web));
-      return;
-    }
-    TextView waiting = new TextView(this);
-    waiting.setPadding(24, 48, 24, 24);
-    waiting.setText(getString(R.string.preparing));
-    setContentView(WindowContent.wrap(getWindow(), waiting));
-    if (WebView.getCurrentWebViewPackage() == null) {
-      waiting.setText(getString(R.string.no_webview));
-      return;
-    }
-    if (runtime != null) {
-      showWeb(runtime.entryURL());
-      return;
-    }
-    if (startup != null) {
-      if (startup.isCompletedExceptionally()) showRuntimeFailure();
-      return;
-    }
-    CompletableFuture<tv.piik.androidbridge.Runtime> starting =
-        CompletableFuture.supplyAsync(
-            () -> {
-              try {
-                String capabilities = codecCapabilities();
-                ConnectivityManager cm = getSystemService(ConnectivityManager.class);
-                LinkProperties links = cm.getLinkProperties(cm.getActiveNetwork());
-                String address = "";
-                if (links != null)
-                  for (LinkAddress link : links.getLinkAddresses())
-                    if (link.getAddress() instanceof Inet4Address
-                        && !link.getAddress().isLoopbackAddress()) {
-                      address = link.getAddress().getHostAddress();
-                      break;
-                    }
-                CapturePlatform platform = new CapturePlatform(getApplicationContext());
-                var started =
-                    Androidbridge.start(
-                        platform,
-                        address,
-                        capabilities,
-                        getFilesDir().getAbsolutePath(),
-                        getCacheDir().getAbsolutePath(),
-                        new java.io.File(getApplicationInfo().nativeLibraryDir, "libcloudflared.so")
-                            .getAbsolutePath());
-                platform.owner = new java.lang.ref.WeakReference<>(started);
-                return started;
-              } catch (Exception error) {
-                throw new CompletionException(error);
-              }
-            },
-            work);
-    startup = starting;
-    starting.whenComplete(
-        (started, error) ->
-            main.post(
-                () -> {
-                  if (startup != starting) {
-                    if (started != null) work.execute(() -> closeRuntime(started));
-                    return;
-                  }
-                  startup = null;
-                  MainActivity active = current;
-                  if (active == null || active.isFinishing() || active.isDestroyed()) {
-                    if (started != null) work.execute(() -> closeRuntime(started));
-                    return;
-                  }
-                  if (error != null) {
-                    TextView failure = new TextView(active);
-                    failure.setPadding(24, 48, 24, 24);
-                    failure.setText("Piik\n" + error.getCause().getMessage());
-                    active.setContentView(WindowContent.wrap(active.getWindow(), failure));
-                    return;
-                  }
-                  runtime = started;
-                  active.showWeb(started.entryURL());
-                }));
-  }
-
-  static String codecCapabilities() throws Exception {
-    return EncoderCatalog.capabilities();
+        && owner.trustedURL(web.getUrl()))
+      browserMedia = new BrowserMedia(owner, web, web.getUrl());
   }
 
   void showWeb(String url) {
@@ -200,7 +200,9 @@ public final class MainActivity extends Activity {
     @Override
     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
       Uri uri = request.getUrl();
-      boolean trusted = runtime != null && runtime.trustedURL(uri.toString());
+      boolean trusted =
+          AppRuntimeService.runtime() != null
+              && AppRuntimeService.runtime().trustedURL(uri.toString());
       if (!trusted) {
         try {
           current.startActivity(new Intent(Intent.ACTION_VIEW, uri));
@@ -262,7 +264,7 @@ public final class MainActivity extends Activity {
     if (owner.sitePopup != null) owner.sitePopup.dismiss();
     Dialog popup = new Dialog(owner);
     owner.sitePopup = popup;
-    final var managerRuntime = runtime;
+    final var managerRuntime = AppRuntimeService.runtime();
     final Uri manager = Uri.parse(managerRuntime.url());
     child.setWebViewClient(
         new AppWebClient() {
@@ -270,7 +272,7 @@ public final class MainActivity extends Activity {
           public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri target = request.getUrl();
             if (request.isForMainFrame()
-                && managerRuntime == runtime
+                && managerRuntime == AppRuntimeService.runtime()
                 && !sameOrigin(manager, target)
                 && managerRuntime.trustedURL(target.toString())) {
               // Opening a saved site is navigation; editing permission keeps the Host alive.
@@ -301,38 +303,11 @@ public final class MainActivity extends Activity {
     return child;
   }
 
-  static void requestAudio(long id) {
-    var owner = runtime;
-    if (owner == null || !owner.captureCurrent(id)) return;
-    if (current == null) {
-      owner.captureEnded(id);
-      return;
-    }
-    current.permissions.audio(
-        () -> {
-          if (runtime == owner && owner.captureCurrent(id)) CaptureService.startAudio(owner, id);
-        },
-        () -> owner.captureEnded(id));
-  }
-
-  static void requestMicrophone(long id, String device) {
-    var owner = runtime;
-    if (owner == null || !owner.captureCurrent(id)) return;
-    if (current == null) {
-      owner.captureEnded(id);
-      return;
-    }
-    current.permissions.audio(
-        () -> {
-          if (runtime == owner && owner.captureCurrent(id))
-            CaptureService.startMicrophone(owner, id, device);
-        },
-        () -> owner.captureEnded(id));
-  }
-
   boolean trustedPermission(PermissionRequest request) {
-    if (runtime == null || web == null || web.getUrl() == null || !runtime.trustedURL(web.getUrl()))
-      return false;
+    if (AppRuntimeService.runtime() == null
+        || web == null
+        || web.getUrl() == null
+        || !AppRuntimeService.runtime().trustedURL(web.getUrl())) return false;
     Uri top = Uri.parse(web.getUrl()), origin = request.getOrigin();
     return sameOrigin(top, origin);
   }
@@ -368,11 +343,12 @@ public final class MainActivity extends Activity {
   }
 
   void chooseSite() {
-    if (runtime != null && web != null) showSitePopup().loadUrl(runtime.url());
+    if (AppRuntimeService.runtime() != null && web != null)
+      showSitePopup().loadUrl(AppRuntimeService.runtime().url());
   }
 
   void startPage() {
-    final var owner = runtime;
+    final var owner = AppRuntimeService.runtime();
     if (owner == null || web == null || java.util.Objects.equals(web.getUrl(), owner.url())) return;
     new AlertDialog.Builder(this)
         .setMessage(R.string.start_page_prompt)
@@ -380,97 +356,45 @@ public final class MainActivity extends Activity {
         .setPositiveButton(
             android.R.string.ok,
             (dialog, which) -> {
-              if (runtime == owner && web != null) web.loadUrl(owner.url());
+              if (AppRuntimeService.runtime() == owner && web != null) web.loadUrl(owner.url());
             })
         .show();
   }
 
-  static void requestVideo(long id, String configuration) {
-    final var runtime = MainActivity.runtime;
-    if (runtime == null || !runtime.captureCurrent(id)) return;
-    // Keep the exact request until Android returns its result, even if Go
-    // retires it meanwhile. A later request cannot inherit that consent.
-    if (pendingVideo != 0) {
-      runtime.captureEnded(id);
-      if (current != null) Toast.makeText(current, R.string.consent_busy, Toast.LENGTH_LONG).show();
-      return;
-    }
-    if (CaptureService.replaceVideo(runtime, id, configuration)) return;
-    MainActivity activity = current;
-    if (activity == null) {
-      runtime.captureEnded(id);
-      return;
-    }
-    pendingVideo = id;
-    pendingConfig = configuration;
-    activity.projectionConsent();
-  }
-
-  void projectionConsent() {
-    final var runtime = MainActivity.runtime;
-    if (runtime == null || pendingVideo == 0 || !runtime.captureCurrent(pendingVideo)) {
-      pendingVideo = 0;
-      return;
-    }
-    try {
-      MediaProjectionManager manager = getSystemService(MediaProjectionManager.class);
-      Intent consent =
-          Build.VERSION.SDK_INT >= 34
-              ? manager.createScreenCaptureIntent(
-                  MediaProjectionConfig.createConfigForDefaultDisplay())
-              : manager.createScreenCaptureIntent();
-      startActivityForResult(consent, CAPTURE);
-    } catch (Exception error) {
-      runtime.captureEnded(pendingVideo);
-      pendingVideo = 0;
-      new AlertDialog.Builder(this)
-          .setMessage(getString(R.string.capture_unavailable, error.getMessage()))
-          .setPositiveButton(android.R.string.ok, null)
-          .show();
-    }
-  }
-
   @Override
-  public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
-    super.onRequestPermissionsResult(request, permissions, results);
-    if (request == WebPermissions.REQUEST) this.permissions.finish();
+  public void onRequestPermissionsResult(int request, String[] names, int[] results) {
+    super.onRequestPermissionsResult(request, names, results);
+    if (request == WebPermissions.REQUEST) permissions.finish();
+    else if (request == AppRuntimeService.AUDIO_PERMISSION && permissionOwner != null) {
+      AppRuntimeService owner = permissionOwner;
+      AppRuntimeService.MediaRequest pending = permissionRequest;
+      permissionOwner = null;
+      permissionRequest = null;
+      owner.audioPermissionResult(pending);
+    }
   }
 
   @Override
   protected void onActivityResult(int request, int result, Intent data) {
     super.onActivityResult(request, result, data);
-    final var runtime = MainActivity.runtime;
-    android.util.Log.d(
-        "PiikCapture",
-        "projection result received; current="
-            + (current == this)
-            + ", pending="
-            + (pendingVideo != 0)
-            + ", accepted="
-            + (result == RESULT_OK));
-    if (current != this || request != CAPTURE || pendingVideo == 0 || runtime == null) return;
-    long id = pendingVideo;
-    pendingVideo = 0;
-    if (result != RESULT_OK || data == null) {
-      runtime.captureEnded(id);
-      return;
+    if (request == AppRuntimeService.PROJECTION && permissionOwner != null) {
+      AppRuntimeService owner = permissionOwner;
+      AppRuntimeService.MediaRequest pending = permissionRequest;
+      permissionOwner = null;
+      permissionRequest = null;
+      owner.projectionResult(this, pending, result, data);
     }
-    if (!runtime.captureCurrent(id)) return;
-    Intent service =
-        new Intent(this, CaptureService.class)
-            .putExtra("result", result)
-            .putExtra("data", data)
-            .putExtra("id", id)
-            .putExtra("config", pendingConfig);
-    Bundle ownership = new Bundle();
-    ownership.putBinder("owner", new CaptureService.ProjectionOwner(runtime));
-    service.putExtras(ownership);
-    startForegroundService(service);
   }
 
   @Override
   public void onBackPressed() {
     if (fullscreen.hide()) return;
+    if (BuildConfig.EXTERNAL_BROWSER) {
+      if (mediaEntry() && AppRuntimeService.instance != null)
+        AppRuntimeService.instance.cancelPending();
+      finish();
+      return;
+    }
     if (web != null && web.canGoBack()) {
       web.goBack();
       return;
@@ -480,19 +404,8 @@ public final class MainActivity extends Activity {
         .setNegativeButton(android.R.string.cancel, null)
         .setPositiveButton(
             android.R.string.ok,
-            (d, w) -> {
-              CaptureService.shutdown();
-              if (browserMedia != null) browserMedia.close();
-              var old = runtime;
-              runtime = null;
-              startup = null;
-              pendingVideo = 0;
-              pendingConfig = null;
-              if (old != null) work.execute(() -> closeRuntime(old));
-              if (web != null) {
-                web.destroy();
-                web = null;
-              }
+            (dialog, which) -> {
+              AppRuntimeService.stop();
               finish();
             })
         .show();
@@ -507,31 +420,17 @@ public final class MainActivity extends Activity {
     super.onDestroy();
   }
 
-  static void closeRuntime(tv.piik.androidbridge.Runtime owner) {
-    try {
-      owner.close();
-    } catch (Exception error) {
-      android.util.Log.w("PiikRuntime", "runtime shutdown failed", error);
-    }
-  }
-
-  static void runtimeStopped(tv.piik.androidbridge.Runtime owner, String reason) {
-    if (owner == null || runtime != owner) return;
-    runtime = null;
-    startup = CompletableFuture.failedFuture(new IllegalStateException(reason));
-    pendingVideo = 0;
-    pendingConfig = null;
+  static void retireDocument() {
     if (browserMedia != null) browserMedia.close();
-    CaptureService.shutdown();
     if (web != null) {
       web.destroy();
       web = null;
     }
-    MainActivity active = current;
-    if (active == null || active.isFinishing() || active.isDestroyed()) return;
-    active.fullscreen.hide();
-    if (active.sitePopup != null) active.sitePopup.dismiss();
-    active.showRuntimeFailure();
+    MainActivity activity = current;
+    if (activity != null) {
+      activity.fullscreen.hide();
+      if (activity.sitePopup != null) activity.sitePopup.dismiss();
+    }
   }
 
   void showRuntimeFailure() {
@@ -545,8 +444,9 @@ public final class MainActivity extends Activity {
     restart.setText(R.string.restart_piik);
     restart.setOnClickListener(
         ignored -> {
-          startup = null;
-          recreate();
+          AppRuntimeService.stop();
+          finish();
+          startActivity(new Intent(this, MainActivity.class));
         });
     failure.addView(restart);
     setContentView(WindowContent.wrap(getWindow(), failure));

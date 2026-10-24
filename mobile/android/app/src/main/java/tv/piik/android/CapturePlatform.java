@@ -21,7 +21,7 @@ final class CapturePlatform implements Platform {
     Runtime runtime = owner.get();
     MainActivity.main.post(
         () -> {
-          if (runtime == MainActivity.runtime) MainActivity.requestMicrophone(id, device);
+          AppRuntimeService.enqueue(runtime, id, "microphone", device);
         });
   }
 
@@ -29,7 +29,7 @@ final class CapturePlatform implements Platform {
     Runtime runtime = owner.get();
     MainActivity.main.post(
         () -> {
-          if (runtime == MainActivity.runtime) MainActivity.requestVideo(id, config);
+          AppRuntimeService.enqueue(runtime, id, "video", config);
         });
   }
 
@@ -37,7 +37,7 @@ final class CapturePlatform implements Platform {
     Runtime runtime = owner.get();
     MainActivity.main.post(
         () -> {
-          if (runtime == MainActivity.runtime) MainActivity.requestAudio(id);
+          AppRuntimeService.enqueue(runtime, id, "audio", "");
         });
   }
 
@@ -47,19 +47,23 @@ final class CapturePlatform implements Platform {
 
   public void stop(long id) {
     Runtime runtime = owner.get();
-    MainActivity.main.post(() -> CaptureService.stopCapture(runtime, id));
+    MainActivity.main.post(
+        () -> {
+          AppRuntimeService.retire(runtime, id);
+          CaptureService.stopCapture(runtime, id);
+        });
   }
 
   public void siteAccessChanged() {
     Runtime runtime = owner.get();
     MainActivity.main.post(
         () -> {
-          if (runtime == MainActivity.runtime) MainActivity.refreshBrowserMedia();
+          if (runtime == AppRuntimeService.runtime()) MainActivity.refreshBrowserMedia();
         });
   }
 
   public void runtimeStopped(String reason) {
     Runtime runtime = owner.get();
-    MainActivity.main.post(() -> MainActivity.runtimeStopped(runtime, reason));
+    MainActivity.main.post(() -> AppRuntimeService.runtimeStopped(runtime, reason));
   }
 }

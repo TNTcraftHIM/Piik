@@ -1,5 +1,12 @@
 <resources>
  <string name="app_name">Piik Android 预览版</string>
+ <string name="runtime_channel">Piik 本地服务</string>
+ <string name="runtime_title">Piik 已就绪</string>
+ <string name="runtime_body">可使用本地房间与原生分享。使用完毕后可停止 Piik。</string>
+ <string name="runtime_open">打开</string>
+ <string name="runtime_stop">停止 Piik</string>
+ <string name="media_waiting">请在浏览器发起屏幕或声音请求。按返回键回到浏览器。</string>
+ <string name="no_browser">请安装或启用浏览器以打开 Piik。</string>
  <string name="preparing">正在准备本地屏幕分享…</string>
  <string name="no_webview">此设备需要安装 Android System WebView 才能运行 Piik。</string>
  <string name="no_network">请先连接 Wi-Fi 或局域网，然后重新打开 Piik。</string>

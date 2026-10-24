@@ -49,6 +49,7 @@ final class CapturedAudio {
             "Piik captured audio");
     input.reader.start();
     input.runtime.audioReady(input.id);
+    AppRuntimeService.prepared(input.runtime, input.id);
   }
 
   static void close(CapturedAudio value) {
@@ -56,6 +57,7 @@ final class CapturedAudio {
     value.stopped = true;
     // A full Go frame queue can block the JNI producer independently of AudioRecord.
     value.runtime.captureEnded(value.id);
+    AppRuntimeService.failed(value.runtime, value.id);
     if (value.recorder != null) {
       try {
         value.recorder.stop();

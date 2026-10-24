@@ -53,6 +53,7 @@ public final class BrowserMediaService extends Service {
     try {
       owner.context.startForegroundService(intent);
     } catch (RuntimeException error) {
+      android.util.Log.w("PiikBrowserMedia", "foreground media admission failed", error);
       if (failed != null) failed.run();
     }
   }
@@ -113,6 +114,7 @@ public final class BrowserMediaService extends Service {
       owner = request.owner;
       types = desired;
     } catch (RuntimeException error) {
+      android.util.Log.w("PiikBrowserMedia", "foreground media type admission failed", error);
       if (request.failed != null) request.failed.run();
       if (owner == null) stopSelf();
       return;

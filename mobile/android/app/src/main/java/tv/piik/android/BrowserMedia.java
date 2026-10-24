@@ -83,7 +83,7 @@ final class BrowserMedia {
 
   boolean current() {
     return MainActivity.browserMedia == this
-        && MainActivity.runtime == runtime
+        && AppRuntimeService.runtime() == runtime
         && MainActivity.web == web
         && web.getUrl() != null
         && MainActivity.sameOrigin(origin, Uri.parse(web.getUrl()))

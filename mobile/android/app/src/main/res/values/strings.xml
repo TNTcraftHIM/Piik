@@ -1,5 +1,12 @@
 <resources>
  <string name="app_name">Piik Android Preview</string>
+ <string name="runtime_channel">Piik companion</string>
+ <string name="runtime_title">Piik is ready</string>
+ <string name="runtime_body">Local rooms and native sharing are available. Stop Piik when finished.</string>
+ <string name="runtime_open">Open</string>
+ <string name="runtime_stop">Stop Piik</string>
+ <string name="media_waiting">Complete the screen or audio request from your browser. Press Back to return.</string>
+ <string name="no_browser">Install or enable a browser to open Piik.</string>
  <string name="preparing">Preparing local screen sharing…</string>
  <string name="no_webview">This device needs Android System WebView to run Piik.</string>
  <string name="no_network">Connect to Wi-Fi or a local network, then reopen Piik.</string>

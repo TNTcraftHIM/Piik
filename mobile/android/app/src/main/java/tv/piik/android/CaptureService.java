@@ -84,8 +84,8 @@ public final class CaptureService extends Service {
         "projection service received; localOwner="
             + (token instanceof ProjectionOwner)
             + ", current="
-            + (runtime == MainActivity.runtime));
-    if (runtime == null || runtime != MainActivity.runtime) {
+            + (runtime == AppRuntimeService.runtime()));
+    if (runtime == null || runtime != AppRuntimeService.runtime()) {
       if (projection == null) stopSelfResult(startId);
       return START_NOT_STICKY;
     }
@@ -170,7 +170,8 @@ public final class CaptureService extends Service {
   }
 
   void beginVideo(tv.piik.androidbridge.Runtime runtime, long id, String json) {
-    if (runtime == null || runtime != MainActivity.runtime || !runtime.captureCurrent(id)) return;
+    if (runtime == null || runtime != AppRuntimeService.runtime() || !runtime.captureCurrent(id))
+      return;
     if (retiring || stopRequested || projection == null) {
       fail(runtime, id);
       return;
@@ -203,7 +204,7 @@ public final class CaptureService extends Service {
       List<EncoderCatalog.Entry> candidates,
       int index,
       long deadline) {
-    if (runtime != MainActivity.runtime
+    if (runtime != AppRuntimeService.runtime()
         || !runtime.captureCurrent(id)
         || retiring
         || stopRequested
@@ -307,6 +308,7 @@ public final class CaptureService extends Service {
                     return;
                   }
                   next.proven = true;
+                  AppRuntimeService.prepared(runtime, id);
                   handler.removeCallbacks(next.timeout);
                   if (next.replaced != null && next.replaced.id == id) releaseVideo(next.replaced);
                   JSONObject locked = new JSONObject(next.configuration);
@@ -437,7 +439,8 @@ public final class CaptureService extends Service {
       return;
     }
     if (old != null) control(old.runtime, old.id, "keyframe", 0);
-    if (!failed.runtime.captureCurrent(failed.id) || failed.runtime != MainActivity.runtime) return;
+    if (!failed.runtime.captureCurrent(failed.id) || failed.runtime != AppRuntimeService.runtime())
+      return;
     beginVideo(
         failed.runtime,
         failed.id,
@@ -510,7 +513,8 @@ public final class CaptureService extends Service {
   }
 
   void beginAudio(tv.piik.androidbridge.Runtime runtime, long id) {
-    if (runtime == null || runtime != MainActivity.runtime || !runtime.captureCurrent(id)) return;
+    if (runtime == null || runtime != AppRuntimeService.runtime() || !runtime.captureCurrent(id))
+      return;
     if (retiring || stopRequested) {
       fail(runtime, id);
       return;
@@ -573,7 +577,7 @@ public final class CaptureService extends Service {
     }
     service.handler.post(
         () -> {
-          if (owner != MainActivity.runtime || !owner.captureCurrent(id)) return;
+          if (owner != AppRuntimeService.runtime() || !owner.captureCurrent(id)) return;
           if (service.retiring
               || service.stopRequested
               || service.projection == null
@@ -586,7 +590,7 @@ public final class CaptureService extends Service {
           service.microphone = next;
           MainActivity.main.post(
               () -> {
-                if (owner != MainActivity.runtime
+                if (owner != AppRuntimeService.runtime()
                     || !owner.captureCurrent(id)
                     || service.microphone != next) {
                   service.handler.post(() -> service.discardMicrophone(next));
@@ -608,7 +612,7 @@ public final class CaptureService extends Service {
   void beginMicrophone(CapturedAudio next, String deviceID) {
     if (microphone != next
         || next.stopped
-        || next.runtime != MainActivity.runtime
+        || next.runtime != AppRuntimeService.runtime()
         || !next.runtime.captureCurrent(next.id)) return;
     try {
       AudioDeviceInfo selected = MicrophoneDevices.selected(this, deviceID);
@@ -752,7 +756,10 @@ public final class CaptureService extends Service {
   }
 
   void fail(tv.piik.androidbridge.Runtime runtime, long id) {
-    if (runtime != null) runtime.captureEnded(id);
+    if (runtime != null) {
+      runtime.captureEnded(id);
+      AppRuntimeService.failed(runtime, id);
+    }
   }
 
   void releaseVideo(Video value) {
